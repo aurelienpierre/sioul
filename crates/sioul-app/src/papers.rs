@@ -98,7 +98,7 @@ pub(crate) fn view() -> String {
         Ok(wallet) => wallet,
         Err(problem) => return json(&PapersView { store: load_config().notes_root_path().is_some(), problem, kinds, families: Vec::new() }),
     };
-    let today = jiff::Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let mut families: Vec<Family> = Vec::new();
     for family in ["identity", "health", "home", "money", "warranty", "other"] {
         let mut papers: Vec<&Paper> = wallet.papers.iter().filter(|p| p.kind.family() == family).collect();
@@ -188,7 +188,7 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
             notes: edit.notes.trim().to_string(),
             // A new end: a new renewal to plan.
             renewal: if old.until == until { old.renewal.clone() } else { String::new() },
-            added: old.added.or_else(|| Some(jiff::Zoned::now().date())),
+            added: old.added.or_else(|| Some(sioul_core::zone::now().date())),
         };
         wallet.put(paper);
     })
@@ -211,7 +211,7 @@ pub(crate) fn plan_renewal(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
     };
     let Some(paper) = wallet.get(id).cloned() else { return tr().text("papers-gone", None) };
     let (Some(from), Some(until)) = (paper.renew_from(), paper.until) else { return String::new() };
-    let today = jiff::Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let steps = format!("paper-steps-{}", paper.kind.id());
     let notes = tr().text(&steps, None);
     let edit = TaskEdit {

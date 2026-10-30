@@ -21,7 +21,7 @@ Item {
 
     // "week", "month", "year".
     property string period: "week"
-    property date anchor: new Date()
+    property date anchor: page.wall(Date.now())
     property string project: ""
     property var shown: null
     property var projects: []
@@ -40,6 +40,12 @@ Item {
     function changeFirst() {
         if (page.shown && page.shown.entries.length > 0)
             timeDialog.now().change(page.shown.entries[0])
+    }
+
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof page.sioul.zoneShift === "function" ? page.sioul.zoneShift(ms / 1000) : 0))
     }
 
     function iso(d) {
@@ -137,7 +143,7 @@ Item {
                 Button {
                     text: page.sioul.text("agenda-today")
                     onClicked: {
-                        page.anchor = new Date()
+                        page.anchor = page.wall(Date.now())
                         page.reload()
                     }
                 }

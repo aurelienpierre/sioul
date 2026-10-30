@@ -20,7 +20,6 @@ use super::access;
 use super::mask;
 use super::tools::{Answer, Args};
 use crate::{Session, one_line};
-use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 use serde_json::json;
 use sioul_core::consent::Consent;
@@ -30,7 +29,7 @@ use std::collections::BTreeSet;
 
 /// A moment in milliseconds, as the logs keep them, in the person's time zone.
 fn instant_ms(ms: i64) -> String {
-    Timestamp::from_millisecond(ms).map(|t| t.to_zoned(TimeZone::system()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
+    Timestamp::from_millisecond(ms).map(|t| t.to_zoned(sioul_core::zone::current()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
 }
 
 /// A moment in milliseconds, as a line says it.
@@ -75,8 +74,8 @@ pub fn phone_messages(s: &Session, args: &Args) -> Result<Answer, String> {
     let query = args.text("query")?.unwrap_or_default();
     let since = args.date("since")?;
     let limit = args.number("limit", 50, 1, 500)? as usize;
-    let now_ms = Zoned::now().timestamp().as_millisecond();
-    let from_ms = since.and_then(|d| d.to_zoned(TimeZone::system()).ok()).map_or(i64::MIN, |z| z.timestamp().as_millisecond());
+    let now_ms = sioul_core::zone::now().timestamp().as_millisecond();
+    let from_ms = since.and_then(|d| d.to_zoned(sioul_core::zone::current()).ok()).map_or(i64::MIN, |z| z.timestamp().as_millisecond());
     let loaded = Loaded::read(&s.config);
     let consent = access::of(s, &loaded);
     let kept = Kept::of(s, &loaded, &consent);
@@ -146,8 +145,8 @@ pub fn phone_messages(s: &Session, args: &Args) -> Result<Answer, String> {
 pub fn calls(s: &Session, args: &Args) -> Result<Answer, String> {
     let since = args.date("since")?;
     let limit = args.number("limit", 50, 1, 500)? as usize;
-    let now_ms = Zoned::now().timestamp().as_millisecond();
-    let from_ms = since.and_then(|d| d.to_zoned(TimeZone::system()).ok()).map_or(i64::MIN, |z| z.timestamp().as_millisecond());
+    let now_ms = sioul_core::zone::now().timestamp().as_millisecond();
+    let from_ms = since.and_then(|d| d.to_zoned(sioul_core::zone::current()).ok()).map_or(i64::MIN, |z| z.timestamp().as_millisecond());
     let loaded = Loaded::read(&s.config);
     let consent = access::of(s, &loaded);
     let kept = Kept::of(s, &loaded, &consent);
@@ -282,7 +281,7 @@ pub fn texts(s: &Session, args: &Args) -> Result<Answer, String> {
     let limit = args.number("limit", 30, 1, 500)? as usize;
     let seal = sealer()?;
     let shelf = Shelf::read(s, &seal);
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let region = sioul_core::reach::region(&s.config);
     let name_of = |key: &str| known_name(s, &shelf.loaded, key);
     let media_here = |_: &str| false;
@@ -349,7 +348,7 @@ pub fn search_texts(s: &Session, args: &Args) -> Result<Answer, String> {
     let limit = args.number("limit", 20, 1, 200)? as usize;
     let seal = sealer()?;
     let shelf = Shelf::read(s, &seal);
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let name_of = |key: &str| known_name(s, &shelf.loaded, key);
     let media_here = |_: &str| false;
     let v = viewer(s, &now, &name_of, &media_here);
@@ -388,7 +387,7 @@ pub fn draft_text(s: &Session, args: &Args) -> Result<Answer, String> {
         return Err(access::kept("This conversation"));
     }
     let seal = sealer()?;
-    let draft = sioul_core::textdraft::TextDraft { id: texts::new_key(), to: key.clone(), conversation: texts::conversation_id(std::slice::from_ref(&key)), body, written: Zoned::now().timestamp().as_millisecond(), by: String::new() };
+    let draft = sioul_core::textdraft::TextDraft { id: texts::new_key(), to: key.clone(), conversation: texts::conversation_id(std::slice::from_ref(&key)), body, written: sioul_core::zone::now().timestamp().as_millisecond(), by: String::new() };
     sioul_core::textdraft::add(&draft, &seal)?;
     let who = known_name(s, &loaded, &key).unwrap_or_else(|| calls::shown_number(&key, region));
     let text = format!(

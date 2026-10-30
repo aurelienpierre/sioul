@@ -80,7 +80,7 @@ pub(super) fn may_change(consent: &Consent, uri: &str) -> Result<(), String> {
 
 /// A change said in the window, with Undo while its files stay as they are now.
 pub(super) fn say_in_window(line: String, files: Vec<FileChange>) {
-    let said = Said { at: Zoned::now().timestamp().as_millisecond(), line, files };
+    let said = Said { at: sioul_core::zone::now().timestamp().as_millisecond(), line, files };
     if let Err(e) = sioul_core::agentwrites::note(&said) {
         eprintln!("sioul mcp: {e}");
     }
@@ -127,7 +127,11 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let loaded = Loaded::read(&s.config);
     let consent = access::of(s, &loaded);
     let found = find_event(&consent, &args.needed("event")?)?;
-    let mut edit = agenda::edit_of_text(&found.text, &TimeZone::system()).ok_or("This event's file does not read.")?;
+    let zone = sioul_core::zone::current();
+    // Its times in the person's time zone; its own clock, and its times there, beside.
+    let read = agenda::edit_of_text(&found.text, &zone).ok_or("This event's file does not read.")?;
+    let (clock, clock_start, clock_end) = (read.clock.clone(), read.start.clone(), read.end.clone());
+    let mut edit = agenda::on_zone(read, &zone);
     // A meeting with others: yours about it as your own file keeps it (`own_time`), as the
     // window, the plan and the reminders read it (review of part 4, later 3).
     if agenda::with_others(&found.text)
@@ -137,7 +141,6 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     // Its time kept before and after from the legs the agent may see (part E3, `anchors::mark`),
     // else its own (D18): a leg kept from agents counts for nothing here (review of 4d7bab4, later 13).
-    let zone = TimeZone::system();
     let reference = loaded.events.iter().find(|e| e.uid == found.uid);
     let legs = sioul_core::anchors::legs_of(&found.uid, &loaded.events);
     let (shown_legs, kept_legs): (Vec<&sioul_core::agenda::EventRef>, Vec<&sioul_core::agenda::EventRef>) = legs.into_iter().partition(|l| consent.allows(&links::event_uri(&l.uid)));
@@ -149,6 +152,11 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
         edit.margins = read[0].margins;
     }
     let mut data = event_json(&found, &edit, s);
+    data["clock"] = json!(clock);
+    if !clock.is_empty() {
+        data["clock_start"] = json!(clock_start);
+        data["clock_end"] = json!(clock_end);
+    }
     // The task that prepares it, with its steps and list, when the agent may see it (`pairs`).
     data["preparation"] = reference.and_then(|e| sioul_core::pairs::preparation_of(&loaded.tasks, e)).filter(|t| consent.allows(&links::task_uri(&t.uid))).map_or(Value::Null, |t| Value::String(links::task_uri(&t.uid)));
     // Its legs (part E), those kept from agents counted, never named; or, for a leg, the
@@ -159,7 +167,10 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     if let Some(anchor) = sioul_core::anchors::parse(&found.text).filter(|a| consent.allows(&links::event_uri(&a.appointment))) {
         data["leg_of"] = json!({ "event": links::event_uri(&anchor.appointment), "side": anchor.side, "timetable": anchor.timetable, "unconfirmed": anchor.unconfirmed.is_some() });
     }
-    let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
+    let mut when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
+    if !clock.is_empty() {
+        when = format!("{when} ({clock_start} – {clock_end} {clock})");
+    }
     let kept = access::left_out(kept_legs.len()).map(|l| format!("\n{l}")).unwrap_or_default();
     Ok(Answer { text: format!("{} · {when} · {}  <{}>{kept}", one_line(&edit.title), data["calendar_name"].as_str().unwrap_or_default(), links::event_uri(&found.uid)), data })
 }
@@ -167,7 +178,7 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
 /// A leg as get_event gives it: its address, title, times, side, and whether its timetable was not checked.
 fn leg_json(leg: &sioul_core::agenda::EventRef, zone: &TimeZone) -> Option<Value> {
     let text = std::fs::read_to_string(&leg.key).ok()?;
-    let edit = agenda::edit_of_text(&text, zone)?;
+    let edit = agenda::on_zone(agenda::edit_of_text(&text, zone)?, zone);
     let anchor = sioul_core::anchors::parse(&text)?;
     Some(json!({ "uri": links::event_uri(&leg.uid), "title": edit.title, "start": edit.start, "end": edit.end, "side": anchor.side, "timetable": anchor.timetable, "unconfirmed": anchor.unconfirmed.is_some() }))
 }
@@ -190,9 +201,11 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     if agenda::with_others(&found.text) {
         return Err(s.tr.text("agent-meeting-never-written", None));
     }
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let before = agenda::edit_of_text(&found.text, &zone).ok_or("This event's file does not read.")?;
-    let mut edit = before.clone();
+    // Its own clock kept, or the one given; its times read and given in the person's time zone.
+    let clock = args.clock("clock")?.unwrap_or_else(|| before.clock.clone());
+    let mut edit = agenda::on_zone(before, &zone);
     if let Some(title) = args.line("title")? {
         edit.title = title;
     }
@@ -234,6 +247,7 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     if (edit.all_day && (timed(&edit.start) || timed(&edit.end))) || (!edit.all_day && (!timed(&edit.start) || !timed(&edit.end))) {
         return Err("A whole-day event starts and ends on days, as 2026-10-05; one at a time, at times, as 2026-10-05T09:00.".into());
     }
+    let edit = agenda::on_clock(edit, &clock, &zone);
     let calendar = args.text("calendar")?;
     let moving = calendar.as_deref().is_some_and(|c| c != format!("{}/{}", found.calendar.account, found.calendar.id));
     // The calendar asked, found and able to take it before anything is written; the move is
@@ -260,7 +274,7 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
         // Counted only when its times change, and only the legs to come: a title alone moves no
         // leg, and one over stays as it was (review of 4d7bab4, later 13).
         let times_changed = agenda::first_times(&found.text, &zone) != agenda::first_times(&text, &zone);
-        kept_back = if times_changed { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone).iter().filter(|p| !allowed(p)).count() } else { 0 };
+        kept_back = if times_changed { sioul_core::anchors::to_come(&found.uid, &loaded.events, sioul_core::zone::now().timestamp().as_second(), &zone).iter().filter(|p| !allowed(p)).count() } else { 0 };
         let mut gesture = sioul_core::anchors::gesture(&found.path, &found.text, &text, &loaded.events, &zone);
         gesture.legs.retain(|(path, _)| allowed(path));
         let legs: Vec<(PathBuf, String)> = if legs_stay {
@@ -326,7 +340,7 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
     if agenda::with_others(&found.text) {
         return Err(s.tr.text("event-delete-with-others", None));
     }
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let title = agenda::edit_of_text(&found.text, &zone).map(|e| e.title).unwrap_or_default();
     let mut kept_back = 0usize;
     let mut line;
@@ -348,7 +362,7 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
             };
             // Never a leg kept from agents: it stays, as an event of its own (review of ab7daa4, M2).
             let allowed = |path: &PathBuf| loaded.events.iter().find(|e| Path::new(&e.key) == path.as_path()).is_some_and(|e| consent.allows(&links::event_uri(&e.uid)));
-            let to_come = if keep { Vec::new() } else { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone) };
+            let to_come = if keep { Vec::new() } else { sioul_core::anchors::to_come(&found.uid, &loaded.events, sioul_core::zone::now().timestamp().as_second(), &zone) };
             // Those kept from agents stay, counted, never named (review of 4d7bab4, later 13).
             kept_back = to_come.iter().filter(|p| !allowed(p)).count();
             let legs: Vec<PathBuf> = to_come.into_iter().filter(allowed).collect();
@@ -426,7 +440,7 @@ fn refused(s: &Session, refusal: sioul_core::composed::Refusal) -> String {
 pub fn convert_item(s: &Session, args: &Args) -> Result<Answer, String> {
     use sioul_core::composed;
     let desk = Desk::read(s);
-    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let (zone, now) = (sioul_core::zone::current(), sioul_core::zone::now());
     let to = args.needed("to")?;
     // The files as they are, for what is written; what reaches the agent, found through the desk.
     let all = tasks::all(&zone);
@@ -501,14 +515,14 @@ impl Holder {
     fn title(&self) -> String {
         match self {
             Holder::Task(task) => task.title.clone(),
-            Holder::Event(found) => agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.title).unwrap_or_default(),
+            Holder::Event(found) => agenda::edit_of_text(&found.text, &sioul_core::zone::current()).map(|e| e.title).unwrap_or_default(),
         }
     }
 
     fn notes(&self) -> String {
         match self {
             Holder::Task(task) => task.notes.clone(),
-            Holder::Event(found) => agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.notes).unwrap_or_default(),
+            Holder::Event(found) => agenda::edit_of_text(&found.text, &sioul_core::zone::current()).map(|e| e.notes).unwrap_or_default(),
         }
     }
 
@@ -524,7 +538,7 @@ impl Holder {
     /// read, a meeting with others (its organizer's words), notes Google
     /// Tasks would cut.
     fn write_notes(&self, s: &Session, notes: &str) -> Result<Option<FileChange>, String> {
-        let zone = TimeZone::system();
+        let zone = sioul_core::zone::current();
         let (path, current, text) = match self {
             Holder::Task(task) => {
                 if task.read_only {
@@ -536,7 +550,7 @@ impl Holder {
                 }
                 let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
                 let edit = TaskEdit { notes: notes.to_string(), ..TaskEdit::of(task) };
-                let text = tasks::apply(&current, &edit, &zone, &Zoned::now())?;
+                let text = tasks::apply(&current, &edit, &zone, &sioul_core::zone::now())?;
                 (PathBuf::from(&task.key), current, text)
             }
             Holder::Event(found) => {
@@ -756,7 +770,7 @@ pub fn add_steps(s: &Session, args: &Args) -> Result<Answer, String> {
     let asked = steps_asked(args)?;
     // In the bigger task's list, when it can be written; else where new tasks go.
     let list = tasks::lists().into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == whole.list_id).or_else(tasks::default_list).ok_or_else(|| s.tr.text("task-no-list-yet", None))?;
-    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let (zone, now) = (sioul_core::zone::current(), sioul_core::zone::now());
     let mut place = tasks::next_in_sequence(tasks::steps_of(&desk.loaded.tasks, &whole.uid), &now);
     let mut files = Vec::new();
     for (title, estimate) in &asked {
@@ -814,7 +828,7 @@ pub fn move_step(s: &Session, args: &Args) -> Result<Answer, String> {
     for (uid, place) in &writes {
         let Some(other) = file_of(uid) else { continue };
         let current = std::fs::read_to_string(&other.key).map_err(|e| format!("{}: {e}", other.key))?;
-        let text = tasks::set_sequence(&current, *place, &Zoned::now())?;
+        let text = tasks::set_sequence(&current, *place, &sioul_core::zone::now())?;
         if text != current {
             vdir::write_item(Path::new(&other.key), &text)?;
             files.push(FileChange::of(Path::new(&other.key), Some(current)));
@@ -861,8 +875,8 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
     if moves_steps && kept_below() {
         return Err(access::kept("A step of this task"));
     }
-    let zone = TimeZone::system();
-    let now = Zoned::now();
+    let zone = sioul_core::zone::current();
+    let now = sioul_core::zone::now();
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let mut edit = TaskEdit::of(&task);
     if let Some(title) = args.line("title")? {
@@ -994,7 +1008,7 @@ pub fn delete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     if task.read_only {
         return Err(s.tr.text("task-read-only", None));
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     // Its time blocks to come go with it, as the window deletes them.
     let chosen = s.config.tasks.blocks.clone().unwrap_or_default();
     let blocks = sioul_core::blocks::to_come_of(&task.uid, &chosen, now.timestamp().as_second(), now.time_zone());
@@ -1047,17 +1061,17 @@ pub fn attach_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     may_change(&desk.consent, &links::task_uri(&task.uid))?;
     let found = find_event(&desk.consent, &args.needed("event")?)?;
     may_change(&desk.consent, &links::event_uri(&found.uid))?;
-    let all = tasks::all(&TimeZone::system());
-    let change = sioul_core::pairs::attach(&all, &task.uid, &event_file(&found), &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+    let all = tasks::all(&sioul_core::zone::current());
+    let change = sioul_core::pairs::attach(&all, &task.uid, &event_file(&found), &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &sioul_core::zone::now()).map_err(|r| r.said(&s.tr))?;
     // Tied already, as it is: nothing written, nothing said in the window.
     if change.is_empty() {
         return Ok(Answer { text: "Nothing changed: the task is tied to this appointment already.".into(), data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "changed": false, "sent": false }) });
     }
     let files = change.write()?;
-    let summary = agenda::edit_of_text(&found.text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
+    let summary = agenda::edit_of_text(&found.text, &sioul_core::zone::current()).map(|e| e.title).unwrap_or_default();
     let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&summary))]);
     say_in_window(line.clone(), files);
-    let task = tasks::all(&TimeZone::system()).into_iter().find(|t| t.uid == task.uid).unwrap_or(task);
+    let task = tasks::all(&sioul_core::zone::current()).into_iter().find(|t| t.uid == task.uid).unwrap_or(task);
     Ok(Answer { text: line, data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "sent": false }) })
 }
 
@@ -1067,7 +1081,7 @@ pub fn detach_from_event(s: &Session, args: &Args) -> Result<Answer, String> {
     may_change(&desk.consent, &links::task_uri(&task.uid))?;
     let found = sioul_core::pairs::appointment_of(&task).and_then(|uid| find_event(&desk.consent, &uid).ok());
     let file = found.as_ref().map(event_file);
-    let change = sioul_core::pairs::detach(&task, file.as_ref(), &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+    let change = sioul_core::pairs::detach(&task, file.as_ref(), &sioul_core::zone::now()).map_err(|r| r.said(&s.tr))?;
     let files = change.write()?;
     let line = s.say("agent-detached", &[("title", one_line(&task.title))]);
     say_in_window(line.clone(), files);
@@ -1078,12 +1092,12 @@ pub fn task_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     let desk = Desk::read(s);
     let task = find_open_task(s, &desk, &args.needed("task")?)?;
     may_change(&desk.consent, &links::task_uri(&task.uid))?;
-    let zone = TimeZone::system();
-    let now = Zoned::now();
+    let zone = sioul_core::zone::current();
+    let now = sioul_core::zone::now();
     let chosen = s.config.tasks.blocks.clone().unwrap_or_default();
     let blocks = sioul_core::blocks::to_come_of(&task.uid, &chosen, now.timestamp().as_second(), &zone);
     // Its time: its block's, else its own; what the agent gives over it.
-    let block_time = blocks.first().and_then(|p| agenda::edit_of(p)).and_then(|e| {
+    let block_time = blocks.first().and_then(|p| agenda::edit_of(p)).map(|e| agenda::on_zone(e, &zone)).and_then(|e| {
         let at = |m: &str| m.parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map(|z| z.timestamp().as_second());
         Some((at(&e.start)?, at(&e.end)?))
     });
@@ -1142,7 +1156,7 @@ pub fn event_to_task(s: &Session, args: &Args) -> Result<Answer, String> {
         Some(id) => tasks::lists().into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == id).ok_or_else(|| s.tr.text("task-list-no-tasks", None))?,
         None => tasks::default_list().ok_or_else(|| s.tr.text("task-no-list-yet", None))?,
     };
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let name = s.tr.text("blocks-calendar", None);
     let config = s.config.clone();
     let place = move |task: &Task| sioul_core::blocks::calendar_of(&config, task, &name);

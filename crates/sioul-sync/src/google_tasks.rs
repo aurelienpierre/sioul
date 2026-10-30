@@ -149,7 +149,7 @@ pub fn sync(account: &Account) -> Result<Report, SyncError> {
         return Ok(report);
     }
     let api = Api::new(address)?;
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     send_list_changes(&api, &account.id)?;
     // The lists known here, by their address.
     let known: BTreeMap<String, String> = vdir::every_collection(Kind::Calendars)

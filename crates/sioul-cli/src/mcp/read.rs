@@ -19,8 +19,7 @@
 use super::tools::{self, Answer, Args};
 use super::{access, mask};
 use crate::{Session, one_line};
-use jiff::tz::TimeZone;
-use jiff::{Timestamp, Zoned};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 use sioul_core::projects::ProjectStore;
 use sioul_core::consent::Consent;
@@ -103,7 +102,7 @@ fn rows(lines: &[String]) -> String {
 
 /// Unix seconds as a moment in the person's time zone, for data: "2026-10-05T09:00:00+02:00".
 fn instant(seconds: i64) -> String {
-    Timestamp::from_second(seconds).map(|t| t.to_zoned(TimeZone::system()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
+    Timestamp::from_second(seconds).map(|t| t.to_zoned(sioul_core::zone::current()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
 }
 
 fn folded(text: &str) -> String {
@@ -173,7 +172,7 @@ pub fn porch(s: &Session, args: &Args) -> Result<Answer, String> {
     let known = KnownSenders::load(&s.config.known_senders_path());
     let senders = porch::Senders::load(&s.config);
     let state = if all { PorchState::default() } else { PorchState::load(&PorchState::default_path()) };
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mut items = porch::gather(&sources, store.as_ref(), &known, &senders, &state, now.timestamp().as_second());
     // Mail of a project closed to agents (or of none, while those are closed): left out, counted.
     let consent = mail_consent(s);
@@ -270,7 +269,7 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         Some(id) => Some(s.config.account(id).ok_or_else(|| s.say("account-unknown", &[("id", id.clone())]))?.maildir_path()),
         None => None,
     };
-    let from = since.and_then(|d| d.to_zoned(TimeZone::system()).ok()).map_or(i64::MIN, |z| z.timestamp().as_second());
+    let from = since.and_then(|d| d.to_zoned(sioul_core::zone::current()).ok()).map_or(i64::MIN, |z| z.timestamp().as_second());
     let senders = porch::Senders::load(&s.config);
     let words = words(&query);
     let (consent, index) = access::for_mail(s, mail_index(&s.config));
@@ -454,7 +453,7 @@ fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&ProjectS
     let lane = lane_title(s, &t.lane, store);
     let reasons: Vec<String> = t.reasons.iter().map(|r| one_line(&s.tr.reason(r, store))).collect();
     let uri = card.message_id.as_deref().map(links::mail_uri).unwrap_or_default();
-    let date = card.date.and_then(|d| Timestamp::from_second(d).ok()).map_or_else(|| s.tr.text("no-date", None), |at| s.tr.date(&at.to_zoned(TimeZone::system()), false));
+    let date = card.date.and_then(|d| Timestamp::from_second(d).ok()).map_or_else(|| s.tr.text("no-date", None), |at| s.tr.date(&at.to_zoned(sioul_core::zone::current()), false));
     let mut lines = vec![format!("From: {} ({})", one_line(&sender), s.tr.trust(t.trust))];
     if !to.is_empty() {
         lines.push(format!("To: {}", to.join(", ")));
@@ -536,7 +535,7 @@ impl Desk {
         // The plan is the person's, closed projects' tasks in it, but nothing of them is given.
         let consent = access::of(s, &loaded);
         access::redact(&mut loaded, &consent);
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         let today = Today::load(&Today::default_path(), now.date());
         let sessions = timelog::sessions();
         let spent = timelog::spent(&sessions, 0, i64::MAX);
@@ -580,7 +579,7 @@ impl Desk {
     /// The task views' context through `filter`: the list takes every task,
     /// whatever the hour (`tasks_list`).
     pub fn context_with<'a>(&'a self, s: &'a Session, filter: &'a Filter) -> Context<'a> {
-        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
+        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: sioul_core::zone::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
     }
 
     /// The occurrences from `from` to `to` (Unix seconds), as
@@ -633,7 +632,7 @@ impl Desk {
     /// thing's consent (the Dated arm), kept back counted with the rest: a
     /// task's date and its step count once.
     pub fn agent_days_with(&self, from: i64, to: i64, dates: Option<(&Session, jiff::civil::Date, i64)>) -> (timeline::ForAgents, usize, Vec<agenda::Occurrence>) {
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         let zone = now.time_zone().clone();
         let today = now.date();
         let mut occurrences = self.occurrences_between(from, to);
@@ -685,7 +684,7 @@ impl Desk {
     /// kept back with its task. `occurrences` for the letters' appointments
     /// already in the agenda. Consent is `agent_days_with`'s.
     fn dates_of(&self, s: &Session, from: jiff::civil::Date, days: i64, occurrences: &[agenda::Occurrence]) -> Vec<timeline::Item> {
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         let (today, zone) = (now.date(), now.time_zone().clone());
         let events_on = |date: jiff::civil::Date| {
             occurrences
@@ -842,7 +841,7 @@ fn tasks_now(s: &Session, desk: &Desk) -> Answer {
 /// "margin", as before; the steps of today's plan that find no time left
 /// today are named apart (`planned`), at no time.
 pub(super) fn tasks_today(s: &Session, desk: &Desk) -> Answer {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let zone = now.time_zone().clone();
     let midnight = timeline::midnight(now.date(), &zone);
     // Up to tomorrow's midnight: the day of a clock change has 23 or 25 hours.
@@ -961,8 +960,8 @@ pub(super) fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: 
 /// no time left that day; laid in a time block, that block's address too:
 /// review of 1880bce, L14); health and your hours never.
 pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
-    let zone = TimeZone::system();
-    let today = Zoned::now().date();
+    let zone = sioul_core::zone::current();
+    let today = sioul_core::zone::now().date();
     let from = args.date("from")?.unwrap_or(today);
     let days = args.number("days", view::AGENDA_DAYS, 1, 92)?;
     let start = from.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
@@ -1024,11 +1023,12 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
             if !in_blocks.contains(&(event.key.clone(), event.start)) {
                 let place = if event.location.is_empty() { String::new() } else { format!(" · {}", event.location) };
                 let gone = if event.cancelled { "× " } else { "" };
-                said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {}  {gone}{summary}{place}  <{uri}>", listed.when)));
+                let when = if listed.both.is_empty() { &listed.when } else { &listed.both };
+                said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {when}  {gone}{summary}{place}  <{uri}>")));
             }
             let (_, notes) = mask::message(&words, "", &event.notes);
             events.push(json!({
-                "uri": uri, "uid": event.uid, "when": listed.when, "start": instant(event.start), "summary": summary, "location": event.location,
+                "uri": uri, "uid": event.uid, "when": listed.when, "start": instant(event.start), "clock": event.clock, "summary": summary, "location": event.location,
                 "notes": notes, "calendar": event.calendar, "all_day": listed.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
                 "tentative": event.tentative, "organizer": event.organizer, "attendees": event.attendees,
             }));
@@ -1127,7 +1127,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     // tied to one; any not in a project while those are closed), and lines tied to a closed project.
     let consent = access::of(s, &Loaded::read(&s.config));
     let (ledger, closed, kept_labels) = open_ledger(ledger, &consent);
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let shown = view::budgets(&ledger, &[], &s.tr, today);
     let mut lines = vec![shown.title.clone()];
     for card in &shown.budgets {
@@ -1313,7 +1313,7 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let id = args.text("id")?;
     let loaded = Loaded::read(&s.config);
-    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system());
+    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
     let consent = access::of(s, &loaded);
     let Some(id) = id else {
         // Only the projects open to agents; the others counted, never named.

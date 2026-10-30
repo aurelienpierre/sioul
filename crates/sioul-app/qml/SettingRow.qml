@@ -538,6 +538,46 @@ ColumnLayout {
         }
     }
 
+    // A time zone: this device's own, followed, or another found by its name.
+    Loader {
+        active: field.setting.kind === "zone"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ColumnLayout {
+                id: zoneRow
+
+                // "Another time zone…" chosen and none picked yet; or one picked.
+                property bool asked: false
+                readonly property bool other: zoneRow.asked || field.setting.kind === "zone" && field.setting.value !== ""
+
+                spacing: 4
+
+                PlainComboBox {
+                    objectName: "settingZone"
+                    Layout.fillWidth: true
+                    model: field.setting.kind === "zone" ? [field.setting.choices[0].label, field.sioul.text("zone-other")].map(t => field.theme.plain(t)) : []
+                    currentIndex: zoneRow.other ? 1 : 0
+                    Accessible.name: field.setting.label
+                    onActivated: index => {
+                        zoneRow.asked = index === 1
+                        if (index === 0 && field.setting.value !== "")
+                            field.save(field.setting.key, "", field.setting.value)
+                    }
+                }
+                ZonePicker {
+                    visible: zoneRow.other
+                    Layout.fillWidth: true
+                    sioul: field.sioul
+                    theme: field.theme
+                    zone: field.setting.kind === "zone" ? field.setting.value : ""
+                    onPicked: name => field.save(field.setting.key, name, field.setting.value)
+                }
+            }
+        }
+    }
+
     // A font family: the desktop's first.
     Loader {
         active: field.setting.kind === "font"

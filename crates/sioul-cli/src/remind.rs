@@ -7,13 +7,12 @@
 //! when told, so it is told once, whichever runs.
 
 use crate::Session;
-use jiff::Zoned;
 use sioul_core::config::{self, Config};
 use sioul_core::reminders;
 
 /// What comes in the next two weeks, with what was told already.
 pub(crate) fn list(s: &Session) -> Result<(), String> {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let (all, _) = reminders::gather(&s.config, &s.tr, &now);
     let stamp = now.timestamp().as_second();
     let dir = reminders::told_dir();
@@ -49,7 +48,7 @@ pub(crate) fn watch(s: &Session) -> Result<(), String> {
     loop {
         // Read again each time: settings, tasks and events change while it runs.
         let config = Config::load(&s.config_path).unwrap_or_default();
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         if forgotten_on != Some(now.date()) {
             reminders::forget_old(&dir);
             forgotten_on = Some(now.date());

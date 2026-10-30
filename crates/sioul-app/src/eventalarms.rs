@@ -134,7 +134,7 @@ pub(crate) fn schedule() {
     if !cfg!(target_os = "android") {
         return;
     }
-    hand(coming(&Zoned::now()));
+    hand(coming(&sioul_core::zone::now()));
 }
 
 /// The same from the window's minute, with the reminders it gathered
@@ -223,7 +223,7 @@ fn step_after(stamp: i64, step: i64) -> i64 {
 /// again after, as the calendars are now. The end of work's and the night's
 /// ("day:work:…", "day:night:…") are theirs to decide.
 fn decide(key: &str) -> String {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     if let Some(day) = key.strip_prefix("day:") {
         let answer = if day.starts_with("work:") {
             crate::reviews::decide_work(&now)
@@ -286,7 +286,8 @@ pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char 
     // SAFETY: `zone` is null or a C string valid for the call, as this function's contract says.
     let zone = unsafe { crate::alarms::key_of(zone) };
     let answer = std::panic::catch_unwind(|| {
-        let zone = TimeZone::get(&zone).unwrap_or_else(|_| TimeZone::system());
+        // The zone the phone just said, unless one is chosen in Settings (`zone::chosen_or`).
+        let zone = sioul_core::zone::chosen_or(TimeZone::get(&zone).unwrap_or_else(|_| TimeZone::system()));
         let json = coming(&Zoned::now().with_time_zone(zone));
         if let Ok(mut given) = GIVEN.lock() {
             *given = json.clone();

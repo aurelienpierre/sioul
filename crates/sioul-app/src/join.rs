@@ -758,8 +758,8 @@ fn asked() -> Asked {
 /// A moment, said shortly: "14:05" today, "Fri 2 Oct" before.
 fn moment(seconds: i64) -> String {
     let Ok(at) = jiff::Timestamp::from_second(seconds) else { return String::new() };
-    let at = at.to_zoned(jiff::tz::TimeZone::system());
-    if at.date() == jiff::Zoned::now().date() { at.strftime("%H:%M").to_string() } else { tr().date(&at, true) }
+    let at = at.to_zoned(sioul_core::zone::current());
+    if at.date() == sioul_core::zone::now().date() { at.strftime("%H:%M").to_string() } else { tr().date(&at, true) }
 }
 
 /// How long another phone says nothing, as this device sees it, before this

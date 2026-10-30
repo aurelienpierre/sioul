@@ -20,7 +20,7 @@ ColumnLayout {
     required property var window
     property string budget: ""
     property string step: "day"
-    property date anchor: new Date()
+    property date anchor: detail.wall(Date.now())
     property var shown: null
     readonly property var steps: ["day", "week", "month", "year"]
     // A narrow screen (a phone): the title under the arrows, each date under its line.
@@ -28,6 +28,12 @@ ColumnLayout {
     readonly property string inOut: detail.shown ? detail.sioul.text("budget-in") + " " + detail.shown.money_in + "   " + detail.sioul.text("budget-out") + " " + detail.shown.money_out : ""
 
     signal back
+
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof detail.sioul.zoneShift === "function" ? detail.sioul.zoneShift(ms / 1000) : 0))
+    }
 
     function iso(d) {
         const pad = n => n < 10 ? "0" + n : String(n)
@@ -102,7 +108,7 @@ ColumnLayout {
         Button {
             text: detail.sioul.text("agenda-today")
             onClicked: {
-                detail.anchor = new Date()
+                detail.anchor = detail.wall(Date.now())
                 detail.reload()
             }
         }

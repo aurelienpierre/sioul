@@ -405,8 +405,8 @@ fn shorten(path: &Path) -> String {
 /// A moment, said shortly: "14:05" today, "Fri 2 Oct 14:05" before.
 fn when(seconds: i64) -> String {
     let Ok(at) = jiff::Timestamp::from_second(seconds) else { return String::new() };
-    let at = at.to_zoned(jiff::tz::TimeZone::system());
-    if at.date() == jiff::Zoned::now().date() { at.strftime("%H:%M").to_string() } else { tr().date(&at, true) }
+    let at = at.to_zoned(sioul_core::zone::current());
+    if at.date() == sioul_core::zone::now().date() { at.strftime("%H:%M").to_string() } else { tr().date(&at, true) }
 }
 
 #[derive(Serialize)]
@@ -774,7 +774,7 @@ pub(crate) struct WithheldShown {
 
 /// A day in words: "Friday 17 October".
 fn day(ms: i64) -> String {
-    jiff::Timestamp::from_millisecond(ms).map(|at| tr().day(at.to_zoned(jiff::tz::TimeZone::system()).date())).unwrap_or_default()
+    jiff::Timestamp::from_millisecond(ms).map(|at| tr().day(at.to_zoned(sioul_core::zone::current()).date())).unwrap_or_default()
 }
 
 /// The notes and papers held here as the last exchange left them
@@ -1270,7 +1270,7 @@ pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(Stri
     match &current {
         // A meeting: the version's lines of yours into your own time around it, the meeting as it is.
         Some(current) if meeting(current) => {
-            let zone = jiff::tz::TimeZone::system();
+            let zone = sioul_core::zone::current();
             let uid = sioul_core::lines::unfold(current).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()).filter(|u| !u.is_empty()).ok_or_else(|| format!("{file}?"))?;
             let yours = sioul_core::agenda::edit_of_text(&text, &zone).ok_or_else(|| format!("{file}?"))?;
             let own = sioul_core::own_time::Own { before: yours.margins.before, after: yours.margins.after, demands: yours.demands, remind: yours.remind };
@@ -2438,7 +2438,7 @@ fn send_to_server(here: &share::Here, again: bool) -> Option<sioul_sync::remote:
     send_texts(here);
     let sent = sioul_sync::remote::send(&memory, &folder, &here.id, &login, &sealed, now, again, metered());
     if sent.sent > 0 || sent.held > 0 || sent.taken_out > 0 || again || sent.problem.as_deref().is_some_and(|p| p != "off" && !p.starts_with("waiting:")) {
-        let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+        let at = jiff::Timestamp::now().to_zoned(sioul_core::zone::current()).strftime("%H:%M:%S").to_string();
         let detail = sent.failure.as_ref().map(|f| format!("; {}", failure_words(f))).unwrap_or_default();
         log_send(match &sent.problem {
             None => format!("{at} sent to {}: {} sent, {} there already, {} records longer there left as they are, {} paced, {} taken out, {} bytes{}", state.host(), sent.sent, sent.same, sent.longer, sent.paced, sent.taken_out, sent.bytes, if sent.differ.is_empty() { String::new() } else { format!("; otherwise there: {}", sent.differ.join("; ")) }),
@@ -2537,7 +2537,7 @@ fn send_texts(here: &share::Here) {
     let media = if texts { crate::texts::media_to_send() } else { std::collections::BTreeMap::new() };
     let sent = sioul_sync::remote::send_urgent(&memory, &folder, &here.id, &login, jiff::Timestamp::now().as_second(), &media);
     if sent.sent > 0 || sent.failure.is_some() {
-        let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+        let at = jiff::Timestamp::now().to_zoned(sioul_core::zone::current()).strftime("%H:%M:%S").to_string();
         log_send(match &sent.failure {
             None => format!("{at} texts or replies to send sent to {}", state.host()),
             Some(f) => format!("{at} texts or replies to send not sent to {}: {}", state.host(), failure_words(f)),
@@ -3011,7 +3011,7 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
     }
     let Some(login) = login(&state.account) else { return };
     let pulled = sioul_sync::remote::pull(&memory, &folder, &here.id, &login, now);
-    let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+    let at = jiff::Timestamp::now().to_zoned(sioul_core::zone::current()).strftime("%H:%M:%S").to_string();
     log_backup(match &pulled.problem {
         None => format!("{at} pulled from {}: {} listed, {} fetched, {} bytes{}", state.host(), pulled.listed, pulled.fetched, pulled.bytes, if pulled.left > 0 { format!("; {} records too large left to the sync app", pulled.left) } else { String::new() }),
         Some(why) => format!("{at} pull from {} stopped: {}", state.host(), backup_words(why)),
@@ -3068,7 +3068,7 @@ fn fetch_wanted(folder: &Path, key: &[u8; 32]) -> usize {
     }
     let Some(login) = load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of) else { return 0 };
     let pulled = sioul_sync::remote::fetch_wanted(&memory, folder, &login, key, now, frugal_now());
-    let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+    let at = jiff::Timestamp::now().to_zoned(sioul_core::zone::current()).strftime("%H:%M:%S").to_string();
     log_backup(match &pulled.problem {
         None => format!(
             "{at} sealed files waited for: {} fetched from {}, {} bytes{}{}",

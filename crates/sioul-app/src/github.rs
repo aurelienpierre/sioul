@@ -7,8 +7,6 @@
 //! mail tied to its task and that task's project.
 
 use crate::backend::{QtThread, Shared, load_config, set_status, tr};
-use jiff::Zoned;
-use jiff::tz::TimeZone;
 use sioul_core::projects::ProjectStore;
 use sioul_core::config::Config;
 use sioul_core::github::{self, Issue};
@@ -95,7 +93,7 @@ fn bring(config: &Config) -> Result<usize, SyncError> {
     // Your projects' routes say which project an issue belongs to, as they do for mail.
     let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&LocalLinks::load(&LocalLinks::default_path())));
     let project_of = |issue: &Issue| store.as_ref().and_then(|s| s.route(&github::as_card(issue)).first().map(|r| r.project.id.clone()));
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mut changed = 0;
     let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
     for issue in &open {
@@ -115,7 +113,7 @@ fn bring(config: &Config) -> Result<usize, SyncError> {
         if github::state_of(&before).as_deref() != Some("open") {
             continue;
         }
-        let Some((repo, number)) = tasks::task_of_text(&before, &TimeZone::system()).and_then(|t| github::parse_uid(&t.uid)) else { continue };
+        let Some((repo, number)) = tasks::task_of_text(&before, &sioul_core::zone::current()).and_then(|t| github::parse_uid(&t.uid)) else { continue };
         let text = match sioul_sync::github::issue(&repo, number, &github::reason_of(&before))? {
             Some(issue) if issue.state == "closed" => github::updated(&before, &issue, None, &now),
             // Still open, and changed a moment ago: the search may not see it yet.
@@ -140,11 +138,11 @@ pub(crate) fn tie_mail(config: &Config, files: &[PathBuf], ties: &mut LocalLinks
     }
     let Some(list) = list() else { return };
     let senders = porch::Senders::load(config);
-    let judged = porch::judge(files, &config.mail_sources(), None, &porch::KnownSenders::default(), &senders, Zoned::now().timestamp().as_second());
+    let judged = porch::judge(files, &config.mail_sources(), None, &porch::KnownSenders::default(), &senders, sioul_core::zone::now().timestamp().as_second());
     for card in judged.into_iter().filter(|t| t.trust == Trust::Verified).map(|t| t.card) {
         let (Some((repo, number)), Some(mid)) = (github::thread_of(&card), card.message_id.as_deref()) else { continue };
         let Ok(text) = std::fs::read_to_string(list.dir.join(github::file_name(&repo, number))) else { continue };
-        let Some(task) = tasks::task_of_text(&text, &TimeZone::system()) else { continue };
+        let Some(task) = tasks::task_of_text(&text, &sioul_core::zone::current()) else { continue };
         ties.add(&links::mail_uri(mid), &links::task_uri(&task.uid), "link");
         if let Some(project) = task.projects.first() {
             ties.add(&links::mail_uri(mid), &links::project_uri(project), "project");

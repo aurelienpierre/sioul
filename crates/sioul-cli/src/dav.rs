@@ -7,8 +7,6 @@
 use crate::Session;
 use crate::accounts::prompt_password;
 use clap::Subcommand;
-use jiff::Zoned;
-use jiff::tz::TimeZone;
 use sioul_core::agenda::{self, EventEdit};
 use sioul_core::config::{self, Account};
 use sioul_core::contacts::{self, ContactEdit, Labeled};
@@ -135,7 +133,7 @@ fn check() -> Result<(), String> {
         }
         println!("  an unchanged edit would rewrite {} cards; lines rewritten by property: {:?}", changed.len(), by_property);
     }
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     for collection in vdir::collections(vdir::Kind::Calendars) {
         let (mut failed, mut components, mut recurring, mut rewritten) = (Vec::new(), std::collections::BTreeMap::<String, usize>::new(), 0, Vec::new());
         let items = collection.items();
@@ -290,8 +288,8 @@ pub(crate) fn new_contact(s: &Session, name: &str, emails: &[String], phones: &[
 
 /// What comes, day by day.
 pub(crate) fn list_agenda(s: &Session, days: i64) -> Result<(), String> {
-    let zone = TimeZone::system();
-    let today = Zoned::now().date();
+    let zone = sioul_core::zone::current();
+    let today = sioul_core::zone::now().date();
     let from = today.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
     let to = from + days * 86_400 + 3_600;
     // From the one model (`timeline::calendar_days`), its lines as before part 8: each day's
@@ -310,7 +308,9 @@ pub(crate) fn list_agenda(s: &Session, days: i64) -> Result<(), String> {
             // Titles and places as invitations and shared calendars wrote them, on one line.
             let place = if event.location.is_empty() { String::new() } else { format!(" · {}", crate::one_line(&event.location)) };
             let summary = if event.summary.is_empty() { s.tr.text("agenda-untitled", None) } else { event.summary.clone() };
-            println!("  {}  {}{place}", crate::one_line(&listed.when), crate::one_line(&summary));
+            // On another clock, its times there too ("16:00 – 17:00 here · 15:00 – 16:00 UTC").
+            let when = if listed.both.is_empty() { &listed.when } else { &listed.both };
+            println!("  {}  {}{place}", crate::one_line(when), crate::one_line(&summary));
         }
     }
     Ok(())
@@ -319,7 +319,7 @@ pub(crate) fn list_agenda(s: &Session, days: i64) -> Result<(), String> {
 /// A new event in the first calendar that takes it, then sent.
 pub(crate) fn new_event(s: &Session, edit: &EventEdit) -> Result<(), String> {
     let calendar = agenda::default_calendar().ok_or_else(|| s.tr.text("dav-no-calendar", None))?;
-    let text = agenda::new_event(edit, &TimeZone::system())?;
+    let text = agenda::new_event(edit, &sioul_core::zone::current())?;
     let path = agenda::new_path(&calendar);
     vdir::write_item(&path, &text)?;
     println!("{}", path.display());

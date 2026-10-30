@@ -73,7 +73,7 @@ pub(crate) fn mode_at(now: &Zoned) -> Mode {
 }
 
 pub(crate) fn mode_now() -> Mode {
-    mode_at(&Zoned::now())
+    mode_at(&sioul_core::zone::now())
 }
 
 /// Today's slots of time for you (docs/capacity.md, G18b), as the window
@@ -105,7 +105,7 @@ pub(crate) fn in_slot(at: &Zoned) -> bool {
 
 /// The same, now.
 pub(crate) fn quiet_slot() -> bool {
-    in_slot(&Zoned::now())
+    in_slot(&sioul_core::zone::now())
 }
 
 /// The matrix as set (Settings ▸ What reaches you).
@@ -130,7 +130,7 @@ pub(crate) fn attention_at(mode: &Mode, now: &Zoned) -> Now {
 
 /// The moment now.
 pub(crate) fn attention_now() -> Now {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     attention_at(&mode_at(&now), &now)
 }
 
@@ -164,7 +164,7 @@ pub(crate) fn doses_silent() -> bool {
 pub(crate) fn waking() -> Option<i64> {
     let mode = mode_now();
     if mode.paused() {
-        return Some(Zoned::now().timestamp().as_second() + 5 * 60);
+        return Some(sioul_core::zone::now().timestamp().as_second() + 5 * 60);
     }
     let sleeps = mode.sleeps();
     mode.until.filter(|_| sleeps).map(|until| until.timestamp().as_second())
@@ -184,7 +184,7 @@ pub(crate) fn woke_from() -> Option<i64> {
 pub(crate) fn woken() -> Option<(i64, i64)> {
     let attention = attention();
     let held_in = |column: Column| attention.cell(Row::Own(Kind::Doses), column) != Level::Now;
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let overrides = Overrides::load(&Overrides::default_path());
     let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| held_in(Column::Pause) && ended > since && *ended <= stamp && stamp - ended < 30 * 60);
@@ -201,5 +201,5 @@ pub(crate) fn woken() -> Option<(i64, i64)> {
 
 /// Whether a night is set (Health): without one, nothing keeps notifications away at night.
 pub(crate) fn night_set() -> bool {
-    blocks(&Zoned::now()).night
+    blocks(&sioul_core::zone::now()).night
 }

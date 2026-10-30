@@ -102,7 +102,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     crate::everywhere::started(qt, shared);
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
-        settle(&Zoned::now());
+        settle(&sioul_core::zone::now());
         apply();
         // Reachable begun or ended (here, on another device, by its end): the Porch and the mail's pace follow.
         crate::backend::follow_reachable(&qt, &shared);
@@ -132,7 +132,7 @@ pub(crate) fn moment(config: &sioul_core::config::Config, overrides: &Overrides,
 /// line on where you stopped (GP3). Off: back, the end of work moved as said
 /// once (GP10, GP16): the line said, else "".
 pub(crate) fn set_free(mut sioul: Pin<&mut Sioul>, on: bool) -> QString {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     // A free time that ended by itself (the night came) is said ended first.
     settle(&now);
@@ -170,7 +170,7 @@ pub(crate) fn set_free(mut sioul: Pin<&mut Sioul>, on: bool) -> QString {
 /// "Keep my usual end" (GP11, GP19): no reason asked; what no longer fits
 /// goes to later days.
 pub(crate) fn keep_usual_end(mut sioul: Pin<&mut Sioul>) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mut overrides = load();
     pause::keep_usual_end(&mut overrides, now.date());
     if !save(&mut sioul, &overrides) {
@@ -195,7 +195,7 @@ pub(crate) fn set_free_nothing(mut sioul: Pin<&mut Sioul>, on: bool) {
 /// usual: a pause never costs an evening (GP19–GP20); a session running
 /// stops and counts. Pressed while paused: the screen, nothing else.
 pub(crate) fn press(mut sioul: Pin<&mut Sioul>) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let mut overrides = load();
     if overrides.paused_from().is_none() {
@@ -236,7 +236,7 @@ fn porch_back(config: &sioul_core::config::Config, now: &Zoned) -> Option<i64> {
 /// count. The screen after it, as JSON: its few lines and the one offer.
 pub(crate) fn come_back(mut sioul: Pin<&mut Sioul>) -> QString {
     let config = load_config();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let before = load();
     let Some(since) = before.paused_from() else { return QString::default() };
@@ -279,7 +279,7 @@ pub(crate) fn come_back(mut sioul: Pin<&mut Sioul>) -> QString {
 
 /// "Lighten tomorrow", the one offer coming back (default: no, P23).
 pub(crate) fn lighten_tomorrow(mut sioul: Pin<&mut Sioul>) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let Ok(tomorrow) = now.date().tomorrow() else { return };
     let mut overrides = load();
     pause::lighten(&mut overrides, tomorrow);

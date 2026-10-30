@@ -101,7 +101,7 @@ fn blocks(now: &Zoned) -> sioul_core::quiet::Blocks {
 /// Asleep (the night from winding down, a nap), and paused, now: for the
 /// background service's rhythm, whatever the settings of do-not-disturb.
 pub(crate) fn rest_now() -> (bool, bool) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let paused = Overrides::load(&Overrides::default_path()).paused_from().is_some();
     (blocks(&now).at(now.timestamp().as_second(), &["sleep", "nap"]).is_some(), paused)
 }
@@ -120,7 +120,7 @@ struct Look {
 impl Look {
     fn now() -> Look {
         let config = load_config();
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         let overrides = Overrides::load(&Overrides::default_path());
         let switch = switch_here(&here_id());
         let blocks = blocks(&now);
@@ -498,7 +498,7 @@ fn write_own(change: impl FnOnce(&mut rules::Device)) {
 /// -1: until what now is for ends), or off. Applied here, the status line
 /// shown again, and the other devices told at once.
 pub(crate) fn toggle(mut sioul: Pin<&mut Sioul>, on: bool, minutes: i32) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let until = match minutes {
         m if m > 0 => Some(now.timestamp().as_second() + i64::from(m) * 60),
         -1 => crate::hours::mode_at(&now).until.map(|u| u.timestamp().as_second()),
@@ -563,7 +563,7 @@ fn reachable_ends(now: &Zoned) -> (i64, i64, bool) {
 /// other devices told at once; a Reachable press releases what the phone
 /// holds (`appnotes::review`, at its next look).
 pub(crate) fn choose(mut sioul: Pin<&mut Sioul>, state: &str, length: &str) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let (state, until, open) = match rules::State::read(state) {
         Some(rules::State::Reachable) => {

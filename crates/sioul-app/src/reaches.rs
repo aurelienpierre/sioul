@@ -12,7 +12,6 @@
 //! and writes what is changed here.
 
 use crate::backend::{config_path, load_config};
-use jiff::Zoned;
 use serde_json::{Value, json};
 use sioul_core::attention::{self, Attention, Column, Kind, Level, Now, Person, Phone, Preset, Row, Senders};
 use sioul_core::config::{Config, SettingValue};
@@ -703,7 +702,7 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
     let mode = crate::hours::mode_now();
     let column = column_now(now);
     let time = small(&attention::column_label(tr(), column));
-    let at = Zoned::now();
+    let at = sioul_core::zone::now();
     let mut out = vec![match mode.until.as_ref().filter(|_| !mode.paused()) {
         Some(until) => say("attention-now-time", &[("time", time), ("until", sioul_core::quiet::until_text(tr(), until, &at))]),
         None => say("attention-now-time-open", &[("time", time)]),

@@ -155,6 +155,19 @@ Item {
             compare(clock.now, root.sec(2026, 10, 7, 7, 30))
         }
 
+        // A trip (Settings ▸ Agenda ▸ Time zone, the window's `zoneShift`):
+        // today is the zone shown's, the minute the same instant; back home,
+        // this device's day again at the next read.
+        function test_clock_on_another_zone() {
+            root.fake = root.ms(2026, 10, 7, 2, 0, 30)
+            const clock = createTemporaryObject(clockComponent, root, { shift: ms => -6 * 3600 * 1000 })
+            compare(clock.today, "2026-10-06", "02:00 in Paris is 20:00 the day before in New York")
+            compare(clock.now, root.sec(2026, 10, 7, 2, 0), "the same instant")
+            clock.shift = ms => 0
+            clock.read()
+            compare(clock.today, "2026-10-07", "back home: this device's day")
+        }
+
         // The agenda's day and week (WeekPlanning): the line follows the clock, nothing laid again for it; the
         // block under way follows too; laid again at each five minutes' turn only.
         function test_week() {

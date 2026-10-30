@@ -42,13 +42,21 @@ Dialog {
     readonly property string legSide: dialog.legOf !== "" && dialog.legStart() >= dialog.legUntil ? "after" : "before"
     readonly property string legLine: dialog.legOf === "" ? "" : dialog.sioul.textArgs(dialog.legSide === "after" ? "leg-after" : "leg-before", JSON.stringify({ appointment: dialog.legTitle, time: dialog.clockOf(dialog.legSide === "after" ? dialog.legUntil : dialog.legAt) }))
 
-    // The start typed, in Unix seconds (local, as the form writes it); NaN while it does not read.
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof dialog.sioul.zoneShift === "function" ? dialog.sioul.zoneShift(ms / 1000) : 0))
+    }
+
+    // The start typed, in Unix seconds (on the time zone Sioul shows, as the form writes
+    // it); NaN while it does not read.
     function legStart() {
-        return new Date(startDay.date + "T" + startTime.text).getTime() / 1000
+        const typed = new Date(startDay.date + "T" + startTime.text).getTime()
+        return (typed - (dialog.wall(typed).getTime() - typed)) / 1000
     }
 
     function clockOf(seconds) {
-        const d = new Date(seconds * 1000)
+        const d = dialog.wall(seconds * 1000)
         return dialog.pad(d.getHours()) + ":" + dialog.pad(d.getMinutes())
     }
     // What the task cannot keep as an appointment, said before Save (F5); else "".
@@ -66,6 +74,12 @@ Dialog {
     property bool withOthers: false
     property bool moreShown: false
     property string problem: ""
+    // The clock its times are on (`EventEdit::clock`): "" the time zone shown
+    // (`zoneName`), "UTC", or another zone by its name, kept by an edit;
+    // `clockOther` while "Another time zone…" is chosen, picked or not yet.
+    property string clock: ""
+    property bool clockOther: false
+    property string zoneName: ""
     // What a new event is made from: links it carries ("mid:…", "sioul:task/…").
     property var links: []
     readonly property var repeats: ["", "daily", "weekly", "monthly", "yearly"]
@@ -103,10 +117,11 @@ Dialog {
             if (JSON.stringify(form[name]) !== JSON.stringify(loaded[name]))
                 typed[name] = form[name]
         }
-        if (typed.start !== undefined || typed.end !== undefined || typed.all_day !== undefined) {
+        if (typed.start !== undefined || typed.end !== undefined || typed.all_day !== undefined || typed.clock !== undefined) {
             typed.start = form.start
             typed.end = form.end
             typed.all_day = form.all_day
+            typed.clock = form.clock
         }
         return typed
     }
@@ -121,7 +136,7 @@ Dialog {
             return
         }
         const forms = Object.assign({}, dialog.keeper.forms)
-        forms[dialog.key] = { form: typed, at: Qt.formatTime(new Date(), "HH:mm") }
+        forms[dialog.key] = { form: typed, at: Qt.formatTime(dialog.wall(Date.now()), "HH:mm") }
         dialog.keeper.forms = forms
     }
 
@@ -145,6 +160,8 @@ Dialog {
         endDay.date = f.end.slice(0, 10)
         endTime.text = f.all_day ? "10:00" : f.end.slice(11, 16)
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(f.repeat))
+        dialog.clock = f.clock || ""
+        dialog.clockOther = dialog.clock !== "" && dialog.clock !== "UTC"
         dialog.around = f.margins
         dialog.demands = f.demands
         dialog.remind = f.remind
@@ -190,6 +207,9 @@ Dialog {
         dialog.problem = ""
         dialog.links = []
         dialog.calendars = JSON.parse(dialog.sioul.calendars() || "[]")
+        dialog.zoneName = dialog.sioul.zoneName()
+        dialog.clock = ""
+        dialog.clockOther = false
         if (key) {
             const found = JSON.parse(dialog.sioul.eventForm(key) || "null")
             if (!found)
@@ -204,6 +224,8 @@ Dialog {
             endDay.date = e.end.slice(0, 10)
             endTime.text = e.all_day ? "10:00" : e.end.slice(11, 16)
             repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(e.repeat))
+            dialog.clock = e.clock || ""
+            dialog.clockOther = dialog.clock !== "" && dialog.clock !== "UTC"
             calendar.currentIndex = Math.max(0, dialog.calendars.findIndex(c => c.id === found.calendar))
             dialog.currentCalendar = found.calendar || ""
             dialog.calendarName = found.calendar_name || ""
@@ -224,7 +246,7 @@ Dialog {
         } else {
             dialog.loadedForm = ""
             dialog.keptLine = ""
-            const now = new Date()
+            const now = dialog.wall(Date.now())
             hour = hour === undefined || hour < 0 ? Math.min(now.getHours() + 1, 23) : hour
             title.text = ""
             place.text = ""
@@ -347,6 +369,7 @@ Dialog {
             start: allDay.checked ? startDay.date : startDay.date + "T" + startTime.text,
             end: allDay.checked ? endDay.date : endDay.date + "T" + endTime.text,
             all_day: allDay.checked,
+            clock: allDay.checked ? "" : dialog.clock,
             repeat: dialog.repeats[repeat.currentIndex],
             margins: dialog.around,
             demands: dialog.demands,
@@ -460,6 +483,7 @@ Dialog {
             CheckBox {
                 id: allDay
 
+                objectName: "eventAllDay"
                 enabled: !dialog.withOthers
                 text: dialog.sioul.text("agenda-all-day")
             }
@@ -509,6 +533,54 @@ Dialog {
                     visible: !allDay.checked
                     Layout.preferredWidth: 80
                 }
+            }
+            // The clock its times are on: local time (the time zone shown), UTC,
+            // or another zone found by its name; on another, its times here beside.
+            RowLayout {
+                objectName: "eventClockRow"
+                visible: !allDay.checked && dialog.legOf === ""
+                enabled: !dialog.withOthers
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    text: dialog.sioul.text("event-clock")
+                    color: dialog.theme.muted
+                }
+                PlainComboBox {
+                    objectName: "eventClock"
+                    Layout.fillWidth: true
+                    // Fixed while the form is open: a model changed under it would put the box back on its first line.
+                    model: [dialog.sioul.textWith("event-clock-local", "zone", dialog.zoneName), dialog.sioul.text("event-clock-utc"), dialog.sioul.text("zone-other")].map(t => dialog.theme.plain(t))
+                    currentIndex: dialog.clock === "UTC" ? 1 : dialog.clockOther ? 2 : 0
+                    Accessible.name: dialog.sioul.text("event-clock")
+                    onActivated: index => {
+                        dialog.clockOther = index === 2
+                        if (index < 2)
+                            dialog.clock = index === 1 ? "UTC" : ""
+                        else if (dialog.clock === "UTC")
+                            dialog.clock = ""
+                    }
+                }
+            }
+            ZonePicker {
+                objectName: "eventZone"
+                visible: dialog.clockOther && !allDay.checked && dialog.legOf === ""
+                enabled: !dialog.withOthers
+                Layout.fillWidth: true
+                sioul: dialog.sioul
+                theme: dialog.theme
+                zone: dialog.clockOther ? dialog.clock : ""
+                onPicked: name => dialog.clock = name
+            }
+            Label {
+                objectName: "eventClockLine"
+                visible: text !== ""
+                Layout.fillWidth: true
+                text: dialog.clock === "" || allDay.checked ? "" : dialog.sioul.clockLine(startDay.date + "T" + startTime.text, endDay.date + "T" + endTime.text, dialog.clock)
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
             }
             TextField {
                 id: place

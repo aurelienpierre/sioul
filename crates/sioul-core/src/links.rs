@@ -989,7 +989,7 @@ impl Loaded {
     /// folder, and the headers of the mail kept for the configured accounts.
     pub fn read(config: &crate::config::Config) -> Loaded {
         let read_at = Some(std::time::SystemTime::now());
-        let zone = jiff::tz::TimeZone::system();
+        let zone = crate::zone::current();
         let root = config.notes_root_path();
         let mail_roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| a.maildir_path()).collect();
         let budget = root

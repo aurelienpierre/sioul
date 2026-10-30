@@ -189,7 +189,7 @@ pub(crate) fn view(what: &str) -> String {
         None if what.contains(':') => return "null".into(),
         None => (Kind::Work, None),
     };
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let date = day_of(kind, &now);
     if for_day.is_some_and(|day| day != date) {
         return "null".into();
@@ -239,7 +239,7 @@ pub(crate) fn view(what: &str) -> String {
 /// the same.
 pub(crate) fn close(mut sioul: Pin<&mut Sioul>, kind: &str, date: &str, felt: &str, mix: &str, memo: &str) -> QString {
     let Some(kind) = Kind::parse(kind) else { return QString::default() };
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let today = day_of(kind, &now);
     let date = date.parse::<Date>().unwrap_or(today);
     let review = Review { at: now.timestamp().as_second(), felt: Felt::parse(felt), mix: Mix::parse(mix), memo: memo.trim().to_string() };
@@ -273,7 +273,7 @@ fn closes_the_work_day(sheet: Date, today: Date, closed_today: bool) -> bool {
 
 /// The weather said for today, copied as the morning's (`reviews::note_weather`).
 pub(crate) fn weather_said(weather: sioul_core::today::Weather) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     if let Err(e) = reviews::note_weather(&Reviews::default_path(), now.date(), weather, now.timestamp().as_second(), now.time_zone()) {
         eprintln!("{e}");
     }
@@ -283,7 +283,7 @@ pub(crate) fn weather_said(weather: sioul_core::today::Weather) {
 /// day went: Morning: haze · End of work: heavy…") and its notes; today, the
 /// button to close it while the evening offers it, and during the night.
 pub(crate) fn line(date: &str) -> String {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let Ok(date) = date.parse::<Date>() else { return "null".into() };
     let reviews = Reviews::load_between(&Reviews::default_path(), date, date);
     let day = reviews.day(date);
@@ -408,7 +408,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
         let keeper = || crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         if let WorkNotice::Comes(_) = work_notice(&now, keeper) {
             let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{}", work_day(&now)) };
             if let Err(e) = show_notice(&qt, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close]) {

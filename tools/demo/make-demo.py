@@ -1308,10 +1308,34 @@ def escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
 
+def offset_zone(clock: Clock) -> tuple[str, str] | None:
+    """The demo's zone (a fixed offset without a name, TZ=DEMO-hh) as Sioul names it for a
+    repeating event (`agenda::offset_zone`): "Etc/GMT-2" for UTC+2, and its offset; none
+    for an offset that is not whole hours."""
+    seconds = int(clock.now.utcoffset().total_seconds())
+    if seconds % 3600:
+        return None
+    hours = seconds // 3600
+    name = "Etc/GMT" if hours == 0 else f"Etc/GMT{'-' if hours > 0 else '+'}{abs(hours)}"
+    return name, f"{'-' if seconds < 0 else '+'}{abs(hours):02d}00"
+
+
 def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *, location="", notes="", weekly=False,
           organizer=None, attendees=(), project=None, leg=None) -> str:
-    lines = ["BEGIN:VEVENT", f"UID:demo-event-{uid}", f"DTSTAMP:{utc(clock.at(clock.day(-14), '09:00'))}",
-             f"DTSTART:{utc(clock.at(day, start))}", f"DTEND:{utc(clock.at(day, end))}", f"SUMMARY:{escape(title)}"]
+    # A repeating event on its zone's own clock, with its VTIMEZONE, as Sioul writes one
+    # (`agenda::time_lines`): it keeps its wall time, and shows one time; a one-off at its
+    # instant in UTC, as Sioul wrote them until 28 October 2026.
+    zone = offset_zone(clock) if weekly else None
+    if zone:
+        name, offset = zone
+        wall = lambda hhmm: clock.at(day, hhmm).strftime("%Y%m%dT%H%M%S")
+        times = [f"DTSTART;TZID={name}:{wall(start)}", f"DTEND;TZID={name}:{wall(end)}"]
+        head = ["BEGIN:VTIMEZONE", f"TZID:{name}", "BEGIN:STANDARD", "DTSTART:19700101T000000", f"TZOFFSETFROM:{offset}", f"TZOFFSETTO:{offset}", "END:STANDARD", "END:VTIMEZONE"]
+    else:
+        times = [f"DTSTART:{utc(clock.at(day, start))}", f"DTEND:{utc(clock.at(day, end))}"]
+        head = []
+    lines = [*head, "BEGIN:VEVENT", f"UID:demo-event-{uid}", f"DTSTAMP:{utc(clock.at(clock.day(-14), '09:00'))}",
+             *times, f"SUMMARY:{escape(title)}"]
     if location:
         lines.append(f"LOCATION:{escape(location)}")
     if notes:

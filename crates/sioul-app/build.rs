@@ -143,6 +143,7 @@ fn main() {
         "qml/CommandText.qml",
         "qml/TimeField.qml",
         "qml/ClockField.qml",
+        "qml/ZonePicker.qml",
         "qml/ShowMedicines.qml",
         "qml/StoppedCard.qml",
         "qml/AccessCard.qml",

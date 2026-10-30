@@ -327,7 +327,7 @@ impl Tone {
 pub enum Source {
     /// An event, a time block or a leg: its own file; its calendar by its name
     /// and by its place, "account/id" (`collection_of`): two calendars may share a name.
-    Calendar { key: String, uid: String, start: i64, recurring: bool, calendar: String, collection: String },
+    Calendar { key: String, uid: String, start: i64, recurring: bool, calendar: String, collection: String, clock: String },
     Task { uid: String, list: String },
     /// A step of the plan, on `date`; `part` from 1 for a step cut in parts, 0 when whole.
     Plan { uid: String, date: Date, part: u32 },
@@ -398,6 +398,23 @@ pub fn range(from: i64, to: i64, zone: &TimeZone) -> String {
 
 /// The separator between the parts of a line.
 pub const SEPARATOR: &str = " · ";
+
+/// An event's time on its own clock beside yours (`Placed::both`): "09:00 –
+/// 10:30 here · 15:00 – 16:30 Paris"; "" for anything on the time zone shown.
+pub fn both_times(here: &str, at: i64, until: i64, clock: &str, tr: &Translator) -> String {
+    let Some(own) = crate::agenda::clock_zone(clock) else { return String::new() };
+    let there = if until > at { range(at, until, &own) } else { self::clock(at, &own) };
+    // The same times on both clocks (Berlin's seen from Paris): said once.
+    if there == here {
+        return String::new();
+    }
+    let args = [("here", here.to_string()), ("there", there), ("place", crate::zone::place_of(clock))];
+    let mut fluent = fluent_bundle::FluentArgs::new();
+    for (name, value) in args {
+        fluent.set(name, value);
+    }
+    tr.text("agenda-here-there", Some(&fluent))
+}
 
 /// `at` (Unix seconds) on the clock in `zone`: "09:30".
 pub fn clock(at: i64, zone: &TimeZone) -> String {
@@ -670,6 +687,11 @@ pub struct Placed {
     pub item: Item,
     /// "09:00 – 10:30", "All day", "Until 12:00": its time on that day.
     pub when: String,
+    /// An event whose own clock is not the time zone shown (`agenda::clock_of_text`):
+    /// both its times, "09:00 – 10:30 here · 15:00 – 16:30 Paris", for a list's
+    /// line and its card; "" otherwise (the Day and the Week say `when` alone).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub both: String,
     /// The thing itself in that day's hours, in minutes from midnight.
     pub from_minute: i32,
     pub to_minute: i32,
@@ -712,6 +734,9 @@ pub struct Listed {
     pub index: usize,
     /// "09:00 – 10:30", "All day", "From 18:00", "Until 09:00": its time that day.
     pub when: String,
+    /// Its times here and on its own clock when that is another ("16:00 –
+    /// 17:00 here · 15:00 – 16:00 UTC", `Placed::both`); "" otherwise.
+    pub both: String,
     /// A whole day, or spanning the whole of that day.
     pub all_day: bool,
 }
@@ -736,7 +761,7 @@ pub fn calendar_days(occurrences: &[crate::agenda::Occurrence], from: Date, coun
                 let Source::Calendar { key, start, .. } = &placed.item.source else { continue };
                 let Some(&index) = found.get(&(key.as_str(), *start)) else { continue };
                 if !events.iter().any(|e| e.index == index) {
-                    events.push(Listed { index, when: placed.when.clone(), all_day: placed.all_day });
+                    events.push(Listed { index, when: placed.when.clone(), both: placed.both.clone(), all_day: placed.all_day });
                 }
             }
             events.sort_by_key(|e| e.index);
@@ -767,9 +792,14 @@ pub fn days(items: &[Item], from: Date, count: i64, today: Date, zone: &TimeZone
                 continue;
             }
             let whole = matches!(item.time, Time::Day { .. }) || (at <= start && until >= end);
+            let when = when_on(at, until, whole, start, end, zone, tr);
             placed.push(Placed {
                 item: item.clone(),
-                when: when_on(at, until, whole, start, end, zone, tr),
+                both: match &item.source {
+                    Source::Calendar { clock, .. } if !whole => both_times(&when, at, until, clock, tr),
+                    _ => String::new(),
+                },
+                when,
                 // A date asked sits at the head of its day, its hour said when it has one
                 // ("17:00"): a mark, never a card that would seem to take time.
                 // The thing itself within the day: a bedtime past midnight at its end.
@@ -1182,6 +1212,7 @@ fn bands_of(day: &Day, d: &Dressing) -> Vec<Placed> {
                     holds_time: false,
                 },
                 when: range(from, to, d.zone),
+                both: String::new(),
                 from_minute: minute(from),
                 to_minute: minute(to),
                 all_day: false,
@@ -1543,7 +1574,7 @@ mod tests {
             kind: Kind::Block,
             time: Time::span(at(from), at(to)),
             certainty: Certainty::Held,
-            source: Source::Calendar { key: format!("/c/{owner}.ics"), uid: owner.into(), start: at(from), recurring: false, calendar: "c".into(), collection: "c".into() },
+            source: Source::Calendar { key: format!("/c/{owner}.ics"), uid: owner.into(), start: at(from), recurring: false, calendar: "c".into(), collection: "c".into(), clock: String::new() },
             can: Can::nothing(),
             privacy: Privacy::Admin,
             title: owner.into(),
@@ -1661,6 +1692,31 @@ mod tests {
             ("2026-10-07".to_string(), "Wednesday 7 October".to_string(), vec![event("trip", "Until 09:00", false), event("holiday", "All day", true)]),
             ("2026-10-08".to_string(), "Thursday 8 October".to_string(), vec![]),
         ]);
+    }
+
+    /// An event on another clock says both its times in a list's line and its
+    /// card ("16:00 – 17:00 here · 15:00 – 16:00 UTC"), the Day and the Week its
+    /// time here alone; one on the time zone shown, and a whole day, say one.
+    #[test]
+    fn an_event_on_another_clock_says_both_its_times() {
+        let zone = paris();
+        let tr = Translator::new("en");
+        let mut utc = occurrence("call", "2026-11-04T16:00", "2026-11-04T17:00");
+        utc.clock = "UTC".into();
+        let mut new_york = occurrence("board", "2026-11-04T18:00", "2026-11-04T19:00");
+        new_york.clock = "America/New_York".into();
+        let here = occurrence("dentist", "2026-11-04T09:00", "2026-11-04T09:30");
+        let mut berlin = occurrence("fair", "2026-11-04T20:00", "2026-11-04T21:00");
+        berlin.clock = "Europe/Berlin".into();
+        let occurrences = [here, utc, new_york, berlin];
+        let items = crate::agenda::items(&occurrences, &zone, &|_| false);
+        let one = &days(&items, day("2026-11-04"), 1, day("2026-11-04"), &zone, &tr)[0];
+        let said: Vec<(&str, &str)> = one.timed.iter().map(|p| (p.when.as_str(), p.both.as_str())).collect();
+        assert_eq!(said, [("09:00 – 09:30", ""), ("16:00 – 17:00", "16:00 – 17:00 here · 15:00 – 16:00 UTC"), ("18:00 – 19:00", "18:00 – 19:00 here · 12:00 – 13:00 New York"), ("20:00 – 21:00", "")], "Berlin's times are Paris's: said once");
+        // The lists that print them (`sioul agenda`, the agents' agenda) say the same.
+        let listed = calendar_days(&occurrences, day("2026-11-04"), 1, day("2026-11-04"), &zone, &tr);
+        let both: Vec<&str> = listed[0].events.iter().map(|e| e.both.as_str()).collect();
+        assert_eq!(both, ["", "16:00 – 17:00 here · 15:00 – 16:00 UTC", "18:00 – 19:00 here · 12:00 – 13:00 New York", ""]);
     }
 
     /// A repeating event's times, one file, are each listed on their own day,
@@ -1993,7 +2049,7 @@ mod tests {
         let doctor = thing("Doctor", Kind::Event, "2026-10-06T14:00", "2026-10-06T14:30");
         let mut leg = thing("Bus 24", Kind::Leg, "2026-10-06T13:10", "2026-10-06T13:35");
         leg.owner = "doctor-uid".into();
-        let doctor = Item { source: Source::Calendar { key: "/c/doctor.ics".into(), uid: "doctor-uid".into(), start: at("2026-10-06T14:00"), recurring: false, calendar: "Agenda".into(), collection: "local/agenda".into() }, ..doctor };
+        let doctor = Item { source: Source::Calendar { key: "/c/doctor.ics".into(), uid: "doctor-uid".into(), start: at("2026-10-06T14:00"), recurring: false, calendar: "Agenda".into(), collection: "local/agenda".into(), clock: String::new() }, ..doctor };
         let call = thing("Call", Kind::Event, "2026-10-06T14:00", "2026-10-06T14:20");
         let walk = thing("Walk", Kind::Event, "2026-10-06T13:20", "2026-10-06T13:30");
         let shown = days(&[doctor, leg, call, walk], day("2026-10-06"), 1, day("2026-10-06"), &zone, &tr);

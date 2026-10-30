@@ -20,7 +20,6 @@ use super::access;
 use super::tools::{Answer, Args};
 use crate::{Session, one_line};
 use jiff::civil::Date;
-use jiff::tz::TimeZone;
 use jiff::{Timestamp, ToSpan, Zoned};
 use serde_json::{Value, json};
 use sioul_core::consent::Consent;
@@ -35,7 +34,7 @@ fn consent(s: &Session) -> (Consent, Loaded) {
 
 /// Unix seconds as a moment in the person's time zone, for data.
 fn instant(seconds: i64) -> String {
-    Timestamp::from_second(seconds).map(|t| t.to_zoned(TimeZone::system()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
+    Timestamp::from_second(seconds).map(|t| t.to_zoned(sioul_core::zone::current()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
 }
 
 /// The notes folder, where papers, contracts and letters are kept.
@@ -64,7 +63,7 @@ fn day(date: Option<Date>) -> String {
 pub fn papers(s: &Session, _args: &Args) -> Result<Answer, String> {
     let wallet = papers::Wallet::load(&store(s)?)?;
     let (consent, _) = consent(s);
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let before = wallet.papers.len();
     // A paper is in no project unless tied to one.
     let shown: Vec<&papers::Paper> = wallet.papers.iter().filter(|p| consent.allows(&links::paper_uri(&p.id))).collect();
@@ -100,7 +99,7 @@ pub fn papers(s: &Session, _args: &Args) -> Result<Answer, String> {
 pub fn contracts(s: &Session, _args: &Args) -> Result<Answer, String> {
     let list = contracts::Contracts::load(&store(s)?)?;
     let (consent, _) = consent(s);
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     // A contract is in no project: as things outside projects are.
     let shown: Vec<&contracts::Contract> = if consent.outside { list.list.iter().collect() } else { Vec::new() };
     let closed = list.list.len() - shown.len();
@@ -192,7 +191,7 @@ pub fn letters(s: &Session, args: &Args) -> Result<Answer, String> {
 // Time and invoices.
 
 pub fn time(s: &Session, args: &Args) -> Result<Answer, String> {
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let to = args.date("to")?.unwrap_or(today);
     let from = args.date("from")?.unwrap_or_else(|| to.checked_sub(30.days()).unwrap_or(to));
     if to < from {
@@ -208,7 +207,7 @@ pub fn time(s: &Session, args: &Args) -> Result<Answer, String> {
             return Err(access::closed_project(id));
         }
     }
-    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system());
+    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
     let in_range: Vec<&timereport::Entry> = entries.iter().filter(|e| e.day >= from && e.day <= to && project.as_ref().is_none_or(|p| &e.project == p)).collect();
     // Time of a project kept from agents, or of a task kept from them; in none, as things outside projects are.
     // The errands' record not read here: a session of a task not known here may be a gone
@@ -294,7 +293,7 @@ pub fn invoices(s: &Session, _args: &Args) -> Result<Answer, String> {
 
 pub fn reminders(s: &Session, args: &Args) -> Result<Answer, String> {
     let days = args.number("days", 14, 1, 92)?;
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let (all, _) = reminders::gather(&s.config, &s.tr, &now);
     let (consent, loaded) = consent(s);
@@ -348,7 +347,7 @@ type Moment = (String, String, sioul_core::quiet::Mode, sioul_core::quiet::Overr
 fn moment_read(s: &Session) -> Moment {
     use sioul_core::quiet::{self, Overrides, Reason};
     let config = &s.config;
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let overrides = Overrides::load(&Overrides::default_path());
     let blocks = quiet::Blocks::read_now(&now);
     let mode = quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now);

@@ -13,7 +13,9 @@ use crate::backend::{QtThread, Shared, config_path, json, load_config, say, set_
 use crate::mail;
 use cxx_qt_lib::QString;
 use jiff::tz::TimeZone;
-use jiff::{Timestamp, Zoned};
+use jiff::Timestamp;
+#[cfg(test)]
+use jiff::Zoned;
 use sioul_core::agenda::{self, EventEdit};
 use sioul_core::config::{self, Account};
 use sioul_core::contacts::{self, ContactEdit};
@@ -43,7 +45,7 @@ pub(crate) struct PimState {
 
 impl Default for PimState {
     fn default() -> PimState {
-        PimState { query: String::new(), category: String::new(), from: Zoned::now().date(), days: view::AGENDA_DAYS, upcoming: true }
+        PimState { query: String::new(), category: String::new(), from: sioul_core::zone::now().date(), days: view::AGENDA_DAYS, upcoming: true }
     }
 }
 
@@ -230,7 +232,7 @@ fn status_of(report: &dav::Report, account: &str, time: &str) -> (String, bool) 
 fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Result<dav::Report, SyncError>) {
     eprintln!("{}", sync_line(&result));
     let (line, problem) = match &result {
-        Ok(report) => status_of(report, &account.id, &Zoned::now().strftime("%H:%M").to_string()),
+        Ok(report) => status_of(report, &account.id, &sioul_core::zone::now().strftime("%H:%M").to_string()),
         Err(e) => (e.sentence(tr(), &account.id), true),
     };
     if let Ok(mut statuses) = shared.statuses.lock() {
@@ -400,7 +402,7 @@ struct EventView {
 /// event {key, title, from, to} ("09:30"), `gap` and `needed` in minutes,
 /// `source` where that time is set, in words, for the Porch and the agenda.
 pub(crate) fn overlaps_of(events: &[agenda::Occurrence]) -> String {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let zone = now.time_zone().clone();
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
     let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
@@ -487,7 +489,7 @@ pub(crate) fn check_event_item(qt: &QtThread, shared: &Arc<Shared>, key: &str, l
         if with_others(&current) {
             return Err(tr().text("checklist-with-others", None));
         }
-        let zone = TimeZone::system();
+        let zone = sioul_core::zone::current();
         let mut edit = agenda::edit_of_text(&current, &zone).ok_or_else(|| tr().text("agenda-gone", None))?;
         edit.notes = crate::work::ticked_notes(&edit.notes, line, state)?;
         let text = agenda::apply(&current, &edit, &zone)?;
@@ -507,7 +509,7 @@ pub(crate) fn check_event_item(qt: &QtThread, shared: &Arc<Shared>, key: &str, l
 pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, calendar: &str) -> Result<(), String> {
     // The events as last read, with the legs made since, never a read of the stores here
     // (reviews of ab7daa4, later 3, and 4d7bab4, later 5).
-    let events = ours(key).map(|path| events_known(shared, &path, &TimeZone::system())).unwrap_or_default();
+    let events = ours(key).map(|path| events_known(shared, &path, &sioul_core::zone::current())).unwrap_or_default();
     let saved = write_event_with(key, edit, calendar, &events)?;
     for account in &saved.accounts {
         nudge(shared, account);
@@ -569,7 +571,7 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
         })
         .unwrap_or_default();
     let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
     let mut renamed: Option<String> = None;
     let mut before: Option<String> = None;
@@ -668,7 +670,7 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
         Ok(None) => return String::new(),
         Err(problem) => return problem,
     };
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     // Said as it is now: its title, its day, its times.
     let at = |seconds: i64| Timestamp::from_second(seconds).map(|t| t.to_zoned(zone.clone())).ok();
     let time = match (at(new_start), at(new_end)) {
@@ -741,7 +743,7 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
     if with_others(&before) {
         return Err(tr().text("event-change-with-others", None));
     }
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let text = match agenda::moved(&before, start, new_start, new_end, only_this, &zone) {
         Ok(text) => text,
         Err(agenda::MoveProblem::Gone) => return Err(tr().text("agenda-gone", None)),
@@ -774,7 +776,7 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
         mail::schedule_skip(qt, shared, &account, path, start, tr().text("undo-occurrence-skipped", None));
     } else {
         // Its legs to come go with it, under the same Undo (part E2); those over stay.
-        let legs = legs_to_come(shared, &path, &TimeZone::system());
+        let legs = legs_to_come(shared, &path, &sioul_core::zone::current());
         if legs.is_empty() {
             mail::schedule_removal(qt, shared, &account, path, tr().text("undo-event-deleted", None));
         } else {
@@ -891,7 +893,7 @@ pub(crate) fn save_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &st
 fn leg_change(shared: &Shared, key: &str, edit: &str, side: &str, timetable: bool, step: &str, offered: bool) -> Result<(sioul_core::composed::Change, String), String> {
     let path = ours(key).ok_or_else(|| tr().text("leg-gone", None))?;
     let text = std::fs::read_to_string(&path).map_err(|_| tr().text("leg-gone", None))?;
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let appointment = sioul_core::anchors::Followed::of(&text, &path, &zone).ok_or_else(|| tr().text("leg-gone", None))?;
     let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
     if edit.title.trim().is_empty() {
@@ -909,7 +911,7 @@ fn leg_change(shared: &Shared, key: &str, edit: &str, side: &str, timetable: boo
         }
         let task = leg_steps_of(shared, &appointment.uid).into_iter().find(|t| t.uid == step).ok_or_else(|| tr().text("leg-step-gone", None))?;
         let step_text = std::fs::read_to_string(&task.key).map_err(|_| tr().text("leg-step-gone", None))?;
-        let (as_time, pinned) = sioul_core::anchors::leg_for_step(&leg, &task, &step_text, &Zoned::now()).map_err(|e| tr().text(&e, None))?;
+        let (as_time, pinned) = sioul_core::anchors::leg_for_step(&leg, &task, &step_text, &sioul_core::zone::now()).map_err(|e| tr().text(&e, None))?;
         leg = as_time;
         written.push((PathBuf::from(&task.key), pinned));
     }
@@ -931,7 +933,7 @@ fn leg_steps_of(shared: &Shared, uid: &str) -> Vec<sioul_core::tasks::Task> {
 /// What the leg form offers as its step (part 7): {"offered", "steps":
 /// [{uid, title}], "why"}; offered only once every device keeps such a leg.
 pub(crate) fn leg_steps(shared: &Shared, key: &str) -> String {
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let uid = ours(key).and_then(|p| std::fs::read_to_string(&p).ok().and_then(|t| agenda::event_ref(&t, key, &zone))).map(|r| r.uid).unwrap_or_default();
     let steps: Vec<serde_json::Value> = leg_steps_of(shared, &uid).iter().map(|t| serde_json::json!({ "uid": t.uid, "title": t.title })).collect();
     let offered = !steps.is_empty() && crate::share::legs_offered();
@@ -946,7 +948,7 @@ pub(crate) fn untie_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> Strin
     let untied = || -> Result<(), String> {
         let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
         let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
-        let zone = TimeZone::system();
+        let zone = sioul_core::zone::current();
         let known = crate::work::loaded_known(shared);
         let appointment = sioul_core::anchors::parse(&text).and_then(|a| known.as_ref()?.events.iter().find(|e| e.uid == a.appointment).map(|e| e.summary.clone())).unwrap_or_default();
         let Some(alone) = sioul_core::anchors::untied(&text) else { return Ok(()) };
@@ -1004,7 +1006,7 @@ struct InvitationView {
 pub(crate) fn invitation(key: &str) -> String {
     let Some(path) = maildir::locate(Path::new(key)) else { return String::new() };
     let Some(text) = reading::calendar(&path) else { return String::new() };
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let Some(asked) = agenda::invitation(&text, &zone) else { return String::new() };
     let at = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone())).ok();
     let when = match (at(asked.start), at(asked.end)) {
@@ -1027,7 +1029,7 @@ fn uid_of(text: &str) -> Option<String> {
 /// file holds of it (its guests taken out elsewhere; review of part 4, later 4).
 pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
     let text = std::fs::read_to_string(path).ok()?;
-    let mut edit = agenda::edit_of_text(&text, &TimeZone::system())?;
+    let mut edit = agenda::edit_of_text(&text, &sioul_core::zone::current())?;
     if let Some(own) = Some(&text).filter(|text| with_others(text)).and_then(|text| uid_of(text)).and_then(|uid| sioul_core::own_time::current().events.get(&uid).cloned()) {
         (edit.margins, edit.demands, edit.remind) = (own.margins(), own.demands, own.remind);
     }
@@ -1050,7 +1052,7 @@ pub(crate) fn invitation_of(shared: &Shared, key: &str) -> String {
     let Some(loaded) = crate::work::loaded_known(shared) else { return String::new() };
     let mut theirs: Vec<&sioul_core::mailindex::MailRef> = loaded.mail.iter().map(|(_, m)| m).filter(|m| !organizer.is_empty() && m.address == organizer).collect();
     theirs.sort_by_key(|m| std::cmp::Reverse(m.date));
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     theirs
         .into_iter()
         .take(8)
@@ -1076,7 +1078,7 @@ fn find_uid(uid: &str) -> Option<PathBuf> {
 pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &str) -> Result<(), String> {
     let path = maildir::locate(Path::new(key)).ok_or_else(|| tr().text("mail-message-gone", None))?;
     let text = reading::calendar(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let asked = agenda::invitation(&text, &zone).ok_or_else(|| tr().text("agenda-gone", None))?;
     let known = find_uid(&asked.uid);
     match answer {
@@ -1176,7 +1178,7 @@ fn send_answer(message: &Path, ics: &str, asked: &agenda::Invitation, answer: &s
     let name = account.name.clone().unwrap_or_default();
     let sentence = say(&format!("invitation-sentence-{answer}"), &[("name", if name.is_empty() { me.clone() } else { name.clone() }), ("summary", asked.summary.clone())]);
     let subject = say(&format!("invitation-subject-{answer}"), &[("summary", asked.summary.clone())]);
-    let outgoing = sioul_core::compose::invitation_answer((&name, &me), &asked.organizer_address, &subject, &sentence, ics, Zoned::now().timestamp().as_second())?;
+    let outgoing = sioul_core::compose::invitation_answer((&name, &me), &asked.organizer_address, &subject, &sentence, ics, sioul_core::zone::now().timestamp().as_second())?;
     let password = secret::password(&account).map_err(|e| e.sentence(tr(), &account.id))?;
     let account = with_smtp(&account)?;
     match sioul_sync::send::send(&account, &password, &outgoing) {

@@ -536,6 +536,12 @@ pub struct AgendaSettings {
     /// 2026): closer, they are said too close (`overlaps`); unset, none.
     #[serde(default)]
     pub between: Option<u32>,
+    /// The time zone to show and enter times in, Settings ▸ Agenda (30 October
+    /// 2026): a name of the time zone database ("America/New_York"); unset,
+    /// this device's own, followed as it changes (`zone::current`). This
+    /// device's own, never shared (sioul-sync's `CONFIG_LOCAL`).
+    #[serde(default)]
+    pub time_zone: Option<String>,
 }
 
 impl AgendaSettings {

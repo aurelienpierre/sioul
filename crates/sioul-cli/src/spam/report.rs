@@ -50,8 +50,8 @@ fn percent(s: &Session, fraction: f64) -> String {
 
 /// A day, in this language's way, with its year when not this year's; a dash for an unknown date.
 pub(crate) fn day(s: &Session, seconds: i64) -> String {
-    let today = jiff::Zoned::now().date();
-    jiff::Timestamp::from_second(seconds).ok().filter(|_| seconds > 0).map(|t| s.tr.day_in(t.to_zoned(jiff::tz::TimeZone::system()).date(), today)).unwrap_or_else(|| "—".to_string())
+    let today = sioul_core::zone::now().date();
+    jiff::Timestamp::from_second(seconds).ok().filter(|_| seconds > 0).map(|t| s.tr.day_in(t.to_zoned(sioul_core::zone::current()).date(), today)).unwrap_or_else(|| "—".to_string())
 }
 
 /// Unix seconds as a moment in the person's time zone, for data: "2026-10-05T09:00:00+02:00"; null when unknown.
@@ -59,7 +59,7 @@ fn instant(seconds: i64) -> Value {
     jiff::Timestamp::from_second(seconds)
         .ok()
         .filter(|_| seconds > 0)
-        .map_or(Value::Null, |t| Value::String(t.to_zoned(jiff::tz::TimeZone::system()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()))
+        .map_or(Value::Null, |t| Value::String(t.to_zoned(sioul_core::zone::current()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()))
 }
 
 /// A probability for data: four decimals.

@@ -770,6 +770,9 @@ mail-not-sent = Not sent; the draft waits in Drafts. { $detail }
 mail-no-account = No mail account to send from: add one in Accounts.
 
 ## Contacts and calendars.
+agenda-here-there = { $here } here · { $there } { $place }
+agenda-there-here = { $there } { $place } · { $here } here
+agenda-there-here-day = { $there } { $place } · { $here } here, { $day }
 agenda-today = Today
 agenda-tomorrow = Tomorrow
 agenda-all-day = All day
@@ -6253,6 +6256,14 @@ collection-events-and-tasks = events and tasks
 # The time kept between two events (22 October 2026): set by you alone; otherwise, two events overlap only when their times do.
 set-agenda-between = Time kept between two events
 set-agenda-between-help = Closer than this, two events are said to be too close. 0: none, as at first. Each event's own Before and After also count, the longest of them, never added.
+set-agenda-time-zone = Time zone
+set-agenda-time-zone-help = The time zone the agenda, the plan and the reminders say times in, and decide today by, on this device: its own, followed as it changes, or one chosen, for a computer whose clock stays at home while you travel. An event keeps its instant; only how its time reads changes. The doses keep the system's clock.
+set-agenda-time-zone-device = Follow this device ({ $zone })
+zone-search = Type a city or a region: Paris, New York
+zone-other = Another time zone…
+event-clock = Time zone
+event-clock-local = Local time ({ $zone })
+event-clock-utc = UTC
 overlap-today-close = Today, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-source-after = kept after the first (its After)

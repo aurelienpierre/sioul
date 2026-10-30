@@ -34,6 +34,9 @@ pub enum Kind {
     Folder,
     /// A font family.
     Font,
+    /// A time zone, found by typing part of its name: `value` the one chosen,
+    /// "" for this device's own, which the one line of `choices` names.
+    Zone,
     /// Minutes for each weekday, Monday first.
     Week,
     /// Hours for each day of the week: on or off, from a start to an end.
@@ -325,7 +328,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let mut left = crate::unsubscribe::Record::load(&crate::unsubscribe::Record::default_path()).lists;
             if !left.is_empty() {
                 left.sort_by_key(|l| std::cmp::Reverse(l.at));
-                let zone = jiff::tz::TimeZone::system();
+                let zone = crate::zone::current();
                 let today = jiff::Timestamp::now().to_zoned(zone.clone()).date();
                 let lines = left
                     .iter()
@@ -431,6 +434,12 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // The only time ever kept between two events besides each event's own Before and After (22 October 2026).
             let s = b.push("agenda.between", "agenda-between", Kind::Int, int(config.agenda.between, 0));
             Builder::range(s, 0.0, 120.0, 5.0, "min");
+            // The time zone this device shows (`zone::current`): its own, followed, or one chosen.
+            let s = b.push("agenda.time_zone", "agenda-time-zone", Kind::Zone, SettingValue::Text(config.agenda.time_zone.clone().unwrap_or_default()));
+            let device = crate::zone::system_of(&crate::zone::Sources::read());
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("zone", crate::zone::name_of(&device, jiff::Timestamp::now()));
+            s.choices = vec![Choice { value: SettingValue::Text(String::new()), label: tr.text("set-agenda-time-zone-device", Some(&args)) }];
         }
         "tasks" => {
             let office = config.office_hours().iter().map(|w| WindowValue { day: w.day.clone(), start: w.start.clone(), end: w.end_text(), minutes: 0 }).collect();
@@ -1116,6 +1125,17 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 crate::words::write_list(config_path, path, wanted, shipped.list(path))
             }
         }
+        // The time zone this device shows: a name of the time zone database, or "" for its own.
+        "agenda.time_zone" => {
+            let SettingValue::Text(name) = value else { return Err(format!("{key}: a time zone expected")) };
+            let name = name.trim();
+            if !name.is_empty() && jiff::tz::TimeZone::get(name).is_err() {
+                return Err(format!("{name}: not a time zone"));
+            }
+            set_value(config_path, key, &SettingValue::Text(name.to_string()))?;
+            crate::zone::forget();
+            Ok(())
+        }
         // Secrets go to the keyring (the window's to do), never into the configuration.
         "ai_key" | "github_token" => Err(format!("{key}: kept in the system keyring, never in the configuration")),
         "tasks.kind" => {
@@ -1290,6 +1310,25 @@ mod tests {
         let file = std::env::temp_dir().join(format!("sioul-agenda-between-{}.toml", std::process::id()));
         apply(&file, &config, "agenda.between", &SettingValue::Int(30)).unwrap();
         assert_eq!(Config::load(&file).unwrap().agenda.between(), 30);
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// The time zone shown, in Settings ▸ Agenda: this device's own, named on
+    /// its one line; a zone of the database written; a name that is none
+    /// refused; "" back to this device's.
+    #[test]
+    fn the_time_zone_is_chosen_or_this_device_s() {
+        let config = Config::default();
+        let rows = for_view("agenda", &config, &Translator::new("en"), &[], None);
+        let row = rows.iter().find(|s| s.key == "agenda.time_zone").expect("shown in Settings ▸ Agenda");
+        assert_eq!((row.kind, &row.value), (Kind::Zone, &SettingValue::Text(String::new())));
+        assert!(row.choices[0].label.starts_with("Follow this device ("), "{}", row.choices[0].label);
+        let file = std::env::temp_dir().join(format!("sioul-agenda-zone-{}.toml", std::process::id()));
+        apply(&file, &config, "agenda.time_zone", &SettingValue::Text("America/New_York".into())).unwrap();
+        assert_eq!(Config::load(&file).unwrap().agenda.time_zone.as_deref(), Some("America/New_York"));
+        assert!(apply(&file, &config, "agenda.time_zone", &SettingValue::Text("Nowhere/Atlantis".into())).is_err());
+        apply(&file, &config, "agenda.time_zone", &SettingValue::Text(String::new())).unwrap();
+        assert_eq!(Config::load(&file).unwrap().agenda.time_zone, None, "back to this device's");
         let _ = std::fs::remove_file(&file);
     }
 

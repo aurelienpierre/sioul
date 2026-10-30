@@ -38,6 +38,7 @@ use crate::i18n::Translator;
 use crate::tasks::{self, Status, Task, TaskEdit};
 use crate::vdir::{self, Collection};
 use jiff::Zoned;
+#[cfg(test)]
 use jiff::tz::TimeZone;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -272,7 +273,7 @@ pub fn demote(tasks: &[Task], uid: &str, bigger: &str, lists: &[Collection], pro
             return Err(Refusal::Losses(losses));
         }
     }
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let edit = TaskEdit { parent: bigger.to_string(), ..TaskEdit::of(task) };
     let placed = tasks::next_in_sequence(tasks::steps_of(tasks, bigger).into_iter().filter(|t| t.uid != uid), now);
     let text = tasks::apply(&text_of(task)?, &edit, &zone, now).map_err(|_| Refusal::Gone)?;
@@ -298,7 +299,7 @@ pub fn promote(tasks: &[Task], uid: &str, now: &Zoned) -> Result<Change, Refusal
     if task.read_only {
         return Err(Refusal::ReadOnly);
     }
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let mut change = Change::default();
     let edit = TaskEdit { parent: String::new(), ..TaskEdit::of(task) };
     change.written.push((PathBuf::from(&task.key), tasks::apply(&text_of(task)?, &edit, &zone, now).map_err(|_| Refusal::Gone)?));
@@ -345,7 +346,7 @@ pub fn item_to_step(tasks: &[Task], holder: &str, line: usize, one_level: bool, 
         return Err(Refusal::OneLevel);
     }
     let item = checklist::items(&whole.notes).into_iter().find(|i| i.line == line).ok_or(Refusal::Stale)?;
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let notes = checklist::removed(&whole.notes, line).map_err(|_| Refusal::Stale)?;
     let mut change = Change::default();
     change.written.push((PathBuf::from(&whole.key), tasks::apply(&text_of(whole)?, &TaskEdit { notes, ..TaskEdit::of(whole) }, &zone, now).map_err(|_| Refusal::Gone)?));
@@ -374,7 +375,7 @@ pub enum Holder<'a> {
 /// it (a `related` link), its words its title, its detail its notes, its tick
 /// kept; the item taken out of the list. The new task's UID with the change.
 pub fn item_to_task(holder: &Holder, line: usize, list: &Collection, now: &Zoned) -> Result<(Change, String), Refusal> {
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let mut change = Change::default();
     let (notes, tie) = match holder {
         Holder::Task(task) => {
@@ -463,7 +464,7 @@ pub fn step_to_item(tasks: &[Task], uid: &str, blocks: &[PathBuf], confirm: bool
     }
     let detail: Vec<String> = step.notes.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect();
     let notes = checklist::appended(&whole.notes, &step.title, mark_of(step.status), &detail);
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let mut change = Change::default();
     change.written.push((PathBuf::from(&whole.key), tasks::apply(&text_of(whole)?, &TaskEdit { notes, ..TaskEdit::of(whole) }, &zone, now).map_err(|_| Refusal::Gone)?));
     change.gone.push(PathBuf::from(&step.key));
@@ -510,12 +511,12 @@ pub fn closing_with<'a>(tasks: &'a [Task], done: &str) -> Vec<&'a Task> {
 /// task's turn done comes back open on its next turn (`tasks::set_status`),
 /// and closes no bigger task (`closing_with` asks it of the step's text).
 pub fn done_for_good(text: &str) -> bool {
-    tasks::task_of_text(text, &TimeZone::system()).is_some_and(|t| t.status == Status::Completed)
+    tasks::task_of_text(text, &crate::zone::current()).is_some_and(|t| t.status == Status::Completed)
 }
 
 /// Those bigger tasks marked done (`closing_with`).
 pub fn close_with(tasks: &[Task], done: &str, now: &Zoned) -> Result<Change, Refusal> {
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let mut change = Change::default();
     for whole in closing_with(tasks, done) {
         change.written.push((PathBuf::from(&whole.key), tasks::set_status(&text_of(whole)?, Status::Completed, &zone, now).map_err(|_| Refusal::Gone)?));

@@ -8,9 +8,9 @@
 
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use crate::work::{self, loaded};
+#[cfg(test)]
 use jiff::Zoned;
 use jiff::civil::Date;
-use jiff::tz::TimeZone;
 use serde::Deserialize;
 use sioul_core::budget::{self, Line};
 use sioul_core::projects::{self, ProjectEdit, ProjectStore};
@@ -30,7 +30,7 @@ fn store() -> Result<ProjectStore, String> {
 /// Every session with its project and title.
 fn entries(shared: &Shared) -> Vec<Entry> {
     let loaded = loaded(shared);
-    timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system())
+    timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current())
 }
 
 /// The projects, for the list.
@@ -44,7 +44,7 @@ pub(crate) fn page(shared: &Shared, id: &str) -> String {
     let loaded = loaded(shared);
     let Some(project) = loaded.projects.iter().find(|c| c.id == id) else { return String::new() };
     let config = load_config();
-    let now = Zoned::now().timestamp().as_second();
+    let now = sioul_core::zone::now().timestamp().as_second();
     // Its mail as the Porch takes it: never what it sets aside.
     let gate = sioul_core::porch::Gate::load(&config, now);
     let view = projectview::view(&loaded, project, &entries(shared), &invoice::all_in(&invoice::folder()), config.invoice.rate, now, tr(), &gate);
@@ -128,7 +128,7 @@ pub(crate) fn remove_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown:
 pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown: &str, label: &str, amount: f64, date: &str) -> String {
     let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let result = match budget::SeenLine::from_page(uri, shown) {
         Some((place, seen)) => budget::change_line(&path, place, &seen, label, amount, date.parse().unwrap_or(today), today),
         None => Ok(false),
@@ -140,12 +140,12 @@ pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown:
 /// The Time page for `period` ("week", "month", "year") around `anchor`, one project or all.
 pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -> String {
     let loaded = loaded(shared);
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let anchor = anchor.parse::<Date>().unwrap_or(today);
     let sessions = timelog::sessions();
     // Time noted by hand has no task, or was not timed: it can be taken out.
     let by_hand: std::collections::BTreeSet<String> = sessions.iter().filter(|s| s.task.is_empty() || !s.project.is_empty()).map(Session::key).collect();
-    let all = timereport::entries(&sessions, &loaded.tasks, &loaded.projects, &TimeZone::system());
+    let all = timereport::entries(&sessions, &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
     let config = load_config();
     let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr());
     // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
@@ -164,7 +164,7 @@ pub(crate) fn export_time_csv(shared: &Shared, project: &str, from: &str, to: &s
     let loaded = loaded(shared);
     let Some(found) = loaded.projects.iter().find(|c| c.id == project) else { return Err(tr().text("project-gone", None)) };
     let (Ok(from), Ok(to)) = (from.parse::<Date>(), to.parse::<Date>()) else { return Err(tr().text("time-bad-day", None)) };
-    let all = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system());
+    let all = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &sioul_core::zone::current());
     let config = load_config();
     let french = tr().text("qt-locale", None).starts_with("fr");
     let words = ["time-csv-what", "time-csv-hours", "time-csv-rate", "time-csv-amount", "time-csv-total"].map(|w| tr().text(w, None));
@@ -223,7 +223,7 @@ pub(crate) fn note_time(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
         }
         let day = edit.day.parse::<Date>().map_err(|_| tr().text("time-bad-day", None))?;
         let (hour, minute) = edit.at.split_once(':').and_then(|(h, m)| Some((h.trim().parse::<i8>().ok()?, m.trim().parse::<i8>().ok()?))).unwrap_or((12, 0));
-        let start = day.at(hour.clamp(0, 23), minute.clamp(0, 59), 0, 0).to_zoned(TimeZone::system()).map_err(|e| e.to_string())?.timestamp().as_second();
+        let start = day.at(hour.clamp(0, 23), minute.clamp(0, 59), 0, 0).to_zoned(sioul_core::zone::current()).map_err(|e| e.to_string())?.timestamp().as_second();
         timelog::record(&Session { task: edit.task, project: edit.project, start, minutes: edit.minutes, note: edit.note.trim().to_string(), unbilled: edit.unbilled, kind: Some(timelog::Kind::Typed), ..Session::default() })
     });
     work::refresh(qt, shared);
@@ -258,9 +258,9 @@ pub(crate) fn change_time(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: 
         let day = edit.day.parse::<Date>().map_err(|_| tr().text("time-bad-day", None))?;
         let clock = |text: &str| text.split_once(':').and_then(|(h, m)| jiff::civil::Time::new(h.trim().parse().ok()?, m.trim().parse().ok()?, 0, 0).ok());
         let (Some(from), Some(to)) = (clock(&edit.from), clock(&edit.to)) else { return Err(tr().text("time-bad-hours", None)) };
-        let start = day.to_datetime(from).to_zoned(TimeZone::system()).map_err(|e| e.to_string())?.timestamp().as_second();
+        let start = day.to_datetime(from).to_zoned(sioul_core::zone::current()).map_err(|e| e.to_string())?.timestamp().as_second();
         // Ending at or before it began: past midnight.
-        let mut end = day.to_datetime(to).to_zoned(TimeZone::system()).map_err(|e| e.to_string())?.timestamp().as_second();
+        let mut end = day.to_datetime(to).to_zoned(sioul_core::zone::current()).map_err(|e| e.to_string())?.timestamp().as_second();
         if end <= start {
             end += 86_400;
         }
@@ -397,7 +397,7 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
         let store = store()?;
         let project = store.get(id).ok_or_else(|| tr().text("project-gone", None))?.clone();
         let existing = invoice::all_in(&invoice::folder());
-        let today = Zoned::now().date();
+        let today = sioul_core::zone::now().date();
         let number = invoice::next_number(&existing, &config.invoice.prefix, today.year());
         let (client, address) = client_of(shared, project.client.as_deref().unwrap_or(""));
         let made = invoice::make(&entries(shared), &project, &client, &address, &config.invoice, &number, today).ok_or_else(|| tr().text("invoice-nothing", None))?;
@@ -442,7 +442,7 @@ pub(crate) fn invoice_again(number: &str) -> String {
 /// else says it is too late (review of 36002ea, must-fix 3). Not paid: the
 /// line planned again on the invoice's due day (`budget::unsettle_line`).
 pub(crate) fn set_paid(qt: &QtThread, shared: &Arc<Shared>, number: &str, paid: bool) -> String {
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let result = paid_as(number, paid, today);
     work::refresh(qt, shared);
     match result {

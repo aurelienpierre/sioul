@@ -158,7 +158,7 @@ pub struct Stopped {
 **JSON for the window**: the bridge hands QML most of what it shows as JSON text, made with `serde_json` from structs of `crates/sioul-core/src/view.rs` (`backend::json`) or with the `serde_json::json!` macro for small objects.
 
 ## Time: jiff
-Sioul's dates and times use [jiff](https://docs.rs/jiff): `Zoned::now()` is now in the system's time zone, `Timestamp` an instant (often stored as Unix seconds, `Timestamp::now().as_second()`), `jiff::civil::Date` a day without a zone, `TimeZone::system()` the system's zone. `chrono` and `chrono-tz` appear only where `calcard`, the iCalendar and vCard parser, needs them: `crates/sioul-core/src/agenda.rs` turns a jiff time zone into calcard's.
+Sioul's dates and times use [jiff](https://docs.rs/jiff): `Timestamp` an instant (often stored as Unix seconds, `Timestamp::now().as_second()`), `jiff::civil::Date` a day without a zone. What shows or enters a time, or decides today, asks `sioul_core::zone`: `zone::now()` is now in the time zone Sioul shows, `zone::current()` that zone (Settings ▸ Agenda ▸ Time zone, else this device's own, followed as it changes). `Zoned::now()` and `TimeZone::system()` are the system's, for the dose path, Android's alarms and file stamps alone (the list is in `zone`'s own doc). `chrono` and `chrono-tz` appear only where `calcard`, the iCalendar and vCard parser, needs them: `crates/sioul-core/src/agenda.rs` turns a jiff time zone into calcard's.
 
 ## Threads and async
 - **The window and the command line are synchronous.** Slow work goes to a plain thread, `std::thread::spawn`, and its result comes back to the window's thread through CXX-Qt ([cxx-qt.md](cxx-qt.md)).

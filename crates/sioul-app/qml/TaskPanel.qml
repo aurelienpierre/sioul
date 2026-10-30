@@ -375,9 +375,15 @@ Panel {
         return rows
     }
 
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof panel.sioul.zoneShift === "function" ? panel.sioul.zoneShift(ms / 1000) : 0))
+    }
+
     // Today, as the backend dates what is felt: "2026-10-06".
     function today() {
-        const d = new Date()
+        const d = panel.wall(Date.now())
         const pad = n => n < 10 ? "0" + n : String(n)
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
@@ -2182,7 +2188,7 @@ Panel {
                         time = pin.at.slice(11, 16)
                         length = pin.minutes
                     } else {
-                        const d = new Date()
+                        const d = panel.wall(Date.now())
                         d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0)
                         if (d.getHours() >= 22) {
                             d.setDate(d.getDate() + 1)

@@ -69,7 +69,7 @@ Two functions of `crates/sioul-app/src/work.rs` (the tasks' and notes' module of
 pub(crate) fn stopped(shared: &Shared) -> String {
     let Some(stopped) = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()) else { return "null".into() };
     let title = loaded(shared).tasks.iter().find(|t| t.uid == stopped.task).map(|t| t.title.clone()).unwrap_or_default();
-    let when = Timestamp::from_second(stopped.at).map(|t| tr().when(&t.to_zoned(TimeZone::system()))).unwrap_or_default();
+    let when = Timestamp::from_second(stopped.at).map(|t| tr().when(&t.to_zoned(sioul_core::zone::current()))).unwrap_or_default();
     serde_json::json!({ "text": stopped.text, "when": when, "task": stopped.task, "title": title }).to_string()
 }
 

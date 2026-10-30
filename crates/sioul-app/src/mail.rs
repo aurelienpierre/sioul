@@ -12,7 +12,6 @@
 
 use crate::backend::{QtThread, Shared, config_path, json, load_config, say, set_status, show, tell, tr};
 use cxx_qt_lib::QString;
-use jiff::Zoned;
 use sioul_core::card::Card;
 use sioul_core::compose::{self, Draft, DraftKind};
 use sioul_core::config::{Account, Config};
@@ -326,7 +325,7 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
             .filter(|c| c.message_id.as_ref().is_none_or(|id| !shown_elsewhere.contains(id)))
             .collect();
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
-        let now = Zoned::now().timestamp().as_second();
+        let now = sioul_core::zone::now().timestamp().as_second();
         // By conversation, when chosen: your answers come from Sent.
         let sent = (config.mail.threads && !matches!(folder.role, Role::Sent | Role::Drafts)).then(|| {
             folders.iter().filter(|f| f.role == Role::Sent).flat_map(|f| maildir::read_messages(&account.maildir_path().join(&f.local))).collect::<Vec<Card>>()
@@ -960,7 +959,7 @@ pub(crate) fn unsubscribe_view(config: &Config, triaged: &sioul_core::porch::Tri
     let (offer, sender) = unsubscribe_offer(config, triaged)?;
     let record = unsubscribe::Record::load(&unsubscribe::Record::default_path());
     let from = sender.as_ref().and_then(|a| a.address.as_deref());
-    Some(unsubscribe::view(&offer, &record, from, tr(), Zoned::now().date()))
+    Some(unsubscribe::view(&offer, &record, from, tr(), sioul_core::zone::now().date()))
 }
 
 /// One click on "Unsubscribe": one click (RFC 8058) or a message to the list
@@ -974,7 +973,7 @@ pub(crate) fn unsubscribe(qt: &QtThread, shared: &Arc<Shared>, config: &Config, 
     };
     let Some((offer, sender)) = unsubscribe_offer(config, &triaged) else { return String::new() };
     let record = unsubscribe::Record::default_path();
-    let shown = unsubscribe::view(&offer, &unsubscribe::Record::load(&record), sender.as_ref().and_then(|a| a.address.as_deref()), tr(), Zoned::now().date());
+    let shown = unsubscribe::view(&offer, &unsubscribe::Record::load(&record), sender.as_ref().and_then(|a| a.address.as_deref()), tr(), sioul_core::zone::now().date());
     if !shown.offered {
         tell(qt, shared, shown.tip);
         return String::new();
@@ -988,7 +987,7 @@ pub(crate) fn unsubscribe(qt: &QtThread, shared: &Arc<Shared>, config: &Config, 
     let address = triaged.card.from_address.clone().unwrap_or_default();
     match offer.way {
         Ok(unsubscribe::Way::Page { url }) => {
-            let left = unsubscribe::Left { key: list.key.clone(), name: list.name.clone(), address, way: "page".into(), at: Zoned::now().timestamp().as_second() };
+            let left = unsubscribe::Left { key: list.key.clone(), name: list.name.clone(), address, way: "page".into(), at: sioul_core::zone::now().timestamp().as_second() };
             if let Err(e) = unsubscribe::Record::add(&record, left) {
                 set_status(qt, e);
             }
@@ -1018,7 +1017,7 @@ pub(crate) fn unsubscribe(qt: &QtThread, shared: &Arc<Shared>, config: &Config, 
 fn unsubscribe_now(list: &unsubscribe::List, sender: &str, account: &str, way: &unsubscribe::Way, shared: &Shared) -> String {
     let failed = |why: String| say("unsubscribe-failed", &[("list", list.name.clone()), ("why", why)]);
     let done = |way: &str| {
-        let left = unsubscribe::Left { key: list.key.clone(), name: list.name.clone(), address: sender.to_string(), way: way.to_string(), at: Zoned::now().timestamp().as_second() };
+        let left = unsubscribe::Left { key: list.key.clone(), name: list.name.clone(), address: sender.to_string(), way: way.to_string(), at: sioul_core::zone::now().timestamp().as_second() };
         unsubscribe::Record::add(&unsubscribe::Record::default_path(), left).err()
     };
     match way {
@@ -1037,7 +1036,7 @@ fn unsubscribe_now(list: &unsubscribe::List, sender: &str, account: &str, way: &
             };
             let me = account.address.clone().unwrap_or_default();
             let name = account.name.clone().unwrap_or_default();
-            let sent = unsubscribe::request((&name, &me), to, subject, body, Zoned::now().timestamp().as_second()).and_then(|outgoing| {
+            let sent = unsubscribe::request((&name, &me), to, subject, body, sioul_core::zone::now().timestamp().as_second()).and_then(|outgoing| {
                 let password = secret::password(&account).map_err(|e| e.sentence(tr(), &account.id))?;
                 let account = crate::pim::with_smtp(&account)?;
                 match sioul_sync::send::send(&account, &password, &outgoing) {
@@ -1304,7 +1303,7 @@ pub(crate) fn save_draft(text: &str) -> Result<String, String> {
     draft.sign = edit.sign;
     draft.encrypt = edit.encrypt;
     draft.save()?;
-    Ok(say("compose-saved", &[("time", Zoned::now().strftime("%H:%M").to_string())]))
+    Ok(say("compose-saved", &[("time", sioul_core::zone::now().strftime("%H:%M").to_string())]))
 }
 
 /// Adds a file, from the file dialog or dropped on the window (`file://` URLs).

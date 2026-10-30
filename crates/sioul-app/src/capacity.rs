@@ -10,7 +10,6 @@
 //! balance, in words, for the evening's review (`day_balance`).
 
 use crate::backend::{load_config, say, tr};
-use jiff::Zoned;
 use jiff::civil::Date;
 use sioul_core::agenda::Occurrence;
 use sioul_core::capacity::{self, DayBalance, Record};
@@ -46,7 +45,7 @@ static LAST: Mutex<Option<Arc<Record>>> = Mutex::new(None);
 pub(crate) fn planned(mut settings: Settings, tasks: &[Task], sessions: &[Session]) -> Settings {
     // A task's time block is the task's time: never an event of its own to the record (`blocks`).
     let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(events(from, to), tasks);
-    let record = capacity::gather(tasks, sessions, &settings, &load_config().planning, &own, &Zoned::now());
+    let record = capacity::gather(tasks, sessions, &settings, &load_config().planning, &own, &sioul_core::zone::now());
     settings.capacity = record.planning.clone();
     *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(record));
     settings
@@ -79,7 +78,7 @@ thread_local! {
 pub(crate) fn dress(day: &mut DayView, tasks: &[Task]) {
     #[cfg(test)]
     DRESSED.with(|n| n.set(n.get() + 1));
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let record = last();
     let suggestion = record.as_ref().and_then(|r| capacity::suggestion(tasks, &r.index, now.date()));
     for block in &mut day.blocks {
@@ -109,14 +108,14 @@ pub(crate) fn dress(day: &mut DayView, tasks: &[Task]) {
 /// is known), what gave back against its minimum (below, around, above; ""),
 /// and at most two lines on what the plan does with it. Never a number to show.
 pub(crate) fn day_balance(date: Date) -> DayBalance {
-    let zone = jiff::tz::TimeZone::system();
+    let zone = sioul_core::zone::current();
     let tasks = sioul_core::tasks::all(&zone);
     let sessions = sioul_core::timelog::sessions();
     let record = last().unwrap_or_else(|| {
         let config = load_config();
         let settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::usual());
         let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(events(from, to), &tasks);
-        Arc::new(capacity::gather(&tasks, &sessions, &settings, &config.planning, &own, &Zoned::now()))
+        Arc::new(capacity::gather(&tasks, &sessions, &settings, &config.planning, &own, &sioul_core::zone::now()))
     });
     // The day's outcome as said now: the review may be newer than the record.
     let mut record = (*record).clone();

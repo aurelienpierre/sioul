@@ -918,7 +918,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 }
             }
             for &(p, gap) in &preds[i] {
-                let done_on = tasks[p].completed.and_then(|t| jiff::Timestamp::from_second(t).ok()).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).date());
+                let done_on = tasks[p].completed.and_then(|t| jiff::Timestamp::from_second(t).ok()).map(|t| t.to_zoned(crate::zone::current()).date());
                 if tasks[p].status == Status::Completed
                     && let Some(done) = done_on
                 {
@@ -1075,7 +1075,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     // Pinned to a time (a block, `blocks`): on the block's day, its time held there already (`with_pins`).
     let pins: Vec<Option<&crate::blocks::Pin>> = tasks.iter().map(|t| settings.pins.get(&t.uid).filter(|_| t.status.is_open())).collect();
     // A step given a time today by a drag before blocks (`Task::at`, read still): today, whatever the room.
-    let pinned: Vec<bool> = tasks.iter().enumerate().map(|(i, t)| pins[i].is_none() && t.at_on(today, &TimeZone::system()).is_some()).collect();
+    let pinned: Vec<bool> = tasks.iter().enumerate().map(|(i, t)| pins[i].is_none() && t.at_on(today, &crate::zone::current()).is_some()).collect();
     // Runs: short steps of one bigger task one after the other in the order
     // (shorter than `SHORTEST`, without margins, not pinned to a time), laid
     // back to back at their own length; `joins`: the next one of its run follows it.

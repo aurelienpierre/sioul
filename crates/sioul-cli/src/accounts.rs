@@ -11,7 +11,6 @@
 
 use crate::{Session, load_store, print_right_now};
 use clap::{Subcommand, ValueEnum};
-use jiff::Zoned;
 use sioul_core::config::{self, Account, AccountKind, Config, DEFAULT_SYNC_DAYS, Priority, Security};
 use sioul_core::porch::{self, KnownSenders, Triaged};
 use sioul_core::view;
@@ -535,7 +534,7 @@ fn triage_files(config: &Config, files: &[PathBuf]) -> Vec<Triaged> {
     let store = load_store(config);
     let known = KnownSenders::load(&config.known_senders_path());
     let senders = porch::Senders::load(config);
-    porch::judge(files, &config.mail_sources(), store.as_ref(), &known, &senders, Zoned::now().timestamp().as_second())
+    porch::judge(files, &config.mail_sources(), store.as_ref(), &known, &senders, sioul_core::zone::now().timestamp().as_second())
 }
 
 /// Your mail filters on `account`'s server after a fetch (`new`: its inbox's
@@ -546,7 +545,7 @@ fn triage_files(config: &Config, files: &[PathBuf]) -> Vec<Triaged> {
 fn filter_on_server(s: &Session, config: &Config, account: &Account, new: &[PathBuf]) {
     let Ok(password) = secret::password(account) else { return };
     let done = sioul_sync::filters::after_fetch(config, account, &password, new, false);
-    let time = Zoned::now().strftime("%H:%M").to_string();
+    let time = sioul_core::zone::now().strftime("%H:%M").to_string();
     if !done.acted.is_empty() {
         let mut args = s.tr.counted(done.acted.len());
         args.set("account", account.id.clone());
@@ -588,7 +587,7 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
     }
     drop(sender);
     for (id, result) in receiver {
-        let time = Zoned::now().strftime("%H:%M").to_string();
+        let time = sioul_core::zone::now().strftime("%H:%M").to_string();
         match result {
             Ok(report) if report.new.is_empty() => {
                 // Nothing new, but a filter's failure to try again, or another device's mark to look at again.
@@ -619,7 +618,7 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 // time; "On the Porch only" a choice while you sleep), with its
                 // layers read from their files: a code not told waits on the Porch.
                 use sioul_core::attention::{self, Attention, Kind, Level, Row, Slots};
-                let now = Zoned::now();
+                let now = sioul_core::zone::now();
                 let stamp = now.timestamp().as_second();
                 let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
                 let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now);

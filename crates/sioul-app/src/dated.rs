@@ -77,7 +77,7 @@ fn when(date: Date, at: Option<i64>, today: Date, zone: &TimeZone) -> String {
 /// "health" or "none") with what that form takes (`item`, `kinds`,
 /// `presets`), and its own actions' state. `{"there": false}` once it is gone.
 pub(crate) fn card(shared: &Shared, kind: &str, key: &str) -> String {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let (today, zone) = (now.date(), now.time_zone().clone());
     let gone = || json(&serde_json::json!({ "there": false, "kind": kind, "key": key }));
     let Some(kind) = kind_of(kind) else { return gone() };

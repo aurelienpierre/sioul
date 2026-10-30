@@ -24,7 +24,6 @@ use crate::trust::{AuthResults, Outcome, Trust};
 use crate::window;
 use jiff::Zoned;
 use jiff::Timestamp;
-use jiff::tz::TimeZone;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -433,7 +432,7 @@ fn key(card: &Card) -> String {
 pub fn date(tr: &Translator, seconds: Option<i64>) -> String {
     seconds
         .and_then(|s| Timestamp::from_second(s).ok())
-        .map_or_else(|| tr.text("no-date", None), |t| tr.date(&t.to_zoned(TimeZone::system()), true))
+        .map_or_else(|| tr.text("no-date", None), |t| tr.date(&t.to_zoned(crate::zone::current()), true))
 }
 
 #[derive(Debug, Serialize)]
@@ -1047,7 +1046,7 @@ pub fn message_from(raw: &[u8], path: &std::path::Path, triaged: &Triaged, own: 
             .card
             .date
             .and_then(|s| Timestamp::from_second(s).ok())
-            .map_or_else(|| tr.text("no-date", None), |t| tr.date(&t.to_zoned(TimeZone::system()), false)),
+            .map_or_else(|| tr.text("no-date", None), |t| tr.date(&t.to_zoned(crate::zone::current()), false)),
         subject: reading.subject.clone(),
         attachments: reading
             .attachments

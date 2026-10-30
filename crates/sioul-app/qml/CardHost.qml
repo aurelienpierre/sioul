@@ -269,7 +269,7 @@ Item {
         id: placeLine
 
         objectName: "cardPlace"
-        readonly property string day: host.open && host.ref.at > 0 ? new Date(host.ref.at * 1000).toLocaleDateString(Qt.locale(host.sioul.text("qt-locale")), "dddd d MMMM") + ", " + host.ref.when : ""
+        readonly property string day: host.open && host.ref.at > 0 ? new Date(host.ref.at * 1000 + (typeof host.sioul.zoneShift === "function" ? host.sioul.zoneShift(host.ref.at) : 0)).toLocaleDateString(Qt.locale(host.sioul.text("qt-locale")), "dddd d MMMM") + ", " + host.ref.when : ""
 
         visible: host.kind === "task" && placeLine.text !== ""
         x: host.theme.gap

@@ -19,7 +19,6 @@
 use crate::backend::{QtThread, Shared, json, load_config, offline, say, tell, tr};
 use cxx_qt::Threading;
 use cxx_qt_lib::QString;
-use jiff::Zoned;
 use serde::Serialize;
 use sioul_core::card::ImapOrigin;
 use sioul_core::config::{Account, Config};
@@ -330,7 +329,7 @@ fn ask_servers(qt: &QtThread, shared: &Arc<Shared>, search: &Search, generation:
         return;
     }
     let config = load_config();
-    let earliest = mailsearch::earliest(search).and_then(|d| d.to_zoned(jiff::tz::TimeZone::system()).ok()).map(|z| z.timestamp().as_second());
+    let earliest = mailsearch::earliest(search).and_then(|d| d.to_zoned(sioul_core::zone::current()).ok()).map(|z| z.timestamp().as_second());
     let trusted = trusted(&config);
     let judge = senders(search, &config).map(Arc::new);
     let words = sioul_core::words::Words::of(&config);
@@ -399,7 +398,7 @@ fn names_sentence(search: &Search) -> String {
         Some((_, role)) => tr().text(role.message_id(), None),
         None => value.to_string(),
     };
-    mailsearch::sentence(search, tr(), &Names { account: &account, folder: &folder }, Zoned::now().date())
+    mailsearch::sentence(search, tr(), &Names { account: &account, folder: &folder }, sioul_core::zone::now().date())
 }
 
 /// The view, from what is known now: what waits ten seconds for "Undo" left out.

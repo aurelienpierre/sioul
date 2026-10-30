@@ -848,7 +848,12 @@ fn event_time(tr: &Translator, event: &Occurrence, zone: &jiff::tz::TimeZone) ->
         return from;
     }
     let to = if last == start.date() { end.strftime("%H:%M").to_string() } else { tr.date(&end, true) };
-    said(tr, "home-card-time-range", &[("start", from), ("end", to)])
+    let here = said(tr, "home-card-time-range", &[("start", from), ("end", to)]);
+    // On another clock (an online call in UTC, a meeting in New York): both its times.
+    match sioul_core::timeline::both_times(&here, event.start, event.end, &event.clock, tr) {
+        both if both.is_empty() => here,
+        both => both,
+    }
 }
 
 /// A day of the agenda and its names: "Mon 12 Oct" until the day before,
@@ -1522,15 +1527,18 @@ fn refresh(tell: bool) {
     let plan = PLAN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
     let (Some(porch), Some(plan)) = (porch, plan) else { return };
     let now = Zoned::now();
+    // The card says the times on the current zone's clock (`zone::current`); the doses
+    // keep the system's, as their alarms do.
+    let here = now.with_time_zone(sioul_core::zone::current());
     let config = load_config();
     let overrides = Overrides::load(&Overrides::default_path());
-    let blocks = crate::hours::blocks(&now);
+    let blocks = crate::hours::blocks(&here);
     let details = details();
     let doses = if details { crate::health::card_doses(&now) } else { Vec::new() };
     let dnd = DND.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().and_then(Dnd::of);
-    let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: tr(), details, dnd: dnd.as_ref() };
-    let agenda = agenda_input(&now);
-    let dates = dates_input(&now, &config, &plan, agenda.as_ref());
+    let moment = Moment { now: &here, config: &config, overrides: &overrides, blocks: &blocks, tr: tr(), details, dnd: dnd.as_ref() };
+    let agenda = agenda_input(&here);
+    let dates = dates_input(&here, &config, &plan, agenda.as_ref());
     let reminded = REMINDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone().unwrap_or_default();
     let calls = crate::calls::for_card();
     let stopped = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()).map(|s| s.text);
@@ -1584,7 +1592,7 @@ pub(crate) fn mail_came() {
         return;
     }
     let config = load_config();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     // The Porch as the window gathers it (`backend::World`): the projects and their ties, the senders let in.
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
     let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
@@ -1949,6 +1957,20 @@ mod tests {
         }
         out.extend(card.words.mail.lines().chain(card.words.agenda.lines()).map(str::to_string));
         out.join("\n")
+    }
+
+    /// An event on another clock says both its times on the card's line
+    /// ("16:00 – 17:00 here · 15:00 – 16:00 UTC"); one on the time zone shown, one.
+    #[test]
+    fn an_event_on_another_clock_says_both_its_times() {
+        let tr = Translator::new("en");
+        let paris = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let start = "2026-11-04T15:00:00Z".parse::<Timestamp>().unwrap().as_second();
+        let call = Occurrence { start, end: start + 3_600, clock: "UTC".into(), ..Occurrence::default() };
+        assert_eq!(event_time(&tr, &call, &paris), "16:00 – 17:00 here · 15:00 – 16:00 UTC");
+        let board = Occurrence { clock: "America/New_York".into(), ..call.clone() };
+        assert_eq!(event_time(&tr, &board, &paris), "16:00 – 17:00 here · 10:00 – 11:00 New York");
+        assert_eq!(event_time(&tr, &Occurrence { clock: String::new(), ..call }, &paris), "16:00 – 17:00");
     }
 
     #[test]

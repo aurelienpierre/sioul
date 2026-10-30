@@ -175,7 +175,7 @@ fn decide(json: &str) -> String {
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
     let kind = appnotes::classify(&posted, &choices, &sioul_core::words::Words::of(&config));
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let senders = Senders::load(&config);
@@ -322,7 +322,7 @@ fn review(json: &str) -> String {
     let silenced = asked["silenced"].as_bool().unwrap_or(false);
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let live = live(&config, &now);
@@ -707,7 +707,7 @@ pub(crate) fn porch_line() -> String {
     if !path.exists() {
         return String::new();
     }
-    appnotes::porch_line(tr(), &Ledger::load(&path), &Zoned::now())
+    appnotes::porch_line(tr(), &Ledger::load(&path), &sioul_core::zone::now())
 }
 
 /// The Porch's JSON with its line on other apps (`apps_line`), when there is one.
@@ -787,7 +787,7 @@ pub(crate) fn setup() -> String {
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
     let ledger = Ledger::load(&Ledger::default_path());
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let tr = tr();
     let text = |id: &str| tr.text(id, None);
     let mut times = sioul_core::i18n::args();

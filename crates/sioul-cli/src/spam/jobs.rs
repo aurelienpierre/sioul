@@ -242,7 +242,7 @@ fn new_id(kind: &str) -> String {
             letter
         })
         .collect();
-    format!("{}-{kind}-{letters}", jiff::Zoned::now().strftime("%Y%m%d-%H%M%S"))
+    format!("{}-{kind}-{letters}", sioul_core::zone::now().strftime("%Y%m%d-%H%M%S"))
 }
 
 /// Starts a job: its file made ("starting", `create`), then `sioul spam

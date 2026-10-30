@@ -176,7 +176,7 @@ pub(crate) fn view() -> String {
     if cfg!(target_os = "android") || !root.join(rules::LOG).is_dir() || !crate::share::shares(rules::PART) {
         return empty();
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let all = rules::read_logs(&root, now.timestamp().as_millisecond());
     if all.is_empty() {
         return empty();
@@ -202,7 +202,7 @@ pub(crate) fn seen_for(keys: &[String]) {
     if keys.is_empty() || !root.join(rules::LOG).is_dir() {
         return;
     }
-    let now = Zoned::now().timestamp().as_millisecond();
+    let now = sioul_core::zone::now().timestamp().as_millisecond();
     let seen = calls::read_seen(&root);
     let ids: Vec<String> = rules::read_logs(&root, now).into_iter().filter(|l| l.kind == "text" && keys.contains(&l.key) && !seen.seen.contains(&l.id)).map(|l| l.id).collect();
     if !ids.is_empty()
@@ -270,7 +270,7 @@ pub(crate) fn history(numbers: &[String]) -> Vec<String> {
     if keys.is_empty() {
         return Vec::new();
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let all = rules::read_logs(&root, now.timestamp().as_millisecond());
     let (none, every, nowhere, unknown) = (|_: &str| None, |_: &Line| true, |_: &str| String::new(), |_: i64| String::new());
     let lister = rules::Lister { now: &now, tr: tr(), region, name_of: &none, shows: &every, phone: &nowhere, column: &unknown };

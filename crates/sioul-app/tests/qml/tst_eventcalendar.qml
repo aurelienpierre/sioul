@@ -47,6 +47,12 @@ Item {
         function text(key) {
             return key
         }
+        function zoneName() {
+            return "Europe/Paris"
+        }
+        function clockLine(start, end, clock) {
+            return ""
+        }
         function textWith(key, name, value) {
             return key + ":" + value
         }

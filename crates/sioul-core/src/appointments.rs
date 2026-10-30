@@ -67,6 +67,7 @@ pub fn event_of(task: &Task, time: Option<(i64, i64)>, today: Date, zone: &TimeZ
         margins: task.margins,
         demands: task.demands,
         remind: String::new(),
+        clock: String::new(),
     }
 }
 
@@ -290,7 +291,8 @@ pub fn event_to_task(path: &Path, list: &Collection, place: &dyn Fn(&Task) -> Re
         return Err(Refused::Word("task-from-invitation"));
     }
     let zone = now.time_zone().clone();
-    let event = crate::agenda::edit_of_text(&text, &zone).ok_or(Refused::Word("agenda-gone"))?;
+    // Its times on this device's clock, as a task says them: its own clock may be another.
+    let event = crate::agenda::edit_of_text(&text, &zone).map(|e| crate::agenda::on_zone(e, &zone)).ok_or(Refused::Word("agenda-gone"))?;
     // The event's lines, its zone's left out: a VTIMEZONE's STANDARD and
     // DAYLIGHT repeat every year, which is no repeat of the event (every
     // appointment Sioul writes from its form carries its zone since item 11
@@ -408,6 +410,24 @@ mod tests {
         let as_task = retarget(other, "old", "new", false, &now).unwrap();
         assert!(as_task.contains("RELATED-TO;RELTYPE=DEPENDS-ON:new") && as_task.contains("sioul:task/new"), "{as_task}");
         assert!(retarget(other, "nobody", "new", true, &now).is_none());
+    }
+
+    /// An appointment on another clock made a task: its block at its instants,
+    /// its day this device's (15:00 UTC is 16:00 in Paris).
+    #[test]
+    fn an_appointment_on_another_clock_made_a_task_keeps_its_instants() {
+        let dir = std::env::temp_dir().join(format!("sioul-own-clock-task-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let edit = EventEdit { title: "Call".into(), start: "2099-11-04T23:30".into(), end: "2099-11-05T00:30".into(), clock: "UTC".into(), ..EventEdit::default() };
+        let path = dir.join("call.ics");
+        std::fs::write(&path, crate::agenda::new_event(&edit, &zone()).unwrap()).unwrap();
+        let list = Collection { kind: crate::vdir::Kind::Calendars, account: "local".into(), id: "tasks".into(), dir: dir.clone(), name: "Tasks".into(), color: None, read_only: false, components: Vec::new() };
+        let now: Zoned = "2099-11-01T12:00[Europe/Paris]".parse().unwrap();
+        let plan = event_to_task(&path, &list, &|_| Ok(list.clone()), false, &now).unwrap();
+        assert!(plan.text.contains("DTSTART;VALUE=DATE:20991105") || plan.text.contains("DTSTART:20991105"), "its day in Paris, 5 November: {}", plan.text);
+        let block = &plan.made[0].1;
+        assert!(block.contains("DTSTART:20991104T233000Z") && block.contains("DTEND:20991105T003000Z"), "{block}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// An appointment made a task: its day to start, its length as its estimate.

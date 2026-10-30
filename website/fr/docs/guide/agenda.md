@@ -35,7 +35,7 @@ La page suit l’horloge : la ligne de l’heure actuelle avance avec elle, et
 
 ## Les événements {#events}
 
-**Nouvel événement**, en haut de la page (ou **Nouveau ▾ ▸ Un événement**) : un titre, quand il commence et finit, où. **Toute la journée** se coche d’un clic. Repliés sous **Plus** : ses notes ; **Se répète**, tous les jours, toutes les semaines, tous les mois ou tous les ans ; **Agenda**, celui où il va, quand vous en avez plusieurs ; et, si vous le voulez :
+**Nouvel événement**, en haut de la page (ou **Nouveau ▾ ▸ Un événement**) : un titre, quand il commence et finit, où. **Toute la journée** se coche d’un clic. **Fuseau horaire**, sous les heures, est d’abord **Heure locale** (le fuseau que montre votre agenda, nommé) ; **UTC**, ou **Un autre fuseau horaire…**, trouvé en tapant une partie de son nom (« new y », « tokyo »), fixe l’horloge que garde l’événement : un appel fixé en UTC reste à son heure UTC, été comme hiver ; un rendez-vous à New York à son heure là-bas. Sur une autre horloge, une ligne sous les heures les dit aussi ici : « 15:00 – 16:00 UTC · 16:00 – 17:00 ici ». Modifier un événement garde son horloge. Repliés sous **Plus** : ses notes ; **Se répète**, tous les jours, toutes les semaines, tous les mois ou tous les ans ; **Agenda**, celui où il va, quand vous en avez plusieurs ; et, si vous le voulez :
 
 - **Avant** et **Après** : le temps de se préparer et d’y aller, et celui d’en revenir ([plus bas](#time-around-an-event)).
 - **Rappel** : quand Sioul vous le rappelle : comme d’habitude (un quart d’heure avant lui et le temps d’y aller, sauf si vous le changez dans les [Paramètres](settings.md#reminders)), pas pour celui-ci, ou de 5 minutes à 2 heures avant. Voir [Les rappels](#reminders).
@@ -132,6 +132,7 @@ Sous Android, Sioul synchronise lui-même vos agendas et en garde sa propre copi
 
 Le ⚙ en haut de la page :
 
+- **Fuseau horaire** : **Suivre cet appareil** au début (son fuseau nommé) : l’agenda, le planning, les rappels, la carte de l’écran d’accueil et aujourd’hui même suivent le fuseau où est l’appareil, et le suivent quand il change (un téléphone qui atterrit ailleurs, le fuseau d’un ordinateur changé) en moins d’une minute, sans redémarrer. Ou **Un autre fuseau horaire…**, trouvé en tapant une partie de son nom : pour un ordinateur dont l’horloge reste à la maison pendant un voyage, ou pour voir vos journées là où vous allez. Un événement ne bouge jamais : seule la façon dont son heure se lit change. Ce réglage reste sur cet appareil. Santé garde l’horloge du système, comme ses alarmes de prises.
 - **Agendas** : renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des événements reste. Celui que vous pouvez seulement lire le dit, et n’est jamais proposé pour un nouvel événement.
 - **Les nouveaux événements vont dans** : l’agenda où va un nouvel événement ; tant que vous ne choisissez pas, le premier qui prend des événements.
 - **Temps gardé entre deux événements** : 0 au début. Plus proches que cela, deux événements sont dits trop proches, jamais en même temps.
@@ -142,7 +143,7 @@ Le ⚙ en haut de la page :
 
 ## Où vivent les événements {#where-events-live}
 
-Sur votre serveur d’agenda, en événements CalDAV standard : votre téléphone et les autres programmes les voient. Les heures gardent leur fuseau horaire et s’affichent dans le vôtre. Modifier dans Sioul ne change que ce que vous avez changé : la liste des personnes invitées, une alarme ou les champs d’un autre programme restent tels qu’ils étaient. Ce que vous réglez dans Sioul (Avant et Après, **Rappel**, ce que l’événement vous demande) est écrit dans l’événement lui-même : il le suit sur vos autres appareils, et votre serveur et vos autres applications peuvent le lire, comme ils lisent l’événement.
+Sur votre serveur d’agenda, en événements CalDAV standard : votre téléphone et les autres programmes les voient. Les heures gardent leur fuseau horaire et s’affichent dans le vôtre. Un événement sur une autre horloge que la vôtre dit ses deux heures dans les listes, dans sa fiche et sur la carte de l’écran d’accueil (« 16:00 – 17:00 ici · 15:00 – 16:00 UTC ») ; le Jour et la Semaine le dessinent à son heure ici. Modifier dans Sioul ne change que ce que vous avez changé : la liste des personnes invitées, une alarme ou les champs d’un autre programme restent tels qu’ils étaient. Ce que vous réglez dans Sioul (Avant et Après, **Rappel**, ce que l’événement vous demande) est écrit dans l’événement lui-même : il le suit sur vos autres appareils, et votre serveur et vos autres applications peuvent le lire, comme ils lisent l’événement.
 
 Les agendas Google se créent, se renomment et se suppriment sur les pages de Google ; Sioul grise ces réglages, et dit pourquoi.
 
@@ -152,12 +153,12 @@ Le jour et la semaine de Santé dessinés dans le temps, et **La journée** de T
 
 ## Pas encore là {#not-there-yet}
 
-Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main), et choisir ici la couleur d’un agenda, sont prévus. Pas encore là non plus : inviter des personnes depuis Sioul ; importer ou exporter des fichiers `.ics`, et s’abonner à un agenda par son adresse ; plus d’un rappel de Sioul pour un événement ; choisir le fuseau horaire d’un événement. La copie d’une invitation gardée dans votre agenda ne garde pas votre réponse : c’est la personne qui organise qui l’a.
+Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main), et choisir ici la couleur d’un agenda, sont prévus. Pas encore là non plus : inviter des personnes depuis Sioul ; importer ou exporter des fichiers `.ics`, et s’abonner à un agenda par son adresse ; plus d’un rappel de Sioul pour un événement. La copie d’une invitation gardée dans votre agenda ne garde pas votre réponse : c’est la personne qui organise qui l’a.
 
 ## Pour aller plus loin {#going-further}
 
 - **Les événements répétés faits ailleurs** gardent leur règle, si riche soit-elle (« un lundi et un mercredi sur deux », « le premier lundi du mois ») : changer leur titre dans Sioul laisse la règle entière. Le formulaire de Sioul fait tous les jours, toutes les semaines, tous les mois ou tous les ans.
-- **Les fuseaux horaires** : un événement écrit dans un autre fuseau le garde et s’affiche dans le vôtre ; Sioul écrit les nouveaux événements dans votre fuseau.
+- **Les fuseaux horaires** : un événement écrit dans un autre fuseau le garde et s’affiche dans le vôtre, son heure là-bas à côté ; Sioul écrit les nouveaux événements dans le fuseau que montre votre agenda, sauf si le **Fuseau horaire** de son formulaire dit une autre horloge.
 - **Un événement créé après l’heure de son rappel** n’est pas rappelé : vous venez de le voir.
 - **Le jour travaillé d’avant** se lit dans vos heures de travail ([Paramètres](settings.md#hours)).
 - **Un fichier d’agenda dans un courriel** : un `.ics` que porte un courriel va dans votre agenda avec **Ajouter à mon agenda**.
@@ -224,7 +225,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Les agendas Google, en lecture et en écriture | ✓ | — | ✓ | ✓ | ✓ | en partie³ |
     | Répond par courriel aux invitations de tout système (iMIP) | ✓ | ?⁴ | ✓ | ✓ | ✗⁵ | ✓⁶ |
     | Importe et exporte des fichiers `.ics`, s’abonne par adresse | ✗⁷ | ✓⁸ | ✓ | ✓ | en partie⁹ | ✓ |
-    | Choisit le fuseau horaire d’un événement | en partie¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
+    | Choisit le fuseau horaire d’un événement | ✓¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Événements chiffrés de bout en bout | ✗¹¹ | ✗¹² | ✗¹³ | ✗ | ✗ | en partie¹⁴ |
     | Logiciel libre | ✓ GPL-3.0+ | ✗ | ✗ | ✓ MPL-2.0 | ✓ GPL-3.0 | ✓ GPL-3.0¹⁵ |
 
@@ -237,7 +238,7 @@ En octobre 2026, d’après la documentation de chaque application.
     7. Un `.ics` que porte un courriel entre avec **Ajouter à mon agenda** ; pas d’import depuis un fichier, pas d’export, pas d’abonnement par adresse.
     8. Sur un ordinateur seulement.
     9. Les deux applications importent et exportent des fichiers `.ics` ; s’abonner par adresse demande ICSx⁵.
-    10. Un événement fait ailleurs garde son fuseau horaire et s’affiche dans le vôtre ; Sioul écrit les nouveaux événements dans votre fuseau.
+    10. Heure locale, UTC ou n’importe quel fuseau, choisis dans le formulaire de l’événement ; un événement fait ailleurs garde son fuseau horaire ; les deux heures s’affichent là où elles diffèrent.
     11. Les événements d’un serveur peuvent être lus par ce serveur, comme avec toute application CalDAV ; les agendas gardés sur un seul appareil voyagent scellés entre vos appareils.
     12. Un chiffrement côté client dans certaines formules payantes de Workspace seulement, pour la description, les pièces jointes et les données de Meet, pas pour le titre, l’heure ni les personnes invitées.
     13. Pas non plus avec la protection avancée des données : Apple dit que CalDAV n’a pas de chiffrement de bout en bout intégré.
@@ -304,6 +305,7 @@ En octobre 2026, d’après la documentation de chaque application.
 ## Côté technique {#for-technical-readers}
 
 - **iCalendar** (RFC 5545) : un événement et ses exceptions par fichier, comme CalDAV les garde (RFC 4791, section 4.1). Les événements répétés sont déployés avec calcard (`RRULE`, `RDATE`, `EXDATE`, les remplacements `RECURRENCE-ID`), chacun dans son fuseau horaire, affiché dans le vôtre ; une occurrence modifiée est reconnue par son seul `RECURRENCE-ID`, comme le dit RFC 5545, même quand le `SEQUENCE` de la série a avancé. Les événements écrits depuis le formulaire, uniques ou répétés, sont à l’heure locale avec votre fuseau (`DTSTART;TZID=Europe/Paris:…`), avec un `VTIMEZONE` que Sioul écrit, pour que 9 h reste 9 h en hiver comme en été ; un événement déplacé ou auquel vous répondez garde la forme dans laquelle il était écrit, UTC compris, et aucun fichier n’est réécrit pour cela. Une modification ne réécrit que les lignes qui ont changé et augmente `SEQUENCE` ; les alarmes, les personnes invitées et les propriétés des autres programmes sont gardées.
+- **Les fuseaux horaires** : le fuseau montré est celui de cet appareil (`TZ`, sinon `/etc/localtime`, sinon le dernier qu’Android a dit), regardé de nouveau chaque seconde, ou celui choisi dans `agenda.time_zone`, gardé sur cet appareil. L’horloge propre d’un événement est celle de son `DTSTART` : sur le fuseau montré, `TZID=<fuseau>` avec son `VTIMEZONE` ; sur UTC ou un autre fuseau, `TZID=<ce fuseau>` avec son `VTIMEZONE`. Un événement unique à son instant en UTC (`…Z`, comme beaucoup de programmes écrivent un instant) ne nomme aucune horloge et s’affiche dans votre fuseau seul ; une série en UTC se répète en UTC. Jamais une heure flottante. Le chemin des prises garde l’horloge du système.
 - **Les propriétés propres à Sioul** voyagent dans l’événement : `X-SIOUL-BEFORE` et `X-SIOUL-AFTER` (en minutes, un jour au plus), `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-REMIND` et `X-SIOUL-TASK` pour le créneau d’une tâche. `X-SIOUL-REMIND` n’est volontairement pas un `VALARM`, pour que vos autres applications d’agenda ne le fassent pas sonner une deuxième fois, et pour que « pas pour celui-ci » puisse se dire. Les liens sont les liens et les relations de la RFC 9253, écrits sous les noms propres à Sioul (`X-SIOUL-LINK`, `X-SIOUL-RELATED-TO` pour une attente ; le `RELATED-TO` d’une étape tel quel), qu’un gestionnaire de comptes de téléphone peut renvoyer ; les lignes du standard sont lues aussi. Le temps de trajet d’Apple (`X-APPLE-TRAVEL-DURATION`) n’est pas lu.
 - **CalDAV** (RFC 4791, sur WebDAV) : le même client que pour les contacts. Découverte par RFC 6764 et le principal de l’utilisateur (RFC 5397), jetons de synchronisation (RFC 6578), `calendar-multiget`, écritures avec `If-Match` et l’ETag de l’élément ; quand les deux côtés ont changé un événement, la version du serveur l’emporte et la vôtre est gardée parmi les versions précédentes de cet appareil (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes), à remettre depuis la fenêtre, et la ligne d’état le dit. HTTPS seulement, TLS par rustls avec les certificats racine du système. Chaque compte se synchronise tous les quarts d’heure et aussitôt après un changement fait ici ; la page relit ses fichiers toutes les cinq minutes, quand elle revient en vue, et à minuit.
 - **Les agendas Google** passent par le CalDAV de Google, avec OAuth 2.0 pour les applications natives (RFC 8252) et PKCE (RFC 7636) ; le jeton de renouvellement dans le trousseau, le jeton d’accès en mémoire seulement. Les agendas ne peuvent pas y être créés, renommés ni supprimés depuis Sioul, et Google ajoute vos rappels par défaut à chaque événement ([Fonctionne avec](compatibility.md#google)).

@@ -1621,6 +1621,45 @@ fn ties_and_titles_stay_in_their_lines() {
     assert_eq!((edit.start, edit.end), (local("2026-11-12T07:30Z"), local("2026-11-12T08:00Z")));
 }
 
+/// An event's own clock (`clock`): kept in UTC or in a zone, its times given
+/// and read in the person's time zone, those on its clock beside (get_event,
+/// agenda); its title changed, its clock kept; a clock given, the same
+/// instants on it; a name that is no zone refused, nothing written.
+#[test]
+fn an_event_keeps_the_clock_it_is_given() {
+    home();
+    let mut server = server();
+    let local = |utc: &str| utc.parse::<jiff::Timestamp>().unwrap().to_zoned(sioul_core::zone::current()).strftime("%Y-%m-%dT%H:%M").to_string();
+    let refused = call(&mut server, "add_event", json!({ "title": "Call", "start": "2099-12-02T15:00Z", "end": "2099-12-02T16:00Z", "clock": "Nowhere/Atlantis" }));
+    assert!(refused["isError"] == true && text(&refused).contains("clock"), "{refused}");
+    let added = call(&mut server, "add_event", json!({ "title": "Call", "start": "2099-12-02T15:00Z", "end": "2099-12-02T16:00Z", "clock": "UTC" }));
+    assert_eq!(added["isError"], false, "{added}");
+    let file = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
+    assert!(ics_lines(&file).contains(&"DTSTART;TZID=UTC:20991202T150000".to_string()), "{:?}", ics_lines(&file));
+    let uri = added["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let got = call(&mut server, "get_event", json!({ "event": uri }));
+    let data = &got["structuredContent"];
+    assert_eq!((data["start"].as_str(), data["clock"].as_str(), data["clock_start"].as_str()), (Some(local("2099-12-02T15:00Z").as_str()), Some("UTC"), Some("2099-12-02T15:00")), "{got}");
+    // Its title changed: on UTC still.
+    let titled = call(&mut server, "update_event", json!({ "event": uri, "title": "Call with the office" }));
+    assert_eq!(titled["isError"], false, "{titled}");
+    assert!(ics_lines(&file).contains(&"DTSTART;TZID=UTC:20991202T150000".to_string()), "{:?}", ics_lines(&file));
+    // Times given in the person's time zone: said on its clock, the same instants.
+    let moved = call(&mut server, "update_event", json!({ "event": uri, "start": local("2099-12-02T16:00Z"), "end": local("2099-12-02T17:00Z") }));
+    assert_eq!(moved["isError"], false, "{moved}");
+    assert!(ics_lines(&file).contains(&"DTSTART;TZID=UTC:20991202T160000".to_string()), "{:?}", ics_lines(&file));
+    // Another clock given: the same instants on New York's, 11:00 in winter there.
+    let there = call(&mut server, "update_event", json!({ "event": uri, "clock": "America/New_York" }));
+    assert_eq!(there["isError"], false, "{there}");
+    assert!(ics_lines(&file).contains(&"DTSTART;TZID=America/New_York:20991202T110000".to_string()), "{:?}", ics_lines(&file));
+    // The agenda gives its clock, and its times there beside.
+    let answer = call(&mut server, "agenda", json!({ "from": "2099-12-02", "days": 1 }));
+    let events: Vec<Value> = answer["structuredContent"]["days"].as_array().unwrap().iter().flat_map(|d| d["events"].as_array().cloned().unwrap_or_default()).collect();
+    let event = events.iter().find(|e| e["uri"] == uri.as_str()).unwrap_or_else(|| panic!("{}", text(&answer)));
+    assert_eq!(event["clock"], "America/New_York", "{event}");
+    assert!(text(&answer).contains("11:00 – 12:00 New York"), "{}", text(&answer));
+}
+
 #[test]
 fn notes_stay_in_the_notes() {
     let home = home();

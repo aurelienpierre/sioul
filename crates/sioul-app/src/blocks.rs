@@ -18,7 +18,6 @@
 
 use crate::backend::{QtThread, Shared, load_config, say, tr};
 use crate::{mail, pim, work};
-use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 use sioul_core::agenda::Occurrence;
 use sioul_core::blocks::{self, Blocks, Closing, Fix, Pin, Place};
@@ -118,11 +117,11 @@ fn remove(shared: &Shared, path: &Path) -> Result<(), String> {
 
 /// "today, 14:00–14:45", "Thursday 8 October, 10:00–10:30".
 fn when(start: i64, end: i64) -> String {
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let at = |seconds: i64| Timestamp::from_second(seconds).map(|t| t.to_zoned(zone.clone())).ok();
     let (Some(from), Some(to)) = (at(start), at(end)) else { return String::new() };
     let (first, last) = (from.strftime("%H:%M").to_string(), to.strftime("%H:%M").to_string());
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     if from.date() == today {
         say("task-pinned-today", &[("from", first), ("to", last)])
     } else {
@@ -197,8 +196,8 @@ fn may_start(start: i64, now: i64, current: Option<&Pin>) -> bool {
 /// to it alone. Told in the status line, "Undo" offered: both put back.
 /// Returns what went wrong, else "".
 pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minutes: u32) -> String {
-    let zone = TimeZone::system();
-    let now = Zoned::now();
+    let zone = sioul_core::zone::current();
+    let now = sioul_core::zone::now();
     let task = match work::find_task(shared, uid) {
         Ok(task) => task,
         Err(e) => return e,
@@ -279,8 +278,8 @@ pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minu
 /// block, and a time given by a drag before blocks, taken out at once, put
 /// back by "Undo". Returns what went wrong, else "".
 pub(crate) fn unpin(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> String {
-    let zone = TimeZone::system();
-    let now = Zoned::now();
+    let zone = sioul_core::zone::current();
+    let now = sioul_core::zone::now();
     let task = match work::find_task(shared, uid) {
         Ok(task) => task,
         Err(e) => return e,
@@ -337,7 +336,7 @@ pub(crate) fn unpin(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> String {
 /// done: its blocks not begun deleted, their time freed; one under way ending
 /// then; those over kept, the record of when the work was done.
 pub(crate) fn closed(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: i64) {
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let mut changed = false;
     for block in found_of(uid).into_iter().filter(|b| !b.read_only && !b.recurring) {
         let path = PathBuf::from(&block.key);
@@ -367,7 +366,7 @@ pub(crate) fn with_task(uid: &str) -> Vec<(String, PathBuf)> {
 /// title as its own, a repeating task's turn as its dates say now (the task
 /// read from its file: the window's copy is read again later).
 pub(crate) fn follow(qt: &QtThread, shared: &Arc<Shared>, uid: &str) {
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let Ok(known) = work::find_task(shared, uid) else { return };
     let Some(task) = std::fs::read_to_string(&known.key).ok().and_then(|text| sioul_core::tasks::task_of_text(&text, &zone)) else { return };
     let stamp = Timestamp::now().as_second();

@@ -132,7 +132,7 @@ fn post(window: Option<(&QtThread, &Arc<Shared>)>) -> Option<Note> {
     }
     let running = timelog::running();
     let title = running.as_ref().map(|r| title_now(&mut shown.named, &r.task, window.map(|(_, shared)| shared))).unwrap_or_default();
-    let note = note_of(running.as_ref(), &title, Timestamp::now().as_second(), tr(), &TimeZone::system());
+    let note = note_of(running.as_ref(), &title, Timestamp::now().as_second(), tr(), &sioul_core::zone::current());
     // At a time the matrix of what reaches you says "Not at all" for it (as usual, never), the
     // note is taken away until that time ends; the session runs on.
     let note = note.filter(|_| crate::hours::comes(sioul_core::attention::Kind::Time));
@@ -155,7 +155,7 @@ fn title_now(named: &mut (String, String), uid: &str, shared: Option<&Arc<Shared
         None if named.0 == uid => return named.1.clone(),
         None => {
             let projects = load_config().notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
-            title_of(uid, &tasks::all(&TimeZone::system()), &projects)
+            title_of(uid, &tasks::all(&sioul_core::zone::current()), &projects)
         }
     };
     *named = (uid.to_string(), title.clone());

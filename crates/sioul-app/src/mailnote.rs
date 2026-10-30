@@ -207,7 +207,7 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
     if !config.reminders.mail {
         return;
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
     let seen = Seen::now(config, &now);
@@ -286,7 +286,7 @@ fn close_batch() {
 /// meantime): they keep waiting for their time. Some waited for it
 /// (`opens`): "The Porch opens: …", for them all.
 fn tell_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     if !Seen::now(load_config(), &now).may {
         return;
@@ -319,7 +319,7 @@ fn tick_from(window: Option<Window>) {
     if !config.reminders.mail {
         return;
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
     let seen = Seen::now(config, &now);

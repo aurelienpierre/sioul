@@ -400,7 +400,7 @@ pub fn view(offer: &Offer, record: &Record, sends_from: Option<&str>, tr: &Trans
         }
         tr.text(id, Some(&args))
     };
-    let day = |at: i64| jiff::Timestamp::from_second(at).map(|t| tr.day_in(t.to_zoned(jiff::tz::TimeZone::system()).date(), today)).unwrap_or_default();
+    let day = |at: i64| jiff::Timestamp::from_second(at).map(|t| tr.day_in(t.to_zoned(crate::zone::current()).date(), today)).unwrap_or_default();
     let label = tr.text("unsubscribe-label", None);
     let past = record.find(&offer.list.key);
     if let Some(left) = past.filter(|l| l.done()) {

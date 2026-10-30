@@ -58,9 +58,15 @@ Dialog {
         return pad(Math.floor(m / 60)) + ":" + pad(m % 60)
     }
 
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof dialog.sioul.zoneShift === "function" ? dialog.sioul.zoneShift(ms / 1000) : 0))
+    }
+
     // Today, as 2026-10-05.
     function today() {
-        const d = new Date()
+        const d = dialog.wall(Date.now())
         const pad = n => n < 10 ? "0" + n : String(n)
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
@@ -87,7 +93,7 @@ Dialog {
         dialog.problem = ""
         day.date = dialog.today()
         // The half hour just gone, to change as it was.
-        const now = new Date()
+        const now = dialog.wall(Date.now())
         const minutes = Math.floor((now.getHours() * 60 + now.getMinutes()) / 5) * 5
         at.text = dialog.clock(minutes - 30)
         until.text = dialog.clock(minutes)

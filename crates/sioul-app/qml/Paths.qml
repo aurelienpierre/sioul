@@ -16,14 +16,20 @@ QtObject {
 
     required property var sioul
 
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof paths.sioul.zoneShift === "function" ? paths.sioul.zoneShift(ms / 1000) : 0))
+    }
+
     // "09:30", on the clock, from Unix seconds.
     function clock(seconds) {
-        return Qt.formatTime(new Date(seconds * 1000), "HH:mm")
+        return Qt.formatTime(paths.wall(seconds * 1000), "HH:mm")
     }
 
     // "2026-10-06T14:30", a time given, from Unix seconds.
     function local(seconds) {
-        const d = new Date(seconds * 1000)
+        const d = paths.wall(seconds * 1000)
         const pad = n => n < 10 ? "0" + n : String(n)
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes())
     }

@@ -52,7 +52,7 @@ mod spam;
 mod tasks;
 
 use clap::{Parser, Subcommand};
-use jiff::{Timestamp, Zoned, tz::TimeZone};
+use jiff::{Timestamp, Zoned};
 use sioul_core::budget::{self, Ledger};
 use sioul_core::projects::ProjectStore;
 use sioul_core::config::{self, Config, Source};
@@ -414,7 +414,7 @@ fn porch_command(s: &Session, maildirs: &[PathBuf], open: bool, all: bool) -> Re
     let known = KnownSenders::load(&s.config.known_senders_path());
     let senders = porch::Senders::load(&s.config);
     let state = if all { PorchState::default() } else { PorchState::load(&PorchState::default_path()) };
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let triaged = porch::gather(&sources, store.as_ref(), &known, &senders, &state, now.timestamp().as_second());
     print_right_now(s, &triaged);
     let is_open = open || s.config.windows.is_empty() || window::current(&s.config.windows, &now).is_some();
@@ -589,7 +589,7 @@ fn window_command(s: &Session) -> Result<(), String> {
     if s.config.windows.is_empty() {
         return Err(s.tr.text("error-no-windows", None));
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mut args = sioul_core::i18n::args();
     let id = match window::current(&s.config.windows, &now) {
         Some((_, closing)) => {
@@ -616,7 +616,7 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
         Some(Ok(bank)) => ledger.with_bank(&bank, &sioul_core::words::Words::of(&s.config)),
         _ => ledger,
     };
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let mut args = sioul_core::i18n::args();
     args.set("month", s.tr.month_year(today));
     println!("{}", s.tr.text("budgets-title", Some(&args)));
@@ -647,7 +647,7 @@ fn print_mail_lines(s: &Session, ledger: &Ledger, maildirs: &[PathBuf]) {
     let store = load_store(&s.config);
     let known = KnownSenders::load(&s.config.known_senders_path());
     let senders = porch::Senders::load(&s.config);
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     // Every message, the ones the Porch was closed on included: payments are not news.
     let items = porch::gather(&sources(&s.config, maildirs), store.as_ref(), &known, &senders, &PorchState::default(), now.timestamp().as_second());
     let ignored = MoneyState::load(&MoneyState::default_path()).ignored;
@@ -709,7 +709,7 @@ fn unblock_command(s: &Session, entry: &str) -> Result<(), String> {
 pub(crate) fn date(s: &Session, seconds: Option<i64>) -> String {
     seconds
         .and_then(|sec| Timestamp::from_second(sec).ok())
-        .map_or_else(|| s.tr.text("no-date", None), |t| s.tr.date(&t.to_zoned(TimeZone::system()), true))
+        .map_or_else(|| s.tr.text("no-date", None), |t| s.tr.date(&t.to_zoned(sioul_core::zone::current()), true))
 }
 
 #[cfg(test)]

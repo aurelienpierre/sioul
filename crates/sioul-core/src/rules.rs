@@ -448,7 +448,7 @@ impl Condition {
         args.set("field", self.field.id());
         args.set("test", self.test.id());
         args.set("value", self.value.trim().to_string());
-        let today = jiff::Zoned::now().date();
+        let today = crate::zone::now().date();
         let id = match self.field.value(self.test) {
             Value::Nothing => match self.field {
                 Field::Attachment => "filter-if-attachment",
@@ -533,7 +533,7 @@ impl Facts {
     /// What its file says: its size, when it arrived; its sender not judged.
     pub fn of(card: &Card) -> Facts {
         let size = card.path.as_ref().and_then(|path| std::fs::metadata(path).ok()).map(|m| m.len());
-        Facts { who: None, unproven: false, size, arrived: crate::porch::sent(card), zone: jiff::tz::TimeZone::system() }
+        Facts { who: None, unproven: false, size, arrived: crate::porch::sent(card), zone: crate::zone::current() }
     }
 }
 

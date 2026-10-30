@@ -94,6 +94,10 @@ pub struct Occurrence {
     /// An appointment one of whose legs was moved with it, its timetable not checked (`anchors::mark`).
     #[serde(skip)]
     pub legs_doubt: bool,
+    /// Its own clock when it is not the time zone Sioul shows (`clock_of_text`):
+    /// "UTC", "America/New_York"; "" otherwise, and for a whole day. Said beside
+    /// your time: "14:00 here · 15:00 Paris".
+    pub clock: String,
 }
 
 /// Someone invited, and what they answered.
@@ -456,6 +460,10 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
     let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
     let with_others = meeting_with_others(&text, own);
     let anchor = crate::anchors::parse(&text);
+    // Its own clock, said beside its time when it is another than the one
+    // shown (none for UTC on a device showing UTC); never a task's time
+    // block's, written in UTC and said here alone.
+    let clock = Some(clock_of_text(&text, zone)).filter(|c| *c != crate::zone::name_of(zone, Timestamp::now()) && !crate::appointments::block_of(&text, "")).unwrap_or_default();
     let Some(ical) = parse(&for_expansion(&from_window(&text, from))) else { return Vec::new() };
     let expanded = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT);
     let mut found = Vec::new();
@@ -508,6 +516,7 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
             anchor: anchor.clone(),
             leg_of: String::new(),
             legs_doubt: false,
+            clock: if all_day { String::new() } else { clock.clone() },
         });
     }
     // Your own time around a meeting, kept in your own file, wins over the
@@ -519,7 +528,7 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
 /// Everything between `from` and `to`, from every calendar, by start; those
 /// you declined marked (`declined`), by your accounts' addresses.
 pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let own = own_addresses();
     // The calendars that take events (a task list's tasks are the task views'; its tasks show here by their time blocks).
     let mut all: Vec<Occurrence> = vdir::collections(Kind::Calendars)
@@ -813,7 +822,7 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
                 } else {
                     Certainty::Fixed
                 },
-                source: Source::Calendar { key: o.key.clone(), uid: o.uid.clone(), start: o.start, recurring: o.recurring, calendar: o.calendar.clone(), collection: crate::timeline::collection_of(&o.key) },
+                source: Source::Calendar { key: o.key.clone(), uid: o.uid.clone(), start: o.start, recurring: o.recurring, calendar: o.calendar.clone(), collection: crate::timeline::collection_of(&o.key), clock: o.clock.clone() },
                 can: Can { edit: if block { Form::Task } else { Form::Event }, drag: if movable { Move::Event } else { Move::None }, ends: movable, delete: free && !block, tick: free, why },
                 privacy: if block && errand(&o.task) { Privacy::Health } else { Privacy::Admin },
                 title: o.summary.clone(),
@@ -882,6 +891,107 @@ pub struct EventEdit {
     /// Its reminder before: "" as usual, "none" not this one, "15" minutes before (`reminders::REMIND`).
     #[serde(default)]
     pub remind: String,
+    /// The clock its times are on (the form's Clock): "" the time zone Sioul
+    /// shows (`zone::current`), written with its TZID as before; "UTC",
+    /// written `…Z`; or a zone's name ("America/New_York"), written with its
+    /// TZID and its VTIMEZONE. Read from its file (`clock_of_text`), kept
+    /// when it is edited unless changed; a whole day has none.
+    #[serde(default)]
+    pub clock: String,
+}
+
+/// An event's own clock, as its first DTSTART writes it (`EventEdit::clock`):
+/// "UTC" for a TZID naming UTC, or a series repeating in UTC (`…Z`); a
+/// zone's name for a TZID naming another zone than `zone` (yours); "" for a
+/// time on `zone`, a floating one, a zone no reader knows, or a whole day.
+/// A one-off event at its instant in UTC (`…Z`) names no clock: it is how
+/// programs write an instant (invitations, feeds, Sioul's own one-off events
+/// until 28 October 2026), seldom a time announced in UTC; it is said on
+/// `zone` alone. A clock chosen is written as a zone, UTC's too (`time_lines`).
+pub fn clock_of_text(text: &str, zone: &TimeZone) -> String {
+    let source = lines::unfold(text);
+    let Some(range) = master_range(&source) else { return String::new() };
+    let master = &source[range];
+    let Some(line) = master.iter().find(|l| lines::name(l) == "DTSTART") else { return String::new() };
+    let value = lines::value(line).trim();
+    if value.len() == 8 || lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("DATE")) {
+        return String::new();
+    }
+    if value.ends_with('Z') || value.ends_with('z') {
+        let repeats = master.iter().any(|l| matches!(lines::name(l).as_str(), "RRULE" | "RDATE"));
+        return if repeats { "UTC".to_string() } else { String::new() };
+    }
+    let Some(Clock::Zone(own)) = lines::param(line, "TZID").map(|t| clock_of(&t)) else { return String::new() };
+    match own.iana_name() {
+        Some("UTC" | "Etc/UTC" | "Etc/GMT" | "Etc/Zulu" | "Zulu" | "GMT") => "UTC".to_string(),
+        Some(name) if Some(name) != zone.iana_name() => name.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// The zone a clock names (`EventEdit::clock`); none for "" (the time zone shown) or a name that does not read.
+pub fn clock_zone(clock: &str) -> Option<TimeZone> {
+    match clock.trim() {
+        "" => None,
+        "UTC" => Some(TimeZone::UTC),
+        name => TimeZone::get(name).ok(),
+    }
+}
+
+/// The form's line beside its times on another clock: "15:00 – 16:00 UTC ·
+/// 16:00 – 17:00 here", the day here said when it is another ("23:30 – 23:45
+/// UTC · 00:30 – 00:45 here, Thursday 5 November"); "" on the time zone shown
+/// (`clock` ""), for a whole day, or while the times typed do not read.
+pub fn clock_line(start: &str, end: &str, clock: &str, zone: &TimeZone, tr: &crate::i18n::Translator) -> String {
+    let Some(own) = clock_zone(clock) else { return String::new() };
+    let read = |wall: &str| wall.parse::<DateTime>().ok().filter(|_| wall.len() > 10).and_then(|w| w.to_zoned(own.clone()).ok());
+    let (Some(from), Some(until)) = (read(start), read(end)) else { return String::new() };
+    let said = |a: &Zoned, b: &Zoned| if b > a { format!("{} – {}", a.strftime("%H:%M"), b.strftime("%H:%M")) } else { a.strftime("%H:%M").to_string() };
+    let (here_from, here_until) = (from.with_time_zone(zone.clone()), until.with_time_zone(zone.clone()));
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("there", said(&from, &until));
+    args.set("place", crate::zone::place_of(clock));
+    args.set("here", said(&here_from, &here_until));
+    if here_from.date() == from.date() {
+        return tr.text("agenda-there-here", Some(&args));
+    }
+    args.set("day", tr.day(here_from.date()));
+    tr.text("agenda-there-here-day", Some(&args))
+}
+
+/// A form said on `zone`'s clock (the time zone shown), its own clock set
+/// aside: the same instants, for what reads its times as this device's (a
+/// task made of it, an agent); a whole day, or a form on that clock, as it is.
+pub fn on_zone(mut edit: EventEdit, zone: &TimeZone) -> EventEdit {
+    if let Some(own) = clock_zone(&edit.clock).filter(|_| !edit.all_day) {
+        edit.start = retime(&edit.start, &own, zone);
+        edit.end = retime(&edit.end, &own, zone);
+    }
+    edit.clock = String::new();
+    edit
+}
+
+/// A form whose times are said on `zone`'s clock put on the clock `clock`
+/// ("" the time zone shown, "UTC", a zone's name): the same instants, said
+/// on the clock it then keeps. A whole day has none.
+pub fn on_clock(mut edit: EventEdit, clock: &str, zone: &TimeZone) -> EventEdit {
+    if edit.all_day {
+        edit.clock = String::new();
+        return edit;
+    }
+    if let Some(own) = clock_zone(clock) {
+        edit.start = retime(&edit.start, zone, &own);
+        edit.end = retime(&edit.end, zone, &own);
+    }
+    edit.clock = clock.trim().to_string();
+    edit
+}
+
+/// A form's time ("2026-10-05T09:00", or a day) said on another clock: the
+/// same instant, from `from`'s clock to `to`'s; a day as it is.
+pub fn retime(wall: &str, from: &TimeZone, to: &TimeZone) -> String {
+    let Ok(at) = wall.parse::<DateTime>() else { return wall.to_string() };
+    at.to_zoned(from.clone()).map(|z| z.with_time_zone(to.clone()).strftime("%Y-%m-%dT%H:%M").to_string()).unwrap_or_else(|_| wall.to_string())
 }
 
 /// An event's reminder before (`reminders::REMIND`), as the form says it:
@@ -911,13 +1021,15 @@ fn remind_of(ical: &ICalendar, component: &ICalendarComponent) -> String {
 
 /// An event as the form shows it, from its file, in your time zone.
 pub fn edit_of(path: &Path) -> Option<EventEdit> {
-    edit_of_text(&std::fs::read_to_string(path).ok()?, &TimeZone::system())
+    edit_of_text(&std::fs::read_to_string(path).ok()?, &crate::zone::current())
 }
 
 /// An event as the form shows it, from its text, in `zone`.
 pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
     let ical = parse(&for_expansion(text))?;
-    let (zone, tz) = (zone.clone(), calcard_zone(zone));
+    // Its times said on its own clock (UTC, another zone), else on yours.
+    let clock = clock_of_text(text, zone);
+    let (zone, tz) = (clock_zone(&clock).unwrap_or_else(|| zone.clone()), calcard_zone(zone));
     let (index, master) = ical.components.iter().enumerate().find(|(_, c)| c.component_type == ICalendarComponentType::VEvent && c.property(&ICalendarProperty::RecurrenceId).is_none())?;
     // Its first occurrence still there: the very first may have been left out (EXDATE) or changed.
     let first = ical.expand_dates(tz, FIRST_LOOKED_AT).events.into_iter().find(|e| e.comp_id as usize == index)?;
@@ -951,6 +1063,7 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         margins,
         demands,
         remind: remind_word(&text_of(master, &ICalendarProperty::Other(crate::reminders::REMIND.to_string()))),
+        clock: if all_day { String::new() } else { clock },
     })
 }
 
@@ -972,6 +1085,9 @@ pub fn first_times(text: &str, zone: &TimeZone) -> Option<(i64, i64)> {
 /// The start and end the form means, in your time zone.
 fn instants(edit: &EventEdit, zone: &TimeZone) -> Result<(Zoned, Zoned), String> {
     let bad = |what: &str| format!("{what}: ?");
+    // A time on its own clock (UTC, another zone); a whole day is a day wherever it is read.
+    let own = if edit.all_day { None } else { clock_zone(&edit.clock) };
+    let zone = own.as_ref().unwrap_or(zone);
     if edit.all_day {
         let start: Date = edit.start.get(..10).unwrap_or(&edit.start).parse().map_err(|_| bad(&edit.start))?;
         let last: Date = edit.end.get(..10).unwrap_or(&edit.end).parse().unwrap_or(start);
@@ -1019,6 +1135,18 @@ fn time_lines_with(edit: &EventEdit, zone: &TimeZone, recorded: Option<&str>) ->
         let year = start.with_time_zone(clock.clone()).year();
         (vec![format!("DTSTART;TZID={name}:{}", wall(&start)), format!("DTEND;TZID={name}:{}", wall(&end))], Some(ZoneWritten { name: name.to_string(), clock: clock.clone(), year }))
     };
+    // Its own clock, chosen in the form or kept from its file, as a zone by its name with its
+    // VTIMEZONE (a series repeating on that zone's wall time), UTC's too: a bare `…Z` names
+    // no clock for a one-off event (`clock_of_text`).
+    match edit.clock.trim() {
+        "" => {}
+        "UTC" => return Ok(on("UTC", &TimeZone::UTC)),
+        name => {
+            if let Ok(clock) = TimeZone::get(name) {
+                return Ok(on(name, &clock));
+            }
+        }
+    }
     if let Some((name, clock)) = named_zone(zone, recorded, &[start.timestamp(), end.timestamp()]) {
         return Ok(on(&name, &clock));
     }
@@ -1147,7 +1275,7 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
     if let Some(written) = &tzid {
         out.extend(vtimezone(&written.clock, &written.name, written.year));
     }
-    out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&Zoned::now()))]);
+    out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&crate::zone::now()))]);
     out.extend(times);
     out.extend(content_lines(edit, Changed::ALL));
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
@@ -1228,7 +1356,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
     if before.as_ref() == Some(edit) {
         return Ok(text.to_string());
     }
-    let times_changed = before.as_ref().is_none_or(|b| (&b.start, &b.end, b.all_day) != (&edit.start, &edit.end, edit.all_day));
+    let times_changed = before.as_ref().is_none_or(|b| (&b.start, &b.end, b.all_day, b.clock.trim()) != (&edit.start, &edit.end, edit.all_day, edit.clock.trim()));
     let rule_changed = before.as_ref().is_none_or(|b| b.repeat != edit.repeat);
     let changed = match &before {
         Some(b) => Changed { title: b.title.trim() != edit.title.trim(), location: b.location.trim() != edit.location.trim(), notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind) },
@@ -1294,7 +1422,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             let sequence = event.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse::<u32>().ok()).unwrap_or(0);
             let mut kept: Vec<String> = event.drain(..).filter(|l| !rewritten(&lines::name(l))).collect();
             let at = kept.iter().position(|l| lines::name(l) == "BEGIN" && lines::value(l).trim().eq_ignore_ascii_case("VALARM")).unwrap_or(kept.len());
-            let mut added = vec![format!("DTSTAMP:{}", utc(&Zoned::now())), format!("LAST-MODIFIED:{}", utc(&Zoned::now()))];
+            let mut added = vec![format!("DTSTAMP:{}", utc(&crate::zone::now())), format!("LAST-MODIFIED:{}", utc(&crate::zone::now()))];
             if revised {
                 added.push(format!("SEQUENCE:{}", sequence.saturating_add(1)));
             }
@@ -1324,7 +1452,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
 /// application) goes with its change: its own VEVENT is taken out, and the time it
 /// replaced in the series is left out.
 pub fn skip_occurrence(text: &str, start: i64) -> Option<String> {
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let mut source = lines::unfold(text);
     if let Some((place, true)) = occurrence_at(text, start, &zone) {
         let range = event_ranges(&source).get(place)?.clone();
@@ -1510,7 +1638,7 @@ fn retimed_stamped(block: &[String], like: &str, from: Timestamp, to: Timestamp,
         }
         out.push(line.clone());
     }
-    let now = stamp.map_or_else(|| utc(&Zoned::now()), str::to_string);
+    let now = stamp.map_or_else(|| utc(&crate::zone::now()), str::to_string);
     let mut own = Vec::new();
     own.extend(recurrence);
     own.extend([written_like(like, "DTSTART", from, zone), written_like(like, "DTEND", to, zone), format!("DTSTAMP:{now}"), format!("LAST-MODIFIED:{now}")]);
@@ -1624,7 +1752,12 @@ pub fn moved(text: &str, start: i64, new_start: i64, new_end: i64, only_this: bo
     for line in source[master.clone()].iter().filter(|l| lines::name(l) == "RRULE") {
         rule_moved(lines::value(line).trim(), span, zone).ok_or(MoveProblem::SetDays)?;
     }
+    // Its first time on the clock the drag is measured on (the form says it on the event's own).
     let first: DateTime = edit.start.parse().map_err(|e| unreadable(&e))?;
+    let first = match clock_zone(&edit.clock) {
+        Some(own) => first.to_zoned(own).map_err(|e| unreadable(&e))?.with_time_zone(zone.clone()).datetime(),
+        None => first,
+    };
     let first = first.checked_add(span).map_err(|e| unreadable(&e))?;
     let last = first.checked_add(jiff::Span::new().seconds(new_end - new_start)).map_err(|e| unreadable(&e))?;
     let instant = |at: DateTime| at.to_zoned(zone.clone()).map(|z| z.timestamp()).map_err(|e| unreadable(&e));
@@ -1804,7 +1937,8 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
     let edit = edit_of_text(text, zone);
     found.start = edit.as_ref().and_then(|e| {
         let at: DateTime = if e.all_day { format!("{}T00:00", e.start).parse().ok()? } else { e.start.parse().ok()? };
-        at.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())
+        // Its form's time is on its own clock.
+        at.to_zoned(clock_zone(&e.clock).unwrap_or_else(|| zone.clone())).ok().map(|z| z.timestamp().as_second())
     }).unwrap_or(0);
     found.end = edit.is_some().then(|| first_times(text, zone).map(|(_, end)| end)).flatten().unwrap_or(0);
     Some(found)
@@ -1812,7 +1946,7 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
 
 /// The ties of every event, in every calendar.
 pub fn event_refs() -> Vec<EventRef> {
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     vdir::collections(Kind::Calendars)
         .iter()
         .flat_map(|c| c.items())
@@ -1930,7 +2064,7 @@ pub fn reply(text: &str, me: &str, answer: &str) -> Option<String> {
     }
     out.push("BEGIN:VEVENT".to_string());
     out.extend(source[master].iter().filter(|l| kept.contains(&lines::name(l).as_str())).cloned());
-    out.push(format!("DTSTAMP:{}", utc(&Zoned::now())));
+    out.push(format!("DTSTAMP:{}", utc(&crate::zone::now())));
     out.push(attendee);
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
     Some(lines::fold(&out))
@@ -3166,6 +3300,111 @@ mod tests {
         assert!(moved.contains("DTSTART:20261104T100000Z") && moved.contains("DTEND:20261104T110000Z") && !moved.contains("TZID"), "its own form kept: {moved}");
     }
 
+    /// An event's own clock (the time zones part): a weekly local event keeps
+    /// its wall time across the change to summer time, a weekly UTC one its
+    /// UTC time; a UTC event is the same instant from Paris and from New York,
+    /// its clock "UTC" from both, its form on its clock; an edit keeps its
+    /// clock, and one changed on purpose writes the time zone shown; and the
+    /// four files older devices read (one-off and weekly, in UTC and in New
+    /// York with its VTIMEZONE) read here, by readers that are theirs.
+    /// The form's conversion line beside its times on another clock (the
+    /// Clock field): said here, the day too when it is another; none on the
+    /// time zone shown, nor for a whole day.
+    #[test]
+    fn the_form_says_its_times_here_beside_another_clock() {
+        let paris = TimeZone::get("Europe/Paris").unwrap();
+        let tr = crate::i18n::Translator::new("en");
+        assert_eq!(clock_line("2026-11-04T15:00", "2026-11-04T16:00", "UTC", &paris, &tr), "15:00 – 16:00 UTC · 16:00 – 17:00 here");
+        assert_eq!(clock_line("2026-11-04T18:00", "2026-11-04T19:00", "America/New_York", &paris, &tr), "18:00 – 19:00 New York · 00:00 – 01:00 here, Thursday 5 November");
+        assert_eq!(clock_line("2026-11-04T15:00", "2026-11-04T16:00", "", &paris, &tr), "");
+        assert_eq!(clock_line("2026-11-04", "2026-11-05", "UTC", &paris, &tr), "");
+        let fr = crate::i18n::Translator::new("fr");
+        assert_eq!(clock_line("2026-11-04T15:00", "2026-11-04T16:00", "UTC", &paris, &fr), "15:00 – 16:00 UTC · 16:00 – 17:00 ici");
+    }
+
+    #[test]
+    fn an_event_keeps_its_own_clock() {
+        let paris = paris();
+        let new_york = TimeZone::get("America/New_York").unwrap();
+        let read = |text: &str, from: &str, to: &str, reader: &TimeZone| -> Vec<i64> {
+            let path = write_temp("own-clock.ics", text);
+            file_occurrences(&path, &calendar(), at(from), at(to), reader).iter().map(|o| o.start).collect()
+        };
+        let edit = |start: &str, end: &str, repeat: &str, clock: &str| EventEdit { title: "Choir".into(), start: start.into(), end: end.into(), repeat: repeat.into(), clock: clock.into(), ..EventEdit::default() };
+        // Weekly at 19:00 in Paris from 20 March 2027, across the change of 28 March: 19:00 each week.
+        let local = new_event(&edit("2027-03-20T19:00", "2027-03-20T20:00", "weekly", ""), &paris).unwrap();
+        assert_eq!(read(&local, "2027-03-20T00:00", "2027-04-04T00:00", &paris), vec![at("2027-03-20T19:00"), at("2027-03-27T19:00"), at("2027-04-03T19:00")], "its wall time");
+        // Weekly at 18:00 UTC: 19:00 in Paris in winter, 20:00 in summer.
+        let utc = new_event(&edit("2027-03-20T18:00", "2027-03-20T19:00", "weekly", "UTC"), &paris).unwrap();
+        assert!(utc.contains("DTSTART;TZID=UTC:20270320T180000") && utc.contains("TZID:UTC"), "{utc}");
+        assert_eq!(read(&utc, "2027-03-20T00:00", "2027-04-04T00:00", &paris), vec![at("2027-03-20T19:00"), at("2027-03-27T19:00"), at("2027-04-03T20:00")], "its UTC time");
+        // 15:00 UTC on 4 November: 16:00 in Paris, 10:00 in New York, the same instant.
+        let call = new_event(&edit("2026-11-04T15:00", "2026-11-04T16:00", "", "UTC"), &paris).unwrap();
+        let (from_paris, from_new_york) = (read(&call, "2026-11-04T00:00", "2026-11-05T00:00", &paris), read(&call, "2026-11-04T00:00", "2026-11-05T00:00", &new_york));
+        assert_eq!(from_paris, from_new_york, "the same instant");
+        let said = |zone: &TimeZone| Timestamp::from_second(from_paris[0]).unwrap().to_zoned(zone.clone()).strftime("%H:%M").to_string();
+        assert_eq!((said(&paris), said(&new_york)), ("16:00".to_string(), "10:00".to_string()));
+        assert_eq!((clock_of_text(&call, &paris), clock_of_text(&call, &new_york)), ("UTC".to_string(), "UTC".to_string()));
+        assert_eq!(edit_of_text(&call, &new_york).unwrap().start, "2026-11-04T15:00", "its form on its clock");
+        // An appointment in New York, edited from Paris (its title, then an hour later): on New York's clock still.
+        let theirs = new_event(&edit("2026-11-04T10:00", "2026-11-04T11:00", "", "America/New_York"), &paris).unwrap();
+        assert!(theirs.contains("DTSTART;TZID=America/New_York:20261104T100000") && theirs.contains("TZID:America/New_York"), "{theirs}");
+        let mut changed = edit_of_text(&theirs, &paris).unwrap();
+        assert_eq!((changed.clock.as_str(), changed.start.as_str()), ("America/New_York", "2026-11-04T10:00"));
+        changed.title = "Board".into();
+        changed.start = "2026-11-04T11:00".into();
+        changed.end = "2026-11-04T12:00".into();
+        let rewritten = apply(&theirs, &changed, &paris).unwrap();
+        assert!(rewritten.contains("DTSTART;TZID=America/New_York:20261104T110000"), "its clock kept: {rewritten}");
+        // Its clock changed on purpose to the time zone shown: 17:00 in Paris, the same instant.
+        let mut here = edit_of_text(&rewritten, &paris).unwrap();
+        here.clock = String::new();
+        here.start = retime(&here.start, &new_york, &paris);
+        here.end = retime(&here.end, &new_york, &paris);
+        let local_now = apply(&rewritten, &here, &paris).unwrap();
+        assert!(local_now.contains("DTSTART;TZID=Europe/Paris:20261104T170000"), "{local_now}");
+        // Said on this device's clock and back: the same instants, the clock kept.
+        let shown = on_zone(edit_of_text(&rewritten, &paris).unwrap(), &paris);
+        assert_eq!((shown.start.as_str(), shown.clock.as_str()), ("2026-11-04T17:00", ""));
+        assert_eq!(on_clock(shown, "America/New_York", &paris), edit_of_text(&rewritten, &paris).unwrap());
+        // What the older devices read: the same readers (agenda.rs's, unchanged since 468a123).
+        assert_eq!(read(&theirs, "2026-11-04T00:00", "2026-11-05T00:00", &paris), vec![at("2026-11-04T16:00")], "one-off, New York");
+        assert_eq!(first_times(&call, &paris).map(|t| t.0), Some(at("2026-11-04T16:00")), "one-off, UTC");
+        let weekly_new_york = new_event(&edit("2027-03-06T10:00", "2027-03-06T11:00", "weekly", "America/New_York"), &paris).unwrap();
+        // New York changes on 14 March, Paris on 28 March: 16:00 here, then 15:00.
+        assert_eq!(read(&weekly_new_york, "2027-03-13T00:00", "2027-03-21T00:00", &paris), vec![at("2027-03-13T16:00"), at("2027-03-20T15:00")], "weekly, New York's wall time");
+        // Another program's instants in UTC (`…Z`, as Sioul wrote one-off events until 28 October
+        // 2026): read at their instants; a one-off names no clock, a series repeats in UTC.
+        let bare = |rule: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Other//EN\r\nBEGIN:VEVENT\r\nUID:bare\r\nDTSTAMP:20261020T100000Z\r\nDTSTART:20261104T150000Z\r\nDTEND:20261104T160000Z\r\n{rule}SUMMARY:Bare\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        assert_eq!(read(&bare(""), "2026-11-04T00:00", "2026-11-05T00:00", &paris), vec![at("2026-11-04T16:00")], "one-off, UTC's instant");
+        assert_eq!(read(&bare("RRULE:FREQ=WEEKLY;COUNT=2\r\n"), "2026-11-04T00:00", "2026-11-12T00:00", &paris), vec![at("2026-11-04T16:00"), at("2026-11-11T16:00")], "weekly, in UTC");
+        assert_eq!((clock_of_text(&bare(""), &paris), clock_of_text(&bare("RRULE:FREQ=WEEKLY\r\n"), &paris)), (String::new(), "UTC".to_string()), "a one-off in UTC names no clock; a series repeats in UTC");
+        assert_eq!(edit_of_text(&bare(""), &paris).map(|e| (e.start, e.clock)), Some(("2026-11-04T16:00".to_string(), String::new())), "its form on the zone shown");
+    }
+
+    /// An event on another clock is tied and dragged by its instants: its
+    /// reference's start is its instant, and a weekly one in UTC dragged half
+    /// an hour from Paris is half an hour later, in UTC still.
+    #[test]
+    fn an_event_on_another_clock_is_tied_and_moved_by_its_instants() {
+        let paris = paris();
+        let edit = |repeat: &str| EventEdit { title: "Call".into(), start: "2026-11-04T15:00".into(), end: "2026-11-04T16:00".into(), repeat: repeat.into(), clock: "UTC".into(), ..EventEdit::default() };
+        let call = new_event(&edit(""), &paris).unwrap();
+        assert_eq!(event_ref(&call, "/c/call.ics", &paris).map(|r| r.start), Some(at("2026-11-04T16:00")), "16:00 in Paris, 15:00 UTC");
+        let weekly = new_event(&edit("weekly"), &paris).unwrap();
+        let first = at("2026-11-04T16:00");
+        let dragged = moved(&weekly, first, first + 1_800, first + 5_400, false, &paris).unwrap();
+        assert!(dragged.contains("DTSTART;TZID=UTC:20261104T153000"), "half an hour later, in UTC still: {dragged}");
+        // Its clock said beside its time; none on a device showing UTC, none for a task's time block.
+        let clock = |text: &str, zone: &TimeZone| {
+            let path = write_temp("clock-said.ics", text);
+            file_occurrences(&path, &calendar(), at("2026-11-04T00:00"), at("2026-11-05T00:00"), zone).iter().map(|o| o.clock.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(clock(&call, &paris), ["UTC"]);
+        assert_eq!(clock(&call, &TimeZone::UTC), [""], "UTC shown: nothing to say beside");
+        assert_eq!(clock(&call.replace("END:VEVENT", "X-SIOUL-TASK:some-task\r\nEND:VEVENT"), &paris), [""], "a task's time block");
+    }
+
     /// An event whose TZID is a Windows name (Outlook's "Eastern Standard
     /// Time"), dragged half an hour on a device in Paris: half an hour later,
     /// as calcard reads it and as Sioul's form does (review of 5f173ff, later 1).
@@ -3181,7 +3420,8 @@ mod tests {
         let moved = moved(text, nine, nine + 1_800, nine + 5_400, false, &paris()).unwrap();
         assert!(moved.contains("DTSTART;TZID=Eastern Standard Time:20261104T093000") && moved.contains("DTEND;TZID=Eastern Standard Time:20261104T103000"), "{moved}");
         assert_eq!(read(&moved), vec![nine + 1_800], "calcard: half an hour later");
-        assert_eq!(edit_of_text(&moved, &paris()).map(|e| e.start), Some("2026-11-04T15:30".to_string()), "Sioul's form: 15:30 in Paris");
+        let form = edit_of_text(&moved, &paris()).unwrap();
+        assert_eq!((form.start.as_str(), form.clock.as_str()), ("2026-11-04T09:30", "America/New_York"), "Sioul's form: 09:30 on its own clock, 15:30 in Paris");
         assert!(occurrence_at(&moved, nine + 1_800, &paris()).is_some(), "a writer finds it there");
     }
 

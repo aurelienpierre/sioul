@@ -269,7 +269,7 @@ pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     if cfg!(target_os = "android") || !config.reminders.gather || crate::hours::level(sioul_core::attention::Kind::Sites) != sioul_core::attention::Level::Gathered {
         return;
     }
-    let now = jiff::Zoned::now();
+    let now = sioul_core::zone::now();
     // The time just passed, within two minutes: a window closed then misses it, the Porch keeps all.
     let due = config
         .reminders

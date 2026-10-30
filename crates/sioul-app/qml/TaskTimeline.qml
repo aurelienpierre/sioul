@@ -24,7 +24,7 @@ ColumnLayout {
     // the day it was made; past midnight, today's line moves to its own day
     // before the plan is made again.
     property string today: {
-        const d = new Date()
+        const d = new Date(Date.now() + (typeof timeline.sioul.zoneShift === "function" ? timeline.sioul.zoneShift(Date.now() / 1000) : 0))
         const pad = n => n < 10 ? "0" + n : String(n)
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }

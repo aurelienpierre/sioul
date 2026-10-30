@@ -30,7 +30,7 @@ Dialog {
 
     // The first and last day of a range, around today.
     function bounds(range) {
-        const today = new Date()
+        const today = new Date(Date.now() + (typeof exporting.sioul.zoneShift === "function" ? exporting.sioul.zoneShift(Date.now() / 1000) : 0))
         const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7)
         const shift = (d, days) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + days)
         if (range === "this-week")
@@ -50,8 +50,9 @@ Dialog {
         exporting.problem = ""
         projectChoice.currentIndex = Math.max(0, exporting.projects.findIndex(p => p.id === project))
         rangeChoice.currentIndex = 3
-        fromDay.date = exporting.iso(new Date())
-        toDay.date = exporting.iso(new Date())
+        const shown = new Date(Date.now() + (typeof exporting.sioul.zoneShift === "function" ? exporting.sioul.zoneShift(Date.now() / 1000) : 0))
+        fromDay.date = exporting.iso(shown)
+        toDay.date = exporting.iso(shown)
         exporting.open()
     }
 

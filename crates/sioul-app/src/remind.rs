@@ -22,7 +22,7 @@ pub(crate) fn tick(qt: &QtThread) {
     let qt = qt.clone();
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
-        let now = jiff::Zoned::now();
+        let now = sioul_core::zone::now();
         // What holds now is the notification matrix's to say (Settings ▸ Reminders and
         // notifications): asleep, as usual, nothing but what you chose to happen then.
         let (mut all, holds) = reminders::gather(&load_config(), tr(), &now);
@@ -141,7 +141,7 @@ fn choices_with(tr: &sioul_core::i18n::Translator, usual: u32, current: &str) ->
 pub(crate) fn of_event(key: &str, start: i64) -> String {
     let Some(path) = crate::pim::ours(key) else { return String::new() };
     let Some(calendar) = crate::pim::collection_of(&path) else { return String::new() };
-    let zone = jiff::tz::TimeZone::system();
+    let zone = sioul_core::zone::current();
     let found = sioul_core::agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
     // A whole day is reminded the working day before only: nothing to say or choose here.
     let Some(event) = found.iter().find(|o| o.start == start && !o.all_day) else { return String::new() };

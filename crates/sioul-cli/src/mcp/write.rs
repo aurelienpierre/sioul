@@ -20,9 +20,7 @@ use super::access;
 use super::read::{self, Desk};
 use super::tools::{Answer, Args};
 use crate::{Session, one_line};
-use jiff::Zoned;
 use jiff::civil::{Date, DateTime};
-use jiff::tz::TimeZone;
 use serde_json::json;
 use sioul_core::agenda::{self, EventEdit};
 use sioul_core::compose::{self, Draft, DraftKind};
@@ -163,7 +161,7 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
         edit.parent = parent.uid.clone();
         projects.extend(consent.projects_of(&links::task_uri(&parent.uid)));
         // After the bigger task's other steps, as the window adds one.
-        edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&loaded.tasks, &parent.uid), &Zoned::now()));
+        edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&loaded.tasks, &parent.uid), &sioul_core::zone::now()));
     }
     for wanted in args.list("after")? {
         edit.waits_for.push(read::find_named(s, &open_tasks, &loaded.tasks, &|uid| consent.allows(&links::task_uri(uid)), &wanted, "This task")?.uid.clone());
@@ -179,7 +177,7 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
         tie_in_task(&mut edit, &world, &uri);
     }
     let uid = vdir::new_name();
-    let text = tasks::new_task(&edit, &uid, &TimeZone::system(), &Zoned::now())?;
+    let text = tasks::new_task(&edit, &uid, &sioul_core::zone::current(), &sioul_core::zone::now())?;
     let path = free_item(tasks::new_path(&list), || tasks::new_path(&list));
     vdir::write_item(&path, &text)?;
     let uri = links::task_uri(&uid);
@@ -202,12 +200,12 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
         return Ok(Answer { text: format!("{said} {}  [{}]", one_line(&task.title), task.uid), data: json!({ "uid": task.uid, "changed": false }) });
     }
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
-    let text = tasks::set_status(&current, Status::Completed, &TimeZone::system(), &Zoned::now())?;
+    let text = tasks::set_status(&current, Status::Completed, &sioul_core::zone::current(), &sioul_core::zone::now())?;
     // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md,
     // "Composed tasks"): only for a step done for good (a repeating one's turn comes back open),
     // and as far as agents may change them, worked out before anything is written.
     let (closing, too) = if sioul_core::composed::done_for_good(&text) {
-        super::items::closing_allowed(&desk.consent, &desk.loaded.tasks, &task.uid, &Zoned::now()).map_err(|r| r.said(&s.tr))?
+        super::items::closing_allowed(&desk.consent, &desk.loaded.tasks, &task.uid, &sioul_core::zone::now()).map_err(|r| r.said(&s.tr))?
     } else {
         (sioul_core::composed::Change::default(), None)
     };
@@ -264,16 +262,20 @@ pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {
             .ok_or_else(|| format!("No calendar “{}” takes events here (account/id).", one_line(&id)))?,
         None => agenda::default_calendar().ok_or_else(|| s.tr.text("dav-no-calendar", None))?,
     };
+    let clock = args.clock("clock")?.unwrap_or_default();
     let edit = EventEdit { title, location: args.line("location")?.unwrap_or_default(), notes: args.body("notes")?, start, end, all_day, repeat, ..EventEdit::default() };
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
+    // Its times given here, kept on its own clock when one is given: the same instants.
+    let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
+    let edit = agenda::on_clock(edit, &clock, &zone);
     let text = agenda::new_event(&edit, &zone)?;
     let path = free_item(agenda::new_path(&calendar), || agenda::new_path(&calendar));
     vdir::write_item(&path, &text)?;
     let uid = agenda::event_ref(&text, &path.display().to_string(), &zone).map(|e| e.uid).unwrap_or_default();
     let uri = links::event_uri(&uid);
-    let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
-    let text = format!("{}\n{} · {when}  <{uri}>", s.tr.text("event-saved", None), edit.title);
-    Ok(Answer { text, data: json!({ "uid": uid, "uri": uri, "calendar": format!("{}/{}", calendar.account, calendar.id), "file": path, "sent": false }) })
+    let there = if edit.clock.is_empty() { String::new() } else { format!(" ({} – {} {})", edit.start, edit.end, edit.clock) };
+    let text = format!("{}\n{} · {when}{there}  <{uri}>", s.tr.text("event-saved", None), edit.title);
+    Ok(Answer { text, data: json!({ "uid": uid, "uri": uri, "calendar": format!("{}/{}", calendar.account, calendar.id), "clock": edit.clock, "file": path, "sent": false }) })
 }
 
 /// A leg (part E): a ride or a walk before or after the appointment `anchor`,
@@ -293,7 +295,7 @@ fn add_leg(s: &Session, args: &Args) -> Result<Answer, String> {
     let consent = access::of(s, &loaded);
     let found = super::items::find_event(&consent, &args.needed("anchor")?)?;
     super::items::may_change(&consent, &links::event_uri(&found.uid))?;
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     if sioul_core::anchors::parse(&found.text).is_some() || sioul_core::appointments::block_of(&found.text, "") {
         return Err("A leg belongs to an appointment: not to another leg, nor to a task's time block.".into());
     }
@@ -324,7 +326,7 @@ fn add_leg(s: &Session, args: &Args) -> Result<Answer, String> {
             return Err("That step has a time of its own already.".into());
         }
         let step_text = std::fs::read_to_string(&step.key).map_err(|e| e.to_string())?;
-        let (as_time, pinned) = sioul_core::anchors::leg_for_step(&text, step, &step_text, &jiff::Zoned::now()).map_err(|e| s.tr.text(&e, None))?;
+        let (as_time, pinned) = sioul_core::anchors::leg_for_step(&text, step, &step_text, &sioul_core::zone::now()).map_err(|e| s.tr.text(&e, None))?;
         text = as_time;
         written.push((std::path::PathBuf::from(&step.key), pinned));
     }
@@ -562,7 +564,7 @@ pub fn link(s: &Session, args: &Args) -> Result<Answer, String> {
     // own file. Worked out and written with the notes' lock held, that file
     // read again first: the window writing the same note meanwhile loses nothing.
     let written = notes::with_lock(|| -> Result<String, String> {
-        match loaded.tie(&from, &to, &Zoned::now()) {
+        match loaded.tie(&from, &to, &sioul_core::zone::now()) {
             Some(change) => {
                 rewrite(s, &change)?;
                 Ok(change.path.display().to_string())

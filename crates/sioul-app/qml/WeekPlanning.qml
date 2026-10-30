@@ -78,7 +78,7 @@ ColumnLayout {
     // Now on the clock (Unix seconds) and today ("2026-10-06"): the window's clock.
     property real now: Date.now() / 1000
     property string today: {
-        const d = new Date()
+        const d = planning.wall(Date.now())
         const pad = n => n < 10 ? "0" + n : String(n)
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
@@ -94,7 +94,7 @@ ColumnLayout {
     }
     // Now in minutes from today's midnight, for its line.
     readonly property int minuteNow: {
-        const d = new Date(planning.now * 1000)
+        const d = planning.wall(planning.now * 1000)
         return d.getHours() * 60 + d.getMinutes()
     }
     // Today's step under way and the next one (`follow`), by their rows' keys.
@@ -216,6 +216,8 @@ ColumnLayout {
             title: item.title || "",
             line: item.line || "",
             when: placed.when || "",
+            // On another clock: both its times, for a list's line (the blocks say `when` alone).
+            both: placed.both || "",
             from: placed.from_minute,
             to: placed.to_minute,
             lead: span ? Math.max(-1440, minute(time.start)) : placed.from_minute,
@@ -671,8 +673,14 @@ ColumnLayout {
         return { start: start, end: start + (to - from), column: column }
     }
 
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof planning.sioul.zoneShift === "function" ? planning.sioul.zoneShift(ms / 1000) : 0))
+    }
+
     function clock(seconds) {
-        return Qt.formatTime(new Date(seconds * 1000), "HH:mm")
+        return Qt.formatTime(planning.wall(seconds * 1000), "HH:mm")
     }
 
     // "09:00 – 10:30"; on another day, its day first: "Tue 6, 09:00 – 10:30".
@@ -680,7 +688,7 @@ ColumnLayout {
         const times = planning.clock(to.start) + " – " + planning.clock(to.end)
         if (to.column === grab.row.day)
             return times
-        return new Date(to.start * 1000).toLocaleDateString(planning.locale, "ddd d") + ", " + times
+        return planning.wall(to.start * 1000).toLocaleDateString(planning.locale, "ddd d") + ", " + times
     }
 
     // A row of the model as a plain object: what stays after a publish changes the model
@@ -1615,6 +1623,8 @@ ColumnLayout {
             required property string title
             required property string line
             required property string when
+            // On another clock: both its times (the list's line under the title).
+            required property string both
             required property string date
             required property string colour
             required property string certainty
@@ -1739,7 +1749,7 @@ ColumnLayout {
                         // Its words wrap at the row's width: they never widen it.
                         Layout.preferredWidth: 0
                         // An appointment's line under it (Leave at, its legs, its next step: the unified agenda, §4.7).
-                        text: line.kind === "dated" ? line.line : (line.kind === "done" ? "✓  " : "") + line.title + (line.location !== "" ? "  ·  " + line.location : "") + (line.kind === "event" && line.line !== "" ? "\n" + line.line : "")
+                        text: line.kind === "dated" ? line.line : (line.kind === "done" ? "✓  " : "") + line.title + (line.location !== "" ? "  ·  " + line.location : "") + (line.kind === "event" && line.line !== "" ? "\n" + line.line : "") + (line.both !== "" ? "\n" + line.both : "")
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         font.pixelSize: 14

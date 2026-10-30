@@ -322,10 +322,12 @@ CardFrame {
             return leg.when + "  " + (leg.unconfirmed ? card.sioul.textWith("legs-unconfirmed", "leg", leg.title) : leg.title)
         }
 
-        // "Add a ride or a walk…": the event form, its times before the appointment.
+        // "Add a ride or a walk…": the event form, its times before the appointment,
+        // on the time zone Sioul shows (`zoneShift`).
         function addLeg() {
             const two = n => (n < 10 ? "0" : "") + n
-            const at = new Date(card.event.start * 1000)
+            const shown = card.event.start * 1000
+            const at = new Date(shown + (typeof card.sioul.zoneShift === "function" ? card.sioul.zoneShift(card.event.start) : 0))
             const end = new Date(at.getTime() - 5 * 60000)
             const begin = new Date(end.getTime() - 25 * 60000)
             const clock = d => two(d.getHours()) + ":" + two(d.getMinutes())

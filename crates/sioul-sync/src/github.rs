@@ -142,7 +142,7 @@ impl Client {
             401 => Err(SyncError::Login(TOKEN_REFUSED.into())),
             // Too many requests: GitHub says until when.
             403 | 429 if remaining.as_deref() == Some("0") || status == 429 => {
-                let until = reset.and_then(|r| r.parse::<i64>().ok()).and_then(|r| jiff::Timestamp::from_second(r).ok()).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M").to_string());
+                let until = reset.and_then(|r| r.parse::<i64>().ok()).and_then(|r| jiff::Timestamp::from_second(r).ok()).map(|t| t.to_zoned(sioul_core::zone::current()).strftime("%H:%M").to_string());
                 Err(SyncError::Server(format!("GitHub: {status}, wait until {}", until.unwrap_or_else(|| "later".into()))))
             }
             // What GitHub says of a refused request ("Validation Failed", the

@@ -20,7 +20,9 @@
 
 use crate::backend::{QtThread, Shared, load_config, say, tell, tr};
 use crate::{pim, work};
+#[cfg(test)]
 use jiff::tz::TimeZone;
+#[cfg(test)]
 use jiff::Zoned;
 use sioul_core::agenda::{self, EventEdit};
 use sioul_core::vdir::{self, Kind};
@@ -54,11 +56,11 @@ fn shown_again(qt: &QtThread, shared: &Arc<Shared>) {
 /// (`start`, `end`, Unix seconds, from the agenda; 0 for none), else its own;
 /// {"error"} when it is gone.
 pub(crate) fn form(shared: &Shared, uid: &str, start: i64, end: i64) -> String {
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     match work::find_task(shared, uid) {
         Ok(task) => {
             let time = appointments::time_of(&task, (end > start && start > 0).then_some((start, end)), &zone);
-            let mut form = serde_json::to_value(appointments::event_of(&task, time, Zoned::now().date(), &zone)).unwrap_or_default();
+            let mut form = serde_json::to_value(appointments::event_of(&task, time, sioul_core::zone::now().date(), &zone)).unwrap_or_default();
             // What it cannot keep, said before it is saved (F5).
             let waiting = waiting_for(&work::loaded(shared).tasks, uid);
             form["losses"] = serde_json::Value::String(lost_sentence("appointment-not-kept", &appointments::task_losses(&task), waiting));
@@ -100,7 +102,7 @@ pub(crate) fn task_to_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str, bloc
     match made {
         Ok((gone, made, name)) => {
             // Kept (a task with steps, paired with the event): nothing to tie again.
-            let retied = if gone.is_empty() { Vec::new() } else { appointments::retie(&loaded.tasks, uid, &appointments::uid_in(&made), true, &Zoned::now()) };
+            let retied = if gone.is_empty() { Vec::new() } else { appointments::retie(&loaded.tasks, uid, &appointments::uid_in(&made), true, &sioul_core::zone::now()) };
             nudge_all(shared, &[gone, vec![made], retied].concat());
             tell(qt, shared, say("appointment-made", &[("calendar", name)]));
             shown_again(qt, shared);
@@ -125,7 +127,7 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
         .ok_or_else(|| tr().text("dav-no-calendar", None))?;
     if others.iter().any(|t| t.status.is_open() && t.parent() == Some(uid)) {
         let config = load_config();
-        let (mut change, path) = sioul_core::pairs::appointment_for(others, uid, &edit, &target, &sioul_core::pairs::links_kept(&config), &Zoned::now()).map_err(|r| r.said(tr()))?;
+        let (mut change, path) = sioul_core::pairs::appointment_for(others, uid, &edit, &target, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
         // The block whose time the form took: the appointment is that time now (F14).
         change.gone.extend(pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only)));
         change.write()?;
@@ -134,7 +136,7 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
     // Never a block given a guest: a meeting with others now, it stays as it is (`agenda::may_change`).
     let opened = pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only));
     let blocks: Vec<PathBuf> = opened.into_iter().chain(crate::blocks::with_task(uid).into_iter().map(|(_, p)| p)).collect();
-    let plan = appointments::task_to_event(task, others, &blocks, &edit, &target, &TimeZone::system()).map_err(|r| r.said(tr()))?;
+    let plan = appointments::task_to_event(task, others, &blocks, &edit, &target, &sioul_core::zone::current()).map_err(|r| r.said(tr()))?;
     plan.write()?;
     Ok((plan.gone, plan.to, target.label(&load_config(), tr())))
 }
@@ -160,12 +162,12 @@ pub(crate) fn attach_to_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str, ke
     let attached = || -> Result<(), String> {
         let (path, text, writable) = event_file(key)?;
         let loaded = work::loaded(shared);
-        let all = sioul_core::tasks::all(&TimeZone::system());
+        let all = sioul_core::tasks::all(&sioul_core::zone::current());
         let event = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
         let config = load_config();
-        let change = sioul_core::pairs::attach(&all, uid, &event, &loaded.events, &sioul_core::pairs::links_kept(&config), &Zoned::now()).map_err(|r| r.said(tr()))?;
+        let change = sioul_core::pairs::attach(&all, uid, &event, &loaded.events, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
         let title = all.iter().find(|t| t.uid == uid).map(|t| t.title.clone()).unwrap_or_default();
-        let summary = agenda::edit_of_text(&text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
+        let summary = agenda::edit_of_text(&text, &sioul_core::zone::current()).map(|e| e.title).unwrap_or_default();
         paired_done(qt, shared, change, say("pair-attached", &[("title", title), ("event", summary)]))
     };
     attached().err().unwrap_or_default()
@@ -175,11 +177,11 @@ pub(crate) fn attach_to_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str, ke
 /// when the pairing wrote it. Returns what went wrong, else "".
 pub(crate) fn detach_from_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> String {
     let detached = || -> Result<(), String> {
-        let all = sioul_core::tasks::all(&TimeZone::system());
+        let all = sioul_core::tasks::all(&sioul_core::zone::current());
         let task = all.iter().find(|t| t.uid == uid).ok_or_else(|| tr().text("task-gone", None))?;
         let event = sioul_core::pairs::appointment_of(task).and_then(|e| work::loaded(shared).events.iter().find(|r| r.uid == e).map(|r| r.key.clone())).and_then(|key| event_file(&key).ok());
         let file = event.as_ref().map(|(path, text, writable)| sioul_core::pairs::EventFile { path, text, writable: *writable });
-        let change = sioul_core::pairs::detach(task, file.as_ref(), &Zoned::now()).map_err(|r| r.said(tr()))?;
+        let change = sioul_core::pairs::detach(task, file.as_ref(), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
         paired_done(qt, shared, change, say("pair-detached", &[("title", task.title.clone())]))
     };
     detached().err().unwrap_or_default()
@@ -192,11 +194,11 @@ pub(crate) fn steps_for_event(qt: &QtThread, shared: &Arc<Shared>, key: &str) ->
         let (path, text, writable) = event_file(key)?;
         let list = work::target_list("")?;
         let loaded = work::loaded(shared);
-        let all = sioul_core::tasks::all(&TimeZone::system());
+        let all = sioul_core::tasks::all(&sioul_core::zone::current());
         let event = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
         let config = load_config();
-        let (change, uid) = sioul_core::pairs::new_for(&all, &event, &loaded.events, &list, &sioul_core::pairs::links_kept(&config), &Zoned::now()).map_err(|r| r.said(tr()))?;
-        let summary = agenda::edit_of_text(&text, &TimeZone::system()).map(|e| e.title).unwrap_or_default();
+        let (change, uid) = sioul_core::pairs::new_for(&all, &event, &loaded.events, &list, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
+        let summary = agenda::edit_of_text(&text, &sioul_core::zone::current()).map(|e| e.title).unwrap_or_default();
         paired_done(qt, shared, change, say("pair-made", &[("title", summary.clone()), ("event", summary)]))?;
         Ok(uid)
     };
@@ -242,7 +244,7 @@ pub(crate) fn event_to_task(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> S
     let old = pim::ours(key).map(|p| appointments::uid_in(&p)).unwrap_or_default();
     match work::target_list("").and_then(|list| make_task(key, &list)) {
         Ok((gone, made, list)) => {
-            let retied = if old.is_empty() { Vec::new() } else { appointments::retie(&work::loaded(shared).tasks, &old, &appointments::uid_in(&made[0]), false, &Zoned::now()) };
+            let retied = if old.is_empty() { Vec::new() } else { appointments::retie(&work::loaded(shared).tasks, &old, &appointments::uid_in(&made[0]), false, &sioul_core::zone::now()) };
             nudge_all(shared, &[vec![gone], made, retied].concat());
             tell(qt, shared, say("task-made-from-event", &[("list", list)]));
             shown_again(qt, shared);
@@ -259,7 +261,7 @@ fn make_task(key: &str, list: &Collection) -> Result<(PathBuf, Vec<PathBuf>, Str
     if pim::collection_of(&path).is_none_or(|c| c.read_only) {
         return Err(tr().text("agenda-read-only", None));
     }
-    let plan = appointments::event_to_task(&path, list, &crate::blocks::calendar_for, load_config().tasks.block_alarms, &Zoned::now()).map_err(|r| r.said(tr()))?;
+    let plan = appointments::event_to_task(&path, list, &crate::blocks::calendar_for, load_config().tasks.block_alarms, &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
     plan.write()?;
     let written: Vec<PathBuf> = std::iter::once(plan.to.clone()).chain(plan.made.iter().map(|(p, _)| p.clone())).collect();
     Ok((path, written, list.label(&load_config(), tr())))

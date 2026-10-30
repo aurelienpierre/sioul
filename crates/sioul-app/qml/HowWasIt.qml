@@ -32,7 +32,7 @@ Popup {
         popup.title = task.card ? task.card.title : task.edit.title
         popup.forecast = task.edit.demands || {}
         // Today's, when some was said today already; an older turn's stays out.
-        const d = new Date()
+        const d = new Date(Date.now() + (typeof popup.sioul.zoneShift === "function" ? popup.sioul.zoneShift(Date.now() / 1000) : 0))
         const pad = n => n < 10 ? "0" + n : String(n)
         const today = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
         popup.kept = task.edit.felt && task.felt_on === today ? task.edit.felt : null

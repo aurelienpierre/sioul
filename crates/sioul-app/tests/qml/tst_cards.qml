@@ -60,6 +60,8 @@ Item {
         })
 
         function text(key) { return key }
+        function zoneName() { return "Europe/Paris" }
+        function clockLine(start, end, clock) { return "" }
         function textWith(key, name, value) { return key + ":" + value }
         function textArgs(key, args) { return key }
         // An event's time by its start (0: its next), as `agenda::event_card` reads it.
@@ -494,12 +496,12 @@ Item {
             const saved = mock.calls[mock.calls.length - 1].edit
             compare(saved.title + " " + saved.start + " " + saved.end, "Dentist, the new one 2096-10-01T11:00 2096-10-01T12:00")
             verify(keeper.forms["/c/dentist.ics"] === undefined, "saved: forgotten")
-            // Its times typed: start, end and all day kept as one.
+            // Its times typed: start, end, all day and the clock they are on kept as one.
             dialog.edit("/c/dentist.ics", "")
             compare(dialog.form().title, "Dentist")
             dialog.applyForm({ end: "2096-10-01T12:30" })
             dialog.close()
-            compare(JSON.stringify(Object.keys(keeper.forms["/c/dentist.ics"].form).sort()), JSON.stringify(["all_day", "end", "start"]))
+            compare(JSON.stringify(Object.keys(keeper.forms["/c/dentist.ics"].form).sort()), JSON.stringify(["all_day", "clock", "end", "start"]))
             dialog.edit("/c/dentist.ics", "")
             compare(dialog.form().end, "2096-10-01T12:30")
             const cancel = root.find(dialog.footer, "eventCancel")

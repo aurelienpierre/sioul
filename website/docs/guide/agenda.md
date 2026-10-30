@@ -35,7 +35,7 @@ The page follows the clock: the line at the current hour moves with it, and toda
 
 ## Events
 
-**New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. Folded under **More**: its notes; **Repeats**, every day, week, month or year; **Calendar**, which one it goes in, when you have several; and, if you want them:
+**New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. **Time zone**, under the times, is **Local time** at first (the zone your agenda shows, named); **UTC**, or **Another time zone…**, found by typing part of its name ("new y", "tokyo"), sets the clock the event keeps: a call set in UTC stays at its UTC time, summer or winter; an appointment in New York at its time there. On another clock, a line under the times says them here too: "15:00 – 16:00 UTC · 16:00 – 17:00 here". Editing an event keeps its clock. Folded under **More**: its notes; **Repeats**, every day, week, month or year; **Calendar**, which one it goes in, when you have several; and, if you want them:
 
 - **Before** and **After**: the time to get ready and get there, and to come back ([below](#time-around-an-event)).
 - **Remind**: when Sioul reminds you of it: as usual (a quarter of an hour before it and its time to get there, unless you change it in [Settings](settings.md#reminders)), not this one, or 5 minutes to 2 hours before. See [Reminders](#reminders).
@@ -132,6 +132,8 @@ On Android, Sioul syncs your calendars itself and keeps its own copy of them: yo
 
 The ⚙ at the top of the page:
 
+- **Time zone**: **Follow this device** at first (its zone named): the agenda, the plan, the reminders, the home screen's card and today itself follow the zone the device is in, and follow it when it changes (a phone landing elsewhere, a computer's zone changed) within a minute, without restarting. Or **Another time zone…**, found by typing part of its name: for a computer whose clock stays at home while you travel, or to see your days where you are going. An event never moves: only how its time reads changes. This setting stays on this device. Health keeps the system's clock, as its dose alarms do.
+
 - **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays. One you can only read says so, and is never offered for a new event.
 - **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
 - **Time kept between two events**: 0 at first. Closer than this, two events are said to be too close, never to overlap.
@@ -142,7 +144,7 @@ The ⚙ at the top of the page:
 
 ## Where events live
 
-On your calendar server, as standard CalDAV events: your phone and other programs see them. Times keep their time zone and show in yours. Editing in Sioul changes only what you changed: a guest list, an alarm or another program's fields stay as they were. What you set in Sioul (Before and After, **Remind**, what the event asks of you) is written into the event itself, so it follows the event to your other devices; your server and your other apps can read it, as they read the event.
+On your calendar server, as standard CalDAV events: your phone and other programs see them. Times keep their time zone and show in yours. An event on another clock than yours says both its times in the lists, in its card and on the home screen's card ("16:00 – 17:00 here · 15:00 – 16:00 UTC"); the Day and the Week draw it at its time here. Editing in Sioul changes only what you changed: a guest list, an alarm or another program's fields stay as they were. What you set in Sioul (Before and After, **Remind**, what the event asks of you) is written into the event itself, so it follows the event to your other devices; your server and your other apps can read it, as they read the event.
 
 Google calendars are made, renamed and deleted on Google's own pages; Sioul greys those settings, and says why.
 
@@ -152,12 +154,12 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul; importing or exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event; choosing an event's time zone. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
+Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul; importing or exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
 
 ## Going further {#going-further}
 
 - **Repeating events made elsewhere** keep their rule, however rich ("every other Monday and Wednesday", "the first Monday of the month"): changing their title in Sioul leaves the rule whole. Sioul's own form makes every day, week, month or year.
-- **Time zones**: an event written in another time zone keeps it and shows in yours; Sioul writes new events in your zone.
+- **Time zones**: an event written in another time zone keeps it and shows in yours, its time there beside; Sioul writes new events in the zone your agenda shows, unless its form's **Time zone** says another clock.
 - **An event made after its reminder's time** is not reminded: you have just seen it.
 - **The working day before** is read from your working hours ([Settings](settings.md#hours)).
 - **A calendar file in a message**: an `.ics` that a message carries goes into your calendar with **Add to my calendar**.
@@ -224,7 +226,7 @@ As of October 2026, from each app's own documentation.
     | Google calendars, read and write | ✓ | — | ✓ | ✓ | ✓ | partly³ |
     | Answers invitations from any system by mail (iMIP) | ✓ | ?⁴ | ✓ | ✓ | ✗⁵ | ✓⁶ |
     | Imports and exports `.ics` files, subscribes by address | ✗⁷ | ✓⁸ | ✓ | ✓ | partly⁹ | ✓ |
-    | Chooses an event's time zone | partly¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
+    | Chooses an event's time zone | ✓¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Events encrypted end to end | ✗¹¹ | ✗¹² | ✗¹³ | ✗ | ✗ | partly¹⁴ |
     | Free software | ✓ GPL-3.0+ | ✗ | ✗ | ✓ MPL-2.0 | ✓ GPL-3.0 | ✓ GPL-3.0¹⁵ |
 
@@ -237,7 +239,7 @@ As of October 2026, from each app's own documentation.
     7. An `.ics` that a message carries goes in with **Add to my calendar**; no import from a file, no export, no subscription by address.
     8. On a computer only.
     9. Both apps import and export `.ics` files; subscribing by address needs ICSx⁵.
-    10. An event made elsewhere keeps its time zone and shows in yours; Sioul writes new events in your zone.
+    10. Local time, UTC or any zone, chosen in the event's form; an event made elsewhere keeps its time zone; both times show where they differ.
     11. Events on a server can be read by that server, as with every CalDAV app; calendars kept on a device only travel sealed between your devices.
     12. Client-side encryption on some paid Workspace plans only, for the description, attachments and Meet data, not the title, the time or the guests.
     13. Not with Advanced Data Protection either: Apple says CalDAV has no end-to-end encryption built in.
@@ -304,6 +306,7 @@ As of October 2026, from each app's own documentation.
 ## For technical readers {#for-technical-readers}
 
 - **iCalendar** (RFC 5545): one event and its exceptions per file, as CalDAV stores them (RFC 4791, section 4.1). Repeating events are expanded with calcard (`RRULE`, `RDATE`, `EXDATE`, `RECURRENCE-ID` overrides), each in its own time zone, shown in yours; a changed occurrence is matched by its `RECURRENCE-ID` alone, as RFC 5545 says, even when the series' `SEQUENCE` moved on. Events written from the form, one-off or repeating, are on your local clock with your zone (`DTSTART;TZID=Europe/Paris:…`), with a `VTIMEZONE` Sioul writes, so that 09:00 stays 09:00 in winter and in summer; an event moved or answered keeps the form it was written in, UTC included, and no file is rewritten for it. An edit rewrites only the lines that changed and raises `SEQUENCE`; alarms, guests and other programs' properties are kept.
+- **Time zones**: the zone shown is this device's own (`TZ`, else `/etc/localtime`, else the zone Android said last), looked at again each second, or the one chosen in `agenda.time_zone`, kept on this device. An event's own clock is its `DTSTART`'s: on the zone shown, `TZID=<zone>` with its `VTIMEZONE`; on UTC or another zone, `TZID=<that zone>` with its `VTIMEZONE`. A one-off event at its instant in UTC (`…Z`, as many programs write an instant) names no clock and shows in your zone alone; a series in UTC repeats in UTC. Never a floating time. The dose path keeps the system's clock.
 - **Sioul's own properties** travel inside the event: `X-SIOUL-BEFORE` and `X-SIOUL-AFTER` (minutes, a day at most), `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-REMIND` and `X-SIOUL-TASK` for a task's time block. `X-SIOUL-REMIND` is deliberately not a `VALARM`, so that your other calendar apps do not ring it twice, and so that "not this one" can be said. Ties are RFC 9253's links and relations, written under Sioul's own names (`X-SIOUL-LINK`, `X-SIOUL-RELATED-TO` for a wait; a step's `RELATED-TO` as it is), which a phone's account manager can send back; the standard lines are read too. Apple's travel time (`X-APPLE-TRAVEL-DURATION`) is not read.
 - **CalDAV** (RFC 4791, over WebDAV): the same client as for contacts. Discovery by RFC 6764 and the current user's principal (RFC 5397), sync tokens (RFC 6578), `calendar-multiget`, writes with `If-Match` and the item's ETag; when both sides changed an event, the server's version wins and yours is kept among this device's earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back from the window, said in the status line. HTTPS only, TLS by rustls with the system's root certificates. Each account syncs every fifteen minutes and at once after a change here; the page reads its files again every five minutes, when it comes back into view, and at midnight.
 - **Google calendars** go through Google's CalDAV, with OAuth 2.0 for native apps (RFC 8252) and PKCE (RFC 7636); the refresh token in the keyring, the access token in memory only. Calendars cannot be made, renamed or deleted there from Sioul, and Google adds your default reminders to every event ([Works with](compatibility.md#google)).

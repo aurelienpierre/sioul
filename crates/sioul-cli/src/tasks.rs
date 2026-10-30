@@ -176,7 +176,7 @@ pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::qu
 /// (`plan::HORIZON_DAYS`), so that an agent's days read again only what
 /// lies outside it (review of 1880bce, L16).
 pub(crate) fn settings_read(s: &Session, weather: Weather, situation: &sioul_core::quiet::Situation, projects: &[sioul_core::projects::Project], tasks: &[Task]) -> (Settings, (i64, i64), Vec<sioul_core::agenda::Occurrence>) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     let reach = (midnight, midnight + sioul_core::plan::HORIZON_DAYS * 86_400);
     let read = sioul_core::agenda::occurrences(reach.0, reach.1);
@@ -212,13 +212,13 @@ pub(crate) fn settings_read(s: &Session, weather: Weather, situation: &sioul_cor
 impl Desk {
     fn read(s: &Session) -> Desk {
         let loaded = Loaded::read(&s.config);
-        let date = Zoned::now().date();
+        let date = sioul_core::zone::now().date();
         let today = Today::load(&Today::default_path(), date);
         let sessions = timelog::sessions();
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|x| !x.note.is_empty()).map(|x| (x.task.clone(), x.note.clone())).collect();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.projects);
         let mut settings = settings(s, today.weather, &situation, &loaded.projects, &loaded.tasks);
         // As the window plans: what your record says of a day (docs/capacity.md), a block counted as its task.
@@ -233,7 +233,7 @@ impl Desk {
     }
 
     fn context<'a>(&'a self, s: &'a Session) -> Context<'a> {
-        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
+        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: sioul_core::zone::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
     }
 
     /// A task by UID, else by the start of its title, else by a word of it; one only.
@@ -414,7 +414,7 @@ fn sync_list(s: &Session, list: &Collection) -> Result<(), String> {
 fn add(s: &Session, line: &str, list: Option<&str>, parent: Option<&str>, after: &[String], no_sync: bool) -> Result<(), String> {
     let desk = Desk::read(s);
     let projects: Vec<String> = desk.loaded.projects.iter().map(|c| c.id.clone()).collect();
-    let captured = capture::capture(line, Zoned::now().date(), &projects, &s.config.task_kinds(&s.tr));
+    let captured = capture::capture(line, sioul_core::zone::now().date(), &projects, &s.config.task_kinds(&s.tr));
     let mut edit = captured.edit;
     if edit.title.is_empty() {
         return Err(s.tr.text("task-no-title", None));
@@ -422,13 +422,13 @@ fn add(s: &Session, line: &str, list: Option<&str>, parent: Option<&str>, after:
     if let Some(parent) = parent {
         edit.parent = desk.find(s, parent)?.uid.clone();
         // After its bigger task's other steps.
-        edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&desk.loaded.tasks, &edit.parent), &Zoned::now()));
+        edit.sort_order = Some(tasks::next_in_sequence(tasks::steps_of(&desk.loaded.tasks, &edit.parent), &sioul_core::zone::now()));
     }
     for wanted in after {
         edit.waits_for.push(desk.find(s, wanted)?.uid.clone());
     }
     let target = target_list(s, list)?;
-    let text = tasks::new_task(&edit, &vdir::new_name(), &TimeZone::system(), &Zoned::now())?;
+    let text = tasks::new_task(&edit, &vdir::new_name(), &sioul_core::zone::current(), &sioul_core::zone::now())?;
     let path = tasks::new_path(&target);
     vdir::write_item(&path, &text)?;
     for chip in &captured.chips {
@@ -474,7 +474,7 @@ fn move_step(s: &Session, wanted: &str, before: Option<&str>, no_sync: bool) -> 
     if writes.iter().any(|(uid, _)| file_of(uid).is_none_or(|t| t.read_only)) {
         return Err(s.tr.text("task-read-only", None));
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mut lists: BTreeSet<String> = BTreeSet::new();
     for (uid, place) in &writes {
         let Some(task) = file_of(uid) else { continue };
@@ -504,7 +504,7 @@ fn move_step(s: &Session, wanted: &str, before: Option<&str>, no_sync: bool) -> 
 fn parent(s: &Session, wanted: &str, bigger: &str, confirm: bool, no_sync: bool) -> Result<(), String> {
     let desk = Desk::read(s);
     let task = desk.find(s, wanted)?.clone();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let keeper = |c: &Collection| sioul_core::capabilities::provider_of_collection(s.config.account(&c.account), c);
     let (planned, line) = if bigger.trim().eq_ignore_ascii_case("none") {
         (sioul_core::composed::promote(&desk.loaded.tasks, &task.uid, &now), s.say("composed-made-own", &[("title", one_line(&task.title))]))
@@ -533,7 +533,7 @@ fn parent(s: &Session, wanted: &str, bigger: &str, confirm: bool, no_sync: bool)
 fn attach(s: &Session, wanted: &str, event: &str, no_sync: bool) -> Result<(), String> {
     let desk = Desk::read(s);
     let task = desk.find(s, wanted)?.clone();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let file_of = |key: &str| -> Result<(PathBuf, String, bool), String> {
         let path = PathBuf::from(key);
         let text = std::fs::read_to_string(&path).map_err(|e| format!("{key}: {e}"))?;
@@ -578,12 +578,12 @@ fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
         return Err(s.tr.text("task-read-only", None));
     }
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
-    let text = tasks::set_status(&current, status, &TimeZone::system(), &Zoned::now())?;
+    let text = tasks::set_status(&current, status, &sioul_core::zone::current(), &sioul_core::zone::now())?;
     vdir::write_item(Path::new(&task.key), &text)?;
     // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks");
     // only a step done for good: a repeating one's turn comes back open, and closes nothing.
     if status == Status::Completed && sioul_core::composed::done_for_good(&text) {
-        let closing = sioul_core::composed::close_with(&desk.loaded.tasks, &task.uid, &Zoned::now()).map_err(|r| r.said(&s.tr))?;
+        let closing = sioul_core::composed::close_with(&desk.loaded.tasks, &task.uid, &sioul_core::zone::now()).map_err(|r| r.said(&s.tr))?;
         if !closing.is_empty() {
             closing.write()?;
             let whole = sioul_core::composed::closing_with(&desk.loaded.tasks, &task.uid).first().map(|t| t.title.clone()).unwrap_or_default();
@@ -609,11 +609,11 @@ fn not_now(s: &Session, wanted: &str) -> Result<(), String> {
 }
 
 fn set_weather(s: &Session, weather: &str) -> Result<(), String> {
-    let mut today = Today::load(&Today::default_path(), Zoned::now().date());
+    let mut today = Today::load(&Today::default_path(), sioul_core::zone::now().date());
     today.weather = Weather::parse(weather);
     today.save(&Today::default_path())?;
     // The morning's weather, kept with the day's reviews (docs/reviews.md).
-    let said = Zoned::now();
+    let said = sioul_core::zone::now();
     let _ = sioul_core::reviews::note_weather(&sioul_core::reviews::Reviews::default_path(), said.date(), today.weather, said.timestamp().as_second(), said.time_zone());
     now(s)
 }
@@ -813,8 +813,8 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
             eprintln!("{}", s.say("import-unknown-field", &[("task", task.key.clone()), ("field", field.clone())]));
         }
     }
-    let zone = TimeZone::system();
-    let now = Zoned::now();
+    let zone = sioul_core::zone::current();
+    let now = sioul_core::zone::now();
     let existing = tasks::all(&zone);
     let target = target_list(s, plan.list.as_deref())?;
     let keys: BTreeSet<&str> = plan.tasks.iter().map(|t| t.key.as_str()).collect();
@@ -1042,6 +1042,9 @@ fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zo
         // An event imported before: what it holds is the start, the file's
         // lines over it, its margins, costs and reminder kept (the review of 22 October 2026, F4).
         let before = found.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| sioul_core::agenda::edit_of_text(&t, zone));
+        // The plan's times are this device's; the event's own clock is kept, its times said on it.
+        let clock = before.as_ref().map(|b| b.clock.clone()).unwrap_or_default();
+        let before = before.map(|b| sioul_core::agenda::on_zone(b, zone));
         let end = match (&event.end, &before) {
             (Some(end), _) if !end.is_empty() => end.clone(),
             // Unsaid on one known: its length kept, from its new start.
@@ -1067,6 +1070,7 @@ fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zo
                 *field = given.clone();
             }
         }
+        let edit = sioul_core::agenda::on_clock(edit, &clock, zone);
         let wanted = event.calendar.clone().or_else(|| plan.calendar.clone()).unwrap_or_default();
         let calendar = || {
             vdir::collections(Kind::Calendars)

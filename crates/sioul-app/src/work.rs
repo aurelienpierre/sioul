@@ -127,7 +127,7 @@ fn read_loaded(shared: &Shared) -> Loaded {
 /// the plan's one read of the calendars (`Desk::new`).
 fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, loaded: &Loaded, shared: &Shared, read: &[sioul_core::agenda::Occurrence]) -> Settings {
     let config = load_config();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     // The tasks pinned to a time: a block is its task's time, never an event of its own (docs/tasks.md, "Pinned to a time").
     let pins = crate::blocks::pins(shared, read, &loaded.tasks, &now);
     // Meals, naps and the night, as the health file says them, never a medicine; a file
@@ -162,7 +162,7 @@ pub(crate) fn show_anyway(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
 /// The moment, for the task pages: quiet or not, offices open or not.
 pub(crate) fn situation(projects: &[sioul_core::projects::Project]) -> sioul_core::quiet::Situation {
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), projects)
 }
 
@@ -191,7 +191,7 @@ pub(crate) struct Desk {
 
 impl Desk {
     fn new(loaded: Arc<Loaded>, shared: &Shared) -> Desk {
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         let date = now.date();
         let today = Today::load(&Today::default_path(), date);
         let sessions = timelog::sessions();
@@ -216,7 +216,7 @@ impl Desk {
 
     /// "Until Thursday 8 October: about 2 h of steps, 6 h of room.", for a date asked.
     fn budget_line(&self, date: jiff::civil::Date) -> String {
-        let today = Zoned::now().date();
+        let today = sioul_core::zone::now().date();
         let budget = plan::cushion(&self.loaded.tasks, &self.plan, &self.settings, today, date);
         if budget.need == 0 {
             return String::new();
@@ -232,7 +232,7 @@ impl Desk {
 
     /// The next date asked within a week, among the tasks shown, and its time budget.
     fn next_budget(&self) -> String {
-        let today = Zoned::now().date();
+        let today = sioul_core::zone::now().date();
         let week = today.checked_add(jiff::Span::new().days(7)).unwrap_or(today);
         let shown = |t: &&Task| self.filter.quiet.as_ref().is_none_or(|q| q.keeps(t));
         let next = self.loaded.tasks.iter().filter(|t| t.status.is_open()).filter(shown).filter(|t| self.plan.items.get(&t.uid).is_some_and(|p| !p.optional)).filter_map(|t| t.due_date()).filter(|d| *d >= today && *d <= week).min();
@@ -245,7 +245,7 @@ impl Desk {
 
     /// The task views' context, through `filter` (the page's choices).
     fn context_with<'a>(&'a self, filter: &'a Filter) -> Context<'a> {
-        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: tr(), projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
+        Context { filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: sioul_core::zone::now().date(), tr: tr(), projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped, outings: &self.outings }
     }
 
     fn task(&self, uid: &str) -> Option<&Task> {
@@ -354,7 +354,7 @@ struct TasksShown {
 
 /// Today, laid out: the events of today and the steps the plan gives today, those the page shows.
 fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     // Until the next midnight: a day of 23 or 25 hours when the clocks change.
     let next_midnight = now.date().tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(midnight + 86_400, |z| z.timestamp().as_second());
@@ -450,7 +450,7 @@ pub(crate) fn publish_now(shared: &Shared) {
     let stamp = sioul_core::timeline::Stamp::now();
     let desk = Desk::new(Arc::new(read_loaded(shared)), shared);
     let today = today_laid_out(&desk, shared);
-    publish(PlanShown { stamp, made_on: Zoned::now().date(), desk: Arc::new(desk), today });
+    publish(PlanShown { stamp, made_on: sioul_core::zone::now().date(), desk: Arc::new(desk), today });
 }
 
 #[cfg(test)]
@@ -639,7 +639,7 @@ pub(crate) fn move_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, list: &s
     // an appointment undone in that same change, so that a move that fails unties nothing (part E0.9;
     // review of ab7daa4, later 5).
     let google = provider == sioul_core::capabilities::Provider::GoogleTasks;
-    let change = match sioul_core::pairs::moved_into(&family, &target.dir, &loaded.events, google, &Zoned::now()) {
+    let change = match sioul_core::pairs::moved_into(&family, &target.dir, &loaded.events, google, &sioul_core::zone::now()) {
         Ok(change) => change,
         Err(e) => return answer(Err(e)),
     };
@@ -707,7 +707,7 @@ fn relay_now(qt: &QtThread, shared: &Arc<Shared>) {
 /// read, the same plan: no store read); false with no plan of today, or one
 /// older than a write, which wants the plan made again.
 fn relaid(shared: &Shared) -> bool {
-    let Some(shown) = plan_shown().filter(|s| s.made_on == Zoned::now().date() && s.current()) else { return false };
+    let Some(shown) = plan_shown().filter(|s| s.made_on == sioul_core::zone::now().date() && s.current()) else { return false };
     let today = today_laid_out(&shown.desk, shared);
     publish(PlanShown { stamp: shown.stamp, made_on: shown.made_on, desk: Arc::clone(&shown.desk), today });
     true
@@ -787,7 +787,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // The files' stamp before anything is read: what is written after, by any
         // program, makes this plan older (`PlanShown::current`).
         let stamp = sioul_core::timeline::Stamp::now();
-        let made_on = Zoned::now().date();
+        let made_on = sioul_core::zone::now().date();
         let fresh = Arc::new(read_loaded(shared));
         if let Ok(mut cache) = shared.loaded.lock() {
             *cache = Some(Arc::clone(&fresh));
@@ -796,13 +796,13 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         let desk = Desk::new(fresh, &shared);
         // What changed elsewhere in the blocks set right, a time given by a drag before them made one:
         // laid again then, at once (`blocks::upkeep`; nothing written when nothing differs).
-        if crate::blocks::upkeep(&shared, &desk.loaded.tasks, &Zoned::now()) {
+        if crate::blocks::upkeep(&shared, &desk.loaded.tasks, &sioul_core::zone::now()) {
             show_work(&qt, &shared);
             pim::show_pim(&qt, &shared);
         }
         // What follows an appointment follows it (`moves`): a paired task's date, while it says the
         // day the pairing wrote (`pairs`), and its legs (`anchors`), by one rule.
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         // Only a move this device saw (`moves::Seen`), and again at once only after a write that succeeded (F4, F12).
         let mut seen = sioul_core::moves::Seen::load();
         let before = seen.clone();
@@ -839,7 +839,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         let lists = writable_lists();
         let categories = categories_of(&desk.loaded.tasks);
         // The day's first step, as the plan had it when the day before was closed.
-        let today = Zoned::now();
+        let today = sioul_core::zone::now();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
         let first = match overrides.first_step_on(today.date()).filter(|_| desk.filter.quiet.is_none()) {
             Some((step, uid)) => (say("first-step-line", &[("day", capitalized(&tr().text(&format!("weekday-{}", today.date().weekday().to_monday_one_offset()), None))), ("step", step.to_string())]), uid.to_string()),
@@ -958,7 +958,7 @@ fn capitalized(text: &str) -> String {
 /// tasks. Computed before the overrides change.
 pub(crate) fn closing(shared: &Shared) -> Closed {
     let loaded = loaded(shared);
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let date = now.date();
     let today = Today::load(&Today::default_path(), date);
     let sessions = timelog::sessions();
@@ -1160,7 +1160,7 @@ fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> R
     }
     let target = target_list(list)?;
     let uid = vdir::new_name();
-    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let (zone, now) = (sioul_core::zone::current(), sioul_core::zone::now());
     // A step goes after its bigger task's others, as they are on disk now: the
     // page may not have read the one added a moment ago (`tasks::next_in_sequence`).
     let mut edit = edit.clone();
@@ -1180,7 +1180,7 @@ fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> R
 /// wrong, else "".
 pub(crate) fn move_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, before: &str) -> String {
     let moved = || -> Result<(), String> {
-        let zone = TimeZone::system();
+        let zone = sioul_core::zone::current();
         let all = tasks::all(&zone);
         let gone = || tr().text("task-gone", None);
         let parent = all.iter().find(|t| t.uid == uid).and_then(|t| t.parent()).ok_or_else(gone)?;
@@ -1190,7 +1190,7 @@ pub(crate) fn move_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, before: 
         if writes.iter().any(|(u, _)| file_of(u).is_none_or(|t| t.read_only)) {
             return Err(tr().text("task-read-only", None));
         }
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         for (u, place) in &writes {
             let Some(step) = file_of(u) else { continue };
             let current = std::fs::read_to_string(&step.key).map_err(|e| e.to_string())?;
@@ -1209,7 +1209,7 @@ pub(crate) fn move_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, before: 
 /// once the task that waits is written. What fails is said in the status line;
 /// the task itself is kept.
 fn write_gaps(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &TaskEdit) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     for (other, gap) in edit.gapped_waits() {
         if let Err(e) = change(qt, shared, &other, |text| tasks::set_gap(text, uid, gap, &now)) {
             tell(qt, shared, e);
@@ -1273,11 +1273,11 @@ pub(crate) fn categories_in_use(shared: &Shared) -> Vec<String> {
 /// before, which would take back a step ticked or a field changed since
 /// (review of 85da7f0, later 2). A file that holds no task stays as it is.
 fn changed_in_file(text: &str, change: impl FnOnce(&mut TaskEdit)) -> Result<String, String> {
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let Some(now) = tasks::task_of_text(text, &zone) else { return Ok(text.to_string()) };
     let mut edit = TaskEdit::of(&now);
     change(&mut edit);
-    tasks::apply(text, &edit, &zone, &Zoned::now())
+    tasks::apply(text, &edit, &zone, &sioul_core::zone::now())
 }
 
 /// A category renamed on every task that has it, or taken off them all (`to`
@@ -1428,7 +1428,7 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         .find(|c| format!("{}/{}", c.account, c.id) == task.list_id)
         .map(|c| sioul_core::capabilities::task_fields_lost(sioul_core::capabilities::provider_of_collection(config.account(&c.account), &c), task.parent().is_some()))
         .unwrap_or_default();
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let soon = today.checked_add(jiff::Span::new().days(21)).unwrap_or(today);
     let budget = match task.due_date() {
         Some(date) if task.status.is_open() && date >= today && date <= soon && desk.plan.items.get(uid).is_some_and(|p| !p.optional) => desk.budget_line(date),
@@ -1439,12 +1439,12 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     // The appointment it prepares, when it is here (an account switched off's too, as the plan
     // finds it): its title and when, said as the agenda says them; no "when" for a start that
     // cannot be read.
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let appointment = match sioul_core::pairs::appointment_of(task) {
         Some(uid) => match loaded.events.iter().find(|e| e.uid == uid).cloned().or_else(|| sioul_core::pairs::switched_off_events(&zone).into_iter().find(|e| e.uid == uid)) {
             Some(event) => {
                 // Its next time, as the plan read it (its margins and your own time around it), else its first.
-                let now = Zoned::now().timestamp().as_second();
+                let now = sioul_core::zone::now().timestamp().as_second();
                 let time = desk.read.iter().filter(|o| o.uid == uid && o.end > now).min_by_key(|o| o.start).cloned().unwrap_or_else(|| sioul_core::agenda::Occurrence { key: event.key.clone(), uid: uid.clone(), summary: event.summary.clone(), start: event.start, end: event.start, cancelled: event.cancelled, ..Default::default() });
                 let legs = sioul_core::anchors::legs_seen_in(&uid, &desk.read);
                 let mut view = serde_json::to_value(sioul_core::pairs::appointment_view(&time, &event.links, &loaded.tasks, &legs, None, tr(), &zone)).unwrap_or_default();
@@ -1469,7 +1469,7 @@ fn from_its_file(known: &Task) -> Option<Task> {
     if !text.to_ascii_uppercase().contains("BEGIN:VTODO") {
         return None;
     }
-    let mut task = tasks::task_of_text(&text, &TimeZone::system())?;
+    let mut task = tasks::task_of_text(&text, &sioul_core::zone::current())?;
     task.key = known.key.clone();
     task.list = known.list.clone();
     task.list_id = known.list_id.clone();
@@ -1511,7 +1511,7 @@ fn keeper(config: &sioul_core::config::Config) -> impl Fn(&Collection) -> sioul_
 /// {"error"}, or {"losses", "said"} when its family would move into a list
 /// that keeps less, asked first (`confirmed` goes on).
 pub(crate) fn make_step_of(qt: &QtThread, shared: &Arc<Shared>, uid: &str, bigger: &str, confirmed: bool) -> String {
-    let (zone, now, config) = (TimeZone::system(), Zoned::now(), load_config());
+    let (zone, now, config) = (sioul_core::zone::current(), sioul_core::zone::now(), load_config());
     let all = tasks::all(&zone);
     let title = |u: &str| all.iter().find(|t| t.uid == u).map(|t| t.title.clone()).unwrap_or_default();
     let planned = if bigger.is_empty() { sioul_core::composed::promote(&all, uid, &now) } else { sioul_core::composed::demote(&all, uid, bigger, &tasks::lists(), &keeper(&config), confirmed, &now) };
@@ -1522,7 +1522,7 @@ pub(crate) fn make_step_of(qt: &QtThread, shared: &Arc<Shared>, uid: &str, bigge
 /// (`pairs::brought_back`): open again, never set aside again by it; a
 /// step's task set aside with it comes back too. Said with Undo. {"uid"} or {"error"}.
 pub(crate) fn bring_back(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> String {
-    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let (zone, now) = (sioul_core::zone::current(), sioul_core::zone::now());
     let all = tasks::all(&zone);
     let planned = match all.iter().find(|t| t.uid == uid) {
         None => Err(sioul_core::composed::Refusal::Gone),
@@ -1537,7 +1537,7 @@ pub(crate) fn bring_back(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> Stri
 /// then forward from the appointment's end, said under Coming back, never
 /// dropped once the appointment is over. {"uid"} or {"error"}.
 pub(crate) fn set_step_after(qt: &QtThread, shared: &Arc<Shared>, uid: &str, after: bool) -> String {
-    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let (zone, now) = (sioul_core::zone::current(), sioul_core::zone::now());
     let all = tasks::all(&zone);
     let planned = match all.iter().find(|t| t.uid == uid) {
         None => Err(sioul_core::composed::Refusal::Gone),
@@ -1556,7 +1556,7 @@ pub(crate) fn set_step_after(qt: &QtThread, shared: &Arc<Shared>, uid: &str, aft
 /// A step folded into its bigger task's list (an item), its blocks to come
 /// taken out: {"uid"} (its bigger task's), {"error"}, or {"losses", "said"}.
 pub(crate) fn fold_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, confirmed: bool) -> String {
-    let (zone, now, config) = (TimeZone::system(), Zoned::now(), load_config());
+    let (zone, now, config) = (sioul_core::zone::current(), sioul_core::zone::now(), load_config());
     let all = tasks::all(&zone);
     let step = all.iter().find(|t| t.uid == uid);
     let whole = step.and_then(|t| t.parent()).unwrap_or_default().to_string();
@@ -1577,7 +1577,7 @@ fn one_level(all: &[Task], uid: &str) -> bool {
 /// ("event", its file). Returns what went wrong, else "".
 pub(crate) fn convert_item(qt: &QtThread, shared: &Arc<Shared>, kind: &str, key: &str, line: usize, to: &str) -> String {
     use sioul_core::composed::{self, Holder};
-    let (zone, now) = (TimeZone::system(), Zoned::now());
+    let (zone, now) = (sioul_core::zone::current(), sioul_core::zone::now());
     let all = tasks::all(&zone);
     let notes = if kind == "event" { crate::pim::ours(key).and_then(|p| sioul_core::agenda::edit_of(&p)).map(|e| e.notes) } else { all.iter().find(|t| t.uid == key).map(|t| t.notes.clone()) };
     let words = notes.and_then(|n| sioul_core::checklist::items(&n).into_iter().find(|i| i.line == line)).map(|i| i.text).unwrap_or_default();
@@ -1622,12 +1622,12 @@ pub(crate) fn ticked_notes(notes: &str, line: usize, state: &str) -> Result<Stri
 /// A task's checklist ticked (`ticked_notes`): its DESCRIPTION alone written.
 /// Returns what went wrong, else "".
 pub(crate) fn check_item(qt: &QtThread, shared: &Arc<Shared>, uid: &str, line: usize, state: &str) -> String {
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let result = change(qt, shared, uid, |text| {
         let task = tasks::task_of_text(text, &zone).ok_or_else(|| tr().text("task-gone", None))?;
         let mut edit = TaskEdit::of(&task);
         edit.notes = ticked_notes(&task.notes, line, state)?;
-        tasks::apply(text, &edit, &zone, &Zoned::now())
+        tasks::apply(text, &edit, &zone, &sioul_core::zone::now())
     });
     result.err().unwrap_or_default()
 }
@@ -1654,13 +1654,13 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
             notes_fit(&task, &edit.notes)?;
         }
         change(qt, shared, uid, |text| {
-            let zone = TimeZone::system();
+            let zone = sioul_core::zone::current();
             // Over the file as it is now: the fields the form changed since it read the task, the rest as the file has them (§5.2).
             let edit = match (&read, tasks::task_of_text(text, &zone)) {
                 (Some(read), Some(now)) => TaskEdit::of(&now).changed_over(read, &edit),
                 _ => edit.clone(),
             };
-            tasks::apply(text, &edit, &zone, &Zoned::now())
+            tasks::apply(text, &edit, &zone, &sioul_core::zone::now())
         })?;
         write_gaps(qt, shared, uid, &edit);
         // Its blocks to come follow its title and, when it comes back, its turn (`blocks`).
@@ -1680,17 +1680,17 @@ fn answer(result: Result<String, String>) -> String {
 /// What a typed line says, before it becomes a task: its chips, as JSON.
 pub(crate) fn captured(shared: &Shared, line: &str) -> String {
     let projects: Vec<String> = loaded(shared).projects.iter().map(|c| c.id.clone()).collect();
-    crate::backend::json(&capture::capture(line, Zoned::now().date(), &projects, &load_config().task_kinds(tr())))
+    crate::backend::json(&capture::capture(line, sioul_core::zone::now().date(), &projects, &load_config().task_kinds(tr())))
 }
 
 /// A task from a typed line, a step of `parent` when given.
 pub(crate) fn add(qt: &QtThread, shared: &Arc<Shared>, line: &str, parent: &str, list: &str) -> String {
     let projects: Vec<String> = loaded(shared).projects.iter().map(|c| c.id.clone()).collect();
     let config = load_config();
-    let mut edit = capture::capture(line, Zoned::now().date(), &projects, &config.task_kinds(tr())).edit;
+    let mut edit = capture::capture(line, sioul_core::zone::now().date(), &projects, &config.task_kinds(tr())).edit;
     edit.parent = parent.to_string();
     // In quiet time, a thought noted waits for work to come back, out of sight.
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mode = crate::hours::mode_at(&now);
     let mut noted = String::new();
     if edit.start.is_empty()
@@ -1737,7 +1737,7 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
     }
     // The step as it was, for Undo when its bigger task closes with it.
     let step_was = before.loaded.tasks.iter().find(|t| t.uid == uid).map(|t| (PathBuf::from(&t.key), std::fs::read_to_string(&t.key).ok()));
-    let result = change(qt, shared, uid, |text| tasks::set_status(text, status, &TimeZone::system(), &Zoned::now()));
+    let result = change(qt, shared, uid, |text| tasks::set_status(text, status, &sioul_core::zone::current(), &sioul_core::zone::now()));
     if let Err(e) = result {
         return e;
     }
@@ -1746,7 +1746,7 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
     let for_good = step_was.as_ref().and_then(|(path, _)| std::fs::read_to_string(path).ok()).is_some_and(|text| sioul_core::composed::done_for_good(&text));
     if status == Status::Completed
         && for_good
-        && let Ok(closing) = sioul_core::composed::close_with(&before.loaded.tasks, uid, &Zoned::now())
+        && let Ok(closing) = sioul_core::composed::close_with(&before.loaded.tasks, uid, &sioul_core::zone::now())
         && !closing.is_empty()
         && let Ok(mut files) = closing.write()
     {
@@ -1792,7 +1792,7 @@ pub(crate) fn set_felt(qt: &QtThread, shared: &Arc<Shared>, uid: &str, felt: &st
         Ok(felt) => felt,
         Err(e) => return e.to_string(),
     };
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     change(qt, shared, uid, |text| tasks::set_felt(text, &felt, now.date(), &now)).err().unwrap_or_default()
 }
 
@@ -1803,7 +1803,7 @@ pub(crate) fn set_felt(qt: &QtThread, shared: &Arc<Shared>, uid: &str, felt: &st
 /// DEPENDS-ON beside it. No longer: both taken away, and a FINISHTOSTART or
 /// NEXT that another application wrote in `other` for the pair.
 pub(crate) fn set_waits(qt: &QtThread, shared: &Arc<Shared>, uid: &str, other: &str, wait: bool, gap_minutes: i64) -> String {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mine = |l: &str| lines::name(l) == "RELATED-TO" && tasks::relation_of(l).kind == "DEPENDS-ON" && tasks::relation_of(l).uid == other;
     let theirs = |l: &str| lines::name(l) == "RELATED-TO" && matches!(tasks::relation_of(l).kind.as_str(), "FINISHTOSTART" | "NEXT") && tasks::relation_of(l).uid == uid;
     let result = if !wait {
@@ -1834,9 +1834,9 @@ pub(crate) fn find_task(shared: &Shared, uid: &str) -> Result<Task, String> {
 /// A task renamed from its time block (its event's form): its title only, from its file as it is.
 pub(crate) fn retitle(qt: &QtThread, shared: &Arc<Shared>, uid: &str, title: &str) -> Result<(), String> {
     change(qt, shared, uid, |text| {
-        let zone = TimeZone::system();
+        let zone = sioul_core::zone::current();
         let task = tasks::task_of_text(text, &zone).ok_or_else(|| tr().text("task-gone", None))?;
-        tasks::apply(text, &TaskEdit { title: title.to_string(), ..TaskEdit::of(&task) }, &zone, &Zoned::now())
+        tasks::apply(text, &TaskEdit { title: title.to_string(), ..TaskEdit::of(&task) }, &zone, &sioul_core::zone::now())
     })
 }
 
@@ -1852,7 +1852,7 @@ pub(crate) fn laid(shared: &Shared, uid: &str) -> Option<u32> {
 
 /// Puts a task off until tomorrow.
 pub(crate) fn not_now(qt: &QtThread, shared: &Arc<Shared>, uid: &str) {
-    let mut today = Today::load(&Today::default_path(), Zoned::now().date());
+    let mut today = Today::load(&Today::default_path(), sioul_core::zone::now().date());
     today.aside.insert(uid.to_string());
     let _ = today.save(&Today::default_path());
     tell(qt, shared, tr().text("task-set-aside", None));
@@ -1861,7 +1861,7 @@ pub(crate) fn not_now(qt: &QtThread, shared: &Arc<Shared>, uid: &str) {
 
 /// How today is: "clear", "haze" or "fog".
 pub(crate) fn set_weather(qt: &QtThread, shared: &Arc<Shared>, weather: &str) {
-    let mut today = Today::load(&Today::default_path(), Zoned::now().date());
+    let mut today = Today::load(&Today::default_path(), sioul_core::zone::now().date());
     today.weather = Weather::parse(weather);
     let _ = today.save(&Today::default_path());
     show_work(qt, shared);
@@ -1946,7 +1946,7 @@ fn focus_json(desk: &Desk) -> String {
 pub(crate) fn stopped(shared: &Shared) -> String {
     let Some(stopped) = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()) else { return "null".into() };
     let title = loaded(shared).tasks.iter().find(|t| t.uid == stopped.task).map(|t| t.title.clone()).unwrap_or_default();
-    let when = Timestamp::from_second(stopped.at).map(|t| tr().when(&t.to_zoned(TimeZone::system()))).unwrap_or_default();
+    let when = Timestamp::from_second(stopped.at).map(|t| tr().when(&t.to_zoned(sioul_core::zone::current()))).unwrap_or_default();
     serde_json::json!({ "text": stopped.text, "when": when, "task": stopped.task, "title": title }).to_string()
 }
 
@@ -1971,7 +1971,7 @@ pub(crate) fn focus_start(qt: &QtThread, shared: &Arc<Shared>, uid: &str, minute
     }
     // Started, it is in the "Started" column.
     if find(shared, uid).is_ok_and(|t| t.status == Status::NeedsAction) {
-        let _ = change(qt, shared, uid, |text| tasks::set_status(text, Status::InProcess, &TimeZone::system(), &Zoned::now()));
+        let _ = change(qt, shared, uid, |text| tasks::set_status(text, Status::InProcess, &sioul_core::zone::current(), &sioul_core::zone::now()));
     }
     show_work(qt, shared);
 }
@@ -2239,7 +2239,7 @@ fn conflict_path(root: &Path, path: &str) -> String {
     let stem = notes::text_stem(name);
     // Its own extension kept: a Nextcloud Notes ".txt" stays one.
     let extension = &name[stem.len()..];
-    let named = sioul_sync::share::conflict_name(stem, Zoned::now().timestamp().as_millisecond());
+    let named = sioul_sync::share::conflict_name(stem, sioul_core::zone::now().timestamp().as_millisecond());
     let join = |file: String| if folder.is_empty() { file } else { format!("{folder}/{file}") };
     let mut candidate = join(format!("{named}{extension}"));
     let mut n = 2;
@@ -2371,7 +2371,7 @@ pub(crate) fn link(qt: &QtThread, shared: &Arc<Shared>, from: &str, to: &str) ->
     }
     // Worked out and written with the notes' lock held: the note (or task, or
     // event) is read again then, so a change an agent made meanwhile stays.
-    let result = notes::with_lock(|| match loaded.tie(&from, &to, &Zoned::now()) {
+    let result = notes::with_lock(|| match loaded.tie(&from, &to, &sioul_core::zone::now()) {
         Some(change) => rewrite(shared, &change),
         None => LocalLinks::add_all(&LocalLinks::default_path(), &[links::Edge { from: from.clone(), to: to.clone(), how: "link".into() }]).map(|_| ()),
     });
@@ -2394,7 +2394,7 @@ pub(crate) fn unlink(qt: &QtThread, shared: &Arc<Shared>, a: &str, b: &str) -> S
     let kept = loaded.kept_in_meeting(&a, &b);
     // Read again and written with the notes' lock held, as `link` does.
     notes::with_lock(|| {
-        for change in loaded.untie(&a, &b, &Zoned::now()) {
+        for change in loaded.untie(&a, &b, &sioul_core::zone::now()) {
             match rewrite(shared, &change) {
                 Ok(()) => undone = true,
                 Err(e) => problem = Some(e),
@@ -2604,7 +2604,7 @@ fn mail_task_edit(shared: &Shared, key: &str) -> Result<TaskEdit, String> {
         // Its project as the Porch would file it: none for mail it sets
         // aside, none by its sender's address when nothing authenticates it.
         let stored = Card { path: Some(path), ..card };
-        let gate = sioul_core::porch::Gate::load(&config, Zoned::now().timestamp().as_second());
+        let gate = sioul_core::porch::Gate::load(&config, sioul_core::zone::now().timestamp().as_second());
         if let Some(seen) = gate.admission(&stored).and_then(|a| a.for_routes(&stored)) {
             edit.projects.extend(store.route(&seen).first().map(|r| r.project.id.clone()));
         }
@@ -2641,7 +2641,7 @@ fn event_ref(shared: &Shared, key: &str) -> Option<agenda::EventRef> {
 /// and it is no meeting with others, whose server would tell every guest).
 pub(crate) fn note_from_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: f64) -> String {
     let Some(event) = event_ref(shared, key) else { return String::new() };
-    let at = Timestamp::from_second(start as i64).map(|t| t.to_zoned(TimeZone::system())).unwrap_or_else(|_| Zoned::now());
+    let at = Timestamp::from_second(start as i64).map(|t| t.to_zoned(sioul_core::zone::current())).unwrap_or_else(|_| sioul_core::zone::now());
     let title = format!("{} {}", at.date(), event.summary);
     let people: String = event.people.iter().map(|p| format!("- {p}\n")).collect();
     let body = if people.is_empty() { String::new() } else { format!("{}\n\n{people}", tr().text("note-guests", None)) };
@@ -2652,7 +2652,7 @@ pub(crate) fn note_from_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, st
             return String::new();
         }
     };
-    if let Some(change) = loaded(shared).tie_into_event(&event.uid, &notes::uri_of(&path), &Zoned::now()) {
+    if let Some(change) = loaded(shared).tie_into_event(&event.uid, &notes::uri_of(&path), &sioul_core::zone::now()) {
         let _ = rewrite(shared, &change);
     }
     show_work(qt, shared);
@@ -2667,7 +2667,7 @@ pub(crate) fn task_from_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, st
 /// The task to prepare an event (the occurrence at `start`), before it is made.
 fn event_task_edit(shared: &Shared, key: &str, start: f64) -> Result<TaskEdit, String> {
     let Some(event) = event_ref(shared, key) else { return Err(tr().text("agenda-gone", None)) };
-    let day = Timestamp::from_second(start as i64).map(|t| t.to_zoned(TimeZone::system()).date().to_string()).unwrap_or_default();
+    let day = Timestamp::from_second(start as i64).map(|t| t.to_zoned(sioul_core::zone::current()).date().to_string()).unwrap_or_default();
     Ok(TaskEdit {
         title: say("task-prepare", &[("title", event.summary.clone())]),
         due: day,
@@ -2707,7 +2707,7 @@ pub(crate) fn draft_for_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> 
         return String::new();
     }
     let link = tasks::link_line(&Link { uri: links::draft_uri(&draft.id), label: String::new(), rel: "related".into() });
-    let _ = change(qt, shared, uid, |text| tasks::add_lines(text, &[link], &Zoned::now()));
+    let _ = change(qt, shared, uid, |text| tasks::add_lines(text, &[link], &sioul_core::zone::now()));
     draft.id
 }
 

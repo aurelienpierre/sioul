@@ -27,7 +27,6 @@
 
 use crate::backend::{QtThread, load_config, tr};
 use cxx_qt_lib::QString;
-use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sioul_core::config::{Config, config_dir, state_dir};
@@ -2056,7 +2055,7 @@ pub(crate) fn notices() -> Value {
     }
     let Some((here, seal, _)) = sealed() else { return json!([]) };
     let (config, senders) = looks();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let name_of = names(senders);
     let region = sioul_core::reach::region(&config);
     let (texts, _, _) = records(&here, &seal);
@@ -2170,7 +2169,7 @@ fn view(query: &str, archived: bool) -> Value {
     let Some((here, seal, _)) = sealed() else { return json!({ "can": false, "said": tr.text("texts-page-off", None), "conversations": [] }) };
     let Some(phone) = sending_phone() else { return json!({ "can": false, "said": tr.text("texts-page-no-phone", None), "conversations": [] }) };
     let (config, senders) = looks();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let name_of = names(senders);
     let shared = (phone.exported > 0).then_some(phone.exported * 1000);
     let v = rules::Viewer { now: &now, tr, region: sioul_core::reach::region(&config), name_of: &name_of, phone_shared: shared, media_here: &here_media };
@@ -2251,7 +2250,7 @@ fn with_drafts(conversations: Vec<rules::Conversation>, drafts: &[sioul_core::te
 fn conversation(id: &str) -> Value {
     let Some((here, seal, _)) = sealed() else { return json!({ "messages": [] }) };
     let (config, senders) = looks();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let name_of = names(senders);
     let phone = sending_phone();
     let shared = phone.as_ref().filter(|p| p.exported > 0).map(|p| p.exported * 1000);
@@ -2923,7 +2922,7 @@ pub(crate) fn sent_to(phone_id: &str, dial: &str, since_ms: i64) -> Vec<sioul_co
     let to = phones::key(dial, region);
     // When the phone the text goes from last shared, never another's.
     let shared = if demo() && !phone() { sending_phone() } else { phones().into_iter().find(|p| p.id == phone_id) }.filter(|p| p.exported > 0).map(|p| p.exported * 1000);
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let mut sent: Vec<&Request> = requests.iter().filter(|r| r.device == here && r.phone == phone_id && r.written >= since_ms && phones::key(&r.to, region) == to).collect();
     sent.sort_by_key(|r| r.written);
     sent.into_iter()

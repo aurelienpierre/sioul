@@ -25,7 +25,6 @@ use crate::payments::{self, Payment, PaymentKind};
 use crate::porch::{Lane, Triaged};
 use crate::trust::Trust;
 use jiff::civil::Date;
-use jiff::tz::TimeZone;
 use jiff::{Span, Timestamp};
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -724,7 +723,7 @@ fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Optio
             payment.amount = Some(Amount { money: fixed.abs(), currency: "EUR" });
         }
     }
-    let date = Timestamp::from_second(card.date?).ok()?.to_zoned(TimeZone::system()).date();
+    let date = Timestamp::from_second(card.date?).ok()?.to_zoned(crate::zone::current()).date();
     let key = card.message_id.as_ref().map(|id| format!("mid:{id}")).or_else(|| card.path.as_ref().map(|p| format!("file:{}", p.display())))?;
     Some(MailLine {
         key,

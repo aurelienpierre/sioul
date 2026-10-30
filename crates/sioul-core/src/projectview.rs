@@ -17,6 +17,7 @@ use crate::porch::{Admission, Gate};
 use crate::tasks::Status;
 use crate::timereport::{Entry, duration};
 use jiff::Timestamp;
+#[cfg(test)]
 use jiff::tz::TimeZone;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -176,7 +177,7 @@ fn tied_by_hand(loaded: &Loaded, world: &links::World<'_>, project: &str) -> std
 /// Porch's checks, lets a project take.
 #[allow(clippy::too_many_arguments)]
 pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[Invoice], default_rate: f64, now: i64, tr: &Translator, gate: &Gate) -> ProjectView {
-    let zone = TimeZone::system();
+    let zone = crate::zone::current();
     let words = |when: i64| Timestamp::from_second(when).map(|t| tr.day(t.to_zoned(zone.clone()).date())).unwrap_or_default();
     let mut moments: Vec<Moment> = Vec::new();
     let mut push = |when: i64, kind: &str, title: String, detail: String, uri: String, key: String| {

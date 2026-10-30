@@ -308,7 +308,7 @@ pub struct PinView {
 
 /// "today, 14:00–14:45", "Thursday 8 October, 10:00–10:30": a block's time in words.
 fn pinned_when(cx: &Context, pin: &crate::blocks::Pin) -> String {
-    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let zone = cx.offices.now.as_ref().map_or_else(crate::zone::current, |z| z.time_zone().clone());
     let clock = |seconds: i64| Timestamp::from_second(seconds).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     let (from, to) = (clock(pin.start), clock(pin.end));
     if pin.date == cx.today {
@@ -321,7 +321,7 @@ fn pinned_when(cx: &Context, pin: &crate::blocks::Pin) -> String {
 /// Where a task is pinned, for its panel; None when it is not.
 pub fn pin_view(cx: &Context, uid: &str) -> Option<PinView> {
     let pin = cx.plan.pins.get(uid)?;
-    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let zone = cx.offices.now.as_ref().map_or_else(crate::zone::current, |z| z.time_zone().clone());
     let at = Timestamp::from_second(pin.start).ok()?.to_zoned(zone).strftime("%Y-%m-%dT%H:%M").to_string();
     Some(PinView { when: pinned_when(cx, pin), at, minutes: pin.minutes(), key: pin.key.clone(), read_only: pin.read_only })
 }
@@ -359,13 +359,13 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         _ => String::new(),
     };
     let done_on = match (task.status, task.completed) {
-        (Status::Completed, Some(at)) => Timestamp::from_second(at).map(|t| cx.say("task-done-on", &[("date", cx.tr.day(t.to_zoned(TimeZone::system()).date()))])).unwrap_or_default(),
+        (Status::Completed, Some(at)) => Timestamp::from_second(at).map(|t| cx.say("task-done-on", &[("date", cx.tr.day(t.to_zoned(crate::zone::current()).date()))])).unwrap_or_default(),
         _ => String::new(),
     };
     // A mark without its end (written by 4d7bab4, or by a program that drops parameters): no date said.
     let set_aside = match Timestamp::from_second(task.set_aside_end).ok().filter(|_| task.set_aside_end > 0) {
         _ if !set_aside(task) => String::new(),
-        Some(t) => cx.say("task-set-aside-on", &[("date", cx.tr.day(t.to_zoned(TimeZone::system()).date()))]),
+        Some(t) => cx.say("task-set-aside-on", &[("date", cx.tr.day(t.to_zoned(crate::zone::current()).date()))]),
         None => cx.tr.text("task-set-aside-over", None),
     };
     CardView {
@@ -425,7 +425,7 @@ fn next_step<'a>(cx: &Context<'a>, task: &Task) -> Option<&'a Task> {
 /// A folded row's line (`Fold`): its appointment's time when it prepares
 /// one, still to come, and its next step.
 fn fold_line(cx: &Context, task: &Task) -> String {
-    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let zone = cx.offices.now.as_ref().map_or_else(crate::zone::current, |z| z.time_zone().clone());
     let stamp = cx.offices.now.as_ref().map_or_else(|| Timestamp::now().as_second(), |z| z.timestamp().as_second());
     let when = crate::pairs::outing_of(task, cx.tasks, cx.outings).filter(|o| o.start > stamp).and_then(|o| Timestamp::from_second(o.start).ok()).map(|t| cx.tr.date(&t.to_zoned(zone), true));
     let next = next_step(cx, task).map(|s| cx.say("task-fold-next", &[("title", s.title.clone())]));
@@ -434,7 +434,7 @@ fn fold_line(cx: &Context, task: &Task) -> String {
 
 /// "14:00" today, "Thu 8 Oct 10:00" another day: where a task is pinned, beside a pin on its row.
 fn pinned_short(cx: &Context, pin: &crate::blocks::Pin) -> String {
-    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let zone = cx.offices.now.as_ref().map_or_else(crate::zone::current, |z| z.time_zone().clone());
     let Ok(start) = Timestamp::from_second(pin.start).map(|t| t.to_zoned(zone)) else { return String::new() };
     if pin.date == cx.today { start.strftime("%H:%M").to_string() } else { cx.tr.date(&start, true) }
 }
@@ -558,7 +558,7 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
     // by a drag before blocks) waits for it: the others come first; it is still
     // proposed when nothing else is free.
     let stamp = cx.offices.now.as_ref().map_or_else(|| Timestamp::now().as_second(), |z| z.timestamp().as_second());
-    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let zone = cx.offices.now.as_ref().map_or_else(crate::zone::current, |z| z.time_zone().clone());
     let (later, sooner): (Vec<&Task>, Vec<&Task>) = free.into_iter().partition(|t| cx.plan.pins.get(&t.uid).map_or_else(|| t.at_on(cx.today, &zone), |pin| Some(pin.start)).is_some_and(|at| at > stamp + 15 * 60));
     let free: Vec<&Task> = sooner.into_iter().chain(later).collect();
     // Fog: only small steps; if none is small, the smallest.
@@ -645,7 +645,7 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
     }
     view.loops = cx.plan.loops.iter().map(|l| cx.say("task-loop", &[("titles", l.iter().map(|u| cx.title(u)).collect::<Vec<_>>().join(", "))])).collect();
     let week_start = cx.today.checked_sub(Span::new().days(i64::from(cx.today.weekday().to_monday_zero_offset()))).unwrap_or(cx.today);
-    let from = week_start.to_zoned(TimeZone::system()).map_or(0, |z| z.timestamp().as_second());
+    let from = week_start.to_zoned(crate::zone::current()).map_or(0, |z| z.timestamp().as_second());
     let mut done: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed && t.completed.is_some_and(|c| c >= from) && cx.filter.wants(t)).collect();
     done.sort_by_key(|t| std::cmp::Reverse(t.completed));
     view.done_week = done.iter().map(|t| card(cx, t)).collect();
@@ -709,7 +709,7 @@ pub fn board(cx: &Context, project: Option<&str>, folded: Fold) -> BoardView {
         found
     };
     let ordered: Vec<&Task> = cx.plan.order.iter().filter_map(|u| cx.task(u)).filter(acted_on).collect();
-    let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(TimeZone::system()).map_or(0, |z| z.timestamp().as_second());
+    let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(crate::zone::current()).map_or(0, |z| z.timestamp().as_second());
     let mut done: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight)).filter(acted_on).filter(|t| shut(t).is_none()).collect();
     done.sort_by_key(|t| std::cmp::Reverse(t.completed));
     // A folded task's card: in the column of its step furthest on, once.
@@ -778,7 +778,7 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str, folded: Fold) -> Li
     let fold = |t: &str| crate::text::fold(t).into_iter().collect::<String>();
     let words: Vec<String> = query.split_whitespace().map(fold).collect();
     let matches = |t: &Task| words.iter().all(|w| fold(&format!("{} {} {}", t.title, t.notes, t.categories.join(" "))).contains(w.as_str()));
-    let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(TimeZone::system()).map_or(0, |z| z.timestamp().as_second());
+    let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(crate::zone::current()).map_or(0, |z| z.timestamp().as_second());
     // What an appointment over set aside, with the done ones, however old: the way back that
     // needs no card, the appointment deleted since (review of 4d7bab4, later 8).
     let shown = |t: &Task| (t.status.is_open() || (done && t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight)) || (done && set_aside(t))) && matches(t) && cx.filter.wants(t);
@@ -1022,7 +1022,7 @@ pub fn related_views(tr: &Translator, related: &[Related]) -> Vec<RelatedView> {
                 r.detail.clone()
             },
             how: tr.text(&format!("how-{}", r.how), None),
-            when: r.when.and_then(|t| Timestamp::from_second(t).ok()).map(|t| tr.date(&t.to_zoned(TimeZone::system()), true)).unwrap_or_default(),
+            when: r.when.and_then(|t| Timestamp::from_second(t).ok()).map(|t| tr.date(&t.to_zoned(crate::zone::current()), true)).unwrap_or_default(),
             key: r.key.clone(),
             found: r.found,
             program: r.program,
@@ -1094,7 +1094,7 @@ pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], r
         .iter()
         .take(8)
         .map(|s| {
-            let day = Timestamp::from_second(s.start).map(|t| cx.tr.day(t.to_zoned(TimeZone::system()).date())).unwrap_or_default();
+            let day = Timestamp::from_second(s.start).map(|t| cx.tr.day(t.to_zoned(crate::zone::current()).date())).unwrap_or_default();
             minutes_text(cx.tr, "task-session-time", s.minutes, Some(day))
         })
         .collect();

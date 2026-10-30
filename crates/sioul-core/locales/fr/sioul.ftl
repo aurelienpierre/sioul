@@ -791,6 +791,9 @@ mail-not-sent = Pas envoyé ; le brouillon attend dans Brouillons. { $detail }
 mail-no-account = Aucun compte de courriel pour envoyer : ajoutez-en un dans Comptes.
 
 ## Contacts et agendas.
+agenda-here-there = { $here } ici · { $there } { $place }
+agenda-there-here = { $there } { $place } · { $here } ici
+agenda-there-here-day = { $there } { $place } · { $here } ici, { $day }
 agenda-today = Aujourd’hui
 agenda-tomorrow = Demain
 agenda-all-day = Toute la journée
@@ -6278,6 +6281,14 @@ collection-events-and-tasks = événements et tâches
 # The time kept between two events (22 October 2026): set by you alone; otherwise, two events overlap only when their times do.
 set-agenda-between = Temps gardé entre deux événements
 set-agenda-between-help = Plus proches que cela, deux événements sont dits trop proches. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
+set-agenda-time-zone = Fuseau horaire
+set-agenda-time-zone-help = Le fuseau horaire dans lequel l’agenda, le planning et les rappels disent les heures, et décident d’aujourd’hui, sur cet appareil : le sien, suivi quand il change, ou un autre choisi, pour un ordinateur dont l’horloge reste à la maison pendant un voyage. Un événement garde son instant ; seule la façon dont son heure se lit change. Les prises gardent l’horloge du système.
+set-agenda-time-zone-device = Suivre cet appareil ({ $zone })
+zone-search = Tapez une ville ou une région : Paris, New York
+zone-other = Un autre fuseau horaire…
+event-clock = Fuseau horaire
+event-clock-local = Heure locale ({ $zone })
+event-clock-utc = UTC
 overlap-today-close = Aujourd’hui, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-source-after = gardées après le premier (son Après)

@@ -266,7 +266,7 @@ fn read_table_lines(path: &Path, trains: bool) -> (String, String, String) {
 
 /// "on Tuesday 6 October at 10:00", in your language.
 fn when(seconds: i64) -> String {
-    jiff::Timestamp::from_second(seconds).ok().filter(|_| seconds > 0).map(|t| tr().when(&t.to_zoned(jiff::tz::TimeZone::system()))).unwrap_or_default()
+    jiff::Timestamp::from_second(seconds).ok().filter(|_| seconds > 0).map(|t| tr().when(&t.to_zoned(sioul_core::zone::current()))).unwrap_or_default()
 }
 
 /// A count with this language's thousands separator: "41,200", "41 200".
@@ -377,7 +377,7 @@ mod training {
 
     /// A day, in your language: "20 June 2023".
     fn day(seconds: i64) -> String {
-        jiff::Timestamp::from_second(seconds).ok().map(|t| tr().day(t.to_zoned(jiff::tz::TimeZone::system()).date())).unwrap_or_default()
+        jiff::Timestamp::from_second(seconds).ok().map(|t| tr().day(t.to_zoned(sioul_core::zone::current()).date())).unwrap_or_default()
     }
 
     pub(super) fn start(qt: QtThread, shared: Arc<Shared>, named: Vec<String>) -> String {
@@ -577,7 +577,7 @@ mod training {
             lines.push(say("spam-app-refit", &[("n", grouped(refit.ham + refit.spam))]));
         }
         let split = &summary.split;
-        let since = jiff::Timestamp::from_second(split.test_from).ok().filter(|_| split.test_from > 0).map(|t| tr().day(t.to_zoned(jiff::tz::TimeZone::system()).date())).unwrap_or_default();
+        let since = jiff::Timestamp::from_second(split.test_from).ok().filter(|_| split.test_from > 0).map(|t| tr().day(t.to_zoned(sioul_core::zone::current()).date())).unwrap_or_default();
         lines.push(say(
             "spam-app-learned",
             &[("ham", grouped(split.train_ham)), ("spam", grouped(split.train_spam)), ("since", since), ("testham", grouped(split.test_ham)), ("testspam", grouped(split.test_spam))],

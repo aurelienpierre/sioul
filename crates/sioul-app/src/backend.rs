@@ -11,7 +11,6 @@
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
-use jiff::Zoned;
 use sioul_core::budget::{self, Ledger, MailLine};
 use sioul_core::card::ImapOrigin;
 use sioul_core::projects::ProjectStore;
@@ -2004,6 +2003,26 @@ pub mod qobject {
         #[qinvokable]
         fn set_realtime_mode(self: Pin<&mut Sioul>, on: bool);
 
+        /// What to add to the instant `seconds` (in milliseconds) so that a
+        /// JavaScript date's own clock, the device's, reads the time zone Sioul
+        /// shows (`zone::current`): 0 while it follows this device.
+        #[qinvokable]
+        fn zone_shift(self: &Sioul, seconds: f64) -> f64;
+
+        /// The time zone Sioul shows, by its name: "Europe/Paris", "UTC".
+        #[qinvokable]
+        fn zone_name(self: &Sioul) -> QString;
+
+        /// The event form's line beside its times on another clock
+        /// (`agenda::clock_line`): "15:00 – 16:00 UTC · 16:00 – 17:00 here";
+        /// "" on the time zone shown.
+        #[qinvokable]
+        fn clock_line(self: &Sioul, start: &QString, end: &QString, clock: &QString) -> QString;
+
+        /// The time zones whose name holds `query`, at most twelve, as a JSON list (`zone::matching`).
+        #[qinvokable]
+        fn zone_names(self: &Sioul, query: &QString) -> QString;
+
         /// Recents' picture of Sioul on (`shown`) or kept out while a health
         /// card is open (RecentsGuard.qml): Android 13 and later only
         /// (android/main.cpp); nothing elsewhere.
@@ -2603,7 +2622,7 @@ impl World {
 
     /// The mail waiting in the Porch; with `state` empty, all the mail kept.
     fn gather(&self, state: &PorchState) -> Vec<Triaged> {
-        let now = Zoned::now().timestamp().as_second();
+        let now = sioul_core::zone::now().timestamp().as_second();
         porch::gather(&self.config.mail_sources(), self.store.as_ref(), &self.known, &self.senders, state, now)
     }
 
@@ -2630,7 +2649,7 @@ impl World {
         if !inside {
             return None;
         }
-        let now = Zoned::now().timestamp().as_second();
+        let now = sioul_core::zone::now().timestamp().as_second();
         let canonical: Vec<_> = sources
             .into_iter()
             .map(|mut s| {
@@ -2675,10 +2694,10 @@ pub(crate) fn update_weather(qt: &QtThread, shared: &Arc<Shared>) {
         let _ = qt.queue(|mut sioul| sioul.as_mut().set_forecast(QString::default()));
         return;
     };
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let kept: Option<sioul_core::weather::Forecast> = std::fs::read_to_string(weather_cache()).ok().and_then(|t| serde_json::from_str(&t).ok());
     let shown = move |forecast: &sioul_core::weather::Forecast| {
-        let view = sioul_core::weather::view(forecast, &Zoned::now(), tr());
+        let view = sioul_core::weather::view(forecast, &sioul_core::zone::now(), tr());
         serde_json::json!({ "place": place, "view": view, "credit": tr().text("weather-credit", None) }).to_string()
     };
     if let Some(forecast) = kept.as_ref() {
@@ -2691,7 +2710,7 @@ pub(crate) fn update_weather(qt: &QtThread, shared: &Arc<Shared>) {
     }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
-        if let Ok(forecast) = sioul_sync::weather::forecast(latitude, longitude, Zoned::now().timestamp().as_second()) {
+        if let Ok(forecast) = sioul_sync::weather::forecast(latitude, longitude, sioul_core::zone::now().timestamp().as_second()) {
             if let Ok(text) = serde_json::to_string(&forecast) {
                 let _ = std::fs::create_dir_all(config::state_dir());
                 let _ = std::fs::write(weather_cache(), text);
@@ -2713,7 +2732,7 @@ pub(crate) fn mode_now() -> sioul_core::quiet::Mode {
 /// Work time or quiet time, as the window shows it.
 pub(crate) fn mode_json() -> String {
     let config = load_config();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let mode = crate::hours::mode_at(&now);
     let until = mode.until.as_ref().map(|z| sioul_core::quiet::until_text(tr(), z, &now)).unwrap_or_default();
@@ -2776,7 +2795,7 @@ fn compute(shared: &Shared) -> Views {
     // One look at the mail: the Porch, then the money lines, each message parsed once (`maildir::CardsKept`).
     let _cards = sioul_core::maildir::CardsKept::begin();
     let world = World::load();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let hidden = mail::hidden_files(shared);
     let mut items = world.gather(&PorchState::load(&PorchState::default_path()));
     items.retain(|t| t.card.path.as_ref().is_none_or(|p| !hidden.contains(p)));
@@ -3126,7 +3145,7 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             args.set("days", account.sync_days.unwrap_or(config::DEFAULT_SYNC_DAYS));
             (tr().text("sync-first", Some(&args)), false)
         }
-        Ok(_) => (say("ui-synced-at", &[("time", Zoned::now().strftime("%H:%M").to_string())]), false),
+        Ok(_) => (say("ui-synced-at", &[("time", sioul_core::zone::now().strftime("%H:%M").to_string())]), false),
         Err(e) => (e.sentence(tr(), &account.id), true),
     };
     if let Ok(mut statuses) = shared.statuses.lock() {
@@ -3209,7 +3228,7 @@ fn tie_to_projects(files: &[PathBuf]) {
     crate::github::tie_mail(&config, files, &mut ties);
     if let Some(store) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties)) {
         let senders = porch::Senders::load(&config);
-        for t in porch::judge(files, &config.mail_sources(), Some(&store), &KnownSenders::default(), &senders, Zoned::now().timestamp().as_second()) {
+        for t in porch::judge(files, &config.mail_sources(), Some(&store), &KnownSenders::default(), &senders, sioul_core::zone::now().timestamp().as_second()) {
             if let (porch::Lane::Project(id), Some(mid)) = (&t.lane, t.card.message_id.as_deref()) {
                 ties.add(&sioul_core::links::mail_uri(mid), &sioul_core::links::project_uri(id), "project");
             }
@@ -3236,7 +3255,7 @@ fn retie_project(id: String) {
         let path = sioul_core::links::LocalLinks::default_path();
         let mut ties = sioul_core::links::LocalLinks::load(&path);
         let before = ties.links.len();
-        let gate = porch::Gate::load(&config, Zoned::now().timestamp().as_second());
+        let gate = porch::Gate::load(&config, sioul_core::zone::now().timestamp().as_second());
         for account in config.accounts.iter().filter(|a| a.syncs()) {
             let files = sioul_core::mailindex::message_files(&account.maildir_path());
             for mid in gate.routed(&routes, files.iter().map(PathBuf::as_path)) {
@@ -3291,7 +3310,7 @@ fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
         return;
     }
     let config = load_config();
-    let now = Zoned::now().timestamp().as_second();
+    let now = sioul_core::zone::now().timestamp().as_second();
     let senders = porch::Senders::load(&config);
     // Codes are decided before projects and screening: neither is needed here.
     let judged = porch::judge(files, &config.mail_sources(), None, &KnownSenders::default(), &senders, now);
@@ -3819,7 +3838,7 @@ impl qobject::Sioul {
             let mail = world.mail_lines(&ledger);
             let found = mail.iter().find(|l| l.key == key).ok_or_else(|| tr().text("note-no-amount", None))?;
             let line = found.line(&budget).ok_or_else(|| tr().text("note-no-amount", None))?;
-            let origin = say("budget-origin-mail", &[("subject", found.subject.clone()), ("sender", found.sender.clone()), ("date", Zoned::now().date().to_string())]);
+            let origin = say("budget-origin-mail", &[("subject", found.subject.clone()), ("sender", found.sender.clone()), ("date", sioul_core::zone::now().date().to_string())]);
             budget::record_line(&path, &line, &origin)?;
             Ok::<String, String>(say("ui-line-added", &[("budget", ledger.budget_title(&budget).to_string())]))
         })();
@@ -4269,7 +4288,7 @@ impl qobject::Sioul {
     fn show_days(self: Pin<&mut Self>, from: &QString, days: i32, upcoming: bool) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
-            state.from = from.to_string().parse().unwrap_or_else(|_| Zoned::now().date());
+            state.from = from.to_string().parse().unwrap_or_else(|_| sioul_core::zone::now().date());
             state.days = i64::from(days.clamp(1, 366));
             state.upcoming = upcoming;
         }
@@ -4767,7 +4786,7 @@ impl qobject::Sioul {
 
     fn budget_detail(&self, id: &QString, anchor: &QString, step: &QString) -> QString {
         let world = World::load();
-        let today = Zoned::now().date();
+        let today = sioul_core::zone::now().date();
         let Some(ledger) = world.ledger() else { return QString::default() };
         let Some(found) = ledger.budgets.iter().find(|b| b.id == id.to_string()) else { return QString::default() };
         let anchor = anchor.to_string().parse().unwrap_or(today);
@@ -5185,7 +5204,7 @@ impl qobject::Sioul {
 
     fn set_dose_taken(self: Pin<&mut Self>, key: &QString, taken: bool) -> QString {
         // The window's Taken: a dose of a day to come refused first; the alarms answer through `set_taken` alone.
-        let problem = crate::health::window_taken(&key.to_string(), taken, &jiff::Zoned::now());
+        let problem = crate::health::window_taken(&key.to_string(), taken, &sioul_core::zone::now());
         // Said in the status line and kept there a while (`tell`), routine news after it waiting (review of 36002ea, low 20);
         // a mark written, what to know besides (nothing read here to move its next doses), said the same way.
         let said = if problem.is_empty() && taken { crate::health::unmoved_note().unwrap_or_default() } else { problem.clone() };
@@ -5468,7 +5487,7 @@ impl qobject::Sioul {
             if movement.amount == 0.0 || !movement.amount.is_finite() {
                 return Err(tr().text("budget-add-bad-amount", None));
             }
-            let today = Zoned::now().date();
+            let today = sioul_core::zone::now().date();
             let origin = say("budget-origin-hand", &[("date", today.to_string())]);
             if movement.kind == "recurring" {
                 let preset = budget::PresetEdit {
@@ -5674,17 +5693,26 @@ impl qobject::Sioul {
         // minutes; the rest waits until it is back (Android stops an app that
         // works in the background, and nobody looks at its pages then).
         if *self.as_ref().away() {
-            if Zoned::now().minute() % 5 == 0 {
+            if sioul_core::zone::now().minute() % 5 == 0 {
                 crate::share::exchange_tick(&self.qt_thread(), &self.shared());
             }
             return;
         }
         // The home screen's card: written again when its first frame ended, or five minutes went by.
         crate::homecard::tick();
+        // The time zone shown changed (Settings, or the system's own while
+        // running: a phone landing elsewhere): every time is said again.
+        if sioul_core::zone::turned() {
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            show(&qt, &shared);
+            pim::show_pim(&qt, &shared);
+            work::show_work(&qt, &shared);
+            crate::homecard::now();
+        }
         // Something handed by another application while the window stayed shown (split screen).
         crate::outside::take(self.as_mut());
         // The plan, made again on the clock.
-        let now = Zoned::now();
+        let now = sioul_core::zone::now();
         let (stamp, day) = (now.timestamp().as_second(), i64::from(now.date().year()) * 1000 + i64::from(now.date().day_of_year()));
         let shared = self.shared();
         let last = shared.planned_at.load(Ordering::Relaxed);
@@ -5736,7 +5764,7 @@ impl qobject::Sioul {
     }
 
     fn work_a_while(self: Pin<&mut Self>, minutes: i32) {
-        let until = Zoned::now().timestamp().as_second() + i64::from(minutes.max(1)) * 60;
+        let until = sioul_core::zone::now().timestamp().as_second() + i64::from(minutes.max(1)) * 60;
         self.change_overrides(|o| {
             o.rest_until = None;
             o.work_until = Some(until);
@@ -5751,7 +5779,7 @@ impl qobject::Sioul {
         let mut next = previous.clone();
         next.work_until = None;
         next.rest_until = Some(closed.back.timestamp().as_second());
-        next.rest_from = Some(Zoned::now().timestamp().as_second());
+        next.rest_from = Some(sioul_core::zone::now().timestamp().as_second());
         next.first_step = Some(closed.first.text.clone()).filter(|s| !s.is_empty());
         next.first_step_task = Some(closed.first.uid.clone()).filter(|s| !s.is_empty());
         next.first_step_day = Some(closed.back.date());
@@ -5810,7 +5838,7 @@ impl qobject::Sioul {
     }
 
     fn work_until_tonight(self: Pin<&mut Self>) {
-        let Some(night) = crate::everywhere::tonight(&Zoned::now()) else { return };
+        let Some(night) = crate::everywhere::tonight(&sioul_core::zone::now()) else { return };
         self.change_overrides(|o| {
             o.rest_until = None;
             o.work_until = Some(night);
@@ -6238,6 +6266,11 @@ impl qobject::Sioul {
         if key.contains("fetch_minutes") {
             update_paces(&shared);
         }
+        // The time zone shown: the home card says its times again (the minute's own look then finds no change).
+        if key == "agenda.time_zone" {
+            let _ = sioul_core::zone::turned();
+            crate::homecard::now();
+        }
         // Hours or days off changed: what the time is for now, and what the Porch asks.
         if key.starts_with("window") || key == "time_off" {
             self.as_mut().set_mode(QString::from(&mode_json()));
@@ -6285,6 +6318,26 @@ impl qobject::Sioul {
         let line = tr().text(if on { "realtime-on" } else { "realtime-off" }, None);
         self.as_mut().set_status(QString::from(&line));
         show(&self.qt_thread(), &shared);
+    }
+
+    fn zone_shift(&self, seconds: f64) -> f64 {
+        #[allow(clippy::cast_possible_truncation)]
+        let Ok(at) = jiff::Timestamp::from_second(seconds as i64) else { return 0.0 };
+        let shown = sioul_core::zone::current().to_offset(at).seconds();
+        let device = sioul_core::zone::system_of(&sioul_core::zone::Sources::read()).to_offset(at).seconds();
+        f64::from(shown - device) * 1000.0
+    }
+
+    fn zone_name(&self) -> QString {
+        QString::from(&sioul_core::zone::name_of(&sioul_core::zone::current(), jiff::Timestamp::now()))
+    }
+
+    fn clock_line(&self, start: &QString, end: &QString, clock: &QString) -> QString {
+        QString::from(&sioul_core::agenda::clock_line(&start.to_string(), &end.to_string(), &clock.to_string(), &sioul_core::zone::current(), tr()))
+    }
+
+    fn zone_names(&self, query: &QString) -> QString {
+        QString::from(&serde_json::to_string(&sioul_core::zone::matching(&query.to_string(), 12)).unwrap_or_default())
     }
 
     fn recents_picture(&self, shown: bool) {

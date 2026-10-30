@@ -754,6 +754,22 @@ Item {
         // A busy week far ahead, as the stand-in profile's: each day three
         // appointments, two steps, lunch and dinner, the night, two doses; a
         // nap on two days, an all-day appointment on one.
+        // An event on another clock says both its times on the Week list's line,
+        // under its title (`Placed.both`); one on the zone shown, its title
+        // alone; no line says what it lacks.
+        function test_a_list_line_says_both_times() {
+            const days = week().concat(["2099-01-08", "2099-01-09", "2099-01-10", "2099-01-11"].map(v3day))
+            const there = event("call.ics", days[1], 600, 660)
+            there.both = "10:00 – 11:00 here · 09:00 – 10:00 UTC"
+            days[1].timed = [there, event("here.ics", days[1], 720, 780)]
+            const planning = makeWeek({ width: 412, height: 800, days: days, today: days[1].date })
+            verify(planning.listed, "a phone's Week: a list")
+            const texts = root.all(planning, c => typeof c.text === "string" && c.visible).map(c => c.text)
+            verify(texts.some(t => t === "call.ics\n10:00 – 11:00 here · 09:00 – 10:00 UTC"), JSON.stringify(texts))
+            verify(texts.some(t => t === "here.ics"), JSON.stringify(texts))
+            verify(!texts.some(t => t.indexOf("undefined") >= 0), "no line says undefined")
+        }
+
         function busyWeek() {
             const dates = ["2099-01-05", "2099-01-06", "2099-01-07", "2099-01-08", "2099-01-09", "2099-01-10", "2099-01-11", "2099-01-12"]
             const days = dates.map(v3day)

@@ -16,7 +16,6 @@
 use super::{items, phone, read, records, write};
 use crate::Session;
 use jiff::civil::{Date, DateTime};
-use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 use serde_json::{Map, Value, json};
 
@@ -255,7 +254,7 @@ impl Args<'_> {
         if !text.contains(['T', 't', ' ']) {
             return text.parse::<Date>().map(|day| Some(day.to_string())).map_err(|_| wrong());
         }
-        let zone = TimeZone::system();
+        let zone = sioul_core::zone::current();
         let at = match text.parse::<Timestamp>() {
             Ok(instant) => instant.to_zoned(zone).datetime(),
             Err(_) => match text.parse::<Zoned>() {
@@ -264,6 +263,23 @@ impl Args<'_> {
             },
         };
         Ok(Some(at.strftime("%Y-%m-%dT%H:%M").to_string()))
+    }
+
+    /// An event's own clock: "UTC", or a time zone's name of the database
+    /// ("America/New_York"); "" for the person's own time zone ("" or "local").
+    pub fn clock(&self, name: &str) -> Result<Option<String>, String> {
+        let Some(text) = self.text(name)? else { return Ok(None) };
+        let text = text.trim();
+        if text.is_empty() || text.eq_ignore_ascii_case("local") {
+            return Ok(Some(String::new()));
+        }
+        if text.eq_ignore_ascii_case("utc") {
+            return Ok(Some("UTC".into()));
+        }
+        match jiff::tz::TimeZone::get(text) {
+            Ok(zone) => Ok(Some(zone.iana_name().unwrap_or(text).to_string())),
+            Err(_) => Err(format!("“{name}” is UTC or a time zone's name, as America/New_York; not “{}”.", crate::one_line(text))),
+        }
     }
 }
 
@@ -274,6 +290,7 @@ pub fn object(properties: Value, required: &[&str]) -> Value {
 
 const DAY: &str = "A day, as 2026-10-05.";
 const MOMENT: &str = "A day (2026-10-05) or a day and a time (2026-10-05T09:00), in the person's time zone.";
+const CLOCK: &str = "The clock the event keeps: UTC, or a time zone's name (America/New_York); the person's own time zone by default. Its times are still given in the person's time zone, or as instants (2026-11-04T15:00Z).";
 
 pub const TOOLS: &[Tool] = &[
     // What came, and mail.
@@ -368,7 +385,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "agenda",
         title: "What comes",
-        description: "The events of every calendar, day by day, from a day (today by default) for a number of days (15 by default), each with its sioul:event/ address; and, on each day the plan reaches (four weeks), the steps the plan gives it (`steps`: each task's sioul:task/ address, title and time; pinned, done, or in that day's plan with no time left that day). The plan's steps move as the days change: proposals, never promises. Never a meal, a nap or a dose.",
+        description: "The events of every calendar, day by day, from a day (today by default) for a number of days (15 by default), each with its sioul:event/ address and, on another clock than the person's time zone, that clock (`clock`: UTC or a zone; \"\" otherwise), its times there said beside; and, on each day the plan reaches (four weeks), the steps the plan gives it (`steps`: each task's sioul:task/ address, title and time; pinned, done, or in that day's plan with no time left that day). The plan's steps move as the days change: proposals, never promises. Never a meal, a nap or a dose.",
         writes: false,
         idempotent: true,
         open_world: false,
@@ -386,7 +403,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "get_event",
         title: "Read an event",
-        description: "One event, by its address: its title, times, place, notes, repeat, reminder before it (remind: \"\" as usual, \"none\", or minutes), the time kept before and after it (minutes; from its legs while it has some), its calendar, and whether it is a meeting with others (with_others), which is never moved nor deleted here. An appointment gives its legs (a ride or a walk before or after it, which move with it: side, and unconfirmed when one was moved with it and its timetable not checked), those kept from agents counted (legs_kept_back), never named nor counted in the time kept; a leg gives the appointment it is before or after (leg_of).",
+        description: "One event, by its address: its title, times (in the person's time zone; on another clock, `clock` names it, UTC or a zone, and clock_start and clock_end say its times there), place, notes, repeat, reminder before it (remind: \"\" as usual, \"none\", or minutes), the time kept before and after it (minutes; from its legs while it has some), its calendar, and whether it is a meeting with others (with_others), which is never moved nor deleted here. An appointment gives its legs (a ride or a walk before or after it, which move with it: side, and unconfirmed when one was moved with it and its timetable not checked), those kept from agents counted (legs_kept_back), never named nor counted in the time kept; a leg gives the appointment it is before or after (leg_of).",
         writes: false,
         idempotent: true,
         open_world: false,
@@ -751,7 +768,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "add_event",
         title: "Add an event",
-        description: "Writes one new event into a calendar on this device: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes. An appointment, not a task: something to do goes in add_task, even with a time; when the person has not said which it is, ask them. With `anchor` (an appointment's address) it is a leg of that appointment: a ride or a walk `side` before or after it, at the times given, which then moves with it; in the appointment's calendar and projects (the calendar for new events when that one cannot hold it, said). Never invent a timetable: give `timetable` only for a time read from one, and leave a ride out rather than guess. Not for an appointment that repeats or lasts the whole day. Said in Sioul's window with Undo.",
+        description: "Writes one new event into a calendar on this device: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes. An appointment, not a task: something to do goes in add_task, even with a time; when the person has not said which it is, ask them. With `anchor` (an appointment's address) it is a leg of that appointment: a ride or a walk `side` before or after it, at the times given, which then moves with it; in the appointment's calendar and projects (the calendar for new events when that one cannot hold it, said). Never invent a timetable: give `timetable` only for a time read from one, and leave a ride out rather than guess. Not for an appointment that repeats or lasts the whole day. An event on another clock (`clock`: a call set in UTC, an appointment abroad) keeps it: its wall time there, summer or winter. Said in Sioul's window with Undo.",
         writes: true,
         idempotent: false,
         open_world: false,
@@ -766,6 +783,7 @@ pub const TOOLS: &[Tool] = &[
                     "notes": { "type": "string" },
                     "repeat": { "type": "string", "enum": ["daily", "weekly", "monthly", "yearly"] },
                     "calendar": { "type": "string", "description": "The calendar, as account/id." },
+                    "clock": { "type": "string", "description": CLOCK },
                     "anchor": { "type": "string", "description": "A leg: the appointment it belongs to, sioul:event/<UID>. start and end are then the leg's own times." },
                     "side": { "type": "string", "enum": ["before", "after"], "description": "A leg: before the appointment (getting there; the default) or after it (coming back)." },
                     "timetable": { "type": "boolean", "description": "A leg whose time was read from a timetable: once moved with its appointment, said as not checked." },
@@ -779,7 +797,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "update_event",
         title: "Change an event",
-        description: "Changes what is given of one event (nothing else changes), the rest kept as it is (another program's fields too): its title, start and end (a day for a whole day, a time otherwise), place, notes, repeat, reminder, the time kept before and after it, or its calendar, which moves it there through Sioul's move journal (never twice, never lost). A meeting with others never moves. Its legs to come move with it unless `legs` says stay; one kept from agents is never written here, counted (legs_kept_back) when its times change, and moves with it at Sioul's next pass whatever `legs` says. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
+        description: "Changes what is given of one event (nothing else changes), the rest kept as it is (another program's fields too): its title, start and end (a day for a whole day, a time otherwise, in the person's time zone), its clock, place, notes, repeat, reminder, the time kept before and after it, or its calendar, which moves it there through Sioul's move journal (never twice, never lost). A meeting with others never moves. Its legs to come move with it unless `legs` says stay; one kept from agents is never written here, counted (legs_kept_back) when its times change, and moves with it at Sioul's next pass whatever `legs` says. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
         writes: true,
         idempotent: true,
         open_world: false,
@@ -798,6 +816,7 @@ pub const TOOLS: &[Tool] = &[
                     "before": { "type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes kept before it: getting ready, getting there." },
                     "after": { "type": "integer", "minimum": 0, "maximum": 1440, "description": "Minutes kept after it: coming back." },
                     "calendar": { "type": "string", "description": "Another calendar, as account/id: the event moves there." },
+                    "clock": { "type": "string", "description": "The clock the event keeps from now on: UTC, a time zone's name (America/New_York), or local, the person's own; its own kept when unsaid. Its times stay the same instants; those given are in the person's time zone." },
                     "legs": { "type": "string", "enum": ["follow", "stay"], "description": "Its legs when its times change: they move with it (follow, the default; the answer lists them), or stay where they are." },
                 }),
                 &["event"],

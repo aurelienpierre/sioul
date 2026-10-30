@@ -697,7 +697,7 @@ pub(crate) fn maildir_flags<'a>(flags: impl Iterator<Item = Flag<'a>>) -> String
 /// mail follows, a round at a time.
 fn first_window(account: &Account) -> jiff::civil::Date {
     let days = i64::from(account.sync_days.unwrap_or(DEFAULT_SYNC_DAYS));
-    let today = jiff::Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     today.checked_sub(jiff::Span::new().days(days)).unwrap_or(today)
 }
 

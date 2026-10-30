@@ -85,7 +85,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             if std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20) {
                 continue;
             }
-            let received = std::fs::metadata(&path).and_then(|m| m.modified()).ok().map(|t| jiff::Timestamp::try_from(t).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).date()).unwrap_or_else(|_| jiff::Zoned::now().date())).unwrap_or_else(|| jiff::Zoned::now().date());
+            let received = std::fs::metadata(&path).and_then(|m| m.modified()).ok().map(|t| jiff::Timestamp::try_from(t).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|_| sioul_core::zone::now().date())).unwrap_or_else(|| sioul_core::zone::now().date());
             let id = format!("{received}-{:08x}", source.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)));
             let work = sioul_core::config::cache_dir().join("ocr").join(&id);
             let mut letter = Letter { id: id.clone(), file: path.strip_prefix(&root).map_or_else(|_| path.display().to_string(), |p| p.to_string_lossy().replace('\\', "/")), source, received: Some(received), status: "new".into(), ..Letter::default() };
@@ -238,7 +238,7 @@ fn trusted_if(plan: Option<Arc<crate::work::PlanShown>>, current: impl Fn(&crate
 /// 9074); an event or a time block unties nothing (review of 21436bf, later
 /// 4). Whether any letter was.
 pub(crate) fn untie_removed(root: &Path, text: &str) -> bool {
-    sioul_core::tasks::task_of_text(text, &jiff::tz::TimeZone::system()).is_some_and(|task| untie_task(root, &task.uid).unwrap_or(false))
+    sioul_core::tasks::task_of_text(text, &sioul_core::zone::current()).is_some_and(|task| untie_task(root, &task.uid).unwrap_or(false))
 }
 
 /// The letters not done with, as JSON; each letter's task as the tasks
@@ -252,7 +252,7 @@ pub(crate) fn view() -> String {
     };
     let Some(root) = load_config().notes_root_path() else { return json(&view) };
     let Ok(letters) = Letters::load(&root) else { return json(&view) };
-    let today = jiff::Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let known = tasks_trusted(crate::work::plan_shown());
     let projects = sioul_core::projects::ProjectStore::load(&root).map(|s| s.projects).unwrap_or_default();
     view.projects = projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect();
@@ -346,7 +346,7 @@ pub(crate) fn make_task(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String
     let removed = crate::mail::hidden_pim(shared).0;
     let root = load_config().notes_root_path();
     with_letter(id, |letters, letter| {
-        let all = sioul_core::tasks::all(&jiff::tz::TimeZone::system());
+        let all = sioul_core::tasks::all(&sioul_core::zone::current());
         let tasks = here_but(&all, &removed);
         if !needs_task(letter, &tasks) {
             return Ok(String::new());

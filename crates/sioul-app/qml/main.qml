@@ -273,6 +273,8 @@ SioulWindow {
 
         readonly property real started: Date.now()
 
+        shift: ms => sioul.zoneShift(ms / 1000)
+
         paused: sioul.away
         onTurned: {
             if (Date.now() - clock.started >= 30000)

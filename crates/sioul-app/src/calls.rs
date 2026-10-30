@@ -160,7 +160,7 @@ pub(crate) fn refresh(now: bool) {
         return;
     }
     let config = load_config();
-    let at = Zoned::now();
+    let at = sioul_core::zone::now();
     let stamp = at.timestamp().as_second();
     let there = path(rules::TABLE).is_file();
     let before = inputs(&config, &at);
@@ -334,7 +334,7 @@ pub(crate) fn moment() -> serde_json::Value {
     if !shown {
         return json!({ "shown": false, "through": false, "line": "", "until_at": 0 });
     }
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let now_ms = now.timestamp().as_millisecond();
     let through = through_now(&switch).filter(|t| t.holds(now_ms));
     let emergency = if cfg!(target_os = "android") { state()["emergency_at"].as_i64().unwrap_or(0) } else { 0 };
@@ -510,7 +510,7 @@ pub(crate) fn view() -> String {
     }
     let config = load_config();
     let here = here_id();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let held = listed(&root, &here, config.porch.calls, now.timestamp().as_millisecond());
     if held.is_empty() {
         return empty();
@@ -555,7 +555,7 @@ pub(crate) fn for_card() -> Option<CardCalls> {
     }
     let config = load_config();
     let here = here_id();
-    let held = listed(&root, &here, config.porch.calls, Zoned::now().timestamp().as_millisecond());
+    let held = listed(&root, &here, config.porch.calls, sioul_core::zone::now().timestamp().as_millisecond());
     if held.is_empty() {
         return None;
     }
@@ -595,7 +595,7 @@ pub(crate) fn history(numbers: &[String]) -> Vec<String> {
         return Vec::new();
     }
     let here = here_id();
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let calls = rules::read_logs(&root, now.timestamp().as_millisecond());
     let phones = phone_names();
     let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
@@ -618,7 +618,7 @@ fn voicemails(config: &Config, region: Option<&'static sioul_core::phones::Regio
     if words.operators.iter().all(|d| d.trim().is_empty()) {
         return Vec::new();
     }
-    let zone = jiff::tz::TimeZone::system();
+    let zone = sioul_core::zone::current();
     let oldest = SystemTime::now().checked_sub(Duration::from_secs(u64::try_from((rules::LISTED_DAYS + 1) * 86_400).unwrap_or(0))).unwrap_or(SystemTime::UNIX_EPOCH);
     let mut folders = FOLDERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut letters = LETTERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -779,7 +779,7 @@ pub(crate) fn setup() -> String {
         "android": cfg!(target_os = "android"),
         "state": state,
         "moment": moment(),
-        "screening": screening_rows(&load_config(), &Zoned::now()),
+        "screening": screening_rows(&load_config(), &sioul_core::zone::now()),
     })
     .to_string()
 }

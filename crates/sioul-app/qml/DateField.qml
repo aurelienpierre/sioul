@@ -76,7 +76,7 @@ Item {
             ToolTip.visible: hovered
             ToolTip.text: field.theme.plain(field.pickLabel)
             onClicked: {
-                const shown = field.date ? new Date(field.date + "T12:00:00") : new Date()
+                const shown = field.date ? new Date(field.date + "T12:00:00") : new Date(Date.now() + (typeof field.sioul.zoneShift === "function" ? field.sioul.zoneShift(Date.now() / 1000) : 0))
                 field.shownYear = shown.getFullYear()
                 field.shownMonth = shown.getMonth()
                 picker.open()

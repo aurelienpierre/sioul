@@ -100,7 +100,7 @@ pub fn folder() -> PathBuf {
 }
 
 fn month_file(dir: &Path, start: i64) -> PathBuf {
-    let month = jiff::Timestamp::from_second(start).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%Y-%m").to_string()).unwrap_or_else(|_| "unknown".into());
+    let month = jiff::Timestamp::from_second(start).map(|t| t.to_zoned(crate::zone::current()).strftime("%Y-%m").to_string()).unwrap_or_else(|_| "unknown".into());
     dir.join(format!("{month}.toml"))
 }
 

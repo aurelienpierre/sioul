@@ -281,3 +281,4 @@ pub mod voicemail;
 pub mod weather;
 pub mod window;
 pub mod words;
+pub mod zone;

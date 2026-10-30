@@ -199,8 +199,8 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     if removed.contains(&path) {
         return "{}".into();
     }
-    let zone = TimeZone::system();
-    let now = Zoned::now().timestamp().as_second();
+    let zone = sioul_core::zone::current();
+    let now = sioul_core::zone::now().timestamp().as_second();
     let at = |start: i64| agenda::file_occurrences(&path, &calendar, start, start + 1, &zone).into_iter().filter(|o| o.start == start).collect::<Vec<_>>();
     let mut found = if start > 0 {
         let mut found = at(start);
@@ -227,10 +227,13 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     }
     let Some(o) = found.into_iter().next().filter(|o| !skipped.contains(&(path.clone(), o.start))) else { return "{}".into() };
     let item = agenda::items(std::slice::from_ref(&o), &zone, &|_| false).into_iter().next();
-    let date = jiff::Timestamp::from_second(o.start).map_or_else(|_| Zoned::now().date(), |t| t.to_zoned(zone.clone()).date());
+    let date = jiff::Timestamp::from_second(o.start).map_or_else(|_| sioul_core::zone::now().date(), |t| t.to_zoned(zone.clone()).date());
     let day = midnight(date, &zone);
     let end = date.tomorrow().map_or(day + 86_400, |d| midnight(d, &zone));
-    let when = format!("{} · {}", tr().day(date), timeline::when_on(o.start, o.end, o.all_day, day, end, &zone, tr()));
+    let time = timeline::when_on(o.start, o.end, o.all_day, day, end, &zone, tr());
+    // On another clock: both its times, "Wednesday 4 November · 16:00 – 17:00 here · 15:00 – 16:00 UTC".
+    let both = if o.all_day { String::new() } else { timeline::both_times(&time, o.start, o.end, &o.clock, tr()) };
+    let when = format!("{} · {}", tr().day(date), if both.is_empty() { time } else { both });
     json(&serde_json::json!({
         "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
         "key": o.key,
@@ -266,7 +269,7 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
 pub(crate) fn event_details(key: &str, start: i64) -> String {
     let Some(path) = pim::ours(key) else { return "{}".into() };
     let Some(calendar) = pim::collection_of(&path) else { return "{}".into() };
-    let found = agenda::file_occurrences(&path, &calendar, start, start + 1, &TimeZone::system());
+    let found = agenda::file_occurrences(&path, &calendar, start, start + 1, &sioul_core::zone::current());
     found.iter().find(|o| o.start == start).map_or_else(|| "{}".to_string(), |o| serde_json::json!({ "notes": o.notes, "organizer": o.organizer, "attendees": o.attendees }).to_string())
 }
 
@@ -370,7 +373,7 @@ fn midnight(date: jiff::civil::Date, zone: &TimeZone) -> i64 {
 /// (`work::PlanShown::current`), read here elsewhere; each occurrence once, in
 /// the order `agenda::occurrences` gives them.
 fn read_between(from: i64, to: i64, zone: &TimeZone) -> Vec<Occurrence> {
-    let today = Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let Some(plan) = work::plan_shown().filter(|s| s.made_on == today && s.current()) else {
         return agenda::occurrences(from, to);
     };
@@ -394,7 +397,7 @@ fn read_between(from: i64, to: i64, zone: &TimeZone) -> Vec<Occurrence> {
 /// deletion waits ("Undo") aside, a task's time block marked as the task it
 /// is, with its list (`agenda::mark_tasks`).
 pub(crate) fn occurrences_between(from: i64, to: i64, removed: &std::collections::BTreeSet<std::path::PathBuf>, skipped: &std::collections::BTreeSet<(std::path::PathBuf, i64)>, tasks: &[sioul_core::tasks::Task]) -> Vec<Occurrence> {
-    let mut items = pim::without_waiting(read_between(from, to, &TimeZone::system()), removed, skipped);
+    let mut items = pim::without_waiting(read_between(from, to, &sioul_core::zone::current()), removed, skipped);
     agenda::mark_tasks(&mut items, tasks);
     items
 }
@@ -437,7 +440,7 @@ fn tasks_read_in(read: &std::sync::Mutex<TasksRead>, stamp: timeline::Stamp) -> 
     }
     #[cfg(test)]
     TASK_READS.with(|n| n.set(n.get() + 1));
-    let tasks = Arc::new(sioul_core::tasks::all(&TimeZone::system()));
+    let tasks = Arc::new(sioul_core::tasks::all(&sioul_core::zone::current()));
     *kept = Some((stamp, Arc::clone(&tasks)));
     tasks
 }
@@ -452,8 +455,8 @@ thread_local! {
 /// Undo left out: the Porch's, made at every run whether the agenda page has
 /// asked or not (review of 1880bce, M2).
 fn overlaps_now(shared: &Shared) -> String {
-    let zone = TimeZone::system();
-    let reach = midnight(Zoned::now().date(), &zone);
+    let zone = sioul_core::zone::current();
+    let reach = midnight(sioul_core::zone::now().date(), &zone);
     let (removed, skipped) = mail::hidden_pim(shared);
     pim::overlaps_of(&pim::without_waiting(read_between(reach, reach + 14 * 86_400, &zone), &removed, &skipped))
 }
@@ -462,8 +465,8 @@ fn overlaps_now(shared: &Shared) -> String {
 /// only), as JSON, and how long their read of the calendars took.
 fn made(shared: &Shared) -> (String, std::time::Duration) {
     let state = shared.pim.lock().map(|s| s.clone()).unwrap_or_default();
-    let zone = TimeZone::system();
-    let now = Zoned::now();
+    let zone = sioul_core::zone::current();
+    let now = sioul_core::zone::now();
     let today = now.date();
     let from = midnight(state.from, &zone);
     let mut to = from + state.days * 86_400 + 3_600;
@@ -660,7 +663,7 @@ fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], t
 pub(crate) fn appointment_card(shared: &Shared, key: &str, start: i64) -> String {
     let Some(path) = pim::ours(key) else { return "{}".into() };
     let Some(calendar) = pim::collection_of(&path) else { return "{}".into() };
-    let zone = TimeZone::system();
+    let zone = sioul_core::zone::current();
     let found = agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
     let Some(o) = found.into_iter().find(|o| o.start == start) else { return "{}".into() };
     let text = std::fs::read_to_string(&path).unwrap_or_default();
@@ -963,7 +966,7 @@ fn days_wanted(shared: &Shared) -> bool {
 /// calendars, a step dragged showing at both its times (review of 3a2fbd4,
 /// later 4); the days shown stay until the re-plan's publish brings them.
 fn waits_for_replan(shared: &Shared) -> bool {
-    shared.replan_due.load(Ordering::SeqCst) && work::plan_shown().is_some_and(|p| p.made_on == Zoned::now().date() && !p.current())
+    shared.replan_due.load(Ordering::SeqCst) && work::plan_shown().is_some_and(|p| p.made_on == sioul_core::zone::now().date() && !p.current())
 }
 
 /// One run of the agenda's job: the overlaps of the next two weeks, always,
@@ -1155,6 +1158,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 
+    /// An event on another clock says both its times on its card: here, and
+    /// there ("… · 15:00 – 16:00 here · 09:00 – 10:00 New York").
+    #[test]
+    fn an_event_card_says_both_its_times() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Card two clocks", None, &["VEVENT"]).unwrap();
+        let file = calendar.dir.join("card-two-clocks.ics");
+        let day = Zoned::now().date().checked_add(jiff::Span::new().days(100)).unwrap();
+        let new_york = TimeZone::get("America/New_York").unwrap();
+        let start = day.at(9, 0, 0, 0).to_zoned(new_york.clone()).unwrap();
+        let edit = agenda::EventEdit { title: "Board".into(), start: format!("{day}T09:00"), end: format!("{day}T10:00"), clock: "America/New_York".into(), ..agenda::EventEdit::default() };
+        std::fs::write(&file, agenda::new_event(&edit, &sioul_core::zone::current()).unwrap()).unwrap();
+        let (shared, key) = (Shared::default(), file.display().to_string());
+        let card: serde_json::Value = serde_json::from_str(&event_card_as(&shared, &key, start.timestamp().as_second(), &Vec::new)).unwrap();
+        let when = card["when"].as_str().unwrap_or_default();
+        let here = start.with_time_zone(sioul_core::zone::current());
+        if sioul_core::zone::name_of(&sioul_core::zone::current(), start.timestamp()) != "America/New_York" {
+            let shown = format!("{} – {}", here.strftime("%H:%M"), here.checked_add(jiff::Span::new().hours(1)).unwrap().strftime("%H:%M"));
+            assert!(when.contains(&format!(" · {shown} ")) && when.ends_with(" · 09:00 – 10:00 New York"), "{when}");
+        }
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     /// One test at a time writes Show's file.
     fn view_held() -> std::sync::MutexGuard<'static, ()> {
         static VIEW: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -1197,7 +1223,7 @@ mod tests {
         let second = vdir::create(Kind::Calendars, vdir::LOCAL, "Twin name", None, &["VEVENT"]).unwrap();
         let place = |c: &vdir::Collection| format!("{}/{}", c.account, c.id);
         assert_ne!(place(&first), place(&second));
-        let source = |c: &vdir::Collection| timeline::Source::Calendar { key: c.dir.join("a.ics").display().to_string(), uid: "a".into(), start: 0, recurring: false, calendar: "Twin name".into(), collection: timeline::collection_of(&c.dir.join("a.ics").display().to_string()) };
+        let source = |c: &vdir::Collection| timeline::Source::Calendar { key: c.dir.join("a.ics").display().to_string(), uid: "a".into(), start: 0, recurring: false, calendar: "Twin name".into(), collection: timeline::collection_of(&c.dir.join("a.ics").display().to_string()), clock: String::new() };
         assert_eq!(timeline::collection_of(&first.dir.join("a.ics").display().to_string()), place(&first), "a file's calendar by its place");
         let one = View { calendars: vec![HiddenCalendar { id: place(&first), name: "Twin name".into() }], ..View::default() };
         assert!(one.hides(&source(&first)) && !one.hides(&source(&second)), "the one hidden alone");
@@ -1530,7 +1556,7 @@ mod tests {
             kind: timeline::Kind::Block,
             time: timeline::Time::span(at, at + 1800),
             certainty: timeline::Certainty::Held,
-            source: timeline::Source::Calendar { key: "/c/quiet.ics".into(), uid: "quiet".into(), start: at, recurring: false, calendar: "c".into(), collection: "c".into() },
+            source: timeline::Source::Calendar { key: "/c/quiet.ics".into(), uid: "quiet".into(), start: at, recurring: false, calendar: "c".into(), collection: "c".into(), clock: String::new() },
             can: timeline::Can::nothing(),
             privacy: timeline::Privacy::Admin,
             title: "Quarterly report".into(),

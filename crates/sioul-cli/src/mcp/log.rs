@@ -24,7 +24,7 @@ const KEPT: usize = 200;
 /// Appends one call to this month's file. A log that cannot be written is
 /// said on standard error and never stops the call.
 pub fn record(client: &str, tool: &str, arguments: &Value, outcome: &Result<Answer, String>) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     let (error, given, characters) = match outcome {
         Ok(answer) => (Value::Null, addresses(&answer.text), answer.text.chars().count()),
         Err(message) => (Value::String(short(message)), Vec::new(), 0),
@@ -39,7 +39,7 @@ pub fn record(client: &str, tool: &str, arguments: &Value, outcome: &Result<Answ
 /// Appends one line about the server itself, not a call: `event` names it
 /// ("followed", "kept"), `detail` says it.
 pub fn event(client: &str, event: &str, detail: &str) {
-    let now = Zoned::now();
+    let now = sioul_core::zone::now();
     append(&now, &json!({ "at": now.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string(), "client": client, "event": event, "detail": short(detail) }));
 }
 

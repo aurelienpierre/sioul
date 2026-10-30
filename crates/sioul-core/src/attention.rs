@@ -2149,7 +2149,7 @@ impl Slots {
 /// a pause ends Reachable here too (review of part 3, F7).
 pub fn dnd_from_files(config: &Config, now: i64) -> bool {
     use crate::everywhere;
-    let zoned = jiff::Timestamp::from_second(now).map_or_else(|_| jiff::Zoned::now(), |t| t.to_zoned(jiff::tz::TimeZone::system()));
+    let zoned = jiff::Timestamp::from_second(now).map_or_else(|_| crate::zone::now(), |t| t.to_zoned(crate::zone::current()));
     let sources = everywhere::sources_from_files(&zoned);
     everywhere::now(&config.dnd, &sources, everywhere::read_switch("").latest().as_ref(), now).gates()
 }

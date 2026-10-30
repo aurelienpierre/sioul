@@ -1584,7 +1584,7 @@ pub fn subkeys_of(cert: &Cert) -> Vec<String> {
 /// "3 March 2026", "3 mars 2026".
 pub fn full_date(tr: &Translator, at: i64) -> String {
     let Ok(stamp) = jiff::Timestamp::from_second(at) else { return String::new() };
-    let date = stamp.to_zoned(jiff::tz::TimeZone::system()).date();
+    let date = stamp.to_zoned(crate::zone::current()).date();
     format!("{} {}", tr.day_month(date), date.year())
 }
 

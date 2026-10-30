@@ -116,7 +116,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, the calls your phones declined, how a message reads, how mail is sorted |
 | [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, how a message reads, the lists you left |
 | [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, what is work and what is yours, GitHub |
-| [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on |
+| [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on, the time zone shown |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
 | [Notes](notes.md#new-notes) | where new notes go |
 | [Sites](sites.md#logins-from-bitwarden) | your Bitwarden account |
@@ -138,7 +138,7 @@ In the Mail page's ⚙, under **Your own spam filter**: what it does with each o
 
 When you [share between your devices](sharing.md), your settings go with the part **Settings and accounts**, sealed like everything there. A setting changed on two devices keeps the later change, setting by setting.
 
-What stays on each device: where its folders are (the notes folder, where scans arrive), how text reads on its screen (**Aa**), **Show passwords as you type**, a phone's **Details on the home screen**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
+What stays on each device: where its folders are (the notes folder, where scans arrive), how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, a phone's **Details on the home screen**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
 
 ## Where settings are kept
 
@@ -170,6 +170,6 @@ Every app has settings, and a table would compare nothing you choose an app for,
 - **The file**: `config.toml` in `~/.config/sioul/` on Linux (or `$XDG_CONFIG_HOME/sioul/`), `%APPDATA%\sioul\` on Windows, `~/Library/Application Support/sioul/` on macOS. Sioul writes it in place (`toml_edit`), one key at a time, keeping comments and order; an empty value removes the key, so its default comes back.
 - **Secrets**: account passwords, the AI shield's key and the GitHub token go to the system's keyring (the Secret Service, the macOS Keychain, the Windows Credential Manager, Android's KeyStore), never to `config.toml`.
 - **Shared entry by entry**: each setting is one entry, and each account one entry, keyed by its `id`; a list such as your pinned sites (`[[site]]`), your hours (`[[window]]`), your days off or your filters (`[[mail.filter]]`) travels whole, as one entry. The later change wins by a hybrid logical clock, so that a change made after seeing another always comes after it. Each entry is a sealed record (XChaCha20-Poly1305, under a key made from your passphrase by Argon2id), as for the rest of the [sharing](sharing.md#what-it-protects-and-what-it-cannot-hide).
-- **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
+- **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, `agenda.time_zone`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
 - **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone), the whole width. The Settings page reads 720 pixels wide at most, 1,100 for What reaches you's cards.
 - **The words** (`[words]`): `languages` and `countries`, then a table for each list you changed, such as `[words.folders.trash]`, with `add` (your words) and `remove` (the shipped ones you took away); for a list of names, such as the brands, `add` gives each name its words and `remove` lists names. A configuration from before October 2026 gets `languages = ["fr", "en"]` and `countries = ["FR"]` at its first start, so that nothing changes until you change it. The packs are in `crates/sioul-core/data/words/`; one installed in `$XDG_DATA_HOME/sioul/words/` or `$XDG_DATA_DIRS/sioul/words/` replaces Sioul's own when its `checked` date is later. The spam filter's table keeps the words it was trained with, so that every device reads alike. How the lists are made: [the words Sioul looks for](../dev/words.md).

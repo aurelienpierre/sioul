@@ -19,15 +19,23 @@ QtObject {
 
     // The time it reads, in milliseconds since 1970: the system's, unless a test gives its own.
     property var source: () => Date.now()
+    // What to add to an instant (ms) so that a date's own clock reads the time
+    // zone Sioul shows (`zone::current`; main.qml gives `zoneShift`); none in a test.
+    property var shift: ms => 0
     property bool paused: false
     // The system's time as it is made, its source's once made, then at each turn.
     property real now: Math.floor(Date.now() / 60000) * 60
-    property string today: clock.dayOf(new Date())
+    property string today: clock.dayOf(clock.wall(Date.now()))
     // The last minute said turned (minutes since 1970).
     property real turnedAt: 0
 
     // Each minute's turn, paused or not: the backend's minute rides on it.
     signal turned
+
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows.
+    function wall(ms) {
+        return new Date(ms + clock.shift(ms))
+    }
 
     // "2026-10-06": a day as the pages and the views write it.
     function dayOf(d) {
@@ -39,11 +47,11 @@ QtObject {
     function read() {
         if (clock.paused)
             return
-        const at = new Date(clock.source())
-        const day = clock.dayOf(at)
+        const ms = clock.source()
+        const day = clock.dayOf(clock.wall(ms))
         if (day !== clock.today)
             clock.today = day
-        const minute = Math.floor(at.getTime() / 60000) * 60
+        const minute = Math.floor(ms / 60000) * 60
         if (minute !== clock.now)
             clock.now = minute
     }
@@ -57,10 +65,10 @@ QtObject {
 
     onPausedChanged: clock.read()
     Component.onCompleted: {
-        const at = new Date(clock.source())
-        clock.today = clock.dayOf(at)
-        clock.now = Math.floor(at.getTime() / 60000) * 60
-        clock.turnedAt = Math.floor(at.getTime() / 60000)
+        const ms = clock.source()
+        clock.today = clock.dayOf(clock.wall(ms))
+        clock.now = Math.floor(ms / 60000) * 60
+        clock.turnedAt = Math.floor(ms / 60000)
         clock.arm()
     }
 

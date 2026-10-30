@@ -104,7 +104,7 @@ pub(crate) fn view() -> String {
         Err(problem) => return json(&View { store: false, problem, kinds, ..View::default() }),
     };
     let ledger = ledger();
-    let today = jiff::Zoned::now().date();
+    let today = sioul_core::zone::now().date();
     let mut list: Vec<&Contract> = contracts.list.iter().collect();
     // Open ones first, by their next date; ended ones last.
     list.sort_by_key(|c| (c.ended.is_some(), c.next_renewal(today).unwrap_or(jiff::civil::Date::MAX), c.title.to_lowercase()));

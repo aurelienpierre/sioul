@@ -39,7 +39,7 @@ Item {
         for (const placed of (comes.rows || []).filter(p => page.shownHere(p.item))) {
             const item = placed.item
             const detail = placed.detail || {}
-            out.push({ sort: item.kind === "night" ? 3000 : placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: [item.line || "", detail.location || ""].filter(t => t !== "").join(" · "), kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] })
+            out.push({ sort: item.kind === "night" ? 3000 : placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: [placed.both || "", item.line || "", detail.location || ""].filter(t => t !== "").join(" · "), kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] })
         }
         // Show leaves the doses out here as in the Day and the Week (review of 21436bf, later 2).
         for (const dose of page.hide.doses ? [] : comes.doses || []) {
@@ -95,7 +95,7 @@ Item {
     function monthRow(placed) {
         const item = placed.item
         const detail = placed.detail || {}
-        return { sort: placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: "", kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] }
+        return { sort: placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: placed.both || "", kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] }
     }
 
     function takeShown() {
@@ -196,8 +196,14 @@ Item {
     // while Show leaves the doses out there: rows it would not show (review of 679f96a, later 9).
     readonly property bool dosesAsked: page.todayShown && !(page.mode === "agenda" && page.hide.doses)
 
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    function wall(ms) {
+        return new Date(ms + (typeof page.sioul.zoneShift === "function" ? page.sioul.zoneShift(ms / 1000) : 0))
+    }
+
     function today() {
-        return new Date()
+        return page.wall(Date.now())
     }
 
     function iso(d) {
@@ -228,7 +234,7 @@ Item {
         return mode === "day" ? 1 : mode === "week" ? 7 : mode === "month" ? 42 : 15
     }
 
-    property date anchor: new Date()
+    property date anchor: page.wall(Date.now())
 
     // Shown from today: the page follows the days as they turn.
     property bool followsToday: true
@@ -352,7 +358,7 @@ Item {
 
     // A new event made from something else: a message, a task.
     function makeFrom(text, note, link) {
-        eventDialog.now().makeFrom(text, note, link, page.iso(new Date()))
+        eventDialog.now().makeFrom(text, note, link, page.iso(page.wall(Date.now())))
     }
 
     // A thing of the timeline tapped (a row: WeekPlanning.qml): its card, where you are.
