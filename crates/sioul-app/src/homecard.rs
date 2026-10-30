@@ -45,6 +45,7 @@ use sioul_core::areas::{Area, Time};
 use sioul_core::projects::ProjectStore;
 use sioul_core::codes::CodeKind;
 use sioul_core::config::Config;
+use sioul_core::dated::{self, Dated};
 use sioul_core::i18n::{self, Translator};
 use sioul_core::links::Loaded;
 use sioul_core::plan::Plan;
@@ -66,8 +67,11 @@ use std::sync::{Arc, Mutex};
 const FILE: &str = "home-card.json";
 /// The file's version: 3 from the full card made around today (October 2026).
 /// Its frames are named "times": an older Sioul's Java reads "frames", finds
-/// none, and says `beyond` until Sioul opens. This Java reads both.
-const VERSION: u32 = 3;
+/// none, and says `beyond` until Sioul opens. This Java reads both. 4 from the
+/// dates asked in the agenda (the unified agenda's part 8, `AgendaLines::dates`),
+/// which a Java of version 3 leaves aside; this Java reads a card of version 3
+/// without them (the one on screen just after an update, the older Sioul's).
+const VERSION: u32 = 4;
 /// The reminders the card holds, at most, soonest first (Java shows a few).
 const REMINDERS: usize = 12;
 /// A forecast older than this is not shown: Sioul was not opened for a day.
@@ -86,6 +90,8 @@ const MAIL: usize = 20;
 const HORIZON_DAYS: i64 = 30;
 /// The appointments the card lists, at most, nearest first.
 const EVENTS: usize = 60;
+/// The dates asked the card lists, at most, nearest first.
+const DATES: usize = 30;
 /// A message's line of text, at most (Java shows one line of it).
 const TEXT_CHARS: usize = 160;
 /// Frames at most: each change of time until the end of tomorrow.
@@ -302,6 +308,33 @@ struct AgendaLines {
     days: Vec<Day>,
     /// The events, nearest first; Java leaves out those over.
     events: Vec<Event>,
+    /// The dates asked, nearest first, each at the head of its day (version
+    /// 4): Java leaves out those whose day is over.
+    dates: Vec<DateLine>,
+}
+
+/// A date asked, as the agenda card lists it at the head of its day: a
+/// task's date asked, a letter's, a contract's last day for notice, a
+/// paper's last valid day, a payment planned, an invoice due (`dated`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct DateLine {
+    /// Its own title ("CAF form", "Rent · €650"); details off, or an
+    /// errand's, its kind's words alone: "A date asked".
+    title: String,
+    /// Its kind's words and the time left, each until its time ("Date asked ·
+    /// four days left" until midnight, then "Date asked · three days left",
+    /// … "Date asked · today"), its time first when it has one; details off,
+    /// the time left alone.
+    line: Vec<Label>,
+    /// Its mark, as the window's agenda draws it: "○" until a week before,
+    /// then "●"; an invoice's, money owed to you, "○" for good.
+    mark: Vec<Label>,
+    /// Its day's midnight and the next (Unix ms): listed under that day until it ends.
+    from: i64,
+    until: i64,
+    /// What a tap opens, for HomeCardOpener: "reminder/" and its address
+    /// (its task, budget, paper or contract, as a reminder's tap); else "agenda".
+    open: String,
 }
 
 /// One day of the agenda, and its name as it changes at each midnight.
@@ -424,6 +457,8 @@ type CallsAt<'a> = &'a dyn Fn(&sioul_core::attention::Now, &Zoned) -> Vec<String
 #[derive(Default)]
 struct More<'a> {
     weather: WeatherInput,
+    /// The dates asked of you from today on (`dated::read_all`, `dates_input`).
+    dates: &'a [Dated],
     /// Every reminder, told or not (`reminders::all`); the events' left out here.
     reminders: &'a [Reminder],
     calls: Option<CallsAt<'a>>,
@@ -840,8 +875,9 @@ fn agenda_day(tr: &Translator, day: Date, today: Date, zone: &jiff::tz::TimeZone
 /// A task's time block shows as the task it is, as in the agenda: its time,
 /// then "Task · " and its list (21 October 2026; `agenda::mark_tasks`, with
 /// `tasks`, the plan's).
-fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Task]) -> Option<AgendaLines> {
-    if !input.calendars {
+fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Task], dated: &[Dated]) -> Option<AgendaLines> {
+    let dates = date_lines(m, dated, tasks);
+    if !input.calendars && dates.is_empty() {
         return None;
     }
     let mut marked = input.events.clone();
@@ -876,7 +912,72 @@ fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Tas
         })
         .collect();
     let days = (0..=HORIZON_DAYS).filter_map(|i| today.checked_add(Span::new().days(i)).ok()).filter_map(|day| agenda_day(m.tr, day, today, &zone)).collect();
-    Some(AgendaLines { empty: m.tr.text("home-card-agenda-empty", None), days, events })
+    Some(AgendaLines { empty: m.tr.text("home-card-agenda-empty", None), days, events, dates })
+}
+
+/// The dates asked within the agenda's reach, nearest first, each given
+/// ahead: its words for each day until it comes ("four days left", "three
+/// days left"… "today": `dated::left`, the same words merged), its mark
+/// filled from a week before (`dated::filled`). Details on, its own title;
+/// off, its kind's words alone ("A date asked"), as an errand's always (its
+/// task's title may name the health it is for: `health::is_errand`).
+fn date_lines(m: &Moment, dated: &[Dated], tasks: &[sioul_core::tasks::Task]) -> Vec<DateLine> {
+    let zone = m.now.time_zone().clone();
+    let today = m.now.date();
+    let Ok(last) = today.checked_add(Span::new().days(HORIZON_DAYS)) else { return Vec::new() };
+    let midnight = |d: Date| d.to_zoned(zone.clone()).ok().map(|z| ms(&z));
+    let errand = |uid: &str| tasks.iter().find(|t| t.uid == uid).is_some_and(|t| sioul_core::health::is_errand(t, &Default::default()));
+    let mut out = Vec::new();
+    for d in dated.iter().filter(|d| !d.kind.is_health() && d.date >= today && d.date <= last).take(DATES) {
+        let (Some(from), Some(until)) = (midnight(d.date), d.date.tomorrow().ok().and_then(midnight)) else { continue };
+        let time = d.at.and_then(|at| Timestamp::from_second(at).ok()).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string());
+        let word = m.tr.text(d.kind.word(), None);
+        let said_on = |day: Date| {
+            let left = dated::left(m.tr, day, d.date);
+            let line = if m.details { format!("{word} · {left}") } else { left };
+            time.as_ref().map_or_else(|| line.clone(), |time| format!("{time} · {line}"))
+        };
+        // Each day's words until its next midnight, the same words merged.
+        let mut line: Vec<Label> = Vec::new();
+        let mut day = today;
+        while day <= d.date {
+            let Some(ends) = day.tomorrow().ok().and_then(midnight) else { break };
+            let text = said_on(day);
+            match line.last_mut() {
+                Some(label) if label.text == text => label.until = ends,
+                _ => line.push(Label { until: ends, text }),
+            }
+            let Ok(next) = day.tomorrow() else { break };
+            day = next;
+        }
+        let week_before = d.date.checked_sub(Span::new().days(6)).ok().and_then(midnight).unwrap_or(from);
+        let mark = if d.kind == dated::Kind::Invoice {
+            vec![Label { until: 0, text: "○".into() }]
+        } else if dated::filled(d, today) {
+            vec![Label { until: 0, text: "●".into() }]
+        } else {
+            vec![Label { until: week_before, text: "○".into() }, Label { until: 0, text: "●".into() }]
+        };
+        let hidden = !m.details || (d.kind == dated::Kind::Task && errand(&d.key));
+        let title = if hidden { m.tr.text(plain_word(d.kind), None) } else { d.title.clone() };
+        let opens = d.address.starts_with("sioul:task/") || d.address.starts_with("sioul:budget/") || d.address.starts_with("sioul:paper/") || d.address.starts_with("sioul:contract/");
+        let open = if opens { format!("reminder/{}", d.address) } else { "agenda".to_string() };
+        out.push(DateLine { title, line, mark, from, until, open });
+    }
+    out
+}
+
+/// A date's kind, in the card's words with the details off: "A date asked".
+fn plain_word(kind: dated::Kind) -> &'static str {
+    match kind {
+        dated::Kind::Task | dated::Kind::Letter => "home-card-date-asked-plain",
+        dated::Kind::LetterAppointment => "home-card-date-letter-plain",
+        dated::Kind::Notice => "home-card-date-notice-plain",
+        dated::Kind::Paper => "home-card-date-paper-plain",
+        dated::Kind::Payment => "home-card-date-payment-plain",
+        dated::Kind::Invoice => "home-card-date-invoice-plain",
+        dated::Kind::PrescriptionEnds | dated::Kind::RunsOut => "home-card-date-asked-plain",
+    }
 }
 
 /// Whether a step is for this time: work or admin time (or no hours set),
@@ -1095,7 +1196,7 @@ fn snapshot_with(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput
         today: today_lines(m, &more.weather, end),
         frames,
         mail,
-        agenda: agenda.and_then(|a| agenda_lines(m, a, plan.map(|p| p.loaded.tasks.as_slice()).unwrap_or_default())),
+        agenda: agenda.and_then(|a| agenda_lines(m, a, plan.map(|p| p.loaded.tasks.as_slice()).unwrap_or_default(), more.dates)),
         codes: porch.map(|p| codes(m, p)).unwrap_or_default(),
         doses: dose_lines(m.tr, doses, m.details),
         reminders: reminders.into_iter().map(|(line, _)| line).collect(),
@@ -1226,6 +1327,39 @@ fn agenda_input(now: &Zoned) -> Option<Arc<AgendaInput>> {
     let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside });
     *kept = Some(Arc::clone(&input));
     Some(input)
+}
+
+/// The dates asked as last read for the card, with what they were read from
+/// (held, so that a new plan or a new reading is never taken for them).
+struct DatesRead {
+    at: i64,
+    day: Date,
+    loaded: Arc<Loaded>,
+    agenda: Option<Arc<AgendaInput>>,
+    dates: Arc<Vec<Dated>>,
+}
+
+static DATES_READ: Mutex<Option<DatesRead>> = Mutex::new(None);
+
+/// The dates asked of you from today on, as the window's agenda reads them
+/// (`dated::read_all`: the tasks' as the plan has them, the letters', the
+/// contracts', the papers', the budgets' and this device's invoices); read
+/// again when the plan or the events were, the day changed, or five minutes
+/// went by (a paper or a contract changed meanwhile).
+fn dates_input(now: &Zoned, config: &Config, plan: &PlanInput, agenda: Option<&Arc<AgendaInput>>) -> Arc<Vec<Dated>> {
+    let at = now.timestamp().as_second();
+    let mut kept = DATES_READ.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let same = |read: &&DatesRead| {
+        read.day == now.date() && Arc::ptr_eq(&read.loaded, &plan.loaded) && read.agenda.as_ref().map(Arc::as_ptr) == agenda.map(Arc::as_ptr) && at - read.at < REWRITE_EVERY
+    };
+    if let Some(read) = kept.as_ref().filter(same) {
+        return Arc::clone(&read.dates);
+    }
+    let zone = now.time_zone().clone();
+    let occurrences = agenda.map_or(&[][..], |a| a.events.as_slice());
+    let dates = Arc::new(dated::read_all(config, &plan.loaded.tasks, &crate::dated::events_on(occurrences, &zone), now.date(), &zone, tr()));
+    *kept = Some(DatesRead { at, day: now.date(), loaded: Arc::clone(&plan.loaded), agenda: agenda.cloned(), dates: Arc::clone(&dates) });
+    dates
 }
 
 /// The reminders as last gathered (`remind::tick`, each minute), the events' left out.
@@ -1392,10 +1526,11 @@ fn refresh(tell: bool) {
     let dnd = DND.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().and_then(Dnd::of);
     let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: tr(), details, dnd: dnd.as_ref() };
     let agenda = agenda_input(&now);
+    let dates = dates_input(&now, &config, &plan, agenda.as_ref());
     let reminded = REMINDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone().unwrap_or_default();
     let calls = crate::calls::for_card();
     let stopped = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()).map(|s| s.text);
-    let more = More { weather: weather_input(), reminders: &reminded, calls: calls.as_deref(), stopped };
+    let more = More { weather: weather_input(), dates: &dates, reminders: &reminded, calls: calls.as_deref(), stopped };
     let card = snapshot_with(&moment, Some(&porch), Some(&plan), agenda.as_deref(), &doses, &more);
     let said = content(&card);
     let Ok(text) = serde_json::to_string(&card) else { return };
@@ -1734,8 +1869,8 @@ mod tests {
         let reach = midnight + (HORIZON_DAYS + 1) * 86_400 + 3_600;
         let none = (BTreeSet::new(), BTreeSet::new());
         let items = crate::agenda::occurrences_between(midnight, reach, &none.0, &none.1, &tasks);
-        let page = sioul_core::view::agenda(&items, now.date(), HORIZON_DAYS + 1, &Translator::new("en"), &zone);
-        let mut window: Vec<(String, String, String)> = page.days.iter().flat_map(|d| d.events.iter()).filter(|e| ours(&e.key)).map(|e| (e.summary.clone(), e.task.clone(), e.list.clone())).collect();
+        let page = sioul_core::timeline::calendar_days(&items, now.date(), HORIZON_DAYS + 1, now.date(), &zone, &Translator::new("en"));
+        let mut window: Vec<(String, String, String)> = page.iter().flat_map(|d| d.events.iter()).map(|e| &items[e.index]).filter(|e| ours(&e.key)).map(|e| (e.summary.clone(), e.task.clone(), e.list.clone())).collect();
         window.sort();
         assert_eq!(window, [("block".to_string(), "t-agenda".to_string(), "Kinds tasks".to_string()), ("dentist".into(), String::new(), String::new()), ("orphan".into(), String::new(), String::new()), ("stray".into(), String::new(), String::new())]);
 
@@ -1746,7 +1881,7 @@ mod tests {
         let overrides = Overrides::default();
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
         let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: BTreeSet::new() };
-        let card = agenda_lines(&moment, &input, &tasks).unwrap();
+        let card = agenda_lines(&moment, &input, &tasks, &[]).unwrap();
         let mut home: Vec<String> = card.events.iter().filter(|e| ours(&e.key)).map(|e| e.title.clone()).collect();
         home.sort();
         assert_eq!(home, ["block", "dentist", "orphan", "stray"], "the same items");
@@ -1806,6 +1941,7 @@ mod tests {
             out.push(agenda.empty.clone());
             out.extend(agenda.days.iter().flat_map(|d| d.label.iter()).map(|l| l.text.clone()));
             out.extend(agenda.events.iter().flat_map(|e| [e.title.clone(), e.time.clone()]));
+            out.extend(agenda.dates.iter().flat_map(|d| std::iter::once(d.title.clone()).chain(d.line.iter().map(|l| l.text.clone()))));
         }
         out.extend(card.words.mail.lines().chain(card.words.agenda.lines()).map(str::to_string));
         out.join("\n")
@@ -2087,6 +2223,101 @@ mod tests {
         assert_eq!(fr.card.words.mail, "Courriels");
     }
 
+    /// The dates asked of the coming month, at the head of their days
+    /// (version 4), each given ahead: the time left in words for each day
+    /// until it comes, the same words merged, its mark filled from a week
+    /// before (an invoice's never); a tap on its task, contract, paper or
+    /// budget line, else the Agenda. Details off, or an errand's, by their
+    /// kind alone; a prescription's never; beyond a month, none.
+    #[test]
+    fn the_agenda_gives_the_dates_asked_ahead() {
+        use sioul_core::dated::Kind as DateKind;
+        let now = at("2026-10-05T10:00[Europe/Paris]");
+        let ms = |text: &str| at(text).timestamp().as_millisecond();
+        let date = |text: &str| text.parse::<Date>().unwrap();
+        let dated = |kind: DateKind, key: &str, address: &str, title: &str, day: &str, at_: Option<&str>| Dated { kind, key: key.into(), address: address.into(), title: title.into(), date: date(day), at: at_.map(|t| at(t).timestamp().as_second()) };
+        let dates = vec![
+            dated(DateKind::Invoice, "2026-007", "sioul:invoice/2026-007", "2026-007 · Atelier Nord · €400.00", "2026-10-06", None),
+            dated(DateKind::LetterAppointment, "prefecture", "sioul:letter/prefecture", "Prefecture", "2026-10-07", Some("2026-10-07T14:00[Europe/Paris]")),
+            dated(DateKind::Task, "caf", "sioul:task/caf", "CAF form", "2026-10-09", None),
+            dated(DateKind::Task, "ferngale", "sioul:task/ferngale", "Renew the Ferngale prescription", "2026-10-09", None),
+            dated(DateKind::RunsOut, "levo", "", "Levothyrox", "2026-10-10", None),
+            dated(DateKind::Notice, "box", "sioul:contract/box", "Internet box", "2026-10-20", None),
+            dated(DateKind::Paper, "passport", "sioul:paper/passport", "Passport", "2026-11-20", None),
+        ];
+        let mut plan = plan_input(&now);
+        let mut errand = task("ferngale", "Renew the Ferngale prescription");
+        errand.categories = vec!["santé".into()];
+        plan.loaded = Arc::new(Loaded { tasks: vec![task("caf", "CAF form"), errand], ..Loaded::default() });
+        let config = config();
+        let blocks = blocks(&now);
+        let overrides = Overrides::default();
+        let card = |details: bool, language: &str| {
+            let tr = Translator::new(language);
+            let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details, dnd: None };
+            snapshot_with(&moment, None, Some(&plan), Some(&some_events()), &[], &More { dates: &dates, ..More::default() })
+        };
+        let made = card(true, "en");
+        assert_eq!(made.v, 4);
+        let listed = &made.card_dates();
+        let titles: Vec<&str> = listed.iter().map(|d| d.title.as_str()).collect();
+        assert_eq!(titles, ["2026-007 · Atelier Nord · €400.00", "Prefecture", "CAF form", "A date asked", "Internet box"], "nearest first, the errand by its kind, no prescription, none beyond a month");
+        let words = |d: &DateLine| d.line.iter().map(|l| (l.until, l.text.clone())).collect::<Vec<_>>();
+        let caf = &listed[2];
+        assert_eq!(
+            words(caf),
+            [
+                (ms("2026-10-06T00:00[Europe/Paris]"), "Date asked · four days left".to_string()),
+                (ms("2026-10-07T00:00[Europe/Paris]"), "Date asked · three days left".to_string()),
+                (ms("2026-10-08T00:00[Europe/Paris]"), "Date asked · two days left".to_string()),
+                (ms("2026-10-09T00:00[Europe/Paris]"), "Date asked · tomorrow".to_string()),
+                (ms("2026-10-10T00:00[Europe/Paris]"), "Date asked · today".to_string()),
+            ]
+        );
+        assert_eq!((caf.from, caf.until, caf.open.as_str()), (ms("2026-10-09T00:00[Europe/Paris]"), ms("2026-10-10T00:00[Europe/Paris]"), "reminder/sioul:task/caf"));
+        // Its time first; a letter opens the Agenda.
+        let letter = &listed[1];
+        assert_eq!((words(letter)[0].1.as_str(), letter.open.as_str()), ("14:00 · Appointment from a letter · two days left", "agenda"));
+        // The same words merged: "two weeks left" fifteen and fourteen days before.
+        let notice = &listed[4];
+        assert_eq!(words(notice)[0], (ms("2026-10-07T00:00[Europe/Paris]"), "Last day for notice · two weeks left".to_string()));
+        assert!(words(notice).windows(2).all(|w| w[0].1 != w[1].1 && w[0].0 < w[1].0));
+        assert_eq!(words(notice).last().unwrap(), &(ms("2026-10-21T00:00[Europe/Paris]"), "Last day for notice · today".to_string()));
+        assert_eq!(notice.open, "reminder/sioul:contract/box");
+        // Its mark: filled within a week; from a week before; an invoice's never.
+        let marks = |d: &DateLine| d.mark.iter().map(|l| (l.until, l.text.clone())).collect::<Vec<_>>();
+        assert_eq!(marks(caf), [(0, "●".to_string())]);
+        assert_eq!(marks(notice), [(ms("2026-10-14T00:00[Europe/Paris]"), "○".to_string()), (0, "●".to_string())]);
+        assert_eq!(marks(&listed[0]), [(0, "○".to_string())]);
+        // Details off: by their kind alone, the time left alone; nothing of theirs in the file.
+        let plain = card(false, "en");
+        let titles: Vec<String> = plain.card_dates().iter().map(|d| d.title.clone()).collect();
+        assert_eq!(titles, ["An invoice due", "An appointment from a letter", "A date asked", "A date asked", "A last day for notice"]);
+        assert_eq!(words(&plain.card_dates()[2])[0].1, "four days left");
+        let all = serde_json::to_string(&plain).unwrap();
+        for private in ["Atelier", "Prefecture", "CAF", "Ferngale", "Internet", "Levothyrox", "Passport"] {
+            assert!(!all.contains(private), "{private} shown with the details off");
+        }
+        assert!(!serde_json::to_string(&made).unwrap().contains("Ferngale"), "an errand by its kind, details on too");
+        // In French.
+        let fr = card(false, "fr");
+        assert_eq!(fr.card_dates()[2].title, "Une date demandée");
+        assert_eq!(fr.card_dates()[4].title, "Un dernier jour pour résilier");
+        // No calendar, dates all the same: the agenda with them alone.
+        let tr = Translator::new("en");
+        let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: BTreeSet::new() };
+        let alone = snapshot_with(&moment, None, Some(&plan), Some(&none), &[], &More { dates: &dates, ..More::default() }).agenda.unwrap();
+        assert!(alone.events.is_empty() && alone.dates.len() == 5);
+    }
+
+    impl Snapshot {
+        /// The dates asked its agenda lists.
+        fn card_dates(&self) -> &[DateLine] {
+            self.agenda.as_ref().map_or(&[], |a| a.dates.as_slice())
+        }
+    }
+
     #[test]
     fn no_count_at_all() {
         let now = at("2026-10-05T10:00[Europe/Paris]");
@@ -2266,7 +2497,7 @@ mod tests {
         }
         assert!(json["details"].is_boolean() && json["beyond"].is_string());
         assert!(json["stale"][0]["until"].is_i64() && json["stale"][0]["text"].is_string());
-        // Version 3: the frames under "times", none under "frames" (an older Java says `beyond`).
+        // From version 3: the frames under "times", none under "frames" (an older Java says `beyond`).
         assert!(json["frames"].is_null());
         let frame = &json["times"][0];
         for key in ["from", "until"] {
@@ -2278,7 +2509,7 @@ mod tests {
             assert!(frame["step"][key].is_string(), "{key}");
         }
         assert!(frame["reminders"][0].is_u64() && frame["calls"][0].is_u64() && frame["overlaps"].is_boolean() && frame["stopped"].is_boolean() && frame["note"].is_string());
-        assert!(json["v"] == 3 && json["words"]["mail"].is_string() && json["words"]["agenda"].is_string());
+        assert!(json["v"] == 4 && json["words"]["mail"].is_string() && json["words"]["agenda"].is_string());
         // Today (HomeCard.java): the date's wordings, the weather hour by hour, the days, the credit.
         let today = &json["today"];
         assert!(today["date"][0]["until"].is_i64() && today["date"][0]["text"].is_string() && today["line"].is_string());
@@ -2318,6 +2549,12 @@ mod tests {
             assert!(event[key].is_string(), "{key}");
         }
         assert!(event["all_day"].is_boolean() && event["start"].is_i64() && event["end"].is_i64());
+        // Version 4: the dates asked, each at the head of its day.
+        let date = &agenda["dates"][0];
+        assert!(date["title"].is_string() && date["open"].is_string() && date["from"].is_i64() && date["until"].is_i64());
+        for key in ["line", "mark"] {
+            assert!(date[key][0]["until"].is_i64() && date[key][0]["text"].is_string(), "{key}");
+        }
         assert!(json["codes"][0]["line"].is_string() && json["codes"][0]["warning"].is_string() && json["codes"][0]["until"].is_i64());
         for key in ["from", "until", "known_until"] {
             assert!(json["doses"][0][key].is_i64(), "{key}");
@@ -2408,6 +2645,15 @@ mod tests {
 
     /// A date asked for a work task, a payment, a paper from tomorrow, and an
     /// event's reminder before it (the agenda card's and Android's: not said here).
+    /// The dates asked as the sample card has them: the CAF's form asked for
+    /// Friday 30 October, the rent planned for Friday 9 October.
+    fn some_dates() -> Vec<Dated> {
+        vec![
+            Dated { kind: dated::Kind::Payment, key: "sioul:budget/home/3".into(), address: "sioul:budget/home/3".into(), title: "Rent · €650".into(), date: Date::constant(2026, 10, 9), at: None },
+            Dated { kind: dated::Kind::Task, key: "form".into(), address: "sioul:task/form".into(), title: "Call the CAF about the housing aid".into(), date: Date::constant(2026, 10, 30), at: None },
+        ]
+    }
+
     fn some_reminders() -> Vec<Reminder> {
         use reminders::Kind;
         vec![
@@ -2447,7 +2693,7 @@ mod tests {
             ("Trip to the sea", "2026-10-14T00:00[Europe/Paris]", "2026-10-17T00:00[Europe/Paris]", true, None, false),
         ]);
         let reminded = some_reminders();
-        let more = More { weather: WeatherInput { place: true, forecast: Some(forecast_at(&now)) }, reminders: &reminded, calls: Some(&some_calls), stopped: Some("Halfway through the CAF's form, page 2".into()) };
+        let more = More { weather: WeatherInput { place: true, forecast: Some(forecast_at(&now)) }, dates: &some_dates(), reminders: &reminded, calls: Some(&some_calls), stopped: Some("Halfway through the CAF's form, page 2".into()) };
         snapshot_with(&moment, Some(&porch_input(&now)), Some(&plan_input(&now)), Some(&agenda), doses, &more)
     }
 
@@ -2677,11 +2923,13 @@ mod tests {
         }
         // Nothing new since: nothing changed, nothing to write.
         assert!(!patch_mail(&mut card, &moment, &after));
-        // A card written by another version: left alone.
-        let mut older = written.clone();
-        older["v"] = serde_json::json!(2);
-        let kept = older.clone();
-        assert!(!patch_mail(&mut older, &moment, &after));
-        assert_eq!(older, kept);
+        // A card written by another version (the one on screen just after an update, version 3): left alone.
+        for version in [2, 3] {
+            let mut older = written.clone();
+            older["v"] = serde_json::json!(version);
+            let kept = older.clone();
+            assert!(!patch_mail(&mut older, &moment, &after));
+            assert_eq!(older, kept);
+        }
     }
 }

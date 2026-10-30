@@ -30,19 +30,23 @@ import java.util.List;
  * 09:00.", "Nothing waits on the Porch."). Then "Agenda": the events not over
  * yet, each under its day ("Today, Wed 7 Oct", "Tomorrow, Thu 8 Oct", "Mon 12
  * Oct": each name as it holds now, Rust having said until when), as a block
- * in its calendar's colour with its title and its time. Never a count.
+ * in its calendar's colour with its title and its time; from the card's
+ * version 4, the dates asked at the head of their days, each with its mark,
+ * its title and the time left as they hold now (a card of version 3, the
+ * older Sioul's just after an update, has none). Never a count.
  *
  * A row tapped fills its address into the list's template (HomeCard), for
  * HomeCardOpener: the Porch, a message ("mail/" and its file), the Agenda, an
- * event ("event/" and its file).
+ * event ("event/" and its file), what a date is about ("reminder/" and its
+ * address, as Rust gave it).
  */
 final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
 {
     /** The rows' kinds, each with its layout. */
-    static final int SECTION = 0, LINE = 1, MAIL = 2, DAY = 3, EVENT = 4;
+    static final int SECTION = 0, LINE = 1, MAIL = 2, DAY = 3, EVENT = 4, DATE = 5;
     private static final int[] LAYOUTS = {
         R.layout.sioul_home_card_section, R.layout.sioul_home_card_line, R.layout.sioul_home_card_mail,
-        R.layout.sioul_home_card_day, R.layout.sioul_home_card_event,
+        R.layout.sioul_home_card_day, R.layout.sioul_home_card_event, R.layout.sioul_home_card_date,
     };
     /**
      * The accounts' colours, by their place among your accounts: Theme.qml's
@@ -121,6 +125,8 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
             message(views, row.item);
         else if (row.type == EVENT)
             event(views, row.item);
+        else if (row.type == DATE)
+            date(views, row.item, row.text);
         else
             views.setTextViewText(R.id.sioul_home_card_row, row.text);
         views.setOnClickFillInIntent(R.id.sioul_home_card_row, new Intent().setData(Uri.fromParts(HomeCard.SCHEME, row.open, null)));
@@ -207,10 +213,12 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
     }
 
     /**
-     * "Agenda", then each event not over yet under its day: the day it starts,
-     * or today while it runs. Rust gave them nearest first, so the days only
-     * go forward. In a pause the full card shows the pause alone; the agenda
-     * card says it under its heading. Without a calendar, nothing.
+     * "Agenda", then each day with something in it: its dates asked first
+     * (from version 4: a card of version 3 has none), then each event not
+     * over yet under its day, the day it starts, or today while it runs. Rust
+     * gave them nearest first. In a pause the full card shows the pause
+     * alone; the agenda card says it under its heading. Without a calendar
+     * and without a date, nothing.
      */
     private static void agenda(List<Row> rows, JSONObject card, JSONObject frame, String heading, long now, String kind)
     {
@@ -227,26 +235,50 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
         rows.add(new Row(SECTION, null, heading, "agenda"));
         JSONArray days = agenda.optJSONArray("days");
         JSONArray events = agenda.optJSONArray("events");
-        int shownDay = -1;
-        boolean any = false;
-        for (int i = 0; events != null && i < events.length(); i++) {
+        JSONArray dates = dates(card);
+        // Each row's day, once: a date's own, an event's start or today while it runs; -1, none.
+        int[] dateDay = new int[dates == null ? 0 : dates.length()];
+        for (int i = 0; i < dateDay.length; i++) {
+            JSONObject date = dates.optJSONObject(i);
+            dateDay[i] = date == null || date.optLong("until") <= now ? -1 : dayOf(days, Math.max(date.optLong("from"), now));
+        }
+        int[] eventDay = new int[events == null ? 0 : events.length()];
+        for (int i = 0; i < eventDay.length; i++) {
             JSONObject event = events.optJSONObject(i);
-            if (event == null || event.optLong("end") <= now)
-                continue;
-            int day = dayOf(days, Math.max(event.optLong("start"), now));
-            if (day < 0)
-                continue;
-            if (day != shownDay) {
-                JSONObject named = days.optJSONObject(day);
-                rows.add(new Row(DAY, null, label(named == null ? null : named.optJSONArray("label"), now), "agenda"));
-                shownDay = day;
+            eventDay[i] = event == null || event.optLong("end") <= now ? -1 : dayOf(days, Math.max(event.optLong("start"), now));
+        }
+        boolean any = false;
+        for (int day = 0; days != null && day < days.length(); day++) {
+            List<Row> under = new ArrayList<>();
+            for (int i = 0; i < dateDay.length; i++) {
+                if (dateDay[i] != day)
+                    continue;
+                JSONObject date = dates.optJSONObject(i);
+                under.add(new Row(DATE, date, label(date.optJSONArray("line"), now), date.optString("open", "agenda")));
             }
-            String key = event.optString("key");
-            rows.add(new Row(EVENT, event, "", key.isEmpty() ? "agenda" : "event/" + key));
+            for (int i = 0; i < eventDay.length; i++) {
+                if (eventDay[i] != day)
+                    continue;
+                JSONObject event = events.optJSONObject(i);
+                String key = event.optString("key");
+                under.add(new Row(EVENT, event, "", key.isEmpty() ? "agenda" : "event/" + key));
+            }
+            if (under.isEmpty())
+                continue;
+            JSONObject named = days.optJSONObject(day);
+            rows.add(new Row(DAY, null, label(named == null ? null : named.optJSONArray("label"), now), "agenda"));
+            rows.addAll(under);
             any = true;
         }
         if (!any)
             rows.add(new Row(LINE, null, agenda.optString("empty"), "agenda"));
+    }
+
+    /** The dates asked of a card of version 4 and later; none before (version 3: the older Sioul's). */
+    static JSONArray dates(JSONObject card)
+    {
+        JSONObject agenda = card == null ? null : card.optJSONObject("agenda");
+        return agenda == null || card.optInt("v") < 4 ? null : agenda.optJSONArray("dates");
     }
 
     /** The day `at` falls in, by its place in `days`; -1 outside them. */
@@ -316,6 +348,17 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
             if (end > now)
                 next = Math.min(next, end);
         }
+        // A date's words and mark at their next change, the date gone when its day ends.
+        JSONArray dates = dates(card);
+        for (int i = 0; dates != null && i < dates.length(); i++) {
+            JSONObject date = dates.optJSONObject(i);
+            if (date == null)
+                continue;
+            next = Math.min(next, Math.min(ahead(date.optJSONArray("line"), now), ahead(date.optJSONArray("mark"), now)));
+            long until = date.optLong("until");
+            if (until > now)
+                next = Math.min(next, until);
+        }
         return next;
     }
 
@@ -353,6 +396,15 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
         // The time a little softer than the title, as the window's agenda has it.
         views.setTextColor(R.id.sioul_home_card_time, (text & 0x00ffffff) | 0xd9000000);
         views.setViewVisibility(R.id.sioul_home_card_time, time.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /** A date asked, as the agenda shows it at the head of its day: its mark, its title, the time left (`line`, as it holds now). */
+    private void date(RemoteViews views, JSONObject date, String line)
+    {
+        views.setTextViewText(R.id.sioul_home_card_mark, label(date.optJSONArray("mark"), now));
+        views.setTextViewText(R.id.sioul_home_card_title, date.optString("title"));
+        views.setTextViewText(R.id.sioul_home_card_time, line);
+        views.setViewVisibility(R.id.sioul_home_card_time, line.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     private static CharSequence bold(String text, boolean bold)

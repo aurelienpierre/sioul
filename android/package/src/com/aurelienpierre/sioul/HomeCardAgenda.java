@@ -4,9 +4,9 @@
 package com.aurelienpierre.sioul;
 
 /**
- * Sioul's agenda card on the home screen: the coming events alone, day by
- * day, as the full card lists them (HomeCardRows). HomeCard draws it, with
- * the others, from the same file.
+ * Sioul's agenda card on the home screen: the coming events and the dates
+ * asked of you, day by day, as the full card lists them (HomeCardRows).
+ * HomeCard draws it, with the others, from the same file.
  */
 public final class HomeCardAgenda extends HomeCard
 {

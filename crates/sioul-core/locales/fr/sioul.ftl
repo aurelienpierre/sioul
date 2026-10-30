@@ -4650,6 +4650,13 @@ home-card-time-range = { $start } – { $end }
 home-card-until-day = Jusqu’au { $day }
 home-card-event-plain = Un événement
 home-card-agenda-empty = Rien dans vos agendas pour le mois à venir.
+# Les dates demandées dans l’agenda, à partir de la version 4, sans les détails : chacune par son type seul.
+home-card-date-asked-plain = Une date demandée
+home-card-date-letter-plain = Un rendez-vous d’un courrier
+home-card-date-notice-plain = Un dernier jour pour résilier
+home-card-date-paper-plain = Le dernier jour de validité d’un papier
+home-card-date-payment-plain = Un paiement
+home-card-date-invoice-plain = Une échéance de facture
 # La carte complète, à partir de la version 3 : aujourd’hui d’abord (la date, la météo), puis les lignes du Porche, puis Maintenant.
 home-card-weather-choose = Choisissez un lieu pour la météo dans Sioul : touchez la météo dans sa ligne d’état.
 home-card-weather-credit = Météo : Open-Meteo.com

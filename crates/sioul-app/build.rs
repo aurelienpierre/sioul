@@ -130,6 +130,7 @@ fn main() {
         "qml/FolderBrowser.qml",
         "qml/RestCover.qml",
         "qml/DoseTaken.qml",
+        "qml/RecentsGuard.qml",
         "qml/DoubtLine.qml",
         "qml/Description.qml",
         "qml/NeedsSection.qml",

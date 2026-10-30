@@ -33,6 +33,11 @@
 #   draws again, a card of version 2, an older Java meeting version 3; with
 #   SIOUL_CARD_SAMPLE, the card Rust's homecard::tests::the_file_java_reads
 #   wrote there.
+# - AgendaCheck: the agenda's list (HomeCardRows.rows): from version 4 each
+#   day's dates asked at its head, their words as they hold then and their
+#   taps, a date gone with its day, when the list draws again; a card of
+#   version 3 listing its events as before and no date; with
+#   SIOUL_CARD_SAMPLE, the dates of Rust's card.
 # - MessagesCheck: what the listener says for your computers
 #   (PhoneMessages.notice, PhoneMessages.message), under the names
 #   phonemsgs.rs's `Extra` reads: visibility, times, pictures by their type.
@@ -45,6 +50,12 @@
 #   manifest, read from the repository (its root as the property sioul.root).
 # - EventNotesCheck: every reminder in the Events channels is private, its
 #   public version saying only that Sioul has a reminder (composed tasks §7.3);
+# - RecentsCheck: Recents' picture of Sioul off while a health card is open,
+#   read from the sources (android.jar's Activity is a stub): the bridge's
+#   Activity.setRecentsScreenshotEnabled on Android 13 and later only, on
+#   Android's main thread, never FLAG_SECURE (the security key's alone), the
+#   doses' alarms untouched, and main.qml's guard of the Health page, a
+#   dose's question and a prescription's date.
 # - ChannelsCheck: no badge on Sioul's icon: every notification channel is
 #   made by Channels.quiet, its badge off, and none elsewhere (read from the
 #   sources, as android.jar's NotificationChannel cannot be made here).
@@ -108,7 +119,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

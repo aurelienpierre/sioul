@@ -1191,6 +1191,43 @@ fn the_agenda_gives_the_plans_steps() {
     }
 }
 
+/// The agenda gives the admin dates asked (the unified agenda's part 8), each
+/// by its own consent: a task's date asked of no project, named, with its
+/// kind's words and the time left; a closed project's date (its task's, its
+/// letter's, its invoice's) kept back, counted once with the task's step,
+/// never named; an errand's never given (health), its task counted once.
+/// Beside the events and the steps.
+#[test]
+fn the_agenda_gives_the_dates_asked_under_consent() {
+    let _home = home();
+    let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap();
+    let (zone, now) = (jiff::tz::TimeZone::system(), Zoned::now());
+    let day = now.date().checked_add(3.days()).unwrap().to_string();
+    let write = |uid: &str, edit: TaskEdit| vdir::write_item(&list.dir.join(format!("{uid}.ics")), &tasks::new_task(&TaskEdit { due: day.clone(), estimate: 10, ..edit }, uid, &zone, &now).unwrap()).unwrap();
+    let kept_before = call(&mut server(), "agenda", json!({ "days": 7 }))["structuredContent"]["kept_from_agents"].as_u64().unwrap();
+    write("dated-bus-card", TaskEdit { title: "Renew the bus card".into(), ..TaskEdit::default() });
+    write("dated-zeugma", TaskEdit { title: "File the Zeugma return".into(), projects: vec!["taxes".into()], ..TaskEdit::default() });
+    write("dated-ferngale", TaskEdit { title: "Renew the Ferngale prescription".into(), categories: vec!["santé".into()], ..TaskEdit::default() });
+    let mut server = server();
+    let answer = call(&mut server, "agenda", json!({ "days": 7 }));
+    let data = &answer["structuredContent"];
+    let dates: Vec<&Value> = data["days"].as_array().unwrap().iter().flat_map(|d| d["dates"].as_array().unwrap().iter()).collect();
+    assert!(dates.iter().any(|d| d["title"] == "Renew the bus card" && d["uri"] == "sioul:task/dated-bus-card" && d["date"] == day.as_str()), "{}", text(&answer));
+    // Its line: its kind's words and the time left, in the text too.
+    let bus = dates.iter().find(|d| d["uri"] == "sioul:task/dated-bus-card").unwrap();
+    assert!(bus["line"].as_str().is_some_and(|l| l.contains("left")) && text(&answer).contains(bus["line"].as_str().unwrap()), "{bus}");
+    for word in ["Zeugma", "Ferngale"] {
+        assert!(!dates.iter().any(|d| d.to_string().contains(word)), "{word} never named: {dates:?}");
+        assert!(!text(&answer).contains(word), "{word} never in the words");
+    }
+    // Each task kept back once, its date and its step together (one `ForAgents`): the closed
+    // project's, and the errand's (health, by the errands' one rule: counted, never named).
+    assert_eq!(data["kept_from_agents"].as_u64().unwrap(), kept_before + 2, "{data}");
+    for uid in ["dated-bus-card", "dated-zeugma", "dated-ferngale"] {
+        let _ = std::fs::remove_file(list.dir.join(format!("{uid}.ics")));
+    }
+}
+
 #[test]
 fn things_outside_projects_can_be_closed() {
     let home = home();

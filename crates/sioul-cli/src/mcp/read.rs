@@ -625,6 +625,14 @@ impl Desk {
     /// sits where the person's own day has it. With the occurrences read,
     /// marked.
     pub fn agent_days(&self, from: i64, to: i64) -> (timeline::ForAgents, usize, Vec<agenda::Occurrence>) {
+        self.agent_days_with(from, to, None)
+    }
+
+    /// As `agent_days`, with the admin dates asked of `dates`' days beside
+    /// (the agenda's, the unified agenda's part 8: `dates_of`), each by its own
+    /// thing's consent (the Dated arm), kept back counted with the rest: a
+    /// task's date and its step count once.
+    pub fn agent_days_with(&self, from: i64, to: i64, dates: Option<(&Session, jiff::civil::Date, i64)>) -> (timeline::ForAgents, usize, Vec<agenda::Occurrence>) {
         let now = Zoned::now();
         let zone = now.time_zone().clone();
         let today = now.date();
@@ -646,15 +654,62 @@ impl Desk {
             date = next;
         }
         let open = |uid: &str| self.loaded.tasks.iter().any(|t| t.uid == uid && t.status.is_open());
-        let items = timeline::merge(items, now.timestamp().as_second(), &open);
+        let mut items = timeline::merge(items, now.timestamp().as_second(), &open);
+        if let Some((s, first, count)) = dates {
+            items.extend(self.dates_of(s, first, count, &occurrences));
+        }
+        // An invoice is in its project, which no tie says (`records::invoices`): read once, when one is dated.
+        let invoices = std::cell::OnceCell::new();
+        let invoice_project = |number: &str| invoices.get_or_init(|| invoice::all_in(&invoice::folder())).iter().find(|i: &&invoice::Invoice| i.number == number).map(|i| i.project.clone()).unwrap_or_default();
         let allows = |item: &timeline::Item| match (item.kind, &item.source) {
             (timeline::Kind::Event, _) => self.consent.allows(&item.address) && (item.owner.is_empty() || self.allows(&item.owner)),
             (timeline::Kind::Block, timeline::Source::Calendar { uid, .. }) => self.consent.allows(&links::event_uri(uid)) && self.allows(&item.owner),
             (timeline::Kind::Step | timeline::Kind::Done, _) => self.allows(&item.owner),
+            // The Dated arm: each date by its own thing's consent, as its tool decides (a
+            // task's, a letter's by its project, a paper's, a contract's, a budget line's
+            // by its budget's projects, an invoice's by its project); health's never (an
+            // errand's address is refused, its task counted once).
+            (timeline::Kind::Dated, timeline::Source::Dated { kind, key }) => {
+                !item.address.is_empty()
+                    && !kind.is_health()
+                    && match kind {
+                        sioul_core::dated::Kind::Invoice => {
+                            let mut projects = self.consent.projects_of(&item.address);
+                            projects.insert(invoice_project(key));
+                            self.consent.allows_projects(projects.iter().map(String::as_str))
+                        }
+                        _ => self.consent.allows(&item.address),
+                    }
+            }
+            (timeline::Kind::Dated, _) => false,
             _ => true,
         };
         let (agents, kept) = timeline::ForAgents::of(items, allows);
         (agents, kept, occurrences)
+    }
+}
+
+impl Desk {
+    /// The admin dates asked of you from `from`, `days` of them (the unified
+    /// agenda's part 8): every date `dated::read_all` gives (a task's date
+    /// asked, a letter's, a contract's notice day, a paper ending, a payment
+    /// planned, an invoice due), as the window's agenda has them; a
+    /// prescription's are never read here, and an errand's date goes by the
+    /// errands' one rule (`access::of`: consent refuses health's addresses),
+    /// kept back with its task. `occurrences` for the letters' appointments
+    /// already in the agenda. Consent is `agent_days_with`'s.
+    fn dates_of(&self, s: &Session, from: jiff::civil::Date, days: i64, occurrences: &[agenda::Occurrence]) -> Vec<timeline::Item> {
+        let now = Zoned::now();
+        let (today, zone) = (now.date(), now.time_zone().clone());
+        let events_on = |date: jiff::civil::Date| {
+            occurrences
+                .iter()
+                .filter(|o| Timestamp::from_second(o.start).is_ok_and(|t| t.to_zoned(zone.clone()).date() == date))
+                .map(|o| sioul_core::dated::EventSeen { start: o.start, yours: !o.read_only && !o.with_others && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
+                .collect()
+        };
+        let all = sioul_core::dated::read_all(&s.config, &self.loaded.tasks, &events_on, today, &zone, &s.tr);
+        sioul_core::dated::within(all, from, days, today).iter().map(|d| sioul_core::dated::item(d, today, &s.tr)).collect()
     }
 }
 
@@ -927,18 +982,20 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     let start = from.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
     let desk = Desk::read(s);
     // Events and steps kept from agents (a closed project's, a closed project's step's): left out, counted.
-    let (agents, closed, occurrences) = desk.agent_days(start, start + days * 86_400 + 3_600);
+    // The admin dates asked too (part 8), each by its consent, those kept back counted with the rest.
+    let (agents, closed, occurrences) = desk.agent_days_with(start, start + days * 86_400 + 3_600, Some((s, from, days)));
     let placed = timeline::days(agents.items(), from, days, today, &zone, &s.tr);
     // The events as before: every occurrence an agent may see, by its own consent and its
     // task's, a task's time block too, the one its step is laid in and one over of a task
     // still open (`timeline::merge` leaves those out of the steps' days).
     let shown: Vec<agenda::Occurrence> = occurrences.iter().filter(|e| desk.consent.allows(&links::event_uri(&e.uid)) && (e.task.is_empty() || desk.allows(&e.task))).cloned().collect();
-    let listed = view::agenda(&shown, from, days, &s.tr, &zone);
+    // Each day's events from the one model (`timeline::calendar_days`), their fields as before part 8.
+    let listed = timeline::calendar_days(&shown, from, days, today, &zone, &s.tr);
     let words = sioul_core::words::Words::of(&s.config);
     let mut lines = Vec::new();
     let mut out = Vec::new();
     for day in &placed {
-        let listed_events = listed.days.iter().find(|d| d.date == day.date).map_or(&[][..], |d| d.events.as_slice());
+        let listed_events = listed.iter().find(|d| d.date == day.date).map_or(&[][..], |d| d.events.as_slice());
         // Each line with its place in the day: all day first, then the steps at no time, then by time.
         let mut said: Vec<((u8, i64), String)> = Vec::new();
         let mut steps = Vec::new();
@@ -974,27 +1031,41 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
             steps.push(json!({ "uri": uri, "uid": item.owner, "title": item.title, "when": when, "start": if at_no_time { String::new() } else { instant(at) }, "end": if at_no_time { String::new() } else { instant(until) }, "done": done, "pinned": pinned, "at_no_time": at_no_time, "event": event }));
         }
         let mut events = Vec::new();
-        for event in listed_events {
+        for listed in listed_events {
+            let event = &shown[listed.index];
+            let summary = if event.summary.is_empty() { s.tr.text("agenda-untitled", None) } else { event.summary.clone() };
             let uri = links::event_uri(&event.uid);
             if !in_blocks.contains(&(event.key.clone(), event.start)) {
                 let place = if event.location.is_empty() { String::new() } else { format!(" · {}", event.location) };
                 let gone = if event.cancelled { "× " } else { "" };
-                said.push(((if event.all_day { 0 } else { 2 }, event.start), format!("  {}  {gone}{}{place}  <{uri}>", event.when, event.summary)));
+                said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {}  {gone}{summary}{place}  <{uri}>", listed.when)));
             }
             let (_, notes) = mask::message(&words, "", &event.notes);
             events.push(json!({
-                "uri": uri, "uid": event.uid, "when": event.when, "start": instant(event.start), "summary": event.summary, "location": event.location,
-                "notes": notes, "calendar": event.calendar, "all_day": event.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
+                "uri": uri, "uid": event.uid, "when": listed.when, "start": instant(event.start), "summary": summary, "location": event.location,
+                "notes": notes, "calendar": event.calendar, "all_day": listed.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
                 "tentative": event.tentative, "organizer": event.organizer, "attendees": event.attendees,
             }));
         }
-        if events.is_empty() && steps.is_empty() {
+        // The dates asked that day, at the head (part 8): its title, its kind and the time left.
+        let mut dated = Vec::new();
+        for item in day.head.iter().chain(&day.timed).map(|p| &p.item) {
+            let timeline::Source::Dated { kind, key } = &item.source else { continue };
+            let at = match item.time {
+                timeline::Time::At { at } => Some(at),
+                _ => None,
+            };
+            let hm = at.and_then(|at| Timestamp::from_second(at).ok()).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string());
+            said.push(((0, at.unwrap_or(day.start)), format!("  {}{}  ({})  <{}>", hm.map(|h| format!("{h}  ")).unwrap_or_default(), item.title, item.line, item.address)));
+            dated.push(json!({ "uri": item.address, "kind": kind, "key": key, "title": item.title, "date": day.date, "at": at.map(instant), "line": item.line }));
+        }
+        if events.is_empty() && steps.is_empty() && dated.is_empty() {
             continue;
         }
         said.sort_by_key(|(at, _)| *at);
         lines.push(day.title.clone());
         lines.extend(said.into_iter().map(|(_, line)| line));
-        out.push(json!({ "title": day.title, "date": day.date, "events": events, "steps": steps }));
+        out.push(json!({ "title": day.title, "date": day.date, "events": events, "steps": steps, "dates": dated }));
     }
     // Beyond the plan's reach, a day shows its events alone: said once.
     let last = today.checked_add(jiff::Span::new().days(plan::HORIZON_DAYS - 1)).unwrap_or(today);

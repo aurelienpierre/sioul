@@ -4278,6 +4278,14 @@ SioulWindow {
     Loader {
         id: doseTaken
     }
+    // Recents' picture of Sioul kept out while a health card is open (Android
+    // 13 and later; RecentsGuard.qml): the Health page, a dose's question, a
+    // prescription's date in the card host.
+    RecentsGuard {
+        sioul: sioul
+        health: window.page === 10 || (doseTaken.item !== null && doseTaken.item.opened)
+                || (cardHost.open && cardHost.ref.card === "dated" && ["prescription-ends", "runs-out"].indexOf(cardHost.ref.datedKind) >= 0)
+    }
     Loader {
         id: interruption
     }

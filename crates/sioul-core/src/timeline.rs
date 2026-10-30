@@ -595,8 +595,10 @@ impl ForAgents {
     /// errands, your hours, the time kept for you), then what consent keeps
     /// back (`allows`: false for an item an agent may not see); each item's
     /// line and spoken name emptied, which Rust words from other things'
-    /// titles. With how many things consent kept back: distinct owners (a
-    /// task's step and its block count once), never a health item.
+    /// titles, but a date's line, its kind's words and the time left
+    /// (`dated::item`: "Notice day · four days left"). With how many things
+    /// consent kept back: distinct owners (a task's step, its block and its
+    /// date count once), never a health item.
     pub fn of(items: Vec<Item>, allows: impl Fn(&Item) -> bool) -> (ForAgents, usize) {
         let mut kept_back = std::collections::BTreeSet::new();
         let mut out = Vec::new();
@@ -605,7 +607,9 @@ impl ForAgents {
                 kept_back.insert(if item.owner.is_empty() { item.address.clone() } else { item.owner.clone() });
                 continue;
             }
-            item.line.clear();
+            if item.kind != Kind::Dated {
+                item.line.clear();
+            }
             item.said.clear();
             out.push(item);
         }
@@ -689,6 +693,50 @@ fn is_zero(value: &u32) -> bool {
 
 fn is_one(value: &u32) -> bool {
     *value == 1
+}
+
+/// One day of the calendars as a list says it (`calendar_days`): its date,
+/// its title ("Today", "Tomorrow", "Monday 5 October"), and the occurrences
+/// it holds, by their place in the list given, each with its time that day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalendarDay {
+    pub date: String,
+    pub title: String,
+    pub events: Vec<Listed>,
+}
+
+/// One occurrence on one day of `CalendarDay`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    /// Its place in the list given.
+    pub index: usize,
+    /// "09:00 – 10:30", "All day", "From 18:00", "Until 09:00": its time that day.
+    pub when: String,
+    /// A whole day, or spanning the whole of that day.
+    pub all_day: bool,
+}
+
+/// The calendars' occurrences day by day, from the one model (`agenda::items`,
+/// `days`), for the lists that print them (`sioul agenda`, the MCP's agenda):
+/// each day the occurrences it holds (an event over several days on each),
+/// in the order given, each once, with its time that day. Health's none.
+pub fn calendar_days(occurrences: &[crate::agenda::Occurrence], from: Date, count: i64, today: Date, zone: &TimeZone, tr: &Translator) -> Vec<CalendarDay> {
+    let items = crate::agenda::items(occurrences, zone, &|_| false);
+    days(&items, from, count, today, zone, tr)
+        .into_iter()
+        .map(|day| {
+            let mut events: Vec<Listed> = Vec::new();
+            for placed in day.head.iter().chain(&day.timed) {
+                let Source::Calendar { key, start, .. } = &placed.item.source else { continue };
+                let Some(index) = occurrences.iter().position(|o| o.key == *key && o.start == *start) else { continue };
+                if !events.iter().any(|e| e.index == index) {
+                    events.push(Listed { index, when: placed.when.clone(), all_day: placed.all_day });
+                }
+            }
+            events.sort_by_key(|e| e.index);
+            CalendarDay { date: day.date, title: day.title, events }
+        })
+        .collect()
 }
 
 /// The days from `from`, `count` of them, each with the items it holds,
@@ -1528,22 +1576,29 @@ mod tests {
     }
 
     /// Agents get admin items that consent opens, never health or frame
-    /// ones, their lines emptied; what consent keeps back is counted by
-    /// owner, a health item never.
+    /// ones, their lines emptied but a date's (its kind's words and the time
+    /// left); what consent keeps back is counted by owner, a task's date
+    /// with its step, a health item never.
     #[test]
     fn agents_get_admin_items_that_consent_opens() {
         let date = day("2026-10-05");
+        let tr = Translator::new("en");
         let mut items = from_day(&laid(vec![block("task", "open", "2026-10-05T10:00", "2026-10-05T10:30", 0, false), block("task", "closed", "2026-10-05T11:00", "2026-10-05T11:30", 0, false), block("gain", "gain:after", "2026-10-05T12:00", "2026-10-05T12:20", 0, false)], vec!["closed".into()]), date, &[]);
         items[0].line = "Next: something of another task".into();
         let mut meal = block_item("meal", "2026-10-05T12:30", "2026-10-05T13:00");
         meal.kind = Kind::Meal;
         meal.privacy = Privacy::Health;
         items.push(meal);
+        let dated = |key: &str| crate::dated::item(&crate::dated::Dated { kind: crate::dated::Kind::Task, key: key.into(), address: format!("sioul:task/{key}"), title: "Form".into(), date: day("2026-10-09"), at: None }, date, &tr);
+        items.push(dated("open"));
+        items.push(dated("closed"));
         let (agents, kept) = ForAgents::of(items, |item| item.owner != "closed");
-        let given: Vec<&str> = agents.items().iter().map(|i| i.owner.as_str()).collect();
-        assert_eq!(given, vec!["open"]);
-        assert_eq!(kept, 1, "the closed task's laid step and its unlaid part count once");
-        assert!(agents.items().iter().all(|i| i.line.is_empty() && i.said.is_empty()));
+        let given: Vec<(&str, Kind)> = agents.items().iter().map(|i| (i.owner.as_str(), i.kind)).collect();
+        assert_eq!(given, vec![("open", Kind::Step), ("open", Kind::Dated)]);
+        assert_eq!(kept, 1, "the closed task's laid step, its unlaid part and its date count once");
+        assert!(agents.items().iter().filter(|i| i.kind != Kind::Dated).all(|i| i.line.is_empty() && i.said.is_empty()));
+        let date_line = &agents.items()[1].line;
+        assert!(date_line.contains("four days left"), "{date_line}");
     }
 
     /// The days off: one item from their first day to their last, named by their label.
@@ -1569,53 +1624,37 @@ mod tests {
         crate::agenda::Occurrence { key: key.into(), uid: key.into(), summary: key.into(), start: at(from), end: at(to), calendar: "c".into(), ..Default::default() }
     }
 
-    /// The agenda, made from the one model, places every event as it did
-    /// (`view::agenda`): its days, its time, the whole days at the head, side
-    /// by side where events overlap, a task's block as the task it is.
+    /// The calendars day by day for the lists (`sioul agenda`, the MCP's
+    /// agenda), from the one model, as `view::agenda` listed them before part
+    /// 8 (captured against it on 30 October 2026): an event over several days
+    /// on each, its time that day, in the order given; a task's block among
+    /// them; a day with nothing, empty.
     #[test]
-    fn the_agenda_places_events_as_before() {
+    fn the_calendar_days_list_each_day_s_occurrences() {
         let zone = paris();
         let tr = Translator::new("en");
         let mut all_day = occurrence("holiday", "2026-10-06T00:00", "2026-10-08T00:00");
         all_day.all_day = true;
-        let mut margins = occurrence("doctor", "2026-10-05T14:00", "2026-10-05T14:30");
-        margins.margins = crate::demands::Margins { before: 30, after: 15 };
         let mut block = occurrence("block", "2026-10-06T10:00", "2026-10-06T10:45");
         block.task = "t1".into();
         let mut occurrences = vec![
             occurrence("a", "2026-10-05T09:00", "2026-10-05T10:00"),
             occurrence("b", "2026-10-05T09:30", "2026-10-05T11:00"),
-            occurrence("c", "2026-10-05T10:00", "2026-10-05T10:30"),
             occurrence("instant", "2026-10-05T12:00", "2026-10-05T12:00"),
-            margins,
             occurrence("trip", "2026-10-05T18:00", "2026-10-07T09:00"),
             all_day,
             block,
         ];
         occurrences.sort_by(|a, b| (a.start, !a.all_day, &a.summary).cmp(&(b.start, !b.all_day, &b.summary)));
-        crate::agenda::mark_tasks(&mut occurrences, &[crate::tasks::Task { uid: "t1".into(), list: "L".into(), ..Default::default() }]);
-        let from = day("2026-10-05");
-        let before = crate::view::agenda(&occurrences, from, 4, &tr, &zone);
-        let items = crate::agenda::items(&occurrences, &zone, &|_| false);
-        // `view::agenda` names today by the clock.
-        let now = days(&items, from, 4, Timestamp::now().to_zoned(zone.clone()).date(), &zone, &tr);
-        for (old, new) in before.days.iter().zip(&now) {
-            let was: Vec<(String, i64, String, bool, i32, i32, u32, u32)> = old.events.iter().map(|e| (e.key.clone(), e.start, e.when.clone(), e.all_day, e.from_minute, e.to_minute, if e.all_day { 0 } else { e.column }, if e.all_day { 1 } else { e.columns })).collect();
-            let is: Vec<(String, i64, String, bool, i32, i32, u32, u32)> = new
-                .head
-                .iter()
-                .chain(&new.timed)
-                .map(|p| {
-                    let Source::Calendar { key, start, .. } = &p.item.source else { panic!("{p:?}") };
-                    (key.clone(), *start, p.when.clone(), p.all_day, p.from_minute, p.to_minute, p.column, p.columns)
-                })
-                .collect();
-            let (mut was, mut is) = (was, is);
-            was.sort();
-            is.sort();
-            assert_eq!(was, is, "{}", old.date);
-            assert_eq!((old.title.clone(), old.date.clone(), old.today, old.start), (new.title.clone(), new.date.clone(), new.today, new.start));
-        }
+        let days = calendar_days(&occurrences, day("2026-10-05"), 4, day("2026-10-05"), &zone, &tr);
+        let listed: Vec<(String, String, Vec<(String, String, bool)>)> = days.iter().map(|d| (d.date.clone(), d.title.clone(), d.events.iter().map(|e| (occurrences[e.index].key.clone(), e.when.clone(), e.all_day)).collect())).collect();
+        let event = |key: &str, when: &str, all_day: bool| (key.to_string(), when.to_string(), all_day);
+        assert_eq!(listed, [
+            ("2026-10-05".to_string(), "Today".to_string(), vec![event("a", "09:00 – 10:00", false), event("b", "09:30 – 11:00", false), event("instant", "12:00", false), event("trip", "From 18:00", false)]),
+            ("2026-10-06".to_string(), "Tomorrow".to_string(), vec![event("trip", "All day", true), event("holiday", "All day", true), event("block", "10:00 – 10:45", false)]),
+            ("2026-10-07".to_string(), "Wednesday 7 October".to_string(), vec![event("trip", "Until 09:00", false), event("holiday", "All day", true)]),
+            ("2026-10-08".to_string(), "Thursday 8 October".to_string(), vec![]),
+        ]);
     }
 
     /// Each event says what its writer lets change it: nothing in a calendar

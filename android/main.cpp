@@ -27,6 +27,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QGuiApplication>
+#include <QJniEnvironment>
 #include <QJniObject>
 #include <QQuickWindow>
 #include <QString>
@@ -436,6 +437,27 @@ extern "C" bool sioul_android_files_access()
     if (QNativeInterface::QAndroidApplication::sdkVersion() >= 30)
         return QJniObject::callStaticMethod<jboolean>("android/os/Environment", "isExternalStorageManager");
     return QtAndroidPrivate::checkPermission(QStringLiteral("android.permission.WRITE_EXTERNAL_STORAGE")).result() == QtAndroidPrivate::Authorized;
+}
+
+// Recents' picture of Sioul kept out while a health card is open (main.qml's
+// RecentsGuard, crates/sioul-app/src/backend.rs): Android's overview of apps
+// then shows Sioul's icon and name, not a medicine; on again once it closes.
+// Android 13 and later only (Activity.setRecentsScreenshotEnabled): before,
+// the only way is FLAG_SECURE, which would stop your own screenshots too, so
+// nothing is done. On the window's activity, on Android's main thread.
+extern "C" void sioul_android_recents_picture(bool shown)
+{
+    if (android_get_device_api_level() < 33)
+        return;
+    (void)QNativeInterface::QAndroidApplication::runOnAndroidMainThread([shown]() {
+        const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        QJniEnvironment env;
+        const jclass kind = env.findClass("android/app/Activity");
+        if (!activity.isValid() || !kind || !env->IsInstanceOf(activity.object(), kind))
+            return;
+        activity.callMethod<void>("setRecentsScreenshotEnabled", "(Z)V", jboolean(shown));
+        env.checkAndClearExceptions();
+    });
 }
 
 // Android's own switch for it: its settings page for Sioul, or the question.

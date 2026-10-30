@@ -12,7 +12,7 @@ use jiff::tz::TimeZone;
 use sioul_core::agenda::{self, EventEdit};
 use sioul_core::config::{self, Account};
 use sioul_core::contacts::{self, ContactEdit, Labeled};
-use sioul_core::{vdir, view};
+use sioul_core::{timeline, vdir, view};
 use sioul_sync::dav::{self, Homes};
 use sioul_sync::secret;
 
@@ -294,17 +294,23 @@ pub(crate) fn list_agenda(s: &Session, days: i64) -> Result<(), String> {
     let today = Zoned::now().date();
     let from = today.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
     let to = from + days * 86_400 + 3_600;
-    let shown = view::agenda(&agenda::occurrences(from, to), today, days, &s.tr, &zone);
-    if !shown.sentence.is_empty() {
-        println!("{}", crate::one_line(&shown.sentence));
+    // From the one model (`timeline::calendar_days`), its lines as before part 8: each day's
+    // title, then each event's time that day, its title and its place.
+    let occurrences = agenda::occurrences(from, to);
+    let shown = timeline::calendar_days(&occurrences, today, days, today, &zone, &s.tr);
+    if shown.iter().all(|d| d.events.is_empty()) {
+        let calendars = agenda::default_calendar().is_some() || !vdir::collections(vdir::Kind::Calendars).is_empty();
+        println!("{}", crate::one_line(&s.tr.text(if calendars { "agenda-nothing" } else { "agenda-no-calendar" }, None)));
         return Ok(());
     }
-    for day in shown.days.iter().filter(|d| !d.events.is_empty()) {
+    for day in shown.iter().filter(|d| !d.events.is_empty()) {
         println!("{}", day.title);
-        for event in &day.events {
+        for listed in &day.events {
+            let event = &occurrences[listed.index];
             // Titles and places as invitations and shared calendars wrote them, on one line.
             let place = if event.location.is_empty() { String::new() } else { format!(" · {}", crate::one_line(&event.location)) };
-            println!("  {}  {}{place}", crate::one_line(&event.when), crate::one_line(&event.summary));
+            let summary = if event.summary.is_empty() { s.tr.text("agenda-untitled", None) } else { event.summary.clone() };
+            println!("  {}  {}{place}", crate::one_line(&listed.when), crate::one_line(&summary));
         }
     }
     Ok(())

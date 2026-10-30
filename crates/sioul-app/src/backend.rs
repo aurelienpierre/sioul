@@ -2004,6 +2004,12 @@ pub mod qobject {
         #[qinvokable]
         fn set_realtime_mode(self: Pin<&mut Sioul>, on: bool);
 
+        /// Recents' picture of Sioul on (`shown`) or kept out while a health
+        /// card is open (RecentsGuard.qml): Android 13 and later only
+        /// (android/main.cpp); nothing elsewhere.
+        #[qinvokable]
+        fn recents_picture(self: &Sioul, shown: bool);
+
         /// Images of a phone's screen (`SIOUL_GRAB_PHONE`): its size and its layout.
         #[qinvokable]
         fn grab_phone(self: &Sioul) -> bool;
@@ -2184,6 +2190,8 @@ unsafe extern "C" {
     fn sioul_android_files_access() -> bool;
     /// Android's own switch for it.
     fn sioul_android_ask_files_access();
+    /// Recents' picture of Sioul on or off (Android 13 and later; nothing before).
+    fn sioul_android_recents_picture(shown: bool);
     /// A sync app asked to look for changes now: an explicit broadcast to its
     /// receiver, nothing when it is not installed (android/main.cpp).
     pub(crate) fn sioul_android_broadcast(package: *const std::ffi::c_char, receiver: *const std::ffi::c_char, action: *const std::ffi::c_char);
@@ -6271,6 +6279,16 @@ impl qobject::Sioul {
         let line = tr().text(if on { "realtime-on" } else { "realtime-off" }, None);
         self.as_mut().set_status(QString::from(&line));
         show(&self.qt_thread(), &shared);
+    }
+
+    fn recents_picture(&self, shown: bool) {
+        #[cfg(target_os = "android")]
+        // SAFETY: a boolean; the bridge goes to Android's main thread itself.
+        unsafe {
+            sioul_android_recents_picture(shown)
+        };
+        #[cfg(not(target_os = "android"))]
+        let _ = shown;
     }
 
     fn grab_phone(&self) -> bool {

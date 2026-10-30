@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- A date asked in the home-screen card's agenda (HomeCardRows.java), at the
+     head of its day, from the card's version 4: its mark as the window's
+     agenda draws it (filled within a week, outlined before), its title, the
+     time left under it ("Date asked · four days left"); with the details off,
+     its kind alone ("A date asked"). A tap opens what it is about (its task,
+     budget line, paper or contract), else the Agenda. Its margins are its
+     outer frame's padding, its text where an event's starts. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/sioul_home_card_row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingStart="22dp"
+    android:paddingEnd="22dp"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/sioul_home_card_mark"
+        android:layout_width="18dp"
+        android:layout_height="wrap_content"
+        android:importantForAccessibility="no"
+        android:textColor="@color/sioul_home_card_accent"
+        android:textSize="13sp" />
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+        <TextView
+            android:id="@+id/sioul_home_card_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:textColor="@color/sioul_home_card_text"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/sioul_home_card_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="13sp" />
+    </LinearLayout>
+</LinearLayout>

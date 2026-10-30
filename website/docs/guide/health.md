@@ -19,6 +19,7 @@ Health keeps your day's needs first. Your meals, rests and nights are set once a
 - **Sealed between your devices.** Your devices exchange doses only through a folder your own sync app carries, sealed: the folder and its server can read nothing of it ([Sharing](sharing.md)).
 - **One reminder, from one device.** Only the device you are using reminds you, so a dose is not reminded twice; and when Sioul cannot know whether a dose was taken on another device, it says so rather than "not taken", because a dose taken twice can harm.
 - **Discreet on a lock screen.** A notice about a meal or a rest shows only its name and its time, so that it can be read on a lock screen or a shared desk.
+- **Out of the recent apps.** On a phone with Android 13 or later, while this page, a dose's question or a prescription's date is open, the list of recent apps shows Sioul's icon and name instead of the page. Older Android versions show the page there: their only way to hide it would also stop your own screenshots.
 - **Out of an AI agent's reach.** An AI agent you connect has no tool that reads this page.
 - **The errands are tasks.** The pharmacy and doctor errands go to your task list, and their titles name the medicine: they are kept wherever that list is. Choose a list kept on this device if you would rather they stay here.
 

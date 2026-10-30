@@ -23,7 +23,7 @@ use sioul_core::timeline;
 /// (`dated::letter_event`): its start, whether it is yours (a calendar you
 /// write, no meeting with others, neither a task's time block nor cancelled:
 /// review of part 4, later 1), and its file's text, read only for that day.
-fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> impl Fn(Date) -> Vec<EventSeen> + 'a {
+pub(crate) fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> impl Fn(Date) -> Vec<EventSeen> + 'a {
     let zone = zone.clone();
     move |date: Date| {
         occurrences
