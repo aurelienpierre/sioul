@@ -19,18 +19,52 @@
 //! copy's file name (sioul-sync's `share`).
 //!
 //! This device's zone is found here from what names it: `TZ` when set, else
-//! the link `/etc/localtime` (Linux, macOS), else the zone Android said last
-//! (`agenda::recorded_zone`, written as it changes), else jiff's own
-//! detection. jiff keeps the system's zone for five minutes and cannot be
-//! asked again sooner; what names it is looked at again each second, so a
+//! the link `/etc/localtime` (Linux, macOS), else the zone Android said at
+//! its change while that word is fresh (six minutes, as the doses trust it:
+//! `Recorded::fresh`), else jiff's own detection, else the zone Android said
+//! last however old. jiff keeps the system's zone for five minutes and cannot
+//! be asked again sooner; what names it is looked at again each second, so a
 //! change while Sioul runs (a phone landing elsewhere, `timedatectl
-//! set-timezone`) is seen within a second. On Windows, jiff's own detection
+//! set-timezone`) is seen within a second. A record left from before a change
+//! Sioul did not hear (stopped, or not started since an update) gives way to
+//! the system's after its six minutes. On Windows, jiff's own detection
 //! alone: within five minutes.
 
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
+
+/// The zone Android said last, and when: the dose path's record
+/// (`$XDG_STATE_HOME/sioul/zone.toml`, the window's `alarms::ZoneSaid`),
+/// read only here.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Recorded {
+    /// "Asia/Tokyo".
+    pub zone: String,
+    /// When Android said it (Unix seconds); 0 for a record seeded from the
+    /// system's zone, never said.
+    pub said: i64,
+}
+
+impl Recorded {
+    /// The record as the dose path keeps it; none without one, or without a zone in it.
+    pub fn read() -> Option<Recorded> {
+        let text = std::fs::read_to_string(crate::config::state_dir().join("zone.toml")).ok()?;
+        let table: toml::Table = toml::from_str(&text).ok()?;
+        let zone = table.get("zone").and_then(toml::Value::as_str).map(str::trim).filter(|zone| !zone.is_empty())?.to_string();
+        let said = table.get("said").and_then(toml::Value::as_integer).unwrap_or(0);
+        Some(Recorded { zone, said })
+    }
+
+    /// Whether it still names this device's zone at `now` (Unix seconds):
+    /// said within the last six minutes, as the doses trust it
+    /// (`alarms::now_in`; jiff keeps the system's zone five); a seeded
+    /// record, never said, never.
+    pub fn fresh(&self, now: i64) -> bool {
+        self.said > 0 && (0..6 * 60).contains(&(now - self.said))
+    }
+}
 
 /// What names this device's zone, as read now: a change of any is a change of zone.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -39,40 +73,64 @@ pub struct Sources {
     pub tz: Option<String>,
     /// Where `/etc/localtime` links to ("/usr/share/zoneinfo/Europe/Paris").
     pub localtime: Option<String>,
-    /// The zone Android said last (`agenda::recorded_zone`), on a phone.
-    pub recorded: Option<String>,
+    /// The zone Android said last, and when (`Recorded`), on a phone.
+    pub recorded: Option<Recorded>,
 }
 
 impl Sources {
     /// What names this device's zone now.
     pub fn read() -> Sources {
         let localtime = if cfg!(all(unix, not(target_os = "android"))) { std::fs::read_link("/etc/localtime").ok().map(|p| p.display().to_string()) } else { None };
-        let recorded = if cfg!(target_os = "android") { crate::agenda::recorded_zone() } else { None };
+        let recorded = if cfg!(target_os = "android") { Recorded::read() } else { None };
         Sources { tz: std::env::var("TZ").ok(), localtime, recorded }
     }
 }
 
-/// This device's zone, as `sources` name it; jiff's own detection when they name none.
-pub fn system_of(sources: &Sources) -> TimeZone {
+/// This device's zone, as `sources` name it at `now` (Unix seconds): `TZ`,
+/// the link, the zone Android said while it is fresh (`Recorded::fresh`),
+/// else what `detect` finds (jiff's own detection), else the zone Android
+/// said last however old, else UTC.
+pub fn system_of(sources: &Sources, now: i64, detect: &dyn Fn() -> Option<TimeZone>) -> TimeZone {
+    found(sources, now, detect).0
+}
+
+/// `system_of`'s zone, and whether what names it was read here (`TZ`, the
+/// link, a fresh record) rather than detected: a zone detected, or a record
+/// gone stale, is found again at each look, never kept for good.
+fn found(sources: &Sources, now: i64, detect: &dyn Fn() -> Option<TimeZone>) -> (TimeZone, bool) {
     if let Some(tz) = sources.tz.as_deref() {
         // As Unix tools read it: empty is UTC; a name, else a POSIX rule ("DEMO-11").
         let name = tz.trim().trim_start_matches(':');
         if name.is_empty() {
-            return TimeZone::UTC;
+            return (TimeZone::UTC, true);
         }
         if let Ok(zone) = TimeZone::get(name).or_else(|_| TimeZone::posix(name)) {
-            return zone;
+            return (zone, true);
         }
     }
     if let Some(name) = sources.localtime.as_deref().and_then(|link| link.split_once("zoneinfo/").map(|(_, name)| name))
         && let Ok(zone) = TimeZone::get(name)
     {
-        return zone;
+        return (zone, true);
     }
-    if let Some(zone) = sources.recorded.as_deref().and_then(|name| TimeZone::get(name).ok()) {
-        return zone;
+    let recorded = sources.recorded.as_ref().and_then(|r| TimeZone::get(&r.zone).ok().map(|zone| (r.fresh(now), zone)));
+    if let Some((true, zone)) = &recorded {
+        return (zone.clone(), true);
     }
-    TimeZone::system()
+    if let Some(zone) = detect() {
+        return (zone, false);
+    }
+    (recorded.map_or(TimeZone::UTC, |(_, zone)| zone), false)
+}
+
+/// jiff's own detection of the system's zone; none when it finds none.
+fn detected() -> Option<TimeZone> {
+    TimeZone::try_system().ok()
+}
+
+/// This device's zone now (Settings' "Follow this device").
+pub fn device() -> TimeZone {
+    system_of(&Sources::read(), Timestamp::now().as_second(), &detected)
 }
 
 /// The zone chosen by hand, by its name, when it reads; none for "Follow this device".
@@ -88,18 +146,25 @@ pub struct Kept {
     config_changed: Option<SystemTime>,
     zone: TimeZone,
     looked: Instant,
+    /// Named by what was read (`found`), the record fresh or not then.
+    named: bool,
+    fresh: bool,
 }
 
 impl Kept {
-    /// The zone for these sources and this setting, found again only when one of them changed.
-    pub fn resolve(kept: &mut Option<Kept>, sources: Sources, setting: Option<String>, config_changed: Option<SystemTime>, looked: Instant) -> TimeZone {
-        if let Some(k) = kept.as_mut().filter(|k| k.sources == sources && k.setting == setting) {
+    /// The zone for these sources and this setting at `now` (Unix seconds),
+    /// found again only when one of them changed, when the record turned
+    /// stale, or when it was detected rather than named (`found`).
+    pub fn resolve(kept: &mut Option<Kept>, sources: Sources, setting: Option<String>, config_changed: Option<SystemTime>, looked: Instant, now: i64, detect: &dyn Fn() -> Option<TimeZone>) -> TimeZone {
+        let fresh = sources.recorded.as_ref().is_some_and(|r| r.fresh(now));
+        if let Some(k) = kept.as_mut().filter(|k| k.sources == sources && k.setting == setting && k.named && k.fresh == fresh) {
             k.looked = looked;
             k.config_changed = config_changed;
             return k.zone.clone();
         }
-        let zone = chosen_of(setting.as_deref()).unwrap_or_else(|| system_of(&sources));
-        *kept = Some(Kept { sources, setting, config_changed, zone: zone.clone(), looked });
+        let (device, named) = found(&sources, now, detect);
+        let zone = chosen_of(setting.as_deref()).unwrap_or(device);
+        *kept = Some(Kept { sources, setting, config_changed, zone: zone.clone(), looked, named, fresh });
         zone
     }
 }
@@ -129,7 +194,7 @@ pub fn current() -> TimeZone {
         return k.zone.clone();
     }
     let (setting, changed) = setting_read(kept.as_ref());
-    Kept::resolve(&mut kept, Sources::read(), setting, changed, now)
+    Kept::resolve(&mut kept, Sources::read(), setting, changed, now, Timestamp::now().as_second(), &detected)
 }
 
 /// The zone chosen by hand when one is; else `device`, the zone this device
@@ -216,6 +281,11 @@ mod tests {
         text.parse().unwrap()
     }
 
+    /// No zone detected: what the sources name alone.
+    fn none() -> Option<TimeZone> {
+        None
+    }
+
     /// The zone follows what names it: `TZ` first, then the link, then what
     /// Android said; a change of any is seen at the next look, without a
     /// restart, and nothing is found again while they hold.
@@ -225,13 +295,33 @@ mod tests {
         let new_york = Sources { localtime: Some("../usr/share/zoneinfo/America/New_York".into()), ..Sources::default() };
         let mut kept = None;
         let start = Instant::now();
-        assert_eq!(Kept::resolve(&mut kept, paris.clone(), None, None, start).iana_name(), Some("Europe/Paris"));
-        assert_eq!(Kept::resolve(&mut kept, new_york, None, None, start).iana_name(), Some("America/New_York"), "the link changed: seen at once");
+        let now = at("2026-10-30T12:00:00Z").as_second();
+        assert_eq!(Kept::resolve(&mut kept, paris.clone(), None, None, start, now, &none).iana_name(), Some("Europe/Paris"));
+        assert_eq!(Kept::resolve(&mut kept, new_york, None, None, start, now, &none).iana_name(), Some("America/New_York"), "the link changed: seen at once");
         let tz = Sources { tz: Some("Asia/Tokyo".into()), ..paris };
-        assert_eq!(Kept::resolve(&mut kept, tz, None, None, start).iana_name(), Some("Asia/Tokyo"), "TZ first");
-        let phone = Sources { recorded: Some("Pacific/Auckland".into()), ..Sources::default() };
-        assert_eq!(system_of(&phone).iana_name(), Some("Pacific/Auckland"), "what Android said");
-        assert_eq!(system_of(&Sources { tz: Some("DEMO-11".into()), ..Sources::default() }).to_offset(at("2026-10-30T00:00:00Z")).seconds(), 11 * 3600, "a POSIX rule");
+        assert_eq!(Kept::resolve(&mut kept, tz, None, None, start, now, &none).iana_name(), Some("Asia/Tokyo"), "TZ first");
+        let phone = Sources { recorded: Some(Recorded { zone: "Pacific/Auckland".into(), said: now - 60 }), ..Sources::default() };
+        assert_eq!(system_of(&phone, now, &none).iana_name(), Some("Pacific/Auckland"), "what Android said");
+        assert_eq!(system_of(&Sources { tz: Some("DEMO-11".into()), ..Sources::default() }, now, &none).to_offset(at("2026-10-30T00:00:00Z")).seconds(), 11 * 3600, "a POSIX rule");
+    }
+
+    /// On a phone, the zone Android said wins while it is fresh (six minutes,
+    /// as the doses trust it); said seven minutes ago, or seeded (`said` 0),
+    /// the system's as jiff detects it; that record however old only when
+    /// nothing is detected; and a record kept while fresh gives way once stale.
+    #[test]
+    fn a_stale_record_gives_way_to_the_system_s_zone() {
+        let now = at("2026-10-30T12:00:00Z").as_second();
+        let phone = |said: i64| Sources { recorded: Some(Recorded { zone: "Asia/Tokyo".into(), said }), ..Sources::default() };
+        let system = || TimeZone::get("Europe/Paris").ok();
+        let name = |zone: TimeZone| zone.iana_name().unwrap_or_default().to_string();
+        let said = |at: i64| name(system_of(&phone(at), now, &system));
+        assert_eq!([said(now - 60), said(now - 7 * 60), said(0)], ["Asia/Tokyo", "Europe/Paris", "Europe/Paris"], "fresh: Android's word; said seven minutes ago, or seeded (never said): the system's");
+        assert_eq!(name(system_of(&phone(now - 7 * 60), now, &none)), "Asia/Tokyo", "nothing detected: the record however old");
+        let mut kept = None;
+        let start = Instant::now();
+        assert_eq!(name(Kept::resolve(&mut kept, phone(now - 5 * 60), None, None, start, now, &system)), "Asia/Tokyo");
+        assert_eq!(name(Kept::resolve(&mut kept, phone(now - 5 * 60), None, None, start, now + 2 * 60, &system)), "Europe/Paris", "the same record, gone stale: the system's");
     }
 
     /// A trip: the setting changed, the instants unchanged, the times said
@@ -242,12 +332,13 @@ mod tests {
         let mut kept = None;
         let start = Instant::now();
         let meeting = at("2026-11-04T14:00:00Z");
-        let home = Kept::resolve(&mut kept, sources.clone(), None, None, start);
+        let now = meeting.as_second();
+        let home = Kept::resolve(&mut kept, sources.clone(), None, None, start, now, &none);
         assert_eq!(meeting.to_zoned(home).strftime("%H:%M").to_string(), "15:00");
-        let away = Kept::resolve(&mut kept, sources.clone(), Some("America/New_York".into()), None, start);
+        let away = Kept::resolve(&mut kept, sources.clone(), Some("America/New_York".into()), None, start, now, &none);
         assert_eq!(meeting.to_zoned(away.clone()).strftime("%H:%M").to_string(), "09:00", "the same instant, said in New York");
         assert_eq!(meeting.to_zoned(away).timestamp(), meeting);
-        assert_eq!(Kept::resolve(&mut kept, sources, Some("Nowhere/Atlantis".into()), None, start).iana_name(), Some("Europe/Paris"), "a name that does not read: this device's");
+        assert_eq!(Kept::resolve(&mut kept, sources, Some("Nowhere/Atlantis".into()), None, start, now, &none).iana_name(), Some("Europe/Paris"), "a name that does not read: this device's");
     }
 
     #[test]

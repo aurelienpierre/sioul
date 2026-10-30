@@ -17,9 +17,9 @@ QtObject {
     required property var sioul
 
     // An instant (ms) as a date whose own clock reads the time zone Sioul shows
-    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneShift`).
+    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
     function wall(ms) {
-        return new Date(ms + (typeof paths.sioul.zoneShift === "function" ? paths.sioul.zoneShift(ms / 1000) : 0))
+        return new Date(ms + (typeof paths.sioul.zoneOffset === "function" ? paths.sioul.zoneOffset(ms / 1000) + new Date(ms).getTimezoneOffset() * 60000 : 0))
     }
 
     // "09:30", on the clock, from Unix seconds.

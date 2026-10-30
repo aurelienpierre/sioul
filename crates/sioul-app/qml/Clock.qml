@@ -19,9 +19,9 @@ QtObject {
 
     // The time it reads, in milliseconds since 1970: the system's, unless a test gives its own.
     property var source: () => Date.now()
-    // What to add to an instant (ms) so that a date's own clock reads the time
-    // zone Sioul shows (`zone::current`; main.qml gives `zoneShift`); none in a test.
-    property var shift: ms => 0
+    // The time zone Sioul shows, its offset from UTC at an instant (ms, both):
+    // `zone::current`, main.qml gives `zoneOffset`; none (null) for JavaScript's own.
+    property var offset: null
     property bool paused: false
     // The system's time as it is made, its source's once made, then at each turn.
     property real now: Math.floor(Date.now() / 60000) * 60
@@ -32,9 +32,11 @@ QtObject {
     // Each minute's turn, paused or not: the backend's minute rides on it.
     signal turned
 
-    // An instant (ms) as a date whose own clock reads the time zone Sioul shows.
+    // An instant (ms) as a date whose own clock reads the time zone Sioul shows:
+    // moved by that zone's offset, and by JavaScript's own back, whatever zone
+    // JavaScript believes it is in.
     function wall(ms) {
-        return new Date(ms + clock.shift(ms))
+        return new Date(clock.offset === null ? ms : ms + clock.offset(ms) + new Date(ms).getTimezoneOffset() * 60000)
     }
 
     // "2026-10-06": a day as the pages and the views write it.

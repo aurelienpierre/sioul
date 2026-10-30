@@ -436,7 +436,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 0.0, 120.0, 5.0, "min");
             // The time zone this device shows (`zone::current`): its own, followed, or one chosen.
             let s = b.push("agenda.time_zone", "agenda-time-zone", Kind::Zone, SettingValue::Text(config.agenda.time_zone.clone().unwrap_or_default()));
-            let device = crate::zone::system_of(&crate::zone::Sources::read());
+            let device = crate::zone::device();
             let mut args = fluent_bundle::FluentArgs::new();
             args.set("zone", crate::zone::name_of(&device, jiff::Timestamp::now()));
             s.choices = vec![Choice { value: SettingValue::Text(String::new()), label: tr.text("set-agenda-time-zone-device", Some(&args)) }];

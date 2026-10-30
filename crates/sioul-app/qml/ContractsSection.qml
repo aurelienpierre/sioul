@@ -178,7 +178,7 @@ ColumnLayout {
                                 MenuItem {
                                     text: section.sioul.text("contracts-stop-ended")
                                     onTriggered: {
-                                        const edit = Object.assign({}, row.modelData, { ended: Qt.formatDate(new Date(Date.now() + (typeof section.sioul.zoneShift === "function" ? section.sioul.zoneShift(Date.now() / 1000) : 0)), "yyyy-MM-dd") })
+                                        const edit = Object.assign({}, row.modelData, { ended: Qt.formatDate(new Date(Date.now() + (typeof section.sioul.zoneOffset === "function" ? section.sioul.zoneOffset(Date.now() / 1000) + new Date(Date.now()).getTimezoneOffset() * 60000 : 0)), "yyyy-MM-dd") })
                                         section.problem = section.sioul.saveContract(row.modelData.id, JSON.stringify(edit))
                                         section.reload()
                                     }

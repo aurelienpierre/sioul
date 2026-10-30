@@ -323,11 +323,11 @@ CardFrame {
         }
 
         // "Add a ride or a walk…": the event form, its times before the appointment,
-        // on the time zone Sioul shows (`zoneShift`).
+        // on the time zone Sioul shows (`zoneOffset`).
         function addLeg() {
             const two = n => (n < 10 ? "0" : "") + n
             const shown = card.event.start * 1000
-            const at = new Date(shown + (typeof card.sioul.zoneShift === "function" ? card.sioul.zoneShift(card.event.start) : 0))
+            const at = new Date(shown + (typeof card.sioul.zoneOffset === "function" ? card.sioul.zoneOffset(card.event.start) + new Date(shown).getTimezoneOffset() * 60000 : 0))
             const end = new Date(at.getTime() - 5 * 60000)
             const begin = new Date(end.getTime() - 25 * 60000)
             const clock = d => two(d.getHours()) + ":" + two(d.getMinutes())

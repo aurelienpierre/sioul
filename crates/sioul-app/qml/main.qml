@@ -273,7 +273,7 @@ SioulWindow {
 
         readonly property real started: Date.now()
 
-        shift: ms => sioul.zoneShift(ms / 1000)
+        offset: ms => sioul.zoneOffset(ms / 1000)
 
         paused: sioul.away
         onTurned: {

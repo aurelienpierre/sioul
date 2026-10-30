@@ -1204,9 +1204,7 @@ fn offset_zone(offset: jiff::tz::Offset) -> Option<(String, TimeZone)> {
 /// (the window's `alarms::ZoneSaid`, `$XDG_STATE_HOME/sioul/zone.toml`);
 /// none when there is no such file.
 pub fn recorded_zone() -> Option<String> {
-    let text = std::fs::read_to_string(crate::config::state_dir().join("zone.toml")).ok()?;
-    let table: toml::Table = toml::from_str(&text).ok()?;
-    table.get("zone").and_then(|zone| zone.as_str()).map(str::to_string).filter(|zone| !zone.is_empty())
+    crate::zone::Recorded::read().map(|recorded| recorded.zone)
 }
 
 fn rule_line(repeat: &str) -> Option<String> {

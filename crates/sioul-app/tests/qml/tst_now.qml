@@ -155,15 +155,18 @@ Item {
             compare(clock.now, root.sec(2026, 10, 7, 7, 30))
         }
 
-        // A trip (Settings ▸ Agenda ▸ Time zone, the window's `zoneShift`):
-        // today is the zone shown's, the minute the same instant; back home,
-        // this device's day again at the next read.
+        // A trip (Settings ▸ Agenda ▸ Time zone, the window's `zoneOffset`):
+        // today and the hour are the zone shown's, whatever zone JavaScript
+        // is in (Paris here, qml-test.sh's TZ), the minute the same instant;
+        // back home, this device's day again at the next read.
         function test_clock_on_another_zone() {
-            root.fake = root.ms(2026, 10, 7, 2, 0, 30)
-            const clock = createTemporaryObject(clockComponent, root, { shift: ms => -6 * 3600 * 1000 })
-            compare(clock.today, "2026-10-06", "02:00 in Paris is 20:00 the day before in New York")
-            compare(clock.now, root.sec(2026, 10, 7, 2, 0), "the same instant")
-            clock.shift = ms => 0
+            // 05:00 in Paris on 7 October 2026 (summer time, UTC+2): 03:00 UTC, 23:00 the day before in New York (UTC−4).
+            root.fake = root.ms(2026, 10, 7, 5, 0, 30)
+            const clock = createTemporaryObject(clockComponent, root, { offset: ms => -4 * 3600 * 1000 })
+            compare(clock.today, "2026-10-06", "05:00 in Paris is 23:00 the day before in New York")
+            compare(clock.wall(root.fake).getHours(), 23, "New York's hour, not one moved from Paris's")
+            compare(clock.now, root.sec(2026, 10, 7, 5, 0), "the same instant")
+            clock.offset = null
             clock.read()
             compare(clock.today, "2026-10-07", "back home: this device's day")
         }

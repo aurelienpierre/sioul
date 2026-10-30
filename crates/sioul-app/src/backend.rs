@@ -2003,11 +2003,13 @@ pub mod qobject {
         #[qinvokable]
         fn set_realtime_mode(self: Pin<&mut Sioul>, on: bool);
 
-        /// What to add to the instant `seconds` (in milliseconds) so that a
-        /// JavaScript date's own clock, the device's, reads the time zone Sioul
-        /// shows (`zone::current`): 0 while it follows this device.
+        /// The time zone Sioul shows (`zone::current`), its offset from UTC at
+        /// the instant `seconds`, in milliseconds. A JavaScript date's own clock
+        /// reads that zone once the instant is moved by it and by JavaScript's
+        /// own offset back: `ms + zoneOffset + new Date(ms).getTimezoneOffset()
+        /// * 60000`, right whatever zone JavaScript believes it is in.
         #[qinvokable]
-        fn zone_shift(self: &Sioul, seconds: f64) -> f64;
+        fn zone_offset(self: &Sioul, seconds: f64) -> f64;
 
         /// The time zone Sioul shows, by its name: "Europe/Paris", "UTC".
         #[qinvokable]
@@ -6320,12 +6322,10 @@ impl qobject::Sioul {
         show(&self.qt_thread(), &shared);
     }
 
-    fn zone_shift(&self, seconds: f64) -> f64 {
+    fn zone_offset(&self, seconds: f64) -> f64 {
         #[allow(clippy::cast_possible_truncation)]
         let Ok(at) = jiff::Timestamp::from_second(seconds as i64) else { return 0.0 };
-        let shown = sioul_core::zone::current().to_offset(at).seconds();
-        let device = sioul_core::zone::system_of(&sioul_core::zone::Sources::read()).to_offset(at).seconds();
-        f64::from(shown - device) * 1000.0
+        f64::from(sioul_core::zone::current().to_offset(at).seconds()) * 1000.0
     }
 
     fn zone_name(&self) -> QString {
