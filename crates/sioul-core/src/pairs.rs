@@ -628,12 +628,18 @@ pub fn stand(task: &Task, text: &str, appointment: &Appointment, seen: Option<cr
     let seen_day = seen.and_then(|s| day_of(s.start));
     let set_for = tie.at.and_then(day_of).or(tie.written);
     // A link written before its instant was kept says a day in the zone it was written in,
-    // which is not known: the appointment's day in some zone holds (review of ab7daa4, later 13).
-    let some_zone = |set: Date| {
-        (-12..=14).any(|hours: i32| jiff::tz::Offset::from_hours(hours as i8).ok().is_some_and(|o| jiff::Timestamp::from_second(appointment.start).is_ok_and(|t| t.to_zoned(jiff::tz::TimeZone::fixed(o)).date() == set)))
+    // which is not known: the appointment's day in a zone within three hours of this device's
+    // own at that instant holds too (review of ab7daa4, later 13). Only an appointment between
+    // 21:00 and 03:00 here is so ambiguous, the midnight edge; one at any other hour moved a
+    // day is followed, as before (review of 3eee4e3, M1: every zone, UTC−12 to UTC+14, held
+    // a morning moved a day later and an evening moved a day earlier).
+    let near_zone = |set: Date| {
+        let Ok(instant) = jiff::Timestamp::from_second(appointment.start) else { return false };
+        let own = zone.to_offset(instant).seconds();
+        (-3..=3).any(|hours: i32| jiff::tz::Offset::from_seconds(own + hours * 3600).is_ok_and(|o| instant.to_zoned(jiff::tz::TimeZone::fixed(o)).date() == set))
     };
     match set_for {
-        Some(set) if tie.at.is_none() && appointment.start > 0 => (set == day || some_zone(set), seen_day == Some(set), at),
+        Some(set) if tie.at.is_none() && appointment.start > 0 => (set == day || near_zone(set), seen_day == Some(set), at),
         Some(set) => (set == day, seen_day == Some(set), at),
         None => (seen_day.is_none_or(|s| s == day), seen_day.is_some(), at),
     }
@@ -2094,8 +2100,10 @@ mod tests {
     }
 
     /// A link written before its instant was kept (no AT) stands by the day it
-    /// wrote, in a zone not known: the appointment's day in some zone is
-    /// consistent, never followed back a day (review of ab7daa4, later 13).
+    /// wrote, in a zone not known: the appointment's day in a zone within three
+    /// hours of this device's own is consistent, never followed back a day at
+    /// the midnight edge (review of ab7daa4, later 13); a day's move of a
+    /// morning or an evening appointment is still followed (review of 3eee4e3, M1).
     #[test]
     fn a_link_without_its_instant_holds_across_zones() {
         let zone = TimeZone::get("Europe/Paris").unwrap();
@@ -2108,6 +2116,17 @@ mod tests {
         assert!(stand(&pack, &written, &appointment, None, &zone).0, "its day where it was written");
         let far = task(jiff::civil::date(2026, 11, 2));
         assert!(!stand(&tasks::task_of_text(&far, &zone).unwrap(), &far, &appointment, None, &zone).0, "a day no zone gives: it follows");
+        // A move of a day, far from midnight, is followed (review of 3eee4e3, M1): written for
+        // Tuesday 3 November, a 10:00 appointment moved to Wednesday, a 20:00 one to Monday.
+        let tuesday = task(jiff::civil::date(2026, 11, 3));
+        let tied = tasks::task_of_text(&tuesday, &zone).unwrap();
+        let moved = |at: &str| {
+            let at: Zoned = at.parse().unwrap();
+            Appointment { day: Some(at.date()), cancelled: false, recurring: false, start: at.timestamp().as_second() }
+        };
+        let morning = stand(&tied, &tuesday, &moved("2026-11-04T10:00:00+01:00[Europe/Paris]"), None, &zone).0;
+        let evening = stand(&tied, &tuesday, &moved("2026-11-02T20:00:00+01:00[Europe/Paris]"), None, &zone).0;
+        assert_eq!((morning, evening), (false, false), "a morning moved a day later, an evening a day earlier: both follow");
     }
 
     /// Brought back for one appointment, a step tied again to another is set
