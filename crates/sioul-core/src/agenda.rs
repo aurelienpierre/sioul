@@ -1759,6 +1759,8 @@ pub struct EventRef {
     pub summary: String,
     /// Its first start, Unix seconds; 0 when unreadable.
     pub start: i64,
+    /// Its first end, Unix seconds; 0 when unreadable.
+    pub end: i64,
     pub links: Vec<crate::tasks::Link>,
     pub related: Vec<crate::tasks::Relation>,
     pub projects: Vec<String>,
@@ -1799,10 +1801,12 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
         }
     }
     found.anchor = crate::anchors::parse(text);
-    found.start = edit_of_text(text, zone).and_then(|e| {
+    let edit = edit_of_text(text, zone);
+    found.start = edit.as_ref().and_then(|e| {
         let at: DateTime = if e.all_day { format!("{}T00:00", e.start).parse().ok()? } else { e.start.parse().ok()? };
         at.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())
     }).unwrap_or(0);
+    found.end = edit.is_some().then(|| first_times(text, zone).map(|(_, end)| end)).flatten().unwrap_or(0);
     Some(found)
 }
 

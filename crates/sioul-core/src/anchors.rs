@@ -142,14 +142,24 @@ fn instant(side: Side, appointment: Instants) -> i64 {
     }
 }
 
-/// Whether the leg is where its anchor last set it (not moved by hand since).
+/// Whether the leg is where its anchor last set it (not moved by hand since):
+/// within the minute its GAP is written to (`line` writes whole minutes), so
+/// that a leg whose times carry seconds, written by another program, still
+/// follows (review of ab7daa4, later 11). Its own times keep their seconds.
 fn untouched(leg: Instants, anchor: &Anchor) -> bool {
     match (anchor.side, anchor.was) {
-        (Side::Before, Some(was)) => leg.end == was - anchor.gap,
-        (Side::After, Some(was)) => leg.start == was + anchor.gap,
+        (Side::Before, Some(was)) => (was - anchor.gap - leg.end).abs() < 60,
+        (Side::After, Some(was)) => (leg.start - (was + anchor.gap)).abs() < 60,
         (_, None) => true,
     }
 }
+
+/// How far a leg may lie from its appointment, or from a leg of it that
+/// counts, and still make its margins and its outing (`mark`; review of
+/// ab7daa4, later 10): three hours. A train the evening before is a journey
+/// of its own: its time is busy as an event's, the hours between stay free,
+/// and it is told its own reminders.
+pub const LEG_REACH: i64 = 3 * 3600;
 
 /// Where an untouched leg will be once followed (`appointment` as it is
 /// now): every read uses it, so that a leg not yet written never makes a
@@ -513,7 +523,8 @@ pub fn legs_of<'a>(uid: &str, events: &'a [EventRef]) -> Vec<&'a EventRef> {
 /// (D18). A leg with its appointment there is marked so (`leg_of`), and the
 /// appointment says when a leg's timetable was not checked (`legs_doubt`).
 /// A leg cancelled, of an appointment repeating or of a whole day, counts for
-/// nothing.
+/// nothing; one farther than `LEG_REACH` from its appointment, or from a leg
+/// of it that counts, stands as an event of its own.
 pub fn mark(occurrences: &mut [Occurrence]) {
     let appointments: Vec<(usize, String, Instants)> = occurrences.iter().enumerate().filter(|(_, o)| !o.recurring && !o.all_day && o.anchor.is_none()).map(|(i, o)| (i, o.uid.clone(), Instants { start: o.start, end: o.end })).collect();
     let mut found: Vec<(usize, usize, Instants, bool)> = Vec::new();
@@ -525,6 +536,36 @@ pub fn mark(occurrences: &mut [Occurrence]) {
         let Some(&(i, _, at)) = appointments.iter().find(|(_, uid, _)| *uid == anchor.appointment) else { continue };
         found.push((i, j, effective(Instants { start: leg.start, end: leg.end }, anchor, at), anchor.unconfirmed.is_some()));
     }
+    // Within reach: from the appointment outwards, each leg within `LEG_REACH` of it or of the
+    // last one that counts; one beside it, overlapping it, counts as before (no margin of it).
+    let mut reached: Vec<(usize, usize, Instants, bool)> = Vec::new();
+    let mut seen_appointments: Vec<usize> = found.iter().map(|f| f.0).collect();
+    seen_appointments.dedup();
+    seen_appointments.sort_unstable();
+    seen_appointments.dedup();
+    for i in seen_appointments {
+        let (start, end) = (occurrences[i].start, occurrences[i].end);
+        let mut before: Vec<(usize, usize, Instants, bool)> = found.iter().copied().filter(|f| f.0 == i && f.2.end <= start).collect();
+        before.sort_by_key(|f| std::cmp::Reverse(f.2.end));
+        let mut reach = start;
+        for f in before {
+            if reach - f.2.end <= LEG_REACH {
+                reach = reach.min(f.2.start);
+                reached.push(f);
+            }
+        }
+        let mut after: Vec<(usize, usize, Instants, bool)> = found.iter().copied().filter(|f| f.0 == i && f.2.start >= end).collect();
+        after.sort_by_key(|f| f.2.start);
+        let mut reach = end;
+        for f in after {
+            if f.2.start - reach <= LEG_REACH {
+                reach = reach.max(f.2.end);
+                reached.push(f);
+            }
+        }
+        reached.extend(found.iter().copied().filter(|f| f.0 == i && f.2.end > start && f.2.start < end));
+    }
+    let found = reached;
     for &(i, j, _, _) in &found {
         let uid = occurrences[i].uid.clone();
         occurrences[j].leg_of = uid;
@@ -844,6 +885,42 @@ mod tests {
         assert_eq!((all[0].margins.before, all[0].margins.after), (50, 30), "from 14:10 to 16:00");
         assert_eq!((all[1].leg_of.as_str(), all[2].leg_of.as_str()), ("doctor", "doctor"));
         assert_eq!((all[3].margins.before, all[3].margins.after), (5, 5), "no legs: its own");
+    }
+
+    /// A leg farther than three hours from its appointment, or from a leg of
+    /// it that counts, stands as an event of its own (review of ab7daa4, later
+    /// 10): a train the evening before makes no margin of fifteen hours, and
+    /// is told its own reminders; a walk to the bus counts, chained.
+    #[test]
+    fn a_leg_far_from_its_appointment_stands_alone() {
+        let before = |uid: &str, start: &str, end: &str| Occurrence { uid: uid.into(), start: t(start), end: t(end), anchor: Some(Anchor { appointment: "visit".into(), side: Side::Before, gap: 0, timetable: false, was: None, unconfirmed: None, cancelled_with: false }), ..Occurrence::default() };
+        let mut all = vec![
+            Occurrence { uid: "visit".into(), start: t("2026-10-29T10:00"), end: t("2026-10-29T10:30"), ..Occurrence::default() },
+            before("train", "2026-10-28T19:00", "2026-10-28T23:00"),
+            before("bus", "2026-10-29T09:10", "2026-10-29T09:40"),
+            before("walk", "2026-10-29T08:30", "2026-10-29T08:50"),
+        ];
+        mark(&mut all);
+        assert_eq!(all[0].margins.before, 90, "from the walk, chained through the bus; never the train");
+        assert_eq!((all[1].leg_of.as_str(), all[2].leg_of.as_str(), all[3].leg_of.as_str()), ("", "visit", "visit"), "the train an event of its own");
+    }
+
+    /// A leg written in its appointment's time zone (TZID) follows it, its
+    /// form kept; one whose times carry seconds follows too, its seconds kept
+    /// (review of ab7daa4, later 11).
+    #[test]
+    fn a_leg_with_a_zone_or_seconds_follows() {
+        let seen = Some(Instants { start: t("2026-10-29T14:00"), end: t("2026-10-29T14:30") });
+        let pull = Pull { syncs: true, began: None };
+        let later = appointment("2026-10-29T15:00", "2026-10-29T15:30");
+        let lines = format!("RELATED-TO;RELTYPE=PARENT:doctor\r\nX-SIOUL-ANCHOR;GAP=PT25M;WAS={}:BEFORE\r\n", moves::utc(t("2026-10-29T14:00")));
+        let zoned = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:bus\r\nDTSTAMP:20261020T100000Z\r\nDTSTART;TZID=Europe/Paris:20261029T131000\r\nDTEND;TZID=Europe/Paris:20261029T133500\r\nSUMMARY:bus\r\n{lines}END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let Step::Write(moved) = upkept(&zoned, &later, seen, 0, pull, &now()) else { panic!("a zoned leg follows") };
+        assert!(moved.contains("DTSTART;TZID=Europe/Paris:20261029T141000") && moved.contains("DTEND;TZID=Europe/Paris:20261029T143500"), "{moved}");
+        // 13:10:00 to 13:35:30: a distance of 24 min 30 s, written as 24 minutes.
+        let seconds = event("bus", "2026-10-29T13:10:00", "2026-10-29T13:35:30", &format!("RELATED-TO;RELTYPE=PARENT:doctor\r\nX-SIOUL-ANCHOR;GAP=PT24M;WAS={}:BEFORE\r\n", moves::utc(t("2026-10-29T14:00"))));
+        let Step::Write(moved) = upkept(&seconds, &later, seen, 0, pull, &now()) else { panic!("a leg with seconds follows") };
+        assert_eq!(times(&moved), (t("2026-10-29T14:10:00"), t("2026-10-29T14:35:30")), "followed, its seconds kept");
     }
 
     /// The pass over the files: written through the writer's rule, twice nothing,

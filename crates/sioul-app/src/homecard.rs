@@ -937,11 +937,15 @@ fn date_lines(m: &Moment, dated: &[Dated], tasks: &[sioul_core::tasks::Task]) ->
             let line = if m.details { format!("{word} · {left}") } else { left };
             time.as_ref().map_or_else(|| line.clone(), |time| format!("{time} · {line}"))
         };
-        // Each day's words until its next midnight, the same words merged.
+        // Each day's words until its next midnight, the same words merged; on its day, a date
+        // with its own time says them until that time, then goes, as an event at its end
+        // (review of part 8, later 3).
+        let at = d.at.map(|at| at * 1000);
         let mut line: Vec<Label> = Vec::new();
         let mut day = today;
         while day <= d.date {
-            let Some(ends) = day.tomorrow().ok().and_then(midnight) else { break };
+            let Some(next) = day.tomorrow().ok().and_then(midnight) else { break };
+            let ends = if day == d.date { at.unwrap_or(next) } else { next };
             let text = said_on(day);
             match line.last_mut() {
                 Some(label) if label.text == text => label.until = ends,
@@ -962,7 +966,7 @@ fn date_lines(m: &Moment, dated: &[Dated], tasks: &[sioul_core::tasks::Task]) ->
         let title = if hidden { m.tr.text(plain_word(d.kind), None) } else { d.title.clone() };
         let opens = d.address.starts_with("sioul:task/") || d.address.starts_with("sioul:budget/") || d.address.starts_with("sioul:paper/") || d.address.starts_with("sioul:contract/");
         let open = if opens { format!("reminder/{}", d.address) } else { "agenda".to_string() };
-        out.push(DateLine { title, line, mark, from, until, open });
+        out.push(DateLine { title, line, mark, from, until: at.unwrap_or(until), open });
     }
     out
 }
@@ -2275,9 +2279,11 @@ mod tests {
             ]
         );
         assert_eq!((caf.from, caf.until, caf.open.as_str()), (ms("2026-10-09T00:00[Europe/Paris]"), ms("2026-10-10T00:00[Europe/Paris]"), "reminder/sioul:task/caf"));
-        // Its time first; a letter opens the Agenda.
+        // Its time first; a letter opens the Agenda; "today" until its time, then gone (review of part 8, later 3).
         let letter = &listed[1];
         assert_eq!((words(letter)[0].1.as_str(), letter.open.as_str()), ("14:00 · Appointment from a letter · two days left", "agenda"));
+        assert_eq!(words(letter).last().unwrap(), &(ms("2026-10-07T14:00[Europe/Paris]"), "14:00 · Appointment from a letter · today".to_string()));
+        assert_eq!(letter.until, ms("2026-10-07T14:00[Europe/Paris]"), "gone at its time"); 
         // The same words merged: "two weeks left" fifteen and fourteen days before.
         let notice = &listed[4];
         assert_eq!(words(notice)[0], (ms("2026-10-07T00:00[Europe/Paris]"), "Last day for notice · two weeks left".to_string()));

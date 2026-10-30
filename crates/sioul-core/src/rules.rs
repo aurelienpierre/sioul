@@ -1282,7 +1282,7 @@ mod tests {
     fn statement() -> Card {
         card(
             "From: \"Banque Exemple\" <Alertes@Bank.example>\n\
-             To: \"Noa\" <noa@home.example>, team@work.example\n\
+             To: \"Noa\" <noa.home@example.org>, team@work.example\n\
              Cc: =?UTF-8?Q?Ren=C3=A9e?= <renee@family.example>\n\
              Reply-To: support@bank.example\n\
              Subject: Votre RELEVÉ de compte\n\

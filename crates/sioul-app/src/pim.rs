@@ -787,31 +787,37 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
     String::new()
 }
 
-/// The events as last read (`work::loaded_known`), with the legs made or
-/// changed since in the calendars a leg of the appointment in `path` goes to
-/// (its own, and the one `leg_calendar` gives): only the files changed since
-/// that read are read, every file of those two before any read. Never a read
-/// of the stores on the window's thread; a leg made seconds before a delete
-/// or a drag goes with its appointment (review of 4d7bab4, later 5).
+/// The events as last read (`work::loaded_known`), with what changed since
+/// in the calendars a leg of the appointment in `path` goes to (its own, and
+/// the one `leg_calendar` gives): each file changed since that read taken as
+/// it is now, leg or not (a leg untied since is no leg any more, an
+/// appointment made since is found: review of 468a123, §3.3), a file that
+/// no longer reads as an event left out. A leg made seconds before a delete
+/// or a drag goes with its appointment (review of 4d7bab4, later 5). Only a
+/// folder changed since the read is listed: every writer, Sioul's and a
+/// sync's, puts an item in by renaming it into its folder (`vdir::store_item`,
+/// as `vdir::calendars_stamp` reads it), so a folder unchanged holds no file
+/// changed. Before the first read nothing is read: the legs are the window's
+/// pass's then (§3.4). Never a read of the stores on the window's thread.
 fn events_known(shared: &Shared, path: &Path, zone: &TimeZone) -> Vec<sioul_core::agenda::EventRef> {
-    let known = crate::work::loaded_known(shared);
-    let mut events: Vec<sioul_core::agenda::EventRef> = known.as_ref().map(|l| l.events.clone()).unwrap_or_default();
+    let Some(known) = crate::work::loaded_known(shared) else { return Vec::new() };
+    let mut events: Vec<sioul_core::agenda::EventRef> = known.events.clone();
     // A margin for file systems that keep coarse times.
-    let since = known.as_ref().and_then(|l| l.read_at).and_then(|t| t.checked_sub(Duration::from_secs(2))).unwrap_or(std::time::UNIX_EPOCH);
+    let Some(since) = known.read_at.and_then(|t| t.checked_sub(Duration::from_secs(2))) else { return events };
+    let changed = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).is_ok_and(|m| m >= since);
     let own = collection_of(path);
     let mut dirs: Vec<PathBuf> = own.iter().map(|c| c.dir.clone()).chain(own.as_ref().and_then(leg_calendar).map(|c| c.dir)).collect();
     dirs.dedup();
-    for dir in dirs {
-        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+    for dir in dirs.iter().filter(|dir| changed(dir)) {
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
             let file = entry.path();
             let newer = entry.metadata().and_then(|m| m.modified()).is_ok_and(|m| m >= since);
             if !newer || file.extension().is_none_or(|e| e != "ics") {
                 continue;
             }
             let key = file.display().to_string();
-            let Some(found) = std::fs::read_to_string(&file).ok().and_then(|t| agenda::event_ref(&t, &key, zone)).filter(|r| r.anchor.is_some()) else { continue };
             events.retain(|e| e.key != key);
-            events.push(found);
+            events.extend(std::fs::read_to_string(&file).ok().and_then(|t| agenda::event_ref(&t, &key, zone)));
         }
     }
     events
@@ -1391,9 +1397,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&list.dir);
     }
 
-    /// A leg made since the last read (seconds before a delete, or before any
-    /// plan) goes with its appointment: the calendars legs go to are read for
-    /// the files changed since, never the stores (review of 4d7bab4, later 5).
+    /// A leg made since the last read (seconds before a delete) goes with its
+    /// appointment: the calendars legs go to are read for the files changed
+    /// since, never the stores (review of 4d7bab4, later 5).
     #[test]
     fn a_leg_made_just_before_a_delete_goes_with_its_appointment() {
         let (calendar, doctor, bus) = doctor_and_bus("legs-late");
@@ -1406,6 +1412,100 @@ mod tests {
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 
+    /// A file changed since the last read is taken as it is now, leg or not
+    /// (review of 468a123, §3.3): a leg untied since is no leg of its
+    /// appointment any more, so a delete leaves it.
+    #[test]
+    fn a_leg_untied_since_the_read_is_no_leg_any_more() {
+        let (calendar, doctor, bus) = doctor_and_bus("legs-fresh");
+        let zone = TimeZone::system();
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
+        let untied = std::fs::read_to_string(&bus).unwrap().replace("RELATED-TO;RELTYPE=PARENT:legs-fresh-doctor\r\n", "").replace("X-SIOUL-ANCHOR;GAP=PT25M;TIMETABLE=TRUE;WAS=20991029T130000Z:BEFORE\r\n", "");
+        vdir::write_item(&bus, &untied).unwrap();
+        assert!(legs_to_come(&shared, &doctor, &zone).is_empty(), "untied since the read: no leg of it");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// An appointment made since the last read is found (review of 468a123,
+    /// §3.3): its leg dragged by hand takes its anchor again.
+    #[test]
+    fn an_appointment_made_since_the_read_anchors_its_leg_dragged() {
+        let (calendar, _, _) = doctor_and_bus("legs-made-since");
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
+        let dentist = calendar.dir.join("legs-made-since-dentist.ics");
+        vdir::write_item(&dentist, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:legs-made-since-dentist\r\nDTSTAMP:20991020T100000Z\r\nDTSTART:20991030T090000Z\r\nDTEND:20991030T093000Z\r\nSUMMARY:Dentist\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let walk = calendar.dir.join("legs-made-since-walk.ics");
+        vdir::write_item(&walk, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:legs-made-since-walk\r\nDTSTAMP:20991020T100000Z\r\nDTSTART:20991030T084000Z\r\nDTEND:20991030T085000Z\r\nSUMMARY:Walk\r\nRELATED-TO;RELTYPE=PARENT:legs-made-since-dentist\r\nX-SIOUL-ANCHOR;GAP=PT10M;WAS=20991030T090000Z:BEFORE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let at = |h: i8, m: i8| jiff::civil::date(2099, 10, 30).at(h, m, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp().as_second();
+        move_written(&shared, &walk.display().to_string(), at(8, 40), at(8, 30), at(8, 40), false).unwrap().unwrap();
+        let anchor = sioul_core::anchors::parse(&std::fs::read_to_string(&walk).unwrap()).unwrap();
+        assert_eq!(anchor.gap, 20 * 60, "its distance taken again from the appointment made since the read");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// A folder unchanged since the read is not listed (review of 468a123,
+    /// §3.4): every writer renames an item into its folder, so a file changed
+    /// in place, which no writer does, is not seen until the next read; one
+    /// put in as writers do is.
+    #[test]
+    fn a_folder_unchanged_since_the_read_is_not_listed() {
+        let (calendar, doctor, bus) = doctor_and_bus("legs-folder");
+        let zone = TimeZone::system();
+        // The read comes seconds after the last write, past the margin for coarse clocks.
+        std::thread::sleep(Duration::from_secs(3));
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
+        let untied = std::fs::read_to_string(&bus).unwrap().replace("X-SIOUL-ANCHOR;GAP=PT25M;TIMETABLE=TRUE;WAS=20991029T130000Z:BEFORE\r\n", "");
+        std::fs::write(&bus, &untied).unwrap();
+        assert_eq!(legs_to_come(&shared, &doctor, &zone), vec![bus.clone()], "its folder unchanged: not listed");
+        vdir::write_item(&bus, &untied).unwrap();
+        assert!(legs_to_come(&shared, &doctor, &zone).is_empty(), "put in as writers do: seen");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// What `events_known` costs on the window's thread, on a calendar of
+    /// 3,000 files: once read (a folder unchanged since the read) and before
+    /// any read (review of 468a123, §3.4). Run by hand:
+    /// `cargo test --release -p sioul-app events_known_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn events_known_cost_on_3000_files() {
+        let (calendar, doctor, _bus) = doctor_and_bus("legs-cost");
+        for n in 0..3_000 {
+            let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:legs-cost-{n}\r\nDTSTAMP:20991020T100000Z\r\nDTSTART:20991101T090000Z\r\nDTEND:20991101T093000Z\r\nSUMMARY:Event {n}\r\nDESCRIPTION:Some words of notes for an event of the stand-in calendar\\, as one has.\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+            vdir::write_item(&calendar.dir.join(format!("legs-cost-{n}.ics")), &text).unwrap();
+        }
+        let zone = TimeZone::system();
+        let cold = Shared::default();
+        let started = std::time::Instant::now();
+        let _ = events_known(&cold, &doctor, &zone);
+        let before_any_read = started.elapsed();
+        let shared = Shared::default();
+        // The read a few seconds after the last write, as the window's pass comes.
+        std::thread::sleep(Duration::from_secs(3));
+        let _ = crate::work::loaded(&shared);
+        let started = std::time::Instant::now();
+        for _ in 0..20 {
+            let _ = events_known(&shared, &doctor, &zone);
+        }
+        let once_read = started.elapsed() / 20;
+        println!("events_known on 3,000 files: before any read {before_any_read:?}, once read {once_read:?} a call");
+        let started = std::time::Instant::now();
+        for _ in 0..20 {
+            let _ = collection_of(&doctor).and_then(|c| leg_calendar(&c));
+        }
+        let calendars = started.elapsed() / 20;
+        let known = crate::work::loaded_known(&shared).unwrap();
+        let started = std::time::Instant::now();
+        for _ in 0..20 {
+            let _ = known.events.clone();
+        }
+        println!("of which the calendars found {calendars:?}, the events copied {:?}", started.elapsed() / 20);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     /// Part E2: a drag of the appointment moves its legs in the same change, the
     /// line names them with their doubt, and one Undo puts every file back; a leg
     /// dragged by hand keeps its time, its distance taken again; the form moves
@@ -1415,12 +1515,13 @@ mod tests {
         let (calendar, doctor, bus) = doctor_and_bus("legs-drag");
         let (doctor_before, bus_before) = (std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap());
         let at = |h: i8, m: i8| jiff::civil::date(2099, 10, 29).at(h, m, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp().as_second();
-        // Nothing read yet: a drag reads no store on the window's thread (review of ab7daa4, later 3);
-        // the calendar its legs go to is read alone, and its leg moves with it (review of 4d7bab4, later 5).
+        // Nothing read yet: a drag reads no store on the window's thread (review of ab7daa4, later 3),
+        // nor its calendar: its legs are left to the window's pass, which follows them as a move this
+        // device saw (review of 468a123, §3.4, as 4d7bab4 did).
         let cold = Shared::default();
         assert!(move_written(&cold, &doctor.display().to_string(), at(13, 0), at(13, 5), at(13, 35), false).unwrap().is_some());
         assert!(cold.loaded.lock().unwrap().is_none(), "no read of the stores for a drag");
-        assert_eq!(agenda::first_times(&std::fs::read_to_string(&bus).unwrap(), &TimeZone::system()), Some((at(12, 15), at(12, 40))), "its leg moved with it");
+        assert_eq!(agenda::first_times(&std::fs::read_to_string(&bus).unwrap(), &TimeZone::system()), Some((at(12, 10), at(12, 35))), "its leg left to the pass");
         std::fs::write(&doctor, &doctor_before).unwrap();
         std::fs::write(&bus, &bus_before).unwrap();
         let shared = Shared::default();

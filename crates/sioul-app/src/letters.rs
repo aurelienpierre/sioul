@@ -317,6 +317,11 @@ fn with_letter(id: &str, change: impl FnOnce(&mut Letters, &mut Letter) -> Resul
     }
 }
 
+/// The letter's own task whose deletion waits for its Undo (`removed`): its file.
+fn deleted_task_of(letter: &Letter, all: &[sioul_core::tasks::Task], removed: &std::collections::BTreeSet<std::path::PathBuf>) -> Option<std::path::PathBuf> {
+    all.iter().filter(|t| letter.task_in(std::slice::from_ref(*t))).map(|t| std::path::PathBuf::from(&t.key)).find(|path| removed.contains(path))
+}
+
 /// The tasks read, less those whose deletion waits for its Undo (`removed`: `mail::hidden_pim`).
 fn here_but(tasks: &[sioul_core::tasks::Task], removed: &std::collections::BTreeSet<std::path::PathBuf>) -> Vec<sioul_core::tasks::Task> {
     tasks.iter().filter(|t| !removed.contains(Path::new(&t.key))).cloned().collect()
@@ -334,14 +339,20 @@ fn needs_task(letter: &Letter, tasks: &[sioul_core::tasks::Task]) -> bool {
 /// nothing when the letter's task is there already (`needs_task`), and the
 /// task another device made for it adopted (`adoptable`). A task whose
 /// deletion waits for its Undo counts as gone: the press makes the new one at
-/// once, the deletion still unties the old (review of 679f96a, later 5).
+/// once, the deletion still unties the old (review of 679f96a, later 5), and
+/// that deletion is done then, its Undo gone, so that it never gives two tasks
+/// for one scan (review of ab7daa4, later 16).
 pub(crate) fn make_task(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
     let removed = crate::mail::hidden_pim(shared).0;
     let root = load_config().notes_root_path();
     with_letter(id, |letters, letter| {
-        let tasks = here_but(&sioul_core::tasks::all(&jiff::tz::TimeZone::system()), &removed);
+        let all = sioul_core::tasks::all(&jiff::tz::TimeZone::system());
+        let tasks = here_but(&all, &removed);
         if !needs_task(letter, &tasks) {
             return Ok(String::new());
+        }
+        if let Some(old) = deleted_task_of(letter, &all, &removed) {
+            crate::mail::remove_now(qt, shared, &old);
         }
         // Filed first: the task's link holds where the scan stays.
         letters.file_away(letter)?;
@@ -537,6 +548,13 @@ mod tests {
         assert!(super::adoptable(&letter, &here, root).is_none());
         let waiting = sioul_core::letters::Letter { task: "made".into(), ..Default::default() };
         assert!(super::needs_task(&waiting, &here) && !super::needs_task(&waiting, &tasks));
+        // Its task made again, that deletion is done then (review of ab7daa4, later 16).
+        assert_eq!(super::deleted_task_of(&waiting, &tasks, &removed), Some(std::path::PathBuf::from("/lists/made.ics")));
+        assert_eq!(super::deleted_task_of(&waiting, &tasks, &Default::default()), None, "none waiting");
+        let shared = crate::backend::Shared::default();
+        crate::mail::wait_to_remove(&shared, std::path::PathBuf::from("/lists/made.ics"));
+        assert!(crate::mail::pending_removal(&shared, std::path::Path::new("/lists/made.ics")).is_some(), "found among the works waiting");
+        assert!(crate::mail::pending_removal(&shared, std::path::Path::new("/lists/other.ics")).is_none());
     }
 
     /// A deletion on the device that knows a Google list's task by Google's id

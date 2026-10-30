@@ -1146,12 +1146,12 @@ mod tests {
         let day = Zoned::now().date().checked_add(jiff::Span::new().days(100)).unwrap();
         let start = day.at(9, 0, 0, 0).to_zoned(TimeZone::UTC).unwrap();
         let utc = |z: &Zoned| z.strftime("%Y%m%dT%H%M%SZ").to_string();
-        std::fs::write(&file, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:card-declined\r\nDTSTAMP:20261020T100000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Board review\r\nORGANIZER:mailto:chair@board.example\r\nATTENDEE;PARTSTAT=DECLINED:mailto:me@home.example\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:other@board.example\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(&start), utc(&start.checked_add(jiff::Span::new().hours(1)).unwrap()))).unwrap();
+        std::fs::write(&file, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:card-declined\r\nDTSTAMP:20261020T100000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Board review\r\nORGANIZER:mailto:chair@example.org\r\nATTENDEE;PARTSTAT=DECLINED:mailto:me.home@example.org\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:other@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(&start), utc(&start.checked_add(jiff::Span::new().hours(1)).unwrap()))).unwrap();
         let (shared, key) = (Shared::default(), file.display().to_string());
         let at = start.timestamp().as_second();
         let card = |own: Vec<String>| -> serde_json::Value { serde_json::from_str(&event_card_as(&shared, &key, at, &|| own.clone())).unwrap() };
-        assert_eq!(card(vec!["Me@Home.example".into()])["declined"], true, "declined by you");
-        assert_eq!(card(vec!["other@board.example".into()])["declined"], false, "declined by someone else");
+        assert_eq!(card(vec!["Me.Home@example.org".into()])["declined"], true, "declined by you");
+        assert_eq!(card(vec!["other@example.org".into()])["declined"], false, "declined by someone else");
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 

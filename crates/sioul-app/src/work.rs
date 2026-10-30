@@ -298,6 +298,14 @@ fn categories_of(tasks: &[Task]) -> Vec<String> {
     categories.into_iter().map(|(_, c)| c).collect()
 }
 
+/// Whether the task `uid` among `tasks` is a pharmacy or renewal errand
+/// (`health::is_errand`, by its category or its title, as the home card and
+/// the agenda read it): its card is health (the Recents guard, review of part
+/// 8, later 2).
+pub(crate) fn errand_among(tasks: &[Task], uid: &str) -> bool {
+    tasks.iter().find(|t| t.uid == uid).is_some_and(|t| sioul_core::health::is_errand(t, &Default::default()))
+}
+
 /// Everything as the plan last read it, else the last read kept; none before
 /// the first read: what a card reads on the window's thread, never the stores.
 pub(crate) fn loaded_known(shared: &Shared) -> Option<Arc<Loaded>> {
@@ -802,13 +810,15 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // install is never set aside; a clock behind this build starts nothing (`Seen::closing_since`).
         let closing_from = seen.closing_since(now.timestamp().as_second());
         // The pages' events alone: a copy left in an account switched off never moves a date (F15).
-        let moved = sioul_core::moves::upkeep(&desk.loaded.tasks, &desk.loaded.events, &mut seen, &now);
+        // This device's own calendars, which the sharing may carry, read as its last exchange.
+        let local = crate::share::local_pull();
+        let moved = sioul_core::moves::upkeep_with(&desk.loaded.tasks, &desk.loaded.events, &mut seen, &now, local);
         if seen != before {
             let _ = seen.save();
         }
         // An appointment over: the steps before it drop quietly, its task closes once none is left (`pairs::closing`).
         let mut moved = moved;
-        let closed = closing_from.map(|from| sioul_core::pairs::closing(&desk.loaded.tasks, &desk.loaded.events, from, &now)).unwrap_or_default();
+        let closed = closing_from.map(|from| sioul_core::pairs::closing_with(&desk.loaded.tasks, &desk.loaded.events, from, &now, local)).unwrap_or_default();
         if !closed.is_empty()
             && let Ok(files) = closed.write()
         {
@@ -1514,17 +1524,10 @@ pub(crate) fn make_step_of(qt: &QtThread, shared: &Arc<Shared>, uid: &str, bigge
 pub(crate) fn bring_back(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> String {
     let (zone, now) = (TimeZone::system(), Zoned::now());
     let all = tasks::all(&zone);
-    let back = |task: &Task| std::fs::read_to_string(&task.key).ok().and_then(|text| sioul_core::pairs::brought_back(&text, &now)).map(|t| (std::path::PathBuf::from(&task.key), t));
     let planned = match all.iter().find(|t| t.uid == uid) {
         None => Err(sioul_core::composed::Refusal::Gone),
         Some(task) if task.read_only => Err(sioul_core::composed::Refusal::ReadOnly),
-        Some(task) => {
-            let mut written: Vec<(std::path::PathBuf, String)> = back(task).into_iter().collect();
-            if let Some(whole) = task.parent().and_then(|p| all.iter().find(|t| t.uid == p)).filter(|w| !w.read_only && w.set_aside == task.set_aside && !w.brought_back) {
-                written.extend(back(whole));
-            }
-            Ok(sioul_core::composed::Change { written, ..sioul_core::composed::Change::default() })
-        }
+        Some(_) => Ok(sioul_core::composed::Change { written: sioul_core::pairs::bringing_back(&all, uid, &now), ..sioul_core::composed::Change::default() }),
     };
     let title = all.iter().find(|t| t.uid == uid).map(|t| t.title.clone()).unwrap_or_default();
     composed_done(qt, shared, planned, uid, || say("task-brought-back", &[("title", title)]))
@@ -1726,6 +1729,12 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
         _ => Status::NeedsAction,
     };
     let before = Desk::new(loaded(shared), shared);
+    // A row set aside by its appointment ticked open: brought back, its task set aside with it
+    // too, as Bring back does (review of 468a123, §3.8), never the step alone under a task set aside.
+    if status == Status::NeedsAction && before.loaded.tasks.iter().any(|t| t.uid == uid && sioul_core::pairs::is_set_aside(t)) {
+        let answer: serde_json::Value = serde_json::from_str(&bring_back(qt, shared, uid)).unwrap_or_default();
+        return answer["error"].as_str().unwrap_or_default().to_string();
+    }
     // The step as it was, for Undo when its bigger task closes with it.
     let step_was = before.loaded.tasks.iter().find(|t| t.uid == uid).map(|t| (PathBuf::from(&t.key), std::fs::read_to_string(&t.key).ok()));
     let result = change(qt, shared, uid, |text| tasks::set_status(text, status, &TimeZone::system(), &Zoned::now()));
@@ -2740,6 +2749,17 @@ pub(crate) fn mail_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An errand's task is health, by its category or its title, as the home
+    /// card reads it: the Recents guard covers its card (review of part 8,
+    /// later 2).
+    #[test]
+    fn an_errand_is_known_by_its_category_or_its_title() {
+        let task = |uid: &str, title: &str, categories: &[&str]| Task { uid: uid.into(), title: title.into(), categories: categories.iter().map(|c| (*c).to_string()).collect(), ..Task::default() };
+        let tasks = [task("ferngale", "Renew the prescription", &["santé"]), task("pharmacy", "Pharmacy: Brackenwort 20", &[]), task("bus", "Renew the bus card", &[])];
+        assert!(errand_among(&tasks, "ferngale") && errand_among(&tasks, "pharmacy"));
+        assert!(!errand_among(&tasks, "bus") && !errand_among(&tasks, "nowhere"));
+    }
 
     /// A category renamed, or a note's link followed, over a task's file as it
     /// is now: a step ticked there since the tasks were read stays ticked, and

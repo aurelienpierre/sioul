@@ -2120,11 +2120,11 @@ mod tests {
         let france = crate::phones::region_named("FR");
         // "Their mail" put every address of a card on a list, before cards were on the lists themselves.
         let contacts = [
-            person("gran", "Mamie", &["mamie@example.org", "Mamie@Home.example"], &["02 61 91 22 33"], &["Voisins"]),
+            person("gran", "Mamie", &["mamie@example.org", "Mamie.Home@example.org"], &["02 61 91 22 33"], &["Voisins"]),
             person("half", "Paul", &["paul@example.org", "paul@work.example"], &["06 39 98 12 12"], &[]),
         ];
         let senders = Senders {
-            safe: SenderList::parse("mamie@example.org\nmamie@home.example\npaul@example.org"),
+            safe: SenderList::parse("mamie@example.org\nmamie.home@example.org\npaul@example.org"),
             restricted: SenderList::parse("category:Voisins"),
             contacts: std::sync::Arc::new(Book::of(&contacts, france)),
             ..Senders::default()

@@ -1520,12 +1520,34 @@ const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
 /// another device: `alarms::health_written`), so that a moved dose rings at
 /// its new time and a gone one at none (the A3 dose model; the chain check
 /// of e3505f7: the close's exchange handed nothing).
-fn exchanged(outcome: &share::Outcome) {
+fn exchanged(outcome: &share::Outcome, began_ms: i64) {
+    // Gone through whole (nothing wrong, nothing of the others' left waiting): what this
+    // device's own calendars, which the sharing carries, read as their pull (`local_pull`).
+    if outcome.problems.is_empty() && outcome.pending == 0 && outcome.looked > 0 {
+        let mut whole = WHOLE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *whole = Some(whole.unwrap_or(0).max(began_ms / 1000));
+    }
     crate::devices::exported(outcome);
     // What the others say of legs that are a step's time, kept for the window and `sioul mcp` (part 7).
     let _ = legs_as_steps();
     if crate::alarms::health_written(outcome) {
         crate::alarms::schedule();
+    }
+}
+
+/// When the last exchange that went through whole began (Unix seconds), since Sioul started.
+static WHOLE: Mutex<Option<i64>> = Mutex::new(None);
+
+/// What a calendar or a list of this device's own reads as its pull, for
+/// what follows an appointment and what closes once it is over
+/// (`moves::Pull::of_with`; review of ab7daa4, later 14): while the sharing
+/// carries them (part "lists"), the last exchange gone through whole, none
+/// yet before the first (they wait for it); else none, at once.
+pub(crate) fn local_pull() -> sioul_core::moves::Pull {
+    if configured() && shares("lists") {
+        sioul_core::moves::Pull { syncs: true, began: *WHOLE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) }
+    } else {
+        sioul_core::moves::Pull::default()
     }
 }
 
@@ -1549,8 +1571,9 @@ pub(crate) fn closing() {
         HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
         let stores = stores_here(&here);
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
-        if let Ok(outcome) = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond()) {
-            exchanged(&outcome);
+        let began = jiff::Timestamp::now().as_millisecond();
+        if let Ok(outcome) = share::exchange(&sharing, &stores, began) {
+            exchanged(&outcome, began);
         }
     }
     {
@@ -2013,9 +2036,10 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     // A bulk import of texts going on: no full round meanwhile (`share::set_importing`).
     share::set_importing(&memory, crate::texts::importing_in_bulk());
     let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
-    let outcome = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
+    let began = jiff::Timestamp::now().as_millisecond();
+    let outcome = share::exchange(&sharing, &stores, began);
     if let Ok(outcome) = &outcome {
-        exchanged(outcome);
+        exchanged(outcome, began);
         // Sioul keeping the folder itself: what it wrote goes up now; off this
         // thread for a quick exchange ("Taken" pressed: Android waits eight
         // seconds for its answer), the background step waiting for it.
@@ -2147,7 +2171,7 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         let (written, accounts, problems, sent) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
             Ok(outcome) => {
                 // What it read and wrote, said in this device's entry (docs/database.md, "Devices"); the doses handed.
-                exchanged(&outcome);
+                exchanged(&outcome, now.as_millisecond());
                 (received, pending, waits) = (outcome.received, outcome.pending, waits_said(&outcome.waits));
                 no_blob = outcome.waits.contains_key("no-blob");
                 // The notes and papers held after going many at once, for the Porch and Settings (`withheld`).

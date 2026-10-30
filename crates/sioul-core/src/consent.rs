@@ -253,6 +253,12 @@ impl Consent {
                 }
             }
         }
+        // An invoice is in its project (review of part 8, later 1), by its address, wherever
+        // it is asked for (`links`, `link`, the agenda's dates): this device's invoices, as
+        // the invoices' own tool reads them.
+        for invoice in crate::invoice::all_in(&crate::invoice::folder()).iter().filter(|i| !i.number.is_empty() && !i.project.trim().is_empty()) {
+            consent.tie(&links::invoice_uri(&invoice.number), invoice.project.trim());
+        }
         // A draft is in the projects of the message it answers.
         for draft in &loaded.drafts {
             if let Some(answered) = draft.in_reply_to.as_deref().filter(|id| !id.is_empty()) {

@@ -386,7 +386,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "get_event",
         title: "Read an event",
-        description: "One event, by its address: its title, times, place, notes, repeat, reminder before it (remind: \"\" as usual, \"none\", or minutes), the time kept before and after it (minutes; from its legs while it has some), its calendar, and whether it is a meeting with others (with_others), which is never moved nor deleted here. An appointment gives its legs (a ride or a walk before or after it, which move with it: side, and unconfirmed when one was moved with it and its timetable not checked); a leg gives the appointment it is before or after (leg_of).",
+        description: "One event, by its address: its title, times, place, notes, repeat, reminder before it (remind: \"\" as usual, \"none\", or minutes), the time kept before and after it (minutes; from its legs while it has some), its calendar, and whether it is a meeting with others (with_others), which is never moved nor deleted here. An appointment gives its legs (a ride or a walk before or after it, which move with it: side, and unconfirmed when one was moved with it and its timetable not checked), those kept from agents counted (legs_kept_back), never named nor counted in the time kept; a leg gives the appointment it is before or after (leg_of).",
         writes: false,
         idempotent: true,
         open_world: false,
@@ -779,7 +779,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "update_event",
         title: "Change an event",
-        description: "Changes what is given of one event (nothing else changes), the rest kept as it is (another program's fields too): its title, start and end (a day for a whole day, a time otherwise), place, notes, repeat, reminder, the time kept before and after it, or its calendar, which moves it there through Sioul's move journal (never twice, never lost). A meeting with others never moves. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
+        description: "Changes what is given of one event (nothing else changes), the rest kept as it is (another program's fields too): its title, start and end (a day for a whole day, a time otherwise), place, notes, repeat, reminder, the time kept before and after it, or its calendar, which moves it there through Sioul's move journal (never twice, never lost). A meeting with others never moves. Its legs to come move with it unless `legs` says stay; one kept from agents is never written here, counted (legs_kept_back) when its times change, and moves with it at Sioul's next pass whatever `legs` says. Said in Sioul's window with Undo; sent at the next sync. Only when the person asked for it.",
         writes: true,
         idempotent: true,
         open_world: false,
@@ -808,7 +808,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "delete_event",
         title: "Delete an event",
-        description: "Deletes one event, or with `occurrence` one time of a repeating event; nothing else changes. A meeting with others is never deleted (its server would cancel or decline it for them). Said in Sioul's window with Undo; the deletion goes to its server at the next sync. Only when the person asked for it.",
+        description: "Deletes one event, or with `occurrence` one time of a repeating event; nothing else changes. A meeting with others is never deleted (its server would cancel or decline it for them). Its legs to come go with it unless `legs` says keep; one kept from agents stays, as an event of its own, counted (legs_kept_back). Said in Sioul's window with Undo; the deletion goes to its server at the next sync. Only when the person asked for it.",
         writes: true,
         idempotent: false,
         open_world: false,

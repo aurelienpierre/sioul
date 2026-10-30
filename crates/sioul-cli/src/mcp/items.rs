@@ -135,19 +135,33 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
     {
         (edit.margins, edit.demands, edit.remind) = (own.margins(), own.demands, own.remind.clone());
     }
+    // Its time kept before and after from the legs the agent may see (part E3, `anchors::mark`),
+    // else its own (D18): a leg kept from agents counts for nothing here (review of 4d7bab4, later 13).
+    let zone = TimeZone::system();
+    let reference = loaded.events.iter().find(|e| e.uid == found.uid);
+    let legs = sioul_core::anchors::legs_of(&found.uid, &loaded.events);
+    let (shown_legs, kept_legs): (Vec<&sioul_core::agenda::EventRef>, Vec<&sioul_core::agenda::EventRef>) = legs.into_iter().partition(|l| consent.allows(&links::event_uri(&l.uid)));
+    if let Some((start, end)) = agenda::first_times(&found.text, &zone).filter(|_| !edit.all_day && !shown_legs.is_empty()) {
+        let own = agenda::Occurrence { uid: found.uid.clone(), start, end, margins: edit.margins, recurring: reference.is_some_and(|r| r.recurring), ..agenda::Occurrence::default() };
+        let mut read: Vec<agenda::Occurrence> = vec![own];
+        read.extend(shown_legs.iter().map(|l| agenda::Occurrence { uid: l.uid.clone(), start: l.start, end: l.end, anchor: l.anchor.clone(), cancelled: l.cancelled, recurring: l.recurring, ..agenda::Occurrence::default() }));
+        sioul_core::anchors::mark(&mut read);
+        edit.margins = read[0].margins;
+    }
     let mut data = event_json(&found, &edit, s);
     // The task that prepares it, with its steps and list, when the agent may see it (`pairs`).
-    let reference = loaded.events.iter().find(|e| e.uid == found.uid);
     data["preparation"] = reference.and_then(|e| sioul_core::pairs::preparation_of(&loaded.tasks, e)).filter(|t| consent.allows(&links::task_uri(&t.uid))).map_or(Value::Null, |t| Value::String(links::task_uri(&t.uid)));
-    // Its legs (part E), or, for a leg, the appointment it is before or after.
-    let zone = TimeZone::system();
-    data["legs"] = Value::Array(sioul_core::anchors::legs_of(&found.uid, &loaded.events).into_iter().filter(|l| consent.allows(&links::event_uri(&l.uid))).filter_map(|l| leg_json(l, &zone)).collect());
+    // Its legs (part E), those kept from agents counted, never named; or, for a leg, the
+    // appointment it is before or after.
+    data["legs"] = Value::Array(shown_legs.into_iter().filter_map(|l| leg_json(l, &zone)).collect());
+    data["legs_kept_back"] = json!(kept_legs.len());
     // What a leg is before or after, only when the agent may see that appointment (review of ab7daa4, M2).
     if let Some(anchor) = sioul_core::anchors::parse(&found.text).filter(|a| consent.allows(&links::event_uri(&a.appointment))) {
         data["leg_of"] = json!({ "event": links::event_uri(&anchor.appointment), "side": anchor.side, "timetable": anchor.timetable, "unconfirmed": anchor.unconfirmed.is_some() });
     }
     let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };
-    Ok(Answer { text: format!("{} · {when} · {}  <{}>", one_line(&edit.title), data["calendar_name"].as_str().unwrap_or_default(), links::event_uri(&found.uid)), data })
+    let kept = access::left_out(kept_legs.len()).map(|l| format!("\n{l}")).unwrap_or_default();
+    Ok(Answer { text: format!("{} · {when} · {}  <{}>{kept}", one_line(&edit.title), data["calendar_name"].as_str().unwrap_or_default(), links::event_uri(&found.uid)), data })
 }
 
 /// A leg as get_event gives it: its address, title, times, side, and whether its timetable was not checked.
@@ -243,7 +257,10 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
         // Never a leg kept from agents: left as it is, counted, never named; the window's next
         // pass sets it right, as a move this device saw (review of ab7daa4, M2).
         let allowed = |path: &Path| loaded.events.iter().find(|e| Path::new(&e.key) == path).is_some_and(|e| consent.allows(&links::event_uri(&e.uid)));
-        kept_back = sioul_core::anchors::legs_of(&found.uid, &loaded.events).iter().filter(|l| !allowed(Path::new(&l.key))).count();
+        // Counted only when its times change, and only the legs to come: a title alone moves no
+        // leg, and one over stays as it was (review of 4d7bab4, later 13).
+        let times_changed = agenda::first_times(&found.text, &zone) != agenda::first_times(&text, &zone);
+        kept_back = if times_changed { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone).iter().filter(|p| !allowed(p)).count() } else { 0 };
         let mut gesture = sioul_core::anchors::gesture(&found.path, &found.text, &text, &loaded.events, &zone);
         gesture.legs.retain(|(path, _)| allowed(path));
         let legs: Vec<(PathBuf, String)> = if legs_stay {
@@ -269,7 +286,10 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
     if !legs_moved.is_empty() {
         line = format!("{line} {}", s.say("legs-moved-with", &[("legs", legs_moved.join(", "))]));
     }
-    let kept_line = if kept_back > 0 { format!("\n{}", s.tr.text("legs-kept-back", Some(&s.tr.counted(kept_back)))) } else { String::new() };
+    // A leg kept from agents follows its appointment at the window's pass whatever `legs` says:
+    // an agent never decides for it (review of 4d7bab4, later 13).
+    let kept_word = if legs_stay { "legs-kept-back-follow" } else { "legs-kept-back" };
+    let kept_line = if kept_back > 0 { format!("\n{}", s.tr.text(kept_word, Some(&s.tr.counted(kept_back)))) } else { String::new() };
     // One change: the appointment written or moved (there before, the old file gone), its legs.
     let mut change = sioul_core::composed::Change { written, ..sioul_core::composed::Change::default() };
     if let Some(target) = &target {
@@ -308,7 +328,8 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let zone = TimeZone::system();
     let title = agenda::edit_of_text(&found.text, &zone).map(|e| e.title).unwrap_or_default();
-    let line;
+    let mut kept_back = 0usize;
+    let mut line;
     let files = match args.moment("occurrence")? {
         // One time of a repeating event left out (EXDATE), as the agenda's "This time only".
         Some(when) => {
@@ -327,18 +348,24 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
             };
             // Never a leg kept from agents: it stays, as an event of its own (review of ab7daa4, M2).
             let allowed = |path: &PathBuf| loaded.events.iter().find(|e| Path::new(&e.key) == path.as_path()).is_some_and(|e| consent.allows(&links::event_uri(&e.uid)));
-            let legs: Vec<PathBuf> = if keep { Vec::new() } else { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone).into_iter().filter(allowed).collect() };
+            let to_come = if keep { Vec::new() } else { sioul_core::anchors::to_come(&found.uid, &loaded.events, Zoned::now().timestamp().as_second(), &zone) };
+            // Those kept from agents stay, counted, never named (review of 4d7bab4, later 13).
+            kept_back = to_come.iter().filter(|p| !allowed(p)).count();
+            let legs: Vec<PathBuf> = to_come.into_iter().filter(allowed).collect();
             let count = legs.len();
             // The legs and the appointment in one change: one that fails, none gone (review of ab7daa4, later 5).
             let mut gone = vec![found.path.clone()];
             gone.extend(legs);
             let files = sioul_core::composed::Change { gone, ..sioul_core::composed::Change::default() }.write()?;
             line = if count == 0 { s.say("agent-event-deleted", &[("title", one_line(&title))]) } else { s.tr.text("legs-deleted-with", Some(&s.tr.counted(count))) };
+            if kept_back > 0 {
+                line = format!("{line}\n{}", s.tr.text("legs-kept-back-stay", Some(&s.tr.counted(kept_back))));
+            }
             files
         }
     };
     say_in_window(line.clone(), files);
-    Ok(Answer { text: line, data: json!({ "uri": links::event_uri(&found.uid), "deleted": true, "sent": false }) })
+    Ok(Answer { text: line, data: json!({ "uri": links::event_uri(&found.uid), "deleted": true, "sent": false, "legs_kept_back": kept_back }) })
 }
 
 /// A checklist as data: each item's place, group, words, state, detail.

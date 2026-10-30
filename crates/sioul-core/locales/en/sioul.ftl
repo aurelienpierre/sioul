@@ -1259,6 +1259,7 @@ task-part-of = Part of: { $title }
 task-tight = At this pace, the plan ends after { $date }. Doing it sooner, making it smaller or handing it over would keep the date.
 task-done-on = Done { $date }
 task-set-aside-on = Set aside { $date }, its appointment over
+task-set-aside-over = Set aside, its appointment over
 task-unblocks = Frees { $count } other { $n ->
         [one] step
        *[other] steps
@@ -6475,6 +6476,14 @@ legs-unconfirmed = { $leg } (timetable not checked)
 legs-deleted-with = { $n ->
     [one] Event deleted, with its leg to come.
    *[other] Event deleted, with its { $count } legs to come.
+}
+legs-kept-back-follow = { $n ->
+    [one] One leg kept from agents is not written here: it moves with the event at Sioul's next pass, whatever “legs” says.
+   *[other] { $Count } legs kept from agents are not written here: they move with the event at Sioul's next pass, whatever “legs” says.
+}
+legs-kept-back-stay = { $n ->
+    [one] One leg to come kept from agents is not deleted here: it stays, as an event of its own.
+   *[other] { $Count } legs to come kept from agents are not deleted here: they stay, as events of their own.
 }
 legs-kept-back = { $n ->
     [one] One leg kept from agents is not written here: Sioul sets it right at its next pass.

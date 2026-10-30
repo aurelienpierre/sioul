@@ -2010,6 +2010,12 @@ pub mod qobject {
         #[qinvokable]
         fn recents_picture(self: &Sioul, shown: bool);
 
+        /// Whether the task `uid` is a pharmacy or renewal errand (`health::is_errand`,
+        /// as the home card reads it), from the tasks the window has: health, for
+        /// the Recents guard. False before the first read.
+        #[qinvokable]
+        fn is_errand(self: &Sioul, uid: &QString) -> bool;
+
         /// Images of a phone's screen (`SIOUL_GRAB_PHONE`): its size and its layout.
         #[qinvokable]
         fn grab_phone(self: &Sioul) -> bool;
@@ -6289,6 +6295,10 @@ impl qobject::Sioul {
         };
         #[cfg(not(target_os = "android"))]
         let _ = shown;
+    }
+
+    fn is_errand(&self, uid: &QString) -> bool {
+        work::loaded_known(&self.shared()).is_some_and(|loaded| work::errand_among(&loaded.tasks, &uid.to_string()))
     }
 
     fn grab_phone(&self) -> bool {

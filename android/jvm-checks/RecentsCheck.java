@@ -20,7 +20,8 @@ import java.nio.file.Paths;
  * which would stop the person's own screenshots; FLAG_SECURE stays the
  * security key's alone (SecurityKeyLink.java). The doses' alarms
  * (DoseAlarms.java) do nothing of it. The window says when (main.qml's
- * RecentsGuard): the Health page, a dose's question, a prescription's date.
+ * RecentsGuard): the Health page, a dose's question, a prescription's date,
+ * an errand's task card.
  */
 public final class RecentsCheck
 {
@@ -87,6 +88,7 @@ public final class RecentsCheck
         String window = read(root.resolve("crates/sioul-app/qml/main.qml"));
         String guarded = body(window, "    RecentsGuard {");
         expect("main.qml's guard", guarded.contains("window.page === 10") && guarded.contains("doseTaken.item.opened") && guarded.contains("\"prescription-ends\", \"runs-out\""));
+        expect("an errand's task card", guarded.contains("cardHost.ref.card === \"task\" && sioul.isErrand(cardHost.ref.owner"));
         String said = read(root.resolve("crates/sioul-app/qml/RecentsGuard.qml"));
         expect("the guard says it", said.contains("guard.shown = !guard.health") && said.contains("guard.sioul.recentsPicture(guard.shown)"));
 

@@ -490,7 +490,7 @@ mod tests {
     fn the_share_sheet_lists_the_most_used_addresses_first() {
         let mut config = Config::default();
         let work = Account::imap("work", "me@work.example", "imap.work.example", 993, Security::Tls, None);
-        let mut home = Account::imap("home", "me@home.example", "imap.home.example", 993, Security::Tls, None);
+        let mut home = Account::imap("home", "me.home@example.org", "imap.example.org", 993, Security::Tls, None);
         home.priority = Priority::Above;
         let mut bare = Account::imap("old", "", "imap.old.example", 993, Security::Tls, None);
         bare.address = None;
@@ -498,13 +498,13 @@ mod tests {
         config.accounts = vec![work, home, bare, calendars];
         // Nothing sent from here yet: by priority, then the file's order; no address, its id.
         let order = |sent: &[(&str, usize)]| targets(&config, &sent.iter().map(|(id, n)| (id.to_string(), *n)).collect()).into_iter().map(|t| t.short).collect::<Vec<_>>();
-        assert_eq!(order(&[]), ["me@home.example", "me@work.example", "old"]);
+        assert_eq!(order(&[]), ["me.home@example.org", "me@work.example", "old"]);
         // The most used first.
-        assert_eq!(order(&[("work", 12), ("home", 3)]), ["me@work.example", "me@home.example", "old"]);
-        assert_eq!(order(&[("old", 1)]), ["old", "me@home.example", "me@work.example"]);
+        assert_eq!(order(&[("work", 12), ("home", 3)]), ["me@work.example", "me.home@example.org", "old"]);
+        assert_eq!(order(&[("old", 1)]), ["old", "me.home@example.org", "me@work.example"]);
         let first = &targets(&config, &BTreeMap::new())[0];
         assert_eq!(first.id, "home");
-        assert!(first.long.contains("me@home.example"), "{}", first.long);
+        assert!(first.long.contains("me.home@example.org"), "{}", first.long);
     }
 
     #[test]

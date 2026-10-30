@@ -362,11 +362,11 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         (Status::Completed, Some(at)) => Timestamp::from_second(at).map(|t| cx.say("task-done-on", &[("date", cx.tr.day(t.to_zoned(TimeZone::system()).date()))])).unwrap_or_default(),
         _ => String::new(),
     };
-    let set_aside = if set_aside(task) {
-        let on = Timestamp::from_second(task.set_aside_end).ok().filter(|_| task.set_aside_end > 0).map(|t| cx.tr.day(t.to_zoned(TimeZone::system()).date()));
-        cx.say("task-set-aside-on", &[("date", on.unwrap_or_default())])
-    } else {
-        String::new()
+    // A mark without its end (written by 4d7bab4, or by a program that drops parameters): no date said.
+    let set_aside = match Timestamp::from_second(task.set_aside_end).ok().filter(|_| task.set_aside_end > 0) {
+        _ if !set_aside(task) => String::new(),
+        Some(t) => cx.say("task-set-aside-on", &[("date", cx.tr.day(t.to_zoned(TimeZone::system()).date()))]),
+        None => cx.tr.text("task-set-aside-over", None),
     };
     CardView {
         uid: task.uid.clone(),
@@ -1297,7 +1297,9 @@ mod tests {
         let aside = Task { status: Status::Cancelled, set_aside: "visit".into(), set_aside_end: 1_793_280_600, ..task("aside", "Find the card") };
         let dropped = Task { status: Status::Cancelled, ..task("dropped", "Dropped by hand") };
         let back = Task { set_aside: "visit".into(), brought_back: true, ..task("back", "Brought back") };
-        let tasks = vec![aside, dropped, back];
+        // A mark without its end (review of 468a123, §3.8): no empty date said.
+        let unended = Task { status: Status::Cancelled, set_aside: "visit".into(), ..task("unended", "Call the clinic") };
+        let tasks = vec![aside, dropped, back, unended];
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let everything = Filter::default();
@@ -1305,9 +1307,10 @@ mod tests {
         let rows = |done: bool| -> Vec<(String, String)> { list(&cx, "project", done, "", Fold::Open).groups.iter().flat_map(|g| g.rows.iter().map(|r| (r.title.clone(), r.set_aside.clone()))).collect() };
         let mut shown = rows(true);
         shown.sort();
-        assert_eq!(shown.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["Brought back", "Find the card"], "set aside, and the open one");
+        assert_eq!(shown.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["Brought back", "Call the clinic", "Find the card"], "set aside, and the open one");
         assert!(shown.iter().any(|(t, said)| t == "Find the card" && said.starts_with("Set aside") && said.contains("29 October")), "{shown:?}");
-        assert!(shown.iter().all(|(t, said)| t == "Find the card" || said.is_empty()));
+        assert!(shown.iter().any(|(t, said)| t == "Call the clinic" && said == "Set aside, its appointment over"), "{shown:?}");
+        assert!(shown.iter().all(|(t, said)| t == "Find the card" || t == "Call the clinic" || said.is_empty()));
         assert_eq!(rows(false).iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["Brought back"], "with the open ones alone, not listed");
     }
 

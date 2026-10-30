@@ -343,7 +343,7 @@ mod tests {
         let mut config = Config::default();
         let mut work = Account::imap("work", "me@work.example", "imap.work.example", 993, Security::Tls, None);
         work.signature = Some("Me, at work".into());
-        let mut home = Account::imap("home", "me@home.example", "imap.home.example", 993, Security::Tls, None);
+        let mut home = Account::imap("home", "me.home@example.org", "imap.example.org", 993, Security::Tls, None);
         home.priority = Priority::Above;
         // A calendar account sends nothing.
         let calendars = Account::dav("calendars", "me@dav.example", "dav.example", None, None);

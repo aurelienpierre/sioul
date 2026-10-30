@@ -1228,6 +1228,21 @@ fn the_agenda_gives_the_dates_asked_under_consent() {
     }
 }
 
+/// A closed project's invoice is kept from agents by its address too
+/// (review of part 8, later 1: `Consent::of` ties it to its project): `links`
+/// and `link` refuse it, as the agenda leaves its date out.
+#[test]
+fn a_closed_project_s_invoice_is_kept_by_its_address() {
+    let _home = home();
+    let mut server = server();
+    let shown = call(&mut server, "links", json!({ "uri": "sioul:invoice/2026-099" }));
+    assert!(shown["isError"] == true && text(&shown).contains("kept from agents"), "{shown}");
+    never_zeugma(&shown, "links");
+    let tied = call(&mut server, "link", json!({ "from": "sioul:task/receipt", "to": "sioul:invoice/2026-099" }));
+    assert!(tied["isError"] == true, "{tied}");
+    never_zeugma(&tied, "link");
+}
+
 #[test]
 fn things_outside_projects_can_be_closed() {
     let home = home();
@@ -2402,6 +2417,45 @@ fn legs_move_and_go_with_their_appointment() {
     let got = call(&mut server, "get_event", json!({ "event": "open-walk" }));
     assert_eq!(got["isError"], false, "{got}");
     assert!(got["structuredContent"]["leg_of"].is_null() && !got.to_string().contains(&zeugma_uid), "{got}");
+}
+
+/// The legs kept from agents, as every tool says them (review of 4d7bab4,
+/// later 13): counted by update_event only when the times change, the legs to
+/// come alone; said to follow at the window's pass under `legs: "stay"`;
+/// counted by get_event, which takes nothing of theirs into the time kept
+/// before; counted by delete_event, where they stay.
+#[test]
+fn legs_kept_from_agents_are_counted_by_every_tool() {
+    home();
+    let mut server = server();
+    let added = call(&mut server, "add_event", json!({ "title": "Optician", "start": "2099-11-26T14:00", "end": "2099-11-26T14:30" }));
+    let uri = added["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let optician = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
+    let uid = sioul_core::appointments::uid_in(&optician);
+    assert_eq!(call(&mut server, "add_event", json!({ "title": "Tram 3", "start": "2099-11-26T13:20", "end": "2099-11-26T13:40", "anchor": uri }))["isError"], false);
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    // The closed project's legs: one to come (12:30–12:45), one over (in 2020).
+    let leg = |name: &str, start: &str, end: &str, was: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{name}\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{start}\r\nDTEND:{end}\r\nSUMMARY:Zeugma {name}\r\nREFID:taxes\r\nRELATED-TO;RELTYPE=PARENT:{uid}\r\nX-SIOUL-ANCHOR;GAP=PT15M;WAS={was}:BEFORE\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+    let (coming, over) = (agenda.dir.join("zeugma-coming.ics"), agenda.dir.join("zeugma-over.ics"));
+    std::fs::write(&coming, leg("coming", "20991126T113000Z", "20991126T114500Z", "20991126T130000Z")).unwrap();
+    std::fs::write(&over, leg("over", "20201126T113000Z", "20201126T114500Z", "20201126T120000Z")).unwrap();
+    let got = call(&mut server, "get_event", json!({ "event": uri }));
+    assert_eq!(got["structuredContent"]["legs_kept_back"], 2, "{got}");
+    assert_eq!(got["structuredContent"]["before"], 40, "from the tram alone: {got}");
+    never_zeugma(&got, "get_event");
+    let renamed = call(&mut server, "update_event", json!({ "event": uri, "title": "Optician, new glasses" }));
+    assert_eq!(renamed["structuredContent"]["legs_kept_back"], 0, "a title alone moves no leg: {renamed}");
+    let moved = call(&mut server, "update_event", json!({ "event": uri, "start": "2099-11-26T15:00", "end": "2099-11-26T15:30", "legs": "stay" }));
+    assert_eq!(moved["structuredContent"]["legs_kept_back"], 1, "the one to come: {moved}");
+    assert!(text(&moved).contains("whatever “legs” says"), "{moved}");
+    never_zeugma(&moved, "update_event");
+    let gone = call(&mut server, "delete_event", json!({ "event": uri }));
+    assert_eq!(gone["structuredContent"]["legs_kept_back"], 1, "{gone}");
+    assert!(coming.exists() && text(&gone).contains("stays"), "{gone}");
+    never_zeugma(&gone, "delete_event");
+    for path in [coming, over] {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// Events and tasks read and changed one by one (25 October 2026): each

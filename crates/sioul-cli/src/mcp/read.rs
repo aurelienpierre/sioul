@@ -658,29 +658,15 @@ impl Desk {
         if let Some((s, first, count)) = dates {
             items.extend(self.dates_of(s, first, count, &occurrences));
         }
-        // An invoice is in its project, which no tie says (`records::invoices`): read once, when one is dated.
-        let invoices = std::cell::OnceCell::new();
-        let invoice_project = |number: &str| invoices.get_or_init(|| invoice::all_in(&invoice::folder())).iter().find(|i: &&invoice::Invoice| i.number == number).map(|i| i.project.clone()).unwrap_or_default();
         let allows = |item: &timeline::Item| match (item.kind, &item.source) {
             (timeline::Kind::Event, _) => self.consent.allows(&item.address) && (item.owner.is_empty() || self.allows(&item.owner)),
             (timeline::Kind::Block, timeline::Source::Calendar { uid, .. }) => self.consent.allows(&links::event_uri(uid)) && self.allows(&item.owner),
             (timeline::Kind::Step | timeline::Kind::Done, _) => self.allows(&item.owner),
             // The Dated arm: each date by its own thing's consent, as its tool decides (a
-            // task's, a letter's by its project, a paper's, a contract's, a budget line's
-            // by its budget's projects, an invoice's by its project); health's never (an
-            // errand's address is refused, its task counted once).
-            (timeline::Kind::Dated, timeline::Source::Dated { kind, key }) => {
-                !item.address.is_empty()
-                    && !kind.is_health()
-                    && match kind {
-                        sioul_core::dated::Kind::Invoice => {
-                            let mut projects = self.consent.projects_of(&item.address);
-                            projects.insert(invoice_project(key));
-                            self.consent.allows_projects(projects.iter().map(String::as_str))
-                        }
-                        _ => self.consent.allows(&item.address),
-                    }
-            }
+            // task's, a letter's, an invoice's by its project, a paper's, a contract's, a
+            // budget line's by its budget's projects: `Consent::of` ties each); health's never
+            // (an errand's address is refused, its task counted once).
+            (timeline::Kind::Dated, timeline::Source::Dated { kind, .. }) => !item.address.is_empty() && !kind.is_health() && self.consent.allows(&item.address),
             (timeline::Kind::Dated, _) => false,
             _ => true,
         };

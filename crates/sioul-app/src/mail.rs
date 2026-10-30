@@ -144,6 +144,27 @@ pub(crate) fn wait_to_remove(shared: &Shared, file: PathBuf) {
     }
 }
 
+/// The deletion of `file` waiting for its "Undo", on its own or among others.
+pub(crate) fn pending_removal(shared: &Shared, file: &Path) -> Option<Arc<Pending>> {
+    fn removes(work: &Work, file: &Path) -> bool {
+        match work {
+            Work::Remove { file: f, .. } | Work::RemoveCancelled { file: f, .. } => f == file,
+            Work::Many(works) => works.iter().any(|w| removes(w, file)),
+            _ => false,
+        }
+    }
+    shared.pending.lock().ok()?.iter().find(|p| !p.taken.load(Ordering::Relaxed) && removes(&p.work, file)).cloned()
+}
+
+/// The deletion of `file` waiting for its "Undo" done now, its Undo gone (a
+/// letter's task made again: Undo would give two tasks for one scan; review
+/// of ab7daa4, later 16). Whether one waited.
+pub(crate) fn remove_now(qt: &QtThread, shared: &Arc<Shared>, file: &Path) -> bool {
+    let Some(pending) = pending_removal(shared, file) else { return false };
+    finish(qt, shared, &pending);
+    true
+}
+
 pub(crate) fn hidden_pim(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<(PathBuf, i64)>) {
     fn add(work: &Work, files: &mut BTreeSet<PathBuf>, skipped: &mut BTreeSet<(PathBuf, i64)>) {
         match work {

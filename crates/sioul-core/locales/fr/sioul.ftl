@@ -1277,6 +1277,7 @@ task-part-of = Fait partie de : { $title }
 task-tight = À ce rythme, le plan finit après le { $date }. La faire plus tôt, la réduire ou la confier garderait la date.
 task-done-on = Faite le { $date }
 task-set-aside-on = Mise de côté le { $date }, son rendez-vous passé
+task-set-aside-over = Mise de côté, son rendez-vous passé
 task-unblocks = Libère { $n ->
         [one] une autre étape
        *[other] { $countf } autres étapes
@@ -6503,6 +6504,14 @@ legs-unconfirmed = { $leg } (horaire non vérifié)
 legs-deleted-with = { $n ->
     [one] Événement supprimé, avec son trajet à venir.
    *[other] Événement supprimé, avec ses { $count } trajets à venir.
+}
+legs-kept-back-follow = { $n ->
+    [one] Un trajet tenu à l’écart des agents n’est pas écrit ici : il suit l’événement au prochain passage de Sioul, quoi que dise « legs ».
+   *[other] { $Count } trajets tenus à l’écart des agents ne sont pas écrits ici : ils suivent l’événement au prochain passage de Sioul, quoi que dise « legs ».
+}
+legs-kept-back-stay = { $n ->
+    [one] Un trajet à venir tenu à l’écart des agents n’est pas supprimé ici : il reste, comme un événement à part.
+   *[other] { $Count } trajets à venir tenus à l’écart des agents ne sont pas supprimés ici : ils restent, comme des événements à part.
 }
 legs-kept-back = { $n ->
     [one] Un trajet tenu à l’écart des agents n’est pas écrit ici : Sioul le remet en place à son prochain passage.

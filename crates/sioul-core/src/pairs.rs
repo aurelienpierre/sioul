@@ -627,7 +627,13 @@ pub fn stand(task: &Task, text: &str, appointment: &Appointment, seen: Option<cr
     let day_of = |at: i64| jiff::Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
     let seen_day = seen.and_then(|s| day_of(s.start));
     let set_for = tie.at.and_then(day_of).or(tie.written);
+    // A link written before its instant was kept says a day in the zone it was written in,
+    // which is not known: the appointment's day in some zone holds (review of ab7daa4, later 13).
+    let some_zone = |set: Date| {
+        (-12..=14).any(|hours: i32| jiff::tz::Offset::from_hours(hours as i8).ok().is_some_and(|o| jiff::Timestamp::from_second(appointment.start).is_ok_and(|t| t.to_zoned(jiff::tz::TimeZone::fixed(o)).date() == set)))
+    };
     match set_for {
+        Some(set) if tie.at.is_none() && appointment.start > 0 => (set == day || some_zone(set), seen_day == Some(set), at),
         Some(set) => (set == day, seen_day == Some(set), at),
         None => (seen_day.is_none_or(|s| s == day), seen_day.is_some(), at),
     }
@@ -636,7 +642,8 @@ pub fn stand(task: &Task, text: &str, appointment: &Appointment, seen: Option<cr
 /// On a step or a task set aside by itself once its appointment was over
 /// (`closing`): `X-SIOUL-SET-ASIDE;END=<the appointment's end, UTC>:<its
 /// UID>`, and `X-SIOUL-SET-ASIDE;BROUGHT-BACK=TRUE:<its UID>` once brought
-/// back (`brought_back`), after which it is never set aside again. Only on a
+/// back (`brought_back`), after which that appointment never sets it aside
+/// again (another one it is tied to since may: review of 4d7bab4, later 10). Only on a
 /// CANCELLED one: a task the closing completes is done, never set aside. An
 /// older Sioul (679f96a) keeps the line as it is, parameters with it (its
 /// writers keep a line they do not know), and sees a dropped step.
@@ -656,10 +663,13 @@ pub const SET_ASIDE: &str = "X-SIOUL-SET-ASIDE";
 /// block (each a follow-up by the plan's rule), nor one made or made a step
 /// once the appointment was over (a follow-up, never a preparation forgotten),
 /// nor one changed since (its LAST-MODIFIED after the end), nor one with open
-/// steps of its own, nor one that carries a mark while open
+/// steps of its own, nor one that carries that appointment's mark while open
 /// (brought back, here or by an agent or another program). Only once the
-/// appointment's end has passed and, for a calendar that syncs, a pull begun
-/// after it went through whole (`moves::Pull`); never for an appointment that
+/// appointment's end has passed and, for a calendar or a list that syncs, a
+/// pull begun after it went through whole (`moves::Pull`: the appointment's
+/// calendar, the task's list and each step's, so that a step changed on
+/// another device after the end is read first: review of 4d7bab4, later 12);
+/// never for an appointment that
 /// ended before this device first ran this (`from`, kept in
 /// `moves::Seen::closing_from`: the past at the install is no preparation
 /// forgotten), that repeats, is cancelled, lasts the whole day, is a meeting
@@ -668,6 +678,11 @@ pub const SET_ASIDE: &str = "X-SIOUL-SET-ASIDE";
 /// the same bytes. In the same change, what an appointment moved later gives
 /// back (`given_back_by_moves`). The change, for one write.
 pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> Change {
+    closing_with(tasks, events, from, now, crate::moves::Pull::default())
+}
+
+/// `closing`, this device's own calendars and lists read as `local` (`moves::Pull::of_with`).
+pub fn closing_with(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned, local: crate::moves::Pull) -> Change {
     let zone = now.time_zone();
     let stamp = now.timestamp().as_second();
     let mut change = Change { written: given_back_by_moves(tasks, events, now), ..Change::default() };
@@ -680,15 +695,20 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
             continue;
         }
         let Some((start, end)) = agenda::first_times(&event_text, zone) else { continue };
-        let pull = crate::moves::Pull::of(path);
-        if end > stamp || end < from || (pull.syncs && pull.began.is_none_or(|began| began <= end)) {
+        // Read whole since the end: a calendar or a list that syncs, by a pull begun after it.
+        let pulled = |path: &Path| {
+            let pull = crate::moves::Pull::of_with(path, local);
+            !pull.syncs || pull.began.is_some_and(|began| began > end)
+        };
+        if end > stamp || end < from || !pulled(path) || !pulled(Path::new(&preparation.key)) {
             continue;
         }
         let Ok(at) = jiff::Timestamp::from_second(end).map(|t| t.to_zoned(zone.clone())) else { continue };
         let day = jiff::Timestamp::from_second(start).map_or(at.date(), |t| t.to_zoned(zone.clone()).date());
         let steps = tasks::steps_of(tasks, &preparation.uid);
-        // A mark on it while open: brought back, whatever reopened it (review of 4d7bab4, later 2).
-        if steps.is_empty() || !preparation.set_aside.is_empty() {
+        // That appointment's mark on it while open: brought back, whatever reopened it (review of
+        // 4d7bab4, later 2); one of another appointment holds nothing here (later 10).
+        if steps.is_empty() || preparation.set_aside == uid {
             continue;
         }
         let mark = format!("{SET_ASIDE};END={}:{uid}", crate::moves::utc(end));
@@ -707,6 +727,11 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
                 all_done &= fresh.status == Status::Completed;
                 continue;
             }
+            // Its list read whole since the end: a change made elsewhere after it comes first.
+            if !pulled(Path::new(&step.key)) {
+                open_left = true;
+                continue;
+            }
             // Made once the appointment was over (review of 4d7bab4, M-a), or made a step since
             // (`composed::demote` keeps CREATED; its place says when, later 9), or changed since
             // (opened again, moved to the top of the steps, renamed: review of 468a123, §3.1;
@@ -714,7 +739,7 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
             let made_after = fresh.created > end || fresh.placed_at().is_some_and(|placed| placed > end) || fresh.modified > end;
             // Its own open steps would stay laid under a step set aside (later 11).
             let has_open_steps = tasks::steps_of(tasks, &fresh.uid).iter().any(|s| s.status.is_open());
-            let follow_up = fresh.after || !fresh.start.is_empty() || own_date(&fresh).is_some_and(|d| d >= day) || fresh.links.iter().any(crate::blocks::is_block_link) || !fresh.set_aside.is_empty() || made_after || has_open_steps;
+            let follow_up = fresh.after || !fresh.start.is_empty() || own_date(&fresh).is_some_and(|d| d >= day) || fresh.links.iter().any(crate::blocks::is_block_link) || fresh.set_aside == uid || made_after || has_open_steps;
             if follow_up || step.read_only {
                 open_left = true;
                 continue;
@@ -771,13 +796,25 @@ fn pinned_beyond(task: &Task, events: &[EventRef], stamp: i64, zone: &TimeZone) 
 /// did to the appointment's own lines, never a stamp to come, and never one
 /// after the end that would keep it from being set aside again (review of
 /// 468a123, §3.1). Never on its deletion, its cancellation or its repeating: an appointment
-/// over, then deleted, happened.
+/// over, then deleted, happened. A step comes back only while its task is open, or is set
+/// aside with the same mark and comes back with it: never an open step under a task done
+/// since (§3.5). The task tied to the appointment comes back with its date following it,
+/// as the follow would write it (`followed`), not one pull late (§3.7). Its files are read
+/// only when the appointment, as read, ends after the mark's end and after now (§3.8).
 fn given_back_by_moves(tasks: &[Task], events: &[EventRef], now: &Zoned) -> Vec<(PathBuf, String)> {
     let zone = now.time_zone();
     let stamp = now.timestamp().as_second();
     let mut out = Vec::new();
     for task in tasks.iter().filter(|t| t.status == Status::Cancelled && !t.set_aside.is_empty() && !t.brought_back && !t.read_only) {
         let Some(event) = events.iter().find(|e| e.uid == task.set_aside && e.anchor.is_none() && !e.recurring && !e.cancelled) else { continue };
+        if event.end > 0 && (event.end <= task.set_aside_end || event.end <= stamp) {
+            continue;
+        }
+        if let Some(whole) = task.parent().and_then(|p| tasks.iter().find(|t| t.uid == p))
+            && !(whole.status.is_open() || (whole.status == Status::Cancelled && whole.set_aside == task.set_aside && !whole.brought_back))
+        {
+            continue;
+        }
         let Some(appointment) = crate::anchors::Followed::read(Path::new(&event.key), zone) else { continue };
         if appointment.cancelled || appointment.recurring {
             continue;
@@ -792,10 +829,37 @@ fn given_back_by_moves(tasks: &[Task], events: &[EventRef], now: &Zoned) -> Vec<
         // appointment's, and "moved later, then back" consistent (review of 468a123, §3.1).
         let changed = if fresh.set_aside_end > 0 { fresh.set_aside_end } else { fresh.modified };
         let Ok(at) = jiff::Timestamp::from_second(changed).map(|t| t.to_zoned(zone.clone())) else { continue };
-        let back = tasks::set_status(&text, Status::NeedsAction, zone, &at).ok().and_then(|t| tasks::remove_lines(&t, |l| crate::lines::name(l) == SET_ASIDE, &at).ok());
-        out.extend(back.map(|t| (PathBuf::from(&task.key), t)));
+        let Some(back) = tasks::set_status(&text, Status::NeedsAction, zone, &at).ok().and_then(|t| tasks::remove_lines(&t, |l| crate::lines::name(l) == SET_ASIDE, &at).ok()) else { continue };
+        // Tied to it: its date follows the appointment as it is now, in the same write.
+        let day = jiff::Timestamp::from_second(appointment.instants.start).ok().map(|t| t.to_zoned(zone.clone()).date());
+        let tied = Appointment { day, cancelled: false, recurring: false, start: appointment.instants.start };
+        let back = if appointment_of(&fresh).as_deref() == Some(task.set_aside.as_str()) { followed(task, &back, &tied, &at).unwrap_or(back) } else { back };
+        out.push((PathBuf::from(&task.key), back));
     }
     out
+}
+
+/// What bringing back `uid` writes (Bring back, and a set-aside row ticked
+/// open: review of 468a123, §3.8): it open again, never set aside again, and
+/// its task when that was set aside with it (the same mark, not brought
+/// back). Empty when it is not set aside so, or is read-only.
+pub fn bringing_back(all: &[Task], uid: &str, now: &Zoned) -> Vec<(PathBuf, String)> {
+    let back = |task: &Task| std::fs::read_to_string(&task.key).ok().and_then(|text| brought_back(&text, now)).map(|t| (PathBuf::from(&task.key), t));
+    let Some(task) = all.iter().find(|t| t.uid == uid).filter(|t| !t.read_only) else { return Vec::new() };
+    let mut written: Vec<(PathBuf, String)> = back(task).into_iter().collect();
+    if written.is_empty() {
+        return written;
+    }
+    if let Some(whole) = task.parent().and_then(|p| all.iter().find(|t| t.uid == p)).filter(|w| !w.read_only && w.set_aside == task.set_aside && !w.brought_back) {
+        written.extend(back(whole));
+    }
+    written
+}
+
+/// Whether a task is one an appointment over set aside by itself, not
+/// brought back: ticked open, it is brought back (`bringing_back`).
+pub fn is_set_aside(task: &Task) -> bool {
+    task.status == Status::Cancelled && !task.set_aside.is_empty() && !task.brought_back
 }
 
 /// A step or a task set aside by itself (`closing`) brought back: open
@@ -1946,6 +2010,10 @@ mod tests {
             let task = task_of(&desk, uid);
             assert_eq!((task.status, task.set_aside.as_str()), (Status::NeedsAction, ""), "{uid} given back");
         }
+        // Its date follows the appointment in the same write, not one pull late (review of 468a123, §3.7).
+        let prep = task_of(&desk, "prep");
+        assert!(prep.due.starts_with("2026-11-05"), "{}", prep.due);
+        assert_eq!(tie_of(&read(&desk.list.dir.join("prep.ics"))).and_then(|t| t.at), Some(1_793_883_600), "set for the appointment's start"); 
         let o = agenda::Occurrence { key: path.display().to_string(), uid: "visit".into(), summary: "Doctor".into(), start: 1_793_883_600, end: 1_793_885_400, ..agenda::Occurrence::default() };
         let tr = crate::i18n::Translator::new("en");
         assert!(appointment_view(&o, &[], &desk.tasks(), &[], None, &tr, &TimeZone::system()).set_aside.is_empty(), "off its card");
@@ -1955,6 +2023,169 @@ mod tests {
         closing(&desk.tasks(), &desk.refs(), closing_from(), &after).write().unwrap();
         assert_eq!((task_of(&desk, "early").status, task_of(&desk, "early").set_aside_end), (Status::Cancelled, 1_793_885_400));
         assert!(closing(&desk.tasks(), &desk.refs(), closing_from(), &after).is_empty());
+    }
+
+    /// A step set aside is never given back under its task done since (review
+    /// of 468a123, §3.5): the steps after the appointment ticked, the task
+    /// done, the appointment moved later: the step stays set aside.
+    #[test]
+    fn a_step_is_never_given_back_under_a_task_done() {
+        let desk = Desk::new("aside-under-done");
+        desk.task("prep", TaskEdit::default());
+        desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+        desk.task("later-on", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+        let path = desk.event("visit", "");
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let after = desk.list.dir.join("later-on.ics");
+        std::fs::write(&after, crate::anchors::step_side(&read(&after), true, &now()).unwrap()).unwrap();
+        let later: Zoned = "2026-10-29T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
+        assert_eq!((task_of(&desk, "early").status, task_of(&desk, "prep").status), (Status::Cancelled, Status::NeedsAction));
+        // The step after it ticked, the task done with it.
+        for uid in ["later-on", "prep"] {
+            let key = desk.list.dir.join(format!("{uid}.ics"));
+            std::fs::write(&key, tasks::set_status(&read(&key), Status::Completed, &TimeZone::system(), &later).unwrap()).unwrap();
+        }
+        let evening: Zoned = "2026-10-29T18:00:00+01:00[Europe/Paris]".parse().unwrap();
+        std::fs::write(&path, read(&path).replace("DTSTART:20261029T130000Z", "DTSTART:20261105T130000Z").replace("DTEND:20261029T133000Z", "DTEND:20261105T133000Z")).unwrap();
+        let back = closing(&desk.tasks(), &desk.refs(), closing_from(), &evening);
+        assert!(!back.written.iter().any(|(p, _)| p.ends_with("early.ics")), "never an open step under a task done: {:?}", back.written);
+    }
+
+    /// The give-back reads its files only when the appointment, as read,
+    /// ends later than the mark's end (review of 468a123, §3.8): one moved in
+    /// its file but not read again gives back at the next read.
+    #[test]
+    fn a_give_back_waits_for_the_appointment_read_again() {
+        let desk = Desk::new("aside-read-again");
+        desk.task("prep", TaskEdit::default());
+        desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+        let path = desk.event("visit", "");
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let later: Zoned = "2026-10-29T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
+        let read_before = desk.refs();
+        std::fs::write(&path, read(&path).replace("DTSTART:20261029T130000Z", "DTSTART:20261105T130000Z").replace("DTEND:20261029T133000Z", "DTEND:20261105T133000Z")).unwrap();
+        let evening: Zoned = "2026-10-29T18:00:00+01:00[Europe/Paris]".parse().unwrap();
+        assert!(closing(&desk.tasks(), &read_before, closing_from(), &evening).is_empty(), "as read, not moved: no file read, nothing");
+        assert!(!closing(&desk.tasks(), &desk.refs(), closing_from(), &evening).is_empty(), "read again: given back");
+    }
+
+    /// Bringing back a step reopens its task set aside with it (the same
+    /// mark), never one set aside by another, nor one that is open; a task
+    /// not set aside brings nothing (review of 468a123, §3.8: a set-aside row
+    /// ticked open goes this way).
+    #[test]
+    fn bringing_back_reopens_its_task_set_aside_with_it() {
+        let desk = Desk::new("aside-bring-both");
+        desk.task("prep", TaskEdit::default());
+        desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+        let path = desk.event("visit", "");
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let later: Zoned = "2026-10-29T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
+        assert!(is_set_aside(&task_of(&desk, "early")) && is_set_aside(&task_of(&desk, "prep")));
+        let written: Vec<PathBuf> = bringing_back(&desk.tasks(), "early", &later).into_iter().map(|(p, _)| p).collect();
+        assert_eq!(written, [desk.list.dir.join("early.ics"), desk.list.dir.join("prep.ics")], "the step and its task");
+        assert!(bringing_back(&desk.tasks(), "nowhere", &later).is_empty());
+        let mut all = desk.tasks();
+        all.iter_mut().filter(|t| t.uid == "prep").for_each(|t| t.set_aside = "another".into());
+        assert_eq!(bringing_back(&all, "early", &later).len(), 1, "a task set aside by another appointment stays");
+    }
+
+    /// A link written before its instant was kept (no AT) stands by the day it
+    /// wrote, in a zone not known: the appointment's day in some zone is
+    /// consistent, never followed back a day (review of ab7daa4, later 13).
+    #[test]
+    fn a_link_without_its_instant_holds_across_zones() {
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        // 23:30 in Paris on 29 October: 30 October already from UTC+2 on.
+        let start = "2026-10-29T23:30:00+01:00[Europe/Paris]".parse::<Zoned>().unwrap().timestamp().as_second();
+        let appointment = Appointment { day: Some(jiff::civil::date(2026, 10, 29)), cancelled: false, recurring: false, start };
+        let task = |day: Date| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:pack\r\nDTSTAMP:20261020T100000Z\r\nSUMMARY:Pack\r\nDUE;VALUE=DATE:{}\r\n{}\r\nEND:VTODO\r\nEND:VCALENDAR\r\n", day.strftime("%Y%m%d"), appointment_line("late-visit", Some(day), None, None));
+        let written = task(jiff::civil::date(2026, 10, 30));
+        let pack = tasks::task_of_text(&written, &zone).unwrap();
+        assert!(stand(&pack, &written, &appointment, None, &zone).0, "its day where it was written");
+        let far = task(jiff::civil::date(2026, 11, 2));
+        assert!(!stand(&tasks::task_of_text(&far, &zone).unwrap(), &far, &appointment, None, &zone).0, "a day no zone gives: it follows");
+    }
+
+    /// Brought back for one appointment, a step tied again to another is set
+    /// aside once that one is over (review of 4d7bab4, later 10): the mark
+    /// holds for the appointment it names.
+    #[test]
+    fn brought_back_holds_for_that_appointment_alone() {
+        let desk = Desk::new("aside-other-appointment");
+        desk.task("prep", TaskEdit::default());
+        desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+        let first = desk.event("visit", "");
+        attach(&desk.tasks(), "prep", &file(&first, &read(&first), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let later: Zoned = "2026-10-29T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
+        for (path, text) in bringing_back(&desk.tasks(), "early", &later) {
+            std::fs::write(path, text).unwrap();
+        }
+        assert!(task_of(&desk, "early").brought_back && task_of(&desk, "prep").brought_back);
+        assert!(closing(&desk.tasks(), &desk.refs(), closing_from(), &later).is_empty(), "that appointment never sets it aside again");
+        // Tied again to another appointment, on 2 November, once it is over.
+        let second = desk.event("second", "");
+        std::fs::write(&second, read(&second).replace("20261029T13", "20261102T13")).unwrap();
+        attach(&desk.tasks(), "prep", &file(&second, &read(&second), true), &desk.refs(), &any, &later).unwrap().write().unwrap();
+        let over: Zoned = "2026-11-02T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        closing(&desk.tasks(), &desk.refs(), closing_from(), &over).write().unwrap();
+        let early = task_of(&desk, "early");
+        assert_eq!((early.status, early.set_aside.as_str()), (Status::Cancelled, "second"), "the other one sets it aside");
+    }
+
+    /// A list of this device's own that the sharing carries reads as the
+    /// sharing's last exchange gone through whole (review of ab7daa4, later
+    /// 14): begun before the end, nothing closes yet; after, it closes; not
+    /// carried, at once.
+    #[test]
+    fn a_local_list_the_sharing_carries_waits_for_an_exchange() {
+        let desk = Desk::new("aside-local-carried");
+        desk.task("prep", TaskEdit::default());
+        desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+        let path = desk.event("visit", "");
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let later: Zoned = "2026-10-30T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        let carried = |began: i64| crate::moves::Pull { syncs: true, began: Some(began) };
+        assert!(closing_with(&desk.tasks(), &desk.refs(), closing_from(), &later, carried(1_793_280_000)).is_empty(), "the last exchange began before the end");
+        assert!(!closing_with(&desk.tasks(), &desk.refs(), closing_from(), &later, carried(1_793_282_400)).is_empty(), "one begun after it");
+        assert!(!closing(&desk.tasks(), &desk.refs(), closing_from(), &later).is_empty(), "not carried: at once");
+    }
+
+    /// A task list that syncs, its last pull begun before the end: a step
+    /// changed on another device after it may not be here yet, so nothing is
+    /// set aside until a pull begun after the end went through (review of
+    /// 4d7bab4, later 12).
+    #[test]
+    fn a_list_that_syncs_is_read_whole_first() {
+        let account = "pairs-list-pull";
+        let dir = vdir::prepare(Kind::Calendars, account, "tasks", "Synced tasks", None).unwrap();
+        let state = vdir::state_path(account, Kind::Calendars, "tasks");
+        let mut known = vdir::State::load(&state);
+        known.url = "https://dav.example.org/calendars/tasks/".into();
+        known.components = vec!["VTODO".into()];
+        // 29 October, 13:20 UTC: begun before the appointment's end (13:30).
+        known.pulled = Some(1_793_280_000);
+        known.save(&state).unwrap();
+        let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.dir == dir).unwrap();
+        let zone = TimeZone::system();
+        for (uid, parent) in [("prep", ""), ("early", "prep")] {
+            vdir::write_item(&dir.join(format!("{uid}.ics")), &tasks::new_task(&TaskEdit { title: uid.into(), parent: parent.into(), ..TaskEdit::default() }, uid, &zone, &now()).unwrap()).unwrap();
+        }
+        let all = || list.items().into_iter().filter_map(|p| tasks::read(&p, &list, &zone)).collect::<Vec<_>>();
+        let desk = Desk::new("aside-list-pull");
+        let path = desk.event("visit", "");
+        attach(&all(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let later: Zoned = "2026-10-30T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        assert!(closing(&all(), &desk.refs(), closing_from(), &later).is_empty(), "its list not read whole since the end");
+        // 14:00 UTC: a pull begun after the end went through.
+        known.pulled = Some(1_793_282_400);
+        known.save(&state).unwrap();
+        assert!(!closing(&all(), &desk.refs(), closing_from(), &later).is_empty(), "read whole since: set aside");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The way back (review of ab7daa4, M1): what an appointment set aside is

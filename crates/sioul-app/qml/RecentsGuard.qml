@@ -8,7 +8,7 @@
 // and earlier, whose only way (FLAG_SECURE) would stop your own screenshots
 // too, nor on a computer. main.qml says when a health card is open: the
 // Health page shown, a dose's question (DoseTaken.qml), a prescription's
-// date in the card host.
+// date in the card host, an errand's task card there (`isErrand`).
 
 import QtQml
 

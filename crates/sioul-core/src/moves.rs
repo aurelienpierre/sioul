@@ -137,12 +137,14 @@ fn doubt_key(uid: &str, instant: i64) -> String {
     format!("{uid}@{instant}")
 }
 
-/// The appointment a doubt's key names (an older key, the UID alone, names it whole).
+/// The appointment a doubt's key names: the UID before its instant ("uid@1793232000"); an
+/// older key, the UID alone (ab7daa4 wrote such), names it whole, an '@' in it or not
+/// (review of 4d7bab4, later 15).
 fn appointment_of(key: &str) -> &str {
-    key.rsplit_once('@').map_or(key, |(uid, _)| uid)
-}
-
-impl Seen {
+    match key.rsplit_once('@') {
+        Some((uid, instant)) if !instant.is_empty() && instant.bytes().all(|b| b.is_ascii_digit() || b == b'-') => uid,
+        _ => key,
+    }
 }
 
 /// What to do with one follower.
@@ -165,12 +167,26 @@ pub struct Pull {
 }
 
 impl Pull {
-    /// The pull of the calendar holding `path` (`vdir::State::pulled`).
+    /// The pull of the calendar holding `path` (`vdir::State::pulled`); a
+    /// calendar of this device's own never syncs (`of_with` for the window's).
     pub fn of(path: &Path) -> Pull {
+        Pull::of_with(path, Pull::default())
+    }
+
+    /// The pull of the calendar holding `path`; one of this device's own
+    /// (`vdir::LOCAL`) reads as `local`: the window gives the sharing's last
+    /// exchange that went through whole while the sharing carries such
+    /// calendars (part "lists", `share::local_pull`), so that a leg whose file
+    /// came before its appointment's waits for it rather than moving back
+    /// (review of ab7daa4, later 14); else it follows at once.
+    pub fn of_with(path: &Path, local: Pull) -> Pull {
         let Some(dir) = path.parent() else { return Pull::default() };
         let Some(calendar) = crate::vdir::collections(crate::vdir::Kind::Calendars).into_iter().find(|c| c.dir == dir) else { return Pull::default() };
+        if calendar.account == crate::vdir::LOCAL {
+            return local;
+        }
         let state = crate::vdir::State::load(&calendar.state_path());
-        Pull { syncs: calendar.account != crate::vdir::LOCAL && !state.url.is_empty(), began: state.pulled }
+        Pull { syncs: !state.url.is_empty(), began: state.pulled }
     }
 }
 
@@ -210,6 +226,11 @@ pub fn read_utc(value: &str) -> Option<i64> {
 /// or needed nothing, its doubt kept while one waits, and pruned to the
 /// appointments something here still follows. The files written.
 pub fn upkeep(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventRef], seen: &mut Seen, now: &jiff::Zoned) -> Vec<PathBuf> {
+    upkeep_with(tasks, events, seen, now, Pull::default())
+}
+
+/// `upkeep`, this device's own calendars read as `local` (`Pull::of_with`).
+pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventRef], seen: &mut Seen, now: &jiff::Zoned, local: Pull) -> Vec<PathBuf> {
     let zone = now.time_zone();
     let stamp = now.timestamp().as_second();
     let mut followers: BTreeMap<String, (Vec<&crate::tasks::Task>, Vec<&crate::agenda::EventRef>)> = BTreeMap::new();
@@ -230,7 +251,7 @@ pub fn upkeep(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventRef], 
         let Some(reference) = events.iter().find(|e| e.uid == *uid && e.anchor.is_none()) else { continue };
         let path = Path::new(&reference.key);
         let Some(appointment) = crate::anchors::Followed::read(path, zone) else { continue };
-        let pull = Pull::of(path);
+        let pull = Pull::of_with(path, local);
         let at = seen.at.get(uid).copied();
         let (mut settled, mut waits) = (true, Vec::new());
         let day = jiff::Timestamp::from_second(appointment.instants.start).ok().map(|t| t.to_zoned(zone.clone()).date());
@@ -271,6 +292,15 @@ pub fn upkeep(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventRef], 
 
 #[cfg(test)]
 mod tests {
+    /// A doubt's key names its appointment: the UID before its instant; an older key, the UID
+    /// alone, whole, an '@' in it or not (review of 4d7bab4, later 15).
+    #[test]
+    fn a_doubt_key_names_its_appointment() {
+        assert_eq!(super::appointment_of(&super::doubt_key("visit@example.org", 1_793_232_000)), "visit@example.org");
+        assert_eq!(super::appointment_of("visit@example.org"), "visit@example.org", "an older key, the UID alone");
+        assert_eq!(super::appointment_of("visit"), "visit");
+    }
+
     use super::*;
 
     #[test]

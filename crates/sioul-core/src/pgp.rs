@@ -2559,7 +2559,7 @@ mod tests {
         std::fs::create_dir_all(&others).unwrap();
         let file = |cert: &Cert, end: &str| others.join(format!("{}.{end}", cert.fingerprint().to_hex()));
         let bob = open_key(&["Bob <bob@example.org>"], std::time::Duration::ZERO);
-        let carol = open_key(&["Carol <carol@work.example>", "Carol <carol@home.example>"], std::time::Duration::ZERO);
+        let carol = open_key(&["Carol <carol@work.example>", "Carol <carol.home@example.org>"], std::time::Duration::ZERO);
         for cert in [&bob, &carol] {
             std::fs::write(file(cert, "asc"), public(cert)).unwrap();
         }
@@ -2581,20 +2581,20 @@ mod tests {
         assert_eq!(keys.for_address("bob@example.org").map(Cert::fingerprint), Some(bob.fingerprint()));
         assert!(keys.for_address("jane@example.org").is_none(), "neither Bob's nor Dave's");
         assert!(keys.for_address("dave@example.org").is_none());
-        assert!(keys.for_address("carol@work.example").is_none() && keys.for_address("carol@home.example").is_none());
+        assert!(keys.for_address("carol@work.example").is_none() && keys.for_address("carol.home@example.org").is_none());
         // Carol writes from work, then from home.
         assert!(learn_autocrypt_at(&root, &header_of(&carol.clone().strip_secret_key_material(), "carol@work.example"), "carol@work.example").is_some());
         let keys = Keys::load_at(&root);
         assert_eq!(keys.for_address("carol@work.example").map(Cert::fingerprint), Some(carol.fingerprint()));
-        assert!(keys.for_address("carol@home.example").is_none());
-        assert!(learn_autocrypt_at(&root, &header_of(&carol.clone().strip_secret_key_material(), "carol@home.example"), "carol@home.example").is_some());
+        assert!(keys.for_address("carol.home@example.org").is_none());
+        assert!(learn_autocrypt_at(&root, &header_of(&carol.clone().strip_secret_key_material(), "carol.home@example.org"), "carol.home@example.org").is_some());
         let keys = Keys::load_at(&root);
-        assert!(keys.for_address("carol@work.example").is_some() && keys.for_address("carol@home.example").is_some(), "learned for both: both");
+        assert!(keys.for_address("carol@work.example").is_some() && keys.for_address("carol.home@example.org").is_some(), "learned for both: both");
         // Imported from a file you chose: every address bound to it.
-        let erin = open_key(&["Erin <erin@work.example>", "Erin <erin@home.example>"], std::time::Duration::ZERO);
+        let erin = open_key(&["Erin <erin@work.example>", "Erin <erin.home@example.org>"], std::time::Duration::ZERO);
         import_at(&root, &public(&erin)).unwrap();
         let keys = Keys::load_at(&root);
-        assert!(keys.for_address("erin@work.example").is_some() && keys.for_address("erin@home.example").is_some());
+        assert!(keys.for_address("erin@work.example").is_some() && keys.for_address("erin.home@example.org").is_some());
         let _ = std::fs::remove_dir_all(&root);
     }
 

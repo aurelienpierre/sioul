@@ -722,13 +722,19 @@ pub struct Listed {
 /// in the order given, each once, with its time that day. Health's none.
 pub fn calendar_days(occurrences: &[crate::agenda::Occurrence], from: Date, count: i64, today: Date, zone: &TimeZone, tr: &Translator) -> Vec<CalendarDay> {
     let items = crate::agenda::items(occurrences, zone, &|_| false);
+    // Each occurrence by its file and its start, found once (review of part 8, later 4): a year
+    // of a large calendar is never searched whole for each of its times.
+    let mut found: std::collections::HashMap<(&str, i64), usize> = std::collections::HashMap::new();
+    for (index, o) in occurrences.iter().enumerate() {
+        found.entry((o.key.as_str(), o.start)).or_insert(index);
+    }
     days(&items, from, count, today, zone, tr)
         .into_iter()
         .map(|day| {
             let mut events: Vec<Listed> = Vec::new();
             for placed in day.head.iter().chain(&day.timed) {
                 let Source::Calendar { key, start, .. } = &placed.item.source else { continue };
-                let Some(index) = occurrences.iter().position(|o| o.key == *key && o.start == *start) else { continue };
+                let Some(&index) = found.get(&(key.as_str(), *start)) else { continue };
                 if !events.iter().any(|e| e.index == index) {
                     events.push(Listed { index, when: placed.when.clone(), all_day: placed.all_day });
                 }
@@ -1655,6 +1661,19 @@ mod tests {
             ("2026-10-07".to_string(), "Wednesday 7 October".to_string(), vec![event("trip", "Until 09:00", false), event("holiday", "All day", true)]),
             ("2026-10-08".to_string(), "Thursday 8 October".to_string(), vec![]),
         ]);
+    }
+
+    /// A repeating event's times, one file, are each listed on their own day,
+    /// each by its own place among the occurrences (review of part 8, later 4:
+    /// found by file and start).
+    #[test]
+    fn a_repeating_event_s_times_are_kept_apart() {
+        let zone = paris();
+        let tr = Translator::new("en");
+        let occurrences = vec![occurrence("choir", "2026-10-05T19:00", "2026-10-05T20:00"), occurrence("choir", "2026-10-07T19:00", "2026-10-07T20:00")];
+        let days = calendar_days(&occurrences, day("2026-10-05"), 3, day("2026-10-05"), &zone, &tr);
+        let listed: Vec<Vec<usize>> = days.iter().map(|d| d.events.iter().map(|e| e.index).collect()).collect();
+        assert_eq!(listed, [vec![0], vec![], vec![1]]);
     }
 
     /// Each event says what its writer lets change it: nothing in a calendar
