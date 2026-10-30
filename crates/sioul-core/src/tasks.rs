@@ -1402,10 +1402,15 @@ pub fn lists() -> Vec<Collection> {
 /// One task from its file; None when the file holds an event.
 pub fn read(path: &Path, list: &Collection, zone: &TimeZone) -> Option<Task> {
     let text = std::fs::read_to_string(path).ok()?;
+    of_file(path, &text, list, zone)
+}
+
+/// One task from its file's text, read already (`read`); None for an event.
+pub fn of_file(path: &Path, text: &str, list: &Collection, zone: &TimeZone) -> Option<Task> {
     if !text.to_ascii_uppercase().contains("BEGIN:VTODO") {
         return None;
     }
-    let mut task = task_of_text(&text, zone)?;
+    let mut task = task_of_text(text, zone)?;
     task.key = path.display().to_string();
     task.list = list.name.clone();
     task.list_id = format!("{}/{}", list.account, list.id);

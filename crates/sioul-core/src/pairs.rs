@@ -729,7 +729,7 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
         }
         // With a time block not begun, it stays open: that block is never taken out for it
         // (review of 4d7bab4, later 4); one over pins nothing (review of 468a123, §3.2).
-        let pinned = events.iter().any(|e| e.task == preparation.uid && e.anchor.is_none() && !e.cancelled && e.start > stamp);
+        let pinned = events.iter().any(|e| e.task == preparation.uid && e.anchor.is_none() && !e.cancelled && e.start > stamp) || pinned_beyond(preparation, events, stamp, zone);
         if !open_left
             && !pinned
             && let Ok(text) = std::fs::read_to_string(&preparation.key)
@@ -740,6 +740,24 @@ pub fn closing(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned) -> C
         }
     }
     change
+}
+
+/// Whether a task's time block lies beyond the events read (`events`, the
+/// coming days alone): its block links' own files, named by their UID in a
+/// calendar (`blocks` writes `<uid>.ics`), one not begun keeping it pinned
+/// (review of eb6f660, later 4: a block three months ahead).
+fn pinned_beyond(task: &Task, events: &[EventRef], stamp: i64, zone: &TimeZone) -> bool {
+    let uids: Vec<String> = task.links.iter().filter(|l| crate::blocks::is_block_link(l)).map(|l| l.uri.trim_start_matches("uid:").to_string()).filter(|u| !u.is_empty() && !events.iter().any(|e| e.uid == *u)).collect();
+    if uids.is_empty() {
+        return false;
+    }
+    let calendars = crate::vdir::collections(crate::vdir::Kind::Calendars);
+    uids.iter().any(|uid| {
+        calendars.iter().filter_map(|c| std::fs::read_to_string(c.dir.join(format!("{uid}.ics"))).ok()).any(|text| {
+            let block = agenda::event_ref(&text, "", zone);
+            block.is_some_and(|b| b.task == task.uid && b.anchor.is_none() && !b.cancelled) && agenda::first_times(&text, zone).is_some_and(|(start, _)| start > stamp)
+        })
+    })
 }
 
 /// What an appointment moved later gives back (review of 4d7bab4, M-b): each
@@ -1804,6 +1822,25 @@ mod tests {
             let prep = if stays { Status::NeedsAction } else { Status::Cancelled };
             assert_eq!((task_of(&desk, "early").status, task_of(&desk, "prep").status), (Status::Cancelled, prep), "{name}");
         }
+    }
+
+    /// A preparation pinned to a block beyond the events read (three months
+    /// ahead, in the calendar for blocks) stays open: the block's own file is
+    /// read (review of eb6f660, later 4).
+    #[test]
+    fn a_block_months_ahead_keeps_its_preparation_open() {
+        let desk = Desk::new("aside-pinned-far");
+        let planned = vdir::create(Kind::Calendars, vdir::LOCAL, "aside-pinned-far blocks", None, &["VEVENT"]).unwrap();
+        desk.task("prep", TaskEdit { links: vec![crate::blocks::task_link("far-block")], ..TaskEdit::default() });
+        desk.task("early", TaskEdit { parent: "prep".into(), ..TaskEdit::default() });
+        let path = desk.event("visit", "");
+        std::fs::write(planned.dir.join("far-block.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:far-block\r\nDTSTAMP:20261020T100000Z\r\nDTSTART:20270129T090000Z\r\nDURATION:PT30M\r\nSUMMARY:prep\r\nX-SIOUL-TASK:prep\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
+        let later: Zoned = "2026-10-30T16:00:00+01:00[Europe/Paris]".parse().unwrap();
+        assert!(!desk.refs().iter().any(|e| e.uid == "far-block"), "not among the events read");
+        closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
+        assert_eq!((task_of(&desk, "early").status, task_of(&desk, "prep").status), (Status::Cancelled, Status::NeedsAction));
+        let _ = std::fs::remove_dir_all(&planned.dir);
     }
 
     /// Done is never "set aside" (review of 4d7bab4, later 1): a task the

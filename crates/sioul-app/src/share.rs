@@ -1522,6 +1522,8 @@ const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
 /// of e3505f7: the close's exchange handed nothing).
 fn exchanged(outcome: &share::Outcome) {
     crate::devices::exported(outcome);
+    // What the others say of legs that are a step's time, kept for the window and `sioul mcp` (part 7).
+    let _ = legs_as_steps();
     if crate::alarms::health_written(outcome) {
         crate::alarms::schedule();
     }
@@ -1631,12 +1633,22 @@ pub(crate) fn vault() -> Option<(String, Option<(PathBuf, [u8; 32])>)> {
     Some((here.id, vault))
 }
 
-/// Whether a leg may be a step's time (the unified agenda's part 7): no
-/// sharing set up, no other Sioul is known here; else every other device
-/// that counts says its Sioul keeps such a leg (`share::legs_as_steps`); a
-/// sharing whose folder is not here yet says no. Said for `sioul mcp`
-/// (`anchors::say_steps_offered`).
+#[cfg(test)]
+thread_local! {
+    /// The reads of the sharing's devices for the gate (`legs_as_steps`), on this thread.
+    pub(crate) static LEGS_READS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether a leg may be a step's time (the unified agenda's part 7), read
+/// from the sharing's folder: every other device that counts says its Sioul
+/// keeps such a leg (`share::legs_as_steps`); no sharing set up, no other
+/// Sioul is known here; a sharing whose folder is not here yet says no. Run
+/// by the sharing's own job, after each exchange (`exchanged`), never on the
+/// window's thread: its answer kept for the window and `sioul mcp`
+/// (`anchors::say_steps_offered`), which read it with `legs_offered`.
 pub(crate) fn legs_as_steps() -> bool {
+    #[cfg(test)]
+    LEGS_READS.with(|n| n.set(n.get() + 1));
     let offered = match vault() {
         None => true,
         Some((_, None)) => false,
@@ -1644,6 +1656,17 @@ pub(crate) fn legs_as_steps() -> bool {
     };
     sioul_core::anchors::say_steps_offered(offered);
     offered
+}
+
+/// `legs_as_steps` as the sharing's job last found it (a small file of this
+/// device's), never the folder; with no sharing set up, offered, and said so
+/// for `sioul mcp` (its job never runs then).
+pub(crate) fn legs_offered() -> bool {
+    if share::Here::load(&state_dir()).id.is_empty() {
+        sioul_core::anchors::say_steps_offered(true);
+        return true;
+    }
+    sioul_core::anchors::steps_offered()
 }
 
 /// Whether this device shares a part (`share::PARTS`), as chosen here.

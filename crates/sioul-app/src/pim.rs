@@ -861,7 +861,8 @@ fn leg_made_line(side: sioul_core::anchors::Side, leg: &str, appointment: &str, 
 /// Returns what went wrong, else "".
 pub(crate) fn save_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, side: &str, timetable: bool, step: &str) -> String {
     let made = || -> Result<(), String> {
-        let offered = step.is_empty() || crate::share::legs_as_steps();
+        // As the sharing's job last found it, never the folder here (review of eb6f660, later 3).
+        let offered = step.is_empty() || crate::share::legs_offered();
         let (change, line) = leg_change(shared, key, edit, side, timetable, step, offered)?;
         let files = change.write()?;
         crate::agents::say(qt, shared, sioul_core::agentwrites::Said { at: 0, line, files });
@@ -927,7 +928,7 @@ pub(crate) fn leg_steps(shared: &Shared, key: &str) -> String {
     let zone = TimeZone::system();
     let uid = ours(key).and_then(|p| std::fs::read_to_string(&p).ok().and_then(|t| agenda::event_ref(&t, key, &zone))).map(|r| r.uid).unwrap_or_default();
     let steps: Vec<serde_json::Value> = leg_steps_of(shared, &uid).iter().map(|t| serde_json::json!({ "uid": t.uid, "title": t.title })).collect();
-    let offered = !steps.is_empty() && crate::share::legs_as_steps();
+    let offered = !steps.is_empty() && crate::share::legs_offered();
     let why = if steps.is_empty() || offered { String::new() } else { tr().text("leg-step-not-yet", None) };
     json(&serde_json::json!({ "offered": offered, "steps": if offered { steps } else { Vec::new() }, "why": why }))
 }
@@ -1334,6 +1335,32 @@ mod tests {
         assert!(elsewhere.starts_with(&say("leg-made-after", &[("leg", "Walk home".into()), ("appointment", "Doctor".into())])));
         assert!(elsewhere.ends_with(&say("leg-elsewhere", &[("calendar", label.clone())])), "said where: {elsewhere}");
         assert!(leg_made_line(sioul_core::anchors::Side::Before, "Bus 24", "Doctor", None, &other).contains(&label));
+    }
+
+    /// What the leg form offers is read from what the sharing's job last
+    /// found, never from the sharing's folder on the window's thread (review
+    /// of eb6f660, later 3).
+    #[test]
+    fn the_leg_form_reads_the_gate_s_answer_kept() {
+        let (_calendar, doctor, _bus) = doctor_and_bus("legs-kept-answer");
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "legs-kept-answer tasks", None, &["VTODO"]).unwrap();
+        let (zone, now) = (TimeZone::system(), Zoned::now());
+        let tie = sioul_core::tasks::Link { uri: "sioul:event/legs-kept-answer-doctor".into(), label: String::new(), rel: sioul_core::pairs::APPOINTMENT.into() };
+        vdir::write_item(&list.dir.join("legs-kept-answer-prep.ics"), &sioul_core::tasks::new_task(&sioul_core::tasks::TaskEdit { title: "Going".into(), links: vec![tie], ..Default::default() }, "legs-kept-answer-prep", &zone, &now).unwrap()).unwrap();
+        vdir::write_item(&list.dir.join("legs-kept-answer-walk.ics"), &sioul_core::tasks::new_task(&sioul_core::tasks::TaskEdit { title: "Walk".into(), parent: "legs-kept-answer-prep".into(), ..Default::default() }, "legs-kept-answer-walk", &zone, &now).unwrap()).unwrap();
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
+        let reads = || crate::share::LEGS_READS.with(std::cell::Cell::get);
+        // The answer the sharing's job kept: yes (put back as it was after).
+        let kept = sioul_core::anchors::steps_offered();
+        sioul_core::anchors::say_steps_offered(true);
+        let before = reads();
+        let offer: serde_json::Value = serde_json::from_str(&leg_steps(&shared, &doctor.display().to_string())).unwrap();
+        let after = reads();
+        sioul_core::anchors::say_steps_offered(kept);
+        assert_eq!(after, before, "no read of the folder");
+        assert_eq!(offer["offered"], true, "the kept answer: offered ({offer})");
+        let _ = std::fs::remove_dir_all(&list.dir);
     }
 
     /// A new leg made a step's time (part 7): the step chosen pinned to it in

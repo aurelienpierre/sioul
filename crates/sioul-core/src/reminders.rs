@@ -386,7 +386,7 @@ fn leaving(event: &Occurrence, events: &[Occurrence], tasks: &[Task], tr: &Trans
     let reference = crate::agenda::EventRef { key: event.key.clone(), uid: event.uid.clone(), ..crate::agenda::EventRef::default() };
     let preparation = crate::pairs::preparation_of(tasks, &reference).filter(|t| t.status.is_open());
     let steps = preparation.map(|p| crate::tasks::steps_of(tasks, &p.uid).into_iter().filter(|s| s.status.is_open()).collect::<Vec<_>>()).unwrap_or_default();
-    let open: Vec<String> = preparation.into_iter().chain(steps).flat_map(|t| crate::checklist::items(&t.notes)).filter(|i| i.mark == crate::checklist::Mark::Open).map(|i| i.text).collect();
+    let open: Vec<String> = preparation.into_iter().chain(steps).flat_map(|t| crate::checklist::items(&t.notes)).filter(|i| i.mark == crate::checklist::Mark::Open && crate::checklist::is_bring(&i.group)).map(|i| i.text).collect();
     if leg.is_none() && open.is_empty() {
         return None;
     }
@@ -405,6 +405,42 @@ fn leaving(event: &Occurrence, events: &[Occurrence], tasks: &[Task], tr: &Trans
         lines.push(tr.text("reminder-leave-bring", Some(&args)));
     }
     Some(lines)
+}
+
+/// What `leaving` needs of the tasks, from their files' text: the tasks that
+/// prepare one of `events` (their tie names it) and their steps, made tasks
+/// by `parse`, each once; every other file left as it is, never parsed.
+fn outing_tasks(files: &[(PathBuf, crate::vdir::Collection, String)], events: &[Occurrence], parse: &dyn Fn(&Path, &crate::vdir::Collection, &str) -> Option<Task>) -> Vec<Task> {
+    let ties: Vec<String> = events.iter().filter(|e| e.anchor.is_none()).map(|e| format!("sioul:event/{}", e.uid)).collect();
+    if ties.is_empty() {
+        return Vec::new();
+    }
+    // Its lines unfolded (a folded line can cut the tie's name or a UID), cheaply: the folds
+    // taken out of the text as it is, never its lines made apart.
+    let flat = |text: &str| -> String { if text.contains("\n ") || text.contains("\n\t") { text.replace("\r\n ", "").replace("\r\n\t", "").replace("\n ", "").replace("\n\t", "") } else { text.to_string() } };
+    let mut out: Vec<Task> = Vec::new();
+    for (path, list, text) in files {
+        if {
+            let flat = flat(text);
+            flat.contains(crate::pairs::APPOINTMENT) && ties.iter().any(|t| flat.contains(t.as_str()))
+        } {
+            out.extend(parse(path, list, text).filter(|t| crate::pairs::appointment_of(t).is_some_and(|uid| ties.iter().any(|tie| tie.ends_with(&format!("/{uid}"))))));
+        }
+    }
+    let parents: Vec<String> = out.iter().map(|t| t.uid.clone()).collect();
+    if parents.is_empty() {
+        return out;
+    }
+    for (path, list, text) in files {
+        if !text.contains("RELATED-TO") {
+            continue;
+        }
+        let flat = flat(text);
+        if parents.iter().any(|p| flat.contains(&format!("RELTYPE=PARENT:{p}")) || flat.contains(&format!("RELATED-TO:{p}"))) {
+            out.extend(parse(path, list, text).filter(|t| t.parent().is_some_and(|p| parents.iter().any(|x| x == p)) && !parents.contains(&t.uid)));
+        }
+    }
+    out
 }
 
 /// The events' reminders (their own alarms, Sioul's before them, the working
@@ -758,8 +794,11 @@ pub fn gather_events(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Remi
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
     let blocks = crate::quiet::Blocks::read(now, &events);
     let mode = crate::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, now);
-    // The tasks for what an outing's preparation says to bring (`leaving`), never their own reminders.
-    let tasks = crate::tasks::all(now.time_zone());
+    // The tasks for what an outing's preparation says to bring (`leaving`), never their own
+    // reminders: those preparations and their steps alone made tasks, the others left as text.
+    let files: Vec<(PathBuf, crate::vdir::Collection, String)> = crate::tasks::lists().into_iter().flat_map(|list| list.items().into_iter().filter_map(|path| std::fs::read_to_string(&path).ok().map(|text| (path, list.clone(), text))).collect::<Vec<_>>()).collect();
+    let zone = now.time_zone();
+    let tasks = outing_tasks(&files, &events, &|path, list, text| crate::tasks::of_file(path, text, list, zone));
     let reminders = event_reminders(config, tr, now, &events, &tasks);
     (reminders, Holds::of(config, &mode, &blocks, stamp))
 }
@@ -1112,8 +1151,57 @@ mod tests {
         let told = said(std::slice::from_ref(&alone), &en);
         assert_eq!((told[0].title.as_str(), told[0].body.as_str()), ("Leave in 15 minutes for Doctor (14:00)", "Bring: Health card, Glasses, Keys, and 1 more."));
         // Neither: the usual words.
-        let plain = Occurrence { uid: "other".into(), ..doctor };
+        let plain = Occurrence { uid: "other".into(), ..doctor.clone() };
         assert_eq!(said(std::slice::from_ref(&plain), &en)[0].title, "14:00 · Doctor, in 15 minutes");
+    }
+
+    /// "Bring:" names what is to bring alone (review of eb6f660, later 1):
+    /// a list's Bring group, never its Check group nor a group of your own;
+    /// a list with no group says its items.
+    #[test]
+    fn the_leaving_reminder_brings_only_what_is_to_bring() {
+        let config = config();
+        let now = at("2026-10-07T08:00");
+        let en = Translator::new("en");
+        let tie = |uid: &str| vec![crate::tasks::Link { uri: format!("sioul:event/{uid}"), label: String::new(), rel: crate::pairs::APPOINTMENT.into() }];
+        let doctor = Occurrence { summary: "Doctor".into(), location: String::new(), margins: crate::demands::Margins { before: 30, after: 0 }, ..event("doctor", "2026-10-07T14:00", vec![]) };
+        let body = |notes: &str| -> String {
+            let prep = Task { uid: "prep".into(), title: "Going to the doctor".into(), links: tie("doctor"), notes: notes.into(), ..Task::default() };
+            all(&config, &en, &now, std::slice::from_ref(&doctor), &[prep], None, &[], &[], None, |_| true).into_iter().find(|r| r.kind == Kind::Before).map(|r| r.body).unwrap_or_default()
+        };
+        // The checklist module's own list: Bring and Check.
+        let grouped = "Take the green folder.\n\nBring:\n- [ ] Carte Vitale\n- [ ] Mutuelle card\n- [x] Last blood test\n- [-] Vaccination record\n\nCheck:\n- [ ] The doctor's address is in the phone\n\nPapers:\n- [ ] The old letter";
+        assert_eq!(body(grouped), "Bring: Carte Vitale, Mutuelle card.");
+        assert_eq!(body("## À emporter :\n- [ ] Carte Vitale\n\n**Check:**\n- [ ] Keys"), "Bring: Carte Vitale.", "in French too");
+        assert_eq!(body("- [ ] Keys\n- [ ] Glasses"), "Bring: Keys, Glasses.", "a list with no group");
+    }
+
+    /// The phone's reminders read only what leaving needs of the tasks
+    /// (review of eb6f660, later 2): the preparations of the coming days'
+    /// appointments and their steps are parsed; a task tied to none, and its
+    /// steps, never are.
+    #[test]
+    fn the_events_reminders_parse_only_the_outings_tasks() {
+        let zone = zone();
+        let list = crate::vdir::Collection { kind: crate::vdir::Kind::Calendars, account: "local".into(), id: "tasks".into(), dir: PathBuf::from("/nonexistent"), name: "Tasks".into(), color: None, read_only: false, components: vec!["VTODO".into()] };
+        let now = at("2026-10-07T08:00");
+        let file = |uid: &str, edit: crate::tasks::TaskEdit| (PathBuf::from(format!("/nonexistent/{uid}.ics")), list.clone(), crate::tasks::new_task(&crate::tasks::TaskEdit { title: uid.into(), ..edit }, uid, &zone, &now).unwrap());
+        let tie = vec![crate::tasks::Link { uri: "sioul:event/doctor".into(), label: String::new(), rel: crate::pairs::APPOINTMENT.into() }];
+        let files = vec![
+            file("prep", crate::tasks::TaskEdit { links: tie, ..Default::default() }),
+            file("card", crate::tasks::TaskEdit { parent: "prep".into(), ..Default::default() }),
+            file("bank", crate::tasks::TaskEdit::default()),
+            file("bank-step", crate::tasks::TaskEdit { parent: "bank".into(), ..Default::default() }),
+        ];
+        let parsed = std::cell::RefCell::new(Vec::new());
+        let parse = |path: &Path, list: &crate::vdir::Collection, text: &str| {
+            parsed.borrow_mut().push(path.file_stem().unwrap().to_string_lossy().to_string());
+            crate::tasks::of_file(path, text, list, &zone)
+        };
+        let doctor = event("doctor", "2026-10-07T14:00", vec![]);
+        let tasks = outing_tasks(&files, std::slice::from_ref(&doctor), &parse);
+        assert_eq!(tasks.iter().map(|t| t.uid.as_str()).collect::<Vec<_>>(), ["prep", "card"]);
+        assert_eq!(*parsed.borrow(), ["prep", "card"], "the others never parsed");
     }
 
     #[test]

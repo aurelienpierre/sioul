@@ -137,6 +137,16 @@ fn boxed(line: &str) -> Option<(usize, Mark, &str)> {
     Some((indent + bullet + spaces + 1, mark, words.trim()))
 }
 
+/// Whether a group says what to bring (composed tasks §7.3: the leaving
+/// reminder names those items alone): "Bring", "To bring", "Take", « À
+/// emporter », « À apporter », or no group (a list of things, said once);
+/// never "Check" nor a group of your own, which are not things to take.
+pub fn is_bring(group: &str) -> bool {
+    let folded: String = crate::text::fold(group.trim()).into_iter().collect::<String>().to_lowercase();
+    let folded = folded.trim_end_matches([':', ' ', '\u{a0}', '\u{202f}']).trim();
+    matches!(folded, "" | "bring" | "to bring" | "take" | "to take" | "a emporter" | "emporter" | "a apporter" | "apporter" | "a prendre")
+}
+
 /// A line that names a group: words ending with a colon ("Bring:",
 /// "**Check:**", "## À emporter :"), their name; else None.
 fn group_name(line: &str) -> Option<String> {

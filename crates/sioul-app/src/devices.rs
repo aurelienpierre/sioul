@@ -141,10 +141,6 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.acked = acked;
         change(entry);
     });
-    // What the others say of legs that are a step's time, said for `sioul mcp` (part 7).
-    if vault.is_some() {
-        let _ = crate::share::legs_as_steps();
-    }
     match written {
         Ok(entry) if vault.is_some() => {
             // Its opening, as the folder now says it: up since then, or down.
@@ -166,6 +162,8 @@ pub(crate) fn window_opened() {
     let mut open = sessions();
     open.window = true;
     raise();
+    // With no sharing set up, a leg may be a step's time: said for `sioul mcp` (part 7).
+    let _ = crate::share::legs_offered();
 }
 
 /// Up, said; a session found up already owes an export. A computer says
