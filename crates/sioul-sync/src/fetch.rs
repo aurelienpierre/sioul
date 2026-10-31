@@ -482,7 +482,17 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
     let validity = inbox.uid_validity.unwrap_or(0);
     let mut state = SyncState::load(&state_path);
     let key = folder.name.as_str();
-    // A new UIDVALIDITY means the server renumbered the folder: start over.
+    // A new UIDVALIDITY means the server renumbered the folder: start over,
+    // the numbering it left noted on this device first, before the state
+    // forgets it, so that its copies the server no longer holds may go once
+    // the folder is whole again (`renumbered::Left`).
+    let left_path = state_dir().join("sync").join(format!("{}.renumbered.toml", account.id));
+    if let Some(previous) = crate::renumbered::left_numbering(state.folders.get(key).map(|f| f.uidvalidity), validity) {
+        let mut left = crate::renumbered::Left::load(&left_path);
+        if left.note(key, previous) {
+            left.save(&left_path).map_err(|e| SyncError::Disk(format!("{}: {e}", left_path.display())))?;
+        }
+    }
     let known = state.folders.get(key).copied().filter(|f| f.uidvalidity == validity);
     let last_uid = known.map_or(0, |f| f.last_uid);
     let query = match known {
@@ -527,12 +537,24 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
         mailbox::reconcile(session, &root, validity).await?;
         backfill(session, &mut state, &state_path, key, known, &root, validity, &mut report).await?;
         // A renumbered folder's old copies, once the pass went through, under
-        // the fetch lock (the unified mailbox's §5.4, `renumbered`): those the
-        // new numbering holds again; the rest once the folder is fetched whole.
+        // the fetch lock (the unified mailbox's §5.4, `renumbered`), never in a
+        // directory another address shares: those the new numbering holds
+        // again; those of a numbering noted as left once the folder is whole,
+        // every UID the server lists being here.
         let recorded = state.folders.get(key).map(|f| (f.uidvalidity, f.everything));
-        let removals = crate::renumbered::plan(&root, validity, recorded);
+        let mut left = crate::renumbered::Left::load(&left_path);
+        let shared = crate::renumbered::shared_with_others(account);
+        let plan = crate::renumbered::plan(&root, validity, recorded, &left.of(key), shared);
+        let mut removals = plan.paired;
+        if !plan.unmatched.is_empty() {
+            let server = imap::within(COMMAND, session.uid_search("ALL")).await?.map_err(imap::server)?;
+            removals.extend(crate::renumbered::confirmed(plan.unmatched, server, &local_uids(&root, validity)));
+        }
         if !removals.is_empty() {
             crate::renumbered::remove(&removals, key, &state_dir().join("sync").join(format!("{}.removed.log", account.id)));
+        }
+        if left.forget_gone(key, &root) {
+            left.save(&left_path).map_err(|e| SyncError::Disk(format!("{}: {e}", left_path.display())))?;
         }
     }
     Ok(report)

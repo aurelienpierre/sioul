@@ -647,9 +647,11 @@ sioul-sync/src/remote.rs	save	1	crate::share::write_atomically(&lane.memory(memo
 sioul-sync/src/remote.rs	place_urgent	1	std::fs::remove_file(&target)
 sioul-sync/src/remote.rs	place_urgent	1	crate::share::write_atomically(&target, &bytes)
 
-# sioul-sync/src/renumbered.rs: a renumbered mail folder's old copies, under the fetch lock, and the log of their removal: no item.
+# sioul-sync/src/renumbered.rs: a renumbered mail folder's old copies, under the fetch lock, the log of their removal, and the numberings left (state): no item.
 sioul-sync/src/renumbered.rs	remove	1	std::fs::remove_file(&removal.path)
 sioul-sync/src/renumbered.rs	append	1	std::fs::OpenOptions::new()
+sioul-sync/src/renumbered.rs	save	1	std::fs::write(&temporary, text)
+sioul-sync/src/renumbered.rs	save	1	std::fs::rename(&temporary, path)
 
 # sioul-sync/src/share.rs:
 #   remove_if_old: the sharing's leftovers.
