@@ -28,6 +28,21 @@ pub enum Role {
 }
 
 impl Role {
+    /// Where a copy of one message ranks among its copies (Gmail's labels, Sent
+    /// and the inbox, the trash): the one opened from elsewhere, and the one a
+    /// search keeps, is the first. The inbox, your own folders, the archive,
+    /// Sent and the drafts, the junk and the trash, then "All Mail".
+    pub fn rank(self) -> u8 {
+        match self {
+            Role::Inbox => 0,
+            Role::Other => 1,
+            Role::Archive => 2,
+            Role::Sent | Role::Drafts => 3,
+            Role::Junk | Role::Trash => 4,
+            Role::All => 5,
+        }
+    }
+
     /// The message naming it ("folder-sent").
     pub fn message_id(self) -> &'static str {
         match self {

@@ -160,6 +160,15 @@ A newsletter or a list's message says how to leave it in `List-Unsubscribe` (RFC
 - **Kept on this device**: `$XDG_STATE_HOME/sioul/unsubscribed.toml`, one entry per list (its List-Id, else the sender's address), with its name, the sender, the way and when. A list left shows **Unsubscribed**, resting, its tip saying when and how, and that blocking the sender is the answer if its mail keeps coming; a page opened is said, and can be opened again. The Mail page's ⚙ lists them under "Lists you left". Not shared with your other devices.
 - **The demo profile** sends nothing: the click says so.
 
+### A message opened from elsewhere
+The unified mailbox's part 0 (30 October 2026):
+- **Mail made by the link that opens it keeps the message**: the addresses' arrival opens the first inbox beside the message, never over it (`MailPage.openFolder(…, keepOpen)`), at a computer's size and a phone's.
+- **A message that does not read here says so** in the reader's place, never a blank page, on a phone too: "This message is not on this device now. It may have moved." (`Reader.missing`, `reader-not-here`).
+- **`mid:` opens the copy that ranks first**: the mail index keeps every copy of a Message-ID, the one that ranks first in front (`folders::Role::rank`: the inbox, your own folders, the archive, Sent and the drafts, the junk and the trash, "All Mail"), each copy's purpose read from its account's saved folders, else from its folder's name (`MailIndex::build_ranked`). The rank is found at each build and never written: `mail-index.tsv` keeps the lines every version reads and writes, so a computer running an older window beside a newer build shares it as before. The MCP reads it the same way.
+- **A note's `mid:` link is one address however spelled** (`mid:<abc@example.org>`, bare, encoded): the note asks Rust what it leads to (`World::link_target`, `canonical`), one of its ties or the message by the index.
+- **Open beside Copy** on a code's notification (Linux), and **Open the message** on a money row of Budgets (by its `mid:`, or its file for a message without a Message-ID).
+- **A renumbered folder's old copies** (`sioul_sync::renumbered`): a server that gives a folder a new UIDVALIDITY has it fetched again under the new numbering; at the end of each full pass that went through, under the account's fetch lock, the old numbering's files are removed when the new numbering holds a copy of the same message (one to one, by Message-ID, else by a digest of the From, To, Date and Subject lines), and the unmatched ones once the folder is fetched whole. Never before the sync state records the new numbering, never across folders or addresses, never a file whose ids differ or whose headers do not read. One line per removal in `$XDG_STATE_HOME/sioul/sync/<account>.removed.log` (when, the folder, the old and new UIDVALIDITY and UID; no subject, no address).
+
 ### Where it stands
 | | |
 |---|---|

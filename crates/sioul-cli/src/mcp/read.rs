@@ -23,7 +23,7 @@ use jiff::Timestamp;
 use serde_json::{Value, json};
 use sioul_core::projects::ProjectStore;
 use sioul_core::consent::Consent;
-use sioul_core::config::{self, AccountKind, Config};
+use sioul_core::config::{self, Config};
 use sioul_core::links::{self, Kind, Loaded};
 use sioul_core::mailindex::{MailIndex, MailRef};
 use sioul_core::notes::{self, Note, NoteKind};
@@ -242,10 +242,11 @@ fn masked_item(looked: &sioul_core::words::Words, item: &view::ItemView, judged:
     (subject, text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(160).collect())
 }
 
-/// Every message's headers, by Message-ID, from the same Maildirs and cache as links read.
+/// Every message's headers, by Message-ID, from the same Maildirs and cache as
+/// links read, each `mid:` on the copy that ranks first (the inbox before the
+/// archive, Sent, the junk, the trash and "All Mail").
 fn mail_index(config: &Config) -> MailIndex {
-    let roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == AccountKind::Imap).map(|a| a.maildir_path()).collect();
-    MailIndex::build(&roots, &config::cache_dir().join("mail-index.tsv"))
+    MailIndex::build_ranked(&MailIndex::roots_of(config), &config::cache_dir().join("mail-index.tsv"))
 }
 
 /// The account whose mail a file is, and the folder it is in ("" for the

@@ -144,14 +144,7 @@ fn trusted(config: &Config) -> BTreeMap<String, Vec<String>> {
 
 /// The rank of a folder when one message is in two (Gmail's labels): the one you sort from first.
 fn rank(role: Role) -> u8 {
-    match role {
-        Role::Inbox => 0,
-        Role::Other => 1,
-        Role::Archive => 2,
-        Role::Sent | Role::Drafts => 3,
-        Role::Junk | Role::Trash => 4,
-        Role::All => 5,
-    }
+    role.rank()
 }
 
 /// The newest first; a message twice in one address (its Message-ID) once, from the folder that ranks first.

@@ -237,8 +237,8 @@ Item {
             return
         }
         if (href.startsWith("sioul:") || href.startsWith("mid:")) {
-            // Ties are written with the note's address as the core spells it (spaces encoded).
-            const found = JSON.parse(page.sioul.related(page.source ? page.source.uri : "")).find(r => r.uri === href)
+            // However it is spelled ("mid:<…>", bare, encoded): one of the note's ties, or the thing itself, as Rust finds it.
+            const found = JSON.parse(page.sioul.linkTarget(page.source ? page.source.uri : "", href) || "null")
             page.window.openThing(found || { uri: href, kind: href.startsWith("mid:") ? "mail" : href.split(":")[1].split("/")[0], key: "" })
             return
         }

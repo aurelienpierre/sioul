@@ -879,6 +879,11 @@ pub mod qobject {
         #[qinvokable]
         fn uri_of(self: &Sioul, kind: &QString, id: &QString) -> QString;
 
+        /// What a link written in `source` leads to, however it is spelled
+        /// (`links::World::link_target`), as one of the Related panel's rows (JSON).
+        #[qinvokable]
+        fn link_target(self: &Sioul, source: &QString, href: &QString) -> QString;
+
         /// Whether a file, by its name, path or address, is one the desktop would start: a program, a script, an installer
         /// (on a phone, Android's installers too).
         #[qinvokable]
@@ -3317,17 +3322,41 @@ fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
     // Codes are decided before projects and screening: neither is needed here.
     let judged = porch::judge(files, &config.mail_sources(), None, &KnownSenders::default(), &senders, now);
     for code in view::codes(&judged, tr()) {
-        let copy = code.code.clone().map(|text| {
-            let qt = qt.clone();
-            let action: Box<dyn FnOnce() + Send> = Box::new(move || {
-                let _ = qt.queue(move |sioul| sioul.copy_requested(QString::from(&text)));
-            });
-            (tr().text("notify-copy", None), action)
-        });
-        if let Err(e) = notify::code(&code.title, &code.body(), copy) {
+        let buttons = code_actions(&code)
+            .into_iter()
+            .map(|(key, label)| {
+                let qt = qt.clone();
+                let (text, file) = (code.code.clone().unwrap_or_default(), code.key.clone());
+                let action: Box<dyn FnOnce() + Send> = match key {
+                    // Its message in Mail's reader, the window brought back.
+                    "open" => Box::new(move || {
+                        let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("mail"), QString::default(), QString::from(&file)));
+                    }),
+                    _ => Box::new(move || {
+                        let _ = qt.queue(move |sioul| sioul.copy_requested(QString::from(&text)));
+                    }),
+                };
+                (key.to_string(), label, action)
+            })
+            .collect();
+        if let Err(e) = notify::code(&code.title, &code.body(), buttons) {
             set_status(qt, e);
         }
     }
+}
+
+/// What a code's notification offers, by key, on a computer: "copy" (the
+/// code, when its message prints one) and "open" (its message, in Mail's
+/// reader), each with its label.
+fn code_actions(code: &view::CodeView) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    if code.code.is_some() {
+        out.push(("copy", tr().text("notify-copy", None)));
+    }
+    if !code.key.is_empty() {
+        out.push(("open", tr().text("notify-open-message", None)));
+    }
+    out
 }
 
 /// Where attachments are written to be opened: `<cache>/sioul/attachments/<message>/`.
@@ -4734,6 +4763,10 @@ impl qobject::Sioul {
 
     fn related(&self, uri: &QString) -> QString {
         QString::from(&work::related(&self.shared(), &uri.to_string()))
+    }
+
+    fn link_target(&self, source: &QString, href: &QString) -> QString {
+        QString::from(&work::link_target(&self.shared(), &source.to_string(), &href.to_string()))
     }
 
     fn link_things(mut self: Pin<&mut Self>, from: &QString, to: &QString) -> QString {
@@ -6412,8 +6445,9 @@ impl qobject::Sioul {
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), "agenda" the
         // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), "cards" every
         // object's card opened from the agenda and Tasks, then Back (pictures alone), "taskviews" Now, the List
-        // folded and a task opened, the Board, the Gantt and a composed task's details (pictures alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews"].contains(&steps.as_str()) && offline()) {
+        // folded and a task opened, the Board, the Gantt and a composed task's details (pictures alone), "mail-open" a
+        // message opened as a tie, then one not on this device (docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -6661,6 +6695,17 @@ impl qobject::Sioul {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A code's notification offers Copy and Open on a computer (the
+    /// mailbox's part 0): Open asks for the code's message; a code its
+    /// message does not print, Open alone.
+    #[test]
+    fn a_code_s_notification_opens_its_message() {
+        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None };
+        assert_eq!(code_actions(&code).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["copy", "open"]);
+        let without = view::CodeView { code: None, ..code };
+        assert_eq!(code_actions(&without).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["open"]);
+    }
 
     #[test]
     fn file_addresses_reach_the_file() {

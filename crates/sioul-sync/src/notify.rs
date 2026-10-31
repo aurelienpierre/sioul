@@ -221,13 +221,16 @@ fn as_sioul() {
     });
 }
 
+/// A notification's button: its key, its label, and what it does when pressed.
+pub type Button = (String, String, Box<dyn FnOnce() + Send>);
+
 /// Shows a code: `title` says what and from whom, `body` the code and how long
-/// it lasts. No sound. With `copy`, the notification offers a button labelled
-/// with its text, and its action runs when the button is pressed; the
-/// notification then lives on its own thread, which waits for the button.
+/// it lasts. No sound. With `buttons` (Copy, Open), the notification offers
+/// each, labelled with its text, and the one pressed runs; the notification
+/// then lives on its own thread, which waits for a press.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn code(title: &str, body: &str, copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    one_button(Notice::new(title, body, "dialog-password", CRITICAL), copy)
+pub fn code(title: &str, body: &str, buttons: Vec<Button>) -> Result<(), String> {
+    several_buttons(Notice::new(title, body, "dialog-password", CRITICAL), buttons)
 }
 
 /// A gentle reminder: one notification, no sound, with one button whose
@@ -412,7 +415,7 @@ pub fn remind(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce()
 
 /// Windows and macOS: the code is in the text; their notifications carry no button here.
 #[cfg(any(windows, target_os = "macos"))]
-pub fn code(title: &str, body: &str, _copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+pub fn code(title: &str, body: &str, _buttons: Vec<Button>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     as_sioul();
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
@@ -421,7 +424,7 @@ pub fn code(title: &str, body: &str, _copy: Option<(String, Box<dyn FnOnce() + S
 /// Android: no notifications yet (Android's own are reached through Java);
 /// the code shows in the window only.
 #[cfg(target_os = "android")]
-pub fn code(_title: &str, _body: &str, _copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+pub fn code(_title: &str, _body: &str, _buttons: Vec<Button>) -> Result<(), String> {
     Err("notifications are not made on Android yet".to_string())
 }
 
@@ -513,8 +516,8 @@ impl Notice {
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 type Pressed = Box<dyn FnOnce(&str) + Send>;
 
-/// `notice` with one button at most, keyed "copy" (`code`, `remind`,
-/// `mail`): its action runs when it is pressed.
+/// `notice` with one button at most, keyed "copy" (`remind`, `mail`): its
+/// action runs when it is pressed.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn one_button(mut notice: Notice, button: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     let Some((label, run)) = button else { return notify(notice, None) };
@@ -523,6 +526,27 @@ fn one_button(mut notice: Notice, button: Option<(String, Box<dyn FnOnce() + Sen
         notice,
         Some(Box::new(move |key: &str| {
             if key == "copy" {
+                run();
+            }
+        })),
+    )
+}
+
+/// `notice` with these buttons, each keyed: the one pressed runs (`code`: Copy and Open).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn several_buttons(mut notice: Notice, buttons: Vec<Button>) -> Result<(), String> {
+    if buttons.is_empty() {
+        return notify(notice, None);
+    }
+    let mut runs = Vec::new();
+    for (key, label, run) in buttons {
+        notice.buttons.push((key.clone(), label));
+        runs.push((key, run));
+    }
+    notify(
+        notice,
+        Some(Box::new(move |pressed: &str| {
+            if let Some((_, run)) = runs.into_iter().find(|(key, _)| key == pressed) {
                 run();
             }
         })),
@@ -2286,13 +2310,20 @@ mod tests {
             urgency,
             timeout: 600_000,
         };
-        // A code with its button: pressed at the server, copied here.
-        let (copied, copies) = channel::<()>();
-        code("Code from example.org", "482913 <b>now</b> & then", Some(("Copy".into(), Box::new(move || {
-            let _ = copied.send(());
-        })))).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("dialog-password", "Code from example.org", "482913 &lt;b&gt;now&lt;/b&gt; &amp; then", &["copy", "Copy"], CRITICAL));
-        assert_eq!(copies.recv_timeout(wait), Ok(()));
+        // A code with its buttons, Copy and Open: the one pressed at the server runs alone.
+        let (pressed, presses) = channel::<&str>();
+        let other = pressed.clone();
+        code("Code from example.org", "482913 <b>now</b> & then", vec![
+            ("copy".into(), "Copy".into(), Box::new(move || {
+                let _ = other.send("copy");
+            })),
+            ("open".into(), "Open the message".into(), Box::new(move || {
+                let _ = pressed.send("open");
+            })),
+        ]).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("dialog-password", "Code from example.org", "482913 &lt;b&gt;now&lt;/b&gt; &amp; then", &["copy", "Copy", "open", "Open the message"], CRITICAL));
+        assert_eq!(presses.recv_timeout(wait), Ok("open"));
+        assert!(presses.recv_timeout(Duration::from_millis(300)).is_err(), "one button run");
         // Mail: normal urgency, said once; critical when someone Always through is in it.
         mail("New mail", "From Noa", false, None).unwrap();
         assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("mail-unread", "New mail", "From Noa", &[], NORMAL));

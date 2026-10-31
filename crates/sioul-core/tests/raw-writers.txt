@@ -308,7 +308,7 @@ sioul-core/src/maildir.rs	forget_account_under	1	std::fs::remove_dir_all(&folder
 sioul-core/src/maildir.rs	forget_account_under	1	std::fs::remove_file(ai_cache)
 
 # sioul-core/src/mailindex.rs: the mail index: no item.
-sioul-core/src/mailindex.rs	build	1	std::fs::write(cache, fresh.join("\n"))
+sioul-core/src/mailindex.rs	build_ranked	1	std::fs::write(cache, fresh.join("\n"))
 
 # sioul-core/src/mailnote.rs: notes on mail: no item.
 sioul-core/src/mailnote.rs	save	1	std::fs::write(&temporary, text)
@@ -646,6 +646,10 @@ sioul-sync/src/remote.rs	place_fetched	1	std::fs::rename(temporary, folder.join(
 sioul-sync/src/remote.rs	save	1	crate::share::write_atomically(&lane.memory(memory), format!("# Sioul: this device's files sent to the sharing folder's server beside the sync app (docs/database.md). Never shared.\n{text}").as_bytes())
 sioul-sync/src/remote.rs	place_urgent	1	std::fs::remove_file(&target)
 sioul-sync/src/remote.rs	place_urgent	1	crate::share::write_atomically(&target, &bytes)
+
+# sioul-sync/src/renumbered.rs: a renumbered mail folder's old copies, under the fetch lock, and the log of their removal: no item.
+sioul-sync/src/renumbered.rs	remove	1	std::fs::remove_file(&removal.path)
+sioul-sync/src/renumbered.rs	append	1	std::fs::OpenOptions::new()
 
 # sioul-sync/src/share.rs:
 #   remove_if_old: the sharing's leftovers.

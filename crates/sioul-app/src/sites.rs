@@ -359,7 +359,7 @@ pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, title: &st
     // "Notifications"): kept for the Porch, never told to the status line.
     if (site.realtime || everywhere || call) && out.told && !cfg!(target_os = "android") {
         let heading = format!("{} · {}", site.name, title);
-        if let Err(e) = sioul_sync::notify::code(&heading, text, None) {
+        if let Err(e) = sioul_sync::notify::code(&heading, text, Vec::new()) {
             crate::backend::tell(qt, shared, e);
         }
         return;

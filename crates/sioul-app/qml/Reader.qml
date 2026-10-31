@@ -30,8 +30,11 @@ Panel {
     property var reading: null
     // The message is being read off the window's thread (`readMessage`): the pane says so meanwhile.
     property bool opening: false
-    // Something to show: the message, or that it is opening.
-    readonly property bool showing: reader.reading !== null || reader.opening
+    // The message asked for does not read here (moved, deleted, not on this
+    // device yet): the pane says so in its place, never a blank page.
+    property bool missing: false
+    // Something to show: the message, that it is opening, or that it is not here.
+    readonly property bool showing: reader.reading !== null || reader.opening || reader.missing
     // The invitation the message carries, if any.
     property var invite: null
     // The sender's contact, by file; empty when the sender is not one.
@@ -172,6 +175,7 @@ Panel {
         reader.senderContact = ""
         reader.unread = false
         reader.flagged = false
+        reader.missing = false
         reader.opening = reader.key !== ""
         if (reader.key)
             reader.sioul.readMessage(reader.key)
@@ -188,6 +192,7 @@ Panel {
             const first = reader.opening
             reader.opening = false
             reader.reading = JSON.parse(reading || "null")
+            reader.missing = reader.reading === null
             reader.invite = JSON.parse(invitation || "null")
             if (!first)
                 return
@@ -517,6 +522,17 @@ Panel {
                     visible: reader.opening
                     Layout.fillWidth: true
                     text: reader.sioul.text("reader-opening")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: reader.theme.muted
+                }
+
+                // A message that does not read here: said calmly in its place.
+                Label {
+                    objectName: "readerNotHere"
+                    visible: reader.missing
+                    Layout.fillWidth: true
+                    text: reader.sioul.text("reader-not-here")
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: reader.theme.muted

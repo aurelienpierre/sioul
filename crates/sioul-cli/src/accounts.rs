@@ -627,7 +627,7 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                     continue;
                 }
                 for code in view::codes(&arrived, &s.tr) {
-                    if let Err(e) = notify::code(&code.title, &code.body(), None) {
+                    if let Err(e) = notify::code(&code.title, &code.body(), Vec::new()) {
                         eprintln!("{}", crate::plain_lines(&e));
                     }
                 }

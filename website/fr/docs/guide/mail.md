@@ -74,6 +74,8 @@ Un clic droit sur un courriel (ou son ⋮, ou la touche Menu) donne le reste :
 
 Ouvrir un courriel le marque comme lu, comme le fait tout logiciel de courriel. Sioul n’envoie jamais d’accusé de lecture.
 
+**Un courriel ouvert d’ailleurs** (ce à quoi une tâche, un événement, une note ou un projet est lié, un lien vers un courriel écrit dans une note, le courriel d’où vient une ligne d’argent dans Budgets, **Ouvrir le courriel** sur la notification d’un code) s’ouvre dans le lecteur du Courrier, la première fois aussi, la première boîte de réception à côté. Un lien vers un courriel est le même quelle que soit son écriture (`mid:<…>`, nu ou encodé), et ouvre la copie qui passe en premier : la boîte de réception avant les archives, les envoyés, les indésirables, la corbeille et « Tous les messages » de Gmail. Un courriel qui n’est pas sur cet appareil pour l’instant le dit à la place du lecteur : « Ce courriel n’est pas sur cet appareil pour l’instant. Il a peut-être été déplacé. » 
+
 ### Plusieurs à la fois {#several-at-once}
 
 - ++ctrl++ + clic ajoute un courriel à la sélection ou l’en retire ; ++"Maj"++ + clic prend tout depuis le dernier cliqué ; ++ctrl+a++ prend tout ; ++"Échap"++, rien. Sur un écran tactile, un appui long ouvre le menu d’un courriel : **Sélectionner**, puis un toucher en choisit d’autres, ou en retire un.

@@ -217,6 +217,7 @@ verdict-as-planned = as planned
 verdict-short = short of plan by { $gap }
 budget-earmarked = { $amount } of it set aside for what is planned later.
 budget-opening = { $opening } carried in from before.
+budget-open-message = Open the message
 budget-drawn = { $reserve } covers { $amount } on { $end }.
 budget-swept = { $amount } go to { $reserve } on { $end }.
 reserve-line = { $title }: { $balance } today. This month, { $month_done } used and { $month_planned } still planned. By { $year_end_date }, { $year_end }.
@@ -302,6 +303,7 @@ watch-line = { $time } · { $line }
 done-closed = Done. What comes next waits for the next window.
 done-nothing = Nothing was shown, so nothing to close.
 notify-copy = Copy the code
+notify-open-message = Open the message
 
 ## The window.
 ui-porch = Porch
@@ -360,6 +362,7 @@ ui-attachments = Attachments: { $names }
 ui-no-text = This message has no text.
 ui-text-safe = Shown safely: nothing remote loads, nothing runs.
 reader-opening = Opening the message…
+reader-not-here = This message is not on this device now. It may have moved.
 ui-add-account = Add a mail account
 ui-address = Email address
 ui-find-server = Find the server

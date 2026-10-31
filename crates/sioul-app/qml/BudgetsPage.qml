@@ -46,6 +46,15 @@ Item {
             page.detailMade = true
     }
 
+    // A money row's message, in Mail: by its address ("mid:…", the copy that
+    // ranks first), or by its file ("file:…") when it has no Message-ID.
+    function openMessage(key) {
+        if (key.startsWith("file:"))
+            page.window.openThing({ kind: "mail", uri: "", key: key.slice("file:".length) })
+        else
+            page.window.openThing(JSON.parse(page.sioul.linkTarget("", key) || "null") || { uri: key, kind: "mail", key: "" })
+    }
+
     // A movement added by hand, from "New".
     function startNew() {
         newMovement.now().choose()
@@ -470,13 +479,25 @@ Item {
                                         color: mailRow.modelData.credit ? page.theme.accent : page.theme.text
                                     }
                                 }
-                                Label {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    text: mailRow.modelData.date + "  ·  " + mailRow.modelData.subject
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                    color: page.theme.muted
-                                    font.pixelSize: 13
+                                    spacing: 8
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: mailRow.modelData.date + "  ·  " + mailRow.modelData.subject
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        color: page.theme.muted
+                                        font.pixelSize: 13
+                                    }
+                                    // The message the row comes from, in Mail's reader.
+                                    Button {
+                                        objectName: "budgetOpenMessage"
+                                        flat: true
+                                        text: page.sioul.text("budget-open-message")
+                                        onClicked: page.openMessage(mailRow.modelData.key)
+                                    }
                                 }
                                 RowLayout {
                                     visible: mailRow.modelData.note !== ""

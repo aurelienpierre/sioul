@@ -354,18 +354,21 @@ Item {
         }
     }
 
-    function openFolder(account, folder) {
+    // A folder of an address; `keepOpen`: the message a link opened stays open beside it.
+    function openFolder(account, folder, keepOpen) {
         if (page.searchOpen)
             page.closeSearch()
         page.clearSelection()
         page.anchorIndex = -1
-        page.fromLink = false
+        if (!keepOpen) {
+            page.fromLink = false
+            page.openKey = ""
+        }
         page.account = account
         page.folder = folder
         page.draftsShown = false
         page.all = false
         page.query = ""
-        page.openKey = ""
         page.foldersShown = false
         page.sioul.openFolder(account, folder, false, "")
     }
@@ -431,11 +434,13 @@ Item {
     }
 
     // Once the bindings reading the accounts are done: the folder opened
-    // changes what they read (a binding loop when done at once).
+    // changes what they read (a binding loop when done at once). The first
+    // address's inbox shows beside a message a link opened, never over it:
+    // the page made by the very link that opens it (`openThing`) keeps it.
     onAccountsChanged: Qt.callLater(() => {
         const first = page.accounts.find(a => !a.resting)
         if (page.account === "" && first)
-            page.openFolder(first.id, "INBOX")
+            page.openFolder(first.id, "INBOX", page.fromLink && page.openKey !== "")
     })
 
     // A message filed away leaves the folder: the reader closes with it.

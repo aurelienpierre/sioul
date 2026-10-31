@@ -652,6 +652,16 @@ impl World<'_> {
         found.into_iter().take(limit).map(|(_, _, _, uri)| self.describe(&uri)).collect()
     }
 
+    /// What a link written in `source` leads to (a note's `mid:` or `sioul:`
+    /// link), however it is spelled: `mid:<abc@example.org>`,
+    /// `mid:abc@example.org` and `mid:abc%40example.org` are one address
+    /// (`canonical`). One of `source`'s ties when it is one, else the thing
+    /// itself, its message found by the index (the copy that ranks first).
+    pub fn link_target(&self, source: &str, href: &str) -> Related {
+        let wanted = self.canonical(href);
+        self.related(source).into_iter().find(|r| r.uri == wanted).unwrap_or_else(|| self.describe(&wanted))
+    }
+
     /// A thing by its address: its title, a detail, a date, and what opens it.
     pub fn describe(&self, uri: &str) -> Related {
         let uri = self.canonical(uri);
@@ -991,7 +1001,6 @@ impl Loaded {
         let read_at = Some(std::time::SystemTime::now());
         let zone = crate::zone::current();
         let root = config.notes_root_path();
-        let mail_roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| a.maildir_path()).collect();
         let budget = root
             .as_deref()
             .and_then(|r| crate::budget::Ledger::load_with_bank(r, &crate::words::Words::of(config)).ok())
@@ -1018,7 +1027,7 @@ impl Loaded {
             projects: root.as_deref().and_then(|r| crate::projects::ProjectStore::load(r).ok()).map(|s| s.projects).unwrap_or_default(),
             vault: root.as_deref().map(Vault::open),
             drafts: Draft::all(),
-            mail: MailIndex::build(&mail_roots, &crate::config::cache_dir().join("mail-index.tsv")),
+            mail: MailIndex::build_ranked(&MailIndex::roots_of(config), &crate::config::cache_dir().join("mail-index.tsv")),
             budget,
             local: LocalLinks::load(&LocalLinks::default_path()),
             sites: crate::sites::sites(config),
@@ -1098,6 +1107,32 @@ mod tests {
         std::fs::remove_file(&kept).unwrap();
         local.save(&kept).unwrap();
         assert_eq!(LocalLinks::load(&kept), local);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A note's link to a message, written with angle brackets, bare or
+    /// encoded, finds its tie and the message's file; one to a message that
+    /// is not tied finds it by the index; one to a message not here, nothing.
+    #[test]
+    fn a_note_s_mail_link_is_one_address_however_spelled() {
+        let dir = std::env::temp_dir().join(format!("sioul-link-spelling-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("vault")).unwrap();
+        std::fs::write(dir.join("vault/plan.md"), "---\nlinks:\n  - mid:abc@example.org\n---\n# Plan\n\nSee <mid:abc@example.org>.\n").unwrap();
+        let mut mail = MailIndex::default();
+        let message = dir.join("mail/cur/1.U1-1.sioul");
+        mail.insert("abc@example.org", crate::mailindex::MailRef { path: message.clone(), subject: "The plan".into(), ..Default::default() });
+        let other = dir.join("mail/cur/2.U1-2.sioul");
+        mail.insert("other@example.org", crate::mailindex::MailRef { path: other.clone(), subject: "Another".into(), ..Default::default() });
+        let loaded = Loaded { vault: Some(Vault::open(&dir.join("vault"))), mail, ..Loaded::default() };
+        let world = loaded.world();
+        for href in ["mid:<abc@example.org>", "mid:abc@example.org", "mid:abc%40example.org", " mid:%3Cabc%40example.org%3E"] {
+            let target = world.link_target("sioul:note/plan.md", href);
+            assert_eq!((target.kind, target.key.as_str(), target.found), (Kind::Mail, message.to_str().unwrap(), true), "{href}");
+        }
+        let untied = world.link_target("sioul:note/plan.md", "mid:<other@example.org>");
+        assert_eq!(untied.key, other.display().to_string(), "not tied: found by the index");
+        assert!(!world.link_target("sioul:note/plan.md", "mid:gone@example.org").found);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

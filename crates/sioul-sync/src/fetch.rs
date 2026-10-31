@@ -526,6 +526,14 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
     {
         mailbox::reconcile(session, &root, validity).await?;
         backfill(session, &mut state, &state_path, key, known, &root, validity, &mut report).await?;
+        // A renumbered folder's old copies, once the pass went through, under
+        // the fetch lock (the unified mailbox's §5.4, `renumbered`): those the
+        // new numbering holds again; the rest once the folder is fetched whole.
+        let recorded = state.folders.get(key).map(|f| (f.uidvalidity, f.everything));
+        let removals = crate::renumbered::plan(&root, validity, recorded);
+        if !removals.is_empty() {
+            crate::renumbered::remove(&removals, key, &state_dir().join("sync").join(format!("{}.removed.log", account.id)));
+        }
     }
     Ok(report)
 }

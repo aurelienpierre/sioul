@@ -232,6 +232,7 @@ verdict-as-planned = comme prévu
 verdict-short = en dessous du prévu de { $gap }
 budget-earmarked = dont { $amount } mis de côté pour ce qui est prévu plus tard.
 budget-opening = { $opening } reportés d’avant.
+budget-open-message = Ouvrir le courriel
 budget-drawn = { $reserve } couvre { $amount } le { $end }.
 budget-swept = { $amount } vont à { $reserve } le { $end }.
 reserve-line = { $title } : { $balance } aujourd’hui. Ce mois-ci, { $month_done } utilisés et { $month_planned } encore prévus. Au { $year_end_date }, { $year_end }.
@@ -317,6 +318,7 @@ watch-line = { $time } · { $line }
 done-closed = C’est fait. Ce qui arrive maintenant attend la prochaine fenêtre.
 done-nothing = Rien n’était affiché, donc rien à fermer.
 notify-copy = Copier le code
+notify-open-message = Ouvrir le courriel
 
 ## La fenêtre.
 ui-porch = Porche
@@ -375,6 +377,7 @@ ui-attachments = Pièces jointes : { $names }
 ui-no-text = Ce courriel n’a pas de texte.
 ui-text-safe = Affiché sans risque : rien de distant ne se charge, rien ne s’exécute.
 reader-opening = Ouverture du courriel…
+reader-not-here = Ce courriel n’est pas sur cet appareil pour l’instant. Il a peut-être été déplacé.
 ui-add-account = Ajouter un compte de courriel
 ui-address = Adresse électronique
 ui-find-server = Trouver le serveur

@@ -2325,6 +2325,14 @@ pub(crate) fn related(shared: &Shared, uri: &str) -> String {
     crate::backend::json(&taskview::related_views(tr(), &loaded.world().related(uri)))
 }
 
+/// What a link written in `source` leads to, as one row of the Related panel
+/// (`links::World::link_target`): a `mid:` however spelled.
+pub(crate) fn link_target(shared: &Shared, source: &str, href: &str) -> String {
+    let loaded = loaded(shared);
+    let target = loaded.world().link_target(source, href);
+    taskview::related_views(tr(), std::slice::from_ref(&target)).into_iter().next().map_or_else(|| "null".to_string(), |view| crate::backend::json(&view))
+}
+
 /// Something changed on disk (a project, time noted, an invoice): read again.
 pub(crate) fn refresh(qt: &QtThread, shared: &Arc<Shared>) {
     links_changed(qt, shared);

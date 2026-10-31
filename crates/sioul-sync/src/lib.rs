@@ -143,6 +143,7 @@ pub mod ocr;
 pub mod power;
 // The sharing folder fetched from its server too, beside the sync app (docs/database.md).
 pub mod remote;
+pub mod renumbered;
 // Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail, Microsoft's.
 pub mod sasl;
 pub mod scout;

@@ -74,6 +74,8 @@ A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as
 
 Opening a message marks it read, as any mail program does. Sioul never sends a read receipt.
 
+**A message opened from elsewhere** (what a task, an event, a note or a project is tied to, a link to a message written in a note, the message a money line in Budgets comes from, **Open the message** on a code's notification) opens in Mail's reader, the first time too, with the first inbox beside it. A link to a message is the same however it is written (`mid:<…>`, bare or encoded), and opens the copy that ranks first: the inbox before the archive, Sent, the junk, the trash and Gmail's "All Mail". A message that is not on this device now says so in the reader's place: "This message is not on this device now. It may have moved." 
+
 ### Several at once {#several-at-once}
 
 - ++ctrl++ + click adds a message to the selection or takes it out; ++shift++ + click takes everything since the last one clicked; ++ctrl+a++ takes all; ++escape++ none. On a touch screen, a long press opens a message's menu: **Select**, then a tap chooses more, or leaves one.
