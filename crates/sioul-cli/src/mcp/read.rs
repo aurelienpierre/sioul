@@ -364,6 +364,12 @@ pub(crate) fn find_here(s: &Session, wanted: &str) -> Result<mailfind::Here, Str
 }
 
 fn locate(s: &Session, wanted: &str, servers: bool) -> Result<mailfind::Here, String> {
+    let on_servers = sioul_sync::search::OnServers;
+    locate_with(s, wanted, servers.then_some(&on_servers as &dyn mailfind::Servers))
+}
+
+/// `locate`, the servers asked through `servers` (none: this device only).
+pub(super) fn locate_with(s: &Session, wanted: &str, servers: Option<&dyn mailfind::Servers>) -> Result<mailfind::Here, String> {
     let wanted = wanted.trim();
     let outside = || format!("“{}”: not a message of the configured accounts.", one_line(&wanted.chars().take(200).collect::<String>()));
     let reference = mailfind::MailRef::of(wanted);
@@ -375,11 +381,17 @@ fn locate(s: &Session, wanted: &str, servers: bool) -> Result<mailfind::Here, St
     }
     let not_found = || if reference.address.is_empty() { s.tr.text("mail-message-gone", None) } else { s.say("mail-not-found", &[("query", one_line(wanted))]) };
     let found = match mailfind::find(&roots, &reference) {
-        mailfind::Found::NotHere if servers && mailfind::Address::parse(&reference.address).is_some() => {
-            if mail_consent(s).closes_mail(&reference.address) {
+        mailfind::Found::NotHere if mailfind::Address::parse(&reference.address).is_some() && servers.is_some() => {
+            let Some(servers) = servers else { return Err(not_found()) };
+            let consent = mail_consent(s);
+            if consent.closes_mail(&reference.address) {
                 return Err(access::kept("This message"));
             }
-            mailfind::ask_servers(&roots, &s.config.accounts, &reference, &sioul_sync::search::OnServers)
+            // Only the addresses consent leaves open to agents: the server of
+            // one kept from them (a work or school Microsoft account) is never
+            // asked for an agent, nor written into (review of 05ccd0a, M1).
+            let open: Vec<sioul_core::config::Account> = s.config.accounts.iter().filter(|a| !consent.keeps_account(&a.id)).cloned().collect();
+            mailfind::ask_servers(&roots, &open, &reference, servers)
         }
         found => found,
     };

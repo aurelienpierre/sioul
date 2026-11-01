@@ -313,7 +313,7 @@ sioul-core/src/maildir.rs	forget_account_under	1	std::fs::remove_file(ai_cache)
 sioul-core/src/maildir.rs	forget_account	1	std::fs::remove_dir_all(&index)
 
 # sioul-core/src/mailcache.rs: each mail folder's index, a cache in the cache folder (written beside then renamed, or added to under its lock), and the older single index removed once: no item.
-sioul-core/src/mailcache.rs	index_root_in	1	std::fs::remove_file(cache.join("mail-index.tsv"))
+sioul-core/src/mailcache.rs	index_root_in	1	std::fs::remove_file(&older)
 sioul-core/src/mailcache.rs	write_whole	1	std::fs::OpenOptions::new()
 sioul-core/src/mailcache.rs	write_whole	1	std::fs::rename(&beside, path)
 sioul-core/src/mailcache.rs	append	1	std::fs::OpenOptions::new()

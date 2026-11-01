@@ -321,6 +321,8 @@ async fn with_message_id_in(session: &mut Imap, id: &str, folders: &[Folder]) ->
                 message_id: card.message_id.unwrap_or_default(),
                 sender: card.from_address.unwrap_or_default(),
                 arrived: fetch.internal_date().map_or(0, |d| d.timestamp()),
+                date: card.date,
+                subject: card.subject,
             });
         }
     }

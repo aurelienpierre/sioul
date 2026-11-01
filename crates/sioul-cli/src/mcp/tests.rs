@@ -1342,6 +1342,44 @@ fn work_microsoft_accounts_are_kept_from_agents() {
     assert!(text(&call(&mut server, "search_mail", json!({}))).contains("Quarterly plan"), "opened by the person");
 }
 
+/// A message not here, asked for by an agent: the servers of the addresses
+/// open to agents are asked, never the server of one kept from them (a work
+/// Microsoft account), whose Maildir is never written for an agent; held
+/// nowhere else, it is said gone (review of 05ccd0a, M1).
+#[test]
+fn a_kept_account_s_server_is_never_asked_for_an_agent() {
+    use sioul_core::mailfind::{ServerCopy, Servers};
+    struct Watched(std::cell::RefCell<Vec<String>>);
+    impl Servers for Watched {
+        fn copies(&self, account: &sioul_core::config::Account, _id: &str) -> Result<Vec<ServerCopy>, String> {
+            assert_ne!(account.id, "work", "the kept account's server asked for an agent");
+            self.0.borrow_mut().push(account.id.clone());
+            Ok(Vec::new())
+        }
+        fn bring(&self, _: &sioul_core::config::Account, _: &ServerCopy) -> Result<std::path::PathBuf, String> {
+            Err("nothing to bring".into())
+        }
+    }
+    let home = home();
+    let work = home.root.join("mail/work-asked");
+    for sub in ["cur", "new", "tmp"] {
+        std::fs::create_dir_all(work.join(sub)).unwrap();
+    }
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    let account = format!(
+        "\n[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"jane@contoso.example\"\nhost = \"outlook.office365.com\"\nauth = \"microsoft\"\nmicrosoft_kind = \"work\"\nsmtp_host = \"smtp.office365.com\"\nmaildir = \"{}\"\n",
+        work.display().to_string().replace('\\', "\\\\")
+    );
+    let kept = home.root.join("config/sioul/work-kept-servers.toml");
+    std::fs::write(&kept, format!("{config}{account}")).unwrap();
+    let session = crate::Session { config: sioul_core::config::Config::load(&kept).unwrap(), config_path: kept.clone(), tr: sioul_core::i18n::Translator::new("en") };
+    let watched = Watched(std::cell::RefCell::new(Vec::new()));
+    let answer = super::read::locate_with(&session, "mid:held-only-at-work@contoso.example", Some(&watched));
+    assert_eq!(answer.err().as_deref(), Some(session.tr.text("mail-find-gone", None).as_str()));
+    let asked = watched.0.borrow().clone();
+    assert!(!asked.is_empty() && !asked.contains(&"work".to_string()), "{asked:?}");
+}
+
 /// The phone's messages: the words where the phone sent them, a code its
 /// phone did not catch masked, one it caught said without it, a message held
 /// by the phone not given before its time, all framed as data; the calls.

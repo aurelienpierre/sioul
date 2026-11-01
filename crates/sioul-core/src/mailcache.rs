@@ -307,12 +307,23 @@ fn index_root() -> PathBuf {
 
 fn index_root_in(cache: &Path) -> PathBuf {
     let root = cache.join("mail-index");
-    if !root.is_dir() && std::fs::create_dir_all(&root).is_ok() {
+    let older = cache.join("mail-index.tsv");
+    let made = !root.is_dir() && std::fs::create_dir_all(&root).is_ok();
+    if made {
         private_dir(&root);
-        let _ = std::fs::remove_file(cache.join("mail-index.tsv"));
+    }
+    // Gone when the folder is first made; written again by an older Sioul
+    // still running, gone once none has written it for two weeks (review of
+    // 05ccd0a, L13): it holds every message's path, subject and sender.
+    let stale = || older.metadata().and_then(|m| m.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age > OLDER_KEPT);
+    if made || stale() {
+        let _ = std::fs::remove_file(&older);
     }
     root
 }
+
+/// How long the older single index stays unwritten before it goes.
+const OLDER_KEPT: std::time::Duration = std::time::Duration::from_secs(14 * 86_400);
 
 fn private_dir(dir: &Path) {
     #[cfg(unix)]
@@ -727,7 +738,8 @@ mod tests {
 
     /// The older single index goes once per device, when the folder of the
     /// indexes is first made; an older Sioul still running writes it again
-    /// for itself, and it is never removed a second time (nobody fights).
+    /// for itself, and it stays while it is written (nobody fights), then
+    /// goes once nothing has written it for two weeks.
     #[test]
     fn the_older_single_index_goes_once() {
         let cache = std::env::temp_dir().join(format!("sioul-mailcache-retire-{}", std::process::id()));
@@ -745,6 +757,11 @@ mod tests {
         std::fs::write(&older, "written again by an older Sioul\n").unwrap();
         index_root_in(&cache);
         assert!(older.exists(), "theirs now: left alone");
+        // Unwritten for two weeks and a day: no older Sioul runs any more, it goes.
+        let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(15 * 86_400);
+        std::fs::File::options().write(true).open(&older).unwrap().set_modified(long_ago).unwrap();
+        index_root_in(&cache);
+        assert!(!older.exists(), "left two weeks: gone");
         let _ = std::fs::remove_dir_all(&cache);
     }
 

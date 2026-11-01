@@ -46,7 +46,7 @@ use crate::config::Account;
 use crate::folders::{Folder, Role};
 use crate::mailcache;
 use crate::mailindex::{Root, bare_id};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 /// What starts the address of a message without a Message-ID.
@@ -182,11 +182,26 @@ struct Copy {
     role: Role,
     arrived: i64,
     sender: String,
+    /// Its Date and Subject: with its sender, what tells another message from a copy.
+    date: Option<i64>,
+    subject: String,
     origin: Option<ImapOrigin>,
     current: bool,
 }
 
+/// Two copies of one Message-ID that are different messages (someone reused
+/// the id): their senders differ, and so does their Date or their Subject. A
+/// list that rewrites the sender ("Ana via the list") and a copy sent
+/// directly carry the same Date and Subject: one message (review of 05ccd0a, L11).
+fn different(a: (&str, Option<i64>, &str), b: (&str, Option<i64>, &str)) -> bool {
+    !a.0.eq_ignore_ascii_case(b.0) && (a.1 != b.1 || a.2.trim() != b.2.trim())
+}
+
 impl Copy {
+    fn marks(&self) -> (&str, Option<i64>, &str) {
+        (&self.sender, self.date, &self.subject)
+    }
+
     /// The order copies rank in: the folder's purpose, the current numbering, the first to arrive.
     fn rank(&self) -> (u8, bool, i64, PathBuf) {
         (self.role.rank(), !self.current, self.arrived, self.path.clone())
@@ -258,6 +273,8 @@ fn copies(roots: &[Root], address: &Address) -> Vec<Copy> {
                     role: role_of(root, &local),
                     arrived: line.arrived,
                     sender: line.from_address.clone().unwrap_or_default().to_ascii_lowercase(),
+                    date: line.date,
+                    subject: line.subject.clone(),
                     current: origin.is_none_or(|o| current.is_none_or(|c| c == o.validity)),
                     origin,
                     path,
@@ -390,8 +407,7 @@ pub fn find(roots: &[Root], wanted: &MailRef) -> Found {
     if all.is_empty() {
         return Found::NotHere;
     }
-    let senders: BTreeSet<&str> = all.iter().map(|c| c.sender.as_str()).collect();
-    let reused = senders.len() > 1;
+    let reused = all.iter().any(|a| all.iter().any(|b| different(a.marks(), b.marks())));
     // 1. The hinted file, where it is now, holding this address.
     if let Some(now) = hint.as_ref().and_then(|h| h.now.as_ref())
         && let Some(copy) = all.iter().find(|c| c.path == *now)
@@ -407,11 +423,9 @@ pub fn find(roots: &[Root], wanted: &MailRef) -> Found {
     // 3 and 4. In the hinted account, else anywhere, the copy that ranks first.
     let in_account: Vec<&Copy> = all.iter().filter(|c| wanted.account.as_ref().is_some_and(|a| *a == c.account)).collect();
     let mut candidates: Vec<&Copy> = if in_account.is_empty() { all.iter().collect() } else { in_account };
-    // 5. One id from two senders: the copy that arrived first decides whose message it is.
-    if candidates.iter().map(|c| c.sender.as_str()).collect::<BTreeSet<_>>().len() > 1
-        && let Some(first) = candidates.iter().min_by_key(|c| (c.arrived, c.rank())).map(|c| c.sender.clone())
-    {
-        candidates.retain(|c| c.sender == first);
+    // 5. One id carried by two different messages: the copy that arrived first decides which message it is.
+    if let Some(first) = candidates.iter().min_by_key(|c| (c.arrived, c.rank())).map(|c| (c.sender.clone(), c.date, c.subject.clone())) {
+        candidates.retain(|c| !different(c.marks(), (&first.0, first.1, &first.2)));
     }
     candidates.into_iter().min_by_key(|c| c.rank()).map_or(Found::NotHere, |c| Found::Here(c.here(reused)))
 }
@@ -427,6 +441,15 @@ pub struct ServerCopy {
     pub sender: String,
     /// When it reached the server (INTERNALDATE, Unix seconds).
     pub arrived: i64,
+    /// Its Date header (Unix seconds) and its Subject, as its header says them.
+    pub date: Option<i64>,
+    pub subject: String,
+}
+
+impl ServerCopy {
+    fn marks(&self) -> (&str, Option<i64>, &str) {
+        (&self.sender, self.date, &self.subject)
+    }
 }
 
 /// The servers of your addresses, as `find_or_ask` asks them: read only.
@@ -482,12 +505,12 @@ fn asked(roots: &[Root], accounts: &[Account], wanted: &MailRef, servers: &dyn S
     if held.is_empty() {
         return if unreachable { Found::Unreachable } else { Found::Gone };
     }
-    let reused = held.iter().map(|(_, c)| c.sender.to_ascii_lowercase()).collect::<BTreeSet<_>>().len() > 1;
-    // The hinted account's copies, else all; one sender, the first to arrive; then ranked.
+    let reused = held.iter().any(|(_, a)| held.iter().any(|(_, b)| different(a.marks(), b.marks())));
+    // The hinted account's copies, else all; the message of the first to arrive; then ranked.
     let in_account: Vec<&(&Account, ServerCopy)> = held.iter().filter(|(a, _)| wanted.account.as_ref() == Some(&a.id)).collect();
     let mut candidates: Vec<&(&Account, ServerCopy)> = if in_account.is_empty() { held.iter().collect() } else { in_account };
-    if let Some(first) = candidates.iter().min_by_key(|(_, c)| c.arrived).map(|(_, c)| c.sender.to_ascii_lowercase()) {
-        candidates.retain(|(_, c)| c.sender.to_ascii_lowercase() == first);
+    if let Some(first) = candidates.iter().min_by_key(|(_, c)| c.arrived).map(|(_, c)| c.clone()) {
+        candidates.retain(|(_, c)| !different(c.marks(), first.marks()));
     }
     let Some((account, copy)) = candidates.into_iter().min_by_key(|(_, c)| (c.folder.role.rank(), c.arrived, c.origin)) else { return Found::Gone };
     match servers.bring(account, copy) {
@@ -562,10 +585,16 @@ mod tests {
         /// `folder`, numbered `validity`/`uid`, arrived at `arrived`.
         #[allow(clippy::too_many_arguments)]
         fn put(&self, account: usize, folder: &str, validity: u32, uid: u32, id: Option<&str>, sender: &str, arrived: i64) -> PathBuf {
+            self.put_as(account, folder, validity, uid, id, sender, arrived, "Lunch")
+        }
+
+        /// As `put`, its Subject given.
+        #[allow(clippy::too_many_arguments)]
+        fn put_as(&self, account: usize, folder: &str, validity: u32, uid: u32, id: Option<&str>, sender: &str, arrived: i64, subject: &str) -> PathBuf {
             let local = self.local(folder);
             let path = self.roots[account].path.join(&local).join("cur").join(format!("{arrived}.U{validity}-{uid}.sioul{}2,S", crate::maildir::INFO));
             let id = id.map(|id| format!("Message-ID: <{id}>\r\n")).unwrap_or_default();
-            std::fs::write(&path, format!("{id}From: <{sender}>\r\nTo: me@example.org\r\nDate: Fri, 30 Oct 2026 09:00:00 +0100\r\nSubject: Lunch\r\n\r\nNoon?\r\n")).unwrap();
+            std::fs::write(&path, format!("{id}From: <{sender}>\r\nTo: me@example.org\r\nDate: Fri, 30 Oct 2026 09:00:00 +0100\r\nSubject: {subject}\r\n\r\nNoon?\r\n")).unwrap();
             let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(arrived as u64);
             std::fs::File::options().write(true).open(&path).unwrap().set_modified(time).unwrap();
             path
@@ -741,18 +770,51 @@ mod tests {
         let stand = Stand::new("one_id_from_", &["home", "work"]);
         let (home, work) = (stand.roots[0].account.clone(), stand.roots[1].account.clone());
         let _ = (&home, &work);
-        // One id from two senders: the first to arrive, unless the hint says
-        // the other; said either way.
-        let genuine = stand.put(0, "INBOX", VALIDITY, 13, Some("reused@example.org"), "bank@example.org", 1_777_000_013);
-        let lookalike = stand.put(0, "INBOX", VALIDITY, 14, Some("reused@example.org"), "bank@lookalike.example", 1_777_000_014);
+        // One id carried by two different messages (another sender, another
+        // Subject): the first to arrive, unless the hint says the other; said either way.
+        let genuine = stand.put_as(0, "INBOX", VALIDITY, 13, Some("reused@example.org"), "bank@example.org", 1_777_000_013, "Your statement");
+        let lookalike = stand.put_as(0, "INBOX", VALIDITY, 14, Some("reused@example.org"), "bank@lookalike.example", 1_777_000_014, "Your statement: act now");
         let Found::Here(here) = stand.find(by("mid:reused@example.org")) else { panic!() };
         assert_eq!((here.path, here.reused), (genuine.clone(), true));
         let Found::Here(here) = stand.find(MailRef { file: Some(lookalike.clone()), ..by("mid:reused@example.org") }) else { panic!() };
         assert_eq!((here.path, here.reused), (lookalike.clone(), true));
         // A later look-alike ranked higher (the inbox) never takes a tie made to the archived first one.
         std::fs::remove_file(&genuine).unwrap();
-        let archived = stand.put(0, "Archive", VALIDITY, 15, Some("reused@example.org"), "bank@example.org", 1_777_000_013);
+        let archived = stand.put_as(0, "Archive", VALIDITY, 15, Some("reused@example.org"), "bank@example.org", 1_777_000_013, "Your statement");
         assert_eq!(path_of(&stand.find(by("mid:reused@example.org"))), archived);
+    }
+
+    /// One message from two senders is no reused id: a list that rewrites
+    /// its sender ("Ana via the list") and the copy sent directly carry the
+    /// same Date and Subject. Not said reused, and the copy that ranks first
+    /// (the inbox) is opened, though the list's arrived first (review of 05ccd0a, L11).
+    #[test]
+    fn a_list_s_copy_is_the_same_message() {
+        let stand = Stand::new("a_list_s_cop", &["home"]);
+        stand.put(0, "Lunch", VALIDITY, 1, Some("list-1@example.org"), "list@lists.example.org", 1_777_000_001);
+        let direct = stand.put(0, "INBOX", VALIDITY, 2, Some("list-1@example.org"), "ana@example.org", 1_777_000_002);
+        let Found::Here(here) = stand.find(by("mid:list-1@example.org")) else { panic!() };
+        assert_eq!((here.path, here.reused), (direct, false));
+        // On the servers alike: brought from the inbox, not said reused.
+        let f = |name: &str| stand.roots[0].folders.iter().find(|f| f.name == name).unwrap().clone();
+        let copy = |folder: &str, uid: u32, sender: &str, arrived: i64, subject: &str| {
+            let raw = format!("Message-ID: <far-list@example.org>\r\nFrom: <{sender}>\r\nDate: Fri, 30 Oct 2026 09:00:00 +0100\r\nSubject: {subject}\r\n\r\nHi.\r\n");
+            (stand.roots[0].account.clone(), ServerCopy { folder: f(folder), origin: ImapOrigin { validity: VALIDITY, uid }, message_id: "<far-list@example.org>".into(), sender: sender.into(), arrived, date: Some(1_793_347_200), subject: subject.into() }, raw)
+        };
+        let servers = Servers { held: vec![copy("Lunch", 60, "list@lists.example.org", 1_777_000_060, "Lunch"), copy("INBOX", 61, "ana@example.org", 1_777_000_061, "Lunch")], ..Servers::default() };
+        let Found::Here(here) = ask(&stand.roots, &stand.accounts, &by("mid:far-list@example.org"), &servers, false) else { panic!() };
+        assert_eq!((here.folder.as_str(), here.reused), ("INBOX", false));
+        // Two different messages on the servers: still the first to arrive, said reused.
+        let servers = Servers { held: vec![copy("Lunch", 70, "bank@example.org", 1_777_000_070, "Statement"), copy("INBOX", 71, "bank@lookalike.example", 1_777_000_071, "Statement: act now")], ..Servers::default() };
+        let raw_id = |c: &mut (String, ServerCopy, String)| {
+            c.1.message_id = "<far-reused@example.org>".into();
+            c.2 = c.2.replace("far-list@", "far-reused@");
+        };
+        let mut held = servers.held;
+        held.iter_mut().for_each(raw_id);
+        let servers = Servers { held, ..Servers::default() };
+        let Found::Here(here) = ask(&stand.roots, &stand.accounts, &by("mid:far-reused@example.org"), &servers, false) else { panic!() };
+        assert_eq!((here.folder.as_str(), here.reused), ("Lunch", true));
     }
 
     /// The ids' table (§2.5), a move elsewhere: the servers asked, the copy that ranks first brought; gone only when every server answered; never from the demo profile; a digest never asked.
@@ -764,7 +826,7 @@ mod tests {
         // A move elsewhere: no copy here. The servers asked; the copy that ranks first brought, unread.
         let held = |account: &str, folder: &str, uid: u32, id: &str, sender: &str, arrived: i64| {
             let f = stand.roots[0].folders.iter().find(|f| f.name == folder).unwrap().clone();
-            let copy = ServerCopy { folder: f, origin: ImapOrigin { validity: VALIDITY, uid }, message_id: format!("<{id}>"), sender: sender.into(), arrived };
+            let copy = ServerCopy { folder: f, origin: ImapOrigin { validity: VALIDITY, uid }, message_id: format!("<{id}>"), sender: sender.into(), arrived, date: None, subject: "Far".into() };
             (account.to_string(), copy, format!("Message-ID: <{id}>\r\nFrom: <{sender}>\r\nSubject: Far\r\n\r\nFar.\r\n"))
         };
         let servers = Servers {
