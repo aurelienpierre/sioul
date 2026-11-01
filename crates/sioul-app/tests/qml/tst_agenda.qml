@@ -50,7 +50,9 @@ Item {
         function showDays(from, count, upcoming) { mock.asked.push(count) }
         function refreshHealth() { mock.healthAsked++ }
         function relayToday() { mock.relaid++ }
-        function setOverlapAside(key) {}
+        // What the last "Don't mention it again" gave.
+        property string asideGiven: ""
+        function setOverlapAside(key) { mock.asideGiven = key }
         function setTaskAt(uid, at) { return "" }
     }
 
@@ -158,6 +160,7 @@ Item {
             mock.relaid = 0
             mock.longWords = false
             mock.overlaps = "[]"
+            mock.asideGiven = ""
         }
 
         // What comes showing today asks for the doses' reading as the Day does: when
@@ -338,6 +341,40 @@ Item {
             verify(buttons.every(b => b.parent.implicitWidth <= page.width - 16), "within the phone's width: " + buttons.map(b => b.parent.implicitWidth).join(", "))
         }
 
+        // The warnings above the agenda (fixes W1 and W2): three at most, then "+n more",
+        // which unfolds the rest and folds them again; an event of 24 hours or more once,
+        // "During …: n other events", its "Don't mention it again" giving the event whole and
+        // its pairs; an event over several days named by its span, not its clock times.
+        function test_the_warnings_are_three_then_more() {
+            const page = makePage()
+            mock.longWords = true
+            const one = (title, from, to, when) => ({ key: title + ".ics", start: root.monday, title: title, from: from, to: to, when: when })
+            const pair = n => ({ key: "k" + n, day: "2099-01-0" + (6 + n % 3), today: false, first: one("Concert " + n, "22:00", "02:00", "22:00 → 02:00 (Wed)"), second: one("Call " + n, "23:00", "23:30", "23:00 – 23:30"), gap: -30, needed: 0, at_once: true, source: "" })
+            const during = { kind: "during", key: "during:residency@1", keys: ["residency@1|a@2", "residency@1|b@3"], day: "2099-01-05", today: true, event: one("Residency", "10:00", "10:15", "Mon 5 Jan 10:00 → Mon 2 Feb 10:15"), others: 34, others_today: 2 }
+            mock.overlaps = JSON.stringify([during, pair(1), pair(2), pair(3), pair(4)])
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [day(0, { comes: { rows: [] } })] })
+            wait(50)
+            const buttons = () => root.all(page, c => c.text === "overlap-set-aside" && c.flat !== undefined && c.visible)
+            const more = root.find(page, "overlapsMore")
+            compare(buttons().length, 3, "three at most")
+            verify(more.visible && String(more.text).indexOf("overlap-more") === 0 && String(more.text).indexOf("\"count\":2") > 0, "+2 more: " + more.text)
+            mouseClick(more)
+            wait(20)
+            compare(buttons().length, 5, "unfolded")
+            verify(String(more.text).indexOf("overlap-fewer") === 0, "then fewer")
+            mouseClick(more)
+            wait(20)
+            compare(buttons().length, 3, "folded again")
+            // The long event once, by its span, its count.
+            const words = root.all(page, c => typeof c.text === "string" && c.visible && /^overlap-(day|during)/.test(c.text)).map(c => c.text)
+            verify(words[0].indexOf("overlap-during:") === 0 && words[0].indexOf("Mon 5 Jan 10:00 → Mon 2 Feb 10:15") > 0 && words[0].indexOf("\"count\":34") > 0, words[0])
+            verify(words[1].indexOf("Concert 1 (22:00 → 02:00 (Wed))") > 0, "the evening by its span: " + words[1])
+            mouseClick(buttons()[0])
+            compare(mock.asideGiven, "during:residency@1\nresidency@1|a@2\nresidency@1|b@3", "the event whole and its pairs")
+            mouseClick(buttons()[1])
+            compare(mock.asideGiven, "k1", "a pair, its key")
+        }
+
         // A grid's bar of the trip (`ongoing::Bar`) on a week's row.
         function tripBar(row, from, to, more) {
             return Object.assign({ id: "Trip", uid: "trip", title: "Trip", colour: "#3d6b8f", row: row, from_column: from, to_column: to, lane: 0, from: "08:00", to: "19:00", cut_before: false, cut_after: false, line: "Trip, Mon 5 Jan 08:00 → Wed 7 Jan 19:00" }, more || {})
@@ -363,10 +400,14 @@ Item {
             fuzzyCompare(bars[0].width, 3 * planning.dayWidth - 3, 1, "across its three days")
             fuzzyCompare(bars[0].mapToItem(planning, 0, 0).x, planning.gutter, 1, "from Monday")
             verify(root.all(bars[0], c => c.text === "19:00").length === 1 && root.all(bars[0], c => String(c.text).indexOf("08:00") === 0).length === 1, "its times at its two ends")
-            compare(root.all(page, c => c.objectName === "weekBarsMore" && c.visible).map(l => l.text).join(" "), "agenda-lines-more", "+2 under Friday")
+            const beyond = root.all(page, c => c.objectName === "weekBarsMore" && c.visible)
+            compare(beyond.map(l => l.text).join(" "), "agenda-lines-more", "+2 under Friday")
             verify(root.all(page, c => c.text === "Concert" && c.visible).length >= 2, "the evening's two blocks in the hours")
             mouseClick(bars[0])
             compare([shell.opened[0].kind, shell.opened[0].itemId].join(" "), "event Trip", "a tap opens it")
+            // "+2" opens its day, whose head says every long event (fix W3).
+            mouseClick(beyond[0])
+            compare([page.mode, page.iso(page.anchor)].join(" "), "day 2099-01-09")
             // The Day: its head line.
             page.mode = "day"
             mock.agenda = JSON.stringify({ version: 3, from: "2099-01-06", sentence: "", days: [day(1)], spans: shown.spans, bars: [tripBar(0, 0, 0, { cut_before: true, cut_after: true, line: "Ongoing: Trip, until Wed 7 Jan 19:00" })], bars_more: [0] })

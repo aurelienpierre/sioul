@@ -121,7 +121,8 @@ pub struct Bar {
     /// Its first and last columns in that row (0 to 6), the days it covers there.
     pub from_column: u32,
     pub to_column: u32,
-    /// From the row's top, 0 to 2; `LANES` and over are counted in `bars_more`.
+    /// From the row's top, 0 to 2 in a week's or a month's rows, `LANES` and over
+    /// counted in `bars_more` there; in the Day, any: it lists them all.
     pub lane: u32,
     /// Its start time at its start ("10:00"), its end time at its end ("10:15"):
     /// "" where the row cuts it, and for whole days.
@@ -215,14 +216,31 @@ fn zoned(at: i64, zone: &TimeZone) -> Option<jiff::Zoned> {
 /// an evening past midnight (under 24 hours) "22:00 → 02:00 (Tue)"; whole days
 /// "Sat 7 Nov → Mon 9 Nov".
 fn span_words(f: &Found, zone: &TimeZone, tr: &Translator) -> String {
-    if f.whole {
-        return said(tr, "agenda-span", &[("start", short_day(tr, f.first_date)), ("end", short_day(tr, f.last_date))]);
+    span_text(f.at, f.until, f.whole, f.first_date, f.last_date, zone, tr)
+}
+
+fn span_text(at: i64, until: i64, whole: bool, first_date: Date, last_date: Date, zone: &TimeZone, tr: &Translator) -> String {
+    if whole {
+        return said(tr, "agenda-span", &[("start", short_day(tr, first_date)), ("end", short_day(tr, last_date))]);
     }
-    if f.until - f.at < 86_400 {
-        return said(tr, "agenda-span-night", &[("start", clock(f.at, zone)), ("end", clock(f.until, zone)), ("weekday", tr.weekday_short(f.last_date))]);
+    if until - at < 86_400 {
+        return said(tr, "agenda-span-night", &[("start", clock(at, zone)), ("end", clock(until, zone)), ("weekday", tr.weekday_short(last_date))]);
     }
-    let (Some(start), Some(end)) = (zoned(f.at, zone), zoned(f.until, zone)) else { return String::new() };
+    let (Some(start), Some(end)) = (zoned(at, zone), zoned(until, zone)) else { return String::new() };
     said(tr, "agenda-span", &[("start", tr.date(&start, true)), ("end", tr.date(&end, true))])
+}
+
+/// An event's whole span when it runs past its first day ("Mon 2 Nov 10:00 →
+/// Mon 30 Nov 10:15", "22:00 → 02:00 (Tue)", whole days "Sat 7 Nov → Mon 9
+/// Nov"), as its list row says it; None within its day. What a warning for
+/// two events at once says of it rather than its clock times alone (fix W2).
+pub fn span_of(at: i64, until: i64, whole: bool, zone: &TimeZone, tr: &Translator) -> Option<String> {
+    let first_date = zoned(at, zone)?.date();
+    let last_date = zoned(until.max(at + 1) - 1, zone)?.date();
+    if last_date <= first_date {
+        return None;
+    }
+    Some(span_text(at, until, whole, first_date, last_date, zone, tr))
 }
 
 /// Where it ends, as "until …" says it: "Mon 30 Nov 10:15"; whole days, the last day ("Mon 9 Nov").
@@ -339,16 +357,20 @@ pub fn spans(items: &[Item], from: Date, count: i64, zone: &TimeZone, tr: &Trans
         through.rows.sort_by_key(|r| (r.minute, r.mark == Mark::End, r.lane));
         through.lines.sort_by_key(|l| l.lane);
     }
+    // A single day (the Day) says every one at its head, one line each: none beyond three
+    // there (fix W3); a week's or a month's rows three lanes, then "+2".
+    let capped = shown.len() > 1;
     for (f, &lane) in bars_found.iter().zip(&bar_lanes) {
         out.barred.push(f.item.id.clone());
         let until = end_words(f, zone, tr);
         let (starts, ends) = (f.starts_here(from), f.ends_here(from));
+        let beyond = capped && lane >= LANES;
         for day in f.first..=f.last {
-            if lane >= LANES {
+            if beyond {
                 out.bars_more[day] += 1;
             }
         }
-        if lane >= LANES {
+        if beyond {
             continue;
         }
         let (first_row, last_row) = (f.first / 7, f.last / 7);
@@ -553,10 +575,28 @@ mod tests {
         assert_eq!(residency, [(1, 0, 6, "", "Residency"), (2, 0, 6, "", "Residency"), (3, 0, 6, "", "Residency"), (4, 0, 6, "", "Residency"), (5, 0, 0, "10:15", "Residency")]);
         assert_eq!(month.bars.iter().filter(|b| b.uid == "trip").count(), 1);
         assert_eq!(month.bars.iter().filter(|b| b.uid == "exhibition").map(|b| b.row).collect::<Vec<_>>(), [1, 2]);
+        // The Day lists every one, five at once on Friday: no "+2" there (fix W3).
+        let friday = spans_of("2026-11-06", 1, &[]);
+        let mut titles: Vec<&str> = friday.bars.iter().map(|b| b.title.as_str()).collect();
+        titles.sort_unstable();
+        assert_eq!(titles, ["Course", "Exhibition", "Guests", "Residency", "Trip to the coast"]);
+        assert_eq!(friday.bars_more, [0]);
         // The Day: one bar, its head line.
         let tuesday = spans_of("2026-11-10", 1, &[]);
         let lines: Vec<&str> = tuesday.bars.iter().map(|b| b.line.as_str()).collect();
         assert_eq!(lines, ["Ongoing: Residency, until Mon 30 Nov 10:15", "Ongoing: Exhibition, until Sun 15 Nov 18:00"]);
+    }
+
+    /// A warning for two events at once names an event over several days by its
+    /// span, as its row does (fix W2); one within its day, by its clock times.
+    #[test]
+    fn a_warning_says_an_event_s_span() {
+        let (zone, tr) = (paris(), crate::i18n::Translator::new("en"));
+        let second = |text: &str| at(text).timestamp().as_second();
+        assert_eq!(super::span_of(second("2026-11-03T22:00"), second("2026-11-04T02:00"), false, &zone, &tr).as_deref(), Some("22:00 → 02:00 (Wed)"));
+        assert_eq!(super::span_of(second("2026-11-02T10:00"), second("2026-11-30T10:15"), false, &zone, &tr).as_deref(), Some("Mon 2 Nov 10:00 → Mon 30 Nov 10:15"));
+        assert_eq!(super::span_of(second("2026-11-07T00:00"), second("2026-11-10T00:00"), true, &zone, &tr).as_deref(), Some("Sat 7 Nov → Mon 9 Nov"));
+        assert_eq!(super::span_of(second("2026-11-03T11:00"), second("2026-11-04T00:00"), false, &zone, &tr), None, "ending at midnight: within its day");
     }
 
     /// A calendar Show hides takes no lane: the others close up.

@@ -397,33 +397,73 @@ struct EventView {
 
 /// Two events at once among `events` (the next two weeks', those whose
 /// deletion waits left out), or closer than a time you set between them
-/// (`overlaps::overlaps`), those set aside left out, as JSON:
-/// [{key, day, today, first, second, gap, needed, at_once, source}], each
-/// event {key, title, from, to} ("09:30"), `gap` and `needed` in minutes,
-/// `source` where that time is set, in words, for the Porch and the agenda.
+/// (`overlaps::overlaps`), those set aside left out, as JSON, as they are
+/// said (`overlaps::warnings`), for the Porch and the agenda:
+/// - a pair, {key, day, today, first, second, gap, needed, at_once, source},
+///   each event {key, start, title, from, to, when} ("09:30"; `when` its
+///   clock times, or its span when it runs past its day: fix W2), `gap` and
+///   `needed` in minutes, `source` where that time is set, in words;
+/// - an event of 24 hours or more once, {kind: "during", key, keys, day,
+///   today, event, others, others_today} (fix W1): `key` `during:<uid>@<start>`
+///   and `keys` its pairs, what its "Don't mention it again" sets aside
+///   (`set_overlap_aside`); `others` how many other events it overlaps,
+///   `others_today` those today.
 pub(crate) fn overlaps_of(events: &[agenda::Occurrence]) -> String {
     let now = sioul_core::zone::now();
-    let zone = now.time_zone().clone();
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
-    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
-    let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).ok();
-    // Each with its time: its card opens on that time of a series, not its next (review of 590eb18, later 6).
-    let one = |e: &agenda::Occurrence| serde_json::json!({ "key": e.key, "start": e.start, "title": e.summary, "from": hm(e.start), "to": hm(e.end) });
     let between = load_config().agenda.between();
-    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(events, between)
-        .iter()
-        // Over already: nothing to do about it.
-        .filter(|o| !aside.keys.contains(&o.key) && o.first.end.max(o.second.end) > now.timestamp().as_second())
-        .map(|o| serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": day(o.second.start) == Some(now.date()), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed, "at_once": o.at_once(), "source": if o.source.is_empty() { String::new() } else { tr().text(&format!("overlap-source-{}", o.source), None) } }))
-        .collect();
-    json(&rows)
+    json(&warning_rows(sioul_core::overlaps::overlaps(events, between), &aside, &now))
 }
 
-/// An overlap set aside for good; returns what went wrong, else "".
-pub(crate) fn set_overlap_aside(key: &str) -> String {
+/// The warnings' rows of `overlaps` at `now` (`overlaps_of`): over already, or set aside, left out.
+fn warning_rows(overlaps: Vec<sioul_core::overlaps::Overlap>, aside: &sioul_core::overlaps::SetAside, now: &jiff::Zoned) -> Vec<serde_json::Value> {
+    use sioul_core::overlaps::{occurrence_id, Warning};
+    let zone = now.time_zone().clone();
+    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).ok();
+    // Each with its time: its card opens on that time of a series, not its next (review of 590eb18, later 6);
+    // over several days, its span (fix W2).
+    let one = |e: &agenda::Occurrence| {
+        let when = sioul_core::ongoing::span_of(e.start, e.end, e.all_day, &zone, tr()).unwrap_or_else(|| format!("{} – {}", hm(e.start), hm(e.end)));
+        serde_json::json!({ "key": e.key, "start": e.start, "title": e.summary, "from": hm(e.start), "to": hm(e.end), "when": when })
+    };
+    let open: Vec<sioul_core::overlaps::Overlap> = overlaps
+        .into_iter()
+        // Over already: nothing to do about it.
+        .filter(|o| !aside.holds(o) && o.first.end.max(o.second.end) > now.timestamp().as_second())
+        .collect();
+    let today = |o: &sioul_core::overlaps::Overlap| day(o.second.start) == Some(now.date());
+    sioul_core::overlaps::warnings(open)
+        .into_iter()
+        .map(|warning| match warning {
+            Warning::Pair(o) => serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": today(&o), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed, "at_once": o.at_once(), "source": if o.source.is_empty() { String::new() } else { tr().text(&format!("overlap-source-{}", o.source), None) } }),
+            Warning::During { event, overlaps } => {
+                let id = occurrence_id(&event);
+                let other = |o: &sioul_core::overlaps::Overlap| if occurrence_id(&o.first) == id { occurrence_id(&o.second) } else { occurrence_id(&o.first) };
+                let others: std::collections::BTreeSet<String> = overlaps.iter().map(other).collect();
+                let others_today: std::collections::BTreeSet<String> = overlaps.iter().filter(|o| today(o)).map(other).collect();
+                serde_json::json!({
+                    "kind": "during",
+                    "key": format!("during:{id}"),
+                    "keys": overlaps.iter().map(|o| o.key.clone()).collect::<Vec<_>>(),
+                    "day": overlaps.first().and_then(|o| day(o.second.start)).map(|d| d.to_string()).unwrap_or_default(),
+                    "today": !others_today.is_empty(),
+                    "event": one(&event),
+                    "others": others.len(),
+                    "others_today": others_today.len(),
+                })
+            }
+        })
+        .collect()
+}
+
+/// An overlap set aside for good, or a long event's warning whole: what its
+/// "Don't mention it again" gives, one per line (`overlaps::SetAside::set`);
+/// returns what went wrong, else "".
+pub(crate) fn set_overlap_aside(given: &str) -> String {
     let path = sioul_core::overlaps::SetAside::default_path();
     let mut aside = sioul_core::overlaps::SetAside::load(&path);
-    aside.keys.insert(key.to_string());
+    aside.set(given);
     aside.save(&path).err().unwrap_or_default()
 }
 
@@ -1627,6 +1667,44 @@ mod tests {
         let rows: serde_json::Value = serde_json::from_str(&overlaps_of(&[one("/c/daily.ics", start), one("/c/other.ics", start + 1_800)])).unwrap();
         assert_eq!(rows[0]["first"]["start"], start, "{rows}");
         assert_eq!(rows[0]["second"]["start"], start + 1_800, "{rows}");
+    }
+
+    /// The warnings as they are said (fixes W1 and W2): an event of 24 hours or
+    /// more is one row, "during", the other events it overlaps counted and its
+    /// pairs given to set aside; an evening past midnight is named by its span;
+    /// set aside whole, none of its overlaps comes back, one made later neither.
+    #[test]
+    fn a_long_event_is_one_warning_named_by_its_span() {
+        use sioul_core::overlaps::{overlaps, SetAside};
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        let at = |days: i64, hour: i8, minute: i8| now.date().checked_add(jiff::Span::new().days(days)).unwrap().at(hour, minute, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let one = |uid: &str, start: i64, end: i64| agenda::Occurrence { key: format!("/c/{uid}.ics"), uid: uid.into(), summary: uid.into(), start, end, ..Default::default() };
+        let events = vec![
+            one("warn-residency", at(1, 10, 0), at(15, 10, 15)),
+            one("warn-dentist", at(2, 11, 0), at(2, 12, 0)),
+            one("warn-evening", at(3, 22, 0), at(4, 2, 0)),
+            one("warn-call", at(3, 23, 0), at(3, 23, 30)),
+        ];
+        let rows = warning_rows(overlaps(&events, 0), &SetAside::default(), &now);
+        assert_eq!(rows.len(), 2, "{rows:#?}");
+        let during = &rows[0];
+        assert_eq!((during["kind"].as_str(), during["key"].as_str(), during["others"].as_u64()), (Some("during"), Some(format!("during:warn-residency@{}", at(1, 10, 0)).as_str()), Some(3)), "{during}");
+        assert_eq!(during["keys"].as_array().map(Vec::len), Some(3));
+        let span = |e: &serde_json::Value| e["when"].as_str().unwrap_or_default().to_string();
+        assert!(span(&during["event"]).contains('→'), "the residency by its span: {during}");
+        let pair = &rows[1];
+        assert_eq!((pair["first"]["title"].as_str(), pair["second"]["title"].as_str()), (Some("warn-evening"), Some("warn-call")));
+        assert!(span(&pair["first"]).contains('→') && span(&pair["first"]).contains("22:00") && span(&pair["first"]).contains("02:00"), "the evening by its span: {pair}");
+        assert_eq!(span(&pair["second"]), "23:00 – 23:30", "the call by its times");
+        // Set aside whole: its pairs and the event; an overlap made later with it, none.
+        let mut aside = SetAside::default();
+        let keys: Vec<&str> = during["keys"].as_array().unwrap().iter().filter_map(|k| k.as_str()).collect();
+        aside.set(&format!("{}\n{}", during["key"].as_str().unwrap(), keys.join("\n")));
+        let mut later = events.clone();
+        later.push(one("warn-later", at(10, 9, 0), at(10, 10, 0)));
+        let rows = warning_rows(overlaps(&later, 0), &aside, &now);
+        assert_eq!(rows.iter().map(|r| r["key"].as_str().unwrap_or_default().to_string()).collect::<Vec<_>>(), [pair["key"].as_str().unwrap().to_string()], "only the evening and the call: {rows:#?}");
     }
 
     /// An event moved to another calendar (21 October 2026): written there,

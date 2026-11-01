@@ -3578,6 +3578,16 @@ overlap-today = Today, two events at once: { $first } and { $second }.
 overlap-day = { $day }, two events at once: { $first } and { $second }.
 overlap-open = Open “{ $title }”
 overlap-set-aside = Don’t mention it again
+overlap-during = During { $title } ({ $span }): { $count ->
+        [one] one other event
+       *[other] { $count } other events
+    }
+overlap-during-today = Today, during { $title } ({ $span }): { $count ->
+        [one] one other event
+       *[other] { $count } other events
+    }
+overlap-more = +{ $count } more
+overlap-fewer = Fewer
 day-more = { $count ->
     [one] One more step of today does not fit before the end of the day: it keeps its place in the plan.
    *[other] { $count } more steps of today do not fit before the end of the day: they keep their place in the plan.

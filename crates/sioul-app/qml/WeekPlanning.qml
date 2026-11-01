@@ -1111,6 +1111,13 @@ ColumnLayout {
                     textFormat: Text.PlainText
                     font.pixelSize: 12
                     color: planning.theme.muted
+                    Accessible.role: Accessible.Button
+
+                    // That day, whose head says every long event (fix W3): none out of reach.
+                    TapHandler {
+                        cursorShape: Qt.PointingHandCursor
+                        onTapped: planning.openDay((planning.days[barsBeyond.index] || {}).date || "")
+                    }
                 }
             }
         }

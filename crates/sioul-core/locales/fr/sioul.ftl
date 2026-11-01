@@ -3596,6 +3596,16 @@ overlap-today = Aujourd’hui, deux événements en même temps : { $first } e
 overlap-day = { $day }, deux événements en même temps : { $first } et { $second }.
 overlap-open = Ouvrir « { $title } »
 overlap-set-aside = Ne plus en parler
+overlap-during = Pendant { $title } ({ $span }) : { $count ->
+        [one] un autre événement
+       *[other] { $count } autres événements
+    }
+overlap-during-today = Aujourd’hui, pendant { $title } ({ $span }) : { $count ->
+        [one] un autre événement
+       *[other] { $count } autres événements
+    }
+overlap-more = +{ $count } de plus
+overlap-fewer = Moins
 day-more = { $count ->
     [one] Une étape de plus d’aujourd’hui ne tient pas avant la fin de la journée : elle garde sa place dans le plan.
    *[other] { $count } étapes de plus d’aujourd’hui ne tiennent pas avant la fin de la journée : elles gardent leur place dans le plan.

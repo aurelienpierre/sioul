@@ -109,6 +109,28 @@ Item {
     }
     readonly property int monthBarHeight: 15
 
+    // A warning for two events at once as it is said (`pim::overlaps_of`): an event of 24
+    // hours or more once, "During Residency (Mon 2 Nov 10:00 → Mon 30 Nov 10:15): 34 other
+    // events" (fix W1); else the pair, each event by its clock times or, over several days,
+    // its span (`when`, fix W2). `today`: as the Porch says today's.
+    function warningWords(row, today) {
+        if (row.kind === "during")
+            return page.sioul.textArgs(today ? "overlap-during-today" : "overlap-during", JSON.stringify({ title: row.event.title, span: row.event.when, count: today ? row.others_today : row.others }))
+        const one = e => e.title + " (" + (e.when || e.from + " – " + e.to) + ")"
+        const words = { first: one(row.first), second: one(row.second), gap: row.gap, needed: row.needed, source: row.source }
+        // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
+        if (today)
+            return page.sioul.textArgs(row.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify(words))
+        words.day = new Date(row.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
+        return page.sioul.textArgs(row.at_once ? "overlap-day" : "overlap-day-close", JSON.stringify(words))
+    }
+
+    // What a warning's "Don't mention it again" sets aside (`pim::set_overlap_aside`): a pair's
+    // key; a long event whole and the pairs it holds, which a Sioul before reads.
+    function warningAside(row) {
+        return row.kind === "during" ? [row.key].concat(row.keys || []).join("\n") : row.key
+    }
+
     // An event over several days' lines through a day of a list (`lines`, `ongoing::Line`),
     // made only for a day that has some, so that the lists cost nothing more without
     // them: SpanLine.qml on `parent` (the list's content), from `from(line)` to
@@ -519,13 +541,16 @@ Item {
 
                 // Made with the agenda, off the window's thread.
                 readonly property var rows: JSON.parse(page.sioul.overlaps || "[]")
+                // Three above any view at most, then "+n more", which unfolds the rest (fix W1:
+                // a month-long event's warnings hid the view under them).
+                property bool unfolded: false
 
                 visible: overlapsList.rows.length > 0
                 Layout.fillWidth: true
                 spacing: 4
 
                 Repeater {
-                    model: overlapsList.rows
+                    model: overlapsList.unfolded ? overlapsList.rows : overlapsList.rows.slice(0, 3)
 
                     delegate: RowLayout {
                         id: clash
@@ -540,12 +565,7 @@ Item {
                             // Its words wrap at the row's width: they never widen it past a phone's
                             // (found in the ongoing round's pictures: a month-long event's warnings).
                             Layout.preferredWidth: 0
-                            text: {
-                                const one = e => e.title + " (" + e.from + " – " + e.to + ")"
-                                const day = new Date(clash.modelData.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
-                                // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
-                                return page.sioul.textArgs(clash.modelData.at_once ? "overlap-day" : "overlap-day-close", JSON.stringify({ day: day, first: one(clash.modelData.first), second: one(clash.modelData.second), gap: clash.modelData.gap, needed: clash.modelData.needed, source: clash.modelData.source }))
-                            }
+                            text: page.warningWords(clash.modelData, false)
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             color: page.theme.text
@@ -553,9 +573,16 @@ Item {
                         Button {
                             flat: true
                             text: page.sioul.text("overlap-set-aside")
-                            onClicked: page.sioul.setOverlapAside(clash.modelData.key)
+                            onClicked: page.sioul.setOverlapAside(page.warningAside(clash.modelData))
                         }
                     }
+                }
+                Button {
+                    objectName: "overlapsMore"
+                    visible: overlapsList.rows.length > 3
+                    flat: true
+                    text: overlapsList.unfolded ? page.sioul.text("overlap-fewer") : page.sioul.textArgs("overlap-more", JSON.stringify({ count: overlapsList.rows.length - 3 }))
+                    onClicked: overlapsList.unfolded = !overlapsList.unfolded
                 }
             }
 

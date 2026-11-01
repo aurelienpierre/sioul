@@ -449,8 +449,8 @@ pub(crate) struct AgendaInput {
     calendars: bool,
     /// The day they were read for: read again the next day.
     read_on: Date,
-    /// Two events at once set aside for good (`overlaps::SetAside`): not said.
-    aside: BTreeSet<String>,
+    /// Two events at once set aside for good, a pair or a long event whole (`overlaps::SetAside`): not said.
+    aside: sioul_core::overlaps::SetAside,
 }
 
 /// The weather the card is made with: whether a place is chosen, and the
@@ -656,7 +656,7 @@ fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
     let tomorrow = m.now.date().tomorrow().ok();
     sioul_core::overlaps::overlaps(&input.events, m.config.agenda.between())
         .into_iter()
-        .filter(|o| !input.aside.contains(&o.key) && o.first.end.max(o.second.end) > now)
+        .filter(|o| !input.aside.holds(o) && o.first.end.max(o.second.end) > now)
         .filter_map(|o| {
             let day = day_of(o.second.start)?;
             if day != m.now.date() && Some(day) != tomorrow {
@@ -1365,7 +1365,7 @@ fn agenda_input(now: &Zoned) -> Option<Arc<AgendaInput>> {
     // As every agenda reads them (`pim::agenda_read`); their tasks marked with the plan's (`agenda_lines`).
     let events = crate::pim::agenda_read(midnight, reach, &removed, &skipped);
     let calendars = !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty();
-    let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path()).keys;
+    let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
     let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside });
     *kept = Some(Arc::clone(&input));
     Some(input)
@@ -1879,7 +1879,7 @@ mod tests {
                 ..Occurrence::default()
             })
             .collect();
-        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: BTreeSet::new() }
+        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: Default::default() }
     }
 
     /// A dated task showed in the computer's
@@ -1925,7 +1925,7 @@ mod tests {
         let blocks = blocks(&now);
         let overrides = Overrides::default();
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
-        let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: BTreeSet::new() };
+        let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: Default::default() };
         let card = agenda_lines(&moment, &input, &tasks, &[]).unwrap();
         let mut home: Vec<String> = card.events.iter().filter(|e| ours(&e.key)).map(|e| e.title.clone()).collect();
         home.sort();
@@ -2275,7 +2275,7 @@ mod tests {
         let far = events_of(&[("Far away", "2026-11-20T10:00[Europe/Paris]", "2026-11-20T11:00[Europe/Paris]", false, None, false)]);
         assert!(snapshot(&moment, None, None, Some(&far), &[]).agenda.unwrap().events.is_empty());
         // No calendar at all: no agenda on the card.
-        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: BTreeSet::new() };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default() };
         assert!(snapshot(&moment, None, None, Some(&none), &[]).agenda.is_none());
         // In French, as the phone's agenda says it.
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "fr", &[]);
@@ -2287,6 +2287,25 @@ mod tests {
         assert_eq!(agenda.events.iter().find(|e| e.title == "Night train").unwrap().time, "22:30 – mer. 21 oct. 06:45");
         assert_eq!(agenda.events.iter().find(|e| e.title == "Trip to the sea").unwrap().ongoing, "En cours\u{202f}: Trip to the sea, jusqu’au ven. 16 oct.");
         assert_eq!(fr.card.words.mail, "Courriels");
+    }
+
+    /// A long event set aside whole from its warning (fix W1): the card says
+    /// none of its overlaps either, as the Porch and the agenda.
+    #[test]
+    fn a_long_event_set_aside_whole_is_not_said() {
+        let now = at("2026-10-05T10:00[Europe/Paris]");
+        let (config, tr, overrides) = (config(), Translator::new("en"), Overrides::default());
+        let blocks = blocks(&now);
+        let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
+        let input = events_of(&[
+            ("Residency", "2026-10-05T09:00[Europe/Paris]", "2026-10-20T09:00[Europe/Paris]", false, None, false),
+            ("Dentist", "2026-10-05T11:00[Europe/Paris]", "2026-10-05T12:00[Europe/Paris]", false, None, false),
+        ]);
+        assert_eq!(overlap_lines(&moment, &input).len(), 1, "said before");
+        let residency = input.events.iter().find(|e| e.summary == "Residency").unwrap();
+        let aside = sioul_core::overlaps::SetAside { events: [sioul_core::overlaps::occurrence_id(residency)].into(), ..Default::default() };
+        let quiet = AgendaInput { aside, ..input };
+        assert!(overlap_lines(&moment, &quiet).is_empty(), "set aside whole");
     }
 
     /// The dates asked of the coming month, at the head of their days
@@ -2374,7 +2393,7 @@ mod tests {
         // No calendar, dates all the same: the agenda with them alone.
         let tr = Translator::new("en");
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
-        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: BTreeSet::new() };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default() };
         let alone = snapshot_with(&moment, None, Some(&plan), Some(&none), &[], &More { dates: &dates, ..More::default() }).agenda.unwrap();
         assert!(alone.events.is_empty() && alone.dates.len() == 5);
     }

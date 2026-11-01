@@ -87,12 +87,66 @@ fn one_outing(a: &Occurrence, b: &Occurrence) -> bool {
     of(a) == Some(b.uid.as_str()) || of(b) == Some(a.uid.as_str()) || (of(a).is_some() && of(a) == of(b))
 }
 
+/// An occurrence as a warning names it: `<uid>@<start>`, as in `Overlap::key`.
+pub fn occurrence_id(event: &Occurrence) -> String {
+    format!("{}@{}", event.uid, event.start)
+}
+
+/// An event of 24 hours or more: its overlaps are said once, as one warning
+/// ("During …: 34 other events", `warnings`). A whole-day event never
+/// overlaps (`overlaps` counts timed ones alone).
+pub fn is_long(event: &Occurrence) -> bool {
+    !event.all_day && event.end - event.start >= 86_400
+}
+
+/// A warning as it is said (the ongoing round's fix W1, 1 November 2026).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Warning {
+    /// Two events, as before.
+    Pair(Overlap),
+    /// An event of 24 hours or more and every overlap it makes, in their order:
+    /// one warning, never one per event it covers.
+    During { event: Occurrence, overlaps: Vec<Overlap> },
+}
+
+/// The overlaps as they are said: an event of 24 hours or more once, with all
+/// its overlaps (the earlier one when both are), the others pair by pair; each
+/// warning where its first overlap was. What is found stays as `overlaps`
+/// finds it: only the way it is said changes.
+pub fn warnings(overlaps: Vec<Overlap>) -> Vec<Warning> {
+    let mut out: Vec<Warning> = Vec::new();
+    for overlap in overlaps {
+        let long = if is_long(&overlap.first) { Some(overlap.first.clone()) } else { Some(overlap.second.clone()).filter(is_long) };
+        let Some(long) = long else {
+            out.push(Warning::Pair(overlap));
+            continue;
+        };
+        let id = occurrence_id(&long);
+        match out.iter_mut().find_map(|w| match w {
+            Warning::During { event, overlaps } if occurrence_id(event) == id => Some(overlaps),
+            _ => None,
+        }) {
+            Some(overlaps) => overlaps.push(overlap),
+            None => out.push(Warning::During { event: long, overlaps: vec![overlap] }),
+        }
+    }
+    out
+}
+
 /// The overlaps set aside for good, on this device
-/// (`$XDG_STATE_HOME/sioul/overlaps-set-aside.toml`).
+/// (`$XDG_STATE_HOME/sioul/overlaps-set-aside.toml`; the sharing does not
+/// carry it): `keys`, each pair as `Overlap::key` names it, which every Sioul
+/// reads; and `events` (1 November 2026), an event of 24 hours or more set
+/// aside whole by its warning, as `occurrence_id` names it: its overlaps to
+/// come too. A Sioul before reads `keys` alone and skips `events`, a name it
+/// does not know: the pairs that warning held are written in `keys` too
+/// (`set`), so that it says none of them again either.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SetAside {
     #[serde(default)]
     pub keys: BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub events: BTreeSet<String>,
 }
 
 impl SetAside {
@@ -102,6 +156,23 @@ impl SetAside {
 
     pub fn load(path: &Path) -> SetAside {
         std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    /// Whether an overlap is set aside: its pair, or one of its events whole.
+    pub fn holds(&self, overlap: &Overlap) -> bool {
+        self.keys.contains(&overlap.key) || self.events.contains(&occurrence_id(&overlap.first)) || self.events.contains(&occurrence_id(&overlap.second))
+    }
+
+    /// What a warning's "Don't mention it again" gives, one per line: a pair's
+    /// key; or `during:<uid>@<start>` (an event set aside whole) followed by the
+    /// keys of the pairs its warning held, which a Sioul before reads.
+    pub fn set(&mut self, given: &str) {
+        for line in given.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            match line.strip_prefix("during:") {
+                Some(event) => self.events.insert(event.to_string()),
+                None => self.keys.insert(line.to_string()),
+            };
+        }
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -215,5 +286,73 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// An event of 24 hours or more is one warning with all its overlaps (fix
+    /// W1): a residency over the days of a dentist, a call and a concert, in
+    /// the order found; two other events still a pair; both long, the earlier
+    /// holds it. What `overlaps` finds is the same.
+    #[test]
+    fn a_long_event_is_one_warning() {
+        let none = Margins::default();
+        let day = 86_400;
+        let residency = event("residency", 10 * 3600, 28 * day, none);
+        let events = [
+            residency.clone(),
+            event("dentist", day + 11 * 3600, day + 12 * 3600, none),
+            event("call", 2 * day + 9 * 3600, 2 * day + 10 * 3600, none),
+            event("lunch", 2 * day + 9 * 3600 + 1800, 2 * day + 11 * 3600, none),
+            event("trip", 3 * day, 6 * day, none),
+        ];
+        let found = overlaps(&events, 0);
+        assert_eq!(found.len(), 5, "residency with dentist, call, lunch and trip; call with lunch");
+        let said = warnings(found.clone());
+        let shape: Vec<(String, Vec<String>)> = said
+            .iter()
+            .map(|w| match w {
+                Warning::Pair(o) => ("pair".to_string(), vec![o.key.clone()]),
+                Warning::During { event, overlaps } => (occurrence_id(event), overlaps.iter().map(|o| o.key.clone()).collect()),
+            })
+            .collect();
+        let at = |uid: &str| events.iter().find(|e| e.uid == uid).map(occurrence_id).unwrap();
+        let pair = |a: &str, b: &str| format!("{}|{}", at(a), at(b));
+        assert_eq!(shape, [
+            (at("residency"), vec![pair("residency", "dentist"), pair("residency", "call"), pair("residency", "lunch"), pair("residency", "trip")]),
+            ("pair".to_string(), vec![pair("call", "lunch")]),
+        ]);
+        assert_eq!(said.iter().map(|w| match w { Warning::Pair(_) => 1, Warning::During { overlaps, .. } => overlaps.len() }).sum::<usize>(), found.len(), "every overlap said, none twice");
+        assert!(is_long(&residency) && !is_long(&events[1]) && !is_long(&Occurrence { all_day: true, ..residency.clone() }));
+    }
+
+    /// A long event set aside whole (fix W1): its overlaps to come too
+    /// (`events`), and its pairs of now in `keys`, which a Sioul before reads,
+    /// skipping the name it does not know.
+    #[test]
+    fn an_event_set_aside_whole_stays_read_by_an_older_sioul() {
+        let none = Margins::default();
+        let residency = event("residency", 36_000, 30 * 86_400, none);
+        let dentist = event("dentist", 86_400 + 39_600, 86_400 + 43_200, none);
+        let later = event("later", 9 * 86_400, 9 * 86_400 + 3_600, none);
+        let found = overlaps(&[residency.clone(), dentist], 0);
+        let dir = std::env::temp_dir().join(format!("sioul-overlaps-whole-{}", std::process::id()));
+        let path = dir.join("set-aside.toml");
+        let mut aside = SetAside::load(&path);
+        aside.set(&format!("during:{}\n{}\n", occurrence_id(&residency), found[0].key));
+        aside.save(&path).unwrap();
+        let read = SetAside::load(&path);
+        assert!(read.holds(&found[0]), "its pair");
+        let to_come = overlaps(&[residency.clone(), later], 0);
+        assert!(read.holds(&to_come[0]), "an overlap made later, held by the event set aside");
+        // As a Sioul before 1 November 2026 reads the file: `keys` alone.
+        #[derive(Deserialize)]
+        struct Before {
+            #[serde(default)]
+            keys: BTreeSet<String>,
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let before: Before = toml::from_str(&text).unwrap();
+        assert!(before.keys.contains(&found[0].key), "the pair it held, for a Sioul before: {text}");
+        assert!(!SetAside::default().holds(&found[0]));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

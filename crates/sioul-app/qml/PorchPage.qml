@@ -626,14 +626,23 @@ Item {
                                 id: overlap
 
                                 required property var modelData
+                                readonly property bool during: overlap.modelData.kind === "during"
 
                                 Layout.fillWidth: true
                                 spacing: 4
 
                                 Label {
                                     Layout.fillWidth: true
+                                    // An event of 24 hours or more once, today's other events counted (fix W1);
+                                    // else the pair, each by its times or, over several days, its span (fix W2).
                                     // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
-                                    text: page.sioul.textArgs(overlap.modelData.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify({ first: overlap.modelData.first.title + " (" + overlap.modelData.first.from + " – " + overlap.modelData.first.to + ")", second: overlap.modelData.second.title + " (" + overlap.modelData.second.from + " – " + overlap.modelData.second.to + ")", gap: overlap.modelData.gap, needed: overlap.modelData.needed, source: overlap.modelData.source }))
+                                    text: {
+                                        const row = overlap.modelData
+                                        if (overlap.during)
+                                            return page.sioul.textArgs("overlap-during-today", JSON.stringify({ title: row.event.title, span: row.event.when, count: row.others_today }))
+                                        const one = e => e.title + " (" + (e.when || e.from + " – " + e.to) + ")"
+                                        return page.sioul.textArgs(row.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify({ first: one(row.first), second: one(row.second), gap: row.gap, needed: row.needed, source: row.source }))
+                                    }
                                     textFormat: Text.PlainText
                                     wrapMode: Text.Wrap
                                     color: page.theme.text
@@ -643,7 +652,7 @@ Item {
                                     spacing: 6
 
                                     Repeater {
-                                        model: [overlap.modelData.first, overlap.modelData.second]
+                                        model: overlap.during ? [overlap.modelData.event] : [overlap.modelData.first, overlap.modelData.second]
 
                                         delegate: Button {
                                             id: openOne
@@ -658,7 +667,8 @@ Item {
                                     Button {
                                         flat: true
                                         text: page.sioul.text("overlap-set-aside")
-                                        onClicked: page.sioul.setOverlapAside(overlap.modelData.key)
+                                        // A long event's warning: the event whole, and the pairs it holds, which a Sioul before reads.
+                                        onClicked: page.sioul.setOverlapAside(overlap.during ? [overlap.modelData.key].concat(overlap.modelData.keys || []).join("\n") : overlap.modelData.key)
                                     }
                                 }
                             }
