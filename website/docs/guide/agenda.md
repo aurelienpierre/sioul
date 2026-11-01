@@ -158,7 +158,7 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul; importing or exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
+Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
 
 ## Going further {#going-further}
 
@@ -171,7 +171,7 @@ Changing one occurrence's title or place (its time moves by hand), and choosing 
 
 ## Compared with other apps {#compared-with-other-apps}
 
-**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul cannot send invitations, import or export `.ics` files, or show birthdays by itself, where most others can; and among these apps, only Proton encrypts what an event says end to end, its times aside.
+**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul cannot send invitations, export `.ics` files or subscribe to a calendar by its address, or show birthdays by itself, where most others can; and among these apps, only Proton encrypts what an event says end to end, its times aside.
 
 As of October 2026, from each app's own documentation.
 
@@ -229,7 +229,8 @@ As of October 2026, from each app's own documentation.
     | Any CalDAV server, read and write | ✓ | partly¹ | ✓ | ✓ | ✓ | ✗² |
     | Google calendars, read and write | ✓ | — | ✓ | ✓ | ✓ | partly³ |
     | Answers invitations from any system by mail (iMIP) | ✓ | ?⁴ | ✓ | ✓ | ✗⁵ | ✓⁶ |
-    | Imports and exports `.ics` files, subscribes by address | ✗⁷ | ✓⁸ | ✓ | ✓ | partly⁹ | ✓ |
+    | Opens and imports `.ics` files | ✓⁷ | ✓⁸ | ✓ | ✓ | ✓⁹ | ✓ |
+    | Exports `.ics` files, subscribes to a calendar by its address | ✗⁷ | ✓⁸ | ✓ | ✓ | partly⁹ | ✓ |
     | Chooses an event's time zone | ✓¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Events encrypted end to end | ✗¹¹ | ✗¹² | ✗¹³ | ✗ | ✗ | partly¹⁴ |
     | Free software | ✓ GPL-3.0+ | ✗ | ✗ | ✓ MPL-2.0 | ✓ GPL-3.0 | ✓ GPL-3.0¹⁵ |
@@ -240,7 +241,7 @@ As of October 2026, from each app's own documentation.
     4. You answer in Calendar or Gmail; invitations from other systems are not described.
     5. The apps set your answer on events already in a synced calendar; an invitation in a mail cannot be answered from it.
     6. From Proton Mail; invitations from other providers are added to your calendar as they arrive, where Sioul adds nothing until you answer.
-    7. An `.ics` that a message carries goes in with **Add to my calendar**; no import from a file, no export, no subscription by address.
+    7. A calendar file opened in Sioul, on a computer or a phone, goes into the agenda you choose, with its categories, its time zone and its alarms kept, and is never doubled; one that a message carries goes in with **Add to my calendar**. No export, no subscription by address.
     8. On a computer only.
     9. Both apps import and export `.ics` files; subscribing by address needs ICSx⁵.
     10. Local time, UTC or any zone, chosen in the event's form; an event made elsewhere keeps its time zone; both times show where they differ.

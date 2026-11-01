@@ -157,7 +157,7 @@ Le jour et la semaine de Santé dessinés dans le temps, et **La journée** de T
 
 ## Pas encore là {#not-there-yet}
 
-Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main), et choisir ici la couleur d’un agenda, sont prévus. Pas encore là non plus : inviter des personnes depuis Sioul ; importer ou exporter des fichiers `.ics`, et s’abonner à un agenda par son adresse ; plus d’un rappel de Sioul pour un événement. La copie d’une invitation gardée dans votre agenda ne garde pas votre réponse : c’est la personne qui organise qui l’a.
+Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main), et choisir ici la couleur d’un agenda, sont prévus. Pas encore là non plus : inviter des personnes depuis Sioul ; exporter des fichiers `.ics`, et s’abonner à un agenda par son adresse ; plus d’un rappel de Sioul pour un événement. La copie d’une invitation gardée dans votre agenda ne garde pas votre réponse : c’est la personne qui organise qui l’a.
 
 ## Pour aller plus loin {#going-further}
 
@@ -170,7 +170,7 @@ Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à l
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Du temps autour des événements, et un plan autour d’eux.** Sioul garde du temps avant et après chaque événement, réglé par vous, et le compte partout à la fois : dans votre plan, dans l’avertissement pour deux événements en même temps, et dans son rappel. Calendrier d’Apple et Fantastical gardent un temps de trajet avant un événement seulement, et disent quand partir d’après la circulation du moment, ce que Sioul ne fait pas. Morgen calcule le temps de trajet dans les deux sens avec Google Maps, et Reclaim ajoute un temps de trajet fixe dans les deux sens, chacun pour les agendas Google et Outlook (Morgen aussi pour iCloud et Fastmail), avec un compte chez eux. Le planificateur IA de Morgen et les habitudes de Reclaim placent aussi le travail et les routines, comme le déjeuner, autour de vos événements ; Sioul le fait sur votre appareil, d’après vos propres heures, vos repas et vos nuits, avec n’importe quel serveur CalDAV et sans compte ailleurs. Sioul ne sait pas envoyer d’invitations, importer ou exporter des fichiers `.ics`, ni montrer de lui-même les anniversaires, là où la plupart des autres le savent ; et parmi ces applications, seul Proton chiffre de bout en bout ce que dit un événement, ses heures mises à part.
+**Du temps autour des événements, et un plan autour d’eux.** Sioul garde du temps avant et après chaque événement, réglé par vous, et le compte partout à la fois : dans votre plan, dans l’avertissement pour deux événements en même temps, et dans son rappel. Calendrier d’Apple et Fantastical gardent un temps de trajet avant un événement seulement, et disent quand partir d’après la circulation du moment, ce que Sioul ne fait pas. Morgen calcule le temps de trajet dans les deux sens avec Google Maps, et Reclaim ajoute un temps de trajet fixe dans les deux sens, chacun pour les agendas Google et Outlook (Morgen aussi pour iCloud et Fastmail), avec un compte chez eux. Le planificateur IA de Morgen et les habitudes de Reclaim placent aussi le travail et les routines, comme le déjeuner, autour de vos événements ; Sioul le fait sur votre appareil, d’après vos propres heures, vos repas et vos nuits, avec n’importe quel serveur CalDAV et sans compte ailleurs. Sioul ne sait pas envoyer d’invitations, exporter des fichiers `.ics` ni s’abonner à un agenda par son adresse, ni montrer de lui-même les anniversaires, là où la plupart des autres le savent ; et parmi ces applications, seul Proton chiffre de bout en bout ce que dit un événement, ses heures mises à part.
 
 En octobre 2026, d’après la documentation de chaque application.
 
@@ -228,7 +228,8 @@ En octobre 2026, d’après la documentation de chaque application.
     | Tout serveur CalDAV, en lecture et en écriture | ✓ | en partie¹ | ✓ | ✓ | ✓ | ✗² |
     | Les agendas Google, en lecture et en écriture | ✓ | — | ✓ | ✓ | ✓ | en partie³ |
     | Répond par courriel aux invitations de tout système (iMIP) | ✓ | ?⁴ | ✓ | ✓ | ✗⁵ | ✓⁶ |
-    | Importe et exporte des fichiers `.ics`, s’abonne par adresse | ✗⁷ | ✓⁸ | ✓ | ✓ | en partie⁹ | ✓ |
+    | Ouvre et importe des fichiers `.ics` | ✓⁷ | ✓⁸ | ✓ | ✓ | ✓⁹ | ✓ |
+    | Exporte des fichiers `.ics`, s’abonne à un agenda par son adresse | ✗⁷ | ✓⁸ | ✓ | ✓ | en partie⁹ | ✓ |
     | Choisit le fuseau horaire d’un événement | ✓¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Événements chiffrés de bout en bout | ✗¹¹ | ✗¹² | ✗¹³ | ✗ | ✗ | en partie¹⁴ |
     | Logiciel libre | ✓ GPL-3.0+ | ✗ | ✗ | ✓ MPL-2.0 | ✓ GPL-3.0 | ✓ GPL-3.0¹⁵ |
@@ -239,7 +240,7 @@ En octobre 2026, d’après la documentation de chaque application.
     4. Vous répondez dans Agenda ou dans Gmail ; les invitations venues d’autres systèmes ne sont pas décrites.
     5. Les applications règlent votre réponse sur les événements déjà présents dans un agenda synchronisé ; une invitation dans un courriel ne peut pas y être répondue.
     6. Depuis Proton Mail ; les invitations d’autres fournisseurs sont ajoutées à votre agenda dès leur arrivée, là où Sioul n’ajoute rien avant votre réponse.
-    7. Un `.ics` que porte un courriel entre avec **Ajouter à mon agenda** ; pas d’import depuis un fichier, pas d’export, pas d’abonnement par adresse.
+    7. Un fichier d’agenda ouvert dans Sioul, sur un ordinateur ou un téléphone, va dans l’agenda que vous choisissez, avec ses catégories, son fuseau horaire et ses alarmes gardés, et n’est jamais doublé ; celui que porte un courriel entre avec **Ajouter à mon agenda**. Pas d’export, pas d’abonnement par adresse.
     8. Sur un ordinateur seulement.
     9. Les deux applications importent et exportent des fichiers `.ics` ; s’abonner par adresse demande ICSx⁵.
     10. Heure locale, UTC ou n’importe quel fuseau, choisis dans le formulaire de l’événement ; un événement fait ailleurs garde son fuseau horaire ; les deux heures s’affichent là où elles diffèrent.
