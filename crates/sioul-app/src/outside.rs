@@ -107,6 +107,8 @@ pub(crate) fn take(mut sioul: Pin<&mut Sioul>) {
     if changed {
         crate::mail::show_mail(&sioul.qt_thread(), &sioul.shared());
     }
+    // A calendar file opened in Sioul, handed the same way (`calendarfile`).
+    crate::calendarfile::take(sioul.as_mut());
 }
 
 /// One request made a draft, its window opened.
@@ -317,12 +319,13 @@ fn socket() -> Option<std::path::PathBuf> {
     (path.as_os_str().len() < 100).then_some(path)
 }
 
-/// Another Sioul of this profile is open: `addresses` handed to it (with
-/// none, its window brought forward), and true: this one has nothing more to
-/// do. False when none answers: this one opens, and listens (`listen`).
+/// Another Sioul of this profile is open: `addresses` and calendar files
+/// (`calendars`) handed to it (with none, its window brought forward), and
+/// true: this one has nothing more to do. False when none answers: this one
+/// opens, and listens (`listen`).
 #[cfg(all(unix, not(target_os = "android")))]
-pub(crate) fn hand_over(addresses: &[String]) -> bool {
-    !alone() && socket().is_some_and(|path| hand_over_at(&path, addresses, own_token()))
+pub(crate) fn hand_over(addresses: &[String], calendars: &[std::path::PathBuf]) -> bool {
+    !alone() && socket().is_some_and(|path| hand_over_at(&path, addresses, calendars, own_token()))
 }
 
 /// The window's pictures and the demo (SIOUL_GRAB, SIOUL_DEMO) run beside
@@ -334,7 +337,7 @@ fn alone() -> bool {
 }
 
 #[cfg(not(all(unix, not(target_os = "android"))))]
-pub(crate) fn hand_over(_addresses: &[String]) -> bool {
+pub(crate) fn hand_over(_addresses: &[String], _calendars: &[std::path::PathBuf]) -> bool {
     false
 }
 
@@ -377,13 +380,22 @@ fn activate_with_token() {
 }
 
 #[cfg(all(unix, not(target_os = "android")))]
-fn hand_over_at(path: &std::path::Path, addresses: &[String], token: Option<String>) -> bool {
+fn hand_over_at(path: &std::path::Path, addresses: &[String], calendars: &[std::path::PathBuf], token: Option<String>) -> bool {
     use std::io::{BufRead, BufReader, Write};
     let Ok(mut stream) = std::os::unix::net::UnixStream::connect(path) else { return false };
     let wait = Some(std::time::Duration::from_secs(5));
     let _ = stream.set_read_timeout(wait);
     let _ = stream.set_write_timeout(wait);
-    let asked = serde_json::json!({ "open": addresses, "activation": token }).to_string();
+    // Calendar files alone go without "open": a Sioul older than them answers
+    // only "open", so it does not answer, and this one opens with the file.
+    let mut asked = serde_json::json!({ "activation": token });
+    if !addresses.is_empty() || calendars.is_empty() {
+        asked["open"] = serde_json::json!(addresses);
+    }
+    if !calendars.is_empty() {
+        asked["calendar"] = serde_json::json!(calendars.iter().map(|p| p.display().to_string()).collect::<Vec<_>>());
+    }
+    let asked = asked.to_string();
     if stream.write_all(format!("{asked}\n").as_bytes()).is_err() {
         return false;
     }
@@ -401,9 +413,15 @@ pub(crate) fn listen() {
         return;
     }
     let Some(path) = socket() else { return };
-    let heard = |addresses: Vec<String>, token: Option<String>| {
+    let heard = |addresses: Vec<String>, calendars: Vec<std::path::PathBuf>, token: Option<String>| {
         if let (Some(token), Ok(mut waiting)) = (token, TOKEN.lock()) {
             *waiting = Some(token);
+        }
+        if !calendars.is_empty() {
+            crate::calendarfile::hand(&calendars);
+            if addresses.is_empty() {
+                return;
+            }
         }
         if addresses.is_empty() {
             let window = WINDOW.lock().ok().and_then(|w| w.clone());
@@ -444,7 +462,7 @@ pub(crate) fn stop_listening() {
 }
 
 #[cfg(all(unix, not(target_os = "android")))]
-fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>, Option<String>) + Send + 'static) -> std::io::Result<()> {
+fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>, Vec<std::path::PathBuf>, Option<String>) + Send + 'static) -> std::io::Result<()> {
     use std::io::{BufRead, BufReader, Read, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     if let Some(parent) = path.parent() {
@@ -472,8 +490,10 @@ fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>, Option<String>)
                 .as_array()
                 .map(|all| all.iter().filter_map(|a| a.as_str()).filter(|a| sioul_core::mailto::is_mailto(a)).map(str::to_string).collect())
                 .unwrap_or_default();
-            if asked.get("open").is_some() {
-                heard(addresses, asked["activation"].as_str().and_then(token_of));
+            // Calendar files: absolute paths of files, read by the window as a megabyte at most (`calendarfile`).
+            let calendars: Vec<std::path::PathBuf> = asked["calendar"].as_array().map(|all| all.iter().filter_map(|a| a.as_str()).map(std::path::PathBuf::from).filter(|p| p.is_absolute()).take(20).collect()).unwrap_or_default();
+            if asked.get("open").is_some() || !calendars.is_empty() {
+                heard(addresses, calendars, asked["activation"].as_str().and_then(token_of));
                 let _ = (&stream).write_all(b"ok\n");
             }
         }
@@ -529,26 +549,48 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("s.sock");
         // None open: this one opens.
-        assert!(!hand_over_at(&path, &["mailto:a@example.org".into()], None));
+        assert!(!hand_over_at(&path, &["mailto:a@example.org".into()], &[], None));
         // A socket left by a Sioul that ended is replaced.
         drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
         let (send, heard) = std::sync::mpsc::channel();
-        listen_at(&path, move |addresses, token| send.send((addresses, token)).unwrap()).unwrap();
+        listen_at(&path, move |addresses, calendars: Vec<std::path::PathBuf>, token| send.send((addresses, calendars, token)).unwrap()).unwrap();
         let next = || heard.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
-        assert!(hand_over_at(&path, &["mailto:a@example.org?subject=Hi".into()], None));
-        assert_eq!(next(), (vec!["mailto:a@example.org?subject=Hi".to_string()], None));
+        assert!(hand_over_at(&path, &["mailto:a@example.org?subject=Hi".into()], &[], None));
+        assert_eq!(next(), (vec!["mailto:a@example.org?subject=Hi".to_string()], Vec::new(), None));
         // A plain start: nothing to write, the window brought forward.
-        assert!(hand_over_at(&path, &[], None));
+        assert!(hand_over_at(&path, &[], &[], None));
         assert!(next().0.is_empty());
         // Only mailto: addresses are taken from another process.
-        assert!(hand_over_at(&path, &["file:///etc/passwd".into(), "mailto:b@example.org".into()], None));
+        assert!(hand_over_at(&path, &["file:///etc/passwd".into(), "mailto:b@example.org".into()], &[], None));
         assert_eq!(next().0, ["mailto:b@example.org"]);
         // The desktop's activation token goes with the link, so that its
         // draft may come to the front; what is not a token stays behind.
-        assert!(hand_over_at(&path, &["mailto:c@example.org".into()], Some("kwin-1234_abcd".into())));
-        assert_eq!(next(), (vec!["mailto:c@example.org".to_string()], Some("kwin-1234_abcd".to_string())));
-        assert!(hand_over_at(&path, &[], Some("two words\n".into())));
-        assert_eq!(next(), (Vec::new(), None));
+        assert!(hand_over_at(&path, &["mailto:c@example.org".into()], &[], Some("kwin-1234_abcd".into())));
+        assert_eq!(next(), (vec!["mailto:c@example.org".to_string()], Vec::new(), Some("kwin-1234_abcd".to_string())));
+        assert!(hand_over_at(&path, &[], &[], Some("two words\n".into())));
+        assert_eq!(next(), (Vec::new(), Vec::new(), None));
+        // A calendar file opened (`sioul-app visit.ics`): its path, alone, without "open".
+        let file = dir.join("visit.ics");
+        assert!(hand_over_at(&path, &[], std::slice::from_ref(&file), None));
+        assert_eq!(next(), (Vec::new(), vec![file.clone()], None));
+        // A Sioul older than calendar files answers only "open": with a file alone, it is not asked to.
+        let older = dir.join("older.sock");
+        let (said, asked) = std::sync::mpsc::channel();
+        let listener = std::os::unix::net::UnixListener::bind(&older).unwrap();
+        std::thread::spawn(move || {
+            use std::io::{BufRead, Write};
+            for stream in listener.incoming().filter_map(Result::ok) {
+                let mut line = String::new();
+                let _ = std::io::BufReader::new(&stream).read_line(&mut line);
+                let open = serde_json::from_str::<serde_json::Value>(&line).unwrap_or_default().get("open").is_some();
+                said.send(open).unwrap();
+                if open {
+                    let _ = (&stream).write_all(b"ok\n");
+                }
+            }
+        });
+        assert!(!hand_over_at(&older, &[], std::slice::from_ref(&file), None), "this one opens with the file");
+        assert!(!asked.recv_timeout(std::time::Duration::from_secs(5)).unwrap());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

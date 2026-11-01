@@ -40,6 +40,7 @@ fn main() {
         "qml/DateField.qml",
         "qml/Later.qml",
         "qml/EventDialog.qml",
+        "qml/CalendarFileDialog.qml",
         "qml/ItemRow.qml",
         "qml/WeekPlanning.qml",
         "qml/DayHead.qml",

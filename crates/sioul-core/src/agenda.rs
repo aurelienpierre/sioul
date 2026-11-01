@@ -2570,9 +2570,317 @@ pub fn stored(text: &str) -> String {
     cut.text()
 }
 
+// ------------------------------------------------------------ a calendar file opened
+
+/// The most of a calendar file read (`calendar_file`): a megabyte.
+pub const FILE_MOST: usize = 1024 * 1024;
+
+/// One event of a calendar file opened in Sioul, as its dialog shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FileEvent {
+    pub uid: String,
+    pub title: String,
+    pub location: String,
+    pub notes: String,
+    /// Its organizer, by name else address: shown, never written to.
+    pub organizer: String,
+    /// Its times as its form says them ("2026-11-04T15:00", a day for a
+    /// whole day), on its own clock (`clock`).
+    pub start: String,
+    pub end: String,
+    pub all_day: bool,
+    /// "" the time zone shown, "UTC", or a zone's name (`EventEdit::clock`).
+    pub clock: String,
+    /// Its first time and its end, Unix seconds.
+    pub at: i64,
+    pub until: i64,
+}
+
+/// Why a calendar file does not open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileProblem {
+    /// Larger than `FILE_MOST`.
+    TooLarge,
+    /// Not a calendar Sioul reads.
+    Unreadable,
+    /// A calendar, without any event.
+    NoEvent,
+    /// An answer, a cancellation or a question (METHOD REPLY, CANCEL,
+    /// COUNTER…): the invitation's own path, from mail, takes those.
+    Answer,
+}
+
+impl FileProblem {
+    /// Its sentence's message id.
+    pub fn message_id(self) -> &'static str {
+        match self {
+            FileProblem::TooLarge => "calendar-file-too-large",
+            FileProblem::Unreadable => "calendar-file-unreadable",
+            FileProblem::NoEvent => "calendar-file-no-event",
+            FileProblem::Answer => "calendar-file-answer",
+        }
+    }
+}
+
+/// A calendar file read: its events, and each one's calendar object as it
+/// is written (`record`): one per UID, its overrides and the time zones its
+/// times name with it, METHOD taken out (RFC 4791 §4.1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CalendarFile {
+    pub events: Vec<FileEvent>,
+    objects: Vec<(String, String)>,
+}
+
+/// Reads a calendar file (`.ics`) opened in Sioul: its events published or
+/// asked (METHOD PUBLISH, REQUEST or none), their clocks as written (a
+/// TZID, UTC, whole days), their UID, summary, place, description,
+/// organizer and alarms kept. Nothing in it is followed: no address
+/// fetched, no attachment opened. `zone`: the time zone shown.
+pub fn calendar_file(bytes: &[u8], zone: &TimeZone) -> Result<CalendarFile, FileProblem> {
+    if bytes.len() > FILE_MOST {
+        return Err(FileProblem::TooLarge);
+    }
+    let text = String::from_utf8_lossy(bytes).replace("\r\n", "\n").replace('\n', "\r\n");
+    let unfolded = lines::unfold(&text);
+    if !unfolded.iter().any(|l| lines::name(l) == "BEGIN" && lines::value(l).trim().eq_ignore_ascii_case("VCALENDAR")) || parse(&utc_series(&text)).is_none() {
+        return Err(FileProblem::Unreadable);
+    }
+    // The calendar's own METHOD, outside its components.
+    let method = unfolded.iter().find(|l| lines::name(l) == "METHOD").map(|l| lines::value(l).trim().to_ascii_uppercase()).unwrap_or_default();
+    if !matches!(method.as_str(), "" | "PUBLISH" | "REQUEST") {
+        return Err(FileProblem::Answer);
+    }
+    let cut = cut(&text);
+    // The head without the other components a file may carry (a task, a
+    // journal): its own lines and its time zones.
+    let mut head: Vec<String> = Vec::new();
+    let mut other = 0usize;
+    let mut in_zone = 0usize;
+    for line in &cut.head {
+        let name = lines::name(line);
+        let what = lines::value(line).trim().to_ascii_uppercase();
+        let opens = name == "BEGIN" && what != "VCALENDAR";
+        if other > 0 {
+            other += usize::from(opens);
+            other -= usize::from(name == "END");
+            continue;
+        }
+        if opens && what != "VTIMEZONE" && in_zone == 0 {
+            other = 1;
+            continue;
+        }
+        if opens {
+            in_zone += 1;
+        } else if name == "END" && in_zone > 0 {
+            in_zone -= 1;
+        }
+        head.push(line.clone());
+    }
+    // One object per UID (a series and its overrides together); an event without one gets one.
+    let mut by_uid: Vec<(String, Vec<Vec<String>>)> = Vec::new();
+    for event in cut.events {
+        let uid = own_lines(&event).find(|l| lines::name(l) == "UID").map(|l| lines::value(l).trim().to_string()).filter(|u| !u.is_empty());
+        let (uid, event) = match uid {
+            Some(uid) => (uid, event),
+            None => {
+                let uid = format!("{}@sioul", vdir::new_name());
+                let mut with = event;
+                with.insert(1, format!("UID:{uid}"));
+                (uid, with)
+            }
+        };
+        match by_uid.iter_mut().find(|(u, _)| *u == uid) {
+            Some((_, events)) => events.push(event),
+            None => by_uid.push((uid, vec![event])),
+        }
+    }
+    let mut out = CalendarFile::default();
+    for (uid, events) in by_uid {
+        let object = stored(&Cut { head: head.clone(), events }.text());
+        let Some(edit) = edit_of_text(&object, zone) else { continue };
+        let asked = invitation(&object, zone);
+        let (at, until) = asked.as_ref().map_or((0, 0), |a| (a.start, a.end));
+        out.events.push(FileEvent {
+            uid: uid.clone(),
+            title: edit.title,
+            location: edit.location,
+            notes: edit.notes,
+            organizer: asked.map(|a| if a.organizer.is_empty() { a.organizer_address } else { a.organizer }).unwrap_or_default(),
+            start: edit.start,
+            end: edit.end,
+            all_day: edit.all_day,
+            clock: edit.clock,
+            at,
+            until,
+        });
+        out.objects.push((uid, object));
+    }
+    if out.events.is_empty() {
+        return Err(FileProblem::NoEvent);
+    }
+    Ok(out)
+}
+
+impl CalendarFile {
+    /// Those of its events whose UID `calendar` holds already, with their files.
+    pub fn known_in(&self, calendar: &Collection) -> BTreeMap<String, PathBuf> {
+        let wanted: BTreeSet<&str> = self.objects.iter().map(|(uid, _)| uid.as_str()).collect();
+        let mut out = BTreeMap::new();
+        for item in calendar.items() {
+            let Ok(text) = std::fs::read_to_string(&item) else { continue };
+            for line in lines::unfold(&text).iter().filter(|l| lines::name(l) == "UID") {
+                let uid = lines::value(line).trim();
+                if wanted.contains(uid) {
+                    out.entry(uid.to_string()).or_insert_with(|| item.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// Writes its events into `calendar` through the agenda's one door
+    /// (`vdir::write_item`: never into a calendar you only read, never over
+    /// a meeting with others), `categories` added to each: one already
+    /// there by its UID is written over, never doubled. Each file written,
+    /// and whether it was there. No answer goes to the organizer.
+    pub fn record(&self, calendar: &Collection, categories: &[String]) -> Result<Vec<(PathBuf, bool)>, String> {
+        let known = self.known_in(calendar);
+        let mut written = Vec::new();
+        for (uid, object) in &self.objects {
+            let (path, there) = match known.get(uid) {
+                Some(path) => (path.clone(), true),
+                None => (new_path(calendar), false),
+            };
+            // Written over: the categories it was given before stay.
+            let mut given: Vec<String> = std::fs::read_to_string(&path).map(|text| crate::contacts::categories_of(&lines::unfold(&text))).unwrap_or_default();
+            given.extend(categories.iter().cloned());
+            vdir::write_item(&path, &with_categories(object, &given))?;
+            written.push((path, there));
+        }
+        Ok(written)
+    }
+}
+
+/// `text`'s events with `added` among their CATEGORIES (one line each, its
+/// names once, case aside, as first written); a "#" before a name dropped.
+fn with_categories(text: &str, added: &[String]) -> String {
+    let added: Vec<String> = added.iter().map(|c| c.trim().trim_start_matches('#').trim().to_string()).filter(|c| !c.is_empty()).collect();
+    if added.is_empty() {
+        return text.to_string();
+    }
+    let mut out: Vec<String> = Vec::new();
+    // Inside an event: how deep in its own components (its alarms) we are, and its names so far.
+    let mut inside: Option<usize> = None;
+    let mut names: Vec<String> = Vec::new();
+    for line in lines::unfold(text) {
+        let name = lines::name(&line);
+        let what = lines::value(&line).trim().to_ascii_uppercase();
+        match inside {
+            None => {
+                if name == "BEGIN" && what == "VEVENT" {
+                    inside = Some(0);
+                    names.clear();
+                }
+                out.push(line);
+            }
+            Some(depth) if name == "BEGIN" => {
+                inside = Some(depth + 1);
+                out.push(line);
+            }
+            Some(depth) if name == "END" && depth > 0 => {
+                inside = Some(depth - 1);
+                out.push(line);
+            }
+            Some(_) if name == "END" => {
+                for category in &added {
+                    if !names.iter().any(|n| crate::contacts::category_key(n) == crate::contacts::category_key(category)) {
+                        names.push(category.clone());
+                    }
+                }
+                out.push(crate::contacts::categories_line(&names));
+                out.push(line);
+                inside = None;
+            }
+            Some(0) if name == "CATEGORIES" => {
+                for found in crate::contacts::categories_of(std::slice::from_ref(&line)) {
+                    if !names.iter().any(|n| crate::contacts::category_key(n) == crate::contacts::category_key(&found)) {
+                        names.push(found);
+                    }
+                }
+            }
+            Some(_) => out.push(line),
+        }
+    }
+    lines::fold(&out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A calendar file opened in Sioul, shaped as a booking site sends one:
+    /// published, its zone's VTIMEZONE, a quarter of an hour on Paris's
+    /// clock, an organizer, a description on several lines, two empty
+    /// alarms. Read; written into the calendar chosen with its categories
+    /// and its clock; read back; the same file again written over, never
+    /// doubled, the categories given before kept.
+    #[test]
+    fn a_calendar_file_is_recorded_once_with_its_categories() {
+        crate::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "File opened", None, &["VEVENT"]).unwrap();
+        let file = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Example//Booking//EN\r\nMETHOD:PUBLISH\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:19700329T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:visio-42@booking.example.org\r\nDTSTAMP:20261101T090000Z\r\nDTSTART;TZID=Europe/Paris:20991104T150000\r\nDTEND;TZID=Europe/Paris:20991104T151500\r\nSUMMARY:Visio de suivi\r\nLOCATION:En ligne\r\nORGANIZER;CN=Camille Exemple:mailto:camille@example.org\r\nDESCRIPTION:Bonjour\\,\\n\\nLe lien de la visio : https://visio.example.org/r/a\r\n bc\\nÀ bientôt.\r\nBEGIN:VALARM\r\nEND:VALARM\r\nBEGIN:VALARM\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let paris = TimeZone::get("Europe/Paris").unwrap();
+        let read = calendar_file(file.as_bytes(), &paris).unwrap();
+        assert_eq!(read.events.len(), 1);
+        let event = &read.events[0];
+        assert_eq!((event.title.as_str(), event.location.as_str(), event.organizer.as_str()), ("Visio de suivi", "En ligne", "Camille Exemple"));
+        assert_eq!((event.start.as_str(), event.end.as_str(), event.clock.as_str(), event.until - event.at), ("2099-11-04T15:00", "2099-11-04T15:15", "", 900));
+        assert!(event.notes.starts_with("Bonjour,\n\nLe lien de la visio : https://visio.example.org/r/abc\nÀ bientôt."), "{:?}", event.notes);
+        // Shown in another zone: its own clock said, its times on it.
+        let elsewhere = calendar_file(file.as_bytes(), &TimeZone::UTC).unwrap();
+        assert_eq!((elsewhere.events[0].clock.as_str(), elsewhere.events[0].start.as_str()), ("Europe/Paris", "2099-11-04T15:00"));
+        // Recorded: one file, its clock, its organizer, its alarms, its categories; no METHOD.
+        let written = read.record(&calendar, &["Travail".into(), "#visio".into()]).unwrap();
+        assert_eq!(written.len(), 1);
+        assert!(!written[0].1, "new");
+        let text = std::fs::read_to_string(&written[0].0).unwrap();
+        let unfolded = lines::unfold(&text);
+        for wanted in ["DTSTART;TZID=Europe/Paris:20991104T150000", "DTEND;TZID=Europe/Paris:20991104T151500", "ORGANIZER;CN=Camille Exemple:mailto:camille@example.org", "CATEGORIES:Travail,visio", "TZID:Europe/Paris", "UID:visio-42@booking.example.org"] {
+            assert!(unfolded.iter().any(|l| l == wanted), "{wanted}:\n{text}");
+        }
+        assert!(!unfolded.iter().any(|l| lines::name(l) == "METHOD"), "{text}");
+        assert_eq!(unfolded.iter().filter(|l| *l == "BEGIN:VALARM").count(), 2, "{text}");
+        let back = edit_of(&written[0].0).unwrap();
+        assert_eq!((back.title.as_str(), back.start.as_str(), back.end.as_str()), ("Visio de suivi", "2099-11-04T15:00", "2099-11-04T15:15"));
+        assert!(event_ref(&text, &written[0].0.display().to_string(), &paris).is_some_and(|e| e.uid == "visio-42@booking.example.org"));
+        // The same file again: written over, not doubled; the categories given before kept.
+        assert_eq!(read.known_in(&calendar).len(), 1);
+        let again = read.record(&calendar, &["Santé".into()]).unwrap();
+        assert_eq!((again.len(), again[0].0.clone(), again[0].1), (1, written[0].0.clone(), true));
+        assert_eq!(calendar.items().len(), 1);
+        let text = std::fs::read_to_string(&again[0].0).unwrap();
+        assert!(lines::unfold(&text).iter().any(|l| l == "CATEGORIES:Travail,visio,Santé"), "{text}");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// A file that is no calendar, one over a megabyte, an answer (METHOD
+    /// REPLY), and a calendar without events each give their sentence.
+    #[test]
+    fn a_calendar_file_that_does_not_open_says_why() {
+        let zone = TimeZone::UTC;
+        assert_eq!(calendar_file(b"Hello, this is no calendar.", &zone), Err(FileProblem::Unreadable));
+        let cut_short = calendar_file(b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nDTSTART:2099", &zone);
+        assert!(matches!(cut_short, Err(FileProblem::Unreadable | FileProblem::NoEvent)), "{cut_short:?}");
+        assert_eq!(calendar_file(&vec![b' '; FILE_MOST + 1], &zone), Err(FileProblem::TooLarge));
+        let reply = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:a@example.org\r\nDTSTART:20991104T150000Z\r\nDTEND:20991104T160000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(calendar_file(reply.as_bytes(), &zone), Err(FileProblem::Answer));
+        let empty = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:t@example.org\r\nSUMMARY:A task\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        assert_eq!(calendar_file(empty.as_bytes(), &zone), Err(FileProblem::NoEvent));
+        for problem in [FileProblem::TooLarge, FileProblem::Unreadable, FileProblem::NoEvent, FileProblem::Answer] {
+            let tr = crate::i18n::Translator::new("en");
+            assert!(!tr.text(problem.message_id(), None).contains("calendar-file-"), "{problem:?}");
+        }
+    }
 
     /// The agenda reads the calendars that take events (21 October 2026),
     /// and an event slipped into a list said to take tasks only shows too:

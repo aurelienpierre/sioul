@@ -76,6 +76,7 @@
 //! ## Contacts and calendars
 //!
 //! - [`pim`](pim/index.html): contacts and calendars.
+//! - [`calendarfile`](calendarfile/index.html): a calendar file (`.ics`) opened in Sioul, recorded into the agenda.
 //! - [`duplicates`](duplicates/index.html): duplicates in the contacts, found and cleaned when you ask.
 //! - [`map`](map/index.html): contacts on a map.
 //!
@@ -128,6 +129,7 @@ mod attachments;
 mod backend;
 mod bank;
 mod blocks;
+mod calendarfile;
 mod calls;
 mod capacity;
 // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
@@ -329,13 +331,18 @@ pub fn run() -> i32 {
     // handed to the Sioul of this profile already open, if one is, which
     // opens the draft or comes forward; else this one opens, and listens for
     // the next (docs/client.md, "Writing from other applications").
+    // A calendar file opened (`sioul-app <file>`) takes the same road.
     let addresses = outside::addresses();
-    if outside::hand_over(&addresses) {
+    let calendar_files = calendarfile::files();
+    if outside::hand_over(&addresses, &calendar_files) {
         return 0;
     }
     outside::listen();
     if !addresses.is_empty() {
         outside::hand(&addresses);
+    }
+    if !calendar_files.is_empty() {
+        calendarfile::hand(&calendar_files);
     }
     // What an earlier run left attached on the Texts page goes, now that this is the profile's Sioul.
     #[cfg(not(target_os = "android"))]

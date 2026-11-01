@@ -101,6 +101,24 @@ public final class ShareActivity extends Activity
         final Intent intent = getIntent();
         final File handed = handed(app);
         final String id = Long.toHexString(System.currentTimeMillis()) + "-" + Long.toHexString(System.nanoTime() & 0xffffffL) + "-" + Integer.toHexString(Process.myPid());
+        // A calendar file opened: its bytes for the agenda's dialog, never a
+        // draft; read on a thread of its own (an app's provider may be slow),
+        // this activity kept meanwhile, since Android's leave to read goes with it.
+        if (calendarFile(intent)) {
+            final Uri file = intent.getData();
+            new Thread(() -> {
+                try {
+                    write(new File(handed, "calendar/" + id + ".ics"), read(app, file));
+                    runOnUiThread(this::open);
+                    tell();
+                } catch (IOException | RuntimeException e) {
+                    Log.e(DoseAlarms.TAG, "Sharing: a calendar file could not be kept for Sioul: " + e);
+                    runOnUiThread(() -> Toast.makeText(app, failed(e), Toast.LENGTH_LONG).show());
+                }
+                runOnUiThread(this::finish);
+            }, "sioul-share").start();
+            return;
+        }
         final List<Uri> files = new ArrayList<>();
         final JSONArray refused = new JSONArray();
         try {
@@ -459,14 +477,53 @@ public final class ShareActivity extends Activity
     }
 
     /** A text written whole: under another name, then renamed. */
+    /** The most of a calendar file read: a megabyte, and one byte to tell a larger one (calendarfile.rs). */
+    private static final int CALENDAR_MOST = 1024 * 1024 + 1;
+
+    /** Opened as a calendar file (VIEW of a content: or file: address, never mailto:). */
+    private static boolean calendarFile(Intent intent)
+    {
+        Uri data = intent.getData();
+        if (!Intent.ACTION_VIEW.equals(intent.getAction()) || data == null || data.getScheme() == null)
+            return false;
+        String scheme = data.getScheme().toLowerCase(Locale.ROOT);
+        return scheme.equals(ContentResolver.SCHEME_CONTENT) || scheme.equals(ContentResolver.SCHEME_FILE);
+    }
+
+    /** What the address holds, {@link #CALENDAR_MOST} bytes at most, through the system's resolver: nothing else is followed. */
+    private static byte[] read(Context app, Uri uri) throws IOException
+    {
+        try (InputStream in = app.getContentResolver().openInputStream(uri)) {
+            if (in == null)
+                throw new FileNotFoundException(String.valueOf(uri.getLastPathSegment()));
+            byte[] buffer = new byte[CALENDAR_MOST];
+            int length = 0;
+            while (length < buffer.length) {
+                int read = in.read(buffer, length, buffer.length - length);
+                if (read < 0)
+                    break;
+                length += read;
+            }
+            byte[] out = new byte[length];
+            System.arraycopy(buffer, 0, out, 0, length);
+            return out;
+        }
+    }
+
     static void write(File file, String text) throws IOException
+    {
+        write(file, text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Bytes written beside, then put in place: Rust never reads half a file. */
+    static void write(File file, byte[] bytes) throws IOException
     {
         File folder = file.getParentFile();
         if (folder != null && !folder.isDirectory() && !folder.mkdirs())
             throw new IOException("cannot make " + folder);
         File temporary = new File(folder, file.getName() + ".new");
         try (FileOutputStream out = new FileOutputStream(temporary)) {
-            out.write(text.getBytes(StandardCharsets.UTF_8));
+            out.write(bytes);
             out.getFD().sync();
         }
         if (!temporary.renameTo(file)) {

@@ -804,6 +804,25 @@ dav-answered-elsewhere = { $answer ->
 dav-nothing = No contacts-and-calendars account yet: sioul dav add you@example.org.
 dav-no-book = No address book to add it to yet.
 dav-no-calendar = No calendar to add it to yet.
+calendar-file-title = Add to the agenda
+calendar-file-agenda = Agenda
+calendar-file-tags = Category or tags
+calendar-file-add = Add to the agenda
+calendar-file-by = By { $organizer }
+calendar-file-known = Already in this agenda: it is written over, never doubled.
+calendar-file-added = { $count ->
+    [one] Added to { $calendar }.
+   *[other] { $count } events added to { $calendar }.
+}
+calendar-file-updated = { $count ->
+    [one] Updated in { $calendar }.
+   *[other] { $count } events updated in { $calendar }.
+}
+calendar-file-gone = This calendar file is no longer open.
+calendar-file-too-large = This file is too large for a calendar file: Sioul reads one megabyte at most.
+calendar-file-unreadable = This file is not a calendar Sioul can read.
+calendar-file-no-event = This calendar file holds no event.
+calendar-file-answer = This file answers or cancels an invitation: its message, in your mail, takes it.
 contact-no-name = A contact needs a name or an address.
 contact-saved = Contact saved.
 event-no-title = An event needs a title.

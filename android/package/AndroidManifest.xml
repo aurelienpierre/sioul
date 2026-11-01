@@ -298,7 +298,8 @@
              docs/android.md, "Sharing"): files and text shared to it, or to
              one of your addresses straight from the share sheet; mailto:
              links, from a browser too. Each becomes a draft in Sioul, which
-             opens; nothing is sent until you press Send. Translucent, never
+             opens; nothing is sent until you press Send. A calendar file
+             opened goes to the agenda's dialog instead. Translucent, never
              shown, and kept (no noHistory) behind Sioul's window the moment
              the shared files take to open: Android's leave to read them goes
              with it, so it is not made again when the screen turns. -->
@@ -322,6 +323,19 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="mailto" />
+            </intent-filter>
+            <!-- A calendar file opened (an .ics from a download, a message, a
+                 file manager): read here, then shown in Sioul's window, where
+                 you choose its agenda and its categories (calendarfile.rs). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="text/calendar" />
+                <data android:mimeType="application/ics" />
+                <data android:mimeType="text/x-vcalendar" />
             </intent-filter>
         </activity>
         <!-- "Save…" beside a mail attachment (AttachmentSave.java; docs/

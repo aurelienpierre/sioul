@@ -446,6 +446,21 @@ pub mod qobject {
         #[qinvokable]
         fn calendars(self: &Sioul) -> QString;
 
+        /// The UIDs of the calendar file shown that `calendar` ("account/id")
+        /// holds already, as a JSON list: written over, never doubled.
+        #[qinvokable]
+        fn calendar_file_known(self: &Sioul, calendar: &QString) -> QString;
+
+        /// The calendar file shown recorded into `calendar`, with
+        /// `categories` (a JSON list) added to its events: "" when done
+        /// (said on the status line), else why not.
+        #[qinvokable]
+        fn add_calendar_file(self: Pin<&mut Sioul>, calendar: &QString, categories: &QString) -> QString;
+
+        /// The calendar file shown set aside, nothing written; the next one waiting shown.
+        #[qinvokable]
+        fn close_calendar_file(self: Pin<&mut Sioul>);
+
         /// An event as its form shows it, as JSON. Not `event`, which would hide QObject::event.
         #[qinvokable]
         fn event_form(self: &Sioul, key: &QString) -> QString;
@@ -2160,6 +2175,12 @@ pub mod qobject {
         /// Also a new draft handed by another application (`outside`).
         #[qsignal]
         fn compose_requested(self: Pin<&mut Sioul>, id: QString);
+
+        /// A calendar file opened in Sioul (`calendarfile`): its dialog
+        /// shows `view` (JSON: its events, why it does not open, the
+        /// calendars, the categories in use).
+        #[qsignal]
+        fn calendar_file_opened(self: Pin<&mut Sioul>, view: QString);
 
         /// Files shared from another application came for draft `id`
         /// (`outside`): its window reads its attachments again and says `line`,
@@ -4332,6 +4353,18 @@ impl qobject::Sioul {
 
     fn event_form(&self, key: &QString) -> QString {
         QString::from(&pim::event(&key.to_string()))
+    }
+
+    fn calendar_file_known(&self, calendar: &QString) -> QString {
+        QString::from(&crate::calendarfile::known(&calendar.to_string()))
+    }
+
+    fn add_calendar_file(self: Pin<&mut Self>, calendar: &QString, categories: &QString) -> QString {
+        QString::from(&crate::calendarfile::add(&self.qt_thread(), &self.shared(), &calendar.to_string(), &categories.to_string()))
+    }
+
+    fn close_calendar_file(self: Pin<&mut Self>) {
+        crate::calendarfile::close(&self.qt_thread());
     }
 
     fn save_event(self: Pin<&mut Self>, key: &QString, edit: &QString, calendar: &QString) -> QString {

@@ -1048,6 +1048,27 @@ SioulWindow {
     }
     readonly property var focusWindow: focusWindowLoader.item
 
+    // A calendar file (.ics) opened in Sioul (calendarfile.rs): its events,
+    // the agenda and the categories chosen, then recorded. Made the first time.
+    Later {
+        id: calendarFile
+
+        sourceComponent: Component {
+            CalendarFileDialog {
+                sioul: sioul
+                theme: theme
+            }
+        }
+    }
+    Connections {
+        target: sioul
+
+        function onCalendarFileOpened(view) {
+            calendarFile.now().show(view)
+            window.bringBack()
+        }
+    }
+
     // The end of the work day ("Done for today") or of the day before sleep
     // (DayReview.qml, docs/reviews.md): made the first time it is asked for.
     Later {

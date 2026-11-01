@@ -825,6 +825,25 @@ dav-answered-elsewhere = { $answer ->
 dav-nothing = Pas encore de compte de contacts et agendas : sioul dav add vous@exemple.org.
 dav-no-book = Pas encore de carnet d’adresses où l’ajouter.
 dav-no-calendar = Pas encore d’agenda où l’ajouter.
+calendar-file-title = Ajouter à l’agenda
+calendar-file-agenda = Agenda
+calendar-file-tags = Catégorie ou étiquettes
+calendar-file-add = Ajouter à l’agenda
+calendar-file-by = Par { $organizer }
+calendar-file-known = Déjà dans cet agenda : il est remplacé, jamais en double.
+calendar-file-added = { $count ->
+    [one] Ajouté à { $calendar }.
+   *[other] { $count } événements ajoutés à { $calendar }.
+}
+calendar-file-updated = { $count ->
+    [one] Mis à jour dans { $calendar }.
+   *[other] { $count } événements mis à jour dans { $calendar }.
+}
+calendar-file-gone = Ce fichier d’agenda n’est plus ouvert.
+calendar-file-too-large = Ce fichier est trop gros pour un fichier d’agenda : Sioul en lit un mégaoctet au plus.
+calendar-file-unreadable = Ce fichier n’est pas un agenda que Sioul sait lire.
+calendar-file-no-event = Ce fichier d’agenda ne contient aucun événement.
+calendar-file-answer = Ce fichier répond à une invitation ou l’annule : son courriel, dans votre messagerie, s’en charge.
 contact-no-name = Un contact a besoin d’un nom ou d’une adresse.
 contact-saved = Contact enregistré.
 event-no-title = Un événement a besoin d’un titre.
