@@ -239,6 +239,9 @@ Panel {
         RowLayout {
             id: actionRow
 
+            objectName: "readerActions"
+            // A message not here has nothing to do with it (review of 1017fa4, L6).
+            visible: !reader.missing
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             spacing: 4
@@ -548,8 +551,10 @@ Panel {
                     onClicked: reader.window.openSite(reader.announces.id)
                 }
 
-                // Who wrote to whom, apart from the text.
+                // Who wrote to whom, apart from the text; nothing to say of a message not here.
                 Rectangle {
+                    objectName: "readerHeader"
+                    visible: !reader.missing
                     Layout.fillWidth: true
                     implicitHeight: headerColumn.implicitHeight + 24
                     color: reader.theme.background
@@ -1212,13 +1217,13 @@ Panel {
         id: blockDialog
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: blockDialogForm
 
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(520, reader.window.width - 2 * reader.theme.gap)
+                width: Math.min(520, Math.min(reader.window.width, blockDialogForm.roomWidth) - 2 * reader.theme.gap)
                 title: reader.sioul.text("ui-block-title")
 
                 ColumnLayout {
@@ -1285,14 +1290,14 @@ Panel {
         id: sourceDialog
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: sourceDialogForm
 
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: reader.window.width * 0.8
-                height: reader.window.height * 0.8
+                width: Math.min(reader.window.width * 0.8, sourceDialogForm.roomWidth - 2 * sourceDialogForm.safeGap)
+                height: Math.min(reader.window.height * 0.8, sourceDialogForm.roomHeight - 2 * sourceDialogForm.safeGap)
                 title: reader.sioul.text("ui-show-source")
 
                 // Sioul's own button, in your language: Qt's standard ones are not translated.

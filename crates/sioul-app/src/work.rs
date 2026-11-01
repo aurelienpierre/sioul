@@ -2478,7 +2478,7 @@ pub(crate) fn search_things(shared: &Shared, query: &str, kind: &str, from: &str
 /// ("mail"), a note's path, a task's, an event's or a contact's UID.
 pub(crate) fn uri_of(kind: &str, id: &str) -> String {
     match kind {
-        "mail" => message_card(id).and_then(|(_, card)| card.message_id).map(|m| links::mail_uri(&m)).unwrap_or_default(),
+        "mail" => message_card(id).and_then(|(path, card)| message_address(&path, &card)).unwrap_or_default(),
         "note" => notes::uri_of(id),
         "task" => links::task_uri(id),
         "event" => links::event_uri(id),
@@ -2584,6 +2584,15 @@ fn message_card(key: &str) -> Option<(PathBuf, Card)> {
     Some((path, card))
 }
 
+/// A message's address for a tie: its Message-ID, else its digest in its
+/// account (`sioul:mail/<account>/<digest>`, the same on every device).
+fn message_address(path: &Path, card: &Card) -> Option<String> {
+    match card.message_id.as_deref().filter(|id| !id.trim().is_empty()) {
+        Some(id) => Some(links::mail_uri(id)),
+        None => sioul_core::mailfind::address_of_file(&load_config().account_of(path)?.id, path),
+    }
+}
+
 /// The sender of a message as a task's CONTACT: their card when they have one.
 fn sender_contact(loaded: &Loaded, card: &Card) -> Option<ContactRef> {
     let address = card.from_address.clone()?;
@@ -2603,8 +2612,8 @@ fn mail_task_edit(shared: &Shared, key: &str) -> Result<TaskEdit, String> {
     let Some((path, card)) = message_card(key) else { return Err(tr().text("mail-message-gone", None)) };
     let loaded = loaded(shared);
     let mut edit = TaskEdit { title: card.subject.trim().to_string(), ..TaskEdit::default() };
-    if let Some(id) = &card.message_id {
-        edit.links.push(Link { uri: links::mail_uri(id), label: String::new(), rel: "via".into() });
+    if let Some(uri) = message_address(&path, &card) {
+        edit.links.push(Link { uri, label: String::new(), rel: "via".into() });
     }
     edit.contacts.extend(sender_contact(&loaded, &card));
     let config = load_config();
@@ -2622,8 +2631,8 @@ fn mail_task_edit(shared: &Shared, key: &str) -> Result<TaskEdit, String> {
 
 /// A note from a message: its subject as title, the message linked, its text quoted.
 pub(crate) fn note_from_mail(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
-    let Some((_, card)) = message_card(key) else { return String::new() };
-    let mail = card.message_id.as_deref().map(links::mail_uri).into_iter().collect();
+    let Some((path, card)) = message_card(key) else { return String::new() };
+    let mail = message_address(&path, &card).into_iter().collect();
     let quoted: String = card.excerpt.lines().take(40).map(|l| format!("> {l}\n")).collect();
     let body = format!("{}\n\n{quoted}", say("note-from-mail", &[("sender", card.sender().to_string())]));
     match new_note(&card.subject, &[("mail", mail)], &body) {

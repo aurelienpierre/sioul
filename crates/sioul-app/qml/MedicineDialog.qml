@@ -15,7 +15,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: form
 
     required property var sioul
@@ -91,7 +91,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(520, (parent ? parent.width : 520) - 2 * form.theme.gap)
+    width: Math.min(520, (parent ? form.roomWidth : 520) - 2 * form.theme.gap)
     title: form.medicineId === "" ? form.sioul.text("health-add-medicine") : form.sioul.text("health-medicine")
 
     // Many takes, a small window: the form scrolls, its buttons stay.

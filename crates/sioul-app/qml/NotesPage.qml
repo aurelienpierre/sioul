@@ -833,13 +833,13 @@ Item {
         id: newNote
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: newNoteForm
 
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(440, page.width - 2 * page.theme.gap)
+                width: Math.min(440, Math.min(page.width, newNoteForm.roomWidth) - 2 * page.theme.gap)
                 title: page.sioul.text("note-new")
                 onAboutToShow: noteTitle.clear()
                 // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
@@ -983,7 +983,7 @@ Item {
         id: folderName
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: folderNameForm
 
                 property var action: null
@@ -1005,7 +1005,7 @@ Item {
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(440, page.width - 2 * page.theme.gap)
+                width: Math.min(440, Math.min(page.width, folderNameForm.roomWidth) - 2 * page.theme.gap)
                 // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
                 footer: DialogButtonBox {
                     Button {
@@ -1039,7 +1039,7 @@ Item {
         id: renameNote
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: renameNoteForm
 
                 property string path: ""
@@ -1056,7 +1056,7 @@ Item {
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(440, page.width - 2 * page.theme.gap)
+                width: Math.min(440, Math.min(page.width, renameNoteForm.roomWidth) - 2 * page.theme.gap)
                 title: page.sioul.text("note-rename")
                 footer: DialogButtonBox {
                     Button {

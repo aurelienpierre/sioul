@@ -252,9 +252,8 @@ fn kept_versions(memory: &Path) -> Vec<PathBuf> {
 
 fn seal_with(judged: &mut draftcopies::Judged) {
     let config = load_config();
-    let roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == sioul_core::config::AccountKind::Imap).map(|a| a.maildir_path()).collect();
-    let cache = sioul_core::config::cache_dir().join("mail-index.tsv");
-    let done = seal_in(&Draft::folder(), &crate::share::memory_path(), &draftcopies::Certs::lazy(Keys::load), &roots, &cache, judged);
+    let roots = sioul_core::mailindex::MailIndex::roots_of(&config);
+    let done = seal_in(&Draft::folder(), &crate::share::memory_path(), &draftcopies::Certs::lazy(Keys::load), &roots, judged);
     if done.any() {
         eprintln!("{}", said(&done));
     }
@@ -262,14 +261,14 @@ fn seal_with(judged: &mut draftcopies::Judged) {
 
 /// [`seal_clear_drafts`] in these folders: the drafts', the sharing's memory
 /// (its history and what it kept before sharing began beside it), your mail
-/// (`roots`, its index of Message-IDs kept in `cache`). Each copy takes its
+/// (`roots`, by Message-ID through each folder's index). Each copy takes its
 /// place under the sharing's exchange lock, a short hold at a time
 /// (`share::replacements_hold`): no exchange reads one while it is replaced.
-fn seal_in(drafts: &Path, memory: &Path, certs: &draftcopies::Certs, roots: &[PathBuf], cache: &Path, judged: &mut draftcopies::Judged) -> draftcopies::Sealed {
+fn seal_in(drafts: &Path, memory: &Path, certs: &draftcopies::Certs, roots: &[sioul_core::mailindex::Root], judged: &mut draftcopies::Judged) -> draftcopies::Sealed {
     // Your mail by Message-ID, read only when a copy in clear asks it.
     let mut index: Option<sioul_core::mailindex::MailIndex> = None;
     // Every file of a Message-ID: one message in two folders, or another given its ID (F6).
-    let mut find = |id: &str| index.get_or_insert_with(|| sioul_core::mailindex::MailIndex::build(roots, cache)).paths(id);
+    let mut find = |id: &str| index.get_or_insert_with(|| sioul_core::mailindex::MailIndex::build_ranked(roots)).paths(id);
     let hold = sioul_sync::share::replacements_hold(memory);
     let beside = draftcopies::seal_beside(drafts, certs, &mut find, judged, &hold);
     // Their earlier versions kept here, and what was kept before sharing began.
@@ -587,7 +586,7 @@ mod tests {
         put(drafts.join("b1.eml"), &decrypted);
         put(state.join("history/drafts/data/drafts/b1.eml/2026-10-18T10-00-00.000Z"), &decrypted);
         put(state.join("before-sharing-2026-09-21/data/drafts/b1.eml"), &decrypted);
-        let done = seal_in(&drafts, &memory, &draftcopies::Certs::of(keys.clone()), &[mail.clone()], &cache.join("mail-index.tsv"), &mut draftcopies::Judged::default());
+        let done = seal_in(&drafts, &memory, &draftcopies::Certs::of(keys.clone()), &[sioul_core::mailindex::Root { account: "drafts-mail".into(), path: mail.clone(), folders: Vec::new() }], &mut draftcopies::Judged::default());
         assert_eq!(done, draftcopies::Sealed { copies: 1, versions: 2, ..draftcopies::Sealed::default() });
         for folder in [&drafts, &state, &cache] {
             for path in sioul_core::mailindex::message_files(folder).into_iter().chain(walk(folder)) {

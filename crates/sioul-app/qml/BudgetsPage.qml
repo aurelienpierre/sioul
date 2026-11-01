@@ -47,7 +47,8 @@ Item {
     }
 
     // A money row's message, in Mail: by its address ("mid:…", the copy that
-    // ranks first), or by its file ("file:…") when it has no Message-ID.
+    // ranks first; "sioul:mail/…" for one without a Message-ID), or, for a
+    // row an older Sioul recorded, by its file ("file:…").
     function openMessage(key) {
         if (key.startsWith("file:"))
             page.window.openThing({ kind: "mail", uri: "", key: key.slice("file:".length) })

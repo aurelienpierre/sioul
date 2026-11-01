@@ -44,16 +44,27 @@ pub struct Card {
     pub headers: RawHeaders,
     /// What it is made of: its text and HTML versions, its other parts (the spam filter's features).
     pub shape: Shape,
+    /// Whether a list's message carries a one-time code, when a folder's
+    /// index said it already (`mailcache::Line::code`, read from the whole
+    /// message once; other mail is not looked at, and false); none:
+    /// `codes::detect_message` reads the card.
+    pub code: Option<bool>,
 }
 
 impl Card {
     /// Reads a raw RFC 5322 message; none if it cannot be parsed at all.
     pub fn from_bytes(raw: &[u8]) -> Option<Card> {
         let message = MessageParser::default().parse(raw)?;
+        Some(Card::from_parsed(raw, &message))
+    }
+
+    /// A card from a message parsed already (`mailcache`: one parse gives
+    /// the card and the calendar part it may carry).
+    pub fn from_parsed(raw: &[u8], message: &mail_parser::Message<'_>) -> Card {
         let from = message.from().and_then(|a| a.first());
         let headers = RawHeaders::parse(raw);
-        let excerpt = excerpt_of(&message);
-        Some(Card {
+        let excerpt = excerpt_of(message);
+        Card {
             path: None,
             account: None,
             origin: None,
@@ -67,8 +78,9 @@ impl Card {
             attachments: message.attachments().filter(|p| !is_pgp_part(p)).filter_map(|p| p.attachment_name()).map(str::to_string).collect(),
             is_list: is_list(&headers),
             headers,
-            shape: shape_of(&message),
-        })
+            shape: shape_of(message),
+            code: None,
+        }
     }
 
     /// The domain of the sender's address.

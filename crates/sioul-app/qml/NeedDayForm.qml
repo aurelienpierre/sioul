@@ -13,7 +13,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: form
 
     required property var sioul
@@ -167,7 +167,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(440, (parent ? parent.width : 440) - 2 * form.theme.gap)
+    width: Math.min(440, (parent ? form.roomWidth : 440) - 2 * form.theme.gap)
     title: form.theme.plain(form.mode === "add" ? (form.day ? form.sioul.textWith("need-add-title", "day", form.day.title) : "") : form.item && form.day ? form.item.name + "  ·  " + form.day.title : "")
 
     contentItem: GridLayout {

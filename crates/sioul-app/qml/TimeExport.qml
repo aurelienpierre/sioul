@@ -12,7 +12,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: exporting
 
     required property var sioul
@@ -59,7 +59,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(480, (parent ? parent.width : 480) - 2 * exporting.theme.gap)
+    width: Math.min(480, (parent ? exporting.roomWidth : 480) - 2 * exporting.theme.gap)
     title: exporting.sioul.text("time-export")
     // Qt's standard "Cancel" is not translated here: Sioul's own.
     footer: DialogButtonBox {

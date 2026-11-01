@@ -486,7 +486,7 @@ fn free_draft(draft: &mut Draft) {
 }
 
 pub fn draft_reply(s: &Session, args: &Args) -> Result<Answer, String> {
-    let path = read::find_message(s, &args.needed("message")?)?;
+    let path = read::find_message(s, &args.needed("message")?)?.path;
     let body = draft_body(args)?;
     // Mail kept from agents is not answered by one: a blocked sender, hostile mail to a shielded address.
     let (judged, _) = read::judged(s, &path)?;

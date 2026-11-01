@@ -35,6 +35,7 @@ Une fois que vous les avez mis en place :
 - **Un dossier montre ses deux dernières semaines.** **Courriels plus anciens** ouvre le reste, pour qu’aucune liste ne soit sans fin.
 - **Chercher**, en haut d’un dossier : par expéditeur, destinataire et objet. **Plus de critères…**, à côté, cherche partout, par conditions ([plus bas](#searching)).
 - **Par conversation**, dans le ⚙ de la page Courriels : un courriel et ses réponses ensemble, sous le plus récent ; vos propres réponses viennent des Envoyés.
+- **Rapide à ouvrir** : chaque dossier garde un petit index de ce que disent ses courriels (qui, à qui, l’objet, la date), lu dans chaque courriel une fois pour toutes, et gardé sur cet appareil seul, lisible par vous seul. La liste d’un dossier lit cet index, jamais de nouveau chaque courriel ; seul le courriel que vous ouvrez est lu en entier.
 
 Un clic droit sur un dossier propose **En garder une copie ici** ou **Ne plus en garder de copie** (le serveur garde tous les courriels dans les deux cas), **Nouveau dossier…**, et **Supprimer ce dossier vide**, pour un dossier vide à vous.
 
@@ -74,7 +75,7 @@ Un clic droit sur un courriel (ou son ⋮, ou la touche Menu) donne le reste :
 
 Ouvrir un courriel le marque comme lu, comme le fait tout logiciel de courriel. Sioul n’envoie jamais d’accusé de lecture.
 
-**Un courriel ouvert d’ailleurs** (ce à quoi une tâche, un événement, une note ou un projet est lié, un lien vers un courriel écrit dans une note, le courriel d’où vient une ligne d’argent dans Budgets, **Ouvrir le courriel** sur la notification d’un code) s’ouvre dans le lecteur du Courrier, la première fois aussi, la première boîte de réception à côté. Un lien vers un courriel est le même quelle que soit son écriture (`mid:<…>`, nu ou encodé), et ouvre la copie qui passe en premier : la boîte de réception avant les archives, les envoyés, les indésirables, la corbeille et « Tous les messages » de Gmail. Un courriel qui n’est pas sur cet appareil pour l’instant le dit à la place du lecteur : « Ce courriel n’est pas sur cet appareil pour l’instant. Il a peut-être été déplacé. » 
+**Un courriel ouvert d’ailleurs** (ce à quoi une tâche, un événement, une note ou un projet est lié, un lien vers un courriel écrit dans une note, le courriel d’où vient une ligne d’argent dans Budgets, **Ouvrir le courriel** sur la notification d’un code) s’ouvre dans le lecteur du Courrier, la première fois aussi, la première boîte de réception à côté. Un lien vers un courriel est le même quelle que soit son écriture (`mid:<…>`, nu ou encodé), et ouvre la copie qui passe en premier : la boîte de réception avant les archives, les envoyés, les indésirables, la corbeille et « Tous les messages » de Gmail. Un courriel qui n’est pas sur cet appareil pour l’instant le dit à la place du lecteur : « Ce courriel n’est pas sur cet appareil pour l’instant. Il a peut-être été déplacé. » Un courriel sans Message-ID (rare, surtout des indésirables) peut lui aussi être lié : Sioul le nomme par une empreinte de son expéditeur, de ses destinataires, de sa date et de son objet, la même sur chaque appareil. 
 
 ### Plusieurs à la fois {#several-at-once}
 

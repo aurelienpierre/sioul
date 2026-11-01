@@ -17,6 +17,15 @@ import QtQuick.Controls.Basic
 ComboBox {
     id: box
 
+    // Its list kept inside the window's safe area, never under the system's
+    // bars, 6 points within it as Basic's own (review of 4c77d0c, L9).
+    readonly property var safeArea: box.Overlay.overlay ? box.Overlay.overlay.SafeArea.margins : null
+
+    popup.topMargin: 6 + (box.safeArea ? box.safeArea.top : 0)
+    popup.bottomMargin: 6 + (box.safeArea ? box.safeArea.bottom : 0)
+    popup.leftMargin: box.safeArea ? box.safeArea.left : 0
+    popup.rightMargin: box.safeArea ? box.safeArea.right : 0
+
     // Basic's delegate, but for the "&" doubled.
     delegate: ItemDelegate {
         id: choice

@@ -543,8 +543,8 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
         // every UID the server lists being here.
         let recorded = state.folders.get(key).map(|f| (f.uidvalidity, f.everything));
         let mut left = crate::renumbered::Left::load(&left_path);
-        let shared = crate::renumbered::shared_with_others(account);
-        let plan = crate::renumbered::plan(&root, validity, recorded, &left.of(key), shared);
+        // Whether another address shares the directory: the configuration read only when old copies are there.
+        let plan = crate::renumbered::plan(&root, validity, recorded, &left.of(key), || crate::renumbered::shared_with_others(account));
         let mut removals = plan.paired;
         if !plan.unmatched.is_empty() {
             let server = imap::within(COMMAND, session.uid_search("ALL")).await?.map_err(imap::server)?;

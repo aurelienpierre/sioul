@@ -111,8 +111,7 @@ pub fn read_one(path: &Path) -> Option<Card> {
         return Some(card);
     }
     let raw = std::fs::read(path).ok()?;
-    #[cfg(test)]
-    PARSED.with(|n| n.set(n.get() + 1));
+    parsed_once();
     let mut card = Card::from_bytes(&raw)?;
     card.path = Some(path.to_path_buf());
     card.origin = origin_of(path);
@@ -133,10 +132,25 @@ thread_local! {
     static KEPT: std::cell::RefCell<Option<KeptCards>> = const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(test)]
 thread_local! {
-    /// Message files parsed in this test's thread.
+    /// Message files parsed whole in this thread: what the tests of every
+    /// crate count (a refresh of Mail parses none).
     static PARSED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// A message file parsed whole (`mailcache`), counted as `read_one` counts.
+pub fn parsed_once() {
+    PARSED.with(|n| n.set(n.get().saturating_add(1)));
+}
+
+/// How many message files this thread parsed whole, since `parses_reset`.
+pub fn parses() -> u32 {
+    PARSED.with(std::cell::Cell::get)
+}
+
+/// The count of parses started again, for a test or a measure.
+pub fn parses_reset() {
+    PARSED.with(|n| n.set(0));
 }
 
 /// A message file as `CardsKept` knows it: its name less its flags, its size, its time (nanoseconds).
@@ -293,7 +307,13 @@ pub fn message_ids(dir: &Path) -> std::collections::BTreeSet<String> {
 /// chose with `maildir =` is yours and stays), and what the AI's reading kept
 /// of it. The folders forgotten come back; an error says what could not be.
 pub fn forget_account(account: &crate::config::Account) -> Result<Vec<PathBuf>, String> {
-    forget_account_under(account, &crate::config::data_dir().join("mail"), &crate::shield::AiCache::path(&account.id))
+    let mut gone = forget_account_under(account, &crate::config::data_dir().join("mail"), &crate::shield::AiCache::path(&account.id))?;
+    // What each message said, kept per folder (`mailcache`): a cache of that mail.
+    if let Some(index) = crate::mailcache::account_dir(&account.id).filter(|dir| dir.is_dir()) {
+        std::fs::remove_dir_all(&index).map_err(|e| format!("{}: {e}", index.display()))?;
+        gone.push(index);
+    }
+    Ok(gone)
 }
 
 fn forget_account_under(account: &crate::config::Account, mail_root: &Path, ai_cache: &Path) -> Result<Vec<PathBuf>, String> {
@@ -325,6 +345,28 @@ fn sorted(flags: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Forgetting an address takes its folders' indexes with it (`mailcache`),
+    /// a Maildir you chose staying where it is.
+    #[test]
+    fn forgetting_an_address_takes_its_indexes() {
+        crate::config::stand_ins_only();
+        let id = format!("forget-index-{}", std::process::id());
+        let mine = crate::config::data_dir().join(format!("chosen-{id}"));
+        for sub in ["tmp", "new", "cur"] {
+            std::fs::create_dir_all(mine.join(sub)).unwrap();
+        }
+        std::fs::write(mine.join("cur").join(format!("1777000000.U1-1.sioul{INFO}2,S")), "Message-ID: <f@example.org>\r\nSubject: Hi\r\n\r\nHi\r\n").unwrap();
+        crate::mailcache::folder(&id, &mine, "");
+        let index = crate::mailcache::account_dir(&id).unwrap();
+        assert!(index.is_dir());
+        let mut account = crate::config::Account::imap(&id, "me@example.org", "imap.example.org", 993, crate::config::Security::Tls, None);
+        account.maildir = Some(mine.display().to_string());
+        let gone = forget_account(&account).unwrap();
+        assert!(gone.contains(&index) && !index.exists(), "{gone:?}");
+        assert!(mine.join("cur").is_dir(), "a Maildir you chose stays");
+        let _ = std::fs::remove_dir_all(&mine);
+    }
 
     /// An account's mail forgotten: Sioul's own folder of it and the AI's
     /// answers; never a folder you chose, nor anything outside the folder of

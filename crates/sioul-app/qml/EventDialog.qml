@@ -15,7 +15,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -48,9 +48,11 @@ Dialog {
         return new Date(ms + (typeof dialog.sioul.zoneOffset === "function" ? dialog.sioul.zoneOffset(ms / 1000) + new Date(ms).getTimezoneOffset() * 60000 : 0))
     }
 
-    // The start typed, in Unix seconds (on the time zone Sioul shows, as the form writes
-    // it); NaN while it does not read.
+    // The start typed, in Unix seconds, on the form's clock: the time zone Sioul shows,
+    // or the one a leg's form is on (review of 4e065b1, L1); NaN while it does not read.
     function legStart() {
+        if (dialog.clock !== "" && typeof dialog.sioul.wallInstant === "function")
+            return dialog.sioul.wallInstant(startDay.date + "T" + startTime.text, dialog.clock)
         const typed = new Date(startDay.date + "T" + startTime.text).getTime()
         return (typed - (dialog.wall(typed).getTime() - typed)) / 1000
     }
@@ -392,9 +394,9 @@ Dialog {
     // editing card's width"): its fields at about 70 characters of the body
     // font, a readable line, or its tiles side by side, whichever is wider;
     // never past the window less the usual margins, all of a phone's.
-    width: Math.min(Math.ceil(Math.max(70 * body.averageCharacterWidth, tiles.naturalWidth)) + dialog.leftPadding + dialog.rightPadding + 12, (parent ? parent.width : 800) - 2 * dialog.theme.gap)
+    width: Math.min(Math.ceil(Math.max(70 * body.averageCharacterWidth, tiles.naturalWidth)) + dialog.leftPadding + dialog.rightPadding + 12, (parent ? dialog.roomWidth : 800) - 2 * dialog.theme.gap)
     // Taller than the window, every detail unfolded: the form scrolls, its buttons stay.
-    height: Math.min(implicitHeight, (Overlay.overlay ? Overlay.overlay.height : 800) - 32)
+    height: Math.min(implicitHeight, dialog.roomHeight - 32)
     // A meeting with others: your own time around it alone, kept in your own file (decision 18).
     title: dialog.legOf !== "" ? dialog.sioul.text("appointment-add-leg") : dialog.taskUid !== "" ? dialog.sioul.text("agenda-make-appointment") : dialog.key && dialog.withOthers ? dialog.sioul.text("event-own-time") : dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
 

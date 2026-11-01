@@ -1303,7 +1303,8 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
         // As the Porch judges it: a signature counts for the sender's own domain only,
         // and a list excuses a DMARC failure, never for a code (`porch::triage`).
         let failed = results.as_ref().is_some_and(|r| r.dmarc == Some(trust::Outcome::Fail));
-        let code = card.is_list && failed && crate::codes::detect_message(&words.codes, card).is_some();
+        // A folder's line says it already (`Card::code`); a whole card is read.
+        let code = card.is_list && failed && card.code.unwrap_or_else(|| crate::codes::detect_message(&words.codes, card).is_some());
         let judged = trust::judge_sender(results.as_ref(), card.is_list && !code, card.sender_domain()).0;
         let level = match judged {
             Trust::Verified => "verified",

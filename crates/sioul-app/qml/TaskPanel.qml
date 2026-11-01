@@ -2163,7 +2163,7 @@ Panel {
         id: doAt
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: doAtForm
 
                 readonly property var lengths: [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240]
@@ -2220,7 +2220,7 @@ Panel {
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(440, (parent ? parent.width : 440) - 2 * panel.theme.gap)
+                width: Math.min(440, (parent ? doAtForm.roomWidth : 440) - 2 * panel.theme.gap)
                 title: panel.sioul.text("task-do-at")
 
                 ColumnLayout {

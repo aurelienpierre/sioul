@@ -14,7 +14,8 @@
 //! and what points at it.
 //!
 //! Things are named by addresses, one scheme per kind:
-//! - a message: `mid:<Message-ID>` (RFC 2392);
+//! - a message: `mid:<Message-ID>` (RFC 2392); one without a Message-ID,
+//!   `sioul:mail/<account>/<digest>` (`mailfind`: the same on every device);
 //! - a task, an event, a contact: `sioul:task/<UID>`, `sioul:event/<UID>`, `sioul:contact/<UID>`;
 //! - a note: `sioul:note/<path in the notes folder>`;
 //! - a draft: `sioul:draft/<id>`; a paper: `sioul:paper/<id>`;
@@ -80,6 +81,8 @@ pub fn kind_of(uri: &str) -> Kind {
             "letter" => Kind::Letter,
             "invoice" => Kind::Invoice,
             "site" => Kind::Site,
+            // A message without a Message-ID: `sioul:mail/<account>/<digest>`.
+            "mail" => Kind::Mail,
             _ => Kind::Other,
         };
     }
@@ -221,6 +224,12 @@ pub fn project_uri(id: &str) -> String {
 /// `mid:` and the Message-ID, without its angle brackets (RFC 2392).
 pub fn mail_uri(message_id: &str) -> String {
     format!("mid:{}", encode(&bare_id(message_id)))
+}
+
+/// A message without a Message-ID: `sioul:mail/<account>/<digest>`
+/// (`mailcache::digest`, the same on every device).
+pub fn digest_uri(account: &str, digest: &str) -> String {
+    format!("{}{}/{}", crate::mailfind::DIGEST_SCHEME, encode(account), digest.to_ascii_lowercase())
 }
 
 /// The id an address of a kind carries: "sioul:task/abc" → "abc".
@@ -451,6 +460,11 @@ impl World<'_> {
         if uri.starts_with("mid:") {
             return mail_uri(uri);
         }
+        if uri.starts_with(crate::mailfind::DIGEST_SCHEME)
+            && let Some(address) = crate::mailfind::Address::parse(uri)
+        {
+            return address.uri();
+        }
         if let Some(path) = notes::path_of(uri) {
             return notes::uri_of(&path);
         }
@@ -620,6 +634,9 @@ impl World<'_> {
         }
         for (id, mail) in self.mail.iter() {
             push(Kind::Mail, &mail.subject, &mail.from, mail.date, mail_uri(id));
+        }
+        for (uri, mail) in self.mail.without_id() {
+            push(Kind::Mail, &mail.subject, &mail.from, mail.date, uri);
         }
         for note in self.vault.map_or(&[][..], |v| &v.notes[..]) {
             push(Kind::Note, &note.title, &note.path, note.modified, note.uri());
@@ -1027,7 +1044,7 @@ impl Loaded {
             projects: root.as_deref().and_then(|r| crate::projects::ProjectStore::load(r).ok()).map(|s| s.projects).unwrap_or_default(),
             vault: root.as_deref().map(Vault::open),
             drafts: Draft::all(),
-            mail: MailIndex::build_ranked(&MailIndex::roots_of(config), &crate::config::cache_dir().join("mail-index.tsv")),
+            mail: MailIndex::build_ranked(&MailIndex::roots_of(config)),
             budget,
             local: LocalLinks::load(&LocalLinks::default_path()),
             sites: crate::sites::sites(config),

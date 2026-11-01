@@ -25,6 +25,7 @@ use sioul_core::projects::ProjectStore;
 use sioul_core::consent::Consent;
 use sioul_core::config::{self, Config};
 use sioul_core::links::{self, Kind, Loaded};
+use sioul_core::mailfind;
 use sioul_core::mailindex::{MailIndex, MailRef};
 use sioul_core::notes::{self, Note, NoteKind};
 use sioul_core::plan::{self, Plan};
@@ -35,7 +36,7 @@ use sioul_core::tasks::{Status, Task};
 use sioul_core::today::Today;
 use sioul_core::{agenda, bank, budget, contacts, dayview, invoice, maildir, projectview, reading, shield, timeline, timelog, timereport, view};
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// Characters of a message or a note given at most: a long newsletter is not read whole.
 const LONGEST: usize = 60_000;
@@ -246,7 +247,7 @@ fn masked_item(looked: &sioul_core::words::Words, item: &view::ItemView, judged:
 /// links read, each `mid:` on the copy that ranks first (the inbox before the
 /// archive, Sent, the junk, the trash and "All Mail").
 fn mail_index(config: &Config) -> MailIndex {
-    MailIndex::build_ranked(&MailIndex::roots_of(config), &config::cache_dir().join("mail-index.tsv"))
+    MailIndex::build_ranked(&MailIndex::roots_of(config))
 }
 
 /// The account whose mail a file is, and the folder it is in ("" for the
@@ -295,23 +296,25 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     // Mail kept from agents is never searched: left out of the scope first
     // (the dates, the account), by its projects as known, and counted whatever
     // the words, so that a search cannot learn what it holds.
-    let (scope, kept_out): (Vec<(&String, &MailRef)>, Vec<(&String, &MailRef)>) = index
-        .iter()
-        .filter(|(_, m)| m.date >= from && folder.as_ref().is_none_or(|f| m.path.starts_with(f)))
-        .filter(|(_, m)| senders.who(&m.address) != sioul_core::reach::Who::Blocked)
-        .partition(|(id, _)| consent.allows(&links::mail_uri(id)));
+    // Each message by its address: its Message-ID, else its digest (`sioul:mail/…`), the copy that ranks first.
+    let all: Vec<(Option<&String>, String, &MailRef)> = index.iter().map(|(id, m)| (Some(id), links::mail_uri(id), m)).chain(index.without_id().map(|(uri, m)| (None, uri, m))).collect();
+    let (scope, kept_out): (Vec<(Option<&String>, String, &MailRef)>, Vec<(Option<&String>, String, &MailRef)>) = all
+        .into_iter()
+        .filter(|(_, _, m)| m.date >= from && folder.as_ref().is_none_or(|f| m.path.starts_with(f)))
+        .filter(|(_, _, m)| senders.who(&m.address) != sioul_core::reach::Who::Blocked)
+        .partition(|(_, uri, _)| consent.allows(uri));
     let closed = kept_out.len();
-    let mut found: Vec<(&String, &MailRef)> = scope.into_iter().filter(|(_, m)| shown_holds(m)).collect();
-    found.sort_by_key(|(_, m)| std::cmp::Reverse(m.date));
+    let mut found: Vec<(Option<&String>, String, &MailRef)> = scope.into_iter().filter(|(_, _, m)| shown_holds(m)).collect();
+    found.sort_by_key(|(_, _, m)| std::cmp::Reverse(m.date));
     // Those shown are read whole: a project's route on their text counts too.
     let mut kept = Vec::new();
     let mut kept_whole = 0;
-    for (id, mail) in found.iter().copied() {
+    for (id, uri, mail) in &found {
         if kept.len() == limit {
             break;
         }
-        if consent.allows_mail(Some(id), maildir::read_one(&mail.path).as_ref()) {
-            kept.push((id, mail));
+        if consent.allows_mail(id.map(String::as_str), maildir::read_one(&mail.path).as_ref()) {
+            kept.push((uri.clone(), *mail));
         } else {
             kept_whole += 1;
         }
@@ -319,7 +322,7 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     let total = found.len() - kept_whole;
     let mut lines = Vec::new();
     let mut rows = Vec::new();
-    for (id, mail) in kept {
+    for (uri, mail) in kept {
         let hidden = shield.as_ref().is_some_and(|sh| sh.hides(&mail.path));
         let (sender, address) = if hidden {
             let domain = mail.address.rsplit_once('@').map_or(String::new(), |(_, d)| d.to_string());
@@ -329,7 +332,6 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         };
         let (subject, _) = mail_shown(s, shield.as_ref(), &mail.path, &mail.subject, "");
         let (account, folder) = place_of(&s.config, &mail.path);
-        let uri = links::mail_uri(id);
         let place = if folder.is_empty() { String::new() } else { format!(" · {folder}") };
         let shown = if address.is_empty() { sender.clone() } else { format!("{sender} <{address}>") };
         lines.push(format!("{} · {shown} · {subject}{place}", crate::date(s, Some(mail.date))));
@@ -345,59 +347,64 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     Ok(Answer { text: self::rows(&lines), data: json!({ "messages": rows, "total": total, "kept_from_agents": closed }) })
 }
 
-/// A path with its "." and ".." taken away as they are written, without
-/// asking the system (which may follow a link, or reach another computer).
-fn lexical(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for part in path.components() {
-        match part {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !out.pop() {
-                    out.push(part);
-                }
-            }
-            other => out.push(other),
-        }
-    }
-    out
+/// A message's file, by its address (`mid:…`, `sioul:mail/…`), its key (its
+/// file, as the Porch and search give it, or an older `file:` key) or its
+/// Message-ID: found as `mailfind::find` finds it, the copy that ranks first,
+/// wherever its flags or another program moved it since; a file only inside
+/// the configured accounts' mail (`mailfind::inside`). No copy here: the
+/// servers asked, read only, unless the message is kept from agents by its
+/// address (its account, a closed project), which brings nothing.
+pub(crate) fn find_message(s: &Session, wanted: &str) -> Result<mailfind::Here, String> {
+    locate(s, wanted, true)
 }
 
-/// A message's file, by its key (its file, as the Porch and search give it)
-/// or its Message-ID; only inside the configured accounts' mail, wherever
-/// its flags have moved it since.
-pub(crate) fn find_message(s: &Session, wanted: &str) -> Result<PathBuf, String> {
-    let gone = || s.tr.text("mail-message-gone", None);
+/// As `find_message`, this device only: no server asked.
+pub(crate) fn find_here(s: &Session, wanted: &str) -> Result<mailfind::Here, String> {
+    locate(s, wanted, false)
+}
+
+fn locate(s: &Session, wanted: &str, servers: bool) -> Result<mailfind::Here, String> {
     let wanted = wanted.trim();
     let outside = || format!("“{}”: not a message of the configured accounts.", one_line(&wanted.chars().take(200).collect::<String>()));
-    let folders: Vec<PathBuf> = s.config.mail_sources().into_iter().map(|src| src.folder).collect();
-    let roots: Vec<PathBuf> = folders.iter().filter_map(|folder| std::fs::canonicalize(folder).ok()).collect();
-    let inside = |path: &Path| std::fs::canonicalize(path).ok().filter(|p| roots.iter().any(|r| p.starts_with(r)));
-    let named_by_id = wanted.starts_with("mid:") || wanted.starts_with('<') || (wanted.contains('@') && !wanted.contains('/') && !wanted.contains('\\'));
-    let file = if named_by_id {
-        mail_index(&s.config).get(wanted).map(|m| m.path.clone()).ok_or_else(|| s.say("mail-not-found", &[("query", one_line(wanted))]))?
-    } else {
-        PathBuf::from(wanted)
-    };
-    // Written inside a mail folder before anything is looked at: a path
-    // elsewhere, or on another computer (\\server\share), is never opened.
-    let written = lexical(&file);
-    if !folders.iter().chain(&roots).any(|folder| written.starts_with(lexical(folder))) {
+    let reference = mailfind::MailRef::of(wanted);
+    let roots = MailIndex::roots_of(&s.config);
+    // A file is looked at only inside a mail folder: a path elsewhere, or on
+    // another computer (\\server\share), is never opened.
+    if reference.address.is_empty() && reference.file.as_deref().is_none_or(|file| mailfind::inside(&roots, file, None).is_none()) {
         return Err(outside());
     }
-    // Its folder, through the links there may be: still inside.
-    file.parent().and_then(|folder| inside(folder)).ok_or_else(outside)?;
-    let located = maildir::locate(&file).ok_or_else(gone)?;
-    inside(&located).ok_or_else(outside)
+    let not_found = || if reference.address.is_empty() { s.tr.text("mail-message-gone", None) } else { s.say("mail-not-found", &[("query", one_line(wanted))]) };
+    let found = match mailfind::find(&roots, &reference) {
+        mailfind::Found::NotHere if servers && mailfind::Address::parse(&reference.address).is_some() => {
+            if mail_consent(s).closes_mail(&reference.address) {
+                return Err(access::kept("This message"));
+            }
+            mailfind::ask_servers(&roots, &s.config.accounts, &reference, &sioul_sync::search::OnServers)
+        }
+        found => found,
+    };
+    match found {
+        mailfind::Found::Here(here) => Ok(here),
+        mailfind::Found::NotHere => Err(not_found()),
+        mailfind::Found::Gone => Err(s.tr.text("mail-find-gone", None)),
+        mailfind::Found::Unreachable => Err(s.tr.text("mail-find-unreachable", None)),
+        mailfind::Found::Kept => Err(access::kept("This message")),
+    }
 }
 
 pub fn read_message(s: &Session, args: &Args) -> Result<Answer, String> {
-    let path = find_message(s, &args.needed("message")?)?;
-    let (t, store) = judged(s, &path)?;
+    let here = find_message(s, &args.needed("message")?)?;
+    let (t, store) = judged(s, &here.path)?;
     if !mail_consent(s).allows_mail(t.card.message_id.as_deref(), Some(&t.card)) {
         return Err(access::kept("This message"));
     }
-    Ok(message_answer(s, &path, &t, store.as_ref()))
+    let mut answer = message_answer(s, &here.path, &t, store.as_ref());
+    // Someone reused its Message-ID: said, as the reader says it.
+    if here.reused {
+        answer.text = format!("{}\n{}", s.tr.text("mail-find-reused", None), answer.text);
+        answer.data["reused_id"] = json!(true);
+    }
+    Ok(answer)
 }
 
 /// A message as the Porch judges it, with its account's trusted checks, and
@@ -453,7 +460,8 @@ fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&ProjectS
     let attachments: Vec<&reading::Attachment> = reading.as_ref().map(|r| r.attachments.iter().filter(|a| !a.mime.to_ascii_lowercase().starts_with("application/pgp")).collect()).unwrap_or_default();
     let lane = lane_title(s, &t.lane, store);
     let reasons: Vec<String> = t.reasons.iter().map(|r| one_line(&s.tr.reason(r, store))).collect();
-    let uri = card.message_id.as_deref().map(links::mail_uri).unwrap_or_default();
+    // Its address: its Message-ID, else its digest in its account (`sioul:mail/…`).
+    let uri = card.message_id.as_deref().map(links::mail_uri).or_else(|| s.config.account_of(path).and_then(|a| mailfind::address_of_file(&a.id, path))).unwrap_or_default();
     let date = card.date.and_then(|d| Timestamp::from_second(d).ok()).map_or_else(|| s.tr.text("no-date", None), |at| s.tr.date(&at.to_zoned(sioul_core::zone::current()), false));
     let mut lines = vec![format!("From: {} ({})", one_line(&sender), s.tr.trust(t.trust))];
     if !to.is_empty() {

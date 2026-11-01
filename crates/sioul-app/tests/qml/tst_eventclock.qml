@@ -69,6 +69,16 @@ Item {
         function reminderChoices(current) {
             return "[]"
         }
+        function legSteps(key) {
+            return "{}"
+        }
+        // A form's time on a clock, as Rust reads it (`agenda::instant_on`): UTC here.
+        function wallInstant(wall, clock) {
+            const [day, time] = wall.split("T")
+            const [y, m, d] = day.split("-").map(Number)
+            const [h, min] = time.split(":").map(Number)
+            return clock === "UTC" ? Date.UTC(y, m - 1, d, h, min) / 1000 : NaN
+        }
         function saveEvent(key, edit, calendar) {
             mock.saved = { key: key, edit: JSON.parse(edit), calendar: calendar }
             return ""
@@ -209,6 +219,23 @@ Item {
             verify(!box().visible, "a whole day has no clock")
             dialog.save()
             compare(mock.saved.edit.clock, "")
+        }
+
+        // A leg's form on another clock reads its start on that clock: its
+        // side (before or after the appointment) follows (review of 4e065b1, L1).
+        function test_a_leg_s_start_is_read_on_its_clock() {
+            const until = Date.UTC(2026, 10, 4, 15, 0) / 1000
+            dialog.makeLeg("/calendars/local/personal/board.ics", "Board", until - 3600, until, "2026-11-04", "15:30", "15:55")
+            if (!dialog.opened)
+                dialog.open()
+            tryCompare(dialog, "opened", true)
+            // On the time zone shown (Europe/Paris, an hour ahead): 14:30 UTC, before it.
+            compare(dialog.legSide, "before")
+            // 15:30 in UTC, after the appointment's end at 15:00 UTC.
+            dialog.clock = "UTC"
+            compare(dialog.legStart(), Date.UTC(2026, 10, 4, 15, 30) / 1000)
+            compare(dialog.legSide, "after")
+            dialog.close()
         }
     }
 }

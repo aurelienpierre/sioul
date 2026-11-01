@@ -691,10 +691,17 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
     let recorded: BTreeSet<&str> = ledger.lines.iter().flat_map(|l| l.links.iter().map(String::as_str)).collect();
     let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t, words)).collect();
     lines.sort_by_key(|l| l.date);
+    // A message without a Message-ID that an older Sioul keyed by its file
+    // ("file:<path>"): the same message while its name's unique part is.
+    let unique = |key: &str| key.strip_prefix("file:").and_then(|p| Path::new(p).file_name()).map(|n| crate::maildir::unique_part(&n.to_string_lossy()).to_string());
+    let older: BTreeSet<String> = recorded.iter().filter_map(|k| unique(k)).collect();
+    let older_ignored: BTreeSet<String> = ignored.iter().filter_map(|k| unique(k)).collect();
     for line in &mut lines {
-        line.state = if recorded.contains(line.key.as_str()) {
+        let file = line.path.as_ref().and_then(|p| p.file_name()).map(|n| crate::maildir::unique_part(&n.to_string_lossy()).to_string());
+        let old = |known: &BTreeSet<String>| !line.key.starts_with("mid:") && file.as_ref().is_some_and(|f| known.contains(f));
+        line.state = if recorded.contains(line.key.as_str()) || old(&older) {
             MailState::Recorded
-        } else if ignored.contains(&line.key) {
+        } else if ignored.contains(&line.key) || old(&older_ignored) {
             MailState::Ignored
         } else {
             MailState::Proposed
@@ -724,7 +731,10 @@ fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Optio
         }
     }
     let date = Timestamp::from_second(card.date?).ok()?.to_zoned(crate::zone::current()).date();
-    let key = card.message_id.as_ref().map(|id| format!("mid:{id}")).or_else(|| card.path.as_ref().map(|p| format!("file:{}", p.display())))?;
+    // Its Message-ID; without one, its digest in its account (`sioul:mail/…`,
+    // the same on every device and after a renumbering), else its file.
+    let digest = || crate::mailfind::address_of_file(card.account.as_deref()?, card.path.as_deref()?);
+    let key = card.message_id.as_ref().map(|id| format!("mid:{id}")).or_else(digest).or_else(|| card.path.as_ref().map(|p| format!("file:{}", p.display())))?;
     Some(MailLine {
         key,
         path: card.path.clone(),
@@ -1742,6 +1752,34 @@ mod tests {
         let recorded = Ledger { lines: vec![line], ..ledger };
         assert_eq!(mail_lines(&recorded, &mail, &BTreeSet::new(), crate::words::Words::builtin_ref())[0].state, MailState::Recorded);
         assert_eq!(mail_lines(&Ledger::default(), &mail, &BTreeSet::from(["mid:p1@pay.example".to_string()]), crate::words::Words::builtin_ref())[0].state, MailState::Ignored);
+    }
+
+    /// A message without a Message-ID is keyed by its digest in its account
+    /// (`sioul:mail/…`, the same on every device and in any of its files);
+    /// a row an older Sioul recorded or set aside by its file ("file:…")
+    /// still counts while the file's unique part is the same.
+    #[test]
+    fn mail_without_an_id_is_keyed_by_its_address() {
+        let ledger: Ledger = toml::from_str("[[mail_rule]]\nbudget = 'projects'\ndirection = 'credit'\nfrom_domains = ['pay.example']\nsubject_contains = ['paiement reçu']").unwrap();
+        let dir = std::env::temp_dir().join(format!("sioul-budget-no-id-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("cur")).unwrap();
+        let raw = format!("From: {PAY}\r\nSubject: Notification de paiement reçu\r\nDate: Fri, 02 Oct 2026 10:00:00 +0200\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nVous avez reçu un paiement de 25,00 € EUR de Jean Exemple (jean@example.org).\r\n");
+        let path = dir.join("cur").join(format!("1777000000.U7-1.sioul{}2,S", crate::maildir::INFO));
+        std::fs::write(&path, &raw).unwrap();
+        let mut t = triaged(PAY, "x", "Fri, 02 Oct 2026 10:00:00 +0200", "x@example.org", "x");
+        t.card = crate::card::Card::from_bytes(raw.as_bytes()).unwrap();
+        t.card.path = Some(path.clone());
+        t.card.account = Some("home".into());
+        let mail = [t];
+        let lines = mail_lines(&ledger, &mail, &BTreeSet::new(), crate::words::Words::builtin_ref());
+        assert_eq!(lines[0].key, crate::links::digest_uri("home", &crate::mailcache::digest(raw.as_bytes())));
+        // Recorded, or set aside, by an older Sioul under its file (its flags changed since): the same row.
+        let older = format!("file:{}", path.with_file_name("1777000000.U7-1.sioul:2,").display());
+        let mut line = lines[0].line("projects").unwrap();
+        line.links = vec![older.clone()];
+        assert_eq!(mail_lines(&Ledger { lines: vec![line], ..ledger.clone() }, &mail, &BTreeSet::new(), crate::words::Words::builtin_ref())[0].state, MailState::Recorded);
+        assert_eq!(mail_lines(&ledger, &mail, &BTreeSet::from([older]), crate::words::Words::builtin_ref())[0].state, MailState::Ignored);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

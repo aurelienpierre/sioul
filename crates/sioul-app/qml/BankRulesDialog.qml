@@ -13,7 +13,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -60,8 +60,8 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(760, (parent ? parent.width : 760) - 2 * dialog.theme.gap)
-    height: Math.min(620, (parent ? parent.height : 620) - 2 * dialog.theme.gap)
+    width: Math.min(760, (parent ? dialog.roomWidth : 760) - 2 * dialog.theme.gap)
+    height: Math.min(620, (parent ? dialog.roomHeight : 620) - 2 * dialog.theme.gap)
     title: dialog.account === null ? "" : dialog.theme.plain(dialog.sioul.textWith("bank-rules-title", "account", dialog.account.title))
 
     contentItem: ColumnLayout {

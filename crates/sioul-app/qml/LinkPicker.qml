@@ -10,7 +10,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: picker
 
     required property var sioul
@@ -59,8 +59,8 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(580, (parent ? parent.width : 580) - 2 * picker.theme.gap)
-    height: Math.min(660, (parent ? parent.height : 660) - 2 * picker.theme.gap)
+    width: Math.min(580, (parent ? picker.roomWidth : 580) - 2 * picker.theme.gap)
+    height: Math.min(660, (parent ? picker.roomHeight : 660) - 2 * picker.theme.gap)
     // The title may be a message's subject: plain text, a "<" opens no tag.
     title: picker.source ? picker.theme.plain(picker.sioul.textWith("link-title", "title", picker.source.title || "")) : ""
 

@@ -1817,7 +1817,7 @@ Item {
         id: writing
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: writingForm
 
                 property string account: ""
@@ -1832,7 +1832,7 @@ Item {
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(560, page.width - 2 * page.theme.gap)
+                width: Math.min(560, Math.min(page.width, writingForm.roomWidth) - 2 * page.theme.gap)
                 title: page.theme.plain(writingForm.account)
                 onAccepted: page.sioul.setWriting(writingForm.account, writingName.text, writingSignature.text)
 
@@ -1887,13 +1887,13 @@ Item {
         id: confirm
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: confirmForm
 
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(480, page.width - 2 * page.theme.gap)
+                width: Math.min(480, Math.min(page.width, confirmForm.roomWidth) - 2 * page.theme.gap)
                 // A Microsoft account's mail kept here: deleted unless unticked (Microsoft's terms).
                 readonly property bool microsoft: page.removingAccount !== null && page.removingAccount.microsoft === true
                 onAboutToShow: deleteMail.checked = true

@@ -13,7 +13,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -77,8 +77,8 @@ Dialog {
     anchors.centerIn: Overlay.overlay
     modal: true
     // About 60 characters of the body font; never past the window less the usual margins, all of a phone's.
-    width: Math.min(Math.ceil(60 * body.averageCharacterWidth) + dialog.leftPadding + dialog.rightPadding + 12, (parent ? parent.width : 800) - 2 * dialog.theme.gap)
-    height: Math.min(implicitHeight, (Overlay.overlay ? Overlay.overlay.height : 800) - 32)
+    width: Math.min(Math.ceil(60 * body.averageCharacterWidth) + dialog.leftPadding + dialog.rightPadding + 12, (parent ? dialog.roomWidth : 800) - 2 * dialog.theme.gap)
+    height: Math.min(implicitHeight, dialog.roomHeight - 32)
     title: dialog.sioul.text("calendar-file-title")
 
     FontMetrics {

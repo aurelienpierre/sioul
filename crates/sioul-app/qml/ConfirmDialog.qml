@@ -7,7 +7,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-Dialog {
+SafeDialog {
     id: dialog
 
     // Sioul's backend (backend.rs): its words in your language and what it does.
@@ -39,7 +39,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(440, (parent ? parent.width : 440) - 2 * dialog.theme.gap)
+    width: Math.min(440, (parent ? dialog.roomWidth : 440) - 2 * dialog.theme.gap)
 
     // A command in the sentence (how to install an antivirus) to copy.
     contentItem: CommandText {

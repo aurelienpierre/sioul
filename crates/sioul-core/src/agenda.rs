@@ -943,6 +943,15 @@ pub fn clock_zone(clock: &str) -> Option<TimeZone> {
     }
 }
 
+/// A form's time ("2026-11-04T15:30") on the clock `clock` ("" the time
+/// zone shown, `zone`; "UTC"; a zone's name) as an instant, Unix seconds;
+/// none while it does not read.
+pub fn instant_on(wall: &str, clock: &str, zone: &TimeZone) -> Option<i64> {
+    let own = clock_zone(clock).unwrap_or_else(|| zone.clone());
+    let at = wall.parse::<DateTime>().ok().filter(|_| wall.len() > 10)?;
+    at.to_zoned(own).ok().map(|z| z.timestamp().as_second())
+}
+
 /// The form's line beside its times on another clock: "15:00 – 16:00 UTC ·
 /// 16:00 – 17:00 here", the day here said when it is another ("23:30 – 23:45
 /// UTC · 00:30 – 00:45 here, Thursday 5 November"); "" on the time zone shown
@@ -2853,6 +2862,18 @@ fn with_categories(text: &str, added: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A form's time read on its own clock (a leg's start, review of 4e065b1, L1).
+    #[test]
+    fn a_form_s_time_is_read_on_its_own_clock() {
+        let paris = TimeZone::get("Europe/Paris").unwrap();
+        let utc = "2026-11-04T15:30:00Z".parse::<Timestamp>().unwrap().as_second();
+        assert_eq!(instant_on("2026-11-04T15:30", "UTC", &paris), Some(utc));
+        assert_eq!(instant_on("2026-11-04T16:30", "", &paris), Some(utc), "the zone shown: an hour ahead in November");
+        assert_eq!(instant_on("2026-11-04T10:30", "America/New_York", &paris), Some(utc));
+        assert_eq!(instant_on("2026-11-04T1", "UTC", &paris), None);
+        assert_eq!(instant_on("2026-11-04", "UTC", &paris), None, "a day has no time");
+    }
 
     /// A calendar file opened in Sioul, shaped as a booking site sends one:
     /// published, its zone's VTIMEZONE, a quarter of an hour on Paris's

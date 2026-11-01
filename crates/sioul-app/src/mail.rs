@@ -309,33 +309,49 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
     let folder = open.and_then(|open| {
         let (account, folders) = accounts.iter().find(|(a, _)| a.id == open.account)?;
         let folder = folders.iter().find(|f| f.name == open.folder)?;
-        // Gmail's "All Mail", shown as the archive: what the inbox and Sent show is left out.
-        let shown_elsewhere = if folder.role == Role::All {
-            let mut ids = maildir::message_ids(&account.maildir_path());
-            for sent in folders.iter().filter(|f| f.role == Role::Sent) {
-                ids.extend(maildir::message_ids(&account.maildir_path().join(&sent.local)));
-            }
-            ids
-        } else {
-            Default::default()
-        };
-        let cards: Vec<Card> = maildir::read_messages(&account.maildir_path().join(&folder.local))
-            .into_iter()
-            .filter(|c| c.path.as_ref().is_none_or(|p| !files.contains(p)))
-            .filter(|c| c.message_id.as_ref().is_none_or(|id| !shown_elsewhere.contains(id)))
-            .collect();
+        let (cards, sent) = folder_cards(account, folders, folder, &files, config.mail.threads);
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
         let now = sioul_core::zone::now().timestamp().as_second();
-        // By conversation, when chosen: your answers come from Sent.
-        let sent = (config.mail.threads && !matches!(folder.role, Role::Sent | Role::Drafts)).then(|| {
-            folders.iter().filter(|f| f.role == Role::Sent).flat_map(|f| maildir::read_messages(&account.maildir_path().join(&f.local))).collect::<Vec<Card>>()
-        });
         Some(json(&view::folder(account, folder, cards, &trusted, &sioul_core::words::Words::of(&config), open.all, &open.query, tr(), now, sent)))
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
     let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
     MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), hours)), folder: folder.unwrap_or_default(), drafts: json(&rows) }
+}
+
+/// A folder's messages as its list reads them, from the folder's index
+/// (`mailcache::folder`): each message's line, never the message itself,
+/// but for those the index does not know yet (read once, ever). `hidden`:
+/// the files waiting for their Undo. With `threads`, your answers from Sent
+/// come too, for the conversations. Gmail's "All Mail", shown as the
+/// archive, leaves out what the inbox and Sent show, by their lines' ids.
+pub(crate) fn folder_cards(account: &Account, folders: &[Folder], folder: &Folder, hidden: &BTreeSet<PathBuf>, threads: bool) -> (Vec<Card>, Option<Vec<Card>>) {
+    let root = account.maildir_path();
+    // Oldest first, as `maildir::read_messages` gives them.
+    let cards_of = |local: &str| {
+        let mut cards: Vec<Card> = sioul_core::mailcache::folder(&account.id, &root, local).into_iter().map(|(path, line)| line.card(&path)).collect();
+        cards.sort_by_key(|c| c.date.unwrap_or(0));
+        cards
+    };
+    let sent_folders = || folders.iter().filter(|f| f.role == Role::Sent);
+    let shown_elsewhere: BTreeSet<String> = if folder.role == Role::All {
+        let mut ids: BTreeSet<String> = BTreeSet::new();
+        for local in std::iter::once("").chain(sent_folders().map(|f| f.local.as_str())) {
+            ids.extend(sioul_core::mailcache::folder(&account.id, &root, local).into_iter().filter_map(|(_, line)| line.message_id));
+        }
+        ids
+    } else {
+        BTreeSet::new()
+    };
+    let cards: Vec<Card> = cards_of(&folder.local)
+        .into_iter()
+        .filter(|c| c.path.as_ref().is_none_or(|p| !hidden.contains(p)))
+        .filter(|c| c.message_id.as_ref().is_none_or(|id| !shown_elsewhere.contains(id)))
+        .collect();
+    // By conversation, when chosen: your answers come from Sent.
+    let sent = (threads && !matches!(folder.role, Role::Sent | Role::Drafts)).then(|| sent_folders().flat_map(|f| cards_of(&f.local)).collect::<Vec<Card>>());
+    (cards, sent)
 }
 
 /// Computes the mail page on a thread and shows it, unless a newer one came first.
@@ -346,8 +362,8 @@ pub(crate) fn show_mail(qt: &QtThread, shared: &Arc<Shared>) {
 }
 
 /// The mail page computed on this thread, and shown unless a newer one came
-/// first. `backend::show` runs it in the same look at the mail as the Porch,
-/// so that the inbox the page shows is parsed once for both (`maildir::CardsKept`).
+/// first. `backend::show` runs it in the same look at the mail as the Porch;
+/// the page reads its folder's index (`folder_cards`), never its messages.
 pub(crate) fn show_mail_here(qt: &QtThread, shared: &Shared) {
     let generation = shared.mail_generation.fetch_add(1, Ordering::Relaxed) + 1;
     let views = views(shared);
@@ -1457,6 +1473,236 @@ mod tests {
         assert_eq!(perform(&Work::Remove { account: String::new(), file: file.clone() }, &shared), None);
         assert!(!file.exists());
         let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// A stand-in address, its Maildir under the test's own folders: an
+    /// inbox, Sent and Gmail's "All Mail", with the messages a list must show
+    /// alike whether it reads lines or parses: verified, from a list with a
+    /// failed DMARC and a code in its text only, an answer with folded ids,
+    /// one without a Message-ID, an attachment, one unread, one flagged.
+    fn lines_account(name: &str) -> (Account, Vec<Folder>, PathBuf) {
+        sioul_core::config::stand_ins_only();
+        use sioul_core::folders::folder;
+        let id = format!("lines-{name}-{}", std::process::id());
+        let root = sioul_core::config::data_dir().join(&id);
+        let _ = std::fs::remove_dir_all(&root);
+        let config: Config = toml::from_str(&format!("[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"me@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", root.display())).unwrap();
+        let folders = vec![folder("INBOX", Some("/"), Some(Role::Inbox)), folder("[Gmail]/Sent Mail", Some("/"), Some(Role::Sent)), folder("[Gmail]/All Mail", Some("/"), Some(Role::All))];
+        for f in &folders {
+            for sub in ["tmp", "new", "cur"] {
+                std::fs::create_dir_all(root.join(&f.local).join(sub)).unwrap();
+            }
+        }
+        let put = |local: &str, uid: u32, flags: Option<&str>, raw: &str| {
+            let (sub, name) = match flags {
+                Some(flags) => ("cur", format!("17770000{uid:02}.U7-{uid}.sioul{}2,{flags}", maildir::INFO)),
+                None => ("new", format!("17770000{uid:02}.U7-{uid}.sioul")),
+            };
+            std::fs::write(root.join(local).join(sub).join(name), raw.replace('\n', "\r\n")).unwrap();
+        };
+        let pass = "Authentication-Results: mx.example.org; dkim=pass header.d=example.org; spf=pass smtp.mailfrom=example.org; dmarc=pass header.from=example.org\n";
+        let lunch = format!("{pass}Message-ID: <a1@example.org>\nFrom: Ana <ana@example.org>\nTo: Me <me@example.org>\nDate: Mon, 26 Oct 2026 09:00:00 +0100\nSubject: Lunch\nMIME-Version: 1.0\nContent-Type: multipart/mixed; boundary=b\n\n--b\nContent-Type: text/plain\n\nThe menu.\n--b\nContent-Type: application/pdf; name=menu.pdf\nContent-Disposition: attachment; filename=menu.pdf\nContent-Transfer-Encoding: base64\n\nJVBERi0=\n--b--\n");
+        put("", 1, Some("S"), &lunch);
+        put("", 2, Some("S"), "Authentication-Results: mx.example.org; dkim=fail header.d=service.example; dmarc=fail header.from=service.example\nMessage-ID: <c2@service.example>\nFrom: Service <no-reply@service.example>\nTo: me@example.org\nDate: Tue, 27 Oct 2026 10:00:00 +0100\nSubject: Your account\nList-Unsubscribe: <mailto:unsubscribe@service.example>\nPrecedence: bulk\n\nYour verification code is 482913. It expires in 10 minutes.\n");
+        put("", 3, None, "Authentication-Results: mx.example.org;\n dkim=pass header.d=example.org;\n dmarc=pass header.from=example.org\nMessage-ID: <a3@example.org>\nFrom: Ana <ana@example.org>\nTo: Me <me@example.org>\nDate: Wed, 28 Oct 2026 11:00:00 +0100\nIn-Reply-To: <s1@example.org>\nReferences: <a1@example.org>\n <s1@example.org>\nSubject: Re: Lunch\n\nSee you.\n");
+        put("", 4, Some("FS"), "From: =?UTF-8?Q?L=C3=A9a?= <lea@example.net>\nTo: me@example.org\nDate: Thu, 29 Oct 2026 12:00:00 +0100\nSubject: =?UTF-8?Q?R=C3=A9union?=\n\nNo id.\n");
+        let sent = "Message-ID: <s1@example.org>\nFrom: Me <me@example.org>\nTo: Ana <ana@example.org>\nDate: Mon, 26 Oct 2026 13:00:00 +0100\nIn-Reply-To: <a1@example.org>\nReferences: <a1@example.org>\nSubject: Re: Lunch\n\nYes.\n";
+        put(&folders[1].local, 5, Some("S"), sent);
+        // "All Mail": the inbox's and Sent's copies, and one archived.
+        put(&folders[2].local, 6, Some("S"), &lunch);
+        put(&folders[2].local, 7, Some("S"), sent);
+        put(&folders[2].local, 8, Some("S"), "Message-ID: <x8@example.org>\nFrom: Bo <bo@example.org>\nTo: me@example.org\nDate: Fri, 23 Oct 2026 08:00:00 +0100\nSubject: Archived\n\nOld.\n");
+        (config.accounts[0].clone(), folders, root)
+    }
+
+    /// The same folder's list, read as Mail read it before its index: every
+    /// message parsed, Gmail's archive by the ids parsed from the inbox and Sent.
+    fn parsed_cards(account: &Account, folders: &[Folder], folder: &Folder, hidden: &BTreeSet<PathBuf>, threads: bool) -> (Vec<Card>, Option<Vec<Card>>) {
+        let root = account.maildir_path();
+        let mut elsewhere = BTreeSet::new();
+        if folder.role == Role::All {
+            elsewhere.extend(maildir::message_ids(&root));
+            for sent in folders.iter().filter(|f| f.role == Role::Sent) {
+                elsewhere.extend(maildir::message_ids(&root.join(&sent.local)));
+            }
+        }
+        let cards = maildir::read_messages(&root.join(&folder.local))
+            .into_iter()
+            .filter(|c| c.path.as_ref().is_none_or(|p| !hidden.contains(p)))
+            .filter(|c| c.message_id.as_ref().is_none_or(|id| !elsewhere.contains(id)))
+            .collect();
+        let sent = (threads && !matches!(folder.role, Role::Sent | Role::Drafts)).then(|| folders.iter().filter(|f| f.role == Role::Sent).flat_map(|f| maildir::read_messages(&root.join(&f.local))).collect());
+        (cards, sent)
+    }
+
+    /// A folder's list made from its lines equals the one made by parsing
+    /// every message: the inbox alone and by conversation, Sent, Gmail's
+    /// archive alone and by conversation, a message waiting for its Undo left out.
+    #[test]
+    fn a_folder_list_from_lines_equals_the_one_parsed() {
+        let (account, folders, root) = lines_account("equal");
+        let words = sioul_core::words::current();
+        let trusted = vec!["mx.example.org".to_string()];
+        let hidden: BTreeSet<PathBuf> = [root.join("cur").join(format!("1777000004.U7-4.sioul{}2,FS", maildir::INFO))].into();
+        let now = 1_793_000_000;
+        let list = |folder: &Folder, (cards, sent): (Vec<Card>, Option<Vec<Card>>)| json(&view::folder(&account, folder, cards, &trusted, &words, true, "", tr(), now, sent));
+        for _ in 0..2 {
+            // Made, then read from the index.
+            for (folder, threads) in [(&folders[0], false), (&folders[0], true), (&folders[1], false), (&folders[1], true), (&folders[2], false), (&folders[2], true)] {
+                for hidden in [&BTreeSet::new(), &hidden] {
+                    let lines = list(folder, folder_cards(&account, &folders, folder, hidden, threads));
+                    let parsed = list(folder, parsed_cards(&account, &folders, folder, hidden, threads));
+                    assert_eq!(lines, parsed, "{} by conversation: {threads}", folder.name);
+                }
+            }
+        }
+        // The list mail with its code in its text only: forged, as the Porch judges it, from its line too.
+        let inbox = list(&folders[0], folder_cards(&account, &folders, &folders[0], &BTreeSet::new(), false));
+        let view: serde_json::Value = serde_json::from_str(&inbox).unwrap();
+        let service = view["items"].as_array().unwrap().iter().find(|i| i["address"] == "no-reply@service.example").unwrap();
+        assert_eq!(service["trust_level"], "forged", "{service}");
+        // Gmail's archive: only the message the inbox and Sent do not show.
+        let archive: serde_json::Value = serde_json::from_str(&list(&folders[2], folder_cards(&account, &folders, &folders[2], &BTreeSet::new(), false))).unwrap();
+        assert_eq!(archive["items"].as_array().unwrap().iter().map(|i| i["subject"].as_str().unwrap()).collect::<Vec<_>>(), ["Archived"]);
+        let _ = std::fs::remove_dir_all(&root);
+        if let Some(dir) = sioul_core::mailcache::account_dir(&account.id) {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// A refresh of Mail parses no message: the folder's list, Gmail's
+    /// archive and the conversations' answers come from the lines; a new
+    /// message is read once, the one opened is read whole by the Reader only.
+    #[test]
+    fn a_refresh_of_mail_parses_no_message() {
+        let (account, folders, root) = lines_account("refresh");
+        let cases = [(&folders[0], true), (&folders[1], false), (&folders[2], true)];
+        for (folder, threads) in cases {
+            folder_cards(&account, &folders, folder, &BTreeSet::new(), threads);
+        }
+        maildir::parses_reset();
+        for (folder, threads) in cases {
+            let (cards, _) = folder_cards(&account, &folders, folder, &BTreeSet::new(), threads);
+            assert!(!cards.is_empty());
+        }
+        assert_eq!(maildir::parses(), 0, "a refresh parses nothing");
+        std::fs::write(root.join("new").join("1777000099.U7-99.sioul"), "Message-ID: <n9@example.org>\r\nFrom: bo@example.org\r\nSubject: New\r\n\r\nHi\r\n").unwrap();
+        for (folder, threads) in cases {
+            folder_cards(&account, &folders, folder, &BTreeSet::new(), threads);
+        }
+        assert_eq!(maildir::parses(), 1, "a new message read once");
+        let _ = std::fs::remove_dir_all(&root);
+        if let Some(dir) = sioul_core::mailcache::account_dir(&account.id) {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// A measure, run by hand (`cargo test --release -p sioul-app
+    /// measure_the_folders_on_a_large_stand_in -- --ignored --nocapture`, in
+    /// folders made for tests): a stand-in Maildir of 20,000 invented
+    /// messages over 20 folders (`SIOUL_MEASURE_MAILDIR`, else under
+    /// /var/tmp), made once; then a refresh of Mail as before the folders'
+    /// indexes (every message of the folder parsed, Gmail's archive parsing
+    /// the inbox and Sent for their ids), the first index of every folder,
+    /// and a refresh now: times and parses, and the look at everything links
+    /// make (`MailIndex::build_ranked`).
+    #[test]
+    #[ignore]
+    fn measure_the_folders_on_a_large_stand_in() {
+        sioul_core::config::stand_ins_only();
+        use sioul_core::folders::folder;
+        let root = std::env::var_os("SIOUL_MEASURE_MAILDIR").map_or_else(|| PathBuf::from(format!("/var/tmp/sioul-measure-maildir-{}", std::process::id())), PathBuf::from);
+        let mut folders = vec![folder("INBOX", Some("/"), Some(Role::Inbox)), folder("Sent", Some("/"), Some(Role::Sent)), folder("Archive", Some("/"), Some(Role::Archive)), folder("[Gmail]/All Mail", Some("/"), Some(Role::All))];
+        for n in 1..=16 {
+            folders.push(folder(&format!("Projects/Project {n:02}"), Some("/"), None));
+        }
+        let config: Config = toml::from_str(&format!("[[account]]\nid = \"measure\"\nkind = \"imap\"\naddress = \"me@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", root.display())).unwrap();
+        let account = config.accounts[0].clone();
+        let per = 1000;
+        if !root.join("made").exists() {
+            let body = |n: usize| -> String {
+                match n % 20 {
+                    // A newsletter: HTML, list headers, sometimes a code in its text.
+                    0..=4 => format!("List-Id: <news{}.example.org>\r\nList-Unsubscribe: <mailto:u@example.org>\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<html><body>{}<p>Your code is {}.</p></body></html>\r\n", n % 7, "<p>News of the week, and more news.</p>".repeat(400), 100_000 + n),
+                    // With a PDF attached.
+                    5 => format!("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nThe invoice.\r\n--b\r\nContent-Type: application/pdf; name=f.pdf\r\nContent-Disposition: attachment; filename=f.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n--b--\r\n", "JVBERi0xLjQK".repeat(8000)),
+                    _ => format!("Content-Type: text/plain; charset=UTF-8\r\n\r\n{}\r\n", "A line of an ordinary message, about nothing in particular.\r\n".repeat(30)),
+                }
+            };
+            for (f, folder) in folders.iter().enumerate() {
+                for sub in ["tmp", "new", "cur"] {
+                    std::fs::create_dir_all(root.join(&folder.local).join(sub)).unwrap();
+                }
+                for i in 0..per {
+                    let n = f * per + i;
+                    // "All Mail" holds the inbox's and Sent's ids again, and its own.
+                    let id = if folder.role == Role::All && i < 600 { if i < 300 { i } else { per + i - 300 } } else { n };
+                    let reply = if n % 3 == 0 && n > 0 { format!("In-Reply-To: <m{}@example.org>\r\n", n - 1) } else { String::new() };
+                    let raw = format!("Authentication-Results: mx.example.org; dkim=pass header.d=example.org; dmarc=pass header.from=example.org\r\nMessage-ID: <m{id}@example.org>\r\nFrom: Sender {} <s{}@example.org>\r\nTo: me@example.org\r\nDate: Mon, {:02} Oct 2026 {:02}:{:02}:00 +0100\r\nSubject: Message {n} about the matter {}\r\n{reply}{}", n % 300, n % 300, 1 + n % 28, n % 24, n % 60, n % 50, body(n));
+                    let flags = if i % 4 == 0 { "" } else { "S" };
+                    std::fs::write(root.join(&folder.local).join("cur").join(format!("17700{n:05}.U7-{}.sioul{}2,{flags}", i + 1, maildir::INFO)), raw).unwrap();
+                }
+            }
+            std::fs::write(root.join("made"), "").unwrap();
+        }
+        let size: u64 = folders.iter().flat_map(|f| std::fs::read_dir(root.join(&f.local).join("cur")).unwrap().filter_map(Result::ok)).map(|e| e.metadata().map_or(0, |m| m.len())).sum();
+        println!("measure: {} messages over {} folders, {} MB", per * folders.len(), folders.len(), size / 1_000_000);
+        let timed = |what: &str, run: &mut dyn FnMut() -> usize| {
+            maildir::parses_reset();
+            let at = std::time::Instant::now();
+            let n = run();
+            println!("measure: {what}: {:.0} ms, {} parses, {n} cards", at.elapsed().as_secs_f64() * 1000.0, maildir::parses());
+        };
+        let none = BTreeSet::new();
+        let (inbox, all) = (&folders[0], &folders[3]);
+        // Before: every refresh parses the folder whole (as at 4d81220).
+        timed("before, a refresh of the inbox by conversation", &mut || parsed_cards(&account, &folders, inbox, &none, true).0.len());
+        timed("before, a refresh of Gmail's archive", &mut || parsed_cards(&account, &folders, all, &none, false).0.len());
+        timed("before, a refresh of a project folder", &mut || parsed_cards(&account, &folders, &folders[10], &none, false).0.len());
+        // The first index of every folder: each message parsed once.
+        let at = std::time::Instant::now();
+        maildir::parses_reset();
+        for f in &folders {
+            sioul_core::mailcache::folder(&account.id, &root, &f.local);
+        }
+        let first = at.elapsed().as_secs_f64();
+        println!("measure: the first index of every folder: {:.0} ms, {} parses, {:.0} ms per 1000 messages", first * 1000.0, maildir::parses(), first * 1000.0 * 1000.0 / (per * folders.len()) as f64);
+        timed("now, a refresh of the inbox by conversation", &mut || folder_cards(&account, &folders, inbox, &none, true).0.len());
+        timed("now, a refresh of Gmail's archive", &mut || folder_cards(&account, &folders, all, &none, false).0.len());
+        timed("now, a refresh of a project folder", &mut || folder_cards(&account, &folders, &folders[10], &none, false).0.len());
+        let roots = [sioul_core::mailindex::Root { account: account.id.clone(), path: root.clone(), folders: folders.clone() }];
+        timed("now, the look at everything (MailIndex)", &mut || sioul_core::mailindex::MailIndex::build_ranked(&roots).len());
+        let index: u64 = std::fs::read_dir(sioul_core::mailcache::account_dir(&account.id).unwrap()).unwrap().filter_map(Result::ok).map(|e| e.metadata().map_or(0, |m| m.len())).sum();
+        println!("measure: the indexes hold {} KB", index / 1000);
+        if std::env::var_os("SIOUL_MEASURE_MAILDIR").is_none() {
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// The window and the phone's background step never look a message up by
+    /// `mailfind` nor ask its servers for one: only the command line and
+    /// agents do, until the window's opener comes, off its thread.
+    #[test]
+    fn the_window_never_asks_the_servers_for_a_message() {
+        // Its own search's `ask_servers` (mailsearch.rs) is no lookup by address: only mailfind's are named.
+        let needles = [["mailfind::", "find"].concat(), ["mailfind::", "ask_servers"].concat(), ["mailfind::", "{"].concat(), ["find_or", "_ask"].concat(), ["On", "Servers"].concat()];
+        let mut sources = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+        let mut read = 0;
+        while let Some(dir) = sources.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().filter_map(Result::ok) {
+                let path = entry.path();
+                if path.is_dir() {
+                    sources.push(path);
+                } else if path.extension().is_some_and(|x| x == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    read += 1;
+                    for needle in &needles {
+                        assert!(!text.contains(needle.as_str()), "{} calls {needle}", path.display());
+                    }
+                }
+            }
+        }
+        assert!(read > 20, "{read} files read");
     }
 
     #[test]

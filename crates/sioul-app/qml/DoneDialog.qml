@@ -12,7 +12,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -48,7 +48,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(540, (parent ? parent.width : 540) - 2 * dialog.theme.gap)
+    width: Math.min(540, (parent ? dialog.roomWidth : 540) - 2 * dialog.theme.gap)
     // "Work is put away until tomorrow at 09:00. The rest of the day is yours." (docs/reviews.md)
     title: dialog.closing ? dialog.theme.plain(dialog.closing.put_away + " " + dialog.sioul.text("closing-yours")) : ""
 

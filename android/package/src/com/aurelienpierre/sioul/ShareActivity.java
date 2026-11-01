@@ -12,9 +12,12 @@ import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.os.Parcelable;
 import android.os.Process;
 import android.provider.OpenableColumns;
+import android.system.ErrnoException;
+import android.system.Os;
 import android.content.pm.ShortcutManager;
 import android.util.Log;
 import android.webkit.MimeTypeMap;
@@ -106,6 +109,14 @@ public final class ShareActivity extends Activity
         // this activity kept meanwhile, since Android's leave to read goes with it.
         if (calendarFile(intent)) {
             final Uri file = intent.getData();
+            // Never one of Sioul's own files, whoever names it (an address of its own
+            // providers, a file: path into its folders): another app could otherwise
+            // have Sioul read its private files as a calendar.
+            if (ownAddress(app, file)) {
+                Toast.makeText(app, ownFileRefused(), Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
             new Thread(() -> {
                 try {
                     write(new File(handed, "calendar/" + id + ".ics"), read(app, file));
@@ -490,24 +501,117 @@ public final class ShareActivity extends Activity
         return scheme.equals(ContentResolver.SCHEME_CONTENT) || scheme.equals(ContentResolver.SCHEME_FILE);
     }
 
+    /** "Sioul does not open its own files as a calendar file.", in the phone's language. */
+    private static String ownFileRefused()
+    {
+        boolean french = "fr".equals(Locale.getDefault().getLanguage());
+        return french ? "Sioul n\u2019ouvre pas ses propres fichiers comme un fichier d\u2019agenda." : "Sioul does not open its own files as a calendar file.";
+    }
+
+    /**
+     * Sioul's own folders on this phone: its data (files, cache, databases,
+     * whatever the app keeps) and its own folders on shared storage.
+     */
+    private static List<String> ownFolders(Context app)
+    {
+        List<String> roots = new ArrayList<>();
+        roots.add(app.getApplicationInfo().dataDir);
+        for (File folder : new File[] {app.getFilesDir(), app.getCacheDir(), app.getNoBackupFilesDir(), app.getCodeCacheDir(), app.getDataDir()}) {
+            if (folder != null)
+                roots.add(folder.getPath());
+        }
+        for (File[] folders : new File[][] {app.getExternalFilesDirs(null), app.getExternalCacheDirs(), app.getObbDirs()}) {
+            for (File folder : folders) {
+                // Its folder of the app on that storage (Android/data/<package>), and the one asked.
+                if (folder != null) {
+                    roots.add(folder.getPath());
+                    if (folder.getParentFile() != null && folder.getParentFile().getName().equals(app.getPackageName()))
+                        roots.add(folder.getParent());
+                }
+            }
+        }
+        return roots;
+    }
+
+    /**
+     * Whether {@code path}, as the system resolves it (links followed), is one
+     * of {@code roots} or inside one, each resolved too. A path that does not
+     * resolve counts as inside: nothing is read on a guess.
+     */
+    static boolean insideOwn(String path, List<String> roots)
+    {
+        String real;
+        try {
+            real = new File(path).getCanonicalPath();
+        } catch (IOException | RuntimeException e) {
+            return true;
+        }
+        for (String root : roots) {
+            if (root == null || root.isEmpty())
+                continue;
+            String own;
+            try {
+                own = new File(root).getCanonicalPath();
+            } catch (IOException | RuntimeException e) {
+                own = new File(root).getAbsolutePath();
+            }
+            if (real.equals(own) || real.startsWith(own.endsWith("/") ? own : own + "/"))
+                return true;
+        }
+        return false;
+    }
+
+    /** An address of Sioul's own: one of its providers, or a file: path into its folders. */
+    private boolean ownAddress(Context app, Uri uri)
+    {
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if (scheme.equals(ContentResolver.SCHEME_CONTENT))
+            return !taken(uri);
+        return uri.getPath() == null || insideOwn(uri.getPath(), ownFolders(app));
+    }
+
     /** What the address holds, {@link #CALENDAR_MOST} bytes at most, through the system's resolver: nothing else is followed. */
     private static byte[] read(Context app, Uri uri) throws IOException
     {
+        // A file: path, opened where the system resolves it, then checked again by
+        // what was opened: a link put in its place meanwhile reaches nothing of Sioul's.
+        if (ContentResolver.SCHEME_FILE.equalsIgnoreCase(uri.getScheme())) {
+            String real = new File(String.valueOf(uri.getPath())).getCanonicalPath();
+            try (ParcelFileDescriptor file = ParcelFileDescriptor.open(new File(real), ParcelFileDescriptor.MODE_READ_ONLY)) {
+                String opened;
+                try {
+                    opened = Os.readlink("/proc/self/fd/" + file.getFd());
+                } catch (ErrnoException e) {
+                    throw new IOException(e);
+                }
+                if (insideOwn(opened, ownFolders(app)))
+                    throw new IOException(ownFileRefused());
+                try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(file.dup())) {
+                    return upTo(in);
+                }
+            }
+        }
         try (InputStream in = app.getContentResolver().openInputStream(uri)) {
             if (in == null)
                 throw new FileNotFoundException(String.valueOf(uri.getLastPathSegment()));
-            byte[] buffer = new byte[CALENDAR_MOST];
-            int length = 0;
-            while (length < buffer.length) {
-                int read = in.read(buffer, length, buffer.length - length);
-                if (read < 0)
-                    break;
-                length += read;
-            }
-            byte[] out = new byte[length];
-            System.arraycopy(buffer, 0, out, 0, length);
-            return out;
+            return upTo(in);
         }
+    }
+
+    /** At most {@link #CALENDAR_MOST} bytes of {@code in}. */
+    private static byte[] upTo(InputStream in) throws IOException
+    {
+        byte[] buffer = new byte[CALENDAR_MOST];
+        int length = 0;
+        while (length < buffer.length) {
+            int read = in.read(buffer, length, buffer.length - length);
+            if (read < 0)
+                break;
+            length += read;
+        }
+        byte[] out = new byte[length];
+        System.arraycopy(buffer, 0, out, 0, length);
+        return out;
     }
 
     static void write(File file, String text) throws IOException

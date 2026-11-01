@@ -66,12 +66,17 @@ pub(crate) fn files() -> Vec<PathBuf> {
 /// Files handed (`sioul-app <file>`, another Sioul's): each read and kept for
 /// the window, which shows them as it can.
 pub(crate) fn hand(paths: &[PathBuf]) {
+    keep_all(paths);
+    crate::outside::poke();
+}
+
+/// Each file read and kept for the window of this version, whenever it comes.
+pub(crate) fn keep_all(paths: &[PathBuf]) {
     for path in paths {
         if let Err(e) = keep(&read_at_most(path)) {
             eprintln!("Sioul: {}: {e}", path.display());
         }
     }
-    crate::outside::poke();
 }
 
 /// Bytes of a file kept for the window, under a name of their own (beside, then renamed).

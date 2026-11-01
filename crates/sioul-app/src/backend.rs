@@ -2031,6 +2031,12 @@ pub mod qobject {
         #[qinvokable]
         fn zone_offset(self: &Sioul, seconds: f64) -> f64;
 
+        /// A form's time ("2026-11-04T15:30") on the clock `clock` ("" the
+        /// time zone shown, "UTC", a zone's name) as Unix seconds; NaN while
+        /// it does not read (`agenda::instant_on`).
+        #[qinvokable]
+        fn wall_instant(self: &Sioul, wall: &QString, clock: &QString) -> f64;
+
         /// The time zone Sioul shows, by its name: "Europe/Paris", "UTC".
         #[qinvokable]
         fn zone_name(self: &Sioul) -> QString;
@@ -3257,8 +3263,15 @@ fn tie_to_projects(files: &[PathBuf]) {
     if let Some(store) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties)) {
         let senders = porch::Senders::load(&config);
         for t in porch::judge(files, &config.mail_sources(), Some(&store), &KnownSenders::default(), &senders, sioul_core::zone::now().timestamp().as_second()) {
-            if let (porch::Lane::Project(id), Some(mid)) = (&t.lane, t.card.message_id.as_deref()) {
-                ties.add(&sioul_core::links::mail_uri(mid), &sioul_core::links::project_uri(id), "project");
+            // By its Message-ID, else its digest in its account (`sioul:mail/…`).
+            let address = || match t.card.message_id.as_deref() {
+                Some(mid) => Some(sioul_core::links::mail_uri(mid)),
+                None => sioul_core::mailfind::address_of_file(t.card.account.as_deref()?, t.card.path.as_deref()?),
+            };
+            if let porch::Lane::Project(id) = &t.lane
+                && let Some(address) = address()
+            {
+                ties.add(&address, &sioul_core::links::project_uri(id), "project");
             }
         }
     }
@@ -6394,6 +6407,11 @@ impl qobject::Sioul {
         f64::from(sioul_core::zone::current().to_offset(at).seconds()) * 1000.0
     }
 
+    fn wall_instant(&self, wall: &QString, clock: &QString) -> f64 {
+        #[allow(clippy::cast_precision_loss)]
+        sioul_core::agenda::instant_on(&wall.to_string(), &clock.to_string(), &sioul_core::zone::current()).map_or(f64::NAN, |at| at as f64)
+    }
+
     fn zone_name(&self) -> QString {
         QString::from(&sioul_core::zone::name_of(&sioul_core::zone::current(), jiff::Timestamp::now()))
     }
@@ -6479,8 +6497,9 @@ impl qobject::Sioul {
         // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), "cards" every
         // object's card opened from the agenda and Tasks, then Back (pictures alone), "taskviews" Now, the List
         // folded and a task opened, the Board, the Gantt and a composed task's details (pictures alone), "mail-open" a
-        // message opened as a tie, then one not on this device (docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open"].contains(&steps.as_str()) && offline()) {
+        // message opened as a tie, then one not on this device (docs/client.md), "safe-area" the event form
+        // with Android's system bars stood in for, below then beside (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

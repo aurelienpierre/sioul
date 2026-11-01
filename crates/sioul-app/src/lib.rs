@@ -334,8 +334,15 @@ pub fn run() -> i32 {
     // A calendar file opened (`sioul-app <file>`) takes the same road.
     let addresses = outside::addresses();
     let calendar_files = calendarfile::files();
-    if outside::hand_over(&addresses, &calendar_files) {
-        return 0;
+    match outside::hand_over(&addresses, &calendar_files) {
+        outside::HandOver::Taken => return 0,
+        // An older Sioul open, which does not know calendar files: never a second
+        // window beside it; the files wait for this version, and that is said.
+        outside::HandOver::Older if addresses.is_empty() && !calendar_files.is_empty() => {
+            outside::to_older(&calendar_files);
+            return 0;
+        }
+        _ => {}
     }
     outside::listen();
     if !addresses.is_empty() {

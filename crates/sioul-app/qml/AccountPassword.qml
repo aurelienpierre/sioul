@@ -13,7 +13,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -81,7 +81,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(460, (parent ? parent.width : 460) - 2 * dialog.theme.gap)
+    width: Math.min(460, (parent ? dialog.roomWidth : 460) - 2 * dialog.theme.gap)
     title: dialog.theme.plain(dialog.account !== null ? (dialog.google ? dialog.sioul.textWith("account-app-password-title", "account", dialog.account.address || dialog.account.id) : dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id)) : "")
     onClosed: password.text = ""
 

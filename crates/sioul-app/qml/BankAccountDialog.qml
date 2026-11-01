@@ -12,7 +12,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -85,7 +85,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(520, (parent ? parent.width : 520) - 2 * dialog.theme.gap)
+    width: Math.min(520, (parent ? dialog.roomWidth : 520) - 2 * dialog.theme.gap)
     title: dialog.accountId === "" ? dialog.sioul.text("bank-account-new") : dialog.sioul.text("bank-account-edit")
 
     contentItem: GridLayout {

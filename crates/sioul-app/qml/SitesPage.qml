@@ -1353,13 +1353,13 @@ Item {
             }
         }
     }
-    Dialog {
+    SafeDialog {
         id: devicesDialog
 
         parent: Overlay.overlay
         anchors.centerIn: parent
         modal: true
-        width: Math.min(520, page.width - 2 * page.theme.gap)
+        width: Math.min(520, Math.min(page.width, devicesDialog.roomWidth) - 2 * page.theme.gap)
         title: page.sioul.text("site-devices")
 
         // Sioul's own button, in your language: Qt's standard ones are not translated.
@@ -1608,7 +1608,7 @@ Item {
     }
 
     // A call asks to share the screen: a screen, a window, or nothing.
-    Dialog {
+    SafeDialog {
         id: sharing
 
         property var request: null
@@ -1617,7 +1617,7 @@ Item {
         parent: Overlay.overlay
         anchors.centerIn: parent
         modal: true
-        width: Math.min(460, page.width - 2 * page.theme.gap)
+        width: Math.min(460, Math.min(page.width, sharing.roomWidth) - 2 * page.theme.gap)
         title: page.sioul.text("site-share")
         onClosed: {
             if (!sharing.chosen && sharing.request)
@@ -1722,7 +1722,7 @@ Item {
     }
 
     // A site's name, address, type and categories, changed.
-    Dialog {
+    SafeDialog {
         id: editing
 
         // What was refused (an address without https…): said here, the dialog kept open.
@@ -1750,7 +1750,7 @@ Item {
         parent: Overlay.overlay
         anchors.centerIn: parent
         modal: true
-        width: Math.min(460, page.width - 2 * page.theme.gap)
+        width: Math.min(460, Math.min(page.width, editing.roomWidth) - 2 * page.theme.gap)
         title: page.sioul.text("site-edit")
 
         contentItem: GridLayout {
@@ -1837,7 +1837,7 @@ Item {
 
     // A site added: from the sites people usually keep, by country (and state or
     // province) and kind, found by a word; or by hand. Only encrypted addresses.
-    Dialog {
+    SafeDialog {
         id: adding
 
         property var offered: ({ country: "", region: "", countries: [], types: [], categories: [], sites: [] })
@@ -1889,8 +1889,8 @@ Item {
         parent: Overlay.overlay
         anchors.centerIn: parent
         modal: true
-        width: Math.min(560, page.width - 2 * page.theme.gap)
-        height: Math.min(660, page.height - 2 * page.theme.gap)
+        width: Math.min(560, Math.min(page.width, adding.roomWidth) - 2 * page.theme.gap)
+        height: Math.min(660, Math.min(page.height, adding.roomHeight) - 2 * page.theme.gap)
         title: page.sioul.text("site-add")
         onAboutToShow: {
             siteName.text = ""

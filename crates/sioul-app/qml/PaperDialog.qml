@@ -13,7 +13,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: form
 
     required property var sioul
@@ -60,7 +60,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(560, (parent ? parent.width : 560) - 2 * form.theme.gap)
+    width: Math.min(560, (parent ? form.roomWidth : 560) - 2 * form.theme.gap)
     title: form.sioul.text(form.paperId === "" ? "papers-new" : "papers-change")
 
     contentItem: ScrollView {

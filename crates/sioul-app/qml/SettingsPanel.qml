@@ -11,8 +11,11 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Popup {
+SafePopup {
     id: panel
+
+    // A sheet: edge to edge within the safe area, as it was within the window.
+    safeGap: 0
 
     required property var sioul
     required property var theme
@@ -47,8 +50,8 @@ Popup {
     x: parent ? parent.width - width : 0
     y: 0
     // Two fifths of the window and a little more, 520 to 760 pixels; all of a phone's (Theme.qml).
-    width: !parent ? 520 : panel.theme.sideWidth(parent.width)
-    height: parent ? parent.height : 600
+    width: !parent ? 520 : panel.theme.sideWidth(panel.roomWidth)
+    height: parent ? panel.roomHeight : 600
     padding: panel.theme.gap
     modal: false
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside

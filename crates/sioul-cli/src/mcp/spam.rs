@@ -259,7 +259,7 @@ fn label(s: &Session, args: &Args) -> Result<Answer, String> {
         !consent.allows(&sioul_core::links::mail_uri(&message))
     } else {
         // Only a file of the accounts' mail is opened (`find_message` checks the path first); a corpus's place is the label's to find.
-        super::read::find_message(s, &message).ok().and_then(|path| sioul_core::maildir::read_one(&path)).is_some_and(|card| !consent.allows_mail(card.message_id.as_deref(), Some(&card)))
+        super::read::find_here(s, &message).ok().and_then(|here| sioul_core::maildir::read_one(&here.path)).is_some_and(|card| !consent.allows_mail(card.message_id.as_deref(), Some(&card)))
     };
     if kept {
         return Err(super::access::kept("This message"));

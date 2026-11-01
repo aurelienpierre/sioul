@@ -27,6 +27,8 @@ fn main() {
         "qml/CodeCard.qml",
         "qml/WrapCheckBox.qml",
         "qml/PlainComboBox.qml",
+        "qml/SafeDialog.qml",
+        "qml/SafePopup.qml",
         "qml/Icon.qml",
         "qml/ActionButton.qml",
         "qml/RailButton.qml",

@@ -15,7 +15,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtWebEngine
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -56,7 +56,7 @@ Dialog {
     anchors.centerIn: parent
     modal: true
     closePolicy: Popup.NoAutoClose
-    width: Math.min(440, (parent ? parent.width : 440) - 2 * dialog.theme.gap)
+    width: Math.min(440, (parent ? dialog.roomWidth : 440) - 2 * dialog.theme.gap)
     title: dialog.theme.plain(dialog.request ? dialog.sioul.textWith("webauth-title", "site", dialog.request.relyingPartyId) : "")
 
     Connections {

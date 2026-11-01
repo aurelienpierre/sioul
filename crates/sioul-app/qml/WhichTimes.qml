@@ -9,7 +9,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: which
 
     required property var sioul
@@ -38,7 +38,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(440, (parent ? parent.width : 440) - 2 * which.theme.gap)
+    width: Math.min(440, (parent ? which.roomWidth : 440) - 2 * which.theme.gap)
     onClosed: {
         if (!which.answered)
             which.dropped()

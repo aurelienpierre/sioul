@@ -582,8 +582,8 @@ fn the_tools_listed() {
             assert!(schema["properties"][needed.as_str().unwrap()].is_object(), "{name}: {needed} is described");
         }
         let hints = &tool["annotations"];
-        // Only the corpus's download reaches beyond this computer: your mail servers, read-only.
-        assert_eq!((hints["destructiveHint"].as_bool(), hints["openWorldHint"].as_bool()), (Some(name.starts_with("delete_")), Some(name == "spam_fetch")), "{name}");
+        // Only the corpus's download, and a message read or answered that is not on this device, reach beyond this computer: your mail servers, read-only.
+        assert_eq!((hints["destructiveHint"].as_bool(), hints["openWorldHint"].as_bool()), (Some(name.starts_with("delete_")), Some(matches!(name, "spam_fetch" | "read_message" | "draft_reply"))), "{name}");
         let writes = WRITING.contains(&name) || SPAM_WRITING.contains(&name);
         assert_eq!(hints["readOnlyHint"].as_bool(), Some(!writes), "{name}");
         assert!(!tool["title"].as_str().unwrap().is_empty());
@@ -600,6 +600,42 @@ fn the_tools_listed() {
         assert!(names.iter().all(|n| !n.contains(word)), "{word}");
     }
     assert_eq!(names.iter().filter(|n| n.contains("delete")).copied().collect::<Vec<_>>(), ["delete_event", "delete_task"]);
+}
+
+/// A message without a Message-ID is read by its address
+/// (`sioul:mail/<account>/<digest>`), which search_mail gives; one whose
+/// Message-ID another sender reused says so; a message not here, its
+/// server not reached (no password in tests), is never said deleted.
+#[test]
+fn mail_is_read_by_its_address() {
+    let home = home();
+    let mut server = server();
+    let kept = home.root.join("mail/home/.Kept");
+    for sub in ["tmp", "new", "cur"] {
+        std::fs::create_dir_all(kept.join(sub)).unwrap();
+    }
+    std::fs::write(kept.join("cur").join(format!("1777000001.U3-1.sioul{}2,S", sioul_core::maildir::INFO)), "From: Lou <lou@example.org>\r\nTo: jane@example.org\r\nDate: Fri, 30 Oct 2026 09:00:00 +0100\r\nSubject: Quokka without an id\r\n\r\nNo Message-ID here.\r\n").unwrap();
+    let found = call(&mut server, "search_mail", json!({ "query": "quokka" }));
+    let uri = found["structuredContent"]["messages"][0]["uri"].as_str().unwrap_or_default().to_string();
+    assert!(uri.starts_with("sioul:mail/home/"), "{found}");
+    let read = call(&mut server, "read_message", json!({ "message": uri }));
+    assert_eq!(read["isError"], false, "{read}");
+    assert!(text(&read).contains("Subject: Quokka without an id") && text(&read).contains(&format!("Address: {uri}")), "{}", text(&read));
+    // One id, two senders: the first to arrive is read, and the reuse is said.
+    for (uid, from, subject) in [(2, "Bank <bank@example.org>", "Wombat statement"), (3, "Bank <bank@lookalike.example>", "Wombat look-alike")] {
+        let file = kept.join("cur").join(format!("177700000{uid}.U3-{uid}.sioul{}2,S", sioul_core::maildir::INFO));
+        std::fs::write(&file, format!("Message-ID: <wombat-1@example.org>\r\nFrom: {from}\r\nTo: jane@example.org\r\nDate: Fri, 30 Oct 2026 09:00:00 +0100\r\nSubject: {subject}\r\n\r\nHello.\r\n")).unwrap();
+        let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_777_000_000 + uid);
+        std::fs::File::options().write(true).open(&file).unwrap().set_modified(time).unwrap();
+    }
+    let reused = call(&mut server, "read_message", json!({ "message": "mid:wombat-1@example.org" }));
+    assert!(text(&reused).starts_with("Another message carries the same id.") && text(&reused).contains("Wombat statement"), "{}", text(&reused));
+    assert_eq!(reused["structuredContent"]["reused_id"], true);
+    // Not here, its server not reached: never "deleted".
+    let away = call(&mut server, "read_message", json!({ "message": "mid:nowhere-1@example.org" }));
+    assert_eq!(away["isError"], true);
+    assert!(text(&away).contains("cannot reach") && !text(&away).contains("deleted"), "{}", text(&away));
+    let _ = std::fs::remove_dir_all(&kept);
 }
 
 #[test]
@@ -1634,6 +1670,9 @@ fn an_event_keeps_the_clock_it_is_given() {
     assert!(refused["isError"] == true && text(&refused).contains("clock"), "{refused}");
     let added = call(&mut server, "add_event", json!({ "title": "Call", "start": "2099-12-02T15:00Z", "end": "2099-12-02T16:00Z", "clock": "UTC" }));
     assert_eq!(added["isError"], false, "{added}");
+    // Its times on both clocks, said: an agent that gave "15:00" meaning UTC sees the difference.
+    let said = text(&added);
+    assert!(said.contains(&format!("{} – {}", local("2099-12-02T15:00Z"), local("2099-12-02T16:00Z"))) && said.contains("(2099-12-02T15:00 – 2099-12-02T16:00 UTC)"), "{said}");
     let file = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
     assert!(ics_lines(&file).contains(&"DTSTART;TZID=UTC:20991202T150000".to_string()), "{:?}", ics_lines(&file));
     let uri = added["structuredContent"]["uri"].as_str().unwrap().to_string();

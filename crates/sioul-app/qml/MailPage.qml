@@ -1290,7 +1290,7 @@ Item {
         id: forgetDialog
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: forgetDialogForm
 
                 property string account: ""
@@ -1305,7 +1305,7 @@ Item {
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
+                width: Math.min(440, (parent ? forgetDialogForm.roomWidth : 440) - 2 * page.theme.gap)
                 title: forgetDialogForm.folder ? page.theme.plain(forgetDialogForm.folder.title) : ""
 
                 contentItem: Label {
@@ -1336,7 +1336,7 @@ Item {
         id: newFolderDialog
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: newFolderDialogForm
 
                 property string account: ""
@@ -1353,7 +1353,7 @@ Item {
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
+                width: Math.min(440, (parent ? newFolderDialogForm.roomWidth : 440) - 2 * page.theme.gap)
                 title: page.theme.plain(page.sioul.textWith("folder-new-title", "account", newFolderDialogForm.accountTitle))
 
                 contentItem: TextField {
@@ -1389,7 +1389,7 @@ Item {
         id: deleteDialog
 
         sourceComponent: Component {
-            Dialog {
+            SafeDialog {
                 id: deleteDialogForm
 
                 property string account: ""
@@ -1404,7 +1404,7 @@ Item {
                 parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
-                width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
+                width: Math.min(440, (parent ? deleteDialogForm.roomWidth : 440) - 2 * page.theme.gap)
                 title: deleteDialogForm.folder ? page.theme.plain(deleteDialogForm.folder.title) : ""
 
                 contentItem: Label {

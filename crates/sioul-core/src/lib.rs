@@ -75,7 +75,9 @@
 //!
 //! - [`maildir`]: messages on disk: a Maildir, or a plain folder of `.eml` files.
 //! - [`headers`]: the raw header block, unfolded.
+//! - [`mailcache`]: what each message of a folder says, read once, ever: one small index per folder.
 //! - [`mailindex`]: messages by their Message-ID, to follow `mid:` links.
+//! - [`mailfind`]: a message found by its address, here, else on its servers.
 //! - [`mailsearch`]: searching the mail by conditions, here and on the servers.
 //! - [`folders`]: mail folders: what each is for, its name as you read it, where it is kept.
 //! - [`threads`]: conversations, tied by Message-ID, never by subject alone.
@@ -219,6 +221,8 @@ pub mod lines;
 pub mod letters;
 pub mod links;
 pub mod lookalike;
+pub mod mailcache;
+pub mod mailfind;
 pub mod mailindex;
 pub mod mailsearch;
 pub mod maildir;

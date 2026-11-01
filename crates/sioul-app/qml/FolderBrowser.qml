@@ -12,7 +12,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: browser
 
     // Sioul's backend (backend.rs): its words in your language and what it does.
@@ -45,8 +45,8 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(460, (parent ? parent.width : 460) - 2 * browser.theme.gap)
-    height: Math.min(560, (parent ? parent.height : 560) - 2 * browser.theme.gap)
+    width: Math.min(460, (parent ? browser.roomWidth : 460) - 2 * browser.theme.gap)
+    height: Math.min(560, (parent ? browser.roomHeight : 560) - 2 * browser.theme.gap)
     title: browser.sioul.text("folder-browser-title")
 
     // Back from Android's switch for "All files access": the folders read again.

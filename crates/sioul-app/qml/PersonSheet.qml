@@ -16,7 +16,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: sheet
 
     required property var sioul
@@ -55,8 +55,8 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(520, (parent ? parent.width : 520) - 2 * sheet.theme.gap)
-    height: Math.min(implicitHeight, (parent ? parent.height : 640) - 2 * sheet.theme.gap)
+    width: Math.min(520, (parent ? sheet.roomWidth : 520) - 2 * sheet.theme.gap)
+    height: Math.min(implicitHeight, (parent ? sheet.roomHeight : 640) - 2 * sheet.theme.gap)
     title: sheet.theme.plain(sheet.shown.title)
     objectName: "personSheet"
 

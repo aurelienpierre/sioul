@@ -15,7 +15,16 @@ Menu {
     // A menu drawn as a window of its own can run past the screen, where it
     // cannot scroll: drawn in the window, it is fitted to it.
     popupType: Popup.Item
-    margins: 8
+    // Inside the window's safe area (its system bars, a notch, whichever side
+    // they are on), 8 points within it (review of 4c77d0c, L9).
+    readonly property var safeArea: {
+        const overlay = menu.parent ? menu.parent.Overlay.overlay : null
+        return overlay ? overlay.SafeArea.margins : null
+    }
+    topMargin: 8 + (menu.safeArea ? menu.safeArea.top : 0)
+    bottomMargin: 8 + (menu.safeArea ? menu.safeArea.bottom : 0)
+    leftMargin: 8 + (menu.safeArea ? menu.safeArea.left : 0)
+    rightMargin: 8 + (menu.safeArea ? menu.safeArea.right : 0)
     width: {
         let widest = 0
         for (let i = 0; i < menu.count; ++i) {

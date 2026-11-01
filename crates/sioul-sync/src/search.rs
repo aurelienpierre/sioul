@@ -28,6 +28,7 @@ use sioul_core::card::ImapOrigin;
 use sioul_core::config::Account;
 use sioul_core::folders::Folder;
 use sioul_core::maildir;
+use sioul_core::mailfind::ServerCopy;
 use sioul_core::mailsearch::{Found, Search, ServerRef, Token, imap_key, imap_key_without_words};
 use sioul_core::porch::Senders;
 use std::collections::{BTreeMap, BTreeSet};
@@ -260,6 +261,72 @@ async fn bring_in(session: &mut Imap, folder: &Folder, origin: ImapOrigin, root:
     Ok(written.into_iter().find(|(uid, _)| *uid == origin.uid).map(|(_, path)| path))
 }
 
+/// The servers of your addresses as `sioul_core::mailfind::find_or_ask`
+/// asks them, read only: one connection per address, each folder it lists
+/// examined, `UID SEARCH HEADER Message-ID`, then the headers of what it
+/// finds (`BODY.PEEK`: nothing marked read); a copy brought by [`bring`].
+/// Its password from the keyring, as a search's.
+pub struct OnServers;
+
+impl sioul_core::mailfind::Servers for OnServers {
+    fn copies(&self, account: &Account, id: &str) -> Result<Vec<ServerCopy>, String> {
+        let password = crate::secret::password(account).map_err(|e| e.to_string())?;
+        with_message_id(account, &password, id, &mailbox::folders(&account.id)).map_err(|e| e.to_string())
+    }
+
+    fn bring(&self, account: &Account, copy: &ServerCopy) -> Result<PathBuf, String> {
+        let password = crate::secret::password(account).map_err(|e| e.to_string())?;
+        bring(account, &password, &ServerRef { account: account.id.clone(), folder: copy.folder.name.clone(), origin: copy.origin }).map_err(|e| e.to_string())
+    }
+}
+
+/// The copies `account`'s server holds, in `folders` (their server names as
+/// listed), of the message whose Message-ID is `id`: asked as a search asks
+/// (`HEADER Message-ID`, which finds the id inside longer ones too: each
+/// copy's own Message-ID comes back, for the caller to compare whole).
+pub fn with_message_id(account: &Account, password: &str, id: &str, folders: &[Folder]) -> Result<Vec<ServerCopy>, SyncError> {
+    let server = Server::of(account)?;
+    crate::fetch::block_on(async {
+        let mut session = imap::open(&server, password).await?;
+        let result = with_message_id_in(&mut session, id, folders).await;
+        let _ = session.logout().await;
+        result
+    })
+}
+
+async fn with_message_id_in(session: &mut Imap, id: &str, folders: &[Folder]) -> Result<Vec<ServerCopy>, SyncError> {
+    let capabilities = imap::within(COMMAND, session.capabilities()).await?.map_err(imap::server)?;
+    let literal_plus = capabilities.has_str("LITERAL+");
+    let id = sioul_core::mailindex::bare_id(id);
+    let tokens = [Token::Atom("HEADER".into()), Token::Text("Message-ID".into()), Token::Text(id)];
+    let mut out = Vec::new();
+    for folder in folders {
+        let examined = imap::within(COMMAND, session.examine(&folder.name)).await?.map_err(imap::server)?;
+        if examined.exists == 0 {
+            continue;
+        }
+        let validity = examined.uid_validity.unwrap_or(0);
+        let uids = uid_search(session, &tokens, literal_plus).await?;
+        if uids.is_empty() {
+            continue;
+        }
+        let mut fetches = imap::within(COMMAND, session.uid_fetch(mailbox::ranges(&uids), "(UID INTERNALDATE BODY.PEEK[HEADER])")).await?.map_err(imap::server)?;
+        while let Some(fetch) = fetches.next().await {
+            let fetch = fetch.map_err(imap::server)?;
+            let (Some(uid), Some(header)) = (fetch.uid, fetch.header()) else { continue };
+            let Some(card) = sioul_core::card::Card::from_bytes(header) else { continue };
+            out.push(ServerCopy {
+                folder: folder.clone(),
+                origin: ImapOrigin { validity, uid },
+                message_id: card.message_id.unwrap_or_default(),
+                sender: card.from_address.unwrap_or_default(),
+                arrived: fetch.internal_date().map_or(0, |d| d.timestamp()),
+            });
+        }
+    }
+    Ok(out)
+}
+
 /// The copy here of a message of a folder, if there is one.
 fn here(root: &std::path::Path, origin: ImapOrigin) -> Option<PathBuf> {
     ["cur", "new"].iter().filter_map(|sub| std::fs::read_dir(root.join(sub)).ok()).flatten().filter_map(Result::ok).map(|e| e.path()).find(|p| maildir::origin_of(p) == Some(origin))
@@ -314,6 +381,18 @@ mod tests {
     #[ignore]
     fn greenmail_search_bring_and_move() {
         greenmail::run();
+    }
+
+    /// Against a GreenMail server, as above: a message not on this device
+    /// found by `mailfind::find_or_ask` on its server, read only (`HEADER
+    /// Message-ID`, a longer id holding its own never taken for it), brought
+    /// into its folder unread, then found here; an id no folder holds said
+    /// gone; a server not reached, unreachable.
+    #[cfg(feature = "insecure-test-tls")]
+    #[test]
+    #[ignore]
+    fn greenmail_find_asks_the_servers() {
+        greenmail::find();
     }
 
     #[cfg(feature = "insecure-test-tls")]
@@ -423,6 +502,78 @@ mod tests {
             let moved = super::search(&account, "x", &bank, std::slice::from_ref(&banque), &BTreeMap::new(), 50, None).unwrap();
             assert_eq!(moved.found.len(), 2, "{moved:?}");
             assert!(find(&bank).found.is_empty(), "out of the inbox");
+            let _ = std::fs::remove_dir_all(&root);
+        }
+
+        /// The servers as `find_or_ask` asks them, with GreenMail's password.
+        struct Asked;
+
+        impl sioul_core::mailfind::Servers for Asked {
+            fn copies(&self, account: &Account, id: &str) -> Result<Vec<ServerCopy>, String> {
+                with_message_id(account, "x", id, &mailbox::folders(&account.id)).map_err(|e| e.to_string())
+            }
+
+            fn bring(&self, account: &Account, copy: &ServerCopy) -> Result<PathBuf, String> {
+                bring(account, "x", &ServerRef { account: account.id.clone(), folder: copy.folder.name.clone(), origin: copy.origin }).map_err(|e| e.to_string())
+            }
+        }
+
+        pub(super) fn find() {
+            use sioul_core::mailfind::{Found, MailRef, find_or_ask};
+            let address = std::env::var("SIOUL_TEST_IMAP").unwrap_or_else(|_| "localhost:3993".into());
+            let (host, port) = address.rsplit_once(':').unwrap();
+            let stamp = jiff::Timestamp::now().as_second();
+            let login = format!("find-{}-{stamp}@example.org", std::process::id());
+            let root = std::env::temp_dir().join(format!("sioul-find-greenmail-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            // SAFETY: a test of its own, run alone, before any thread of it starts.
+            unsafe {
+                std::env::set_var("XDG_STATE_HOME", root.join("state"));
+                std::env::set_var("XDG_DATA_HOME", root.join("data"));
+                std::env::set_var("XDG_CACHE_HOME", root.join("cache"));
+                std::env::set_var("SIOUL_TEST_INSECURE_TLS", "1");
+            }
+            let mut account = Account::imap(&format!("finder{stamp}"), &login, host, port.parse().unwrap(), Security::Tls, None);
+            account.maildir = Some(root.join("mail").display().to_string());
+            let server = Server::of(&account).unwrap();
+            let id = format!("far-{stamp}@example.org");
+            let raw = |id: &str, from: &str, subject: &str| format!("From: {from}\r\nTo: {login}\r\nSubject: {subject}\r\nDate: Wed, 03 Jun 2026 10:00:00 +0200\r\nMessage-ID: <{id}>\r\n\r\nHello.\r\n").into_bytes();
+            crate::fetch::block_on(async {
+                let mut session = imap::open(&server, "x").await?;
+                let _ = imap::within(COMMAND, session.create("Archive")).await?;
+                // The message, in the archive only; another whose id holds its own, in the inbox.
+                imap::within(COMMAND, session.append("Archive", None, None, &raw(&id, "Paul <paul@example.org>", "Far"))).await?.map_err(imap::server)?;
+                imap::within(COMMAND, session.append("INBOX", None, None, &raw(&format!("x{id}"), "Eve <eve@example.org>", "Near"))).await?.map_err(imap::server)?;
+                let listed = mailbox::list(&mut session).await?;
+                mailbox::save(&account.id, &listed)?;
+                let _ = session.logout().await;
+                Ok(())
+            })
+            .unwrap();
+            let roots = vec![sioul_core::mailindex::Root { account: account.id.clone(), path: account.maildir_path(), folders: mailbox::folders(&account.id) }];
+            let accounts = vec![account.clone()];
+            let wanted = MailRef { address: format!("mid:{id}"), ..MailRef::default() };
+            let Found::Here(here) = find_or_ask(&roots, &accounts, &wanted, &Asked) else { panic!("not brought") };
+            assert_eq!(here.folder, "Archive", "{here:?}");
+            assert!(here.path.is_file() && !maildir::flags_of(&here.path).contains('S'), "brought, unread: {here:?}");
+            // Here now: found without a server.
+            struct Nobody;
+            impl sioul_core::mailfind::Servers for Nobody {
+                fn copies(&self, _: &Account, _: &str) -> Result<Vec<ServerCopy>, String> {
+                    panic!("asked")
+                }
+                fn bring(&self, _: &Account, _: &ServerCopy) -> Result<PathBuf, String> {
+                    panic!("asked")
+                }
+            }
+            assert!(matches!(find_or_ask(&roots, &accounts, &wanted, &Nobody), Found::Here(_)));
+            // No folder holds it: gone, said only now that the server answered.
+            let gone = MailRef { address: format!("mid:gone-{stamp}@example.org"), ..MailRef::default() };
+            assert_eq!(find_or_ask(&roots, &accounts, &gone, &Asked), Found::Gone);
+            // A server that cannot be reached: never "gone".
+            let mut away = account.clone();
+            away.port = Some(1);
+            assert_eq!(find_or_ask(&roots, &[away], &gone, &Asked), Found::Unreachable);
             let _ = std::fs::remove_dir_all(&root);
         }
     }

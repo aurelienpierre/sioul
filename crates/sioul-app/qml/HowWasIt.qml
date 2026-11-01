@@ -12,7 +12,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Popup {
+SafePopup {
     id: popup
 
     required property var sioul
@@ -54,11 +54,11 @@ Popup {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     // As wide as its tiles side by side, without a cap of its own; never past the
     // window less the usual margins (docs/qt-quick.md, "An editing card's width").
-    width: Math.min(ratings.naturalWidth + 2 * popup.padding + 12, (parent ? parent.width : 460) - 2 * popup.theme.gap)
-    height: Math.min(implicitHeight, (parent ? parent.height : 800) - 96)
+    width: Math.min(ratings.naturalWidth + 2 * popup.padding + 12, (parent ? popup.roomWidth : 460) - 2 * popup.theme.gap)
+    height: Math.min(implicitHeight, (parent ? popup.roomHeight : 800) - 96)
     x: parent ? (parent.width - width) / 2 : 0
     // Above the status line, where "How was it?" was.
-    y: parent ? parent.height - height - 48 : 0
+    y: parent ? parent.height - (popup.safeArea ? popup.safeArea.bottom : 0) - height - 48 : 0
     padding: 16
 
     background: Rectangle {

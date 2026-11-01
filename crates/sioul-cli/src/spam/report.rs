@@ -1121,7 +1121,8 @@ fn by_id(text: &str) -> bool {
 /// of it, back to the inbox). A message no longer stored here, named by its
 /// Message-ID, is labelled by its place in the corpus (never moved).
 pub(crate) fn label(s: &Session, dirs: &Dirs, message: &str, label: Label, moving: bool) -> Result<Report, String> {
-    let (entry, place, moved) = match crate::mcp::read::find_message(s, message) {
+    // This device only: a message not here is labelled by its place in the corpus, never brought.
+    let (entry, place, moved) = match crate::mcp::read::find_here(s, message).map(|here| here.path) {
         Ok(file) => {
             let account = s.config.account_of(&file).cloned().ok_or_else(|| s.tr.text("mail-message-gone", None))?;
             let folder = sioul_sync::mailbox::folder_of(&account, &file).ok_or_else(|| s.tr.text("mail-message-gone", None))?;

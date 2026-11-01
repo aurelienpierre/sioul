@@ -11,7 +11,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -75,7 +75,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(480, (parent ? parent.width : 480) - 2 * dialog.theme.gap)
+    width: Math.min(480, (parent ? dialog.roomWidth : 480) - 2 * dialog.theme.gap)
     title: dialog.projectId === "" ? dialog.sioul.text("project-new") : dialog.sioul.text("project-edit")
 
     contentItem: GridLayout {

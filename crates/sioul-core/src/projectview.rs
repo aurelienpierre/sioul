@@ -326,7 +326,7 @@ mod tests {
         for (n, (_, raw)) in messages.iter().enumerate() {
             std::fs::write(root.join("cur").join(format!("{n}.U1-{n}.sioul{}2,S", crate::maildir::INFO)), raw).unwrap();
         }
-        let index = MailIndex::build(std::slice::from_ref(&root), &root.join("index.tsv"));
+        let index = MailIndex::build(std::slice::from_ref(&root));
         let source = Source { account: Some("home".into()), address: Some("you@you.example.org".into()), folder: root.clone(), trusted_ids: vec![PROVIDER.into()], priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
         let store = ProjectStore { root: root.clone(), projects: projects.to_vec(), ties: Default::default() };
         let gate = Gate::new(vec![source], Some(store), SenderList::default(), senders, now);

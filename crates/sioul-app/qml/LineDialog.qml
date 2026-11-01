@@ -10,7 +10,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: lineChange
 
     required property var sioul
@@ -54,7 +54,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(460, (parent ? parent.width : 460) - 2 * lineChange.theme.gap)
+    width: Math.min(460, (parent ? lineChange.roomWidth : 460) - 2 * lineChange.theme.gap)
     title: lineChange.sioul.text("budget-line-change")
 
     contentItem: GridLayout {

@@ -234,10 +234,14 @@ Item {
             const said = find(shown, "readerNotHere")
             verify(said !== null && said.visible, "the sentence")
             compare(said.text, "reader-not-here")
+            // Nothing to act on, no empty header card (review of 1017fa4, L6).
+            verify(!find(shown, "readerActions").visible, "no action bar")
+            verify(!find(shown, "readerHeader").visible, "no header card")
             mock.reading = JSON.stringify({ subject: "Back", from_name: "Ana", from_address: "ana@example.org", to: [], others: false, text: "Hi", attachments: [], uri: "mid:b@example.org", flagged: false })
             shown.key = "/stand-in/mail/alice/cur/2"
             tryCompare(shown, "opening", false)
             verify(!find(shown, "readerNotHere").visible, "a message that reads: no sentence")
+            verify(find(shown, "readerActions").visible && find(shown, "readerHeader").visible, "its actions and its header")
         }
 
         // A note's link to a message, however spelled, opens the message's file.

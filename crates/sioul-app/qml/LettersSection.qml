@@ -145,7 +145,9 @@ ColumnLayout {
                 anchors.fill: parent
                 spacing: 6
 
+                // Never wider than the card: its title wraps (a phone's 412 points, review of 1017fa4, L3).
                 RowLayout {
+                    Layout.fillWidth: true
                     spacing: 8
 
                     Icon {
@@ -188,7 +190,8 @@ ColumnLayout {
                     wrapMode: Text.Wrap
                     color: section.theme.muted
                 }
-                RowLayout {
+                // Its actions, on more lines where the card is narrow.
+                Flow {
                     Layout.fillWidth: true
                     spacing: 6
 
@@ -217,15 +220,12 @@ ColumnLayout {
                         text: section.sioul.text("letters-event")
                         onClicked: section.problem = section.sioul.letterEvent(card.modelData.id)
                     }
-                    Item {
-                        Layout.fillWidth: true
-                    }
                     PlainComboBox {
                         id: projectChoice
 
                         readonly property var choices: [{ id: "", title: section.sioul.text("letters-no-project") }].concat(section.shown.projects)
 
-                        Layout.preferredWidth: 170
+                        width: 170
                         model: choices.map(c => section.theme.plain(c.title))
                         currentIndex: Math.max(0, choices.findIndex(c => c.id === card.modelData.project))
                     }

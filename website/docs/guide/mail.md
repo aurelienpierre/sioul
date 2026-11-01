@@ -35,6 +35,7 @@ Once you set them up:
 - **A folder shows its last two weeks.** **Earlier messages** opens the rest, so that no list is endless.
 - **Search**, at the top of a folder: by sender, recipient and subject. **More…**, beside it, searches everywhere, by conditions ([below](#searching)).
 - **By conversation**, in the Mail page's ⚙: a message and its answers together, under the newest one; your own answers come from Sent.
+- **Quick to open**: each folder keeps a small index of what its messages say (who, to whom, the subject, the date), read from each message once, ever, and kept on this device alone, readable by you alone. A folder's list reads that index, never every message again; only the message you open is read whole.
 
 A right click on a folder offers **Keep a copy here** or **Stop keeping a copy** (the server keeps every message either way), **New folder…**, and **Delete this empty folder**, for an empty folder of yours.
 
@@ -74,7 +75,7 @@ A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as
 
 Opening a message marks it read, as any mail program does. Sioul never sends a read receipt.
 
-**A message opened from elsewhere** (what a task, an event, a note or a project is tied to, a link to a message written in a note, the message a money line in Budgets comes from, **Open the message** on a code's notification) opens in Mail's reader, the first time too, with the first inbox beside it. A link to a message is the same however it is written (`mid:<…>`, bare or encoded), and opens the copy that ranks first: the inbox before the archive, Sent, the junk, the trash and Gmail's "All Mail". A message that is not on this device now says so in the reader's place: "This message is not on this device now. It may have moved." 
+**A message opened from elsewhere** (what a task, an event, a note or a project is tied to, a link to a message written in a note, the message a money line in Budgets comes from, **Open the message** on a code's notification) opens in Mail's reader, the first time too, with the first inbox beside it. A link to a message is the same however it is written (`mid:<…>`, bare or encoded), and opens the copy that ranks first: the inbox before the archive, Sent, the junk, the trash and Gmail's "All Mail". A message that is not on this device now says so in the reader's place: "This message is not on this device now. It may have moved." A message without a Message-ID (rare, mostly spam) can be tied too: Sioul names it by a digest of its sender, recipients, date and subject, the same on every device. 
 
 ### Several at once {#several-at-once}
 

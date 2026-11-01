@@ -16,7 +16,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: chooser
 
     // Sioul's backend (backend.rs): its words in your language and what it does.
@@ -138,7 +138,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(560, (parent ? parent.width : 560) - 2 * chooser.theme.gap)
+    width: Math.min(560, (parent ? chooser.roomWidth : 560) - 2 * chooser.theme.gap)
     title: chooser.sioul.text("bitwarden-choose-title")
     // Closed before a large vault answered: nothing taken when it does.
     onClosed: {

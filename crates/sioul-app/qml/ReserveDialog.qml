@@ -12,7 +12,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: dialog
 
     required property var sioul
@@ -63,7 +63,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(460, (parent ? parent.width : 460) - 2 * dialog.theme.gap)
+    width: Math.min(460, (parent ? dialog.roomWidth : 460) - 2 * dialog.theme.gap)
     title: dialog.reserveId === "" ? dialog.sioul.text("reserve-new") : dialog.sioul.text("reserve-edit")
 
     contentItem: GridLayout {

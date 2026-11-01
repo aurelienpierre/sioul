@@ -17,7 +17,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: sheet
 
     required property var sioul
@@ -75,9 +75,9 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(520, (parent ? parent.width : 520) - 2 * sheet.theme.gap)
+    width: Math.min(520, (parent ? sheet.roomWidth : 520) - 2 * sheet.theme.gap)
     // Taller than the window: its content scrolls, the buttons stay.
-    height: Math.min(sheet.implicitHeight, (parent ? parent.height : 900) - 2 * sheet.theme.gap)
+    height: Math.min(sheet.implicitHeight, (parent ? sheet.roomHeight : 900) - 2 * sheet.theme.gap)
     title: sheet.view ? sheet.view.title : ""
     onOpened: closeButton.forceActiveFocus()
 

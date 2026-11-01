@@ -4,22 +4,20 @@
 //! Messages by their Message-ID, to follow `mid:` links (RFC 2392) from a
 //! task, a note or a budget line to the message itself.
 //!
-//! Only headers are read, and what was read is kept in a cache file
-//! (`$XDG_CACHE_HOME/sioul/mail-index.tsv`), by the part of a Maildir name
-//! that never changes: a new look reads only the messages that came since.
+//! Built from each folder's own index (`mailcache`: each message read once,
+//! ever, its line kept by the part of its file name that never changes); a
+//! look at everything lists each folder's names and reads those lines,
+//! writing only the lines of messages new to it. The older single file
+//! (`mail-index.tsv`) is neither read nor written.
 //!
 //! A message in several folders (Gmail's labels and "All Mail", Sent and the
 //! inbox, the inbox and the trash) keeps every copy, the one that ranks
 //! first in front (`folders::Role::rank`: the inbox, your own folders, the
 //! archive, Sent, the junk and the trash, "All Mail"), so that `mid:` opens
 //! that copy. The rank is found from each copy's folder at each build and is
-//! never written: the cache's lines are those every version of Sioul reads
-//! and writes.
+//! never written.
 
-use crate::maildir;
-use mail_parser::MessageParser;
 use std::collections::BTreeMap;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// One message, as a link shows it.
@@ -46,13 +44,21 @@ pub struct MailIndex {
     /// then as found: a message copied into two folders, or another message
     /// given the same ID (anyone who knows one can), each kept.
     paths: BTreeMap<String, Vec<PathBuf>>,
+    /// The messages without a Message-ID, by `<account>/<digest>`
+    /// (`mailcache::digest`), every copy, the one that ranks first in front.
+    digests: BTreeMap<String, Vec<MailRef>>,
+    /// The messages carrying an invitation, by its event's UID (the index's
+    /// column, read from its calendar part once): every copy, ranked.
+    invitations: BTreeMap<String, Vec<MailRef>>,
 }
 
-/// A Maildir root and the folders its account's server last listed
+/// A Maildir root, the account it is (its folders' indexes are kept under
+/// its id), and the folders its account's server last listed
 /// (`folders::saved`), which say what each of its folders is for; without
 /// them, a folder's purpose is read from its name.
 #[derive(Debug, Clone, Default)]
 pub struct Root {
+    pub account: String,
     pub path: PathBuf,
     pub folders: Vec<crate::folders::Folder>,
 }
@@ -81,34 +87,12 @@ pub fn bare_id(id: &str) -> String {
     decoded.trim().trim_start_matches('<').trim_end_matches('>').to_string()
 }
 
-/// The headers of a message file: what comes before the first empty line, at most 256 KB.
-fn headers_of(path: &Path) -> Option<Vec<u8>> {
-    let mut file = std::fs::File::open(path).ok()?;
-    let mut bytes = Vec::with_capacity(8192);
-    file.by_ref().take(256 * 1024).read_to_end(&mut bytes).ok()?;
-    let end = bytes.windows(4).position(|w| w == b"\r\n\r\n").map(|p| p + 4).or_else(|| bytes.windows(2).position(|w| w == b"\n\n").map(|p| p + 2)).unwrap_or(bytes.len());
-    bytes.truncate(end);
-    Some(bytes)
-}
-
-fn read_ref(path: &Path) -> Option<(String, MailRef)> {
-    let raw = headers_of(path)?;
-    let message = MessageParser::default().parse_headers(&raw[..])?;
-    let id = bare_id(message.message_id()?);
-    let sender = message.from().and_then(|a| a.first());
-    let from = sender.map(|a| a.name().or(a.address()).unwrap_or("").to_string()).unwrap_or_default();
-    let address = sender.and_then(|a| a.address()).unwrap_or("").to_lowercase();
-    let subject = message.subject().unwrap_or("").to_string();
-    let date = message.date().map_or(0, |d| d.to_timestamp());
-    let mut refs: Vec<String> = Vec::new();
-    for list in [message.in_reply_to().as_text_list(), message.references().as_text_list()].into_iter().flatten() {
-        for id in list.iter().map(|r| bare_id(r)).filter(|r| !r.is_empty()) {
-            if !refs.contains(&id) {
-                refs.push(id);
-            }
-        }
-    }
-    Some((id, MailRef { path: path.to_path_buf(), subject, from, address, date, refs }))
+/// A folder's indexes' key for a Maildir known by its path alone: "path-" and
+/// 16 hexadecimal digits of its path's hash.
+fn path_key(path: &Path) -> String {
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(path.display().to_string().as_bytes());
+    format!("path-{}", digest.iter().take(8).map(|b| format!("{b:02x}")).collect::<String>())
 }
 
 /// Every message file under a Maildir root: its folders' `cur` and `new`.
@@ -134,48 +118,53 @@ pub fn message_files(root: &Path) -> Vec<PathBuf> {
 }
 
 impl MailIndex {
-    /// Indexes the Maildirs under `roots`, reading only what `cache` does not
-    /// know yet; the cache is written back. Each folder's purpose is read
-    /// from its name (`build_ranked` takes the servers' word for it).
-    pub fn build(roots: &[PathBuf], cache: &Path) -> MailIndex {
-        let roots: Vec<Root> = roots.iter().map(|path| Root { path: path.clone(), folders: Vec::new() }).collect();
-        MailIndex::build_ranked(&roots, cache)
+    /// Indexes the Maildirs under `roots` (a test's, a look at draft copies),
+    /// each folder's index kept under a key made from its path; each
+    /// folder's purpose read from its name (`build_ranked` takes the servers'
+    /// word for it).
+    pub fn build(roots: &[PathBuf]) -> MailIndex {
+        let roots: Vec<Root> = roots.iter().map(|path| Root { account: path_key(path), path: path.clone(), folders: Vec::new() }).collect();
+        MailIndex::build_ranked(&roots)
     }
 
     /// The Maildirs of these accounts' addresses, each with its saved folders.
     pub fn roots_of(config: &crate::config::Config) -> Vec<Root> {
-        config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| Root { path: a.maildir_path(), folders: crate::folders::saved(&a.id) }).collect()
+        config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| Root { account: a.id.clone(), path: a.maildir_path(), folders: crate::folders::saved(&a.id) }).collect()
     }
 
-    /// `build`, each copy ranked by its folder's purpose as `roots` say it.
-    pub fn build_ranked(roots: &[Root], cache: &Path) -> MailIndex {
-        // unique part → (id, subject, from, address, date, refs); a line of an
-        // older form, without the address or the refs, is read from its file again.
-        let mut known: BTreeMap<String, (String, String, String, String, i64, Vec<String>)> = BTreeMap::new();
-        for line in std::fs::read_to_string(cache).unwrap_or_default().lines() {
-            let fields: Vec<&str> = line.split('\t').collect();
-            if let [unique, id, subject, from, address, date, refs] = fields[..] {
-                let refs = refs.split(' ').filter(|r| !r.is_empty()).map(str::to_string).collect();
-                known.insert(unique.to_string(), (id.to_string(), subject.to_string(), from.to_string(), address.to_string(), date.parse().unwrap_or(0), refs));
-            }
-        }
+    /// The messages of these Maildirs by their folders' indexes
+    /// (`mailcache::folder`), each copy ranked by its folder's purpose.
+    pub fn build_ranked(roots: &[Root]) -> MailIndex {
         let mut index = MailIndex::default();
-        let mut fresh: Vec<String> = Vec::new();
-        // Every copy of each Message-ID, with its rank, in the order found.
+        // Every copy of each Message-ID, and of each digest, with its rank, in the order found.
         let mut copies: BTreeMap<String, Vec<(u8, MailRef)>> = BTreeMap::new();
-        for (root, path) in roots.iter().flat_map(|r| message_files(&r.path).into_iter().map(move |p| (r, p))) {
-            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let unique = maildir::unique_part(&name).to_string();
-            let (id, mail) = match known.get(&unique) {
-                Some((id, subject, from, address, date, refs)) => (id.clone(), MailRef { path: path.clone(), subject: subject.clone(), from: from.clone(), address: address.clone(), date: *date, refs: refs.clone() }),
-                None => match read_ref(&path) {
-                    Some(found) => found,
-                    None => continue,
-                },
-            };
-            let clean = |t: &str| t.replace(['\t', '\n', '\r'], " ");
-            fresh.push(format!("{unique}\t{}\t{}\t{}\t{}\t{}\t{}", clean(&id), clean(&mail.subject), clean(&mail.from), clean(&mail.address), mail.date, clean(&mail.refs.join(" "))));
-            copies.entry(id).or_default().push((role_of(root, &path).rank(), mail));
+        let mut digests: BTreeMap<String, Vec<(u8, MailRef)>> = BTreeMap::new();
+        let mut invitations: BTreeMap<String, Vec<(u8, MailRef)>> = BTreeMap::new();
+        for root in roots {
+            for local in crate::mailcache::folders(&root.path) {
+                for (path, line) in crate::mailcache::folder(&root.account, &root.path, &local) {
+                    let rank = role_of(root, &path).rank();
+                    let mail = MailRef {
+                        path,
+                        subject: line.subject.clone(),
+                        from: line.from_name.clone().or_else(|| line.from_address.clone()).unwrap_or_default(),
+                        address: line.from_address.clone().unwrap_or_default(),
+                        date: line.date.unwrap_or(0),
+                        refs: line.refs(),
+                    };
+                    if let Some(uid) = &line.invitation {
+                        invitations.entry(uid.clone()).or_default().push((rank, mail.clone()));
+                    }
+                    match line.message_id.as_deref().map(bare_id).filter(|id| !id.is_empty()) {
+                        Some(id) => copies.entry(id).or_default().push((rank, mail)),
+                        None => {
+                            if let Some(digest) = &line.digest {
+                                digests.entry(format!("{}/{digest}", root.account)).or_default().push((rank, mail));
+                            }
+                        }
+                    }
+                }
+            }
         }
         // The copy that ranks first in front; copies of one rank as found.
         for (id, mut found) in copies {
@@ -185,15 +174,43 @@ impl MailIndex {
                 index.by_id.insert(id, first);
             }
         }
-        if let Some(parent) = cache.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        for (key, mut found) in digests {
+            found.sort_by_key(|(rank, _)| *rank);
+            index.digests.insert(key, found.into_iter().map(|(_, mail)| mail).collect());
         }
-        let _ = std::fs::write(cache, fresh.join("\n"));
+        for (uid, mut found) in invitations {
+            found.sort_by_key(|(rank, _)| *rank);
+            index.invitations.insert(uid, found.into_iter().map(|(_, mail)| mail).collect());
+        }
         index
     }
 
-    /// The message with this Message-ID ("abc@x", "<abc@x>" or "mid:abc@x").
+    /// The messages carrying an invitation to the event `uid`, every copy,
+    /// the ones that rank first in front: no message read again.
+    pub fn invitations(&self, uid: &str) -> &[MailRef] {
+        self.invitations.get(uid).map_or(&[], Vec::as_slice)
+    }
+
+    /// The copies of a message without a Message-ID, by its account and its
+    /// digest, the one that ranks first in front.
+    pub fn by_digest(&self, account: &str, digest: &str) -> &[MailRef] {
+        self.digests.get(&format!("{account}/{digest}")).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every message without a Message-ID, by its address (`sioul:mail/…`), the copy that ranks first.
+    pub fn without_id(&self) -> impl Iterator<Item = (String, &MailRef)> {
+        self.digests.iter().filter_map(|(key, copies)| {
+            let (account, digest) = key.split_once('/')?;
+            Some((crate::links::digest_uri(account, digest), copies.first()?))
+        })
+    }
+
+    /// The message with this Message-ID ("abc@x", "<abc@x>" or "mid:abc@x"),
+    /// or this address of a message without one (`sioul:mail/<account>/<digest>`).
     pub fn get(&self, id: &str) -> Option<&MailRef> {
+        if let Some(crate::mailfind::Address::Digest { account, digest }) = id.trim().starts_with(crate::mailfind::DIGEST_SCHEME).then(|| crate::mailfind::Address::parse(id)).flatten() {
+            return self.by_digest(&account, &digest).first();
+        }
         self.by_id.get(&bare_id(id))
     }
 
@@ -295,6 +312,7 @@ impl<'a> Threads<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::maildir;
 
     #[test]
     fn finds_messages_by_id_and_remembers_them() {
@@ -307,15 +325,14 @@ mod tests {
         let named = |flags: &str| format!("1.U1-1.sioul{}2,{flags}", maildir::INFO);
         std::fs::write(inbox.join(named("S")), "Message-ID: <abc@caf.example>\r\nFrom: CAF <ne-pas-repondre@caf.example>\r\nSubject: Votre dossier\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nBody\r\n").unwrap();
         std::fs::write(root.join(".Sent").join("new").join("2.U1-2.sioul"), "Message-ID: <sent@example.net>\nSubject: Re: Votre dossier\n\nHi\n").unwrap();
-        let cache = root.join("cache.tsv");
-        let index = MailIndex::build(std::slice::from_ref(&root), &cache);
+        let index = MailIndex::build(std::slice::from_ref(&root));
         assert_eq!(index.len(), 2);
         let found = index.get("mid:abc@caf.example").unwrap();
         assert_eq!((found.subject.as_str(), found.from.as_str()), ("Votre dossier", "CAF"));
         assert_eq!(index.get("<sent@example.net>").unwrap().subject, "Re: Votre dossier");
-        // From the cache, the file renamed by a flag still found.
+        // From the folder's index, the file renamed by a flag still found.
         std::fs::rename(inbox.join(named("S")), inbox.join(named("FS"))).unwrap();
-        let again = MailIndex::build(&[root.clone()], &cache);
+        let again = MailIndex::build(&[root.clone()]);
         assert!(again.get("abc@caf.example").unwrap().path.ends_with(named("FS")));
         std::fs::remove_dir_all(&root).unwrap();
     }
@@ -347,14 +364,14 @@ mod tests {
             Folder { name: "[Gmail]/All Mail".into(), display: "All Mail".into(), role: Role::All, local: ".[Gmail].All Mail".into(), special: true },
             Folder { name: "Bin".into(), display: "Bin".into(), role: Role::Trash, local: ".Bin".into(), special: true },
         ];
-        let roots = [Root { path: first.clone(), folders }, Root { path: second.clone(), folders: vec![Folder { name: "Archives".into(), display: "Archives".into(), role: Role::Archive, local: ".Archives".into(), special: true }] }];
-        let index = MailIndex::build_ranked(&roots, &base.join("cache.tsv"));
+        let roots = [Root { account: format!("first-{}", std::process::id()), path: first.clone(), folders }, Root { account: format!("second-{}", std::process::id()), path: second.clone(), folders: vec![Folder { name: "Archives".into(), display: "Archives".into(), role: Role::Archive, local: ".Archives".into(), special: true }] }];
+        let index = MailIndex::build_ranked(&roots);
         assert_eq!(index.get("mid:one@example.org").map(|m| m.path.clone()), Some(inbox.clone()), "the inbox's copy");
         assert_eq!(index.paths("one@example.org").len(), 3, "every copy kept");
         assert_eq!(index.paths("one@example.org")[0], inbox);
         assert_eq!(index.get("two@example.org").map(|m| m.path.clone()), Some(archive), "the archive's copy, not the trash's");
         // By names alone, without the servers' word: the inbox before ".Trash".
-        let plain = MailIndex::build(&[first.clone(), second.clone()], &base.join("cache.tsv"));
+        let plain = MailIndex::build(&[first.clone(), second.clone()]);
         assert_eq!(plain.get("one@example.org").map(|m| m.path.clone()), Some(inbox));
         assert!(plain.paths("one@example.org").contains(&trash));
         std::fs::remove_dir_all(&base).unwrap();

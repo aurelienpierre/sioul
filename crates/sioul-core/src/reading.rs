@@ -405,6 +405,11 @@ fn escape(text: &str) -> String {
 pub fn calendar(path: &Path) -> Option<String> {
     let raw = std::fs::read(path).ok()?;
     let message = MessageParser::default().parse(&raw)?;
+    calendar_in(&message)
+}
+
+/// `calendar`, of a message parsed already.
+pub fn calendar_in(message: &mail_parser::Message<'_>) -> Option<String> {
     let mut found: Vec<String> = message
         .parts
         .iter()

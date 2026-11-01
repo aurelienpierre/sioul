@@ -41,11 +41,9 @@
 //! numbering is forgotten once the folder holds no file of it.
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sioul_core::card::ImapOrigin;
 use sioul_core::maildir;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// One old copy to remove, and the new copy it was paired with, if any.
@@ -72,40 +70,14 @@ fn numbered(root: &Path) -> Vec<(PathBuf, ImapOrigin)> {
     out
 }
 
-/// A message's headers: what comes before its first empty line, at most 256 KB.
-fn headers(path: &Path) -> Option<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(8192);
-    std::fs::File::open(path).ok()?.take(256 * 1024).read_to_end(&mut bytes).ok()?;
-    let end = bytes.windows(4).position(|w| w == b"\r\n\r\n").or_else(|| bytes.windows(2).position(|w| w == b"\n\n"))?;
-    bytes.truncate(end);
-    Some(bytes)
-}
-
-/// The header fields as the file holds them, each with its folded lines,
-/// line endings as "\n": (lowercase name, the whole field).
-fn fields(raw: &[u8]) -> Vec<(String, String)> {
-    let text = String::from_utf8_lossy(raw).replace("\r\n", "\n");
-    let mut out: Vec<(String, String)> = Vec::new();
-    for line in text.split('\n') {
-        if line.starts_with([' ', '\t']) {
-            if let Some((_, field)) = out.last_mut() {
-                field.push('\n');
-                field.push_str(line);
-            }
-        } else if let Some((name, _)) = line.split_once(':') {
-            out.push((name.trim().to_ascii_lowercase(), line.to_string()));
-        }
-    }
-    out
-}
-
 /// What names a copy for the pairing: "id:" and its Message-ID (angle
 /// brackets off), else "digest:" and 16 hexadecimal digits of SHA-256 over
 /// its From, To, Date and Subject fields as the file holds them (the
 /// mailbox's §3.1: the server gives every device the same bytes). None when
 /// its headers do not read.
 pub fn key_of(path: &Path) -> Option<String> {
-    let fields = fields(&headers(path)?);
+    let raw = sioul_core::mailcache::headers_of(path)?;
+    let fields = sioul_core::mailcache::header_fields(&raw);
     if fields.is_empty() {
         return None;
     }
@@ -116,15 +88,8 @@ pub fn key_of(path: &Path) -> Option<String> {
             return Some(format!("id:{id}"));
         }
     }
-    let mut hasher = Sha256::new();
-    for wanted in ["from", "to", "date", "subject"] {
-        if let Some((_, field)) = fields.iter().find(|(name, _)| name == wanted) {
-            hasher.update(field.as_bytes());
-        }
-        hasher.update(b"\n");
-    }
-    let digest = hasher.finalize();
-    Some(format!("digest:{}", digest.iter().take(8).map(|b| format!("{b:02x}")).collect::<String>()))
+    // The program's one digest (`mailcache::digest`): the address of such a message names it too.
+    Some(format!("digest:{}", sioul_core::mailcache::digest(&raw)))
 }
 
 /// What may go of a folder's old copies.
@@ -141,22 +106,20 @@ pub struct Plan {
 /// The old copies that may go from the folder at `root`, whose current
 /// UIDVALIDITY is `validity`. `recorded` is what the sync state records of the
 /// folder: its UIDVALIDITY and whether it is fetched whole; `left`, the
-/// numberings this device saw it leave (`Left`); `shared`, whether another
-/// address's Maildir covers its directory (`shared`). Nothing in a shared
-/// directory; nothing while the state does not record `validity` (the new
-/// numbering's first window not fetched yet); nothing when the folder holds no
-/// old copy (then no file is read).
-pub fn plan(root: &Path, validity: u32, recorded: Option<(u32, bool)>, left: &BTreeSet<u32>, shared: bool) -> Plan {
-    if shared {
-        return Plan::default();
-    }
+/// numberings this device saw it leave (`Left`); `shared`, asked only once
+/// old copies are there (it reads the configuration), whether another
+/// address's Maildir covers its directory (`shared_with_others`). Nothing in a
+/// shared directory; nothing while the state does not record `validity` (the
+/// new numbering's first window not fetched yet); nothing when the folder
+/// holds no old copy (then no file is read, and `shared` is not asked).
+pub fn plan(root: &Path, validity: u32, recorded: Option<(u32, bool)>, left: &BTreeSet<u32>, shared: impl FnOnce() -> bool) -> Plan {
     let Some((recorded_validity, whole)) = recorded else { return Plan::default() };
     if recorded_validity != validity {
         return Plan::default();
     }
     let files = numbered(root);
     let (current, old): (Vec<_>, Vec<_>) = files.into_iter().partition(|(_, origin)| origin.validity == validity);
-    if old.is_empty() {
+    if old.is_empty() || shared() {
         return Plan::default();
     }
     // The new numbering's copies by key, each paired once at most.
@@ -354,7 +317,7 @@ mod tests {
         let folder = Folder::new("matched");
         let old = folder.put(1, 5, &message("a@example.org", "Hello"));
         let new = folder.put(2, 9, &message("a@example.org", "Hello"));
-        let plan = plan(&folder.root, 2, Some((2, false)), &left(&[1]), false);
+        let plan = plan(&folder.root, 2, Some((2, false)), &left(&[1]), || false);
         assert_eq!(plan.paired, [Removal { path: old.clone(), old: origin(1, 5), new: Some(origin(2, 9)) }]);
         let log = folder.root.join("removed.log");
         assert_eq!(remove(&plan.paired, "INBOX", &log), 1);
@@ -372,8 +335,8 @@ mod tests {
         let folder = Folder::new("unmatched");
         let old = folder.put(1, 6, &message("b@example.org", "Older"));
         folder.put(2, 1, &message("c@example.org", "Newer"));
-        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), false), Plan::default(), "not whole: kept");
-        let whole = plan(&folder.root, 2, Some((2, true)), &left(&[1]), false);
+        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), || false), Plan::default(), "not whole: kept");
+        let whole = plan(&folder.root, 2, Some((2, true)), &left(&[1]), || false);
         assert_eq!(whole.unmatched, [Removal { path: old.clone(), old: origin(1, 6), new: None }]);
         let mut record = Left::default();
         assert!(record.note("INBOX", 1));
@@ -395,7 +358,7 @@ mod tests {
         let paired = folder.put(1, 5, &message("a@example.org", "Hello"));
         folder.put(2, 9, &message("a@example.org", "Hello"));
         folder.put(1, 6, &message("b@example.org", "Older"));
-        let plan = plan(&folder.root, 2, Some((2, true)), &left(&[]), false);
+        let plan = plan(&folder.root, 2, Some((2, true)), &left(&[]), || false);
         assert_eq!(plan.paired, [Removal { path: paired, old: origin(1, 5), new: Some(origin(2, 9)) }]);
         assert!(plan.unmatched.is_empty(), "never noted as left: what nothing pairs with stays");
     }
@@ -408,7 +371,7 @@ mod tests {
         let folder = Folder::new("server");
         let old = folder.put(1, 6, &message("b@example.org", "Older"));
         folder.put(2, 9, &message("c@example.org", "Newer"));
-        let plan = plan(&folder.root, 2, Some((2, true)), &left(&[1]), false);
+        let plan = plan(&folder.root, 2, Some((2, true)), &left(&[1]), || false);
         let here = left(&[9]);
         assert!(confirmed(plan.unmatched.clone(), [9, 10], &here).is_empty(), "UID 10 is not here");
         assert_eq!(confirmed(plan.unmatched, [9], &here), [Removal { path: old, old: origin(1, 6), new: None }]);
@@ -428,8 +391,22 @@ mod tests {
         assert!(shared(&folder.root.join(".Sub"), &[folder.root.clone()]), "this one inside another's");
         assert!(!shared(&folder.root, &[folder.root.with_file_name("sioul-renumbered-elsewhere")]), "beside it: not shared");
         for validity in [2, 1] {
-            assert_eq!(plan(&folder.root, validity, Some((validity, true)), &left(&[1, 2]), true), Plan::default(), "numbering {validity}");
+            assert_eq!(plan(&folder.root, validity, Some((validity, true)), &left(&[1, 2]), || true), Plan::default(), "numbering {validity}");
         }
+        // Asked only once old copies are there: a folder without any reads no configuration.
+        let current = Folder::new("current-only");
+        current.put(2, 5, &message("a@example.org", "Hello"));
+        let asked = std::cell::Cell::new(0);
+        assert_eq!(plan(&current.root, 2, Some((2, true)), &left(&[1]), || {
+            asked.set(asked.get() + 1);
+            false
+        }), Plan::default());
+        assert_eq!(asked.get(), 0, "no old copy: the configuration is not read");
+        plan(&folder.root, 2, Some((2, true)), &left(&[1]), || {
+            asked.set(asked.get() + 1);
+            true
+        });
+        assert_eq!(asked.get(), 1, "old copies: asked once");
     }
 
     /// The numbering a folder leaves is noted when the server gives another:
@@ -449,7 +426,9 @@ mod tests {
         let old = folder.put(1, 7, lines);
         let new = folder.put(2, 10, lines);
         assert!(key_of(&old).unwrap().starts_with("digest:"));
-        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), false).paired, [Removal { path: old, old: origin(1, 7), new: Some(origin(2, 10)) }]);
+        // The program's one digest: the one an address and the index name such a message by.
+        assert_eq!(key_of(&old).unwrap(), format!("digest:{}", sioul_core::mailcache::digest(&std::fs::read(&old).unwrap())));
+        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), || false).paired, [Removal { path: old, old: origin(1, 7), new: Some(origin(2, 10)) }]);
         assert!(new.exists());
     }
 
@@ -461,7 +440,7 @@ mod tests {
         folder.put(1, 8, &message("c@example.org", "Hello"));
         folder.put(2, 11, &message("d@example.org", "Hello"));
         folder.put(1, 12, "From: Ana <ana@example.org>\r\nTo: me@example.org\r\nDate: Fri, 30 Oct 2026 09:00:00 +0100\r\nSubject: Hello");
-        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), false), Plan::default());
+        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), || false), Plan::default());
     }
 
     /// The new numbering not recorded yet (its first window not fetched, or
@@ -472,8 +451,8 @@ mod tests {
         let old = folder.put(1, 5, &message("a@example.org", "Hello"));
         folder.put(2, 9, &message("a@example.org", "Hello"));
         folder.put(1, 6, &message("b@example.org", "Older"));
-        assert_eq!(plan(&folder.root, 2, None, &left(&[1]), false), Plan::default(), "nothing recorded");
-        assert_eq!(plan(&folder.root, 2, Some((1, true)), &left(&[1]), false), Plan::default(), "the old numbering still recorded");
+        assert_eq!(plan(&folder.root, 2, None, &left(&[1]), || false), Plan::default(), "nothing recorded");
+        assert_eq!(plan(&folder.root, 2, Some((1, true)), &left(&[1]), || false), Plan::default(), "the old numbering still recorded");
         assert!(old.exists());
     }
 
@@ -487,8 +466,8 @@ mod tests {
         folder.put(2, 9, &message("a@example.org", "Hello"));
         let unreadable = folder.root.join("cur").join(format!("1777000000.U1-7.sioul{}2,S", maildir::INFO));
         std::fs::write(&unreadable, "no headers at all").unwrap();
-        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), false), Plan { paired: vec![Removal { path: first, old: origin(1, 5), new: Some(origin(2, 9)) }], unmatched: Vec::new() });
-        let whole = plan(&folder.root, 2, Some((2, true)), &left(&[1]), false);
+        assert_eq!(plan(&folder.root, 2, Some((2, false)), &left(&[1]), || false), Plan { paired: vec![Removal { path: first, old: origin(1, 5), new: Some(origin(2, 9)) }], unmatched: Vec::new() });
+        let whole = plan(&folder.root, 2, Some((2, true)), &left(&[1]), || false);
         assert_eq!(whole.unmatched.iter().map(|r| r.path.clone()).collect::<Vec<_>>(), [second]);
         assert!(!whole.paired.iter().chain(&whole.unmatched).any(|r| r.path == unreadable), "unreadable: kept");
     }
@@ -501,8 +480,8 @@ mod tests {
         let elsewhere = archive.put(1, 5, &message("a@example.org", "Hello"));
         inbox.put(2, 9, &message("a@example.org", "Hello"));
         inbox.put(1, 3, &message("e@example.org", "Mine"));
-        assert_eq!(plan(&inbox.root, 2, Some((2, false)), &left(&[1]), false), Plan::default());
-        assert_eq!(plan(&archive.root, 1, Some((1, true)), &left(&[]), false), Plan::default(), "the archive's own numbering: its copy is current");
+        assert_eq!(plan(&inbox.root, 2, Some((2, false)), &left(&[1]), || false), Plan::default());
+        assert_eq!(plan(&archive.root, 1, Some((1, true)), &left(&[]), || false), Plan::default(), "the archive's own numbering: its copy is current");
         assert!(elsewhere.exists());
     }
 }

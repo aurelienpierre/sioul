@@ -17,7 +17,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: unlock
 
     // Sioul's backend (backend.rs): its words in your language and what it does.
@@ -194,7 +194,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(460, (parent ? parent.width : 460) - 2 * unlock.theme.gap)
+    width: Math.min(460, (parent ? unlock.roomWidth : 460) - 2 * unlock.theme.gap)
     title: unlock.sioul.text("bitwarden-unlock")
     onClosed: {
         secret.text = ""

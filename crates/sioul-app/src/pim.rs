@@ -1039,8 +1039,8 @@ pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
 /// The message that brought a meeting's invitation, while it is in your
 /// mail: its file, for the card's Answer… (the unified agenda, part 4); ""
 /// when none is known. The newest of its organizer's messages whose calendar
-/// names this event's UID, among those the last read knows: only those few
-/// messages are opened here, never the stores.
+/// names this event's UID, among those the last read knows (each folder's
+/// index keeps that UID): the event's file is read, no message.
 pub(crate) fn invitation_of(shared: &Shared, key: &str) -> String {
     let Some(path) = ours(key) else { return String::new() };
     let Ok(text) = std::fs::read_to_string(&path) else { return String::new() };
@@ -1050,15 +1050,12 @@ pub(crate) fn invitation_of(shared: &Shared, key: &str) -> String {
     let Some(uid) = uid_of(&text) else { return String::new() };
     let organizer = sioul_core::lines::unfold(&text).iter().find(|l| sioul_core::lines::name(l) == "ORGANIZER").map(|l| sioul_core::lines::value(l).trim().trim_start_matches("mailto:").trim_start_matches("MAILTO:").to_ascii_lowercase()).unwrap_or_default();
     let Some(loaded) = crate::work::loaded_known(shared) else { return String::new() };
-    let mut theirs: Vec<&sioul_core::mailindex::MailRef> = loaded.mail.iter().map(|(_, m)| m).filter(|m| !organizer.is_empty() && m.address == organizer).collect();
+    // By the event's UID, as each folder's index read it from the message's
+    // calendar part once (`mailcache`): no message read here. The organizer's
+    // own, the newest; of its copies, the one that ranks first.
+    let mut theirs: Vec<&sioul_core::mailindex::MailRef> = loaded.mail.invitations(&uid).iter().filter(|m| !organizer.is_empty() && m.address == organizer).collect();
     theirs.sort_by_key(|m| std::cmp::Reverse(m.date));
-    let zone = sioul_core::zone::current();
-    theirs
-        .into_iter()
-        .take(8)
-        .find(|m| reading::calendar(&m.path).and_then(|ics| agenda::invitation(&ics, &zone)).is_some_and(|asked| asked.uid == uid))
-        .map(|m| m.path.display().to_string())
-        .unwrap_or_default()
+    theirs.first().map(|m| m.path.display().to_string()).unwrap_or_default()
 }
 
 /// The event file with this UID, in any calendar.
@@ -1927,5 +1924,48 @@ mod tests {
         assert!(!stopped.contains("example"));
         assert!(watchers_line(0, 0, 0).contains("0 contacts-and-calendars account(s) here") && watchers_line(0, 0, 0).contains("none of a server's"));
         assert!(watchers_line(1, 1, 0).contains("1 switched off"));
+    }
+
+    /// A meeting's invitation, found by its event's UID in the folders'
+    /// indexes (the organizer's newest, the inbox's copy before "All Mail"),
+    /// on the window's thread without reading one message.
+    #[test]
+    fn an_invitation_is_found_by_its_events_uid() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "invitation by uid", None, &["VEVENT"]).unwrap();
+        let event = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:review-42\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20991028T090000Z\r\nDTEND:20991028T100000Z\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let file = calendar.dir.join("review.ics");
+        std::fs::write(&file, event).unwrap();
+        let root = sioul_core::config::data_dir().join(format!("invitation-uid-{}", std::process::id()));
+        let all = root.join(".All Mail");
+        for dir in [&root, &all] {
+            for sub in ["tmp", "new", "cur"] {
+                std::fs::create_dir_all(dir.join(sub)).unwrap();
+            }
+        }
+        let message = |dir: &Path, uid: u32, from: &str, date: &str| {
+            let path = dir.join("cur").join(format!("17770000{uid:02}.U7-{uid}.sioul{}2,S", maildir::INFO));
+            let raw = format!("Message-ID: <invite-{uid}@example.org>\r\nFrom: <{from}>\r\nTo: me@example.org\r\nDate: {date}\r\nSubject: Review\r\nMIME-Version: 1.0\r\nContent-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n\r\n{}", event.replace("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n", "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n"));
+            std::fs::write(&path, raw).unwrap();
+            path
+        };
+        message(&root, 1, "boss@example.org", "Mon, 26 Oct 2026 09:00:00 +0100");
+        let newest = message(&root, 2, "boss@example.org", "Tue, 27 Oct 2026 09:00:00 +0100");
+        let mut copy = std::fs::read(&newest).unwrap();
+        std::fs::write(all.join("cur").join(format!("1777000003.U7-3.sioul{}2,S", maildir::INFO)), &copy).unwrap();
+        // The same UID from someone who is not its organizer, newer still.
+        copy = String::from_utf8(copy).unwrap().replace("boss@example.org>", "eve@example.org>").replace("invite-2@", "invite-4@").replace("27 Oct", "28 Oct").into_bytes();
+        std::fs::write(root.join("cur").join(format!("1777000004.U7-4.sioul{}2,S", maildir::INFO)), &copy).unwrap();
+        let roots = [sioul_core::mailindex::Root { account: format!("invitation-uid-{}", std::process::id()), path: root.clone(), folders: Vec::new() }];
+        let shared = Shared::default();
+        *shared.loaded.lock().unwrap() = Some(Arc::new(sioul_core::links::Loaded { mail: sioul_core::mailindex::MailIndex::build_ranked(&roots), ..Default::default() }));
+        maildir::parses_reset();
+        assert_eq!(invitation_of(&shared, &file.display().to_string()), newest.display().to_string());
+        assert_eq!(maildir::parses(), 0, "no message read");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        if let Some(dir) = sioul_core::mailcache::account_dir(&roots[0].account) {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }

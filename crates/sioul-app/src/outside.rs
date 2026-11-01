@@ -319,13 +319,41 @@ fn socket() -> Option<std::path::PathBuf> {
     (path.as_os_str().len() < 100).then_some(path)
 }
 
+/// What became of what a second Sioul handed to the first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HandOver {
+    /// The Sioul open took it: this one has nothing more to do.
+    Taken,
+    /// None open, or one that does not answer (frozen): this one opens, and listens (`listen`).
+    NoneOpen,
+    /// An older Sioul is open: it read the request and ended the talk
+    /// without taking it (calendar files alone, which it does not know).
+    Older,
+}
+
 /// Another Sioul of this profile is open: `addresses` and calendar files
-/// (`calendars`) handed to it (with none, its window brought forward), and
-/// true: this one has nothing more to do. False when none answers: this one
-/// opens, and listens (`listen`).
+/// (`calendars`) handed to it (with none, its window brought forward).
 #[cfg(all(unix, not(target_os = "android")))]
-pub(crate) fn hand_over(addresses: &[String], calendars: &[std::path::PathBuf]) -> bool {
-    !alone() && socket().is_some_and(|path| hand_over_at(&path, addresses, calendars, own_token()))
+pub(crate) fn hand_over(addresses: &[String], calendars: &[std::path::PathBuf]) -> HandOver {
+    if alone() {
+        return HandOver::NoneOpen;
+    }
+    socket().map_or(HandOver::NoneOpen, |path| hand_over_at(&path, addresses, calendars, own_token()))
+}
+
+/// Calendar files an older Sioul, open, did not take: kept for the next
+/// window of this version (they wait in `calendarfile::folder`), the older
+/// window brought forward, and said in a notice: restarting Sioul shows them.
+#[cfg(all(unix, not(target_os = "android")))]
+pub(crate) fn to_older(calendars: &[std::path::PathBuf]) {
+    crate::calendarfile::keep_all(calendars);
+    if let Some(path) = socket() {
+        let _ = hand_over_at(&path, &[], &[], own_token());
+    }
+    let names: Vec<String> = calendars.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).collect();
+    if let Err(e) = sioul_sync::notify::remind("Sioul", &say("calendar-file-older", &[("files", names.join(", "))]), None) {
+        eprintln!("Sioul: {e}");
+    }
 }
 
 /// The window's pictures and the demo (SIOUL_GRAB, SIOUL_DEMO) run beside
@@ -337,9 +365,12 @@ fn alone() -> bool {
 }
 
 #[cfg(not(all(unix, not(target_os = "android"))))]
-pub(crate) fn hand_over(_addresses: &[String], _calendars: &[std::path::PathBuf]) -> bool {
-    false
+pub(crate) fn hand_over(_addresses: &[String], _calendars: &[std::path::PathBuf]) -> HandOver {
+    HandOver::NoneOpen
 }
+
+#[cfg(not(all(unix, not(target_os = "android"))))]
+pub(crate) fn to_older(_calendars: &[std::path::PathBuf]) {}
 
 /// The token a desktop gives the program it starts, on Wayland, so that the
 /// window it opens may come to the front (xdg-activation-v1: the launcher's
@@ -380,14 +411,14 @@ fn activate_with_token() {
 }
 
 #[cfg(all(unix, not(target_os = "android")))]
-fn hand_over_at(path: &std::path::Path, addresses: &[String], calendars: &[std::path::PathBuf], token: Option<String>) -> bool {
+fn hand_over_at(path: &std::path::Path, addresses: &[String], calendars: &[std::path::PathBuf], token: Option<String>) -> HandOver {
     use std::io::{BufRead, BufReader, Write};
-    let Ok(mut stream) = std::os::unix::net::UnixStream::connect(path) else { return false };
+    let Ok(mut stream) = std::os::unix::net::UnixStream::connect(path) else { return HandOver::NoneOpen };
     let wait = Some(std::time::Duration::from_secs(5));
     let _ = stream.set_read_timeout(wait);
     let _ = stream.set_write_timeout(wait);
     // Calendar files alone go without "open": a Sioul older than them answers
-    // only "open", so it does not answer, and this one opens with the file.
+    // only "open", so it ends the talk without a word (`HandOver::Older`).
     let mut asked = serde_json::json!({ "activation": token });
     if !addresses.is_empty() || calendars.is_empty() {
         asked["open"] = serde_json::json!(addresses);
@@ -397,11 +428,16 @@ fn hand_over_at(path: &std::path::Path, addresses: &[String], calendars: &[std::
     }
     let asked = asked.to_string();
     if stream.write_all(format!("{asked}\n").as_bytes()).is_err() {
-        return false;
+        return HandOver::NoneOpen;
     }
     let mut answer = String::new();
-    // An open Sioul that does not answer (frozen): this one opens all the same.
-    BufReader::new(stream).read_line(&mut answer).is_ok() && answer.trim() == "ok"
+    match BufReader::new(stream).read_line(&mut answer) {
+        Ok(_) if answer.trim() == "ok" => HandOver::Taken,
+        // The talk ended without "ok": a Sioul that does not know what was asked.
+        Ok(_) => HandOver::Older,
+        // An open Sioul that does not answer (frozen): this one opens all the same.
+        Err(_) => HandOver::NoneOpen,
+    }
 }
 
 /// The first Sioul of this profile listens for those started after it: their
@@ -549,29 +585,29 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("s.sock");
         // None open: this one opens.
-        assert!(!hand_over_at(&path, &["mailto:a@example.org".into()], &[], None));
+        assert_eq!(hand_over_at(&path, &["mailto:a@example.org".into()], &[], None), HandOver::NoneOpen);
         // A socket left by a Sioul that ended is replaced.
         drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
         let (send, heard) = std::sync::mpsc::channel();
         listen_at(&path, move |addresses, calendars: Vec<std::path::PathBuf>, token| send.send((addresses, calendars, token)).unwrap()).unwrap();
         let next = || heard.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
-        assert!(hand_over_at(&path, &["mailto:a@example.org?subject=Hi".into()], &[], None));
+        assert_eq!(hand_over_at(&path, &["mailto:a@example.org?subject=Hi".into()], &[], None), HandOver::Taken);
         assert_eq!(next(), (vec!["mailto:a@example.org?subject=Hi".to_string()], Vec::new(), None));
         // A plain start: nothing to write, the window brought forward.
-        assert!(hand_over_at(&path, &[], &[], None));
+        assert_eq!(hand_over_at(&path, &[], &[], None), HandOver::Taken);
         assert!(next().0.is_empty());
         // Only mailto: addresses are taken from another process.
-        assert!(hand_over_at(&path, &["file:///etc/passwd".into(), "mailto:b@example.org".into()], &[], None));
+        assert_eq!(hand_over_at(&path, &["file:///etc/passwd".into(), "mailto:b@example.org".into()], &[], None), HandOver::Taken);
         assert_eq!(next().0, ["mailto:b@example.org"]);
         // The desktop's activation token goes with the link, so that its
         // draft may come to the front; what is not a token stays behind.
-        assert!(hand_over_at(&path, &["mailto:c@example.org".into()], &[], Some("kwin-1234_abcd".into())));
+        assert_eq!(hand_over_at(&path, &["mailto:c@example.org".into()], &[], Some("kwin-1234_abcd".into())), HandOver::Taken);
         assert_eq!(next(), (vec!["mailto:c@example.org".to_string()], Vec::new(), Some("kwin-1234_abcd".to_string())));
-        assert!(hand_over_at(&path, &[], &[], Some("two words\n".into())));
+        assert_eq!(hand_over_at(&path, &[], &[], Some("two words\n".into())), HandOver::Taken);
         assert_eq!(next(), (Vec::new(), Vec::new(), None));
         // A calendar file opened (`sioul-app visit.ics`): its path, alone, without "open".
         let file = dir.join("visit.ics");
-        assert!(hand_over_at(&path, &[], std::slice::from_ref(&file), None));
+        assert_eq!(hand_over_at(&path, &[], std::slice::from_ref(&file), None), HandOver::Taken);
         assert_eq!(next(), (Vec::new(), vec![file.clone()], None));
         // A Sioul older than calendar files answers only "open": with a file alone, it is not asked to.
         let older = dir.join("older.sock");
@@ -589,8 +625,19 @@ mod tests {
                 }
             }
         });
-        assert!(!hand_over_at(&older, &[], std::slice::from_ref(&file), None), "this one opens with the file");
+        assert_eq!(hand_over_at(&older, &[], std::slice::from_ref(&file), None), HandOver::Older, "told apart: the file kept, its window brought forward, said");
         assert!(!asked.recv_timeout(std::time::Duration::from_secs(5)).unwrap());
+        // A Sioul that does not answer at all (frozen) is no older one: this one opens.
+        let frozen = dir.join("frozen.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&frozen).unwrap();
+        let held = std::thread::spawn(move || {
+            if let Some(stream) = listener.incoming().next() {
+                std::thread::sleep(std::time::Duration::from_secs(7));
+                drop(stream);
+            }
+        });
+        assert_eq!(hand_over_at(&frozen, &[], std::slice::from_ref(&file), None), HandOver::NoneOpen);
+        let _ = held.join();
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

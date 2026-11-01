@@ -94,6 +94,10 @@
 #   answers across transfers, a key waiting for a touch (time extensions),
 #   an answer to another message, a reader's failure, a key unplugged, the
 #   messages wiped once sent.
+# - ShareCheck: a calendar file opened (ShareActivity.insideOwn): a file:
+#   path into Sioul's own folders refused as the system resolves it (written
+#   inside, "..", a link to a file or a folder of Sioul's, a root named by a
+#   link), one elsewhere taken; the manifest's VIEW of calendar files.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes
 #   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
 #   encoder writes now) read by Android's own parser, as Android's MMS service
@@ -119,7 +123,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

@@ -176,7 +176,12 @@ impl Consent {
         if self.kept_accounts.is_empty() {
             return false;
         }
-        message_id.is_some_and(|id| self.kept_mail.contains(&crate::mailindex::bare_id(id)))
+        // A message without a Message-ID names its account in its address (`sioul:mail/<account>/…`).
+        let digest_account = |id: &str| match crate::mailfind::Address::parse(id) {
+            Some(crate::mailfind::Address::Digest { account, .. }) => self.keeps_account(&account),
+            _ => false,
+        };
+        message_id.is_some_and(|id| self.kept_mail.contains(&crate::mailindex::bare_id(id)) || (id.trim().starts_with(crate::mailfind::DIGEST_SCHEME) && digest_account(id)))
             || card.is_some_and(|c| c.account.as_deref().is_some_and(|a| self.keeps_account(a)) || c.path.as_ref().is_some_and(|p| self.kept_accounts.values().any(|f| p.starts_with(f))))
     }
 
@@ -368,6 +373,14 @@ impl Consent {
         out
     }
 
+    /// Whether a message is kept from agents by its address alone: its
+    /// account kept, or tied to a project that is closed. Never refuses what
+    /// `allows_mail` would let through (which weighs routes too): asked
+    /// before a message not here is brought from its server for an agent.
+    pub fn closes_mail(&self, uri: &str) -> bool {
+        self.kept_by_account(Some(uri), None) || self.projects_of(uri).iter().any(|p| !p.is_empty() && self.knows(p) && !self.is_open(p))
+    }
+
     /// Whether a thing reaches an agent, by its address.
     pub fn allows(&self, uri: &str) -> bool {
         if links::kind_of(uri.trim()) == Kind::Mail && self.kept_by_account(Some(uri), None) {
@@ -461,6 +474,8 @@ mod tests {
         assert!(!consent.allows("mid:w@contoso.example") && !consent.allows(&links::mail_uri("<w@contoso.example>")), "by its address");
         assert!(consent.allows("mid:h@example.org"));
         assert!(!consent.allows_mail(Some("w@contoso.example"), None));
+        // A message without a Message-ID: its address names its account.
+        assert!(!consent.allows("sioul:mail/work/0123456789abcdef") && consent.allows("sioul:mail/home/0123456789abcdef"));
         // A message the index does not hold: by its card's account, or its file.
         let mut card = Card::from_bytes(b"Message-ID: <new@contoso.example>\r\nSubject: Today\r\n\r\nHello").unwrap();
         assert!(consent.allows_mail(card.message_id.as_deref(), Some(&card)));
@@ -607,7 +622,7 @@ mod tests {
         for (n, raw) in messages.iter().enumerate() {
             std::fs::write(root.join("cur").join(format!("{n}.U1-{n}.sioul{}2,S", crate::maildir::INFO)), raw).unwrap();
         }
-        let index = MailIndex::build(std::slice::from_ref(&root), &root.join("index.tsv"));
+        let index = MailIndex::build(std::slice::from_ref(&root));
         let source = Source { account: Some("home".into()), address: Some("you@you.example.org".into()), folder: root.clone(), trusted_ids: vec!["mx.provider.example".into()], priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
         let store = crate::projects::ProjectStore { root: root.clone(), projects: projects.to_vec(), ties: Default::default() };
         let gate = crate::porch::Gate::new(vec![source], Some(store), crate::porch::SenderList::default(), crate::porch::Senders::default(), 1_791_000_000);

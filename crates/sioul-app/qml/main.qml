@@ -88,6 +88,19 @@ SioulWindow {
         window.requestActivate()
     }
 
+    // For the window's pictures and tests: Android's system bars stood in for
+    // (points on each side), as Qt's safe area gives them to every item, the
+    // overlay's popups included (SafeDialog.qml), and drawn as a dim band.
+    function simulateSystemBars(top, right, bottom, left) {
+        // The window's root item, which holds its content and its overlay: both get them.
+        const root = frame.Overlay.overlay.parent
+        root.SafeArea.additionalMargins.top = top
+        root.SafeArea.additionalMargins.right = right
+        root.SafeArea.additionalMargins.bottom = bottom
+        root.SafeArea.additionalMargins.left = left
+        simulatedBars.margins = { top: top, right: right, bottom: bottom, left: left }
+    }
+
     // The tray's click: hidden when the window is in front, else brought back.
     function toggleShown() {
         if (window.visible && window.active)
@@ -1048,6 +1061,39 @@ SioulWindow {
     }
     readonly property var focusWindow: focusWindowLoader.item
 
+    // The system bars stood in for (`simulateSystemBars`), over everything, for the pictures.
+    Item {
+        id: simulatedBars
+
+        property var margins: ({ top: 0, right: 0, bottom: 0, left: 0 })
+
+        // Over the window's content and its overlay alike (the overlay shows only while a popup is open).
+        parent: frame.Overlay.overlay.parent
+        anchors.fill: parent
+        z: 1000000
+        visible: simulatedBars.margins.top + simulatedBars.margins.right + simulatedBars.margins.bottom + simulatedBars.margins.left > 0
+        enabled: false
+
+        Repeater {
+            model: [
+                { x: 0, y: 0, w: simulatedBars.width, h: simulatedBars.margins.top },
+                { x: simulatedBars.width - simulatedBars.margins.right, y: 0, w: simulatedBars.margins.right, h: simulatedBars.height },
+                { x: 0, y: simulatedBars.height - simulatedBars.margins.bottom, w: simulatedBars.width, h: simulatedBars.margins.bottom },
+                { x: 0, y: 0, w: simulatedBars.margins.left, h: simulatedBars.height }
+            ]
+
+            delegate: Rectangle {
+                required property var modelData
+
+                x: modelData.x
+                y: modelData.y
+                width: modelData.w
+                height: modelData.h
+                color: "#b0202020"
+            }
+        }
+    }
+
     // A calendar file (.ics) opened in Sioul (calendarfile.rs): its events,
     // the agenda and the categories chosen, then recorded. Made the first time.
     Later {
@@ -1147,7 +1193,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "safe-area": grabber.safeAreaSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1303,6 +1349,30 @@ SioulWindow {
             // Links that open a message (the unified mailbox's part 0): a message
             // opened as a tie opens it, Mail beside; one that is not on this
             // device, said in the reader's place. Counted.
+            // Android's system bars stood in for (review of 4c77d0c, L9): the event
+            // form unfolded, inside the window's safe area, its buttons in view,
+            // with the button bar below, then beside (a phone held sideways).
+            readonly property var safeAreaSteps: [
+                () => window.simulateSystemBars(0, 0, 48, 0),
+                () => window.page = 4,
+                () => agendaPage.newEvent("2026-10-06"),
+                () => agendaPage.fillEvent("Piano lesson", "17:00", "18:00", "weekly"),
+                () => {},
+                () => grabber.saveWindow("safe-event-form-bottom"),
+                // Held sideways: the buttons beside.
+                () => {
+                    if (window.phoneGrab) {
+                        window.width = 891
+                        window.height = 412
+                    }
+                    window.simulateSystemBars(0, 48, 0, 0)
+                },
+                () => {},
+                () => {},
+                () => grabber.saveWindow("safe-event-form-side"),
+                () => window.simulateSystemBars(0, 0, 0, 0),
+                () => window.close()
+            ]
             readonly property var mailOpenSteps: [
                 () => window.openThing(JSON.parse(sioul.searchThings("", "mail", "") || "[]")[0] || { kind: "mail", uri: "", key: "" }),
                 () => {},

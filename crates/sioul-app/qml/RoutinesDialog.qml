@@ -10,7 +10,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Dialog {
+SafeDialog {
     id: routines
 
     required property var sioul
@@ -40,7 +40,7 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
-    width: Math.min(560, (parent ? parent.width : 560) - 2 * routines.theme.gap)
+    width: Math.min(560, (parent ? routines.roomWidth : 560) - 2 * routines.theme.gap)
     // A routine being changed keeps the list's title: "A new routine" is for a new one only.
     title: routines.sioul.text(routines.editing === "" ? "routines-new" : "routines")
 

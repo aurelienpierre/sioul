@@ -14,8 +14,11 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-Popup {
+SafePopup {
     id: view
+
+    // A sheet: edge to edge within the safe area, as it was within the window.
+    safeGap: 0
 
     required property var sioul
     required property var theme
@@ -31,8 +34,8 @@ Popup {
     parent: Overlay.overlay
     x: 0
     y: 0
-    width: parent ? parent.width : 400
-    height: parent ? parent.height : 600
+    width: parent ? view.roomWidth : 400
+    height: parent ? view.roomHeight : 600
     modal: true
     focus: true
     padding: 0
