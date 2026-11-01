@@ -64,6 +64,7 @@ pub fn event_of(task: &Task, time: Option<(i64, i64)>, today: Date, zone: &TimeZ
         end,
         all_day: false,
         repeat: task.repeat.clone(),
+        every: 1,
         margins: task.margins,
         demands: task.demands,
         remind: String::new(),

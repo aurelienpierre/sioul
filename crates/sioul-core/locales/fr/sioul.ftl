@@ -909,6 +909,27 @@ event-calendar = Agenda
 event-pick-day = Choisir le jour
 date-month-previous = Mois précédent : { $month }
 date-month-next = Mois suivant : { $month }
+# Avant le nombre de « Tous les 2 jours » ($unit dit l’unité).
+event-repeat-every = { $unit ->
+    [weekly] Toutes les
+   *[other] Tous les
+}
+# L’unité après le nombre de « Tous les 2 jours » : $unit vaut daily, weekly, monthly ou yearly.
+event-repeat-unit = { $unit ->
+    [daily] { $n ->
+        [one] jour
+       *[other] jours
+    }
+    [weekly] { $n ->
+        [one] semaine
+       *[other] semaines
+    }
+    [monthly] mois
+   *[yearly] { $n ->
+        [one] an
+       *[other] ans
+    }
+}
 repeat-none = Ne se répète pas
 repeat-daily = Tous les jours
 repeat-weekly = Toutes les semaines

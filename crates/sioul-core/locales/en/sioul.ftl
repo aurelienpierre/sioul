@@ -888,6 +888,27 @@ event-calendar = Calendar
 event-pick-day = Pick the day
 date-month-previous = Previous month: { $month }
 date-month-next = Next month: { $month }
+# Before the number of "Every 2 days" (the unit says which: $unit).
+event-repeat-every = Every
+# The unit after the number of "Every 2 days": $unit is daily, weekly, monthly or yearly.
+event-repeat-unit = { $unit ->
+    [daily] { $n ->
+        [one] day
+       *[other] days
+    }
+    [weekly] { $n ->
+        [one] week
+       *[other] weeks
+    }
+    [monthly] { $n ->
+        [one] month
+       *[other] months
+    }
+   *[yearly] { $n ->
+        [one] year
+       *[other] years
+    }
+}
 repeat-none = Does not repeat
 repeat-daily = Every day
 repeat-weekly = Every week

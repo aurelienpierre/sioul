@@ -263,7 +263,8 @@ pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {
         None => agenda::default_calendar().ok_or_else(|| s.tr.text("dav-no-calendar", None))?,
     };
     let clock = args.clock("clock")?.unwrap_or_default();
-    let edit = EventEdit { title, location: args.line("location")?.unwrap_or_default(), notes: args.body("notes")?, start, end, all_day, repeat, ..EventEdit::default() };
+    let every = args.number("every", 1, 1, 99)? as u32;
+    let edit = EventEdit { title, location: args.line("location")?.unwrap_or_default(), notes: args.body("notes")?, start, end, all_day, repeat, every, ..EventEdit::default() };
     let zone = sioul_core::zone::current();
     // Its times given here, kept on its own clock when one is given: the same instants.
     let when = if edit.start == edit.end { edit.start.clone() } else { format!("{} – {}", edit.start, edit.end) };

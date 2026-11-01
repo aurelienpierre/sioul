@@ -35,7 +35,7 @@ La page suit l’horloge : la ligne de l’heure actuelle avance avec elle, et
 
 ## Les événements {#events}
 
-**Nouvel événement**, en haut de la page (ou **Nouveau ▾ ▸ Un événement**) : un titre, quand il commence et finit, où. **Toute la journée** se coche d’un clic. **Fuseau horaire**, sous les heures, est d’abord **Heure locale** (le fuseau que montre votre agenda, nommé) ; **UTC**, ou **Un autre fuseau horaire…**, trouvé en tapant une partie de son nom (« new y », « tokyo »), fixe l’horloge que garde l’événement : un appel fixé en UTC reste à son heure UTC, été comme hiver ; un rendez-vous à New York à son heure là-bas. Sur une autre horloge, une ligne sous les heures les dit aussi ici : « 15:00 – 16:00 UTC · 16:00 – 17:00 ici ». Modifier un événement garde son horloge. Repliés sous **Plus** : ses notes ; **Se répète**, tous les jours, toutes les semaines, tous les mois ou tous les ans ; **Agenda**, celui où il va, quand vous en avez plusieurs ; et, si vous le voulez :
+**Nouvel événement**, en haut de la page (ou **Nouveau ▾ ▸ Un événement**) : un titre, quand il commence et finit, où. **Toute la journée** se coche d’un clic. **Fuseau horaire**, sous les heures, est d’abord **Heure locale** (le fuseau que montre votre agenda, nommé) ; **UTC**, ou **Un autre fuseau horaire…**, trouvé en tapant une partie de son nom (« new y », « tokyo »), fixe l’horloge que garde l’événement : un appel fixé en UTC reste à son heure UTC, été comme hiver ; un rendez-vous à New York à son heure là-bas. Sur une autre horloge, une ligne sous les heures les dit aussi ici : « 15:00 – 16:00 UTC · 16:00 – 17:00 ici ». Modifier un événement garde son horloge. Repliés sous **Plus** : ses notes ; **Se répète**, tous les jours, toutes les semaines, tous les mois ou tous les ans, et **Tous les** combien, à partir de son premier jour (tous les 2 jours : un jour sur deux) ; **Agenda**, celui où il va, quand vous en avez plusieurs ; et, si vous le voulez :
 
 - **Avant** et **Après** : le temps de se préparer et d’y aller, et celui d’en revenir ([plus bas](#time-around-an-event)).
 - **Rappel** : quand Sioul vous le rappelle : comme d’habitude (un quart d’heure avant lui et le temps d’y aller, sauf si vous le changez dans les [Paramètres](settings.md#reminders)), pas pour celui-ci, ou de 5 minutes à 2 heures avant. Voir [Les rappels](#reminders).
@@ -161,7 +161,7 @@ Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à l
 
 ## Pour aller plus loin {#going-further}
 
-- **Les événements répétés faits ailleurs** gardent leur règle, si riche soit-elle (« un lundi et un mercredi sur deux », « le premier lundi du mois ») : changer leur titre dans Sioul laisse la règle entière. Le formulaire de Sioul fait tous les jours, toutes les semaines, tous les mois ou tous les ans.
+- **Les événements répétés faits ailleurs** gardent leur règle, si riche soit-elle (« un lundi et un mercredi sur deux », « le premier lundi du mois ») : changer leur titre dans Sioul laisse la règle entière. Le formulaire de Sioul fait tous les n jours, toutes les n semaines, tous les n mois ou tous les n ans.
 - **Les fuseaux horaires** : un événement écrit dans un autre fuseau le garde et s’affiche dans le vôtre, son heure là-bas à côté ; Sioul écrit les nouveaux événements dans le fuseau que montre votre agenda, sauf si le **Fuseau horaire** de son formulaire dit une autre horloge.
 - **Un événement créé après l’heure de son rappel** n’est pas rappelé : vous venez de le voir.
 - **Le jour travaillé d’avant** se lit dans vos heures de travail ([Paramètres](settings.md#hours)).
@@ -213,7 +213,7 @@ En octobre 2026, d’après la documentation de chaque application.
     19. Un seul rappel de Sioul avant chaque événement (son moment choisi événement par événement, ou aucun), et les alarmes que porte l’événement.
     20. Microsoft décrit un seul choix de rappel par événement, et une valeur par défaut par compte.
     21. Plusieurs par événement ; une seule valeur par défaut pour tous les agendas ; les rappels ne viennent que pendant que Thunderbird tourne.
-    22. Sioul garde toute règle faite ailleurs, et fait tous les jours, toutes les semaines, tous les mois ou tous les ans.
+    22. Sioul garde toute règle faite ailleurs, et fait tous les n jours, toutes les n semaines, tous les n mois ou tous les n ans.
     23. Morgen répond sur les événements qui ont des personnes invitées, par le fournisseur de l’agenda ; il ne lit aucun courriel.
     24. Avec iCloud, Exchange et certains serveurs CalDAV.
     25. Glisser pour déplacer sur le Mac et l’iPhone ; une annulation n’est pas décrite dans les guides d’Apple.

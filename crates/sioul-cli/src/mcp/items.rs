@@ -110,6 +110,7 @@ fn event_json(found: &Found, edit: &EventEdit, s: &Session) -> Value {
         "notes": checklist::free_text(&edit.notes),
         "checklist": checklist_json(&edit.notes),
         "repeat": edit.repeat,
+        "every": edit.every.max(1),
         "remind": edit.remind,
         "before": edit.margins.before,
         "after": edit.margins.after,
@@ -230,6 +231,9 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
             return Err(format!("“repeat” is none, daily, weekly, monthly or yearly; not “{}”.", one_line(&repeat)));
         }
         edit.repeat = if repeat == "none" { String::new() } else { repeat };
+    }
+    if args.has("every") {
+        edit.every = args.number("every", 1, 1, 99)? as u32;
     }
     if let Some(remind) = args.text("remind")? {
         if !(remind == "usual" || remind == "none" || remind.parse::<u32>().is_ok_and(|m| m <= 10_080)) {

@@ -160,6 +160,7 @@ Dialog {
         endDay.date = f.end.slice(0, 10)
         endTime.text = f.all_day ? "10:00" : f.end.slice(11, 16)
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(f.repeat))
+        every.value = Math.max(1, f.every || 1)
         dialog.clock = f.clock || ""
         dialog.clockOther = dialog.clock !== "" && dialog.clock !== "UTC"
         dialog.around = f.margins
@@ -224,6 +225,7 @@ Dialog {
             endDay.date = e.end.slice(0, 10)
             endTime.text = e.all_day ? "10:00" : e.end.slice(11, 16)
             repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(e.repeat))
+            every.value = Math.max(1, e.every || 1)
             dialog.clock = e.clock || ""
             dialog.clockOther = dialog.clock !== "" && dialog.clock !== "UTC"
             calendar.currentIndex = Math.max(0, dialog.calendars.findIndex(c => c.id === found.calendar))
@@ -257,6 +259,7 @@ Dialog {
             startTime.text = dialog.pad(hour) + ":00"
             endTime.text = dialog.pad(Math.min(hour + 1, 23)) + ":" + (hour === 23 ? "59" : "00")
             repeat.currentIndex = 0
+            every.value = 1
             calendar.currentIndex = 0
             dialog.currentCalendar = ""
             dialog.calendarName = ""
@@ -305,6 +308,7 @@ Dialog {
         endDay.date = made.end.slice(0, 10)
         endTime.text = made.end.slice(11, 16)
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(made.repeat))
+        every.value = Math.max(1, made.every || 1)
         dialog.around = Object.assign({ before: 0, after: 0 }, made.margins)
         dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, made.demands)
         dialog.moreShown = made.notes !== "" || made.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0
@@ -341,6 +345,7 @@ Dialog {
         startTime.text = from
         endTime.text = to
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(how))
+        every.value = 1
         dialog.moreShown = true
     }
 
@@ -371,6 +376,7 @@ Dialog {
             all_day: allDay.checked,
             clock: allDay.checked ? "" : dialog.clock,
             repeat: dialog.repeats[repeat.currentIndex],
+            every: dialog.repeats[repeat.currentIndex] === "" ? 1 : every.value,
             margins: dialog.around,
             demands: dialog.demands,
             remind: dialog.remind,
@@ -713,6 +719,33 @@ Dialog {
                     enabled: !dialog.withOthers
                     Layout.fillWidth: true
                     model: dialog.repeats.map(r => dialog.sioul.text("repeat-" + (r || "none")))
+                }
+                // Every how many of them, from its first day: every other day is 2.
+                Label {
+                    visible: dialog.legOf === "" && repeat.currentIndex > 0
+                    text: dialog.sioul.textArgs("event-repeat-every", JSON.stringify({ unit: dialog.repeats[repeat.currentIndex] }))
+                    textFormat: Text.PlainText
+                    color: dialog.theme.muted
+                }
+                RowLayout {
+                    visible: dialog.legOf === "" && repeat.currentIndex > 0
+                    spacing: 6
+
+                    SpinBox {
+                        id: every
+
+                        objectName: "eventEvery"
+                        enabled: !dialog.withOthers
+                        from: 1
+                        to: 99
+                        value: 1
+                        editable: true
+                    }
+                    Label {
+                        text: dialog.sioul.textArgs("event-repeat-unit", JSON.stringify({ unit: dialog.repeats[repeat.currentIndex], n: every.value }))
+                        textFormat: Text.PlainText
+                        color: dialog.theme.muted
+                    }
                 }
                 // Getting there and back, getting ready: kept free around it, never a pause.
                 Label {

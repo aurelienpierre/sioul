@@ -35,7 +35,7 @@ The page follows the clock: the line at the current hour moves with it, and toda
 
 ## Events
 
-**New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. **Time zone**, under the times, is **Local time** at first (the zone your agenda shows, named); **UTC**, or **Another time zone…**, found by typing part of its name ("new y", "tokyo"), sets the clock the event keeps: a call set in UTC stays at its UTC time, summer or winter; an appointment in New York at its time there. On another clock, a line under the times says them here too: "15:00 – 16:00 UTC · 16:00 – 17:00 here". Editing an event keeps its clock. Folded under **More**: its notes; **Repeats**, every day, week, month or year; **Calendar**, which one it goes in, when you have several; and, if you want them:
+**New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. **Time zone**, under the times, is **Local time** at first (the zone your agenda shows, named); **UTC**, or **Another time zone…**, found by typing part of its name ("new y", "tokyo"), sets the clock the event keeps: a call set in UTC stays at its UTC time, summer or winter; an appointment in New York at its time there. On another clock, a line under the times says them here too: "15:00 – 16:00 UTC · 16:00 – 17:00 here". Editing an event keeps its clock. Folded under **More**: its notes; **Repeats**, every day, week, month or year, and **Every** so many of them from its first day (every 2 days: every other day); **Calendar**, which one it goes in, when you have several; and, if you want them:
 
 - **Before** and **After**: the time to get ready and get there, and to come back ([below](#time-around-an-event)).
 - **Remind**: when Sioul reminds you of it: as usual (a quarter of an hour before it and its time to get there, unless you change it in [Settings](settings.md#reminders)), not this one, or 5 minutes to 2 hours before. See [Reminders](#reminders).
@@ -162,7 +162,7 @@ Changing one occurrence's title or place (its time moves by hand), and choosing 
 
 ## Going further {#going-further}
 
-- **Repeating events made elsewhere** keep their rule, however rich ("every other Monday and Wednesday", "the first Monday of the month"): changing their title in Sioul leaves the rule whole. Sioul's own form makes every day, week, month or year.
+- **Repeating events made elsewhere** keep their rule, however rich ("every other Monday and Wednesday", "the first Monday of the month"): changing their title in Sioul leaves the rule whole. Sioul's own form makes every so many days, weeks, months or years.
 - **Time zones**: an event written in another time zone keeps it and shows in yours, its time there beside; Sioul writes new events in the zone your agenda shows, unless its form's **Time zone** says another clock.
 - **An event made after its reminder's time** is not reminded: you have just seen it.
 - **The working day before** is read from your working hours ([Settings](settings.md#hours)).
@@ -214,7 +214,7 @@ As of October 2026, from each app's own documentation.
     19. One reminder of Sioul's before each event (its time chosen per event, or none), and the alarms the event carries.
     20. Microsoft describes one reminder choice per event, and one default per account.
     21. Several per event; one default for all calendars; reminders come only while Thunderbird runs.
-    22. Sioul keeps any rule made elsewhere, and makes every day, week, month or year.
+    22. Sioul keeps any rule made elsewhere, and makes every so many days, weeks, months or years.
     23. Morgen answers on events with guests, through the calendar's provider; it reads no mail.
     24. With iCloud, Exchange and some CalDAV servers.
     25. Drag to move on the Mac and the iPhone; an undo is not described in Apple's guides.

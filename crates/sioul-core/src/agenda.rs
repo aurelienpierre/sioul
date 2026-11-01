@@ -882,6 +882,11 @@ pub struct EventEdit {
     /// "", "daily", "weekly", "monthly", "yearly".
     #[serde(default)]
     pub repeat: String,
+    /// Every how many of those days, weeks, months or years it comes back
+    /// (the rule's INTERVAL), from its first day: 2 is every other day. 0
+    /// and 1 are each time.
+    #[serde(default)]
+    pub every: u32,
     /// Minutes kept before and after it.
     #[serde(default)]
     pub margins: crate::demands::Margins,
@@ -1050,6 +1055,7 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         .unwrap_or_default()
         .to_ascii_uppercase();
     let repeat = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].into_iter().find(|f| rule.contains(&format!("FREQ={f}"))).map(str::to_lowercase).unwrap_or_default();
+    let every = if repeat.is_empty() { 1 } else { interval_of(&rule) };
     let (margins, demands) = demands_of(master);
     Some(EventEdit {
         title: lines::unescape(&text_of(master, &ICalendarProperty::Summary)),
@@ -1060,6 +1066,7 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         end: if all_day { end.date().checked_sub(1.day()).unwrap_or(end.date()).to_string() } else { end.strftime("%Y-%m-%dT%H:%M").to_string() },
         all_day,
         repeat,
+        every,
         margins,
         demands,
         remind: remind_word(&text_of(master, &ICalendarProperty::Other(crate::reminders::REMIND.to_string()))),
@@ -1207,11 +1214,33 @@ pub fn recorded_zone() -> Option<String> {
     crate::zone::Recorded::read().map(|recorded| recorded.zone)
 }
 
-fn rule_line(repeat: &str) -> Option<String> {
-    match repeat {
-        "daily" | "weekly" | "monthly" | "yearly" => Some(format!("RRULE:FREQ={}", repeat.to_ascii_uppercase())),
-        _ => None,
+/// A rule's INTERVAL: every how many of its days, weeks, months or years; 1
+/// when it says none.
+fn interval_of(rule: &str) -> u32 {
+    rule.split(';').find_map(|part| part.trim().to_ascii_uppercase().strip_prefix("INTERVAL=").and_then(|n| n.parse::<u32>().ok())).filter(|n| *n > 0).unwrap_or(1)
+}
+
+/// The RRULE line of the form's repeat, every `every` time. `old`, the rule
+/// the event had: when it repeats at the same frequency, only its INTERVAL
+/// changes, its days, count and end kept ("every other Monday and Wednesday,
+/// until June" becomes every third one, until June).
+fn rule_line(repeat: &str, every: u32, old: Option<&str>) -> Option<String> {
+    if !matches!(repeat, "daily" | "weekly" | "monthly" | "yearly") {
+        return None;
     }
+    let frequency = format!("FREQ={}", repeat.to_ascii_uppercase());
+    let interval = (every > 1).then(|| format!("INTERVAL={every}"));
+    if let Some(old) = old
+        && old.split(';').any(|part| part.trim().eq_ignore_ascii_case(&frequency))
+    {
+        let mut parts: Vec<String> = old.split(';').map(str::trim).filter(|p| !p.is_empty() && !p.to_ascii_uppercase().starts_with("INTERVAL=")).map(str::to_string).collect();
+        if let Some(interval) = interval {
+            let at = parts.iter().position(|p| p.to_ascii_uppercase().starts_with("FREQ=")).map_or(parts.len(), |i| i + 1);
+            parts.insert(at, interval);
+        }
+        return Some(format!("RRULE:{}", parts.join(";")));
+    }
+    Some(format!("RRULE:{frequency}{}", interval.map(|i| format!(";{i}")).unwrap_or_default()))
 }
 
 /// The VTIMEZONE of a zone, as its changes of hour go in `year` (the year an
@@ -1275,7 +1304,7 @@ pub fn new_event_with_uid(edit: &EventEdit, uid: &str, zone: &TimeZone) -> Resul
     }
     out.extend(["BEGIN:VEVENT".to_string(), format!("UID:{uid}"), format!("DTSTAMP:{}", utc(&crate::zone::now()))]);
     out.extend(times);
-    out.extend(content_lines(edit, Changed::ALL));
+    out.extend(content_lines(edit, Changed::ALL, None));
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
     Ok(lines::fold(&out))
 }
@@ -1297,7 +1326,7 @@ impl Changed {
 }
 
 /// SUMMARY, LOCATION, DESCRIPTION and the repeat rule, those that changed.
-fn content_lines(edit: &EventEdit, changed: Changed) -> Vec<String> {
+fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>) -> Vec<String> {
     let mut out = Vec::new();
     if changed.title {
         out.push(format!("SUMMARY:{}", lines::escape(edit.title.trim())));
@@ -1309,7 +1338,7 @@ fn content_lines(edit: &EventEdit, changed: Changed) -> Vec<String> {
         out.push(format!("DESCRIPTION:{}", lines::escape(edit.notes.trim())));
     }
     if changed.rule {
-        out.extend(rule_line(&edit.repeat));
+        out.extend(rule_line(&edit.repeat, edit.every, old_rule));
     }
     if changed.margins {
         if edit.margins.before > 0 {
@@ -1349,13 +1378,20 @@ const TIMES: &[&str] = &["DTSTART", "DTEND", "DURATION"];
 /// more than Sioul's own lines changed.
 pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, String> {
     let zone = zone.clone();
+    // Each time is 1, whether said 0 (unsaid, from an agent) or 1; one that
+    // does not repeat has none.
+    let edit = &EventEdit { every: if edit.repeat.is_empty() { 1 } else { edit.every.max(1) }, ..edit.clone() };
     let before = edit_of_text(text, &zone);
     // Nothing changed: nothing is written, not even the stamps.
     if before.as_ref() == Some(edit) {
         return Ok(text.to_string());
     }
     let times_changed = before.as_ref().is_none_or(|b| (&b.start, &b.end, b.all_day, b.clock.trim()) != (&edit.start, &edit.end, edit.all_day, edit.clock.trim()));
-    let rule_changed = before.as_ref().is_none_or(|b| b.repeat != edit.repeat);
+    let rule_changed = before.as_ref().is_none_or(|b| (&b.repeat, b.every) != (&edit.repeat, edit.every));
+    let old_rule = {
+        let source = lines::unfold(text);
+        master_range(&source).and_then(|range| source[range].iter().find(|l| lines::name(l) == "RRULE").map(|l| lines::value(l).trim().to_string()))
+    };
     let changed = match &before {
         Some(b) => Changed { title: b.title.trim() != edit.title.trim(), location: b.location.trim() != edit.location.trim(), notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind) },
         None => Changed::ALL,
@@ -1425,7 +1461,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
                 added.push(format!("SEQUENCE:{}", sequence.saturating_add(1)));
             }
             added.extend(times.clone());
-            added.extend(content_lines(edit, changed));
+            added.extend(content_lines(edit, changed, old_rule.as_deref()));
             kept.splice(at..at, added);
             kept.push(line);
             out.append(&mut kept);
@@ -3922,5 +3958,41 @@ mod tests {
         let monthly = WEEKLY.replace("RRULE:FREQ=WEEKLY;BYDAY=MO", "RRULE:FREQ=MONTHLY;BYDAY=1MO");
         assert_eq!(moved(&monthly, at("2026-10-05T18:00"), at("2026-10-06T18:00"), at("2026-10-06T19:30"), false, &paris()), Err(MoveProblem::SetDays));
         assert!(moved(&monthly, at("2026-10-05T18:00"), at("2026-10-05T19:00"), at("2026-10-05T20:30"), false, &paris()).is_ok(), "another time the same day");
+    }
+
+    /// Every so many days, weeks, months or years: the form's INTERVAL
+    /// written, read back and kept while the title changes; every other day
+    /// from its first, at its hour across the change of hour; a daily series
+    /// made every other day and back; a rule made elsewhere keeps its days
+    /// and its end when its interval alone changes.
+    #[test]
+    fn a_series_comes_back_every_so_many_days() {
+        let paris = paris();
+        let edit = EventEdit { title: "Nurse".into(), start: "2026-10-23T08:00".into(), end: "2026-10-23T08:30".into(), repeat: "daily".into(), every: 2, ..EventEdit::default() };
+        let text = new_event(&edit, &paris).unwrap();
+        assert!(text.contains("RRULE:FREQ=DAILY;INTERVAL=2\r\n"), "{text}");
+        assert_eq!(edit_of_text(&text, &paris).map(|e| (e.repeat, e.every)), Some(("daily".to_string(), 2)));
+        let path = write_temp("every-other-day.ics", &text);
+        let starts: Vec<i64> = file_occurrences(&path, &calendar(), at("2026-10-23T00:00"), at("2026-10-30T00:00"), &paris).iter().map(|o| o.start).collect();
+        assert_eq!(starts, ["2026-10-23T08:00", "2026-10-25T08:00", "2026-10-27T08:00", "2026-10-29T08:00"].map(at), "every other day, 08:00 after the change of hour too");
+        let retitled = apply(&text, &EventEdit { title: "Nurse visit".into(), ..edit_of_text(&text, &paris).unwrap() }, &paris).unwrap();
+        assert!(retitled.contains("RRULE:FREQ=DAILY;INTERVAL=2\r\n") && retitled.contains("SUMMARY:Nurse visit"), "{retitled}");
+        assert_eq!(apply(&text, &edit_of_text(&text, &paris).unwrap(), &paris).unwrap(), text, "nothing changed: nothing written");
+        // A daily series made every other day, then each day again.
+        let daily = new_event(&EventEdit { every: 0, ..edit.clone() }, &paris).unwrap();
+        assert!(daily.contains("RRULE:FREQ=DAILY\r\n"), "{daily}");
+        assert_eq!(edit_of_text(&daily, &paris).map(|e| e.every), Some(1));
+        let every_two = apply(&daily, &EventEdit { every: 2, ..edit_of_text(&daily, &paris).unwrap() }, &paris).unwrap();
+        assert!(every_two.contains("RRULE:FREQ=DAILY;INTERVAL=2\r\n"), "{every_two}");
+        let back = apply(&every_two, &EventEdit { every: 1, ..edit_of_text(&every_two, &paris).unwrap() }, &paris).unwrap();
+        assert!(back.contains("RRULE:FREQ=DAILY\r\n"), "{back}");
+        // A rule made elsewhere: every third time now, its days and its end kept.
+        let rich = new_event(&EventEdit { repeat: "weekly".into(), every: 1, ..edit.clone() }, &paris).unwrap().replace("RRULE:FREQ=WEEKLY\r\n", "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE;UNTIL=20270630T220000Z\r\n");
+        assert_eq!(edit_of_text(&rich, &paris).map(|e| e.every), Some(2));
+        let third = apply(&rich, &EventEdit { every: 3, ..edit_of_text(&rich, &paris).unwrap() }, &paris).unwrap();
+        assert!(third.contains("RRULE:FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,WE;UNTIL=20270630T220000Z\r\n"), "{third}");
+        // Another frequency: a rule of its own.
+        let monthly = apply(&rich, &EventEdit { repeat: "monthly".into(), every: 2, ..edit_of_text(&rich, &paris).unwrap() }, &paris).unwrap();
+        assert!(monthly.contains("RRULE:FREQ=MONTHLY;INTERVAL=2\r\n") && !monthly.contains("BYDAY=MO,WE"), "{monthly}");
     }
 }
