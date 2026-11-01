@@ -252,7 +252,78 @@ ColumnLayout {
             at: at,
             until: span ? time.until : at,
             end: span ? time.end : at,
+            // A copy of an event over several days that the list does not write (`spans`: it
+            // writes the event once, from the day's `through`); the list's own rows of one
+            // (`mark`: "first", "since", "end"), the lines through a list's row (`segments`,
+            // JSON) and "+2" on a day's title (`beyond`).
+            spans: placed.spans === true,
+            mark: "",
+            segments: "",
+            beyond: "",
             json: JSON.stringify(placed)
+        }
+    }
+
+    // The events over several days shown, each once (the agenda's `spans`), by their item's id.
+    property var spans: []
+    // The grid's bars (`ongoing::Bar`): an event of 24 hours or more, or of several whole
+    // days, across its days in the Week's head band, a head line in the Day; and, for each
+    // day, how many more beyond three ("+2"). From Rust: the grid computes no lane.
+    property var bars: []
+    property var barsMore: []
+    readonly property var barsShown: (planning.bars || []).filter(b => {
+        const placed = planning.spanEvents[b.id]
+        return !placed || planning.shown({ kind: placed.item.kind, collection: (placed.item.source || {}).collection || "" })
+    })
+    readonly property int barLanes: planning.barsShown.reduce((n, b) => Math.max(n, b.lane + 1), 0)
+    readonly property var spanEvents: {
+        const out = {}
+        for (const placed of planning.spans || [])
+            out[placed.item.id] = placed
+        return out
+    }
+    // The room the lines take at the list's left edge, while a day shown has one.
+    readonly property int lineRoom: planning.listed && (planning.days || []).some(d => ((d.through || {}).lines || []).length > 0) ? 26 : 0
+
+    // An event over several days, from its line: what a tap on its row does.
+    function openSpan(id, date) {
+        const days = planning.days || []
+        const index = days.findIndex(d => d.date === date)
+        const placed = planning.spanEvents[id]
+        if (placed && index >= 0)
+            planning.open(planning.rowOf(placed, days[index], index, ""))
+    }
+
+    // A list's row of an event over several days on day `i` (`ongoing::SpanRow`): its first
+    // row, its whole span under its title; "Ongoing since …"; its end mark's row.
+    function spanRowOf(r, day, i) {
+        const placed = planning.spanEvents[r.id]
+        if (!placed)
+            return null
+        return Object.assign(planning.rowOf(placed, day, i, ""), { key: r.id + "|" + day.date + "|" + r.mark, when: r.when, line: r.line, from: r.minute, mark: r.mark })
+    }
+
+    // The lines passing through a day's rows of the list (`out`, from `first`): for each
+    // row, where each line runs there (from its row's middle on its first day, to its end
+    // mark's on its last), as `segments`.
+    function laySegments(out, first, lines) {
+        const at = (id, end) => {
+            for (let k = first; k < out.length; k++)
+                if (out[k].itemId === id && out[k].mark !== "" && (out[k].mark === "end") === end)
+                    return k
+            return -1
+        }
+        for (const l of lines) {
+            const placed = planning.spanEvents[l.id]
+            if (!placed || !planning.shown({ kind: placed.item.kind, collection: (placed.item.source || {}).collection || "" }))
+                continue
+            const from = l.first ? Math.max(first, at(l.id, false)) : first
+            const to = l.last ? at(l.id, true) : out.length - 1
+            for (let k = from; k <= (to < 0 ? out.length - 1 : to); k++) {
+                const segments = out[k].segments ? JSON.parse(out[k].segments) : []
+                segments.push({ id: l.id, colour: l.colour, lane: l.lane, title: placed.item.title, first: l.first && k === from, last: l.last && k === to })
+                out[k].segments = JSON.stringify(segments)
+            }
         }
     }
 
@@ -404,9 +475,11 @@ ColumnLayout {
         for (let i = 0; i < days.length; i++) {
             const day = days[i]
             const line = (kind, title, more) => Object.assign(planning.rowOf({ item: { id: kind, kind: kind, title: title, time: { type: "at", at: day.start }, can: {}, source: {} }, when: "", from_minute: 0, to_minute: 0 }, day, i, ""), { key: kind + "|" + day.date }, more || {})
-            const heads = (day.head || []).map(p => planning.rowOf(p, day, i, "")).filter(planning.shown)
+            const heads = (day.head || []).map(p => planning.rowOf(p, day, i, "")).filter(r => planning.shown(r) && !r.spans)
+            const through = day.through || { lines: [], more: 0, rows: [] }
+            const first = out.length
             // Whole days under the day's title; a date asked on a line of its own, its diamond and its words (review of part 4, later 2).
-            out.push(line("day-title", day.title || day.date, { line: heads.filter(r => r.kind !== "dated").map(r => r.title).join(" · ") }))
+            out.push(line("day-title", day.title || day.date, { line: heads.filter(r => r.kind !== "dated").map(r => r.title).join(" · "), beyond: through.more > 0 ? planning.sioul.textArgs("agenda-lines-more", JSON.stringify({ count: through.more })) : "" }))
             for (const r of heads.filter(r => r.kind === "dated"))
                 out.push(Object.assign({}, r, { key: r.key + "|list", line: planning.datedWords(r) }))
             if (day.today && marks.some(m => m.date === day.date))
@@ -414,14 +487,17 @@ ColumnLayout {
             // The night by its part: waking, at its time; winding down, from its start.
             const said = r => r.kind !== "night" ? r : planning.morning(r) ? Object.assign({}, r, { title: planning.sioul.text("agenda-wake"), when: planning.clockOf(r.to) }) : Object.assign({}, r, { when: planning.clockOf(r.lead) })
             // A leg is said in its appointment's line here, never a row of its own (the unified agenda, §4.7).
-            const own = rows.filter(r => r.day === i && r.kind !== "leg").sort((a, b) => a.from - b.from || a.column - b.column).map(said)
+            // An event over several days once (`ongoing::Through`): its own rows among the day's, its copies left out.
+            const spanned = (through.rows || []).map(r => planning.spanRowOf(r, day, i)).filter(r => r !== null && planning.shown(r))
+            const own = rows.filter(r => r.day === i && r.kind !== "leg" && !r.spans).concat(spanned).sort((a, b) => a.from - b.from || a.column - b.column).map(said)
             out.push(...own)
             if (day.plan)
                 out.push(line("plan-line", day.plan))
             if (day.more)
                 out.push(line("more-line", day.more))
-            if (own.length === 0 && !day.more)
+            if (own.length === 0 && !day.more && (through.lines || []).length === 0)
                 out.push(line("free", planning.sioul.text("agenda-free")))
+            planning.laySegments(out, first, through.lines || [])
         }
         return out
     }
@@ -433,6 +509,10 @@ ColumnLayout {
             planning.landed = null
         planning.apply()
     }
+    // The events over several days come with the days, set one after the other: the list,
+    // which writes them (the grid's bars read them as they come), laid once both are.
+    onSpansChanged: if (planning.listed)
+        Qt.callLater(planning.apply)
     onHideChanged: planning.apply()
     onShowAnywayChanged: planning.apply()
     onMarksChanged: planning.diff(marksModel, planning.marksOf(planning.doseRows()))
@@ -937,6 +1017,137 @@ ColumnLayout {
         }
     }
 
+    // The Week's events of 24 hours or more and of several whole days: one bar across
+    // their days, their start time at one end and their end time at the other (cut at
+    // the week's edges); three lanes, then "+2" under a day.
+    Loader {
+        // Made only while the week has such an event (a phone's objects counted).
+        active: !planning.single && !planning.listed && planning.barsShown.length > 0
+        visible: active
+        Layout.fillWidth: true
+        Layout.preferredHeight: item ? item.implicitHeight : 0
+
+        sourceComponent: Item {
+            id: barBand
+
+            readonly property real barHeight: barFont.height + 6
+            readonly property bool anyMore: (planning.barsMore || []).some(n => n > 0)
+
+            implicitHeight: planning.barLanes * (barBand.barHeight + 2) + (barBand.anyMore ? barFont.height + 2 : 0)
+
+            FontMetrics {
+                id: barFont
+
+                font.pixelSize: 12
+            }
+            Repeater {
+                model: planning.barsShown
+
+                delegate: Rectangle {
+                    id: bar
+
+                    required property var modelData
+                    readonly property color hue: bar.modelData.colour ? bar.modelData.colour : planning.theme.accent
+
+                    objectName: "weekBar"
+                    x: planning.gutter + bar.modelData.from_column * planning.dayWidth
+                    y: bar.modelData.lane * (barBand.barHeight + 2)
+                    width: (bar.modelData.to_column - bar.modelData.from_column + 1) * planning.dayWidth - 3
+                    height: barBand.barHeight
+                    topLeftRadius: bar.modelData.cut_before ? 0 : 4
+                    bottomLeftRadius: bar.modelData.cut_before ? 0 : 4
+                    topRightRadius: bar.modelData.cut_after ? 0 : 4
+                    bottomRightRadius: bar.modelData.cut_after ? 0 : 4
+                    // As an appointment's card: its calendar's colour, lightly; chosen, outlined.
+                    color: planning.tint(bar.hue, 0.18)
+                    border.width: planning.chosenId === bar.modelData.id ? 2 : 1
+                    border.color: planning.chosenId === bar.modelData.id ? planning.theme.accent : planning.tint(bar.hue, 0.5)
+                    Accessible.role: Accessible.Button
+                    Accessible.name: bar.modelData.line
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 6
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: (bar.modelData.from !== "" ? bar.modelData.from + "  " : "") + bar.modelData.title
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            font.pixelSize: 12
+                            color: planning.theme.text
+                        }
+                        Label {
+                            visible: bar.modelData.to !== ""
+                            text: bar.modelData.to
+                            textFormat: Text.PlainText
+                            font.pixelSize: 12
+                            font.features: { "tnum": 1 }
+                            color: planning.theme.text
+                        }
+                    }
+                    TapHandler {
+                        onTapped: planning.openSpan(bar.modelData.id, (planning.days[bar.modelData.from_column] || {}).date || "")
+                    }
+                }
+            }
+            // Beyond three lanes: how many more under each day.
+            Repeater {
+                model: barBand.anyMore ? planning.barsMore : []
+
+                delegate: Label {
+                    id: barsBeyond
+
+                    required property var modelData
+                    required property int index
+
+                    objectName: "weekBarsMore"
+                    visible: barsBeyond.modelData > 0
+                    x: planning.gutter + barsBeyond.index * planning.dayWidth + 4
+                    y: planning.barLanes * (barBand.barHeight + 2)
+                    text: barsBeyond.modelData > 0 ? planning.sioul.textArgs("agenda-lines-more", JSON.stringify({ count: barsBeyond.modelData })) : ""
+                    textFormat: Text.PlainText
+                    font.pixelSize: 12
+                    color: planning.theme.muted
+                }
+            }
+        }
+    }
+    // The Day's events of 24 hours or more and of several whole days: one head line each,
+    // "Ongoing: Residency, until Mon 30 Nov 10:15" (on its first day, its whole span).
+    Repeater {
+        model: planning.single && !planning.listed ? planning.barsShown : []
+
+        delegate: Label {
+            id: dayBar
+
+            required property var modelData
+
+            objectName: "dayBar"
+            Layout.fillWidth: true
+            Layout.leftMargin: planning.gutter
+            text: dayBar.modelData.line
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            font.pixelSize: 13
+            color: planning.theme.text
+            Accessible.role: Accessible.Button
+
+            Rectangle {
+                x: -10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 6
+                height: 6
+                radius: 3
+                color: dayBar.modelData.colour ? dayBar.modelData.colour : planning.theme.accent
+            }
+            TapHandler {
+                onTapped: planning.openSpan(dayBar.modelData.id, (planning.days[0] || {}).date || "")
+            }
+        }
+    }
     // Whole days, days off: chips at each day's head, two rows at most, then how many more.
     RowLayout {
         visible: chipsAny.any && planning.chipsHere && !planning.listed
@@ -1632,9 +1843,34 @@ ColumnLayout {
             required property string list
             required property string fold
             required property string tone
+            // An event over several days: its row's mark ("first", "since", "end"), the
+            // lines through the row (JSON), "+2" on a day's title.
+            required property string mark
+            required property string segments
+            required property string beyond
             readonly property bool isTitle: line.kind === "day-title"
             readonly property bool isLine: line.kind === "doses-line" || line.kind === "plan-line" || line.kind === "more-line" || line.kind === "free"
-            readonly property bool quiet: line.isLine || line.kind === "gain" || line.kind === "slack" || line.kind === "night" || line.fold === "band" || line.kind === "done"
+            readonly property bool quiet: line.isLine || line.kind === "gain" || line.kind === "slack" || line.kind === "night" || line.fold === "band" || line.kind === "done" || line.mark === "end"
+            // The middle of what the row shows: where a line starts, or ends at its mark.
+            readonly property real middle: line.height - 4 - shown.implicitHeight / 2
+            // The lines of the events over several days through the row, down the list's left
+            // edge, made only for a row that has some (a phone's objects counted).
+            property var spanItems: []
+
+            function laySpans() {
+                for (const item of line.spanItems)
+                    item.destroy()
+                const made = []
+                for (const segment of line.segments !== "" ? JSON.parse(line.segments) : []) {
+                    const item = spanLine.createObject(line, { theme: planning.theme, span: segment, title: segment.title, fromY: Qt.binding(() => segment.first ? line.middle : -list.spacing), toY: Qt.binding(() => segment.last ? line.middle : line.height) })
+                    item.open.connect(() => planning.openSpan(segment.id, line.date))
+                    made.push(item)
+                }
+                line.spanItems = made
+            }
+
+            onSegmentsChanged: line.laySpans()
+            Component.onCompleted: line.laySpans()
 
             width: ListView.view.width - 12
             height: shown.implicitHeight + (line.isTitle ? 14 : 8)
@@ -1645,16 +1881,18 @@ ColumnLayout {
                 id: shown
 
                 anchors.left: parent.left
+                anchors.leftMargin: planning.lineRoom
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 4
                 spacing: 2
 
-                // A day: its title (today's in the accent), its whole days under it.
+                // A day: its title (today's in the accent), its whole days under it; "+2"
+                // beyond three lines of events over several days.
                 Label {
                     visible: line.isTitle
                     Layout.fillWidth: true
-                    text: line.title
+                    text: line.title + (line.beyond !== "" ? "   " + line.beyond : "")
                     textFormat: Text.PlainText
                     font.pixelSize: 16
                     font.weight: line.date === planning.today ? Font.Bold : Font.DemiBold
@@ -1772,6 +2010,9 @@ ColumnLayout {
 
                 enabled: !line.isLine
                 onTapped: {
+                    // The lines' own taps open their events (SpanLine.qml).
+                    if (lineTap.point.position.x < planning.lineRoom)
+                        return
                     if (line.isTitle)
                         planning.openDay(line.date)
                     else
@@ -1795,6 +2036,12 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    Component {
+        id: spanLine
+
+        SpanLine {}
     }
 
     // The list opened on today's title (its days changed), never moved on a publish.

@@ -1049,7 +1049,7 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
             }
             let (_, notes) = mask::message(&words, "", &event.notes);
             events.push(json!({
-                "uri": uri, "uid": event.uid, "when": listed.when, "start": instant(event.start), "clock": event.clock, "summary": summary, "location": event.location,
+                "uri": uri, "uid": event.uid, "when": listed.when, "start": instant(event.start), "end": instant(event.end), "ongoing": listed.ongoing, "clock": event.clock, "summary": summary, "location": event.location,
                 "notes": notes, "calendar": event.calendar, "all_day": listed.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
                 "tentative": event.tentative, "organizer": event.organizer, "attendees": event.attendees,
             }));

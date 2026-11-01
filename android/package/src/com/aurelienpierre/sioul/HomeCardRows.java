@@ -347,6 +347,10 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
             long end = event == null ? 0 : event.optLong("end");
             if (end > now)
                 next = Math.min(next, end);
+            // An event over several days: its ongoing line from the first midnight after its start.
+            long since = event == null ? 0 : event.optLong("since", 0);
+            if (since > now)
+                next = Math.min(next, since);
         }
         // A date's words and mark at their next change, the date gone when its day ends.
         JSONArray dates = dates(card);
@@ -389,13 +393,36 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
         int color = colour(event.optString("color"));
         int text = textOn(color);
         views.setInt(R.id.sioul_home_card_block, "setColorFilter", color);
-        views.setTextViewText(R.id.sioul_home_card_title, event.optString("title"));
+        views.setTextViewText(R.id.sioul_home_card_title, eventTitle(event, now));
         views.setTextColor(R.id.sioul_home_card_title, text);
-        String time = event.optString("time");
+        String time = eventTime(event, now);
         views.setTextViewText(R.id.sioul_home_card_time, time);
         // The time a little softer than the title, as the window's agenda has it.
         views.setTextColor(R.id.sioul_home_card_time, (text & 0x00ffffff) | 0xd9000000);
         views.setViewVisibility(R.id.sioul_home_card_time, time.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    /**
+     * An event's title as the card says it at `now`: on a day after its first (an
+     * event over several days, from `since` on, the first midnight after its
+     * start), its one line, "Ongoing: Residency, until Mon 30 Nov 10:15"
+     * (`ongoing`); else its title. A card without them (an older Sioul's) as before.
+     */
+    static String eventTitle(JSONObject event, long now)
+    {
+        return ongoing(event, now) ? event.optString("ongoing") : event.optString("title");
+    }
+
+    /** Its time at `now`: none while its ongoing line says it all. */
+    static String eventTime(JSONObject event, long now)
+    {
+        return ongoing(event, now) ? "" : event.optString("time");
+    }
+
+    private static boolean ongoing(JSONObject event, long now)
+    {
+        long since = event.optLong("since", 0);
+        return since > 0 && now >= since && !event.optString("ongoing").isEmpty();
     }
 
     /** A date asked, as the agenda shows it at the head of its day: its mark, its title, the time left (`line`, as it holds now). */

@@ -27,11 +27,23 @@ A choice at the top of the page:
 
 - **What comes**: today in full, then the next two weeks, as a list. Today shows what remains of its appointments and pinned tasks, its meals and nap, its dates, tonight's night as its last row, and the plan's next step and the one after ("The plan: Call the CAF, then Sort the receipts"). Its doses are listed as the Porch lists them, one row a minute ("20:00 · Two doses"), never by name and with nothing to press: a tap opens them in Health. Every other day shows only what differs from your usual days: its appointments, its dates, a meal moved or added that day, a night without its alarm, a medicine taken every few days, and the plan's first step. A tap on the plan's line opens that day. This is where the page opens.
 - **Day**, **Week**.
-- **Month**: six weeks of days. On a computer, each day shows its dates first, then its appointments, three lines at most, then "…"; a tap on a line opens it, a tap on the day's number opens that day. Days off are shaded. On a phone, each day shows its number and at most two marks, a diamond for a date asked and a dot for appointments, and under the month "Dates and appointments this month" lists them day by day from today on; a tap on a day brings it to the top of that list. The Month shows no step, meal or dose.
+- **Month**: six weeks of days. On a computer, each day shows its dates first, then its appointments, three lines at most (fewer under the bars of events over several days), then "…"; a tap on a line opens it, a tap on the day's number opens that day. Days off are shaded. On a phone, each day shows its number and at most two marks, a diamond for a date asked and a dot for appointments, and under the month "Dates and appointments this month" lists them day by day from today on; a tap on a day brings it to the top of that list. The Month shows no step, meal or dose.
 
 The arrows ◂ and ▸ go earlier and later; **Today** comes back to today. Nothing is late or overdue: the past shows only when you go back to it.
 
 The page follows the clock: the line at the current hour moves with it, and today becomes tomorrow at midnight. The page reads your calendars again every five minutes and whenever you come back to Sioul; your calendar server is asked every quarter of an hour, and at once after a change you make.
+
+## Events over several days {#over-several-days}
+
+A trip, a holiday, a residency, an event typed with a wrong end date: an event over several days is drawn once, never again under each day.
+
+- **In the lists** (What comes, and a phone's Week and Month lists), it is one row on its first day, its whole span under its title: "Mon 2 Nov 10:00 → Mon 30 Nov 10:15"; an evening past midnight, "22:00 → 02:00 (Tue)". A thin line in its calendar's colour then runs down the list's left edge through every day it covers, and ends on its last day with a small mark and a row "until 10:15", even on a day with nothing else. A tap on the line opens the event. A list that starts after it began says "Ongoing since Mon 2 Nov, until Mon 30 Nov" at the top of its first day. Three lines run side by side at most; beyond them, the day's title says how many more ("+2").
+- **In the Week and the Month**, an event of 24 hours or more, and one of several whole days, is one bar across its days: at the top of the week, its start time at one end and its end time at the other; in the month, once on each week's row, its title once on each. Its hours are not filled on the timeline, so what else happens on those days stays readable. In the Day, it is one line at the head: "Ongoing: Residency, until Mon 30 Nov 10:15".
+- **An evening past midnight**, shorter than 24 hours, keeps its hours in the Day and the Week, as other calendars draw it (a bar would hide them), and its line on both its days in the month.
+- **On the home card**, from the day after its first, it is one line under today: "Ongoing: Residency, until Mon 30 Nov 10:15".
+- `sioul agenda` and the agents' agenda list it once, with its span; asked from a later day, "Ongoing since".
+
+Only the drawing changes. The plan still keeps its hours busy, the warning for two events at once and the reminders read it as before, and your other calendar apps see the same event.
 
 ## Events
 

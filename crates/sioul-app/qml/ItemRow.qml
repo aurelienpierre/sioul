@@ -32,6 +32,9 @@ ItemDelegate {
     property string known: ""
     property bool cancelled: false
     property bool tentative: false
+    // An event over several days on its last day: its end mark's row, its line's end
+    // beside it (SpanLine.qml), so no mark of its own and its title quiet.
+    property bool ending: false
     property bool compact: false
     property bool selected: false
     // The width the times take, the same for every row of a list.
@@ -88,7 +91,7 @@ ItemDelegate {
                 readonly property bool diamond: row.kind === "dated"
                 readonly property bool own: row.kind === "meal" || row.kind === "nap" || row.kind === "night" || row.kind === "day-off"
 
-                visible: row.kind !== "dose"
+                visible: row.kind !== "dose" && !row.ending
                 anchors.centerIn: parent
                 width: diamond ? 7 : 8
                 height: diamond ? 7 : 8
@@ -120,7 +123,7 @@ ItemDelegate {
                 elide: Text.ElideRight
                 font.strikeout: row.cancelled
                 font.pixelSize: row.compact ? 13 : 15
-                color: row.tentative ? row.theme.muted : row.theme.text
+                color: row.tentative || row.ending ? row.theme.muted : row.theme.text
             }
             Label {
                 visible: row.line !== ""

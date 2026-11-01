@@ -27,11 +27,23 @@ Un choix en haut de la page :
 
 - **Ce qui vient** : aujourd’hui en entier, puis les deux prochaines semaines, en liste. Aujourd’hui montre ce qui reste de ses rendez-vous et de ses tâches fixées, ses repas et sa sieste, ses dates, la nuit de ce soir en dernière ligne, et la prochaine étape du plan avec la suivante (« Le plan : Appeler la CAF, puis Trier les reçus »). Ses prises sont listées comme le Porche les liste, une ligne par minute (« 20:00 · Deux prises »), jamais par leur nom et sans rien à presser : un toucher les ouvre dans Santé. Chaque autre jour ne montre que ce qui diffère de vos jours habituels : ses rendez-vous, ses dates, un repas déplacé ou ajouté ce jour-là, une nuit sans son réveil, un médicament pris tous les quelques jours, et la première étape du plan. Un toucher sur la ligne du plan ouvre ce jour. C’est là que la page s’ouvre.
 - **Jour**, **Semaine**.
-- **Mois** : six semaines de jours. Sur un ordinateur, chaque jour montre d’abord ses dates, puis ses rendez-vous, trois lignes au plus, puis « … » ; un toucher sur une ligne l’ouvre, un toucher sur le numéro du jour ouvre ce jour. Les jours de congé sont grisés. Sur un téléphone, chaque jour montre son numéro et deux marques au plus, un losange pour une date demandée et un point pour les rendez-vous, et sous le mois « Dates et rendez-vous de ce mois » les liste jour par jour à partir d’aujourd’hui ; un toucher sur un jour l’amène en haut de cette liste. Le Mois ne montre ni étape, ni repas, ni prise.
+- **Mois** : six semaines de jours. Sur un ordinateur, chaque jour montre d’abord ses dates, puis ses rendez-vous, trois lignes au plus (moins sous les barres des événements sur plusieurs jours), puis « … » ; un toucher sur une ligne l’ouvre, un toucher sur le numéro du jour ouvre ce jour. Les jours de congé sont grisés. Sur un téléphone, chaque jour montre son numéro et deux marques au plus, un losange pour une date demandée et un point pour les rendez-vous, et sous le mois « Dates et rendez-vous de ce mois » les liste jour par jour à partir d’aujourd’hui ; un toucher sur un jour l’amène en haut de cette liste. Le Mois ne montre ni étape, ni repas, ni prise.
 
 Les flèches ◂ et ▸ vont plus tôt et plus tard ; **Aujourd’hui** revient à aujourd’hui. Rien n’est en retard ni dépassé : le passé ne s’affiche que si vous y retournez.
 
 La page suit l’horloge : la ligne de l’heure actuelle avance avec elle, et aujourd’hui devient demain à minuit. La page relit vos agendas toutes les cinq minutes et chaque fois que vous revenez dans Sioul ; votre serveur d’agenda est interrogé tous les quarts d’heure, et aussitôt après un changement que vous faites.
+
+## Les événements sur plusieurs jours {#over-several-days}
+
+Un voyage, des vacances, une résidence, un événement saisi avec une mauvaise date de fin : un événement sur plusieurs jours est dessiné une fois, jamais de nouveau sous chaque jour.
+
+- **Dans les listes** (Ce qui vient, et les listes de la Semaine et du Mois d’un téléphone), c’est une ligne le premier jour, toute sa durée sous son titre : « lun. 2 nov. 10:00 → lun. 30 nov. 10:15 » ; une soirée qui passe minuit, « 22:00 → 02:00 (mar.) ». Un trait fin, à la couleur de son agenda, descend ensuite le long du bord gauche de la liste à travers chaque jour qu’il couvre, et finit son dernier jour par une petite marque et une ligne « jusqu’à 10:15 », même un jour où rien d’autre n’a lieu. Un toucher sur le trait ouvre l’événement. Une liste qui commence après son début dit « En cours depuis le lun. 2 nov., jusqu’au lun. 30 nov. » en haut de son premier jour. Trois traits côte à côte au plus ; au-delà, le titre du jour dit combien d’autres (« +2 »).
+- **Dans la Semaine et le Mois**, un événement de 24 heures ou plus, et un de plusieurs jours entiers, est une barre à travers ses jours : en haut de la semaine, son heure de début à un bout et son heure de fin à l’autre ; dans le mois, une fois sur chaque rangée de semaine, son titre une fois sur chacune. Ses heures ne sont pas remplies sur la frise, si bien que le reste de ces jours reste lisible. Dans le Jour, c’est une ligne en tête : « En cours : Résidence, jusqu’au lun. 30 nov. 10:15 ».
+- **Une soirée qui passe minuit**, de moins de 24 heures, garde ses heures dans le Jour et la Semaine, comme les autres agendas la dessinent (une barre les cacherait), et sa ligne ses deux jours dans le mois.
+- **Sur la carte de l’écran d’accueil**, à partir du lendemain de son premier jour, c’est une ligne sous aujourd’hui : « En cours : Résidence, jusqu’au lun. 30 nov. 10:15 ».
+- `sioul agenda` et l’agenda des agents le listent une fois, avec sa durée ; demandé à partir d’un jour suivant, « En cours depuis ».
+
+Seul le dessin change. Le plan garde ses heures occupées, l’avertissement pour deux événements à la fois et les rappels le lisent comme avant, et vos autres applications d’agenda voient le même événement.
 
 ## Les événements {#events}
 

@@ -56,7 +56,87 @@ Item {
             }
             out.push({ sort: dose.minute, id: "doses:" + day.date + "/" + dose.minute, when: dose.when, title: dose.title, line: words, kind: "dose", tone: "plain", colour: "transparent", known: known, cancelled: false, tentative: false, placed: null, keys: dose.keys })
         }
-        return out.sort((a, b) => a.sort - b.sort)
+        return out.concat(page.spanRows(day)).sort((a, b) => a.sort - b.sort)
+    }
+
+    // The events over several days shown, each once, by its item's id
+    // (`spans`, `ongoing::spans`): what a list's row of one says, what its line opens.
+    readonly property var spanEvents: {
+        const out = {}
+        for (const placed of page.shown.spans || [])
+            out[placed.item.id] = placed
+        return out
+    }
+    // The room the lines take at a list's left edge, while a day shown has one.
+    readonly property int lineRoom: page.shown.days.some(d => ((d.through || {}).lines || []).length > 0) ? 26 : 0
+
+    // A list's rows of a day for its events over several days (`ongoing::Through`): an
+    // event's row on its first day shown, its whole span under its title ("Ongoing
+    // since …" when the list starts after it began), its end mark's row on its last.
+    function spanRows(day) {
+        const out = []
+        for (const r of (day.through || {}).rows || []) {
+            const placed = page.spanEvents[r.id]
+            if (!placed || !page.shownHere(placed.item))
+                continue
+            const item = placed.item
+            const detail = placed.detail || {}
+            const place = r.mark === "end" ? "" : detail.location || ""
+            out.push({ sort: r.minute, id: item.id, when: r.when, title: item.title, line: [r.line, place].filter(t => t !== "").join(" · "), kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [], mark: r.mark })
+        }
+        return out
+    }
+
+    // A phone's Month list's rows of a day: its lines (`month_lines`) but the copies of an
+    // event over several days, which it writes once (`spanRows`), in time order.
+    function monthRows(day) {
+        return (day.lines || []).filter(p => page.shownHere(p.item) && p.spans !== true).map(page.monthRow).concat(page.spanRows(day)).sort((a, b) => a.sort - b.sort)
+    }
+    // The room the lines take at the phone's Month list's left edge.
+    readonly property int monthLineRoom: page.mode === "month" && page.narrow && page.shown.days.some(d => ((d.through || {}).lines || []).length > 0) ? 26 : 0
+
+    // The Month's bars (`ongoing::Bar`), those of a calendar Show hides left out; how many
+    // lanes each week's row takes; a bar's height.
+    readonly property var monthBars: (page.shown.bars || []).filter(b => {
+        const placed = page.spanEvents[b.id]
+        return !placed || page.shownHere(placed.item)
+    })
+    readonly property var monthBarLanes: {
+        const out = [0, 0, 0, 0, 0, 0]
+        for (const b of page.monthBars)
+            out[b.row] = Math.max(out[b.row] || 0, b.lane + 1)
+        return out
+    }
+    readonly property int monthBarHeight: 15
+
+    // An event over several days' lines through a day of a list (`lines`, `ongoing::Line`),
+    // made only for a day that has some, so that the lists cost nothing more without
+    // them: SpanLine.qml on `parent` (the list's content), from `from(line)` to
+    // `to(line)` there, opening with `open(line)`; those `made` before destroyed.
+    function layLines(made, parent, lines, from, to, open) {
+        for (const item of made || [])
+            item.destroy()
+        const out = []
+        for (const l of lines) {
+            const placed = page.spanEvents[l.id]
+            const item = spanLine.createObject(parent, { theme: page.theme, span: l, title: placed ? placed.item.title : "", fromY: Qt.binding(() => from(l)), toY: Qt.binding(() => to(l)) })
+            item.open.connect(() => open(l))
+            out.push(item)
+        }
+        return out
+    }
+
+    Component {
+        id: spanLine
+
+        SpanLine {}
+    }
+
+    // An event over several days opened from its line: its card where you are.
+    function openSpan(id, day) {
+        const placed = page.spanEvents[id]
+        if (placed)
+            page.openListed({ kind: placed.item.kind, placed: placed }, day)
     }
 
     // What Show keeps on this device, in What comes and the Month as in the Day and the Week
@@ -145,7 +225,7 @@ Item {
     readonly property var calendarsShown: {
         const out = (page.view.calendars || []).slice()
         for (const day of page.shown.days)
-            for (const row of (day.head || []).concat(day.timed || [], day.lines || [], (day.comes || {}).rows || [])) {
+            for (const row of (day.head || []).concat(day.timed || [], day.lines || [], (day.comes || {}).rows || [], page.shown.spans || [])) {
                 const source = row.item.source || {}
                 if (source.type === "calendar" && source.collection && !out.some(c => c.id === source.collection))
                     out.push({ id: source.collection, name: source.calendar || source.collection })
@@ -171,10 +251,13 @@ Item {
 
     function saveView(changed) {
         const problem = page.sioul.setAgendaView(JSON.stringify(changed))
-        if (problem !== "")
+        if (problem !== "") {
             page.sioul.status = problem
-        else
+        } else {
             page.view = changed
+            // The lines' lanes leave a hidden calendar out (`ongoing::spans`): laid out again.
+            page.readAgain()
+        }
     }
 
     // Today's head line now (`timeline::head_line`, given ahead to midnight): its
@@ -454,6 +537,9 @@ Item {
 
                         Label {
                             Layout.fillWidth: true
+                            // Its words wrap at the row's width: they never widen it past a phone's
+                            // (found in the ongoing round's pictures: a month-long event's warnings).
+                            Layout.preferredWidth: 0
                             text: {
                                 const one = e => e.title + " (" + e.from + " – " + e.to + ")"
                                 const day = new Date(clash.modelData.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
@@ -663,23 +749,57 @@ Item {
                     required property var modelData
                     readonly property var rows: page.comesRows(day.modelData)
                     readonly property string plan: page.comesPlan(day.modelData)
+                    readonly property var through: day.modelData.through || ({ lines: [], more: 0, rows: [] })
+                    // Its events over several days' lines, made only while it has some (`layLines`).
+                    property var spans: []
+
+                    // The middle of the day's row of an event over several days (its first
+                    // row, or its end mark's), in the day: where its line starts or ends.
+                    function middleOf(id, end) {
+                        const count = dayRows.count
+                        for (let i = 0; i < count; i++) {
+                            const r = day.rows[i]
+                            if (r && r.id === id && r.mark !== undefined && (r.mark === "end") === end) {
+                                const item = dayRows.itemAt(i)
+                                return item ? item.y + item.height / 2 : 0
+                            }
+                        }
+                        return end ? day.height : 0
+                    }
+
+                    // Its lines on the list's content: from its row on its first day (else through
+                    // the gap above), to its end mark on its last (else the day's bottom).
+                    function lay() {
+                        day.spans = page.layLines(day.spans, daysList.contentItem, day.through.lines,
+                                                  l => day.y + (l.first ? day.middleOf(l.id, false) : -daysList.spacing),
+                                                  l => day.y + (l.last ? day.middleOf(l.id, true) : day.height),
+                                                  l => page.openSpan(l.id, day.modelData))
+                    }
 
                     width: daysList.width - 12
                     spacing: 2
+                    onThroughChanged: day.lay()
+                    Component.onCompleted: day.lay()
+                    Component.onDestruction: page.layLines(day.spans, null, [], null, null, null)
 
+                    // Its title; beyond three lines of events over several days at once, how many more ("+2").
                     Label {
-                        text: day.modelData.title
+                        Layout.leftMargin: page.lineRoom
+                        text: day.modelData.title + (day.through.more > 0 ? "   " + page.sioul.textArgs("agenda-lines-more", JSON.stringify({ count: day.through.more })) : "")
                         textFormat: Text.PlainText
                         font.weight: Font.DemiBold
                         font.pixelSize: 16
                         color: day.modelData.date < page.window.today ? page.theme.muted : page.theme.text
                     }
                     Label {
-                        visible: day.rows.length === 0 && day.plan === ""
+                        visible: day.rows.length === 0 && day.plan === "" && day.through.lines.length === 0
+                        Layout.leftMargin: page.lineRoom
                         text: page.sioul.text("agenda-free")
                         color: page.theme.muted
                     }
                     Repeater {
+                        id: dayRows
+
                         model: day.rows
 
                         delegate: ItemRow {
@@ -688,6 +808,7 @@ Item {
                             required property var modelData
 
                             Layout.fillWidth: true
+                            Layout.leftMargin: page.lineRoom
                             theme: page.theme
                             compact: page.narrow
                             timeWidth: page.narrow ? 76 : 116
@@ -700,6 +821,7 @@ Item {
                             known: listed.modelData.known
                             cancelled: listed.modelData.cancelled
                             tentative: listed.modelData.tentative
+                            ending: listed.modelData.mark === "end"
                             selected: page.isOpen(listed.modelData)
                             onOpen: page.openListed(listed.modelData, day.modelData)
                             onMenu: page.menuListed(listed.modelData, day.modelData)
@@ -710,7 +832,7 @@ Item {
                         objectName: "comesPlan"
                         visible: day.plan !== ""
                         Layout.fillWidth: true
-                        Layout.leftMargin: 6
+                        Layout.leftMargin: page.lineRoom + 6
                         text: day.plan
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
@@ -733,6 +855,9 @@ Item {
                 sioul: page.sioul
                 theme: page.theme
                 days: page.mode === "week" || page.mode === "day" ? page.shown.days : []
+                spans: page.mode === "week" || page.mode === "day" ? page.shown.spans || [] : []
+                bars: page.mode === "week" || page.mode === "day" ? page.shown.bars || [] : []
+                barsMore: page.mode === "week" || page.mode === "day" ? page.shown.bars_more || [] : []
                 frame: page.shown.frame || ({ from: 7 * 60, to: 22 * 60 })
                 locale: page.locale
                 // The window's clock: the line at now, today's column and its doses' marks follow it.
@@ -767,141 +892,205 @@ Item {
                 spacing: 4
 
                 // The month's days from today on that hold something: a phone's list.
-                readonly property var listed: page.mode === "month" && page.narrow ? page.shown.days.filter(d => Number(d.date.slice(5, 7)) === page.anchor.getMonth() + 1 && d.date >= page.window.today && (d.lines || []).some(p => page.shownHere(p.item))) : []
+                readonly property var listed: page.mode === "month" && page.narrow ? page.shown.days.filter(d => Number(d.date.slice(5, 7)) === page.anchor.getMonth() + 1 && d.date >= page.window.today && page.monthRows(d).length > 0) : []
 
                 DayOfWeekRow {
                     Layout.fillWidth: true
                     locale: page.locale
                 }
-                GridLayout {
+                // The weeks' cells, and over them the bars of the events of 24 hours or more and
+                // of several whole days (`ongoing::Bar`): one bar a week's row, its title once in it.
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: !page.narrow
                     Layout.preferredHeight: page.narrow ? 6 * 44 + 5 * 4 : -1
-                    columns: 7
-                    columnSpacing: 4
-                    rowSpacing: 4
+                    implicitHeight: monthGrid.implicitHeight
 
-                    Repeater {
-                        model: page.mode === "month" ? page.shown.days : []
+                    GridLayout {
+                        id: monthGrid
 
-                        delegate: Rectangle {
-                            id: cell
+                        anchors.fill: parent
+                        columns: 7
+                        columnSpacing: 4
+                        rowSpacing: 4
 
-                            required property var modelData
-                            readonly property bool inMonth: Number(cell.modelData.date.slice(5, 7)) === page.anchor.getMonth() + 1
-                            // Today as the window's clock has it: it moves at midnight.
-                            readonly property bool today: cell.modelData.date === page.window.today
-                            readonly property var lines: (cell.modelData.lines || []).filter(p => page.shownHere(p.item))
-                            readonly property var dated: cell.lines.find(p => p.item.kind === "dated") || null
+                        Repeater {
+                            id: monthCells
 
-                            objectName: "monthCell"
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            Layout.preferredWidth: 1
-                            Layout.preferredHeight: 1
-                            color: cell.today ? page.theme.surface : cell.modelData.off === true ? timeline.tint(page.theme.line, 0.35) : "transparent"
-                            radius: page.theme.radius
-                            border.color: page.theme.line
-                            opacity: cell.inMonth ? 1 : 0.5
+                            model: page.mode === "month" ? page.shown.days : []
 
-                            TapHandler {
-                                // On a phone, the day's place in the list; double, a new event there.
-                                onTapped: if (page.narrow) {
-                                    const at = month.listed.findIndex(d => d.date >= cell.modelData.date)
-                                    if (at >= 0)
-                                        monthList.positionViewAtIndex(at, ListView.Beginning)
+                            delegate: Rectangle {
+                                id: cell
+
+                                required property var modelData
+                                required property int index
+                                readonly property bool inMonth: Number(cell.modelData.date.slice(5, 7)) === page.anchor.getMonth() + 1
+                                // Today as the window's clock has it: it moves at midnight.
+                                readonly property bool today: cell.modelData.date === page.window.today
+                                readonly property var lines: (cell.modelData.lines || []).filter(p => page.shownHere(p.item))
+                                readonly property var dated: cell.lines.find(p => p.item.kind === "dated") || null
+                                // The bars' lanes in the cell's week row, and where they start in it.
+                                readonly property int barLanes: page.narrow ? 0 : page.monthBarLanes[Math.floor(cell.index / 7)] || 0
+                                readonly property real barsTop: 4 + cellHead.y + cellHead.height + 2
+
+                                objectName: "monthCell"
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                Layout.preferredWidth: 1
+                                Layout.preferredHeight: 1
+                                color: cell.today ? page.theme.surface : cell.modelData.off === true ? timeline.tint(page.theme.line, 0.35) : "transparent"
+                                radius: page.theme.radius
+                                border.color: page.theme.line
+                                opacity: cell.inMonth ? 1 : 0.5
+
+                                TapHandler {
+                                    // On a phone, the day's place in the list; double, a new event there.
+                                    onTapped: if (page.narrow) {
+                                        const at = month.listed.findIndex(d => d.date >= cell.modelData.date)
+                                        if (at >= 0)
+                                            monthList.positionViewAtIndex(at, ListView.Beginning)
+                                    }
+                                    onDoubleTapped: page.newEvent(cell.modelData.date)
                                 }
-                                onDoubleTapped: page.newEvent(cell.modelData.date)
-                            }
 
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 4
-                                spacing: 2
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 4
+                                    spacing: 2
 
-                                RowLayout {
-                                    spacing: 3
+                                    // Its number and a phone's marks; under them, room for the bars over the row
+                                    // (a margin, not an object more in each of the 42 cells).
+                                    RowLayout {
+                                        id: cellHead
 
-                                    Label {
-                                        objectName: "monthDay"
-                                        text: Number(cell.modelData.date.slice(8, 10))
-                                        textFormat: Text.PlainText
-                                        font.weight: cell.today ? Font.Bold : Font.Normal
-                                        color: cell.today ? page.theme.accent : page.theme.text
-
-                                        // Its number: that day in the Day (a computer; a phone's cell takes the tap).
-                                        TapHandler {
-                                            enabled: !page.narrow
-                                            onTapped: page.showDay(cell.modelData.date)
-                                        }
-                                    }
-                                    // A phone's two marks: a diamond for a date asked, a dot for appointments.
-                                    Rectangle {
-                                        objectName: "monthDiamond"
-                                        visible: page.narrow && cell.dated !== null
-                                        Layout.preferredWidth: 6
-                                        Layout.preferredHeight: 6
-                                        rotation: 45
-                                        color: cell.dated && cell.dated.item.tone !== "quiet" ? page.theme.text : "transparent"
-                                        border.color: page.theme.text
-                                        border.width: 1
-                                    }
-                                    Rectangle {
-                                        objectName: "monthDot"
-                                        visible: page.narrow && cell.lines.some(p => p.item.kind !== "dated")
-                                        Layout.preferredWidth: 6
-                                        Layout.preferredHeight: 6
-                                        radius: 3
-                                        color: page.theme.accent
-                                    }
-                                }
-                                Repeater {
-                                    model: page.narrow ? [] : cell.lines.slice(0, 3)
-
-                                    delegate: RowLayout {
-                                        id: monthLine
-
-                                        required property var modelData
-
-                                        objectName: "monthLine"
-                                        Layout.fillWidth: true
+                                        Layout.bottomMargin: cell.barLanes * (page.monthBarHeight + 2)
                                         spacing: 3
 
-                                        // A date's diamond, filled within seven days; an appointment's colour dot.
-                                        Rectangle {
-                                            readonly property bool diamond: monthLine.modelData.item.kind === "dated"
-
-                                            Layout.preferredWidth: diamond ? 6 : 7
-                                            Layout.preferredHeight: diamond ? 6 : 7
-                                            Layout.alignment: Qt.AlignVCenter
-                                            rotation: diamond ? 45 : 0
-                                            radius: diamond ? 0 : 3.5
-                                            color: diamond ? (monthLine.modelData.item.tone !== "quiet" ? page.theme.text : "transparent") : monthLine.modelData.item.colour || page.theme.accent
-                                            border.width: diamond ? 1 : 0
-                                            border.color: page.theme.text
-                                        }
                                         Label {
-                                            Layout.fillWidth: true
-                                            text: monthLine.modelData.item.title
+                                            objectName: "monthDay"
+                                            text: Number(cell.modelData.date.slice(8, 10))
                                             textFormat: Text.PlainText
-                                            elide: Text.ElideRight
-                                            font.pixelSize: 12
-                                            font.strikeout: (monthLine.modelData.detail || {}).cancelled === true
-                                            color: page.theme.text
+                                            font.weight: cell.today ? Font.Bold : Font.Normal
+                                            color: cell.today ? page.theme.accent : page.theme.text
+
+                                            // Its number: that day in the Day (a computer; a phone's cell takes the tap).
+                                            TapHandler {
+                                                enabled: !page.narrow
+                                                onTapped: page.showDay(cell.modelData.date)
+                                            }
                                         }
-                                        TapHandler {
-                                            onTapped: page.openRow(timeline.rowOf(monthLine.modelData, cell.modelData, 0, ""))
+                                        // A phone's two marks: a diamond for a date asked, a dot for appointments
+                                        // (an event over several days among them).
+                                        Rectangle {
+                                            objectName: "monthDiamond"
+                                            visible: page.narrow && cell.dated !== null
+                                            Layout.preferredWidth: 6
+                                            Layout.preferredHeight: 6
+                                            rotation: 45
+                                            color: cell.dated && cell.dated.item.tone !== "quiet" ? page.theme.text : "transparent"
+                                            border.color: page.theme.text
+                                            border.width: 1
+                                        }
+                                        Rectangle {
+                                            objectName: "monthDot"
+                                            visible: page.narrow && (cell.lines.some(p => p.item.kind !== "dated") || ((cell.modelData.through || {}).lines || []).length > 0)
+                                            Layout.preferredWidth: 6
+                                            Layout.preferredHeight: 6
+                                            radius: 3
+                                            color: page.theme.accent
                                         }
                                     }
+                                    Repeater {
+                                        model: page.narrow ? [] : cell.lines.slice(0, Math.max(1, 3 - cell.barLanes))
+
+                                        delegate: RowLayout {
+                                            id: monthLine
+
+                                            required property var modelData
+
+                                            objectName: "monthLine"
+                                            Layout.fillWidth: true
+                                            spacing: 3
+
+                                            // A date's diamond, filled within seven days; an appointment's colour dot.
+                                            Rectangle {
+                                                readonly property bool diamond: monthLine.modelData.item.kind === "dated"
+
+                                                Layout.preferredWidth: diamond ? 6 : 7
+                                                Layout.preferredHeight: diamond ? 6 : 7
+                                                Layout.alignment: Qt.AlignVCenter
+                                                rotation: diamond ? 45 : 0
+                                                radius: diamond ? 0 : 3.5
+                                                color: diamond ? (monthLine.modelData.item.tone !== "quiet" ? page.theme.text : "transparent") : monthLine.modelData.item.colour || page.theme.accent
+                                                border.width: diamond ? 1 : 0
+                                                border.color: page.theme.text
+                                            }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: monthLine.modelData.item.title
+                                                textFormat: Text.PlainText
+                                                elide: Text.ElideRight
+                                                font.pixelSize: 12
+                                                font.strikeout: (monthLine.modelData.detail || {}).cancelled === true
+                                                color: page.theme.text
+                                            }
+                                            TapHandler {
+                                                onTapped: page.openRow(timeline.rowOf(monthLine.modelData, cell.modelData, 0, ""))
+                                            }
+                                        }
+                                    }
+                                    Label {
+                                        visible: !page.narrow && (cell.lines.length > Math.max(1, 3 - cell.barLanes) || (page.shown.bars_more || [])[cell.index] > 0)
+                                        text: "…"
+                                        color: page.theme.muted
+                                    }
+                                    Item {
+                                        Layout.fillHeight: true
+                                    }
                                 }
-                                Label {
-                                    visible: !page.narrow && cell.lines.length > 3
-                                    text: "…"
-                                    color: page.theme.muted
-                                }
-                                Item {
-                                    Layout.fillHeight: true
-                                }
+                            }
+                        }
+                    }
+                    Repeater {
+                        model: page.mode === "month" && !page.narrow ? page.monthBars : []
+
+                        delegate: Rectangle {
+                            id: monthBar
+
+                            required property var modelData
+                            readonly property Item first: monthCells.count > 0 ? monthCells.itemAt(monthBar.modelData.row * 7 + monthBar.modelData.from_column) : null
+                            readonly property Item last: monthCells.count > 0 ? monthCells.itemAt(monthBar.modelData.row * 7 + monthBar.modelData.to_column) : null
+                            readonly property color hue: monthBar.modelData.colour ? monthBar.modelData.colour : page.theme.accent
+
+                            objectName: "monthBar"
+                            visible: monthBar.first !== null && monthBar.last !== null
+                            x: monthBar.first ? monthBar.first.x + 3 : 0
+                            y: monthBar.first ? monthBar.first.y + monthBar.first.barsTop + monthBar.modelData.lane * (page.monthBarHeight + 2) : 0
+                            width: monthBar.last && monthBar.first ? monthBar.last.x + monthBar.last.width - monthBar.first.x - 6 : 0
+                            height: page.monthBarHeight
+                            topLeftRadius: monthBar.modelData.cut_before ? 0 : 3
+                            bottomLeftRadius: monthBar.modelData.cut_before ? 0 : 3
+                            topRightRadius: monthBar.modelData.cut_after ? 0 : 3
+                            bottomRightRadius: monthBar.modelData.cut_after ? 0 : 3
+                            color: timeline.tint(monthBar.hue, 0.22)
+                            border.width: 1
+                            border.color: timeline.tint(monthBar.hue, 0.55)
+                            Accessible.role: Accessible.Button
+                            Accessible.name: monthBar.modelData.line
+
+                            Label {
+                                anchors.fill: parent
+                                anchors.leftMargin: 4
+                                anchors.rightMargin: 4
+                                verticalAlignment: Text.AlignVCenter
+                                text: monthBar.modelData.title
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                font.pixelSize: 11
+                                color: page.theme.text
+                            }
+                            TapHandler {
+                                onTapped: page.openSpan(monthBar.modelData.id, page.shown.days[monthBar.modelData.row * 7 + monthBar.modelData.from_column] || {})
                             }
                         }
                     }
@@ -929,12 +1118,39 @@ Item {
                         id: listedDay
 
                         required property var modelData
+                        readonly property var rows: page.monthRows(listedDay.modelData)
+                        readonly property var through: listedDay.modelData.through || ({ lines: [], more: 0, rows: [] })
+                        // Its events over several days' lines, made only while it has some (`layLines`).
+                        property var spans: []
+
+                        // The middle of the day's row of an event over several days: where its line starts or ends.
+                        function middleOf(id, end) {
+                            for (let i = 0; i < monthRowsShown.count; i++) {
+                                const r = listedDay.rows[i]
+                                if (r && r.id === id && r.mark !== undefined && (r.mark === "end") === end) {
+                                    const item = monthRowsShown.itemAt(i)
+                                    return item ? item.y + item.height / 2 : 0
+                                }
+                            }
+                            return end ? listedDay.height : 0
+                        }
+
+                        function lay() {
+                            listedDay.spans = page.layLines(listedDay.spans, monthList.contentItem, listedDay.through.lines,
+                                                            l => listedDay.y + (l.first ? listedDay.middleOf(l.id, false) : -monthList.spacing),
+                                                            l => listedDay.y + (l.last ? listedDay.middleOf(l.id, true) : listedDay.height),
+                                                            l => page.openSpan(l.id, listedDay.modelData))
+                        }
 
                         width: monthList.width
                         spacing: 1
+                        onThroughChanged: listedDay.lay()
+                        Component.onCompleted: listedDay.lay()
+                        Component.onDestruction: page.layLines(listedDay.spans, null, [], null, null, null)
 
                         Label {
-                            text: listedDay.modelData.title
+                            Layout.leftMargin: page.monthLineRoom
+                            text: listedDay.modelData.title + (listedDay.through.more > 0 ? "   " + page.sioul.textArgs("agenda-lines-more", JSON.stringify({ count: listedDay.through.more })) : "")
                             textFormat: Text.PlainText
                             font.weight: Font.DemiBold
                             color: page.theme.text
@@ -944,7 +1160,9 @@ Item {
                             }
                         }
                         Repeater {
-                            model: (listedDay.modelData.lines || []).filter(p => page.shownHere(p.item)).map(page.monthRow)
+                            id: monthRowsShown
+
+                            model: listedDay.rows
 
                             delegate: ItemRow {
                                 id: monthItem
@@ -952,16 +1170,20 @@ Item {
                                 required property var modelData
 
                                 Layout.fillWidth: true
+                                Layout.leftMargin: page.monthLineRoom
                                 theme: page.theme
                                 compact: true
                                 timeWidth: 76
                                 when: monthItem.modelData.when
                                 title: monthItem.modelData.title
+                                // An event over several days: its span, "Ongoing since …", "until 10:15".
+                                line: monthItem.modelData.mark !== undefined ? monthItem.modelData.line : ""
                                 kind: monthItem.modelData.kind
                                 tone: monthItem.modelData.tone
                                 colour: monthItem.modelData.colour
                                 cancelled: monthItem.modelData.cancelled
                                 tentative: monthItem.modelData.tentative
+                                ending: monthItem.modelData.mark === "end"
                                 selected: page.isOpen(monthItem.modelData)
                                 onOpen: page.openListed(monthItem.modelData, listedDay.modelData)
                                 onMenu: page.menuListed(monthItem.modelData, listedDay.modelData)

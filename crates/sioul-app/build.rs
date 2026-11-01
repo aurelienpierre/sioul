@@ -44,6 +44,7 @@ fn main() {
         "qml/EventDialog.qml",
         "qml/CalendarFileDialog.qml",
         "qml/ItemRow.qml",
+        "qml/SpanLine.qml",
         "qml/WeekPlanning.qml",
         "qml/DayHead.qml",
         "qml/Paths.qml",

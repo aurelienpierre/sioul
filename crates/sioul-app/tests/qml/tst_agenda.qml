@@ -42,7 +42,9 @@ Item {
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
-        function textArgs(key, args) { return key }
+        // Its words with their arguments, long as real ones, when a test asks.
+        property bool longWords: false
+        function textArgs(key, args) { return mock.longWords ? key + ": " + args : key }
         function agendaView() { return "{}" }
         function setAgendaView(view) { return "" }
         function showDays(from, count, upcoming) { mock.asked.push(count) }
@@ -154,6 +156,8 @@ Item {
             shell.backAt = 0
             mock.healthAsked = 0
             mock.relaid = 0
+            mock.longWords = false
+            mock.overlaps = "[]"
         }
 
         // What comes showing today asks for the doses' reading as the Day does: when
@@ -253,6 +257,168 @@ Item {
             compare(plans.map(p => p.text).join(" | "), "The plan: Write, then Sort | The plan: Call first")
             mouseClick(plans[1])
             compare(page.mode, "day", "its day opens")
+        }
+
+        // An event over several days and its line (`ongoing::Through`, the ongoing round), Monday to Wednesday.
+        function trip(lane, more) {
+            const line = (first, last) => ({ id: "Trip", uid: "trip", colour: "#3d6b8f", lane: lane || 0, first: first, last: last })
+            const spans = [placed("Trip", "event", root.monday, 480, 1440, { when: "Mon 5 Jan 08:00 → Wed 7 Jan 19:00" }, { colour: "#3d6b8f" })]
+            const monday = day(0, { comes: { rows: [] }, through: { lines: [line(true, false)], more: more || 0, rows: [{ id: "Trip", mark: "first", when: "08:00", line: "Mon 5 Jan 08:00 → Wed 7 Jan 19:00", minute: 480, lane: lane || 0 }] } })
+            const tuesday = day(1, { comes: { rows: [] }, through: { lines: [line(false, false)], more: 0, rows: [] } })
+            const wednesday = day(2, { through: { lines: [line(false, true)], more: 0, rows: [{ id: "Trip", mark: "end", when: "19:00", line: "until 19:00", minute: 1140, lane: lane || 0 }] } })
+            wednesday.comes = { rows: [placed("Dentist", "event", wednesday.start, 600, 630, { when: "10:00 – 10:30" })] }
+            return { days: [monday, tuesday, wednesday], spans: spans }
+        }
+
+        // What comes writes an event over several days once, on its first day, its
+        // whole span under its title; its line runs down the list's left edge, in its
+        // lane, from that row through the days shown to its end mark on its last day,
+        // whose row says "until 19:00" with no mark of its own; a tap on the line opens
+        // the event; beyond three lines, "+2" after the day's title.
+        function test_what_comes_draws_an_event_over_several_days_once() {
+            const page = makePage()
+            page.mode = "agenda"
+            const shown = trip(1, 2)
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: shown.days, spans: shown.spans })
+            wait(50)
+            const rows = root.all(page, c => c.timeWidth !== undefined && c.known !== undefined && c.visible)
+            compare(rows.map(r => r.title + (r.ending ? " (end)" : "")).join(" | "), "Trip | Dentist | Trip (end)", "the trip once, its end mark's row on Wednesday; Tuesday, with nothing else, left out")
+            compare([rows[0].when, rows[0].line].join(" "), "08:00 Mon 5 Jan 08:00 → Wed 7 Jan 19:00")
+            compare([rows[2].when, rows[2].line].join(" "), "19:00 until 19:00")
+            const lines = root.all(page, c => c.objectName === "spanLine" && c.visible)
+            compare(lines.length, 2, "its line on each day row shown")
+            verify(lines.every(l => l.x === 4 + 7 - 5), "in its lane, 1")
+            const middle = item => item.mapToItem(page, 0, item.height / 2).y
+            const top = l => l.mapToItem(page, 0, 0).y
+            const bottom = l => l.mapToItem(page, 0, l.height).y
+            fuzzyCompare(top(lines[0]), middle(rows[0]), 1, "from its row on its first day")
+            fuzzyCompare(bottom(lines[1]), middle(rows[2]), 1, "to its end mark on its last")
+            verify(bottom(lines[0]) >= top(lines[1]) - 1, "through the gap between the days")
+            const ends = root.all(page, c => c.objectName === "spanEnd" && c.visible)
+            compare(ends.length, 1, "one end mark")
+            verify(rows.every(r => r.mapToItem(page, 0, 0).x >= page.lineRoom), "the rows beside the lines")
+            const titles = root.all(page, c => c.text !== undefined && String(c.text).indexOf("agenda-lines-more") >= 0 && c.visible)
+            compare(titles.map(t => t.text).join(" | "), "Today   agenda-lines-more", "+2 after Monday's title alone")
+            mouseClick(lines[1], 6, 4)
+            compare(shell.opened.length, 1)
+            compare([shell.opened[0].kind, shell.opened[0].itemId].join(" "), "event Trip", "the line opens the event")
+        }
+
+        // A list starting after an event began: "Ongoing since …" at its first day's head,
+        // its line from there (`ongoing::Mark::Since`).
+        function test_what_comes_says_ongoing_since() {
+            const page = makePage()
+            page.mode = "agenda"
+            const shown = trip(0, 0)
+            const today = shown.days[1]
+            today.through.lines[0].first = true
+            today.through.rows = [{ id: "Trip", mark: "since", when: "", line: "Ongoing since Mon 5 Jan, until Wed 7 Jan", minute: -1, lane: 0 }]
+            today.comes.rows = [placed("Call", "event", today.start, 540, 570, { when: "09:00 – 09:30" })]
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-06", sentence: "", days: [today, shown.days[2]], spans: shown.spans })
+            wait(50)
+            const rows = root.all(page, c => c.timeWidth !== undefined && c.known !== undefined && c.visible)
+            compare(rows.map(r => [r.title, r.line].filter(t => t !== "").join(": ")).join(" | "), "Trip: Ongoing since Mon 5 Jan, until Wed 7 Jan | Call | Dentist | Trip: until 19:00", "at the head of its first day")
+            const lines = root.all(page, c => c.objectName === "spanLine" && c.visible)
+            fuzzyCompare(lines[0].mapToItem(page, 0, 0).y, rows[0].mapToItem(page, 0, rows[0].height / 2).y, 1, "its line from there")
+        }
+
+        // The warnings for two events at once on a phone: their words wrap within its width,
+        // never widen the page (found in the ongoing round's pictures: a month-long event
+        // overlaps every other one).
+        function test_the_warnings_stay_within_a_phone_s_width() {
+            const page = makePage(412)
+            mock.longWords = true
+            const one = (title, from, to) => ({ key: title + ".ics", start: root.monday, title: title, from: from, to: to })
+            mock.overlaps = JSON.stringify([0, 1, 2].map(n => ({ key: "k" + n, day: "2099-01-0" + (5 + n), today: n === 0, first: one("Studio residency, the whole month", "10:00", "10:15"), second: one("Fernhill: homepage review " + n, "10:15", "11:15"), gap: 0, needed: 0, at_once: true, source: "" })))
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [day(0, { comes: { rows: [] } })] })
+            wait(50)
+            const buttons = root.all(page, c => c.text === "overlap-set-aside" && c.flat !== undefined && c.visible)
+            compare(buttons.length, 3)
+            // As the demos measure it (main.qml, "WIDE"): a row's own width, which widens its column.
+            verify(buttons.every(b => b.parent.implicitWidth <= page.width - 16), "within the phone's width: " + buttons.map(b => b.parent.implicitWidth).join(", "))
+        }
+
+        // A grid's bar of the trip (`ongoing::Bar`) on a week's row.
+        function tripBar(row, from, to, more) {
+            return Object.assign({ id: "Trip", uid: "trip", title: "Trip", colour: "#3d6b8f", row: row, from_column: from, to_column: to, lane: 0, from: "08:00", to: "19:00", cut_before: false, cut_after: false, line: "Trip, Mon 5 Jan 08:00 → Wed 7 Jan 19:00" }, more || {})
+        }
+
+        // The grids (the ongoing round): the Week draws an event of 24 hours or more as one
+        // bar across its days at the top, its times at its two ends; "+2" under a day beyond
+        // three; a tap opens it; an evening past midnight keeps its two hour blocks. The Day
+        // says its head line. The Month: one bar a week's row, its title in each.
+        function test_the_grids_draw_long_events_as_bars() {
+            const page = makePage()
+            page.mode = "week"
+            const shown = trip(0, 0)
+            const days = [0, 1, 2, 3, 4, 5, 6].map(n => day(n))
+            days[3].timed = [placed("Concert", "event", days[3].start, 1320, 1440, { when: "From 22:00", spans: true })]
+            days[4].timed = [placed("Concert", "event", days[4].start, 0, 120, { when: "Until 02:00", spans: true })]
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: days, spans: shown.spans, bars: [tripBar(0, 0, 2)], bars_more: [0, 0, 0, 0, 2, 0, 0] })
+            wait(50)
+            const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
+            // Drawn as a grid once the page has its width (a list until then).
+            tryVerify(() => !planning.listed && root.all(page, c => c.objectName === "weekBar" && c.visible).length === 1, 3000, "one bar")
+            const bars = root.all(page, c => c.objectName === "weekBar" && c.visible)
+            fuzzyCompare(bars[0].width, 3 * planning.dayWidth - 3, 1, "across its three days")
+            fuzzyCompare(bars[0].mapToItem(planning, 0, 0).x, planning.gutter, 1, "from Monday")
+            verify(root.all(bars[0], c => c.text === "19:00").length === 1 && root.all(bars[0], c => String(c.text).indexOf("08:00") === 0).length === 1, "its times at its two ends")
+            compare(root.all(page, c => c.objectName === "weekBarsMore" && c.visible).map(l => l.text).join(" "), "agenda-lines-more", "+2 under Friday")
+            verify(root.all(page, c => c.text === "Concert" && c.visible).length >= 2, "the evening's two blocks in the hours")
+            mouseClick(bars[0])
+            compare([shell.opened[0].kind, shell.opened[0].itemId].join(" "), "event Trip", "a tap opens it")
+            // The Day: its head line.
+            page.mode = "day"
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-06", sentence: "", days: [day(1)], spans: shown.spans, bars: [tripBar(0, 0, 0, { cut_before: true, cut_after: true, line: "Ongoing: Trip, until Wed 7 Jan 19:00" })], bars_more: [0] })
+            wait(50)
+            compare(root.all(page, c => c.objectName === "dayBar" && c.visible).map(l => l.text).join(" | "), "Ongoing: Trip, until Wed 7 Jan 19:00")
+            compare(root.all(page, c => c.objectName === "weekBar" && c.visible).length, 0, "no week band in the Day")
+            // The Month: one bar a week's row, over its cells.
+            page.mode = "month"
+            const weeks = []
+            for (let n = 0; n < 42; n++)
+                weeks.push(day(n))
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: weeks, spans: shown.spans, bars: [tripBar(0, 5, 6, { cut_after: true }), tripBar(1, 0, 1, { cut_before: true })] })
+            wait(50)
+            const pieces = root.all(page, c => c.objectName === "monthBar" && c.visible)
+            compare(pieces.length, 2, "one a week's row")
+            verify(pieces.every(b => root.all(b, c => c.text === "Trip").length === 1), "its title in each")
+            const cells = root.all(page, c => c.objectName === "monthCell")
+            const left = item => item.mapToItem(page, 0, 0).x
+            fuzzyCompare(left(pieces[0]), left(cells[5]) + 3, 1, "from Saturday")
+            fuzzyCompare(left(pieces[1]), left(cells[7]) + 3, 1, "the next row from Monday")
+            verify(pieces[1].mapToItem(page, 0, 0).y > cells[7].mapToItem(page, 0, 0).y, "within its row")
+        }
+
+        // A phone's Week and Month lists (the ongoing round): the trip once, its line through
+        // the days, its end mark; an evening's copies (`spans`) never written again; a day with
+        // only a line passing, no "Nothing planned".
+        function test_a_phone_s_lists_write_an_event_over_several_days_once() {
+            const page = makePage(412)
+            page.mode = "week"
+            const shown = trip(0, 0)
+            const days = shown.days.concat([3, 4, 5, 6].map(n => day(n)))
+            days[3].timed = [placed("Concert", "event", days[3].start, 1320, 1440, { when: "From 22:00", spans: true })]
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: days, spans: shown.spans })
+            wait(50)
+            const texts = () => root.all(page, c => typeof c.text === "string" && c.visible).map(c => c.text)
+            compare(texts().filter(t => t.indexOf("Trip") === 0).join(" | "), "Trip\nMon 5 Jan 08:00 → Wed 7 Jan 19:00 | Trip\nuntil 19:00", "its row, then its end mark's")
+            compare(texts().filter(t => t.indexOf("Concert") === 0).length, 0, "the evening's copy not written")
+            compare(texts().filter(t => t === "agenda-free").length, 4, "Thursday to Sunday free, Tuesday not: the line passes")
+            compare(root.all(page, c => c.objectName === "spanLine" && c.visible).length, 4, "its row, Tuesday's title, Wednesday's title and its end mark's row")
+            compare(root.all(page, c => c.objectName === "spanEnd" && c.visible).length, 1)
+            // The Month's list.
+            page.mode = "month"
+            const month = shown.days.concat([3, 4, 5, 6].map(n => day(n)))
+            month[0].lines = []
+            month[3].lines = [placed("Concert", "event", month[3].start, 1320, 1440, { when: "From 22:00", spans: true })]
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: month, spans: shown.spans })
+            wait(50)
+            const rows = root.all(page, c => c.timeWidth !== undefined && c.known !== undefined && c.visible)
+            compare(rows.map(r => r.title + ": " + r.line).join(" | "), "Trip: Mon 5 Jan 08:00 → Wed 7 Jan 19:00 | Trip: until 19:00", "once, and its end mark")
+            compare(root.all(page, c => c.objectName === "spanLine" && c.visible).length, 2, "on Monday and Wednesday, the days listed")
+            const cells = root.all(page, c => c.objectName === "monthCell")
+            verify(root.all(cells[1], c => c.objectName === "monthDot" && c.visible).length === 1, "Tuesday's dot: the trip passes")
         }
 
         // Show leaves out of What comes and the Month what it leaves out of the Day
@@ -363,6 +529,8 @@ Item {
             mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday, day(1), day(2), day(3), day(4), day(5), day(6)] })
             wait(50)
             const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
+            // Laid as a grid once the page has its width: a list (no box) until then.
+            tryVerify(() => !planning.listed, 3000, "the Week as a grid")
             const box = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0, ""))
             const thing = planning.thingAt({ x: box.x + box.width / 2, y: box.y + box.height - 2 })
             compare(thing.row.kind + " " + thing.part, "event body")
@@ -389,6 +557,7 @@ Item {
             page.mode = "week"
             mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday, day(1), day(2), day(3), day(4), day(5), day(6)] })
             wait(50)
+            tryVerify(() => !root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0].listed, 3000, "the Week as a grid")
             compare(pressedOn(), "event", "the Week: its appointment")
             // A phone's week: the leg in the appointment's line, no row of its own.
             const phone = makePage(412)

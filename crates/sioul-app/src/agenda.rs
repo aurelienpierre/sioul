@@ -55,6 +55,26 @@ struct Shown {
     #[serde(skip_serializing_if = "String::is_empty")]
     doses_note: String,
     days: Vec<DayShown>,
+    /// The events over several days among the days shown, each once
+    /// (`ongoing::spans`): a list's row of each, its whole span in `when`, and
+    /// what a tap on its line opens, by its item's id.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    spans: Vec<Row>,
+    /// The grids' bars (the Week's head band, the Day's head line, the Month's
+    /// rows): an event of 24 hours or more, or of several whole days.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    bars: Vec<sioul_core::ongoing::Bar>,
+    /// For each day shown, the bars passing through it beyond three ("+2").
+    #[serde(skip_serializing_if = "no_more")]
+    bars_more: Vec<u32>,
+}
+
+fn no_more(more: &[u32]) -> bool {
+    more.iter().all(|&n| n == 0)
+}
+
+fn nothing_through(through: &sioul_core::ongoing::Through) -> bool {
+    through.lines.is_empty() && through.rows.is_empty() && through.more == 0
 }
 
 /// One day, as `timeline::days` places it and `timeline::dress` dresses it,
@@ -98,6 +118,11 @@ struct DayShown {
     /// (`timeline::comes`); What comes' days alone.
     #[serde(skip_serializing_if = "Option::is_none")]
     comes: Option<ComesShown>,
+    /// The events over several days passing through the day, as a list draws
+    /// them (`ongoing::Through`): their lines by lane, "+2", and the rows it
+    /// writes for them (an event's first row, "Ongoing since …", its end mark).
+    #[serde(skip_serializing_if = "nothing_through")]
+    through: sioul_core::ongoing::Through,
 }
 
 /// A day of What comes: its rows with their details, its doses, the plan's line.
@@ -142,6 +167,11 @@ struct Row {
     placed: Placed,
     #[serde(skip_serializing_if = "Option::is_none")]
     detail: Option<Detail>,
+    /// A copy of an event over several days that a list does not write (it
+    /// writes the event once, from `through`); a grid draws it (an evening's
+    /// hour blocks, its Month lines).
+    #[serde(skip_serializing_if = "is_false")]
+    spans: bool,
 }
 
 /// What the event's panel says of it, beyond its item (its time, its file,
@@ -565,7 +595,15 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         items = timeline::merge(items, stamp, &open);
     }
     named(&mut items);
-    let mut days = timeline::days(&items, state.from, state.days, today, &zone, tr());
+    // Events over several days, drawn once (`ongoing::spans`): a list writes each
+    // once and draws its line; a grid draws its bars. `timeline::days` lays out
+    // the rest, as it is: What comes without any of them, the grids without
+    // their bars (an evening past midnight keeps its hours there). Show's hidden
+    // calendars take no lane.
+    let show = read_view();
+    let spans = sioul_core::ongoing::spans(&items, state.from, state.days, &zone, tr(), &|item| show.hides(&item.source));
+    let laid: Vec<timeline::Item> = items.iter().filter(|item| if mode == Mode::Comes { !spans.spanning(&item.id) } else { !spans.bar(&item.id) }).cloned().collect();
+    let mut days = timeline::days(&laid, state.from, state.days, today, &zone, tr());
     timeline::set_hours(&mut days, &load_config().week_hours(), &zone);
     let (frame, head) = if drawn { dressed(&mut days, &items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &now) } else { (None, Vec::new()) };
     // What comes: each day's rows (`timeline::comes`), and today's head line above them.
@@ -589,8 +627,8 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         timeline::Source::Calendar { key, start, .. } => occurrences.iter().find(|o| &o.key == key && o.start == *start).map(Detail::of),
         _ => None,
     };
-    let row = |placed: Placed| Row { detail: detail(&placed), placed };
-    let empty = days.iter().all(|d| d.head.is_empty() && d.timed.is_empty()) && comes.iter().flatten().all(timeline::Comes::is_empty);
+    let row = |placed: Placed| Row { detail: detail(&placed), spans: spans.spanning(&placed.item.id), placed };
+    let empty = days.iter().all(|d| d.head.is_empty() && d.timed.is_empty()) && comes.iter().flatten().all(timeline::Comes::is_empty) && spans.events.is_empty();
     let can_add = agenda::default_calendar().is_some();
     let sentence = match (empty, can_add || !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty()) {
         (true, false) => tr().text("agenda-no-calendar", None),
@@ -609,7 +647,8 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             .into_iter()
             .zip(comes)
             .zip(lines)
-            .map(|((d, comes), (lines, off))| DayShown {
+            .zip(spans.days.clone())
+            .map(|(((d, comes), (lines, off)), through)| DayShown {
                 date: d.date,
                 title: d.title,
                 today: d.today,
@@ -632,8 +671,12 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
                 lines: lines.into_iter().map(row).collect(),
                 off,
                 comes: comes.map(|c| ComesShown { rows: c.rows.into_iter().map(row).collect(), doses: c.doses, plan: c.plan }),
+                through,
             })
             .collect(),
+        spans: spans.events.iter().cloned().map(|placed| Row { detail: detail(&placed), spans: false, placed }).collect(),
+        bars: spans.bars.clone(),
+        bars_more: spans.bars_more.clone(),
     };
     (json(&shown), read)
 }
@@ -1053,6 +1096,155 @@ mod tests {
     /// dragged step at both its times (review of 3a2fbd4, later 4). The writer
     /// itself makes the re-plan due, before any job starts (review of
     /// 590eb18, later 12): a drag's write, then the agenda's run.
+    /// The ongoing round's stand-ins in a calendar of their own, from Monday 2
+    /// November of `year` (a Monday as in 2026, far from the other tests' days;
+    /// each test its own year: they run side by side in the same folders): a
+    /// month-long timed event, a dentist, an evening past midnight, a trip over
+    /// three days, five at once on the Friday and the Saturday (two of them
+    /// whole days). Each uid starts with "ongoing-".
+    fn ongoing_calendar(name: &str, year: i16) -> (sioul_core::vdir::Collection, jiff::civil::Date) {
+        let zone = sioul_core::zone::current();
+        let base = jiff::civil::date(year, 11, 2);
+        assert_eq!(base.weekday(), jiff::civil::Weekday::Monday);
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, name, None, &["VEVENT"]).unwrap();
+        let utc = |day: i64, hour: i8, minute: i8| base.checked_add(jiff::Span::new().days(day)).unwrap().at(hour, minute, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let date = |day: i64| base.checked_add(jiff::Span::new().days(day)).unwrap().strftime("%Y%m%d").to_string();
+        let timed: [(&str, &str, (i64, i8, i8), (i64, i8, i8)); 6] = [
+            ("residency", "Residency", (0, 10, 0), (28, 10, 15)),
+            ("dentist", "Dentist", (1, 11, 0), (1, 12, 0)),
+            ("concert", "Concert", (1, 22, 0), (2, 2, 0)),
+            ("trip", "Trip to the coast", (2, 8, 0), (4, 19, 0)),
+            ("exhibition", "Exhibition", (3, 9, 0), (13, 18, 0)),
+            ("course", "Course", (3, 14, 0), (7, 12, 0)),
+        ];
+        let file = |uid: &str, title: &str, start: String, end: String| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:ongoing-{uid}\r\n{start}\r\n{end}\r\nSUMMARY:{title}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        for (uid, title, (d0, h0, m0), (d1, h1, m1)) in timed {
+            std::fs::write(calendar.dir.join(format!("{uid}.ics")), file(uid, title, format!("DTSTART:{}", utc(d0, h0, m0)), format!("DTEND:{}", utc(d1, h1, m1)))).unwrap();
+        }
+        // Whole days: the guests Friday to Sunday, a holiday Saturday to Monday (DTEND the day after).
+        for (uid, title, first, after) in [("guests", "Guests", 4, 7), ("holiday", "Holiday", 5, 8)] {
+            std::fs::write(calendar.dir.join(format!("{uid}.ics")), file(uid, title, format!("DTSTART;VALUE=DATE:{}", date(first)), format!("DTEND;VALUE=DATE:{}", date(after)))).unwrap();
+        }
+        (calendar, base)
+    }
+
+    /// The agenda's JSON for `days` days from `from`, as the page asks for them.
+    fn ongoing_shown(from: jiff::civil::Date, days: i64) -> serde_json::Value {
+        let shared = Arc::new(Shared::default());
+        if let Ok(mut state) = shared.pim.lock() {
+            state.from = from;
+            state.days = days;
+            state.upcoming = false;
+        }
+        serde_json::from_str(&made(&shared).0).unwrap()
+    }
+
+    /// A placed row's uid ("residency" for "ongoing-residency"), "" for another's.
+    fn ongoing_uid(row: &serde_json::Value) -> String {
+        row["item"]["source"]["uid"].as_str().and_then(|u| u.strip_prefix("ongoing-")).unwrap_or_default().to_string()
+    }
+
+    /// The uid of a spanning event by its item's id (the JSON's `spans`).
+    fn span_uid(shown: &serde_json::Value, id: &serde_json::Value) -> String {
+        shown["spans"].as_array().into_iter().flatten().find(|e| e["item"]["id"] == *id).map(ongoing_uid).unwrap_or_default()
+    }
+
+    /// Each day's `field` rows' uids among the stand-ins.
+    fn ongoing_rows(shown: &serde_json::Value, pick: &dyn Fn(&serde_json::Value) -> Vec<serde_json::Value>) -> Vec<Vec<String>> {
+        shown["days"].as_array().unwrap().iter().map(|d| pick(d).iter().map(ongoing_uid).filter(|u| !u.is_empty()).collect()).collect()
+    }
+
+    /// What comes (the ongoing round, item 1): an event over several days is one
+    /// row, on its first day, its whole span under its title; every day it covers
+    /// has its line in its lane; its end mark on its last day; five at once take
+    /// three lanes and "+2"; a list starting after it began says "Ongoing since".
+    #[test]
+    fn what_comes_writes_an_event_over_several_days_once() {
+        sioul_core::config::stand_ins_only();
+        let (calendar, base) = ongoing_calendar("Ongoing comes", 2099);
+        let shown = ongoing_shown(base, 15);
+        let comes = ongoing_rows(&shown, &|d| d["comes"]["rows"].as_array().cloned().unwrap_or_default());
+        // The repeated copies gone: only the dentist among What comes' own rows.
+        assert_eq!(comes.iter().flatten().collect::<Vec<_>>(), ["dentist"], "{comes:?}");
+        let through = |i: usize| shown["days"][i]["through"].clone();
+        let marks = |i: usize| through(i)["rows"].as_array().cloned().unwrap_or_default().iter().map(|r| (span_uid(&shown, &r["id"]), r["mark"].as_str().unwrap_or_default().to_string(), r["line"].as_str().unwrap_or_default().to_string())).filter(|r| !r.0.is_empty()).collect::<Vec<_>>();
+        // Each event's first row once over the fifteen days, on its own first day.
+        let firsts: Vec<(usize, String)> = (0..15).flat_map(|i| marks(i).into_iter().filter(|r| r.1 == "first").map(move |r| (i, r.0))).collect();
+        assert_eq!(firsts, [(0, "residency".to_string()), (1, "concert".into()), (2, "trip".into()), (3, "exhibition".into()), (3, "course".into()), (4, "guests".into()), (5, "holiday".into())]);
+        // Its whole span, in the session's words (sioul-core's tests read them in English and French).
+        let span = |words: &str, parts: &[&str]| words.contains('→') && parts.iter().all(|p| words.contains(p));
+        assert!(span(&marks(0)[0].2, &["10:00", "30", "10:15"]), "{:?}", marks(0));
+        assert!(span(&marks(1)[0].2, &["22:00", "02:00", "("]), "{:?}", marks(1));
+        // The end marks, on the last days: the concert's and the trip's, the guests' and the holiday's, the course's, the exhibition's.
+        let ends: Vec<(usize, String)> = (0..15).flat_map(|i| marks(i).into_iter().filter(|r| r.1 == "end").map(move |r| (i, r.0))).collect();
+        assert_eq!(ends, [(2, "concert".to_string()), (4, "trip".into()), (6, "guests".into()), (7, "holiday".into()), (7, "course".into()), (13, "exhibition".into())]);
+        // The line: on every day it covers, in its lane; first and last marked.
+        let lines = |i: usize| through(i)["lines"].as_array().cloned().unwrap_or_default().iter().map(|l| (l["uid"].as_str().unwrap_or_default().trim_start_matches("ongoing-").to_string(), l["lane"].as_u64().unwrap_or(9), l["first"] == true, l["last"] == true)).collect::<Vec<_>>();
+        for i in 0..15 {
+            assert!(lines(i).contains(&("residency".to_string(), 0, i == 0, false)), "day {i}: {:?}", lines(i));
+        }
+        let trip: Vec<bool> = (0..6).map(|i| lines(i).iter().any(|l| l.0 == "trip")).collect();
+        assert_eq!(trip, [false, false, true, true, true, false]);
+        assert!(lines(4).contains(&("trip".to_string(), 2, false, true)), "its end on its last day");
+        // Five at once on Friday: three lanes, "+2".
+        assert_eq!(lines(4).iter().map(|l| l.1).collect::<Vec<_>>(), [0, 1, 2]);
+        assert_eq!(through(4)["more"], 2);
+        // Each event once among the events the lines open.
+        let mut spans: Vec<String> = shown["spans"].as_array().unwrap().iter().map(ongoing_uid).filter(|u| !u.is_empty()).collect();
+        spans.sort();
+        assert_eq!(spans, ["concert", "course", "exhibition", "guests", "holiday", "residency", "trip"]);
+        // From Wednesday 11 November: "Ongoing since" on its first day.
+        let later = ongoing_shown(base.checked_add(jiff::Span::new().days(9)).unwrap(), 15);
+        let since: Vec<(String, String, String)> = later["days"][0]["through"]["rows"].as_array().unwrap().iter().map(|r| (span_uid(&later, &r["id"]), r["mark"].as_str().unwrap().to_string(), r["line"].as_str().unwrap().to_string())).collect();
+        let ongoing_since = |first: jiff::civil::Date, last: jiff::civil::Date| {
+            let tr = tr();
+            let mut args = sioul_core::i18n::args();
+            args.set("start", sioul_core::ongoing::short_day(tr, first));
+            args.set("end", sioul_core::ongoing::short_day(tr, last));
+            tr.text("agenda-ongoing-since", Some(&args))
+        };
+        let day = |n: i64| base.checked_add(jiff::Span::new().days(n)).unwrap();
+        assert_eq!(since, [("residency".to_string(), "since".to_string(), ongoing_since(day(0), day(28))), ("exhibition".into(), "since".into(), ongoing_since(day(3), day(13)))]);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// The grids (the ongoing round, item 3): in the Week, an event of 24 hours or
+    /// more and one of several whole days is one bar across its days, out of the
+    /// days' hours and heads; three lanes, then "+2"; the evening (four hours past
+    /// midnight) keeps its two hour blocks, marked for the phone's list, which
+    /// writes it once. The Day: its bars, its head lines. The Month: one bar a
+    /// week's row, out of its cells' lines.
+    #[test]
+    fn the_grids_draw_one_bar_per_long_event() {
+        sioul_core::config::stand_ins_only();
+        let (calendar, base) = ongoing_calendar("Ongoing grids", 2093);
+        let bars = |shown: &serde_json::Value| -> Vec<(String, u64, u64, u64, u64)> {
+            shown["bars"].as_array().cloned().unwrap_or_default().iter().filter_map(|b| Some((b["uid"].as_str()?.strip_prefix("ongoing-")?.to_string(), b["row"].as_u64()?, b["from_column"].as_u64()?, b["to_column"].as_u64()?, b["lane"].as_u64()?))).collect()
+        };
+        let bar = |uid: &str, row, from, to, lane| (uid.to_string(), row, from, to, lane);
+        let week = ongoing_shown(base, 7);
+        assert_eq!(bars(&week), [bar("residency", 0, 0, 6, 0), bar("trip", 0, 2, 4, 1), bar("exhibition", 0, 3, 6, 2), bar("holiday", 0, 5, 6, 1)], "the course and the guests in lanes 4 and 5");
+        assert_eq!(week["bars_more"], serde_json::json!([0, 0, 0, 1, 2, 2, 2]));
+        // Out of the days' hours and heads: the evening's two blocks and the dentist alone there.
+        let drawn = ongoing_rows(&week, &|d| [d["head"].as_array().cloned().unwrap_or_default(), d["timed"].as_array().cloned().unwrap_or_default()].concat());
+        assert_eq!(drawn, [vec![], vec!["dentist".to_string(), "concert".into()], vec!["concert".to_string()], vec![], vec![], vec![], vec![]]);
+        let marked: Vec<bool> = week["days"].as_array().unwrap().iter().flat_map(|d| d["timed"].as_array().cloned().unwrap_or_default()).filter(|r| !ongoing_uid(r).is_empty()).map(|r| r["spans"] == true).collect();
+        assert_eq!(marked, [false, true, true], "the evening's blocks marked for the list, the dentist not");
+        // The list's model there too, for a phone's Week list.
+        assert!(week["days"].as_array().unwrap().iter().all(|d| d["through"]["lines"].as_array().is_some_and(|l| l.iter().any(|l| l["uid"] == "ongoing-residency"))));
+        // The Day, Tuesday 10 November: its two bars, their head lines.
+        let day = ongoing_shown(base.checked_add(jiff::Span::new().days(8)).unwrap(), 1);
+        assert_eq!(bars(&day), [bar("residency", 0, 0, 0, 0), bar("exhibition", 0, 0, 0, 1)]);
+        assert!(day["bars"].as_array().unwrap().iter().all(|b| b["cut_before"] == true && b["cut_after"] == true && b["line"].as_str().is_some_and(|l| l.contains(b["title"].as_str().unwrap_or("?")))), "{}", day["bars"]);
+        // The Month, six weeks from Monday 26 October: the month-long event once per week's row.
+        let month = ongoing_shown(base.checked_sub(jiff::Span::new().days(7)).unwrap(), 42);
+        let residency: Vec<_> = bars(&month).into_iter().filter(|b| b.0 == "residency").map(|b| (b.1, b.2, b.3)).collect();
+        assert_eq!(residency, [(1, 0, 6), (2, 0, 6), (3, 0, 6), (4, 0, 6), (5, 0, 0)]);
+        let lines = ongoing_rows(&month, &|d| d["lines"].as_array().cloned().unwrap_or_default());
+        assert_eq!(lines.iter().flatten().collect::<Vec<_>>(), ["dentist", "concert", "concert"], "the cells' lines: no bar's copy, the evening on its two days");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
     #[test]
     fn the_days_wait_for_the_replan_after_a_write() {
         sioul_core::config::stand_ins_only();

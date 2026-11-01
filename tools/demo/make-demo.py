@@ -84,6 +84,10 @@ OFFICE = "tag:aurelienpierre.com,2026:sioul/needs/office-hours"
 
 # The language of the life written: "en" or "fr" (set by --language).
 LANG = "en"
+# --ongoing: events over several days, as the agenda draws them once (the ongoing round);
+# "quiet": the warnings for two events at once that they make set aside, for pictures of
+# the agenda under them.
+ONGOING = ""
 
 
 def typo(text: str) -> str:
@@ -1358,6 +1362,62 @@ def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *
     return vcalendar(lines)
 
 
+def whole_days(clock: Clock, uid: str, title: str, first: int, last: int) -> str:
+    """Whole days from `first` to `last` days from today, DTEND the day after."""
+    lines = ["BEGIN:VEVENT", f"UID:demo-event-{uid}", f"DTSTAMP:{utc(clock.at(clock.day(-14), '09:00'))}",
+             f"DTSTART;VALUE=DATE:{clock.day(first).strftime('%Y%m%d')}", f"DTEND;VALUE=DATE:{clock.day(last + 1).strftime('%Y%m%d')}",
+             f"SUMMARY:{escape(title)}", "END:VEVENT"]
+    return vcalendar(lines)
+
+
+def ongoing_events(c: Clock) -> list[tuple[str, str]]:
+    """Events over several days (--ongoing): one typed with a wrong end date that runs a
+    month, an evening past midnight, a trip over three days, and five at once on the
+    fourth and fifth days (two of them whole days)."""
+    def over(uid, title, first, start, last, end):
+        text = event(c, uid, title, c.day(first), start, end)
+        # The end on its own day: `event` gives one day to both times.
+        return text.replace(f"DTEND:{utc(c.at(c.day(first), end))}", f"DTEND:{utc(c.at(c.day(last), end))}")
+    return [
+        ("personal", over("studio", t("Studio residency", "Résidence à l’atelier"), 0, "10:00", 28, "10:15")),
+        ("personal", over("concert", t("Concert at the docks", "Concert aux docks"), 1, "22:00", 2, "02:00")),
+        ("personal", over("coast", t("Trip to the coast", "Voyage sur la côte"), 2, "08:00", 4, "19:00")),
+        ("work", over("exhibition", t("Exhibition set-up", "Montage de l’exposition"), 3, "09:00", 13, "18:00")),
+        ("personal", over("pottery", t("Pottery course", "Stage de poterie"), 3, "14:00", 7, "12:00")),
+        ("personal", whole_days(c, "guests", t("Friends staying", "Des amis à la maison"), 4, 6)),
+        ("work", whole_days(c, "holiday", t("Holiday", "Vacances"), 5, 7)),
+    ]
+
+
+def set_aside_ongoing(p: Profile, texts: list[str]):
+    """Every pair of the coming three weeks' timed occurrences with an event over
+    several days in it, set aside as the warning for two events at once keys them
+    (`overlaps::overlaps`: "uid@start|uid@start", the earlier first): those
+    warnings would cover the agenda's page."""
+    c = p.clock
+    found = []
+    for text in texts:
+        lines = text.split("\r\n")
+        # The event's own lines: a repeating one's VTIMEZONE has a DTSTART of its own before them.
+        lines = lines[lines.index("BEGIN:VEVENT"):]
+        uid = next(l[4:] for l in lines if l.startswith("UID:"))
+        start = next((l for l in lines if l.startswith("DTSTART")), "")
+        if "VALUE=DATE" in start or not start:
+            continue
+        value = start.split(":", 1)[1]
+        if value.endswith("Z"):
+            at = datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        else:
+            at = datetime.strptime(value, "%Y%m%dT%H%M%S").replace(tzinfo=c.zone)
+        weeks = 4 if "RRULE:FREQ=WEEKLY" in lines else 1
+        for week in range(weeks):
+            found.append((int((at + timedelta(days=7 * week)).timestamp()), uid))
+    ongoing = {f"demo-event-{uid}" for uid in ("studio", "concert", "coast", "exhibition", "pottery")}
+    found.sort()
+    keys = sorted(f"{a[1]}@{a[0]}|{b[1]}@{b[0]}" for i, a in enumerate(found) for b in found[i + 1:] if a[1] in ongoing or b[1] in ongoing)
+    p.write(p.state / "overlaps-set-aside.toml", "keys = " + toml_list(keys) + "\n")
+
+
 def write_calendars(p: Profile, mails: list[Mail]):
     c = p.clock
     collections = [
@@ -1405,9 +1465,17 @@ def write_calendars(p: Profile, mails: list[Mail]):
                        location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),
         ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Étienne")),
     ]
+    if ONGOING:
+        events += ongoing_events(c)
+    if ONGOING == "quiet":
+        # One-off events alone: a repeating one's times hang on a zone named for the demo's
+        # offset, which the warnings' keys could not name for sure.
+        events = [(calendar, text) for calendar, text in events if "RRULE:" not in text]
     for calendar, text in events:
         uid = text.split("UID:")[1].split("\r\n")[0]
         p.write(p.data / "calendars" / DAV / calendar / f"{uid}.ics", text)
+    if ONGOING == "quiet":
+        set_aside_ongoing(p, [text for _, text in events])
 
     by_key = {m.key: m for m in mails}
     write_tasks(p, by_key)
@@ -2684,7 +2752,7 @@ def as_written_before(p: Profile):
 
 
 def main():
-    global LANG, W
+    global LANG, W, ONGOING
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--into", required=True, type=Path, help="the profile's folder")
     parser.add_argument("--now", help="the moment the profile is made for, ISO 8601 with its offset (default: now)")
@@ -2705,7 +2773,11 @@ def main():
                         help="the projects' file under its first name, sioul-cases.toml with [[case]], and the budgets' ties as sioul:case/: Settings offers to rename it (SIOUL_DEMO_OLD_PROJECTS=1 too)")
     parser.add_argument("--doses-asked", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_DOSES_ASKED")),
                         help="today's morning dose due while Sioul was closed, and its noon dose whose reminder could not be shown, both unanswered (SIOUL_DEMO_DOSES_ASKED=1 too)")
+    parser.add_argument("--ongoing", nargs="?", const="1", default=os.environ.get("SIOUL_DEMO_ONGOING", ""),
+                        help="events over several days: a month, an evening past midnight, a trip, five at once (SIOUL_DEMO_ONGOING=1 too);"
+                             " --ongoing quiet (SIOUL_DEMO_ONGOING=quiet) sets aside the warnings for two events at once they make")
     args = parser.parse_args()
+    ONGOING = args.ongoing
     LANG = args.language
     W = World()
     now = datetime.fromisoformat(args.now) if args.now else datetime.now().astimezone()

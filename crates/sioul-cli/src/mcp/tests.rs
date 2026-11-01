@@ -1208,6 +1208,41 @@ fn the_agenda_keeps_every_block_s_address() {
     let _ = std::fs::remove_file(list.dir.join("block-papers.ics"));
 }
 
+/// An event over several days, as an agent reads the agenda (the ongoing
+/// round): once, on its first day, its whole span in `when` and its end; from
+/// a later day, once on the first day asked, "ongoing".
+#[test]
+fn the_agenda_lists_an_event_over_several_days_once() {
+    home();
+    let mut server = server();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let zone = sioul_core::zone::current();
+    let utc = |date: &str, hour: i8| date.parse::<jiff::civil::Date>().unwrap().at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+    let text_of = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:ongoing-trip\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Trip to the coast\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc("2099-11-04", 8), utc("2099-11-06", 19));
+    vdir::write_item(&calendar.dir.join("ongoing-trip.ics"), &text_of).unwrap();
+    let trips = |answer: &Value| -> Vec<(String, String, bool, String)> {
+        answer["structuredContent"]["days"].as_array().unwrap().iter().flat_map(|d| d["events"].as_array().cloned().unwrap_or_default().into_iter().map(move |e| (d["date"].as_str().unwrap_or_default().to_string(), e))).filter(|(_, e)| e["uid"] == "ongoing-trip").map(|(date, e)| (date, e["when"].as_str().unwrap_or_default().to_string(), e["ongoing"] == true, e["end"].as_str().unwrap_or_default().to_string())).collect()
+    };
+    let answer = call(&mut server, "agenda", json!({ "from": "2099-11-03", "days": 5 }));
+    let listed = trips(&answer);
+    assert_eq!(listed.len(), 1, "once: {}", text(&answer));
+    assert_eq!((listed[0].0.as_str(), listed[0].2), ("2099-11-04", false));
+    assert!(listed[0].1.contains('→') && listed[0].1.contains("08:00") && listed[0].1.contains("19:00"), "its whole span: {listed:?}");
+    assert!(listed[0].3.starts_with("2099-11-06"), "its end: {listed:?}");
+    assert_eq!(text(&answer).matches("<sioul:event/ongoing-trip>").count(), 1, "said once: {}", text(&answer));
+    let later = call(&mut server, "agenda", json!({ "from": "2099-11-05", "days": 3 }));
+    let listed = trips(&later);
+    assert_eq!(listed.iter().map(|l| (l.0.as_str(), l.2)).collect::<Vec<_>>(), [("2099-11-05", true)], "ongoing, once: {}", text(&later));
+    // `sioul agenda`, from the same model: once, its span; from a later day, "Ongoing since".
+    let lines = crate::dav::agenda_lines(&session(), "2099-11-03".parse().unwrap(), 5).unwrap();
+    let trip: Vec<&String> = lines.iter().filter(|l| l.contains("Trip to the coast")).collect();
+    assert_eq!(trip.len(), 1, "{lines:?}");
+    assert!(trip[0].contains("Wed 4 Nov 08:00 → Fri 6 Nov 19:00"), "{lines:?}");
+    let later = crate::dav::agenda_lines(&session(), "2099-11-05".parse().unwrap(), 3).unwrap();
+    assert_eq!(later.iter().filter(|l| l.contains("Ongoing since Wed 4 Nov, until Fri 6 Nov  Trip to the coast")).count(), 1, "{later:?}");
+    let _ = std::fs::remove_file(calendar.dir.join("ongoing-trip.ics"));
+}
+
 /// The agenda an agent reads holds the plan's steps of each day it reaches,
 /// beside the events (the one model of time, through `ForAgents`): an open
 /// project's task on the day the plan gives it, never a closed project's,

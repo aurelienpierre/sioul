@@ -86,7 +86,7 @@ public final class AgendaCheck
             else if (row.type == HomeCardRows.DATE)
                 out.add("date:" + row.item.optString("title") + " (" + row.text + ") → " + row.open);
             else if (row.type == HomeCardRows.EVENT)
-                out.add("event:" + row.item.optString("title"));
+                out.add("event:" + HomeCardRows.eventTitle(row.item, now) + (HomeCardRows.eventTime(row.item, now).isEmpty() ? "" : " (" + HomeCardRows.eventTime(row.item, now) + ")"));
             else
                 out.add(row.text);
         }
@@ -106,6 +106,19 @@ public final class AgendaCheck
                "Agenda | day:Today, Fri 9 Oct | date:Rent · €650 (Payment · today) → reminder/sioul:budget/home/3 | day:Tomorrow, Sat 10 Oct | date:CAF form (Date asked · tomorrow) → reminder/sioul:task/caf");
         // Saturday: the rent's day over, it is gone.
         expect("Saturday", said(card(4), DAY + 2 * DAYS + HOUR), "Agenda | day:Today, Sat 10 Oct | date:CAF form (Date asked · today) → reminder/sioul:task/caf");
+        // An event over several days (the ongoing round): once, under its first day with its
+        // whole span; on the days after, under today, its one line "Ongoing: …, until …".
+        JSONObject trip = event("Trip", DAY + 8 * HOUR, DAY + 2 * DAYS + 19 * HOUR).put("time", "08:00 – Sat 10 Oct 19:00")
+            .put("since", DAY + DAYS).put("ongoing", "Ongoing: Trip, until Sat 10 Oct 19:00");
+        JSONObject away = card(4);
+        away.getJSONObject("agenda").put("events", new JSONArray().put(trip)).put("dates", new JSONArray());
+        expect("an event over several days, its first day", said(away, morning), "Agenda | day:Today, Thu 8 Oct | event:Trip (08:00 – Sat 10 Oct 19:00)");
+        expect("an event over several days, the day after", said(away, DAY + DAYS + 10 * HOUR), "Agenda | day:Today, Fri 9 Oct | event:Ongoing: Trip, until Sat 10 Oct 19:00");
+        JSONObject alone = new JSONObject().put("v", 4).put("agenda", new JSONObject().put("events", new JSONArray().put(trip)));
+        expect("next change, its ongoing line", HomeCardRows.nextChange(alone, morning), DAY + DAYS);
+        // An older Sioul's card, without them: its title and time as before.
+        JSONObject older = event("Trip", DAY + 8 * HOUR, DAY + 2 * DAYS + 19 * HOUR).put("time", "08:00 – Sat 10 Oct 19:00");
+        expect("an older card's event", HomeCardRows.eventTitle(older, DAY + DAYS + 10 * HOUR) + " / " + HomeCardRows.eventTime(older, DAY + DAYS + 10 * HOUR), "Trip / 08:00 – Sat 10 Oct 19:00");
         // No event, dates all the same: listed, and no "nothing in your calendars".
         JSONObject noEvents = card(4);
         noEvents.getJSONObject("agenda").put("events", new JSONArray());

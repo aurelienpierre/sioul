@@ -739,14 +739,21 @@ pub struct Listed {
     pub both: String,
     /// A whole day, or spanning the whole of that day.
     pub all_day: bool,
+    /// An event over several days listed on the first day shown, begun before
+    /// it: `when` says "Ongoing since Mon 2 Nov, until Mon 30 Nov".
+    pub ongoing: bool,
 }
 
 /// The calendars' occurrences day by day, from the one model (`agenda::items`,
 /// `days`), for the lists that print them (`sioul agenda`, the MCP's agenda):
-/// each day the occurrences it holds (an event over several days on each),
-/// in the order given, each once, with its time that day. Health's none.
+/// each day the occurrences it holds, in the order given, each once, with its
+/// time that day; an event over several days once, on its first day shown,
+/// with its whole span ("Mon 2 Nov 10:00 → Mon 30 Nov 10:15"), or "Ongoing
+/// since …, until …" when the days start after it began (`ongoing::spans`, the
+/// ongoing round). Health's none.
 pub fn calendar_days(occurrences: &[crate::agenda::Occurrence], from: Date, count: i64, today: Date, zone: &TimeZone, tr: &Translator) -> Vec<CalendarDay> {
     let items = crate::agenda::items(occurrences, zone, &|_| false);
+    let spans = crate::ongoing::spans(&items, from, count, zone, tr, &|_| false);
     // Each occurrence by its file and its start, found once (review of part 8, later 4): a year
     // of a large calendar is never searched whole for each of its times.
     let mut found: std::collections::HashMap<(&str, i64), usize> = std::collections::HashMap::new();
@@ -755,14 +762,24 @@ pub fn calendar_days(occurrences: &[crate::agenda::Occurrence], from: Date, coun
     }
     days(&items, from, count, today, zone, tr)
         .into_iter()
-        .map(|day| {
+        .enumerate()
+        .map(|(i, day)| {
             let mut events: Vec<Listed> = Vec::new();
             for placed in day.head.iter().chain(&day.timed) {
                 let Source::Calendar { key, start, .. } = &placed.item.source else { continue };
                 let Some(&index) = found.get(&(key.as_str(), *start)) else { continue };
-                if !events.iter().any(|e| e.index == index) {
-                    events.push(Listed { index, when: placed.when.clone(), both: placed.both.clone(), all_day: placed.all_day });
+                if events.iter().any(|e| e.index == index) {
+                    continue;
                 }
+                if spans.spanning(&placed.item.id) {
+                    // Over several days: once, its row on its first day shown, never its end mark.
+                    let row = spans.days.get(i).and_then(|t| t.rows.iter().find(|r| r.id == placed.item.id && r.mark != crate::ongoing::Mark::End));
+                    if let Some(row) = row {
+                        events.push(Listed { index, when: row.line.clone(), both: String::new(), all_day: matches!(placed.item.time, Time::Day { .. }), ongoing: row.mark == crate::ongoing::Mark::Since });
+                    }
+                    continue;
+                }
+                events.push(Listed { index, when: placed.when.clone(), both: placed.both.clone(), all_day: placed.all_day, ongoing: false });
             }
             events.sort_by_key(|e| e.index);
             CalendarDay { date: day.date, title: day.title, events }
@@ -1663,9 +1680,10 @@ mod tests {
 
     /// The calendars day by day for the lists (`sioul agenda`, the MCP's
     /// agenda), from the one model, as `view::agenda` listed them before part
-    /// 8 (captured against it on 30 October 2026): an event over several days
-    /// on each, its time that day, in the order given; a task's block among
-    /// them; a day with nothing, empty.
+    /// 8 (captured against it on 30 October 2026), but for an event over
+    /// several days, now once, on its first day, with its whole span (the
+    /// ongoing round); a task's block among them; a day with nothing, empty;
+    /// days that start after an event began, "Ongoing since".
     #[test]
     fn the_calendar_days_list_each_day_s_occurrences() {
         let zone = paris();
@@ -1687,11 +1705,17 @@ mod tests {
         let listed: Vec<(String, String, Vec<(String, String, bool)>)> = days.iter().map(|d| (d.date.clone(), d.title.clone(), d.events.iter().map(|e| (occurrences[e.index].key.clone(), e.when.clone(), e.all_day)).collect())).collect();
         let event = |key: &str, when: &str, all_day: bool| (key.to_string(), when.to_string(), all_day);
         assert_eq!(listed, [
-            ("2026-10-05".to_string(), "Today".to_string(), vec![event("a", "09:00 – 10:00", false), event("b", "09:30 – 11:00", false), event("instant", "12:00", false), event("trip", "From 18:00", false)]),
-            ("2026-10-06".to_string(), "Tomorrow".to_string(), vec![event("trip", "All day", true), event("holiday", "All day", true), event("block", "10:00 – 10:45", false)]),
-            ("2026-10-07".to_string(), "Wednesday 7 October".to_string(), vec![event("trip", "Until 09:00", false), event("holiday", "All day", true)]),
+            ("2026-10-05".to_string(), "Today".to_string(), vec![event("a", "09:00 – 10:00", false), event("b", "09:30 – 11:00", false), event("instant", "12:00", false), event("trip", "Mon 5 Oct 18:00 → Wed 7 Oct 09:00", false)]),
+            ("2026-10-06".to_string(), "Tomorrow".to_string(), vec![event("holiday", "Tue 6 Oct → Wed 7 Oct", true), event("block", "10:00 – 10:45", false)]),
+            ("2026-10-07".to_string(), "Wednesday 7 October".to_string(), vec![]),
             ("2026-10-08".to_string(), "Thursday 8 October".to_string(), vec![]),
         ]);
+        assert!(days.iter().flat_map(|d| &d.events).all(|e| !e.ongoing));
+        // From Wednesday: both begun before, "Ongoing since" on the first day, said so.
+        let later = calendar_days(&occurrences, day("2026-10-07"), 2, day("2026-10-05"), &zone, &tr);
+        let said: Vec<(String, String, bool)> = later[0].events.iter().map(|e| (occurrences[e.index].key.clone(), e.when.clone(), e.ongoing)).collect();
+        assert_eq!(said, [("trip".to_string(), "Ongoing since Mon 5 Oct, until Wed 7 Oct".to_string(), true), ("holiday".into(), "Ongoing since Tue 6 Oct, until Wed 7 Oct".into(), true)]);
+        assert!(later[1].events.is_empty());
     }
 
     /// An event on another clock says both its times in a list's line and its

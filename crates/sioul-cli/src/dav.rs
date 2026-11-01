@@ -288,21 +288,33 @@ pub(crate) fn new_contact(s: &Session, name: &str, emails: &[String], phones: &[
 
 /// What comes, day by day.
 pub(crate) fn list_agenda(s: &Session, days: i64) -> Result<(), String> {
+    for line in agenda_lines(s, sioul_core::zone::now().date(), days)? {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// `sioul agenda`'s lines for `days` days from `from`: each day's title, then
+/// each event's time that day, its title and its place; an event over several
+/// days once, on its first day, its whole span ("Mon 2 Nov 10:00 → Mon 30 Nov
+/// 10:15"), or "Ongoing since …" on the first day when it began before (the
+/// ongoing round).
+pub(crate) fn agenda_lines(s: &Session, from_day: jiff::civil::Date, days: i64) -> Result<Vec<String>, String> {
     let zone = sioul_core::zone::current();
     let today = sioul_core::zone::now().date();
-    let from = today.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
+    let from = from_day.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
     let to = from + days * 86_400 + 3_600;
     // From the one model (`timeline::calendar_days`), its lines as before part 8: each day's
     // title, then each event's time that day, its title and its place.
     let occurrences = agenda::occurrences(from, to);
-    let shown = timeline::calendar_days(&occurrences, today, days, today, &zone, &s.tr);
+    let shown = timeline::calendar_days(&occurrences, from_day, days, today, &zone, &s.tr);
     if shown.iter().all(|d| d.events.is_empty()) {
         let calendars = agenda::default_calendar().is_some() || !vdir::collections(vdir::Kind::Calendars).is_empty();
-        println!("{}", crate::one_line(&s.tr.text(if calendars { "agenda-nothing" } else { "agenda-no-calendar" }, None)));
-        return Ok(());
+        return Ok(vec![crate::one_line(&s.tr.text(if calendars { "agenda-nothing" } else { "agenda-no-calendar" }, None))]);
     }
+    let mut lines = Vec::new();
     for day in shown.iter().filter(|d| !d.events.is_empty()) {
-        println!("{}", day.title);
+        lines.push(day.title.clone());
         for listed in &day.events {
             let event = &occurrences[listed.index];
             // Titles and places as invitations and shared calendars wrote them, on one line.
@@ -310,10 +322,10 @@ pub(crate) fn list_agenda(s: &Session, days: i64) -> Result<(), String> {
             let summary = if event.summary.is_empty() { s.tr.text("agenda-untitled", None) } else { event.summary.clone() };
             // On another clock, its times there too ("16:00 – 17:00 here · 15:00 – 16:00 UTC").
             let when = if listed.both.is_empty() { &listed.when } else { &listed.both };
-            println!("  {}  {}{place}", crate::one_line(when), crate::one_line(&summary));
+            lines.push(format!("  {}  {}{place}", crate::one_line(when), crate::one_line(&summary)));
         }
     }
-    Ok(())
+    Ok(lines)
 }
 
 /// A new event in the first calendar that takes it, then sent.

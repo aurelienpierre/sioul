@@ -362,6 +362,18 @@ struct Event {
     end: i64,
     /// Its calendar's colour, "#4c6b5c"; "" for Sioul's own.
     color: String,
+    /// An event over several days (the ongoing round): from the first midnight
+    /// after its start (Unix ms, `since`), the card says its one line,
+    /// "Ongoing: Residency, until Mon 30 Nov 10:15" (`ongoing`), under today;
+    /// left out for any other event.
+    #[serde(skip_serializing_if = "is_zero_ms")]
+    since: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    ongoing: String,
+}
+
+fn is_zero_ms(value: &i64) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -856,6 +868,21 @@ fn event_time(tr: &Translator, event: &Occurrence, zone: &jiff::tz::TimeZone) ->
     }
 }
 
+/// An event over several days, as the card says it on a day after its first:
+/// from the first midnight after its start (Unix ms), "Ongoing: Residency, until
+/// Mon 30 Nov 10:15" (whole days: "until Mon 9 Nov", its last day), as the Day's
+/// head line (`ongoing::ongoing_line`); (0, "") for an event within its day.
+fn ongoing_of(tr: &Translator, event: &Occurrence, title: &str, zone: &jiff::tz::TimeZone) -> (i64, String) {
+    let at = |seconds: i64| Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
+    let (Some(start), Some(last)) = (at(event.start), at(event.end.max(event.start + 1) - 1)) else { return (0, String::new()) };
+    let Some(next) = start.date().tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { return (0, String::new()) };
+    if last.date() <= start.date() {
+        return (0, String::new());
+    }
+    let until = if event.all_day { sioul_core::ongoing::short_day(tr, last.date()) } else { at(event.end).map(|end| tr.date(&end, true)).unwrap_or_default() };
+    (ms(&next), sioul_core::ongoing::ongoing_line(title, &until, tr))
+}
+
 /// A day of the agenda and its names: "Mon 12 Oct" until the day before,
 /// "Tomorrow, Mon 12 Oct" that day, "Today, Mon 12 Oct" on the day; seen from `today`.
 fn agenda_day(tr: &Translator, day: Date, today: Date, zone: &jiff::tz::TimeZone) -> Option<Day> {
@@ -898,22 +925,28 @@ fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Tas
     let events = coming
         .into_iter()
         .take(EVENTS)
-        .map(|e| Event {
-            key: e.key.clone(),
-            title: match e.summary.trim() {
+        .map(|e| {
+            let title = match e.summary.trim() {
                 _ if !m.details && !e.task.is_empty() => m.tr.text("home-card-task-plain", None),
                 _ if !m.details => m.tr.text("home-card-event-plain", None),
                 "" => m.tr.text("agenda-untitled", None),
                 title => title.to_string(),
-            },
-            time: match event_time(m.tr, e, &zone) {
-                time if e.task.is_empty() => time,
-                time => [time, said(m.tr, "agenda-task-of", &[("list", e.list.clone())])].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" · "),
-            },
-            all_day: e.all_day,
-            start: e.start * 1000,
-            end: e.end.max(e.start + 60) * 1000,
-            color: colour(e.color.as_deref()),
+            };
+            let (since, ongoing) = ongoing_of(m.tr, e, &title, &zone);
+            Event {
+                key: e.key.clone(),
+                title,
+                time: match event_time(m.tr, e, &zone) {
+                    time if e.task.is_empty() => time,
+                    time => [time, said(m.tr, "agenda-task-of", &[("list", e.list.clone())])].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" · "),
+                },
+                all_day: e.all_day,
+                start: e.start * 1000,
+                end: e.end.max(e.start + 60) * 1000,
+                color: colour(e.color.as_deref()),
+                since,
+                ongoing,
+            }
         })
         .collect();
     let days = (0..=HORIZON_DAYS).filter_map(|i| today.checked_add(Span::new().days(i)).ok()).filter_map(|day| agenda_day(m.tr, day, today, &zone)).collect();
@@ -2201,6 +2234,12 @@ mod tests {
         assert_eq!(event("Night train").time, "22:30 – Wed 21 Oct 06:45");
         assert_eq!((event("Neighbours' party").time.as_str(), event("Neighbours' party").all_day), ("", true));
         assert_eq!(event("Trip to the sea").time, "Until Fri 16 Oct");
+        // An event over several days, once (the ongoing round): from the first midnight after its
+        // start, its one line under today, "Ongoing: …, until …"; one within its day, none.
+        assert_eq!(agenda.events.iter().filter(|e| e.title == "Trip to the sea").count(), 1);
+        assert_eq!((event("Trip to the sea").since, event("Trip to the sea").ongoing.as_str()), (ms("2026-10-15T00:00[Europe/Paris]"), "Ongoing: Trip to the sea, until Fri 16 Oct"));
+        assert_eq!((event("Night train").since, event("Night train").ongoing.as_str()), (ms("2026-10-21T00:00[Europe/Paris]"), "Ongoing: Night train, until Wed 21 Oct 06:45"));
+        assert_eq!((event("Dentist").since, event("Dentist").ongoing.as_str(), event("Neighbours' party").since), (0, "", 0));
         // Its calendar's colour, as "#rrggbb" whatever was written; none: Sioul's own.
         assert_eq!((event("Dentist").color.as_str(), event("Choir").color.as_str(), event("Neighbours' party").color.as_str()), ("#4c6b5c", "", "#b07d3f"));
         assert_eq!((event("Dentist").start, event("Dentist").end), (ms("2026-10-06T11:00[Europe/Paris]"), ms("2026-10-06T12:00[Europe/Paris]")));
@@ -2246,6 +2285,7 @@ mod tests {
         assert_eq!(names(&agenda.days[7])[0].1, "lun. 12 oct.");
         assert_eq!(agenda.events.iter().find(|e| e.title == "Trip to the sea").unwrap().time, "Jusqu’au ven. 16 oct.");
         assert_eq!(agenda.events.iter().find(|e| e.title == "Night train").unwrap().time, "22:30 – mer. 21 oct. 06:45");
+        assert_eq!(agenda.events.iter().find(|e| e.title == "Trip to the sea").unwrap().ongoing, "En cours\u{202f}: Trip to the sea, jusqu’au ven. 16 oct.");
         assert_eq!(fr.card.words.mail, "Courriels");
     }
 
