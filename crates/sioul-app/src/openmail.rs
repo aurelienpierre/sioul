@@ -46,12 +46,14 @@ pub(crate) struct Asked {
     pub organizer: String,
 }
 
-/// What the window is told (`message_found`): {state, file, address, place, reused}.
+/// What the window is told (`message_found`): {state, file, address, place, reused, said}.
 /// `state`: "asking" (no copy here: the servers are being asked), "here"
 /// (`file` opens), "not-here" (no copy here and none asked: a message without
-/// a Message-ID), "gone" (no server holds it), "unreachable" (a server could
-/// not be reached, or the demo profile), "no-invitation" (no message here
-/// invited you to that event).
+/// a Message-ID), "on-its-way" (Sioul moved it without learning where the
+/// server put it: `said` names the folder, the copy comes with its next
+/// sync, `mailmoved`), "gone" (no server holds it), "unreachable" (a server
+/// could not be reached, or the demo profile), "no-invitation" (no message
+/// here invited you to that event).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct Answer {
     pub state: &'static str,
@@ -61,11 +63,14 @@ pub(crate) struct Answer {
     pub place: String,
     /// Another message, from another sender, carries the same Message-ID.
     pub reused: bool,
+    /// "On its way to Archive · work@example.org. It opens as soon as it is here."
+    pub said: String,
 }
 
 impl Answer {
-    fn only(state: &'static str) -> Answer {
-        Answer { state, file: String::new(), address: String::new(), place: String::new(), reused: false }
+    /// A state alone, no file nor words.
+    pub(crate) fn only(state: &'static str) -> Answer {
+        Answer { state, file: String::new(), address: String::new(), place: String::new(), reused: false, said: String::new() }
     }
 }
 
@@ -101,7 +106,11 @@ fn find_in(config: &sioul_core::config::Config, asked: &Asked, servers: &dyn Ser
     match found {
         Found::Here(here) => {
             let place = if here.role == sioul_core::folders::Role::Inbox { String::new() } else { place(config, &here) };
-            Answer { state: "here", file: here.path.display().to_string(), address: here.address, place, reused: here.reused }
+            Answer { state: "here", file: here.path.display().to_string(), address: here.address, place, reused: here.reused, said: String::new() }
+        }
+        Found::OnItsWay { account, folder } => {
+            let (folder, address) = named(config, &account, &folder, None);
+            Answer { said: crate::backend::say("reader-on-its-way", &[("folder", folder), ("address", address)]), ..Answer::only("on-its-way") }
         }
         Found::Gone => Answer::only("gone"),
         Found::Unreachable => Answer::only("unreachable"),
@@ -126,13 +135,22 @@ fn invitation(config: &sioul_core::config::Config, roots: &[sioul_core::mailinde
 
 /// "In Archive · work@example.org": the folder as you read its name, and the address.
 fn place(config: &sioul_core::config::Config, here: &mailfind::Here) -> String {
-    use sioul_core::folders::Role;
-    let folder = match here.role {
-        Role::Other => sioul_core::folders::saved(&here.account).into_iter().find(|f| f.name == here.folder).map_or_else(|| here.folder.clone(), |f| f.display),
-        role => tr().text(role.message_id(), None),
-    };
-    let address = config.accounts.iter().find(|a| a.id == here.account).and_then(|a| a.address.clone()).unwrap_or_else(|| here.account.clone());
+    let (folder, address) = named(config, &here.account, &here.folder, Some(here.role));
     crate::backend::say("mail-found-in", &[("folder", folder), ("address", address)])
+}
+
+/// A folder of `account` (its server name) as you read it, its purpose's
+/// word or its own name (`role`: its purpose when known, else the saved
+/// list's), and the account's address.
+fn named(config: &sioul_core::config::Config, account: &str, folder: &str, role: Option<sioul_core::folders::Role>) -> (String, String) {
+    use sioul_core::folders::Role;
+    let saved = sioul_core::folders::saved(account).into_iter().find(|f| f.name == folder);
+    let words = match role.or(saved.as_ref().map(|f| f.role)) {
+        Some(Role::Other) | None => saved.map_or_else(|| folder.to_string(), |f| f.display),
+        Some(role) => tr().text(role.message_id(), None),
+    };
+    let address = config.accounts.iter().find(|a| a.id == account).and_then(|a| a.address.clone()).unwrap_or_else(|| account.to_string());
+    (words, address)
 }
 
 #[cfg(test)]
@@ -234,6 +252,20 @@ mod tests {
         // A hinted file: opened as it is, no server asked.
         let hinted = Asked { address: "mid:archived@example.org".into(), file: archived.display().to_string(), ..Asked::default() };
         assert_eq!(find_in(&config, &hinted, &stand, &asking).file, archived.display().to_string());
+        // Moved by Sioul without the server saying where (the unified mailbox's
+        // part 3): on its way to its folder, named as you read it, never asked;
+        // its copy here, it opens.
+        let moving = format!("mid:moving-{}@example.org", std::process::id());
+        sioul_core::mailmoved::note(&account.id, std::slice::from_ref(&moving), "Archive", jiff::Timestamp::now().as_second()).unwrap();
+        let asked = stand.asked.borrow().len();
+        let on_its_way = find_in(&config, &ask(&moving), &stand, &asking);
+        assert_eq!(on_its_way.state, "on-its-way", "{on_its_way:?}");
+        assert!(on_its_way.said.contains(&tr().text("folder-archive", None)) && on_its_way.said.contains(account.address.as_deref().unwrap()), "{}", on_its_way.said);
+        assert_eq!(stand.asked.borrow().len(), asked, "no server asked while it is on its way");
+        let arrived = root.join(".Archive/cur/1777000000.U7-5.sioul:2,S");
+        std::fs::write(&arrived, message(Some(moving.trim_start_matches("mid:")), "Ana <ana@example.org>", "Moved")).unwrap();
+        assert_eq!(find_in(&config, &ask(&moving), &stand, &asking).file, arrived.display().to_string());
+        let _ = sioul_core::mailmoved::forget(&[moving]);
         let _ = std::fs::remove_dir_all(&root);
         if let Some(dir) = sioul_core::mailcache::account_dir(&account.id) {
             let _ = std::fs::remove_dir_all(dir);

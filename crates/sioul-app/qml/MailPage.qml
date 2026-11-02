@@ -53,6 +53,21 @@ Item {
         function onMailSearchChanged() {
             page.takeShown()
         }
+        function onMailMoved(moves) {
+            page.followMoved(JSON.parse(moves || "[]"))
+        }
+    }
+    // Messages Sioul moved whose files followed them into their new folders
+    // ([[before, after], …], the unified mailbox's part 3): one a link or the
+    // opener opened stays open on its file now; one of the folder shown
+    // leaves it with its file, and the reader closes (`onShownChanged`).
+    function followMoved(moves) {
+        for (const move of moves) {
+            if (page.openKey === move[0])
+                page.openKey = move[1]
+            if (page.answer !== null && page.answer.file === move[0])
+                page.answer = Object.assign({}, page.answer, { file: move[1] })
+        }
     }
     onVisibleChanged: page.takeShown()
     Component.onCompleted: page.takeShown()

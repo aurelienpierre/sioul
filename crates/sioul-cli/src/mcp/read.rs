@@ -401,6 +401,15 @@ pub(super) fn locate_with(s: &Session, wanted: &str, servers: Option<&dyn mailfi
         mailfind::Found::Gone => Err(s.tr.text("mail-find-gone", None)),
         mailfind::Found::Unreachable => Err(s.tr.text("mail-find-unreachable", None)),
         mailfind::Found::Kept => Err(access::kept("This message")),
+        // Moved by Sioul, its copy not here yet: where it went, for an address open to agents only.
+        mailfind::Found::OnItsWay { account, folder } => {
+            let consent = mail_consent(s);
+            if consent.closes_mail(&reference.address) || consent.keeps_account(&account) {
+                return Err(access::kept("This message"));
+            }
+            let folder = sioul_core::folders::saved(&account).into_iter().find(|f| f.name == folder).map_or(folder, |f| if f.role == sioul_core::folders::Role::Other { f.display } else { s.tr.text(f.role.message_id(), None) });
+            Err(s.say("mail-find-on-its-way", &[("folder", folder)]))
+        }
     }
 }
 

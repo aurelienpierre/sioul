@@ -224,6 +224,7 @@ pub mod lookalike;
 pub mod mailcache;
 pub mod mailfind;
 pub mod mailindex;
+pub mod mailmoved;
 pub mod mailsearch;
 pub mod maildir;
 pub mod mailnote;

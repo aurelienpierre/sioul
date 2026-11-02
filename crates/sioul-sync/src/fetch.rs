@@ -557,6 +557,12 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
             left.save(&left_path).map_err(|e| SyncError::Disk(format!("{}: {e}", left_path.display())))?;
         }
     }
+    // Messages Sioul moved here without learning where the server put them
+    // (`mailmoved`): those whose copy is here now are on their way no more.
+    if sioul_core::mailmoved::waiting_for(&account.id, key) {
+        let here: Vec<String> = sioul_core::mailcache::folder(&account.id, &account.maildir_path(), &folder.local).iter().filter_map(|(_, line)| sioul_core::mailfind::address_of_line(&account.id, line)).collect();
+        let _ = sioul_core::mailmoved::arrived(&account.id, key, &here);
+    }
     Ok(report)
 }
 
@@ -564,7 +570,7 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
 /// here already (else `last_uid`). Here already: a sync stopped between
 /// storing mail and saving where it stopped, or whose state was lost, finds
 /// them again, and they are not stored twice.
-fn to_fetch(found: impl IntoIterator<Item = u32>, last_uid: u32, root: &Path, validity: u32) -> (Vec<u32>, u32) {
+pub(crate) fn to_fetch(found: impl IntoIterator<Item = u32>, last_uid: u32, root: &Path, validity: u32) -> (Vec<u32>, u32) {
     // "UID n:*" also returns the newest message when nothing is newer (RFC 9051 §6.4.8).
     let mut uids: Vec<u32> = found.into_iter().filter(|uid| *uid > last_uid).collect();
     if uids.is_empty() {
@@ -676,6 +682,13 @@ pub(crate) struct Arrived {
     flags: String,
     received: Option<i64>,
     raw: Vec<u8>,
+}
+
+impl Arrived {
+    /// A message Sioul put on a server itself (`APPEND`), at `uid` there.
+    pub(crate) fn appended(uid: u32, flags: String, raw: Vec<u8>) -> Arrived {
+        Arrived { uid, flags, received: None, raw }
+    }
 }
 
 /// One FETCH: every message of `set`. BODY.PEEK leaves the \Seen flag alone.
@@ -805,6 +818,29 @@ impl SyncState {
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, text).map_err(fail)?;
         std::fs::rename(&temporary, path).map_err(fail)
+    }
+}
+
+/// The account's fetch lock (`fetch_folder` holds it for a whole folder):
+/// what a move's file takes before it follows its message (`mailbox::follow`).
+pub(crate) fn lock_path(account: &Account) -> PathBuf {
+    state_dir().join("sync").join(format!("{}.toml", account.id)).with_extension("lock")
+}
+
+/// The same lock, waited for `wait` at most: none when it did not come (a
+/// fetch of older mail may hold it for minutes), or cannot be taken here.
+pub(crate) fn lock_within(path: &Path, wait: Duration) -> Option<std::fs::File> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok()?;
+    }
+    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).ok()?;
+    let start = Instant::now();
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Some(file),
+            Err(std::fs::TryLockError::WouldBlock) if start.elapsed() < wait => std::thread::sleep(Duration::from_millis(50)),
+            Err(_) => return None,
+        }
     }
 }
 

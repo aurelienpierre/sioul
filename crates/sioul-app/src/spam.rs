@@ -74,7 +74,7 @@ pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> us
     to_move
         .into_iter()
         .filter(|(file, class)| match sioul_sync::mailbox::act(account, &password, file, &sioul_sync::mailbox::Action::Filtered(*class)) {
-            Ok(()) => true,
+            Ok(_) => true,
             Err(e) => {
                 eprintln!("sioul: spam: {}: {e:?}", account.id);
                 false

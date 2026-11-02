@@ -90,6 +90,9 @@ pub struct Done {
     pub failed: Vec<(Job, Failure)>,
     /// The server keeps no keywords: nothing was marked.
     pub unmarked: bool,
+    /// Moved on the server: each message's file here, the folder it went to
+    /// (its server name), and its place there when the server said (COPYUID).
+    pub moved: Vec<(PathBuf, String, Option<ImapOrigin>)>,
 }
 
 impl Done {
@@ -214,15 +217,13 @@ pub fn run(account: &Account, password: &str, jobs: &[Job], claim: bool) -> Resu
         let _ = session.logout().await;
         done
     })?;
-    for job in &done.acted {
-        follow_here(job);
-    }
+    follow_here(account, &done.acted, &done.moved);
     Ok(done)
 }
 
 async fn run_in(session: &mut Imap, account: &Account, placed: Vec<(ImapOrigin, Job)>, claim: bool) -> Result<Done, SyncError> {
     let capabilities = imap::within(COMMAND, session.capabilities()).await?.map_err(imap::server)?;
-    let (can_move, uidplus, condstore) = (capabilities.has_str("MOVE"), capabilities.has_str("UIDPLUS"), capabilities.has_str("CONDSTORE"));
+    let (can_move, uidplus, condstore) = (capabilities.has_str("MOVE"), mailbox::uidplus(&capabilities), capabilities.has_str("CONDSTORE"));
     let inbox = if condstore { imap::within(COMMAND, session.select_condstore("INBOX")).await? } else { imap::within(COMMAND, session.select("INBOX")).await? }.map_err(imap::server)?;
     let validity = inbox.uid_validity.unwrap_or(0);
     // Keywords of its own: `\*` among the flags it keeps, or the mark itself.
@@ -278,8 +279,18 @@ async fn run_in(session: &mut Imap, account: &Account, placed: Vec<(ImapOrigin, 
     }
     for (folder, list) in moves {
         let uids: BTreeSet<u32> = list.iter().map(|(uid, _)| *uid).collect();
-        match mailbox::move_to(session, &mailbox::ranges(&uids), &folder, can_move, uidplus).await {
-            Ok(()) => done.acted.extend(list.into_iter().map(|(_, job)| job)),
+        // Noted as on their way before the command (`mailbox::Intent`), each file's address read before it moves.
+        let mut intent = mailbox::Intent::new(&account.id, list.iter().filter_map(|(_, job)| sioul_core::mailfind::address_of_file(&account.id, &job.file)).collect());
+        intent.note(&folder);
+        let result = mailbox::move_to(session, &mailbox::ranges(&uids), &folder, can_move, uidplus).await;
+        match intent.after(result) {
+            Ok(placed) => {
+                for (uid, job) in list {
+                    let place = placed.as_ref().and_then(|p| p.uids.get(&uid).map(|&new| ImapOrigin { validity: p.validity, uid: new }));
+                    done.moved.push((job.file.clone(), folder.clone(), place));
+                    done.acted.push(job);
+                }
+            }
             Err(e) => failed.extend(list.into_iter().map(|(uid, job)| (uid, job, Failure::Server(format!("{e:?}"))))),
         }
     }
@@ -455,19 +466,35 @@ pub fn folder_named(account: &str, name: &str) -> Option<Folder> {
 
 /// The copy here, once the server took a job: gone when it left the inbox
 /// (the next fetch brings it into its folder), else its new flags.
-fn follow_here(job: &Job) {
-    let Some(file) = maildir::locate(&job.file) else { return };
-    if job.plan.leaves() {
-        let _ = std::fs::remove_file(&file);
-        return;
-    }
-    let mut flags = maildir::flags_of(&file);
-    for (wanted, letter) in [(job.plan.read, 'S'), (job.plan.flag, 'F')] {
-        if wanted && !flags.contains(letter) {
-            flags.push(letter);
+fn follow_here(account: &Account, jobs: &[Job], moved: &[(PathBuf, String, Option<ImapOrigin>)]) {
+    // The moved ones by folder: into it here at once, under their new UIDs, a folder at a time (`mailbox::follow_all`).
+    let mut by_folder: BTreeMap<&str, Vec<mailbox::Following>> = BTreeMap::new();
+    for job in jobs {
+        let Some(file) = maildir::locate(&job.file) else { continue };
+        let mut flags = maildir::flags_of(&file);
+        for (wanted, letter) in [(job.plan.read, 'S'), (job.plan.flag, 'F')] {
+            if wanted && !flags.contains(letter) {
+                flags.push(letter);
+            }
+        }
+        if !job.plan.leaves() {
+            let _ = maildir::set_flags(&file, &flags);
+            continue;
+        }
+        match moved.iter().find(|(f, _, _)| *f == job.file) {
+            Some((_, folder, place)) => {
+                let address = sioul_core::mailfind::address_of_file(&account.id, &file);
+                by_folder.entry(folder.as_str()).or_default().push(mailbox::Following { file, place: *place, flags, address });
+            }
+            // Not moved by this run's command: it goes, as before; the next fetch brings it into its folder.
+            None => {
+                let _ = std::fs::remove_file(&file);
+            }
         }
     }
-    let _ = maildir::set_flags(&file, &flags);
+    for (folder, moving) in by_folder {
+        mailbox::follow_all(account, folder, moving);
+    }
 }
 
 /// Messages whose filtering failed here, tried again at the next fetches
@@ -609,18 +636,31 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    /// What a job leaves here: flags on the file; a move, the file in its
+    /// folder under the UID the server gave it there (the unified mailbox's
+    /// part 3), else gone until the next fetch brings it.
     #[test]
     fn what_a_job_leaves_here() {
-        let root = std::env::temp_dir().join(format!("sioul-filters-here-{}", std::process::id()));
+        crate::dav::stand_in::home();
+        let id = format!("filters-here-{}", std::process::id());
+        let root = sioul_core::config::data_dir().join(&id);
         let _ = std::fs::remove_dir_all(&root);
+        let mut account = Account::imap(&id, "me@example.org", "imap.example.org", 993, sioul_core::config::Security::Tls, None);
+        account.maildir = Some(root.display().to_string());
+        mailbox::save(&id, &[folders::folder("INBOX", Some("/"), Some(Role::Inbox)), folders::folder("Banque", Some("/"), None)]).unwrap();
         let raw = b"From: a@bank.example\r\nSubject: x\r\n\r\nx\r\n".to_vec();
         let stored = |uid| maildir::store(&root, &maildir::Fetched { origin: ImapOrigin { validity: 7, uid }, flags: String::new(), received: None, raw: &raw }).unwrap();
-        let (kept, moved) = (stored(1), stored(2));
-        follow_here(&Job { file: kept.clone(), plan: Plan { read: true, flag: true, by: vec![0], ..Plan::default() }, again: false, claimed_since: None });
+        let (kept, moved, placed) = (stored(1), stored(2), stored(3));
+        follow_here(&account, &[Job { file: kept.clone(), plan: Plan { read: true, flag: true, by: vec![0], ..Plan::default() }, again: false, claimed_since: None }], &[]);
         let kept = maildir::locate(&kept).unwrap();
         assert!(maildir::flags_of(&kept).contains('S') && maildir::flags_of(&kept).contains('F'));
-        follow_here(&Job { file: moved.clone(), plan: Plan { to: Some(Destination::Folder("Banque".into())), by: vec![0], ..Plan::default() }, again: false, claimed_since: None });
-        assert!(maildir::locate(&moved).is_none(), "moved: the next fetch brings it into its folder");
+        let banque = Plan { to: Some(Destination::Folder("Banque".into())), read: true, by: vec![0], ..Plan::default() };
+        follow_here(&account, &[Job { file: moved.clone(), plan: banque.clone(), again: false, claimed_since: None }], &[(moved.clone(), "Banque".into(), None)]);
+        assert!(maildir::locate(&moved).is_none(), "moved, the server not saying where: the next fetch brings it into its folder");
+        let place = ImapOrigin { validity: 9, uid: 30 };
+        follow_here(&account, &[Job { file: placed.clone(), plan: banque, again: false, claimed_since: None }], &[(placed.clone(), "Banque".into(), Some(place))]);
+        let there = maildir::holding(&root.join(".Banque"), place).expect("in its folder at once");
+        assert!(maildir::locate(&placed).is_none() && maildir::flags_of(&there) == "S", "{there:?}");
         let _ = std::fs::remove_dir_all(&root);
         // A filter that matches nothing makes no job; the jobs say what each would do.
         let filter = Filter { conditions: vec![Condition::new(Field::From, Test::Contains, "@bank.example")], actions: vec![Act::Read], ..Filter::default() };
@@ -652,6 +692,7 @@ mod tests {
             elsewhere: vec![job("held", false, Some(now))],
             failed: vec![(job("no-folder", false, None), Failure::NoFolder("Banque".into())), (job("renumbered", false, None), Failure::Renumbered)],
             unmarked: false,
+            moved: Vec::new(),
         };
         assert_eq!(done.to_tell(), ["no-folder", "renumbered"].map(PathBuf::from).to_vec());
         assert!(Done::default().to_tell().is_empty());
@@ -770,8 +811,18 @@ mod tests {
         assert!(!paul.1.iter().any(|f| f.contains(rules::FILTERED)), "a failed act unmarks: {paul:?}");
         let code = inbox.iter().find(|(s, _)| s.contains("code")).unwrap();
         assert!(code.1.is_empty() || !code.1.iter().any(|f| f.contains("Seen")), "a code is never filtered: {code:?}");
-        // The copy here followed: gone from the inbox.
+        // The copy here followed: gone from the inbox, into its folder at once,
+        // under the UID that folder gave it (the unified mailbox's part 3).
         assert_eq!(inbox_files(&account).len(), 3);
+        let here_in = |name: &str| {
+            let folder = mailbox::folders(&account.id).into_iter().find(|f| f.name == name).unwrap();
+            ["cur", "new"].iter().flat_map(|sub| std::fs::read_dir(account.maildir_path().join(&folder.local).join(sub)).into_iter().flatten()).filter_map(Result::ok).map(|e| e.path()).collect::<Vec<_>>()
+        };
+        let statement = here_in("Banque");
+        assert_eq!(statement.len(), 1, "{statement:?}");
+        assert_eq!(maildir::origin_of(&statement[0]).map(|o| o.uid), Some(1), "the UID Banque gave it: {statement:?}");
+        assert!(maildir::flags_of(&statement[0]).contains('S'), "read, as the filter made it");
+        assert_eq!(here_in("Archive").len(), 1, "the invoice in the archive made for it");
         // A second device with the same arrivals: the statement and the invoice are gone; nothing to do.
         let again = run(&account, "x", &done.acted, true).unwrap();
         assert!(again.acted.is_empty() && again.left.len() == 2, "{again:?}");

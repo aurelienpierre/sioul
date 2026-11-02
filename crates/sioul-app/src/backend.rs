@@ -2152,6 +2152,12 @@ pub mod qobject {
         #[qsignal]
         fn message_found(self: Pin<&mut Sioul>, ticket: i32, answer: QString);
 
+        /// Messages Sioul moved whose files followed them into their new
+        /// folders (the unified mailbox's part 3): JSON [[before, after], …],
+        /// so that a message open stays open on its file now.
+        #[qsignal]
+        fn mail_moved(self: Pin<&mut Sioul>, moves: QString);
+
         /// Sharing through a folder Sioul keeps in step with a server itself
         /// (`start_sharing_on_server`): "" when it started, else why not.
         #[qsignal]
@@ -3810,10 +3816,10 @@ impl qobject::Sioul {
                 let _ = qt.queue(move |mut sioul| sioul.as_mut().message_found(ticket, QString::from(&text)));
             };
             let asked: crate::openmail::Asked = serde_json::from_str(&asked).unwrap_or_default();
-            let asking = crate::openmail::Answer { state: "asking", file: String::new(), address: String::new(), place: String::new(), reused: false };
+            let asking = crate::openmail::Answer::only("asking");
             // A message that makes the finding fail is one that does not open here: the reader says so, never waits.
             let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::openmail::find(&asked, &sioul_sync::search::OnServers, &|| tell(&asking))))
-                .unwrap_or(crate::openmail::Answer { state: "not-here", file: String::new(), address: String::new(), place: String::new(), reused: false });
+                .unwrap_or(crate::openmail::Answer::only("not-here"));
             tell(&answer);
         });
     }

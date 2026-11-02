@@ -313,6 +313,8 @@ pub fn forget_account(account: &crate::config::Account) -> Result<Vec<PathBuf>, 
         std::fs::remove_dir_all(&index).map_err(|e| format!("{}: {e}", index.display()))?;
         gone.push(index);
     }
+    // Its messages on their way to a folder (`mailmoved`): none will come.
+    let _ = crate::mailmoved::forget_account(&account.id, None);
     Ok(gone)
 }
 
@@ -334,6 +336,72 @@ fn forget_account_under(account: &crate::config::Account, mail_root: &Path, ai_c
     Ok(gone)
 }
 
+/// The message file of the folder `dir` (`cur/`, `new/`) stored under `origin`, if one is.
+pub fn holding(dir: &Path, origin: ImapOrigin) -> Option<PathBuf> {
+    ["cur", "new"]
+        .iter()
+        .filter_map(|sub| std::fs::read_dir(dir.join(sub)).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| !is_hidden(p) && origin_of(p) == Some(origin))
+}
+
+/// `name` (a file's) with its U part (`U<validity>-<uid>`, the first) made
+/// `to`'s and the flags left off: what a moved message's file is called in
+/// its new folder, when it was stored and `.sioul` kept. None for a name
+/// without a U part.
+pub fn unique_for(name: &str, to: ImapOrigin) -> Option<String> {
+    let mut changed = false;
+    let parts: Vec<String> = unique_part(name)
+        .split('.')
+        .map(|part| {
+            if !changed && part.starts_with('U') {
+                changed = true;
+                format!("U{}-{}", to.validity, to.uid)
+            } else {
+                part.to_string()
+            }
+        })
+        .collect();
+    changed.then(|| parts.join("."))
+}
+
+/// A message's file moved into the folder `dir` of a Maildir, under the
+/// place its server gave it there (`to`: that folder's UIDVALIDITY and the
+/// message's UID in it, RFC 4315's COPYUID or APPENDUID), with `flags`
+/// (`new/` without any, as `store` does): its name changed by `unique_for`
+/// alone, so that `origin_of` and `unique_part` read it as every version
+/// does. One rename on the same disk; on another one (another address's
+/// Maildir elsewhere), written in `dir`'s `tmp/` first, its time kept, moved
+/// in, then the old file removed. The caller holds the account's fetch lock
+/// and has made sure `dir` holds no file of `to` (`holding`). Returns where it is.
+pub fn move_into(file: &Path, dir: &Path, to: ImapOrigin, flags: &str) -> std::io::Result<PathBuf> {
+    let name = file.file_name().and_then(|n| n.to_str()).ok_or_else(|| std::io::Error::other("not a message's file"))?;
+    let unique = unique_for(name, to).ok_or_else(|| std::io::Error::other("not a file Sioul numbered"))?;
+    for sub in ["tmp", "new", "cur"] {
+        std::fs::create_dir_all(dir.join(sub))?;
+    }
+    let target = if flags.is_empty() { dir.join("new").join(&unique) } else { dir.join("cur").join(format!("{unique}{INFO}2,{}", sorted(flags))) };
+    if origin_of(&target) != Some(to) || target.exists() {
+        return Err(std::io::Error::other("the new name does not say its place"));
+    }
+    name_keywords(dir, flags);
+    match std::fs::rename(file, &target) {
+        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            let temporary = dir.join("tmp").join(&unique);
+            std::fs::copy(file, &temporary)?;
+            if let Ok(time) = std::fs::metadata(file).and_then(|m| m.modified()) {
+                std::fs::File::options().write(true).open(&temporary)?.set_modified(time)?;
+            }
+            std::fs::rename(&temporary, &target)?;
+            std::fs::remove_file(file)?;
+        }
+        done => done?,
+    }
+    Ok(target)
+}
+
 /// Maildir wants the flag letters in ASCII order.
 fn sorted(flags: &str) -> String {
     let mut letters: Vec<char> = flags.chars().collect();
@@ -345,6 +413,43 @@ fn sorted(flags: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A moved message's file in its new folder: its U part alone changed,
+    /// read by `origin_of` and `unique_part` as before, its time and bytes
+    /// kept, `new/` without flags; a name another program wrote (no U part)
+    /// is not moved, nor one whose place is taken.
+    #[test]
+    fn a_moved_file_takes_its_new_place() {
+        let base = std::env::temp_dir().join(format!("sioul-maildir-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (inbox, archive) = (base.join("mail"), base.join("mail").join(".Archive"));
+        let stored = store(&inbox, &Fetched { origin: ImapOrigin { validity: 7, uid: 4 }, flags: "S".into(), received: Some(1_777_000_000), raw: b"Message-ID: <a@example.org>\r\n\r\nHi\r\n" }).unwrap();
+        let to = ImapOrigin { validity: 9, uid: 41 };
+        let moved = move_into(&stored, &archive, to, "FS").unwrap();
+        assert!(!stored.exists() && moved.parent() == Some(archive.join("cur").as_path()), "{moved:?}");
+        let name = moved.file_name().unwrap().to_str().unwrap();
+        assert!(name.ends_with(&format!(".U9-41.sioul{INFO}2,FS")), "{name}");
+        assert_eq!(unique_part(name).split('.').next(), unique_part(stored.file_name().unwrap().to_str().unwrap()).split('.').next(), "when it was stored, kept");
+        assert_eq!((origin_of(&moved), flags_of(&moved).as_str()), (Some(to), "FS"));
+        assert_eq!(std::fs::metadata(&moved).unwrap().modified().unwrap(), UNIX_EPOCH + Duration::from_secs(1_777_000_000));
+        assert_eq!(holding(&archive, to), Some(moved.clone()));
+        assert_eq!(holding(&archive, ImapOrigin { validity: 9, uid: 42 }), None);
+        // Without flags: `new/`, as a sync stores unread mail.
+        let other = store(&inbox, &Fetched { origin: ImapOrigin { validity: 7, uid: 5 }, flags: String::new(), received: None, raw: b"Hi\r\n" }).unwrap();
+        let unread = move_into(&other, &archive, ImapOrigin { validity: 9, uid: 42 }, "").unwrap();
+        assert_eq!(unread.parent().unwrap(), archive.join("new"));
+        // Its new name taken already, or a name without a U part: not moved.
+        let third = store(&inbox, &Fetched { origin: ImapOrigin { validity: 7, uid: 6 }, flags: "S".into(), received: Some(1_777_000_000), raw: b"Hi\r\n" }).unwrap();
+        let place = ImapOrigin { validity: 9, uid: 43 };
+        let clash = archive.join("cur").join(format!("{}{INFO}2,S", unique_for(third.file_name().unwrap().to_str().unwrap(), place).unwrap()));
+        std::fs::write(&clash, "Another").unwrap();
+        assert!(move_into(&third, &archive, place, "S").is_err() && third.exists());
+        assert_eq!(std::fs::read_to_string(&clash).unwrap(), "Another");
+        let foreign = inbox.join("cur").join(format!("1777000000.M1P2.host{INFO}2,S"));
+        std::fs::write(&foreign, "Hi").unwrap();
+        assert!(move_into(&foreign, &archive, ImapOrigin { validity: 9, uid: 50 }, "S").is_err() && foreign.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     /// Forgetting an address takes its folders' indexes with it (`mailcache`),
     /// a Maildir you chose staying where it is.

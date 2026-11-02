@@ -635,6 +635,14 @@ fn mail_is_read_by_its_address() {
     let away = call(&mut server, "read_message", json!({ "message": "mid:nowhere-1@example.org" }));
     assert_eq!(away["isError"], true);
     assert!(text(&away).contains("cannot reach") && !text(&away).contains("deleted"), "{}", text(&away));
+    // Moved by Sioul without its server saying where (the unified mailbox's
+    // part 3): on its way to its folder, never "not here", no server asked.
+    let moving = format!("mid:moving-{}@example.org", std::process::id());
+    sioul_core::mailmoved::note("home", std::slice::from_ref(&moving), "Archive", jiff::Timestamp::now().as_second()).unwrap();
+    let on_its_way = call(&mut server, "read_message", json!({ "message": moving }));
+    assert_eq!(on_its_way["isError"], true);
+    assert!(text(&on_its_way).contains("on its way to") && text(&on_its_way).contains("Archive") && !text(&on_its_way).contains("cannot reach"), "{}", text(&on_its_way));
+    let _ = sioul_core::mailmoved::forget(&[moving]);
     let _ = std::fs::remove_dir_all(&kept);
 }
 

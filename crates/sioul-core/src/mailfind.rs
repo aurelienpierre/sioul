@@ -24,6 +24,10 @@
 //!    id. The hint decides, else the copy that arrived first, and the answer
 //!    says that another message carries the same id.
 //!
+//! No copy here, and Sioul moved it without learning where the server put
+//! it: "on its way" to its folder, until that folder's next fetch brings it
+//! (`mailmoved`, the unified mailbox's part 3); the servers are not asked.
+//!
 //! No copy here: [`find_or_ask`] asks each address's server, read only, the
 //! way a search asks (`UID SEARCH HEADER Message-ID`), brings the copy that
 //! ranks first here (search's own `bring`: unread stays unread), and finds
@@ -123,6 +127,15 @@ pub fn address_of_card(card: &crate::card::Card) -> String {
     }
 }
 
+/// The address of a message of `account` from its line in its folder's
+/// index: `mid:` by its Message-ID, else `sioul:mail/` by its digest.
+pub fn address_of_line(account: &str, line: &mailcache::Line) -> Option<String> {
+    match line.message_id.as_deref().map(bare_id).filter(|id| !id.is_empty()) {
+        Some(id) => Some(crate::links::mail_uri(&id)),
+        None => line.digest.as_deref().map(|digest| crate::links::digest_uri(account, digest)),
+    }
+}
+
 /// A message as a page, a tie, a notification or an agent names it: its
 /// address, the only part ever written anywhere, and hints of where this
 /// device last saw it.
@@ -165,12 +178,15 @@ pub struct Here {
     pub reused: bool,
 }
 
-/// What finding a message answers (§3.2's table; "on its way" comes with the
-/// moves that keep the message here).
+/// What finding a message answers (§3.2's table, and §3.5's "on its way").
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Found {
     /// A copy on this device.
     Here(Here),
+    /// No copy here yet: Sioul moved it into `folder` of `account` without
+    /// learning where the server put it (`mailmoved`); its copy comes with
+    /// that folder's next fetch. The servers are not asked meanwhile.
+    OnItsWay { account: String, folder: String },
     /// No copy here: a folder kept on the server only, older mail not
     /// fetched yet, or a deletion; the servers say which (`find_or_ask`).
     NotHere,
@@ -415,7 +431,8 @@ pub fn find(roots: &[Root], wanted: &MailRef) -> Found {
     };
     let all = copies(roots, &address);
     if all.is_empty() {
-        return Found::NotHere;
+        // Moved by Sioul, its copy still on its way (`mailmoved`).
+        return crate::mailmoved::of(&address.uri()).map_or(Found::NotHere, |m| Found::OnItsWay { account: m.account, folder: m.folder });
     }
     let reused = all.iter().any(|a| all.iter().any(|b| different(a.marks(), b.marks())));
     // 1. The hinted file, where it is now, holding this address.
@@ -864,6 +881,28 @@ mod tests {
         assert_eq!(ask(&stand.roots, &stand.accounts, &by("mid:deleted@example.org"), &servers, true), Found::Unreachable);
         assert_eq!(ask(&stand.roots, &stand.accounts, &by(&format!("sioul:mail/{home}/0123456789abcdef")), &servers, false), Found::NotHere);
         assert_eq!(servers.asked.get(), before);
+    }
+
+    /// A move Sioul made without learning where the server put the message
+    /// (the unified mailbox's part 3): "on its way" to its folder, never the
+    /// servers asked, until its copy is here; then here.
+    #[test]
+    fn a_move_noted_is_on_its_way_until_its_copy_is_here() {
+        let stand = Stand::new("a_move_noted", &["home"]);
+        let home = stand.roots[0].account.clone();
+        let address = format!("mid:on-its-way-{}@example.org", std::process::id());
+        crate::mailmoved::note(&home, std::slice::from_ref(&address), "Archive", jiff::Timestamp::now().as_second()).unwrap();
+        let servers = Servers::default();
+        let on_its_way = Found::OnItsWay { account: home.clone(), folder: "Archive".into() };
+        assert_eq!(stand.find(by(&address)), on_its_way);
+        // Spelled otherwise, the same message.
+        assert_eq!(stand.find(by(&address.replace('@', "%40"))), on_its_way);
+        assert_eq!(ask(&stand.roots, &stand.accounts, &by(&address), &servers, false), on_its_way);
+        assert_eq!(servers.asked.get(), 0, "the servers are not asked while it is on its way");
+        // Its copy here: found, whatever the note still says.
+        let copy = stand.put(0, "Archive", VALIDITY, 3, Some(address.trim_start_matches("mid:")), "ana@example.org", 1_777_000_003);
+        assert_eq!(path_of(&stand.find(by(&address))), copy);
+        crate::mailmoved::forget(&[address]).unwrap();
     }
 
     /// A hint outside the Maildirs is never looked at, in each form: `..`

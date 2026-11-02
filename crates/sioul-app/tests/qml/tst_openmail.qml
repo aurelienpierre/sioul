@@ -50,9 +50,13 @@ Item {
 
         signal messageRead(string key, string reading, string invitation)
         signal messageFound(int ticket, string answer)
+        signal mailMoved(string moves)
+
+        // The words under a message, as French says them on a phone (`ui-text-safe`); else every key as itself.
+        property string safeWords: ""
 
         function text(key) {
-            return key
+            return key === "ui-text-safe" && mock.safeWords !== "" ? mock.safeWords : key
         }
         function textWith(key, name, value) {
             return key + ":" + value
@@ -243,6 +247,7 @@ Item {
             mock.openedFolders = []
             mock.asked = []
             mock.plan = [root.here]
+            mock.safeWords = ""
         }
 
         // Every path of §3.4 as it reaches the opener: what it carries, and what the opener asks Rust.
@@ -316,7 +321,9 @@ Item {
                 { tag: "gone", plan: [{ state: "asking" }, { state: "gone" }], first: "reader-looking", last: "mail-find-gone" },
                 { tag: "unreachable", plan: [{ state: "asking" }, { state: "unreachable" }], first: "reader-looking", last: "mail-find-unreachable" },
                 { tag: "not here", plan: [{ state: "not-here" }], first: "reader-not-here", last: "reader-not-here" },
-                { tag: "no invitation", plan: [{ state: "no-invitation" }], first: "reader-no-invitation", last: "reader-no-invitation" }
+                { tag: "no invitation", plan: [{ state: "no-invitation" }], first: "reader-no-invitation", last: "reader-no-invitation" },
+                // Moved by Sioul, the server not saying where (part 3): its folder, until its copy comes.
+                { tag: "on its way", plan: [{ state: "on-its-way", said: "On its way to Archive · alice@example.org." }], first: "On its way to Archive · alice@example.org.", last: "On its way to Archive · alice@example.org." }
             ]
         }
 
@@ -365,6 +372,67 @@ Item {
             // Once open, mail coming in asks nothing more.
             mock.mailFolder = JSON.stringify({ items: [], again: true })
             compare(mock.asked.length, 2)
+        }
+
+        // A message on its way to a folder (part 3): asked again when mail comes in, then opened.
+        function test_a_message_on_its_way_opens_as_it_comes() {
+            mock.plan = [{ state: "on-its-way", said: "On its way to Archive · alice@example.org." }]
+            fakeWindow.openMail({ address: "mid:moving@example.org" })
+            const page = fakeWindow.mailPage
+            tryCompare(find(page, "readerAnswer"), "text", "On its way to Archive · alice@example.org.")
+            compare(mock.asked.length, 1)
+            mock.plan = [root.here]
+            mock.mailFolder = JSON.stringify({ items: [] })
+            compare(mock.asked.length, 2, "asked again as mail comes in")
+            compare(mock.asked[1].address, "mid:moving@example.org")
+            tryCompare(page, "openKey", root.messageKey)
+        }
+
+        // Sioul moved the message open, its file followed (part 3): it stays open on its file now; another's move changes nothing.
+        function test_a_moved_message_stays_open_on_its_file() {
+            fakeWindow.page = 1
+            fakeWindow.openMail({ address: "mid:plan@example.org" })
+            const page = fakeWindow.mailPage
+            tryCompare(page, "openKey", root.messageKey)
+            const moved = "/stand-in/mail/alice/.Archive/cur/1777000000.U9-41.sioul:2,S"
+            mock.mailMoved(JSON.stringify([["/stand-in/mail/alice/cur/other", "/stand-in/mail/alice/.Archive/cur/other"]]))
+            compare(page.openKey, root.messageKey, "another message's move")
+            mock.mailMoved(JSON.stringify([[root.messageKey, moved]]))
+            compare(page.openKey, moved)
+            compare(page.answer.file, moved)
+            verify(page.reading && reader(page).visible, "still open")
+            compare(opener.from.page, 1, "its Back unchanged")
+        }
+
+        // Mail left by the rail or a key, then come back to: Back is Mail's own (review of part 2, L14).
+        function test_leaving_mail_another_way_forgets_where_it_came_from() {
+            fakeWindow.page = 1
+            fakeWindow.openMail({ address: "mid:plan@example.org" })
+            const page = fakeWindow.mailPage
+            tryCompare(page, "openKey", root.messageKey)
+            compare(opener.from.page, 1)
+            fakeWindow.page = 3
+            compare(opener.from, null, "left Mail another way: forgotten")
+            fakeWindow.page = 2
+            page.back()
+            compare(fakeWindow.page, 2, "Back stays in Mail, never Tasks")
+        }
+
+        // The line under a message fits a phone in French, on two lines rather than cut (review of part 2, L15).
+        function test_the_line_under_a_message_fits_a_phone() {
+            mock.safeWords = "Affiché sans risque : rien de distant ne se charge, rien ne s’exécute."
+            fakeWindow.compact = true
+            fakeWindow.openMail({ address: "mid:plan@example.org" })
+            const page = fakeWindow.mailPage
+            page.width = 412
+            tryCompare(page, "openKey", root.messageKey)
+            tryVerify(() => reader(page).reading !== null)
+            const line = find(page, "readerShownSafely")
+            verify(line !== null && line.visible)
+            compare(line.text, mock.safeWords)
+            tryVerify(() => line.width > 0 && line.width <= reader(page).width, 2000, "within the reader: " + line.width)
+            verify(!line.truncated, "nothing cut: " + line.lineCount + " lines, " + line.width + " wide")
+            verify(line.lineCount >= 1)
         }
 
         // Escape on the reader's sentence, as on a message: back where it was opened from.

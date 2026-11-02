@@ -54,6 +54,9 @@ Panel {
             return reader.sioul.text("reader-not-here")
         if (state === "no-invitation")
             return reader.sioul.text("reader-no-invitation")
+        // Moved without the server saying where: its folder, until its copy comes.
+        if (state === "on-its-way")
+            return reader.answer.said || ""
         return ""
     }
     // No file yet: the opener's sentence alone.
@@ -1218,11 +1221,17 @@ Panel {
                 font.weight: Font.DemiBold
                 color: reader.theme.text
             }
+            // How it is shown takes a second line on a narrow screen rather
+            // than lose its middle (a phone, in French: review of part 2,
+            // L15); a link stays on one, cut in its middle.
             Label {
+                objectName: "readerShownSafely"
                 Layout.fillWidth: true
+                Layout.preferredWidth: 0
                 text: reader.hoveredLink ? reader.sioul.textWith("ui-link", "url", reader.hoveredLink) : reader.sioul.text("ui-text-safe")
                 textFormat: Text.PlainText
-                elide: Text.ElideMiddle
+                wrapMode: reader.hoveredLink ? Text.NoWrap : Text.Wrap
+                elide: reader.hoveredLink ? Text.ElideMiddle : Text.ElideNone
                 color: reader.hoveredLink ? reader.theme.text : reader.theme.muted
                 font.pixelSize: 12
             }

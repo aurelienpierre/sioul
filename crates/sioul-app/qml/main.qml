@@ -1411,6 +1411,11 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.saveCounted("mail-unreachable", mailPage),
+                // A message moved without its server saying where (part 3): on its way to the archive (make-demo.py's note).
+                () => window.openMail({ address: "mid:on-its-way@example.org" }),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("mail-on-its-way", mailPage),
                 // From Tasks, then Back: Tasks again.
                 () => {
                     window.page = 1

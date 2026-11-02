@@ -66,11 +66,12 @@ QtObject {
         opener.sioul.findMessage(opener.ticket, opener.asked)
     }
 
-    // "It looks again when it can": a server that could not be reached, asked
-    // again once mail comes in (a sync's publish), while the reader still says so.
+    // "It looks again when it can": a server that could not be reached, or a
+    // message on its way to a folder (its copy comes with that folder's sync),
+    // asked again once mail comes in (a sync's publish), while the reader still says so.
     function again() {
         const page = opener.window.mailPage
-        if (!page || page.askedTicket !== opener.ticket || page.answer === null || page.answer.state !== "unreachable")
+        if (!page || page.askedTicket !== opener.ticket || page.answer === null || ["unreachable", "on-its-way"].indexOf(page.answer.state) < 0)
             return
         page.answer = { state: "asking" }
         opener.sioul.findMessage(opener.ticket, opener.asked)
@@ -86,6 +87,19 @@ QtObject {
         const host = opener.window.cardHost
         if (from.card && !host.open)
             host.show(from.card)
+    }
+
+    // Mail left any other way than this Back (the rail, a key, a
+    // notification): where the message came from is forgotten, and Mail's
+    // own Back is Mail's again (review of part 2, L14). `back` forgets it
+    // itself before it changes the page.
+    property Connections leaving: Connections {
+        target: opener.window
+
+        function onPageChanged() {
+            if (opener.window.page !== opener.mailPageIndex)
+                opener.from = null
+        }
     }
 
     // What Rust found, for the message last asked.

@@ -704,7 +704,9 @@ fn finish(qt: &QtThread, shared: &Arc<Shared>, pending: &Arc<Pending>) {
         return;
     }
     // Done: the line says it, without "Undo" now.
-    let line = perform(&pending.work, shared).or_else(|| Some(pending.line.clone()));
+    let mut moved = Vec::new();
+    let line = perform_moving(&pending.work, shared, &mut moved).or_else(|| Some(pending.line.clone()));
+    tell_moved(qt, &moved);
     forget(qt, shared, pending);
     if let Some(line) = line {
         tell(qt, shared, line);
@@ -783,20 +785,38 @@ fn forget(qt: &QtThread, shared: &Shared, pending: &Arc<Pending>) {
     let _ = qt.queue(move |mut sioul| sioul.as_mut().set_undo_line(QString::from(&next)));
 }
 
+/// The window told where moved messages' files went (`mail_moved`): a
+/// message open there follows its file.
+fn tell_moved(qt: &QtThread, moved: &[(PathBuf, PathBuf)]) {
+    if moved.is_empty() {
+        return;
+    }
+    let pairs: Vec<[String; 2]> = moved.iter().map(|(before, after)| [before.display().to_string(), after.display().to_string()]).collect();
+    let json = serde_json::to_string(&pairs).unwrap_or_default();
+    let _ = qt.queue(move |mut sioul| sioul.as_mut().mail_moved(QString::from(&json)));
+}
+
 /// Does what waited; returns what the status line says about it, if anything.
 fn perform(work: &Work, shared: &Shared) -> Option<String> {
+    perform_moving(work, shared, &mut Vec::new())
+}
+
+/// `perform`, where moved messages' files went added to `moved`.
+fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBuf)>) -> Option<String> {
     match work {
         Work::Act { account, file, action } => match secret::password(account).and_then(|p| mailbox::act(account, &p, file, action)) {
-            Ok(()) => {
+            Ok(followed) => {
+                moved.extend(followed);
                 nudge(shared, &account.id);
                 None
             }
             Err(e) => Some(e.sentence(tr(), &account.id)),
         },
         Work::Across { from, file, to, folder } => {
-            let moved = secret::password(from).and_then(|p| secret::password(to).and_then(|q| mailbox::move_across(from, &p, file, to, &q, folder)));
-            match moved {
-                Ok(()) => {
+            let done = secret::password(from).and_then(|p| secret::password(to).and_then(|q| mailbox::move_across(from, &p, file, to, &q, folder)));
+            match done {
+                Ok(followed) => {
+                    moved.extend(followed);
                     nudge(shared, &from.id);
                     nudge(shared, &to.id);
                     None
@@ -807,7 +827,8 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
         Work::Batch { account, files, remote, action } => {
             let pairs: Vec<(String, sioul_core::card::ImapOrigin)> = remote.iter().map(|p| (p.folder.clone(), p.origin)).collect();
             match secret::password(account).and_then(|p| mailbox::act_many(account, &p, files, &pairs, action)) {
-                Ok(()) => {
+                Ok(followed) => {
+                    moved.extend(followed);
                     nudge(shared, &account.id);
                     crate::mailsearch::forget(&remote.iter().map(ServerRef::key).collect::<Vec<_>>());
                     None
@@ -828,7 +849,7 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             }
         }
         // Each in turn; the first problem is said, the others are still done.
-        Work::Many(works) => works.iter().filter_map(|w| perform(w, shared)).collect::<Vec<_>>().into_iter().next(),
+        Work::Many(works) => works.iter().filter_map(|w| perform_moving(w, shared, moved)).collect::<Vec<_>>().into_iter().next(),
         Work::Send { draft } => Some(send_now(draft, shared)),
         Work::SendSigned { draft, account, outgoing } => Some(send_signed_now(draft, account, outgoing, shared)),
         Work::Discard { draft } => {

@@ -74,7 +74,7 @@ sioul-app/src/join.rs	replace	1	sioul_sync::share::write_atomically(&asked_path(
 sioul-app/src/letters.rs	add	1	std::fs::copy(&source, free_name(&inbox, &name))
 
 # sioul-app/src/mail.rs: your answer to a cancellation its organizer sent (`agenda::cancellation`, read again just before, refused otherwise): the one removal of a meeting with others.
-sioul-app/src/mail.rs	perform	1	std::fs::remove_file(file)
+sioul-app/src/mail.rs	perform_moving	1	std::fs::remove_file(file)
 
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
@@ -311,6 +311,16 @@ sioul-core/src/maildir.rs	set_flags	1	std::fs::rename(path, &target)
 sioul-core/src/maildir.rs	forget_account_under	1	std::fs::remove_dir_all(&folder)
 sioul-core/src/maildir.rs	forget_account_under	1	std::fs::remove_file(ai_cache)
 sioul-core/src/maildir.rs	forget_account	1	std::fs::remove_dir_all(&index)
+sioul-core/src/maildir.rs	move_into	1	std::fs::rename(file, &target)
+sioul-core/src/maildir.rs	move_into	1	std::fs::copy(file, &temporary)
+sioul-core/src/maildir.rs	move_into	1	std::fs::File::options()
+sioul-core/src/maildir.rs	move_into	1	std::fs::rename(&temporary, &target)
+sioul-core/src/maildir.rs	move_into	1	std::fs::remove_file(file)
+
+# sioul-core/src/mailmoved.rs: the messages Sioul moved whose copy has not come yet, in the state folder (written beside then renamed under its lock, removed with its last note): no item.
+sioul-core/src/mailmoved.rs	save	1	std::fs::remove_file(path)
+sioul-core/src/mailmoved.rs	save	1	std::fs::OpenOptions::new()
+sioul-core/src/mailmoved.rs	save	1	std::fs::rename(&beside, path)
 
 # sioul-core/src/mailcache.rs: each mail folder's index, a cache in the cache folder (written beside then renamed, or added to under its lock), and the older single index removed once: no item.
 sioul-core/src/mailcache.rs	index_root_in	1	std::fs::remove_file(&older)
@@ -574,6 +584,7 @@ sioul-sync/src/favicon.rs	fetch	1	std::fs::write(&path, bytes)
 sioul-sync/src/fetch.rs	save	1	std::fs::write(&temporary, text)
 sioul-sync/src/fetch.rs	save	1	std::fs::rename(&temporary, path)
 sioul-sync/src/fetch.rs	lock	1	std::fs::OpenOptions::new()
+sioul-sync/src/fetch.rs	lock_within	1	std::fs::OpenOptions::new()
 
 # sioul-sync/src/filters.rs: mail filters: no item.
 sioul-sync/src/filters.rs	follow_here	1	std::fs::remove_file(&file)
@@ -615,7 +626,7 @@ sioul-sync/src/mailbox.rs	forget_folder	1	std::fs::remove_file(entry.path())
 sioul-sync/src/mailbox.rs	save	1	std::fs::write(&path, text)
 sioul-sync/src/mailbox.rs	reconcile	1	std::fs::remove_file(&path)
 sioul-sync/src/mailbox.rs	act	1	std::fs::remove_file(&file)
-sioul-sync/src/mailbox.rs	move_across	1	std::fs::remove_file(&file)
+sioul-sync/src/mailbox.rs	follow_all_with	1	std::fs::remove_file(file)
 sioul-sync/src/mailbox.rs	act_many	1	std::fs::remove_file(&file)
 
 # sioul-sync/src/notify.rs: the notifications' relay: no item.

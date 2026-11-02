@@ -1077,6 +1077,14 @@ def moved_log(p: Profile, mails: list[Mail]):
     p.write(p.state / "spam" / "moved" / "demo-device.jsonl", lines)
 
 
+def moving_note(p: Profile):
+    """A message the demo moved into its archive without its server saying
+    where (crates/sioul-core/src/mailmoved.rs): opened from elsewhere, it is
+    on its way there. Made up: no message holds this id. Noted now, by the
+    computer's clock, as the note is believed three days."""
+    p.write(p.state / "sync" / "moved.toml", f'[[moved]]\naccount = "{account_id("work")}"\naddress = "mid:on-its-way@example.org"\nfolder = "Archive"\nat = {int(datetime.now().timestamp())}\n')
+
+
 def write_calls(p: Profile):
     """The calls a phone of yours screened, as its log reaches a computer
     through the sharing (crates/sioul-core/src/calls.rs, `Held`; the phone's
@@ -2790,6 +2798,7 @@ def main():
     mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else [])
     write_config(profile)
     write_mail(profile, mails)
+    moving_note(profile)
     if args.spam:
         profile.write(profile.data / "spam" / "table.bin", spam_table(clock), clock.ago(hours=26))
         moved_log(profile, [m for m in mails if m.key == "moved"])
