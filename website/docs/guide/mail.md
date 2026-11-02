@@ -36,7 +36,8 @@ Once you set them up:
 - **Chips above the list**: **All**, **Unread**, **Sent**, **Spam**, one at a time; the squares at their end keep one address, and a second tap brings them all back. What you chose stays on this device. Spam waits under its own chip, with its quiet word ("probably spam", "your provider: spam"); what you said is not spam stays in the list.
 - **Calm**: in quiet time a work address rests: its mail leaves the list and one line says so, "noa@work.example.org rests until 09:00.", with **Show its mail**. Mail whose time has not come yet (your lists say later) shows without its dot. Mail from blocked senders never shows; a shielded address's hostile mail shows as "Someone at example.org", its words hidden.
 - **Two weeks**, then **Earlier messages** adds two more each time; a crowded fortnight shows its newest 500 messages first, and **Earlier messages** the next. The search above it looks through every address; **More…** opens the search by conditions.
-- **A click opens a message** beside the list; Back closes it, the list where it was. Ctrl and Shift choose several, across addresses, to mark them read, archive, delete or move them at once, or drag them onto a folder. A right click offers what a folder's row offers.
+- **A click opens a message** beside the list; Back closes it, the list where it was. Ctrl and Shift choose several, across addresses, to mark them read, archive, delete or move them at once, or drag them onto a folder. A right click offers what a folder's row offers. A message that reached two of your addresses is one row: marking it read or deleting it does so in both.
+- **Each address has its own letter** on its colour, never the same letter twice, so two addresses that start alike still read apart.
 - New mail's notification of several messages opens it at its top. On a phone, Mail still opens on the first inbox for now, with **All addresses** at the top of its folders.
 
 ## Folders {#folders}

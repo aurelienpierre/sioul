@@ -341,8 +341,28 @@ Item {
     }
 
     function dropOn(account, folder) {
-        page.sioul.moveMessages(JSON.stringify(page.dragKeys), account, folder)
+        page.sioul.moveMessages(JSON.stringify(page.rowsOf(page.dragKeys)), account, folder)
         page.clearSelection()
+    }
+
+    // A mailbox row held by several addresses: each one's copy (`Row::keys`),
+    // acted on as one message; null for a row of one copy.
+    function rowKeys(item) {
+        return item && item.keys && item.keys.length > 1 ? item.keys : null
+    }
+
+    // Rows by their keys, as the actions take them: each mailbox row's copies together.
+    function rowsOf(keys) {
+        return keys.map(key => page.rowKeys(page.listItems.find(item => page.sameMessage(item.key, key))) || key)
+    }
+
+    // The row's menu: on each address's copy of it, as one message.
+    function actOnRow(item, action) {
+        const keys = page.rowKeys(item)
+        if (keys)
+            page.sioul.actMany(JSON.stringify([keys]), action)
+        else
+            page.sioul.act(item.key, action, "")
     }
 
     // "Move to…" for `keys`: the folder they are in left out of the choices, when they share one.
@@ -439,7 +459,7 @@ Item {
     }
 
     function actOnSelection(action) {
-        page.sioul.actMany(JSON.stringify(page.selectedKeys), action)
+        page.sioul.actMany(JSON.stringify(page.rowsOf(page.selectedKeys)), action)
         page.clearSelection()
     }
 
@@ -1671,6 +1691,7 @@ Item {
                 Reader {
                     id: reader
 
+                    objectName: "mailReader"
                     sioul: page.sioul
                     theme: page.theme
                     window: page.window
@@ -1958,28 +1979,28 @@ Item {
                 MenuSeparator {}
                 MenuItem {
                     text: rowMenuForm.unread ? page.sioul.text("ui-mark-read") : page.sioul.text("ui-mark-unread")
-                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.unread ? "read" : "unread", "")
+                    onTriggered: page.actOnRow(rowMenuForm.target, rowMenuForm.unread ? "read" : "unread")
                 }
                 MenuItem {
                     text: rowMenuForm.target && rowMenuForm.target.flagged ? page.sioul.text("ui-unflag") : page.sioul.text("ui-flag")
-                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.target.flagged ? "unflag" : "flag", "")
+                    onTriggered: page.actOnRow(rowMenuForm.target, rowMenuForm.target.flagged ? "unflag" : "flag")
                 }
                 MenuSeparator {}
                 MenuItem {
                     visible: rowMenuForm.role !== "archive"
                     height: visible ? implicitHeight : 0
                     text: page.sioul.text("ui-archive")
-                    onTriggered: page.sioul.act(rowMenuForm.target.key, "archive", "")
+                    onTriggered: page.actOnRow(rowMenuForm.target, "archive")
                 }
                 MenuItem {
                     text: rowMenuForm.role === "trash" ? page.sioul.text("ui-delete-for-good") : page.sioul.text("ui-trash")
-                    onTriggered: page.sioul.act(rowMenuForm.target.key, "trash", "")
+                    onTriggered: page.actOnRow(rowMenuForm.target, "trash")
                 }
                 MenuItem {
                     visible: !rowMenuForm.remote
                     height: visible ? implicitHeight : 0
                     text: rowMenuForm.role === "junk" ? page.sioul.text("ui-not-junk") : page.sioul.text("ui-junk")
-                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.role === "junk" ? "not-junk" : "junk", "")
+                    onTriggered: page.actOnRow(rowMenuForm.target, rowMenuForm.role === "junk" ? "not-junk" : "junk")
                 }
                 MenuItem {
                     text: page.sioul.text("ui-move-to")

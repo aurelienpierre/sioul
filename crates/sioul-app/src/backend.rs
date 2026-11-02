@@ -315,11 +315,13 @@ pub mod qobject {
         #[qinvokable]
         fn act(self: Pin<&mut Sioul>, key: &QString, action: &QString, target: &QString);
 
-        /// The same act on several messages (a JSON list of keys), under one "Undo".
+        /// The same act on several messages (a JSON list of keys; a mailbox row's
+        /// keys as a list within it, one message), under one "Undo".
         #[qinvokable]
         fn act_many(self: Pin<&mut Sioul>, keys: &QString, action: &QString);
 
-        /// Messages (a JSON list of keys) into a folder of an account, theirs or another.
+        /// Messages (a JSON list of keys; a mailbox row's keys as a list within it,
+        /// of which one copy moves) into a folder of an account, theirs or another.
         #[qinvokable]
         fn move_messages(self: Pin<&mut Sioul>, keys: &QString, account: &QString, folder: &QString);
 
@@ -4293,13 +4295,11 @@ impl qobject::Sioul {
     }
 
     fn act_many(self: Pin<&mut Self>, keys: &QString, action: &QString) {
-        let keys: Vec<String> = serde_json::from_str(&keys.to_string()).unwrap_or_default();
-        mail::act_many(&self.qt_thread(), &self.shared(), &keys, &action.to_string());
+        mail::act_many(&self.qt_thread(), &self.shared(), &mail::rows_of(&keys.to_string()), &action.to_string());
     }
 
     fn move_messages(self: Pin<&mut Self>, keys: &QString, account: &QString, folder: &QString) {
-        let keys: Vec<String> = serde_json::from_str(&keys.to_string()).unwrap_or_default();
-        mail::move_many(&self.qt_thread(), &self.shared(), &keys, &account.to_string(), &folder.to_string());
+        mail::move_many(&self.qt_thread(), &self.shared(), &mail::rows_of(&keys.to_string()), &account.to_string(), &folder.to_string());
     }
 
     fn unsubscribe(self: Pin<&mut Self>, key: &QString) -> QString {

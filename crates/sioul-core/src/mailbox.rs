@@ -8,12 +8,21 @@
 //!
 //! - **What it lists**: each address's inbox, your own folders and the
 //!   archive (received), Sent (sent), the junk (spam); drafts and the trash
-//!   never, nor what waits for its Undo, nor mail from blocked senders. Gmail's
+//!   never, nor what waits for its Undo, nor mail from blocked senders.
+//! - **Marks**: each address's letter on its tint, no two letters alike
+//!   (`letters`). Gmail's
 //!   All Mail counts as the archive where there is no other, its copies folding
 //!   with the inbox's and Sent's.
 //! - **Each message once** (decision 6): the copies of one address (`mid:`,
 //!   else the digest) make one row, every kind and address it has kept; the
 //!   copy that ranks first opens (`Role::rank`, then the first to arrive).
+//!   What you do to a row acts on each address's first-ranked copy
+//!   (`Row::keys`), never on two copies of one address; it reads as read, and
+//!   flagged, as those copies are.
+//! - **Labels** (Gmail: an address with All Mail): one message in several
+//!   folders. A copy waiting for its Undo, in the trash or in the junk is
+//!   where the message is; that address's other copies are left until their
+//!   folders' next round brings them up to date.
 //! - **Order** (decision 11): by when it was sent, never later than it
 //!   arrived (`porch::sent`), newest first; days as headers; two weeks, then
 //!   two more at each "Earlier messages" (decision 15), and `PAGE_ROWS` rows
@@ -165,6 +174,10 @@ impl World {
 pub struct Row {
     /// The file of the copy that opens.
     pub key: String,
+    /// What the row's actions act on: the first-ranked copy of each address
+    /// that holds it, `key` first; never two copies of one address (Gmail's
+    /// labels are one message: deleting one deletes them all).
+    pub keys: Vec<String>,
     /// Its address (`mid:…`, `sioul:mail/…`).
     pub uri: String,
     /// The copy that opens: its address's id, its folder's server name and purpose.
@@ -189,7 +202,7 @@ pub struct Row {
     pub attachments: bool,
     /// "verified", "unverified", "forged"; "own" for what you sent.
     pub trust_level: &'static str,
-    /// Why it is forged, in words; "" for any other.
+    /// Its trust in words ("Signed by example.org"; why it is forged).
     pub trust: String,
     /// Its quiet word when it is spam ("probably spam"), else "".
     pub spam: String,
@@ -250,6 +263,9 @@ struct Listed {
     sent_kind: bool,
     received_kind: bool,
     unread_here: bool,
+    read: bool,
+    /// Each address's first-ranked copy, in `copies`.
+    acting: Vec<usize>,
     from_own: bool,
     stranger: bool,
     sent: i64,
@@ -267,6 +283,8 @@ struct Copy {
     role: Role,
     flags: String,
     sent: i64,
+    /// Waiting for its Undo.
+    hidden: bool,
 }
 
 /// Whether a folder is kept here, as a sync keeps it (`sioul_sync::mailbox::fetched`): the
@@ -337,10 +355,23 @@ fn day_title(tr: &Translator, at: &jiff::Zoned, today: jiff::civil::Date) -> Str
     tr.text(if date.year() == today.year() { "mailbox-day" } else { "mailbox-day-year" }, Some(&args))
 }
 
-/// The address's first letter, as its mark shows it.
-fn letter_of(account: &Account) -> String {
-    let name = account.address.as_deref().unwrap_or(&account.id);
-    name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().collect()).unwrap_or_else(|| "·".to_string())
+/// Each address's letter, as its mark shows it: in priority order, the first
+/// free one of its local part's initial, its domain's initial, then the local
+/// part's next letters, so that no two marks read alike to one who cannot
+/// tell their tints apart; the initial again when none is free.
+fn letters(accounts: &[&Account]) -> Vec<String> {
+    let mut taken: Vec<String> = Vec::new();
+    for account in accounts {
+        let name = account.address.as_deref().unwrap_or(&account.id);
+        let (local, domain) = name.split_once('@').unwrap_or((name, ""));
+        let upper = |c: char| c.to_uppercase().collect::<String>();
+        let mut local_letters = local.chars().filter(|c| c.is_alphanumeric()).map(upper);
+        let initial = local_letters.next();
+        let candidates: Vec<String> = initial.clone().into_iter().chain(domain.chars().find(|c| c.is_alphanumeric()).map(upper)).chain(local_letters).collect();
+        let letter = candidates.iter().find(|c| !taken.contains(c)).cloned().or(initial).unwrap_or_else(|| "·".to_string());
+        taken.push(letter);
+    }
+    taken
 }
 
 /// One page of the mailbox (the module's rules): `addresses` ranked, each with
@@ -348,7 +379,10 @@ fn letter_of(account: &Account) -> String {
 /// `now` in Unix seconds, the days read on `zone`.
 pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>, tr: &Translator, now: i64, zone: &jiff::tz::TimeZone) -> Page {
     let several = addresses.len() > 1;
-    let mark = |i: usize| Mark { account: addresses[i].account.id.clone(), letter: letter_of(&addresses[i].account), tint: addresses[i].tint, title: addresses[i].account.address.clone().unwrap_or_else(|| addresses[i].account.id.clone()) };
+    let letters = letters(&addresses.iter().map(|a| &a.account).collect::<Vec<_>>());
+    let mark = |i: usize| Mark { account: addresses[i].account.id.clone(), letter: letters[i].clone(), tint: addresses[i].tint, title: addresses[i].account.address.clone().unwrap_or_else(|| addresses[i].account.id.clone()) };
+    // Addresses whose server keeps labels (Gmail: an All Mail folder): one message in several folders.
+    let labelled: Vec<bool> = addresses.iter().map(|a| a.folders.iter().any(|f| f.role == Role::All)).collect();
     let own: Vec<String> = addresses.iter().filter_map(|a| a.account.address.as_deref().map(str::to_ascii_lowercase)).collect();
     let query = ask.query.trim().to_lowercase();
     let since = now - WINDOW_DAYS * 86_400 * i64::from(ask.windows.max(1));
@@ -357,14 +391,12 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
     let mut by_address: BTreeMap<String, Vec<Copy>> = BTreeMap::new();
     for (i, address) in addresses.iter().enumerate() {
         let root = address.account.maildir_path();
-        for folder in address.folders.iter().filter(|f| !matches!(f.role, Role::Drafts | Role::Trash) && kept(f, &address.folders, &address.account)) {
+        // The trash read only where labels make one message of several folders' copies.
+        for folder in address.folders.iter().filter(|f| f.role != Role::Drafts && (f.role != Role::Trash || labelled[i]) && kept(f, &address.folders, &address.account)) {
             for (path, line) in mailcache::folder(&address.account.id, &root, &folder.local) {
-                if hidden.contains(&path) {
-                    continue;
-                }
                 let sent = sent_at(&line);
                 if query.is_empty() && sent < since {
-                    older = true;
+                    older |= folder.role != Role::Trash;
                     continue;
                 }
                 if !found(&line, &query) {
@@ -372,7 +404,8 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
                 }
                 let Some(uri) = crate::mailfind::address_of_line(&address.account.id, &line) else { continue };
                 let flags = maildir::flags_of(&path);
-                by_address.entry(uri).or_default().push(Copy { path, line, address: i, folder: folder.name.clone(), role: folder.role, flags, sent });
+                let hidden = hidden.contains(&path);
+                by_address.entry(uri).or_default().push(Copy { path, line, address: i, folder: folder.name.clone(), role: folder.role, flags, sent, hidden });
             }
         }
     }
@@ -380,6 +413,14 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
     // What each message is, cheaply, for all; then what it shows, for the rows kept.
     let mut listed: Vec<Listed> = Vec::new();
     for (uri, mut copies) in by_address {
+        // What waits for its Undo leaves; where labels make one message (Gmail), a
+        // copy waiting, in the trash or in the junk is where the message is: that
+        // address's other copies are its labels' old copies until their next round.
+        let moved_off: BTreeSet<usize> = copies.iter().filter(|c| labelled[c.address] && (c.hidden || matches!(c.role, Role::Trash | Role::Junk))).map(|c| c.address).collect();
+        copies.retain(|c| !c.hidden && c.role != Role::Trash && (c.role == Role::Junk || !moved_off.contains(&c.address)));
+        if copies.is_empty() {
+            continue;
+        }
         // The copy that ranks first opens: the inbox, your folders, the archive, Sent, the junk, All Mail; the first to arrive.
         copies.sort_by(|a, b| (a.role.rank(), a.line.arrived, &a.path).cmp(&(b.role.rank(), b.line.arrived, &b.path)));
         let first = &copies[0];
@@ -436,7 +477,24 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
         if rests || (!ask.account.is_empty() && !held.iter().any(|i| addresses[*i].account.id == ask.account)) {
             continue;
         }
-        let unread_here = received_kind && copies.iter().any(|c| received_copy(c) && !c.flags.contains('S'));
+        // What the row's actions act on: each address's first-ranked copy (`Row::keys`).
+        let mut acting: Vec<usize> = Vec::new();
+        for (n, c) in copies.iter().enumerate() {
+            if !acting.iter().any(|&k| copies[k].address == c.address) {
+                acting.push(n);
+            }
+        }
+        // Read once a received copy it acts on is read (Gmail's flags are the message's,
+        // its All Mail copy's letters old until that folder's next round).
+        let acting_received: Vec<&Copy> = acting.iter().map(|&k| &copies[k]).filter(|c| received_copy(c)).collect();
+        let read = if !acting_received.is_empty() {
+            acting_received.iter().any(|c| c.flags.contains('S'))
+        } else if received_kind {
+            copies.iter().any(|c| received_copy(c) && c.flags.contains('S'))
+        } else {
+            first.flags.contains('S')
+        };
+        let unread_here = received_kind && !read;
         let shown = match ask.chip {
             Chip::All => spam.is_none(),
             Chip::Unread => spam.is_none() && unread_here,
@@ -447,14 +505,14 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
             continue;
         }
         let sent = copies.iter().map(|c| c.sent).min().unwrap_or(first.sent);
-        listed.push(Listed { uri, card, held, kinds, spam, sent_kind, received_kind, unread_here, from_own, stranger, sent, copies });
+        listed.push(Listed { uri, card, held, kinds, spam, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies });
     }
     // Newest first; a page of rows a window at most, "Earlier messages" showing more.
     listed.sort_by(|a, b| b.sent.cmp(&a.sent).then_with(|| a.copies[0].path.as_os_str().cmp(b.copies[0].path.as_os_str())));
     let more = listed.len() > PAGE_ROWS * ask.windows.max(1) as usize;
     listed.truncate(PAGE_ROWS * ask.windows.max(1) as usize);
     let mut rows = Vec::with_capacity(listed.len());
-    for Listed { uri, card, held, kinds, spam, sent_kind, received_kind, unread_here, from_own, stranger, sent, copies } in listed {
+    for Listed { uri, card, held, kinds, spam, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies } in listed {
         let first = &copies[0];
         let address = &addresses[first.address];
         let outgoing = !received_kind && sent_kind;
@@ -468,7 +526,6 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
         let forged = item.trust_level == "forged";
         let shielded = copies.iter().any(|c| addresses[c.address].account.shield);
         let hostile = shielded && received_kind && stranger && !from_own && copies.iter().find(|c| addresses[c.address].account.shield).is_some_and(|c| hostile(&addresses[c.address].account.id, &c.path, world));
-        let read = first.flags.contains('S');
         // The dot: received, not read, and the matrix shows it now (decision 12).
         let dot = unread_here && spam.is_none() && !forged && !hostile && {
             let unproven = !matches!(trust::judge_sender(trust::read_auth_results(&card.headers, &address.trusted).as_ref(), card.is_list, card.sender_domain()).0, Trust::Verified);
@@ -492,6 +549,7 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
         }
         rows.push(Row {
             key: first.path.display().to_string(),
+            keys: acting.iter().map(|&k| copies[k].path.display().to_string()).collect(),
             uri,
             account: address.account.id.clone(),
             folder: first.folder.clone(),
@@ -503,12 +561,13 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
             time: at.strftime("%H:%M").to_string(),
             unread: dot,
             read,
-            flagged: copies.iter().any(|c| c.flags.contains('F')),
+            // As read: the copies it acts on.
+            flagged: acting.iter().any(|&k| copies[k].flags.contains('F')),
             answered: copies.iter().any(|c| c.flags.contains('R')),
             attachments: item.attachments,
             trust_level: item.trust_level,
-            // Its trust in words for forged mail only, the row's one mark of it.
-            trust: if forged { item.trust.clone() } else { String::new() },
+            // Its trust in words: forged mail's mark, and the reader's sender line.
+            trust: item.trust.clone(),
             spam: spam.clone().unwrap_or_default(),
             hostile,
             marks: if several { held.iter().map(|i| mark(*i)).collect() } else { Vec::new() },
@@ -585,7 +644,7 @@ mod tests {
                 "home",
                 "noa@home.example.org",
                 "admin+leisure",
-                vec![folder("INBOX", Some("/"), Some(Role::Inbox)), folder("[Gmail]/All Mail", Some("/"), Some(Role::All)), folder("[Gmail]/Sent Mail", Some("/"), Some(Role::Sent)), folder("[Gmail]/Spam", Some("/"), Some(Role::Junk))],
+                vec![folder("INBOX", Some("/"), Some(Role::Inbox)), folder("[Gmail]/All Mail", Some("/"), Some(Role::All)), folder("[Gmail]/Sent Mail", Some("/"), Some(Role::Sent)), folder("[Gmail]/Spam", Some("/"), Some(Role::Junk)), folder("[Gmail]/Trash", Some("/"), Some(Role::Trash))],
                 1,
             );
             home.account.shield = true;
@@ -675,7 +734,8 @@ mod tests {
         assert_eq!(subjects(&page), ["Kept by Gmail twice", "A note to myself", "Dated ahead", "On both lists", "From yesterday"]);
         let list = row(&page, "On both lists");
         assert_eq!(list.marks.iter().map(|m| m.account.as_str()).collect::<Vec<_>>(), [stand.addresses[0].account.id.as_str(), stand.addresses[1].account.id.as_str()]);
-        assert_eq!((list.marks[0].letter.as_str(), list.marks[1].tint), ("N", 1));
+        assert_eq!((list.marks[0].letter.as_str(), list.marks[1].letter.as_str(), list.marks[1].tint), ("N", "H", 1), "two noa@ addresses: two letters");
+        assert!(page.rows.iter().all(|r| !r.trust.is_empty()), "the reader's sender line: its trust in words");
         let own = row(&page, "A note to myself");
         assert_eq!((own.kinds.clone(), own.who.as_str()), (vec!["received", "sent"], "You, to Noa"));
         let gmail = row(&page, "Kept by Gmail twice");
@@ -691,6 +751,78 @@ mod tests {
         // One address alone: what it holds, the list to both included.
         let work = stand.page(&world_at(crate::areas::Time::Work, "", ""), &Ask { account: stand.addresses[0].account.id.clone(), ..Ask::default() }, &BTreeSet::new());
         assert_eq!(subjects(&work), ["A note to myself", "Dated ahead", "On both lists", "From yesterday"]);
+    }
+
+    /// A row acts on each address's first-ranked copy, and reads as those
+    /// copies are (review of 863e4c4, M1): Gmail's inbox copy read, its All
+    /// Mail copy not yet, reads as read; one key per address; a delete
+    /// waiting for its Undo, or done, leaves no old copy of a Gmail message
+    /// carrying the row; a message in two addresses goes when both copies go.
+    #[test]
+    fn a_row_acts_on_each_address_and_reads_as_its_copies() {
+        let stand = Stand::new("acting");
+        let at = NOW - 3600;
+        // A safe sender: its dot shows now.
+        let world = world_at(crate::areas::Time::Work, "", "ben@example.org");
+        let inbox = stand.put(1, "INBOX", 5, "gmail@example.org", "Ben <ben@example.org>", "noa@home.example.org", "Kept by Gmail twice", at, at, "", "", "Hi.");
+        let all = stand.put(1, "[Gmail]/All Mail", 9, "gmail@example.org", "Ben <ben@example.org>", "noa@home.example.org", "Kept by Gmail twice", at, at - 30, "F", "", "Hi.");
+        let work = stand.put(0, "INBOX", 1, "list@example.org", "List <news@list.example.org>", "noa@work.example.org", "On both lists", at - 600, at - 600, "", "List-Id: <news.list.example.org>\r\n", "Hello.");
+        let home = stand.put(1, "INBOX", 1, "list@example.org", "List <news@list.example.org>", "noa@home.example.org", "On both lists", at - 600, at - 540, "", "List-Id: <news.list.example.org>\r\n", "Hello.");
+        let none = BTreeSet::new();
+        let page = stand.page(&world, &Ask::default(), &none);
+        let gmail = row(&page, "Kept by Gmail twice");
+        // One key for Gmail's two copies: a delete acts once.
+        assert_eq!(gmail.keys, [inbox.display().to_string()]);
+        assert!(gmail.unread && !gmail.read, "unread, both copies");
+        assert!(!gmail.flagged, "flagged as its inbox copy is, not as All Mail's old letters");
+        assert_eq!(row(&page, "On both lists").keys, [work.display().to_string(), home.display().to_string()]);
+        // Opening marks the inbox copy read: the dot goes, All Mail's copy not read yet.
+        let opened = maildir::set_flags(&inbox, "S").unwrap();
+        let page = stand.page(&world, &Ask::default(), &none);
+        let gmail = row(&page, "Kept by Gmail twice");
+        assert!(!gmail.unread && gmail.read, "read once the copy it acts on is read");
+        let unread = stand.page(&world, &Ask { chip: Chip::Unread, ..Ask::default() }, &none);
+        assert_eq!(subjects(&unread), ["On both lists"]);
+        // Deleted, waiting for its Undo: All Mail's copy does not carry the row.
+        let waiting = stand.page(&world, &Ask::default(), &BTreeSet::from([opened.clone()]));
+        assert_eq!(subjects(&waiting), ["On both lists"]);
+        // Done: the file followed it into the trash; All Mail's copy still waits for its round.
+        let trash = stand.dir(1, "[Gmail]/Trash").join("cur").join(opened.file_name().unwrap());
+        std::fs::rename(&opened, &trash).unwrap();
+        assert!(all.exists());
+        assert_eq!(subjects(&stand.page(&world, &Ask::default(), &none)), ["On both lists"]);
+        // In two addresses: one copy waiting, the other holds the row; both, it goes.
+        let one = stand.page(&world, &Ask::default(), &BTreeSet::from([work.clone()]));
+        assert_eq!(row(&one, "On both lists").keys, [home.display().to_string()]);
+        let both = stand.page(&world, &Ask::default(), &BTreeSet::from([work, home]));
+        assert!(both.rows.is_empty());
+    }
+
+    /// Gmail's junk: the message moved there, its All Mail copy not yet gone,
+    /// is spam, under the Spam chip only.
+    #[test]
+    fn a_gmail_message_in_its_junk_is_spam() {
+        let stand = Stand::new("labels-junk");
+        let at = NOW - 3600;
+        stand.put(1, "[Gmail]/Spam", 3, "junked@example.org", "Ads <ads@shop.example>", "noa@home.example.org", "Moved to junk", at, at, "S", "", "Buy.");
+        stand.put(1, "[Gmail]/All Mail", 8, "junked@example.org", "Ads <ads@shop.example>", "noa@home.example.org", "Moved to junk", at, at, "S", "", "Buy.");
+        let world = world_at(crate::areas::Time::Work, "", "");
+        assert!(stand.page(&world, &Ask::default(), &BTreeSet::new()).rows.is_empty());
+        assert_eq!(subjects(&stand.page(&world, &Ask { chip: Chip::Spam, ..Ask::default() }, &BTreeSet::new())), ["Moved to junk"]);
+    }
+
+    /// No two marks read alike: in priority order, the local part's initial,
+    /// the domain's, then the local part's next letters (review of 863e4c4, L18).
+    #[test]
+    fn marks_never_repeat_a_letter() {
+        let account = |address: &str| Account::imap(address, address, "imap.example.org", 993, crate::config::Security::Tls, None);
+        let (a, b, c, d) = (account("noa@work.example.org"), account("noa@home.example.org"), account("noa@hub.example.org"), account("ana@example.org"));
+        assert_eq!(letters(&[&a, &b, &c, &d]), ["N", "H", "O", "A"]);
+        let (e, f) = (account("noa@example.com"), account("noa.ferrand@example.org"));
+        assert_eq!(letters(&[&e, &f]), ["N", "E"]);
+        // None free: the initial again.
+        let (g, h) = (account("n@n.example"), account("n@n.example"));
+        assert_eq!(letters(&[&g, &h]), ["N", "N"]);
     }
 
     /// Each address's colour: its own when chosen, else the palette's in the

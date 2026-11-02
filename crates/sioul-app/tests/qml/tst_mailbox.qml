@@ -9,7 +9,8 @@
 // mail"; "Earlier messages"; a tap opening through the window's one opener,
 // Back leaving the list where it was; a selection across two addresses
 // acted on and dragged onto a folder; neither list handed the other's rows
-// on the way to a folder and back. Run by tools/qml-test.sh.
+// on the way to a folder and back; a row held by two addresses acted on as
+// one message, each copy at once. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -33,15 +34,18 @@ Item {
     ])
     readonly property var marks: ({ work: { account: "work", letter: "N", tint: 0, title: "noa@work.example.org" }, home: { account: "home", letter: "N", tint: 1, title: "noa@home.example.org" } })
 
-    // A row as `mailbox::page` gives it.
+    // A row as `mailbox::page` gives it: its keys, each address's copy.
+    function keyOf(n, account) {
+        return "/stand-in/mail/" + account + "/cur/17770000" + n + ".U7-" + n + ".sioul:2,S"
+    }
     function rowOf(n, day, account, subject, extra) {
         const accounts = Array.isArray(account) ? account : [account]
-        return Object.assign({ key: "/stand-in/mail/" + accounts[0] + "/cur/17770000" + n + ".U7-" + n + ".sioul:2,S", uri: "mid:m" + n + "@example.org", account: accounts[0], folder: "INBOX", role: "inbox", who: "Ana", address: "ana@example.org", subject: subject, day: day, time: "09:4" + n, unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", spam: "", hostile: false, marks: accounts.map(a => root.marks[a]), kinds: ["received"], server: false }, extra || {})
+        return Object.assign({ key: root.keyOf(n, accounts[0]), keys: accounts.map(a => root.keyOf(n, a)), uri: "mid:m" + n + "@example.org", account: accounts[0], folder: "INBOX", role: "inbox", who: "Ana", address: "ana@example.org", subject: subject, day: day, time: "09:4" + n, unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", spam: "", hostile: false, marks: accounts.map(a => root.marks[a]), kinds: ["received"], server: false }, extra || {})
     }
 
     // What the stand-in Rust answers: every row, then those the ask keeps.
     readonly property var allRows: [
-        rowOf(1, "Today", ["work", "home"], "On both lists"),
+        rowOf(1, "Today", ["work", "home"], "On both lists", { unread: true, read: false }),
         rowOf(2, "Today", "work", "Quote for the cooperative", { unread: true, read: false }),
         rowOf(3, "Yesterday", "work", "Sent to Iris", { kinds: ["sent"], who: "To Iris" }),
         rowOf(4, "Yesterday", "home", "Dinner on Friday"),
@@ -49,7 +53,7 @@ Item {
     ]
 
     function pageFor(ask) {
-        const rows = root.allRows.filter(r => (ask.account === "" || r.marks.some(m => m.account === ask.account))
+        const rows = root.allRows.filter(r => !r.keys.every(k => mock.gone.indexOf(k) >= 0) && (ask.account === "" || r.marks.some(m => m.account === ask.account))
             && (ask.chip === "spam" ? r.spam !== "" : r.spam === "")
             && (ask.chip !== "sent" || r.kinds.indexOf("sent") >= 0)
             && (ask.chip !== "unread" || !r.read)
@@ -72,6 +76,8 @@ Item {
         property var mailboxAsked: []
         property string kept: "{}"
         property var acted: []
+        // Keys deleted: their rows leave the next page, as Rust leaves what waits for its Undo.
+        property var gone: []
         property var moved: []
         property var openedFolders: []
 
@@ -99,6 +105,19 @@ Item {
         }
         function actMany(keys, action) {
             mock.acted = mock.acted.concat([{ keys: JSON.parse(keys), action: action }])
+            if (action === "trash")
+                mock.drop(JSON.parse(keys).reduce((all, k) => all.concat(k), []))
+        }
+        function act(key, action, target) {
+            mock.acted = mock.acted.concat([{ keys: [key], action: action, one: true }])
+            if (action === "trash")
+                mock.drop([key])
+        }
+        function drop(keys) {
+            mock.gone = mock.gone.concat(keys)
+            const asked = mock.mailboxAsked.filter(a => a !== "")
+            if (asked.length > 0)
+                mock.mailbox = JSON.stringify(root.pageFor(JSON.parse(asked[asked.length - 1])))
         }
         function moveMessages(keys, account, folder) {
             mock.moved = mock.moved.concat([{ keys: JSON.parse(keys), account: account, folder: folder }])
@@ -235,6 +254,7 @@ Item {
         function made() {
             mock.mailboxAsked = []
             mock.acted = []
+            mock.gone = []
             mock.moved = []
             mock.mailbox = ""
             mock.mailAccounts = ""
@@ -361,6 +381,63 @@ Item {
             compare(mock.moved.length, 1)
             compare([mock.moved[0].account, mock.moved[0].folder, mock.moved[0].keys.length], ["work", "Archive", 2])
             page.letGo()
+        }
+
+        function menuItem(page, text) {
+            return all(page.Overlay.overlay, i => i.text === text && i.visible && i.triggered !== undefined)[0] || null
+        }
+
+        function openMenu(page, subject) {
+            tryVerify(() => rowItem(page, subject) !== null)
+            const row = rowItem(page, subject)
+            mouseClick(row, 120, row.height / 2, Qt.RightButton)
+        }
+
+        // A row held by two addresses is one message: its menu's Mark read and
+        // Delete, the selection, a drag and the reader act on each address's
+        // copy at once; deleted, the row leaves. A row of one copy (Gmail's
+        // inbox and All Mail give one key) acts once (review of 863e4c4, M1).
+        function test_a_row_s_actions_act_on_each_address() {
+            const page = made()
+            const both = root.allRows[0].keys
+            compare(page.listItems[0].keys, both)
+            openMenu(page, "On both lists")
+            tryVerify(() => menuItem(page, "ui-mark-read") !== null)
+            menuItem(page, "ui-mark-read").triggered()
+            compare(mock.acted[mock.acted.length - 1], { keys: [both], action: "read" })
+            // The selection: the row's copies together, beside a row of one.
+            const quote = page.listItems.find(r => r.subject === "Quote for the cooperative")
+            page.clickRow(0, page.listItems[0].key, Qt.ControlModifier)
+            page.clickRow(1, quote.key, Qt.ControlModifier)
+            page.actOnSelection("archive")
+            compare(mock.acted[mock.acted.length - 1], { keys: [both, quote.key], action: "archive" })
+            // Dragged onto a folder: the row as one, Rust moving one copy of it.
+            page.clickRow(0, page.listItems[0].key, Qt.ControlModifier)
+            page.startDrag(page.listItems[0].key)
+            page.dropOn("work", "Archive")
+            compare(mock.moved[mock.moved.length - 1].keys, [both])
+            page.letGo()
+            // The reader, opened on it: each copy too.
+            page.clickRow(0, page.listItems[0].key, 0)
+            tryVerify(() => find(page, "mailReader") !== null && find(page, "mailReader").item !== null)
+            find(page, "mailReader").act("flag")
+            compare(mock.acted[mock.acted.length - 1], { keys: [both], action: "flag" })
+            page.back()
+            // Deleted from its menu: both copies, and the row leaves.
+            openMenu(page, "On both lists")
+            tryVerify(() => menuItem(page, "ui-trash") !== null)
+            menuItem(page, "ui-trash").triggered()
+            compare(mock.acted[mock.acted.length - 1], { keys: [both], action: "trash" })
+            tryVerify(() => page.listItems.every(r => r.subject !== "On both lists"))
+            // One copy: acted on once, by its key.
+            page.boxShownResting = ["home"]
+            page.sioul.openMailbox(page.boxAsk())
+            openMenu(page, "Dinner on Friday")
+            tryVerify(() => menuItem(page, "ui-trash") !== null)
+            const before = mock.acted.length
+            menuItem(page, "ui-trash").triggered()
+            compare(mock.acted.length, before + 1)
+            compare(mock.acted[before], { keys: [root.keyOf(4, "home")], action: "trash", one: true })
         }
 
         // The quick search, typed, asks Rust across every address after a pause.

@@ -584,12 +584,56 @@ fn in_junk(account: &Account, file: &Path) -> bool {
     mailbox::folder_of(account, file).is_some_and(|f| f.role == Role::Junk)
 }
 
+/// What the window hands to act on, as JSON: keys, each one message, or a
+/// mailbox row's keys (each address's copy, `mailbox::Row::keys`), one
+/// message: `["a", ["b", "c"]]` is two messages, three copies.
+pub(crate) fn rows_of(json: &str) -> Vec<Vec<String>> {
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum Keyed {
+        One(String),
+        Row(Vec<String>),
+    }
+    let keyed: Vec<Keyed> = serde_json::from_str(json).unwrap_or_default();
+    keyed
+        .into_iter()
+        .map(|k| match k {
+            Keyed::One(key) => vec![key],
+            Keyed::Row(keys) => keys,
+        })
+        .filter(|row| !row.is_empty())
+        .collect()
+}
+
+/// How many messages: the rows with a copy still here or on its server.
+fn messages_in(rows: &[Vec<String>], here: impl Fn(&str) -> bool) -> usize {
+    rows.iter().filter(|row| row.iter().any(|k| here(k))).count()
+}
+
+/// "3 messages archived.", or "Archived." for one.
+fn undo_line(many: &str, n: usize) -> String {
+    let one = match many {
+        "undo-many-archived" => "undo-archived",
+        "undo-many-trashed" => "undo-trashed",
+        "undo-many-deleted" => "undo-deleted",
+        "undo-many-junked" => "undo-junked",
+        "undo-many-not-junk" => "undo-not-junk",
+        "undo-many-not-spam" => "undo-not-spam",
+        _ => "",
+    };
+    if n == 1 && !one.is_empty() { tr().text(one, None) } else { say(many, &[("n", n.to_string())]) }
+}
+
 /// The same act on several messages (a selection, the review queue's "for
-/// all"): reading and flagging at once, the rest under one "Undo"; "spam"
-/// and "not-spam" as each message's folder asks (`act`).
-pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], action: &str) {
+/// all", a mailbox row held by several addresses): reading and flagging at
+/// once, the rest under one "Undo"; "spam" and "not-spam" as each message's
+/// folder asks (`act`). Each of a row's copies is acted on (`rows_of`); the
+/// line counts messages.
+pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, rows: &[Vec<String>], action: &str) {
     let Some(first) = action_of(action, "", false) else { return };
     let config = load_config();
+    let keys: Vec<&String> = rows.iter().flatten().collect();
+    let n = messages_in(rows, |k| ServerRef::is_key(k) || locate(k).is_some());
     let found: Vec<(Account, PathBuf)> = keys.iter().filter(|k| !ServerRef::is_key(k)).filter_map(|k| locate(k)).collect();
     // Seen on their server only (a search's).
     let remote: Vec<(Account, ServerRef)> = keys.iter().filter_map(|k| ServerRef::parse(k)).filter_map(|p| Some((config.account(&p.account).filter(|a| a.syncs())?.clone(), p))).collect();
@@ -604,14 +648,13 @@ pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], act
     // Archiving and the trash: one connection per account, the messages of a folder as one set.
     if matches!(first, Action::Archive | Action::Trash) {
         let in_trash = !found.is_empty() && remote.is_empty() && found.iter().all(|(account, file)| mailbox::folder_of(account, file).is_some_and(|f| f.role == Role::Trash));
-        let n = found.len() + remote.len();
         let id = match (&first, in_trash) {
             (Action::Archive, _) => "undo-many-archived",
             (_, true) => "undo-many-deleted",
             _ => "undo-many-trashed",
         };
         let works = batches(found, remote, &first);
-        schedule(qt, shared, Work::Many(works), say(id, &[("n", n.to_string())]));
+        schedule(qt, shared, Work::Many(works), undo_line(id, n));
         return;
     }
     if found.is_empty() {
@@ -629,7 +672,7 @@ pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], act
         _ if in_trash => "undo-many-deleted",
         _ => "undo-many-trashed",
     };
-    let line = say(id, &[("n", found.len().to_string())]);
+    let line = undo_line(id, n);
     let works = found
         .into_iter()
         .filter_map(|(account, file)| {
@@ -656,14 +699,15 @@ fn batches(found: Vec<(Account, PathBuf)>, remote: Vec<(Account, ServerRef)>, ac
 /// Messages dropped on a folder, of their account or of another one: those
 /// of its account in one connection, a folder's as one set (`UID MOVE`);
 /// those of another one copied there first, then taken off theirs.
-pub(crate) fn move_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], account: &str, folder: &str) {
+pub(crate) fn move_many(qt: &QtThread, shared: &Arc<Shared>, rows: &[Vec<String>], account: &str, folder: &str) {
     let config = load_config();
     let Some(to) = config.account(account).filter(|a| a.syncs()).cloned() else {
         set_status(qt, say("account-unknown", &[("id", account.to_string())]));
         return;
     };
+    let keys = one_per_row(rows, &to.id, |k| ServerRef::parse(k).map(|p| p.account).or_else(|| locate(k).map(|(a, _)| a.id)));
     let (mut files, mut remote, mut across) = (Vec::new(), Vec::new(), Vec::new());
-    for key in keys {
+    for key in &keys {
         if let Some(place) = ServerRef::parse(key) {
             // Already there: nothing to do.
             if place.account == to.id {
@@ -700,6 +744,13 @@ pub(crate) fn move_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], ac
         say("undo-moved", &[("folder", title)])
     };
     schedule(qt, shared, Work::Many(works), line);
+}
+
+/// The one copy of each row that moves into a folder of `to`: the copy `to`
+/// holds, else the row's first. Never a second copy of one message, which
+/// would land beside the first; another address's copy stays where it is.
+fn one_per_row(rows: &[Vec<String>], to: &str, account_of: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    rows.iter().filter_map(|row| row.iter().find(|k| account_of(k).as_deref() == Some(to)).or(row.first()).cloned()).collect()
 }
 
 /// Reading and flagging: shown at once, then told to the server; put back if it refuses.
@@ -1551,6 +1602,26 @@ mod tests {
     fn several_new_messages_open_the_mailbox() {
         assert_eq!(crate::mailnote::opens_of(Some("mid:a@example.org")), ("mail", "mid:a@example.org".to_string()));
         assert_eq!(crate::mailnote::opens_of(None), ("mailbox", String::new()));
+    }
+
+    /// A mailbox row is one message however many addresses hold it (review
+    /// of 863e4c4, M1): its keys come as one, each copy acted on, the line
+    /// counting it once; moved into a folder, only the copy of that folder's
+    /// address moves (else the first), never a second beside it.
+    #[test]
+    fn a_row_s_copies_act_as_one_message() {
+        let row = |keys: &[&str]| keys.iter().map(|k| k.to_string()).collect::<Vec<String>>();
+        assert_eq!(rows_of(r#"["/a", ["/b", "/c"]]"#), [row(&["/a"]), row(&["/b", "/c"])]);
+        assert_eq!(rows_of(r#"["/a", "/b"]"#), [row(&["/a"]), row(&["/b"])]);
+        assert!(rows_of("not json").is_empty() && rows_of("[[]]").is_empty());
+        let rows = [row(&["/work/1", "/home/1"]), row(&["/home/2"])];
+        assert_eq!(messages_in(&rows, |_| true), 2);
+        assert_eq!(messages_in(&rows, |k| k.starts_with("/home/2")), 1);
+        let account_of = |k: &str| Some(k.split('/').nth(1).unwrap_or_default().to_string());
+        assert_eq!(one_per_row(&rows, "work", account_of), ["/work/1", "/home/2"]);
+        assert_eq!(one_per_row(&rows, "home", account_of), ["/home/1", "/home/2"]);
+        assert_eq!(undo_line("undo-many-archived", 1), tr().text("undo-archived", None));
+        assert_eq!(undo_line("undo-many-trashed", 2), say("undo-many-trashed", &[("n", "2".to_string())]));
     }
 
     /// The mailbox's chip and address, kept on this device and read back;

@@ -178,9 +178,15 @@ Panel {
                  "archive": "package-x-generic", "calendar": "view-calendar-day" }[kind] || "mail-attachment"
     }
 
+    // A mailbox row held by several addresses: each one's copy, as one message.
+    readonly property var rowKeys: reader.item && reader.item.keys && reader.item.keys.length > 1 ? reader.item.keys : null
+
     // Filed away, the message leaves the list: the reader closes on it.
     function act(action, target) {
-        reader.sioul.act(reader.key, action, target || "")
+        if (reader.rowKeys && !target)
+            reader.sioul.actMany(JSON.stringify([reader.rowKeys]), action)
+        else
+            reader.sioul.act(reader.key, action, target || "")
         if (["read", "unread", "flag", "unflag"].indexOf(action) < 0)
             reader.closeRequested()
         else if (action === "read" || action === "unread")
@@ -1344,7 +1350,7 @@ Panel {
                     moveDialogForm.fromAccount = place.account || ""
                     moveDialogForm.fromFolder = place.folder || ""
                 }
-                onChosen: (account, folder) => reader.sioul.moveMessages(JSON.stringify([reader.key]), account, folder)
+                onChosen: (account, folder) => reader.sioul.moveMessages(JSON.stringify([reader.rowKeys || reader.key]), account, folder)
             }
         }
     }
