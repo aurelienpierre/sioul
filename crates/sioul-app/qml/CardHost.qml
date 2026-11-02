@@ -177,9 +177,15 @@ Item {
     // closes, so that what opens shows; on a computer it stays beside the page
     // (review of 590eb18, M3).
     function leave() {
-        if (host.window.compact && host.open)
+        if (host.window.compact && host.open) {
+            host.leftRef = host.ref
+            Qt.callLater(() => host.leftRef = null)
             host.close()
+        }
     }
+    // The card a place's opening just closed (`leave`), for the message opener's
+    // Back (main.qml, `openMail`): the card shown again; gone at the next turn.
+    property var leftRef: null
 
     // The task's card left (another card, another task, Back, closed): a new
     // task's form with a title typed makes the task first; a task's field being

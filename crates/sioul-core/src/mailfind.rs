@@ -30,8 +30,9 @@
 //! it again. "Gone" is said only when every server answered and none holds
 //! it: this device keeps no record of what others removed. The servers are
 //! never asked from the demo profile, and never for a digest (no header
-//! names it). The window does not call it (its opener comes later, off its
-//! thread), nor does the phone's background step.
+//! names it). The window calls it through its one opener alone, off its
+//! thread (sioul-app's openmail.rs, the unified mailbox's part 2); the
+//! phone's background step never does.
 //!
 //! A hinted file is used only inside the configured addresses' Maildirs:
 //! written as it is, `..` folded without asking the system, it must start
@@ -111,6 +112,15 @@ pub fn address_of_file(account: &str, path: &Path) -> Option<String> {
     let mut headers = mailcache::headers_of(path)?;
     headers.extend_from_slice(b"\r\n\r\n");
     Some(address_of(account, &headers))
+}
+
+/// A message's address from its card (`mid:` by its Message-ID, else
+/// `sioul:mail/` from its file's headers); "" when neither is known.
+pub fn address_of_card(card: &crate::card::Card) -> String {
+    match card.message_id.as_deref().map(bare_id).filter(|id| !id.is_empty()) {
+        Some(id) => crate::links::mail_uri(&id),
+        None => card.account.as_deref().zip(card.path.as_deref()).and_then(|(account, path)| address_of_file(account, path)).unwrap_or_default(),
+    }
 }
 
 /// A message as a page, a tie, a notification or an agent names it: its

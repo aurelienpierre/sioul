@@ -201,6 +201,7 @@ Item {
         readonly property var sioulLocale: Qt.locale("en_GB")
         property int agendaAsked: 0
         function openThing(item, fromCard) { shell.opened.push(item) }
+        function openMail(ref) { shell.opened.push({ kind: "openMail", ref: ref }) }
         function agendaAgain() { shell.agendaAsked += 1 }
         function openPage(kind, key) { shell.opened.push({ kind: kind, key: key }) }
         function menuAt(menu, item) {}
@@ -835,6 +836,7 @@ Item {
             compare(ticked.length, 1, JSON.stringify(mock.calls))
             compare([ticked[0].kind, ticked[0].key, ticked[0].line, ticked[0].state].join(" "), "task prep 3 done")
             verify(!root.find(card, "eventCardAnswer").visible, "no invitation in the mail")
+            compare(root.find(card, "eventCardInvitation"), null, "no invitation to open: not made")
             // A meeting with others whose invitation is in the mail: Answer… shows, and sends
             // your answer to that message (review of part 4, later 12).
             host.show({ kind: "event", srcKey: "/c/board.ics", srcStart: 4000172800 })
@@ -852,6 +854,13 @@ Item {
             compare(answered.length, 1, JSON.stringify(mock.calls))
             compare([answered[0].key, answered[0].answer].join(" "), "/mail/board.eml accepted")
             menu.close()
+            // Its invitation (the unified mailbox's part 2): the message, through the window's
+            // one opener, by the event's UID as the mail's index knows it, the card's file a hint.
+            const its = root.find(host.eventCard, "eventCardInvitation")
+            verify(its.visible, "its invitation to open")
+            shell.opened = []
+            its.clicked()
+            compare(JSON.stringify(shell.opened), JSON.stringify([{ kind: "openMail", ref: { invitation: "board", organizer: "chair@example.org", file: "/mail/board.eml" } }]))
         }
 
         // The objects a card keeps alive (Later 9 of the review of 3a2fbd4): the

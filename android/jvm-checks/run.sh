@@ -94,6 +94,13 @@
 #   answers across transfers, a key waiting for a touch (time extensions),
 #   an answer to another message, a reader's failure, a key unplugged, the
 #   messages wiped once sent.
+# - MailOpenCheck: a message opened from the phone by its address (the
+#   unified mailbox's part 2): ReminderOpener.opens takes "mail" with mid: or
+#   sioul:mail/ and refuses a path; the home card's rows (HomeCardRows.opens)
+#   and codes by their address, an older card's row by its file, else the
+#   Porch; read from the sources, no intent naming a file (no file: address,
+#   no Uri.fromFile), new mail's tap made from a checked address alone, and
+#   no notification's text nor a key logged.
 # - ShareCheck: a calendar file opened (ShareActivity.insideOwn): a file:
 #   path into Sioul's own folders refused as the system resolves it (written
 #   inside, "..", a link to a file or a folder of Sioul's, a root named by a
@@ -123,7 +130,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

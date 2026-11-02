@@ -99,7 +99,12 @@ Item {
             page.withheldProblem = ""
         }
     }
-    onViewChanged: page.reloadDoses()
+    // A card's message looked for once the view is parsed: on the text's own change, `view`
+    // could still be the last one (a card tapped before the Porch was read went to Mail).
+    onViewChanged: {
+        page.reloadDoses()
+        page.lookForCard()
+    }
     Component.onCompleted: {
         page.takeShown()
         page.reloadDoses()
@@ -140,25 +145,47 @@ Item {
     }
 
     // A message tapped on the phone's home screen card (homecard.rs, main.qml's
-    // "card-mail"): opened here, in the Reader, once the Porch is read; in
-    // Mail, by its file, when the Porch no longer shows it (filed, moved).
+    // "card-mail"), by its address (`address`: this version's card) or its file
+    // (an older card's): opened here, in the Reader, once the Porch is read,
+    // while the Porch shows it; else through the window's one opener (filed,
+    // moved, read on another device).
     property string cardKey: ""
-    function openMessage(key) {
+    property string cardAddress: ""
+    function openCardMessage(address, key) {
+        page.cardAddress = address
         page.cardKey = key
         page.openKey = key
         page.lookForCard()
     }
+    function openMessage(key) {
+        page.openCardMessage("", key)
+    }
     function lookForCard() {
-        if (page.cardKey === "" || page.porchText === "")
+        if ((page.cardKey === "" && page.cardAddress === "") || page.porchText === "")
             return
         const key = page.cardKey
+        const address = page.cardAddress
         page.cardKey = ""
-        if (page.findItem(key) === null) {
-            page.openKey = ""
-            page.window.openThing({ kind: "mail", uri: "", key: key })
+        page.cardAddress = ""
+        const item = page.findItem(key) || page.findByAddress(address)
+        if (item !== null) {
+            page.openKey = item.key
+            return
         }
+        page.openKey = ""
+        page.window.openMail({ address: address, file: key })
     }
-    onPorchTextChanged: page.lookForCard()
+
+    // A message the Porch shows, by its address (`ItemView::uri`).
+    function findByAddress(address) {
+        if (!address)
+            return null
+        for (const lane of view.lanes)
+            for (const item of lane.items)
+                if (item.uri === address)
+                    return item
+        return null
+    }
     // Lanes folded or unfolded by hand, by key; the others keep their default.
     property var unfolded: ({})
 
@@ -956,7 +983,8 @@ Item {
                         theme: page.theme
                         card: modelData
                         onCopy: code => page.window.copy(code)
-                        onOpen: key => page.openMessage(key)
+                        // Codes are in no lane: their message through the window's one opener, by its address.
+                        onOpen: key => page.window.openMail({ address: modelData.address || "", file: key })
                     }
                 }
 

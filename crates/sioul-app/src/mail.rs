@@ -1679,15 +1679,21 @@ mod tests {
         }
     }
 
-    /// The window and the phone's background step never look a message up by
-    /// `mailfind` nor ask its servers for one: only the command line and
-    /// agents do, until the window's opener comes, off its thread.
+    /// A message is looked up by `mailfind`, and its servers asked, only by the
+    /// window's one opener (openmail.rs, `Sioul::find_message`, off the
+    /// window's thread: the unified mailbox's part 2), the command line and
+    /// agents; never by the phone's background step, nor by what it runs (the
+    /// new mail's notices, the reminders, the alarms, the home card), which
+    /// never reach the opener.
     #[test]
-    fn the_window_never_asks_the_servers_for_a_message() {
+    fn only_the_window_s_opener_asks_the_servers_for_a_message() {
         // Its own search's `ask_servers` (mailsearch.rs) is no lookup by address: only mailfind's are named.
-        let needles = [["mailfind::", "find"].concat(), ["mailfind::", "ask_servers"].concat(), ["mailfind::", "{"].concat(), ["find_or", "_ask"].concat(), ["On", "Servers"].concat()];
+        let needles = [["mailfind::", "find"].concat(), ["mailfind::", "ask_servers"].concat(), ["find_or", "_ask"].concat()];
+        let opener = ["openmail", "::"].concat();
+        // The background step and what it runs, without the window.
+        let background = ["steps.rs", "mailnote.rs", "eventalarms.rs", "alarms.rs", "remind.rs", "homecard.rs", "spam.rs", "filters.rs"];
         let mut sources = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
-        let mut read = 0;
+        let (mut read, mut calls) = (0, Vec::new());
         while let Some(dir) = sources.pop() {
             for entry in std::fs::read_dir(&dir).unwrap().filter_map(Result::ok) {
                 let path = entry.path();
@@ -1695,14 +1701,30 @@ mod tests {
                     sources.push(path);
                 } else if path.extension().is_some_and(|x| x == "rs") {
                     let text = std::fs::read_to_string(&path).unwrap();
+                    let name = path.file_name().unwrap().to_string_lossy().to_string();
                     read += 1;
-                    for needle in &needles {
-                        assert!(!text.contains(needle.as_str()), "{} calls {needle}", path.display());
+                    if name != "openmail.rs" {
+                        for needle in &needles {
+                            assert!(!text.contains(needle.as_str()), "{} calls {needle}", path.display());
+                        }
+                    }
+                    if text.contains(&opener) {
+                        calls.push(name.clone());
+                    }
+                    if background.contains(&name.as_str()) {
+                        assert!(!text.contains(&opener), "{name}, which the background step runs, reaches the opener");
                     }
                 }
             }
         }
         assert!(read > 20, "{read} files read");
+        calls.sort();
+        assert_eq!(calls, ["backend.rs"], "the opener is the window's alone: called from its invokable");
+        let backend = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/backend.rs")).unwrap();
+        let invokable = backend.find("fn find_message(self: Pin<&mut Self>").expect("the window's invokable");
+        let spawned = backend[invokable..].find("std::thread::spawn").expect("a thread of its own");
+        let found = backend[invokable..].find(&[opener.as_str(), "find(&asked"].concat()).expect("the opener called");
+        assert!(spawned < found, "the finding runs off the window's thread");
     }
 
     #[test]

@@ -464,7 +464,8 @@ mod tests {
     /// first, never written so (the one rule of a task's dates).
     #[test]
     fn the_writer_never_writes_dates_a_server_refuses() {
-        let now = jiff::Zoned::now();
+        // A fixed clock: on 2 November the stamp itself held "20261102".
+        let now: jiff::Zoned = "2026-10-27T10:00:00+01:00[Europe/Paris]".parse().unwrap();
         let edit = |start: &str, due: &str| tasks::TaskEdit { title: "Dated".into(), start: start.into(), due: due.into(), ..tasks::TaskEdit::default() };
         let mixed = tasks::new_task(&edit("2026-10-28", "2026-10-30T16:00"), "w-1", &zone(), &now).unwrap();
         assert!(!mixed.contains("DTSTART") && mixed.contains("X-SIOUL-START;VALUE=DATE:20261028") && mixed.contains("DUE:20261030T150000Z"), "{mixed}");

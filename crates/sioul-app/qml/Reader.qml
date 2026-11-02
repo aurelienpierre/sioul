@@ -33,8 +33,33 @@ Panel {
     // The message asked for does not read here (moved, deleted, not on this
     // device yet): the pane says so in its place, never a blank page.
     property bool missing: false
-    // Something to show: the message, that it is opening, or that it is not here.
-    readonly property bool showing: reader.reading !== null || reader.opening || reader.missing
+    // What the window's one opener found (`window.openMail`, openmail.rs), when
+    // the message was asked for from elsewhere: {state, place, reused}; null
+    // for one opened from its list. Until a copy is found, the reader's place
+    // says where things stand ("Opening the message…", "Looking for it on
+    // your servers…") or why it does not open (gone, unreachable, not here):
+    // never a blank page.
+    property var answer: null
+    readonly property string answerWords: {
+        const state = reader.answer ? reader.answer.state : ""
+        if (state === "opening")
+            return reader.sioul.text("reader-opening")
+        if (state === "asking")
+            return reader.sioul.text("reader-looking")
+        if (state === "gone")
+            return reader.sioul.text("mail-find-gone")
+        if (state === "unreachable")
+            return reader.sioul.text("mail-find-unreachable")
+        if (state === "not-here")
+            return reader.sioul.text("reader-not-here")
+        if (state === "no-invitation")
+            return reader.sioul.text("reader-no-invitation")
+        return ""
+    }
+    // No file yet: the opener's sentence alone.
+    readonly property bool waiting: reader.key === "" && reader.answerWords !== ""
+    // Something to show: the message, that it is opening, that it is not here, or the opener's sentence.
+    readonly property bool showing: reader.reading !== null || reader.opening || reader.missing || reader.waiting
     // The invitation the message carries, if any.
     property var invite: null
     // The sender's contact, by file; empty when the sender is not one.
@@ -206,7 +231,7 @@ Panel {
     Shortcut {
         sequence: "Escape"
         // A card open over the page takes Escape first (main.qml).
-        enabled: reader.visible && !reader.window.cardRef && reader.key !== ""
+        enabled: reader.visible && !reader.window.cardRef && (reader.key !== "" || reader.waiting)
         onActivated: reader.closeRequested()
     }
     Shortcut {
@@ -241,7 +266,7 @@ Panel {
 
             objectName: "readerActions"
             // A message not here has nothing to do with it (review of 1017fa4, L6).
-            visible: !reader.missing
+            visible: !reader.missing && !reader.waiting
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             spacing: 4
@@ -530,6 +555,36 @@ Panel {
                     color: reader.theme.muted
                 }
 
+                // The opener's sentence, while no copy is found, or why none opens.
+                Label {
+                    objectName: "readerAnswer"
+                    visible: reader.waiting
+                    Layout.fillWidth: true
+                    text: reader.answerWords
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: reader.theme.muted
+                }
+                // Where the opener found it, when not in an inbox ("In Archive ·
+                // work@example.org"), and another message carrying the same id.
+                Label {
+                    objectName: "readerPlace"
+                    visible: !reader.waiting && reader.answer !== null && (reader.answer.place || "") !== ""
+                    Layout.fillWidth: true
+                    text: reader.answer ? reader.answer.place || "" : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: reader.theme.muted
+                }
+                Label {
+                    objectName: "readerReused"
+                    visible: !reader.waiting && reader.answer !== null && reader.answer.reused === true
+                    Layout.fillWidth: true
+                    text: reader.sioul.text("mail-find-reused")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: reader.theme.text
+                }
                 // A message that does not read here: said calmly in its place.
                 Label {
                     objectName: "readerNotHere"
@@ -554,7 +609,7 @@ Panel {
                 // Who wrote to whom, apart from the text; nothing to say of a message not here.
                 Rectangle {
                     objectName: "readerHeader"
-                    visible: !reader.missing
+                    visible: !reader.missing && !reader.waiting
                     Layout.fillWidth: true
                     implicitHeight: headerColumn.implicitHeight + 24
                     color: reader.theme.background

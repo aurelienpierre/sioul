@@ -479,6 +479,7 @@ SioulWindow {
             window.bringBack()
         }
 
+
         // An attachment kept in the wallet: what it is, asked.
         function onPaperKept(file, title, kind) {
             window.page = 13
@@ -701,6 +702,11 @@ SioulWindow {
     }
 
     function openCard(ref, fromCard) {
+        // A message: through the one opener, in Mail's reader (decision 5), never a card.
+        if (ref.kind === "mail") {
+            window.openMail(ref)
+            return
+        }
         if (ref.kind === "dose") {
             window.page = 10
             healthPage.openRow(ref.date, ref.srcKey)
@@ -732,8 +738,8 @@ SioulWindow {
             const at = cardHost.eventTime(item.key)
             window.openCard({ kind: "event", srcKey: at.key, srcStart: item.start || at.start, title: item.title || "" }, fromCard)
         } else if (item.kind === "mail") {
-            window.page = 2
-            mailPage.openMessage(item.key)
+            // Its address (a tie's, a link's, a notification's) and the file this device last saw as a hint.
+            window.openMail(mailOpener.refOf(item))
         } else if (item.kind === "draft")
             window.openDraft(item.key)
         else if (item.kind === "contact")
@@ -775,11 +781,12 @@ SioulWindow {
         else if (item.kind === "porch")
             window.page = 0
         // A message of the phone's home screen card (homecard.rs): on the
-        // Porch, in its Reader; in Mail when the Porch no longer shows it.
+        // Porch, in its Reader, while the Porch shows it; else the one opener.
+        // Its address (a card of this version), else its file (an older card's).
         else if (item.kind === "card-mail") {
             window.page = 0
             if (window.porchPage)
-                window.porchPage.openMessage(item.key)
+                window.porchPage.openCardMessage(item.uri || "", item.key || "")
         }
         // The phone's home screen card (homecard.rs): Now; its step's details
         // when Now shows another step (the card was older than the plan).
@@ -805,6 +812,23 @@ SioulWindow {
         }
         else if (item.key !== "")
             Qt.openUrlExternally(item.key)
+    }
+
+    // A message, from anywhere but Mail's own list and the Porch's own rows (the
+    // unified mailbox's §3.3): the one opener (MailOpener.qml), never a folder;
+    // Back and Escape return where it was opened from (`mailBack`).
+    MailOpener {
+        id: mailOpener
+
+        window: window
+        sioul: sioul
+    }
+    property alias mailFrom: mailOpener.from
+    function openMail(ref) {
+        mailOpener.open(ref)
+    }
+    function mailBack() {
+        mailOpener.back()
     }
 
     // A site of the Sites page, opened.
@@ -1382,6 +1406,24 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.saveCounted("mail-not-here", mailPage),
+                // The one opener (part 2): an address no copy here holds, whose servers the demo never asks.
+                () => window.openMail({ address: "mid:not-on-this-device@example.org" }),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("mail-unreachable", mailPage),
+                // From Tasks, then Back: Tasks again.
+                () => {
+                    window.page = 1
+                    window.openThing(JSON.parse(sioul.searchThings("", "mail", "") || "[]")[0] || { kind: "mail", uri: "", key: "" })
+                },
+                () => {},
+                () => {},
+                () => {
+                    mailPage.back()
+                    console.warn("mail-open: Back led to the page " + window.page)
+                },
+                () => {},
+                () => grabber.saveCounted("mail-back", window.shownPage),
                 () => window.close()
             ]
             // The task card's first tie to a note (else its first), opened as a tap opens it.

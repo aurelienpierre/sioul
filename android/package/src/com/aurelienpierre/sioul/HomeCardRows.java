@@ -207,8 +207,7 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
             JSONObject message = all.optJSONObject(listed.optInt(i, -1));
             if (message == null)
                 continue;
-            String key = message.optString("key");
-            rows.add(new Row(MAIL, message, "", key.isEmpty() ? "porch" : "mail/" + key));
+            rows.add(new Row(MAIL, message, "", opens(message)));
         }
     }
 
@@ -272,6 +271,20 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
         }
         if (!any)
             rows.add(new Row(LINE, null, agenda.optString("empty"), "agenda"));
+    }
+
+    /**
+     * What a message's row opens: its address ("mail/mid:…", the unified
+     * mailbox's part 2), else its file (an older Sioul's card), else the
+     * Porch. Pure, checked on a JVM (android/jvm-checks/CardCheck.java).
+     */
+    static String opens(JSONObject message)
+    {
+        String address = message.optString("address");
+        if (ReminderOpener.isMailAddress(address))
+            return "mail/" + address;
+        String key = message.optString("key");
+        return key.isEmpty() ? "porch" : "mail/" + key;
     }
 
     /** The dates asked of a card of version 4 and later; none before (version 3: the older Sioul's). */

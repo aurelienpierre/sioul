@@ -43,11 +43,25 @@ pub struct Letter {
     /// From someone Always through, told through the system's do-not-disturb
     /// (critical urgency on a computer).
     pub through: bool,
+    /// Its address (`mid:…`, `sioul:mail/…`), kept in memory until it is told
+    /// (the ledger keeps the hashed `key` alone): what the notification of
+    /// one message opens (the unified mailbox's part 2).
+    pub address: String,
 }
 
 impl Letter {
     pub fn of(t: &Triaged) -> Letter {
-        Letter { key: key(t), sender: one_line(t.card.sender()), subject: one_line(&t.card.subject), through: false }
+        Letter { key: key(t), sender: one_line(t.card.sender()), subject: one_line(&t.card.subject), through: false, address: crate::mailfind::address_of_card(&t.card) }
+    }
+}
+
+/// What a notification of `letters` opens: one message, its address; several
+/// (or one without an address), none: the Porch, as before (the mailbox at
+/// its top comes with it, part 4).
+pub fn one_address(letters: &[Letter]) -> Option<&str> {
+    match letters {
+        [one] if !one.address.is_empty() => Some(one.address.as_str()),
+        _ => None,
     }
 }
 
@@ -323,7 +337,11 @@ mod tests {
         assert_eq!(batch(&fr, &sorted.now[..1]).0, "Un courriel");
         assert_eq!(batch(&en, &sorted.now[..1]).0, "One e-mail");
         // Past twelve, digits; three named at most; a message without a subject says so.
-        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false }).collect();
+        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false, address: format!("mid:letter-{i}@example.org") }).collect();
+        // One message opens it; several, the Porch (the unified mailbox's part 2).
+        assert_eq!(one_address(&many[..1]), Some("mid:letter-0@example.org"));
+        assert_eq!(one_address(&many[..2]), None);
+        assert_eq!(one_address(&[Letter { address: String::new(), ..many[0].clone() }]), None, "one without an address: the Porch");
         assert_eq!(batch(&en, &many), ("13 e-mails".to_string(), "S0, (no subject) · S1, T1 · S2, T2".to_string()));
 
         // Told once, by account and Message-ID: fetched again, nothing; the same message in another account is another.

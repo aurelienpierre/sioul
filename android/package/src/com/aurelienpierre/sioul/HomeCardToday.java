@@ -268,8 +268,10 @@ final class HomeCardToday
                 if (texts[CODE].isEmpty()) {
                     texts[CODE] = code.optString("line");
                     texts[WARNING] = code.optString("warning");
-                    opens[CODE] = "porch";
-                    opens[WARNING] = "porch";
+                    // Its message, by its address (the unified mailbox's part 2); else, details off or an older card, the Porch.
+                    String address = code.optString("address");
+                    opens[CODE] = ReminderOpener.isMailAddress(address) ? "mail/" + address : "porch";
+                    opens[WARNING] = opens[CODE];
                 }
             }
         }

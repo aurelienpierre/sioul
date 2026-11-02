@@ -711,6 +711,22 @@ CardFrame {
             text: card.sioul.text("agenda-open-task")
             onClicked: card.host.follow({ kind: "task", owner: card.event.task, title: card.event.summary })
         },
+        // The message that invited you, in Mail's reader through the window's one opener,
+        // by the event's UID as the mail's index knows it (the unified mailbox's part 2).
+        // Made only while its invitation is in your mail: one object on any other card.
+        Loader {
+            active: card.invitation !== ""
+            visible: active
+
+            sourceComponent: Component {
+                Button {
+                    objectName: "eventCardInvitation"
+                    flat: true
+                    text: card.sioul.text("event-its-invitation")
+                    onClicked: card.window.openMail({ invitation: card.event.uid || "", organizer: card.event.organizer || "", file: card.invitation })
+                }
+            }
+        },
         // A meeting with others whose invitation is still in your mail: your answer, from here.
         Button {
             id: answerButton

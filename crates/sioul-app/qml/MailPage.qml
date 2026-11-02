@@ -68,6 +68,14 @@ Item {
     property string query: ""
     // The message being read, by its file, and its row.
     property string openKey: ""
+    // A message the window's one opener asked for (`window.openMail`): its
+    // ticket, and what Rust found ({state, file, place, reused}: openmail.rs),
+    // the reader saying where things stand until a copy opens; null for a
+    // message opened from the list.
+    property int askedTicket: 0
+    property var answer: null
+    // A message shown, or asked for: the reader's place taken.
+    readonly property bool reading: page.openKey !== "" || page.answer !== null
     // Whether a message was opened since the page was made: its reader is made then.
     property bool readerMade: false
     onOpenKeyChanged: {
@@ -79,15 +87,19 @@ Item {
     property bool foldersShown: false
     // Every account resting (quiet time) and none chosen: no list, the line saying so.
     readonly property bool allResting: page.account === "" && !page.draftsShown && page.accounts.length > 0 && page.accounts.every(a => a.resting)
-    readonly property bool canGoBack: page.openKey !== "" || page.foldersShown || page.searchOpen
+    readonly property bool canGoBack: page.reading || page.foldersShown || page.searchOpen
     // The search on a line of its own, under the folder's name: on a phone, and
     // beside an open message, where the list's column is narrow; on one line
     // there, "Plus de critères…" and "Temps réel" pushed the row under the
     // reader, the name and the dates cut.
-    readonly property bool searchBelow: page.window.compact || page.openKey !== ""
+    readonly property bool searchBelow: page.window.compact || page.reading
+    // Back (a phone's button, Android's, Escape on the reader): a message the
+    // window's opener brought from another page returns there, one level
+    // (main.qml, `mailBack`); else Mail's own way: the message, the folders,
+    // the search.
     function back() {
-        if (page.openKey !== "")
-            page.openKey = ""
+        if (page.reading)
+            page.leaveMessage()
         else if (page.foldersShown)
             page.foldersShown = false
         else if (page.searchOpen && !page.searchFormShown)
@@ -162,6 +174,9 @@ Item {
         page.choosing = false
         page.anchorIndex = index
         page.fromLink = false
+        // Chosen in Mail's own list: Mail's, its Back Mail's own.
+        page.answer = null
+        page.window.mailFrom = null
         const item = page.listItems[index]
         if (item && item.server) {
             page.bringing = key
@@ -363,6 +378,7 @@ Item {
         if (!keepOpen) {
             page.fromLink = false
             page.openKey = ""
+            page.answer = null
         }
         page.account = account
         page.folder = folder
@@ -395,7 +411,40 @@ Item {
 
     function openMessage(key) {
         page.fromLink = true
+        page.answer = null
         page.openKey = key
+    }
+
+    // The window's one opener (`window.openMail`): the reader says "Opening the
+    // message…" at once, never the folder's first message; `answered` brings what
+    // Rust found under `ticket`.
+    function openFound(ticket) {
+        page.askedTicket = ticket
+        page.fromLink = true
+        page.openKey = ""
+        page.answer = { state: "opening" }
+        page.readerMade = true
+    }
+
+    // What the opener found (`message_found`), if it is still the one asked:
+    // the servers being asked, the message opening, or why it does not.
+    function answered(ticket, answer) {
+        if (ticket !== page.askedTicket || page.answer === null)
+            return
+        page.answer = answer
+        if (answer.state === "here" && answer.file !== "")
+            page.openKey = answer.file
+    }
+
+    // The message left (Back, Escape, filed away): a message the opener brought
+    // from another page returns there; else the list again.
+    function leaveMessage() {
+        const elsewhere = page.answer !== null && page.window.mailFrom !== null
+        page.openKey = ""
+        page.answer = null
+        page.askedTicket = 0
+        if (elsewhere)
+            page.window.mailBack()
     }
 
     // A message by its subject, for the window's tests.
@@ -440,7 +489,7 @@ Item {
     onAccountsChanged: Qt.callLater(() => {
         const first = page.accounts.find(a => !a.resting)
         if (page.account === "" && first)
-            page.openFolder(first.id, "INBOX", page.fromLink && page.openKey !== "")
+            page.openFolder(first.id, "INBOX", page.fromLink && page.reading)
     })
 
     // A message filed away leaves the folder: the reader closes with it.
@@ -489,7 +538,7 @@ Item {
         ScrollView {
             id: folderColumn
 
-            visible: page.window.compact ? (page.foldersShown || page.allResting) && page.openKey === "" && !page.searchOpen : (page.openKey === "" && !page.searchOpen) || page.dragging
+            visible: page.window.compact ? (page.foldersShown || page.allResting) && !page.reading && !page.searchOpen : (!page.reading && !page.searchOpen) || page.dragging
             Layout.fillHeight: true
             Layout.fillWidth: page.window.compact
             // As wide as the search, whose place it takes during a drag: the list does not move.
@@ -703,7 +752,7 @@ Item {
             id: searchLoader
 
             active: page.searchMade
-            visible: page.searchOpen && (page.window.compact ? page.searchFormShown && page.openKey === "" : page.openKey === "" && !page.dragging)
+            visible: page.searchOpen && (page.window.compact ? page.searchFormShown && !page.reading : !page.reading && !page.dragging)
             Layout.fillHeight: true
             Layout.fillWidth: page.window.compact
             Layout.preferredWidth: 290
@@ -738,11 +787,11 @@ Item {
         ColumnLayout {
             id: listColumn
 
-            visible: !(page.allResting && !page.searchOpen) && !(page.window.compact && (page.openKey !== "" || page.foldersShown || (page.searchOpen && page.searchFormShown)))
+            visible: !(page.allResting && !page.searchOpen) && !(page.window.compact && (page.reading || page.foldersShown || (page.searchOpen && page.searchFormShown)))
             Layout.fillHeight: true
-            Layout.fillWidth: page.openKey === ""
+            Layout.fillWidth: !page.reading
             Layout.minimumWidth: 0
-            Layout.preferredWidth: page.openKey === "" ? columns.width : Math.round((columns.width - columns.spacing) * 0.38)
+            Layout.preferredWidth: !page.reading ? columns.width : Math.round((columns.width - columns.spacing) * 0.38)
             spacing: 8
 
             RowLayout {
@@ -750,16 +799,16 @@ Item {
                 spacing: 8
 
                 ActionButton {
-                    visible: page.openKey !== ""
+                    visible: page.reading
                     theme: page.theme
                     compact: true
                     iconName: "go-previous"
                     label: page.sioul.text(page.searchOpen ? "search-back" : "ui-folders")
-                    onClicked: page.openKey = ""
+                    onClicked: page.leaveMessage()
                 }
                 // A phone shows the folders on their own, when asked; the search's fields, while searching.
                 ActionButton {
-                    visible: page.window.compact && page.openKey === ""
+                    visible: page.window.compact && !page.reading
                     theme: page.theme
                     compact: true
                     iconName: page.searchOpen ? "system-search" : "folder-mail"
@@ -1180,7 +1229,7 @@ Item {
             id: readerLoader
 
             active: page.readerMade
-            visible: page.openKey !== "" && readerLoader.item !== null && readerLoader.item.showing
+            visible: page.reading && readerLoader.item !== null && readerLoader.item.showing
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
@@ -1195,7 +1244,8 @@ Item {
                     window: page.window
                     key: page.openKey
                     item: page.opened
-                    onCloseRequested: page.openKey = ""
+                    answer: page.answer
+                    onCloseRequested: page.leaveMessage()
                 }
             }
         }

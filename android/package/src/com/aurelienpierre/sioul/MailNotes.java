@@ -39,14 +39,29 @@ final class MailNotes
 
     private MailNotes() {}
 
-    /** Rust's notification: JSON {title, body, through, words {mail, mail-through, open}}. Any thread. */
+    /**
+     * What a tap opens: one message, by its address alone ("mail", its
+     * address in the key: the unified mailbox's part 2), never a file; else
+     * the Porch. Neither is ever logged. Pure, checked on a JVM
+     * (android/jvm-checks/MailOpenCheck.java).
+     */
+    static Intent opening(Context context, String address)
+    {
+        Intent tapped = new Intent(context, ReminderOpener.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (ReminderOpener.isMailAddress(address))
+            return tapped.setData(Uri.fromParts(ReminderOpener.SCHEME, "mail", null)).putExtra(ReminderOpener.KEY, address);
+        return tapped.setData(Uri.fromParts(ReminderOpener.SCHEME, "porch", null));
+    }
+
+    /** Rust's notification: JSON {title, body, through, open (one message's address, or ""), words {mail, mail-through, open}}. Any thread. */
     static void show(Context context, String json)
     {
         final JSONObject said;
         try {
             said = new JSONObject(json);
         } catch (JSONException e) {
-            Log.e(DoseAlarms.TAG, "Mail: a notification that does not read. " + e);
+            // Its words only: org.json's message quotes the text, which may name a message.
+            Log.e(DoseAlarms.TAG, "Mail: a notification that does not read (" + e.getClass().getSimpleName() + ").");
             return;
         }
         JSONObject words = said.optJSONObject("words");
@@ -58,8 +73,7 @@ final class MailNotes
         String channel = PauseMode.mailChannelNow(context, said.optBoolean("through", false), passing.isEmpty() ? EventAlarms.word(context, "mail-through") : passing);
         String title = said.optString("title");
         String body = said.optString("body");
-        Intent porch = new Intent(context, ReminderOpener.class).setData(Uri.fromParts(ReminderOpener.SCHEME, "porch", null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent open = PendingIntent.getActivity(context, NOTE, porch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent open = PendingIntent.getActivity(context, NOTE, opening(context, said.optString("open")), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         // On the lock screen: how many, never who.
         Notification count = new Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.sioul_notification)

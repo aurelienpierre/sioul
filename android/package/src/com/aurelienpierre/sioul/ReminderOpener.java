@@ -20,19 +20,20 @@ import android.util.Log;
  */
 public final class ReminderOpener extends Activity
 {
-    /** The intent's address: "sioul-open:event", "sioul-open:porch", "sioul-open:review", "sioul-open:need". */
+    /** The intent's address: "sioul-open:event", "sioul-open:porch", "sioul-open:review", "sioul-open:need", "sioul-open:mail". */
     static final String SCHEME = "sioul-open";
-    /** The event's file, on an event's reminder; "work" or "night" and its day for a closing sheet ("work:2026-10-14"); a block's key for its question. */
+    /** The event's file, on an event's reminder; "work" or "night" and its day for a closing sheet ("work:2026-10-14"); a block's key for its question; a message's address (never its file) for new mail's notification of one message. */
     static final String KEY = "key";
     /** The day's notice pressed, to take away (DayNotes: its key). */
     static final String NOTE = "note";
 
     /**
      * Whether a notice of Sioul's may open `kind` with `key`: an event, the
-     * Porch, a block's question ("need"), or a closing sheet ("review") of
-     * the work day ("work") or of the whole day ("night"), with the day it
-     * is for ("work:2026-10-14"). Rust reads the same (eventalarms.rs,
-     * `opened_of`). Pure, checked on a JVM (android/jvm-checks/DayNotesCheck.java).
+     * Porch, a block's question ("need"), a closing sheet ("review") of the
+     * work day ("work") or of the whole day ("night"), with the day it is for
+     * ("work:2026-10-14"), or a message ("mail") by its address alone, never
+     * a file. Rust reads the same (eventalarms.rs, `opened_of`). Pure,
+     * checked on a JVM (android/jvm-checks/DayNotesCheck.java, MailOpenCheck.java).
      *
      * @param kind what the notice is about, or null
      * @param key what in it, or null
@@ -42,7 +43,30 @@ public final class ReminderOpener extends Activity
     {
         if ("event".equals(kind) || "porch".equals(kind) || "need".equals(kind))
             return true;
+        if ("mail".equals(kind))
+            return isMailAddress(key);
         return "review".equals(kind) && key != null && key.matches("(work|night)(:\\d{4}-\\d{2}-\\d{2})?");
+    }
+
+    /**
+     * A message's address as Sioul writes it (links.rs): "mid:" and an id in
+     * which a slash is encoded, or {@code sioul:mail/<account>/<digest>}, the
+     * digest 16 hexadecimal digits; never a file's path. Rust's
+     * {@code is_mail_address} (eventalarms.rs).
+     *
+     * @param key what a notice or a card carries, or null
+     * @return whether it is a message's address
+     */
+    static boolean isMailAddress(String key)
+    {
+        if (key == null)
+            return false;
+        if (key.startsWith("mid:"))
+            return key.length() > 4 && key.indexOf('/') < 0;
+        if (!key.matches("sioul:mail/[^/\\\\]+/[0-9a-fA-F]{16}"))
+            return false;
+        String account = key.substring("sioul:mail/".length(), key.lastIndexOf('/'));
+        return !account.equals(".") && !account.equals("..");
     }
 
     @Override

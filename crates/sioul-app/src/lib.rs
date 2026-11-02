@@ -157,6 +157,7 @@ mod join;
 mod mail;
 mod mailsearch;
 mod mailnote;
+mod openmail;
 #[cfg(target_os = "android")]
 mod nfc;
 mod letters;

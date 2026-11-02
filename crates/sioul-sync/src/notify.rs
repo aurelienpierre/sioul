@@ -284,14 +284,38 @@ pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + 
 }
 
 /// New mail at the times it may come (docs/porch.md, "Notifications"): one
-/// notification for the batch, no sound, with one button ("Open": the
-/// Porch) whose action runs when pressed. At normal urgency, unlike codes
-/// and reminders: the desktop's own do-not-disturb holds it; but at critical
-/// urgency when someone Always through is in it (`through`), which passes it
+/// notification for the batch, no sound, with one button ("Open": its one
+/// message, else the Porch) whose action runs when pressed, a click on the
+/// notice itself doing the same (its "default" action: the unified
+/// mailbox's decision 3). At normal urgency, unlike codes and reminders: the
+/// desktop's own do-not-disturb holds it; but at critical urgency when
+/// someone Always through is in it (`through`), which passes it
 /// (docs/attention.md, Q10).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn mail(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    one_button(Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL }), action)
+    let mut notice = Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL });
+    let Some((label, run)) = action else { return notify(notice, None) };
+    notice.buttons.push((CLICKED.to_string(), label.clone()));
+    notice.buttons.push(("open".to_string(), label));
+    notify(
+        notice,
+        Some(Box::new(move |key: &str| {
+            if opens_mail(key) {
+                run();
+            }
+        })),
+    )
+}
+
+/// A click on a notice itself, as the desktop says it (the Desktop
+/// Notifications' "default" action: no button of its own).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const CLICKED: &str = "default";
+
+/// Whether a press on new mail's notification opens it: its Open, or a click on the notice.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn opens_mail(key: &str) -> bool {
+    key == "open" || key == CLICKED
 }
 
 /// Windows and macOS: the mail's words alone; their notifications carry no button here.
@@ -1362,6 +1386,16 @@ mod bundle {
 #[cfg(all(test, unix, not(any(target_os = "macos", target_os = "android"))))]
 mod tests {
     use super::*;
+
+    /// New mail's notification opens on its Open and on a click on the notice
+    /// itself (the "default" action: the unified mailbox's decision 3); no
+    /// other key opens it.
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    #[test]
+    fn a_click_on_new_mail_s_notice_opens_it() {
+        assert!(opens_mail("open") && opens_mail("default"));
+        assert!(!opens_mail("copy") && !opens_mail(""));
+    }
 
     #[test]
     fn bodies_are_words_not_markup() {

@@ -135,6 +135,13 @@ pub mod qobject {
         #[qinvokable]
         fn read_message(self: Pin<&mut Sioul>, key: &QString);
 
+        /// Finds a message for the window's one opener (`window.openMail`,
+        /// openmail.rs) off the window's thread, by its reference as JSON
+        /// ({address, account, folder, uid, file} or {invitation, organizer}):
+        /// `message_found` brings the answer under `ticket`.
+        #[qinvokable]
+        fn find_message(self: Pin<&mut Sioul>, ticket: i32, asked: &QString);
+
         /// Has the antivirus check an attachment, then opens it with the desktop's application.
         #[qinvokable]
         fn open_attachment(self: Pin<&mut Sioul>, key: &QString, index: i32);
@@ -2139,6 +2146,12 @@ pub mod qobject {
         #[qsignal]
         fn message_read(self: Pin<&mut Sioul>, key: QString, reading: QString, invitation: QString);
 
+        /// The opener's answer (`find_message`) to `ticket`, as JSON
+        /// (`openmail::Answer`): "asking" while the servers are asked, then
+        /// where the message is, or why it does not open.
+        #[qsignal]
+        fn message_found(self: Pin<&mut Sioul>, ticket: i32, answer: QString);
+
         /// Sharing through a folder Sioul keeps in step with a server itself
         /// (`start_sharing_on_server`): "" when it started, else why not.
         #[qsignal]
@@ -3341,6 +3354,12 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
     }
 }
 
+/// What a code's notification's Open opens: its message, by its address, its
+/// file this device's hint (the window's one opener: the unified mailbox's part 2).
+fn code_opens(code: &view::CodeView) -> (&'static str, String, String) {
+    ("mail", code.address.clone(), code.key.clone())
+}
+
 /// One quiet notification per verified code among new mail, with a copy button.
 /// A phone has none yet: its codes show on the Porch and on the home screen's
 /// card (docs/android.md, "Notifications"), and nothing is tried there.
@@ -3360,11 +3379,12 @@ fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
             .into_iter()
             .map(|(key, label)| {
                 let qt = qt.clone();
-                let (text, file) = (code.code.clone().unwrap_or_default(), code.key.clone());
+                let text = code.code.clone().unwrap_or_default();
+                let (kind, address, file) = code_opens(&code);
                 let action: Box<dyn FnOnce() + Send> = match key {
-                    // Its message in Mail's reader, the window brought back.
+                    // Its message through the window's one opener, the window brought back.
                     "open" => Box::new(move || {
-                        let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("mail"), QString::default(), QString::from(&file)));
+                        let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from(kind), QString::from(&address), QString::from(&file)));
                     }),
                     _ => Box::new(move || {
                         let _ = qt.queue(move |sioul| sioul.copy_requested(QString::from(&text)));
@@ -3779,6 +3799,22 @@ impl qobject::Sioul {
             let reading = std::panic::catch_unwind(|| message_json(&key)).unwrap_or_default();
             let invitation = std::panic::catch_unwind(|| pim::invitation(&key)).unwrap_or_default();
             let _ = qt.queue(move |mut sioul| sioul.as_mut().message_read(QString::from(&key), QString::from(&reading), QString::from(&invitation)));
+        });
+    }
+
+    fn find_message(self: Pin<&mut Self>, ticket: i32, asked: &QString) {
+        let (qt, asked) = (self.qt_thread(), asked.to_string());
+        std::thread::spawn(move || {
+            let tell = |answer: &crate::openmail::Answer| {
+                let text = json(answer);
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().message_found(ticket, QString::from(&text)));
+            };
+            let asked: crate::openmail::Asked = serde_json::from_str(&asked).unwrap_or_default();
+            let asking = crate::openmail::Answer { state: "asking", file: String::new(), address: String::new(), place: String::new(), reused: false };
+            // A message that makes the finding fail is one that does not open here: the reader says so, never waits.
+            let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::openmail::find(&asked, &sioul_sync::search::OnServers, &|| tell(&asking))))
+                .unwrap_or(crate::openmail::Answer { state: "not-here", file: String::new(), address: String::new(), place: String::new(), reused: false });
+            tell(&answer);
         });
     }
 
@@ -6753,8 +6789,10 @@ mod tests {
     /// message does not print, Open alone.
     #[test]
     fn a_code_s_notification_opens_its_message() {
-        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None };
+        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), address: "mid:code-1@example.org".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None };
         assert_eq!(code_actions(&code).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["copy", "open"]);
+        // Open names its message by its address, its file a hint (the unified mailbox's part 2).
+        assert_eq!(code_opens(&code), ("mail", "mid:code-1@example.org".to_string(), "/stand-in/mail/cur/1.U1-1.sioul".to_string()));
         let without = view::CodeView { code: None, ..code };
         assert_eq!(code_actions(&without).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["open"]);
     }

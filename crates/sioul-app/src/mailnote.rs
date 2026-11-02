@@ -296,7 +296,7 @@ fn tell_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
         return;
     }
     let (title, body) = if opens { mailnote::opens(tr(), &mine) } else { mailnote::batch(tr(), &mine) };
-    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref());
+    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref(), mailnote::one_address(&mine));
 }
 
 /// Each minute: when the moment changed (a time began, waking, a pause or a
@@ -351,7 +351,7 @@ fn tick_from(window: Option<Window>) {
         return;
     }
     let (title, body) = mailnote::opens(tr(), &mine);
-    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref());
+    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref(), mailnote::one_address(&mine));
 }
 
 /// The letters still waiting in the ledger, marked told by this process
@@ -388,23 +388,44 @@ fn ours(window: Option<&Window>) -> bool {
     }
 }
 
-/// The notification: the desktop's, with "Open" (the Porch) where it takes
-/// buttons, at critical urgency when someone Always through is in it
-/// (`through`: it passes the desktop's do-not-disturb); on a phone,
-/// Android's, in the quiet "New mail" channel, a tap opening the Porch.
-fn show(title: &str, body: &str, through: bool, window: Option<&Window>) {
+/// What a tap on new mail's notification opens (the unified mailbox's part
+/// 2): one message, the message by its address (the window's one opener);
+/// several, the Porch, as before (the mailbox at its top comes with part 4).
+pub(crate) fn opens_of(one: Option<&str>) -> (&'static str, String) {
+    match one {
+        Some(address) => ("mail", address.to_string()),
+        None => ("porch", String::new()),
+    }
+}
+
+/// The notification: the desktop's, with "Open" where it takes buttons, a
+/// click on the notice itself doing what Open does (decision 3), at critical
+/// urgency when someone Always through is in it (`through`: it passes the
+/// desktop's do-not-disturb); on Windows, through Sioul's icon in the tray
+/// (main.qml's `onTrayNotice`), whose message a click opens; on macOS its
+/// words alone; on a phone, Android's, in the quiet "New mail" channel, a
+/// tap opening it. Each opens one message (`one`, its address), else the Porch.
+fn show(title: &str, body: &str, through: bool, window: Option<&Window>, one: Option<&str>) {
+    let (kind, key) = opens_of(one);
     #[cfg(target_os = "android")]
     {
-        let _ = window;
-        crate::eventalarms::mail_note(title, body, through);
+        let _ = (window, kind);
+        crate::eventalarms::mail_note(title, body, through, &key);
     }
     #[cfg(not(target_os = "android"))]
     {
         use cxx_qt_lib::QString;
+        if cfg!(windows)
+            && let Some(w) = window
+        {
+            let (qt, title, body) = (w.qt.clone(), title.to_string(), body.to_string());
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().tray_notice(QString::from(&title), QString::from(&body), QString::from(kind), QString::from(&key)));
+            return;
+        }
         let open = window.map(|w| {
             let qt = w.qt.clone();
             let action: Box<dyn FnOnce() + Send> = Box::new(move || {
-                let _ = qt.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("porch"), QString::default(), QString::default()));
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from(kind), QString::default(), QString::from(&key)));
             });
             (tr().text("reminder-open", None), action)
         });

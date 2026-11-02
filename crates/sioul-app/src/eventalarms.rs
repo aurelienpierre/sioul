@@ -160,12 +160,13 @@ pub(crate) fn show(reminder: &Reminder) {
 }
 
 /// New mail's notification on a phone (`mailnote`), in the quiet "New mail"
-/// channel: one at a time, the next batch in its place; a tap opens the Porch.
+/// channel: one at a time, the next batch in its place; a tap opens its one
+/// message (`open`, its address: `mail_note_json`), else the Porch.
 /// `through`: someone Always through is in it, whom the system's
 /// do-not-disturb should let through (a channel that passes, Java's to choose).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub(crate) fn mail_note(title: &str, body: &str, through: bool) {
-    let json = serde_json::json!({ "title": title, "body": body, "through": through, "words": words() });
+pub(crate) fn mail_note(title: &str, body: &str, through: bool, open: &str) {
+    let json = mail_note_json(title, body, through, open, words());
     let Ok(text) = CString::new(json.to_string()) else { return };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
@@ -173,6 +174,15 @@ pub(crate) fn mail_note(title: &str, body: &str, through: bool) {
         sioul_android_mail_note(text.as_ptr())
     };
     let _ = text;
+}
+
+/// What MailNotes.java reads of new mail's notification: {title, body,
+/// through, open, words}; `open` the address of its one message (`mid:…`,
+/// `sioul:mail/…`), which a tap opens through `ReminderOpener` ("mail"), or
+/// "" for several: the Porch. Never a file.
+fn mail_note_json(title: &str, body: &str, through: bool, open: &str, words: serde_json::Value) -> serde_json::Value {
+    let open = if is_mail_address(open) { open } else { "" };
+    serde_json::json!({ "title": title, "body": body, "through": through, "open": open, "words": words })
 }
 
 /// The end of work's notice or the night's on a phone (`reviews::decide_work`,
@@ -334,12 +344,15 @@ pub(crate) fn opened() -> Option<(String, String)> {
 }
 
 /// What a tapped notification's {kind, key} opens (ReminderOpener.java keeps
-/// it): only what Sioul's own notifications open; none for anything else.
+/// it): only what Sioul's own notifications open; none for anything else. A
+/// message ("mail") by its address alone (`mid:…`, `sioul:mail/…`), never a
+/// file (new mail's notification of one message: the unified mailbox's part 2).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
     let key = said["key"].as_str().unwrap_or_default();
     let kind = said["kind"].as_str().filter(|kind| match *kind {
         "event" | "porch" | "need" => true,
+        "mail" => is_mail_address(key),
         "review" => {
             let (sheet, day) = key.split_once(':').map_or((key, None), |(sheet, day)| (sheet, Some(day)));
             matches!(sheet, "work" | "night") && day.is_none_or(|day| day.parse::<jiff::civil::Date>().is_ok())
@@ -349,9 +362,38 @@ fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
     Some((kind.to_string(), key.to_string()))
 }
 
+/// A message's address as a notification may carry it: `mid:<id>` (as links
+/// write it: a slash in an id is encoded) or `sioul:mail/<account>/<digest>`;
+/// never a file.
+pub(crate) fn is_mail_address(key: &str) -> bool {
+    use sioul_core::mailfind::{Address, DIGEST_SCHEME};
+    let named = (key.starts_with("mid:") && !key.contains('/')) || key.starts_with(DIGEST_SCHEME);
+    named && Address::parse(key).is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// New mail's notification of one message opens it on a phone (the
+    /// unified mailbox's part 2): what Java is given names it by its address,
+    /// never a file; a tap kept for Sioul opens "mail" with an address, and a
+    /// path or anything else under "mail" opens nothing.
+    #[test]
+    fn a_mail_notification_opens_its_message_by_its_address() {
+        let note = |open: &str| mail_note_json("New mail", "Ana, Lunch", false, open, serde_json::json!({}))["open"].as_str().unwrap_or_default().to_string();
+        assert_eq!(note("mid:lunch-1@example.org"), "mid:lunch-1@example.org");
+        assert_eq!(note("sioul:mail/home/0123456789abcdef"), "sioul:mail/home/0123456789abcdef");
+        assert_eq!(note(""), "", "several: the Porch");
+        assert_eq!(note("/data/user/0/sioul/files/mail/home/cur/1.U1-1.sioul:2,S"), "", "never a file");
+        let tap = |key: &str| opened_of(&serde_json::json!({ "kind": "mail", "key": key }));
+        assert_eq!(tap("mid:lunch-1@example.org"), Some(("mail".into(), "mid:lunch-1@example.org".into())));
+        assert_eq!(tap("sioul:mail/home/0123456789abcdef"), Some(("mail".into(), "sioul:mail/home/0123456789abcdef".into())));
+        for refused in ["/data/user/0/sioul/files/mail/home/cur/1.U1-1.sioul:2,S", "mid:../../etc/passwd", "file:///sdcard/x.eml", "lunch-1@example.org", ""] {
+            assert_eq!(tap(refused), None, "{refused}");
+        }
+        assert_eq!(opened_of(&serde_json::json!({ "kind": "porch", "key": "" })), Some(("porch".into(), String::new())), "several, as before");
+    }
 
     /// A phone's notification of an event opens that time of it when tapped:
     /// its file and its time, given back as they are (review of 590eb18, later 6).

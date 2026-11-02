@@ -52,6 +52,9 @@ pub struct PorchView {
 #[derive(Debug, Serialize)]
 pub struct CodeView {
     pub key: String,
+    /// Its address (`mid:…`, `sioul:mail/…`): what opens it from elsewhere
+    /// (the window's one opener, a notification, the phone's home card).
+    pub address: String,
     /// "Code from La Banque Exemple (verified)".
     pub title: String,
     /// The code itself, when the message prints one.
@@ -83,6 +86,9 @@ pub struct LaneView {
 pub struct ItemView {
     /// The file, to open the message.
     pub key: String,
+    /// Its address by its Message-ID (`mid:…`); "" without one: what the
+    /// phone's home card names it by, found here by the Porch's reader.
+    pub uri: String,
     pub account: Option<String>,
     pub sender: String,
     pub address: String,
@@ -306,6 +312,7 @@ fn code_view(t: &Triaged, tr: &Translator) -> CodeView {
     let validity = code.and_then(|c| c.expires_minutes).map(|minutes| tr.validity(minutes));
     CodeView {
         key: key(&t.card),
+        address: crate::mailfind::address_of_card(&t.card),
         title: tr.right_now(kind, t.card.sender(), t.trust, None, None),
         code: code.and_then(|c| c.code.clone()),
         validity,
@@ -319,6 +326,7 @@ fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator) -> Item
     let preview: String = t.card.excerpt.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(PREVIEW).collect();
     let mut view = ItemView {
         key: key(&t.card),
+        uri: t.card.message_id.as_deref().map(crate::mailindex::bare_id).filter(|id| !id.is_empty()).map(|id| crate::links::mail_uri(&id)).unwrap_or_default(),
         account: t.card.account.clone(),
         sender: t.card.sender().to_string(),
         address: t.card.from_address.clone().unwrap_or_default(),

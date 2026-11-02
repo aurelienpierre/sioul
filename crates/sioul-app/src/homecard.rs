@@ -281,8 +281,14 @@ impl PorchMade {
 /// A message, as a mail card lists it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct Mail {
-    /// Its file, to open it (HomeCardOpener, then the Porch's Reader).
+    /// Its file, this device's (the Porch's Reader matches it); an older
+    /// Sioul's card opened by it.
     key: String,
+    /// Its address (`mid:…`, `sioul:mail/…`): what a tap carries (HomeCardOpener,
+    /// `mail/<address>`), opened in the Porch's Reader while the Porch shows
+    /// it, else through the window's one opener (the unified mailbox's part 2).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    address: String,
     /// The sender's name, else the address.
     sender: String,
     subject: String,
@@ -391,6 +397,10 @@ struct Code {
     /// Its sender is not verified: use it only if you just asked for it.
     warning: String,
     until: i64,
+    /// Its message's address, which a tap opens (the unified mailbox's part
+    /// 2); none with details off (the Porch, as before) or on an older card.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    address: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -784,7 +794,9 @@ fn mail_line(m: &Moment, item: &view::ItemView, triaged: Option<&Triaged>) -> (i
     let unread = !sioul_core::maildir::flags_of(std::path::Path::new(&item.key)).contains('S');
     let text: String = item.preview.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(TEXT_CHARS).collect();
     let subject = if item.subject.trim().is_empty() { m.tr.text("mail-no-subject", None) } else { item.subject.clone() };
-    (sent.unwrap_or(0), Mail { key: item.key.clone(), sender: item.sender.clone(), subject, text, unread, account, when: mail_when(m.tr, sent, m.now) })
+    // By its Message-ID, else its digest from its file (`sioul:mail/…`).
+    let address = if item.uri.is_empty() { triaged.map(|t| sioul_core::mailfind::address_of_card(&t.card)).unwrap_or_default() } else { item.uri.clone() };
+    (sent.unwrap_or(0), Mail { key: item.key.clone(), address, sender: item.sender.clone(), subject, text, unread, account, when: mail_when(m.tr, sent, m.now) })
 }
 
 /// What the Porch shows at `at`, as `backend::compute` makes it: the mail
@@ -1081,7 +1093,8 @@ fn codes(m: &Moment, input: &PorchInput) -> Vec<Code> {
             let until = sent + lasts;
             let line = m.tr.right_now(code.kind, t.card.sender(), t.trust, code.code.as_deref(), None);
             let warning = if t.trust == Trust::Verified { String::new() } else { m.tr.text("right-now-unverified", None) };
-            (until > now).then(|| (sent, Code { line, warning, until: until * 1000 }, code.kind))
+            let address = sioul_core::mailfind::address_of_card(&t.card);
+            (until > now).then(|| (sent, Code { line, warning, until: until * 1000, address }, code.kind))
         })
         .collect();
     found.sort_by_key(|(sent, _, _)| std::cmp::Reverse(*sent));
@@ -1089,7 +1102,7 @@ fn codes(m: &Moment, input: &PorchInput) -> Vec<Code> {
         return found.into_iter().map(|(_, code, _)| code).collect();
     }
     let last = found.iter().map(|(_, code, _)| code.until).max();
-    found.first().zip(last).map(|((_, _, kind), until)| Code { line: said(m.tr, "home-card-code-plain", &[("kind", kind_word(*kind).to_string())]), warning: String::new(), until }).into_iter().collect()
+    found.first().zip(last).map(|((_, _, kind), until)| Code { line: said(m.tr, "home-card-code-plain", &[("kind", kind_word(*kind).to_string())]), warning: String::new(), until, address: String::new() }).into_iter().collect()
 }
 
 /// Today's doses in words: "Magnesium · 300 mg, 12:30", and once that it was
@@ -1698,10 +1711,12 @@ pub(crate) fn opened() -> Option<(&'static str, String, String)> {
 }
 
 /// A tap as Java writes it: {"open": "porch" | "now" | "mail" | "agenda" |
-/// "event" | "reminder", "uid", "key", "at" (Unix ms)}. A message or an event
-/// without its file opens its page; a reminder, what it is about ("key": its
-/// address, `sioul:task/…`), else the Porch. The file is the window's to
-/// check, as for any link.
+/// "event" | "reminder", "uid", "key", "at" (Unix ms)}. A message by its
+/// address (this version's card: "card-mail" with the address), or by its
+/// file (an older card's: "card-mail" with the file); an event without its
+/// file opens its page; a reminder, what it is about ("key": its address,
+/// `sioul:task/…`), else the Porch. The file is the window's to check, as
+/// for any link.
 fn tap(text: &str, now: i64) -> Option<(&'static str, String, String)> {
     let tap: serde_json::Value = serde_json::from_str(text).ok()?;
     let at = tap["at"].as_i64()?;
@@ -1712,6 +1727,7 @@ fn tap(text: &str, now: i64) -> Option<(&'static str, String, String)> {
     match tap["open"].as_str()? {
         "porch" => Some(("porch", String::new(), String::new())),
         "now" => Some(("now", tap["uid"].as_str().filter(|u| !u.is_empty()).map(sioul_core::links::task_uri).unwrap_or_default(), String::new())),
+        "mail" if crate::eventalarms::is_mail_address(&key) => Some(("card-mail", key, String::new())),
         "mail" if !key.is_empty() => Some(("card-mail", String::new(), key)),
         "mail" => Some(("porch", String::new(), String::new())),
         "event" if !key.is_empty() => Some(("event", String::new(), key)),
@@ -1826,6 +1842,7 @@ mod tests {
             .collect();
         let mut code = message("La Banque <no-reply@banque.example>", "Votre code", Lane::RightNow);
         code.code = Some(OneTimeCode { kind: CodeKind::Code, code: Some("482913".into()), expires_minutes: Some(10) });
+        code.card.message_id = Some("<code-1@banque.example>".into());
         // Sent two minutes ago.
         code.card.date = Some(now.timestamp().as_second() - 120);
         items.push(code);
@@ -2027,6 +2044,8 @@ mod tests {
         assert_eq!(made.card.codes[0].line, "Code from La Banque (verified): 482913");
         assert_eq!(made.card.codes[0].warning, "");
         assert_eq!(made.card.codes[0].until, at("2026-10-05T10:08[Europe/Paris]").timestamp().as_millisecond());
+        // A tap opens its message, by its address (the unified mailbox's part 2).
+        assert_eq!(made.card.codes[0].address, "mid:code-1@banque.example");
         // Lunch: its line, no step; the Porch as at meals (people you know are safe: they come).
         let meal = made.at("2026-10-05T12:30[Europe/Paris]");
         assert_eq!((meal.kind.as_str(), meal.status.as_str()), ("meals", "Meal until 13:00."));
@@ -2133,6 +2152,7 @@ mod tests {
         let mut input = porch_input(&now);
         let mut club = sent_at("Ana <ana@example.org>", "Rehearsal moved", stamp("2026-10-05T09:12[Europe/Paris]"), false);
         club.card.account = Some("club".into());
+        club.card.message_id = Some("<rehearsal-1@example.org>".into());
         // Not shown on the card, even when the Porch would unfold them: set aside, waiting for your word on spam, hostile.
         let mut forged = sent_at("Bank <bank@bank.example>", "Your account", stamp("2026-10-05T09:50[Europe/Paris]"), false);
         forged.lane = Lane::SetAside;
@@ -2168,8 +2188,13 @@ mod tests {
         assert_eq!((listed[0].account, listed[1].account), (1, 0));
         // No subject: said so.
         assert_eq!(listed[3].subject, "(no subject)");
-        // Its file, to open it from the card.
+        // Its file, as the Porch's Reader knows it; its address, what a tap carries (the
+        // unified mailbox's part 2); none known (no Message-ID, no file here): its file alone.
         assert!(listed[0].key.ends_with(".sioul") && listed[0].key.contains("/new/"));
+        assert_eq!(listed[0].address, "mid:rehearsal-1@example.org");
+        let row = serde_json::to_value(listed[0]).unwrap();
+        assert_eq!(row["address"], "mid:rehearsal-1@example.org", "in the card's JSON");
+        assert!(serde_json::to_value(listed[1]).unwrap().get("address").is_none(), "left out when none: an older Java's card as before");
         // In French: "hier", "4 oct.", "1er".
         let fr = Translator::new("fr");
         let first = sent_at("Ana <ana@example.org>", "Hello", stamp("2026-10-01T09:00[Europe/Paris]"), false);
@@ -2204,6 +2229,7 @@ mod tests {
         // A code, without its site or the code itself.
         assert_eq!(made.card.codes.len(), 1);
         assert_eq!(made.card.codes[0].line, "A code waits on the Porch.");
+        assert_eq!(made.card.codes[0].address, "", "details off: the Porch, as before");
         // No dose line: a medicine's name says health.
         assert!(made.card.doses.is_empty());
         // The appointments at their times, none named.
@@ -2953,7 +2979,11 @@ mod tests {
         assert_eq!(tap(&format!(r#"{{"open":"porch","at":{now}}}"#), now + 1000), Some(("porch", none(), none())));
         assert_eq!(tap(&format!(r#"{{"open":"now","uid":"a b/c","at":{now}}}"#), now), Some(("now", "sioul:task/a%20b%2Fc".to_string(), none())));
         assert_eq!(tap(&format!(r#"{{"open":"now","uid":"","at":{now}}}"#), now), Some(("now", none(), none())));
-        // A message, on the Porch in its Reader; an event, in the Agenda; by their files.
+        // A message by its address (this version's card: the unified mailbox's part 2), on
+        // the Porch in its Reader while it shows it, else the opener; an older card's by its
+        // file; an event, in the Agenda, by its file.
+        assert_eq!(tap(&format!(r#"{{"open":"mail","key":"mid:lunch-1@example.org","at":{now}}}"#), now), Some(("card-mail", "mid:lunch-1@example.org".to_string(), none())));
+        assert_eq!(tap(&format!(r#"{{"open":"mail","key":"sioul:mail/home/0123456789abcdef","at":{now}}}"#), now), Some(("card-mail", "sioul:mail/home/0123456789abcdef".to_string(), none())));
         let file = "/mail/me/INBOX/new/1759600000.a.sioul";
         assert_eq!(tap(&format!(r#"{{"open":"mail","key":"{file}","at":{now}}}"#), now), Some(("card-mail", none(), file.to_string())));
         assert_eq!(tap(&format!(r#"{{"open":"event","key":"/calendars/me/personal/a.ics","at":{now}}}"#), now), Some(("event", none(), "/calendars/me/personal/a.ics".to_string())));
