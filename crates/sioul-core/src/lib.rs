@@ -223,6 +223,7 @@ pub mod links;
 pub mod lookalike;
 pub mod mailcache;
 pub mod mailfind;
+pub mod mailbox;
 pub mod mailindex;
 pub mod mailmoved;
 pub mod mailsearch;

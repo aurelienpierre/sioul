@@ -1315,6 +1315,15 @@ impl Attention {
         self.decide(&Event::of(Source::Mail { who, always, lane }).for_area(Some(area)), now)
     }
 
+    /// The same for a message the Porch has not read (the mailbox, part 4,
+    /// from a folder's index): its sender as `senders` weigh it (`who`, a
+    /// stranger when its sender is not proven), Always through, and `own`
+    /// for what you sent yourself (shown, never told).
+    pub fn mail_from(&self, who: Who, always: bool, own: bool, area: Area, now: &Now) -> Output {
+        let lane = if own { Lane::Own } else { Lane::Usual };
+        self.decide(&Event::of(Source::Mail { who, always, lane }).for_area(Some(area)), now)
+    }
+
     fn own(&self, kind: Kind, event: &Event, now: &Now) -> Output {
         // Another app's, read with its app's and conversation's own rows over the kind's.
         let sources = self.source_cells(&event.sources);

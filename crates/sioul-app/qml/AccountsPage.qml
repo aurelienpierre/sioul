@@ -1770,6 +1770,61 @@ Item {
                 onClicked: writing.now().edit(service.modelData)
             }
         }
+        // Its mark's colour in the mailbox (the unified mailbox's part 4): one of
+        // eight, or as its rank gives it; carried with your settings to your
+        // other devices. With a single address there is no mark at all.
+        Flow {
+            objectName: "accountColour"
+            visible: service.modelData.service === "mail" && service.modelData.enabled && page.accounts.filter(a => a.service === "mail" && a.enabled).length > 1
+            Layout.fillWidth: true
+            Layout.leftMargin: 28
+            spacing: 6
+
+            Label {
+                height: 26
+                verticalAlignment: Text.AlignVCenter
+                rightPadding: 4
+                text: page.sioul.text("account-colour")
+                color: page.theme.muted
+            }
+            Repeater {
+                model: page.theme.tints.length
+
+                delegate: AbstractButton {
+                    id: swatch
+
+                    required property int index
+                    readonly property bool chosen: service.modelData.tint === swatch.index
+
+                    objectName: "colour:" + swatch.index
+                    implicitWidth: 26
+                    implicitHeight: 26
+                    focusPolicy: Qt.StrongFocus
+                    Accessible.name: page.sioul.textWith("account-colour-n", "n", String(swatch.index + 1))
+                    Accessible.checked: swatch.chosen
+                    onClicked: page.sioul.setAccountColour(service.modelData.id, swatch.index)
+
+                    background: Rectangle {
+                        radius: 6
+                        color: page.theme.tints[swatch.index]
+                        border.width: swatch.chosen || swatch.visualFocus ? 2 : 1
+                        border.color: swatch.visualFocus ? page.theme.focus : swatch.chosen ? page.theme.text : page.theme.line
+                    }
+                    contentItem: Label {
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: swatch.chosen ? "✓" : ""
+                        color: page.theme.text
+                    }
+                }
+            }
+            Button {
+                visible: service.modelData.colour >= 0
+                flat: true
+                text: page.sioul.text("account-colour-auto")
+                onClicked: page.sioul.setAccountColour(service.modelData.id, -1)
+            }
+        }
         // Server, sender checks, where things are kept: folded.
         Button {
             visible: service.modelData.rows.length > 0

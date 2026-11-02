@@ -851,6 +851,10 @@ pub struct AccountView {
     pub identity: String,
     /// "mail", "dav", "google".
     pub service: &'static str,
+    /// Its mark's colour in the mailbox as drawn (one of the palette's), and
+    /// as chosen (-1: as its rank gives it): Accounts' "Its colour".
+    pub tint: u8,
+    pub colour: i32,
 }
 
 /// The accounts of the configuration, those switched off too (sites are not
@@ -858,6 +862,10 @@ pub struct AccountView {
 /// the sentence, and whether it is a problem) and those whose password is
 /// wanted (`wanted`, by id).
 pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (String, bool)>, wanted: &BTreeSet<String>) -> Vec<AccountView> {
+    // The mailbox's colours, as it draws them: the addresses that sync, by priority.
+    let mut ranked: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
+    ranked.sort_by_key(|a| a.priority);
+    let tints: BTreeMap<&str, u8> = ranked.iter().map(|a| a.id.as_str()).zip(crate::mailbox::tints(&ranked)).collect();
     config
         .every_account()
         .filter(|a| a.kind != AccountKind::Portal)
@@ -931,6 +939,8 @@ pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (Str
                 } else {
                     "mail"
                 },
+                tint: tints.get(a.id.as_str()).copied().unwrap_or(0),
+                colour: a.colour.map_or(-1, i32::from),
             }
         })
         .collect()

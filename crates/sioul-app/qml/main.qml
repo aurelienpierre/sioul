@@ -780,6 +780,11 @@ SioulWindow {
             window.page = 3
         else if (item.kind === "porch")
             window.page = 0
+        // New mail's notification of several messages: the mailbox at its top (decision 3).
+        else if (item.kind === "mailbox") {
+            window.page = 2
+            mailPage.openBoxTop()
+        }
         // A message of the phone's home screen card (homecard.rs): on the
         // Porch, in its Reader, while the Porch shows it; else the one opener.
         // Its address (a card of this version), else its file (an older card's).
@@ -1217,7 +1222,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "safe-area": grabber.safeAreaSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1397,6 +1402,73 @@ SioulWindow {
                 () => window.simulateSystemBars(0, 0, 0, 0),
                 () => window.close()
             ]
+            // The mailbox (the unified mailbox's part 4): "All addresses" as Mail
+            // opens on a computer (on a phone, from its folders), a resting
+            // address's line, a selection across two addresses, the Spam chip.
+            readonly property var mailboxSteps: [
+                () => {
+                    window.page = 2
+                    if (window.phoneGrab)
+                        mailPage.openBox(false)
+                },
+                () => {},
+                () => grabber.saveCounted("mailbox", mailPage),
+                // The resting address's mail too, then the first message of each address chosen.
+                () => mailPage.showResting(""),
+                () => mailPage.chooseAcross(),
+                () => grabber.saveWindow("mailbox-selection"),
+                () => {
+                    mailPage.clearSelection()
+                    mailPage.chooseChip("spam")
+                },
+                () => {},
+                () => grabber.saveCounted("mailbox-spam", mailPage),
+                () => mailPage.chooseChip("all"),
+                () => window.close()
+            ]
+            // The mailbox and a folder's list measured on a large profile
+            // (make-demo.py's --bulk): from asking to the rows drawn, the objects alive.
+            readonly property var mailboxMeasureSteps: [
+                () => {
+                    grabber.timeRows("the mailbox", mailPage === null ? null : mailPage)
+                    window.page = 2
+                    if (mailPage !== null && !mailPage.boxShown)
+                        mailPage.openBox(false)
+                },
+                () => {},
+                () => {},
+                () => grabber.saveCounted("mailbox-big", mailPage),
+                () => {
+                    const first = mailPage.accounts.find(a => !a.resting) || mailPage.accounts[0]
+                    grabber.timeRows("the first inbox", mailPage)
+                    mailPage.openFolder(first.id, "INBOX", false)
+                },
+                () => {},
+                () => {},
+                () => grabber.saveCounted("folder-big", mailPage),
+                () => window.close()
+            ]
+            // From now to the first frame after the page's rows next change (the
+            // mailbox's or a folder's text published, then drawn), in the log.
+            function timeRows(label, page) {
+                const began = Date.now()
+                const target = () => page !== null ? page : mailPage
+                let published = 0
+                const drawn = () => {
+                    window.frameSwapped.disconnect(drawn)
+                    console.info("sioul-perf: " + label + ": rows published in " + published + " ms, drawn in " + (Date.now() - began) + " ms")
+                }
+                const changed = () => {
+                    target().boxTextChanged.disconnect(changed)
+                    target().mailFolderTextChanged.disconnect(changed)
+                    published = Date.now() - began
+                    window.frameSwapped.connect(drawn)
+                }
+                Qt.callLater(() => {
+                    target().boxTextChanged.connect(changed)
+                    target().mailFolderTextChanged.connect(changed)
+                })
+            }
             readonly property var mailOpenSteps: [
                 () => window.openThing(JSON.parse(sioul.searchThings("", "mail", "") || "[]")[0] || { kind: "mail", uri: "", key: "" }),
                 () => {},

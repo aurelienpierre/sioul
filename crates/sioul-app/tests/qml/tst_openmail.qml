@@ -61,6 +61,15 @@ Item {
         function textWith(key, name, value) {
             return key + ":" + value
         }
+        // The mailbox (part 4): what it was asked, as Rust takes it.
+        property string mailbox: ""
+        property var mailboxAsked: []
+        function openMailbox(ask) {
+            mock.mailboxAsked = mock.mailboxAsked.concat([ask])
+        }
+        function mailboxView() {
+            return "{}"
+        }
         function openFolder(account, folder, all, query) {
             mock.openedFolders = mock.openedFolders.concat([account + "/" + folder])
         }
@@ -268,6 +277,11 @@ Item {
             ]
         }
 
+        // What Mail opens on by itself: the mailbox on a computer (part 4), the first inbox on a phone.
+        function mailBeside(page) {
+            return fakeWindow.compact ? page.account === "alice" : page.boxShown && page.account === ""
+        }
+
         // One path from the Tasks page (1), a card open there, Mail made before or not: the
         // message opens, never a folder over it; Back returns to Tasks, the card shown again.
         function opensFrom(path, compact, madeBefore) {
@@ -275,7 +289,7 @@ Item {
             fakeWindow.compact = compact
             if (madeBefore) {
                 fakeWindow.page = 2
-                tryCompare(fakeWindow.mailPage, "account", "alice")
+                tryVerify(() => mailBeside(fakeWindow.mailPage), 5000, "Mail made")
             }
             fakeWindow.page = 1
             host.show({ kind: "task", owner: "t1" })
@@ -292,7 +306,7 @@ Item {
             tryCompare(page, "openKey", root.messageKey, 5000, label)
             tryVerify(() => reader(page) !== null && reader(page).reading !== null, 5000, label + ": read")
             verify(reader(page).visible, label + ": its reader shows")
-            tryCompare(page, "account", "alice", 5000, label + ": the first inbox beside it")
+            tryVerify(() => mailBeside(page), 5000, label + ": the mailbox (a computer) or the first inbox (a phone) beside it")
             compare(page.openKey, root.messageKey, label + ": never closed by the folder")
             compare(find(page, "readerPlace").text, root.here.place, label + ": where it was found")
             // Back: Tasks again, its card shown again (on a phone the opening closed it).
@@ -351,8 +365,8 @@ Item {
                     verify(reader(page).visible, data.tag + ": never a blank page")
                     compare(page.openKey, "", data.tag + ": no file opened")
                 }
-                // Mail's first inbox beside it, never over it.
-                tryCompare(page, "account", "alice")
+                // Mail's mailbox (a computer) or first inbox (a phone) beside it, never over it.
+                tryVerify(() => mailBeside(page))
                 verify(page.reading, data.tag + ": still the reader's place")
             }
         }

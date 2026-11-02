@@ -94,7 +94,88 @@ pub(crate) struct Pending {
 pub(crate) struct MailViews {
     pub accounts: String,
     pub folder: String,
+    /// The mailbox, when Mail shows it; none otherwise (left as it was).
+    pub mailbox: Option<String>,
     pub drafts: String,
+}
+
+/// The mailbox's chip and address as chosen on this device (the agenda's
+/// view is kept so): `$XDG_STATE_HOME/sioul/mailbox-view.toml`.
+#[derive(serde::Serialize, serde::Deserialize, Default, PartialEq)]
+struct MailboxView {
+    #[serde(default)]
+    chip: sioul_core::mailbox::Chip,
+    #[serde(default)]
+    account: String,
+}
+
+fn mailbox_view_path() -> PathBuf {
+    sioul_core::config::state_dir().join("mailbox-view.toml")
+}
+
+/// The chip and address last chosen, as JSON {chip, account}.
+pub(crate) fn mailbox_view() -> String {
+    mailbox_view_in(&mailbox_view_path())
+}
+
+fn mailbox_view_in(path: &Path) -> String {
+    let kept: MailboxView = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    json(&kept)
+}
+
+/// The chip and address asked, kept for the next time (written when they change).
+pub(crate) fn keep_mailbox_view(ask: &sioul_core::mailbox::Ask) {
+    keep_mailbox_view_in(&mailbox_view_path(), ask);
+}
+
+fn keep_mailbox_view_in(path: &Path, ask: &sioul_core::mailbox::Ask) {
+    let view = MailboxView { chip: ask.chip, account: ask.account.clone() };
+    let kept: MailboxView = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    if kept != view
+        && let Ok(text) = toml::to_string(&view)
+    {
+        // Its folder made first: on a new device nothing else may have made it yet.
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = sioul_core::filelock::replace(path, text.as_bytes());
+    }
+}
+
+/// The mailbox as `ask` asks it (`mailbox::page`): the addresses that sync,
+/// ranked as Mail's column ranks them, their colours, who rests now and
+/// until when, the world read once.
+fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>) -> String {
+    use sioul_core::areas::{Area, in_view};
+    let now = sioul_core::zone::now();
+    let mode = crate::hours::mode_at(&now);
+    let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
+    let mut ranked: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
+    ranked.sort_by_key(|a| a.priority);
+    let tints = sioul_core::mailbox::tints(&ranked);
+    let sources = config.mail_sources();
+    let until = |at: Option<&jiff::Zoned>| at.map(|z| sioul_core::quiet::until_text(tr(), z, &now)).unwrap_or_default();
+    let addresses: Vec<sioul_core::mailbox::Address> = ranked
+        .iter()
+        .zip(tints)
+        .map(|(account, tint)| {
+            let area = account.area.as_deref().and_then(Area::parse).unwrap_or(Area::WORK);
+            let rests = hours.is_some_and(|(time, week)| time == sioul_core::areas::Time::Sleep || !in_view(area, time, week));
+            let resting = rests.then(|| {
+                if mode.sleeps() {
+                    say("mailbox-rests-sleep", &[("until", until(mode.until.as_ref()))])
+                } else {
+                    let back = if area == Area::WORK { mode.back.as_ref().or(mode.until.as_ref()) } else { mode.until.as_ref() };
+                    say("mailbox-rests", &[("address", account.address.clone().unwrap_or_else(|| account.id.clone())), ("until", until(back))])
+                }
+            });
+            let trusted = sources.iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids.clone()).unwrap_or_default();
+            sioul_core::mailbox::Address { account: (*account).clone(), folders: mailbox::folders(&account.id), trusted, tint, resting }
+        })
+        .collect();
+    let world = sioul_core::mailbox::World::load(config, crate::hours::attention_at(&mode, &now));
+    let page = sioul_core::mailbox::page(&addresses, &world, ask, hidden, tr(), now.timestamp().as_second(), &sioul_core::zone::current());
+    json(&page)
 }
 
 /// Your addresses: never answered to, never counted among the others.
@@ -332,7 +413,9 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
     let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
-    MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), hours)), folder: folder.unwrap_or_default(), drafts: json(&rows) }
+    let asked = shared.open_mailbox.lock().ok().and_then(|o| o.clone());
+    let mailbox = asked.map(|ask| mailbox_page(&config, &ask, &files));
+    MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), hours)), folder: folder.unwrap_or_default(), mailbox, drafts: json(&rows) }
 }
 
 /// A folder's messages as its list reads them, from the folder's index
@@ -389,6 +472,9 @@ pub(crate) fn show_mail_here(qt: &QtThread, shared: &Shared) {
         }
         sioul.as_mut().set_mail_accounts(QString::from(&views.accounts));
         sioul.as_mut().set_mail_folder(QString::from(&views.folder));
+        if let Some(mailbox) = &views.mailbox {
+            sioul.as_mut().set_mailbox(QString::from(mailbox));
+        }
         sioul.as_mut().set_drafts(QString::from(&views.drafts));
     });
 }
@@ -1459,6 +1545,30 @@ pub(crate) fn source(key: &str) -> String {
 mod tests {
     use super::*;
 
+    /// New mail's notification: one message opens it by its address; several,
+    /// the mailbox at its top (the unified mailbox's part 4, decision 3).
+    #[test]
+    fn several_new_messages_open_the_mailbox() {
+        assert_eq!(crate::mailnote::opens_of(Some("mid:a@example.org")), ("mail", "mid:a@example.org".to_string()));
+        assert_eq!(crate::mailnote::opens_of(None), ("mailbox", String::new()));
+    }
+
+    /// The mailbox's chip and address, kept on this device and read back;
+    /// what else it was asked (the search, the windows) is not kept.
+    #[test]
+    fn the_mailbox_s_chip_and_address_are_kept() {
+        sioul_core::config::stand_ins_only();
+        assert!(mailbox_view_path().starts_with(sioul_core::config::state_dir()));
+        // A new device: its state folder not made yet.
+        let fresh = sioul_core::config::state_dir().join(format!("mailbox-view-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fresh);
+        let path = fresh.join("sioul").join("mailbox-view.toml");
+        assert_eq!(mailbox_view_in(&path), r#"{"chip":"all","account":""}"#);
+        keep_mailbox_view_in(&path, &sioul_core::mailbox::Ask { chip: sioul_core::mailbox::Chip::Spam, account: "work".into(), windows: 3, query: "x".into(), shown_resting: vec!["home".into()] });
+        assert_eq!(mailbox_view_in(&path), r#"{"chip":"spam","account":"work"}"#);
+        let _ = std::fs::remove_dir_all(&fresh);
+    }
+
     /// A removal done now (a letter's task made again, `remove_now`): its
     /// "Undo" gone at once, the work done on a thread of its own, never the
     /// caller's (review of 8b57a35, L17), and only once.
@@ -1731,6 +1841,92 @@ mod tests {
         println!("measure: the indexes hold {} KB", index / 1000);
         if std::env::var_os("SIOUL_MEASURE_MAILDIR").is_none() {
             let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// The mailbox (the unified mailbox's part 4) measured on a large
+    /// stand-in: 20,000 invented messages over 20 folders of two addresses
+    /// (10 each: the inbox, Sent, the archive, the junk, six of projects),
+    /// sent over the last eight weeks, made under `SIOUL_MEASURE_MAILBOX`
+    /// (else /var/tmp) and removed after. Said: the first index of every
+    /// folder; the mailbox's page (two weeks, eight weeks, the Unread chip,
+    /// a search), each made again warm, and its JSON; the first inbox's list
+    /// as Mail shows a folder (`folder_cards`, `view::folder`).
+    #[test]
+    #[ignore]
+    fn measure_the_mailbox_on_a_large_stand_in() {
+        sioul_core::config::stand_ins_only();
+        use sioul_core::folders::folder;
+        let base = std::env::var_os("SIOUL_MEASURE_MAILBOX").map_or_else(|| PathBuf::from(format!("/var/tmp/sioul-measure-mailbox-{}", std::process::id())), PathBuf::from);
+        let mut folders = vec![folder("INBOX", Some("/"), Some(Role::Inbox)), folder("Sent", Some("/"), Some(Role::Sent)), folder("Archive", Some("/"), Some(Role::Archive)), folder("Junk", Some("/"), Some(Role::Junk))];
+        for n in 1..=6 {
+            folders.push(folder(&format!("Project {n:02}"), Some("/"), None));
+        }
+        let ids = [format!("measure-a-{}", std::process::id()), format!("measure-b-{}", std::process::id())];
+        let config: Config = toml::from_str(&ids.iter().enumerate().map(|(i, id)| format!("[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"me{i}@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", base.join(id).display())).collect::<String>()).unwrap();
+        let now = jiff::Timestamp::now().as_second();
+        let per = 1000;
+        if !base.join("made").exists() {
+            for (a, account) in config.accounts.iter().enumerate() {
+                let root = account.maildir_path();
+                for (f, folder) in folders.iter().enumerate() {
+                    for sub in ["tmp", "new", "cur"] {
+                        std::fs::create_dir_all(root.join(&folder.local).join(sub)).unwrap();
+                    }
+                    for i in 0..per {
+                        let n = (a * folders.len() + f) * per + i;
+                        let sent = now - ((n as i64 * 241) % (56 * 86_400));
+                        let date = jiff::Timestamp::from_second(sent).unwrap().strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
+                        let (from, to) = if folder.role == Role::Sent { (format!("Me <me{a}@example.org>"), format!("s{}@example.org", n % 300)) } else { (format!("Sender {} <s{}@example.org>", n % 300, n % 300), format!("me{a}@example.org")) };
+                        let list = if n % 5 == 0 { "List-Id: <news.example.org>\r\n" } else { "" };
+                        let raw = format!("Authentication-Results: mx.example.org; dkim=pass header.d=example.org; dmarc=pass header.from=example.org\r\nMessage-ID: <m{n}@example.org>\r\nFrom: {from}\r\nTo: {to}\r\nDate: {date}\r\nSubject: Message {n} about the matter {}\r\n{list}Content-Type: text/plain; charset=UTF-8\r\n\r\n{}\r\n", n % 50, "A line of an ordinary message, about nothing in particular.\r\n".repeat(20));
+                        let flags = if i % 4 == 0 { "" } else { "S" };
+                        let path = root.join(&folder.local).join("cur").join(format!("{sent}.U7-{}.sioul{}2,{flags}", i + 1, maildir::INFO));
+                        std::fs::write(&path, raw).unwrap();
+                        std::fs::File::options().write(true).open(&path).unwrap().set_modified(UNIX_EPOCH + Duration::from_secs(sent as u64)).unwrap();
+                    }
+                }
+            }
+            std::fs::write(base.join("made"), "").unwrap();
+        }
+        println!("measure: {} messages over {} folders of {} addresses", per * folders.len() * ids.len(), folders.len() * ids.len(), ids.len());
+        let at = std::time::Instant::now();
+        for account in &config.accounts {
+            for f in &folders {
+                sioul_core::mailcache::folder(&account.id, &account.maildir_path(), &f.local);
+            }
+        }
+        println!("measure: the first index of every folder: {:.0} ms", at.elapsed().as_secs_f64() * 1000.0);
+        let addresses: Vec<sioul_core::mailbox::Address> = config.accounts.iter().enumerate().map(|(i, account)| sioul_core::mailbox::Address { account: account.clone(), folders: folders.clone(), trusted: vec!["mx.example.org".into()], tint: i as u8, resting: None }).collect();
+        let mode = sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week: sioul_core::areas::Week::default(), reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new() };
+        let zone = sioul_core::zone::current();
+        let none = BTreeSet::new();
+        let timed = |what: &str, ask: sioul_core::mailbox::Ask| {
+            let at = std::time::Instant::now();
+            let world = sioul_core::mailbox::World::load(&config, sioul_core::attention::Now::of(&mode));
+            let page = sioul_core::mailbox::page(&addresses, &world, &ask, &none, tr(), now, &zone);
+            let text = json(&page);
+            println!("measure: the mailbox, {what}: {:.0} ms, {} rows, {} KB of JSON", at.elapsed().as_secs_f64() * 1000.0, page.rows.len(), text.len() / 1000);
+        };
+        use sioul_core::mailbox::{Ask, Chip};
+        timed("two weeks, the first time after the index", Ask::default());
+        timed("two weeks", Ask::default());
+        timed("eight weeks", Ask { windows: 4, ..Ask::default() });
+        timed("the Unread chip", Ask { chip: Chip::Unread, ..Ask::default() });
+        timed("a search", Ask { query: "matter 7".into(), ..Ask::default() });
+        let account = &config.accounts[0];
+        let at = std::time::Instant::now();
+        let (cards, sent) = folder_cards(account, &folders, &folders[0], &none, false);
+        let shown = view::folder(account, &folders[0], cards, &[], &sioul_core::words::Words::of(&config), false, "", tr(), now, sent);
+        let text = json(&shown);
+        println!("measure: Mail's first inbox, as a folder shows it: {:.0} ms, {} rows, {} KB of JSON", at.elapsed().as_secs_f64() * 1000.0, shown.items.len(), text.len() / 1000);
+        if std::env::var_os("SIOUL_MEASURE_MAILBOX").is_none() {
+            let _ = std::fs::remove_dir_all(&base);
+        }
+        for id in &ids {
+            if let Some(dir) = sioul_core::mailcache::account_dir(id) {
+                let _ = std::fs::remove_dir_all(dir);
+            }
         }
     }
 

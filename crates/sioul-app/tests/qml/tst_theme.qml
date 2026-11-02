@@ -42,6 +42,38 @@ TestCase {
         onDarkChanged: bound.seen = bound.seen.concat([bound.dark])
     }
 
+    Theme {
+        id: lightTheme
+
+        dark: false
+    }
+
+    Theme {
+        id: darkTheme
+
+        dark: true
+    }
+
+    // WCAG's contrast ratio of two colours.
+    function contrast(a, b) {
+        const lum = c => [c.r, c.g, c.b].map(v => v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0)
+        const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+        return (hi + 0.05) / (lo + 0.05)
+    }
+
+    // The mailbox's address marks (part 4): eight tints, each one apart, the
+    // window's own text readable on each in both themes (4.5:1 at least).
+    function test_the_address_marks_are_readable_in_both_themes() {
+        for (const t of [lightTheme, darkTheme]) {
+            compare(t.tints.length, 8)
+            compare(new Set(t.tints.map(c => String(c).toLowerCase())).size, 8, "eight tints apart")
+            for (const tint of t.tints) {
+                const ratio = contrast(Qt.color(t.text), Qt.color(tint))
+                verify(ratio >= 4.5, (t.dark ? "dark " : "light ") + tint + ": " + ratio.toFixed(2))
+            }
+        }
+    }
+
     function test_the_colours_chosen_come_first() {
         for (const scheme of [Qt.ColorScheme.Unknown, Qt.ColorScheme.Light, Qt.ColorScheme.Dark]) {
             for (const lightness of [0.05, 0.94]) {

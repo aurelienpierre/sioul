@@ -387,6 +387,30 @@ mail-find-reused = Un autre courriel porte le même identifiant.
 mail-find-gone = Ce courriel n’est plus dans votre courrier. Il a été supprimé, ici ou sur un autre appareil.
 mail-find-unreachable = Sioul ne peut pas joindre votre serveur de courriels pour l’instant. Il cherche de nouveau dès qu’il le peut.
 mail-find-on-its-way = Ce courriel est en route vers { $folder } : sa copie n’est pas encore sur cet appareil. Elle arrive à la prochaine synchronisation de ce dossier.
+mailbox-today = Aujourd’hui
+mailbox-yesterday = Hier
+mailbox-day = { $weekday } { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month }
+mailbox-day-year = { $weekday } { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month } { $year }
+mailbox-spam-junk = dans les indésirables
+mailbox-spam-provider = votre fournisseur : indésirable
+mailbox-title = Toutes les adresses
+mailbox-chip-all = Tout
+mailbox-chip-unread = Non lus
+mailbox-chip-sent = Envoyés
+mailbox-chip-spam = Indésirables
+mailbox-rests = { $address } se repose jusqu’à { $until }.
+mailbox-rests-sleep = Toutes les adresses se reposent pendant votre sommeil, jusqu’à { $until }.
+mailbox-show-resting = Afficher ses courriels
+mailbox-only = Seulement { $address }
+account-colour = Sa couleur
+account-colour-auto = Selon son rang
+account-colour-n = Couleur { $n }
 ui-add-account = Ajouter un compte de courriel
 ui-address = Adresse électronique
 ui-find-server = Trouver le serveur

@@ -939,6 +939,12 @@ pub struct Account {
     /// sign-in (docs/microsoft.md).
     #[serde(default)]
     pub microsoft_kind: Option<String>,
+    /// Its mark's colour in the mailbox (the unified mailbox's part 4): one
+    /// of the palette's eight (0 to 7); unset, the palette's colours in the
+    /// order of the addresses' priority. In config.toml, which the sharing
+    /// carries, so that every device draws the same; an older Sioul skips it.
+    #[serde(default)]
+    pub colour: Option<u8>,
 }
 
 impl Account {
@@ -985,6 +991,7 @@ impl Account {
             shield: false,
             shield_ai: false,
             microsoft_kind: None,
+            colour: None,
         }
     }
 
@@ -1615,6 +1622,30 @@ pub fn set_history(path: &Path, weeks: u32) -> Result<(), String> {
 pub fn set_priority(path: &Path, id: &str, priority: Priority) -> Result<(), String> {
     set_account_item(path, id, "priority", value(priority.as_str()))
 }
+
+/// Sets an address's colour in the mailbox (one of the palette's eight);
+/// none takes it out, back to the palette's order of priority.
+pub fn set_colour(path: &Path, id: &str, colour: Option<u8>) -> Result<(), String> {
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let table = doc
+            .get_mut("account")
+            .and_then(Item::as_array_of_tables_mut)
+            .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+            .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
+        match colour.filter(|c| usize::from(*c) < PALETTE) {
+            Some(colour) => table["colour"] = value(i64::from(colour)),
+            None => {
+                table.remove("colour");
+            }
+        }
+        write_document(path, &doc)
+    })
+}
+
+/// How many colours an address's mark may take (Theme.qml's tints).
+pub const PALETTE: usize = 8;
 
 /// Sets your name as recipients see it and your signature (Markdown); empty removes them.
 pub fn set_writing(path: &Path, id: &str, name: &str, signature: &str) -> Result<(), String> {
@@ -2249,6 +2280,29 @@ pub fn expand_home(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An address's colour written into its table, the other keys and
+    /// comments kept, taken out again; read back by `Account`.
+    #[test]
+    fn an_address_s_colour_is_written_and_read() {
+        let dir = std::env::temp_dir().join(format!("sioul-colour-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\n[[account]]\nid = \"work\" # kept\nkind = \"imap\"\n\n[[account]]\nid = \"home\"\nkind = \"imap\"\n").unwrap();
+        set_colour(&path, "home", Some(5)).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# mine") && text.contains("# kept") && text.contains("colour = 5"), "{text}");
+        let config: Config = toml::from_str(&text).unwrap();
+        assert_eq!(config.accounts.iter().map(|a| a.colour).collect::<Vec<_>>(), [None, Some(5)]);
+        set_colour(&path, "home", Some(8)).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("colour"), "out of the palette: taken out");
+        set_colour(&path, "home", Some(2)).unwrap();
+        set_colour(&path, "home", None).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("colour"));
+        assert!(set_colour(&path, "nobody", Some(1)).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// Folders count as a test's only when each of the four holds the
     /// runners' mark: set and other than the defaults is not enough (review

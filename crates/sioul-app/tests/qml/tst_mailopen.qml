@@ -50,6 +50,15 @@ Item {
         function textWith(key, name, value) {
             return key + ":" + value
         }
+        // The mailbox (part 4): what it was asked.
+        property string mailbox: ""
+        property var mailboxAsked: []
+        function openMailbox(ask) {
+            mock.mailboxAsked = mock.mailboxAsked.concat([ask])
+        }
+        function mailboxView() {
+            return "{}"
+        }
         function openFolder(account, folder, all, query) {
             mock.openedFolders = mock.openedFolders.concat([account + "/" + folder])
         }
@@ -189,20 +198,28 @@ Item {
             mock.mailAccounts = ""
             mock.mailFolder = ""
             mock.openedFolders = []
+            mock.mailboxAsked = []
             mock.reading = JSON.stringify({ subject: "The plan", from_name: "Ana", from_address: "ana@example.org", to: [], others: false, text: "Hello", attachments: [], uri: "mid:plan@example.org", flagged: false })
             fakeWindow.opened = []
             fakeWindow.compact = false
         }
 
         // Mail made by the link that opens a message: its addresses arrive a
-        // moment later, and the message stays open, the first inbox beside it.
+        // moment later, and the message stays open, the mailbox beside it on a
+        // computer (part 4), the first inbox on a phone.
         function linked(compact) {
             fakeWindow.compact = compact
             const page = createTemporaryObject(mailComponent, root)
             page.openMessage(root.messageKey)
             mock.mailAccounts = root.accountsJson
-            tryCompare(page, "account", "alice")
-            compare(mock.openedFolders, ["alice/INBOX"], "the first inbox, listed")
+            if (compact) {
+                tryCompare(page, "account", "alice")
+                compare(mock.openedFolders, ["alice/INBOX"], "the first inbox, listed")
+            } else {
+                tryCompare(page, "boxShown", true)
+                compare(mock.openedFolders, [], "no folder")
+                compare(JSON.parse(mock.mailboxAsked[0]).chip, "all", "the mailbox, asked")
+            }
             compare(page.openKey, root.messageKey, "the message asked stays open")
             tryVerify(() => reader(page) !== null && reader(page).reading !== null)
             verify(reader(page).visible, "its reader shows")
@@ -216,12 +233,19 @@ Item {
             linked(true)
         }
 
-        // Without a link, Mail opens on the first inbox, nothing open.
-        function test_mail_alone_opens_the_first_inbox() {
+        // Without a link, Mail opens on the mailbox on a computer (decisions 8
+        // and 9), on the first inbox on a phone until part 5; nothing open.
+        function test_mail_alone_opens_the_mailbox_or_the_first_inbox() {
             const page = createTemporaryObject(mailComponent, root)
             mock.mailAccounts = root.accountsJson
-            tryCompare(page, "account", "alice")
+            tryCompare(page, "boxShown", true)
             compare(page.openKey, "")
+            fakeWindow.compact = true
+            const phone = createTemporaryObject(mailComponent, root)
+            mock.mailAccounts = ""
+            mock.mailAccounts = root.accountsJson
+            tryCompare(phone, "account", "alice")
+            compare(phone.boxShown, false)
         }
 
         // A message that does not read here: the reader says so in its place, never blank.

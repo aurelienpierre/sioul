@@ -8,6 +8,10 @@
 // no badges. Right click on a message for what is not in view. "More…" beside
 // the search opens the search by conditions in the folders' place
 // (MailSearch.qml): its results in the same list, dragged onto folders as any.
+// At the top of the
+// column, "All addresses": every address's mail in time order, one line a
+// message (the unified mailbox's part 4, `mailbox::page`), chosen when Mail
+// opens on a computer.
 
 pragma ComponentBehavior: Bound
 
@@ -36,6 +40,8 @@ Item {
             page.mailAccountsText = page.sioul.mailAccounts
         if (page.visible)
             page.searchText = page.sioul.mailSearch
+        if (page.visible)
+            page.boxText = page.sioul.mailbox
     }
 
     Connections {
@@ -51,6 +57,9 @@ Item {
             page.takeShown()
         }
         function onMailSearchChanged() {
+            page.takeShown()
+        }
+        function onMailboxChanged() {
             page.takeShown()
         }
         function onMailMoved(moves) {
@@ -69,8 +78,19 @@ Item {
                 page.answer = Object.assign({}, page.answer, { file: move[1] })
         }
     }
-    onVisibleChanged: page.takeShown()
-    Component.onCompleted: page.takeShown()
+    // The mailbox is made while Mail shows it, and asked for again when Mail comes back.
+    onVisibleChanged: {
+        page.takeShown()
+        if (page.boxShown)
+            page.sioul.openMailbox(page.visible ? page.boxAsk() : "")
+    }
+    Component.onCompleted: {
+        // The chip and the address chosen last, on this device.
+        const kept = JSON.parse(page.sioul.mailboxView() || "{}")
+        page.boxChip = kept.chip || "all"
+        page.boxAccount = kept.account || ""
+        page.takeShown()
+    }
     property string mailFolderText: ""
     readonly property var shown: page.mailFolderText ? JSON.parse(page.mailFolderText) : null
     property string draftsText: ""
@@ -79,6 +99,18 @@ Item {
     property string folder: ""
     // Sioul's own drafts, instead of a folder.
     property bool draftsShown: false
+    // "All addresses": every address's mail in time order, instead of a folder
+    // (`mailbox::page`): its chip (all, unread, sent, spam), one address or
+    // all, its two-week windows, the resting addresses you chose to see.
+    property bool boxShown: false
+    property string boxText: ""
+    readonly property var box: page.boxText ? JSON.parse(page.boxText) : null
+    property string boxChip: "all"
+    property string boxAccount: ""
+    property int boxWindows: 1
+    property var boxShownResting: []
+    // The mailbox's own list, not a search's.
+    readonly property bool boxListed: page.boxShown && !page.searchOpen && !page.draftsShown
     property bool all: false
     property string query: ""
     // The message being read, by its file, and its row.
@@ -101,7 +133,7 @@ Item {
     // message; Back goes the other way (main.qml).
     property bool foldersShown: false
     // Every account resting (quiet time) and none chosen: no list, the line saying so.
-    readonly property bool allResting: page.account === "" && !page.draftsShown && page.accounts.length > 0 && page.accounts.every(a => a.resting)
+    readonly property bool allResting: page.account === "" && !page.draftsShown && !page.boxShown && page.accounts.length > 0 && page.accounts.every(a => a.resting)
     readonly property bool canGoBack: page.reading || page.foldersShown || page.searchOpen
     // The search on a line of its own, under the folder's name: on a phone, and
     // beside an open message, where the list's column is narrow; on one line
@@ -144,9 +176,13 @@ Item {
     property string searchText: ""
     readonly property var found: page.searchText ? JSON.parse(page.searchText) : null
     // The list's rows: the folder's, or what the search found.
-    readonly property var listItems: page.searchOpen ? (page.found && page.found.items ? page.found.items : []) : (page.shown ? page.shown.items : [])
-    // What the rows are in: a folder's purpose ("trash"…); none for a search's, each row its own.
-    readonly property string listRole: page.searchOpen || !page.shown ? "" : page.shown.role
+    // A folder's or a search's rows, and what the list shows: the mailbox's when chosen.
+    // Each list takes its own rows, never `listItems`: as the mailbox opens or closes,
+    // `listItems` may still hold the other list's rows for a moment.
+    readonly property var folderItems: page.searchOpen ? (page.found && page.found.items ? page.found.items : []) : (page.shown ? page.shown.items : [])
+    readonly property var listItems: page.boxShown && !page.searchOpen ? (page.box ? page.box.rows : []) : page.folderItems
+    // What the rows are in: a folder's purpose ("trash"…); none for a search's or the mailbox's, each row its own.
+    readonly property string listRole: page.searchOpen || page.boxShown || !page.shown ? "" : page.shown.role
     // A message being brought from its server, opened once here.
     property string bringing: ""
     // A selection begun from a row's menu (on a touch screen, a long press):
@@ -198,7 +234,76 @@ Item {
             page.sioul.bringMessage(key)
             return
         }
+        // The mailbox's row: through the window's one opener, by its address,
+        // its file a hint; Back closes it, the list where it was.
+        if (page.boxListed && item && item.uri) {
+            page.window.openMail({ address: item.uri, file: key, account: item.account, folder: item.folder })
+            return
+        }
         page.openKey = key
+    }
+
+    // The mailbox as chosen, asked of Rust (`open_mailbox`).
+    function boxAsk() {
+        return JSON.stringify({ chip: page.boxChip, account: page.boxAccount, windows: page.boxWindows, query: page.query, shown_resting: page.boxShownResting })
+    }
+
+    // "All addresses": the mailbox instead of a folder; `keepOpen` as for a folder.
+    function openBox(keepOpen) {
+        if (page.searchOpen)
+            page.closeSearch()
+        page.clearSelection()
+        page.anchorIndex = -1
+        if (!keepOpen) {
+            page.fromLink = false
+            page.openKey = ""
+            page.answer = null
+        }
+        page.account = ""
+        page.folder = ""
+        page.draftsShown = false
+        page.all = false
+        page.query = ""
+        page.boxWindows = 1
+        page.boxShownResting = []
+        page.foldersShown = false
+        page.boxShown = true
+        page.sioul.openMailbox(page.boxAsk())
+    }
+
+    // New mail's notification of several messages: the mailbox at its top (decision 3).
+    function openBoxTop() {
+        page.openBox(false)
+        boxList.positionViewAtBeginning()
+    }
+
+    // A chip: one at a time; the list starts again from its last two weeks.
+    function chooseChip(chip) {
+        page.boxChip = chip
+        page.boxWindows = 1
+        page.clearSelection()
+        page.sioul.openMailbox(page.boxAsk())
+    }
+
+    // An address's mark at the chips' end: that address alone; again, all of them.
+    function chooseAddress(id) {
+        page.boxAccount = page.boxAccount === id ? "" : id
+        page.boxWindows = 1
+        page.clearSelection()
+        page.sioul.openMailbox(page.boxAsk())
+    }
+
+    // "Show its mail": a resting address's mail all the same, this time ("" for every one).
+    function showResting(id) {
+        const ids = id === "" ? page.accounts.filter(a => a.resting).map(a => a.id) : [id]
+        page.boxShownResting = page.boxShownResting.concat(ids)
+        page.sioul.openMailbox(page.boxAsk())
+    }
+
+    // "Earlier messages": two more weeks.
+    function boxEarlier() {
+        page.boxWindows = page.boxWindows + 1
+        page.sioul.openMailbox(page.boxAsk())
     }
 
     // A row's menu, "Select": the selection begins with it; then a tap chooses.
@@ -259,6 +364,21 @@ Item {
         page.beginChoosing(items[0].key)
         for (let i = 1; i < Math.min(n, items.length); i++)
             page.clickRow(i, items[i].key, 0)
+    }
+
+    // For the window's pictures: the first message of two addresses chosen, as Ctrl+click would.
+    function chooseAcross() {
+        const seen = {}
+        const next = {}
+        for (const item of page.listItems) {
+            if (seen[item.account])
+                continue
+            seen[item.account] = true
+            next[item.key] = true
+            if (Object.keys(seen).length === 2)
+                break
+        }
+        page.selected = next
     }
 
     // For the window's pictures: messages held over the first folder of a
@@ -398,6 +518,7 @@ Item {
         page.account = account
         page.folder = folder
         page.draftsShown = false
+        page.boxShown = false
         page.all = false
         page.query = ""
         page.foldersShown = false
@@ -501,15 +622,21 @@ Item {
     // changes what they read (a binding loop when done at once). The first
     // address's inbox shows beside a message a link opened, never over it:
     // the page made by the very link that opens it (`openThing`) keeps it.
+    // On a computer, "All addresses" (decisions 8 and 9); on a phone the
+    // first inbox, as before, until the phone's mailbox (part 5).
     onAccountsChanged: Qt.callLater(() => {
         const first = page.accounts.find(a => !a.resting)
-        if (page.account === "" && first)
+        if (page.account !== "" || page.boxShown || page.draftsShown || page.accounts.length === 0)
+            return
+        if (!page.window.compact)
+            page.openBox(page.fromLink && page.reading)
+        else if (first)
             page.openFolder(first.id, "INBOX", page.fromLink && page.reading)
     })
 
     // A message filed away leaves the folder: the reader closes with it.
     onShownChanged: {
-        if (!page.searchOpen && page.openKey !== "" && !page.fromLink && page.shown !== null && page.findItem(page.openKey) === null)
+        if (!page.searchOpen && !page.boxShown && page.openKey !== "" && !page.fromLink && page.shown !== null && page.findItem(page.openKey) === null)
             page.openKey = ""
     }
 
@@ -531,7 +658,12 @@ Item {
         id: searching
 
         interval: 300
-        onTriggered: page.sioul.openFolder(page.account, page.folder, page.all, page.query)
+        onTriggered: {
+            if (page.boxShown)
+                page.sioul.openMailbox(page.boxAsk())
+            else
+                page.sioul.openFolder(page.account, page.folder, page.all, page.query)
+        }
     }
 
     // The search by conditions, too.
@@ -563,6 +695,31 @@ Item {
             ColumnLayout {
                 width: folderColumn.availableWidth
                 spacing: 2
+
+                // Every address's mail in time order, at the top (decisions 8 and 9).
+                ItemDelegate {
+                    objectName: "mailboxRow"
+                    visible: page.accounts.length > 0
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 8
+                    highlighted: page.boxShown && !page.draftsShown
+                    onClicked: page.openBox(false)
+
+                    contentItem: RowLayout {
+                        spacing: 8
+
+                        Icon {
+                            iconName: "mail-folder-inbox"
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("mailbox-title")
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: page.theme.text
+                        }
+                    }
+                }
 
                 // Drafts written here, kept until sent: only when there are some.
                 ItemDelegate {
@@ -842,14 +999,14 @@ Item {
                     Label {
                         Layout.fillWidth: true
                         // A search's list: "Results", the column beside it being "Search".
-                        text: page.draftsShown ? page.sioul.text("ui-drafts-here") : page.searchOpen ? page.sioul.text("search-results") : page.shown ? page.shown.title : ""
+                        text: page.draftsShown ? page.sioul.text("ui-drafts-here") : page.searchOpen ? page.sioul.text("search-results") : page.boxShown ? page.sioul.text("mailbox-title") : page.shown ? page.shown.title : ""
                         textFormat: Text.PlainText
                         font.pixelSize: 19
                         elide: Text.ElideRight
                         color: page.theme.text
                     }
                     Label {
-                        visible: !page.draftsShown && !page.searchOpen
+                        visible: !page.draftsShown && !page.searchOpen && !page.boxShown
                         Layout.fillWidth: true
                         text: page.account
                         textFormat: Text.PlainText
@@ -903,10 +1060,82 @@ Item {
                 }
                 MoreButton {}
             }
-            Label {
-                visible: !page.draftsShown && (page.searchOpen ? page.found !== null && page.found.sentence !== "" : page.shown !== null && page.shown.sentence !== "")
+            // The mailbox's chips, one at a time, and the addresses' marks at
+            // their end: one address alone, then all again. Nothing counted.
+            Flow {
+                objectName: "mailboxChips"
+                visible: page.boxListed
                 Layout.fillWidth: true
-                text: page.searchOpen ? (page.found ? page.found.sentence : "") : page.shown ? page.shown.sentence : ""
+                spacing: 6
+
+                Repeater {
+                    model: ["all", "unread", "sent", "spam"]
+
+                    delegate: Button {
+                        required property string modelData
+
+                        objectName: "chip:" + modelData
+                        flat: page.boxChip !== modelData
+                        highlighted: page.boxChip === modelData
+                        text: page.sioul.text("mailbox-chip-" + modelData)
+                        onClicked: page.chooseChip(modelData)
+                    }
+                }
+                Repeater {
+                    model: page.box && page.boxListed ? page.box.addresses : []
+
+                    delegate: ToolButton {
+                        id: addressChip
+
+                        required property var modelData
+
+                        objectName: "address:" + addressChip.modelData.account
+                        checkable: false
+                        flat: page.boxAccount !== addressChip.modelData.account
+                        Accessible.name: page.sioul.textWith("mailbox-only", "address", addressChip.modelData.title)
+                        ToolTip.visible: hovered
+                        ToolTip.text: page.theme.plain(page.sioul.textWith("mailbox-only", "address", addressChip.modelData.title))
+                        ToolTip.delay: 400
+                        onClicked: page.chooseAddress(addressChip.modelData.account)
+                        contentItem: AddressMark {
+                            mark: addressChip.modelData
+                        }
+                    }
+                }
+            }
+            // A resting address's line: its mail out of the list, until you ask for it.
+            Repeater {
+                model: page.box && page.boxListed ? page.box.resting : []
+
+                delegate: RowLayout {
+                    id: restingLine
+
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        objectName: "mailboxResting"
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        text: restingLine.modelData.line
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: page.theme.muted
+                    }
+                    Button {
+                        objectName: "mailboxShowResting"
+                        flat: true
+                        text: page.sioul.text("mailbox-show-resting")
+                        onClicked: page.showResting(restingLine.modelData.account)
+                    }
+                }
+            }
+            Label {
+                visible: !page.draftsShown && (page.searchOpen ? page.found !== null && page.found.sentence !== "" : page.boxShown ? page.box !== null && page.box.sentence !== "" : page.shown !== null && page.shown.sentence !== "")
+                Layout.fillWidth: true
+                text: page.searchOpen ? (page.found ? page.found.sentence : "") : page.boxShown ? (page.box ? page.box.sentence : "") : page.shown ? page.shown.sentence : ""
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: page.searchOpen ? page.theme.text : page.theme.muted
@@ -965,12 +1194,14 @@ Item {
             ListView {
                 id: list
 
-                visible: !page.draftsShown
+                objectName: "folderList"
+                visible: !page.draftsShown && !page.boxListed
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
                 spacing: 0
-                model: page.listItems
+                // The mailbox draws its own rows (`boxList`): none made here meanwhile.
+                model: page.boxListed ? [] : page.folderItems
                 ScrollBar.vertical: ScrollBar {}
                 Keys.onPressed: event => {
                     if (event.matches(StandardKey.SelectAll)) {
@@ -1172,6 +1403,192 @@ Item {
                         page.all = true
                         page.sioul.openFolder(page.account, page.folder, true, page.query)
                     }
+                }
+            }
+
+            // The mailbox: one line a message, under its day; the rows its own
+            // (`mailbox::page`), the selection, the menu and the drag as a folder's.
+            ListView {
+                id: boxList
+
+                objectName: "mailboxList"
+                visible: page.boxListed
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 0
+                model: page.boxListed && page.box ? page.box.rows : []
+                reuseItems: true
+                ScrollBar.vertical: ScrollBar {}
+                Keys.onPressed: event => {
+                    if (event.matches(StandardKey.SelectAll)) {
+                        page.selectAll()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Escape && page.selectedKeys.length > 0) {
+                        page.clearSelection()
+                        event.accepted = true
+                    }
+                }
+
+                section.property: "day"
+                section.delegate: Label {
+                    required property string section
+
+                    width: boxList.width - 12
+                    topPadding: 10
+                    bottomPadding: 4
+                    leftPadding: 10
+                    text: section
+                    textFormat: Text.PlainText
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    color: page.theme.muted
+                }
+
+                delegate: ItemDelegate {
+                    id: boxRow
+
+                    required property var modelData
+                    required property int index
+                    readonly property bool chosen: page.selected[boxRow.modelData.key] === true
+
+                    objectName: "mailboxRow:" + boxRow.modelData.subject
+                    width: boxList.width - 12
+                    highlighted: page.sameMessage(page.openKey, boxRow.modelData.key) || boxRow.chosen
+                    // Its words for screen readers: the row has no text of its own.
+                    Accessible.name: [boxRow.modelData.marks.map(m => m.title).join(", "), boxRow.modelData.who, boxRow.modelData.subject, boxRow.modelData.spam, boxRow.modelData.time].filter(t => !!t).join(", ")
+                    padding: 6
+                    leftPadding: 8
+                    rightPadding: 8
+                    topInset: 1
+                    bottomInset: 1
+                    Keys.onReturnPressed: page.clickRow(boxRow.index, boxRow.modelData.key, 0)
+                    Keys.onEnterPressed: page.clickRow(boxRow.index, boxRow.modelData.key, 0)
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+                            boxRow.Window.window.menuAt = boxRow.mapToItem(null, 24, boxRow.height / 2)
+                            rowMenu.now().show(boxRow.modelData, boxRow.index)
+                            event.accepted = true
+                        }
+                    }
+
+                    background: Rectangle {
+                        color: boxRow.chosen ? page.theme.hover : boxRow.highlighted || boxRow.hovered ? page.theme.surface : "transparent"
+                        radius: page.theme.radius
+                        border.color: boxRow.visualFocus ? page.theme.focus : boxRow.chosen ? page.theme.accent : boxRow.highlighted ? page.theme.line : "transparent"
+                        border.width: boxRow.visualFocus ? 2 : 1
+                    }
+
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        onTapped: page.clickRow(boxRow.index, boxRow.modelData.key, point.modifiers)
+                    }
+                    onPressAndHold: {
+                        boxRow.Window.window.menuAt = boxRow.mapToItem(null, boxRow.pressX, boxRow.pressY)
+                        rowMenu.now().show(boxRow.modelData, boxRow.index)
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onTapped: rowMenu.now().show(boxRow.modelData, boxRow.index)
+                    }
+                    DragHandler {
+                        id: boxDragger
+
+                        target: null
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        grabPermissions: PointerHandler.CanTakeOverFromAnything
+                        onActiveChanged: {
+                            if (boxDragger.active)
+                                page.startDrag(boxRow.modelData.key)
+                            else
+                                page.endDrag()
+                        }
+                        onCentroidChanged: {
+                            if (boxDragger.active) {
+                                const at = boxRow.mapToItem(page, boxDragger.centroid.position.x, boxDragger.centroid.position.y)
+                                ghost.x = at.x + 12
+                                ghost.y = at.y + 12
+                            }
+                        }
+                    }
+
+                    // One line: its addresses' marks, the dot, who, the subject, its quiet marks, the time.
+                    contentItem: RowLayout {
+                        spacing: 8
+
+                        Repeater {
+                            model: boxRow.modelData.marks
+
+                            delegate: AddressMark {
+                                required property var modelData
+
+                                mark: modelData
+                            }
+                        }
+                        // Unread, and its time has come: a small dot, not bold.
+                        Rectangle {
+                            Layout.preferredWidth: 7
+                            Layout.preferredHeight: 7
+                            radius: 3.5
+                            color: boxRow.modelData.unread ? page.theme.accent : "transparent"
+                        }
+                        // A message's own words are plain text: a "<" opens no tag, loads nothing.
+                        Label {
+                            Layout.preferredWidth: Math.round(boxRow.availableWidth * 0.24)
+                            text: boxRow.modelData.who
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: boxRow.modelData.hostile ? page.theme.muted : page.theme.text
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            // The room left: a long subject is cut, never widens the list.
+                            Layout.preferredWidth: 0
+                            text: boxRow.modelData.subject
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: boxRow.modelData.hostile ? page.theme.muted : page.theme.text
+                        }
+                        // Quiet marks: answered, an attachment, flagged; spam's word, "forged".
+                        Icon {
+                            visible: boxRow.modelData.answered
+                            iconName: "mail-replied"
+                            size: 14
+                        }
+                        Icon {
+                            visible: boxRow.modelData.attachments
+                            iconName: "mail-attachment"
+                            size: 14
+                        }
+                        Icon {
+                            visible: boxRow.modelData.flagged
+                            iconName: "mail-flag"
+                            size: 14
+                        }
+                        Label {
+                            visible: text !== ""
+                            text: boxRow.modelData.spam !== "" ? boxRow.modelData.spam : boxRow.modelData.trust_level === "forged" ? boxRow.modelData.trust : ""
+                            textFormat: Text.PlainText
+                            font.pixelSize: 12
+                            color: boxRow.modelData.trust_level === "forged" ? page.theme.forged : page.theme.muted
+                        }
+                        Label {
+                            text: boxRow.modelData.time
+                            textFormat: Text.PlainText
+                            font.pixelSize: 13
+                            color: page.theme.muted
+                        }
+                    }
+                }
+
+                footer: Button {
+                    objectName: "mailboxEarlier"
+                    visible: page.box !== null && page.box.earlier
+                    height: visible ? implicitHeight + 16 : 0
+                    flat: true
+                    text: page.sioul.text("ui-earlier")
+                    onClicked: page.boxEarlier()
                 }
             }
 
@@ -1509,6 +1926,8 @@ Item {
                 readonly property bool remote: rowMenuForm.target !== null && rowMenuForm.target.server === true
                 // Its folder's purpose: the folder's, or, for a search's row, its own.
                 readonly property string role: rowMenuForm.target && rowMenuForm.target.role ? rowMenuForm.target.role : page.listRole
+                // Not read yet: a mailbox's row says it apart from its dot (`read`), which waits for its time.
+                readonly property bool unread: rowMenuForm.target !== null && (rowMenuForm.target.read !== undefined ? !rowMenuForm.target.read : rowMenuForm.target.unread === true)
 
                 function show(item, index) {
                     rowMenuForm.target = item
@@ -1538,8 +1957,8 @@ Item {
                 }
                 MenuSeparator {}
                 MenuItem {
-                    text: rowMenuForm.target && rowMenuForm.target.unread ? page.sioul.text("ui-mark-read") : page.sioul.text("ui-mark-unread")
-                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.target.unread ? "read" : "unread", "")
+                    text: rowMenuForm.unread ? page.sioul.text("ui-mark-read") : page.sioul.text("ui-mark-unread")
+                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.unread ? "read" : "unread", "")
                 }
                 MenuItem {
                     text: rowMenuForm.target && rowMenuForm.target.flagged ? page.sioul.text("ui-unflag") : page.sioul.text("ui-flag")
@@ -1586,11 +2005,41 @@ Item {
     component SearchField: TextField {
         id: searchField
 
+        objectName: "mailSearchField"
         placeholderText: page.sioul.text("ui-search")
         text: page.query
         onTextEdited: {
             page.query = searchField.text
             searching.restart()
+        }
+    }
+
+    // An address's mark: its first letter on its tint, the whole address said
+    // by its tooltip and to screen readers (the unified mailbox's part 4).
+    component AddressMark: Rectangle {
+        id: markBox
+
+        property var mark: null
+
+        implicitWidth: 16
+        implicitHeight: 16
+        radius: 4
+        color: markBox.mark ? page.theme.tints[markBox.mark.tint % page.theme.tints.length] : "transparent"
+        Accessible.name: markBox.mark ? markBox.mark.title : ""
+        ToolTip.visible: markHover.hovered
+        ToolTip.text: markBox.mark ? page.theme.plain(markBox.mark.title) : ""
+        ToolTip.delay: 600
+
+        HoverHandler {
+            id: markHover
+        }
+        Label {
+            anchors.centerIn: parent
+            text: markBox.mark ? markBox.mark.letter : ""
+            textFormat: Text.PlainText
+            font.pixelSize: 10
+            font.weight: Font.DemiBold
+            color: page.theme.text
         }
     }
 

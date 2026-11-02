@@ -54,6 +54,11 @@ QtObject {
     readonly property color warm: dark ? "#d4a56c" : "#8f6330"
     readonly property color forged: dark ? "#d38e70" : "#97573a"
     readonly property color focus: dark ? "#c9d9cf" : "#2f4a3d"
+    // An address's mark in the mailbox (the unified mailbox's part 4): eight
+    // quiet tints, the window's own text on each in both themes (10:1 light,
+    // 4.9:1 at least dark), given in order of the addresses' priority unless
+    // chosen in Accounts (`mailbox::tints`).
+    readonly property var tints: dark ? ["#3f5a4c", "#6b5440", "#48566e", "#6b4a50", "#574d6b", "#3f5f63", "#66603c", "#5c5248"] : ["#d3e3d9", "#ecd8c2", "#d2dbea", "#ecd4d8", "#ddd5ea", "#cfe4e6", "#e8e1c0", "#e3d9cd"]
     // A phone held upright: narrower margins and spacing (main.qml says when).
     property bool compact: false
     // Fingers rather than a mouse (a phone, or the runner's phone size): what is

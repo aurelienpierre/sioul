@@ -76,6 +76,9 @@ sioul-app/src/letters.rs	add	1	std::fs::copy(&source, free_name(&inbox, &name))
 # sioul-app/src/mail.rs: your answer to a cancellation its organizer sent (`agenda::cancellation`, read again just before, refused otherwise): the one removal of a meeting with others.
 sioul-app/src/mail.rs	perform_moving	1	std::fs::remove_file(file)
 
+# sioul-app/src/mail.rs: the mailbox's chip and address chosen on this device (state): no item.
+sioul-app/src/mail.rs	keep_mailbox_view_in	1	sioul_core::filelock::replace(path, text.as_bytes())
+
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
 sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)

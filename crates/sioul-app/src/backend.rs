@@ -54,6 +54,8 @@ pub mod qobject {
         #[qproperty(bool, form_busy)]
         #[qproperty(QString, mail_accounts)]
         #[qproperty(QString, mail_folder)]
+        // Every address's mail in time order (`mailbox::page`), while Mail shows it.
+        #[qproperty(QString, mailbox)]
         #[qproperty(QString, drafts)]
         // The Mail page's search by conditions: its sentence, what the servers said, the rows (`mailsearch`).
         #[qproperty(QString, mail_search)]
@@ -286,6 +288,22 @@ pub mod qobject {
         /// Shows a folder of an account: the last two weeks, or `all`; `query` searches it.
         #[qinvokable]
         fn open_folder(self: Pin<&mut Sioul>, account: &QString, folder: &QString, all: bool, query: &QString);
+
+        /// Shows the mailbox, every address's mail in time order: `ask` as JSON
+        /// (`mailbox::Ask`: chip, account, windows, query, shown_resting); ""
+        /// while Mail does not show it (nothing is made meanwhile). The chip and
+        /// the address chosen are kept on this device.
+        #[qinvokable]
+        fn open_mailbox(self: Pin<&mut Sioul>, ask: &QString);
+
+        /// The mailbox's chip and address as last chosen on this device: JSON {chip, account}.
+        #[qinvokable]
+        fn mailbox_view(self: &Sioul) -> QString;
+
+        /// An address's mark's colour in the mailbox (0 to 7, one of the palette's;
+        /// -1: as its rank gives it); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_account_colour(self: Pin<&mut Sioul>, id: &QString, colour: i32) -> QString;
 
         /// A message was opened: it is marked read.
         #[qinvokable]
@@ -2308,6 +2326,7 @@ pub struct SioulRust {
     form_busy: bool,
     mail_accounts: QString,
     mail_folder: QString,
+    mailbox: QString,
     drafts: QString,
     mail_search: QString,
     undo_line: QString,
@@ -2364,6 +2383,8 @@ pub(crate) struct Shared {
     clean: Mutex<BTreeSet<u64>>,
     /// The folder the mail page shows.
     pub(crate) open_folder: Mutex<Option<mail::OpenFolder>>,
+    /// What the mailbox shows, while Mail shows it (`mailbox::Ask`); none otherwise.
+    pub(crate) open_mailbox: Mutex<Option<sioul_core::mailbox::Ask>>,
     /// What waits ten seconds for "Undo".
     pub(crate) pending: Mutex<Vec<Arc<mail::Pending>>>,
     pub(crate) mail_generation: AtomicU64,
@@ -4220,7 +4241,47 @@ impl qobject::Sioul {
         if let Ok(mut open) = shared.open_folder.lock() {
             *open = Some(mail::OpenFolder { account: account.to_string(), folder: folder.to_string(), all, query: query.to_string() });
         }
+        // A folder instead of the mailbox: the mailbox is not made meanwhile.
+        if let Ok(mut open) = shared.open_mailbox.lock() {
+            *open = None;
+        }
         mail::show_mail(&self.qt_thread(), &shared);
+    }
+
+    fn open_mailbox(self: Pin<&mut Self>, ask: &QString) {
+        let shared = self.shared();
+        let ask = ask.to_string();
+        let asked: Option<sioul_core::mailbox::Ask> = (!ask.trim().is_empty()).then(|| serde_json::from_str(&ask).unwrap_or_default());
+        if let Some(asked) = &asked {
+            mail::keep_mailbox_view(asked);
+            if let Ok(mut open) = shared.open_folder.lock() {
+                *open = None;
+            }
+        }
+        let shown = asked.is_some();
+        if let Ok(mut open) = shared.open_mailbox.lock() {
+            *open = asked;
+        }
+        if shown {
+            mail::show_mail(&self.qt_thread(), &shared);
+        }
+    }
+
+    fn mailbox_view(&self) -> QString {
+        QString::from(&mail::mailbox_view())
+    }
+
+    fn set_account_colour(mut self: Pin<&mut Self>, id: &QString, colour: i32) -> QString {
+        let colour = u8::try_from(colour).ok();
+        let said = match config::set_colour(&config_path(), &id.to_string(), colour) {
+            Ok(()) => String::new(),
+            Err(e) => e,
+        };
+        if !said.is_empty() {
+            self.as_mut().set_status(QString::from(&said));
+        }
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&said)
     }
 
     fn opened(self: Pin<&mut Self>, key: &QString) {
@@ -6540,8 +6601,10 @@ impl qobject::Sioul {
         // object's card opened from the agenda and Tasks, then Back (pictures alone), "taskviews" Now, the List
         // folded and a task opened, the Board, the Gantt and a composed task's details (pictures alone), "mail-open" a
         // message opened as a tie, then one not on this device (docs/client.md), "safe-area" the event form
-        // with Android's system bars stood in for, below then beside (pictures alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area"].contains(&steps.as_str()) && offline()) {
+        // with Android's system bars stood in for, below then beside (pictures alone), "mailbox" every
+        // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
+        // mailbox and a folder timed and counted (make-demo.py's --bulk), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

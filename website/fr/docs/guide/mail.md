@@ -28,6 +28,17 @@ Une fois que vous les avez mis en place :
 - **Votre propre filtre à indésirables**, entraîné sur votre ordinateur à partir de vos courriels ; vos courriels ne vont à aucun service de filtrage ([Votre filtre à indésirables](#your-own-spam-filter)).
 - **Les courriels signés et chiffrés** avec OpenPGP, votre clé dans le trousseau de votre système ou sur une clé de sécurité ([Signer et chiffrer](#signing-and-encrypting)).
 
+## Toutes les adresses {#all-addresses}
+
+- **Une seule liste de tout votre courrier**, du plus récent au plus ancien : ce qui est arrivé à chaque adresse et ce que vous avez envoyé, dans l’ordre où cela a été écrit. **Toutes les adresses** est en haut de la colonne de gauche, et la page Courriels s’ouvre dessus sur un ordinateur.
+- **Chaque courriel une fois** : un courriel arrivé à deux de vos adresses, ou que vous vous êtes envoyé, fait une seule ligne. Avec plus d’une adresse, un petit carré de la couleur de l’adresse, à sa première lettre, dit laquelle le garde ; vous choisissez la couleur de chaque adresse dans Comptes (**Sa couleur**), et vos autres appareils la dessinent pareil.
+- **Une ligne par courriel** : qui a écrit (« À Jeanne » pour ce que vous avez envoyé), l’objet, l’heure ; un petit point pour ce que vous n’avez pas lu ; les jours en en-têtes (« Aujourd’hui », « Hier », « lundi 26 octobre »). Pas d’aperçu, et rien de compté.
+- **Des pastilles au-dessus de la liste** : **Tout**, **Non lus**, **Envoyés**, **Indésirables**, une à la fois ; les carrés à leur suite ne gardent qu’une adresse, et un second appui les ramène toutes. Ce que vous avez choisi reste sur cet appareil. Les indésirables attendent sous leur propre pastille, avec leur mot discret (« probablement indésirable », « votre fournisseur : indésirable ») ; ce que vous avez dit ne pas être indésirable reste dans la liste.
+- **Le calme** : pendant le temps calme, une adresse de travail se repose : ses courriels quittent la liste et une ligne le dit, « noa@travail.example.org se repose jusqu’à 09:00. », avec **Afficher ses courriels**. Un courriel dont le moment n’est pas encore venu (vos listes disent plus tard) s’affiche sans son point. Les courriels des expéditeurs bloqués ne s’affichent jamais ; le courrier hostile d’une adresse protégée s’affiche comme « Quelqu’un chez example.org », ses mots cachés.
+- **Deux semaines**, puis **Courriels plus anciens** en ajoute deux à chaque fois ; une quinzaine chargée montre d’abord ses 500 courriels les plus récents, et **Courriels plus anciens** les suivants. La recherche au-dessus cherche dans toutes les adresses ; **Plus de critères…** ouvre la recherche par conditions.
+- **Un clic ouvre un courriel** à côté de la liste ; Retour le ferme, la liste là où elle était. Ctrl et Maj en choisissent plusieurs, d’une adresse à l’autre, pour les marquer comme lus, les archiver, les supprimer ou les déplacer d’un coup, ou les glisser sur un dossier. Un clic droit propose ce que propose la ligne d’un dossier.
+- La notification de plusieurs nouveaux courriels l’ouvre en haut. Sur un téléphone, la page Courriels s’ouvre encore sur la première boîte de réception pour l’instant, avec **Toutes les adresses** en tête de ses dossiers.
+
 ## Les dossiers {#folders}
 
 - **À gauche**, chaque adresse avec ses dossiers principaux : Boîte de réception, Envoyés, Brouillons, Archives, Indésirables, Corbeille. Les autres sont repliés sous **Autres dossiers**.

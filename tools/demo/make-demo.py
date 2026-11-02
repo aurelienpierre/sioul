@@ -1077,6 +1077,37 @@ def moved_log(p: Profile, mails: list[Mail]):
     p.write(p.state / "spam" / "moved" / "demo-device.jsonl", lines)
 
 
+def write_bulk(p: Profile, count: int):
+    """A large mailbox to measure (--bulk N, the unified mailbox's part 4):
+    N invented messages over 20 folders of the two addresses (the inbox,
+    Sent, the archive, the junk and six folders of projects each), sent over
+    the last eight weeks, three in four read. Made up: no real sender."""
+    projects = [f"Project {n:02}" for n in range(1, 7)]
+    folders = [("INBOX", "", "inbox"), ("Sent", ".Sent", "sent"), ("Archive", ".Archive", "archive"), ("Junk", ".Junk", "junk")] + [(name, "." + name, "other") for name in projects]
+    per = max(1, count // (2 * len(folders)))
+    now = p.clock.now
+    for a, account in enumerate(("work", "personal")):
+        mine = WORK if account == "work" else HOME
+        for f, (name, local, role) in enumerate(folders):
+            root = p.data / "mail" / account_id(account) / local if local else p.data / "mail" / account_id(account)
+            for sub in ("tmp", "new", "cur"):
+                (root / sub).mkdir(parents=True, exist_ok=True)
+            for i in range(per):
+                n = (a * len(folders) + f) * per + i
+                when = now - timedelta(minutes=(n * 4021) % (56 * 24 * 60))
+                sender = f"Sender {n % 300} <s{n % 300}@bulk.example>" if role != "sent" else f"Noa Ferrand <{mine}>"
+                to = mine if role != "sent" else f"s{n % 300}@bulk.example"
+                raw = (f"Message-ID: <bulk-{n}@bulk.example>\r\nFrom: {sender}\r\nTo: {to}\r\nDate: {mail_date(when)}\r\n"
+                       f"Subject: Message {n} about the matter {n % 50}\r\n\r\nA line of an invented message, about nothing in particular.\r\n")
+                unique = f"{unix(when)}.U{VALIDITY[account] + 10 + f}-{90000 + i}.sioul"
+                flags = "" if i % 4 == 0 and role in ("inbox", "other") else "S"
+                path = root / "cur" / f"{unique}:2,{flags}" if flags else root / "new" / unique
+                p.write(path, raw.encode(), when)
+        extra = "".join(f"[[folder]]\nname = {toml_string(name)}\ndisplay = {toml_string(name)}\nrole = \"other\"\nlocal = {toml_string('.' + name)}\nspecial = false\n\n" for name in projects)
+        listed = p.state / "sync" / f"{account_id(account)}.folders.toml"
+        p.write(listed, listed.read_text(encoding="utf-8") + extra)
+
+
 def moving_note(p: Profile):
     """A message the demo moved into its archive without its server saying
     where (crates/sioul-core/src/mailmoved.rs): opened from elsewhere, it is
@@ -2767,6 +2798,8 @@ def main():
     parser.add_argument("--language", choices=("en", "fr"), default="en", help="the language of the life written, and of Sioul")
     parser.add_argument("--no-hours", action="store_true", help="leave the week's hours out: the Porch asks for them")
     parser.add_argument("--notes-at", help="where Sioul finds DIR/notes when it runs (default: DIR/notes)")
+    parser.add_argument("--bulk", type=int, default=int(os.environ.get("SIOUL_DEMO_BULK") or 0),
+                        help="that many invented messages more, over 20 folders of the two addresses: the mailbox measured on a large profile")
     parser.add_argument("--spam", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SPAM")),
                         help="Sioul's own spam filter: a table made by hand, strangers' messages in its review queue (SIOUL_DEMO_SPAM=1 too)")
     parser.add_argument("--calls", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_CALLS")),
@@ -2799,6 +2832,8 @@ def main():
     write_config(profile)
     write_mail(profile, mails)
     moving_note(profile)
+    if args.bulk:
+        write_bulk(profile, args.bulk)
     if args.spam:
         profile.write(profile.data / "spam" / "table.bin", spam_table(clock), clock.ago(hours=26))
         moved_log(profile, [m for m in mails if m.key == "moved"])

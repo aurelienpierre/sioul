@@ -32,7 +32,7 @@
 #   socket's path holds 108 bytes at most, and past them Qt's audio waited
 #   half a minute at each step), and the session's own runtime folder hidden
 #   (its bus, its Wayland and audio sockets);
-# - the profile's fonts, Noto Sans and Hack (fonts.conf), the light theme, a
+# - the profile's fonts, Noto Sans and Hack (fonts.conf), the light theme (DEMO_THEME=dark for the dark one), a
 #   test password standing in for the keyring;
 # - 400 seconds at most.
 # Afterwards it prints the log's lines from QML and its errors, and the
@@ -89,7 +89,7 @@ trap 'rm -rf "$runtime"' EXIT
 home=/home/demo
 python3 "$repo/tools/demo/make-demo.py" --into "$profile" --now "$now" --language "$language" --notes-at "$home/Notes" > /dev/null
 
-env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$shots" SIOUL_GRAB_STEPS="$steps" SIOUL_TEST_PASSWORD=x SIOUL_THEME=light
+env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$shots" SIOUL_GRAB_STEPS="$steps" SIOUL_TEST_PASSWORD=x SIOUL_THEME="${DEMO_THEME:-light}"
      FONTCONFIG_FILE="$repo/tools/demo/fonts.conf" QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
      LANG="$locale" LC_ALL="$locale" TZ="$zone")
 if [[ -n "$phone" ]]; then
