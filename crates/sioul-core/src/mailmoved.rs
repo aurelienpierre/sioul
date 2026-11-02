@@ -118,7 +118,9 @@ pub fn note(account: &str, addresses: &[String], folder: &str, at: i64) -> std::
 }
 
 pub fn note_in(path: &Path, account: &str, addresses: &[String], folder: &str, at: i64) -> std::io::Result<()> {
-    let addresses: Vec<String> = addresses.iter().filter_map(|a| canonical(a)).collect();
+    let mut addresses: Vec<String> = addresses.iter().filter_map(|a| canonical(a)).collect();
+    addresses.sort();
+    addresses.dedup();
     if addresses.is_empty() {
         return Ok(());
     }

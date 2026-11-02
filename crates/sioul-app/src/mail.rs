@@ -157,10 +157,25 @@ pub(crate) fn pending_removal(shared: &Shared, file: &Path) -> Option<Arc<Pendin
 
 /// The deletion of `file` waiting for its "Undo" done now, its Undo gone (a
 /// letter's task made again: Undo would give two tasks for one scan; review
-/// of ab7daa4, later 16). Whether one waited.
+/// of ab7daa4, later 16): taken at once, done on a thread of its own, as the
+/// Undo timer's is, never the caller's, which may be the window's (review of
+/// 8b57a35, L17: what it does may wait for a server, or for a fetch's lock).
+/// Whether one waited.
 pub(crate) fn remove_now(qt: &QtThread, shared: &Arc<Shared>, file: &Path) -> bool {
     let Some(pending) = pending_removal(shared, file) else { return false };
-    finish(qt, shared, &pending);
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    take_off_thread(&pending, move |pending| done(&qt, &shared, &pending));
+    true
+}
+
+/// `pending` taken now (its "Undo" gone at once), then `run` with it on a
+/// thread of its own. False when someone took it first (its timer, "Undo").
+fn take_off_thread(pending: &Arc<Pending>, run: impl FnOnce(Arc<Pending>) + Send + 'static) -> bool {
+    if pending.taken.swap(true, Ordering::Relaxed) {
+        return false;
+    }
+    let pending = Arc::clone(pending);
+    std::thread::spawn(move || run(pending));
     true
 }
 
@@ -703,6 +718,11 @@ fn finish(qt: &QtThread, shared: &Arc<Shared>, pending: &Arc<Pending>) {
     if pending.taken.swap(true, Ordering::Relaxed) {
         return;
     }
+    done(qt, shared, pending);
+}
+
+/// What waited, taken already: done, its line said, the pages drawn again.
+fn done(qt: &QtThread, shared: &Arc<Shared>, pending: &Arc<Pending>) {
     // Done: the line says it, without "Undo" now.
     let mut moved = Vec::new();
     let line = perform_moving(&pending.work, shared, &mut moved).or_else(|| Some(pending.line.clone()));
@@ -1438,6 +1458,20 @@ pub(crate) fn source(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A removal done now (a letter's task made again, `remove_now`): its
+    /// "Undo" gone at once, the work done on a thread of its own, never the
+    /// caller's (review of 8b57a35, L17), and only once.
+    #[test]
+    fn a_removal_done_now_runs_off_the_caller_s_thread() {
+        let pending = Arc::new(Pending { work: Work::Skip { account: String::new(), file: PathBuf::from("/stand-in/task.ics"), start: 0 }, line: String::new(), taken: AtomicBool::new(false) });
+        let (tell, heard) = std::sync::mpsc::channel();
+        assert!(take_off_thread(&pending, move |_| tell.send(std::thread::current().id()).unwrap()));
+        assert!(pending.taken.load(Ordering::Relaxed), "its Undo gone at once");
+        let ran_on = heard.recv_timeout(Duration::from_secs(5)).expect("done");
+        assert_ne!(ran_on, std::thread::current().id(), "never on the caller's thread");
+        assert!(!take_off_thread(&pending, |_| panic!("done twice")), "taken once");
+    }
 
     #[test]
     fn a_task_and_its_blocks_go_together_or_stay_together() {

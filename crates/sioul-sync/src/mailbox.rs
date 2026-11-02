@@ -638,7 +638,16 @@ pub fn act_many(account: &Account, password: &str, files: &[PathBuf], remote: &[
                     let mut intent = Intent::new(&account.id, these.iter().filter_map(|(f, _)| addresses.get(f).cloned()).collect());
                     let result = act_set(&mut session, account, folder, *validity, &set, action, &mut |target| intent.note(target)).await;
                     match intent.after(result) {
-                        Ok(went) => done.push((folder.role, these, went)),
+                        Ok(mut went) => {
+                            // A set's places, each confirmed by its Message-ID (`confirmed`).
+                            if let Some(went) = went.as_mut()
+                                && let Some(placed) = went.placed.take()
+                            {
+                                let sources: BTreeMap<u32, String> = these.iter().filter_map(|(f, uid)| Some((*uid, addresses.get(f)?.clone()))).collect();
+                                went.placed = Some(confirmed(&mut session, &account.id, &went.folder, placed, &sources).await);
+                            }
+                            done.push((folder.role, these, went))
+                        }
                         Err(e) => {
                             first.get_or_insert(e);
                             break;
@@ -794,6 +803,74 @@ pub(crate) async fn move_to(session: &mut Imap, uid: &str, target: &str, can_mov
 pub(crate) struct Placed {
     pub validity: u32,
     pub uids: BTreeMap<u32, u32>,
+}
+
+/// A set's places as its server said them (COPYUID), kept only where each
+/// message's Message-ID confirms them (review of 8b57a35, M1): a range
+/// written high to low ("4:2") is read lowest first, the same set by RFC
+/// 4315, so the order of the server's text cannot pair a set. After the
+/// move's own commands, the destination's UIDs are read with their
+/// Message-IDs (EXAMINE, `UID FETCH` of `HEADER.FIELDS (MESSAGE-ID)`), and
+/// each moved message is paired with the one destination UID carrying its
+/// Message-ID (`paired_by_ids`); one whose Message-ID is missing, or carried
+/// twice in the set or at the destination, stays unpaired: its file goes
+/// and its note waits for the copy (`follow`'s "not said"). Nothing read
+/// (an error, another UIDVALIDITY): none paired. One message keeps its one
+/// pair, as said. `sources`: each moved message's address (`mid:…`,
+/// `sioul:mail/…`) by its UID before. Leaves `target` examined: whoever acts
+/// next selects its own folder first.
+pub(crate) async fn confirmed(session: &mut Imap, account: &str, target: &str, placed: Placed, sources: &BTreeMap<u32, String>) -> Placed {
+    if placed.uids.len() <= 1 {
+        return placed;
+    }
+    let unpaired = Placed { validity: placed.validity, uids: BTreeMap::new() };
+    match imap::within(COMMAND, session.examine(target)).await {
+        Ok(Ok(examined)) if examined.uid_validity == Some(placed.validity) => {}
+        _ => return unpaired,
+    }
+    let set = ranges(&placed.uids.values().copied().collect());
+    let mut there: BTreeMap<u32, String> = BTreeMap::new();
+    let mut whole = true;
+    {
+        let Ok(Ok(mut fetches)) = imap::within(COMMAND, session.uid_fetch(&set, "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")).await else { return unpaired };
+        // Read to its end, whatever comes: the connection goes on after it.
+        while let Some(fetch) = fetches.next().await {
+            match fetch {
+                Ok(fetch) => {
+                    if let (Some(uid), Some(header)) = (fetch.uid, fetch.header()) {
+                        there.insert(uid, mailfind::address_of(account, header));
+                    }
+                }
+                Err(_) => whole = false,
+            }
+        }
+    }
+    if !whole {
+        return unpaired;
+    }
+    paired_by_ids(&placed, sources, &there)
+}
+
+/// Each moved message (`sources`, by its UID before, among those `placed`
+/// names) paired with the destination UID (among `placed`'s, `there` giving
+/// their addresses) that carries the same Message-ID, whatever order the
+/// server wrote: only a Message-ID found once in the set and once at the
+/// destination pairs; a message without one (a digest's address) never does.
+fn paired_by_ids(placed: &Placed, sources: &BTreeMap<u32, String>, there: &BTreeMap<u32, String>) -> Placed {
+    let destinations: BTreeSet<u32> = placed.uids.values().copied().collect();
+    let moved: Vec<(u32, &String)> = sources.iter().filter(|(uid, _)| placed.uids.contains_key(uid)).map(|(uid, a)| (*uid, a)).collect();
+    let arrived: Vec<(u32, &String)> = there.iter().filter(|(uid, _)| destinations.contains(uid)).map(|(uid, a)| (*uid, a)).collect();
+    let mut uids = BTreeMap::new();
+    for (uid, address) in &moved {
+        if address.starts_with(mailfind::DIGEST_SCHEME) || moved.iter().filter(|(_, a)| a == address).count() != 1 {
+            continue;
+        }
+        let mut carrying = arrived.iter().filter(|(_, a)| a == address);
+        if let (Some((destination, _)), None) = (carrying.next(), carrying.next()) {
+            uids.insert(*uid, *destination);
+        }
+    }
+    Placed { validity: placed.validity, uids }
 }
 
 /// The code an OK carried about where messages went (RFC 4315 §3).
@@ -1344,8 +1421,13 @@ mod tests {
         let server = Server::of(&a).unwrap();
         crate::fetch::block_on(async {
             let mut session = imap::open(&server, "x").await?;
-            for n in 1..=12 {
+            for n in (1..=12).chain(14..=16) {
                 imap::within(COMMAND, session.append("INBOX", None, None, raw(n))).await?.map_err(imap::server)?;
+            }
+            // Two messages of one Message-ID (someone reused it).
+            for twin in ["one", "two"] {
+                let raw = String::from_utf8(raw(17)).unwrap().replace("Subject: Move 17", &format!("Subject: Twin {twin}"));
+                imap::within(COMMAND, session.append("INBOX", None, None, raw)).await?.map_err(imap::server)?;
             }
             for folder in ["Archive", "Junk", "Trash", "Banque"] {
                 let _ = imap::within(COMMAND, session.create(folder)).await?;
@@ -1414,6 +1496,20 @@ mod tests {
         assert_eq!(moved.len(), 2);
         placed(&a, 5, "Banque");
         placed(&a, 6, "Banque");
+        // A set of three, each pair confirmed by its Message-ID (review of 8b57a35, M1).
+        let three: Vec<PathBuf> = [14, 15, 16].map(inbox_file).to_vec();
+        let moved = act_many(&a, "x", &three, &[], &Action::Move("Banque".into())).unwrap();
+        assert_eq!(moved.len(), 3, "{moved:?}");
+        for n in [14, 15, 16] {
+            placed(&a, n, "Banque");
+        }
+        // Two messages of one Message-ID in a set: no pair confirmed; their
+        // files go, on their way, and their copies come with the next sync.
+        let twins: Vec<PathBuf> = copies(&a, 17).into_iter().map(|(_, file)| file).collect();
+        assert_eq!(twins.len(), 2);
+        let moved = act_many(&a, "x", &twins, &[], &Action::Move("Banque".into())).unwrap();
+        assert!(moved.is_empty() && copies(&a, 17).is_empty(), "{moved:?}");
+        assert_eq!(mailmoved::of(&format!("mid:{}", id(17))).map(|m| m.folder), Some("Banque".into()));
         // Into another address: under the place its server gave it (APPENDUID).
         let seven = inbox_file(7);
         let moved = move_across(&a, "x", &seven, &c, "x", "INBOX").unwrap();
@@ -1422,18 +1518,23 @@ mod tests {
         assert!(moved[0].1.starts_with(c.maildir_path()) && maildir::origin_of(&moved[0].1) == on_server_of(&c, "INBOX", 7), "{moved:?}");
         // The next syncs fetch nothing twice.
         let again = crate::fetch::sync(&a, "x").unwrap();
-        assert!(again.new.is_empty() && again.elsewhere.is_empty(), "{again:?}");
+        let twin = format!("Message-ID: <{}>", id(17));
+        assert!(again.new.is_empty() && again.elsewhere.len() == 2 && again.elsewhere.iter().all(|f| std::fs::read_to_string(f).unwrap().contains(&twin)), "only the twins, which waited for it: {again:?}");
+        let twins = copies(&a, 17);
+        assert!(twins.len() == 2 && twins.iter().all(|(folder, _)| folder == "Banque"), "{twins:?}");
+        assert!(mailmoved::of(&format!("mid:{}", id(17))).is_none(), "their copies here, the note gone");
         let other = crate::fetch::sync(&c, "x").unwrap();
         assert!(other.new.is_empty() && other.elsewhere.is_empty(), "the other address's first sync finds it kept: {other:?}");
         assert_eq!(one(&c, 7).0, "INBOX");
-        for (n, folder) in [(1, "Archive"), (2, "Junk"), (3, "Trash"), (4, "Banque"), (5, "Banque"), (6, "Banque")] {
+        for (n, folder) in [(1, "Archive"), (2, "Junk"), (3, "Trash"), (4, "Banque"), (5, "Banque"), (6, "Banque"), (14, "Banque"), (15, "Banque"), (16, "Banque")] {
             placed(&a, n, folder);
         }
         // Another device: each moved message once, in its folder.
         crate::fetch::sync(&b, "x").unwrap();
-        for (n, folder) in [(1, "Archive"), (2, "Junk"), (3, "Trash"), (4, "Banque"), (5, "Banque"), (6, "Banque")] {
+        for (n, folder) in [(1, "Archive"), (2, "Junk"), (3, "Trash"), (4, "Banque"), (5, "Banque"), (6, "Banque"), (14, "Banque"), (15, "Banque"), (16, "Banque")] {
             assert_eq!(one(&b, n).0, folder);
         }
+        assert_eq!(copies(&b, 17).len(), 2);
         assert!(copies(&b, 7).is_empty());
         let roots = sioul_core::mailindex::MailIndex::roots_of(&{
             let mut config = sioul_core::config::Config::default();
@@ -1513,6 +1614,33 @@ mod tests {
         let other = crate::fetch::sync(&c, "x").unwrap();
         assert!(other.new.is_empty() && other.elsewhere.is_empty(), "{other:?}");
         assert_eq!(one(&c, 13).1, file);
+    }
+
+    /// A set's places paired by Message-ID, never by the order of the
+    /// server's text (review of 8b57a35, M1): a range written high to low,
+    /// which imap-proto reads lowest first, paired right; a Message-ID twice
+    /// in the set or at the destination, none, or a destination COPYUID did
+    /// not name: unpaired.
+    #[test]
+    fn a_set_is_paired_by_its_message_ids() {
+        let Some(Answered::Copied(placed)) = code_of("a9 OK [COPYUID 7 4:2 10:12] Done\r\n") else { panic!() };
+        assert_eq!(placed.uids, BTreeMap::from([(2, 10), (3, 11), (4, 12)]), "the text's order, lowest first");
+        let map = |pairs: &[(u32, &str)]| pairs.iter().map(|(uid, id)| (*uid, if id.starts_with("sioul:") { id.to_string() } else { format!("mid:{id}@example.org") })).collect::<BTreeMap<u32, String>>();
+        // The server meant 4→10, 3→11, 2→12: the Message-IDs say so.
+        let sources = map(&[(2, "a"), (3, "b"), (4, "c")]);
+        assert_eq!(paired_by_ids(&placed, &sources, &map(&[(10, "c"), (11, "b"), (12, "a")])).uids, BTreeMap::from([(2, 12), (3, 11), (4, 10)]));
+        // Two messages of one Message-ID: neither; the third, yes.
+        assert_eq!(paired_by_ids(&placed, &map(&[(2, "a"), (3, "a"), (4, "c")]), &map(&[(10, "c"), (11, "a"), (12, "a")])).uids, BTreeMap::from([(4, 10)]));
+        // ... even where the destination shows that Message-ID once: two files never share one place.
+        assert_eq!(paired_by_ids(&placed, &map(&[(2, "a"), (3, "a"), (4, "c")]), &map(&[(10, "c"), (11, "a"), (12, "x")])).uids, BTreeMap::from([(4, 10)]));
+        // One Message-ID twice at the destination, or not there: unpaired.
+        assert_eq!(paired_by_ids(&placed, &sources, &map(&[(10, "c"), (11, "a"), (12, "a")])).uids, BTreeMap::from([(4, 10)]));
+        // A message without a Message-ID (a digest), and a destination COPYUID did not name: never.
+        let digest = "sioul:mail/home/0123456789abcdef";
+        assert_eq!(paired_by_ids(&placed, &map(&[(2, digest), (3, "b"), (4, "c")]), &map(&[(10, "c"), (11, "b"), (12, digest), (99, "d")])).uids, BTreeMap::from([(3, 11), (4, 10)]));
+        assert_eq!(paired_by_ids(&placed, &map(&[(2, "a"), (3, "b"), (4, "d")]), &map(&[(10, "c"), (11, "b"), (12, "a"), (99, "d")])).uids, BTreeMap::from([(2, 12), (3, 11)]));
+        // Nothing read at the destination: none.
+        assert!(paired_by_ids(&placed, &sources, &BTreeMap::new()).uids.is_empty());
     }
 
     #[test]

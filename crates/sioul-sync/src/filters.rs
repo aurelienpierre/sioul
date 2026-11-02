@@ -277,20 +277,16 @@ async fn run_in(session: &mut Imap, account: &Account, placed: Vec<(ImapOrigin, 
             },
         }
     }
+    let mut placing = Vec::new();
     for (folder, list) in moves {
         let uids: BTreeSet<u32> = list.iter().map(|(uid, _)| *uid).collect();
         // Noted as on their way before the command (`mailbox::Intent`), each file's address read before it moves.
-        let mut intent = mailbox::Intent::new(&account.id, list.iter().filter_map(|(_, job)| sioul_core::mailfind::address_of_file(&account.id, &job.file)).collect());
+        let sources: BTreeMap<u32, String> = list.iter().filter_map(|(uid, job)| Some((*uid, sioul_core::mailfind::address_of_file(&account.id, &job.file)?))).collect();
+        let mut intent = mailbox::Intent::new(&account.id, sources.values().cloned().collect());
         intent.note(&folder);
         let result = mailbox::move_to(session, &mailbox::ranges(&uids), &folder, can_move, uidplus).await;
         match intent.after(result) {
-            Ok(placed) => {
-                for (uid, job) in list {
-                    let place = placed.as_ref().and_then(|p| p.uids.get(&uid).map(|&new| ImapOrigin { validity: p.validity, uid: new }));
-                    done.moved.push((job.file.clone(), folder.clone(), place));
-                    done.acted.push(job);
-                }
-            }
+            Ok(placed) => placing.push((folder, placed, sources, list)),
             Err(e) => failed.extend(list.into_iter().map(|(uid, job)| (uid, job, Failure::Server(format!("{e:?}"))))),
         }
     }
@@ -300,6 +296,19 @@ async fn run_in(session: &mut Imap, account: &Account, placed: Vec<(ImapOrigin, 
         let _ = mailbox::store(session, &mailbox::ranges(&uids), &format!("-FLAGS.SILENT ({})", rules::FILTERED)).await;
     }
     done.failed.extend(failed.into_iter().map(|(_, job, why)| (job, why)));
+    // Last, as it leaves each folder examined in turn: each set's places
+    // confirmed by its Message-IDs (`mailbox::confirmed`).
+    for (folder, placed, sources, list) in placing {
+        let placed = match placed {
+            Some(placed) => Some(mailbox::confirmed(session, &account.id, &folder, placed, &sources).await),
+            None => None,
+        };
+        for (uid, job) in list {
+            let place = placed.as_ref().and_then(|p| p.uids.get(&uid).map(|&new| ImapOrigin { validity: p.validity, uid: new }));
+            done.moved.push((job.file.clone(), folder.clone(), place));
+            done.acted.push(job);
+        }
+    }
     Ok(done)
 }
 
