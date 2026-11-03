@@ -30,15 +30,16 @@ Once you set them up:
 
 ## All addresses {#all-addresses}
 
-- **One list of all your mail**, newest first: what came to every address and what you sent, in the order it was written. **All addresses** sits at the top of the left column, and Mail opens on it on a computer.
+- **One list of all your mail**, newest first: what came to every address and what you sent, in the order it was written. **All addresses** sits at the top of the left column, and Mail opens on it, on a computer and on a phone.
 - **Each message once**: a message that reached two of your addresses, or that you sent to yourself, is one row. With more than one address, a small square in the address's colour, with its first letter, says which holds it; you choose each address's colour in Accounts (**Its colour**), and your other devices draw the same.
-- **One line a message**: who wrote ("To Jane" for what you sent), the subject, the time; a small dot for what you have not read; the days as headers ("Today", "Yesterday", "Monday 26 October"). No preview, and nothing counted.
+- **One line a message** on a computer, two on a phone (who and the time, then the subject): who wrote ("To Jane" for what you sent), the subject, the time; a small dot for what you have not read; the days as headers ("Today", "Yesterday", "Monday 26 October"). No preview, and nothing counted.
 - **Chips above the list**: **All**, **Unread**, **Sent**, **Spam**, one at a time; the squares at their end keep one address, and a second tap brings them all back. What you chose stays on this device. Spam waits under its own chip, with its quiet word ("probably spam", "your provider: spam"); what you said is not spam stays in the list.
 - **Calm**: in quiet time a work address rests: its mail leaves the list and one line says so, "noa@work.example.org rests until 09:00.", with **Show its mail**. Mail whose time has not come yet (your lists say later) shows without its dot. Mail from blocked senders never shows; a shielded address's hostile mail shows as "Someone at example.org", its words hidden.
-- **Two weeks**, then **Earlier messages** adds two more each time; a crowded fortnight shows its newest 500 messages first, and **Earlier messages** the next. The search above it looks through every address; **More…** opens the search by conditions.
+- **Two weeks**, then **Earlier messages**, at the end of the list, adds two more each time; a crowded fortnight comes as you scroll. The search above it looks through every address; **More…** opens the search by conditions.
 - **A click opens a message** beside the list; Back closes it, the list where it was. Ctrl and Shift choose several, across addresses, to mark them read, archive, delete or move them at once, or drag them onto a folder. A right click offers what a folder's row offers. A message that reached two of your addresses is one row: marking it read or deleting it does so in both.
 - **Each address has its own letter** on its colour, never the same letter twice, so two addresses that start alike still read apart.
-- New mail's notification of several messages opens it at its top. On a phone, Mail still opens on the first inbox for now, with **All addresses** at the top of its folders.
+- **On a phone**, a tap opens a message over the list, and Back brings the list back where it was. A long press on a row opens its menu; **Select** there begins a selection, a tap then adds the next. The folders button shows your addresses and their folders. When the list shows, Sioul brings the other folders at once, as **Fetch mail now** would, so that what you sent from your computer is there too.
+- New mail's notification of several messages opens it at its top, on a computer and on a phone.
 
 ## Folders {#folders}
 

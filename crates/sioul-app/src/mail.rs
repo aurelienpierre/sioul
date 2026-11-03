@@ -94,8 +94,8 @@ pub(crate) struct Pending {
 pub(crate) struct MailViews {
     pub accounts: String,
     pub folder: String,
-    /// The mailbox, when Mail shows it; none otherwise (left as it was).
-    pub mailbox: Option<String>,
+    /// The mailbox's pages, when Mail shows it (`mailbox_pages`); none otherwise (left as it was).
+    pub mailbox: Option<MailboxPages>,
     pub drafts: String,
 }
 
@@ -142,10 +142,26 @@ fn keep_mailbox_view_in(path: &Path, ask: &sioul_core::mailbox::Ask) {
     }
 }
 
+/// The mailbox as the window takes it (§6): pages of `mailbox::PAGE` rows,
+/// each its own JSON (`page_texts`), and whether messages still wait to be
+/// read into their folders' indexes (another look then, while it shows).
+pub(crate) struct MailboxPages {
+    pub texts: Vec<String>,
+    pub indexing: bool,
+    /// How long it took to make (`sioul-perf`).
+    pub made: Duration,
+}
+
 /// The mailbox as `ask` asks it (`mailbox::page`): the addresses that sync,
 /// ranked as Mail's column ranks them, their colours, who rests now and
-/// until when, the world read once.
-fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>) -> String {
+/// until when, the world read once; cut into the pages the window takes.
+pub(crate) fn mailbox_pages(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>) -> MailboxPages {
+    let started = std::time::Instant::now();
+    let page = mailbox_page(config, ask, hidden);
+    MailboxPages { texts: page_texts(&page), indexing: page.indexing, made: started.elapsed() }
+}
+
+fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>) -> sioul_core::mailbox::Page {
     use sioul_core::areas::{Area, in_view};
     let now = sioul_core::zone::now();
     let mode = crate::hours::mode_at(&now);
@@ -174,8 +190,150 @@ fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeS
         })
         .collect();
     let world = sioul_core::mailbox::World::load(config, crate::hours::attention_at(&mode, &now));
-    let page = sioul_core::mailbox::page(&addresses, &world, ask, hidden, tr(), now.timestamp().as_second(), &sioul_core::zone::current());
-    json(&page)
+    sioul_core::mailbox::page(&addresses, &world, ask, hidden, tr(), now.timestamp().as_second(), &sioul_core::zone::current(), sioul_core::mailbox::STEP_FILL)
+}
+
+/// A mailbox row as it crosses to the window: its keys relative to the
+/// page's `prefix`, the words it shows, and only the marks it has (a false
+/// flag, an empty word, a single key left out; the window fills them back).
+#[derive(serde::Serialize)]
+struct RowOut<'a> {
+    key: &'a str,
+    /// Each address's copy when several, joined by a line end.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    keys: String,
+    uri: &'a str,
+    account: &'a str,
+    folder: &'a str,
+    role: Role,
+    who: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    address: &'a str,
+    subject: &'a str,
+    day: &'a str,
+    time: &'a str,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    unread: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    read: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    flagged: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    answered: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    attachments: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    hostile: bool,
+    trust_level: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    trust: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    spam: &'a str,
+    /// Its addresses, by their place in the page's `addresses`: "0,1".
+    #[serde(skip_serializing_if = "String::is_empty")]
+    marks: String,
+}
+
+/// One page of the mailbox as it crosses: its rows from `start`, whether
+/// more follow, and what the list's head shows.
+#[derive(serde::Serialize)]
+struct PageOut<'a> {
+    start: usize,
+    rows: Vec<RowOut<'a>>,
+    more: bool,
+    earlier: bool,
+    sentence: &'a str,
+    resting: &'a [sioul_core::mailbox::Resting],
+    addresses: &'a [sioul_core::mailbox::Mark],
+    chip: sioul_core::mailbox::Chip,
+    account: &'a str,
+    windows: u32,
+    prefix: &'a str,
+}
+
+/// The folder every key of the page lies under, its separator kept: what
+/// each key leaves out as it crosses.
+fn key_prefix(keys: &[&str]) -> String {
+    let Some(first) = keys.first() else { return String::new() };
+    let mut end = first.len();
+    for key in &keys[1..] {
+        end = end.min(first.bytes().zip(key.bytes()).take_while(|(a, b)| a == b).count());
+    }
+    first[..end].rfind(['/', '\\']).map_or_else(String::new, |at| first[..=at].to_string())
+}
+
+/// The page's rows cut into the pages the window takes, each published only
+/// when it changed (`show_mail_here`); one page, empty, when nothing shows.
+fn page_texts(page: &sioul_core::mailbox::Page) -> Vec<String> {
+    use sioul_core::mailbox::PAGE;
+    let keys: Vec<&str> = page.rows.iter().flat_map(|r| r.keys.iter().map(String::as_str).chain(std::iter::once(r.key.as_str()))).collect();
+    let prefix = key_prefix(&keys);
+    let relative = |key: &'_ str| key.strip_prefix(prefix.as_str()).unwrap_or(key).to_string();
+    let place = |account: &str| page.addresses.iter().position(|m| m.account == account).map(|i| i.to_string()).unwrap_or_default();
+    let chunks: Vec<&[sioul_core::mailbox::Row]> = if page.rows.is_empty() { vec![&page.rows[..]] } else { page.rows.chunks(PAGE).collect() };
+    let last = chunks.len() - 1;
+    chunks
+        .into_iter()
+        .enumerate()
+        .map(|(n, rows)| {
+            let rows: Vec<RowOut> = rows
+                .iter()
+                .map(|r| RowOut {
+                    key: r.key.strip_prefix(prefix.as_str()).unwrap_or(&r.key),
+                    keys: if r.keys.len() > 1 { r.keys.iter().map(|k| relative(k)).collect::<Vec<_>>().join("\n") } else { String::new() },
+                    uri: &r.uri,
+                    account: &r.account,
+                    folder: &r.folder,
+                    role: r.role,
+                    who: &r.who,
+                    address: &r.address,
+                    subject: &r.subject,
+                    day: &r.day,
+                    time: &r.time,
+                    unread: r.unread,
+                    read: r.read,
+                    flagged: r.flagged,
+                    answered: r.answered,
+                    attachments: r.attachments,
+                    hostile: r.hostile,
+                    trust_level: r.trust_level,
+                    trust: &r.trust,
+                    spam: &r.spam,
+                    marks: r.marks.iter().map(|m| place(&m.account)).collect::<Vec<_>>().join(","),
+                })
+                .collect();
+            json(&PageOut {
+                start: n * PAGE,
+                rows,
+                more: n < last || page.more,
+                earlier: page.earlier,
+                sentence: &page.sentence,
+                resting: &page.resting,
+                addresses: &page.addresses,
+                chip: page.chip,
+                account: &page.account,
+                windows: page.windows,
+                prefix: &prefix,
+            })
+        })
+        .collect()
+}
+
+/// An ask from the window whose list holds nothing (`fresh`): every page is
+/// new to it, what it was given forgotten (`held`). The ask kept without it.
+pub(crate) fn asked_fresh(asked: &mut sioul_core::mailbox::Ask, held: &mut Vec<String>) {
+    if std::mem::take(&mut asked.fresh) {
+        held.clear();
+    }
+}
+
+/// The pages to publish: those whose text differs from what the window was
+/// last given at their place (`held`, then updated). A page fewer than
+/// before shows itself by its `more`, which then changes.
+pub(crate) fn changed_pages(held: &mut Vec<String>, texts: &[String]) -> Vec<String> {
+    let changed = texts.iter().enumerate().filter(|(n, t)| held.get(*n) != Some(*t)).map(|(_, t)| t.clone()).collect();
+    *held = texts.to_vec();
+    changed
 }
 
 /// Your addresses: never answered to, never counted among the others.
@@ -414,7 +572,7 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
     let mode = crate::backend::mode_now();
     let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
     let asked = shared.open_mailbox.lock().ok().and_then(|o| o.clone());
-    let mailbox = asked.map(|ask| mailbox_page(&config, &ask, &files));
+    let mailbox = asked.map(|ask| mailbox_pages(&config, &ask, &files));
     MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), hours)), folder: folder.unwrap_or_default(), mailbox, drafts: json(&rows) }
 }
 
@@ -452,6 +610,10 @@ pub(crate) fn folder_cards(account: &Account, folders: &[Folder], folder: &Folde
     (cards, sent)
 }
 
+/// The pause between two looks that read the first index in steps (§6):
+/// the window's thread is left alone meanwhile.
+const STEP_PAUSE: Duration = Duration::from_millis(150);
+
 /// Computes the mail page on a thread and shows it, unless a newer one came first.
 pub(crate) fn show_mail(qt: &QtThread, shared: &Arc<Shared>) {
     crate::mailsearch::changed(qt, shared);
@@ -462,9 +624,24 @@ pub(crate) fn show_mail(qt: &QtThread, shared: &Arc<Shared>) {
 /// The mail page computed on this thread, and shown unless a newer one came
 /// first. `backend::show` runs it in the same look at the mail as the Porch;
 /// the page reads its folder's index (`folder_cards`), never its messages.
-pub(crate) fn show_mail_here(qt: &QtThread, shared: &Shared) {
+pub(crate) fn show_mail_here(qt: &QtThread, shared: &Arc<Shared>) {
     let generation = shared.mail_generation.fetch_add(1, Ordering::Relaxed) + 1;
-    let views = views(shared);
+    let started = std::time::Instant::now();
+    let mut views = views(shared);
+    let made = (started.elapsed(), views.mailbox.as_ref().map(|m| m.made));
+    // Messages wait to be read into their indexes: another look a moment
+    // later, while the mailbox shows (the job waits while Sioul is away and
+    // runs when it is back; the background step never makes the mailbox).
+    if views.mailbox.as_ref().is_some_and(|m| m.indexing) {
+        let (qt, shared) = (qt.clone(), Arc::clone(shared));
+        std::thread::spawn(move || {
+            std::thread::sleep(STEP_PAUSE);
+            if shared.open_mailbox.lock().is_ok_and(|o| o.is_some()) {
+                show_mail(&qt, &shared);
+            }
+        });
+    }
+    let pages = views.mailbox.take().map(|m| m.texts);
     let _ = qt.queue(move |mut sioul| {
         // Only the newest (see `backend::show`).
         if sioul.shared().mail_generation.load(Ordering::Relaxed) != generation || sioul.shared().mail_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
@@ -472,8 +649,18 @@ pub(crate) fn show_mail_here(qt: &QtThread, shared: &Shared) {
         }
         sioul.as_mut().set_mail_accounts(QString::from(&views.accounts));
         sioul.as_mut().set_mail_folder(QString::from(&views.folder));
-        if let Some(mailbox) = &views.mailbox {
-            sioul.as_mut().set_mailbox(QString::from(mailbox));
+        if let Some(pages) = &pages {
+            // Only the pages that changed cross (§6), each in its own signal.
+            let changed = sioul.shared().mailbox_pages.lock().map(|mut held| changed_pages(&mut held, pages)).unwrap_or_default();
+            let published = changed.len();
+            for text in changed {
+                sioul.as_mut().mailbox_page(QString::from(&text));
+            }
+            // From the job's start (a sync's report, an act, the page shown) to its pages published (§6).
+            if crate::timed() {
+                let (job, mailbox) = made;
+                eprintln!("sioul-perf: mail job {} ms, the mailbox {} ms, {published} page(s) published {} ms after the job began", job.as_millis(), mailbox.map_or(0, |m| m.as_millis()), started.elapsed().as_millis());
+            }
         }
         sioul.as_mut().set_drafts(QString::from(&views.drafts));
     });
@@ -891,6 +1078,28 @@ fn every_watcher(shared: &Shared) -> Vec<Arc<sioul_sync::Control>> {
     all.extend(shared.dav_watchers.lock().map(|w| w.values().cloned().collect::<Vec<_>>()).unwrap_or_default());
     all.extend(shared.github.lock().ok().and_then(|g| g.clone()));
     all
+}
+
+/// How seldom the mailbox asks for the other folders' round (decision 19).
+const BRING_EVERY: Duration = Duration::from_secs(60);
+
+/// Whether the other folders' round may be asked now (`asked`: when it last
+/// was, updated when it may): once a minute at most.
+pub(crate) fn bring_due(asked: &mut Option<std::time::Instant>, now: std::time::Instant) -> bool {
+    let due = asked.is_none_or(|at| now.saturating_duration_since(at) >= BRING_EVERY);
+    if due {
+        *asked = Some(now);
+    }
+    due
+}
+
+/// The mailbox shows on a phone (decision 19): every mail watcher fetches
+/// now, its other folders with it (a nudge makes the round bring them), as
+/// "Sync now" does but saying nothing; a watcher put away stays as it is.
+pub(crate) fn bring_folders(shared: &Shared) {
+    for control in shared.watchers.lock().map(|w| w.values().cloned().collect::<Vec<_>>()).unwrap_or_default() {
+        control.nudge();
+    }
 }
 
 /// Put away on a phone: the watchers keep only what notices new mail (the
@@ -1624,6 +1833,91 @@ mod tests {
         assert_eq!(undo_line("undo-many-trashed", 2), say("undo-many-trashed", &[("n", "2".to_string())]));
     }
 
+    /// The mailbox crosses by pages (the unified mailbox's part 5, §6): sixty
+    /// rows a page from its place, keys relative to the folder they share,
+    /// false flags and empty words left out; only a page that changed crosses
+    /// again, and a page fewer shows itself by its last page's `more`.
+    #[test]
+    fn the_mailbox_crosses_by_pages() {
+        use sioul_core::mailbox::{Chip, Mark, PAGE, Page, Row};
+        let row = |n: usize, accounts: &[&str]| Row {
+            key: format!("/stand-in/mail/{}/cur/1777{n:06}.U7-{n}.sioul:2,S", accounts[0]),
+            keys: accounts.iter().map(|a| format!("/stand-in/mail/{a}/cur/1777{n:06}.U7-{n}.sioul:2,S")).collect(),
+            uri: format!("mid:m{n}@example.org"),
+            account: accounts[0].into(),
+            folder: "INBOX".into(),
+            role: Role::Inbox,
+            who: "Ana".into(),
+            address: "ana@example.org".into(),
+            subject: format!("Note {n}"),
+            day: "Today".into(),
+            time: "09:41".into(),
+            unread: n == 0,
+            read: n != 0,
+            flagged: false,
+            answered: false,
+            attachments: false,
+            trust_level: "verified",
+            trust: "Signed by example.org".into(),
+            spam: String::new(),
+            hostile: false,
+            marks: accounts.iter().map(|a| Mark { account: a.to_string(), letter: "N".into(), tint: 0, title: format!("noa@{a}.example.org") }).collect(),
+            kinds: vec!["received"],
+            server: false,
+            sent: 0,
+        };
+        let marks = vec![Mark { account: "work".into(), letter: "N".into(), tint: 0, title: "noa@work.example.org".into() }, Mark { account: "home".into(), letter: "H".into(), tint: 1, title: "noa@home.example.org".into() }];
+        let page_of = |rows: Vec<Row>, more: bool| Page { rows, resting: Vec::new(), addresses: marks.clone(), earlier: true, more, indexing: false, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
+        let rows: Vec<Row> = (0..PAGE * 2 + 10).map(|n| row(n, if n == 1 { &["work", "home"] } else { &["work"] })).collect();
+        let texts = page_texts(&page_of(rows.clone(), false));
+        assert_eq!(texts.len(), 3);
+        let pages: Vec<serde_json::Value> = texts.iter().map(|t| serde_json::from_str(t).unwrap()).collect();
+        assert_eq!(pages.iter().map(|p| (p["start"].as_u64().unwrap(), p["rows"].as_array().unwrap().len(), p["more"].as_bool().unwrap())).collect::<Vec<_>>(), [(0, PAGE, true), (PAGE as u64, PAGE, true), (2 * PAGE as u64, 10, false)]);
+        assert_eq!(pages[0]["prefix"], "/stand-in/mail/");
+        let first = &pages[0]["rows"][0];
+        assert_eq!((first["key"].as_str(), first["unread"].as_bool(), first.get("read"), first.get("flagged"), first.get("keys"), first["marks"].as_str()), (Some("work/cur/1777000000.U7-0.sioul:2,S"), Some(true), None, None, None, Some("0")));
+        assert_eq!((pages[0]["rows"][1]["keys"].as_str(), pages[0]["rows"][1]["marks"].as_str()), (Some("work/cur/1777000001.U7-1.sioul:2,S\nhome/cur/1777000001.U7-1.sioul:2,S"), Some("0,1")));
+        // Published only when changed: the same pages, nothing; a new message at the top, every page.
+        let mut held = Vec::new();
+        assert_eq!(changed_pages(&mut held, &texts).len(), 3, "new to the window: every page");
+        assert!(changed_pages(&mut held, &texts).is_empty(), "nothing changed: nothing crosses");
+        let mut shifted = vec![row(999, &["work"])];
+        shifted.extend(rows.iter().cloned());
+        assert_eq!(changed_pages(&mut held, &page_texts(&page_of(shifted, false))).len(), 3, "a new message at the top shifts every page");
+        // A page fewer: the last one left says no more follow.
+        let fewer = page_texts(&page_of(rows[..PAGE + 5].to_vec(), false));
+        let changed = changed_pages(&mut held, &fewer);
+        assert_eq!(serde_json::from_str::<serde_json::Value>(changed.last().unwrap()).unwrap()["more"], false);
+        // The window's list emptied (another chip): every page new to it again.
+        let mut asked = sioul_core::mailbox::Ask { fresh: true, ..sioul_core::mailbox::Ask::default() };
+        asked_fresh(&mut asked, &mut held);
+        assert!(held.is_empty() && !asked.fresh);
+        assert_eq!(changed_pages(&mut held, &fewer).len(), fewer.len(), "fresh: every page crosses");
+        let mut again = sioul_core::mailbox::Ask::default();
+        asked_fresh(&mut again, &mut held);
+        assert_eq!(held.len(), fewer.len(), "not fresh: what it holds is kept");
+        // Nothing shows: one empty page all the same.
+        assert_eq!(page_texts(&page_of(Vec::new(), false)).len(), 1);
+        // Each page within its budget (§6), these rows' keys as long as a phone's.
+        let long: Vec<Row> = (0..PAGE).map(|n| Row { key: format!("/data/user/0/com.aurelienpierre.sioul/files/mail/a-long-account-id/cur/1777000000.U7-{n}.sioul:2,S"), keys: vec![format!("/data/user/0/com.aurelienpierre.sioul/files/mail/a-long-account-id/cur/1777000000.U7-{n}.sioul:2,S")], subject: "A subject of an ordinary length, about the matter at hand".into(), who: "Someone Sending".into(), ..row(n, &["work"]) }).collect();
+        let text = &page_texts(&page_of(long, false))[0];
+        assert!(text.len() <= 32 * 1024 && text.len() / PAGE <= 450, "{} bytes, {} a row", text.len(), text.len() / PAGE);
+        assert_eq!(key_prefix(&["/a/b/c", "/a/b/d", "/a/x"]), "/a/");
+        assert_eq!(key_prefix(&["C:\\mail\\a\\1", "C:\\mail\\b\\2"]), "C:\\mail\\");
+    }
+
+    /// The other folders' round, asked when the mailbox shows on a phone
+    /// (decision 19): at once, then not again within the minute.
+    #[test]
+    fn the_other_folders_are_asked_once_a_minute() {
+        let start = std::time::Instant::now();
+        let mut asked = None;
+        assert!(bring_due(&mut asked, start));
+        assert!(!bring_due(&mut asked, start + Duration::from_secs(30)));
+        assert!(bring_due(&mut asked, start + Duration::from_secs(61)));
+        assert!(!bring_due(&mut asked, start + Duration::from_secs(62)));
+    }
+
     /// The mailbox's chip and address, kept on this device and read back;
     /// what else it was asked (the search, the windows) is not kept.
     #[test]
@@ -1635,7 +1929,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&fresh);
         let path = fresh.join("sioul").join("mailbox-view.toml");
         assert_eq!(mailbox_view_in(&path), r#"{"chip":"all","account":""}"#);
-        keep_mailbox_view_in(&path, &sioul_core::mailbox::Ask { chip: sioul_core::mailbox::Chip::Spam, account: "work".into(), windows: 3, query: "x".into(), shown_resting: vec!["home".into()] });
+        keep_mailbox_view_in(&path, &sioul_core::mailbox::Ask { chip: sioul_core::mailbox::Chip::Spam, account: "work".into(), windows: 3, query: "x".into(), shown_resting: vec!["home".into()], ..sioul_core::mailbox::Ask::default() });
         assert_eq!(mailbox_view_in(&path), r#"{"chip":"spam","account":"work"}"#);
         let _ = std::fs::remove_dir_all(&fresh);
     }
@@ -1961,30 +2255,53 @@ mod tests {
             std::fs::write(base.join("made"), "").unwrap();
         }
         println!("measure: {} messages over {} folders of {} addresses", per * folders.len() * ids.len(), folders.len() * ids.len(), ids.len());
-        let at = std::time::Instant::now();
-        for account in &config.accounts {
-            for f in &folders {
-                sioul_core::mailcache::folder(&account.id, &account.maildir_path(), &f.local);
+        for id in &ids {
+            if let Some(dir) = sioul_core::mailcache::account_dir(id) {
+                let _ = std::fs::remove_dir_all(dir);
             }
         }
-        println!("measure: the first index of every folder: {:.0} ms", at.elapsed().as_secs_f64() * 1000.0);
         let addresses: Vec<sioul_core::mailbox::Address> = config.accounts.iter().enumerate().map(|(i, account)| sioul_core::mailbox::Address { account: account.clone(), folders: folders.clone(), trusted: vec!["mx.example.org".into()], tint: i as u8, resting: None }).collect();
         let mode = sioul_core::quiet::Mode { quiet: false, time: sioul_core::areas::Time::Work, week: sioul_core::areas::Week::default(), reason: sioul_core::quiet::Reason::Working, until: None, back: None, label: String::new() };
         let zone = sioul_core::zone::current();
         let none = BTreeSet::new();
-        let timed = |what: &str, ask: sioul_core::mailbox::Ask| {
-            let at = std::time::Instant::now();
+        let make = |ask: &sioul_core::mailbox::Ask| {
             let world = sioul_core::mailbox::World::load(&config, sioul_core::attention::Now::of(&mode));
-            let page = sioul_core::mailbox::page(&addresses, &world, &ask, &none, tr(), now, &zone);
-            let text = json(&page);
-            println!("measure: the mailbox, {what}: {:.0} ms, {} rows, {} KB of JSON", at.elapsed().as_secs_f64() * 1000.0, page.rows.len(), text.len() / 1000);
+            sioul_core::mailbox::page(&addresses, &world, ask, &none, tr(), now, &zone, sioul_core::mailbox::STEP_FILL)
         };
         use sioul_core::mailbox::{Ask, Chip};
-        timed("two weeks, the first time after the index", Ask::default());
-        timed("two weeks", Ask::default());
+        // The first index: the newest of each folder at once, then steps while the page shows.
+        let at = std::time::Instant::now();
+        let first = make(&Ask::default());
+        println!("measure: the first page, no index yet: {:.0} ms, {} rows, still indexing: {}", at.elapsed().as_secs_f64() * 1000.0, first.rows.len(), first.indexing);
+        let (at, mut steps) = (std::time::Instant::now(), 0);
+        while make(&Ask::default()).indexing {
+            steps += 1;
+        }
+        println!("measure: the rest of the first index: {steps} steps, {:.0} ms in all, {:.1} ms per step", at.elapsed().as_secs_f64() * 1000.0, at.elapsed().as_secs_f64() * 1000.0 / f64::from(steps.max(1)));
+        let timed = |what: &str, ask: Ask| {
+            let at = std::time::Instant::now();
+            let page = make(&ask);
+            let texts = page_texts(&page);
+            let biggest = texts.iter().map(String::len).max().unwrap_or(0);
+            let per_row = texts.iter().map(String::len).sum::<usize>() / page.rows.len().max(1);
+            println!("measure: the mailbox, {what}: {:.1} ms, {} rows in {} pages, the biggest page {} KB, {} bytes a row", at.elapsed().as_secs_f64() * 1000.0, page.rows.len(), texts.len(), biggest / 1000, per_row);
+            assert!(biggest <= 32 * 1024, "a page within 32 KB: {biggest}");
+        };
+        timed("two weeks, a page, kept", Ask::default());
+        timed("two weeks, a page, kept again", Ask::default());
+        timed("two weeks, three pages", Ask { rows: 3 * sioul_core::mailbox::PAGE, ..Ask::default() });
         timed("eight weeks", Ask { windows: 4, ..Ask::default() });
         timed("the Unread chip", Ask { chip: Chip::Unread, ..Ask::default() });
         timed("a search", Ask { query: "matter 7".into(), ..Ask::default() });
+        // A sync's report: a new message in the first inbox, then the page made and its changed pages found.
+        let mut held = page_texts(&make(&Ask::default()));
+        let inbox = config.accounts[0].maildir_path().join("cur").join(format!("{now}.U7-99999.sioul{}2,", maildir::INFO));
+        std::fs::write(&inbox, format!("Message-ID: <new@example.org>\r\nFrom: Ana <ana@example.org>\r\nTo: me0@example.org\r\nSubject: Just in\r\nDate: {}\r\n\r\nHello.\r\n", jiff::Timestamp::from_second(now).unwrap().strftime("%a, %d %b %Y %H:%M:%S +0000"))).unwrap();
+        let at = std::time::Instant::now();
+        let texts = page_texts(&make(&Ask::default()));
+        let changed = changed_pages(&mut held, &texts);
+        println!("measure: a sync's report to the page published (Rust's part): {:.1} ms, {} page(s) changed", at.elapsed().as_secs_f64() * 1000.0, changed.len());
+        let _ = std::fs::remove_file(&inbox);
         let account = &config.accounts[0];
         let at = std::time::Instant::now();
         let (cards, sent) = folder_cards(account, &folders, &folders[0], &none, false);

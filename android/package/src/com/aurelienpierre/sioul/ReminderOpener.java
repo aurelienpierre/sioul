@@ -20,7 +20,7 @@ import android.util.Log;
  */
 public final class ReminderOpener extends Activity
 {
-    /** The intent's address: "sioul-open:event", "sioul-open:porch", "sioul-open:review", "sioul-open:need", "sioul-open:mail". */
+    /** The intent's address: "sioul-open:event", "sioul-open:porch", "sioul-open:review", "sioul-open:need", "sioul-open:mail", "sioul-open:mailbox". */
     static final String SCHEME = "sioul-open";
     /** The event's file, on an event's reminder; "work" or "night" and its day for a closing sheet ("work:2026-10-14"); a block's key for its question; a message's address (never its file) for new mail's notification of one message. */
     static final String KEY = "key";
@@ -29,7 +29,7 @@ public final class ReminderOpener extends Activity
 
     /**
      * Whether a notice of Sioul's may open `kind` with `key`: an event, the
-     * Porch, a block's question ("need"), a closing sheet ("review") of the
+     * Porch, the mailbox (new mail of several), a block's question ("need"), a closing sheet ("review") of the
      * work day ("work") or of the whole day ("night"), with the day it is for
      * ("work:2026-10-14"), or a message ("mail") by its address alone, never
      * a file. Rust reads the same (eventalarms.rs, `opened_of`). Pure,
@@ -41,7 +41,7 @@ public final class ReminderOpener extends Activity
      */
     static boolean opens(String kind, String key)
     {
-        if ("event".equals(kind) || "porch".equals(kind) || "need".equals(kind))
+        if ("event".equals(kind) || "porch".equals(kind) || "need".equals(kind) || "mailbox".equals(kind))
             return true;
         if ("mail".equals(kind))
             return isMailAddress(key);

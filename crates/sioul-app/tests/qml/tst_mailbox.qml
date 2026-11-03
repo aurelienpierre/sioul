@@ -10,7 +10,9 @@
 // Back leaving the list where it was; a selection across two addresses
 // acted on and dragged onto a folder; neither list handed the other's rows
 // on the way to a folder and back; a row held by two addresses acted on as
-// one message, each copy at once. Run by tools/qml-test.sh.
+// one message, each copy at once; the rows by pages of sixty; on a phone
+// (part 5), two lines a row within their objects, a long press, Select,
+// Back, the other folders asked for. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -32,15 +34,39 @@ Item {
         { id: "work", title: "noa@work.example.org", unread: false, resting: false, folders: [{ name: "INBOX", title: "Inbox", role: "inbox", icon: "mail-folder-inbox", unread: false, kept: true }, { name: "Archive", title: "Archive", role: "archive", icon: "folder", unread: false, kept: true }], more: [] },
         { id: "home", title: "noa@home.example.org", unread: false, resting: true, folders: [{ name: "INBOX", title: "Inbox", role: "inbox", icon: "mail-folder-inbox", unread: false, kept: true }], more: [] }
     ])
-    readonly property var marks: ({ work: { account: "work", letter: "N", tint: 0, title: "noa@work.example.org" }, home: { account: "home", letter: "N", tint: 1, title: "noa@home.example.org" } })
+    readonly property var marks: ({ work: { account: "work", letter: "N", tint: 0, title: "noa@work.example.org" }, home: { account: "home", letter: "H", tint: 1, title: "noa@home.example.org" } })
+    readonly property var places: ["work", "home"]
+    readonly property string prefix: "/stand-in/mail/"
 
-    // A row as `mailbox::page` gives it: its keys, each address's copy.
+    // A row as `mailbox::page` holds it (its addresses in `accounts`, for the
+    // stand-in's filters), and as it crosses (`outOf`: `mail::RowOut`).
     function keyOf(n, account) {
-        return "/stand-in/mail/" + account + "/cur/17770000" + n + ".U7-" + n + ".sioul:2,S"
+        return root.prefix + account + "/cur/17770000" + n + ".U7-" + n + ".sioul:2,S"
     }
     function rowOf(n, day, account, subject, extra) {
         const accounts = Array.isArray(account) ? account : [account]
-        return Object.assign({ key: root.keyOf(n, accounts[0]), keys: accounts.map(a => root.keyOf(n, a)), uri: "mid:m" + n + "@example.org", account: accounts[0], folder: "INBOX", role: "inbox", who: "Ana", address: "ana@example.org", subject: subject, day: day, time: "09:4" + n, unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", spam: "", hostile: false, marks: accounts.map(a => root.marks[a]), kinds: ["received"], server: false }, extra || {})
+        return Object.assign({ n: n, accounts: accounts, uri: "mid:m" + n + "@example.org", folder: "INBOX", role: "inbox", who: "Ana", address: "ana@example.org", subject: subject, day: day, time: "09:4" + (n % 10), read: true, trust_level: "verified", trust: "Signed by example.org", kinds: ["received"] }, extra || {})
+    }
+    function keysOf(row) {
+        return row.accounts.map(a => root.keyOf(row.n, a))
+    }
+    function outOf(row) {
+        const out = { key: root.keyOf(row.n, row.accounts[0]).slice(root.prefix.length), uri: row.uri, account: row.accounts[0], folder: row.folder, role: row.role, who: row.who, address: row.address, subject: row.subject, day: row.day, time: row.time, trust_level: row.trust_level, trust: row.trust, marks: row.accounts.map(a => String(root.places.indexOf(a))).join(",") }
+        if (row.accounts.length > 1)
+            out.keys = root.keysOf(row).map(k => k.slice(root.prefix.length)).join("\n")
+        for (const flag of ["unread", "read", "flagged", "answered", "attachments", "hostile"])
+            if (row[flag] === true)
+                out[flag] = true
+        if (row.spam)
+            out.spam = row.spam
+        return out
+    }
+    // A crowded fortnight, for the pages and the objects: `n` more rows of one address.
+    function bulkRows(n) {
+        const rows = []
+        for (let i = 0; i < n; i++)
+            rows.push(root.rowOf(100 + i, i < 20 ? "Today" : i < 60 ? "Yesterday" : "Friday 30 October", "work", "Note " + i, { who: "Sender " + i, unread: i % 3 === 0, read: i % 3 !== 0 }))
+        return rows
     }
 
     // What the stand-in Rust answers: every row, then those the ask keeps.
@@ -52,14 +78,24 @@ Item {
         rowOf(5, "Monday 26 October", "work", "You have won", { kinds: ["spam"], spam: "your provider: spam" })
     ]
 
-    function pageFor(ask) {
-        const rows = root.allRows.filter(r => !r.keys.every(k => mock.gone.indexOf(k) >= 0) && (ask.account === "" || r.marks.some(m => m.account === ask.account))
-            && (ask.chip === "spam" ? r.spam !== "" : r.spam === "")
+    // What the stand-in Rust answers to an ask: the rows it keeps, cut into
+    // the pages it publishes (sixty rows each, as many as asked for).
+    function pagesFor(ask) {
+        const every = root.allRows.concat(root.bulkRows(mock.bulk))
+        const rows = every.filter(r => !root.keysOf(r).every(k => mock.gone.indexOf(k) >= 0) && (ask.account === "" || r.accounts.indexOf(ask.account) >= 0)
+            && (ask.chip === "spam" ? !!r.spam : !r.spam)
             && (ask.chip !== "sent" || r.kinds.indexOf("sent") >= 0)
             && (ask.chip !== "unread" || !r.read)
-            && (ask.account !== "" || ask.shown_resting.indexOf("home") >= 0 || r.marks.some(m => m.account !== "home"))
+            && (ask.account !== "" || ask.shown_resting.indexOf("home") >= 0 || r.accounts.some(a => a !== "home"))
             && (ask.query === "" || r.subject.toLowerCase().indexOf(ask.query.toLowerCase()) >= 0))
-        return { rows: rows, resting: ask.shown_resting.indexOf("home") >= 0 ? [] : [{ account: "home", line: "noa@home.example.org rests until 09:00." }], addresses: [root.marks.work, root.marks.home], earlier: ask.windows < 2, sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: ask.account, windows: ask.windows }
+        const shown = rows.slice(0, ask.rows || 60)
+        const head = { resting: ask.shown_resting.indexOf("home") >= 0 ? [] : [{ account: "home", line: "noa@home.example.org rests until 09:00." }], addresses: [root.marks.work, root.marks.home], earlier: ask.windows < 2, sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: ask.account, windows: ask.windows, prefix: root.prefix }
+        const pages = []
+        for (let start = 0; start === 0 || start < shown.length; start += 60) {
+            const part = shown.slice(start, start + 60)
+            pages.push(Object.assign({ start: start, rows: part.map(root.outOf), more: start + 60 < shown.length || rows.length > shown.length }, head))
+        }
+        return pages
     }
 
     QtObject {
@@ -72,8 +108,10 @@ Item {
         property string mailSearch: ""
         property bool realtime: false
         property string reading: JSON.stringify({ subject: "Quote for the cooperative", from_name: "Ana", from_address: "ana@example.org", to: [], cc: [], others: false, text: "Hello", html: null, attachments: [], uri: "mid:m2@example.org", flagged: false })
-        property string mailbox: ""
         property var mailboxAsked: []
+        // Rows added to the stand-in's, for the pages and the objects.
+        property int bulk: 0
+        property int broughtFolders: 0
         property string kept: "{}"
         property var acted: []
         // Keys deleted: their rows leave the next page, as Rust leaves what waits for its Undo.
@@ -82,6 +120,7 @@ Item {
         property var openedFolders: []
 
         signal messageRead(string key, string reading, string invitation)
+        signal mailboxPage(string text)
         signal messageFound(int ticket, string answer)
         signal mailMoved(string moves)
 
@@ -91,11 +130,18 @@ Item {
         function textWith(key, name, value) {
             return key + ":" + value
         }
-        // As Rust: the page made for the ask, at once; "" asks nothing.
+        // As Rust: the pages made for the ask, at once; "" asks nothing.
         function openMailbox(ask) {
             mock.mailboxAsked = mock.mailboxAsked.concat([ask])
             if (ask !== "")
-                mock.mailbox = JSON.stringify(root.pageFor(JSON.parse(ask)))
+                mock.publish(JSON.parse(ask))
+        }
+        function publish(ask) {
+            for (const one of root.pagesFor(ask))
+                mock.mailboxPage(JSON.stringify(one))
+        }
+        function bringFolders() {
+            mock.broughtFolders += 1
         }
         function mailboxView() {
             return mock.kept
@@ -117,7 +163,7 @@ Item {
             mock.gone = mock.gone.concat(keys)
             const asked = mock.mailboxAsked.filter(a => a !== "")
             if (asked.length > 0)
-                mock.mailbox = JSON.stringify(root.pageFor(JSON.parse(asked[asked.length - 1])))
+                mock.publish(JSON.parse(asked[asked.length - 1]))
         }
         function moveMessages(keys, account, folder) {
             mock.moved = mock.moved.concat([{ keys: JSON.parse(keys), account: account, folder: folder }])
@@ -219,6 +265,12 @@ Item {
         name: "Mailbox"
         when: windowShown
 
+        // Each test on a computer's size and the stand-in's own rows, whatever the one before left.
+        function init() {
+            fakeWindow.compact = false
+            mock.bulk = 0
+        }
+
         function find(item, name) {
             if (!item)
                 return null
@@ -256,19 +308,23 @@ Item {
             mock.acted = []
             mock.gone = []
             mock.moved = []
-            mock.mailbox = ""
+            mock.broughtFolders = 0
             mock.mailAccounts = ""
             fakeWindow.asked = []
             const page = createTemporaryObject(mailComponent, fakeWindow, { width: 1100, height: 800 })
             fakeWindow.mailPage = page
             mock.mailAccounts = root.accountsJson
             tryCompare(page, "boxShown", true)
-            tryVerify(() => page.box !== null && page.box.rows.length > 0)
+            tryVerify(() => page.box !== null && page.boxRows.length > 0)
             return page
         }
 
         function boxList(page) {
             return find(page, "mailboxList")
+        }
+
+        function boxModel(page) {
+            return boxList(page).model
         }
 
         function rowItem(page, subject) {
@@ -291,7 +347,8 @@ Item {
             const both = rowItem(page, "On both lists")
             // One line: as tall as one line of text and its paddings.
             verify(both.height < 40, "one line: " + both.height)
-            compare(all(both, i => i.mark !== undefined && i.mark !== null).length, 2, "both addresses' marks")
+            compare((page.marksText(page.listItems[0].marks).match(/<span/g) || []).length, 2, "both addresses' marks, as text")
+            verify(page.marksText(page.listItems[0].marks).indexOf("H") > 0, "each its own letter")
             compare(find(page, "mailboxResting").text, "noa@home.example.org rests until 09:00.")
             // "Show its mail": the resting address's mail too, this time.
             find(page, "mailboxShowResting").clicked()
@@ -399,8 +456,8 @@ Item {
         // inbox and All Mail give one key) acts once (review of 863e4c4, M1).
         function test_a_row_s_actions_act_on_each_address() {
             const page = made()
-            const both = root.allRows[0].keys
-            compare(page.listItems[0].keys, both)
+            const both = root.keysOf(root.allRows[0])
+            compare(page.rowKeys(page.listItems[0]), both)
             openMenu(page, "On both lists")
             tryVerify(() => menuItem(page, "ui-mark-read") !== null)
             menuItem(page, "ui-mark-read").triggered()
@@ -430,8 +487,7 @@ Item {
             compare(mock.acted[mock.acted.length - 1], { keys: [both], action: "trash" })
             tryVerify(() => page.listItems.every(r => r.subject !== "On both lists"))
             // One copy: acted on once, by its key.
-            page.boxShownResting = ["home"]
-            page.sioul.openMailbox(page.boxAsk())
+            page.showResting("home")
             openMenu(page, "Dinner on Friday")
             tryVerify(() => menuItem(page, "ui-trash") !== null)
             const before = mock.acted.length
@@ -469,6 +525,114 @@ Item {
             tryVerify(() => boxList(page).count === 3)
             compare(find(page, "folderList").count, 0)
             mock.mailFolder = ""
+        }
+
+        // The list comes by pages of sixty (§6): the first at once, the next as
+        // the list's end comes into view, never the list again; "Earlier
+        // messages" past the window's end; a page published again changes its
+        // rows in place, the list where it was.
+        function test_the_list_comes_by_pages() {
+            mock.bulk = 130
+            const page = made()
+            compare(lastAsk().rows, 60)
+            verify(lastAsk().fresh, "the first page: new to the list")
+            compare([page.boxRows.length, page.boxMore], [60, true])
+            verify(!find(page, "mailboxEarlier").visible, "Earlier waits for the window's end")
+            const list = boxList(page)
+            list.positionViewAtEnd()
+            tryCompare(page.boxRows, "length", 120)
+            compare([lastAsk().rows, lastAsk().fresh], [120, false])
+            list.positionViewAtEnd()
+            // Three of the stand-in's rows (the resting address's own left out) and the 130.
+            tryVerify(() => page.boxRows.length === 133 && !page.boxMore)
+            tryVerify(() => find(page, "mailboxEarlier").visible)
+            compare(boxModel(page).count, 133)
+            // Page two again, one subject changed: in place, nothing else moves.
+            list.positionViewAtIndex(70, ListView.Beginning)
+            const y = list.contentY
+            const again = root.pagesFor(lastAsk())[1]
+            again.rows[0].subject = "Changed in place"
+            mock.mailboxPage(JSON.stringify(again))
+            compare(page.boxRows[60].subject, "Changed in place")
+            compare([boxModel(page).count, list.contentY], [133, y])
+            // A page fewer (mail deleted elsewhere): the last page left says no more follow; the list ends there.
+            const first = root.pagesFor(Object.assign({}, lastAsk(), { rows: 60 }))[0]
+            first.more = false
+            mock.mailboxPage(JSON.stringify(first))
+            compare([boxModel(page).count, page.boxRows.length, page.boxMore], [60, 60, false])
+            mock.bulk = 0
+        }
+
+        // On a phone (§4.4, §4.5, §4.8, §6): Mail opens on "All addresses" and asks
+        // for the other folders' round once (decision 19); the rows take two
+        // lines; at most 12 objects a row and 400 for the whole page; a long press
+        // opens the row's menu, Select a selection the bar acts on across
+        // addresses; a tap opens the message over the page, Back the list where it was.
+        function test_a_phone_s_mailbox() {
+            fakeWindow.compact = true
+            mock.bulk = 130
+            const page = made()
+            page.width = 412
+            page.height = 891
+            compare(mock.broughtFolders, 1, "the other folders asked for, once")
+            tryVerify(() => rowItem(page, "On both lists") !== null)
+            const row = rowItem(page, "On both lists")
+            verify(row.height > 40, "two lines: " + row.height)
+            const count = item => {
+                let n = 1
+                for (let i = 0; i < item.children.length; ++i)
+                    n += count(item.children[i])
+                return n
+            }
+            const rows = all(page, i => i.objectName.indexOf("mailboxRow:") === 0)
+            verify(rows.length > 5)
+            for (const one of rows)
+                verify(count(one) <= 12, one.objectName + ": " + count(one))
+            verify(count(page) <= 400, "the whole page: " + count(page))
+            console.info("sioul-objects: a phone's mailbox page " + count(page) + ", its rows " + rows.length + ", a row at most " + Math.max(...rows.map(count)))
+            // A long press: the row's menu, then Select, then a tap chooses another.
+            row.pressAndHold()
+            tryVerify(() => menuItem(page, "ui-select") !== null)
+            menuItem(page, "ui-select").triggered()
+            verify(page.choosing)
+            const quote = rowItem(page, "Quote for the cooperative")
+            quote.clicked()
+            compare(page.selectedKeys.length, 2)
+            page.actOnSelection("read")
+            compare(mock.acted[mock.acted.length - 1], { keys: [root.keysOf(root.allRows[0]), root.keyOf(2, "work")], action: "read" })
+            // A tap opens it over the page; Back, the list where it was.
+            const list = boxList(page)
+            list.positionViewAtIndex(40, ListView.Beginning)
+            const y = list.contentY
+            page.clickRow(40, page.boxRows[40].key, 0)
+            tryVerify(() => page.reading && !list.visible)
+            page.back()
+            tryVerify(() => list.visible)
+            compare(list.contentY, y)
+            // The reader goes with Back: the page within its objects again.
+            tryVerify(() => count(page) <= 400, 5000, "after Back: " + count(page))
+            // Shown again: asked again within the minute, once more (Rust keeps the minute).
+            page.visible = false
+            page.visible = true
+            compare(mock.broughtFolders, 2)
+            fakeWindow.compact = false
+            mock.bulk = 0
+        }
+
+        // On a computer, the other folders are not asked for: its watcher brings them.
+        function test_a_computer_asks_no_round() {
+            const page = made()
+            compare(mock.broughtFolders, 0)
+        }
+
+        // On a phone, the folders' column makes its addresses only while it shows (§6).
+        function test_the_folders_come_with_their_button() {
+            fakeWindow.compact = true
+            const page = made()
+            compare(all(page, i => i.objectName && i.objectName.indexOf("folder:inbox:") === 0).length, 0)
+            page.foldersShown = true
+            tryVerify(() => all(page, i => i.objectName && i.objectName.indexOf("folder:inbox:") === 0).length >= 1)
+            fakeWindow.compact = false
         }
 
         // Mail out of sight asks nothing; back in sight, it asks again.

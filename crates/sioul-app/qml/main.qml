@@ -1402,21 +1402,24 @@ SioulWindow {
                 () => window.simulateSystemBars(0, 0, 0, 0),
                 () => window.close()
             ]
-            // The mailbox (the unified mailbox's part 4): "All addresses" as Mail
-            // opens on a computer (on a phone, from its folders), a resting
-            // address's line, a selection across two addresses, the Spam chip.
+            // The mailbox (the unified mailbox's parts 4 and 5): "All addresses"
+            // as Mail opens, a resting address's line, a selection across two
+            // addresses, the Spam chip, a message opened and Back; on a phone
+            // (SIOUL_GRAB_PHONE), then again turned sideways. The objects under
+            // Mail counted at each (sioul-objects), what passes the window's edge said.
             readonly property var mailboxSteps: [
-                () => {
-                    window.page = 2
-                    if (window.phoneGrab)
-                        mailPage.openBox(false)
-                },
+                () => window.page = 2,
+                () => {},
                 () => {},
                 () => grabber.saveCounted("mailbox", mailPage),
                 // The resting address's mail too, then the first message of each address chosen.
                 () => mailPage.showResting(""),
-                () => mailPage.chooseAcross(),
-                () => grabber.saveWindow("mailbox-selection"),
+                () => {},
+                () => {
+                    mailPage.chooseAcross()
+                    mailPage.choosing = window.phoneGrab
+                },
+                () => grabber.saveCounted("mailbox-selection", mailPage),
                 () => {
                     mailPage.clearSelection()
                     mailPage.chooseChip("spam")
@@ -1424,6 +1427,43 @@ SioulWindow {
                 () => {},
                 () => grabber.saveCounted("mailbox-spam", mailPage),
                 () => mailPage.chooseChip("all"),
+                () => {},
+                () => mailPage.clickRow(0, mailPage.listItems[0].key, 0),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("mailbox-opened", mailPage),
+                () => mailPage.back(),
+                () => {},
+                () => grabber.saveCounted("mailbox-back", mailPage),
+                () => {
+                    if (window.phoneGrab) {
+                        window.width = 891
+                        window.height = 412
+                    }
+                },
+                () => {},
+                () => {},
+                () => grabber.saveCounted("mailbox-wide", mailPage),
+                () => {
+                    mailPage.chooseAcross()
+                    mailPage.choosing = window.phoneGrab
+                },
+                () => grabber.saveCounted("mailbox-wide-selection", mailPage),
+                () => {
+                    mailPage.clearSelection()
+                    mailPage.chooseChip("spam")
+                },
+                () => {},
+                () => grabber.saveCounted("mailbox-wide-spam", mailPage),
+                () => mailPage.chooseChip("all"),
+                () => {},
+                () => mailPage.clickRow(0, mailPage.listItems[0].key, 0),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("mailbox-wide-opened", mailPage),
+                () => mailPage.back(),
+                () => {},
+                () => grabber.saveCounted("mailbox-wide-back", mailPage),
                 () => window.close()
             ]
             // The mailbox and a folder's list measured on a large profile
@@ -1438,6 +1478,10 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.saveCounted("mailbox-big", mailPage),
+                // What a sync's report runs (`backend::show`), its index kept: SIOUL_TIMING's lines.
+                () => sioul.refresh(),
+                () => {},
+                () => {},
                 () => {
                     const first = mailPage.accounts.find(a => !a.resting) || mailPage.accounts[0]
                     grabber.timeRows("the first inbox", mailPage)
@@ -1459,13 +1503,13 @@ SioulWindow {
                     console.info("sioul-perf: " + label + ": rows published in " + published + " ms, drawn in " + (Date.now() - began) + " ms")
                 }
                 const changed = () => {
-                    target().boxTextChanged.disconnect(changed)
+                    sioul.mailboxPage.disconnect(changed)
                     target().mailFolderTextChanged.disconnect(changed)
                     published = Date.now() - began
                     window.frameSwapped.connect(drawn)
                 }
                 Qt.callLater(() => {
-                    target().boxTextChanged.connect(changed)
+                    sioul.mailboxPage.connect(changed)
                     target().mailFolderTextChanged.connect(changed)
                 })
             }

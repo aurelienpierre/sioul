@@ -60,6 +60,8 @@ public final class MailOpenCheck
         for (String key : refused)
             expect("mail refused: " + key, !ReminderOpener.opens("mail", key));
         expect("the other kinds as before", ReminderOpener.opens("porch", null) && ReminderOpener.opens("event", "/c/yoga.ics") && !ReminderOpener.opens("elsewhere", "x"));
+        // New mail of several: the mailbox at its top (the unified mailbox's part 5).
+        expect("the mailbox, without a key", ReminderOpener.opens("mailbox", null) && ReminderOpener.opens("mailbox", ""));
 
         // The home card's message rows: the address, an older card's file, else the Porch.
         expect("a row by its address", "mail/mid:lunch-1@example.org".equals(HomeCardRows.opens(new JSONObject().put("key", "/mail/home/cur/1.sioul").put("address", "mid:lunch-1@example.org"))));
@@ -81,6 +83,7 @@ public final class MailOpenCheck
         String notes = code(read(sources.resolve("MailNotes.java")));
         expect("new mail's tap made in MailNotes.opening alone", notes.split("new Intent\\(", -1).length == 2 && notes.contains("static Intent opening(Context context, String address)"));
         expect("new mail's tap names a message only when it is an address", notes.contains("if (ReminderOpener.isMailAddress(address))") && notes.contains("putExtra(ReminderOpener.KEY, address)"));
+        expect("new mail of several opens the mailbox, never a file", notes.contains("Uri.fromParts(ReminderOpener.SCHEME, \"mailbox\", null)") && !notes.contains("Uri.fromParts(ReminderOpener.SCHEME, \"porch\", null)"));
         expect("MailNotes logs no notification's text", !notes.matches("(?s).*Log\\.[a-z]\\([^;]*\\+ e\\).*") && !notes.matches("(?s).*Log\\.[a-z]\\([^;]*(json|said|address|open)[^;]*\\).*"));
         String rows = code(read(sources.resolve("HomeCardRows.java")));
         expect("the card's rows open by an address that passes the check", rows.contains("if (ReminderOpener.isMailAddress(address))") && rows.contains("new Row(MAIL, message, \"\", opens(message))"));

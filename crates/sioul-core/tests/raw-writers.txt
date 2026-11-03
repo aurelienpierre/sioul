@@ -330,7 +330,7 @@ sioul-core/src/mailcache.rs	index_root_in	1	std::fs::remove_file(&older)
 sioul-core/src/mailcache.rs	write_whole	1	std::fs::OpenOptions::new()
 sioul-core/src/mailcache.rs	write_whole	1	std::fs::rename(&beside, path)
 sioul-core/src/mailcache.rs	append	1	std::fs::OpenOptions::new()
-sioul-core/src/mailcache.rs	folder	1	write_whole(&index, &header, &all)
+sioul-core/src/mailcache.rs	look	1	write_whole(&index, &header, &all)
 
 # sioul-core/src/mailnote.rs: notes on mail: no item.
 sioul-core/src/mailnote.rs	save	1	std::fs::write(&temporary, text)

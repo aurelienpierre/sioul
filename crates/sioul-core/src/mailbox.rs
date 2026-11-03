@@ -25,8 +25,14 @@
 //!   folders' next round brings them up to date.
 //! - **Order** (decision 11): by when it was sent, never later than it
 //!   arrived (`porch::sent`), newest first; days as headers; two weeks, then
-//!   two more at each "Earlier messages" (decision 15), and `PAGE_ROWS` rows
-//!   a window at most, so that a crowded fortnight weighs one folder's page.
+//!   two more at each "Earlier messages" (decision 15). The rows' words are
+//!   made for the rows asked for alone (`Ask::rows`, sixty at a time: `PAGE`),
+//!   after every message of the window was sorted.
+//! - **Read from** each folder's recent lines kept in this process
+//!   (`mailcache::recent`): nothing listed or read again while the folder is
+//!   as it was. A folder looked at for the first time has its newest
+//!   `FIRST_FILL` messages read at once; the others wait, `STEP_FILL` a look
+//!   (`Page::indexing`), for the window to ask again while the page shows.
 //! - **Spam** (§5.2, 3): a copy in a Junk folder; one your own filter flagged
 //!   where it lies (its log); your provider's flag on a stranger's mail; what
 //!   you said is not spam (`$NotJunk`, the label log) wins. Spam rows show
@@ -54,9 +60,14 @@ use std::sync::Mutex;
 /// Days of one window: the mailbox's two weeks.
 pub const WINDOW_DAYS: i64 = 14;
 
-/// Rows of one window at most: a page as light as one folder's, whatever
-/// two weeks hold; "Earlier messages" shows the next ones.
-pub const PAGE_ROWS: usize = 500;
+/// Rows of one page: what one publish carries to the window (§6).
+pub const PAGE: usize = 60;
+
+/// Messages a folder looked at for the first time has read at once: what the first page needs (§6).
+pub const FIRST_FILL: usize = 500;
+
+/// Messages read at each later look while some wait, over every folder.
+pub const STEP_FILL: usize = 500;
 
 /// What the list shows: one chip at a time.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +97,10 @@ fn one() -> u32 {
     1
 }
 
+fn a_page() -> usize {
+    PAGE
+}
+
 /// What the page asks for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ask {
@@ -103,11 +118,17 @@ pub struct Ask {
     /// Resting addresses you chose to see all the same ("Show its mail").
     #[serde(default)]
     pub shown_resting: Vec<String>,
+    /// How many rows the list holds or wants: a page, then one more each time its end shows.
+    #[serde(default = "a_page")]
+    pub rows: usize,
+    /// The list holds nothing yet: every page is new to it (the window's, `mail::MailboxPages`).
+    #[serde(default)]
+    pub fresh: bool,
 }
 
 impl Default for Ask {
     fn default() -> Ask {
-        Ask { chip: Chip::All, account: String::new(), windows: 1, query: String::new(), shown_resting: Vec::new() }
+        Ask { chip: Chip::All, account: String::new(), windows: 1, query: String::new(), shown_resting: Vec::new(), rows: PAGE, fresh: false }
     }
 }
 
@@ -245,6 +266,11 @@ pub struct Page {
     pub addresses: Vec<Mark>,
     /// Older mail is kept: "Earlier messages".
     pub earlier: bool,
+    /// The window holds more rows than those given: the next page, when the list's end shows.
+    pub more: bool,
+    /// Messages wait to be read into their folders' indexes: the window asks again while it shows.
+    #[serde(skip)]
+    pub indexing: bool,
     /// What is there, in words, when nothing is: never a count.
     pub sentence: String,
     pub chip: Chip,
@@ -253,7 +279,7 @@ pub struct Page {
 }
 
 /// A message listed, before its row is made: what the chips and the order need.
-struct Listed {
+struct Listed<'a> {
     uri: String,
     card: Card,
     /// Its addresses' places in `addresses`, ranked.
@@ -270,13 +296,13 @@ struct Listed {
     stranger: bool,
     sent: i64,
     /// Ranked: the first opens.
-    copies: Vec<Copy>,
+    copies: Vec<Copy<'a>>,
 }
 
 /// One copy of a message, as a folder's index gives it.
-struct Copy {
-    path: PathBuf,
-    line: Line,
+struct Copy<'a> {
+    path: &'a Path,
+    line: &'a Line,
     /// Its address's place in `addresses`.
     address: usize,
     folder: String,
@@ -295,14 +321,6 @@ fn kept(folder: &Folder, all: &[Folder], account: &Account) -> bool {
     (folder.role != Role::All || !all.iter().any(|f| f.role == Role::Archive)) && (folder.role == Role::Inbox || (!account.skip_folders.contains(&folder.name) && own_dir()))
 }
 
-/// When a message was sent, never later than it arrived (`porch::sent`).
-fn sent_at(line: &Line) -> i64 {
-    match line.date {
-        Some(date) if line.arrived > 0 => date.min(line.arrived),
-        Some(date) => date,
-        None => line.arrived,
-    }
-}
 
 /// Whether `query` (lower case) is found in its sender, recipients or subject.
 fn found(line: &Line, query: &str) -> bool {
@@ -377,7 +395,11 @@ fn letters(accounts: &[&Account]) -> Vec<String> {
 /// One page of the mailbox (the module's rules): `addresses` ranked, each with
 /// its folders, tint and rest; `hidden`, the files waiting for their Undo;
 /// `now` in Unix seconds, the days read on `zone`.
-pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>, tr: &Translator, now: i64, zone: &jiff::tz::TimeZone) -> Page {
+/// `fill`: how many messages this look may read into the indexes of folders
+/// looked at before (`STEP_FILL`; a folder new to this process reads its
+/// `FIRST_FILL` newest).
+#[allow(clippy::too_many_arguments)]
+pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>, tr: &Translator, now: i64, zone: &jiff::tz::TimeZone, fill: usize) -> Page {
     let several = addresses.len() > 1;
     let letters = letters(&addresses.iter().map(|a| &a.account).collect::<Vec<_>>());
     let mark = |i: usize| Mark { account: addresses[i].account.id.clone(), letter: letters[i].clone(), tint: addresses[i].tint, title: addresses[i].account.address.clone().unwrap_or_else(|| addresses[i].account.id.clone()) };
@@ -387,26 +409,39 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
     let query = ask.query.trim().to_lowercase();
     let since = now - WINDOW_DAYS * 86_400 * i64::from(ask.windows.max(1));
     let mut older = false;
-    // Every copy in view, by its address.
-    let mut by_address: BTreeMap<String, Vec<Copy>> = BTreeMap::new();
+    // Each folder's recent lines, kept in this process; a search reads them all.
+    let mut looks: Vec<(usize, &Folder, mailcache::Recent)> = Vec::new();
+    let (mut budget, mut indexing) = (fill, false);
     for (i, address) in addresses.iter().enumerate() {
         let root = address.account.maildir_path();
         // The trash read only where labels make one message of several folders' copies.
         for folder in address.folders.iter().filter(|f| f.role != Role::Drafts && (f.role != Role::Trash || labelled[i]) && kept(f, &address.folders, &address.account)) {
-            for (path, line) in mailcache::folder(&address.account.id, &root, &folder.local) {
-                let sent = sent_at(&line);
-                if query.is_empty() && sent < since {
-                    older |= folder.role != Role::Trash;
-                    continue;
-                }
-                if !found(&line, &query) {
-                    continue;
-                }
-                let Some(uri) = crate::mailfind::address_of_line(&address.account.id, &line) else { continue };
-                let flags = maildir::flags_of(&path);
-                let hidden = hidden.contains(&path);
-                by_address.entry(uri).or_default().push(Copy { path, line, address: i, folder: folder.name.clone(), role: folder.role, flags, sent, hidden });
+            let first = !mailcache::is_kept(&address.account.id, &root, &folder.local);
+            let recent = mailcache::recent(&address.account.id, &root, &folder.local, if query.is_empty() { since } else { i64::MIN }, if first { FIRST_FILL } else { budget });
+            if !first {
+                budget = budget.saturating_sub(recent.read);
             }
+            indexing |= recent.waiting > 0;
+            older |= recent.older && folder.role != Role::Trash;
+            looks.push((i, folder, recent));
+        }
+    }
+    // Every copy in view, by its address.
+    let mut by_address: BTreeMap<String, Vec<Copy>> = BTreeMap::new();
+    for (i, folder, recent) in &looks {
+        for (path, line) in recent.lines.iter() {
+            let sent = mailcache::sent_at(line);
+            if query.is_empty() && sent < since {
+                older |= folder.role != Role::Trash;
+                continue;
+            }
+            if !found(line, &query) {
+                continue;
+            }
+            let Some(uri) = crate::mailfind::address_of_line(&addresses[*i].account.id, line) else { continue };
+            let flags = maildir::flags_of(path);
+            let hidden = hidden.contains(path);
+            by_address.entry(uri).or_default().push(Copy { path, line, address: *i, folder: folder.name.clone(), role: folder.role, flags, sent, hidden });
         }
     }
     let today = jiff::Timestamp::from_second(now).map(|t| t.to_zoned(zone.clone()).date()).unwrap_or_default();
@@ -509,8 +544,8 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
     }
     // Newest first; a page of rows a window at most, "Earlier messages" showing more.
     listed.sort_by(|a, b| b.sent.cmp(&a.sent).then_with(|| a.copies[0].path.as_os_str().cmp(b.copies[0].path.as_os_str())));
-    let more = listed.len() > PAGE_ROWS * ask.windows.max(1) as usize;
-    listed.truncate(PAGE_ROWS * ask.windows.max(1) as usize);
+    let more = listed.len() > ask.rows.max(1);
+    listed.truncate(ask.rows.max(1));
     let mut rows = Vec::with_capacity(listed.len());
     for Listed { uri, card, held, kinds, spam, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies } in listed {
         let first = &copies[0];
@@ -591,7 +626,9 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
         rows,
         resting: addresses.iter().filter(|a| !ask.shown_resting.contains(&a.account.id)).filter_map(|a| Some(Resting { account: a.account.id.clone(), line: a.resting.clone()? })).collect(),
         addresses: if several { (0..addresses.len()).map(mark).collect() } else { Vec::new() },
-        earlier: more || (query.is_empty() && older),
+        earlier: query.is_empty() && older,
+        more,
+        indexing,
         sentence,
         chip: ask.chip,
         account: ask.account.clone(),
@@ -670,7 +707,7 @@ mod tests {
         }
 
         fn page(&self, world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>) -> Page {
-            page(&self.addresses, world, ask, hidden, &Translator::new("en"), NOW, &jiff::tz::TimeZone::get("Europe/Paris").unwrap())
+            page(&self.addresses, world, ask, hidden, &Translator::new("en"), NOW, &jiff::tz::TimeZone::get("Europe/Paris").unwrap(), STEP_FILL)
         }
     }
 
@@ -836,7 +873,7 @@ mod tests {
     }
 
     fn page_of(addresses: &[Address], world: &World, ask: &Ask) -> Page {
-        page(addresses, world, ask, &BTreeSet::new(), &Translator::new("en"), NOW, &jiff::tz::TimeZone::get("Europe/Paris").unwrap())
+        page(addresses, world, ask, &BTreeSet::new(), &Translator::new("en"), NOW, &jiff::tz::TimeZone::get("Europe/Paris").unwrap(), STEP_FILL)
     }
 
     /// Spam from each source, under its chip with its word, never a dot: a
@@ -925,23 +962,48 @@ mod tests {
         let _ = ImapOrigin { validity: 7, uid: 1 };
     }
 
-    /// A crowded fortnight: a page of rows at most, the newest, and "Earlier
-    /// messages" showing the next; a search is cut the same way.
+    /// The first index (§6): a folder new to this process has its newest
+    /// `FIRST_FILL` messages read at once, whatever the step's budget; the
+    /// others wait (`indexing`), `STEP_FILL` at each later look, until none does.
     #[test]
-    fn a_crowded_fortnight_is_cut_to_a_page() {
+    fn a_folder_new_to_the_process_is_read_at_once_then_in_steps() {
+        let stand = Stand::new("first");
+        let n = FIRST_FILL + 2;
+        for i in 0..n {
+            let at = NOW - 3_600 - i as i64 * 60;
+            stand.put(0, "INBOX", i as u32 + 1, &format!("f{i}@example.org"), "Ana <ana@example.org>", "noa@work.example.org", &format!("Note {i}"), at, at, "S", "", "…");
+        }
+        let world = world_at(crate::areas::Time::Work, "", "");
+        let look = |fill: usize| page(&stand.addresses, &world, &Ask { rows: n, ..Ask::default() }, &BTreeSet::new(), &Translator::new("en"), NOW, &jiff::tz::TimeZone::get("Europe/Paris").unwrap(), fill);
+        let first = look(0);
+        assert_eq!((first.rows.len(), first.indexing), (FIRST_FILL, true), "the newest at once, a step's budget aside");
+        assert_eq!(first.rows[0].subject, "Note 0");
+        let held = look(0);
+        assert_eq!((held.rows.len(), held.indexing), (FIRST_FILL, true), "no budget: nothing more read");
+        let next = look(STEP_FILL);
+        assert_eq!((next.rows.len(), next.indexing), (n, false));
+    }
+
+    /// A crowded fortnight, by pages: the rows asked for alone, the newest,
+    /// `more` while the window holds others, "Earlier messages" only past its
+    /// end; a search is paged the same way.
+    #[test]
+    fn a_crowded_fortnight_comes_by_pages() {
         let stand = Stand::new("crowded");
-        let n = PAGE_ROWS + 3;
+        let n = PAGE + 3;
         for i in 0..n {
             let at = NOW - 3_600 - i as i64 * 60;
             stand.put(0, "INBOX", i as u32 + 1, &format!("m{i}@example.org"), "Ana <ana@example.org>", "noa@work.example.org", &format!("Note {i}"), at, at, "S", "", "…");
         }
+        stand.put(0, "Archive", 900, "old@example.org", "Ben <ben@example.org>", "noa@work.example.org", "Three weeks ago", NOW - 21 * 86_400, NOW - 21 * 86_400, "S", "", "…");
         let world = world_at(crate::areas::Time::Work, "", "");
         let first = stand.page(&world, &Ask::default(), &BTreeSet::new());
-        assert_eq!((first.rows.len(), first.earlier), (PAGE_ROWS, true));
-        assert_eq!((first.rows[0].subject.as_str(), first.rows[PAGE_ROWS - 1].subject.clone()), ("Note 0", format!("Note {}", PAGE_ROWS - 1)), "the newest kept");
-        let second = stand.page(&world, &Ask { windows: 2, ..Ask::default() }, &BTreeSet::new());
-        assert_eq!((second.rows.len(), second.earlier), (n, false));
+        assert_eq!((first.rows.len(), first.more, first.earlier), (PAGE, true, true));
+        assert_eq!((first.rows[0].subject.as_str(), first.rows[PAGE - 1].subject.clone()), ("Note 0", format!("Note {}", PAGE - 1)), "the newest first");
+        let both = stand.page(&world, &Ask { rows: 2 * PAGE, ..Ask::default() }, &BTreeSet::new());
+        assert_eq!((both.rows.len(), both.more), (n, false));
+        assert_eq!(both.rows[..PAGE].iter().map(|r| &r.key).collect::<Vec<_>>(), first.rows.iter().map(|r| &r.key).collect::<Vec<_>>(), "the first page as it was");
         let found = stand.page(&world, &Ask { query: "note".into(), ..Ask::default() }, &BTreeSet::new());
-        assert_eq!((found.rows.len(), found.earlier), (PAGE_ROWS, true));
+        assert_eq!((found.rows.len(), found.more, found.earlier), (PAGE, true, false));
     }
 }

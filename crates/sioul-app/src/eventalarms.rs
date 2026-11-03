@@ -327,7 +327,7 @@ fn shown(reminder: &Reminder) -> serde_json::Value {
 }
 
 /// What a notification tapped while Sioul was away opens, once: ("event",
-/// its file), ("porch", ""), a closing sheet ("review", "work" or "night",
+/// its file), ("porch", ""), ("mailbox", "") for new mail of several, a closing sheet ("review", "work" or "night",
 /// with its day: "work:2026-10-14"), or a block's question ("need", its key).
 pub(crate) fn opened() -> Option<(String, String)> {
     #[cfg(target_os = "android")]
@@ -351,7 +351,8 @@ pub(crate) fn opened() -> Option<(String, String)> {
 fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
     let key = said["key"].as_str().unwrap_or_default();
     let kind = said["kind"].as_str().filter(|kind| match *kind {
-        "event" | "porch" | "need" => true,
+        // "mailbox": new mail's notification of several on a phone (the unified mailbox's part 5).
+        "event" | "porch" | "need" | "mailbox" => true,
         "mail" => is_mail_address(key),
         "review" => {
             let (sheet, day) = key.split_once(':').map_or((key, None), |(sheet, day)| (sheet, Some(day)));
@@ -384,7 +385,7 @@ mod tests {
         let note = |open: &str| mail_note_json("New mail", "Ana, Lunch", false, open, serde_json::json!({}))["open"].as_str().unwrap_or_default().to_string();
         assert_eq!(note("mid:lunch-1@example.org"), "mid:lunch-1@example.org");
         assert_eq!(note("sioul:mail/home/0123456789abcdef"), "sioul:mail/home/0123456789abcdef");
-        assert_eq!(note(""), "", "several: the Porch");
+        assert_eq!(note(""), "", "several: no message named (Java opens the mailbox)");
         assert_eq!(note("/data/user/0/sioul/files/mail/home/cur/1.U1-1.sioul:2,S"), "", "never a file");
         let tap = |key: &str| opened_of(&serde_json::json!({ "kind": "mail", "key": key }));
         assert_eq!(tap("mid:lunch-1@example.org"), Some(("mail".into(), "mid:lunch-1@example.org".into())));
@@ -392,7 +393,8 @@ mod tests {
         for refused in ["/data/user/0/sioul/files/mail/home/cur/1.U1-1.sioul:2,S", "mid:../../etc/passwd", "file:///sdcard/x.eml", "lunch-1@example.org", ""] {
             assert_eq!(tap(refused), None, "{refused}");
         }
-        assert_eq!(opened_of(&serde_json::json!({ "kind": "porch", "key": "" })), Some(("porch".into(), String::new())), "several, as before");
+        assert_eq!(opened_of(&serde_json::json!({ "kind": "porch", "key": "" })), Some(("porch".into(), String::new())), "an older build's notice of several: the Porch, as before");
+        assert_eq!(opened_of(&serde_json::json!({ "kind": "mailbox" })), Some(("mailbox".into(), String::new())), "several: the mailbox (part 5)");
     }
 
     /// A phone's notification of an event opens that time of it when tapped:

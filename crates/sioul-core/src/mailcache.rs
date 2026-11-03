@@ -468,11 +468,41 @@ fn append(path: &Path, lines: &[Line]) -> std::io::Result<()> {
 /// Without an index (an account whose id is not one plain name), every message
 /// is read.
 pub fn folder(account: &str, root: &Path, local: &str) -> Vec<(PathBuf, Line)> {
+    look(account, root, local, usize::MAX).lines
+}
+
+/// When a message was sent, never later than it arrived (`porch::sent`): the
+/// mailbox's order and window.
+pub fn sent_at(line: &Line) -> i64 {
+    match line.date {
+        Some(date) if line.arrived > 0 => date.min(line.arrived),
+        Some(date) => date,
+        None => line.arrived,
+    }
+}
+
+/// What a look at a folder found.
+struct Looked {
+    lines: Vec<(PathBuf, Line)>,
+    /// The files the index does not know yet and this look left, newest first.
+    waiting: Vec<File>,
+    /// The index as this look left it, under its lock.
+    index: Option<Stamp>,
+    /// Messages read whole.
+    read: usize,
+}
+
+/// `folder`, reading at most `fill` messages the index does not know yet,
+/// the newest first (by when they arrived); the others wait.
+fn look(account: &str, root: &Path, local: &str, fill: usize) -> Looked {
     let words = crate::words::current();
     let dir = root.join(local);
-    let files = files(&dir);
+    let mut files = files(&dir);
     let Some(index) = index_path(account, local) else {
-        return files.into_iter().filter_map(|f| read_line(&f, &words).map(|line| (f.path, line))).collect();
+        // No index: every message read, as it must be.
+        let lines: Vec<(PathBuf, Line)> = files.into_iter().filter_map(|f| read_line(&f, &words).map(|line| (f.path, line))).collect();
+        let read = lines.len();
+        return Looked { lines, waiting: Vec::new(), index: None, read };
     };
     // Its folders (the account's, `nested/`), yours alone as the messages are.
     let base = index_root();
@@ -481,6 +511,8 @@ pub fn folder(account: &str, root: &Path, local: &str) -> Vec<(PathBuf, Line)> {
         private_dir(dir);
     }
     let header = format!("{FORMAT}\t{}", stamp(&words));
+    // The newest first: a bounded look reads those, which the first page needs.
+    files.sort_by_key(|f| std::cmp::Reverse(f.arrived));
     crate::filelock::with_lock(&index, || {
         let (known, count, fresh_file) = match read_index(&index, &header) {
             Some((known, count)) => (known, count, false),
@@ -488,9 +520,11 @@ pub fn folder(account: &str, root: &Path, local: &str) -> Vec<(PathBuf, Line)> {
         };
         let mut out = Vec::with_capacity(files.len());
         let mut added: Vec<Line> = Vec::new();
+        let mut waiting = Vec::new();
         for file in files {
             match known.get(&file.unique) {
                 Some(line) => out.push((file.path, line.clone())),
+                None if added.len() >= fill => waiting.push(file),
                 None => {
                     if let Some(line) = read_line(&file, &words) {
                         added.push(line.clone());
@@ -509,8 +543,125 @@ pub fn folder(account: &str, root: &Path, local: &str) -> Vec<(PathBuf, Line)> {
         } else if !added.is_empty() {
             let _ = append(&index, &added);
         }
-        out
+        // Oldest first, as before: callers sort as they need.
+        out.reverse();
+        Looked { lines: out, waiting, index: Stamp::of_file(&index, &header), read: added.len() }
     })
+}
+
+/// How far a kept look may be trusted: a directory changed this close to
+/// its listing may change again within the same tick of its clock without
+/// its time moving (file times move by the kernel's coarse tick, two
+/// seconds on FAT): it is listed again next time (git's "racy" index).
+const RACY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// What says a folder and its index are as a look left them: `cur/`'s and
+/// `new/`'s times (any file added, renamed by its flags or removed changes
+/// its directory's), the index's length, time and inode (another process
+/// adding to it, compacting it or making it again), and the stamp of the
+/// settings its lines depend on.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Stamp {
+    cur: Option<std::time::SystemTime>,
+    new: Option<std::time::SystemTime>,
+    index: Option<(u64, std::time::SystemTime, u64)>,
+    header: String,
+}
+
+impl Stamp {
+    fn of_dirs(dir: &Path) -> (Option<std::time::SystemTime>, Option<std::time::SystemTime>) {
+        let at = |sub: &str| std::fs::metadata(dir.join(sub)).and_then(|m| m.modified()).ok();
+        (at("cur"), at("new"))
+    }
+
+    fn of_file(index: &Path, header: &str) -> Option<Stamp> {
+        let meta = std::fs::metadata(index).ok()?;
+        #[cfg(unix)]
+        let inode = std::os::unix::fs::MetadataExt::ino(&meta);
+        #[cfg(not(unix))]
+        let inode = 0;
+        Some(Stamp { cur: None, new: None, index: Some((meta.len(), meta.modified().ok()?, inode)), header: header.to_string() })
+    }
+
+    /// The folder and its index now.
+    fn now(dir: &Path, index: Option<&Path>, header: &str) -> Stamp {
+        let (cur, new) = Stamp::of_dirs(dir);
+        let index = index.and_then(|i| Stamp::of_file(i, header)).and_then(|s| s.index);
+        Stamp { cur, new, index, header: header.to_string() }
+    }
+}
+
+/// A folder's recent lines as a look left them, kept in this process.
+struct Kept {
+    stamp: Stamp,
+    /// Whether its directories were settled when listed (`RACY`).
+    settled: bool,
+    /// Lines from `since` on (by `sent_at`), and whether older ones were left out.
+    since: i64,
+    lines: std::sync::Arc<Vec<(PathBuf, Line)>>,
+    older: bool,
+    waiting: usize,
+}
+
+/// The folders' recent lines, by account, Maildir and folder.
+static KEPT: std::sync::Mutex<Option<HashMap<(String, PathBuf, String), Kept>>> = std::sync::Mutex::new(None);
+
+/// A folder's lines from `since` on, as the mailbox reads them (the unified
+/// mailbox's part 5, §6): kept in this process, and taken from there without
+/// listing the folder or reading its index again while `Stamp` says nothing
+/// changed and its directories were settled when listed. At most `fill`
+/// messages the index does not know yet are read, the newest first;
+/// `waiting` says how many wait. `older`: lines older than `since` exist,
+/// or files that arrived before it wait. `since` at `i64::MIN` (a search):
+/// every line, never kept.
+pub struct Recent {
+    /// Its lines, some perhaps older than `since` (a wider look kept): the caller filters.
+    pub lines: std::sync::Arc<Vec<(PathBuf, Line)>>,
+    pub older: bool,
+    pub waiting: usize,
+    /// Messages read whole by this look.
+    pub read: usize,
+}
+
+/// Whether this process keeps a look at this folder already (`recent`):
+/// a folder not looked at yet gets its first fill whole.
+pub fn is_kept(account: &str, root: &Path, local: &str) -> bool {
+    KEPT.lock().is_ok_and(|k| k.as_ref().is_some_and(|k| k.contains_key(&(account.to_string(), root.to_path_buf(), local.to_string()))))
+}
+
+pub fn recent(account: &str, root: &Path, local: &str, since: i64, fill: usize) -> Recent {
+    let words = crate::words::current();
+    let header = format!("{FORMAT}\t{}", stamp(&words));
+    let dir = root.join(local);
+    let key = (account.to_string(), root.to_path_buf(), local.to_string());
+    let index = index_path(account, local);
+    let before = Stamp::now(&dir, index.as_deref(), &header);
+    if since != i64::MIN
+        && let Ok(kept) = KEPT.lock()
+        && let Some(found) = kept.as_ref().and_then(|k| k.get(&key))
+        && found.settled
+        && found.stamp == before
+        && found.since <= since
+        && (found.waiting == 0 || fill == 0)
+    {
+        return Recent { lines: std::sync::Arc::clone(&found.lines), older: found.older, waiting: found.waiting, read: 0 };
+    }
+    let listed = std::time::SystemTime::now();
+    let looked = look(account, root, local, fill);
+    let read = looked.read;
+    let settled = [before.cur, before.new].iter().all(|t| t.is_none_or(|t| t + RACY <= listed));
+    let older = looked.waiting.iter().any(|f| f.arrived < since) || looked.lines.iter().any(|(_, l)| sent_at(l) < since);
+    let lines: Vec<(PathBuf, Line)> = looked.lines.into_iter().filter(|(_, l)| since == i64::MIN || sent_at(l) >= since).collect();
+    let lines = std::sync::Arc::new(lines);
+    let waiting = looked.waiting.len();
+    if since != i64::MIN
+        && let Ok(mut kept) = KEPT.lock()
+    {
+        // The directories' times from before the listing, the index's from after this look's own write.
+        let stamp = Stamp { cur: before.cur, new: before.new, index: looked.index.and_then(|s| s.index), header };
+        kept.get_or_insert_with(HashMap::new).insert(key, Kept { stamp, settled, since, lines: std::sync::Arc::clone(&lines), older, waiting });
+    }
+    Recent { lines, older, waiting, read }
 }
 
 /// One message file's line, read whole once; none when it does not read.
@@ -776,5 +927,141 @@ mod tests {
         assert_eq!(line.digest.as_deref(), Some(digest(raw).as_str()), "no Message-ID: named by its digest");
         let card = line.card(Path::new("/stand-in/cur/1.U1-1.sioul:2,S"));
         assert_eq!(card.headers.all("Authentication-Results").count(), 1);
+    }
+
+    /// Sets a directory's time, as a change at `at` would have left it.
+    fn set_dir_time(dir: &Path, at: std::time::SystemTime) {
+        std::fs::File::open(dir).unwrap().set_modified(at).unwrap();
+    }
+
+    fn kept_subjects(recent: &Recent) -> Vec<String> {
+        let mut subjects: Vec<String> = recent.lines.iter().map(|(_, l)| l.subject.clone()).collect();
+        subjects.sort();
+        subjects
+    }
+
+    /// The kept look (the unified mailbox's part 5): taken again without
+    /// listing the folder or reading its index while nothing changed; looked
+    /// at again after a flag rename, a new file, a removal, another process
+    /// adding to the index, a compaction, an index made again, a change in
+    /// the same tick of the clock as the look, and a clock stepped back. A
+    /// stale look never shows a removed message, nor misses a new one.
+    #[test]
+    fn a_kept_look_is_never_stale() {
+        use std::sync::Arc;
+        use std::time::{Duration, SystemTime};
+        let stand = Stand::new("kept");
+        let first = stand.put(1, "a@example.org", "One");
+        stand.put(2, "b@example.org", "Two");
+        let long_ago = SystemTime::now() - Duration::from_secs(600);
+        let settle = |at: SystemTime| {
+            for sub in ["cur", "new"] {
+                set_dir_time(&stand.root.join(sub), at);
+            }
+        };
+        let look = || recent(&stand.account, &stand.root, "", 0, usize::MAX);
+        settle(long_ago);
+        let one = look();
+        assert_eq!(kept_subjects(&one), ["One", "Two"]);
+        let again = look();
+        assert!(Arc::ptr_eq(&one.lines, &again.lines) && again.read == 0, "nothing changed: kept, nothing listed nor read");
+        // A flag rename: the new name, never the old.
+        let renamed = maildir::set_flags(&first, "RS").unwrap();
+        let after = look();
+        assert!(after.lines.iter().any(|(p, _)| *p == renamed) && !after.lines.iter().any(|(p, _)| *p == first), "renamed");
+        // A new file, then a removal.
+        settle(long_ago);
+        look();
+        let third = stand.put(3, "c@example.org", "Three");
+        assert_eq!(kept_subjects(&look()), ["One", "Three", "Two"]);
+        settle(long_ago - Duration::from_secs(60));
+        look();
+        std::fs::remove_file(&third).unwrap();
+        assert_eq!(kept_subjects(&look()), ["One", "Two"], "removed: gone");
+        // Another process adding to the index: looked at again.
+        settle(long_ago);
+        let before = look();
+        let text = std::fs::read_to_string(stand.index()).unwrap();
+        let last = text.lines().last().unwrap().to_string();
+        std::fs::OpenOptions::new().append(true).open(stand.index()).unwrap().write_all(format!("{last}\n").as_bytes()).unwrap();
+        let added = look();
+        assert!(!Arc::ptr_eq(&before.lines, &added.lines), "the index grew: looked at again");
+        assert_eq!(kept_subjects(&added), ["One", "Two"]);
+        // A compaction (written beside, renamed), then an index made again.
+        let kept = look();
+        let beside = stand.index().with_extension("tsv.new");
+        std::fs::write(&beside, std::fs::read(stand.index()).unwrap()).unwrap();
+        std::fs::rename(&beside, stand.index()).unwrap();
+        let compacted = look();
+        assert!(!Arc::ptr_eq(&kept.lines, &compacted.lines), "compacted: looked at again");
+        std::fs::remove_file(stand.index()).unwrap();
+        let made = look();
+        assert_eq!((kept_subjects(&made), made.read), (vec!["One".to_string(), "Two".to_string()], 2), "made again: read again");
+        // A change in the same tick as the look: its directory's time unmoved, never trusted.
+        settle(SystemTime::now());
+        let racy = look();
+        let at = std::fs::metadata(stand.root.join("cur")).unwrap().modified().unwrap();
+        let fourth = stand.put(4, "d@example.org", "Four");
+        set_dir_time(&stand.root.join("cur"), at);
+        assert!(!Arc::ptr_eq(&racy.lines, &look().lines));
+        assert_eq!(kept_subjects(&look()), ["Four", "One", "Two"], "a new file in the same tick: seen");
+        // A clock stepped back: a time ahead of the clock is never trusted; a time moved back is a change.
+        settle(SystemTime::now() + Duration::from_secs(3_600));
+        let ahead = look();
+        assert!(!Arc::ptr_eq(&ahead.lines, &look().lines), "ahead of the clock: looked at again");
+        settle(long_ago);
+        let settled = look();
+        std::fs::remove_file(&fourth).unwrap();
+        set_dir_time(&stand.root.join("cur"), long_ago - Duration::from_secs(3_600));
+        let back = look();
+        assert!(!Arc::ptr_eq(&settled.lines, &back.lines));
+        assert_eq!(kept_subjects(&back), ["One", "Two"], "removed while the clock went back: gone");
+    }
+
+    /// A wider window than the one kept (Earlier messages): looked at again,
+    /// its older lines there; a narrower one is taken from the kept look.
+    #[test]
+    fn a_wider_window_looks_again() {
+        use std::sync::Arc;
+        use std::time::{Duration, SystemTime};
+        let stand = Stand::new("wider");
+        let now = SystemTime::now();
+        for (uid, days) in [(1u32, 10u64), (2, 9), (3, 1)] {
+            let path = stand.put(uid, &format!("w{uid}@example.org"), &format!("Note {uid}"));
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(now - Duration::from_secs(days * 86_400)).unwrap();
+        }
+        for sub in ["cur", "new"] {
+            set_dir_time(&stand.root.join(sub), now - Duration::from_secs(600));
+        }
+        let at = |days: u64| (now - Duration::from_secs(days * 86_400)).duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let near = recent(&stand.account, &stand.root, "", at(5), usize::MAX);
+        assert_eq!((near.lines.len(), near.older), (1, true));
+        let nearer = recent(&stand.account, &stand.root, "", at(3), usize::MAX);
+        assert!(Arc::ptr_eq(&near.lines, &nearer.lines), "narrower: the kept look");
+        let wide = recent(&stand.account, &stand.root, "", at(20), usize::MAX);
+        assert_eq!((wide.lines.len(), wide.older), (3, false), "wider: looked at again, the older lines there");
+    }
+
+    /// The first index in steps: the newest first, `fill` at a time, the
+    /// others waiting; what arrived before the window waits as older mail.
+    #[test]
+    fn the_first_index_fills_the_newest_first() {
+        use std::time::{Duration, SystemTime};
+        let stand = Stand::new("steps");
+        let now = SystemTime::now();
+        for uid in 1..=5u32 {
+            let path = stand.put(uid, &format!("m{uid}@example.org"), &format!("Note {uid}"));
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(now - Duration::from_secs(u64::from(10 - uid) * 86_400)).unwrap();
+        }
+        let since = (now - Duration::from_secs(6 * 86_400)).duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let first = recent(&stand.account, &stand.root, "", since, 2);
+        assert_eq!((first.read, first.waiting, first.older), (2, 3, true));
+        // The two newest: 4 and 5; their Date is older than they arrived, so they are kept by it.
+        assert_eq!(first.lines.iter().map(|(_, l)| l.arrived).min().map(|a| a >= since), Some(true));
+        let next = recent(&stand.account, &stand.root, "", since, 2);
+        assert_eq!((next.read, next.waiting), (2, 1));
+        let last = recent(&stand.account, &stand.root, "", since, 2);
+        assert_eq!((last.read, last.waiting), (1, 0));
+        assert_eq!(recent(&stand.account, &stand.root, "", since, 2).read, 0, "filled: kept");
     }
 }

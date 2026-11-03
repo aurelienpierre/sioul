@@ -99,8 +99,9 @@
 #   sioul:mail/ and refuses a path; the home card's rows (HomeCardRows.opens)
 #   and codes by their address, an older card's row by its file, else the
 #   Porch; read from the sources, no intent naming a file (no file: address,
-#   no Uri.fromFile), new mail's tap made from a checked address alone, and
-#   no notification's text nor a key logged.
+#   no Uri.fromFile), new mail's tap made from a checked address alone,
+#   several opening the mailbox (part 5), and no notification's text nor a
+#   key logged.
 # - ShareCheck: a calendar file opened (ShareActivity.insideOwn): a file:
 #   path into Sioul's own folders refused as the system resolves it (written
 #   inside, "..", a link to a file or a folder of Sioul's, a root named by a

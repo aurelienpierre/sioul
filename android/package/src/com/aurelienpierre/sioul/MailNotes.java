@@ -24,7 +24,8 @@ import org.json.JSONObject;
  * someone Always through in it (Rust's `through`), while one of Sioul's modes
  * silences the phone: its twin that passes do-not-disturb, at Android's
  * default importance (its sound, no banner), made then (PauseMode). A tap,
- * or Open, brings Sioul up on the Porch (ReminderOpener). On the lock
+ * or Open, brings Sioul up on the message, or on the mailbox at its top for
+ * several (ReminderOpener; the unified mailbox's parts 2 and 5). On the lock
  * screen, the count alone. From any process: the window's, or the one that
  * fetches mail while Sioul is away.
  */
@@ -42,15 +43,16 @@ final class MailNotes
     /**
      * What a tap opens: one message, by its address alone ("mail", its
      * address in the key: the unified mailbox's part 2), never a file; else
-     * the Porch. Neither is ever logged. Pure, checked on a JVM
-     * (android/jvm-checks/MailOpenCheck.java).
+     * the mailbox at its top ("mailbox": part 5; a notice an older Sioul
+     * posted says "porch" and still opens the Porch). Neither is ever
+     * logged. Pure, checked on a JVM (android/jvm-checks/MailOpenCheck.java).
      */
     static Intent opening(Context context, String address)
     {
         Intent tapped = new Intent(context, ReminderOpener.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (ReminderOpener.isMailAddress(address))
             return tapped.setData(Uri.fromParts(ReminderOpener.SCHEME, "mail", null)).putExtra(ReminderOpener.KEY, address);
-        return tapped.setData(Uri.fromParts(ReminderOpener.SCHEME, "porch", null));
+        return tapped.setData(Uri.fromParts(ReminderOpener.SCHEME, "mailbox", null));
     }
 
     /** Rust's notification: JSON {title, body, through, open (one message's address, or ""), words {mail, mail-through, open}}. Any thread. */

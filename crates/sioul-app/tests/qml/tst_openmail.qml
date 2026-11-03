@@ -62,7 +62,9 @@ Item {
             return key + ":" + value
         }
         // The mailbox (part 4): what it was asked, as Rust takes it.
-        property string mailbox: ""
+        signal mailboxPage(string text)
+        function bringFolders() {
+        }
         property var mailboxAsked: []
         function openMailbox(ask) {
             mock.mailboxAsked = mock.mailboxAsked.concat([ask])
@@ -277,9 +279,9 @@ Item {
             ]
         }
 
-        // What Mail opens on by itself: the mailbox on a computer (part 4), the first inbox on a phone.
+        // What Mail opens on by itself: the mailbox, on a computer (part 4) and a phone (part 5).
         function mailBeside(page) {
-            return fakeWindow.compact ? page.account === "alice" : page.boxShown && page.account === ""
+            return page.boxShown && page.account === ""
         }
 
         // One path from the Tasks page (1), a card open there, Mail made before or not: the
@@ -306,7 +308,7 @@ Item {
             tryCompare(page, "openKey", root.messageKey, 5000, label)
             tryVerify(() => reader(page) !== null && reader(page).reading !== null, 5000, label + ": read")
             verify(reader(page).visible, label + ": its reader shows")
-            tryVerify(() => mailBeside(page), 5000, label + ": the mailbox (a computer) or the first inbox (a phone) beside it")
+            tryVerify(() => mailBeside(page), 5000, label + ": the mailbox beside it")
             compare(page.openKey, root.messageKey, label + ": never closed by the folder")
             compare(find(page, "readerPlace").text, root.here.place, label + ": where it was found")
             // Back: Tasks again, its card shown again (on a phone the opening closed it).
@@ -365,7 +367,7 @@ Item {
                     verify(reader(page).visible, data.tag + ": never a blank page")
                     compare(page.openKey, "", data.tag + ": no file opened")
                 }
-                // Mail's mailbox (a computer) or first inbox (a phone) beside it, never over it.
+                // Mail's mailbox beside it, never over it.
                 tryVerify(() => mailBeside(page))
                 verify(page.reading, data.tag + ": still the reader's place")
             }

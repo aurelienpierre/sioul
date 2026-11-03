@@ -54,8 +54,6 @@ pub mod qobject {
         #[qproperty(bool, form_busy)]
         #[qproperty(QString, mail_accounts)]
         #[qproperty(QString, mail_folder)]
-        // Every address's mail in time order (`mailbox::page`), while Mail shows it.
-        #[qproperty(QString, mailbox)]
         #[qproperty(QString, drafts)]
         // The Mail page's search by conditions: its sentence, what the servers said, the rows (`mailsearch`).
         #[qproperty(QString, mail_search)]
@@ -290,11 +288,17 @@ pub mod qobject {
         fn open_folder(self: Pin<&mut Sioul>, account: &QString, folder: &QString, all: bool, query: &QString);
 
         /// Shows the mailbox, every address's mail in time order: `ask` as JSON
-        /// (`mailbox::Ask`: chip, account, windows, query, shown_resting); ""
-        /// while Mail does not show it (nothing is made meanwhile). The chip and
-        /// the address chosen are kept on this device.
+        /// (`mailbox::Ask`: chip, account, windows, query, shown_resting, rows,
+        /// fresh); "" while Mail does not show it (nothing is made meanwhile).
+        /// Its pages come by `mailbox_page`. The chip and the address chosen are
+        /// kept on this device.
         #[qinvokable]
         fn open_mailbox(self: Pin<&mut Sioul>, ask: &QString);
+
+        /// The mailbox shows on a phone: the other folders' round asked at once,
+        /// as "Sync now" asks it, said nowhere (decision 19); once a minute at most.
+        #[qinvokable]
+        fn bring_folders(self: Pin<&mut Sioul>);
 
         /// The mailbox's chip and address as last chosen on this device: JSON {chip, account}.
         #[qinvokable]
@@ -2107,6 +2111,11 @@ pub mod qobject {
         #[qsignal]
         fn copy_requested(self: Pin<&mut Sioul>, text: QString);
 
+        /// One page of the mailbox, as JSON (`mail::page_texts`): its rows from
+        /// `start`, whether more follow; sent only when it changed (§6).
+        #[qsignal]
+        fn mailbox_page(self: Pin<&mut Sioul>, text: QString);
+
         /// An account was added: the form can be emptied.
         #[qsignal]
         fn account_added(self: Pin<&mut Sioul>);
@@ -2328,7 +2337,6 @@ pub struct SioulRust {
     form_busy: bool,
     mail_accounts: QString,
     mail_folder: QString,
-    mailbox: QString,
     drafts: QString,
     mail_search: QString,
     undo_line: QString,
@@ -2387,6 +2395,10 @@ pub(crate) struct Shared {
     pub(crate) open_folder: Mutex<Option<mail::OpenFolder>>,
     /// What the mailbox shows, while Mail shows it (`mailbox::Ask`); none otherwise.
     pub(crate) open_mailbox: Mutex<Option<sioul_core::mailbox::Ask>>,
+    /// The mailbox's pages as last given to the window, by place (`mail::changed_pages`).
+    pub(crate) mailbox_pages: Mutex<Vec<String>>,
+    /// When the other folders' round was last asked for the mailbox (`bring_folders`).
+    pub(crate) folders_asked: Mutex<Option<std::time::Instant>>,
     /// What waits ten seconds for "Undo".
     pub(crate) pending: Mutex<Vec<Arc<mail::Pending>>>,
     pub(crate) mail_generation: AtomicU64,
@@ -4253,8 +4265,12 @@ impl qobject::Sioul {
     fn open_mailbox(self: Pin<&mut Self>, ask: &QString) {
         let shared = self.shared();
         let ask = ask.to_string();
-        let asked: Option<sioul_core::mailbox::Ask> = (!ask.trim().is_empty()).then(|| serde_json::from_str(&ask).unwrap_or_default());
-        if let Some(asked) = &asked {
+        let mut asked: Option<sioul_core::mailbox::Ask> = (!ask.trim().is_empty()).then(|| serde_json::from_str(&ask).unwrap_or_default());
+        if let Some(asked) = &mut asked {
+            // The window's list holds nothing: every page is new to it.
+            if let Ok(mut held) = shared.mailbox_pages.lock() {
+                mail::asked_fresh(asked, &mut held);
+            }
             mail::keep_mailbox_view(asked);
             if let Ok(mut open) = shared.open_folder.lock() {
                 *open = None;
@@ -4271,6 +4287,15 @@ impl qobject::Sioul {
 
     fn mailbox_view(&self) -> QString {
         QString::from(&mail::mailbox_view())
+    }
+
+    fn bring_folders(self: Pin<&mut Self>) {
+        let shared = self.shared();
+        let now = std::time::Instant::now();
+        let due = shared.folders_asked.lock().is_ok_and(|mut asked| mail::bring_due(&mut asked, now));
+        if due {
+            mail::bring_folders(&shared);
+        }
     }
 
     fn set_account_colour(mut self: Pin<&mut Self>, id: &QString, colour: i32) -> QString {

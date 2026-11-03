@@ -179,7 +179,12 @@ Panel {
     }
 
     // A mailbox row held by several addresses: each one's copy, as one message.
-    readonly property var rowKeys: reader.item && reader.item.keys && reader.item.keys.length > 1 ? reader.item.keys : null
+    readonly property var rowKeys: {
+        if (!reader.item || !reader.item.keys)
+            return null
+        const keys = Array.isArray(reader.item.keys) ? reader.item.keys : reader.item.keys.split("\n")
+        return keys.length > 1 ? keys : null
+    }
 
     // Filed away, the message leaves the list: the reader closes on it.
     function act(action, target) {

@@ -389,13 +389,13 @@ fn ours(window: Option<&Window>) -> bool {
 }
 
 /// What a tap on new mail's notification opens (the unified mailbox's parts
-/// 2 and 4): one message, the message by its address (the window's one
-/// opener); several, the mailbox at its top (a phone's notice carries no key
-/// for them, and opens the Porch until the phone's mailbox, part 5).
+/// 2, 4 and 5): one message, the message by its address (the window's one
+/// opener); several, the mailbox at its top, on a phone too (MailNotes.java
+/// opens "mailbox" when the notice names no message).
 pub(crate) fn opens_of(one: Option<&str>) -> (&'static str, String) {
     match one {
         Some(address) => ("mail", address.to_string()),
-        // Several: the mailbox at its top (decision 3); a phone's opens the Porch until its mailbox comes (part 5).
+        // Several: the mailbox at its top (decision 3), on both devices.
         None => ("mailbox", String::new()),
     }
 }
