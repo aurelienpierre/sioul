@@ -149,7 +149,8 @@ Item {
     // beside an open message, where the list's column is narrow; on one line
     // there, "Plus de critères…" and "Temps réel" pushed the row under the
     // reader, the name and the dates cut.
-    readonly property bool searchBelow: page.window.compact || page.reading
+    // Too narrow beside the folders (a phone held sideways: LB, item 4), so that the title keeps its words.
+    readonly property bool searchBelow: page.window.compact || page.reading || listColumn.width < 640
     // Back (a phone's button, Android's, Escape on the reader): a message the
     // window's opener brought from another page returns there, one level
     // (main.qml, `mailBack`); else Mail's own way: the message, the folders,
@@ -1097,6 +1098,7 @@ Item {
                     spacing: 0
 
                     Label {
+                        objectName: "mailTitle"
                         Layout.fillWidth: true
                         // A search's list: "Results", the column beside it being "Search".
                         text: page.draftsShown ? page.sioul.text("ui-drafts-here") : page.searchOpen ? page.sioul.text("search-results") : page.boxShown ? page.sioul.text("mailbox-title") : page.shown ? page.shown.title : ""

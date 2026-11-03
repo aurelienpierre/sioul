@@ -285,6 +285,14 @@ ColumnLayout {
     // The room the lines take at the list's left edge, while a day shown has one.
     readonly property int lineRoom: planning.listed && (planning.days || []).some(d => ((d.through || {}).lines || []).length > 0) ? 26 : 0
 
+    // A bar's colour: its calendar's; days off quiet, as their line in a list; else the accent.
+    function barHue(bar) {
+        if (bar.colour)
+            return bar.colour
+        const placed = planning.spanEvents[bar.id]
+        return placed && placed.item.kind === "day-off" ? planning.theme.muted : planning.theme.accent
+    }
+
     // An event over several days, from its line: what a tap on its row does.
     function openSpan(id, date) {
         const days = planning.days || []
@@ -489,7 +497,10 @@ ColumnLayout {
             // A leg is said in its appointment's line here, never a row of its own (the unified agenda, §4.7).
             // An event over several days once (`ongoing::Through`): its own rows among the day's, its copies left out.
             const spanned = (through.rows || []).map(r => planning.spanRowOf(r, day, i)).filter(r => r !== null && planning.shown(r))
-            const own = rows.filter(r => r.day === i && r.kind !== "leg" && !r.spans).concat(spanned).sort((a, b) => a.from - b.from || a.column - b.column).map(said)
+            // By the time each row says: the night's waking by its waking, its winding down by its start
+            // (its `from` is the night cut at midnight); an evening begun the day before keeps its 00:00.
+            const told = r => r.kind !== "night" ? r.from : planning.morning(r) ? r.to : r.lead
+            const own = rows.filter(r => r.day === i && r.kind !== "leg" && !r.spans).concat(spanned).sort((a, b) => told(a) - told(b) || a.column - b.column).map(said)
             out.push(...own)
             if (day.plan)
                 out.push(line("plan-line", day.plan))
@@ -1047,7 +1058,7 @@ ColumnLayout {
                     id: bar
 
                     required property var modelData
-                    readonly property color hue: bar.modelData.colour ? bar.modelData.colour : planning.theme.accent
+                    readonly property color hue: planning.barHue(bar.modelData)
 
                     objectName: "weekBar"
                     x: planning.gutter + bar.modelData.from_column * planning.dayWidth
@@ -1148,7 +1159,7 @@ ColumnLayout {
                 width: 6
                 height: 6
                 radius: 3
-                color: dayBar.modelData.colour ? dayBar.modelData.colour : planning.theme.accent
+                color: planning.barHue(dayBar.modelData)
             }
             TapHandler {
                 onTapped: planning.openSpan(dayBar.modelData.id, (planning.days[0] || {}).date || "")

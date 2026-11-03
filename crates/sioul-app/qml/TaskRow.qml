@@ -120,6 +120,8 @@ ItemDelegate {
 
         ColumnLayout {
             Layout.fillWidth: true
+            // The room left: its words cut or wrapped, never widening the row (a phone's 412 points).
+            Layout.preferredWidth: 0
             spacing: 1
 
             RowLayout {

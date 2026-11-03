@@ -6624,7 +6624,8 @@ impl qobject::Sioul {
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), "agenda" the
         // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), "cards" every
         // object's card opened from the agenda and Tasks, then Back (pictures alone), "taskviews" Now, the List
-        // folded and a task opened, the Board, the Gantt and a composed task's details (pictures alone), "mail-open" a
+        // folded and a task opened, the Board, the Gantt and a composed task's details, on a phone the List
+        // and Now sideways too (pictures alone), "mail-open" a
         // message opened as a tie, then one not on this device (docs/client.md), "safe-area" the event form
         // with Android's system bars stood in for, below then beside (pictures alone), "mailbox" every
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the

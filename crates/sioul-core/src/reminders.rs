@@ -184,6 +184,11 @@ pub struct Reminder {
     /// from it (review of 36002ea, low 27).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub names: Option<String>,
+    /// An event's own reminder (its alarm, Sioul's before it, the working
+    /// day before): the event's address (`sioul:event/<UID>`), what a
+    /// phone's notification of it names, never its file (the leftovers round).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<String>,
 }
 
 /// What waits now.
@@ -516,6 +521,7 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
                 work: false,
                 starts: Some(event.start),
                 names: None,
+                event: Some(crate::links::event_uri(&event.uid)),
             });
         }
         for (offset, due) in alarms {
@@ -530,6 +536,7 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
                 work: false,
                 starts: Some(event.start),
                 names: None,
+                event: Some(crate::links::event_uri(&event.uid)),
             });
         }
         // The working day before; not for calendars you only read (holidays, subscriptions), nor a leg of an appointment here.
@@ -551,6 +558,7 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
                 work: false,
                 starts: None,
                 names: None,
+                event: Some(crate::links::event_uri(&event.uid)),
             });
         }
     }
@@ -606,6 +614,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 work: !personal(task),
                 starts: None,
                 names: None,
+                event: None,
             });
         }
         // A wait after a step done: once, when the task is free (every task
@@ -640,6 +649,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                     work: !personal(task),
                     starts: None,
                     names: Some(crate::links::task_uri(&last.uid)),
+                    event: None,
                 });
             }
         }
@@ -677,6 +687,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
                 work: false,
                 starts: None,
                 names: None,
+                event: None,
             });
         }
     }
@@ -702,6 +713,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             work: false,
             starts: None,
             names: None,
+            event: None,
         });
     }
     // Contracts renewing each year: two weeks before the last day a notice can leave.
@@ -725,6 +737,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             work: false,
             starts: None,
             names: None,
+            event: None,
         });
     }
     // The money watch: once each, calmly.
@@ -757,7 +770,7 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             }
             crate::bank::Finding::Changed { .. } => continue,
         };
-        out.push(Reminder { key, kind: Kind::Money, at: at.timestamp().as_second(), until, title, body, target: "sioul:budget/".into(), work: false, starts: None, names: None });
+        out.push(Reminder { key, kind: Kind::Money, at: at.timestamp().as_second(), until, title, body, target: "sioul:budget/".into(), work: false, starts: None, names: None, event: None });
     }
     out.sort_by(|a, b| (a.at, &a.key).cmp(&(b.at, &b.key)));
     out
@@ -949,7 +962,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sioul-waits-settled-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let now = at("2026-10-26T15:00").timestamp().as_second();
-        let wait = |key: &str, at: i64| Reminder { key: key.into(), kind: Kind::Wait, at, until: at + 7 * 86_400, title: "Follow-up".into(), body: String::new(), target: crate::links::task_uri("follow"), work: false, starts: None, names: None };
+        let wait = |key: &str, at: i64| Reminder { key: key.into(), kind: Kind::Wait, at, until: at + 7 * 86_400, title: "Follow-up".into(), body: String::new(), target: crate::links::task_uri("follow"), work: false, starts: None, names: None, event: None };
         let all = vec![wait("wait:old:1", now - 3 * 86_400), wait("wait:new:1", now + 3600)];
         assert!(to_tell(all.clone(), &dir, now, &Holds::usual(Wait::Nothing)).is_empty(), "the old one marked, not told");
         assert!(dir.join(WAITS_SETTLED).exists(), "once");
@@ -1349,7 +1362,7 @@ mod tests {
     fn each_kind(at: i64, starts: i64) -> Vec<Reminder> {
         [Kind::Before, Kind::Alarm, Kind::Event, Kind::Asked, Kind::Wait, Kind::Payment, Kind::Paper, Kind::Contract, Kind::Money]
             .into_iter()
-            .flat_map(|kind| [false, true].map(move |work| Reminder { key: format!("{kind:?}:{work}"), kind, at, until: starts + 60, title: String::new(), body: String::new(), target: String::new(), work, starts: Some(starts), names: None }))
+            .flat_map(|kind| [false, true].map(move |work| Reminder { key: format!("{kind:?}:{work}"), kind, at, until: starts + 60, title: String::new(), body: String::new(), target: String::new(), work, starts: Some(starts), names: None, event: None }))
             .collect()
     }
 
@@ -1384,7 +1397,7 @@ mod tests {
         let now = at("2026-10-07T23:30").timestamp().as_second();
         let night = Wait::Sleep { from: now - 3600, until: now + 7 * 3600 };
         let after_waking = now + 8 * 3600;
-        let train = Reminder { key: "before:train".into(), kind: Kind::Before, at: now - 60, until: after_waking, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(after_waking), names: None };
+        let train = Reminder { key: "before:train".into(), kind: Kind::Before, at: now - 60, until: after_waking, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(after_waking), names: None, event: None };
         let dinner = Reminder { key: "alarm:dinner".into(), kind: Kind::Alarm, starts: Some(now + 600), until: now + 600, ..train.clone() };
         let bill = Reminder { key: "payment:water".into(), kind: Kind::Payment, until: now + 86_400, starts: None, ..train.clone() };
         let mut holds = Holds::usual(night);

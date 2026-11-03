@@ -311,23 +311,25 @@ pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char 
 }
 
 /// A reminder as Android's notification shows it (EventAlarms.java): its
-/// words, and the event it opens, its file and its time, given back as they
-/// are when the notification is tapped (`remind::event_time`; review of
-/// 590eb18, later 6).
+/// words, and the event it opens, by its address and its time
+/// (`sioul:event/<UID>#1793520000`, `remind::event_time`; review of 590eb18,
+/// later 6), never its file (the leftovers round): Android's intent carries
+/// no path of Sioul's files. Given back when the notification is tapped,
+/// and found again by its UID (`opened`).
 fn shown(reminder: &Reminder) -> serde_json::Value {
     serde_json::json!({
         "key": reminder.key,
         "kind": reminder.kind,
         "title": reminder.title,
         "body": reminder.body,
-        "event": crate::remind::event_time(&reminder.target, reminder.starts),
+        "event": reminder.event.as_deref().map(|address| crate::remind::event_time(address, reminder.starts)).unwrap_or_default(),
         "until": reminder.until * 1000,
         "words": words(),
     })
 }
 
 /// What a notification tapped while Sioul was away opens, once: ("event",
-/// its file), ("porch", ""), ("mailbox", "") for new mail of several, a closing sheet ("review", "work" or "night",
+/// its file and time, found by its address: `event_file`), ("porch", ""), ("mailbox", "") for new mail of several, a closing sheet ("review", "work" or "night",
 /// with its day: "work:2026-10-14"), or a block's question ("need", its key).
 pub(crate) fn opened() -> Option<(String, String)> {
     #[cfg(target_os = "android")]
@@ -337,7 +339,10 @@ pub(crate) fn opened() -> Option<(String, String)> {
         let found = unsafe { sioul_android_take_reminder_opened(buffer.as_mut_ptr().cast(), buffer.len() as i32) };
         if found {
             let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
-            return serde_json::from_slice(&buffer[..end]).ok().and_then(|said| opened_of(&said));
+            let (kind, key) = serde_json::from_slice(&buffer[..end]).ok().and_then(|said| opened_of(&said))?;
+            // An event by its address: its file on this phone, read now (an event gone meanwhile opens nothing).
+            let key = if kind == "event" { event_file(&key, &sioul_core::agenda::event_refs())? } else { key };
+            return Some((kind, key));
         }
     }
     None
@@ -361,6 +366,34 @@ fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
         _ => false,
     })?;
     Some((kind.to_string(), key.to_string()))
+}
+
+/// An event's address as its reminder carries it (`shown`):
+/// `sioul:event/<UID>` (the UID as links write it: a slash, a "#" encoded),
+/// then "#" and the time it reminds of when known; never a file.
+/// ReminderOpener.isEventAddress reads the same (EventOpenCheck).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn is_event_address(key: &str) -> bool {
+    let Some(rest) = key.strip_prefix("sioul:event/") else { return false };
+    let (uid, start) = rest.split_once('#').map_or((rest, None), |(uid, start)| (uid, Some(start)));
+    let plain = !uid.is_empty() && !uid.contains(['/', '\\']) && uid != "." && uid != "..";
+    plain && start.is_none_or(|start| !start.is_empty() && start.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// What an event's tapped reminder opens on this device: its file and the
+/// time it reminds of ("…/yoga.ics#1793520000", as `CardHost.eventTime`
+/// reads it), the event found by the UID its address names (`is_event_address`),
+/// in `refs` (`agenda::event_refs`); none when no event has it (deleted
+/// meanwhile). A notice an older Sioul posted names the file: as before.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn event_file(key: &str, refs: &[sioul_core::agenda::EventRef]) -> Option<String> {
+    if !is_event_address(key) {
+        return Some(key.to_string());
+    }
+    let (address, start) = key.split_once('#').map_or((key, None), |(address, start)| (address, start.parse::<i64>().ok()));
+    let uid = sioul_core::links::id_of(address);
+    let event = refs.iter().find(|r| r.uid == uid)?;
+    Some(crate::remind::event_time(&event.key, start))
 }
 
 /// A message's address as a notification may carry it: `mid:<id>` (as links
@@ -398,12 +431,52 @@ mod tests {
     }
 
     /// A phone's notification of an event opens that time of it when tapped:
-    /// its file and its time, given back as they are (review of 590eb18, later 6).
+    /// its address and its time, given back as they are (review of 590eb18,
+    /// later 6), never its file (the leftovers round); found again by its UID
+    /// as its file and time, as the window opens it. A notice an older Sioul
+    /// posted, its file in its intent, opens as before.
     #[test]
-    fn an_event_s_notification_names_its_time() {
-        let reminder = Reminder { key: "e".into(), kind: sioul_core::reminders::Kind::Event, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None };
-        assert_eq!(shown(&reminder)["event"], "/c/yoga.ics#1793520000");
-        assert_eq!(opened_of(&serde_json::json!({ "kind": "event", "key": "/c/yoga.ics#1793520000" })), Some(("event".into(), "/c/yoga.ics#1793520000".into())), "given back as it was");
+    fn an_event_s_notification_names_its_address_and_time() {
+        let reminder = Reminder { key: "before:yoga/1#x:1793520000".into(), kind: sioul_core::reminders::Kind::Before, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None, event: Some(sioul_core::links::event_uri("yoga/1#x")) };
+        let said = shown(&reminder)["event"].as_str().unwrap_or_default().to_string();
+        assert_eq!(said, "sioul:event/yoga%2F1%23x#1793520000");
+        assert!(!said.contains("yoga.ics") && is_event_address(&said));
+        assert_eq!(shown(&Reminder { starts: None, ..reminder.clone() })["event"], "sioul:event/yoga%2F1%23x", "no time known: its address");
+        assert_eq!(shown(&Reminder { event: None, ..reminder.clone() })["event"], "", "no address: none, never its file (Sioul as by its icon)");
+        let tapped = opened_of(&serde_json::json!({ "kind": "event", "key": said })).unwrap();
+        assert_eq!(tapped, ("event".to_string(), said.clone()), "given back as it was");
+        let refs = [sioul_core::agenda::EventRef { key: "/c/other.ics".into(), uid: "other".into(), ..Default::default() }, sioul_core::agenda::EventRef { key: "/c/yoga.ics".into(), uid: "yoga/1#x".into(), ..Default::default() }];
+        assert_eq!(event_file(&tapped.1, &refs).as_deref(), Some("/c/yoga.ics#1793520000"), "its file and time, as the window opens it");
+        assert_eq!(event_file("sioul:event/yoga%2F1%23x", &refs).as_deref(), Some("/c/yoga.ics"));
+        assert_eq!(event_file("sioul:event/gone#1793520000", &refs), None, "an event gone meanwhile: nothing");
+        // A notice an older Sioul (4d81220) posted: its file and time, opened as before.
+        let older = opened_of(&serde_json::json!({ "kind": "event", "key": "/c/yoga.ics#1793520000" })).unwrap();
+        assert_eq!(event_file(&older.1, &refs).as_deref(), Some("/c/yoga.ics#1793520000"));
+        for refused in ["/c/yoga.ics#1", "sioul:event/", "sioul:event/a/b", "sioul:event/..", "sioul:event/a#b", "sioul:event/a#1#2", "sioul:event/a\\b", "sioul:task/a", "sioul:event/a#"] {
+            assert!(!is_event_address(refused), "{refused}");
+        }
+    }
+
+    /// The addresses EventOpenCheck.java holds ReminderOpener.isEventAddress
+    /// to, read from that file: Rust's `is_event_address` agrees on each, so
+    /// that neither side changes alone.
+    #[test]
+    fn rust_and_java_read_an_event_s_address_alike() {
+        let check = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../android/jvm-checks/EventOpenCheck.java")).unwrap();
+        let listed = |name: &str| -> Vec<String> {
+            let start = format!("String[] {name} = {{ ");
+            let at = check.find(&start).unwrap() + start.len();
+            let end = at + check[at..].find(" };").unwrap();
+            check[at..end].split(',').map(str::trim).filter(|t| t.starts_with('"')).map(|t| unescaped(t.trim_matches('"'))).collect()
+        };
+        let (taken, refused) = (listed("taken"), listed("refused"));
+        assert!(taken.len() >= 4 && refused.len() >= 10, "{taken:?} {refused:?}");
+        for key in &taken {
+            assert!(is_event_address(key), "taken in Java: {key}");
+        }
+        for key in &refused {
+            assert!(!is_event_address(key), "refused in Java: {key}");
+        }
     }
 
     #[test]
@@ -424,7 +497,7 @@ mod tests {
         }
         assert_eq!(again_at(&usual(Wait::Paused), stamp + AGAIN), stamp + 2 * AGAIN, "never now");
         // A reminder's alarm: its time; due and free, at once; held (a train after waking), at waking.
-        let reminder = |at: i64, until: i64| Reminder { key: "before:train:1".into(), kind: Kind::Before, at, until, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(until), names: None };
+        let reminder = |at: i64, until: i64| Reminder { key: "before:train:1".into(), kind: Kind::Before, at, until, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(until), names: None, event: None };
         let night = usual(Wait::Sleep { from: stamp - 8 * 3600, until: stamp + 900 });
         assert_eq!(when(&reminder(stamp + 600, stamp + 3600), &usual(Wait::Nothing), stamp), stamp + 600);
         assert_eq!(when(&reminder(stamp - 60, stamp + 3600), &usual(Wait::Nothing), stamp), stamp + 1);

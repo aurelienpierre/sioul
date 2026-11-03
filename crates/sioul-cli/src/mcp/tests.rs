@@ -817,6 +817,62 @@ fn a_closed_project_is_never_shown() {
     assert!(!Draft::all().iter().any(|d| d.body.contains("Paid.") || d.subject == "Taxes"), "no draft");
 }
 
+/// A folder of 600 messages, more than a first look reads in the window
+/// (`mailbox::FIRST_FILL`, 500; the leftovers round): the agents' consent
+/// reads every folder whole first (`read::mail_index`, which writes each
+/// folder's index), so the mailbox's first look finds all 600 known and
+/// says no older mail is still being read (`indexing` false, no line);
+/// following the cursor, all 600 come, each once, newest first. The line
+/// for when one is (a message arriving between the two reads):
+/// `mailbox::tests::older_mail_still_being_read_is_said_once`.
+#[test]
+fn the_mailbox_gives_600_messages_from_its_first_look() {
+    let home = home();
+    let root = home.root.join("mailbox-600");
+    let inbox = root.join("box");
+    for sub in ["cur", "new", "tmp"] {
+        std::fs::create_dir_all(inbox.join(sub)).unwrap();
+    }
+    let path = sioul_core::folders::saved_path("box-600");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, "[[folder]]\nname = \"INBOX\"\ndisplay = \"INBOX\"\nrole = \"inbox\"\nlocal = \"\"\nspecial = true\n").unwrap();
+    // Each a minute older than the one before, arrived when it was sent: the newest 500 read first.
+    let now = Zoned::now();
+    for n in 0..600_i64 {
+        let at = now.checked_sub((60 * (n + 1)).seconds()).unwrap();
+        let raw = format!("Message-ID: <m{n:03}@example.org>\r\nFrom: Ana <ana@example.org>\r\nTo: jane@example.org\r\nSubject: Number {n}\r\nDate: {}\r\n\r\nHello.\r\n", at.strftime("%a, %d %b %Y %H:%M:%S %z"));
+        let file = inbox.join("cur").join(seen(&format!("17773{n:05}.U6-{n}.test")));
+        std::fs::write(&file, raw).unwrap();
+        let arrived = std::time::UNIX_EPOCH + std::time::Duration::from_secs(at.timestamp().as_second() as u64);
+        std::fs::File::options().write(true).open(&file).unwrap().set_modified(arrived).unwrap();
+    }
+    let config = root.join("config.toml");
+    std::fs::write(&config, format!("language = \"en\"\n\n[[account]]\nid = \"box-600\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", inbox.display().to_string().replace('\\', "\\\\"))).unwrap();
+    let mut server = Server::new(&config, "en");
+    let uris = |answer: &Value| answer["structuredContent"]["messages"].as_array().cloned().unwrap_or_default().iter().map(|m| m["uri"].as_str().unwrap_or_default().to_string()).collect::<Vec<_>>();
+    let first = call(&mut server, "mailbox", json!({ "limit": 200 }));
+    assert!(first["isError"] != true, "{first}");
+    assert_eq!(first["structuredContent"]["indexing"], false, "every message known at the first look");
+    assert!(!text(&first).contains(super::mailbox::READING), "{}", text(&first));
+    let mut given = uris(&first);
+    assert_eq!(given.first().map(String::as_str), Some("mid:m000@example.org"));
+    let mut cursor = first["structuredContent"]["cursor"].as_str().map(str::to_string);
+    let mut last = first;
+    while let Some(c) = cursor {
+        last = call(&mut server, "mailbox", json!({ "limit": 200, "cursor": c }));
+        assert!(last["isError"] != true, "{last}");
+        given.extend(uris(&last));
+        cursor = last["structuredContent"]["cursor"].as_str().map(str::to_string);
+    }
+    let expected: Vec<String> = (0..600).map(|n| format!("mid:m{n:03}@example.org")).collect();
+    assert_eq!(given, expected, "all 600, each once, newest first");
+    assert_eq!(last["structuredContent"]["indexing"], false);
+    assert!(!text(&last).contains(super::mailbox::READING), "{}", text(&last));
+    // The whole window in one answer, 200 at most: the cursor for the rest, never "still being read".
+    let whole = call(&mut server, "mailbox", json!({ "limit": 200 }));
+    assert_eq!((uris(&whole).len(), whole["structuredContent"]["indexing"].as_bool()), (200, Some(false)));
+}
+
 /// The mailbox for agents (the unified mailbox's part 6): every address's
 /// mail once, newest first, by its address, never a file's path; spam,
 /// sent, unread and one address asked apart; blocked senders left out and

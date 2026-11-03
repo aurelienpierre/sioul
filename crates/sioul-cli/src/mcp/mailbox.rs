@@ -26,6 +26,9 @@
 //! - **Resting addresses are said, not hidden**: the answer says first which
 //!   rest now and until when; their mail is given all the same.
 //! - **Nothing moves**: nothing is marked read, moved nor deleted.
+//! - **Older mail still being read**: a folder's first look reads its newest
+//!   `mailbox::FIRST_FILL` messages (500), the others at the next looks; the
+//!   answer then says so in one line (`indexing`), and gives its cursor.
 //! - **The cursor**, `<since>,<sent>,<address>`: the window's start and the
 //!   last message given. The next answer gives what comes after it, newest
 //!   first by when sent then by address: mail arriving meanwhile is newer and
@@ -40,6 +43,9 @@ use std::collections::BTreeSet;
 
 /// The days a first answer reaches back, without `since`.
 const DAYS: i64 = 14;
+
+/// Said while older mail waits to be read into its folders' indexes (`Page::indexing`).
+pub(super) const READING: &str = "(Older mail is still being read; the cursor, or asking again in a moment, gives the rest.)";
 
 /// Where an answer stopped: the window's start, and the last message given.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,8 +125,8 @@ pub fn mailbox(s: &Session, args: &Args) -> Result<Answer, String> {
         rows: usize::MAX,
         fresh: false,
     };
-    let page = mailbox::page_with(&addresses, &world, &ask, &BTreeSet::new(), &s.tr, stamp, &sioul_core::zone::current(), mailbox::STEP_FILL, &|uri| !consent.allows(uri));
-    let mut rows = page.rows;
+    let mut page = mailbox::page_with(&addresses, &world, &ask, &BTreeSet::new(), &s.tr, stamp, &sioul_core::zone::current(), mailbox::STEP_FILL, &|uri| !consent.allows(uri));
+    let mut rows = std::mem::take(&mut page.rows);
     ordered(&mut rows);
     let words = sioul_core::words::Words::of(&s.config);
     let mut given: Vec<Value> = Vec::new();
@@ -171,22 +177,40 @@ pub fn mailbox(s: &Session, args: &Args) -> Result<Answer, String> {
         }));
         last = Some((row.sent, row.uri.clone()));
     }
-    if given.is_empty() {
-        lines.push("(No message in these days.)".into());
-    }
-    lines.extend(access::left_out(page.closed));
-    if page.blocked > 0 {
-        lines.push(format!("({} from senders the person blocked: left out.)", page.blocked));
-    }
-    let next = more.then(|| last.map(|(sent, uri)| Cursor { since, sent, uri }.text())).flatten();
+    let (tail, next) = closing(given.len(), &page, more, since, last);
+    lines.extend(tail);
     if let Some(next) = &next {
         lines.push(format!("More: give cursor “{next}” for the next ones."));
     }
     let resting: Vec<Value> = resting.iter().map(|(account, line)| json!({ "account": account, "line": line })).collect();
     Ok(Answer {
         text: read::rows(&lines),
-        data: json!({ "resting": resting, "messages": given, "kept_from_agents": page.closed, "blocked": page.blocked, "cursor": next }),
+        data: json!({ "resting": resting, "messages": given, "kept_from_agents": page.closed, "blocked": page.blocked, "cursor": next, "indexing": page.indexing }),
     })
+}
+
+/// What an answer says last, and its cursor: that none came (but while older
+/// mail is still being read); that older mail is still being read
+/// (`Page::indexing`: a folder's first look reads its newest
+/// `mailbox::FIRST_FILL` messages, the others come at the next looks); what
+/// was kept from agents and what blocked senders sent, counted; the cursor
+/// after the last message given while more follow, or while older mail is
+/// still being read, so that following it brings the rest once each (the
+/// leftovers round).
+fn closing(given: usize, page: &mailbox::Page, more: bool, since: i64, last: Option<(i64, String)>) -> (Vec<String>, Option<String>) {
+    let mut lines = Vec::new();
+    if given == 0 && !page.indexing {
+        lines.push("(No message in these days.)".into());
+    }
+    if page.indexing {
+        lines.push(READING.into());
+    }
+    lines.extend(access::left_out(page.closed));
+    if page.blocked > 0 {
+        lines.push(format!("({} from senders the person blocked: left out.)", page.blocked));
+    }
+    let next = (more || page.indexing).then(|| last.map(|(sent, uri)| Cursor { since, sent, uri }.text())).flatten();
+    (lines, next)
 }
 
 /// The messages the mailbox counts as spam, by their addresses, over all
@@ -228,6 +252,25 @@ mod tests {
         assert_eq!(lines[0], "Rests now: noa@work.example.org rests until 09:00.");
         assert!(lines[1].contains("listed all the same"));
         assert_eq!(head(&[]).len(), 1, "none resting: the words' line alone");
+    }
+
+    /// While older mail is still being read (`indexing`), the answer says so
+    /// once, never that no message came, and gives its cursor even when no
+    /// more follow yet; once read, neither (the leftovers round).
+    #[test]
+    fn older_mail_still_being_read_is_said_once() {
+        let page = |indexing: bool| mailbox::Page { rows: Vec::new(), resting: Vec::new(), addresses: Vec::new(), earlier: false, more: false, indexing, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
+        let last = Some((1_793_600_000, "mid:m499@example.org".to_string()));
+        let (lines, next) = closing(200, &page(true), false, 1_790_000_000, last.clone());
+        assert_eq!(lines.iter().filter(|l| *l == READING).count(), 1, "{lines:?}");
+        assert_eq!(next.as_deref(), Some("1790000000,1793600000,mid:m499@example.org"), "the cursor, so that the rest comes once each");
+        let (lines, next) = closing(0, &page(true), false, 1_790_000_000, None);
+        assert_eq!(lines, [READING], "never “no message” while mail is still being read");
+        assert_eq!(next, None);
+        let (lines, next) = closing(200, &page(false), false, 1_790_000_000, last.clone());
+        assert!(lines.is_empty() && next.is_none(), "all read, none more: {lines:?}");
+        assert_eq!(closing(0, &page(false), false, 1_790_000_000, None).0, ["(No message in these days.)"]);
+        assert!(closing(200, &page(false), true, 1_790_000_000, last).1.is_some(), "more follow: the cursor, as before");
     }
 
     /// The cursor reads back as it was written, and orders as the answer does:

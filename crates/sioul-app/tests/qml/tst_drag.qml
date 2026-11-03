@@ -608,6 +608,9 @@ Item {
         // opens it, a thing opens as on the timeline; today's doses on one line.
         function test_agenda_week_as_a_list() {
             const days = week().concat(["2099-01-08", "2099-01-09", "2099-01-10", "2099-01-11"].map(v3day))
+            // At 02:00, and the end of an evening begun the day before (LB, item 2).
+            days[1].timed.push(event("late.ics", days[1], 120, 150))
+            days[1].timed.push(event("eve.ics", days[1], 0, 60))
             days[1].today = true
             days[1].doses = [dose("m@8", days[1], 480), dose("m@20", days[1], 1200)]
             days[2].plan = "First: letter"
@@ -622,7 +625,10 @@ Item {
             compare(keys.filter(k => k.startsWith("day-title|")).length, 7)
             const tuesday = keys.indexOf("day-title|2099-01-06")
             compare(keys[tuesday + 1], "doses-line|2099-01-06")
-            compare(keys.slice(tuesday + 2, tuesday + 5).join(" "), "need:2099-01-05/sleep|2099-01-06 step:letter@2099-01-06|2099-01-06 need:2099-01-06/meal:1|2099-01-06")
+            // By the clock: the evening's end at its 00:00, the 02:00 row, then waking at 07:00 (LB, item 2).
+            const at = word => keys.findIndex((k, n) => n > tuesday && k.indexOf(word) >= 0)
+            verify(at("eve.ics") < at("late.ics") && at("late.ics") < at("2099-01-05/sleep"), keys.slice(tuesday, tuesday + 8).join(" "))
+            compare(keys.slice(tuesday + 4, tuesday + 7).join(" "), "need:2099-01-05/sleep|2099-01-06 step:letter@2099-01-06|2099-01-06 need:2099-01-06/meal:1|2099-01-06")
             verify(keys.indexOf("plan-line|2099-01-07") > keys.indexOf("day-title|2099-01-07"))
             verify(keys.indexOf("free|2099-01-07") > 0, "a free day says so")
             let day = "", opened = ""

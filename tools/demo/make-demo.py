@@ -88,6 +88,8 @@ LANG = "en"
 # "quiet": the warnings for two events at once that they make set aside, for pictures of
 # the agenda under them.
 ONGOING = ""
+# --days-off: a leave of three days from tomorrow, which the agenda draws once (the leftovers round).
+DAYS_OFF = False
 
 
 def typo(text: str) -> str:
@@ -2626,6 +2628,13 @@ categories = {toml_list(categories)}
 area = "{area}"
 {"background = false" + chr(10) if background is False else ""}announced_by = ["{announced}"]
 """ for sid, name, url, kind, categories, area, announced, background in sites)
+    # --days-off: three days from tomorrow, drawn once (a row and a line in a list, a bar in a grid).
+    leave = f"""[[time_off]]
+from = {p.clock.day(1)}
+until = {p.clock.day(3)}
+label = {toml_string(t("Leave", "Congés"))}
+
+""" if DAYS_OFF else ""
     p.write(p.config / "config.toml", f"""# Sioul's demo profile: an invented life, made by tools/demo/make-demo.py.
 # Nothing here is real: the people, the companies, the messages. Run Sioul on it
 # with SIOUL_DEMO=1, which keeps it off the network.
@@ -2684,7 +2693,7 @@ from = {p.clock.weekday_after(6)}
 until = {p.clock.weekday_after(6)}
 label = {toml_string(t("Day off", "Jour de congé"))}
 
-[[time_off]]
+{leave}[[time_off]]
 from = {p.clock.today.year}-12-21
 until = {p.clock.today.year + 1}-01-03
 label = {toml_string(t("Winter holidays", "Vacances d'hiver"))}
@@ -2791,7 +2800,7 @@ def as_written_before(p: Profile):
 
 
 def main():
-    global LANG, W, ONGOING
+    global LANG, W, ONGOING, DAYS_OFF
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--into", required=True, type=Path, help="the profile's folder")
     parser.add_argument("--now", help="the moment the profile is made for, ISO 8601 with its offset (default: now)")
@@ -2817,8 +2826,11 @@ def main():
     parser.add_argument("--ongoing", nargs="?", const="1", default=os.environ.get("SIOUL_DEMO_ONGOING", ""),
                         help="events over several days: a month, an evening past midnight, a trip, five at once (SIOUL_DEMO_ONGOING=1 too);"
                              " --ongoing quiet (SIOUL_DEMO_ONGOING=quiet) sets aside the warnings for two events at once they make")
+    parser.add_argument("--days-off", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_DAYS_OFF")),
+                        help="a leave of three days from tomorrow, drawn once in the agenda (SIOUL_DEMO_DAYS_OFF=1 too)")
     args = parser.parse_args()
     ONGOING = args.ongoing
+    DAYS_OFF = args.days_off
     LANG = args.language
     W = World()
     now = datetime.fromisoformat(args.now) if args.now else datetime.now().astimezone()

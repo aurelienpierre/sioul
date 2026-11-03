@@ -879,9 +879,11 @@ pub fn month_lines(day: &Day) -> Vec<Placed> {
     day.head.iter().filter(shown).chain(day.timed.iter().filter(shown)).cloned().collect()
 }
 
-/// Whether a day is a day off (one at its head): its Month cell is shaded.
-pub fn day_off(day: &Day) -> bool {
-    day.head.iter().any(|p| p.item.kind == Kind::DayOff)
+/// Whether a date is a day off, from a view's items: its Month cell is
+/// shaded. From the items, not a day's head: days off over several days are
+/// a bar there (`ongoing::spans`), never at its head.
+pub fn day_off(items: &[Item], date: Date) -> bool {
+    items.iter().any(|item| item.kind == Kind::DayOff && matches!(item.time, Time::Day { date: from, until } if from <= date && date <= until))
 }
 
 /// One minute's doses in What comes, as the Porch lists them (§4.6): one row
@@ -1983,7 +1985,8 @@ mod tests {
         let items = [thing("Dentist", Kind::Event, "2026-10-05T14:00", "2026-10-05T14:30"), thing("Lunch", Kind::Meal, "2026-10-05T12:30", "2026-10-05T13:00"), thing("Dose", Kind::Dose, "2026-10-05T08:00", "2026-10-05T08:00"), fair, off, pinned, proposed, caf];
         let shown = days(&items, day("2026-10-05"), 1, day("2026-10-05"), &zone, &tr);
         assert_eq!(month_lines(&shown[0]).iter().map(|p| p.item.title.as_str()).collect::<Vec<_>>(), ["CAF form", "Fair", "Letter", "Dentist"]);
-        assert!(day_off(&shown[0]));
+        assert!(day_off(&items, day("2026-10-05")));
+        assert!(!day_off(&items, day("2026-10-06")));
     }
 
     /// What comes (the unified agenda, §4.6): today from now, in full, its

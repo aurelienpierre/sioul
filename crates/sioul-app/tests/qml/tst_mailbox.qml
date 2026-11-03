@@ -511,6 +511,22 @@ Item {
             verify(page.boxShown, "still the mailbox")
         }
 
+        // A phone held sideways (891 by 412, a computer's layout, the page 835 wide beside its rail): the search on a
+        // line of its own, the title keeping its words (LB, item 4); wide, on the title's line.
+        function test_sideways_the_title_keeps_its_words() {
+            const page = made()
+            // The window's 891 points less its rail of places.
+            page.width = 835
+            page.height = 412
+            const title = find(page, "mailTitle")
+            tryVerify(() => title.width > 0)
+            wait(50)
+            verify(!title.truncated, "the title whole: " + title.text + " in " + title.width)
+            verify(page.searchBelow, "the search under it")
+            page.width = 1400
+            tryVerify(() => !page.searchBelow)
+        }
+
         // From the mailbox to a folder and back: neither list is ever handed
         // the other's rows, not even for a moment (a warning would say so).
         function test_neither_list_is_handed_the_other_s_rows() {

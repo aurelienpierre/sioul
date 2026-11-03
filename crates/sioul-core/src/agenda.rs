@@ -134,8 +134,20 @@ pub fn parse(text: &str) -> Option<ICalendar> {
 }
 
 /// A zone as calcard knows it: times written without a zone are taken in it.
+/// A zone without a name whose offset never moves (a fixed offset, a POSIX
+/// rule without daylight time such as the demo's `DEMO-17`) is that offset;
+/// one that moves without a name stays floating, as before.
 fn calcard_zone(zone: &TimeZone) -> calcard::common::timezone::Tz {
-    zone.iana_name().and_then(|name| name.parse::<chrono_tz::Tz>().ok()).map_or(calcard::common::timezone::Tz::Floating, Into::into)
+    if let Some(named) = zone.iana_name().and_then(|name| name.parse::<chrono_tz::Tz>().ok()) {
+        return named.into();
+    }
+    let now = Timestamp::now();
+    let later = now.checked_add(jiff::SignedDuration::from_hours(24 * 183)).unwrap_or(now);
+    let offset = zone.to_offset(now);
+    match chrono::FixedOffset::east_opt(offset.seconds()) {
+        Some(fixed) if zone.to_offset(later) == offset => calcard::common::timezone::Tz::Fixed(fixed),
+        _ => calcard::common::timezone::Tz::Floating,
+    }
 }
 
 fn text_of(component: &ICalendarComponent, property: &ICalendarProperty) -> String {
@@ -3061,6 +3073,34 @@ mod tests {
 
     fn paris() -> TimeZone {
         TimeZone::get("Europe/Paris").unwrap()
+    }
+
+    /// A whole day lasts one day in a zone without a name whose offset never
+    /// moves (the demo's `TZ=DEMO-17`, a fixed offset): its midnight to the
+    /// next (LB, item 7); a named zone and a moving one without a name read
+    /// as before (Europe/Paris's midnights; floating dates as calcard reads them).
+    #[test]
+    fn a_whole_day_lasts_one_day_in_a_fixed_offset() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:holiday\r\nDTSTAMP:20261001T000000Z\r\nDTSTART;VALUE=DATE:20261102\r\nDTEND;VALUE=DATE:20261103\r\nSUMMARY:Holiday\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let span = |zone: &TimeZone| {
+            let event = parse(ics).unwrap().expand_dates(calcard_zone(zone), 10).events.into_iter().next().unwrap();
+            let end = match event.end {
+                TimeOrDelta::Time(end) => end.timestamp(),
+                TimeOrDelta::Delta(delta) => event.start.timestamp() + delta.num_seconds(),
+            };
+            (event.start.timestamp(), end)
+        };
+        let day = jiff::civil::date(2026, 11, 2);
+        for zone in [TimeZone::posix("DEMO-17").unwrap(), TimeZone::fixed(jiff::tz::offset(17)), TimeZone::fixed(jiff::tz::offset(-5))] {
+            let midnight = day.to_zoned(zone.clone()).unwrap().timestamp().as_second();
+            assert_eq!(span(&zone), (midnight, midnight + 86_400), "{zone:?}");
+        }
+        let named = day.to_zoned(paris()).unwrap().timestamp().as_second();
+        assert_eq!(span(&paris()), (named, named + 86_400), "a named zone as before");
+        let moving = TimeZone::posix("EST5EDT,M3.2.0,M11.1.0").unwrap();
+        assert!(matches!(calcard_zone(&moving), calcard::common::timezone::Tz::Floating), "a zone without a name that moves: floating, as before");
+        let utc = jiff::civil::date(2026, 11, 2).to_zoned(TimeZone::UTC).unwrap().timestamp().as_second();
+        assert_eq!(span(&moving), (utc, utc + 86_400), "floating dates as calcard reads them, as before");
     }
 
     /// A series written in UTC keeps its hour: calcard read each of its times

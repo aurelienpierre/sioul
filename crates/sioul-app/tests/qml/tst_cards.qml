@@ -795,6 +795,17 @@ Item {
             verify(!root.find(read, "taskRowBringBack").visible, "read only: nothing")
         }
 
+        // A task's row is never wider than a phone (LB, item 3): its words, a long
+        // title and a long line of details, are cut or wrapped within its width.
+        function test_a_task_row_fits_a_phone() {
+            const long = "Prepare the documents for the housing office, the receipts of the year and the forms they asked for"
+            const task = { uid: "wide", title: long, status: "needs-action", due: "Due Friday 6 November, before the office closes", estimate: "About 2 h 30", steps: "3 steps of 5", waits: "Waits for the bank's statement", stopped: "", list: "local/tasks", done_on: "", read_only: false, has_steps: false }
+            for (const compact of [true, false]) {
+                const row = createTemporaryObject(taskRowComponent, root, { task: task, width: 396, compact: compact })
+                verify(row.implicitWidth <= 396 && row.contentItem.implicitWidth <= 396, (compact ? "compact: " : "wide: ") + row.implicitWidth + " " + row.contentItem.implicitWidth)
+            }
+        }
+
         // The fold (composed tasks §7.2): a task with steps is one row in List and Board, its line
         // its appointment's time and its next step, never a count; its arrow opens its steps; the
         // Gantt's bar has its own; a view that does not fold makes no arrow.

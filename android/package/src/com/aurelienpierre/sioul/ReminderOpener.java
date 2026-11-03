@@ -12,7 +12,7 @@ import android.util.Log;
 /**
  * An event's reminder, new mail's notification, or a button of the end of
  * work's or the night's notice pressed (EventAlarms, MailNotes, DayNotes):
- * what it opens, the event's file, the Porch, a closing sheet or a block's
+ * what it opens, the event by its address, the Porch, a closing sheet or a block's
  * question, kept for Sioul ({@link EventAlarms#takeOpened}, which Rust reads
  * when the window comes up), the day's notice taken away, then Sioul brought
  * up as by its icon. A window of its own, never shown, as DoseOpener: no
@@ -22,7 +22,7 @@ public final class ReminderOpener extends Activity
 {
     /** The intent's address: "sioul-open:event", "sioul-open:porch", "sioul-open:review", "sioul-open:need", "sioul-open:mail", "sioul-open:mailbox". */
     static final String SCHEME = "sioul-open";
-    /** The event's file, on an event's reminder; "work" or "night" and its day for a closing sheet ("work:2026-10-14"); a block's key for its question; a message's address (never its file) for new mail's notification of one message. */
+    /** The event's address and the time it reminds of ({@code sioul:event/<UID>#1793520000}, never its file; an older Sioul's notice: its file), on an event's reminder; "work" or "night" and its day for a closing sheet ("work:2026-10-14"); a block's key for its question; a message's address (never its file) for new mail's notification of one message. */
     static final String KEY = "key";
     /** The day's notice pressed, to take away (DayNotes: its key). */
     static final String NOTE = "note";
@@ -46,6 +46,23 @@ public final class ReminderOpener extends Activity
         if ("mail".equals(kind))
             return isMailAddress(key);
         return "review".equals(kind) && key != null && key.matches("(work|night)(:\\d{4}-\\d{2}-\\d{2})?");
+    }
+
+    /**
+     * An event's address as an event's reminder carries it (eventalarms.rs,
+     * {@code shown}): {@code sioul:event/<UID>}, the UID as links.rs encodes
+     * it (a slash, a "#" encoded), then "#" and the time it reminds of, Unix
+     * seconds, when known; never a file's path.
+     *
+     * @param key what a reminder carries, or null
+     * @return whether it is an event's address
+     */
+    static boolean isEventAddress(String key)
+    {
+        if (key == null || !key.matches("sioul:event/[^/\\\\#]+(#\\d+)?"))
+            return false;
+        String uid = key.substring("sioul:event/".length()).replaceFirst("#\\d+$", "");
+        return !uid.equals(".") && !uid.equals("..");
     }
 
     /**

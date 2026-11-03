@@ -396,7 +396,7 @@ final class EventAlarms
         }
     }
 
-    /** A tapped notification's thing, kept until Sioul takes it (ReminderOpener): "event" and its file, "porch". */
+    /** A tapped notification's thing, kept until Sioul takes it (ReminderOpener): "event" and its address (an older notice: its file), "porch". */
     static synchronized void opened(Context context, String kind, String key)
     {
         JSONObject thing = new JSONObject();
@@ -445,7 +445,8 @@ final class EventAlarms
 
     /**
      * Rust's reminder (eventalarms.rs, `show`): JSON {key, kind, title, body,
-     * event (its file), until (Unix ms, when the event begins), words}. A
+     * event (its address and time: {@code sioul:event/<UID>#1793520000}), until
+     * (Unix ms, when the event begins), words}. A
      * tap, or Open, brings Sioul up on the event. Any thread.
      */
     static void show(Context context, String json)
@@ -511,9 +512,10 @@ final class EventAlarms
     {
         channel(context);
         String channel = alarm ? PauseMode.alarmsChannelNow(context) : CHANNEL;
-        // Without its event's file (said from the words kept): Sioul as by its icon.
-        Intent sioul = new Intent(context, ReminderOpener.class).setData(Uri.fromParts(ReminderOpener.SCHEME, event.isEmpty() ? "app" : "event", null))
-                           .putExtra(ReminderOpener.KEY, event).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // The event by its address alone, never its file; without one (said from the words kept): Sioul as by its icon.
+        String address = ReminderOpener.isEventAddress(event) ? event : "";
+        Intent sioul = new Intent(context, ReminderOpener.class).setData(Uri.fromParts(ReminderOpener.SCHEME, address.isEmpty() ? "app" : "event", null))
+                           .putExtra(ReminderOpener.KEY, address).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent open = PendingIntent.getActivity(context, key.hashCode(), sioul, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder reminder = new Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.sioul_notification)

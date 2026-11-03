@@ -1334,6 +1334,28 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.saveCounted("tasks-details", cardHost),
+                // A phone held sideways: the List and Now (the leftovers round).
+                () => {
+                    cardHost.leave()
+                    if (window.phoneGrab) {
+                        window.width = 891
+                        window.height = 412
+                    }
+                    tasksPage.mode = "list"
+                },
+                () => {},
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.saveCounted("tasks-list-wide", tasksPage)
+                },
+                () => tasksPage.mode = "now",
+                () => {},
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.saveCounted("tasks-now-wide", tasksPage)
+                },
                 () => window.close()
             ]
             readonly property var cardSteps: [

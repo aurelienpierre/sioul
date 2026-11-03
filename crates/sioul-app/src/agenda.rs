@@ -640,7 +640,9 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         _ => days.iter().map(|_| None).collect(),
     };
     let head = if mode == Mode::Comes && days.iter().any(|d| d.today) { head_frames(&items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &hidden, &now) } else { head };
-    let lines: Vec<(Vec<Placed>, bool)> = days.iter().map(|d| if mode == Mode::Month { (timeline::month_lines(d), timeline::day_off(d)) } else { (Vec::new(), false) }).collect();
+    // A day off shades its Month cell, from all the items: days off over several days are a bar, not at its head.
+    let off = |d: &timeline::Day| d.date.parse::<jiff::civil::Date>().is_ok_and(|date| timeline::day_off(&items, date));
+    let lines: Vec<(Vec<Placed>, bool)> = days.iter().map(|d| if mode == Mode::Month { (timeline::month_lines(d), off(d)) } else { (Vec::new(), false) }).collect();
     let detail = |placed: &Placed| match &placed.item.source {
         timeline::Source::Calendar { key, start, .. } => occurrences.iter().find(|o| &o.key == key && o.start == *start).map(Detail::of),
         _ => None,

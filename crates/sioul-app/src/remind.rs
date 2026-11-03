@@ -258,7 +258,7 @@ mod tests {
     /// series, not its next (review of 590eb18, later 6); a task's its task.
     #[test]
     fn an_event_s_reminder_opens_its_time() {
-        let event = reminders::Reminder { key: "e".into(), kind: Kind::Before, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None };
+        let event = reminders::Reminder { key: "e".into(), kind: Kind::Before, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None, event: None };
         assert_eq!(opens(&event), ("event", String::new(), "/c/yoga.ics#1793520000".to_string()));
         assert_eq!(opens(&reminders::Reminder { starts: None, ..event.clone() }).2, "/c/yoga.ics", "no time known: its file");
         let task = reminders::Reminder { kind: Kind::Asked, target: "sioul:task/t1".into(), starts: None, ..event };

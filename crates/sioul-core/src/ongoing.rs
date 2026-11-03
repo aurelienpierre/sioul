@@ -15,6 +15,8 @@
 //!   last day (`Through`); three lines side by side at most, then "+2";
 //! - a grid draws one of 24 hours or more, and a whole-day event over several
 //!   days, as one bar across its days (`Bar`), each week's row its own piece;
+//!   days off over several days are drawn the same way, a row and a line in
+//!   a list, a bar in a grid;
 //!   an evening past midnight (under 24 hours) keeps its hour blocks there,
 //!   as other calendars draw it: a bar would hide its hours.
 //!
@@ -274,9 +276,14 @@ fn lanes(spans: &[(usize, usize)]) -> Vec<u32> {
 
 /// Whether an item is an event of a calendar (or a task's time block) that
 /// runs past its first day: its last moment on a later day than its start (an
-/// end at midnight belongs to the day before), or whole days over two or more.
+/// end at midnight belongs to the day before), or whole days over two or more;
+/// or days off over several days (the configuration's `time_off`), drawn once
+/// as such an event is (the leftovers round). The plan reads the days off
+/// from the configuration, never from here.
 fn over_days(item: &Item, zone: &TimeZone) -> Option<(i64, i64, bool, Date, Date)> {
-    if !matches!(item.kind, Kind::Event | Kind::Block) || !matches!(item.source, Source::Calendar { .. }) {
+    let event = matches!(item.kind, Kind::Event | Kind::Block) && matches!(item.source, Source::Calendar { .. });
+    let off = item.kind == Kind::DayOff && matches!(item.source, Source::DayOff { .. });
+    if !event && !off {
         return None;
     }
     let (at, until) = item.time.proper(zone);
@@ -532,6 +539,32 @@ mod tests {
         assert_eq!((residency.when.as_str(), residency.from_minute, residency.all_day), ("Mon 2 Nov 10:00 → Mon 30 Nov 10:15", 600, false));
     }
 
+    /// Days off over several days are drawn once, as a holiday of whole days
+    /// is: one row on their first day, their line through every day, an end
+    /// mark on their last, one bar in a grid; a single day off stays at its
+    /// day's head, as before (the leftovers round, item 1).
+    #[test]
+    fn days_off_over_several_days_are_one_row_a_line_and_a_bar() {
+        use super::Mark::{End, First};
+        let zone = paris();
+        let off = |id: &str, from: &str, until: &str| crate::config::TimeOff { id: id.into(), from: day(from), until: day(until), label: format!("Days off {id}") };
+        let items = crate::timeline::days_off(&[off("leave", "2026-11-04", "2026-11-06"), off("bridge", "2026-11-11", "2026-11-11")]);
+        let spans = super::spans(&items, day("2026-11-02"), 14, &zone, &crate::i18n::Translator::new("en"), &|_| false);
+        assert_eq!(spans.events.iter().map(|e| e.item.id.as_str()).collect::<Vec<_>>(), ["off:leave"], "the single day stays at its head");
+        let rows: Vec<Vec<(super::Mark, &str, &str)>> = spans.days.iter().map(|d| d.rows.iter().map(|r| (r.mark, r.when.as_str(), r.line.as_str())).collect()).collect();
+        assert_eq!(rows[2], [(First, "All day", "Wed 4 Nov → Fri 6 Nov")]);
+        assert_eq!(rows[4], [(End, "", "last day")]);
+        assert!(rows.iter().enumerate().all(|(i, r)| r.is_empty() == !matches!(i, 2 | 4)), "nothing written on the days between: {rows:?}");
+        let lined: Vec<usize> = spans.days.iter().enumerate().filter(|(_, d)| d.lines.iter().any(|l| l.id == "off:leave")).map(|(i, _)| i).collect();
+        assert_eq!(lined, [2, 3, 4]);
+        assert_eq!(spans.bars.iter().map(|b| (b.id.as_str(), b.row, b.from_column, b.to_column)).collect::<Vec<_>>(), [("off:leave", 0, 2, 4)]);
+        assert!(spans.spanning("off:leave") && spans.bar("off:leave") && !spans.spanning("off:bridge"));
+        // Over a week's end: a bar in each week's row, the line through the Sunday.
+        let long = crate::timeline::days_off(&[off("long", "2026-11-06", "2026-11-10")]);
+        let spans = super::spans(&long, day("2026-11-02"), 14, &zone, &crate::i18n::Translator::new("en"), &|_| false);
+        assert_eq!(spans.bars.iter().map(|b| (b.row, b.from_column, b.to_column, b.cut_before, b.cut_after)).collect::<Vec<_>>(), [(0, 4, 6, false, true), (1, 0, 1, true, false)]);
+    }
+
     /// A list that starts after an event began says, on its first day, "Ongoing
     /// since …, until …"; its line starts there; its end mark on its last day.
     #[test]
@@ -651,7 +684,10 @@ mod tests {
     /// The plan, the warning for two events at once and the reminders read the
     /// events as they are: their answers on the stand-ins are those recorded on
     /// 6820489, before events over several days were drawn once
-    /// (tests/ongoing-unchanged.txt; `SIOUL_RECORD_ONGOING=1` writes it).
+    /// (tests/ongoing-unchanged.txt; `SIOUL_RECORD_ONGOING=1` writes it). The
+    /// leftovers round added one field to the reminders' lines (15 to 17): each
+    /// event's reminder names its event's address (`event`); every value
+    /// recorded is as it was.
     #[test]
     fn the_plan_the_warning_and_the_reminders_read_the_events_as_they_are() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ongoing-unchanged.txt");

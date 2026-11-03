@@ -1087,7 +1087,7 @@ Item {
                             required property var modelData
                             readonly property Item first: monthCells.count > 0 ? monthCells.itemAt(monthBar.modelData.row * 7 + monthBar.modelData.from_column) : null
                             readonly property Item last: monthCells.count > 0 ? monthCells.itemAt(monthBar.modelData.row * 7 + monthBar.modelData.to_column) : null
-                            readonly property color hue: monthBar.modelData.colour ? monthBar.modelData.colour : page.theme.accent
+                            readonly property color hue: monthBar.modelData.colour ? monthBar.modelData.colour : (page.spanEvents[monthBar.modelData.id] || { item: {} }).item.kind === "day-off" ? page.theme.muted : page.theme.accent
 
                             objectName: "monthBar"
                             visible: monthBar.first !== null && monthBar.last !== null

@@ -40,10 +40,11 @@ A trip, a holiday, a residency, an event typed with a wrong end date: an event o
 - **In the lists** (What comes, and a phone's Week and Month lists), it is one row on its first day, its whole span under its title: "Mon 2 Nov 10:00 → Mon 30 Nov 10:15"; an evening past midnight, "22:00 → 02:00 (Tue)". A thin line in its calendar's colour then runs down the list's left edge through every day it covers, and ends on its last day with a small mark and a row "until 10:15", even on a day with nothing else. A tap on the line opens the event. A list that starts after it began says "Ongoing since Mon 2 Nov, until Mon 30 Nov" at the top of its first day. Three lines run side by side at most; beyond them, the day's title says how many more ("+2").
 - **In the Week and the Month**, an event of 24 hours or more, and one of several whole days, is one bar across its days: at the top of the week, its start time at one end and its end time at the other; in the month, once on each week's row, its title once on each. Its hours are not filled on the timeline, so what else happens on those days stays readable. In the Day, it is one line at the head: "Ongoing: Residency, until Mon 30 Nov 10:15", every one of them, however many. Three bars at most run side by side; beyond them "+2" under a day opens that day.
 - **An evening past midnight**, shorter than 24 hours, keeps its hours in the Day and the Week, as other calendars draw it (a bar would hide them), and its line on both its days in the month.
+- **Time off over several days** ([Settings ▸ Hours](settings.md#hours), **Time off**) is drawn the same way: one row on its first day, "All day", "Wed 4 Nov → Fri 6 Nov" under its word, a grey line through its days to "last day", one grey bar in the Week and the Month, whose cells stay shaded. A single day off stays at the head of its day, as before.
 - **On the home card**, from the day after its first, it is one line under today: "Ongoing: Residency, until Mon 30 Nov 10:15".
 - `sioul agenda` and the agents' agenda list it once, with its span; asked from a later day, "Ongoing since".
 
-Only the drawing changes. The plan still keeps its hours busy, the warning for two events at once and the reminders read it as before, and your other calendar apps see the same event.
+Only the drawing changes. The plan still keeps its hours busy and plans nothing on your days off, the warning for two events at once and the reminders read it as before, and your other calendar apps see the same event.
 
 ## Events
 
