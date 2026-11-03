@@ -267,6 +267,9 @@ pub struct Row {
     pub trust: String,
     /// Its quiet word when it is spam ("probably spam"), else "".
     pub spam: String,
+    /// Your filter's word on a message it flagged probably not spam where it
+    /// lies, which stays in All ("probably not spam"), else "".
+    pub flag: String,
     /// A shielded address's hostile mail: its words kept to itself.
     pub hostile: bool,
     /// Its addresses' marks, ranked; none with a single address.
@@ -332,6 +335,8 @@ struct Listed<'a> {
     held: Vec<usize>,
     kinds: Vec<&'static str>,
     spam: Option<String>,
+    /// Flagged probably not spam where it lies: its word.
+    flag: Option<String>,
     sent_kind: bool,
     received_kind: bool,
     unread_here: bool,
@@ -542,14 +547,16 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             }
             let id = c.line.message_id.as_deref().map(crate::mailindex::bare_id);
             let account = &addresses[c.address].account.id;
-            let class_word = |class: crate::spam::Class| tr.text(if class == crate::spam::Class::Spam { "spam-chip-spam" } else { "spam-chip-unsure" }, None);
+            let class_word = |class: crate::spam::Class| tr.text(class.word_id(), None);
             if c.role == Role::Junk {
                 let moved = world.moved.iter().rev().find(|m| m.account == *account && id.is_some() && m.message_id.as_deref() == id.as_deref());
                 return Some(moved.map_or_else(|| tr.text("mailbox-spam-junk", None), |m| class_word(m.class)));
             }
-            // Your filter flagged it where it lies: its log names its place.
+            // Your filter flagged it where it lies: its log names its place. Probably not
+            // spam is no spam: marked so in All, never under Spam (`flag_word`).
             if let Some(origin) = maildir::origin_of(&c.path)
                 && let Some(flagged) = world.flagged.iter().rev().find(|f| f.account == *account && f.folder == c.folder && f.uidvalidity == origin.validity && f.uid == origin.uid)
+                && flagged.class != crate::spam::Class::Ham
             {
                 return Some(class_word(flagged.class));
             }
@@ -557,6 +564,18 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             (c.line.spam && stranger && !from_own).then(|| tr.text("mailbox-spam-provider", None))
         };
         let spam_words: Vec<Option<String>> = copies.iter().map(|c| spam_word(c)).collect();
+        // Flagged probably not spam where it lies (the matrix's "Flag only" for ham): its word,
+        // as the Porch's review queue says it, on a row that stays in All (decided 3 November 2026).
+        let flag_word = (!said_ham)
+            .then(|| {
+                copies.iter().find_map(|c| {
+                    let origin = maildir::origin_of(&c.path)?;
+                    let account = &addresses[c.address].account.id;
+                    let flagged = world.flagged.iter().rev().find(|f| f.account == *account && f.folder == c.folder && f.uidvalidity == origin.validity && f.uid == origin.uid)?;
+                    (flagged.class == crate::spam::Class::Ham).then(|| tr.text(flagged.class.word_id(), None))
+                })
+            })
+            .flatten();
         let sent_kind = copies.iter().any(sent_copy);
         let received_kind = copies.iter().zip(&spam_words).any(|(c, s)| received_copy(c) && s.is_none());
         let spam = (!sent_kind && !received_kind).then(|| spam_words.iter().flatten().next().cloned()).flatten();
@@ -604,14 +623,14 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             continue;
         }
         let sent = copies.iter().map(|c| c.sent).min().unwrap_or(first.sent);
-        listed.push(Listed { uri, card, held, kinds, spam, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies });
+        listed.push(Listed { uri, card, held, kinds, spam, flag: flag_word, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies });
     }
     // Newest first; a page of rows a window at most, "Earlier messages" showing more.
     listed.sort_by(|a, b| b.sent.cmp(&a.sent).then_with(|| a.copies[0].path.as_os_str().cmp(b.copies[0].path.as_os_str())));
     let more = listed.len() > ask.rows.max(1);
     listed.truncate(ask.rows.max(1));
     let mut rows = Vec::with_capacity(listed.len());
-    for Listed { uri, card, held, kinds, spam, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies } in listed {
+    for Listed { uri, card, held, kinds, spam, flag, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies } in listed {
         let first = &copies[0];
         let address = &addresses[first.address];
         let outgoing = !received_kind && sent_kind;
@@ -627,7 +646,9 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         let hostile = shielded && received_kind && stranger && !from_own && copies.iter().find(|c| addresses[c.address].account.shield).is_some_and(|c| hostile(&addresses[c.address].account.id, &c.path, world));
         // The dot: received, not read, and the matrix shows it now (decision 12).
         let dot = unread_here && spam.is_none() && !forged && !hostile && {
-            let unproven = !matches!(trust::judge_sender(trust::read_auth_results(&card.headers, &address.trusted).as_ref(), card.is_list, card.sender_domain()).0, Trust::Verified);
+            let results = trust::read_auth_results(&card.headers, &address.trusted);
+            let excused = card.is_list && trust::list_excused(results.as_ref(), &card.headers, &trust::sealers(&address.trusted, &[]));
+            let unproven = !matches!(trust::judge_sender(results.as_ref(), excused, card.sender_domain()).0, Trust::Verified);
             let who = if unproven { Who::Stranger } else { world.senders.who_of(&card) };
             let always = !unproven && card.from_address.as_deref().is_some_and(|a| world.always.admits_address(a));
             let area = address.account.area.as_deref().and_then(crate::areas::Area::parse).unwrap_or(crate::areas::Area::WORK);
@@ -668,6 +689,7 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             // Its trust in words: forged mail's mark, and the reader's sender line.
             trust: item.trust.clone(),
             spam: spam.clone().unwrap_or_default(),
+            flag: flag.unwrap_or_default(),
             hostile,
             marks: if several { held.iter().map(|i| mark(*i)).collect() } else { Vec::new() },
             kinds,
@@ -958,6 +980,7 @@ mod tests {
         stand.put(0, "INBOX", 5, "friend@example.org", "Ana <ana@example.org>", "noa@work.example.org", "A friend, flagged", at, at, "", provider, "Hello.");
         stand.put(0, "INBOX", 6, "said@example.org", "Prize <prize@lottery.example>", "noa@work.example.org", "Said not spam", at, at, "", provider, "Win.");
         stand.put(0, "Junk", 7, "notjunk@example.org", "Ads <ads@shop.example>", "noa@work.example.org", "Not junk in the junk", at, at, "b", "", "Hi.");
+        let ham = stand.put(0, "INBOX", 8, "ham@example.org", "Shop <news@shop.example>", "noa@work.example.org", "Flagged not spam", at, at, "", "", "News.");
         let mut world = world_at(crate::areas::Time::Work, "", "ana@example.org");
         let account = stand.addresses[0].account.id.clone();
         let judged = |uid: u32, id: &str, class| labels::Moved { at, account: account.clone(), folder: "INBOX".into(), uidvalidity: 7, uid, message_id: Some(id.into()), class };
@@ -965,10 +988,16 @@ mod tests {
         let origin = maildir::origin_of(&flagged).unwrap();
         world.flagged.push(labels::Moved { uidvalidity: origin.validity, ..judged(3, "flagged@example.org", crate::spam::Class::Spam) });
         world.said.push(labels::Entry { at, account: account.clone(), folder: "INBOX".into(), uidvalidity: 7, uid: 6, message_id: Some("said@example.org".into()), label: labels::Label::Ham, source: labels::Source::NotSpam });
+        // Flagged probably not spam where it lies (decided 3 November 2026): in All, with its word, never under Spam.
+        let ham_origin = maildir::origin_of(&ham).unwrap();
+        world.flagged.push(labels::Moved { uidvalidity: ham_origin.validity, ..judged(8, "ham@example.org", crate::spam::Class::Ham) });
         let all = stand.page(&world, &Ask::default(), &BTreeSet::new());
         let mut shown = subjects(&all);
         shown.sort_unstable();
-        assert_eq!(shown, ["A friend, flagged", "Not junk in the junk", "Said not spam"]);
+        assert_eq!(shown, ["A friend, flagged", "Flagged not spam", "Not junk in the junk", "Said not spam"]);
+        let marked: BTreeMap<&str, (&str, &str)> = all.rows.iter().map(|r| (r.subject.as_str(), (r.spam.as_str(), r.flag.as_str()))).collect();
+        assert_eq!(marked["Flagged not spam"], ("", "probably not spam"));
+        assert!(marked.iter().filter(|(s, _)| **s != "Flagged not spam").all(|(_, w)| *w == ("", "")), "{marked:?}");
         let spam = stand.page(&world, &Ask { chip: Chip::Spam, ..Ask::default() }, &BTreeSet::new());
         let words: BTreeMap<&str, &str> = spam.rows.iter().map(|r| (r.subject.as_str(), r.spam.as_str())).collect();
         assert_eq!(words, BTreeMap::from([("In the junk", "in the junk"), ("Moved by your filter", "maybe spam"), ("Flagged where it lies", "probably spam"), ("Your provider's word", "your provider: spam")]));

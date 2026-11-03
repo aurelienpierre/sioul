@@ -101,6 +101,12 @@ Item {
         page.mail = page.person ? JSON.parse(page.sioul.personOf(page.openKey) || "null") || page.noMail : page.noMail
     }
 
+    // The server a photo's address names, as its button says it: "example.org".
+    function photoHost(url) {
+        const found = /^https:\/\/([^\/?#@:]+)/i.exec(url || "")
+        return found ? found[1] : ""
+    }
+
     // What an address or a number is for ("work", "cell"), in your language; a
     // kind the card writes and Sioul does not know ("other", "car") as written.
     function labelText(label) {
@@ -575,6 +581,21 @@ Item {
                                             }
                                         }
                                     }
+                                }
+
+                                // A photo the card names on another server: loaded only when you ask,
+                                // then kept here (decided 3 November 2026); nothing remote loads by itself.
+                                Button {
+                                    objectName: "contactPhotoLoad"
+                                    visible: page.person !== null && (page.person.photo_web || "") !== ""
+                                    flat: true
+                                    icon.name: "image-x-generic"
+                                    icon.color: page.theme.text
+                                    text: page.person && page.person.photo_web ? page.theme.plain(page.sioul.textWith("contact-photo-load", "host", page.photoHost(page.person.photo_web))) : ""
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: page.sioul.text("contact-photo-load-help")
+                                    ToolTip.delay: 400
+                                    onClicked: page.sioul.loadContactPhoto(page.person.photo_web)
                                 }
 
                                 // Addresses, each with "Write".

@@ -114,7 +114,7 @@ A newsletter or a list's message that says how to leave it has **Unsubscribe** a
 
 **Undo** stays in the status line for those ten seconds. Then the line says "Unsubscribed from Type & Pixels.", or why not. The message itself stays where it is.
 
-The button rests, dimmed, on mail that is forged, set aside as spam or called probably spam by your own filter, in the junk folder, borrowing a name, hostile, from a sender you blocked, or when nothing proves that the address it names belongs to the list: answering such mail would tell its sender that your address is read, or reach someone else. Its tip, or a tap on a phone, says why.
+The button rests, dimmed, on mail that is forged, set aside as spam or called probably spam or maybe spam by your own filter, in the junk folder, borrowing a name, hostile, from a sender you blocked, or when nothing proves that the address it names belongs to the list: answering such mail would tell its sender that your address is read, or reach someone else. Its tip, or a tap on a phone, says why. On a message your filter only doubts, **Not spam** brings the button back.
 
 A list you left shows **Unsubscribed**, and when. If its mail keeps coming, block the sender: ⋮ ▸ **How they reach you…** ▸ **Blocked**. The lists you left are in the Mail page's ⚙, under **Lists you left**, on this device.
 
@@ -270,7 +270,7 @@ Under **Your own spam filter**, in the Mail page's ⚙. It judges strangers' mai
 
 - **What it does with each verdict**: for what it finds **probably spam**, **maybe spam** and **probably not spam**, one of three:
     - **Move to spam**: as it arrives, the message goes into its address's Junk folder, **on the server**, where your other mail apps see it too; it waits on the Porch, in **Caught by your own spam filter**, where **Not spam** brings it back to the inbox. Only mail as it arrives: what is in the inbox already stays there, flagged;
-    - **Flag only**: it stays where it is, marked, and waits there too;
+    - **Flag only**: it stays where it is, marked, and waits there too. Its mark shows in Mail as well: beside its subject in its folder, and in All addresses, where probably spam and maybe spam are under **Spam** and probably not spam stays in the list, marked;
     - **Do nothing**: it goes to its lane, as any message.
 
     Until you choose: probable spam and doubts flagged, nothing done with the rest. Nothing it flags or moves is ever notified, on any device.
@@ -535,7 +535,7 @@ When a message is fetched, Sioul checks it itself, through your system's DNS (St
 The results are written on top of the stored message as an `Authentication-Results` header (RFC 8601), under a name only your copy of Sioul uses, ending in `.invalid`, so that no sender can write results that pass for Sioul's. Sioul trusts them first, then your provider's own header, whose name it learns from your mail. A message too large to fetch whole is checked on its headers: DKIM and ARC are then left unsaid, and DMARC is said only when it passes.
 
 - **Verified**: DMARC passes for the domain shown in From, or a valid DKIM signature of that same domain. A signature of another domain proves nothing about the sender.
-- **Forged**: DMARC fails, and the domain asks receivers to act on it (`p=quarantine` or `p=reject`). With `p=none`, or through a mailing list, which rewrites what it relays, the sender is only not verified. No list relays your codes: a code that fails DMARC under a policy is forged, list headers or not.
+- **Forged**: DMARC fails, and the domain asks receivers to act on it (`p=quarantine` or `p=reject`). With `p=none`, or through a mailing list, which rewrites what it relays, the sender is only not verified; a list counts only when your provider vouches for the way it came (its ARC seal) or the list signed what it relayed, since anyone can write list headers. No list relays your codes: a code that fails DMARC under a policy is forged, list headers or not.
 - **Not authenticated**: SPF and DKIM both failed, and neither DMARC nor an ARC chain sealed by your provider or one of your domains vouches for it. Nothing proves it comes from the address it shows, so its sender counts as a stranger for every rule of the Porch: screened, judged by spam filters, no project lane by address.
 
 Hovering over the shield shows each check, its result, the domain it was for, and who made it: Sioul at arrival, or your provider. Your provider's spam verdict (SpamAssassin's or rspamd's headers) is read only from the lines it wrote itself, above the one where the message came in.

@@ -212,7 +212,7 @@ Google Tasks garde moins : une liste là-bas grise ce que Google ne garde pas 
 
 ## Pendant le calme, et pendant le sommeil {#in-quiet-time-and-while-you-sleep}
 
-Pendant le calme ([Les heures](hours.md#quiet-time)), les pages de tâches ne gardent que ce qui convient au moment présent : pendant les loisirs et un repas, ce qui est à vous ; le travail attend son retour.
+Pendant le calme ([Les heures](hours.md#quiet-time)), les pages de tâches ne gardent que ce qui convient au moment présent : pendant les loisirs et un repas, ce qui est à vous ; le travail attend son retour. Une tâche que vous créez sur la page Tâches reste en vue jusqu’à ce que vous quittiez la page, quelles que soient les heures, et sa ligne dit quand elle revient : « Hors de ces heures : de retour demain à 09:00. »
 
 Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), la page attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. **Nouveau ▾ ▸ Une tâche** montre quand même la page, le formulaire d’une nouvelle tâche ouvert. Les rappels des tâches attendent aussi, jusqu’au réveil.
 

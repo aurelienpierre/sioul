@@ -433,6 +433,10 @@ const SEVERAL: &[&str] = &[
     "X-GOOGLE-TALK", "X-TWITTER",
 ];
 
+/// Another application's lines that name the card they are on (Apple's own
+/// id, how it shows the card): the leading card's stay, the other's go with it.
+const ONE_PER_CARD: &[&str] = &["X-ABUID", "X-ABSHOWAS"];
+
 /// A value as compared between two cards: a web site without its scheme, "www." or last
 /// slash; an address by its words; anything case and spaces aside.
 fn comparable(property: &str, value: &str) -> String {
@@ -456,7 +460,8 @@ fn as_vcard3_line(line: &str) -> Option<String> {
 /// numbers and e-mail addresses (the same ones written twice then cleaned,
 /// `clean`), postal addresses, web sites and chat addresses unless the same,
 /// its categories, its notes after a blank line (unless one holds the
-/// other), and what `lead` lacks of one value. Apple's groups get names of
+/// other), what `lead` lacks of one value, and another application's
+/// lines (`X-…`) unless the same. Apple's groups get names of
 /// their own; a vCard 4.0 line going into a 3.0 card is written as 3.0.
 /// REV renewed.
 pub fn merge(lead: &str, other: &str, region: Option<&Region>) -> String {
@@ -478,6 +483,11 @@ pub fn merge(lead: &str, other: &str, region: Option<&Region>) -> String {
             "TEL" | "EMAIL" => !contacts::shown(line).is_empty(),
             p if SINGLE.contains(&p) => !has(p),
             p if SEVERAL.contains(&p) => !contacts::shown(line).is_empty() && !has_value(p, &contacts::shown(line)),
+            // Another application's lines, which Sioul does not show: kept, as Sioul keeps them
+            // everywhere else (decided 3 November 2026), unless the leading card holds the same;
+            // never one that names the other card itself, which goes.
+            p if ONE_PER_CARD.contains(&p) => false,
+            p if p.starts_with("X-") => !has_value(p, &contacts::shown(line)),
             _ => false,
         };
         if comes {
@@ -889,7 +899,11 @@ mod tests {
             "CATEGORIES:amis,Club\\, échecs",
             "NOTE:Plays chess",
             "PHOTO;ENCODING=b;TYPE=JPEG:AAAA",
-            "X-OTHER-APP:not carried",
+            "X-OTHER-APP:kept too",
+            "X-LEAD:kept",
+            "item3.X-CUSTOM-DATE:2020-01-01",
+            "item3.X-ABLabel:first lesson",
+            "X-ABUID:other-card",
         ]);
         let merged = merge(&lead, &other, france());
         let lines = without_rev(&merged);
@@ -908,8 +922,11 @@ mod tests {
         // What it had none of; categories united as one line; notes joined.
         assert!(has("ORG:Exemple SARL") && has("BDAY:1984-05-12") && has("PHOTO;ENCODING=b;TYPE=JPEG:AAAA"), "{lines:#?}");
         assert!(has("CATEGORIES:Amis,Club\\, échecs") && has("NOTE:Met at the market\\n\\nPlays chess"), "{lines:#?}");
-        // What Sioul does not know of the other card does not come; nor its name or UID.
-        assert!(!has("X-OTHER-APP:not carried") && !has("FN:J. Dupont") && !has("UID:other"), "{lines:#?}");
+        // Another application's lines come (decided 3 November 2026): once, a grouped one with its
+        // label under a group of its own; never its name, its UID, nor Apple's id of the other card.
+        assert!(has("X-OTHER-APP:kept too") && has("item3.X-CUSTOM-DATE:2020-01-01") && has("item3.X-ABLabel:first lesson"), "{lines:#?}");
+        assert_eq!(lines.iter().filter(|l| lines::name(l) == "X-LEAD").count(), 1, "{lines:#?}");
+        assert!(!has("FN:J. Dupont") && !has("UID:other") && !has("X-ABUID:other-card"), "{lines:#?}");
         assert!(contacts::parse(&merged).is_some());
         // Merged again with the same card, nothing more comes.
         assert_eq!(without_rev(&merge(&merged, &other, france())), lines);

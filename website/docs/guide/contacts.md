@@ -113,10 +113,10 @@ Changing a contact's photo in Sioul is planned. vCard files cannot be imported o
 ## Going further {#going-further}
 
 - **When two cards are taken for one person**: a number, an e-mail address or a name that more than four cards share (a switchboard, an office, a common name) says nothing of one person, so it makes no pair. The pairs that share most come first. Cards you can only read are never cleaned nor merged.
-- **What a merge keeps**: the card of the name kept stays as it is, and takes from the other what it lacks: numbers, e-mail and postal addresses, web sites, chat addresses, categories, nicknames, public keys; the notes of both, joined; the other's photo, organisation and birthday only when the kept card has none.
+- **What a merge keeps**: the card of the name kept stays as it is, and takes from the other what it lacks: numbers, e-mail and postal addresses, web sites, chat addresses, categories, nicknames, public keys; the notes of both, joined; the other's photo, organisation and birthday only when the kept card has none; and the other program's fields it holds, unless the kept card has the same.
 - **Undo after a sync**: when a card changed after its cleaning or merge (a sync, an edit), its new version is set aside in a file before the older one is written back, so nothing is lost either way.
 - **Who decides a person's list**, the most precise first: their own address or number on a list; their card; their categories; a domain or the start of a number (`*@example.org`, a switchboard's first digits); then neutral, when they are in an address book or you let them in. At the same level, blocked comes before restricted, neutral and safe.
-- **A card's photo** is read from the card itself. A card whose photo is a web address (`https` only) has it fetched from there when the card shows: the one request a card can make by itself.
+- **A card's photo** is read from the card itself. A card whose photo is a web address (`https` only) never has it fetched by itself: the card offers **Load the photo**, naming the server. Pressed, Sioul asks that server once (twenty seconds and one megabyte at most, a picture only) and keeps the copy here, which the card shows from then on.
 
 ## Compared with other apps {#compared-with-other-apps}
 

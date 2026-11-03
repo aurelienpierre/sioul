@@ -5743,7 +5743,7 @@ mod tests {
         assert_eq!(found("/storage/emulated/0/Documents/Sioul", &[]), ["Documents/Sioul", "Sioul", "0/Documents/Sioul"]);
         assert_eq!(found("/sdcard/Documents/Sioul/", &[])[0], "Documents/Sioul");
         // The Nextcloud app's own folder: after its account's.
-        assert_eq!(found("/storage/emulated/0/Android/media/com.nextcloud.client/nextcloud/jane@murena.io/Shared/Sioul", &[])[0], "Shared/Sioul");
+        assert_eq!(found("/storage/emulated/0/Android/media/com.nextcloud.client/nextcloud/jane@cloud.example.org/Shared/Sioul", &[])[0], "Shared/Sioul");
         // A computer: the Nextcloud client's folders, by their target there.
         let cfg = "[Accounts]\n0\\Folders\\1\\localPath=/home/me/Nextcloud/\n0\\Folders\\1\\targetPath=/\n0\\Folders\\2\\localPath=/home/me/Work\n0\\Folders\\2\\targetPath=/Projects/Work\n0\\url=https://cloud.example.org\n";
         assert_eq!(found("/home/me/Nextcloud/Documents/Sioul", &[cfg])[0], "Documents/Sioul");
@@ -5751,7 +5751,7 @@ mod tests {
         assert_eq!(found("/home/me/Workshop/Sioul", &[cfg]), ["Sioul", "Workshop/Sioul", "me/Workshop/Sioul"], "not inside /home/me/Work");
         // Addresses and names.
         assert_eq!(encode_path("Mes documents/Sioul"), "Mes%20documents/Sioul");
-        assert_eq!(host_of("https://jane@murena.io/remote.php/dav/"), "murena.io");
+        assert_eq!(host_of("https://jane@cloud.example.org/remote.php/dav/"), "cloud.example.org");
         assert_eq!(kind_of("devices/0f8fad5b-d9cb-469f-a165-70867728950e.device").map(|k| k.0), Some(Kind::Device));
         assert_eq!(kind_of("0f8fad5b-d9cb-469f-a165-70867728950e-12.jsonl").map(|k| k.0), Some(Kind::Round));
         assert_eq!(kind_of("0f8fad5b-d9cb-469f-a165-70867728950e-12 (conflicted copy).jsonl"), None);

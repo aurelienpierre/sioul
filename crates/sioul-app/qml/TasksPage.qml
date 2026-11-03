@@ -110,6 +110,9 @@ Item {
             page.anyway = false
             page.sioul.showTasksAnyway(false)
         }
+        // The tasks made here follow the hours again once you leave (decided 3 November 2026).
+        if (!page.visible)
+            page.sioul.forgetNewTasks()
     }
 
     // The choices as you left them, once, when the page first shows.
@@ -957,12 +960,19 @@ Item {
                         ColumnLayout {
                             spacing: 8
 
-                            RowLayout {
+                            // On a phone the search has a line of its own, the order and Done too under
+                            // it: one row was wider than the screen (468 points).
+                            GridLayout {
+                                objectName: "taskSearchRow"
                                 Layout.fillWidth: true
-                                spacing: 8
+                                columns: page.narrow ? 2 : 3
+                                columnSpacing: 8
+                                rowSpacing: 4
 
                                 TextField {
                                     Layout.fillWidth: true
+                                    Layout.columnSpan: page.narrow ? 2 : 1
+                                    Layout.preferredWidth: 0
                                     placeholderText: page.sioul.text("task-search")
                                     onTextEdited: {
                                         page.query = text
@@ -978,6 +988,8 @@ Item {
                                     }
                                 }
                                 CheckBox {
+                                    // On a phone its column takes the room left, so the search above spans the width.
+                                    Layout.fillWidth: page.narrow
                                     text: page.sioul.text("task-show-done")
                                     checked: page.showDone
                                     onToggled: {

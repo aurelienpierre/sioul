@@ -419,12 +419,37 @@ pub(crate) fn announced_by(sender: &str) -> String {
 /// dropped), with what each is searched by (`bitwarden::Logins`).
 pub(crate) struct Vault {
     logins: bitwarden::Logins,
+    /// When it was last used (opened, a site's or a login's lookup, a fill),
+    /// Unix seconds: what "Lock Bitwarden after" counts from.
+    used: std::sync::atomic::AtomicI64,
 }
 
 impl Vault {
     fn of(items: Vec<bitwarden::Item>) -> Vault {
-        Vault { logins: bitwarden::Logins::new(items) }
+        Vault { logins: bitwarden::Logins::new(items), used: std::sync::atomic::AtomicI64::new(jiff::Timestamp::now().as_second()) }
     }
+
+    /// Used now: its time without use starts again.
+    fn touch(&self) {
+        self.used.store(jiff::Timestamp::now().as_second(), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether `minutes` without use have passed at `now` (Unix seconds); never with 0.
+    fn idle(&self, minutes: u32, now: i64) -> bool {
+        minutes > 0 && now - self.used.load(std::sync::atomic::Ordering::Relaxed) >= i64::from(minutes) * 60
+    }
+}
+
+/// The vault locked once it went unused as long as chosen (`bitwarden.lock_after`,
+/// decided 3 November 2026), as Bitwarden's own apps do: asked at the window's
+/// minute. Whether it was locked now.
+pub(crate) fn bitwarden_lock_if_idle(shared: &Shared, minutes: u32, now: i64) -> bool {
+    let Ok(mut vault) = shared.bitwarden.lock() else { return false };
+    if vault.as_ref().is_some_and(|v| v.idle(minutes, now)) {
+        *vault = None;
+        return true;
+    }
+    false
 }
 
 /// This computer, as Bitwarden knows it.
@@ -641,6 +666,7 @@ fn locked() -> String {
 fn bitwarden_logins(shared: &Shared, url: &str, site: &str, user: &str) -> String {
     let Ok(vault) = shared.bitwarden.lock() else { return locked() };
     let Some(vault) = vault.as_ref() else { return locked() };
+    vault.touch();
     let last = chosen().get(&sioul_core::sites::host_of(url)).cloned();
     let (found, total) = vault.logins.find(site, user, url, last.as_deref(), LISTED);
     let more = total - found.len();
@@ -680,6 +706,7 @@ pub(crate) fn bitwarden_search(qt: &QtThread, shared: &Arc<Shared>, url: &str, s
 pub(crate) fn bitwarden_site(shared: &Shared, url: &str) -> String {
     let Ok(vault) = shared.bitwarden.lock() else { return locked() };
     let Some(vault) = vault.as_ref() else { return locked() };
+    vault.touch();
     let last = chosen().get(&sioul_core::sites::host_of(url)).cloned();
     let opening = vault.logins.opening(url, last.as_deref());
     serde_json::json!({ "domain": opening.domain, "chosen": opening.chosen, "only": opening.only.unwrap_or_default() }).to_string()
@@ -692,6 +719,7 @@ pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
     let error = |id: &str| serde_json::json!({ "error": tr().text(id, None) }).to_string();
     let Ok(vault) = shared.bitwarden.lock() else { return error("bitwarden-locked") };
     let Some(vault) = vault.as_ref() else { return error("bitwarden-locked") };
+    vault.touch();
     let Some(item) = vault.logins.items().iter().find(|item| item.id == id) else { return error("bitwarden-none") };
     let host = sioul_core::sites::host_of(url);
     if !host.is_empty() {
@@ -712,5 +740,34 @@ pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
 pub(crate) fn bitwarden_lock(shared: &Shared) {
     if let Ok(mut vault) = shared.bitwarden.lock() {
         *vault = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The vault locks once unused as long as chosen, as Bitwarden's own apps
+    /// do (decided 3 November 2026): kept while used, never with "when Sioul
+    /// closes" (0); a lookup counts as use. A stand-in vault: nothing asks Bitwarden.
+    #[test]
+    fn the_vault_locks_after_its_time_without_use() {
+        let shared = Shared::default();
+        let open = |used: i64| {
+            let vault = Vault::of(Vec::new());
+            vault.used.store(used, std::sync::atomic::Ordering::Relaxed);
+            *shared.bitwarden.lock().unwrap() = Some(vault);
+        };
+        let now = jiff::Timestamp::now().as_second();
+        open(now - 10 * 60);
+        assert!(!bitwarden_lock_if_idle(&shared, 0, now), "never by default: until Sioul closes");
+        assert!(!bitwarden_lock_if_idle(&shared, 15, now), "ten minutes of fifteen");
+        assert!(bitwarden_lock_if_idle(&shared, 5, now), "ten minutes of five: locked");
+        assert!(shared.bitwarden.lock().unwrap().is_none(), "its logins gone from memory");
+        assert!(!bitwarden_lock_if_idle(&shared, 5, now), "locked already: nothing more");
+        // Used meanwhile: a site's lookup starts its time again.
+        open(now - 10 * 60);
+        let _ = bitwarden_site(&shared, "https://bank.example.org/login");
+        assert!(!bitwarden_lock_if_idle(&shared, 5, jiff::Timestamp::now().as_second()));
     }
 }

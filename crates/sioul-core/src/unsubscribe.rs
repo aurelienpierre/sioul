@@ -58,6 +58,8 @@ pub enum Refusal {
     Forged,
     /// Flagged as spam: answering tells its sender your address is read.
     Spam,
+    /// Your own filter finds it maybe spam: the same, until you say "Not spam".
+    Doubt,
     /// It borrows a brand's name, or one of your own domains.
     Borrowed,
     /// You blocked its sender.
@@ -77,6 +79,7 @@ impl Refusal {
         match self {
             Refusal::Forged => "forged",
             Refusal::Spam => "spam",
+            Refusal::Doubt => "doubt",
             Refusal::Borrowed => "borrowed",
             Refusal::Blocked => "blocked",
             Refusal::Hostile => "hostile",
@@ -132,6 +135,12 @@ fn way(card: &Card, headers: &RawHeaders, values: &[&str], first: &str, trusted_
     }
     if reasons.iter().any(Reason::is_spam) || *lane == Lane::SetAside {
         return Err(Refusal::Spam);
+    }
+    // Maybe spam too (decided 3 November 2026): answering a doubt says your address is
+    // read as well. "Not spam" brings the button back: said not spam, the message is
+    // protected, and your filter no longer judges it (`porch::protected`).
+    if reasons.iter().any(|r| matches!(r, Reason::Unsure { .. })) {
+        return Err(Refusal::Doubt);
     }
     if values.len() > 1 || headers.all("List-Unsubscribe-Post").count() > 1 {
         return Err(Refusal::Ambiguous);
@@ -461,7 +470,8 @@ mod tests {
     fn judged(card: &Card) -> Option<Offer> {
         let ids = vec![SIOUL.to_string()];
         let auth = trust::read_auth_results(&card.headers, &ids);
-        let (trust, _) = trust::judge_sender(auth.as_ref(), card.is_list, card.sender_domain());
+        let excused = card.is_list && trust::list_excused(auth.as_ref(), &card.headers, &trust::sealers(&ids, &[]));
+        let (trust, _) = trust::judge_sender(auth.as_ref(), excused, card.sender_domain());
         offer(card, &ids, trust, &Lane::Filed, &[Reason::Newsletter])
     }
 
@@ -510,12 +520,18 @@ mod tests {
         for (lane, reasons, refusal) in [
             (Lane::SetAside, vec![Reason::Forged], Refusal::Forged),
             (Lane::SetAside, vec![Reason::Spam { source: "rspamd", score: None }], Refusal::Spam),
+            (Lane::Review, vec![Reason::LearnedSpam { p: 0.97 }], Refusal::Spam),
+            // Maybe spam, flagged where it lies (decided 3 November 2026).
+            (Lane::Review, vec![Reason::Unsure { p: 0.62 }], Refusal::Doubt),
             (Lane::SetAside, vec![Reason::Impersonation { brand: "Bank".into(), domain: "letters.example".into() }], Refusal::Borrowed),
             (Lane::SetAside, vec![Reason::Blocked], Refusal::Blocked),
             (Lane::Hostile, vec![Reason::Hostile], Refusal::Hostile),
         ] {
             assert_eq!(offer(&card, &ids, Trust::Verified, &lane, &reasons).unwrap().way, Err(refusal));
         }
+        // Said not spam: no doubt left (`porch::protected`), the button is back; probably not spam keeps it.
+        assert!(offer(&card, &ids, Trust::Verified, &Lane::Filed, &[Reason::Newsletter]).unwrap().way.is_ok());
+        assert!(offer(&card, &ids, Trust::Verified, &Lane::Review, &[Reason::LearnedHam { p: 0.1 }]).unwrap().way.is_ok());
         // No List-Unsubscribe: no button at all.
         let card = letter("", "letters.example", BOTH, "pass");
         assert!(judged(&card).is_none());

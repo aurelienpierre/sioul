@@ -800,10 +800,29 @@ Item {
         function test_a_task_row_fits_a_phone() {
             const long = "Prepare the documents for the housing office, the receipts of the year and the forms they asked for"
             const task = { uid: "wide", title: long, status: "needs-action", due: "Due Friday 6 November, before the office closes", estimate: "About 2 h 30", steps: "3 steps of 5", waits: "Waits for the bank's statement", stopped: "", list: "local/tasks", done_on: "", read_only: false, has_steps: false }
-            for (const compact of [true, false]) {
-                const row = createTemporaryObject(taskRowComponent, root, { task: task, width: 396, compact: compact })
-                verify(row.implicitWidth <= 396 && row.contentItem.implicitWidth <= 396, (compact ? "compact: " : "wide: ") + row.implicitWidth + " " + row.contentItem.implicitWidth)
+            // A long title of one word after another (the demo's French one), the steps' rows too.
+            const french = Object.assign({}, task, { title: "Rédiger un devis pour la Coopérative des Ateliers du Rhône et l’envoyer avant vendredi" })
+            for (const shown of [task, french]) {
+                for (const compact of [true, false]) {
+                    const row = createTemporaryObject(taskRowComponent, root, { task: shown, width: 396, compact: compact })
+                    verify(row.implicitWidth <= 396 && row.contentItem.implicitWidth <= 396, (compact ? "compact: " : "wide: ") + row.implicitWidth + " " + row.contentItem.implicitWidth)
+                    // No row inside it wider than the screen either: the grabber's WIDE check.
+                    const wide = root.all(row, c => String(c).indexOf("RowLayout") >= 0 && c.visible && c.implicitWidth > 396)
+                    compare(wide.length, 0, "a row inside, at " + wide.map(c => Math.round(c.implicitWidth)).join(", "))
+                }
             }
+        }
+
+        // The card's appointment line wraps within a phone's width, never widens the card.
+        function test_the_appointment_line_fits_a_phone() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t3" })
+            wait(50)
+            const line = root.find(host.taskPanel, "taskAppointment")
+            verify(line && line.visible, "the appointment's line")
+            line.text = "Its appointment: Dr Varga: check-up and the forms for the housing office, on Tuesday 10 November at 14:00"
+            wait(20)
+            verify(line.parent.implicitWidth <= 396, "its row: " + Math.round(line.parent.implicitWidth))
         }
 
         // The fold (composed tasks §7.2): a task with steps is one row in List and Board, its line

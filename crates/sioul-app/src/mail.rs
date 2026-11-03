@@ -205,6 +205,9 @@ struct RowOut<'a> {
     trust: &'a str,
     #[serde(skip_serializing_if = "str::is_empty")]
     spam: &'a str,
+    /// Flagged probably not spam where it lies: its word (`mailbox::Row::flag`).
+    #[serde(skip_serializing_if = "str::is_empty")]
+    flag: &'a str,
     /// Its addresses, by their place in the page's `addresses`: "0,1".
     #[serde(skip_serializing_if = "String::is_empty")]
     marks: String,
@@ -275,6 +278,7 @@ fn page_texts(page: &sioul_core::mailbox::Page) -> Vec<String> {
                     trust_level: r.trust_level,
                     trust: &r.trust,
                     spam: &r.spam,
+                    flag: &r.flag,
                     marks: r.marks.iter().map(|m| place(&m.account)).collect::<Vec<_>>().join(","),
                 })
                 .collect();
@@ -542,7 +546,7 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
         let (cards, sent) = folder_cards(account, folders, folder, &files, config.mail.threads);
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
         let now = sioul_core::zone::now().timestamp().as_second();
-        Some(json(&view::folder(account, folder, cards, &trusted, &sioul_core::words::Words::of(&config), open.all, &open.query, tr(), now, sent)))
+        Some(json(&view::folder(account, folder, cards, &trusted, &sioul_core::words::Words::of(&config), open.all, &open.query, tr(), now, sent, &sioul_core::spam::labels::Flags::load())))
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
@@ -1836,6 +1840,7 @@ mod tests {
             trust_level: "verified",
             trust: "Signed by example.org".into(),
             spam: String::new(),
+            flag: String::new(),
             hostile: false,
             marks: accounts.iter().map(|a| Mark { account: a.to_string(), letter: "N".into(), tint: 0, title: format!("noa@{a}.example.org") }).collect(),
             kinds: vec!["received"],
@@ -2051,7 +2056,7 @@ mod tests {
         let trusted = vec!["mx.example.org".to_string()];
         let hidden: BTreeSet<PathBuf> = [root.join("cur").join(format!("1777000004.U7-4.sioul{}2,FS", maildir::INFO))].into();
         let now = 1_793_000_000;
-        let list = |folder: &Folder, (cards, sent): (Vec<Card>, Option<Vec<Card>>)| json(&view::folder(&account, folder, cards, &trusted, &words, true, "", tr(), now, sent));
+        let list = |folder: &Folder, (cards, sent): (Vec<Card>, Option<Vec<Card>>)| json(&view::folder(&account, folder, cards, &trusted, &words, true, "", tr(), now, sent, &Default::default()));
         for _ in 0..2 {
             // Made, then read from the index.
             for (folder, threads) in [(&folders[0], false), (&folders[0], true), (&folders[1], false), (&folders[1], true), (&folders[2], false), (&folders[2], true)] {
@@ -2281,7 +2286,7 @@ mod tests {
         let account = &config.accounts[0];
         let at = std::time::Instant::now();
         let (cards, sent) = folder_cards(account, &folders, &folders[0], &none, false);
-        let shown = view::folder(account, &folders[0], cards, &[], &sioul_core::words::Words::of(&config), false, "", tr(), now, sent);
+        let shown = view::folder(account, &folders[0], cards, &[], &sioul_core::words::Words::of(&config), false, "", tr(), now, sent, &Default::default());
         let text = json(&shown);
         println!("measure: Mail's first inbox, as a folder shows it: {:.0} ms, {} rows, {} KB of JSON", at.elapsed().as_secs_f64() * 1000.0, shown.items.len(), text.len() / 1000);
         if std::env::var_os("SIOUL_MEASURE_MAILBOX").is_none() {

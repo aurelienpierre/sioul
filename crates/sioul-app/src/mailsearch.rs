@@ -276,6 +276,7 @@ fn empty_item(path: &Path) -> view::MailItem {
         thread: String::new(),
         size: 1,
         member: false,
+        spam: String::new(),
     }
 }
 

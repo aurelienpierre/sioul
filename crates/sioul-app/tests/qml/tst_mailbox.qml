@@ -543,6 +543,20 @@ Item {
             mock.mailFolder = ""
         }
 
+        // "Flag only" in a folder (decided 3 November 2026): a message your filter
+        // flagged where it lies says its quiet word beside its subject; one not flagged, nothing.
+        function test_a_flagged_message_says_so_in_its_folder() {
+            const page = made()
+            const row = (n, subject, spam) => ({ key: "/stand-in/mail/work/cur/1777000" + n + ".U7-" + n + ".sioul:2,S", uri: "mid:f" + n + "@example.org", who: "Ben", address: "ben@example.org", subject: subject, date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false, spam: spam })
+            mock.mailFolder = JSON.stringify({ items: [row(1, "A doubt", "maybe spam"), row(2, "A friend", "")], title: "Inbox", sentence: "", role: "inbox", earlier: false })
+            page.openFolder("work", "INBOX")
+            tryVerify(() => find(page, "folderList").count === 2)
+            wait(50)
+            const quiet = all(page, c => c.objectName === "folderRowQuiet")
+            compare(quiet.map(c => c.visible ? c.text : "").sort(), ["", "maybe spam"])
+            mock.mailFolder = ""
+        }
+
         // The list comes by pages of sixty (§6): the first at once, the next as
         // the list's end comes into view, never the list again; "Earlier
         // messages" past the window's end; a page published again changes its

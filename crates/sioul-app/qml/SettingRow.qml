@@ -91,6 +91,46 @@ ColumnLayout {
         }
     }
 
+    // The Bitwarden vault as it is now on this device, and Lock while it is
+    // open (decided 3 November 2026); asked again each time the panel shows.
+    Loader {
+        active: field.setting.kind === "vault"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            RowLayout {
+                id: vault
+
+                property string open: field.sioul.bitwardenState()
+
+                spacing: 8
+
+                Label {
+                    objectName: "vaultState"
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    text: field.sioul.text(vault.open === "unlocked" ? "set-bitwarden-vault-open" : "set-bitwarden-vault-locked")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: field.theme.text
+                }
+                Button {
+                    objectName: "vaultLock"
+                    visible: vault.open === "unlocked"
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    icon.name: "dialog-password"
+                    icon.color: field.theme.text
+                    text: field.theme.plain(field.sioul.text("set-bitwarden-lock"))
+                    onClicked: {
+                        field.sioul.bitwardenLock()
+                        vault.open = field.sioul.bitwardenState()
+                    }
+                }
+            }
+        }
+    }
+
     // Nothing to change: a button that does one thing when pressed, never by
     // itself (the projects' file renamed, in Settings ▸ Your folder and
     // sharing); its sentence below it, as every setting's.

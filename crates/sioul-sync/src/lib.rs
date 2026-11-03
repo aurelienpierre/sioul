@@ -139,6 +139,7 @@ pub mod mailbox;
 pub mod microsoft;
 pub mod notify;
 pub mod ocr;
+pub mod photo;
 // What the computer says of itself (power, saving, idle, a metered connection): the spam filter's training by itself.
 pub mod power;
 // The sharing folder fetched from its server too, beside the sync app (docs/database.md).

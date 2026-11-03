@@ -712,7 +712,16 @@ pub struct BitwardenSettings {
     /// "bitwarden.com" when unset, "bitwarden.eu", or your server's address.
     #[serde(default)]
     pub server: Option<String>,
+    /// Minutes the open vault waits unused before Sioul locks it, as
+    /// Bitwarden's own apps do; 0 or none: until Sioul closes (decided 3
+    /// November 2026). An older Sioul skips the line.
+    #[serde(default)]
+    pub lock_after: Option<u32>,
 }
+
+/// What "Lock Bitwarden after" offers, in minutes: never, then five
+/// minutes to four hours (`BitwardenSettings::lock_after`).
+pub const BITWARDEN_LOCK_AFTER: [u32; 6] = [0, 5, 15, 30, 60, 240];
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct WeatherSettings {

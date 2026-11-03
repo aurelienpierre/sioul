@@ -50,9 +50,14 @@ pub struct Contact {
     /// (`category:Amis`, porch.rs's `Senders`): their mail then stands as
     /// their category says, unless an address of theirs has its own entry.
     pub categories: Vec<String>,
-    /// Its picture to show: an embedded one as a file in the cache ("file://…"),
-    /// else the web address the card gives; empty without one.
+    /// Its picture to show, a file in the cache ("file://…"): an embedded one,
+    /// or the copy kept of the one the card names on the web once you asked
+    /// for it; empty without one. Nothing remote loads by itself.
     pub photo: String,
+    /// The web address of a picture the card names (https), while no copy of
+    /// it is kept: what "Load the photo" asks for (`web_photo_file`); empty
+    /// otherwise (decided 3 November 2026).
+    pub photo_web: String,
 }
 
 /// What the contact form gives back.
@@ -245,6 +250,7 @@ pub(crate) fn contact(card: &[String], path: &Path, book: &Collection) -> Contac
     };
     let emails = labeled("EMAIL");
     let org = first("ORG");
+    let photo = photo_of(card);
     Contact {
         key: path.display().to_string(),
         uid: first("UID"),
@@ -260,18 +266,50 @@ pub(crate) fn contact(card: &[String], path: &Path, book: &Collection) -> Contac
         categories: categories_of(card),
         book: book.name.clone(),
         read_only: book.read_only,
-        photo: photo_of(card),
+        photo: photo.0,
+        photo_web: photo.1,
     }
 }
 
-/// A card's picture, to show: an embedded photo (vCard 3.0 `ENCODING=b`,
-/// vCard 4.0 `data:` address) written once into the cache, named by what it
-/// holds, so the same picture is one file; a web address (https only) as it is.
-fn photo_of(card: &[String]) -> String {
-    photo_in(card, &crate::config::cache_dir().join("photos"))
+/// Where the pictures shown are kept: the cache's `photos/`.
+pub fn photos_folder() -> std::path::PathBuf {
+    crate::config::cache_dir().join("photos")
 }
 
-fn photo_in(card: &[String], folder: &Path) -> String {
+/// A card's picture, to show, and its web address while none is kept: an
+/// embedded photo (vCard 3.0 `ENCODING=b`, vCard 4.0 `data:` address)
+/// written once into the cache, named by what it holds, so the same picture
+/// is one file; a web address (https only) never loaded here: its copy, once
+/// you asked for it (`web_photo_file`), else the address alone, for "Load the
+/// photo" (decided 3 November 2026: nothing remote loads by itself).
+fn photo_of(card: &[String]) -> (String, String) {
+    photo_in(card, &photos_folder())
+}
+
+/// The copy kept of a picture on the web, by its address: `web-<hash>.<kind>` in `folder`.
+pub fn web_photo_file(folder: &Path, url: &str) -> Option<std::path::PathBuf> {
+    let stem = format!("web-{}", vdir::content_hash(url.trim().as_bytes()));
+    ["jpeg", "png", "webp", "gif"].iter().map(|kind| folder.join(format!("{stem}.{kind}"))).find(|p| p.is_file())
+}
+
+/// Where the copy of a picture on the web goes, its kind given ("png").
+pub fn web_photo_path(folder: &Path, url: &str, kind: &str) -> std::path::PathBuf {
+    folder.join(format!("web-{}.{kind}", vdir::content_hash(url.trim().as_bytes())))
+}
+
+fn photo_in(card: &[String], folder: &Path) -> (String, String) {
+    let shown = photo_shown(card, folder);
+    match shown.strip_prefix("web:") {
+        Some(url) => match web_photo_file(folder, url) {
+            Some(kept) => (crate::notes::file_url(&kept), String::new()),
+            None => (String::new(), url.to_string()),
+        },
+        None => (shown, String::new()),
+    }
+}
+
+/// The picture as a file URL, `web:<address>` for an https one, "" for none.
+fn photo_shown(card: &[String], folder: &Path) -> String {
     let Some(line) = card.iter().find(|l| lines::name(l) == "PHOTO") else { return String::new() };
     let parsed = split_line(line);
     let value = parsed.value.trim();
@@ -279,7 +317,7 @@ fn photo_in(card: &[String], folder: &Path) -> String {
     let (bytes, kind) = match value.strip_prefix("data:").and_then(|d| d.split_once(";base64,")) {
         Some((media, data)) => (lines::base64_decode(data), media.rsplit('/').next().unwrap_or("jpeg").to_ascii_lowercase()),
         None if embedded => (lines::base64_decode(value), parsed.params.iter().find(|(k, _)| k == "TYPE").map_or("jpeg".to_string(), |(_, v)| v.to_ascii_lowercase())),
-        None if value.starts_with("https://") => return value.to_string(),
+        None if value.starts_with("https://") => return format!("web:{value}"),
         None => return String::new(),
     };
     let Some(bytes) = bytes.filter(|b| !b.is_empty()) else { return String::new() };
@@ -705,7 +743,7 @@ mod tests {
     fn a_photo_to_show() {
         let card = |photo: &str| lines::unfold(&format!("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Jane\r\n{photo}\r\nEND:VCARD\r\n"));
         let folder = std::env::temp_dir().join(format!("sioul-photos-{}", std::process::id()));
-        let photo_of = |card: &[String]| photo_in(card, &folder);
+        let photo_of = |card: &[String]| photo_in(card, &folder).0;
         let three = photo_of(&card("PHOTO;ENCODING=b;TYPE=PNG:aGVsbG8="));
         let four = photo_of(&card("PHOTO:data:image/png;base64,aGVsbG8="));
         assert!(three.starts_with("file:///") && three.ends_with(".png"), "{three}");
@@ -713,8 +751,15 @@ mod tests {
         assert_eq!(three, four);
         let written = folder.join(format!("{}.png", vdir::content_hash(b"hello")));
         assert_eq!((three.clone(), std::fs::read(&written).unwrap()), (crate::notes::file_url(&written), b"hello".to_vec()));
-        assert_eq!(photo_of(&card("PHOTO;VALUE=uri:https://example.org/jane.jpg")), "https://example.org/jane.jpg");
-        assert_eq!(photo_of(&card("PHOTO;VALUE=uri:http://example.org/jane.jpg")), "");
+        // On the web: never loaded here; its address for "Load the photo", then its copy once kept
+        // (decided 3 November 2026).
+        let web = card("PHOTO;VALUE=uri:https://example.org/jane.jpg");
+        assert_eq!(photo_in(&web, &folder), (String::new(), "https://example.org/jane.jpg".to_string()));
+        let kept = web_photo_path(&folder, "https://example.org/jane.jpg", "jpeg");
+        std::fs::write(&kept, b"jpeg").unwrap();
+        assert_eq!(photo_in(&web, &folder), (crate::notes::file_url(&kept), String::new()));
+        assert_eq!(web_photo_file(&folder, "https://example.org/other.jpg"), None, "another address: another copy");
+        assert_eq!(photo_in(&card("PHOTO;VALUE=uri:http://example.org/jane.jpg"), &folder), (String::new(), String::new()));
         assert_eq!(photo_of(&card("NOTE:none")), "");
         let _ = std::fs::remove_dir_all(&folder);
     }

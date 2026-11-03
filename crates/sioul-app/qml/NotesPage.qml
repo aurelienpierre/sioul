@@ -666,6 +666,9 @@ Item {
                         Layout.fillHeight: true
                         sourceComponent: PdfView {
                             source: page.note.url
+                            sioul: page.sioul
+                            theme: page.theme
+                            window: page.window
                         }
                     }
                     Loader {

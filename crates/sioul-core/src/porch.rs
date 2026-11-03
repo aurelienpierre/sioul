@@ -1286,11 +1286,9 @@ impl Context<'_> {
     }
 }
 
-/// Whose ARC seal vouches for mail that failed SPF and DKIM on its way
-/// (`trust::authenticated`): your provider's (the hosts of the ids it writes
-/// its results under; Sioul's own stamp seals nothing) and your own domains.
+/// Whose ARC seal vouches for mail that failed on its way (`trust::sealers`).
 fn sealers(trusted_ids: &[String], own_domains: &[String]) -> Vec<String> {
-    trusted_ids.iter().map(|id| id.trim().to_ascii_lowercase()).filter(|id| id.contains('.') && !id.ends_with(".invalid")).chain(own_domains.iter().cloned()).collect()
+    trust::sealers(trusted_ids, own_domains)
 }
 
 impl Context<'_> {
@@ -1328,9 +1326,11 @@ fn checks(card: &Card, ctx: &Context) -> Checks {
 /// `checks`, the results and the code already read (`detected`).
 fn checks_with(card: &Card, ctx: &Context, auth: Option<trust::AuthResults>, detected: Option<OneTimeCode>) -> Checks {
     // A proof counts for the domain of the address shown, never for another one.
-    // A mailing list excuses a DMARC failure (it rewrites what it relays), but
+    // A mailing list excuses a DMARC failure (it rewrites what it relays) when a
+    // trusted seal or its own signature answers for it (`trust::list_excused`), but
     // no list relays your codes: a code failing DMARC is forged, list headers or not.
-    let (trust, proof) = trust::judge_sender(auth.as_ref(), card.is_list && detected.is_none(), card.sender_domain());
+    let excused = card.is_list && detected.is_none() && trust::list_excused(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains));
+    let (trust, proof) = trust::judge_sender(auth.as_ref(), excused, card.sender_domain());
     let code = detected.filter(|c| !expired(c, sent(card), ctx.now));
     // A shielded address's mail is read before anything else is decided.
     let assessment = ctx.shielded.then(|| crate::shield::reading(card, ctx.assessments));
@@ -1667,7 +1667,8 @@ fn moved_items(src: &Source, ctx: &Context, folders: &[crate::folders::Folder], 
 /// as for any message, and that your filter moved it.
 fn moved_item(card: Card, ctx: &Context, class: crate::spam::Class) -> Triaged {
     let auth = trust::read_auth_results(&card.headers, ctx.trusted_ids);
-    let (trust, proof) = trust::judge_sender(auth.as_ref(), card.is_list, card.sender_domain());
+    let excused = card.is_list && trust::list_excused(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains));
+    let (trust, proof) = trust::judge_sender(auth.as_ref(), excused, card.sender_domain());
     // How likely spam, judged again by the table in place; as its class says without one.
     let p = ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids)).map_or(
         match class {

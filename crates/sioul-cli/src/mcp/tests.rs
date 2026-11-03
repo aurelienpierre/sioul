@@ -562,6 +562,28 @@ const READING: &[&str] = &[
     "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
+/// The command line and the agents run on a computer only: what they say
+/// names "this computer", never "this device" (docs/i18n.md; decided 3
+/// November 2026). "Every device" keeps its word: it names the phone too.
+#[test]
+fn the_agents_texts_say_this_computer() {
+    let mut server = server();
+    let instructions = ask(&mut server, "initialize", json!({ "protocolVersion": PROTOCOL_VERSION }))["result"]["instructions"].to_string();
+    let tools = ask(&mut server, "tools/list", json!({}))["result"].to_string();
+    assert!(instructions.contains("on this computer"), "{instructions}");
+    for text in [&instructions, &tools] {
+        assert!(!text.contains("this device"), "{}", &text[text.find("this device").unwrap_or(0).saturating_sub(120)..]);
+    }
+    // The words the command line alone says.
+    for (language, word) in [("en", "this device"), ("fr", "cet appareil")] {
+        let tr = sioul_core::i18n::Translator::new(language);
+        for key in ["remind-running", "spam-label-done", "mail-find-on-its-way", "microsoft-cli-remove-close"] {
+            let said = tr.text(key, None);
+            assert!(!said.contains(word) && (said.contains("computer") || said.contains("ordinateur")), "{language} {key}: {said}");
+        }
+    }
+}
+
 const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];

@@ -48,7 +48,7 @@ ItemDelegate {
     // The words under its title that say something: the date asked, the length, the
     // steps, what it waits for, where you stopped.
     // Folded, its one line: its appointment's time and its next step, never a count.
-    readonly property var details: row.task.folded ? [row.task.fold_line || ""].filter(t => t !== "") : [row.task.due, row.task.estimate, row.task.steps, row.task.waits, row.task.stopped].filter(t => t !== "")
+    readonly property var details: row.task.folded ? [row.task.fold_line || "", row.task.comes_back || ""].filter(t => t !== "") : [row.task.comes_back || "", row.task.due, row.task.estimate, row.task.steps, row.task.waits, row.task.stopped].filter(t => t !== "")
 
     leftPadding: 8 + row.depth * 22
     padding: row.compact ? 4 : 8
@@ -154,7 +154,10 @@ ItemDelegate {
                     opacity: 0.7
                 }
                 Label {
+                    objectName: "taskRowTitle"
                     Layout.fillWidth: true
+                    // Its words wrap within the room left, never widening the row.
+                    Layout.preferredWidth: 0
                     text: row.task.title
                     textFormat: Text.PlainText
                     elide: Text.ElideRight

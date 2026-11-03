@@ -1,0 +1,46 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R /Resources << /Font << /F1 8 0 R >> >> /Annots [5 0 R 6 0 R 7 0 R] >>
+endobj
+4 0 obj
+<< /Length 98 >>
+stream
+BT /F1 12 Tf 12 150 Td (Links) Tj ET
+0 0 1 rg 10 10 90 30 re f 10 60 90 30 re f 10 110 90 20 re f
+endstream
+endobj
+5 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 10 100 40] /Border [0 0 0] /A << /S /URI /URI (https://example.org/page?x=1) >> >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 60 100 90] /Border [0 0 0] /A << /S /URI /URI (file:///etc/passwd) >> >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Link /Rect [10 110 100 130] /Border [0 0 0] /A << /S /URI /URI (mailto:ana@example.org) >> >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000275 00000 n 
+0000000422 00000 n 
+0000000561 00000 n 
+0000000690 00000 n 
+0000000825 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+895
+%%EOF

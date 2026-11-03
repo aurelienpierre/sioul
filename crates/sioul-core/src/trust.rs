@@ -336,7 +336,8 @@ pub fn judge(results: Option<&AuthResults>, mailing_list: bool) -> (Trust, Proof
 
 /// The verdict on the sender, and why. A DMARC failure is a forgery when the
 /// domain asks receivers to act on it (quarantine, reject, or a provider's
-/// result that does not say); with `p=none`, or on a mailing list, which
+/// result that does not say); with `p=none`, or on a mailing list someone
+/// answers for (`mailing_list`: list headers, and `list_excused`), which
 /// rewrites what it relays, it only leaves the sender unverified.
 ///
 /// A proof counts only for the domain you are shown (`sender_domain`, the
@@ -380,6 +381,51 @@ pub fn authenticated(results: Option<&AuthResults>, headers: &RawHeaders, sealer
         return true;
     }
     r.arc == Some(Outcome::Pass) && arc_sealer(headers).is_some_and(|sealer| sealers.iter().any(|s| aligned(&sealer, s)))
+}
+
+/// Whose ARC seal vouches for mail that failed on its way (`authenticated`,
+/// `list_excused`): your provider's (the hosts of the ids it writes its
+/// results under; Sioul's own stamp seals nothing) and your own domains.
+pub fn sealers(trusted_ids: &[String], own_domains: &[String]) -> Vec<String> {
+    trusted_ids.iter().map(|id| id.trim().to_ascii_lowercase()).filter(|id| id.contains('.') && !id.ends_with(".invalid")).chain(own_domains.iter().cloned()).collect()
+}
+
+/// Whether a mailing list's message may fail DMARC and stay unverified
+/// rather than forged (`judge_sender`'s `mailing_list`; decided 3 November
+/// 2026). A list rewrites what it relays and breaks the
+/// sender's signature, but anyone can write list headers: the exemption
+/// holds only when someone answers for the relay. Either a trusted ARC seal
+/// passed (the newest seal's domain one of `sealers`, as `authenticated`
+/// reads it), or a DKIM signature passed for the list's own domain
+/// (`list_domains`). Callers ask it only of mail whose headers say it is a
+/// list (`Card::is_list`).
+pub fn list_excused(results: Option<&AuthResults>, headers: &RawHeaders, sealers: &[String]) -> bool {
+    let Some(r) = results else { return false };
+    if r.arc == Some(Outcome::Pass) && arc_sealer(headers).is_some_and(|sealer| sealers.iter().any(|s| aligned(&sealer, s))) {
+        return true;
+    }
+    let lists = list_domains(headers);
+    r.dkim_passed.iter().any(|signer| lists.iter().any(|list| aligned(signer, list)))
+}
+
+/// A list's own domains, as its headers name them: List-Id's namespace
+/// (`<news.lists.example.org>`: lists.example.org, RFC 2919), the address
+/// of List-Post (`<mailto:news@lists.example.org>`), and of Sender, which
+/// list servers set to their own address.
+fn list_domains(headers: &RawHeaders) -> Vec<String> {
+    let bracketed = |value: &str| value.rsplit_once('<').and_then(|(_, rest)| rest.split_once('>')).map(|(inside, _)| inside.trim().to_ascii_lowercase());
+    let domain_of = |address: &str| address.rsplit_once('@').map(|(_, d)| d.trim().trim_end_matches('>').to_ascii_lowercase()).filter(|d| d.contains('.'));
+    let mut out = Vec::new();
+    if let Some(id) = headers.first("List-Id").and_then(bracketed).or_else(|| headers.first("List-Id").map(|v| v.trim().to_ascii_lowercase())) {
+        out.extend(id.split_once('.').map(|(_, namespace)| namespace.to_string()).filter(|n| n.contains('.')));
+    }
+    if let Some(post) = headers.first("List-Post").and_then(bracketed) {
+        out.extend(post.strip_prefix("mailto:").and_then(|a| domain_of(a.split('?').next().unwrap_or(a))));
+    }
+    if let Some(sender) = headers.first("Sender") {
+        out.extend(domain_of(&bracketed(sender).unwrap_or_else(|| sender.trim().to_string())));
+    }
+    out
 }
 
 /// The domain that sealed the newest ARC set: the `d=` of the `ARC-Seal`
@@ -792,6 +838,52 @@ mod tests {
         let lenient = AuthResults { dmarc_policy: Some("none".into()), ..r };
         assert_eq!(judge(Some(&lenient), false), (Trust::Unverified, Proof::DmarcFailNoPolicy));
         assert_eq!(judge(None, false).0, Trust::Unverified);
+    }
+
+    /// A list's DMARC failure leaves the sender unverified only when someone
+    /// answers for the relay (decided 3 November 2026): a trusted ARC seal
+    /// that passed, or a signature that passed for the list's own domain
+    /// (List-Id's namespace, List-Post, Sender). List headers alone, a seal
+    /// from a sealer nobody trusts, or the signature of another domain: forged.
+    #[test]
+    fn a_list_s_dmarc_failure_is_excused_only_when_someone_answers_for_it() {
+        let ids = ["mx.provider.example".to_string()];
+        let sealers = sealers(&ids, &["noa.example".to_string()]);
+        let read = |text: &str| headers(&format!("Authentication-Results: mx.provider.example; dmarc=fail (p=reject) header.from=bank.example; {text}
+From: Bank <news@bank.example>
+List-Id: Bank news <news.lists.club.example>
+
+"));
+        let verdict = |h: &RawHeaders| {
+            let r = read_auth_results(h, &ids);
+            judge_sender(r.as_ref(), list_excused(r.as_ref(), h, &sealers), Some("bank.example"))
+        };
+        let forged = (Trust::Forged, Proof::DmarcFail);
+        let excused = (Trust::Unverified, Proof::DmarcFailList);
+        assert_eq!(verdict(&read("dkim=fail")), forged, "list headers alone: anyone writes them");
+        assert_eq!(verdict(&read("dkim=pass header.d=lists.club.example")), excused, "the list's own signature (List-Id's namespace)");
+        assert_eq!(verdict(&read("dkim=pass header.d=club.example")), excused, "the same organisation's domain");
+        assert_eq!(verdict(&read("dkim=pass header.d=elsewhere.example")), forged, "another domain's signature answers for nothing");
+        let posted = headers("Authentication-Results: mx.provider.example; dmarc=fail header.from=bank.example; dkim=pass header.d=post.example
+List-Post: <mailto:news@post.example>
+
+");
+        assert!(list_excused(read_auth_results(&posted, &ids).as_ref(), &posted, &sealers), "List-Post's domain");
+        let sent = headers("Authentication-Results: mx.provider.example; dmarc=fail header.from=bank.example; dkim=pass header.d=relay.example
+Sender: News <news-bounces@relay.example>
+
+");
+        assert!(list_excused(read_auth_results(&sent, &ids).as_ref(), &sent, &sealers), "Sender's domain");
+        let sealed = |by: &str| headers(&format!("ARC-Seal: i=1; a=rsa-sha256; d={by}; s=s; cv=none; b=x
+Authentication-Results: mx.provider.example; dmarc=fail header.from=bank.example; arc=pass; dkim=fail
+From: news@bank.example
+List-Id: <news.lists.club.example>
+
+"));
+        assert_eq!(verdict(&sealed("provider.example")), excused, "your provider's seal");
+        assert_eq!(verdict(&sealed("noa.example")), excused, "your own domain's seal");
+        assert_eq!(verdict(&sealed("sealer.example")), forged, "a seal anyone can make");
+        assert!(!list_excused(None, &read("dkim=pass header.d=lists.club.example"), &sealers), "no results: nothing to excuse");
     }
 
     #[test]

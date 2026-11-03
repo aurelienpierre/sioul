@@ -222,7 +222,7 @@ sioul-core/src/config.rs	sioul_authserv_id	1	std::fs::write(&path, &id)
 sioul-core/src/config.rs	mark_stand_in	1	std::fs::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
 
 # sioul-core/src/contacts.rs: a contact's photo, in a cache of its own beside the contact: no item written.
-sioul-core/src/contacts.rs	photo_in	1	std::fs::write(&path, &bytes)
+sioul-core/src/contacts.rs	photo_shown	1	std::fs::write(&path, &bytes)
 
 # sioul-core/src/contracts.rs: contracts (a file of their own): no item.
 sioul-core/src/contracts.rs	write	1	std::fs::write(&temporary, doc.to_string())
@@ -578,6 +578,10 @@ sioul-sync/src/dav.rs	pull	1	std::fs::remove_file(&path)
 sioul-sync/src/devices.rs	publish	1	crate::share::write_atomically(&path, sealed(pad)?.as_bytes())
 sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(path, format!("# This device, as it tells your other devices (docs/database.md, \"Devices\").\n{text}").as_bytes())
 sioul-sync/src/devices.rs	change_at	1	crate::share::write_atomically(&published_path(path), text.as_bytes())
+
+# sioul-sync/src/photo.rs: a contact's photo from the web, loaded when you asked, in the cache's photos: no item.
+sioul-sync/src/photo.rs	keep	1	std::fs::write(&part, bytes)
+sioul-sync/src/photo.rs	keep	1	std::fs::rename(&part, &path)
 
 # sioul-sync/src/favicon.rs: sites' icons: no item.
 sioul-sync/src/favicon.rs	fetch	1	std::fs::remove_file(old)

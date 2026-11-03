@@ -57,6 +57,15 @@ impl Class {
     pub fn read(text: &str) -> Option<Class> {
         Class::ALL.into_iter().find(|c| c.as_str() == text.trim())
     }
+
+    /// Its quiet word where mail is listed: "probably spam", "maybe spam", "probably not spam".
+    pub fn word_id(self) -> &'static str {
+        match self {
+            Class::Spam => "spam-chip-spam",
+            Class::Unsure => "spam-chip-unsure",
+            Class::Ham => "spam-chip-ham",
+        }
+    }
 }
 
 /// What the filter does with a message of a class, as you chose it (the

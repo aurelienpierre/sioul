@@ -444,6 +444,11 @@ pub mod qobject {
         #[qinvokable]
         fn delete_contact(self: Pin<&mut Sioul>, key: &QString);
 
+        /// Loads the photo a contact's card names on the web (`url`, its
+        /// `photo_web`), because you asked, and keeps it; the contacts show it then.
+        #[qinvokable]
+        fn load_contact_photo(self: Pin<&mut Sioul>, url: &QString);
+
         /// Shows the contacts of one category only; empty: all of them.
         #[qinvokable]
         fn show_contacts_category(self: Pin<&mut Sioul>, category: &QString);
@@ -794,6 +799,10 @@ pub mod qobject {
         /// Asleep, the tasks all the same ("Show anyway"), until the page is left.
         #[qinvokable]
         fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
+
+        /// The Tasks page was left: the tasks made there follow the hours again.
+        #[qinvokable]
+        fn forget_new_tasks(self: Pin<&mut Sioul>);
 
         /// One task in full, with its steps and what it is tied to, as JSON.
         #[qinvokable]
@@ -4438,6 +4447,10 @@ impl qobject::Sioul {
         QString::from(&pim::contact(&key.to_string()))
     }
 
+    fn load_contact_photo(self: Pin<&mut Self>, url: &QString) {
+        pim::load_contact_photo(&self.qt_thread(), &self.shared(), &url.to_string());
+    }
+
     fn save_contact(self: Pin<&mut Self>, key: &QString, edit: &QString) -> QString {
         let answer = match pim::save_contact(&self.qt_thread(), &self.shared(), &key.to_string(), &edit.to_string()) {
             Ok(key) => serde_json::json!({ "key": key }),
@@ -4827,6 +4840,10 @@ impl qobject::Sioul {
 
     fn filter_tasks(self: Pin<&mut Self>, kind: &QString, category: &QString) {
         work::set_filter(&self.qt_thread(), &self.shared(), &kind.to_string(), &category.to_string());
+    }
+
+    fn forget_new_tasks(self: Pin<&mut Self>) {
+        work::forget_fresh(&self.qt_thread(), &self.shared());
     }
 
     fn fold_task(self: Pin<&mut Self>, uid: &QString, open: bool) {
@@ -5898,6 +5915,12 @@ impl qobject::Sioul {
         std::thread::spawn(move || crate::spam::by_itself(qt_spam));
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
+        // The Bitwarden vault locked once unused as long as you chose, away or not (Sites ⚙).
+        let lock_after = load_config().bitwarden.lock_after.unwrap_or(0);
+        if crate::sites::bitwarden_lock_if_idle(&self.shared(), lock_after, jiff::Timestamp::now().as_second()) {
+            let words = tr().text("bitwarden-locked", None);
+            self.as_mut().set_status(QString::from(&words));
+        }
         // Put away on a phone: the reminders only, and an exchange every five
         // minutes; the rest waits until it is back (Android stops an app that
         // works in the background, and nobody looks at its pages then).

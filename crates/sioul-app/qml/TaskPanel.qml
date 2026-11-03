@@ -629,6 +629,8 @@ Panel {
                 Label {
                     objectName: "taskAppointment"
                     Layout.fillWidth: true
+                    // The room left: its words wrap, never widening the card (a phone's 412 points).
+                    Layout.preferredWidth: 0
                     text: !panel.detail || !panel.detail.appointment ? "" : panel.detail.appointment.here ? panel.sioul.textArgs("pair-appointment", JSON.stringify({ event: panel.detail.appointment.title, when: panel.detail.appointment.when })) : panel.sioul.text("pair-appointment-gone")
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap

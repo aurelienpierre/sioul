@@ -1261,6 +1261,11 @@ pub struct MailItem {
     pub size: usize,
     /// A row inside a conversation, under its first; folded until it is opened.
     pub member: bool,
+    /// Your filter's quiet word on a message it flagged where it lies ("maybe
+    /// spam"; the matrix's "Flag only"), as the Porch and the mailbox say it;
+    /// "" for any other, and once you said it is not spam (`labels::Flags`).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub spam: String,
 }
 
 /// Messages by conversation: each one's newest message of the folder first, the
@@ -1319,11 +1324,12 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
     } else {
         let results = trust::read_auth_results(&card.headers, trusted_ids);
         // As the Porch judges it: a signature counts for the sender's own domain only,
-        // and a list excuses a DMARC failure, never for a code (`porch::triage`).
+        // and a list someone answers for excuses a DMARC failure, never for a code (`porch::triage`).
         let failed = results.as_ref().is_some_and(|r| r.dmarc == Some(trust::Outcome::Fail));
         // A folder's line says it already (`Card::code`); a whole card is read.
         let code = card.is_list && failed && card.code.unwrap_or_else(|| crate::codes::detect_message(&words.codes, card).is_some());
-        let judged = trust::judge_sender(results.as_ref(), card.is_list && !code, card.sender_domain()).0;
+        let excused = card.is_list && !code && trust::list_excused(results.as_ref(), &card.headers, &trust::sealers(trusted_ids, &[]));
+        let judged = trust::judge_sender(results.as_ref(), excused, card.sender_domain()).0;
         let level = match judged {
             Trust::Verified => "verified",
             Trust::Unverified => "unverified",
@@ -1355,14 +1361,16 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
         thread: String::new(),
         size: 1,
         member: false,
+        spam: String::new(),
     }
 }
 
 /// What a folder shows: `all` past the last two weeks; `query` searches every
 /// message kept, by sender, recipient and subject. With `sent` (the account's
 /// Sent folder), messages are shown by conversation, your answers among them.
+/// A message your filter flagged where it lies says so (`flags`).
 #[allow(clippy::too_many_arguments)]
-pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], words: &crate::words::Words, all: bool, query: &str, tr: &Translator, now: i64, sent: Option<Vec<Card>>) -> FolderView {
+pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], words: &crate::words::Words, all: bool, query: &str, tr: &Translator, now: i64, sent: Option<Vec<Card>>, flags: &crate::spam::labels::Flags) -> FolderView {
     // The account's history, two weeks unless set; everything kept when it says so.
     let all = all || account.history_days().is_none();
     let since = now - account.history_days().unwrap_or(RECENT_DAYS) * 86_400;
@@ -1379,7 +1387,13 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
     let recent = |c: &Card| c.date.unwrap_or(0) >= since;
     let older = cards.iter().filter(|c| !recent(c)).count();
     let shown = |c: &Card| all || !query.is_empty() || recent(c);
-    let item = |card: &Card, own: bool| mail_item(card, folder.role, own, &maildir::flags_of(card.path.as_deref().unwrap_or(std::path::Path::new(""))), trusted_ids, words, tr);
+    let item = |card: &Card, own: bool| {
+        let mut item = mail_item(card, folder.role, own, &maildir::flags_of(card.path.as_deref().unwrap_or(std::path::Path::new(""))), trusted_ids, words, tr);
+        if !own {
+            item.spam = flags.class_of(&account.id, &folder.name, card).map(|class| tr.text(class.word_id(), None)).unwrap_or_default();
+        }
+        item
+    };
     let items: Vec<MailItem> = match sent {
         None => cards.iter().filter(|c| shown(c)).map(|c| item(c, false)).collect(),
         Some(sent) => conversations(&cards, &sent, &shown, &item),
@@ -1637,19 +1651,47 @@ host = "imap.example.com"
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None);
+        let view = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None, &Default::default());
         assert_eq!(view.items.iter().map(|i| i.subject.as_str()).collect::<Vec<_>>(), ["Lease", "Read"]);
         assert!(view.earlier && view.items[0].unread && view.items[1].flagged && !view.items[1].unread);
         assert_eq!(view.sentence, "One message you have not read.");
-        let everything = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), true, "", &tr, now, None);
+        let everything = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), true, "", &tr, now, None, &Default::default());
         assert_eq!(everything.items.len(), 3);
         assert!(!everything.earlier);
-        let searched = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), false, "old", &tr, now, None);
+        let searched = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), false, "old", &tr, now, None, &Default::default());
         assert_eq!(searched.items.len(), 1);
         let sent = crate::folders::folder("Sent", Some("."), Some(Role::Sent));
-        let view = folder(&account, &sent, cards, &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None);
+        let view = folder(&account, &sent, cards, &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None, &Default::default());
         assert_eq!(view.items[0].who, "To Me");
         assert!(view.items.iter().all(|i| !i.unread && i.trust_level == "own"));
+    }
+
+    /// "Flag only" in Mail's folders (decided 3 November 2026): a message your
+    /// filter flagged where it lies says so, quietly, as the Porch does ("maybe
+    /// spam", "probably not spam"); one flagged elsewhere, or said not spam
+    /// since, says nothing.
+    #[test]
+    fn a_message_flagged_where_it_lies_says_so_in_its_folder() {
+        use crate::spam::labels::{Entry, Flags, Label, Moved, Source};
+        let now = 1_790_000_000;
+        let card = |subject: &str, file: &str, id: &str| {
+            let raw = format!("From: Jane <jane@example.org>\r\nTo: Me <me@example.net>\r\nSubject: {subject}\r\nMessage-ID: <{id}>\r\n\r\nHi.\r\n");
+            let mut card = Card::from_bytes(raw.as_bytes()).unwrap();
+            card.date = Some(now - 3600);
+            card.path = Some(std::path::PathBuf::from(file));
+            card
+        };
+        let cards = vec![card("Doubt", "new/1.U7-1.sioul", "doubt@example.org"), card("Ham", "new/2.U7-2.sioul", "ham@example.org"), card("Said", "new/3.U7-3.sioul", "said@example.org"), card("Plain", "new/4.U7-4.sioul", "plain@example.org")];
+        let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
+        let inbox = crate::folders::folder("INBOX", Some("."), None);
+        let flag = |uid: u32, class| Moved { at: now - 60, account: "me".into(), folder: "INBOX".into(), uidvalidity: 7, uid, message_id: None, class };
+        let mut flags = Flags::default();
+        flags.flagged = vec![flag(1, crate::spam::Class::Unsure), flag(2, crate::spam::Class::Ham), flag(3, crate::spam::Class::Spam), Moved { folder: "Archive".into(), ..flag(4, crate::spam::Class::Spam) }];
+        flags.said = vec![Entry { at: now - 30, account: "me".into(), folder: "INBOX".into(), uidvalidity: 7, uid: 3, message_id: Some("said@example.org".into()), label: Label::Ham, source: Source::NotSpam }];
+        let tr = Translator::new("en");
+        let view = folder(&account, &inbox, cards, &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None, &flags);
+        let words: Vec<(&str, &str)> = view.items.iter().map(|i| (i.subject.as_str(), i.spam.as_str())).collect();
+        assert_eq!(words, [("Doubt", "maybe spam"), ("Ham", "probably not spam"), ("Said", ""), ("Plain", "")], "the same message flagged in another folder is another place");
     }
 
     #[test]
@@ -1669,7 +1711,7 @@ host = "imap.example.com"
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, vec![question, thanks, other], &[], crate::words::Words::builtin_ref(), false, "", &tr, now, Some(vec![answer, unrelated]));
+        let view = folder(&account, &inbox, vec![question, thanks, other], &[], crate::words::Words::builtin_ref(), false, "", &tr, now, Some(vec![answer, unrelated]), &Default::default());
         let rows: Vec<(&str, usize, bool)> = view.items.iter().map(|i| (i.subject.as_str(), i.size, i.member)).collect();
         // The lease first (its last message is the newest), with its question and your answer under it, oldest first.
         assert_eq!(rows, [("Re: Lease", 3, false), ("Lease", 1, true), ("Re: Lease", 1, true), ("Lunch", 1, false)]);

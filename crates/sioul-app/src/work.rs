@@ -159,6 +159,56 @@ pub(crate) fn show_anyway(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
     }
 }
 
+/// The tasks made on the Tasks page since it showed, by UID: kept in view
+/// whatever the hours until it is left (decided 3 November 2026: a task made
+/// in quiet time no longer vanishes at once; `taskview::Filter::fresh`).
+static FRESH: std::sync::Mutex<BTreeSet<String>> = std::sync::Mutex::new(BTreeSet::new());
+
+/// The Tasks page was left: the tasks made there follow the hours again.
+pub(crate) fn forget_fresh(qt: &QtThread, shared: &Arc<Shared>) {
+    let had = FRESH.lock().map(|mut fresh| std::mem::take(&mut *fresh)).is_ok_and(|was| !was.is_empty());
+    if had {
+        show_work(qt, shared);
+    }
+}
+
+/// The tasks made on the page, each with the line its row says while the
+/// hours hide it: when it comes back, from the hours of the coming week
+/// (`quiet::back_for`); none made, nothing read.
+fn fresh_lines(tasks: &[Task], quiet: Option<&sioul_core::quiet::QuietTasks>) -> BTreeMap<String, String> {
+    let fresh: Vec<String> = FRESH.lock().map(|f| f.iter().cloned().collect()).unwrap_or_default();
+    if fresh.is_empty() {
+        return BTreeMap::new();
+    }
+    let now = sioul_core::zone::now();
+    let hidden: Vec<&Task> = tasks.iter().filter(|t| fresh.contains(&t.uid) && quiet.is_some_and(|q| !q.keeps(t))).collect();
+    let frames = match (quiet, hidden.is_empty()) {
+        (Some(_), false) => {
+            let config = load_config();
+            let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
+            let horizon = now.checked_add(jiff::Span::new().days(7)).unwrap_or_else(|_| now.clone());
+            sioul_core::quiet::frames(&config.week_hours(), &config.time_off, &overrides, &crate::hours::blocks(&now), &config.windows, &now, &horizon, &[], 400)
+        }
+        _ => Vec::new(),
+    };
+    fresh
+        .into_iter()
+        .map(|uid| {
+            let line = hidden
+                .iter()
+                .find(|t| t.uid == uid)
+                .and_then(|t| sioul_core::quiet::back_for(quiet?, t, &frames))
+                .map(|back| {
+                    let day = if back.date() == now.date() { tr().text("day-today", None) } else { day_name(back.date(), now.date()) };
+                    say("task-comes-back", &[("day", day), ("time", back.strftime("%H:%M").to_string())])
+                })
+                .or_else(|| hidden.iter().any(|t| t.uid == uid).then(|| tr().text("task-comes-back-later", None)))
+                .unwrap_or_default();
+            (uid, line)
+        })
+        .collect()
+}
+
 /// The moment, for the task pages: quiet or not, offices open or not.
 pub(crate) fn situation(projects: &[sioul_core::projects::Project]) -> sioul_core::quiet::Situation {
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
@@ -832,7 +882,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         }
         // The phone's home screen card: the next step as each coming time will have it (homecard.rs).
         crate::homecard::plan_seen(&desk.loaded, &desk.plan, &desk.today, &desk.spent, &desk.stopped);
-        let page_filter = Filter { project: state.project.clone(), quiet: desk.filter.quiet.clone(), ..state.filter.clone() };
+        let page_filter = Filter { project: state.project.clone(), quiet: desk.filter.quiet.clone(), fresh: fresh_lines(&desk.loaded.tasks, desk.filter.quiet.as_ref()), ..state.filter.clone() };
         let cx = desk.context_with(&page_filter);
         let project = Some(state.project.as_str()).filter(|c| !c.is_empty());
         let rest = desk.settings.rest_days();
@@ -1171,6 +1221,10 @@ fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> R
     let text = tasks::new_task(&edit, &uid, &zone, &now)?;
     write(qt, shared, &target.dir.join(format!("{uid}.ics")), &text)?;
     write_gaps(qt, shared, &uid, &edit);
+    // In view until the Tasks page is left, whatever the hours (`FRESH`).
+    if let Ok(mut fresh) = FRESH.lock() {
+        fresh.insert(uid.clone());
+    }
     Ok(uid)
 }
 

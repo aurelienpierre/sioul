@@ -280,7 +280,7 @@ Item {
             who: row.who || "", address: row.address || "", subject: row.subject || "", day: row.day || "", time: row.time || "",
             unread: row.unread === true, read: row.read === true, flagged: row.flagged === true, answered: row.answered === true,
             attachments: row.attachments === true, hostile: row.hostile === true, trust_level: row.trust_level || "",
-            trust: row.trust || "", spam: row.spam || "", marks: row.marks || "", server: false
+            trust: row.trust || "", spam: row.spam || "", flag: row.flag || "", marks: row.marks || "", server: false
         }
     }
 
@@ -1472,24 +1472,27 @@ Item {
                                 elide: Text.ElideRight
                                 color: page.theme.text
                             }
-                            // A search's row: where it is ("Inbox · noa@example.com", "… · on the server").
+                            // A search's row: where it is ("Inbox · noa@example.com", "… · on the server");
+                            // your filter's flag where it lies, quietly, as the Porch says it ("maybe spam":
+                            // the matrix's "Flag only", decided 3 November 2026). One label for both.
                             Label {
-                                visible: !!row.modelData.place && !page.window.compact
+                                objectName: "folderRowQuiet"
+                                visible: !!(row.modelData.place || row.modelData.spam) && !page.window.compact
                                 Layout.maximumWidth: Math.round(row.width * 0.45)
-                                text: row.modelData.place || ""
+                                text: [row.modelData.place || "", row.modelData.spam || ""].filter(t => t !== "").join(" · ")
                                 textFormat: Text.PlainText
                                 elide: Text.ElideMiddle
                                 font.pixelSize: 12
                                 color: page.theme.muted
                             }
                         }
-                        // On a phone, where it is goes under the subject, whole.
+                        // On a phone, where it is and the flag go under the subject, whole.
                         Label {
-                            visible: !!row.modelData.place && page.window.compact
+                            visible: !!(row.modelData.place || row.modelData.spam) && page.window.compact
                             Layout.fillWidth: true
                             Layout.preferredWidth: 0
                             Layout.leftMargin: 15
-                            text: row.modelData.place || ""
+                            text: [row.modelData.place || "", row.modelData.spam || ""].filter(t => t !== "").join(" · ")
                             textFormat: Text.PlainText
                             elide: Text.ElideMiddle
                             font.pixelSize: 12
@@ -2014,12 +2017,13 @@ Item {
     // Its words for screen readers: a row has no text of its own.
     function boxRowWords(row) {
         const marks = row.marks && page.box !== null ? row.marks.split(",").map(i => (page.box.addresses[Number(i)] || {}).title).filter(t => !!t) : []
-        return marks.concat([row.who, row.subject, row.spam, row.time]).filter(t => !!t).join(", ")
+        return marks.concat([row.who, row.subject, page.quietWord(row), row.time]).filter(t => !!t).join(", ")
     }
 
-    // Its quiet word: spam's, else "forged".
+    // Its quiet word: spam's, else "forged", else your filter's flag where it lies
+    // ("probably not spam", "maybe spam"; decided 3 November 2026).
     function quietWord(row) {
-        return row.spam !== "" ? row.spam : row.trust_level === "forged" ? row.trust : ""
+        return row.spam ? row.spam : row.trust_level === "forged" ? row.trust : row.flag || ""
     }
 
     // A computer's row: one line, its marks, the dot, who, the subject, its quiet marks, the time.

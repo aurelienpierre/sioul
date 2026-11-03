@@ -212,7 +212,7 @@ Google Tasks keeps less: a list there greys what Google does not keep (a day to 
 
 ## In quiet time, and while you sleep {#in-quiet-time-and-while-you-sleep}
 
-In quiet time ([Hours](hours.md#quiet-time)), the task pages keep only what fits now: in leisure and during a meal, what is yours; work waits for work to come back.
+In quiet time ([Hours](hours.md#quiet-time)), the task pages keep only what fits now: in leisure and during a meal, what is yours; work waits for work to come back. A task you make on the Tasks page stays in view until you leave the page, whatever the hours, and its row says when it comes back: "Out of these hours: back tomorrow at 09:00."
 
 While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), the page waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. **New ▾ ▸ A task** shows the page anyway, a new task's form open. Task reminders wait too, for waking.
 

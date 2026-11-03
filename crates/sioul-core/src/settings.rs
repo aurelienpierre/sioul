@@ -80,6 +80,10 @@ pub enum Kind {
     /// list, each in words, its editor, "Try it" and running them on the
     /// inboxes; read and written whole (`config::set_filters`). Nothing in `value`.
     Filters,
+    /// The Bitwarden vault on this device as it is now, open or locked, and
+    /// **Lock** while it is open (the window asks `bitwarden_state`, and
+    /// locks with `bitwarden_lock`). Nothing in `value`, nothing saved.
+    Vault,
 }
 
 /// One of a setting's choices.
@@ -496,6 +500,23 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         "sites" => {
             b.push("bitwarden.email", "bitwarden-email", Kind::Text, SettingValue::Text(config.bitwarden.email.clone().unwrap_or_default()));
             b.push("bitwarden.server", "bitwarden-server", Kind::Text, SettingValue::Text(config.bitwarden.server.clone().unwrap_or_default()));
+            // The vault as it is now, with Lock, and a lock after a time without use, as
+            // Bitwarden's own apps offer (decided 3 November 2026): never by default.
+            if config.bitwarden.email.as_deref().is_some_and(|e| !e.trim().is_empty()) {
+                b.push("bitwarden_vault", "bitwarden-vault", Kind::Vault, SettingValue::Bool(false));
+            }
+            let lock = config.bitwarden.lock_after.unwrap_or(0);
+            let mut times = crate::config::BITWARDEN_LOCK_AFTER.to_vec();
+            if !times.contains(&lock) {
+                times.push(lock);
+                times.sort_unstable();
+            }
+            let s = b.push("bitwarden.lock_after", "bitwarden-lock-after", Kind::Choice, SettingValue::Int(i64::from(lock)));
+            s.choices = times.iter().map(|m| Choice { value: SettingValue::Int(i64::from(*m)), label: {
+                let mut args = crate::i18n::args();
+                args.set("minutes", *m);
+                tr.text("set-bitwarden-lock-time", Some(&args))
+            } }).collect();
         }
         "contacts" => {
             b.collections(config, "address-books", crate::vdir::Kind::Contacts, "");

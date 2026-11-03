@@ -311,6 +311,27 @@ pub(crate) fn save_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit:
     Ok(path.display().to_string())
 }
 
+/// A contact's photo that its card names on the web, loaded because you
+/// asked on the person's card ("Load the photo", decided 3 November 2026),
+/// off the window's thread, then kept in the cache, where the card shows it
+/// from then on (`contacts::web_photo_file`). Only an address a card gives
+/// is asked for; never in the demo, which stays off the network.
+pub(crate) fn load_contact_photo(qt: &QtThread, shared: &Arc<Shared>, url: &str) {
+    let url = url.trim().to_string();
+    if !sioul_sync::photo::may_ask(&url) {
+        return;
+    }
+    if crate::backend::offline() {
+        tell(qt, shared, tr().text("contact-photo-offline", None));
+        return;
+    }
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || match sioul_sync::photo::fetch(&url, &contacts::photos_folder()) {
+        Ok(_) => show_pim(&qt, &shared),
+        Err(error) => tell(&qt, &shared, say("contact-photo-failed", &[("error", error)])),
+    });
+}
+
 /// The address books a contact can go into: [{id, name}].
 pub(crate) fn books() -> String {
     let config = load_config();

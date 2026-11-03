@@ -109,7 +109,8 @@ Sioul fills logins from your Bitwarden vault, read by Sioul itself: nothing else
 
 1. In the Sites page's ⚙: your Bitwarden account's e-mail, and its server when it is not bitwarden.com (bitwarden.eu, or your own, Vaultwarden too).
 2. On a site's login page, **Fill the login**.
-3. The first time in a session, open the vault: with **your security key** alone (when Bitwarden knows it as a passkey used for encryption), or with your master password, then the second step your account asks for (a security key, an authenticator app's code, a code by e-mail, a YubiKey's code, a recovery code). Duo cannot be used here. The vault then stays open until Sioul closes.
+3. The first time in a session, open the vault: with **your security key** alone (when Bitwarden knows it as a passkey used for encryption), or with your master password, then the second step your account asks for (a security key, an authenticator app's code, a code by e-mail, a YubiKey's code, a recovery code). Duo cannot be used here. The vault then stays open until you lock it, until it has gone unused as long as you chose, or until Sioul closes.
+4. To lock it, in the Sites page's ⚙: **Bitwarden on this device** says whether it is open, with **Lock**; **Lock Bitwarden** locks it after a time without use (opening it, a login looked for or filled), from five minutes to four hours, as Bitwarden's own apps do. Until you choose, it stays open until Sioul closes.
 
 Sioul fills at once the login made for the site in front of you, when it is the only one. When a site has several logins, or none, the list of your logins opens; **Choose a login…** opens it any time. A login made for another site is filled only when you choose it, and the list says which site it was made for, so that a look-alike site shows. Two fields find logins, each optional, both together when both are filled:
 
@@ -122,7 +123,7 @@ For a mail account's password (**Password…** ▸ **From Bitwarden…**, on the
 
 On a page asking for a one-time code, **Fill the login** writes the code your vault's secret gives now.
 
-Your master password and keys are never kept. The logins stay in memory while the vault is open, until Sioul closes. Nothing is ever written to your vault.
+Your master password and keys are never kept. The logins stay in memory while the vault is open, and leave it when it locks. Nothing is ever written to your vault.
 
 ## Where it is kept
 

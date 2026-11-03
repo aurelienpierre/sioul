@@ -109,7 +109,8 @@ Sioul remplit les identifiants depuis votre coffre Bitwarden, lu par Sioul lui-m
 
 1. Dans le ⚙ de la page Sites : l’adresse de votre compte Bitwarden, et son serveur quand ce n’est pas bitwarden.com (bitwarden.eu, ou le vôtre, Vaultwarden aussi).
 2. Sur la page de connexion d’un site, **Remplir l’identifiant**.
-3. La première fois dans une session, ouvrez le coffre : avec **votre clé de sécurité** seule (quand Bitwarden la connaît comme clé d’accès utilisée pour le chiffrement), ou avec votre mot de passe principal, puis la deuxième étape que demande votre compte (une clé de sécurité, le code d’une application d’authentification, un code par courriel, le code d’une YubiKey, un code de récupération). Duo ne peut pas servir ici. Le coffre reste ensuite ouvert jusqu’à la fermeture de Sioul.
+3. La première fois dans une session, ouvrez le coffre : avec **votre clé de sécurité** seule (quand Bitwarden la connaît comme clé d’accès utilisée pour le chiffrement), ou avec votre mot de passe principal, puis la deuxième étape que demande votre compte (une clé de sécurité, le code d’une application d’authentification, un code par courriel, le code d’une YubiKey, un code de récupération). Duo ne peut pas servir ici. Le coffre reste ensuite ouvert jusqu’à ce que vous le verrouilliez, qu’il soit resté sans usage le temps que vous avez choisi, ou que Sioul se ferme.
+4. Pour le verrouiller, dans le ⚙ de la page Sites : **Bitwarden sur cet appareil** dit s’il est ouvert, avec **Verrouiller** ; **Verrouiller Bitwarden** le verrouille après un temps sans usage (l’ouvrir, un identifiant cherché ou rempli), de cinq minutes à quatre heures, comme les applications de Bitwarden. Tant que vous n’avez pas choisi, il reste ouvert jusqu’à la fermeture de Sioul.
 
 Sioul remplit tout de suite l’identifiant fait pour le site devant vous, quand c’est le seul. Quand un site a plusieurs identifiants, ou aucun, la liste de vos identifiants s’ouvre ; **Choisir un identifiant…** l’ouvre à tout moment. Un identifiant fait pour un autre site n’est rempli que si vous le choisissez, et la liste dit pour quel site il a été fait, pour qu’un site qui en imite un autre se remarque. Deux champs trouvent les identifiants, chacun facultatif, les deux ensemble quand les deux sont remplis :
 
@@ -122,7 +123,7 @@ Pour le mot de passe d’un compte de courriel (**Mot de passe…** ▸ **Depuis
 
 Sur une page qui demande un code à usage unique, **Remplir l’identifiant** écrit le code que donne en ce moment le secret gardé dans votre coffre.
 
-Votre mot de passe principal et vos clés ne sont jamais gardés. Les identifiants restent en mémoire tant que le coffre est ouvert, jusqu’à la fermeture de Sioul. Rien n’est jamais écrit dans votre coffre.
+Votre mot de passe principal et vos clés ne sont jamais gardés. Les identifiants restent en mémoire tant que le coffre est ouvert, et la quittent quand il se verrouille. Rien n’est jamais écrit dans votre coffre.
 
 ## Où c’est gardé {#where-it-is-kept}
 

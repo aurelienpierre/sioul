@@ -551,6 +551,13 @@ impl QuietTasks {
     }
 }
 
+/// When a task the hours hide now comes back into view: the start of the
+/// first of `frames` (`frames`, from now on) whose time keeps it; none
+/// within them (decided 3 November 2026: the line a task made in quiet time says).
+pub fn back_for(quiet: &QuietTasks, task: &crate::tasks::Task, frames: &[(Zoned, Zoned, Mode)]) -> Option<Zoned> {
+    frames.iter().find(|(_, _, mode)| QuietTasks { time: mode.time, week: mode.week, ..quiet.clone() }.keeps(task)).map(|(start, _, _)| start.clone())
+}
+
 impl Situation {
     pub fn now(config: &crate::config::Config, overrides: &Overrides, blocks: &Blocks, now: &Zoned, tr: &crate::i18n::Translator, projects: &[crate::projects::Project]) -> Situation {
         let mode = mode(&config.week_hours(), &config.time_off, overrides, blocks, now);

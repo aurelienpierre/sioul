@@ -256,6 +256,11 @@ pub fn said_ham(card: &Card) -> bool {
 /// at its very place (its UIDVALIDITY and UID).
 pub fn said_ham_in(entries: &[Entry], card: &Card) -> bool {
     let Some(account) = card.account.as_deref() else { return false };
+    said_ham_as(entries, account, card)
+}
+
+/// `said_ham_in` for the message on `card` in `account`, whatever the card says of its account.
+fn said_ham_as(entries: &[Entry], account: &str, card: &Card) -> bool {
     let id = card.message_id.as_deref().map(crate::mailindex::bare_id).filter(|id| !id.is_empty());
     entries
         .iter()
@@ -309,6 +314,36 @@ impl Moved {
 /// (`flagged/`). The training learns a probable spam flagged so as spam, and
 /// leaves a maybe spam out, until you say.
 pub type Flagged = Moved;
+
+/// What your filter flagged where it lies, and what you said back (the
+/// matrix's "Flag only"): the word Mail's folders and the mailbox give a
+/// flagged message, as the Porch's review queue does (decided 3 November
+/// 2026). Read once for a folder or a page.
+#[derive(Debug, Clone, Default)]
+pub struct Flags {
+    pub flagged: Vec<Flagged>,
+    pub said: Vec<Entry>,
+}
+
+impl Flags {
+    /// Every device's logs, here.
+    pub fn load() -> Flags {
+        let root = state();
+        Flags { flagged: read_flagged_in(&root), said: read_all_in(&root) }
+    }
+
+    /// How your filter flagged the message on `card`, in `folder` of
+    /// `account` (the folder's name on the server, as the log names it): by
+    /// its place there, its UIDVALIDITY and UID; none for a message never
+    /// flagged, or said not spam since (here, elsewhere, `$NotJunk`).
+    pub fn class_of(&self, account: &str, folder: &str, card: &Card) -> Option<super::Class> {
+        let origin = card.origin.or_else(|| card.path.as_deref().and_then(crate::maildir::origin_of))?;
+        let flagged = self.flagged.iter().rev().find(|f| f.account == account && f.folder == folder && f.uidvalidity == origin.validity && f.uid == origin.uid)?;
+        let keywords = card.path.as_deref().map(crate::maildir::keywords_of).unwrap_or_default();
+        let said_ham = (keywords.not_junk && !keywords.junk) || said_ham_as(&self.said, account, card);
+        (!said_ham).then_some(flagged.class)
+    }
+}
 
 /// Every device's log of what your filter moved, under `root`, oldest first.
 pub fn read_moved_in(root: &Path) -> Vec<Moved> {

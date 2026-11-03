@@ -77,6 +77,13 @@ pub struct Filter {
     /// Quiet time: what it keeps (`quiet::QuietTasks`).
     #[serde(skip)]
     pub quiet: Option<crate::quiet::QuietTasks>,
+    /// Tasks made on the page since it opened, by UID, kept in view whatever
+    /// the hours until you leave it (decided 3 November 2026: a task made
+    /// in quiet time no longer vanishes at once), with the line its row
+    /// says while the hours would hide it ("Out of these hours: back Monday
+    /// at 09:00"; `CardView::comes_back`).
+    #[serde(skip)]
+    pub fresh: BTreeMap<String, String>,
 }
 
 impl Filter {
@@ -84,7 +91,13 @@ impl Filter {
         (self.kind.is_empty() || task.kind == self.kind)
             && (self.category.is_empty() || task.categories.iter().any(|c| c.eq_ignore_ascii_case(&self.category)))
             && (self.project.is_empty() || task.projects.iter().any(|c| c == &self.project))
-            && self.quiet.as_ref().is_none_or(|quiet| quiet.keeps(task))
+            && (self.fresh.contains_key(&task.uid) || self.quiet.as_ref().is_none_or(|quiet| quiet.keeps(task)))
+    }
+
+    /// The line a task made on the page says while the hours would hide it; "" otherwise.
+    pub fn comes_back(&self, task: &Task) -> String {
+        let hidden = self.quiet.as_ref().is_some_and(|quiet| !quiet.keeps(task));
+        self.fresh.get(&task.uid).filter(|_| hidden).cloned().unwrap_or_default()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -258,6 +271,9 @@ pub struct CardView {
     pub parent_uid: String,
     /// "Where you stopped: the income field".
     pub stopped: String,
+    /// Made on the page in hours that hide it, kept in view until you leave:
+    /// "Out of these hours: back Monday at 09:00" (`Filter::fresh`); "" otherwise.
+    pub comes_back: String,
     /// "45 minutes so far".
     pub spent: String,
     pub projects: Vec<String>,
@@ -390,6 +406,7 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         parent,
         parent_uid,
         stopped: cx.stopped.get(&task.uid).filter(|s| !s.is_empty() && task.status.is_open()).map(|s| cx.say("task-stopped", &[("text", s.clone())])).unwrap_or_default(),
+        comes_back: cx.filter.comes_back(task),
         spent: if spent > 0 { minutes_text(cx.tr, "task-spent-time", spent, None) } else { String::new() },
         projects: task.projects.iter().map(|c| cx.project_title(c)).collect(),
         project_ids: task.projects.clone(),
@@ -1175,6 +1192,37 @@ mod tests {
         // Minutes chosen by their number: "1 minute", not "1 minutes".
         assert_eq!((minutes_text(&tr, "task-spent-time", 1, None), minutes_text(&tr, "task-spent-time", 25, None)), ("1 minute so far".to_string(), "25 minutes so far".to_string()));
         assert_eq!(minutes_text(&fr, "task-session-time", 1, Some("lundi 5 octobre".into())), "lundi 5 octobre\u{202f}: 1 minute");
+    }
+
+    /// A task made on the page in hours that hide it stays in view until you
+    /// leave the page, its row saying when it comes back (decided 3 November
+    /// 2026); forgotten as you leave, the hours hide it again.
+    #[test]
+    fn a_task_made_in_quiet_time_stays_in_view_with_its_line() {
+        use crate::areas::Week;
+        use crate::quiet::QuietTasks;
+        let today: Date = "2026-10-05".parse().unwrap();
+        let mut taxes = task("taxes", "Pay the taxes");
+        taxes.categories = vec!["Admin".into()];
+        let mut joy = task("joy", "Garden");
+        joy.categories = vec!["joy".into()];
+        let tasks = vec![taxes, joy];
+        let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        let tr = Translator::new("en");
+        let areas = crate::areas::TaskAreas { personal_categories: vec!["joy".into()], ..crate::areas::TaskAreas::usual() };
+        let evening = QuietTasks { time: crate::areas::Time::Leisure, week: Week { work_hours: true, ..Week::default() }, areas, no_movement: false };
+        let line = "Out of these hours: back tomorrow at 09:00.".to_string();
+        let titles = |filter: &Filter| {
+            let cx = Context { filter, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
+            list(&cx, "project", false, "", Fold::Open).groups.iter().flat_map(|g| g.rows.iter().map(|r| (r.title.clone(), r.comes_back.clone()))).collect::<Vec<_>>()
+        };
+        let quiet = Filter { quiet: Some(evening.clone()), ..Filter::default() };
+        assert_eq!(titles(&quiet), [("Garden".to_string(), String::new())], "the evening: yours alone");
+        let made = Filter { fresh: BTreeMap::from([("taxes".to_string(), line.clone()), ("joy".to_string(), line.clone())]), ..quiet.clone() };
+        let mut shown = titles(&made);
+        shown.sort();
+        assert_eq!(shown, [("Garden".to_string(), String::new()), ("Pay the taxes".to_string(), line)], "made here: kept, its line said only while the hours hide it");
+        assert_eq!(titles(&quiet).len(), 1, "forgotten as you leave: hidden again");
     }
 
     #[test]

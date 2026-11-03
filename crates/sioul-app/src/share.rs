@@ -3421,16 +3421,16 @@ mod tests {
     #[test]
     fn keeping_the_folder_says_in_words_where_it_stands() {
         use sioul_sync::remote::{MIRROR, State};
-        let kept = State { mode: MIRROR.into(), place: "Documents/Sioul".into(), url: "https://murena.io/remote.php/dav/files/jane/Documents/Sioul/".into(), confirmed: 1, ..State::default() };
+        let kept = State { mode: MIRROR.into(), place: "Documents/Sioul".into(), url: "https://cloud.example.org/remote.php/dav/files/jane/Documents/Sioul/".into(), confirmed: 1, ..State::default() };
         assert_eq!(mirror_line(&kept), "", "nothing to say before its first step");
         let stepped = State { last: jiff::Timestamp::now().as_second(), ..kept.clone() };
         assert!(!mirror_line(&stepped).is_empty());
-        for said in ["network:murena.io", "login:murena.io", "tls:murena.io", "server:murena.io", "quota:murena.io", "disk:murena.io"] {
+        for said in ["network:cloud.example.org", "login:cloud.example.org", "tls:cloud.example.org", "server:cloud.example.org", "quota:cloud.example.org", "disk:cloud.example.org"] {
             let line = mirror_line(&State { said: said.into(), ..stepped.clone() });
             assert!(!line.is_empty() && !line.contains("share-"), "{said}: {line}");
         }
-        assert!(mirror_line(&State { confirmed: 0, said: "seal-differs:murena.io".into(), ..kept }).contains("murena.io"));
-        for code in ["no-place", "no-files:murena.io", "no-password:murena", "login:murena.io", "tls:murena.io", "network:murena.io", "server:murena.io", "sealed-meanwhile"] {
+        assert!(mirror_line(&State { confirmed: 0, said: "seal-differs:cloud.example.org".into(), ..kept }).contains("cloud.example.org"));
+        for code in ["no-place", "no-files:cloud.example.org", "no-password:cloud", "login:cloud.example.org", "tls:cloud.example.org", "network:cloud.example.org", "server:cloud.example.org", "sealed-meanwhile"] {
             let words = server_problem(code);
             assert!(!words.is_empty() && !words.contains("share-"), "{code}: {words}");
         }
@@ -3456,9 +3456,9 @@ mod tests {
 
     #[test]
     fn the_backup_says_in_words_what_it_did() {
-        assert_eq!(backup_words("network:murena.io"), "murena.io: could not be reached");
+        assert_eq!(backup_words("network:cloud.example.org"), "cloud.example.org: could not be reached");
         assert_eq!(backup_words("no-account"), "no account with a Nextcloud server");
-        assert_eq!(backup_words("seal-differs:murena.io"), "murena.io: a folder sealed otherwise, never read");
+        assert_eq!(backup_words("seal-differs:cloud.example.org"), "cloud.example.org: a folder sealed otherwise, never read");
     }
 
     #[test]
@@ -3466,19 +3466,19 @@ mod tests {
         use sioul_sync::remote::State;
         let folder = Path::new("/storage/emulated/0/Documents/Sioul");
         let here = folder.display().to_string();
-        let found = State { folder: here.clone(), url: "https://murena.io/remote.php/dav/files/jane/Documents/Sioul/".into(), account: "murena".into(), confirmed: 1, looked: 1, ..State::default() };
-        assert!(backup_line(&found, folder).contains("murena.io"));
+        let found = State { folder: here.clone(), url: "https://cloud.example.org/remote.php/dav/files/jane/Documents/Sioul/".into(), account: "cloud".into(), confirmed: 1, looked: 1, ..State::default() };
+        assert!(backup_line(&found, folder).contains("cloud.example.org"));
         let fetched = State { last: jiff::Timestamp::now().as_second(), ..found.clone() };
-        assert!(backup_line(&fetched, folder).contains("murena.io"));
-        let failing = State { said: "network:murena.io".into(), ..fetched.clone() };
+        assert!(backup_line(&fetched, folder).contains("cloud.example.org"));
+        let failing = State { said: "network:cloud.example.org".into(), ..fetched.clone() };
         assert_ne!(backup_line(&failing, folder), backup_line(&fetched, folder));
         let left = State { left: [("desk-9.jsonl".to_string(), 70 << 20)].into(), ..fetched.clone() };
         assert!(backup_line(&left, folder).ends_with(&tr().text("share-backup-left", None)), "a round left to the sync app, said");
         let off = State { on: Some(false), ..fetched.clone() };
-        assert!(backup_line(&off, folder).contains("murena.io"));
+        assert!(backup_line(&off, folder).contains("cloud.example.org"));
         let looking = State { folder: here.clone(), ..State::default() };
         assert_eq!(backup_line(&looking, folder), tr().text("share-backup-looking", None));
-        for said in ["no-account", "not-found:murena.io", "seal-differs:murena.io", "seal-gone:murena.io", "login:murena.io", "no-password:murena", "network:murena.io", "no-account-for:cloud.example.org"] {
+        for said in ["no-account", "not-found:cloud.example.org", "seal-differs:cloud.example.org", "seal-gone:cloud.example.org", "login:cloud.example.org", "no-password:cloud", "network:cloud.example.org", "no-account-for:cloud.example.org"] {
             let state = State { folder: here.clone(), looked: 1, said: said.into(), ..State::default() };
             let line = backup_line(&state, folder);
             assert!(!line.is_empty() && !line.contains("share-backup"), "{said}: {line}");
