@@ -359,7 +359,8 @@ pub(crate) fn view() -> String {
 }
 
 fn read_view() -> View {
-    let mut view: View = std::fs::read_to_string(view_path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default();
+    let Ok(text) = std::fs::read_to_string(view_path()) else { return View::default() };
+    let mut view: View = toml::from_str(&text).unwrap_or_default();
     if !view.calendars_hidden.is_empty() {
         // An older Show, by names: each name as the calendars it names now, written once in places.
         let names = std::mem::take(&mut view.calendars_hidden);
@@ -369,19 +370,36 @@ fn read_view() -> View {
                 view.calendars.push(HiddenCalendar { id, name: collection.name.clone() });
             }
         }
-        let _ = write_view(&view);
+        let _ = write_view_over(&text, &view);
     }
     view
 }
 
-/// Show changed (`view`'s JSON): written whole, beside then in place. Returns
-/// what went wrong, else "".
+/// `view` written in place of `was`, the text it was read from, under the
+/// file's lock, only while the file still holds `was`: a reader that rewrites
+/// an older Show (any thread reading the agenda) never writes over a newer
+/// one written meanwhile, however late it comes. Whether it wrote.
+fn write_view_over(was: &str, view: &View) -> std::io::Result<bool> {
+    let path = view_path();
+    sioul_core::filelock::with_lock(&path, || {
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(was) {
+            return Ok(false);
+        }
+        write_view(view).map(|()| true)
+    })
+}
+
+/// Show changed (`view`'s JSON): written whole, beside then in place, under
+/// the file's lock, as an older Show's rewriting is. Returns what went
+/// wrong, else "".
 pub(crate) fn set_view(asked: &str) -> String {
     let Ok(view) = serde_json::from_str::<View>(asked) else { return tr().text("agenda-show-not-saved", None) };
-    if view == read_view() {
-        return String::new();
-    }
-    write_view(&view).map_or_else(|_| tr().text("agenda-show-not-saved", None), |()| String::new())
+    sioul_core::filelock::with_lock(&view_path(), || {
+        if view == read_view() {
+            return String::new();
+        }
+        write_view(&view).map_or_else(|_| tr().text("agenda-show-not-saved", None), |()| String::new())
+    })
 }
 
 fn write_view(view: &View) -> std::io::Result<()> {
@@ -1400,6 +1418,31 @@ mod tests {
         assert_eq!(set_view("not json"), tr().text("agenda-show-not-saved", None));
         std::fs::write(&path, "steps = [").unwrap();
         assert_eq!(read_view(), View::default(), "a file that does not read shows everything");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A reader that rewrites an older Show (the agenda's job, on any thread,
+    /// holding no test's lock) never writes over a newer Show written while it
+    /// read: its rewrite lands only while the file still holds what it read
+    /// (the flaky "the same said again writes nothing" of 2fdbb73's final
+    /// pass: such a rewrite landed 19 ms after the newer Show's write).
+    #[test]
+    fn a_late_rewrite_never_writes_over_a_newer_show() {
+        let _view = view_held();
+        sioul_core::config::stand_ins_only();
+        let path = view_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let older = "steps = true\nneeds = true\ndoses = true\ncalendars_hidden = [\"Some name\"]\n";
+        std::fs::write(&path, older).unwrap();
+        // A reader reads the older Show; then Show is changed; then the reader's rewrite comes.
+        let read = std::fs::read_to_string(&path).unwrap();
+        write_view(&View { steps: false, ..View::default() }).unwrap();
+        assert!(!write_view_over(&read, &View::default()).unwrap(), "nothing written over the newer Show");
+        assert!(!read_view().steps, "the newer Show stays");
+        // Still holding what it read: written.
+        std::fs::write(&path, older).unwrap();
+        assert!(write_view_over(older, &View::default()).unwrap());
+        assert_eq!(read_view(), View::default());
         let _ = std::fs::remove_file(&path);
     }
 
