@@ -559,7 +559,7 @@ fn unreadable_lines_are_said() {
 }
 
 const READING: &[&str] = &[
-    "porch", "search_mail", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
+    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
 const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
@@ -724,6 +724,11 @@ fn a_closed_project_is_never_shown() {
         ("search_mail", json!({})),
         ("search_mail", json!({ "query": "Zeugma", "in_text": true })),
         ("search_mail", json!({ "query": "notice" })),
+        ("mailbox", json!({})),
+        ("mailbox", json!({ "unread": true })),
+        ("mailbox", json!({ "kind": "spam" })),
+        ("mailbox", json!({ "kind": "sent" })),
+        ("mailbox", json!({ "account": "home", "limit": 1 })),
         ("list_tasks", json!({ "view": "list" })),
         ("list_tasks", json!({ "view": "list", "query": "form" })),
         ("list_tasks", json!({ "view": "now" })),
@@ -759,6 +764,13 @@ fn a_closed_project_is_never_shown() {
     assert!(kept >= 1 && text(&all).contains("left out on purpose"), "{all}");
     for query in ["Zeugma", "housing", "nothing like it"] {
         assert_eq!(call(&mut server, "search_mail", json!({ "query": query }))["structuredContent"]["kept_from_agents"].as_u64(), Some(kept), "{query}");
+    }
+    // The mailbox (part 6): over the days and the address asked, the same count whatever the kind and the unread filter.
+    let boxed = call(&mut server, "mailbox", json!({}));
+    let kept_boxed = boxed["structuredContent"]["kept_from_agents"].as_u64().unwrap();
+    assert!(kept_boxed >= 1 && text(&boxed).contains("left out on purpose"), "{boxed}");
+    for arguments in [json!({ "unread": true }), json!({ "kind": "spam" }), json!({ "kind": "received" }), json!({ "kind": "sent" }), json!({ "unread": true, "kind": "received" }), json!({ "limit": 1 })] {
+        assert_eq!(call(&mut server, "mailbox", arguments.clone())["structuredContent"]["kept_from_agents"].as_u64(), Some(kept_boxed), "{arguments}");
     }
     assert_eq!(call(&mut server, "list_projects", json!({}))["structuredContent"]["closed_to_agents"], 1);
     assert!(text(&call(&mut server, "list_tasks", json!({ "view": "list" }))).contains("Find the rent receipt"), "the opened project's task still comes");
@@ -803,6 +815,168 @@ fn a_closed_project_is_never_shown() {
     }
     assert_eq!(snapshot(&[home.root.join("store/taxes")]), before, "nothing written");
     assert!(!Draft::all().iter().any(|d| d.body.contains("Paid.") || d.subject == "Taxes"), "no draft");
+}
+
+/// The mailbox for agents (the unified mailbox's part 6): every address's
+/// mail once, newest first, by its address, never a file's path; spam,
+/// sent, unread and one address asked apart; blocked senders left out and
+/// counted; resting addresses said; spam refused while the spam tools are
+/// off; a cursor that never gives a message twice nor skips one while mail
+/// arrives between two answers; and `mid:` and `sioul:mail/` naming the copy
+/// that ranks first, the inbox's rather than the trash's, wherever an agent
+/// names mail (read_message, draft_reply, links, spam_label). Nothing moves.
+#[test]
+fn the_mailbox_for_agents() {
+    let home = home();
+    let root = home.root.join("mailbox-agents");
+    let (a, b) = (root.join("box-a"), root.join("box-b"));
+    for dir in [a.clone(), a.join(".Sent"), a.join(".Junk"), a.join(".Trash"), b.clone()] {
+        for sub in ["cur", "new", "tmp"] {
+            std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+    }
+    let saved = |account: &str, folders: &[(&str, &str, &str)]| {
+        let text: String = folders.iter().map(|(name, role, local)| format!("[[folder]]\nname = \"{name}\"\ndisplay = \"{name}\"\nrole = \"{role}\"\nlocal = \"{local}\"\nspecial = {}\n\n", *role != "other")).collect();
+        let path = sioul_core::folders::saved_path(account);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    saved("box-a", &[("INBOX", "inbox", ""), ("Sent", "sent", ".Sent"), ("Junk", "junk", ".Junk"), ("Trash", "trash", ".Trash")]);
+    saved("box-b", &[("INBOX", "inbox", "")]);
+    let put = |dir: &Path, unique: &str, raw: String, read: bool| {
+        let path = if read { dir.join("cur").join(seen(unique)) } else { dir.join("new").join(unique) };
+        std::fs::write(&path, raw).unwrap();
+        path
+    };
+    // One message to both addresses: one row, both addresses.
+    put(&a, "1777100001.U9-1.test", message("both@lists.example", "List <news@lists.example>", "On both lists", "Hello.", 1), true);
+    put(&b, "1777100001.U9-1.test", message("both@lists.example", "List <news@lists.example>", "On both lists", "Hello.", 1), true);
+    // In the inbox and in the trash: the inbox's copy, wherever it is named.
+    put(&a, "1777100002.U9-2.test", message("twice@example.org", "Ana <ana@example.org>", "In the inbox", "Hello.", 2), true);
+    put(&a.join(".Trash"), "1777100002.U9-3.test", message("twice@example.org", "Ana <ana@example.org>", "In the trash", "Hello.", 2), true);
+    put(&a, "1777100003.U9-4.test", message("unread@example.org", "Ben <ben@example.org>", "Not read yet", "Hello.", 3), false);
+    put(&a.join(".Sent"), "1777100004.U9-5.test", message("sent@example.org", "Box A <a@example.org>", "Sent from here", "Hello.", 3), true);
+    put(&a.join(".Junk"), "1777100005.U9-6.test", message("junk@ads.example", "Ads <win@ads.example>", "Junk of the week", "Buy.", 3), true);
+    put(&a, "1777100006.U9-7.test", message("blocked@bad.example", "Bad <x@bad.example>", "From a blocked sender", "Buy.", 3), true);
+    // No Message-ID: named by its digest.
+    put(&a, "1777100007.U9-8.test", message("nothing@example.org", "Cat <cat@example.org>", "Without an id", "Hello.", 4).replace("Message-ID: <nothing@example.org>\r\n", ""), true);
+    for n in 0..6 {
+        put(&a, &format!("17771001{n:02}.U9-{}.test", 20 + n), message(&format!("older-{n}@example.org"), "Dee <dee@example.org>", &format!("Older {n}"), "Hello.", 5 + n), true);
+    }
+    // A closed project's route on the text alone: known only once the message is read whole.
+    put(&a, "1777100008.U9-9.test", message("routed@example.org", "Fay <fay@example.org>", "A neutral subject", "About the Quillon matter.", 4), true);
+    // Two messages sent at the same second, their files in the other order than their addresses.
+    let tied_at = Zoned::now().checked_sub(2.days()).unwrap();
+    let tie = |id: &str| format!("Message-ID: <{id}>\r\nFrom: Gil <gil@example.org>\r\nTo: b@example.org\r\nSubject: Tied {id}\r\nDate: {}\r\n\r\nHello.\r\n", tied_at.strftime("%a, %d %b %Y %H:%M:%S %z"));
+    let tie_b = put(&b, "1777300001.U8-1.test", tie("tie-b@example.org"), true);
+    let tie_a = put(&b, "1777300002.U8-2.test", tie("tie-a@example.org"), true);
+    let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(tied_at.timestamp().as_second() as u64);
+    for file in [&tie_a, &tie_b] {
+        std::fs::File::options().write(true).open(file).unwrap().set_modified(at).unwrap();
+    }
+    std::fs::create_dir_all(root.join("store")).unwrap();
+    std::fs::write(root.join("store/sioul-cases.toml"), "[[case]]\nid = \"quillon\"\ntitle = \"Quillon\"\nstatus = \"open\"\n[[case.route]]\ntext_contains = [\"Quillon\"]\n").unwrap();
+    std::fs::write(root.join("blocked.txt"), "x@bad.example\n").unwrap();
+    let account = |id: &str, address: &str, dir: &Path| format!("[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"{address}\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n\n", dir.display().to_string().replace('\\', "\\\\"));
+    let config = root.join("config.toml");
+    let base = format!(
+        "language = \"en\"\ncase_store = \"{}\"\nblocked_senders = \"{}\"\n\n{}{}",
+        root.join("store").display().to_string().replace('\\', "\\\\"),
+        root.join("blocked.txt").display().to_string().replace('\\', "\\\\"),
+        account("box-a", "a@example.org", &a),
+        account("box-b", "b@example.org", &b)
+    );
+    std::fs::write(&config, &base).unwrap();
+    let mut server = Server::new(&config, "en");
+    let messages = |answer: &Value| answer["structuredContent"]["messages"].as_array().cloned().unwrap_or_default();
+    let uris = |answer: &Value| messages(answer).iter().map(|m| m["uri"].as_str().unwrap_or_default().to_string()).collect::<Vec<_>>();
+    let all = call(&mut server, "mailbox", json!({}));
+    assert!(all["isError"] != true, "{all}");
+    let listed = uris(&all);
+    assert_eq!(listed.iter().filter(|u| *u == "mid:both@lists.example").count(), 1, "once: {listed:?}");
+    let both = messages(&all).into_iter().find(|m| m["uri"] == "mid:both@lists.example").unwrap();
+    assert_eq!(both["addresses"], json!(["box-a", "box-b"]));
+    assert!(listed.contains(&"mid:sent@example.org".to_string()) && listed.contains(&"mid:twice@example.org".to_string()));
+    assert!(!listed.contains(&"mid:junk@ads.example".to_string()) && !listed.contains(&"mid:blocked@bad.example".to_string()), "no spam, no blocked sender: {listed:?}");
+    assert_eq!(all["structuredContent"]["blocked"], 1);
+    assert!(listed.iter().any(|u| u.starts_with("sioul:mail/box-a/")), "a message without an id, by its digest: {listed:?}");
+    assert_eq!(messages(&all).into_iter().find(|m| m["uri"] == "mid:unread@example.org").unwrap()["unread"], true);
+    assert!(!listed.contains(&"mid:routed@example.org".to_string()) && !all.to_string().contains("Quillon"), "a closed project's route on its text: {listed:?}");
+    // Never a file's path, in the data or the text.
+    let said = all.to_string();
+    assert!(!said.contains(&a.display().to_string()) && !said.contains("\"key\""), "no path: {said}");
+    // Kinds, unread, one address.
+    assert_eq!(uris(&call(&mut server, "mailbox", json!({ "kind": "spam" }))), ["mid:junk@ads.example"]);
+    assert_eq!(uris(&call(&mut server, "mailbox", json!({ "kind": "sent" }))), ["mid:sent@example.org"]);
+    assert_eq!(uris(&call(&mut server, "mailbox", json!({ "unread": true }))), ["mid:unread@example.org"]);
+    assert_eq!(uris(&call(&mut server, "mailbox", json!({ "account": "box-b" }))), ["mid:both@lists.example", "mid:tie-a@example.org", "mid:tie-b@example.org"]);
+    // Sent at the same second: by their addresses, whatever their files; a flag
+    // renaming a file between two answers neither repeats nor skips one.
+    let first = call(&mut server, "mailbox", json!({ "account": "box-b", "limit": 2 }));
+    assert_eq!(uris(&first), ["mid:both@lists.example", "mid:tie-a@example.org"]);
+    sioul_core::maildir::set_flags(&tie_b, "RS").unwrap();
+    let next = call(&mut server, "mailbox", json!({ "account": "box-b", "cursor": first["structuredContent"]["cursor"] }));
+    assert_eq!(uris(&next), ["mid:tie-b@example.org"]);
+    let refused = call(&mut server, "mailbox", json!({ "kind": "nonsense" }));
+    assert_eq!(refused["isError"], true);
+    // By pages: no message twice, none skipped, though one arrives between two answers.
+    let mut given: Vec<String> = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut arrived = false;
+    loop {
+        let mut arguments = json!({ "limit": 3 });
+        if let Some(c) = &cursor {
+            arguments["cursor"] = json!(c);
+        }
+        let page = call(&mut server, "mailbox", arguments);
+        assert!(page["isError"] != true, "{page}");
+        given.extend(uris(&page));
+        if !arrived {
+            put(&a, "1777199999.U9-99.test", message("arrived@example.org", "Eve <eve@example.org>", "Just in", "Hello.", 0), false);
+            arrived = true;
+        }
+        match page["structuredContent"]["cursor"].as_str() {
+            Some(next) => cursor = Some(next.to_string()),
+            None => break,
+        }
+    }
+    let unique: std::collections::BTreeSet<&String> = given.iter().collect();
+    assert_eq!(unique.len(), given.len(), "never twice: {given:?}");
+    assert_eq!(given, listed, "every message of the first answer, in its order, none skipped");
+    assert_eq!(uris(&call(&mut server, "mailbox", json!({})))[0], "mid:arrived@example.org", "the new one comes at the top of a new answer");
+    let bad = call(&mut server, "mailbox", json!({ "cursor": "nothing it gave" }));
+    assert_eq!(bad["isError"], true);
+    // mid: names the inbox's copy, not the trash's, for every tool that names mail.
+    let read = call(&mut server, "read_message", json!({ "message": "mid:twice@example.org" }));
+    assert_eq!(read["structuredContent"]["subject"], "In the inbox", "{read}");
+    let digest = listed.iter().find(|u| u.starts_with("sioul:mail/")).unwrap().clone();
+    assert_eq!(call(&mut server, "read_message", json!({ "message": digest }))["structuredContent"]["subject"], "Without an id");
+    let linked = call(&mut server, "links", json!({ "uri": "mid:twice@example.org" }));
+    assert_eq!(linked["structuredContent"]["title"], "In the inbox", "{linked}");
+    let drafted = call(&mut server, "draft_reply", json!({ "message": "mid:twice@example.org", "body": "Thanks, from the mailbox test." }));
+    assert!(drafted["isError"] != true, "{drafted}");
+    assert!(Draft::all().iter().any(|d| d.body.contains("from the mailbox test") && d.subject.contains("In the inbox")), "the draft answers the inbox's copy");
+    {
+        let _spam = spam_lock();
+        let labelled = call(&mut server, "spam_label", json!({ "message": "mid:twice@example.org", "label": "ham" }));
+        assert!(labelled["isError"] != true && !text(&labelled).contains("Trash"), "{labelled}");
+    }
+    // Nothing moved, nothing marked read.
+    assert!(a.join("new").join("1777100003.U9-4.test").exists(), "still unread");
+    // Spam refused while the spam tools are off.
+    let closed = root.join("config-no-spam.toml");
+    std::fs::write(&closed, format!("{base}[mcp]\nspam = false\n")).unwrap();
+    let mut no_spam = Server::new(&closed, "en");
+    let spam = call(&mut no_spam, "mailbox", json!({ "kind": "spam" }));
+    assert_eq!(spam["isError"], true);
+    assert!(text(&spam).contains("closed to agents"), "{spam}");
+    assert_eq!(call(&mut no_spam, "search_mail", json!({ "kind": "spam" }))["isError"], true);
+    // search_mail's kind, each message's address first.
+    let sent = call(&mut server, "search_mail", json!({ "kind": "sent", "account": "box-a" }));
+    let rows = sent["structuredContent"]["messages"].as_array().unwrap().clone();
+    assert!(rows.iter().all(|m| m["kind"] == "sent") && rows.iter().any(|m| m["uri"] == "mid:sent@example.org"), "{sent}");
+    assert!(text(&sent).lines().any(|l| l.starts_with("mid:sent@example.org · ")), "{}", text(&sent));
+    assert!(rows.iter().all(|m| m["key"].is_string()), "the file stays in key");
 }
 
 /// A paper letter of a project closed to agents, put into the agenda
@@ -883,6 +1057,9 @@ fn health_never_reaches_an_agent() {
         ("porch", json!({ "open": true, "all": true }), Answers),
         ("search_mail", json!({ "query": "Ferngale" }), Answers),
         ("search_mail", json!({ "query": "brackenwort", "in_text": true }), Answers),
+        ("mailbox", json!({}), Answers),
+        ("mailbox", json!({ "unread": true, "since": last_week.to_string() }), Answers),
+        ("mailbox", json!({ "kind": "spam" }), Answers),
         ("read_message", json!({ "message": "mid:letter-1@housing.example" }), Answers),
         ("list_tasks", json!({ "view": "list" }), Answers),
         ("list_tasks", json!({ "view": "list", "done": true }), Answers),
@@ -1379,10 +1556,17 @@ fn work_microsoft_accounts_are_kept_from_agents() {
     assert!(!text(&mail).contains("Quarterly plan") && text(&mail).contains("Your housing aid file"), "{mail}");
     assert!(mail["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "counted, never named: {mail}");
     assert_eq!(call(&mut server, "read_message", json!({ "message": "mid:plan-1@contoso.example" }))["isError"], true);
+    // The mailbox (part 6): kept as well, counted, never named, whatever the address asked.
+    let boxed = call(&mut server, "mailbox", json!({}));
+    assert!(!text(&boxed).contains("Quarterly plan") && text(&boxed).contains("Your housing aid file"), "{boxed}");
+    assert!(boxed["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "counted, never named: {boxed}");
+    let only_work = call(&mut server, "mailbox", json!({ "account": "work" }));
+    assert!(!text(&only_work).contains("Quarterly plan") && only_work["structuredContent"]["messages"].as_array().is_some_and(Vec::is_empty), "{only_work}");
     let opened = home.root.join("config/sioul/work-opened.toml");
     std::fs::write(&opened, format!("{config}{account}\n[mcp]\nwork_accounts = true\n")).unwrap();
     let mut server = Server::new(&opened, "en");
     assert!(text(&call(&mut server, "search_mail", json!({}))).contains("Quarterly plan"), "opened by the person");
+    assert!(text(&call(&mut server, "mailbox", json!({}))).contains("Quarterly plan"), "opened by the person, in the mailbox too");
 }
 
 /// A message not here, asked for by an agent: the servers of the addresses
@@ -1567,6 +1751,9 @@ fn codes_in_every_form() {
     // The subject alone is masked where it is listed, with what its text says.
     let listed = call(&mut server, "search_mail", json!({ "query": "sign-in" }));
     assert!(text(&listed).contains("[code hidden] is your sign-in code") && !listed.to_string().contains("551204"), "{listed}");
+    // The mailbox (part 6) masks it as search does.
+    let boxed = call(&mut server, "mailbox", json!({}));
+    assert!(text(&boxed).contains("[code hidden] is your sign-in code") && !boxed.to_string().contains("551204") && !boxed.to_string().contains("482 913"), "{boxed}");
 }
 
 #[test]
@@ -1602,6 +1789,9 @@ fn hostile_mail_is_kept_from_agents() {
     // Listed, it is someone at a domain; searched by its words, it is not found.
     let listed = call(&mut server, "search_mail", json!({ "account": "public" }));
     assert!(text(&listed).contains("Someone at hostile.example") && !listed.to_string().contains("Words for you") && !listed.to_string().contains("Rude"), "{listed}");
+    // The mailbox (part 6) as well.
+    let boxed = call(&mut server, "mailbox", json!({ "account": "public" }));
+    assert!(text(&boxed).contains("Someone at hostile.example") && !boxed.to_string().contains("Words for you") && !boxed.to_string().contains("Rude"), "{boxed}");
     for query in ["words", "rude"] {
         assert_eq!(call(&mut server, "search_mail", json!({ "query": query }))["structuredContent"]["total"], 0, "{query}");
         assert!(!call(&mut server, "find", json!({ "query": query })).to_string().contains("Words for you"), "{query}");
@@ -1872,12 +2062,16 @@ fn the_log_keeps_no_words() {
     call(&mut server, "read_message", json!({ "message": "mid:letter-1@housing.example" }));
     call(&mut server, "read_note", json!({ "note": "notes/letters.md" }));
     call(&mut server, "add_note", json!({ "title": "Log check", "folder": "admin/log", "body": "A body that quotes FR76 3000 6000 0112 3456 7890 189." }));
+    call(&mut server, "mailbox", json!({ "limit": 5 }));
     let month = Zoned::now().strftime("%Y-%m").to_string();
     let path = home.root.join(format!("state/sioul/mcp/{month}.jsonl"));
     let log = std::fs::read_to_string(&path).unwrap();
-    for words in ["rent receipt for September", "Kind regards", "blue folder", "A body that quotes", "3000 6000", "482 913"] {
+    for words in ["rent receipt for September", "Kind regards", "blue folder", "A body that quotes", "3000 6000", "482 913", "Your housing aid file", "Housing Office"] {
         assert!(!log.contains(words), "{words} in {log}");
     }
+    // The mailbox (part 6): the addresses it gave, never their words.
+    let listed = log.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find(|l| l["client"] == "log tests" && l["tool"] == "mailbox").expect("the mailbox logged");
+    assert!(listed["given"].as_array().unwrap().iter().any(|a| a.as_str().is_some_and(|a| a.starts_with("mid:"))), "{listed}");
     let line = log.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find(|l| l["client"] == "log tests" && l["tool"] == "read_message").expect("logged");
     assert!(line["given"].as_array().unwrap().iter().any(|a| a == "mid:letter-1@housing.example") && line["characters"].as_u64() > Some(0), "{line}");
     assert!(log.contains("\"body\":\"(53 characters)\""), "{log}");

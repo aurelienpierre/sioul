@@ -41,6 +41,7 @@ mod access;
 mod follow;
 mod items;
 mod log;
+mod mailbox;
 pub(crate) mod mask;
 mod phone;
 mod protocol;

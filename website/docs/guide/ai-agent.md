@@ -57,7 +57,8 @@ Sioul serves agents through the Model Context Protocol (MCP), with the command `
 ## What an agent can read {#what-an-agent-can-read}
 
 - **The Porch**, lane by lane, in your hours only, unless you ask it to open it. It is told that a code came, never the code.
-- **Your mail**: messages found by their subject, sender or text; one message whole, with who wrote, whether it is genuine or forged and why, and its attachments' names.
+- **Your mail**: messages found by their subject, sender or text (received, sent or spam when it asks); one message whole, with who wrote, whether it is genuine or forged and why, and its attachments' names.
+- **All addresses**, as the mailbox lists them: every address's mail newest first, two weeks at a time or from where it stopped, each message once with the addresses that hold it, whether it is unread, answered or forged; never a file. It is told first which addresses rest now and until when, so that it does not press you with work mail in your evening. Spam only if its tools are on; mail from blocked senders and what you keep closed, left out and only counted. It marks nothing read.
 - **Your tasks**: the next step and why, the day laid out, every open task in the plan's order, whatever the hour (in your evening it is told first that they wait for their own hours).
 - **Your agenda**, with the steps the plan gives each of the next four weeks' days, your **contacts**, your **budgets** (each verdict, the reserves, what the money watch noticed), your **notes**, your **projects**.
 - **What anything is tied to**, both ways, and anything found by a few words of its title.

@@ -342,9 +342,9 @@ pub(super) fn moment(s: &Session) -> (String, String) {
 
 /// The moment and what it was read from: its kind and its line, the mode,
 /// the overrides, what the hours hold, and now.
-type Moment = (String, String, sioul_core::quiet::Mode, sioul_core::quiet::Overrides, sioul_core::quiet::Blocks, Zoned);
+pub(super) type Moment = (String, String, sioul_core::quiet::Mode, sioul_core::quiet::Overrides, sioul_core::quiet::Blocks, Zoned);
 
-fn moment_read(s: &Session) -> Moment {
+pub(super) fn moment_read(s: &Session) -> Moment {
     use sioul_core::quiet::{self, Overrides, Reason};
     let config = &s.config;
     let now = sioul_core::zone::now();

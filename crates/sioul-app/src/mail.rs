@@ -162,33 +162,9 @@ pub(crate) fn mailbox_pages(config: &Config, ask: &sioul_core::mailbox::Ask, hid
 }
 
 fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>) -> sioul_core::mailbox::Page {
-    use sioul_core::areas::{Area, in_view};
     let now = sioul_core::zone::now();
     let mode = crate::hours::mode_at(&now);
-    let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
-    let mut ranked: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
-    ranked.sort_by_key(|a| a.priority);
-    let tints = sioul_core::mailbox::tints(&ranked);
-    let sources = config.mail_sources();
-    let until = |at: Option<&jiff::Zoned>| at.map(|z| sioul_core::quiet::until_text(tr(), z, &now)).unwrap_or_default();
-    let addresses: Vec<sioul_core::mailbox::Address> = ranked
-        .iter()
-        .zip(tints)
-        .map(|(account, tint)| {
-            let area = account.area.as_deref().and_then(Area::parse).unwrap_or(Area::WORK);
-            let rests = hours.is_some_and(|(time, week)| time == sioul_core::areas::Time::Sleep || !in_view(area, time, week));
-            let resting = rests.then(|| {
-                if mode.sleeps() {
-                    say("mailbox-rests-sleep", &[("until", until(mode.until.as_ref()))])
-                } else {
-                    let back = if area == Area::WORK { mode.back.as_ref().or(mode.until.as_ref()) } else { mode.until.as_ref() };
-                    say("mailbox-rests", &[("address", account.address.clone().unwrap_or_else(|| account.id.clone())), ("until", until(back))])
-                }
-            });
-            let trusted = sources.iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids.clone()).unwrap_or_default();
-            sioul_core::mailbox::Address { account: (*account).clone(), folders: mailbox::folders(&account.id), trusted, tint, resting }
-        })
-        .collect();
+    let addresses = sioul_core::mailbox::addresses(config, &mode, &now, tr(), mailbox::folders);
     let world = sioul_core::mailbox::World::load(config, crate::hours::attention_at(&mode, &now));
     sioul_core::mailbox::page(&addresses, &world, ask, hidden, tr(), now.timestamp().as_second(), &sioul_core::zone::current(), sioul_core::mailbox::STEP_FILL)
 }
@@ -1867,7 +1843,7 @@ mod tests {
             sent: 0,
         };
         let marks = vec![Mark { account: "work".into(), letter: "N".into(), tint: 0, title: "noa@work.example.org".into() }, Mark { account: "home".into(), letter: "H".into(), tint: 1, title: "noa@home.example.org".into() }];
-        let page_of = |rows: Vec<Row>, more: bool| Page { rows, resting: Vec::new(), addresses: marks.clone(), earlier: true, more, indexing: false, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
+        let page_of = |rows: Vec<Row>, more: bool| Page { rows, resting: Vec::new(), addresses: marks.clone(), earlier: true, more, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let rows: Vec<Row> = (0..PAGE * 2 + 10).map(|n| row(n, if n == 1 { &["work", "home"] } else { &["work"] })).collect();
         let texts = page_texts(&page_of(rows.clone(), false));
         assert_eq!(texts.len(), 3);

@@ -57,7 +57,8 @@ Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sio
 ## Ce qu’un agent peut lire {#what-an-agent-can-read}
 
 - **Le Porche**, file par file, seulement dans vos heures, sauf si vous lui demandez de l’ouvrir. On lui dit qu’un code est arrivé, jamais le code.
-- **Vos courriels** : des courriels trouvés par leur objet, leur expéditeur ou leur texte ; un courriel entier, avec qui l’a écrit, s’il est authentique ou falsifié et pourquoi, et le nom de ses pièces jointes.
+- **Vos courriels** : des courriels trouvés par leur objet, leur expéditeur ou leur texte (reçus, envoyés ou indésirables quand il le demande) ; un courriel entier, avec qui l’a écrit, s’il est authentique ou falsifié et pourquoi, et le nom de ses pièces jointes.
+- **Toutes les adresses**, comme la boîte les liste : le courrier de chaque adresse, du plus récent au plus ancien, deux semaines à la fois ou depuis là où il s’est arrêté, chaque courriel une fois avec les adresses qui le gardent, s’il est non lu, répondu ou falsifié ; jamais un fichier. On lui dit d’abord quelles adresses se reposent et jusqu’à quand, pour qu’il ne vous presse pas de courrier de travail le soir. Les indésirables seulement si leurs outils sont ouverts ; le courrier des expéditeurs bloqués et ce que vous gardez fermé, laissés de côté et seulement comptés. Il ne marque rien comme lu.
 - **Vos tâches** : la prochaine étape et pourquoi, le déroulé de la journée, chaque tâche ouverte dans l’ordre du plan, à toute heure (le soir, il lui est d’abord dit qu’elles attendent leurs propres heures).
 - **Votre agenda**, avec les étapes que le plan donne à chaque jour des quatre semaines à venir, vos **contacts**, vos **budgets** (chaque verdict, les réserves, ce que la veille sur l’argent a remarqué), vos **notes**, vos **projets**.
 - **Ce à quoi chaque chose est liée**, dans les deux sens, et toute chose trouvée par quelques mots de son titre.

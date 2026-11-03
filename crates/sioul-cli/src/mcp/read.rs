@@ -90,7 +90,7 @@ pub(super) fn framed(what: &str, text: &str) -> Vec<String> {
 
 /// Lines of an answer, each one line whatever the words in it: what others
 /// wrote (a subject, a name, a title) cannot break one, nor add one.
-fn rows(lines: &[String]) -> String {
+pub(super) fn rows(lines: &[String]) -> String {
     lines
         .iter()
         .map(|line| {
@@ -102,7 +102,7 @@ fn rows(lines: &[String]) -> String {
 }
 
 /// Unix seconds as a moment in the person's time zone, for data: "2026-10-05T09:00:00+02:00".
-fn instant(seconds: i64) -> String {
+pub(super) fn instant(seconds: i64) -> String {
     Timestamp::from_second(seconds).map(|t| t.to_zoned(sioul_core::zone::current()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
 }
 
@@ -246,7 +246,7 @@ fn masked_item(looked: &sioul_core::words::Words, item: &view::ItemView, judged:
 /// Every message's headers, by Message-ID, from the same Maildirs and cache as
 /// links read, each `mid:` on the copy that ranks first (the inbox before the
 /// archive, Sent, the junk, the trash and "All Mail").
-fn mail_index(config: &Config) -> MailIndex {
+pub(super) fn mail_index(config: &Config) -> MailIndex {
     MailIndex::build_ranked(&MailIndex::roots_of(config))
 }
 
@@ -261,12 +261,56 @@ pub(super) fn place_of(config: &Config, path: &Path) -> (String, String) {
     (account, folder.trim_start_matches('.').to_string())
 }
 
+/// A message's kind by the folder of its copy (the one that ranks first):
+/// received, sent (Sent, or Gmail's All Mail from one of your addresses),
+/// spam (a Junk folder), draft, trash. Each account's folders read once.
+struct MailKinds {
+    accounts: Vec<(std::path::PathBuf, Vec<sioul_core::folders::Folder>)>,
+    own: Vec<String>,
+}
+
+impl MailKinds {
+    fn of(config: &Config) -> MailKinds {
+        MailKinds {
+            accounts: config.accounts.iter().map(|a| (a.maildir_path(), sioul_sync::mailbox::folders(&a.id))).collect(),
+            own: config.accounts.iter().filter_map(|a| a.address.as_deref().map(str::to_ascii_lowercase)).collect(),
+        }
+    }
+
+    fn of_mail(&self, mail: &MailRef) -> &'static str {
+        use sioul_core::folders::Role;
+        let role = self.accounts.iter().find_map(|(root, folders)| {
+            let rest = mail.path.strip_prefix(root).ok()?;
+            let first = rest.components().next()?.as_os_str().to_string_lossy().to_string();
+            let local = if first == "cur" || first == "new" { String::new() } else { first };
+            // A folder its server has not listed here yet: by its name, as a sync names it.
+            Some(folders.iter().find(|f| f.local == local).map_or_else(|| if local.is_empty() { Role::Inbox } else { sioul_core::folders::role_of(local.trim_start_matches('.'), None) }, |f| f.role))
+        });
+        match role.unwrap_or(Role::Other) {
+            Role::Sent => "sent",
+            Role::Junk => "spam",
+            Role::Drafts => "draft",
+            Role::Trash => "trash",
+            Role::All if self.own.contains(&mail.address.trim().to_ascii_lowercase()) => "sent",
+            _ => "received",
+        }
+    }
+}
+
 pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     let query = args.text("query")?.unwrap_or_default();
     let account = args.text("account")?;
     let since = args.date("since")?;
     let in_text = args.flag("in_text")?;
     let limit = args.number("limit", 20, 1, 200)? as usize;
+    let kind = args.text("kind")?;
+    match kind.as_deref() {
+        None | Some("received" | "sent") => {}
+        Some("spam") if !s.config.mcp.spam => return Err(super::mailbox::SPAM_CLOSED.into()),
+        Some("spam") => {}
+        Some(other) => return Err(format!("“kind” is received, sent or spam; not “{}”.", one_line(other))),
+    }
+    let kinds = MailKinds::of(&s.config);
     let folder = match &account {
         Some(id) => Some(s.config.account(id).ok_or_else(|| s.say("account-unknown", &[("id", id.clone())]))?.maildir_path()),
         None => None,
@@ -304,7 +348,8 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         .filter(|(_, _, m)| senders.who(&m.address) != sioul_core::reach::Who::Blocked)
         .partition(|(_, uri, _)| consent.allows(uri));
     let closed = kept_out.len();
-    let mut found: Vec<(Option<&String>, String, &MailRef)> = scope.into_iter().filter(|(_, _, m)| shown_holds(m)).collect();
+    // Its kind, as its words: a filter on what is shown, never on what is counted.
+    let mut found: Vec<(Option<&String>, String, &MailRef)> = scope.into_iter().filter(|(_, _, m)| kind.as_deref().is_none_or(|k| kinds.of_mail(m) == k) && shown_holds(m)).collect();
     found.sort_by_key(|(_, _, m)| std::cmp::Reverse(m.date));
     // Those shown are read whole: a project's route on their text counts too.
     let mut kept = Vec::new();
@@ -334,9 +379,9 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         let (account, folder) = place_of(&s.config, &mail.path);
         let place = if folder.is_empty() { String::new() } else { format!(" · {folder}") };
         let shown = if address.is_empty() { sender.clone() } else { format!("{sender} <{address}>") };
-        lines.push(format!("{} · {shown} · {subject}{place}", crate::date(s, Some(mail.date))));
-        lines.push(format!("    {uri}"));
-        rows.push(json!({ "uri": uri, "key": mail.path, "account": account, "folder": folder, "from": sender, "address": address, "subject": subject, "date": instant(mail.date), "hidden": hidden }));
+        // Its address first; its file stays in `key` for the scripts that read it.
+        lines.push(format!("{uri} · {} · {shown} · {subject}{place}", crate::date(s, Some(mail.date))));
+        rows.push(json!({ "uri": uri, "key": mail.path, "account": account, "folder": folder, "kind": kinds.of_mail(mail), "from": sender, "address": address, "subject": subject, "date": instant(mail.date), "hidden": hidden }));
     }
     if lines.is_empty() {
         lines.push(s.say("mail-not-found", &[("query", query.clone())]));

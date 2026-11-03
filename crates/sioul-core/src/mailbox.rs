@@ -152,6 +152,46 @@ pub fn tints(ranked: &[&Account]) -> Vec<u8> {
     ranked.iter().enumerate().map(|(i, a)| a.colour.filter(|c| usize::from(*c) < crate::config::PALETTE).unwrap_or((i % crate::config::PALETTE) as u8)).collect()
 }
 
+/// The addresses that sync, ranked by priority as Mail's column ranks them,
+/// each with its folders (`folders`: as the server last listed them), its
+/// colour, whose stamps count for its mail, and, when it rests at `mode`,
+/// the line saying until when ("work@example.org rests until 09:00."; while
+/// you sleep, every address). The window's mailbox and the agents' read the same.
+pub fn addresses(config: &crate::config::Config, mode: &crate::quiet::Mode, now: &jiff::Zoned, tr: &Translator, folders: impl Fn(&str) -> Vec<Folder>) -> Vec<Address> {
+    use crate::areas::{Area, Time, in_view};
+    let hours = (mode.time != Time::Any).then_some((mode.time, mode.week));
+    let mut ranked: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
+    ranked.sort_by_key(|a| a.priority);
+    let tints = tints(&ranked);
+    let sources = config.mail_sources();
+    let until = |at: Option<&jiff::Zoned>| at.map(|z| crate::quiet::until_text(tr, z, now)).unwrap_or_default();
+    let said = |id: &str, pairs: &[(&str, String)]| {
+        let mut args = i18n::args();
+        for (name, value) in pairs {
+            args.set(*name, value.clone());
+        }
+        tr.text(id, Some(&args))
+    };
+    ranked
+        .iter()
+        .zip(tints)
+        .map(|(account, tint)| {
+            let area = account.area.as_deref().and_then(Area::parse).unwrap_or(Area::WORK);
+            let rests = hours.is_some_and(|(time, week)| time == Time::Sleep || !in_view(area, time, week));
+            let resting = rests.then(|| {
+                if mode.sleeps() {
+                    said("mailbox-rests-sleep", &[("until", until(mode.until.as_ref()))])
+                } else {
+                    let back = if area == Area::WORK { mode.back.as_ref().or(mode.until.as_ref()) } else { mode.until.as_ref() };
+                    said("mailbox-rests", &[("address", account.address.clone().unwrap_or_else(|| account.id.clone())), ("until", until(back))])
+                }
+            });
+            let trusted = sources.iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids.clone()).unwrap_or_default();
+            Address { account: (*account).clone(), folders: folders(&account.id), trusted, tint, resting }
+        })
+        .collect()
+}
+
 /// What weighs each row, read once a page.
 pub struct World {
     pub senders: Senders,
@@ -271,6 +311,12 @@ pub struct Page {
     /// Messages wait to be read into their folders' indexes: the window asks again while it shows.
     #[serde(skip)]
     pub indexing: bool,
+    /// Messages left out by `page_with`'s `keep_out`, over the days and the address asked.
+    #[serde(skip)]
+    pub closed: usize,
+    /// Messages from blocked senders left out, over the same.
+    #[serde(skip)]
+    pub blocked: usize,
     /// What is there, in words, when nothing is: never a count.
     pub sentence: String,
     pub chip: Chip,
@@ -400,6 +446,17 @@ fn letters(accounts: &[&Account]) -> Vec<String> {
 /// `FIRST_FILL` newest).
 #[allow(clippy::too_many_arguments)]
 pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>, tr: &Translator, now: i64, zone: &jiff::tz::TimeZone, fill: usize) -> Page {
+    page_with(addresses, world, ask, hidden, tr, now, zone, fill, &|_| false)
+}
+
+/// `page`, leaving out first the messages `keep_out` says by their address (an
+/// agent's: a closed project's mail, a work account kept, mail in no
+/// project while that is closed; the unified mailbox's part 6): never made
+/// into rows, counted over the days and the address asked alone
+/// (`Page::closed`), before blocked senders, spam, the kinds and the chip,
+/// so that the count is the same whatever the chip.
+#[allow(clippy::too_many_arguments)]
+pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>, tr: &Translator, now: i64, zone: &jiff::tz::TimeZone, fill: usize, keep_out: &dyn Fn(&str) -> bool) -> Page {
     let several = addresses.len() > 1;
     let letters = letters(&addresses.iter().map(|a| &a.account).collect::<Vec<_>>());
     let mark = |i: usize| Mark { account: addresses[i].account.id.clone(), letter: letters[i].clone(), tint: addresses[i].tint, title: addresses[i].account.address.clone().unwrap_or_else(|| addresses[i].account.id.clone()) };
@@ -447,13 +504,19 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
     let today = jiff::Timestamp::from_second(now).map(|t| t.to_zoned(zone.clone()).date()).unwrap_or_default();
     // What each message is, cheaply, for all; then what it shows, for the rows kept.
     let mut listed: Vec<Listed> = Vec::new();
+    let (mut closed, mut blocked) = (0, 0);
     for (uri, mut copies) in by_address {
         // What waits for its Undo leaves; where labels make one message (Gmail), a
         // copy waiting, in the trash or in the junk is where the message is: that
         // address's other copies are its labels' old copies until their next round.
         let moved_off: BTreeSet<usize> = copies.iter().filter(|c| labelled[c.address] && (c.hidden || matches!(c.role, Role::Trash | Role::Junk))).map(|c| c.address).collect();
         copies.retain(|c| !c.hidden && c.role != Role::Trash && (c.role == Role::Junk || !moved_off.contains(&c.address)));
-        if copies.is_empty() {
+        if copies.is_empty() || (!ask.account.is_empty() && !copies.iter().any(|c| addresses[c.address].account.id == ask.account)) {
+            continue;
+        }
+        // Kept from whoever asks (an agent): left out before anything else, counted.
+        if keep_out(&uri) {
+            closed += 1;
             continue;
         }
         // The copy that ranks first opens: the inbox, your folders, the archive, Sent, the junk, All Mail; the first to arrive.
@@ -464,6 +527,7 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
         card.account = Some(address.account.id.clone());
         // Blocked senders: never listed.
         if world.senders.who_of(&card) == Who::Blocked {
+            blocked += 1;
             continue;
         }
         let from_own = card.from_address.as_deref().is_some_and(|f| own.contains(&f.trim().to_ascii_lowercase()));
@@ -629,6 +693,8 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
         earlier: query.is_empty() && older,
         more,
         indexing,
+        closed,
+        blocked,
         sentence,
         chip: ask.chip,
         account: ask.account.clone(),
@@ -982,6 +1048,55 @@ mod tests {
         assert_eq!((held.rows.len(), held.indexing), (FIRST_FILL, true), "no budget: nothing more read");
         let next = look(STEP_FILL);
         assert_eq!((next.rows.len(), next.indexing), (n, false));
+    }
+
+    /// The addresses the window and agents read (part 6, `addresses`): by
+    /// priority; a work address rests in your leisure, until work comes back;
+    /// every one while you sleep; none at work.
+    #[test]
+    fn addresses_say_which_rest_and_until_when() {
+        use crate::config::Priority;
+        let account = |id: &str, area: &str, priority: Priority| Account { area: Some(area.into()), priority, ..Account::imap(id, &format!("noa@{id}.example.org"), "imap.example.org", 993, crate::config::Security::Tls, None) };
+        let config = crate::config::Config { accounts: vec![account("home", "leisure+admin", Priority::Average), account("work", "work", Priority::Above)], ..crate::config::Config::default() };
+        let zone = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let now = jiff::Timestamp::from_second(NOW).unwrap().to_zoned(zone.clone());
+        let back = jiff::Timestamp::from_second(NOW + 19 * 3600).unwrap().to_zoned(zone);
+        let tr = Translator::new("en");
+        let mode = |time, reason| crate::quiet::Mode { quiet: time != crate::areas::Time::Work, time, week: crate::areas::Week::default(), reason, until: Some(back.clone()), back: Some(back.clone()), label: String::new() };
+        let folders = |_: &str| vec![folder("INBOX", Some("/"), Some(Role::Inbox))];
+        let at_work = addresses(&config, &mode(crate::areas::Time::Work, crate::quiet::Reason::Working), &now, &tr, folders);
+        assert_eq!(at_work.iter().map(|a| a.account.id.as_str()).collect::<Vec<_>>(), ["work", "home"], "by priority");
+        assert!(at_work.iter().all(|a| a.resting.is_none()));
+        let evening = addresses(&config, &mode(crate::areas::Time::Leisure, crate::quiet::Reason::Evening), &now, &tr, folders);
+        assert_eq!(evening.iter().map(|a| a.resting.is_some()).collect::<Vec<_>>(), [true, false]);
+        assert!(evening[0].resting.as_deref().is_some_and(|l| l.contains("noa@work.example.org") && l.contains("09:00")), "{:?}", evening[0].resting);
+        let night = addresses(&config, &mode(crate::areas::Time::Sleep, crate::quiet::Reason::Sleep), &now, &tr, folders);
+        assert!(night.iter().all(|a| a.resting.is_some()), "every address while you sleep");
+    }
+
+    /// What whoever asks keeps out (an agent's consent, part 6): never a row,
+    /// counted over the days and the address asked, the same count whatever
+    /// the chip (unread, spam, sent); blocked senders counted apart.
+    #[test]
+    fn kept_mail_is_counted_whatever_the_chip() {
+        let stand = Stand::new("kept");
+        let at = NOW - 3600;
+        stand.put(0, "INBOX", 1, "closed-1@example.org", "Iris <iris@client.example>", "noa@work.example.org", "Closed, unread", at, at, "", "", "Plans.");
+        stand.put(0, "Junk", 2, "closed-2@example.org", "Ads <ads@shop.example>", "noa@work.example.org", "Closed, spam", at, at, "S", "", "Buy.");
+        stand.put(0, "INBOX", 3, "open-1@example.org", "Ana <ana@example.org>", "noa@work.example.org", "Open", at, at, "S", "", "Hello.");
+        stand.put(1, "INBOX", 4, "closed-3@example.org", "Ben <ben@example.org>", "noa@home.example.org", "Closed, at home", at, at, "S", "", "Hello.");
+        stand.put(0, "INBOX", 5, "blocked-1@example.org", "Spammer <x@bad.example>", "noa@work.example.org", "Blocked", at, at, "", "", "Buy.");
+        let world = world_at(crate::areas::Time::Work, "x@bad.example", "");
+        let kept = |uri: &str| uri.starts_with("mid:closed-");
+        let with = |ask: &Ask| page_with(&stand.addresses, &world, ask, &BTreeSet::new(), &Translator::new("en"), NOW, &jiff::tz::TimeZone::get("Europe/Paris").unwrap(), STEP_FILL, &kept);
+        for chip in [Chip::All, Chip::Unread, Chip::Sent, Chip::Spam] {
+            let page = with(&Ask { chip, ..Ask::default() });
+            assert!(page.rows.iter().all(|r| !r.subject.starts_with("Closed")), "{chip:?}: never a row");
+            assert_eq!((page.closed, page.blocked), (3, 1), "{chip:?}: the same counts");
+        }
+        let work = with(&Ask { account: stand.addresses[0].account.id.clone(), chip: Chip::Unread, ..Ask::default() });
+        assert_eq!((work.closed, work.blocked), (2, 1), "the address asked alone");
+        assert_eq!(subjects(&with(&Ask::default())), ["Open"]);
     }
 
     /// A crowded fortnight, by pages: the rows asked for alone, the newest,
