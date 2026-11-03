@@ -1287,7 +1287,7 @@ impl Context<'_> {
 }
 
 /// Whose ARC seal vouches for mail that failed on its way (`trust::sealers`).
-fn sealers(trusted_ids: &[String], own_domains: &[String]) -> Vec<String> {
+fn sealers(trusted_ids: &[String], own_domains: &[String]) -> trust::Sealers {
     trust::sealers(trusted_ids, own_domains)
 }
 
@@ -1329,8 +1329,8 @@ fn checks_with(card: &Card, ctx: &Context, auth: Option<trust::AuthResults>, det
     // A mailing list excuses a DMARC failure (it rewrites what it relays) when a
     // trusted seal or its own signature answers for it (`trust::list_excused`), but
     // no list relays your codes: a code failing DMARC is forged, list headers or not.
-    let excused = card.is_list && detected.is_none() && trust::list_excused(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains));
-    let (trust, proof) = trust::judge_sender(auth.as_ref(), excused, card.sender_domain());
+    let excused = (card.is_list && detected.is_none()).then(|| trust::list_excused(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains))).flatten();
+    let (trust, proof) = trust::judge_sender(auth.as_ref(), excused.as_ref(), card.sender_domain());
     let code = detected.filter(|c| !expired(c, sent(card), ctx.now));
     // A shielded address's mail is read before anything else is decided.
     let assessment = ctx.shielded.then(|| crate::shield::reading(card, ctx.assessments));
@@ -1667,8 +1667,8 @@ fn moved_items(src: &Source, ctx: &Context, folders: &[crate::folders::Folder], 
 /// as for any message, and that your filter moved it.
 fn moved_item(card: Card, ctx: &Context, class: crate::spam::Class) -> Triaged {
     let auth = trust::read_auth_results(&card.headers, ctx.trusted_ids);
-    let excused = card.is_list && trust::list_excused(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains));
-    let (trust, proof) = trust::judge_sender(auth.as_ref(), excused, card.sender_domain());
+    let excused = card.is_list.then(|| trust::list_excused(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains))).flatten();
+    let (trust, proof) = trust::judge_sender(auth.as_ref(), excused.as_ref(), card.sender_domain());
     // How likely spam, judged again by the table in place; as its class says without one.
     let p = ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids)).map_or(
         match class {
@@ -2395,6 +2395,17 @@ mod tests {
 
     /// Mail failing SPF and DKIM is not authenticated: its sender counts as
     /// nobody you know, whoever the address it shows.
+    /// One source of your own domains for every caller (review of 01ca9df, 2):
+    /// the configuration's (`Config::own_domains`, for Mail and the mailbox)
+    /// are the Porch's own, every account but a portal, less the providers
+    /// millions share.
+    #[test]
+    fn your_own_domains_are_the_porch_s_everywhere() {
+        let config: crate::config::Config = toml::from_str("[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"noa@studio.example\"\nhost = \"imap.example.org\"\n\n[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"you@gmail.com\"\nhost = \"imap.gmail.com\"\n").unwrap();
+        assert_eq!(config.own_domains(), own_domains(&config.mail_sources()));
+        assert_eq!(config.own_domains(), ["studio.example"], "a provider millions share is nobody's own");
+    }
+
     #[test]
     fn unauthenticated_mail_is_a_strangers() {
         use crate::projects::{Project, ProjectStore, Route};
@@ -2418,11 +2429,15 @@ mod tests {
         let flagged = "X-Spam-Flag: YES\r\nReceived: from mail.sender.example (mail.sender.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\n";
         assert_eq!(triage(mail("Jane <jane@example.org>", failed, flagged, "Lunch"), &ctx).lane, Lane::SetAside);
         assert_eq!(triage(mail("Jane <jane@example.org>", "spf=pass smtp.mailfrom=example.org; dkim=fail header.d=example.org", flagged, "Lunch"), &ctx).lane, Lane::People, "known, so protected");
-        // ARC passing on a chain your provider sealed: authenticated, known; sealed by anyone else: not.
-        let arc = |by: &str| format!("ARC-Seal: i=1; a=rsa-sha256; cv=none; d={by}; s=arc; b=AbC=\r\n");
+        // ARC passing on a chain your provider sealed before it received the message (forwarded
+        // inside it): authenticated, known; its arrival seal alone, or anyone else's seal under it:
+        // not (review of 01ca9df, 1: Gmail and Microsoft seal every message as it arrives).
+        let arc = |below: &str| format!("ARC-Seal: i=2; a=rsa-sha256; cv=pass; d=provider.example; s=arc; b=AbC=\r\nARC-Seal: i=1; a=rsa-sha256; cv=none; d={below}; s=arc; b=AbC=\r\n");
+        let arrival = "ARC-Seal: i=1; a=rsa-sha256; cv=none; d=provider.example; s=arc; b=AbC=\r\n";
         let arc_pass = format!("{failed}; arc=pass");
         assert_eq!(triage(mail("Jane <jane@example.org>", &arc_pass, &arc("provider.example"), "Lunch"), &ctx).lane, Lane::People);
         assert_eq!(triage(mail("Jane <jane@example.org>", &arc_pass, &arc("relay.example"), "Lunch"), &ctx).lane, Lane::Screener);
+        assert_eq!(triage(mail("Jane <jane@example.org>", &arc_pass, arrival, "Lunch"), &ctx).lane, Lane::Screener, "the arrival seal alone vouches for nothing");
         // DKIM passing alone, nothing published ("none"), a softfail: known, as before.
         assert_eq!(triage(mail("Jane <jane@example.org>", "spf=fail smtp.mailfrom=example.org; dkim=pass header.d=example.org", "", "Lunch"), &ctx).lane, Lane::People);
         assert_eq!(triage(mail("Jane <jane@example.org>", "spf=none smtp.mailfrom=example.org; dkim=none", "", "Lunch"), &ctx).lane, Lane::People);

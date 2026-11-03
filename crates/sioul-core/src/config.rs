@@ -1215,6 +1215,15 @@ impl Config {
             .collect()
     }
 
+    /// Your own domains, as the Porch reads them (`porch::own_domains` over
+    /// `mail_sources`): those of your accounts' addresses but a portal's, less
+    /// the providers millions share (`lookalike::own_domains`). Mail, the
+    /// mailbox and the Porch trust their ARC seals alike (review of 01ca9df, 2).
+    pub fn own_domains(&self) -> Vec<String> {
+        let words = crate::words::Words::of(self);
+        crate::lookalike::own_domains(&words.brands.shared, self.accounts.iter().filter(|a| a.kind != AccountKind::Portal).filter_map(|a| a.address.as_deref()))
+    }
+
     /// An id for a new account from its address, unused yet: "example", then "example-someone".
     pub fn free_id(&self, address: &str) -> String {
         let (local, domain) = address.rsplit_once('@').unwrap_or((address, address));

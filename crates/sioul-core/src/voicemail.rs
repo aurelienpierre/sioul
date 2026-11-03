@@ -114,7 +114,7 @@ pub fn read(words: &VoicemailWords, raw: &[u8], path: &Path, region: Option<&Reg
         return None;
     }
     let auth = crate::trust::read_auth_results(&crate::headers::RawHeaders::parse(raw), trusted);
-    let (trust, _) = crate::trust::judge_sender(auth.as_ref(), false, from.rsplit_once('@').map(|(_, d)| d));
+    let (trust, _) = crate::trust::judge_sender(auth.as_ref(), None, from.rsplit_once('@').map(|(_, d)| d));
     if trust == crate::trust::Trust::Forged {
         return None;
     }

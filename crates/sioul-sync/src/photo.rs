@@ -15,11 +15,14 @@ use std::time::Duration;
 pub const LARGEST: u64 = 1 << 20;
 const AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
 
-/// HTTPS only, redirects included: an address cannot send Sioul to a plain
-/// address, where anyone on the network sees whom you looked at, nor to a
-/// device of your network (a router's page has no certificate to show).
+/// HTTPS only, redirects included, so that anyone on the network cannot see
+/// whom you looked at; and public addresses only, every address of the
+/// host checked before it is reached (`stalls::public_agent`): a card can
+/// come from anyone, and a device of your network (a NAS, a router, even
+/// with a valid certificate), or a public name pointing to a private
+/// address, is never asked (review of 01ca9df, 3).
 fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(20))).http_status_as_error(false).https_only(true).build().into()
+    crate::stalls::public_agent(ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(20))).http_status_as_error(false).https_only(true).build())
 }
 
 /// A picture's kind, from its type and its first bytes, which must agree:
@@ -92,6 +95,15 @@ mod tests {
         }
         assert!(may_ask("https://example.org/jane.jpg"));
         assert!(fetch("http://example.org/jane.jpg", Path::new("/nonexistent")).is_err(), "refused before any network");
+        // Only public addresses are reached: a device of your network never (review of 01ca9df, 3).
+        let at = |ip: &str| vec![std::net::SocketAddr::new(ip.parse().unwrap(), 443)];
+        for refused in ["127.0.0.1", "10.0.0.5", "192.168.1.10", "172.16.0.1", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1", "203.0.113.9", "::1", "fd00::1", "fe80::1", "::ffff:192.168.1.10", "ff02::1"] {
+            assert!(!crate::stalls::public_only(&at(refused)), "{refused}");
+        }
+        assert!(crate::stalls::public_only(&at("93.184.215.14")) && crate::stalls::public_only(&at("2606:2800:21f:cb07::1")));
+        let mixed = [at("93.184.215.14"), at("192.168.1.10")].concat();
+        assert!(!crate::stalls::public_only(&mixed), "one private address among public ones: refused");
+        assert!(!crate::stalls::public_only(&[]));
         let folder = std::env::temp_dir().join(format!("sioul-photo-{}", std::process::id()));
         let url = "https://example.org/jane.png";
         let kept = keep(url, "image/png", png, &folder).unwrap();

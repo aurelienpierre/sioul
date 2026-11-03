@@ -164,7 +164,13 @@ impl Translator {
     /// One reason, as a phrase.
     pub fn reason(&self, reason: &Reason, projects: Option<&ProjectStore>) -> String {
         match reason {
-            Reason::Trust(proof) => self.text(proof_id(*proof), None),
+            // Who answered for a list's DMARC failure is named, so that an unknown relay shows (review of 01ca9df, 4).
+            Reason::Trust(Proof::DmarcFailList { by, sealed }) => {
+                let mut args = args();
+                args.set("by", by.clone());
+                self.text(if *sealed { "reason-dmarc-fail-list-sealed" } else { "reason-dmarc-fail-list-signed" }, Some(&args))
+            }
+            Reason::Trust(proof) => self.text(proof_id(proof), None),
             Reason::Forged => self.text("reason-forged", None),
             Reason::Spam { source, score } => self.spam_reason(source, *score),
             // Your own filter's word, never why nor how sure (decided: no "why").
@@ -453,12 +459,13 @@ fn group_thousands(n: i64, separator: &str) -> String {
     out
 }
 
-fn proof_id(proof: Proof) -> &'static str {
+fn proof_id(proof: &Proof) -> &'static str {
     match proof {
         Proof::DmarcPass => "reason-dmarc-pass",
         Proof::DmarcFail => "reason-dmarc-fail",
         Proof::DmarcFailNoPolicy => "reason-dmarc-fail-no-policy",
-        Proof::DmarcFailList => "reason-dmarc-fail-list",
+        Proof::DmarcFailList { sealed: true, .. } => "reason-dmarc-fail-list-sealed",
+        Proof::DmarcFailList { .. } => "reason-dmarc-fail-list-signed",
         Proof::DkimPass => "reason-dkim-pass",
         Proof::BothFailed => "reason-both-failed",
         Proof::NothingProves => "reason-nothing-proves",
@@ -560,6 +567,21 @@ mod tests {
     }
 
     /// A message said twice: the first one is shown, whichever was meant.
+    /// A list's DMARC failure says who answered for it (review of 01ca9df, 4):
+    /// the domain that signed it for the list, or that sealed its way here.
+    #[test]
+    fn a_list_s_reason_names_who_answered() {
+        use crate::porch::Reason;
+        use crate::trust::Proof;
+        let signed = Reason::Trust(Proof::DmarcFailList { by: "lists.example.org".into(), sealed: false });
+        let sealed = Reason::Trust(Proof::DmarcFailList { by: "noa.example".into(), sealed: true });
+        let (en, fr) = (Translator::new("en"), Translator::new("fr"));
+        assert_eq!(en.reason(&signed, None), "DMARC failed on a mailing list, which rewrites what it relays; lists.example.org signed it");
+        assert_eq!(en.reason(&sealed, None), "DMARC failed on a mailing list, which rewrites what it relays; noa.example sealed its way here");
+        assert!(fr.reason(&signed, None).ends_with("lists.example.org l’a signé"), "{}", fr.reason(&signed, None));
+        assert!(fr.reason(&sealed, None).ends_with("noa.example a scellé son chemin jusqu’ici"), "{}", fr.reason(&sealed, None));
+    }
+
     #[test]
     fn no_message_twice() {
         for (language, source) in LANGUAGES {

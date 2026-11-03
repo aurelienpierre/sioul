@@ -189,3 +189,78 @@ fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     file.write_all(bytes)?;
     file.sync_all()
 }
+
+#[cfg(test)]
+mod tests {
+    use mail_auth::arc::ArcSealer;
+    use mail_auth::common::headers::HeaderWriter;
+    use mail_auth::common::crypto::Ed25519Key;
+    use mail_auth::common::parse::TxtRecordParser;
+    use mail_auth::common::verify::DomainKey;
+    use mail_auth::{AuthenticatedMessage, AuthenticationResults, DkimResult, MessageAuthenticator, Parameters, ResolverCache, Txt};
+    use sioul_core::headers::RawHeaders;
+    use std::borrow::Borrow;
+    use std::collections::HashMap;
+    use std::hash::Hash;
+    use std::sync::Mutex;
+    use std::time::Instant;
+
+    /// The test's own answers for the keys asked (a provider's ARC key): no DNS.
+    struct Keys(Mutex<HashMap<Box<str>, Txt>>);
+
+    impl ResolverCache<Box<str>, Txt> for Keys {
+        fn get<Q>(&self, name: &Q) -> Option<Txt>
+        where
+            Box<str>: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+        {
+            self.0.lock().ok()?.get(name).cloned()
+        }
+        fn remove<Q>(&self, name: &Q) -> Option<Txt>
+        where
+            Box<str>: Borrow<Q>,
+            Q: Hash + Eq + ?Sized,
+        {
+            self.0.lock().ok()?.remove(name)
+        }
+        fn insert(&self, key: Box<str>, value: Txt, _: Instant) {
+            if let Ok(mut keys) = self.0.lock() {
+                keys.insert(key, value);
+            }
+        }
+    }
+
+    // An Ed25519 key of mail-auth's own tests (public test vectors), as a stand-in provider's ARC key.
+    const SEED: &str = "nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A=";
+    const PUBLIC: &str = "v=DKIM1; k=ed25519; p=11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=";
+
+    /// What Sioul's own verifier (mail-auth) says of a lone arrival seal, as
+    /// Gmail and Microsoft put on every message they receive (review of
+    /// 01ca9df, 1): i=1, cv=none, valid, is a chain that passes. So arc=pass
+    /// alone vouches for nothing, and trust reads the seal placed before the
+    /// provider received the message: here none (`trust::arc_voucher`).
+    #[tokio::test]
+    async fn a_lone_arrival_seal_passes_and_vouches_for_nothing() {
+        let raw = "From: Bank <news@bank.example>\r\nTo: noa@example.org\r\nSubject: Offers\r\nList-Id: <news.lists.bank.example>\r\n\r\nThis week.\r\n";
+        let message = AuthenticatedMessage::parse(raw.as_bytes()).unwrap();
+        let authenticator = MessageAuthenticator::new_system_conf().unwrap();
+        let keys = Keys(Mutex::new(HashMap::new()));
+        keys.insert("arrival._domainkey.provider.example.".into(), DomainKey::parse(PUBLIC.as_bytes()).unwrap().into(), Instant::now());
+        // Sealed on arrival by the provider: the first and only set.
+        let unsealed = authenticator.verify_arc(Parameters::new(&message).with_txt_cache(&keys)).await;
+        assert_eq!(unsealed.result(), &DkimResult::None);
+        let results = AuthenticationResults::new("mx.provider.example");
+        let seed = sioul_core::lines::base64_decode(SEED).unwrap();
+        let public = sioul_core::lines::base64_decode(PUBLIC.rsplit_once("p=").unwrap().1).unwrap();
+        let key = Ed25519Key::from_seed_and_public_key(&seed, &public).unwrap();
+        let set = ArcSealer::from_key(key).domain("provider.example").selector("arrival").headers(["From", "To", "Subject"]).seal(&message, &results, &unsealed).unwrap();
+        let sealed = format!("{}{}{raw}", set.to_header(), results.to_header());
+        let message = AuthenticatedMessage::parse(sealed.as_bytes()).unwrap();
+        let checked = authenticator.verify_arc(Parameters::new(&message).with_txt_cache(&keys)).await;
+        assert_eq!(checked.result(), &DkimResult::Pass, "a lone arrival seal is a chain that passes");
+        // Trusted as it should be: the provider's own arrival seal answers for nothing below it.
+        let headers = RawHeaders::parse(sealed.as_bytes());
+        let sealers = sioul_core::trust::sealers(&["mx.provider.example".to_string()], &[]);
+        assert_eq!(sioul_core::trust::arc_voucher(&headers, &sealers), None);
+    }
+}

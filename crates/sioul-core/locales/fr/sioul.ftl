@@ -525,7 +525,8 @@ verify-done = { $account } : { $n ->
        *[other] { $count } courriels vérifiés
     }.
 reason-dmarc-fail-no-policy = DMARC échoue, mais le domaine de l’expéditeur ne demande rien quand c’est le cas
-reason-dmarc-fail-list = DMARC échoue sur une liste de diffusion, qui réécrit ce qu’elle relaie
+reason-dmarc-fail-list-signed = DMARC échoue sur une liste de diffusion, qui réécrit ce qu’elle relaie ; { $by } l’a signé
+reason-dmarc-fail-list-sealed = DMARC échoue sur une liste de diffusion, qui réécrit ce qu’elle relaie ; { $by } a scellé son chemin jusqu’ici
 checks-by-sioul = Vérifié par Sioul à l’arrivée du courriel :
 checks-by-provider = Vérifié par votre fournisseur ({ $id }) :
 checks-none = Aucune vérification consignée : rien ne prouve qui l’a envoyé.

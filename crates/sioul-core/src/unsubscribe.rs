@@ -470,8 +470,8 @@ mod tests {
     fn judged(card: &Card) -> Option<Offer> {
         let ids = vec![SIOUL.to_string()];
         let auth = trust::read_auth_results(&card.headers, &ids);
-        let excused = card.is_list && trust::list_excused(auth.as_ref(), &card.headers, &trust::sealers(&ids, &[]));
-        let (trust, _) = trust::judge_sender(auth.as_ref(), excused, card.sender_domain());
+        let excused = card.is_list.then(|| trust::list_excused(auth.as_ref(), &card.headers, &trust::sealers(&ids, &[]))).flatten();
+        let (trust, _) = trust::judge_sender(auth.as_ref(), excused.as_ref(), card.sender_domain());
         offer(card, &ids, trust, &Lane::Filed, &[Reason::Newsletter])
     }
 

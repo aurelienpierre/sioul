@@ -694,7 +694,7 @@ pub fn checks(dirs: &Dirs, microsoft: &MicrosoftIds) -> Result<BTreeMap<String, 
         counts.dmarc.count(results.dmarc, erased);
         let sender = crate::labels::from_address(&header).and_then(|a| a.rsplit_once('@').map(|(_, d)| d.to_string()));
         let read = if late { features::late(results, signed) } else { results };
-        if sioul_core::trust::judge_sender(Some(&read), false, sender.as_deref()).0 == sioul_core::trust::Trust::Verified {
+        if sioul_core::trust::judge_sender(Some(&read), None, sender.as_deref()).0 == sioul_core::trust::Trust::Verified {
             counts.verified += 1;
         }
     })?;

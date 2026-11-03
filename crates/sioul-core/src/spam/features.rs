@@ -254,7 +254,7 @@ pub fn features(card: &Card, auth: Option<&AuthResults>, internal_date: Option<i
     let [spf_pass, spf_fail] = checked(auth.and_then(|a| a.spf));
     let [dkim_pass, dkim_fail] = checked(auth.and_then(|a| a.dkim));
     let [dmarc_pass, dmarc_fail] = checked(auth.and_then(|a| a.dmarc));
-    let aligned = if auth.is_some() { flag(trust::judge_sender(auth, false, card.sender_domain()).0 == Trust::Verified) } else { f32::NAN };
+    let aligned = if auth.is_some() { flag(trust::judge_sender(auth, None, card.sender_domain()).0 == Trust::Verified) } else { f32::NAN };
     // What it carries itself: who signed it, where its bounces go.
     let at_sender = |domain: &str| from.as_deref().is_some_and(|f| f == registrable(domain));
     let signers: Vec<String> = headers.all("DKIM-Signature").filter_map(dkim_domain).collect();

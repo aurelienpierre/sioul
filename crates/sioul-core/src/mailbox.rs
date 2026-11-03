@@ -209,6 +209,8 @@ pub struct World {
     /// The AI's shield answers, by message.
     pub assessments: BTreeMap<String, crate::shield::Assessment>,
     pub words: std::sync::Arc<crate::words::Words>,
+    /// Your own domains, as the Porch has them (`Config::own_domains`): their ARC seals vouch here too.
+    pub own_domains: Vec<String>,
 }
 
 impl World {
@@ -226,6 +228,7 @@ impl World {
             moved: labels::read_moved_in(&root),
             assessments: crate::shield::AiCache::load_all(),
             words: crate::words::current(),
+            own_domains: config.own_domains(),
         }
     }
 }
@@ -634,7 +637,7 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         let first = &copies[0];
         let address = &addresses[first.address];
         let outgoing = !received_kind && sent_kind;
-        let item = crate::view::mail_item(&card, if outgoing { Role::Sent } else { first.role }, false, &first.flags, &address.trusted, &world.words, tr);
+        let item = crate::view::mail_item(&card, if outgoing { Role::Sent } else { first.role }, false, &first.flags, &address.trusted, &world.own_domains, &world.words, tr);
         let mut who = item.who.clone();
         if received_kind && sent_kind && from_own {
             let mut args = i18n::args();
@@ -647,8 +650,8 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         // The dot: received, not read, and the matrix shows it now (decision 12).
         let dot = unread_here && spam.is_none() && !forged && !hostile && {
             let results = trust::read_auth_results(&card.headers, &address.trusted);
-            let excused = card.is_list && trust::list_excused(results.as_ref(), &card.headers, &trust::sealers(&address.trusted, &[]));
-            let unproven = !matches!(trust::judge_sender(results.as_ref(), excused, card.sender_domain()).0, Trust::Verified);
+            let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &trust::sealers(&address.trusted, &world.own_domains))).flatten();
+            let unproven = !matches!(trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain()).0, Trust::Verified);
             let who = if unproven { Who::Stranger } else { world.senders.who_of(&card) };
             let always = !unproven && card.from_address.as_deref().is_some_and(|a| world.always.admits_address(a));
             let area = address.account.area.as_deref().and_then(crate::areas::Area::parse).unwrap_or(crate::areas::Area::WORK);
@@ -825,6 +828,7 @@ mod tests {
             moved: Vec::new(),
             assessments: BTreeMap::new(),
             words: crate::words::current(),
+            own_domains: Vec::new(),
         }
     }
 

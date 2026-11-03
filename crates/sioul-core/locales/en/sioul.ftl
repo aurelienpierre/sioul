@@ -504,7 +504,8 @@ verify-done = { $account }: { $n ->
        *[other] { $count } messages checked
     }.
 reason-dmarc-fail-no-policy = DMARC failed, but the sender's domain asks nothing of receivers when it does
-reason-dmarc-fail-list = DMARC failed on a mailing list, which rewrites what it relays
+reason-dmarc-fail-list-signed = DMARC failed on a mailing list, which rewrites what it relays; { $by } signed it
+reason-dmarc-fail-list-sealed = DMARC failed on a mailing list, which rewrites what it relays; { $by } sealed its way here
 checks-by-sioul = Checked by Sioul when the message arrived:
 checks-by-provider = Checked by your provider ({ $id }):
 checks-none = No check recorded: nothing proves who sent it.

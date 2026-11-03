@@ -20,8 +20,9 @@
 //! whichever opened it.
 
 use std::cell::Cell;
+use std::net::SocketAddr;
 use std::time::Duration;
-use ureq::unversioned::resolver::DefaultResolver;
+use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
 use ureq::unversioned::transport::{Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport};
 
 /// An agent with ureq's `config`, each wait for the network `stall` at most;
@@ -38,6 +39,37 @@ pub(crate) fn agent(config: ureq::config::Config, stall: Duration, patient: bool
 /// patient.
 pub(crate) fn shared_agent(config: ureq::config::Config, stall: Duration) -> ureq::Agent {
     ureq::Agent::with_parts(config, DefaultConnector::new().chain(Stalls { stall, patient: false, asked: true }), DefaultResolver::default())
+}
+
+/// An agent that reaches public addresses only (`PublicOnly`): a contact's
+/// photo, whose address a card from anyone names (review of 01ca9df, 3).
+pub(crate) fn public_agent(config: ureq::config::Config) -> ureq::Agent {
+    ureq::Agent::with_parts(config, DefaultConnector::new(), PublicOnly(DefaultResolver::default()))
+}
+
+/// A name resolved, then refused unless every one of its addresses is on the
+/// public Internet (`public_only`): a device of your network (a NAS, a
+/// router, even with a valid certificate), or a public name pointing to a
+/// private address, is never reached. The addresses checked are those ureq
+/// connects to, redirects included: no second lookup can answer otherwise.
+#[derive(Debug)]
+struct PublicOnly(DefaultResolver);
+
+impl Resolver for PublicOnly {
+    fn resolve(&self, uri: &ureq::http::Uri, config: &ureq::config::Config, timeout: NextTimeout) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        let found = self.0.resolve(uri, config, timeout)?;
+        if public_only(&found) {
+            Ok(found)
+        } else {
+            Err(ureq::Error::Io(std::io::Error::other("not a public address")))
+        }
+    }
+}
+
+/// Whether addresses are all on the public Internet (`trust::is_public`), and
+/// none multicast; none at all is not.
+pub(crate) fn public_only(addresses: &[SocketAddr]) -> bool {
+    !addresses.is_empty() && addresses.iter().all(|a| sioul_core::trust::is_public(&a.ip()) && !a.ip().is_multicast())
 }
 
 thread_local! {

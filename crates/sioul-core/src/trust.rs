@@ -81,14 +81,17 @@ pub enum Trust {
 }
 
 /// Why the sender is believed or not; the sentence is the translator's (`i18n`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Proof {
     DmarcPass,
     DmarcFail,
     /// DMARC failed, but the domain asks nothing of receivers when it does (`p=none`).
     DmarcFailNoPolicy,
-    /// DMARC failed on a mailing list, which rewrites what it relays and breaks signatures.
-    DmarcFailList,
+    /// DMARC failed on a mailing list, which rewrites what it relays and breaks
+    /// signatures, and someone answered for it (`list_excused`): the domain that
+    /// signed it for the list, or that sealed the way it came (`sealed`). Said,
+    /// so that an unknown relay shows (review of 01ca9df, 4).
+    DmarcFailList { by: String, sealed: bool },
     DkimPass,
     BothFailed,
     NothingProves,
@@ -330,21 +333,21 @@ pub(crate) fn aligned(a: &str, b: &str) -> bool {
 
 /// The verdict on the sender, when the domain shown is not at hand: the domain
 /// DMARC was checked for stands for it. See `judge_sender`.
-pub fn judge(results: Option<&AuthResults>, mailing_list: bool) -> (Trust, Proof) {
-    judge_sender(results, mailing_list, None)
+pub fn judge(results: Option<&AuthResults>, list: Option<&Excuse>) -> (Trust, Proof) {
+    judge_sender(results, list, None)
 }
 
 /// The verdict on the sender, and why. A DMARC failure is a forgery when the
 /// domain asks receivers to act on it (quarantine, reject, or a provider's
 /// result that does not say); with `p=none`, or on a mailing list someone
-/// answers for (`mailing_list`: list headers, and `list_excused`), which
+/// answers for (`list`: list headers, and `list_excused`'s answer), which
 /// rewrites what it relays, it only leaves the sender unverified.
 ///
 /// A proof counts only for the domain you are shown (`sender_domain`, the
 /// address in From): a valid signature of another domain proves nothing about
 /// it (anyone can sign with their own domain), and neither does a DMARC pass
 /// for another From than the one shown (a message carrying two).
-pub fn judge_sender(results: Option<&AuthResults>, mailing_list: bool, sender_domain: Option<&str>) -> (Trust, Proof) {
+pub fn judge_sender(results: Option<&AuthResults>, list: Option<&Excuse>, sender_domain: Option<&str>) -> (Trust, Proof) {
     let Some(r) = results else { return (Trust::Unverified, Proof::NoResults) };
     let sender_domain = sender_domain.filter(|d| !d.is_empty());
     let checked = r.dmarc_domain.as_deref().filter(|d| !d.is_empty());
@@ -355,7 +358,10 @@ pub fn judge_sender(results: Option<&AuthResults>, mailing_list: bool, sender_do
     let signed_by_sender = sender_domain.or(checked).is_some_and(|from| r.dkim_passed.iter().any(|d| aligned(from, d)));
     match r.dmarc {
         Some(Outcome::Pass) if dmarc_for_sender => (Trust::Verified, Proof::DmarcPass),
-        Some(Outcome::Fail) if mailing_list => (Trust::Unverified, Proof::DmarcFailList),
+        Some(Outcome::Fail) if list.is_some() => {
+            let list = list.cloned().unwrap_or_default();
+            (Trust::Unverified, Proof::DmarcFailList { by: list.by, sealed: list.sealed })
+        }
         Some(Outcome::Fail) if r.dmarc_policy.as_deref() == Some("none") => (Trust::Unverified, Proof::DmarcFailNoPolicy),
         Some(Outcome::Fail) => (Trust::Forged, Proof::DmarcFail),
         _ if signed_by_sender => (Trust::Verified, Proof::DkimPass),
@@ -367,45 +373,84 @@ pub fn judge_sender(results: Option<&AuthResults>, mailing_list: bool, sender_do
 /// Whether a message is authenticated, as the results its account trusts
 /// record it (`read_auth_results`: Sioul's own stamp, else your provider's).
 /// It is not when SPF and DKIM both failed, unless DMARC passed, or ARC passed
-/// on a chain whose newest seal is a sealer's you trust (`sealers`: your
-/// provider's, your own domains'; `arc_sealer`): forwarding breaks SPF, and a
-/// forwarder that changes the message breaks DKIM, but anyone can seal a
-/// chain of their own. "none" (nothing published to check) is no failure, nor
+/// on a chain whose seal placed before your provider received the message is
+/// a sealer's you trust (`arc_voucher`: your provider's, when mail was
+/// forwarded inside it, or one of your own domains'): forwarding breaks SPF,
+/// and a forwarder that changes the message breaks DKIM, but anyone can seal
+/// a chain of their own, and your provider's own seal on arrival answers for
+/// nothing below it (review of 01ca9df, 1). "none" (nothing published to check) is no failure, nor
 /// is a softfail; no results at all say nothing. DMARC failing under a policy
 /// is forged (`judge_sender`), set aside before this is asked. Mail that is
 /// not authenticated is not taken as coming from the address it shows
 /// (porch.rs: its sender is a stranger).
-pub fn authenticated(results: Option<&AuthResults>, headers: &RawHeaders, sealers: &[String]) -> bool {
+pub fn authenticated(results: Option<&AuthResults>, headers: &RawHeaders, sealers: &Sealers) -> bool {
     let Some(r) = results else { return true };
     if !(r.spf == Some(Outcome::Fail) && r.dkim == Some(Outcome::Fail)) || r.dmarc == Some(Outcome::Pass) {
         return true;
     }
-    r.arc == Some(Outcome::Pass) && arc_sealer(headers).is_some_and(|sealer| sealers.iter().any(|s| aligned(&sealer, s)))
+    r.arc == Some(Outcome::Pass) && arc_voucher(headers, sealers).is_some_and(|voucher| sealers.trusts(&voucher))
 }
 
 /// Whose ARC seal vouches for mail that failed on its way (`authenticated`,
 /// `list_excused`): your provider's (the hosts of the ids it writes its
-/// results under; Sioul's own stamp seals nothing) and your own domains.
-pub fn sealers(trusted_ids: &[String], own_domains: &[String]) -> Vec<String> {
-    trusted_ids.iter().map(|id| id.trim().to_ascii_lowercase()).filter(|id| id.contains('.') && !id.ends_with(".invalid")).chain(own_domains.iter().cloned()).collect()
+/// results under; Sioul's own stamp seals nothing) and your own domains,
+/// kept apart: your provider's newest seal may be its own on arrival
+/// (`arc_voucher`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Sealers {
+    pub provider: Vec<String>,
+    pub own: Vec<String>,
 }
 
-/// Whether a mailing list's message may fail DMARC and stay unverified
-/// rather than forged (`judge_sender`'s `mailing_list`; decided 3 November
-/// 2026). A list rewrites what it relays and breaks the
-/// sender's signature, but anyone can write list headers: the exemption
-/// holds only when someone answers for the relay. Either a trusted ARC seal
-/// passed (the newest seal's domain one of `sealers`, as `authenticated`
-/// reads it), or a DKIM signature passed for the list's own domain
-/// (`list_domains`). Callers ask it only of mail whose headers say it is a
-/// list (`Card::is_list`).
-pub fn list_excused(results: Option<&AuthResults>, headers: &RawHeaders, sealers: &[String]) -> bool {
-    let Some(r) = results else { return false };
-    if r.arc == Some(Outcome::Pass) && arc_sealer(headers).is_some_and(|sealer| sealers.iter().any(|s| aligned(&sealer, s))) {
-        return true;
+impl Sealers {
+    /// Whether a seal's domain is one of them.
+    pub fn trusts(&self, domain: &str) -> bool {
+        self.provider.iter().chain(&self.own).any(|s| aligned(domain, s))
+    }
+
+    /// Whether a seal's domain is your provider's.
+    pub fn provider(&self, domain: &str) -> bool {
+        self.provider.iter().any(|s| aligned(domain, s))
+    }
+}
+
+/// The sealers of an account: its trusted ids' hosts, then your own domains
+/// (the Porch's, `Config::own_domains`).
+pub fn sealers(trusted_ids: &[String], own_domains: &[String]) -> Sealers {
+    Sealers {
+        provider: trusted_ids.iter().map(|id| id.trim().to_ascii_lowercase()).filter(|id| id.contains('.') && !id.ends_with(".invalid")).collect(),
+        own: own_domains.to_vec(),
+    }
+}
+
+/// Who answered for a mailing list's DMARC failure (`list_excused`): the domain
+/// that signed it for the list, or that sealed the way it came (`sealed`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Excuse {
+    pub by: String,
+    pub sealed: bool,
+}
+
+/// Who answers for a mailing list's message that fails DMARC, so that it stays
+/// unverified rather than forged (`judge_sender`'s `list`; decided 3 November
+/// 2026): none when nobody does. A list rewrites what it relays and breaks the
+/// sender's signature, but anyone can write list headers: the exemption holds
+/// only when someone answers for the relay. Either a trusted ARC seal passed
+/// (the one placed before your provider received the message, `arc_voucher`,
+/// as `authenticated` reads it), or a DKIM signature passed for the list's
+/// own domain (`list_domains`). Anyone with a domain can sign a "list" naming
+/// itself: no reputation of lists exists, so the reason line names who
+/// answered (`Proof::DmarcFailList`). Callers ask it only of mail whose
+/// headers say it is a list (`Card::is_list`).
+pub fn list_excused(results: Option<&AuthResults>, headers: &RawHeaders, sealers: &Sealers) -> Option<Excuse> {
+    let r = results?;
+    if r.arc == Some(Outcome::Pass)
+        && let Some(voucher) = arc_voucher(headers, sealers).filter(|v| sealers.trusts(v))
+    {
+        return Some(Excuse { by: voucher, sealed: true });
     }
     let lists = list_domains(headers);
-    r.dkim_passed.iter().any(|signer| lists.iter().any(|list| aligned(signer, list)))
+    r.dkim_passed.iter().find(|signer| lists.iter().any(|list| aligned(signer, list))).map(|signer| Excuse { by: signer.to_ascii_lowercase(), sealed: false })
 }
 
 /// A list's own domains, as its headers name them: List-Id's namespace
@@ -428,18 +473,33 @@ fn list_domains(headers: &RawHeaders) -> Vec<String> {
     out
 }
 
-/// The domain that sealed the newest ARC set: the `d=` of the `ARC-Seal`
-/// with the highest instance (`i=`), lower case (RFC 8617 §4.1.3).
-pub fn arc_sealer(headers: &RawHeaders) -> Option<String> {
-    headers
+/// The domains that sealed the ARC sets, newest first: each `ARC-Seal`'s `d=`
+/// by its instance (`i=`), lower case (RFC 8617 §4.1.3).
+fn arc_sealers(headers: &RawHeaders) -> Vec<String> {
+    let mut seals: Vec<(u32, String)> = headers
         .all("ARC-Seal")
         .filter_map(|seal| {
             let tags: Vec<(&str, &str)> = seal.split(';').filter_map(|tag| tag.split_once('=')).map(|(k, v)| (k.trim(), v.trim())).collect();
             let tag = |name: &str| tags.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| *v);
             Some((tag("i")?.parse::<u32>().ok()?, tag("d")?.to_ascii_lowercase()))
         })
-        .max_by_key(|(instance, _)| *instance)
-        .map(|(_, domain)| domain)
+        .collect();
+    seals.sort_by(|a, b| b.0.cmp(&a.0));
+    seals.dedup_by_key(|(instance, _)| *instance);
+    seals.into_iter().map(|(_, domain)| domain).collect()
+}
+
+/// The domain whose ARC seal answers for the way a message came: the newest
+/// seal placed before your provider received it (review of 01ca9df, 1).
+/// Gmail and Microsoft seal every message as it arrives, so the newest seal
+/// is often your provider's own, and it answers for nothing below it: then
+/// the seal below answers (your provider again, when mail was forwarded
+/// inside it; one of your own domains; anyone), and with none below, none
+/// does. A provider that never seals on arrival: the newest seal.
+pub fn arc_voucher(headers: &RawHeaders, sealers: &Sealers) -> Option<String> {
+    let seals = arc_sealers(headers);
+    let newest = seals.first()?;
+    if sealers.provider(newest) { seals.get(1).cloned() } else { Some(newest.clone()) }
 }
 
 /// Where the message entered your provider: the first server, from the top of
@@ -476,7 +536,12 @@ pub fn mail_from(headers: &RawHeaders) -> Option<String> {
     Some(value.trim_start_matches('<').trim_end_matches('>').trim().to_string())
 }
 
-fn is_public(ip: &IpAddr) -> bool {
+/// Whether an address is on the public Internet: not private, loopback,
+/// link-local, unspecified, a documentation range, shared or reserved (and
+/// for IPv6, not loopback, unspecified, unique-local or link-local; an
+/// IPv4-mapped one as its IPv4). Where a message came in (`boundary`), and
+/// what a contact's photo may be asked of (sioul-sync's `stalls::PublicOnly`).
+pub fn is_public(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             let [a, b, ..] = v4.octets();
@@ -744,11 +809,11 @@ mod tests {
         let r = read_auth_results(&h, &["mx.example.net".into()]).unwrap();
         assert_eq!(r.dkim, Some(Outcome::Pass));
         assert_eq!(r.spf, Some(Outcome::SoftFail));
-        assert_eq!(judge_sender(Some(&r), false, Some("b.example")).0, Trust::Verified);
-        assert_eq!(judge_sender(Some(&r), false, Some("news.b.example")).0, Trust::Verified);
+        assert_eq!(judge_sender(Some(&r), None, Some("b.example")).0, Trust::Verified);
+        assert_eq!(judge_sender(Some(&r), None, Some("news.b.example")).0, Trust::Verified);
         // A signature of another domain proves nothing about the sender: anyone can sign.
-        assert_eq!(judge_sender(Some(&r), false, Some("bank.example")), (Trust::Unverified, Proof::NothingProves));
-        assert_eq!(judge(Some(&r), false).0, Trust::Unverified, "no domain to compare: nothing proves it");
+        assert_eq!(judge_sender(Some(&r), None, Some("bank.example")), (Trust::Unverified, Proof::NothingProves));
+        assert_eq!(judge(Some(&r), None).0, Trust::Unverified, "no domain to compare: nothing proves it");
     }
 
     #[test]
@@ -761,7 +826,7 @@ mod tests {
         );
         let r = read_auth_results(&h, &["sioul-1a2b.invalid".into()]).unwrap();
         assert_eq!((r.spf, r.dmarc), (Some(Outcome::Pass), Some(Outcome::Fail)));
-        assert_eq!(judge_sender(Some(&r), false, Some("bank.example")).0, Trust::Forged);
+        assert_eq!(judge_sender(Some(&r), None, Some("bank.example")).0, Trust::Forged);
         // A parenthesis inside a quoted address opens no comment hiding the rest.
         let h = headers("Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=\"a(b\"@attacker.example; dmarc=fail header.from=bank.example policy.dmarc=reject\n\n");
         assert_eq!(read_auth_results(&h, &["mx.example.net".into()]).unwrap().dmarc, Some(Outcome::Fail));
@@ -790,26 +855,26 @@ mod tests {
         assert_eq!(organisational("github.io"), None);
         // A sibling's signature, under one organisation, proves the sender; one under a public suffix proves nothing.
         let signed = |d: &str| AuthResults { dkim: Some(Outcome::Pass), dkim_passed: vec![d.into()], ..AuthResults::default() };
-        assert_eq!(judge_sender(Some(&signed("mail.example.org")), false, Some("shop.example.org")), (Trust::Verified, Proof::DkimPass));
-        assert_eq!(judge_sender(Some(&signed("attacker.github.io")), false, Some("github.io")).0, Trust::Unverified);
+        assert_eq!(judge_sender(Some(&signed("mail.example.org")), None, Some("shop.example.org")), (Trust::Verified, Proof::DkimPass));
+        assert_eq!(judge_sender(Some(&signed("attacker.github.io")), None, Some("github.io")).0, Trust::Unverified);
     }
 
     #[test]
     fn proofs_count_for_the_domain_shown() {
         // A DMARC pass for another From than the one shown: a message carrying two.
         let r = AuthResults { dmarc: Some(Outcome::Pass), dmarc_domain: Some("attacker.example".into()), ..AuthResults::default() };
-        assert_eq!(judge_sender(Some(&r), false, Some("friend.example")).0, Trust::Unverified);
-        assert_eq!(judge_sender(Some(&r), false, Some("attacker.example")).0, Trust::Verified);
+        assert_eq!(judge_sender(Some(&r), None, Some("friend.example")).0, Trust::Unverified);
+        assert_eq!(judge_sender(Some(&r), None, Some("attacker.example")).0, Trust::Verified);
         // A domain without DMARC: its own signature proves it, a signature of another domain does not.
         let r = AuthResults { dmarc: Some(Outcome::None), dmarc_domain: Some("bank.example".into()), dkim: Some(Outcome::Pass), dkim_passed: vec!["attacker.example".into()], ..AuthResults::default() };
-        assert_eq!(judge(Some(&r), false).0, Trust::Unverified);
+        assert_eq!(judge(Some(&r), None).0, Trust::Unverified);
         let r = AuthResults { dkim_passed: vec!["mailer.example".into(), "mail.bank.example".into()], ..r };
-        assert_eq!(judge(Some(&r), false), (Trust::Verified, Proof::DkimPass));
+        assert_eq!(judge(Some(&r), None), (Trust::Verified, Proof::DkimPass));
         // Every signature that passed is kept, the sender's after a service's.
         let h = headers("Authentication-Results: mx.example.net; dkim=pass header.d=mailer.example; dkim=pass header.i=@bank.example\n\n");
         let r = read_auth_results(&h, &["mx.example.net".into()]).unwrap();
         assert_eq!(r.dkim_passed, vec!["mailer.example".to_string(), "bank.example".to_string()]);
-        assert_eq!(judge_sender(Some(&r), false, Some("bank.example")).0, Trust::Verified);
+        assert_eq!(judge_sender(Some(&r), None, Some("bank.example")).0, Trust::Verified);
     }
 
     #[test]
@@ -833,11 +898,12 @@ mod tests {
     #[test]
     fn dmarc_fail_is_forged_when_the_domain_says_so() {
         let r = AuthResults { dmarc: Some(Outcome::Fail), ..AuthResults::default() };
-        assert_eq!(judge(Some(&r), false).0, Trust::Forged);
-        assert_eq!(judge(Some(&r), true), (Trust::Unverified, Proof::DmarcFailList));
+        assert_eq!(judge(Some(&r), None).0, Trust::Forged);
+        let list = Excuse { by: "lists.example.org".into(), sealed: false };
+        assert_eq!(judge(Some(&r), Some(&list)), (Trust::Unverified, Proof::DmarcFailList { by: "lists.example.org".into(), sealed: false }));
         let lenient = AuthResults { dmarc_policy: Some("none".into()), ..r };
-        assert_eq!(judge(Some(&lenient), false), (Trust::Unverified, Proof::DmarcFailNoPolicy));
-        assert_eq!(judge(None, false).0, Trust::Unverified);
+        assert_eq!(judge(Some(&lenient), None), (Trust::Unverified, Proof::DmarcFailNoPolicy));
+        assert_eq!(judge(None, None).0, Trust::Unverified);
     }
 
     /// A list's DMARC failure leaves the sender unverified only when someone
@@ -856,34 +922,36 @@ List-Id: Bank news <news.lists.club.example>
 "));
         let verdict = |h: &RawHeaders| {
             let r = read_auth_results(h, &ids);
-            judge_sender(r.as_ref(), list_excused(r.as_ref(), h, &sealers), Some("bank.example"))
+            judge_sender(r.as_ref(), list_excused(r.as_ref(), h, &sealers).as_ref(), Some("bank.example"))
         };
         let forged = (Trust::Forged, Proof::DmarcFail);
-        let excused = (Trust::Unverified, Proof::DmarcFailList);
+        // Who answered is said (review of 01ca9df, 4).
+        let signed = |by: &str| (Trust::Unverified, Proof::DmarcFailList { by: by.into(), sealed: false });
+        let sealed_by = |by: &str| (Trust::Unverified, Proof::DmarcFailList { by: by.into(), sealed: true });
         assert_eq!(verdict(&read("dkim=fail")), forged, "list headers alone: anyone writes them");
-        assert_eq!(verdict(&read("dkim=pass header.d=lists.club.example")), excused, "the list's own signature (List-Id's namespace)");
-        assert_eq!(verdict(&read("dkim=pass header.d=club.example")), excused, "the same organisation's domain");
+        assert_eq!(verdict(&read("dkim=pass header.d=lists.club.example")), signed("lists.club.example"), "the list's own signature (List-Id's namespace)");
+        assert_eq!(verdict(&read("dkim=pass header.d=club.example")), signed("club.example"), "the same organisation's domain");
         assert_eq!(verdict(&read("dkim=pass header.d=elsewhere.example")), forged, "another domain's signature answers for nothing");
         let posted = headers("Authentication-Results: mx.provider.example; dmarc=fail header.from=bank.example; dkim=pass header.d=post.example
 List-Post: <mailto:news@post.example>
 
 ");
-        assert!(list_excused(read_auth_results(&posted, &ids).as_ref(), &posted, &sealers), "List-Post's domain");
+        assert_eq!(list_excused(read_auth_results(&posted, &ids).as_ref(), &posted, &sealers).map(|e| e.by).as_deref(), Some("post.example"), "List-Post's domain");
         let sent = headers("Authentication-Results: mx.provider.example; dmarc=fail header.from=bank.example; dkim=pass header.d=relay.example
 Sender: News <news-bounces@relay.example>
 
 ");
-        assert!(list_excused(read_auth_results(&sent, &ids).as_ref(), &sent, &sealers), "Sender's domain");
+        assert_eq!(list_excused(read_auth_results(&sent, &ids).as_ref(), &sent, &sealers).map(|e| e.by).as_deref(), Some("relay.example"), "Sender's domain");
         let sealed = |by: &str| headers(&format!("ARC-Seal: i=1; a=rsa-sha256; d={by}; s=s; cv=none; b=x
 Authentication-Results: mx.provider.example; dmarc=fail header.from=bank.example; arc=pass; dkim=fail
 From: news@bank.example
 List-Id: <news.lists.club.example>
 
 "));
-        assert_eq!(verdict(&sealed("provider.example")), excused, "your provider's seal");
-        assert_eq!(verdict(&sealed("noa.example")), excused, "your own domain's seal");
+        assert_eq!(verdict(&sealed("provider.example")), forged, "your provider's arrival seal alone answers for nothing (review of 01ca9df, 1)");
+        assert_eq!(verdict(&sealed("noa.example")), sealed_by("noa.example"), "your own domain's seal");
         assert_eq!(verdict(&sealed("sealer.example")), forged, "a seal anyone can make");
-        assert!(!list_excused(None, &read("dkim=pass header.d=lists.club.example"), &sealers), "no results: nothing to excuse");
+        assert!(list_excused(None, &read("dkim=pass header.d=lists.club.example"), &sealers).is_none(), "no results: nothing to excuse");
     }
 
     #[test]
@@ -998,7 +1066,7 @@ List-Id: <news.lists.club.example>
         let read = |text: &str| {
             let h = headers(text);
             let results = read_auth_results(&h, &ids);
-            authenticated(results.as_ref(), &h, &["mx.example.net".to_string(), "mine.example".to_string()])
+            authenticated(results.as_ref(), &h, &sealers(&ids, &["mine.example".to_string()]))
         };
         let failed = "Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=a.example; dkim=fail header.d=a.example";
         assert!(!read(&format!("{failed}\n\n")));
@@ -1008,12 +1076,46 @@ List-Id: <news.lists.club.example>
         assert!(read("Authentication-Results: mx.example.net; spf=none smtp.mailfrom=a.example; dkim=none\n\n"));
         assert!(read("Authentication-Results: mx.example.net; spf=softfail smtp.mailfrom=a.example; dkim=fail header.d=a.example\n\n"));
         assert!(read("Subject: no results\n\n"));
-        // ARC: the newest seal must be a trusted sealer's (the provider's, one of your domains).
+        // ARC: the seal placed before your provider received it must be a trusted sealer's
+        // (your provider's, one of your domains); `arc_answers_by_the_seal_placed_before_your_provider`.
         let sealed = |by: &str| format!("ARC-Seal: i=2; a=rsa-sha256; cv=pass; d={by}; s=arc; b=Ab+C/d==\nARC-Seal: i=1; a=rsa-sha256; cv=none; d=first.example; s=arc; b=xyz=\n{failed}; arc=pass\n\n");
-        assert!(read(&sealed("example.net")) && read(&sealed("mine.example")));
+        assert!(read(&sealed("mine.example")), "your own domain's seal on top, your provider sealing nothing");
         assert!(!read(&sealed("relay.example")));
-        assert_eq!(arc_sealer(&headers(&sealed("Mine.Example"))).as_deref(), Some("mine.example"));
-        assert!(!read(&sealed("example.net").replace("arc=pass", "arc=fail")));
+        assert!(!read(&sealed("example.net")), "your provider's arrival seal over a stranger's: nobody you trust answers");
+        assert_eq!(arc_voucher(&headers(&sealed("Mine.Example")), &sealers(&ids, &[])).as_deref(), Some("mine.example"));
+        assert!(!read(&sealed("mine.example").replace("arc=pass", "arc=fail")));
+    }
+
+    /// The seal that answers for the way a message came is the newest one
+    /// placed before your provider received it (review of 01ca9df, 1): Gmail
+    /// and Microsoft seal every message on arrival, and that seal answers for
+    /// nothing below it. Gmail-shaped stand-ins, for `authenticated` and the
+    /// list's exemption alike.
+    #[test]
+    fn arc_answers_by_the_seal_placed_before_your_provider() {
+        let ids = ["mx.provider.example".to_string()];
+        let trusted = sealers(&ids, &["noa.example".to_string()]);
+        let chain = |seals: &[(u32, &str, &str)]| {
+            let lines: String = seals.iter().map(|(i, d, cv)| format!("ARC-Seal: i={i}; a=rsa-sha256; cv={cv}; d={d}; s=arc; b=Ab+C/d==\n")).collect();
+            headers(&format!("{lines}Authentication-Results: mx.provider.example; spf=fail smtp.mailfrom=bank.example; dkim=fail header.d=bank.example; dmarc=fail header.from=bank.example; arc=pass\nFrom: news@bank.example\nList-Id: <news.lists.club.example>\n\n"))
+        };
+        let vouched = |h: &RawHeaders| {
+            let r = read_auth_results(h, &ids);
+            (authenticated(r.as_ref(), h, &trusted), list_excused(r.as_ref(), h, &trusted).map(|e| e.by))
+        };
+        // A stranger's seal under your provider's arrival seal: not vouched.
+        assert_eq!(vouched(&chain(&[(2, "provider.example", "pass"), (1, "sealer.example", "none")])), (false, None));
+        // Your provider's arrival seal alone (i=1, cv=none, valid): not vouched.
+        assert_eq!(vouched(&chain(&[(1, "provider.example", "none")])), (false, None));
+        // Forwarded inside your provider: its seal under its arrival seal vouches.
+        assert_eq!(vouched(&chain(&[(2, "provider.example", "pass"), (1, "provider.example", "none")])), (true, Some("provider.example".to_string())));
+        // One of your own domains under your provider: vouched.
+        assert_eq!(vouched(&chain(&[(2, "provider.example", "pass"), (1, "noa.example", "none")])), (true, Some("noa.example".to_string())));
+        // A provider that never seals on arrival, your own domain on top: vouched.
+        assert_eq!(vouched(&chain(&[(2, "noa.example", "pass"), (1, "sealer.example", "none")])), (true, Some("noa.example".to_string())));
+        // The newest instance counts, in whatever order the headers come.
+        assert_eq!(arc_voucher(&chain(&[(1, "noa.example", "none"), (2, "provider.example", "pass")]), &trusted).as_deref(), Some("noa.example"));
+        assert_eq!(arc_voucher(&chain(&[]), &trusted), None);
     }
 
     /// Microsoft 365 and qmail write the address they saw in parentheses,
