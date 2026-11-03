@@ -348,6 +348,11 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         .filter(|(_, _, m)| senders.who(&m.address) != sioul_core::reach::Who::Blocked)
         .partition(|(_, uri, _)| consent.allows(uri));
     let closed = kept_out.len();
+    // Spam, while the spam tools are closed: left out by the mailbox's own rule,
+    // whatever the kind, and counted over the scope, whatever the words.
+    let spam = if s.config.mcp.spam { std::collections::BTreeSet::new() } else { super::mailbox::spam_addresses(s) };
+    let (scope, spam_out): (Vec<(Option<&String>, String, &MailRef)>, Vec<(Option<&String>, String, &MailRef)>) = scope.into_iter().partition(|(_, uri, _)| !spam.contains(uri));
+    let spam_left_out = spam_out.len();
     // Its kind, as its words: a filter on what is shown, never on what is counted.
     let mut found: Vec<(Option<&String>, String, &MailRef)> = scope.into_iter().filter(|(_, _, m)| kind.as_deref().is_none_or(|k| kinds.of_mail(m) == k) && shown_holds(m)).collect();
     found.sort_by_key(|(_, _, m)| std::cmp::Reverse(m.date));
@@ -389,7 +394,10 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         lines.push(format!("… {} more", total - limit));
     }
     lines.extend(access::left_out(closed));
-    Ok(Answer { text: self::rows(&lines), data: json!({ "messages": rows, "total": total, "kept_from_agents": closed }) })
+    if spam_left_out > 0 {
+        lines.push(format!("({spam_left_out} spam left out: spam is closed to agents here.)"));
+    }
+    Ok(Answer { text: self::rows(&lines), data: json!({ "messages": rows, "total": total, "kept_from_agents": closed, "spam_left_out": spam_left_out }) })
 }
 
 /// A message's file, by its address (`mid:…`, `sioul:mail/…`), its key (its

@@ -979,6 +979,51 @@ fn the_mailbox_for_agents() {
     assert!(rows.iter().all(|m| m["key"].is_string()), "the file stays in key");
 }
 
+/// `search_mail` while the spam tools are closed (review of 844ec17, MF):
+/// spam left out by the mailbox's own rule (a Junk copy; a stranger's
+/// message your provider flagged), whatever the kind and the words, and
+/// counted over the scope; a message you said is not spam, listed either
+/// way; with the spam tools open, everything listed.
+#[test]
+fn search_mail_leaves_spam_out_while_the_spam_tools_are_closed() {
+    let home = home();
+    let root = home.root.join("spam-closed");
+    let inbox = root.join("box-s");
+    for dir in [inbox.clone(), inbox.join(".Junk")] {
+        for sub in ["cur", "new", "tmp"] {
+            std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+    }
+    let saved = sioul_core::folders::saved_path("box-s");
+    std::fs::create_dir_all(saved.parent().unwrap()).unwrap();
+    std::fs::write(&saved, "[[folder]]\nname = \"INBOX\"\ndisplay = \"INBOX\"\nrole = \"inbox\"\nlocal = \"\"\nspecial = true\n\n[[folder]]\nname = \"Junk\"\ndisplay = \"Junk\"\nrole = \"junk\"\nlocal = \".Junk\"\nspecial = true\n").unwrap();
+    let provider = "X-Spam-Flag: YES\r\nReceived: from mail.sender.example (mail.sender.example [203.0.113.9]) by mx.provider.example with ESMTPS\r\n";
+    std::fs::write(inbox.join("cur").join(seen("1777400001.U7-1.test")), message("plain-s@example.org", "Ana <ana@example.org>", "A plain lottery note", "Hello.", 1)).unwrap();
+    std::fs::write(inbox.join("cur").join(seen("1777400002.U7-2.test")), format!("{provider}{}", message("flagged-s@lottery.example", "Prize <win@lottery.example>", "Your lottery prize", "Claim it.", 1))).unwrap();
+    std::fs::write(inbox.join(".Junk/cur").join(seen("1777400003.U7-3.test")), message("junk-s@ads.example", "Ads <ads@ads.example>", "Lottery of the week", "Buy.", 1)).unwrap();
+    std::fs::write(inbox.join(".Junk/cur").join(format!("1777400004.U7-4.test{INFO}2,Sb")), message("notjunk-s@ads.example", "Ads <ads@ads.example>", "Not spam, said so", "Hello.", 1)).unwrap();
+    let base = format!("language = \"en\"\n\n[[account]]\nid = \"box-s\"\nkind = \"imap\"\naddress = \"s@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n\n", inbox.display().to_string().replace('\\', "\\\\"));
+    let open = root.join("spam-open.toml");
+    let closed = root.join("spam-closed.toml");
+    std::fs::write(&open, &base).unwrap();
+    std::fs::write(&closed, format!("{base}[mcp]\nspam = false\n")).unwrap();
+    let uris = |answer: &Value| answer["structuredContent"]["messages"].as_array().unwrap().iter().map(|m| m["uri"].as_str().unwrap().to_string()).collect::<std::collections::BTreeSet<_>>();
+    let mut closed = Server::new(&closed, "en");
+    for arguments in [json!({ "account": "box-s" }), json!({ "account": "box-s", "query": "lottery" }), json!({ "account": "box-s", "kind": "received" })] {
+        let found = call(&mut closed, "search_mail", arguments.clone());
+        let listed = uris(&found);
+        assert!(!listed.contains("mid:junk-s@ads.example") && !listed.contains("mid:flagged-s@lottery.example"), "{arguments}: {found}");
+        assert_eq!(found["structuredContent"]["spam_left_out"], 2, "counted over the scope, whatever the words or the kind: {arguments}");
+        assert!(text(&found).contains("2 spam left out"), "{}", text(&found));
+    }
+    let all = uris(&call(&mut closed, "search_mail", json!({ "account": "box-s" })));
+    assert!(all.contains("mid:plain-s@example.org") && all.contains("mid:notjunk-s@ads.example"), "said not spam: listed: {all:?}");
+    let mut open = Server::new(&open, "en");
+    let found = call(&mut open, "search_mail", json!({ "account": "box-s" }));
+    assert_eq!(uris(&found), ["mid:flagged-s@lottery.example", "mid:junk-s@ads.example", "mid:notjunk-s@ads.example", "mid:plain-s@example.org"].map(String::from).into_iter().collect(), "{found}");
+    assert_eq!(found["structuredContent"]["spam_left_out"], 0);
+}
+
 /// A paper letter of a project closed to agents, put into the agenda
 /// (re-check of 857c39e, §3.4): the letter itself is kept by its project, as
 /// letters.toml says it; an event made for it before it had its project, or

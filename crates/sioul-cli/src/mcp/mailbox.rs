@@ -189,6 +189,20 @@ pub fn mailbox(s: &Session, args: &Args) -> Result<Answer, String> {
     })
 }
 
+/// The messages the mailbox counts as spam, by their addresses, over all
+/// the mail kept here: its own rule (a Junk copy, what your filter flagged
+/// where it lies, your provider's flag on a stranger's mail; what you said
+/// is not spam wins). What the tools that list mail leave out while the spam
+/// tools are closed (`search_mail`; review of 844ec17, MF).
+pub(super) fn spam_addresses(s: &Session) -> BTreeSet<String> {
+    let now = sioul_core::zone::now();
+    let (_, _, mode, _, _, _) = super::records::moment_read(s);
+    let addresses = mailbox::addresses(&s.config, &mode, &now, &s.tr, sioul_sync::mailbox::folders);
+    let world = mailbox::World::load(&s.config, sioul_core::attention::Now::of(&mode));
+    let ask = Ask { chip: Chip::Spam, account: String::new(), windows: u32::MAX, query: String::new(), shown_resting: addresses.iter().map(|a| a.account.id.clone()).collect(), rows: usize::MAX, fresh: false };
+    mailbox::page(&addresses, &world, &ask, &BTreeSet::new(), &s.tr, now.timestamp().as_second(), &sioul_core::zone::current(), mailbox::STEP_FILL).rows.into_iter().map(|r| r.uri).collect()
+}
+
 /// What an answer says first: the addresses that rest now and until when,
 /// their mail listed all the same (decision 20), then that the words are data.
 pub(super) fn head(resting: &[(String, String)]) -> Vec<String> {
