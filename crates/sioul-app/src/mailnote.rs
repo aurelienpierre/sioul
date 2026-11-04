@@ -296,7 +296,7 @@ fn tell_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
         return;
     }
     let (title, body) = if opens { mailnote::opens(tr(), &mine) } else { mailnote::batch(tr(), &mine) };
-    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref(), mailnote::one_address(&mine));
+    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref(), &mine);
 }
 
 /// Each minute: when the moment changed (a time began, waking, a pause or a
@@ -315,6 +315,8 @@ pub(crate) fn tick_in_window(window: Window) {
 fn tick_from(window: Option<Window>) {
     static BUSY: Mutex<()> = Mutex::new(());
     let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
+    // New mail's last notification, its messages each dealt with on some device: taken away (`notices`).
+    crate::notices::withdraw_if_settled();
     let config = load_config();
     if !config.reminders.mail {
         return;
@@ -351,7 +353,7 @@ fn tick_from(window: Option<Window>) {
         return;
     }
     let (title, body) = mailnote::opens(tr(), &mine);
-    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref(), mailnote::one_address(&mine));
+    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref(), &mine);
 }
 
 /// The letters still waiting in the ledger, marked told by this process
@@ -407,11 +409,14 @@ pub(crate) fn opens_of(one: Option<&str>) -> (&'static str, String) {
 /// (main.qml's `onTrayNotice`), whose message a click opens; on macOS its
 /// words alone; on a phone, Android's, in the quiet "New mail" channel, a
 /// tap opening it. Each opens one message (`one`, its address), else the Porch.
-fn show(title: &str, body: &str, through: bool, window: Option<&Window>, one: Option<&str>) {
-    let (kind, key) = opens_of(one);
+fn show(title: &str, body: &str, through: bool, window: Option<&Window>, mine: &[Letter]) {
+    let (kind, key) = opens_of(mailnote::one_address(mine));
+    // Its messages' notices, kept here until each is settled on any device
+    // (`notices`): then it is taken away where it shows.
+    let told = crate::notices::posted_mail(mine.iter().map(|l| l.notice.clone()).collect(), mine.iter().map(|l| l.file.clone()).collect());
     #[cfg(target_os = "android")]
     {
-        let _ = (window, kind);
+        let _ = (window, kind, told);
         crate::eventalarms::mail_note(title, body, through, &key);
     }
     #[cfg(not(target_os = "android"))]
@@ -431,7 +436,9 @@ fn show(title: &str, body: &str, through: bool, window: Option<&Window>, one: Op
             });
             (tr().text("reminder-open", None), action)
         });
-        if let Err(e) = sioul_sync::notify::mail(title, body, through, open) {
+        // Looked at while it shows: each of its messages dismissed, read or done on any device, taken away.
+        let settled: Box<dyn FnMut() -> bool + Send> = Box::new(move || crate::notices::settled_mail(&told));
+        if let Err(e) = sioul_sync::notify::mail_until(title, body, through, open, settled) {
             eprintln!("{e}");
         }
     }

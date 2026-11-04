@@ -4,10 +4,12 @@
 // The phone's messages on a computer's Porch (PhoneMessagesSection.qml) and
 // the phone's tab for them (PhoneMessagesSetup.qml), on a stand-in for
 // Sioul. What travels and when a line shows are tested in sioul-core
-// (phonemsgs.rs) and sioul-sync (share.rs); here the window's side: the
-// lines and their messages, Text back only for a text from a number, Seen
-// and its ten seconds to undo, the part's switch and an app's choice handed
-// to Rust; a reply: Reply first, its box and Send (through the
+// (phonemsgs.rs, notices.rs) and sioul-sync (share.rs); here the window's
+// side: each line a row (NoticeRow.qml), who, the newest words and the
+// earlier under it, Text back only for a text from a number, Dismiss and
+// Mark read handed to the Porch's words (their ten seconds to undo are the
+// Porch's: tst_porchsections.qml), the part's switch and an app's choice
+// handed to Rust; a reply: Reply first, its box and Send (through the
 // notification's own Reply, or as a text of Sioul's own), your reply under
 // their messages with Take back while it waits, "Reply on your phone" once
 // it went, Mark as read in the line's menu after its warning, the phone's
@@ -45,12 +47,19 @@ Item {
         property string openedTexts: ""
         function textArgs(key, json) {
             const a = JSON.parse(json)
-            return key + ": " + a.time + " " + a.who + " " + a.first + (a.sent ? " (" + a.sent + ", " + a.late + ")" : "")
+            return key + ": " + a.sent + ", " + a.late
+        }
+        // A row's notice, as Rust gives it with each line (`notices::Notice`).
+        function noticed(line, who, what, when) {
+            return Object.assign({ notice: { id: "phone:1b4e:" + line.ids[0], kind: "phone", who: who, what: what, when: when, readable: true, state: { mark: "new", at: 0, device: "" } } }, line)
         }
         readonly property var plain: [
-            { ids: ["1-a"], head: "While you slept, Dr Elena Varga wrote:", said: [{ time: "23:10", from: "", text: "Could you call me back tomorrow morning?" }], note: "", number: "04 65 71 47 70", dial: "+33465714770", known: true, texted: true, code: false },
-            { ids: ["2-b"], head: "A code came from My Bank at 11:05. It stays on your phone.", said: [], note: "", number: "", dial: "", known: false, texted: false, code: true },
-            { ids: ["3-c"], head: "In your leisure time, Sam wrote on Signal:", said: [{ time: "13:02", from: "", text: "" }], note: "Their words stay on your phone: Signal sends who and when only.", number: "", dial: "", known: false, texted: false, code: false }
+            mock.noticed({ ids: ["1-a"], head: "While you slept, Dr Elena Varga wrote:", said: [{ time: "22:58", from: "", text: "Bonsoir." }, { time: "23:10", from: "", text: "Could you call me back tomorrow morning?" }], note: "", number: "04 65 71 47 70", dial: "+33465714770", known: true, texted: true, code: false },
+                         "Dr Elena Varga", "Could you call me back tomorrow morning?", "Tue 3 Nov 23:10"),
+            mock.noticed({ ids: ["2-b"], head: "A code came from My Bank at 11:05. It stays on your phone.", said: [], note: "", number: "", dial: "", known: false, texted: false, code: true },
+                         "My Bank", "phonemsgs-code-row", "Wed 4 Nov 11:05"),
+            mock.noticed({ ids: ["3-c"], head: "In your leisure time, Sam wrote on Signal:", said: [{ time: "13:02", from: "", text: "" }], note: "Their words stay on your phone: Signal sends who and when only.", number: "", dial: "", known: false, texted: false, code: false, app: "Signal" },
+                         "Sam", "phonemsgs-no-words", "Wed 4 Nov 13:02")
         ]
         // The same with what each offers a reply from this computer (replies.rs's `Answer`).
         function answer(line, offered, texts, mine) {
@@ -59,17 +68,17 @@ Item {
                      on_phone: "Reply on your phone.", limit: texts ? 1600 : 2000, mine: mine }
         }
         readonly property var answered: [
-            { ids: ["4-d"], head: "Alice wrote on Signal:", said: [{ time: "14:01", from: "", text: "Tu passes ?" }], note: "", number: "", dial: "", known: false, texted: false, code: false, who: "Alice",
+            mock.noticed({ ids: ["4-d"], head: "Alice wrote on Signal:", said: [{ time: "14:01", from: "", text: "Tu passes ?" }], note: "", number: "", dial: "", known: false, texted: false, code: false, who: "Alice",
               answer: mock.answer("4-d", true, false, [{ key: "k0", time: "14:02", text: "J'arrive.", said: "Waiting for your phone.", waiting: true, again: false, texts: false },
-                                                         { key: "k9", time: "14:03", text: "Oui, j'arrive.", said: "Not sent: the same words are already on their way to this conversation.", waiting: false, again: true, texts: false }]) },
-            { ids: ["5-e"], head: "Bob wrote on Signal:", said: [{ time: "14:03", from: "", text: "Merci." }], note: "", number: "", dial: "", known: false, texted: false, code: false, who: "Bob", answer: mock.answer("5-e", false, false, []) },
-            { ids: ["6-f"], head: "Dr Elena Varga wrote:", said: [{ time: "14:04", from: "", text: "Rappelez-moi." }], note: "", number: "04 65 71 47 70", dial: "+33465714770", known: true, texted: true, code: false, who: "Dr Elena Varga", answer: mock.answer("6-f", true, true, []) }
+                                                         { key: "k9", time: "14:03", text: "Oui, j'arrive.", said: "Not sent: the same words are already on their way to this conversation.", waiting: false, again: true, texts: false }]) }, "Alice", "Tu passes ?", "14:01"),
+            mock.noticed({ ids: ["5-e"], head: "Bob wrote on Signal:", said: [{ time: "14:03", from: "", text: "Merci." }], note: "", number: "", dial: "", known: false, texted: false, code: false, who: "Bob", answer: mock.answer("5-e", false, false, []) }, "Bob", "Merci.", "14:03"),
+            mock.noticed({ ids: ["6-f"], head: "Dr Elena Varga wrote:", said: [{ time: "14:04", from: "", text: "Rappelez-moi." }], note: "", number: "04 65 71 47 70", dial: "+33465714770", known: true, texted: true, code: false, who: "Dr Elena Varga", answer: mock.answer("6-f", true, true, []) }, "Dr Elena Varga", "Rappelez-moi.", "14:04")
         ]
 
         signal porchChanged()
 
         function text(key) {
-            return ({ "calls-seen": "Seen", "calls-text-back": "Text back", "calls-call-back": "Call back", "ui-undo": "Undo", "phonemsgs-title": "From your phone", "replies-you": "You" })[key] || key
+            return ({ "notice-dismiss": "Dismiss", "notice-read": "Mark read", "calls-text-back": "Text back", "calls-call-back": "Call back", "ui-undo": "Undo", "phonemsgs-title": "From your phone", "replies-you": "You" })[key] || key
         }
         function viewFlag(flag) {
             return mock.flags[flag] === true
@@ -90,15 +99,7 @@ Item {
             const args = JSON.parse(json)
             mock.asked = mock.asked.concat([[verb, args]])
             if (verb === "view")
-                return JSON.stringify({ lines: mock.lines.filter(l => mock.seen.indexOf(l.ids[0]) < 0), links: { tel: true, sms: true }, notices: mock.notices })
-            if (verb === "seen") {
-                mock.seen = mock.seen.concat(args.ids)
-                return JSON.stringify({ said: "Marked seen.", shared: true, at: 1791446400000 })
-            }
-            if (verb === "unseen") {
-                mock.seen = []
-                return JSON.stringify({ said: "", shared: true, at: 0 })
-            }
+                return JSON.stringify({ lines: mock.lines, links: { tel: true, sms: true }, notices: mock.notices })
             if (verb === "reply")
                 return JSON.stringify(args.words === "refused" ? { said: "Not sent: it has no words." } : { key: "k1", said: "", shared: true })
             if (verb === "take-back") {
@@ -121,6 +122,26 @@ Item {
                 apps: [{ key: "app.foundation.e.message", kind: "choice", label: "Message", help: "The phone's SMS app", value: "words", choices: [{ value: "off", label: "Not on your computers" }, { value: "who", label: "Who and when" }, { value: "words", label: "Who, when and the words" }] },
                        { key: "answers.foundation.e.message", kind: "bool", label: "Answer from your computers", help: "", value: mock.answers, choices: [] }]
             })
+        }
+    }
+
+    // The Porch, as the section sees it: the rows still new, and its words on them.
+    QtObject {
+        id: porchStand
+
+        // Rows on one line: a computer's wide Porch.
+        property bool narrowRows: false
+        property var said: []
+        property var gone: ({})
+
+        function newOnes(rows) {
+            return (rows || []).filter(r => porchStand.gone[r.notice.id] !== true)
+        }
+        function say(verb, row) {
+            porchStand.said = porchStand.said.concat([[verb, row.ids, row.targets || []]])
+            const next = Object.assign({}, porchStand.gone)
+            next[row.notice.id] = true
+            porchStand.gone = next
         }
     }
 
@@ -148,6 +169,7 @@ Item {
             sioul: mock
             theme: testTheme
             window: stand
+            porch: porchStand
         }
         PhoneMessagesSetup {
             id: setup
@@ -185,7 +207,8 @@ Item {
             mock.notices = []
             mock.openedTexts = ""
             mock.asked = []
-            mock.seen = []
+            porchStand.said = []
+            porchStand.gone = {}
             mock.flags = {}
             mock.lines = mock.plain
             section.replyingTo = ""
@@ -209,69 +232,64 @@ Item {
             return walk(root.Window.window ? root.Window.window.contentItem : root, i => i.visible && i.text === text && (i.clicked !== undefined || i.triggered !== undefined), [])
         }
 
-        // A text the Texts page holds: one notice, opening its conversation
-        // there; opened, it is gone (23 October 2026).
-        function test_a_text_is_one_notice_opening_texts() {
+        // A text the Texts page holds: one row, opening its conversation there;
+        // Mark read hands its conversation to the Porch's words (23 October 2026).
+        function test_a_text_is_one_row_opening_texts() {
             mock.lines = []
-            mock.notices = [{ conversation: "+33465714770", who: "Dr Elena Varga", first: "Rappelez-moi.", when: "14:04", count: 1 }]
+            mock.notices = [{ conversation: "+33465714770", ids: ["text:p1:7:sms-1@1"], targets: ["+33465714770"], notice: { id: "text:p1:7:sms-1@1", kind: "text", who: "Dr Elena Varga", what: "Rappelez-moi.", when: "14:04", readable: true, state: { mark: "new" } }, count: 1 }]
             section.reload()
             wait(50)
-            verify(section.visible, "shown for the notice alone")
-            const notices = walk(section, i => i.visible && i.objectName === "textNotice", [])
-            compare(notices.length, 1)
-            verify(notices[0].said.indexOf("Rappelez-moi.") >= 0)
-            mouseClick(notices[0])
+            verify(section.visible, "shown for the text alone")
+            const rows = walk(section, i => i.visible && i.objectName === "textNotice", [])
+            compare(rows.length, 1)
+            compare(labels(rows[0], "Rappelez-moi.").length, 1, "its first words")
+            mouseClick(rows[0], 4, 4)
             compare(mock.openedTexts, "+33465714770")
+            const read = walk(rows[0], i => i.visible && i.objectName === "readButton", [])
+            compare(read.length, 1, "Mark read beside it")
+            mouseClick(read[0])
+            compare(JSON.stringify(porchStand.said), JSON.stringify([["read", ["text:p1:7:sms-1@1"], ["+33465714770"]]]))
             wait(50)
-            compare(walk(section, i => i.visible && i.objectName === "textNotice", []).length, 0, "opened: gone")
+            compare(walk(section, i => i.visible && i.objectName === "textNotice", []).length, 0, "read: gone")
         }
 
         // A text that reached the phone 5 minutes or more after it was sent: its
-        // notice comes on arrival, and says when it was sent (27 October 2026).
-        function test_a_late_text_s_notice_says_when_it_was_sent() {
+        // row comes on arrival, and says when it was sent (27 October 2026).
+        function test_a_late_text_s_row_says_when_it_was_sent() {
             mock.lines = []
             mock.notices = [
-                { conversation: "+33465714770", who: "Dr Elena Varga", first: "À demain, 10 h.", when: "01:55", count: 1, sent: "22:10", late: "3 h 45" },
-                { conversation: "+33199001234", who: "01 99 00 12 34", first: "Bien reçu.", when: "02:05", count: 2, sent: "", late: "" },
-                { conversation: "+33536490042", who: "05 36 49 00 42", first: "Merci.", when: "02:20", count: 3, sent: "20:40", late: "5 h 40" }
+                { conversation: "+33465714770", ids: ["t1"], notice: { id: "t1", kind: "text", who: "Dr Elena Varga", what: "À demain, 10 h.", when: "01:55", readable: true, state: { mark: "new" } }, sent: "22:10", late: "3 h 45" },
+                { conversation: "+33199001234", ids: ["t2"], notice: { id: "t2", kind: "text", who: "01 99 00 12 34", what: "Bien reçu.", when: "02:05", readable: true, state: { mark: "new" } }, sent: "", late: "" }
             ]
             section.reload()
             wait(50)
-            const said = walk(section, i => i.visible && i.objectName === "textNotice", []).map(n => n.said)
-            compare(said, [
-                "texts-notice-sent: 01:55 Dr Elena Varga À demain, 10 h. (22:10, 3 h 45)",
-                "texts-notice-many: 02:05 01 99 00 12 34 Bien reçu.",
-                "texts-notice-many-sent: 02:20 05 36 49 00 42 Merci. (20:40, 5 h 40)"
-            ])
+            compare(labels(section, "texts-notice-late: 22:10, 3 h 45").length, 1)
+            compare(walk(section, i => i.visible && i.objectName === "textNotice", []).length, 2)
         }
 
         function test_lines_and_their_messages() {
-            compare(labels(section, "While you slept, Dr Elena Varga wrote:").length, 1)
-            compare(labels(section, "Could you call me back tomorrow morning?").length, 1)
-            compare(labels(section, "A code came from My Bank at 11:05. It stays on your phone.").length, 1)
+            compare(labels(section, "Dr Elena Varga").length, 1, "who")
+            compare(labels(section, "Could you call me back tomorrow morning?").length, 1, "the newest words on the row")
+            compare(labels(section, "Bonsoir.").length, 1, "the earlier under it")
+            compare(labels(section, "My Bank").length, 1, "a code's row: who sent it")
+            compare(labels(section, "phonemsgs-code-row").length, 1, "that a code came, never the code")
             compare(labels(section, "Their words stay on your phone: Signal sends who and when only.").length, 1)
-            // A text from a number: Text back and Call back on its line only.
+            // A text from a number: Text back its main action, on its row only.
             compare(buttons(section, "Text back").length, 1)
-            compare(buttons(section, "Call back").length, 1)
-            compare(buttons(section, "Seen").length, 3)
+            compare(walk(section, i => i.visible && i.objectName === "dismissButton", []).length, 3, "Dismiss on every row")
         }
 
-        function test_seen_then_undone() {
-            mouseClick(buttons(section, "Seen")[0])
-            const last = mock.asked.filter(a => a[0] === "seen")
-            compare(last.length, 1)
-            compare(last[0][1].ids, ["1-a"])
+        function test_dismiss_and_mark_read_go_to_the_porch_s_words() {
+            const dismiss = walk(section, i => i.visible && i.objectName === "dismissButton", [])
+            mouseClick(dismiss[0])
+            compare(JSON.stringify(porchStand.said[0]), JSON.stringify(["dismiss", ["1-a"], []]))
             wait(50)
-            compare(labels(section, "While you slept, Dr Elena Varga wrote:").length, 0, "gone at once")
-            compare(labels(section, "Marked seen.").length, 1)
-            const undo = buttons(section, "Undo")
-            compare(undo.length, 1, "ten seconds to undo")
-            mouseClick(undo[0])
-            const back = mock.asked.filter(a => a[0] === "unseen")
-            compare(back.length, 1)
-            compare(back[0][1].at, 1791446400000)
-            wait(50)
-            compare(labels(section, "While you slept, Dr Elena Varga wrote:").length, 1, "back")
+            compare(labels(section, "Dr Elena Varga").length, 0, "gone at once")
+            const read = walk(section, i => i.visible && i.objectName === "readButton", [])
+            verify(read.length > 0)
+            mouseClick(read[0])
+            compare(porchStand.said[1][0], "read")
+            compare(mock.asked.filter(a => a[0] === "seen" || a[0] === "unseen").length, 0, "no Seen of their own any more")
         }
 
         // Reply first, in place of Text back for a text; through the notification's

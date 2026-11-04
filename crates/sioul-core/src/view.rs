@@ -63,6 +63,8 @@ pub struct CodeView {
     pub validity: Option<String>,
     /// For a sender that is not verified: use it only if you just asked for it.
     pub warning: Option<String>,
+    /// Its notice (`notices`): what the Porch shows, Dismiss and Mark read act on.
+    pub notice: crate::notices::Notice,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +127,9 @@ pub struct ItemView {
     pub hidden: bool,
     /// What it asks, in one neutral line, when an AI read it.
     pub summary: String,
+    /// Its notice (`notices`): its id the same on every device, its state
+    /// (Read once its `\Seen` is set, here or on its server), its section.
+    pub notice: crate::notices::Notice,
 }
 
 /// The Porch as the window shows it. `opened_anyway` is your "open it anyway"
@@ -153,19 +158,27 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&ProjectStore>, t
     let lanes = lanes(config, store, tr)
         .into_iter()
         .filter(|l| !hidden(&l.key))
-        .map(|LaneInfo { key, title, lane, folded, about, mut rules, counted }| {
+        .map(|info| {
             // Mail of the accounts ranked above first, then work for a public address, then the newest.
-            let mut ranked: Vec<&Triaged> = items.iter().filter(|t| t.lane == lane).collect();
+            let mut ranked: Vec<&Triaged> = items.iter().filter(|t| info.holds(t)).collect();
             ranked.sort_by_key(|t| (t.priority, t.assessment.as_ref().map(|a| a.topic), std::cmp::Reverse(t.card.date.unwrap_or(0))));
+            let LaneInfo { key, title, lane, folded, about, mut rules, counted } = info;
             // A folded lane opens by itself when it holds mail of an account ranked above; hostile mail never does.
             let folded = folded && (lane == Lane::Hostile || !ranked.iter().any(|t| t.priority == Priority::Above));
             rules.push(order.clone());
             let settings = format!("lane:{key}");
-            LaneView { key, title, folded, counted, about, rules, settings, items: ranked.into_iter().map(|t| item_view(t, store, tr)).collect() }
+            let items = ranked.into_iter().map(|t| item_view(t, store, tr, config, &key)).collect();
+            LaneView { key, title, folded, counted, about, rules, settings, items }
         })
         .filter(|l| !l.items.is_empty())
         .collect();
     PorchView { open, closed: None, right_now, summary: tr.summary(&porch::summarise(items), store), status, lanes, all: false }
+}
+
+/// Mail you sent yourself, from one of your own addresses to another, verified:
+/// in the People lane, shown in a section of its own ("From yourself").
+fn from_yourself(t: &Triaged) -> bool {
+    t.lane == Lane::People && t.reasons.contains(&Reason::FromYourself)
 }
 
 /// A lane of the Porch, empty or not: what it holds and how mail lands there.
@@ -184,10 +197,24 @@ pub struct LaneInfo {
     pub counted: bool,
 }
 
-/// Every lane mail can land in, in the order the Porch shows them: projects,
-/// public addresses, people, the screener, filed and less important mail,
-/// what waits for your review, what is set aside, hostile mail when an
-/// address is shielded.
+impl LaneInfo {
+    /// Whether a message is shown in this lane: its own lane's; People's
+    /// split in two, what you sent yourself apart.
+    pub fn holds(&self, t: &Triaged) -> bool {
+        t.lane == self.lane
+            && match self.key.as_str() {
+                "yourself" => from_yourself(t),
+                "people" => !from_yourself(t),
+                _ => true,
+            }
+    }
+}
+
+/// Every lane mail can land in, in the order the Porch shows them (the
+/// Porch's own sections come between: docs/porch.md): projects, public
+/// addresses, what you sent yourself, people; then filed mail, the
+/// screener, less important mail, what waits for your review, what is set
+/// aside, hostile mail when an address is shielded.
 pub fn lanes(config: &Config, store: Option<&ProjectStore>, tr: &Translator) -> Vec<LaneInfo> {
     let say = |id: &str, pairs: &[(&str, String)]| {
         let mut args = i18n::args();
@@ -218,10 +245,11 @@ pub fn lanes(config: &Config, store: Option<&ProjectStore>, tr: &Translator) -> 
         lanes.push(lane(&format!("public:{}", account.id), say("lane-public", &[("address", address.clone())]), Lane::Public(account.id.clone()), false, say("lane-about-public", &[("address", address)]), rules));
     }
     let known = crate::porch::SenderList::load(&config.known_senders_path()).entries().len();
+    lanes.push(lane("yourself", tr.text("lane-yourself", None), Lane::People, false, tr.text("lane-about-yourself", None), vec![tr.text("rule-yourself", None)]));
     lanes.push(lane("people", tr.text("lane-people", None), Lane::People, false, tr.text("lane-about-people", None), vec![say("rule-people", &[("n", known.to_string())])]));
-    lanes.push(lane("screener", tr.text("lane-screener", None), Lane::Screener, false, tr.text("lane-about-screener", None), vec![tr.text("rule-screener", None)]));
     let words = crate::words::Words::of(config).senders.automatic.clone();
     lanes.push(lane("filed", tr.text("lane-filed", None), Lane::Filed, true, tr.text("lane-about-filed", None), vec![say("rule-filed", &[("words", words.join(", "))])]));
+    lanes.push(lane("screener", tr.text("lane-screener", None), Lane::Screener, false, tr.text("lane-about-screener", None), vec![tr.text("rule-screener", None)]));
     let below: Vec<String> = config.accounts.iter().filter(|a| a.priority == Priority::Below).map(|a| address_of(&a.id)).collect();
     lanes.push(lane("low", tr.text("lane-low", None), Lane::Low, true, tr.text("lane-about-low", None), if below.is_empty() { vec![tr.text("rule-low-none", None)] } else { vec![say("rule-low", &[("addresses", below.join(", "))]), tr.text("rule-where-rank", None)] }));
     // What your own spam filter flagged or moved, as you chose for each of
@@ -310,17 +338,45 @@ fn code_view(t: &Triaged, tr: &Translator) -> CodeView {
     let code = t.code.as_ref();
     let kind = code.map_or(crate::codes::CodeKind::Code, |c| c.kind);
     let validity = code.and_then(|c| c.expires_minutes).map(|minutes| tr.validity(minutes));
+    let title = tr.right_now(kind, t.card.sender(), t.trust, None, None);
+    // Its row: who sent it; what it is, the code itself, how long it lasts (its trust is its shield's).
+    let named = match code.and_then(|c| c.code.as_deref()) {
+        Some(secret) => format!("{} {secret}", tr.code_kind(kind)),
+        None => tr.code_kind(kind),
+    };
+    let what = std::iter::once(named).chain(validity.clone()).collect::<Vec<_>>().join(", ");
+    let notice = mail_notice(t, "right-now", tr, None, None, t.card.sender().to_string(), what);
     CodeView {
         key: key(&t.card),
         address: crate::mailfind::address_of_card(&t.card),
-        title: tr.right_now(kind, t.card.sender(), t.trust, None, None),
+        title,
         code: code.and_then(|c| c.code.clone()),
         validity,
         warning: (t.trust != Trust::Verified).then(|| tr.text("right-now-unverified", None)),
+        notice,
     }
 }
 
-fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator) -> ItemView {
+/// A message's notice (`notices`), in its section: its id the same on every
+/// device, Read once its `\Seen` is set (here, or on its server and
+/// fetched), its area its account's (work's when unsaid), its project its lane's.
+fn mail_notice(t: &Triaged, section: &str, tr: &Translator, config: Option<&Config>, project: Option<&str>, who: String, what: String) -> crate::notices::Notice {
+    use crate::notices::{Kind, Mark, Notice, State};
+    let area = config.map(|c| t.card.account.as_deref().and_then(|id| c.account(id)).and_then(|a| a.area.as_deref()).and_then(crate::areas::Area::parse).unwrap_or(crate::areas::Area::WORK));
+    let read = t.card.path.as_deref().is_some_and(|p| maildir::flags_of(p).contains('S'));
+    Notice {
+        address: crate::mailfind::address_of_card(&t.card),
+        at: t.card.date.unwrap_or(0) * 1000,
+        when: date(tr, t.card.date),
+        who,
+        what,
+        project: project.unwrap_or_default().to_string(),
+        state: State::derived(if read { Mark::Read } else { Mark::New }),
+        ..Notice::new(Kind::Mail, crate::notices::mail_id_of(&t.card), section).with_area(area)
+    }
+}
+
+fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator, config: &Config, section: &str) -> ItemView {
     // Sioul's own filter's word on it, in the review queue.
     let learned = t.reasons.iter().find_map(Reason::learned).filter(|_| t.lane == Lane::Review);
     let preview: String = t.card.excerpt.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(PREVIEW).collect();
@@ -352,6 +408,7 @@ fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator) -> Item
         tone: t.assessment.as_ref().map_or(String::new(), |a| format!("{:?}", a.tone).to_lowercase()),
         hidden: false,
         summary: t.assessment.as_ref().map(|a| a.summary.clone()).unwrap_or_default(),
+        notice: crate::notices::Notice::default(),
     };
     // Hostile mail keeps its words to itself: a sender's name can insult too.
     if t.lane == Lane::Hostile {
@@ -367,6 +424,12 @@ fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator) -> Item
     } else if t.assessment.as_ref().is_some_and(|a| a.tone == crate::shield::Tone::Rude) {
         view.preview = String::new();
     }
+    // Its words as the row shows them: a hostile message's hidden here too.
+    let project = match &t.lane {
+        Lane::Project(id) => Some(id.as_str()),
+        _ => None,
+    };
+    view.notice = mail_notice(t, section, tr, Some(config), project, view.sender.clone(), view.subject.clone());
     view
 }
 
@@ -1770,20 +1833,20 @@ host = "imap.example.com"
         let card = Card::from_bytes(b"From: Desk <desk@quick-parcels.test>\r\nSubject: Your parcel\r\n\r\nPay 1.99 EUR.\r\n").unwrap();
         let triaged = |lane: Lane, reasons: Vec<Reason>| Triaged { card: card.clone(), lane, trust: Trust::Unverified, code: None, reasons, priority: Priority::Average, checks: None, assessment: None };
         // In the review queue: its word, Spam and Not spam; never why, nor how sure.
-        let maybe = item_view(&triaged(Lane::Review, vec![Reason::Trust(trust::Proof::NoResults), Reason::Unsure { p: 0.62 }]), None, &tr);
+        let maybe = item_view(&triaged(Lane::Review, vec![Reason::Trust(trust::Proof::NoResults), Reason::Unsure { p: 0.62 }]), None, &tr, &Config::default(), "");
         assert!(maybe.spam && maybe.review && !maybe.moved);
         assert_eq!(maybe.spam_word, "maybe spam");
         assert_eq!(maybe.reasons.last().map(String::as_str), Some("your own filter: maybe spam"));
-        let moved = item_view(&triaged(Lane::Review, vec![Reason::LearnedSpam { p: 0.97 }, Reason::MovedToJunk]), None, &tr);
+        let moved = item_view(&triaged(Lane::Review, vec![Reason::LearnedSpam { p: 0.97 }, Reason::MovedToJunk]), None, &tr, &Config::default(), "");
         assert_eq!((moved.spam, moved.moved, moved.spam_word.as_str()), (true, true, "probably spam"));
         assert!(moved.reasons.iter().all(|r| !r.contains('%')), "{:?}", moved.reasons);
-        let wanted = item_view(&triaged(Lane::Review, vec![Reason::LearnedHam { p: 0.1 }]), None, &tr);
+        let wanted = item_view(&triaged(Lane::Review, vec![Reason::LearnedHam { p: 0.1 }]), None, &tr, &Config::default(), "");
         assert_eq!(wanted.spam_word, "probably not spam");
         // Set aside by your provider: "Not spam", no word of your filter's.
-        let aside = item_view(&triaged(Lane::SetAside, vec![Reason::Spam { source: "rspamd", score: None }]), None, &tr);
+        let aside = item_view(&triaged(Lane::SetAside, vec![Reason::Spam { source: "rspamd", score: None }]), None, &tr, &Config::default(), "");
         assert_eq!((aside.spam, aside.review, aside.spam_word.as_str()), (true, false, ""));
         // Nothing said of it: nothing offered.
-        let plain = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage]), None, &tr);
+        let plain = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage]), None, &tr, &Config::default(), "");
         assert_eq!((plain.spam, plain.review, plain.spam_word.as_str()), (false, false, ""));
     }
 }

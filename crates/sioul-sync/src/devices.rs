@@ -80,6 +80,13 @@ pub struct Entry {
     /// serde, unknown fields left aside, and writes its own entry alone).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub own_time: u32,
+    /// Whether its Sioul has the notices' store (`share::NOTICES`, the
+    /// Porch's notices): 1 from a build that has it, 0 from an older one.
+    /// The store travels only once every other device that counts says 1
+    /// (`share::notices_shared`), as your own time does. An older Sioul reads
+    /// the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub notices: u32,
     /// Whether its Sioul keeps a leg that is a step's time (the unified
     /// agenda's part 7, composed tasks §4.2: a leg with `X-SIOUL-TASK`): 1
     /// from such a build, 0 from an older one, whose block upkeep reads no

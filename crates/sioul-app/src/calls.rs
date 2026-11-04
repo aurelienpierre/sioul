@@ -35,6 +35,7 @@ use crate::backend::{load_config, tr};
 use jiff::Zoned;
 use serde_json::json;
 use sioul_core::calls::{self as rules, Held, Through};
+use sioul_core::notices::Kind;
 use sioul_core::config::Config;
 use sioul_core::everywhere::{self as switches, People, Switch};
 use sioul_core::porch::{Senders, Standing};
@@ -532,12 +533,35 @@ pub(crate) fn view() -> String {
         .into_iter()
         .map(|(id, i)| (id, rules::Message { text: rules::message_words(tr(), mails[i].seconds), path: mails[i].path.display().to_string(), sound: mails[i].sound }))
         .collect();
-    let seen = rules::read_seen(&root);
+    // Each call its notice (`notices::call_id`): a line goes once each of its
+    // calls is dismissed on any device, an older Sioul's Seen as a dismiss.
+    let notice_of = notices_of(&held);
+    let seen = crate::notices::seen_of(Kind::Call, &notice_of);
     let phones = phone_names();
     let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
     let lister = rules::Lister { now: &now, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows, phone: &words };
     let (tel, sms) = link_apps();
-    json!({ "lines": rules::lines(&held, &seen, &messages, &lister), "phone": cfg!(target_os = "android"), "links": { "tel": tel, "sms": sms } }).to_string()
+    let lines: Vec<serde_json::Value> = rules::lines(&held, &seen, &messages, &lister).into_iter().map(|line| row_of(line, &notice_of)).collect();
+    json!({ "lines": lines, "phone": cfg!(target_os = "android"), "links": { "tel": tel, "sms": sms } }).to_string()
+}
+
+/// Each call's notice (`notices::call_id`), by the call's own id.
+fn notices_of(held: &[Held]) -> BTreeMap<String, String> {
+    held.iter().map(|h| (h.id(), sioul_core::notices::call_id(&h.device, &h.id()))).collect()
+}
+
+/// A line of the list as the Porch's row: its notice, `ids` its calls' notices (what Dismiss names).
+fn row_of(line: rules::Line, notice_of: &BTreeMap<String, String>) -> serde_json::Value {
+    use sioul_core::notices::Notice;
+    let ids: Vec<String> = line.ids.iter().filter_map(|raw| notice_of.get(raw).cloned()).collect();
+    // A number nobody named: the number itself first, what the screening judged it after.
+    let (who, what) = if !line.known && !line.number.is_empty() { (line.number.clone(), format!("{} · {}", line.who, line.what)) } else { (line.who.clone(), line.what.clone()) };
+    let notice = Notice { address: line.dial.clone(), at: line.at, when: line.when.clone(), who, what, ..Notice::new(Kind::Call, ids.first().cloned().unwrap_or_default(), "phone") };
+    let mut row = serde_json::to_value(&line).unwrap_or_default();
+    row["notice"] = serde_json::to_value(&notice).unwrap_or_default();
+    row["ids"] = json!(ids);
+    row["targets"] = json!([]);
+    row
 }
 
 /// What a moment lets through, and the time a list is seen from: the lines then.
@@ -562,7 +586,7 @@ pub(crate) fn for_card() -> Option<CardCalls> {
     let senders = Senders::load(&config);
     let attention = Attention::of(&config);
     let always = People::load(&People::default_path());
-    let seen = rules::read_seen(&root);
+    let seen = crate::notices::seen_of(Kind::Call, &notices_of(&held));
     let phones = phone_names();
     Some(Box::new(move |moment, at| {
         let shows = |h: &Held| match who_now(&senders, h) {
@@ -707,32 +731,16 @@ fn listen(mail: &str, sound: u32) -> Result<String, String> {
     Ok(format!("file://{}", out.display()))
 }
 
-/// An action of the list (CallsSection.qml): "seen" {ids}, "unseen" {at}
-/// (Seen undone, within its ten seconds), "add-contact" {number} (Android's
-/// form; a computer opens Sioul's own), "block" {number}, "listen" {path,
-/// sound}, "open-blocked". Answers {said, url, shared, at} (`shared`: what
-/// travels changed, to share now; `at`: the Seen to undo).
+/// An action of the list (CallsSection.qml): "add-contact" {number}
+/// (Android's form; a computer opens Sioul's own), "block" {number},
+/// "listen" {path, sound}, "open-blocked". Answers {said, url, shared, at}
+/// (`shared`: what travels changed, to share now). Dismiss is the notices'
+/// (`notices::call`).
 pub(crate) fn act(verb: &str, json: &str) -> String {
     let asked: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
     let text = |key: &str| asked[key].as_str().unwrap_or_default().trim().to_string();
-    let mut at = 0;
+    let at = 0;
     let (said, url, shared) = match verb {
-        // In this device's own seen log, which the sharing carries: gone from every device's Porch.
-        "seen" => {
-            let ids: Vec<String> = asked["ids"].as_array().map(|a| a.iter().filter_map(|i| i.as_str().map(str::to_string)).collect()).unwrap_or_default();
-            match rules::mark_seen(&rules::folder(), &here_id(), &ids, jiff::Timestamp::now().as_millisecond()) {
-                Ok(pressed) => {
-                    at = pressed;
-                    (tr().text("calls-seen-said", None), String::new(), true)
-                }
-                Err(e) => (e, String::new(), false),
-            }
-        }
-        // This device's own Seen undone; another device's stays.
-        "unseen" => match rules::unmark_seen(&rules::folder(), &here_id(), asked["at"].as_i64().unwrap_or(0)) {
-            Ok(gone) => (String::new(), String::new(), gone),
-            Err(e) => (e, String::new(), false),
-        },
         // Android's own form for a new contact, the number filled in: saved by you, or not.
         "add-contact" => {
             crate::steps::java("add-contact", &json!({ "name": "", "phones": [text("number")], "emails": [] }).to_string());

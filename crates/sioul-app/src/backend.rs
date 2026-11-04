@@ -1889,6 +1889,13 @@ pub mod qobject {
         #[qinvokable]
         fn phone_messages(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
+        /// The Porch's notices (`notices::call`): "view" (its sections that
+        /// are not mail: the sites', the money's, the letters'), "dismiss",
+        /// "read", "done" {kind, ids, targets} ({said, at, mark}), "undo"
+        /// {kind, ids, targets, mark, at}; their JSON.
+        #[qinvokable]
+        fn notices(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
+
         /// texts: read and sent through your phone (`texts::call`): "view",
         /// "conversation", "send", "send-mms", "again", "parts", "media", "save-media", "close",
         /// "unattach", "setup", "ask", "part", "cap", "sending", "limit"; their JSON.
@@ -2896,6 +2903,8 @@ fn compute(shared: &Shared) -> Views {
     let hidden = mail::hidden_files(shared);
     let mut items = world.gather(&PorchState::load(&PorchState::default_path()));
     items.retain(|t| t.card.path.as_ref().is_none_or(|p| !hidden.contains(p)));
+    // Every message's notice, whatever the hour shows: what the words said of them are kept for (`notices::forget`).
+    let notices: Vec<String> = items.iter().map(|t| sioul_core::notices::mail_id_of(&t.card)).collect();
     // The phone's home screen card: the Porch as each coming time will show it (homecard.rs).
     crate::homecard::porch_seen(&items, &world.senders, world.store.as_ref());
     // What reaches you now (docs/attention.md): codes and what you sent
@@ -2926,6 +2935,8 @@ fn compute(shared: &Shared) -> Views {
     let opened = shared.opened_anyway.load(Ordering::Relaxed) || shared.reachable.load(Ordering::Relaxed);
     let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, opened || mode.quiet);
     porch.all = shared.opened_anyway.load(Ordering::Relaxed);
+    // Each message's notice as the words said on any device leave it: the Porch shows the new ones.
+    crate::notices::apply_mail(&mut porch, &notices);
     // After a pause, the Porch rests until the next admin hours, unless opened (docs/pauses.md).
     crate::pauses::porch_rests(&mut porch, opened, &now);
     if mode.quiet {
@@ -4350,6 +4361,8 @@ impl qobject::Sioul {
 
     fn flush(self: Pin<&mut Self>) {
         mail::flush(&self.shared());
+        // A text's Read waiting for its ten seconds: read in Texts now.
+        crate::notices::flush();
         securitykey::closing();
     }
 
@@ -6194,6 +6207,17 @@ impl qobject::Sioul {
         QString::from(&answer)
     }
 
+    fn notices(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let (answer, said) = crate::notices::call(&qt, &shared, &verb.to_string(), &json.to_string());
+        // A word said or taken back: the Porch sorted again, your other devices told at once.
+        if said {
+            show(&qt, &shared);
+            crate::share::exchange(&qt, &shared);
+        }
+        QString::from(&answer)
+    }
+
     // texts: SMS phase (b).
     fn texts(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
         let (answer, shared) = crate::texts::call(&verb.to_string(), &json.to_string());
@@ -6652,8 +6676,9 @@ impl qobject::Sioul {
         // message opened as a tie, then one not on this device (docs/client.md), "safe-area" the event form
         // with Android's system bars stood in for, below then beside (pictures alone), "mailbox" every
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
-        // mailbox and a folder timed and counted (make-demo.py's --bulk), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure"].contains(&steps.as_str()) && offline()) {
+        // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
+        // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -6907,7 +6932,7 @@ mod tests {
     /// message does not print, Open alone.
     #[test]
     fn a_code_s_notification_opens_its_message() {
-        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), address: "mid:code-1@example.org".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None };
+        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), address: "mid:code-1@example.org".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None, notice: sioul_core::notices::Notice::default() };
         assert_eq!(code_actions(&code).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["copy", "open"]);
         // Open names its message by its address, its file a hint (the unified mailbox's part 2).
         assert_eq!(code_opens(&code), ("mail", "mid:code-1@example.org".to_string(), "/stand-in/mail/cur/1.U1-1.sioul".to_string()));

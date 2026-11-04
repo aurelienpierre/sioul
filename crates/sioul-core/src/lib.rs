@@ -240,6 +240,7 @@ pub mod overlaps;
 pub mod own_time;
 pub mod pairs;
 pub mod notes;
+pub mod notices;
 pub mod payments;
 pub mod pgp;
 pub mod phonemsgs;
