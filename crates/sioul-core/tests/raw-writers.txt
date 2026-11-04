@@ -86,6 +86,9 @@ sioul-app/src/mail.rs	write_view	1	sioul_core::filelock::replace(path, text.as_b
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
 sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)
 
+# sioul-app/src/payments.rs: what the budgets show on this device (state): no item.
+sioul-app/src/payments.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
+
 # sioul-app/src/projects.rs: a time sheet exported where you choose: no item.
 sioul-app/src/projects.rs	export_time_csv	1	std::fs::write(&path, csv)
 
@@ -221,7 +224,6 @@ sioul-core/src/compose.rs	remove_own_copy_in	1	std::fs::remove_dir(folder)
 sioul-core/src/config.rs	migrate_sites_at_start	1	std::fs::copy(path, &copy)
 sioul-core/src/config.rs	write_document	1	std::fs::write(&temporary, text)
 sioul-core/src/config.rs	write_document	1	std::fs::rename(&temporary, path)
-sioul-core/src/config.rs	sioul_authserv_id	1	std::fs::write(&path, &id)
 sioul-core/src/config.rs	mark_stand_in	1	std::fs::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
 
 # sioul-core/src/contacts.rs: a contact's photo, in a cache of its own beside the contact: no item written.
@@ -345,6 +347,8 @@ sioul-core/src/mailnote.rs	save	1	std::fs::rename(&temporary, path)
 # sioul-core/src/movements.rs: Sioul's own record of your money movements (a file of its own, written beside then renamed under its lock): no item.
 sioul-core/src/movements.rs	edit	1	std::fs::write(&temporary, written)
 sioul-core/src/movements.rs	edit	1	std::fs::rename(&temporary, &path)
+# sioul-core/src/movements.rs: the movements read, kept for the next process (state): no item.
+sioul-core/src/movements.rs	keep	1	crate::filelock::replace(&path, &text)
 
 # sioul-core/src/needs.rs: meals, naps and sleep (a file of their own): no item.
 sioul-core/src/needs.rs	load	1	std::fs::copy(path, path.with_extension("toml.unreadable"))
@@ -505,6 +509,13 @@ sioul-core/src/vdir.rs	rename_collection	1	crate::filelock::replace(&collection.
 #   delete_collection: a collection deleted while it holds nothing (copies).
 sioul-core/src/vdir.rs	delete_collection	1	std::fs::remove_dir_all(&collection.dir)
 sioul-core/src/vdir.rs	delete_collection	1	std::fs::remove_file(&path)
+#   recolour_collection: a collection's colour (no item).
+sioul-core/src/vdir.rs	recolour_collection	1	crate::filelock::replace(&collection.dir.join("color"), colour.to_ascii_lowercase().as_bytes())
+sioul-core/src/vdir.rs	recolour_collection	1	std::fs::remove_file(collection.dir.join("color"))
+#   remove_collection: a collection removed by your press, a dated .ics copy of it kept first (copies).
+sioul-core/src/vdir.rs	remove_collection	1	crate::filelock::replace(&copy, collection_as_ics(collection).as_bytes())
+sioul-core/src/vdir.rs	remove_collection	1	std::fs::remove_dir_all(&collection.dir)
+sioul-core/src/vdir.rs	remove_collection	1	std::fs::remove_file(&path)
 #   prepare: a collection's name and colour (no item).
 sioul-core/src/vdir.rs	prepare	1	crate::filelock::replace(&dir.join("displayname"), name.as_bytes())
 sioul-core/src/vdir.rs	prepare	1	crate::filelock::replace(&dir.join("color"), color.as_bytes())
@@ -582,9 +593,12 @@ sioul-sync/src/dav.rs	save	1	std::fs::write(&path, toml::to_string(self).map_err
 #   forget_gone: a collection gone from its server (copies).
 sioul-sync/src/dav.rs	forget_gone	1	std::fs::remove_dir_all(&collection.dir)
 sioul-sync/src/dav.rs	forget_gone	1	std::fs::remove_file(collection.state_path())
-#   send_changes: a collection or an item deleted on its server: its copy here goes.
-sioul-sync/src/dav.rs	send_changes	1	std::fs::remove_dir_all(&collection.dir)
-sioul-sync/src/dav.rs	send_changes	1	std::fs::remove_file(&path)
+#   send_changes: a collection or an item deleted on its server, or an agenda removed or left from Your agendas (a dated copy kept first): its copy here goes.
+sioul-sync/src/dav.rs	send_changes	2	std::fs::remove_dir_all(&collection.dir)
+sioul-sync/src/dav.rs	send_changes	2	std::fs::remove_file(&path)
+#   google_changes: a Google calendar deleted or left through its Calendar API: its copy here goes.
+sioul-sync/src/dav.rs	google_changes	1	std::fs::remove_dir_all(&collection.dir)
+sioul-sync/src/dav.rs	google_changes	1	std::fs::remove_file(&path)
 #   pull: the server's word: an item gone there goes here (yours set aside first, when changed).
 sioul-sync/src/dav.rs	pull	1	std::fs::remove_file(&path)
 
@@ -766,3 +780,19 @@ sioul-sync/src/share.rs	remove_device_files	1	std::fs::remove_file(path)
 sioul-sync/src/verify.rs	verify_folder	1	std::fs::rename(&temporary, &path)
 sioul-sync/src/verify.rs	verify_folder	1	std::fs::File::options()
 sioul-sync/src/verify.rs	write_private	1	std::fs::OpenOptions::new()
+
+# sioul-core/src/config.rs: this installation's own authserv id for its checks (state): no item.
+sioul-core/src/config.rs	sioul_authserv_id	1	std::fs::OpenOptions::new()
+
+# sioul-core/src/mailcache.rs: a mail folder's index, its lines forgotten (cache): no item.
+sioul-core/src/mailcache.rs	forget	1	write_whole(&index, &header, &lines)
+
+# sioul-core/src/replies.rs: the phone's notifications to withdraw (state, never shared): no item.
+sioul-core/src/replies.rs	save	1	std::fs::remove_file(&path)
+sioul-core/src/replies.rs	save	1	crate::filelock::replace(&path, text.as_bytes())
+
+# sioul-sync/src/verify.rs: stored mail's own stamp checked again once, and its folders' state: no calendar item.
+sioul-sync/src/verify.rs	recheck_tagged_once	1	sioul_core::filelock::replace(&path, text.as_bytes())
+sioul-sync/src/verify.rs	write_in_place	1	std::fs::rename(&temporary, path)
+sioul-sync/src/verify.rs	write_in_place	1	std::fs::File::options()
+sioul-sync/src/verify.rs	write_in_place	1	std::fs::remove_file(&temporary)

@@ -165,11 +165,12 @@ Après ces cartes, le Porche montre ce qui est arrivé en sections, toutes dessi
 2. **Chaque projet**, puis votre adresse publique protégée.
 3. **De vous-même**.
 4. **De personnes que vous connaissez**.
-5. **De votre téléphone** : les appels refusés par Sioul, sur votre téléphone et sur vos autres appareils, chacun à un moment où son auteur peut vous joindre, avec **Répondre par SMS**, et **Rappeler** dans son menu ([Les appels](calls.md#afterwards-on-the-porch)) ; sur un ordinateur, les SMS et les notifications des autres applications que votre téléphone y envoie, avec **Répondre** là où cela marche ([Ce qui vous joint](notifications.md#messages-on-your-computers)).
-6. **Sites** : ce que les sites que vous gardez dans Sioul ont notifié, une ligne par site. Ouvrir le site lit ses nouvelles ([Les sites](sites.md)).
-7. **Argent** : les paiements de la semaine, chacun avec son jour et son montant, tels que le relevé de votre banque les dit ; **Ouvrir dans Budgets** ([Les budgets](budgets.md#the-bank-watch)). Pas pendant votre sommeil.
-8. **Courrier papier**, seulement quand une lettre attend ([plus bas](#paper-letters)). Pas pendant votre sommeil.
-9. **Rangé**, replié ; **Nouveaux expéditeurs** ; **Comptes moins importants**, replié ; **Retenu par votre filtre à indésirables**, replié ; **Mis de côté**, replié.
+5. **De votre téléphone** : les appels refusés par Sioul, sur votre téléphone et sur vos autres appareils, chacun à un moment où son auteur peut vous joindre, avec **Répondre par SMS**, et **Rappeler** dans son menu ([Les appels](calls.md#afterwards-on-the-porch)) ; dès que Sioul peut lire l’historique des appels du téléphone, les appels que vous avez manqués et ceux des vôtres qui n’ont pas abouti aussi ([Les appels](calls.md#calls-missed)) ; sur un ordinateur, les SMS et les notifications des autres applications que votre téléphone y envoie, avec **Répondre** là où cela marche ([Ce qui vous joint](notifications.md#messages-on-your-computers)).
+6. **Agenda** : deux de vos événements en même temps, ou trop proches pour le temps que vous gardez entre eux, quand le changement de quelqu’un d’autre l’a fait, chacun dit une fois à un moment où son agenda peut vous joindre : **Déplacer le mien** ouvre votre propre événement, **Garder les deux** ne le dit plus.
+7. **Sites** : ce que les sites que vous gardez dans Sioul ont notifié, une ligne par site. Ouvrir le site lit ses nouvelles ([Les sites](sites.md)).
+8. **Argent** : ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, chacun avec son jour, s’il est prévu, annoncé ou pas encore définitif, et son montant ; ce qui était attendu sans passer sur son compte est dit une fois. **Ouvrir dans Budgets** ([Les budgets](budgets.md)). L’argent du travail seulement à vos heures de travail, et rien pendant votre sommeil. Un paiement que votre compte ne tiendrait pas vient d’abord, quelle que soit l’heure, avec ce qui peut le couvrir.
+9. **Courrier papier**, seulement quand une lettre attend ([plus bas](#paper-letters)). Pas pendant votre sommeil.
+10. **Rangé**, replié ; **Nouveaux expéditeurs** ; **Comptes moins importants**, replié ; **Retenu par votre filtre à indésirables**, replié ; **Mis de côté**, replié.
 
 Chaque ligne dit qui, quoi et quand sur une ligne (deux sur un téléphone), avec son action principale : **Ouvrir**, **Répondre**, **Répondre par SMS**, **Voir le scan**, **Ouvrir dans Budgets**. À côté, deux boutons discrets :
 
@@ -221,6 +222,7 @@ Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche, et la le
 
 - **Projets montrés ici** : quels projets ont une section sur le Porche, un par ligne. Les courriels des autres restent sur leur page dans Projets.
 - **Appels ▸ Appels refusés par vos téléphones** : activé sauf si vous l’éteignez, les appels refusés par vos téléphones attendent aussi sur le Porche de cet appareil ; désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun ([Les appels](calls.md#on-your-computers)).
+- **Appels ▸ Une tâche pour rappeler**, **Une tâche pour réessayer** : actives sauf si vous les éteignez, un appel manqué d’une personne de vos carnets d’adresses fait une tâche « Rappeler … », un appel de votre part qui ne l’a pas jointe « Réessayer d’appeler … » ; **Un appel tombé sur sa messagerie** : 90 secondes, sauf si vous choisissez 60 ou 120 ([Les appels](calls.md#calls-missed)).
 - **Lecture du texte** : la police, sa taille et l’interligne d’un courriel ouvert ici, les mêmes que dans le ⚙ de la page Courriels.
 - **Comment les courriels sont triés** : chaque file, dans l’ordre du tri, avec ses règles ; les expéditeurs que vous connaissez ; les mots qui rendent un expéditeur automatique (no-reply…).
 

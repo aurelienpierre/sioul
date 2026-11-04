@@ -4,7 +4,8 @@
 // Settings ▸ This phone ▸ Calls (docs/android.md, "Calls"): what Sioul does
 // with calls, what it never does, what always rings; then this phone: Sioul
 // as Android's "Caller ID & spam app" (Android 10 and later, asked in
-// Android's own dialog), reading the contacts; the call screening, apart from
+// Android's own dialog), reading the contacts, reading the call history (the
+// calls missed, those of yours that did not reach them); the call screening, apart from
 // do-not-disturb (its switch, its hours, what becomes of each kind of number
 // nobody knows: calls.rs's `screening_rows`); where a declined call goes (the
 // operator's voicemail, read with the codes the phone app dials), and what
@@ -23,7 +24,7 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    // calls.rs's `setup`: {android, state: {api, available, held, contacts, table, emergency_at}, moment,
+    // calls.rs's `setup`: {android, state: {api, available, held, contacts, history, table, emergency_at}, moment,
     // screening: {title, intro, rows, hears, expecting}}.
     property var shown: ({ android: false, state: null, moment: {}, screening: {} })
     readonly property var phone: setup.shown.state || ({})
@@ -136,6 +137,17 @@ ColumnLayout {
         visible: setup.held && setup.phone.contacts !== true
         text: setup.sioul.text("calls-setup-contacts-allow")
         onClicked: setup.act("allow-contacts", {})
+    }
+    // The call history, read once allowed: the calls you missed, those of yours that did
+    // not reach them, and their tasks (Porch ⚙ ▸ Calls), with or without the screening.
+    Said {
+        visible: setup.shown.android === true && setup.phone.history !== true
+        text: setup.sioul.text("calls-setup-history-off")
+    }
+    Button {
+        visible: setup.shown.android === true && setup.phone.history !== true
+        text: setup.sioul.text("calls-setup-history-allow")
+        onClicked: setup.act("ask-history", {})
     }
     Note {
         visible: setup.held

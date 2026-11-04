@@ -158,7 +158,7 @@ Panel {
                 required property var modelData
                 …
                 Label {
-                    text: page.sioul.textArgs("overlap-today", JSON.stringify({ first: …, second: … }))
+                    text: page.sioul.textArgs("moved-ask", JSON.stringify({ payee: …, budget: … }))
                 }
 ```
 

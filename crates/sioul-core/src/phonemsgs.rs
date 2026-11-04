@@ -556,6 +556,53 @@ pub fn read_file(path: &Path) -> Vec<Line> {
 /// is written again with that time (`carry_into`).
 pub const EARLIER_MS: i64 = 60_000;
 
+/// Whether a notification's going reads its messages on every device, by
+/// the reason Android gives (`NotificationListenerService
+/// .onNotificationRemoved`, Android 8 and later): you opened it
+/// (`REASON_CLICK`, 1), swiped it away (`REASON_CANCEL`, 2;
+/// `REASON_CANCEL_ALL`, 3), or its app withdrew it, as an SMS app does once
+/// the conversation is read (`REASON_APP_CANCEL`, 8; `REASON_APP_CANCEL_ALL`,
+/// 9; `REASON_GROUP_SUMMARY_CANCELED`, 12). Never Sioul's own taking away
+/// (`REASON_LISTENER_CANCEL`, 10, and its `_ALL`, 11: what a computer read
+/// already), a snooze (18) or a timeout (19), nor what Android did for its
+/// own reasons (a package suspended or banned, a channel removed, a profile
+/// turned off, data cleared…); a reason Sioul does not know reads nothing.
+pub fn read_by_removal(reason: i64) -> bool {
+    matches!(reason, 1 | 2 | 3 | 8 | 9 | 12)
+}
+
+/// The SMS app's notifications to take away from the phone
+/// (`replies::Withdraw`): of this phone's own lines (`own`, from `here`),
+/// the SMS app's of one person's conversation, from a notification its live
+/// lines (`live`) do not say gone, whose conversation was read up to them
+/// (`read_upto`, by conversation: Sioul's Texts on any device; a line
+/// within `texts::FOLD_MS` of that moment counts, a notification and its
+/// text being seconds apart), or whose own notice was said Read on any
+/// device (`said_read`: a computer's Mark read). Their names, each once,
+/// sorted.
+pub fn withdrawn(own: &[Line], here: &str, live: &BTreeMap<(String, String), crate::replies::Live>, read_upto: &dyn Fn(&str) -> Option<i64>, said_read: &dyn Fn(&Line) -> bool) -> Vec<String> {
+    let mut names: Vec<String> = own
+        .iter()
+        .filter(|l| l.device == here && l.kind == "text" && !l.group && !l.notice.is_empty() && !l.key.is_empty())
+        .filter(|l| live.get(&(here.to_string(), l.notice.clone())).is_none_or(|said| said.gone == 0))
+        .filter(|l| read_upto(&crate::texts::conversation_id(std::slice::from_ref(&l.key))).is_some_and(|upto| l.at <= upto + crate::texts::FOLD_MS) || said_read(l))
+        .map(|l| l.notice.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// The messages of this phone's own lines (`own`, its log's lines) that came
+/// by the notification its phone names `notice` (`replies::notice`), by
+/// their ids: what its going reads (`read_by_removal`).
+pub fn of_notification<'a>(own: &'a [Line], notice: &str) -> Vec<&'a Line> {
+    if notice.is_empty() {
+        return Vec::new();
+    }
+    own.iter().filter(|l| l.notice == notice).collect()
+}
+
 /// Every phone's log under `root` (this folder), each line with its phone
 /// (`device`), oldest first: never a blocked sender's, never one kept past
 /// `KEPT_DAYS` before `now_ms` (a phone that stopped sharing never takes its
@@ -954,6 +1001,52 @@ mod tests {
 
     fn person(name: &str, uri: &str) -> Person {
         Person { name: name.into(), key: uri.into(), uri: uri.into(), ..Person::default() }
+    }
+
+    /// A notification you opened, swiped away, or its app withdrew reads
+    /// its messages; Sioul's own taking away, a snooze, a timeout, what
+    /// Android did for itself, or a reason not known, nothing. Its messages
+    /// are those of the lines that came by it.
+    #[test]
+    fn a_notification_gone_reads_its_messages_by_why() {
+        for read in [1, 2, 3, 8, 9, 12] {
+            assert!(read_by_removal(read), "{read}");
+        }
+        for not in [10, 11, 18, 19, 4, 5, 6, 7, 13, 14, 15, 16, 17, 20, 21, 22, 23, -1, 99] {
+            assert!(!read_by_removal(not), "{not}");
+        }
+        let line = |id: &str, notice: &str| Line { id: id.into(), notice: notice.into(), ..Line::default() };
+        let own = [line("1-a", "n1"), line("2-b", "n2"), line("3-c", "n1"), line("4-d", "")];
+        assert_eq!(of_notification(&own, "n1").iter().map(|l| l.id.as_str()).collect::<Vec<_>>(), ["1-a", "3-c"]);
+        assert!(of_notification(&own, "").is_empty(), "a line written before notifications had names is none of them");
+    }
+
+    /// The SMS app's notifications taken away once their texts were read
+    /// elsewhere: its conversation read in Sioul's Texts up to them (a few
+    /// seconds apart counting), or its own notice Read; never one gone
+    /// already, another app's, a group's, another phone's, or one not read.
+    #[test]
+    fn the_sms_app_s_notifications_of_texts_read_elsewhere_are_taken_away() {
+        use crate::replies::Live;
+        let text = |id: &str, notice: &str, key: &str, at: i64| Line { id: id.into(), notice: notice.into(), key: key.into(), at, kind: "text".into(), device: "phone".into(), ..Line::default() };
+        let own = vec![
+            text("1-a", "n-read", "+33199001234", NOW),
+            text("2-b", "n-read", "+33199001234", NOW + 1_000),
+            text("3-c", "n-later", "+33199001234", NOW + 3_600_000),
+            text("4-d", "n-said", "+33465710042", NOW),
+            text("5-e", "n-gone", "+33199001234", NOW - 1_000),
+            Line { kind: "chat".into(), ..text("6-f", "n-chat", "+33199001234", NOW) },
+            Line { group: true, ..text("7-g", "n-group", "+33199001234", NOW) },
+            Line { device: "other-phone".into(), ..text("8-h", "n-other", "+33199001234", NOW) },
+        ];
+        let mut live = BTreeMap::new();
+        live.insert(("phone".to_string(), "n-gone".to_string()), Live { notice: "n-gone".into(), gone: NOW, at: NOW, ..Live::default() });
+        live.insert(("phone".to_string(), "n-read".to_string()), Live { notice: "n-read".into(), at: NOW, ..Live::default() });
+        // Read in Texts up to a few seconds before the second text's notification.
+        let read_upto = |conversation: &str| (conversation == "+33199001234").then_some(NOW - 30_000);
+        let said_read = |l: &Line| l.id == "4-d";
+        assert_eq!(withdrawn(&own, "phone", &live, &read_upto, &said_read), ["n-read", "n-said"]);
+        assert!(withdrawn(&own, "phone", &live, &|_| None, &|_| false).is_empty(), "nothing read: nothing taken away");
     }
 
     /// The phone's SMS app's notification of a conversation: its messages,

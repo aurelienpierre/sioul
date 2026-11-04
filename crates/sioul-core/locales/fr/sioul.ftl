@@ -168,6 +168,10 @@ date-short = { $weekday } { $day ->
         [1] 1er
        *[other] { $day }
     } { $month } { $time }
+date-short-day = { $weekday } { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month }
 weekday-1 = lundi
     .short = lun.
 weekday-2 = mardi
@@ -2885,13 +2889,25 @@ ui-section-help = Ce que contient cette section
 ui-section-folded = repliée
 ui-section-unfolded = dépliée
 porch-about-right-now = Les codes, mots de passe et liens que vous avez demandés à un site : ici tout de suite, quelle que soit l’heure.
-porch-about-phone = Ce que votre téléphone a apporté : les appels qu’il a refusés, ses SMS et les notifications des autres applications que vous avez choisi de voir ici, chacun quand son expéditeur peut vous joindre. Sioul ne voit pas votre messagerie : quelqu’un qui a appelé a peut-être laissé un message. Écarter en retire un sur chacun de vos appareils ; Marquer comme lu marque aussi un SMS comme lu sur la page SMS.
+porch-about-phone = Ce que votre téléphone a apporté : les appels qu’il a refusés, les appels que vous avez manqués et ceux des vôtres qui n’ont pas abouti, ses SMS et les notifications des autres applications que vous avez choisi de voir ici, chacun quand son expéditeur peut vous joindre. Sioul ne voit pas votre messagerie : quelqu’un qui a appelé a peut-être laissé un message. Écarter en retire un sur chacun de vos appareils ; Marquer comme lu marque aussi un SMS comme lu sur la page SMS.
 porch-sites = Sites
 porch-about-sites = Ce que vos sites ont signalé pendant votre absence, une ligne par site. Ouvrir un site lit ses nouvelles.
 porch-money = Argent
-porch-about-money = Les paiements de la semaine, tels que Budgets les lit dans le relevé de votre banque.
+porch-about-money = Ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, ce que votre banque retient encore sur une carte, et ce qui était attendu sans passer sur son compte. L’argent du travail seulement aux heures de travail.
 porch-open-budgets = Ouvrir dans Budgets
+# The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
+due-state-planned = Prévu
+due-state-announced = Annoncé
+due-state-not-final = Pas encore définitif
+due-state-not-seen = Pas vu sur son compte
+due-state-done = Fait
+due-about = environ { $amount }
 porch-about-letters = Le courrier papier lu sur ses scans, jusqu’à ce que vous le rangiez.
+porch-agenda = Agenda
+porch-about-agenda = Deux de vos événements en même temps, ou plus proches que le temps que vous gardez entre eux, quand le changement de quelqu’un d’autre l’a fait : chacun dit une fois, à un moment où son agenda peut vous joindre. Garder les deux ne le dit plus ; Déplacer le mien ouvre votre propre événement pour le déplacer.
+porch-conflict-during = { $span }, avec d’autres événements pendant celui-ci
+porch-shortfall-what = Un paiement qu’il ne tiendrait pas
+letters-its-page = Sa page
 rule-order = Chaque courriel va dans la première file qui le prend, dans cet ordre : mis de côté, hostile, ce que votre propre filtre à indésirables signale, codes, projets, ce que vous vous envoyez, votre adresse publique, adresses moins importantes, infolettres, quelqu’un de nouveau, personnes que vous connaissez.
 rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un courriel de quelqu’un de nouveau, les y ajoute.
 rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, comme un expéditeur qu’un domaine seul nomme sur une liste, sauf si un projet ou la règle des infolettres prend le courriel d’abord.
@@ -2957,7 +2973,7 @@ ui-google-own-key = Utiliser une clé Google à moi
 ui-google-steps = Faire votre clé Google (une fois, un quart d’heure environ)
 ui-google-steps-text =
     1. Sur [console.cloud.google.com](https://console.cloud.google.com), créez un projet nommé Sioul.
-    2. Dans *API et services → Bibliothèque*, activez **CalDAV API**, **CardDAV API** et **Google Tasks API**.
+    2. Dans *API et services → Bibliothèque*, activez **CalDAV API**, **CardDAV API**, **Google Tasks API** et **Google Calendar API** (qui crée, colore et partage les agendas).
     3. Dans *Google Auth Platform* : *Branding*, un nom et votre adresse ; *Audience*, Externe, et vous-même comme utilisateur test ; *Accès aux données*, les champs d’application `…/auth/calendar`, `…/auth/carddav` et `…/auth/tasks`.
     4. *Clients → Créer un client → Application de bureau*. Copiez son identifiant et son secret tout de suite : Google ne montre le secret qu’une fois.
     5. *Audience → Publier l’application*. Si elle reste en test, Google coupe l’accès tous les sept jours.
@@ -2995,8 +3011,8 @@ google-mail-no-key = Aucune clé Google à vous n’est gardée sur cet appareil
 google-mail-unticked = Google n’a donné aucun accès à vos courriels : sur la page de Google, laissez cochée la case de l’accès à Gmail. Rien n’a changé.
 sync-error-google-again = { $account } : Google demande de vous reconnecter.
 sync-error-google-testing = { $account } : Google a mis fin à la connexion au bout de sept jours, comme il le fait tant que votre projet Google est en test. Dans Google Cloud : Google Auth Platform ▸ Audience ▸ Publier l’application ; puis reconnectez-vous : elle dure ensuite.
-google-no-collections = Google ne crée ni agenda ni carnet d’adresses depuis un autre programme : créez-le sur les pages de Google.
-google-fixed-collection = Google ne renomme et ne supprime ses agendas et carnets d’adresses que sur ses propres pages.
+google-no-collections = Google ne crée pas de carnet d’adresses depuis un autre programme : créez-le sur les pages de Google. Un agenda se crée dans Agenda ⚙ ▸ Vos agendas.
+google-fixed-collection = Google ne renomme et ne supprime ses carnets d’adresses et listes de tâches que sur ses propres pages.
 google-tasks-greyed = Google Tasks ne garde pas ceci.
 task-limited = Cette liste est sur Google Tasks : ce que Google ne garde pas est grisé (un jour de début, une durée, un projet, un type, les heures de bureau, des catégories, ce que ça coûte, la répétition, l’attente d’une autre tâche, les étapes d’étapes).
 
@@ -3793,15 +3809,9 @@ task-rest-offer = Après quelque chose de lourd, quelque chose qui recharge :
 task-mode-day = La journée
 day-all-day = Toute la journée : { $what }
 day-margin = Autour : { $what }
-overlap-today = Aujourd’hui, deux événements en même temps : { $first } et { $second }.
 overlap-day = { $day }, deux événements en même temps : { $first } et { $second }.
 overlap-open = Ouvrir « { $title } »
-overlap-set-aside = Ne plus en parler
 overlap-during = Pendant { $title } ({ $span }) : { $count ->
-        [one] un autre événement
-       *[other] { $count } autres événements
-    }
-overlap-during-today = Aujourd’hui, pendant { $title } ({ $span }) : { $count ->
         [one] un autre événement
        *[other] { $count } autres événements
     }
@@ -3836,6 +3846,90 @@ agendas-group-shared = Partagés avec vous
 agendas-kept-hidden = gardé caché
 agenda-keep-hidden = Garder caché sur cet appareil
 agenda-show-again = Montrer de nouveau
+# Agendas sur leurs serveurs (plusieurs agendas, partie 5) : créés, renommés, recolorés, supprimés, partagés.
+agenda-server-here = cet ordinateur
+agenda-new = Nouvel agenda…
+agenda-new-account = Compte
+agenda-new-name = Son nom
+agenda-new-events = Événements
+agenda-new-tasks = Tâches
+agenda-new-make = Le créer
+agenda-new-needs-name = Un nouvel agenda a besoin d’un nom.
+agenda-new-no-account = Ce compte ne tient pas d’agendas : choisissez-en un pour les agendas, ou cet ordinateur.
+agenda-colour = Couleur
+agenda-not-yours-to-change = Cet agenda n’est pas à vous de le changer : il est à quelqu’un d’autre, ou son serveur vous laisse seulement le lire.
+agenda-renamed = Renommé « { $name } ».
+agenda-recoloured = Couleur changée.
+agenda-remove = Supprimer…
+agenda-stop-showing = Ne plus l’afficher…
+agenda-remove-confirm = Supprimer
+agenda-leave-confirm = Ne plus l’afficher
+agenda-keep = Le garder
+agenda-remove-question = Supprimer « { $name } », { $count ->
+        [one] { $what ->
+            [tasks] une tâche
+           *[events] un événement
+        }
+       *[other] { $count } { $what ->
+            [tasks] tâches
+           *[events] événements
+        }
+    }, de { $server } ?
+agenda-remove-google-final = Google ne garde aucune copie d’un agenda supprimé : c’est définitif.
+agenda-remove-google-primary = Google garde votre agenda principal : il ne peut pas être supprimé, seulement renommé et recoloré.
+agenda-remove-nextcloud-trash = Nextcloud le garde dans sa corbeille 30 jours, sauf si son administrateur a choisi une autre durée.
+agenda-remove-server-may-keep = Son serveur peut le garder un temps, ou pas du tout. Sioul en garde d’abord une copie.
+agenda-removed = « { $name } » supprimé. Une copie est dans { $copy }.
+agenda-leave-question = Ne plus afficher « { $name } » ? Il reste à la personne à qui il est, qui peut le partager de nouveau.
+agenda-leave-note = Sioul quitte le partage là où son serveur le permet ; ailleurs, il n’est plus affiché ici.
+agenda-left = « { $name } » n’est plus affiché.
+agenda-hide-question = Ne plus afficher « { $name } » sur cet appareil ?
+agenda-hide-note = Son serveur ne dit pas qu’il est à quelqu’un d’autre, donc rien n’est envoyé : il y reste tel quel, et Montrer de nouveau, sur sa ligne, le ramène ici.
+agenda-hidden-here = « { $name } » est caché sur cet appareil ; il reste tel quel sur son serveur.
+agenda-sharing = Qui le voit
+agenda-sharing-reading = Question posée à son serveur…
+agenda-sharing-here = Cet agenda est sur cet ordinateur seulement : le partage de Sioul le porte à vos appareils.
+agenda-sharing-not-yet = Cet agenda n’est pas encore sur son serveur : sa prochaine synchronisation le crée.
+agenda-google-api-off = Google a refusé : l’API Google Calendar est désactivée dans le projet Google de votre clé. Activez-la sur console.cloud.google.com, API et services → Bibliothèque, puis réessayez.
+agenda-sharing-none = Ce serveur ne partage pas depuis Sioul.
+agenda-sharing-only-you = Vous seulement.
+agenda-sharing-the-other-parent = { $who }, l’autre parent,
+agenda-sharing-write = { $who } peut le modifier.
+agenda-sharing-read = { $who } peut le lire.
+agenda-sharing-busy = { $who } voit quand vous êtes pris·e.
+agenda-sharing-link = Toute personne qui a le lien peut le lire.
+agenda-sharing-nextcloud-note = Des personnes et des groupes de ce Nextcloud seulement ; une personne ailleurs passe par le lien. Les personnes avec qui vous le partagez, et le lien, ne voient jamais un événement privé, et celles qui le lisent seulement voient un confidentiel comme « Occupé », son heure seule.
+agenda-sharing-google-note = Qui le lit voit un événement privé sans ses détails.
+agenda-share-with = Un nom sur ce serveur, ou une adresse
+agenda-share-read = Peut lire
+agenda-share-write = Peut modifier
+agenda-share-busy = Voit quand c’est pris
+agenda-share-group = Un groupe
+agenda-share = Partager
+agenda-unshare = Ne plus partager avec { $who }
+agenda-unshared = Plus partagé avec { $who }.
+agenda-share-google-address = Donnez une adresse électronique : Google partage avec un compte.
+agenda-share-elsewhere = Une personne sur un autre serveur : activez le lien, et envoyez-le-lui.
+agenda-link-on = Un lien en lecture seule
+agenda-link-copy = Copier le lien
+agenda-link-google-sees = Toute personne qui a le lien en voit chaque événement, les privés sans leurs détails.
+agenda-link-nextcloud-sees = Toute personne qui a le lien en voit les événements, leurs titres, heures et lieux ; un confidentiel comme « Occupé », un privé pas du tout.
+availability-title = Partager mes disponibilités…
+availability-from = Depuis
+availability-with = Avec : un nom sur ce serveur, ou une adresse sur Google
+availability-link = Par un lien en lecture seule plutôt
+availability-word = Un mot pour ses plages
+availability-share = Partager
+availability-stop = Arrêter le partage
+availability-calendar = Heures prises
+availability-busy = Occupé
+availability-by-link = toute personne qui a son lien
+availability-shared = Vos heures prises sont partagées avec { $who }.
+availability-pending = Vos heures prises seront partagées avec { $who } dès que leur agenda sera sur son serveur.
+availability-already = Vos disponibilités sont déjà partagées : arrêtez d’abord ce partage.
+availability-pick = Choisissez les agendas d’où viennent vos heures prises.
+availability-google-own = Choisissez des agendas de ce compte Google : Google partage les heures prises de ses propres agendas.
+availability-stopped = Vos heures prises ne sont plus partagées.
 # Événements des enfants (plusieurs agendas, partie 3) : qui s’en charge, les doublures, les invitations.
 holder-title = Qui s’en charge
 holder-kind = Type
@@ -4258,6 +4352,13 @@ set-letters-inbox-help = Un dossier où vous, un scanner ou une personne qui vou
 set-calls-group = Appels
 set-porch-calls = Appels refusés par vos téléphones
 set-porch-calls-help = Listés sur le Porche de chacun de vos appareils, chacun à un moment où cette personne peut vous joindre, jamais comptés. Désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun.
+set-porch-call-back = Une tâche pour rappeler
+set-porch-call-back-help = Un appel manqué d’une personne de vos carnets d’adresses fait une tâche, « Rappeler » et son nom, pour ce jour-là, sans rappel. Un autre de ses appels y ajoute son heure ; elle se fait d’elle-même une fois que vous vous êtes parlé.
+set-porch-call-again = Une tâche pour réessayer
+set-porch-call-again-help = Un appel de votre part à une personne de vos carnets d’adresses qui n’a pas abouti, sans réponse ou plus court que la durée ci-dessous, fait une tâche, « Réessayer d’appeler » et son nom, pour ce jour-là, sans rappel. Elle se fait d’elle-même une fois que vous vous êtes parlé.
+set-porch-voicemail-seconds = Un appel tombé sur sa messagerie
+set-porch-voicemail-seconds-help = Un appel de votre part plus court que cela est sans doute tombé sur sa messagerie, pas sur la personne. Un appel de votre part aussi long ou plus, ou tout appel de sa part auquel vous avez répondu, est un appel où vous vous êtes parlé : il clôt sa tâche.
+set-voicemail-seconds = { $seconds } secondes
 password-show = Afficher le mot de passe
 password-hide = Masquer le mot de passe
 set-passwords-shown = Afficher les mots de passe pendant la saisie
@@ -5321,6 +5422,22 @@ calls-open-blocked = Numéros bloqués d’Android (appels et SMS)
 calls-listen-gone = Le son de ce message n’est plus dans vos courriels.
 calls-copy = Copier le numéro
 calls-copied = Numéro copié.
+calls-missed-row = Appel manqué à { $time }
+calls-unreached-row = Votre appel de { $time } est resté sans réponse
+calls-unreached-short-row = Votre appel de { $time } a duré { $length } : sa messagerie, peut-être
+calls-also-at = aussi à { $time }
+calls-history-on = { $what }, sur { $phone }
+calls-call-again = Rappeler
+calls-text-them = Lui écrire
+call-task-back = Rappeler { $name }
+call-task-again = Réessayer d’appeler { $name }
+call-task-at = à { $time }
+call-task-on = le { $day } à { $time }
+call-task-missed = Appel manqué { $when }
+call-task-unreached = Votre appel { $when } n’a pas abouti
+call-task-also = aussi { $when }
+call-task-you-called = vous avez appelé { $when }
+call-task-they-called = appel manqué { $when }
 calls-block-ask-elsewhere = Les appels du { $number } iront sur votre messagerie à chaque fois, sans être listés. Ses SMS arrivent encore : les numéros bloqués de votre téléphone les arrêtent.
 calls-setup-what-title = Ce que Sioul fait des appels
 calls-setup-what = Quand quelqu’un qui ne peut pas vous joindre maintenant appelle, Sioul refuse l’appel simplement, comme vous le feriez à la main : votre opérateur l’envoie sur votre messagerie. Rien ne sonne, rien ne s’affiche pendant ce temps. Ensuite, le Porche liste qui a appelé, à un moment où ces personnes peuvent vous joindre, en proposant d’abord de répondre par écrit.
@@ -5340,6 +5457,8 @@ calls-setup-ask-help = Android demande : « Définir Sioul comme appli numé
 calls-setup-replaces = Une seule application filtre les appels à la fois : si votre application Téléphone filtre elle-même le spam, Sioul prend sa place.
 calls-setup-contacts-off = Sioul ne peut pas lire les contacts de ce téléphone : Android fait alors sonner leurs appels sans demander à Sioul. Sioul filtre les autres.
 calls-setup-contacts-allow = Autoriser la lecture des contacts
+calls-setup-history-off = Sioul ne lit pas l’historique des appels de ce téléphone : il ne peut dire ni quels appels vous avez manqués, ni lesquels des vôtres n’ont pas abouti, ni en faire des tâches.
+calls-setup-history-allow = Laisser Sioul lire l’historique des appels
 calls-setup-android-block = Le réglage « Bloquer les numéros absents des contacts » de votre application Téléphone agit avant que Sioul soit consulté : tant qu’il est activé, un deuxième appel ou « J’attends un appel » ne peut rien pour ces numéros.
 calls-setup-change = Applications par défaut d’Android
 calls-setup-change-help = Pour arrêter, choisissez-y « Aucune » comme appli numéro de l’appelant et spam.
@@ -6733,7 +6852,6 @@ zone-other = Un autre fuseau horaire…
 event-clock = Fuseau horaire
 event-clock-local = Heure locale ({ $zone })
 event-clock-utc = UTC
-overlap-today-close = Aujourd’hui, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-source-after = gardées après le premier (son Après)
 overlap-source-before = gardées avant le second (son Avant)

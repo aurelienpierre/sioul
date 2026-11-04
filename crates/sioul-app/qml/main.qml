@@ -1323,6 +1323,12 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-agendas.png"),
+                // One agenda's line open (part 5): its name, colour, removal and who sees it.
+                () => agendaPage.openAgendaLine("cloud/personal"),
+                () => {},
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-agenda-line.png"),
+                () => agendaPage.openAgendaLine("cloud/personal"),
                 () => agendaPage.openSettings(true, "conflicts"),
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-conflicts.png"),

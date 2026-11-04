@@ -11930,6 +11930,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A phone's call history (`calls::carry_history`), a folder inside its
+    /// log's, travels in the log's own store, which every Sioul carries:
+    /// the desk reads the call as a missed one, while the log's own reader,
+    /// an older Sioul's, passes over the folder; sealed in the folder.
+    #[test]
+    fn a_phone_s_call_history_travels_in_the_log_s_own_store() {
+        use sioul_core::calls;
+        let base = scratch("calls-history");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let own = calls::own_file(&calls_of(&phone), calls::HISTORY_FOLDER, &phone.id);
+        let missed = calls::HistoryRow { at: NOW - 3_600_000, kind: 3, number: "+33199001234".into(), presentation: 1, ..calls::HistoryRow::default() };
+        assert_eq!(calls::carry_history(&own, &[missed], None, &|_| false, NOW).unwrap().len(), 1);
+        phone.exchange(&folder, &key, NOW);
+        let came = desk.exchange(&folder, &key, NOW + MINUTE);
+        assert!(came.written.contains(CALLS_LOG), "the log's store: {came:?}");
+        let on_desk = calls::read_histories(&calls_of(&desk), &|_| false, NOW + MINUTE);
+        assert_eq!(on_desk.iter().map(|l| (l.device.as_str(), l.key.as_str(), l.kind.as_str(), l.out)).collect::<Vec<_>>(), [(phone.id.as_str(), "+33199001234", "missed", false)]);
+        assert!(calls::read_logs(&calls_of(&desk), NOW + MINUTE).is_empty(), "the log's own reader passes over the folder");
+        let every = stores_of(&Config::default(), &desk.roots, &|_| true);
+        assert_eq!(locate(&every, &format!("{CALLS_LOG}history/{}.jsonl", phone.id)).map(|(s, _)| (s.name.clone(), s.part)), Some((CALLS_LOG.to_string(), "calls")));
+        let mut files = Vec::new();
+        list_files(&folder, &folder, &[], &mut files);
+        for (name, path) in &files {
+            let bytes = std::fs::read(path).unwrap();
+            assert!(!bytes.windows(9).any(|w| w == b"199001234") && !bytes.windows(6).any(|w| w == b"missed"), "{name}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// Two phones and a desk: each phone's log its own, every device reading both.
     #[test]
     fn several_phones_each_keep_their_own_log() {

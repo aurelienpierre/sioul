@@ -1572,6 +1572,8 @@ fn heavy_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Re
             changed = import_step(&Phone, &files, seal, vault, region, now, false);
         }
         changed |= look_again(&Phone, &files, seal, now);
+        // Read in the phone's SMS app: read in Sioul's Texts and on the Porch of every device.
+        changed |= read_on_phone(&Phone, here, seal, texts_changed, now);
         // A conversation deleted in Sioul on a computer: its texts leave this log, every copy following.
         match rules::drop_hidden(&files.log, &rules::Marks::read_all(&root(), seal), seal) {
             Ok(gone) => changed |= gone > 0,
@@ -1579,6 +1581,95 @@ fn heavy_step(here: &str, seal: &Seal, vault: &Vault, region: Option<&phones::Re
         }
         changed
     })
+}
+
+/// When the phone's SMS app's reads were last asked of Android, in this process (ms).
+static READS_ASKED: Mutex<i64> = Mutex::new(0);
+/// The SMS app's reads are asked at least this often, nothing said changed (ms).
+const READS_EVERY_MS: i64 = 3_600_000;
+
+/// The texts the phone's own SMS app read (docs/texts.md, "Read on the
+/// phone"): at a step after the phone's texts changed (Android's provider,
+/// watched, says a conversation read there too), and once an hour all the
+/// same, the provider's `read` column asked for this phone's own texts in
+/// that no device read yet (`texts::unread`: the last `UNREAD_DAYS`), a few
+/// rows by their ids (`Texts.flags`). Each conversation read there up to a
+/// text is read up to it in Sioul's Texts on every device (`TextMark`), its
+/// texts' notices Read on every device's Porch, and the phone's
+/// notifications of it with them (`phonemsgs::seen_for`), as opening it in
+/// Texts does. Whether a mark was written, to share now.
+fn read_on_phone(android: &dyn Android, here: &str, seal: &Seal, changed: bool, now: i64) -> bool {
+    let due = READS_ASKED.lock().is_ok_and(|mut last| {
+        let due = changed || now - *last >= READS_EVERY_MS;
+        if due {
+            *last = now;
+        }
+        due
+    });
+    if !due {
+        return false;
+    }
+    let (texts, _, _) = records(here, seal);
+    let own: Vec<Text> = texts.iter().filter(|t| t.device == here).cloned().collect();
+    let marks = rules::Marks::read_all(&root(), seal);
+    let unread = rules::unread(&own, &marks, now);
+    let states = crate::notices::states(&|_, _| None);
+    let notice_of = |t: &Text| sioul_core::notices::text_id(&t.device, &t.thread, &t.id);
+    let waiting: Vec<&Text> = unread.values().flatten().copied().filter(|t| !states.of(&notice_of(t), sioul_core::notices::State::default()).mark.settled()).collect();
+    let rows = |table: &str| waiting.iter().filter_map(|t| provider_row(t)).filter(|(t, _)| *t == table).map(|(_, id)| id).collect::<Vec<i64>>();
+    let (sms, mms) = (rows("sms"), rows("mms"));
+    if sms.is_empty() && mms.is_empty() {
+        return false;
+    }
+    let answer = android.ask("texts-flags", &json!({ "sms_ids": sms, "mms_ids": mms }));
+    if answer["allowed"] != true {
+        return false;
+    }
+    let read = read_there(&waiting, &answer);
+    if read.is_empty() {
+        return false;
+    }
+    let mut written = false;
+    for mark in marks_read_up_to(&read, now) {
+        match rules::write_mark(&root(), here, &mark, seal) {
+            Ok(_) => written = true,
+            Err(e) => eprintln!("sioul: texts: {e}"),
+        }
+        crate::phonemsgs::seen_for(&mark.conversation.split(',').map(str::to_string).collect::<Vec<_>>());
+    }
+    written |= crate::notices::say_quietly(sioul_core::notices::Kind::Text, read.iter().map(|t| notice_of(t)).collect(), sioul_core::notices::Mark::Read);
+    written
+}
+
+/// A text's row in the phone's provider, by the name of its line
+/// (`sms-<_id>@<date>`, `mms-<_id>@<date>`, or without its date as written
+/// before 16 October 2026): its table and its id.
+fn provider_row(t: &Text) -> Option<(&'static str, i64)> {
+    ["sms", "mms"].into_iter().find_map(|table| t.id.strip_prefix(table).and_then(|rest| rest.strip_prefix('-')).and_then(|rest| rest.split('@').next()).and_then(|id| id.parse::<i64>().ok()).map(|id| (table, id)))
+}
+
+/// Of `waiting`, the texts the provider says read (`Texts.flags`' answer:
+/// {sms: {id: 1 or 0}, mms: {…}}); a row it did not answer for is not read.
+fn read_there<'a>(waiting: &[&'a Text], answer: &Value) -> Vec<&'a Text> {
+    waiting.iter().copied().filter(|t| provider_row(t).is_some_and(|(table, id)| answer[table][id.to_string()].as_i64() == Some(1))).collect()
+}
+
+/// Each conversation of `read` read up to its newest text read there, as a
+/// mark written at `now`.
+fn marks_read_up_to(read: &[&Text], now: i64) -> Vec<rules::TextMark> {
+    let mut upto: BTreeMap<String, i64> = BTreeMap::new();
+    for t in read {
+        let kept = upto.entry(rules::conversation_id(&t.with)).or_insert(0);
+        *kept = (*kept).max(t.at);
+    }
+    upto.into_iter().map(|(conversation, at)| rules::TextMark { at: now, conversation, read: at, ..rules::TextMark::default() }).collect()
+}
+
+/// Every device's marks on conversations (read up to, hidden), where the
+/// texts are read here; none otherwise.
+pub(crate) fn read_marks() -> Option<rules::Marks> {
+    let (here, seal, _) = sealed()?;
+    Some(marked(&here, &seal).0)
 }
 
 /// Java's word on the phone (`Texts.changes`): whether its texts changed
@@ -3072,6 +3163,24 @@ mod tests {
         assert_eq!(text_of(&waiting, &threads, region, 10 << 20).parts[0].state, "not-downloaded");
         assert_eq!(row_of("content://sms/414"), "sms-414");
         assert_eq!(row_of(""), "");
+    }
+
+    /// Texts read in the phone's SMS app: each found by its row in the
+    /// provider (with its date, or without as an older line named it), read
+    /// where the provider says so and only there, each conversation read up
+    /// to its newest text read there.
+    #[test]
+    fn texts_read_in_the_sms_app_are_read_in_sioul_too() {
+        let inbox = |id: &str, with: &str, at: i64| Text { id: id.into(), with: vec![with.into()], at, direction: "in".into(), ..Text::default() };
+        let texts = [inbox("sms-412@1791446340000", "+33199001234", 1_791_446_340_000), inbox("sms-413", "+33199001234", 1_791_446_400_000), inbox("mms-31@1791446340", "+33465710042", 1_791_446_340_000), inbox("sms-414@1791446500000", "+33199001234", 1_791_446_500_000), inbox("odd", "+33199001234", 1)];
+        assert_eq!(texts.iter().map(provider_row).collect::<Vec<_>>(), [Some(("sms", 412)), Some(("sms", 413)), Some(("mms", 31)), Some(("sms", 414)), None]);
+        let waiting: Vec<&Text> = texts.iter().collect();
+        let answer = json!({ "allowed": true, "sms": { "412": 1, "413": 1, "414": 0 }, "mms": { "31": 0 } });
+        let read = read_there(&waiting, &answer);
+        assert_eq!(read.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["sms-412@1791446340000", "sms-413"]);
+        let marks = marks_read_up_to(&read, NOW);
+        assert_eq!(marks.iter().map(|m| (m.conversation.as_str(), m.read, m.at)).collect::<Vec<_>>(), [("+33199001234", 1_791_446_400_000, NOW)], "up to the newest read there, not the one after it");
+        assert!(read_there(&waiting, &json!({ "allowed": true })).is_empty(), "nothing answered: nothing read");
     }
 
     /// The import asks Android only when the phone's texts changed; a heavy

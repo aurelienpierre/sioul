@@ -718,6 +718,8 @@ pub(crate) fn setup() -> String {
                 "standing": a.standing.iter().map(|(k, w)| (k.id().to_string(), w.id().to_string())).collect::<std::collections::BTreeMap<_, _>>(),
                 // For availability: what its events say shown (part 4).
                 "titles": a.titles,
+                // Its server, and whether it is yours to rename and remove (part 5).
+                "server": collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default(),
             })
         })
         .collect();
@@ -735,7 +737,7 @@ pub(crate) fn setup() -> String {
             pairs.push(serde_json::json!({ "a": a.id, "b": b.id, "ticked": matrix.ticked(&a.id, &b.id), "usual": matrix.usual(&a.id, &b.id) }));
         }
     }
-    json(&serde_json::json!({ "agendas": rows, "pairs": pairs, "children": children }))
+    json(&serde_json::json!({ "agendas": rows, "pairs": pairs, "children": children, "accounts": crate::servers::accounts(&config) }))
 }
 
 /// One field of an agenda's settings written (`agendas::set_field`); "" takes

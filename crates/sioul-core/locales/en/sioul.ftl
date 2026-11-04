@@ -159,6 +159,7 @@ error-no-windows = No admin windows in the configuration (examples/config.toml).
 when-on = on { $date }
 date-long = { $weekday } { $day } { $month } at { $time }
 date-short = { $weekday } { $day } { $month } { $time }
+date-short-day = { $weekday } { $day } { $month }
 weekday-1 = Monday
     .short = Mon
 weekday-2 = Tuesday
@@ -2861,13 +2862,25 @@ ui-section-help = What this section holds
 ui-section-folded = folded
 ui-section-unfolded = unfolded
 porch-about-right-now = Codes, passwords and links you asked a site for: here at once, whatever the time.
-porch-about-phone = What your phone brought: the calls it declined, its texts and the other apps' notifications you chose to see here, each while its sender may reach you. Sioul cannot see your voicemail: a caller may have left a message. Dismiss takes one away on every device; Mark read marks a text read in Texts too.
+porch-about-phone = What your phone brought: the calls it declined, the calls you missed and those of yours that did not reach them, its texts and the other apps' notifications you chose to see here, each while its sender may reach you. Sioul cannot see your voicemail: a caller may have left a message. Dismiss takes one away on every device; Mark read marks a text read in Texts too.
 porch-sites = Sites
 porch-about-sites = What your sites notified while you were away, a row per site. Opening a site reads its news.
 porch-money = Money
-porch-about-money = The week's payments, as Budgets reads them from your bank's file.
+porch-about-money = What is due or expected in the next two weeks, money in as well as out, what your bank still holds on a card, and what was expected and not seen on its account. Work money only in work's hours.
 porch-open-budgets = Open in Budgets
+# The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
+due-state-planned = Planned
+due-state-announced = Announced
+due-state-not-final = Not final yet
+due-state-not-seen = Not seen on its account
+due-state-done = Done
+due-about = about { $amount }
 porch-about-letters = The paper letters read from their scans, until you file them.
+porch-agenda = Agenda
+porch-about-agenda = Two events of yours at once, or closer than the time you keep between them, when someone else's change made it: each said once, at a time its agenda may reach you. Keep both says it no more; Move mine opens your own event to move it.
+porch-conflict-during = { $span }, with other events during it
+porch-shortfall-what = A payment it would not hold
+letters-its-page = Its page
 rule-order = Each message goes to the first lane that takes it, in this order: set aside, hostile, what your own spam filter flags, codes, projects, what you send yourself, your public address, less important addresses, newsletters, someone new, people you know.
 rule-people = Anyone in your address books, or on a list by their own address, comes here, as do the senders you let in: your list of them holds { $n } entries, and "Let in", in a message from someone new, adds them.
 rule-screener = A stranger (in none of your address books, on no list) waits here, and so does a sender a domain alone names on a list, unless a project or the newsletter rule takes the message first.
@@ -2933,7 +2946,7 @@ ui-google-own-key = Use a Google key of my own
 ui-google-steps = How to make your Google key (once, about fifteen minutes)
 ui-google-steps-text =
     1. On [console.cloud.google.com](https://console.cloud.google.com), make a project named Sioul.
-    2. In *APIs & Services → Library*, turn on **CalDAV API**, **CardDAV API** and **Google Tasks API**.
+    2. In *APIs & Services → Library*, turn on **CalDAV API**, **CardDAV API**, **Google Tasks API** and **Google Calendar API** (which makes, colours and shares calendars).
     3. In *Google Auth platform*: *Branding*, a name and your address; *Audience*, External, and yourself as a test user; *Data access*, the scopes `…/auth/calendar`, `…/auth/carddav` and `…/auth/tasks`.
     4. *Clients → Create client → Desktop app*. Copy its ID and its secret now: Google shows the secret only once.
     5. *Audience → Publish app*. Left in testing, Google ends the access every seven days.
@@ -2971,8 +2984,8 @@ google-mail-no-key = No Google key of yours is kept on this device for { $addres
 google-mail-unticked = Google gave no access to your mail: on Google's page, leave Gmail's access ticked ("Read, compose, send, and permanently delete all your email from Gmail"). Nothing changed.
 sync-error-google-again = { $account }: Google asks you to sign in again.
 sync-error-google-testing = { $account }: Google ended the sign-in after seven days, as it does while your Google project is in testing. In Google Cloud: Google Auth Platform ▸ Audience ▸ Publish app; then sign in again: it lasts after that.
-google-no-collections = Google makes no calendar or address book from another program: make it on Google's pages.
-google-fixed-collection = Google renames and deletes its calendars and address books on its own pages only.
+google-no-collections = Google makes no address book from another program: make it on Google's pages. A calendar is made in Agenda ⚙ ▸ Your agendas.
+google-fixed-collection = Google renames and deletes its address books and task lists on its own pages only.
 google-tasks-greyed = Google Tasks does not keep this.
 task-limited = This list is on Google Tasks: what Google does not keep is greyed (a start day, a length, a project, a kind, office hours, categories, what it takes, repeating, waiting for another task, steps of steps).
 
@@ -3769,15 +3782,9 @@ task-rest-offer = After something heavy, something that gives back:
 task-mode-day = The day
 day-all-day = All day: { $what }
 day-margin = Around: { $what }
-overlap-today = Today, two events at once: { $first } and { $second }.
 overlap-day = { $day }, two events at once: { $first } and { $second }.
 overlap-open = Open “{ $title }”
-overlap-set-aside = Don’t mention it again
 overlap-during = During { $title } ({ $span }): { $count ->
-        [one] one other event
-       *[other] { $count } other events
-    }
-overlap-during-today = Today, during { $title } ({ $span }): { $count ->
         [one] one other event
        *[other] { $count } other events
     }
@@ -3812,6 +3819,90 @@ agendas-group-shared = Shared with you
 agendas-kept-hidden = kept hidden
 agenda-keep-hidden = Keep hidden on this device
 agenda-show-again = Show again
+# Agendas on their servers (several agendas, part 5): made, renamed, recoloured, removed, shared.
+agenda-server-here = this computer
+agenda-new = New agenda…
+agenda-new-account = Account
+agenda-new-name = Its name
+agenda-new-events = Events
+agenda-new-tasks = Tasks
+agenda-new-make = Make it
+agenda-new-needs-name = A new agenda needs a name.
+agenda-new-no-account = That account holds no agendas: choose one for calendars, or this computer.
+agenda-colour = Colour
+agenda-not-yours-to-change = This agenda is not yours to change: it is someone else’s, or its server lets you read it only.
+agenda-renamed = Renamed “{ $name }”.
+agenda-recoloured = Colour changed.
+agenda-remove = Remove…
+agenda-stop-showing = Stop showing…
+agenda-remove-confirm = Remove
+agenda-leave-confirm = Stop showing
+agenda-keep = Keep it
+agenda-remove-question = Remove “{ $name }”, { $count ->
+        [one] one { $what ->
+            [tasks] task
+           *[events] event
+        }
+       *[other] { $count } { $what ->
+            [tasks] tasks
+           *[events] events
+        }
+    }, from { $server }?
+agenda-remove-google-final = Google keeps no copy of a removed calendar: it is final.
+agenda-remove-google-primary = Google keeps your main calendar: it cannot be removed, only renamed and recoloured.
+agenda-remove-nextcloud-trash = Nextcloud keeps it in its trash bin for 30 days, unless its administrator chose another time.
+agenda-remove-server-may-keep = Its server may keep it for a while, or not at all. Sioul keeps a copy first.
+agenda-removed = “{ $name }” removed. A copy of it is in { $copy }.
+agenda-leave-question = Stop showing “{ $name }”? It stays its owner’s, who may share it again.
+agenda-leave-note = Sioul leaves the share where its server lets you; elsewhere it is no longer shown here.
+agenda-left = “{ $name }” is no longer shown.
+agenda-hide-question = Stop showing “{ $name }” on this device?
+agenda-hide-note = Its server does not say it is someone else’s, so nothing is sent: it stays there as it is, and Show again, on its line, brings it back here.
+agenda-hidden-here = “{ $name }” is hidden on this device; it stays on its server as it is.
+agenda-sharing = Who sees it
+agenda-sharing-reading = Asking its server…
+agenda-sharing-here = This agenda is on this computer alone: Sioul’s own sharing carries it to your devices.
+agenda-sharing-not-yet = This agenda is not on its server yet: its next sync makes it.
+agenda-google-api-off = Google refused: the Google Calendar API is turned off in the Google project of your key. Turn it on in console.cloud.google.com, APIs & Services → Library, then try again.
+agenda-sharing-none = This server does not share from Sioul.
+agenda-sharing-only-you = Only you.
+agenda-sharing-the-other-parent = { $who }, the other parent,
+agenda-sharing-write = { $who } can change it.
+agenda-sharing-read = { $who } can read it.
+agenda-sharing-busy = { $who } sees when you are busy.
+agenda-sharing-link = Anyone with the link can read it.
+agenda-sharing-nextcloud-note = People and groups of this Nextcloud alone; someone elsewhere is reached by the link. Those you share it with, and the link, never see a private event, and those who only read it see a confidential one as “Busy”, its time alone.
+agenda-sharing-google-note = Those who read it see a private event without its details.
+agenda-share-with = A name on this server, or an address
+agenda-share-read = Can read
+agenda-share-write = Can change
+agenda-share-busy = Sees when busy
+agenda-share-group = A group
+agenda-share = Share
+agenda-unshare = Stop sharing with { $who }
+agenda-unshared = No longer shared with { $who }.
+agenda-share-google-address = Give an email address: Google shares with an account.
+agenda-share-elsewhere = Someone on another server: turn the link on, and send it to them.
+agenda-link-on = A read-only link
+agenda-link-copy = Copy the link
+agenda-link-google-sees = Anyone with the link sees every event of it, private ones without their details.
+agenda-link-nextcloud-sees = Anyone with the link sees its events, their titles, times and places; a confidential one as “Busy”, a private one not at all.
+availability-title = Share my availability…
+availability-from = From
+availability-with = With: a name on this server, or an address on Google
+availability-link = By a read-only link instead
+availability-word = A word for its blocks
+availability-share = Share
+availability-stop = Stop sharing
+availability-calendar = Busy times
+availability-busy = Busy
+availability-by-link = anyone with its link
+availability-shared = Your busy times are shared with { $who }.
+availability-pending = Your busy times will be shared with { $who } once their calendar is on its server.
+availability-already = Your availability is shared already: stop it first.
+availability-pick = Pick the agendas your busy times come from.
+availability-google-own = Pick calendars of this Google account: Google shares its own calendars’ busy times.
+availability-stopped = Your busy times are no longer shared.
 # Children's events (several agendas, part 3): who takes each, the stand-ins, the invitations.
 holder-title = Who takes it
 holder-kind = Kind
@@ -4234,6 +4325,13 @@ set-letters-inbox-help = A folder where you, a scanner or a helper puts the post
 set-calls-group = Calls
 set-porch-calls = Calls your phones declined
 set-porch-calls-help = Listed on the Porch of each of your devices, each at a time its caller may reach you, never counted. Off, each phone lists only its own, and your computers none.
+set-porch-call-back = A task to call back
+set-porch-call-back-help = A missed call from someone in your address books makes a task, “Call back” and their name, for that day, without a reminder. Another call of theirs adds its time to it; it is done by itself once you spoke with them.
+set-porch-call-again = A task to call again
+set-porch-call-again-help = A call of yours to someone in your address books that did not reach them, not answered or shorter than the time below, makes a task, “Call … again”, for that day, without a reminder. It is done by itself once you spoke with them.
+set-porch-voicemail-seconds = A call that reached their voicemail
+set-porch-voicemail-seconds-help = A call of yours shorter than this likely reached their voicemail, not them. A call of yours this long or longer, or any call of theirs you answered, is one in which you spoke: it closes their task.
+set-voicemail-seconds = { $seconds } seconds
 password-show = Show the password
 password-hide = Hide the password
 set-passwords-shown = Show passwords as you type
@@ -5297,6 +5395,22 @@ calls-open-blocked = Android's blocked numbers (calls and texts)
 calls-listen-gone = This message's sound is no longer in your mail.
 calls-copy = Copy the number
 calls-copied = Number copied.
+calls-missed-row = Missed call at { $time }
+calls-unreached-row = Your call at { $time } was not answered
+calls-unreached-short-row = Your call at { $time } lasted { $length }: their voicemail, perhaps
+calls-also-at = also at { $time }
+calls-history-on = { $what }, on { $phone }
+calls-call-again = Call again
+calls-text-them = Text them
+call-task-back = Call back { $name }
+call-task-again = Call { $name } again
+call-task-at = at { $time }
+call-task-on = on { $day } at { $time }
+call-task-missed = Missed call { $when }
+call-task-unreached = Your call { $when } did not reach them
+call-task-also = also { $when }
+call-task-you-called = you called { $when }
+call-task-they-called = they called { $when }
 calls-block-ask-elsewhere = Calls from { $number } will go to voicemail whenever they come, and will not be listed. Texts still arrive: your phone's own blocked numbers stop those.
 calls-setup-what-title = What Sioul does with calls
 calls-setup-what = When someone who may not reach you now calls, Sioul declines the call plainly, as you would by hand: your operator sends it to your voicemail. Nothing rings, nothing shows meanwhile. Afterwards the Porch lists who called, at a time they may reach you, with a text back offered first.
@@ -5316,6 +5430,8 @@ calls-setup-ask-help = Android asks: “Set Sioul as your default caller ID & sp
 calls-setup-replaces = One app at a time screens calls: if your phone app filters spam itself, Sioul takes its place.
 calls-setup-contacts-off = Sioul may not read this phone's contacts: Android then rings their calls without asking Sioul. Sioul screens the others.
 calls-setup-contacts-allow = Allow reading contacts
+calls-setup-history-off = Sioul does not read this phone's call history: it cannot say which calls you missed, nor which of yours did not reach them, nor make their tasks.
+calls-setup-history-allow = Let Sioul read the call history
 calls-setup-android-block = Your phone app's own “Block numbers not in contacts” acts before Sioul is asked: while it is on, a second call or Expecting a call cannot help those numbers.
 calls-setup-change = Android's default apps
 calls-setup-change-help = To stop, choose “None” as caller ID & spam app there.
@@ -6702,7 +6818,6 @@ zone-other = Another time zone…
 event-clock = Time zone
 event-clock-local = Local time ({ $zone })
 event-clock-utc = UTC
-overlap-today-close = Today, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-source-after = kept after the first (its After)
 overlap-source-before = kept before the second (its Before)

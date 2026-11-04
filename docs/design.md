@@ -93,7 +93,8 @@ As built, with the research it follows: [tasks.md](tasks.md).
 - **A kind of thing can keep its holder**, proposed for each new event of that kind, and the next appointment to book comes back to that parent as a task (finding 49).
 - **Nothing enters another parent's agenda until they accept**, and Sioul records who took what and when, never what was read (finding 50).
 - **Who does what names each item's holder, never a total per parent** (finding 51).
-- **Someone else's availability shows to you alone**, as bands without titles, never written, shared again or given to an agent (finding 52); sharing yours as busy blocks Sioul derives, per recipient, is planned (finding 53).
+- **Someone else's availability shows to you alone**, as bands without titles, never written, shared again or given to an agent (finding 52); yours is shared per recipient, as busy blocks Sioul derives, or on Google its calendars' busy times alone (finding 53).
+- **Your agendas are made, renamed, recoloured, removed and shared from one place**, Agenda ⚙ ▸ Your agendas, on the server that holds them (Nextcloud's DAV sharing, Google's Calendar API and ACL): nothing is shared unless you ask, each agenda's line says who sees it and names the other parent among them (finding 52), you are told what those you share with see of confidential and private events (finding 53), a removal keeps a dated copy first and says what its server keeps, and someone else's agenda is never removed, only no longer shown ([client.md](client.md#agendas-on-their-servers)).
 - **The holder's copy points back to the child's event** by standard lines and a UID derived from it; where Sioul cannot write the holder's agenda, an invitation you send from the Outbox takes its place (finding 54).
 
 ## Money

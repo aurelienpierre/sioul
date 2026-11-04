@@ -48,6 +48,13 @@ addresses, a copy to a third (SIOUL_GRAB_STEPS=compose, docs/building.md).
 unanswered: the morning's as due while Sioul was closed, the noon's as due
 while Sioul ran but its reminder could not be shown; the Porch and the Health
 page ask about each under its own question (docs/health.md).
+--conflict (or SIOUL_DEMO_CONFLICT=1) adds a meeting with others that its
+organizer moved onto an event of yours this afternoon, after this device
+last looked: a conflict someone else's change made, which the Porch's Agenda
+says once (docs/porch.md, "Agenda").
+--shortfall (or SIOUL_DEMO_SHORTFALL=1) has the bank account keep more than
+it holds, so that its next payment falls short: the Porch's Money says it
+first (`ahead::shortfall_notices`).
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -90,6 +97,10 @@ LANG = "en"
 ONGOING = ""
 # --days-off: a leave of three days from tomorrow, which the agenda draws once (the leftovers round).
 DAYS_OFF = False
+# --conflict: a meeting its organizer moved onto an event of yours this afternoon, said on the Porch.
+CONFLICT = False
+# --shortfall: the bank account keeping more than it holds, so that its next payment falls short.
+SHORTFALL = False
 
 
 def typo(text: str) -> str:
@@ -1122,8 +1133,10 @@ def write_calls(p: Profile):
     """The calls a phone of yours screened, as its log reaches a computer
     through the sharing (crates/sioul-core/src/calls.rs, `Held`; the phone's
     name in the sharing invented): what that computer's Porch lists of those it
-    declined, at the times their callers may reach you, and the doctor's calls
-    of the month on her sheet. Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
+    declined, at the times their callers may reach you, and on the doctor's
+    sheet the calls of the month; and its call history (`Logged`): the calls
+    missed, one of yours that did not reach them. Fiction numbers: ARCEP's
+    01 99 00 and 04 65 71."""
     c = p.clock
 
     def call(moment: datetime, key: str, who: str, column: str, why: str = "matrix", rang: bool = False) -> str:
@@ -1147,6 +1160,26 @@ def write_calls(p: Profile):
         call(c.at(c.today, "12:40"), "", "hidden", "meals"),
     ]
     p.write(p.state / "calls" / "log" / "demo-phone.jsonl", "".join(lines))
+
+    # The phone's call history (`Logged`), once Sioul may read it: Marc's two calls
+    # missed this morning, and one of yours to Sophie that reached a voicemail
+    # (docs/porch.md, "Calls missed, and calls of yours that did not reach them").
+    def logged(moment: datetime, key: str, kind: str, out: bool = False, seconds: int = 0) -> str:
+        line = {"at": unix(moment) * 1000, "key": key}
+        if out:
+            line["out"] = True
+        if seconds:
+            line.update({"answered": True, "seconds": seconds})
+        line["kind"] = kind
+        return json.dumps(line, separators=(",", ":")) + "\n"
+
+    marc, sophie = "+33465716325", "+33465713052"
+    history = [
+        logged(c.at(c.today, "09:12"), marc, "missed"),
+        logged(c.at(c.today, "09:40"), marc, "missed"),
+        logged(c.at(c.today, "11:05"), sophie, "outgoing", out=True, seconds=38),
+    ]
+    p.write(p.state / "calls" / "log" / "history" / "demo-phone.jsonl", "".join(history))
 
 
 def write_phone_messages(p: Profile):
@@ -1405,6 +1438,24 @@ def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *
     return vcalendar(lines)
 
 
+def conflict_events(p: "Profile", me: tuple) -> list[tuple[str, str]]:
+    """A conflict someone else's change made (--conflict): your haircut at
+    16:00 today, and the content workshop Iris moved onto it, a meeting with
+    others you accepted. This device last looked two days ago, the haircut
+    where it is: the workshop is the change, and its organizer's
+    (`overlaps::Notices::look`, conflicts.toml)."""
+    c = p.clock
+    haircut = event(c, "haircut", t("Haircut", "Coiffeur"), c.today, "16:00", "16:45", location=t("Salon Lumière, Lyon", "Salon Lumière, Lyon"))
+    workshop = event(c, "fernhill-workshop", t("Fernhill: content workshop", "Fougères : atelier sur les contenus"), c.today, "16:15", "17:00",
+                     location=t("Video call, meet.example.com/fernhill", "Visio, meet.example.com/fougeres"), organizer=W.iris, attendees=[me])
+    looked = unix(c.at(c.day(-2), "09:00"))
+    start, moved = unix(c.at(c.today, "16:00")), unix(c.at(c.today, "16:15"))
+    # Found at this device's last look, two days ago, after Iris moved the workshop: due, not said yet.
+    key = f"demo-event-haircut@{start}|demo-event-fernhill-workshop@{moved}"
+    p.write(p.state / "conflicts.toml", f'since = {looked}\nseen = []\n\n[starts]\n"demo-event-haircut" = {start}\n\n[due]\n"{key}" = {looked}\n')
+    return [("personal", haircut), ("work", workshop)]
+
+
 def whole_days(clock: Clock, uid: str, title: str, first: int, last: int) -> str:
     """Whole days from `first` to `last` days from today, DTEND the day after."""
     lines = ["BEGIN:VEVENT", f"UID:demo-event-{uid}", f"DTSTAMP:{utc(clock.at(clock.day(-14), '09:00'))}",
@@ -1524,6 +1575,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
     ]
     if ONGOING:
         events += ongoing_events(c)
+    if CONFLICT:
+        events += conflict_events(p, me_w)
     if ONGOING == "quiet":
         # One-off events alone: a repeating one's times hang on a zone named for the demo's
         # offset, which the warnings' keys could not name for sure.
@@ -2162,7 +2215,7 @@ sweep = true
 id = "bank"
 title = {toml_string(W.bank_name)}
 fills = ["household", "leisure", "work"]
-floor = 200
+floor = {2000 if SHORTFALL else 200}
 topped_up_by = ["instant", "longterm"]
 
 [[bank_account]]
@@ -2696,6 +2749,8 @@ until = {p.clock.day(3)}
 label = {toml_string(t("Leave", "Congés"))}
 
 """ if DAYS_OFF else ""
+    # --conflict: the Work calendar for work alone, so that its conflict is said in work's time.
+    work_agenda = f'\n[agenda.calendars."{DAV}/work"]\narea = "work"\n' if CONFLICT else ""
     p.write(p.config / "config.toml", f"""# Sioul's demo profile: an invented life, made by tools/demo/make-demo.py.
 # Nothing here is real: the people, the companies, the messages. Run Sioul on it
 # with SIOUL_DEMO=1, which keeps it off the network.
@@ -2724,7 +2779,7 @@ parent_address = "sam@example.org"
 [agenda.calendars."{DAV}/sam"]
 whose = "partner"
 name = "Sam"
-
+{work_agenda}
 [map]
 geocode = false
 
@@ -2872,7 +2927,7 @@ def as_written_before(p: Profile):
 
 
 def main():
-    global LANG, W, ONGOING, DAYS_OFF
+    global LANG, W, ONGOING, DAYS_OFF, CONFLICT, SHORTFALL
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--into", required=True, type=Path, help="the profile's folder")
     parser.add_argument("--now", help="the moment the profile is made for, ISO 8601 with its offset (default: now)")
@@ -2900,9 +2955,15 @@ def main():
                              " --ongoing quiet (SIOUL_DEMO_ONGOING=quiet) sets aside the warnings for two events at once they make")
     parser.add_argument("--days-off", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_DAYS_OFF")),
                         help="a leave of three days from tomorrow, drawn once in the agenda (SIOUL_DEMO_DAYS_OFF=1 too)")
+    parser.add_argument("--conflict", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_CONFLICT")),
+                        help="a meeting its organizer moved onto an event of yours this afternoon: a conflict the Porch says (SIOUL_DEMO_CONFLICT=1 too)")
+    parser.add_argument("--shortfall", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SHORTFALL")),
+                        help="the bank account keeping more than it holds: its next payment falls short (SIOUL_DEMO_SHORTFALL=1 too)")
     args = parser.parse_args()
     ONGOING = args.ongoing
     DAYS_OFF = args.days_off
+    CONFLICT = args.conflict
+    SHORTFALL = args.shortfall
     LANG = args.language
     W = World()
     now = datetime.fromisoformat(args.now) if args.now else datetime.now().astimezone()

@@ -156,10 +156,13 @@ impl Builder<'_> {
             .filter(|c| holding.is_empty() || c.holds(holding))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
-                // Google's calendars and address books change on its own pages only.
+                // Google's calendars change through its Calendar API (part 5);
+                // its address books and task lists on its own pages only.
                 locked: if c.read_only {
                     self.tr.text("collection-read-only", None)
-                } else if provider_of_collection(config.account(&c.account), &c) == Provider::Google {
+                } else if provider_of_collection(config.account(&c.account), &c) == Provider::Google
+                    && !(kind == crate::vdir::Kind::Calendars && !c.components.is_empty() && c.components.iter().all(|k| k.eq_ignore_ascii_case("VEVENT")))
+                {
                     self.tr.text("google-fixed-collection", None)
                 } else {
                     String::new()
@@ -292,6 +295,28 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // The calls your phones declined, on the Porch of every device (docs/porch.md, "Calls declined").
             b.group = tr.text("set-calls-group", None);
             b.push("porch.calls", "porch-calls", Kind::Bool, SettingValue::Bool(config.porch.calls));
+            // The call-back rules (docs/porch.md, "Calls"; `callback`): a task for a missed call, and
+            // for a call of yours that did not reach them, by the voicemail threshold.
+            b.push("porch.call_back", "porch-call-back", Kind::Bool, SettingValue::Bool(config.porch.call_back));
+            b.push("porch.call_again", "porch-call-again", Kind::Bool, SettingValue::Bool(config.porch.call_again));
+            let seconds = crate::callback::Rules::of(config).threshold;
+            let mut offered = crate::calls::VOICEMAIL_SECONDS.to_vec();
+            if !offered.contains(&seconds) {
+                offered.push(seconds);
+                offered.sort_unstable();
+            }
+            let s = b.push("porch.voicemail_seconds", "porch-voicemail-seconds", Kind::Choice, SettingValue::Int(i64::from(seconds)));
+            s.choices = offered
+                .iter()
+                .map(|n| Choice {
+                    value: SettingValue::Int(i64::from(*n)),
+                    label: {
+                        let mut args = crate::i18n::args();
+                        args.set("seconds", *n);
+                        tr.text("set-voicemail-seconds", Some(&args))
+                    },
+                })
+                .collect();
             // How a message opened here reads: the reading panel's own, shown where messages are read.
             b.group = tr.text("ui-reading", None);
             reading(&mut b, config);
@@ -1459,7 +1484,7 @@ mod tests {
         // Where the hours went, the order, then public, what you sent yourself, people, filed, screener, less important, the review queue, set aside, hostile.
         assert_eq!(notes, 1 + 1 + 9, "{porch:?}");
         // The letters' folder is on the Letters page, with the letters.
-        assert_eq!(keys("porch"), vec!["porch.calls", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
+        assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
         assert_eq!(keys("letters"), vec!["letters.inbox"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
