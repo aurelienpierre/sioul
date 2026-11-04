@@ -1040,6 +1040,61 @@ fn side_by_side(timed: &mut [Placed]) {
     }
 }
 
+/// What overlaps side by side in lanes, one agenda beside another (several
+/// agendas, 4 November 2026): in each run of cards that overlap, each
+/// agenda's cards take columns of their own, in the order `lane` gives
+/// (yours first: Sioul's own things, the steps and meals, with yours), so
+/// that the filter chooses what is laid over what; a run of one agenda alone
+/// keeps the columns `side_by_side` gave. A leg stays in its appointment's column.
+pub fn lanes(timed: &mut [Placed], lane: &dyn Fn(&Item) -> (u32, String)) {
+    let span = |p: &Placed| (i64::from(p.from_minute), i64::from(p.to_minute.max(p.from_minute + 15)));
+    let mut order: Vec<usize> = (0..timed.len()).filter(|&i| timed[i].item.kind != Kind::Leg).collect();
+    order.sort_by_key(|&i| (span(&timed[i]).0, -span(&timed[i]).1));
+    let mut runs: Vec<Vec<usize>> = Vec::new();
+    let mut end = i64::MIN;
+    for i in order {
+        let (from, to) = span(&timed[i]);
+        if runs.is_empty() || from >= end {
+            runs.push(Vec::new());
+            end = to;
+        } else {
+            end = end.max(to);
+        }
+        if let Some(run) = runs.last_mut() {
+            run.push(i);
+        }
+    }
+    for run in runs {
+        let mut keys: Vec<(u32, String)> = run.iter().map(|&i| lane(&timed[i].item)).collect();
+        keys.sort();
+        keys.dedup();
+        if keys.len() < 2 {
+            continue;
+        }
+        let mut offset = 0u32;
+        let mut columns = Vec::new();
+        for key in &keys {
+            let members: Vec<usize> = run.iter().copied().filter(|&i| lane(&timed[i].item) == *key).collect();
+            let laid = crate::dayview::side_by_side(&members.iter().map(|&i| span(&timed[i])).collect::<Vec<_>>());
+            for (&i, (column, _)) in members.iter().zip(&laid) {
+                columns.push((i, offset + column));
+            }
+            offset += laid.iter().map(|(_, width)| *width).max().unwrap_or(1);
+        }
+        for (i, column) in columns {
+            (timed[i].column, timed[i].columns) = (column, offset);
+        }
+    }
+    for i in 0..timed.len() {
+        if timed[i].item.kind != Kind::Leg {
+            continue;
+        }
+        let owner = timed[i].item.owner.clone();
+        let of = timed.iter().find(|p| p.item.kind == Kind::Event && matches!(&p.item.source, Source::Calendar { uid, .. } if *uid == owner)).map(|p| (p.column, p.columns));
+        (timed[i].column, timed[i].columns) = of.unwrap_or((0, 1));
+    }
+}
+
 /// A thing's time on one day (`day_start`..`day_end`): its hours, "All day",
 /// or how it goes on from the day before or into the next.
 pub fn when_on(at: i64, until: i64, whole: bool, day_start: i64, day_end: i64, zone: &TimeZone, tr: &Translator) -> String {
@@ -1331,7 +1386,10 @@ pub struct HeadInputs<'a> {
 /// A thing the head line names: an appointment, a pinned task, a meal, a
 /// nap, the winding down; never a proposal of the plan, never a dose.
 fn fixed(item: &Item) -> bool {
-    matches!(item.kind, Kind::Event | Kind::Block | Kind::Meal | Kind::Nap | Kind::Night) && item.tone != Tone::Muted || (item.kind == Kind::Step && item.certainty == Certainty::Held)
+    // An event that holds none of your time is no fixed point of your day: someone else's (a
+    // child's event another takes: the other parent receives nothing more about it, several
+    // agendas, part 3), one you declined, one marked free.
+    matches!(item.kind, Kind::Event | Kind::Block | Kind::Meal | Kind::Nap | Kind::Night) && item.tone != Tone::Muted && (item.kind != Kind::Event || item.holds_time) || (item.kind == Kind::Step && item.certainty == Certainty::Held)
 }
 
 /// The head line from now to midnight, as frames given ahead (the unified
@@ -2086,6 +2144,35 @@ mod tests {
         let no_alarm = std::collections::BTreeSet::new();
         let of = ComesOf { now: at("2026-10-06T06:00"), today: day("2026-10-06"), no_alarm: &no_alarm, every_day: &|_| true, hidden: &|_| false, zone: &zone, tr: &tr };
         assert!(comes(&shown[0], None, &of).rows.iter().all(|p| p.item.kind != Kind::Leg), "no row of its own in What comes");
+    }
+
+    /// Lanes by agenda: in a run of overlapping cards, yours first, then a
+    /// child's, each agenda in columns of its own, however they started; a
+    /// run of one agenda alone keeps its columns.
+    #[test]
+    fn overlapping_agendas_sit_in_lanes() {
+        let (zone, tr) = (paris(), Translator::new("en"));
+        let of = |title: &str, from: &str, to: &str, collection: &str| {
+            let item = thing(title, Kind::Event, from, to);
+            Item { source: Source::Calendar { key: format!("/c/{title}.ics"), uid: title.into(), start: at(from), recurring: false, calendar: collection.into(), collection: collection.into(), clock: String::new() }, ..item }
+        };
+        let items = [
+            of("Swim", "2026-10-06T09:00", "2026-10-06T10:00", "local/lea"),
+            of("Meeting", "2026-10-06T09:15", "2026-10-06T10:30", "local/work"),
+            of("Call", "2026-10-06T09:30", "2026-10-06T09:45", "local/work"),
+            of("Lunch", "2026-10-06T12:00", "2026-10-06T13:00", "local/work"),
+            of("Talk", "2026-10-06T12:30", "2026-10-06T13:00", "local/work"),
+        ];
+        let mut shown = days(&items, day("2026-10-06"), 1, day("2026-10-06"), &zone, &tr);
+        let rank = |item: &Item| match &item.source {
+            Source::Calendar { collection, .. } if collection == "local/lea" => (1, collection.clone()),
+            Source::Calendar { collection, .. } => (0, collection.clone()),
+            _ => (0, String::new()),
+        };
+        lanes(&mut shown[0].timed, &rank);
+        let col = |title: &str| shown[0].timed.iter().find(|p| p.item.title == title).map(|p| (p.column, p.columns)).unwrap();
+        assert_eq!((col("Meeting"), col("Call"), col("Swim")), ((0, 3), (1, 3), (2, 3)), "yours first, the child's beside");
+        assert_eq!((col("Lunch"), col("Talk")), ((0, 2), (1, 2)), "one agenda alone: as before");
     }
 
     /// On the days the clocks change, What comes says a dose at its time on

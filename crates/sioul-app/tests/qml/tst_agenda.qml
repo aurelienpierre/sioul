@@ -54,6 +54,12 @@ Item {
         property string asideGiven: ""
         function setOverlapAside(key) { mock.asideGiven = key }
         function setTaskAt(uid, at) { return "" }
+        // The agenda filter's word: what the page asked, last.
+        property var turned: null
+        function turnAgendas(ids, on) { mock.turned = { ids: JSON.parse(ids), on: on }; return "" }
+        function agendasAsHours() { mock.turned = "hours"; return "" }
+        // Children's events asked about (part 3): none here.
+        function holderQuestions() { return "[]" }
     }
 
     QtObject {
@@ -325,54 +331,31 @@ Item {
             fuzzyCompare(lines[0].mapToItem(page, 0, 0).y, rows[0].mapToItem(page, 0, rows[0].height / 2).y, 1, "its line from there")
         }
 
-        // The warnings for two events at once on a phone: their words wrap within its width,
-        // never widen the page (found in the ongoing round's pictures: a month-long event
-        // overlaps every other one).
-        function test_the_warnings_stay_within_a_phone_s_width() {
-            const page = makePage(412)
-            mock.longWords = true
-            const one = (title, from, to) => ({ key: title + ".ics", start: root.monday, title: title, from: from, to: to })
-            mock.overlaps = JSON.stringify([0, 1, 2].map(n => ({ key: "k" + n, day: "2099-01-0" + (5 + n), today: n === 0, first: one("Studio residency, the whole month", "10:00", "10:15"), second: one("Fernhill: homepage review " + n, "10:15", "11:15"), gap: 0, needed: 0, at_once: true, source: "" })))
-            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [day(0, { comes: { rows: [] } })] })
-            wait(50)
-            const buttons = root.all(page, c => c.text === "overlap-set-aside" && c.flat !== undefined && c.visible)
-            compare(buttons.length, 3)
-            // As the demos measure it (main.qml, "WIDE"): a row's own width, which widens its column.
-            verify(buttons.every(b => b.parent.implicitWidth <= page.width - 16), "within the phone's width: " + buttons.map(b => b.parent.implicitWidth).join(", "))
-        }
-
-        // The warnings above the agenda (fixes W1 and W2): three at most, then "+n more",
-        // which unfolds the rest and folds them again; an event of 24 hours or more once,
-        // "During …: n other events", its "Don't mention it again" giving the event whole and
-        // its pairs; an event over several days named by its span, not its clock times.
-        function test_the_warnings_are_three_then_more() {
+        // No list of conflicts on the agenda (several agendas, §5.3 of the research): whatever
+        // the notices hold (the Porch's), the page lists none and counts none; a conflict of
+        // the Day is a thin bracket joining its pair, both drawn, nothing else.
+        function test_no_list_of_conflicts_and_a_bracket_in_the_day() {
             const page = makePage()
-            mock.longWords = true
-            const one = (title, from, to, when) => ({ key: title + ".ics", start: root.monday, title: title, from: from, to: to, when: when })
-            const pair = n => ({ key: "k" + n, day: "2099-01-0" + (6 + n % 3), today: false, first: one("Concert " + n, "22:00", "02:00", "22:00 → 02:00 (Wed)"), second: one("Call " + n, "23:00", "23:30", "23:00 – 23:30"), gap: -30, needed: 0, at_once: true, source: "" })
-            const during = { kind: "during", key: "during:residency@1", keys: ["residency@1|a@2", "residency@1|b@3"], day: "2099-01-05", today: true, event: one("Residency", "10:00", "10:15", "Mon 5 Jan 10:00 → Mon 2 Feb 10:15"), others: 34, others_today: 2 }
-            mock.overlaps = JSON.stringify([during, pair(1), pair(2), pair(3), pair(4)])
+            mock.overlaps = JSON.stringify([{ key: "k1", day: "2099-01-05", today: true, first: { key: "a.ics", start: root.monday, title: "A", from: "10:00", to: "11:00" }, second: { key: "b.ics", start: root.monday, title: "B", from: "10:30", to: "11:30" }, gap: -30, needed: 0, at_once: true, source: "", notice: true, answers: ["keep"] }])
             mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [day(0, { comes: { rows: [] } })] })
             wait(50)
-            const buttons = () => root.all(page, c => c.text === "overlap-set-aside" && c.flat !== undefined && c.visible)
-            const more = root.find(page, "overlapsMore")
-            compare(buttons().length, 3, "three at most")
-            verify(more.visible && String(more.text).indexOf("overlap-more") === 0 && String(more.text).indexOf("\"count\":2") > 0, "+2 more: " + more.text)
-            mouseClick(more)
-            wait(20)
-            compare(buttons().length, 5, "unfolded")
-            verify(String(more.text).indexOf("overlap-fewer") === 0, "then fewer")
-            mouseClick(more)
-            wait(20)
-            compare(buttons().length, 3, "folded again")
-            // The long event once, by its span, its count.
-            const words = root.all(page, c => typeof c.text === "string" && c.visible && /^overlap-(day|during)/.test(c.text)).map(c => c.text)
-            verify(words[0].indexOf("overlap-during:") === 0 && words[0].indexOf("Mon 5 Jan 10:00 → Mon 2 Feb 10:15") > 0 && words[0].indexOf("\"count\":34") > 0, words[0])
-            verify(words[1].indexOf("Concert 1 (22:00 → 02:00 (Wed))") > 0, "the evening by its span: " + words[1])
-            mouseClick(buttons()[0])
-            compare(mock.asideGiven, "during:residency@1\nresidency@1|a@2\nresidency@1|b@3", "the event whole and its pairs")
-            mouseClick(buttons()[1])
-            compare(mock.asideGiven, "k1", "a pair, its key")
+            compare(root.all(page, c => c.text === "overlap-set-aside" && c.visible).length, 0, "no list above the agenda")
+            compare(root.all(page, c => c.objectName === "overlapsMore").length, 0, "no count")
+            page.mode = "day"
+            const today = day(0)
+            const a = placed("Dentist", "event", today.start, 600, 660, { when: "10:00 – 11:00", columns: 2 })
+            const b = placed("Swim", "event", today.start, 630, 690, { when: "10:30 – 11:30", column: 1, columns: 2 }, { source: { type: "calendar", key: "swim.ics", uid: "swim", start: today.start + 630 * 60, recurring: false, calendar: "Léa", collection: "local/lea" } })
+            today.timed = [a, b]
+            today.conflicts = [{ a: a.item.id, b: b.item.id }]
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", frame: { from: 420, to: 1320 }, days: [today] })
+            wait(80)
+            const brackets = root.all(page, c => c.objectName === "conflictBracket" && c.visible)
+            compare(brackets.length, 1, "one bracket, joining the pair")
+            verify(brackets[0].across, "side by side: across the gap")
+            // An agenda the filter leaves out is never joined: its pair is not drawn.
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", frame: { from: 420, to: 1320 }, hidden: ["local/lea"], days: [today] })
+            wait(80)
+            compare(root.all(page, c => c.objectName === "conflictBracket" && c.visible).length, 0, "left out: no bracket")
         }
 
         // A grid's bar of the trip (`ongoing::Bar`) on a week's row.
@@ -463,13 +446,14 @@ Item {
         }
 
         // Show leaves out of What comes and the Month what it leaves out of the Day
-        // and the Week, on this device: doses, meals and rest, a calendar by its
-        // place, the plan's line with the steps; never a date asked (review of
-        // 21436bf, later 2). Its button shows there too.
+        // and the Week, on this device: doses, meals and rest, the plan's line with
+        // the steps; never a date asked (review of 21436bf, later 2). The agenda
+        // filter leaves out an agenda by its place (the agenda's `hidden`). Its
+        // button shows there too, and the filter's when there are agendas.
         function test_show_holds_in_what_comes_and_the_month() {
             const page = makePage()
             page.mode = "agenda"
-            page.view = { doses: false, needs: false, steps: false, calendars: [{ id: "local/c", name: "c" }] }
+            page.view = { doses: false, needs: false, steps: false }
             const today = day(0)
             const other = placed("Choir", "event", today.start, 1080, 1140, { when: "18:00 – 19:00" }, { source: { type: "calendar", key: "choir.ics", uid: "choir", start: today.start + 1080 * 60, recurring: false, calendar: "Leisure", collection: "local/leisure" } })
             today.comes = {
@@ -477,16 +461,18 @@ Item {
                 doses: [{ minute: 1200, when: "20:00", title: "Dose", keys: ["a@2"] }],
                 plan: "The plan: Write, then Sort"
             }
-            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [today] })
+            const filter = { chosen: false, groups: [{ key: "yours:", title: "agendas-group-yours", agendas: [{ id: "local/c", name: "c", on: false, usual: false }, { id: "local/leisure", name: "Leisure", on: true, usual: true }] }] }
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", hidden: ["local/c"], filter: filter, days: [today] })
             wait(50)
             const rows = root.all(page, c => c.timeWidth !== undefined && c.known !== undefined && c.visible)
-            compare(rows.map(r => r.title).join(" | "), "CAF | Choir", "the hidden calendar, the meal and the dose left out; the date kept")
+            compare(rows.map(r => r.title).join(" | "), "CAF | Choir", "the agenda left out, the meal and the dose left out; the date kept")
             compare(root.all(page, c => c.objectName === "comesPlan" && c.visible).length, 0, "the plan's line with the steps")
             verify(root.find(page, "agendaShow").visible, "Show offered in What comes")
+            verify(root.find(page, "agendaFilter").visible, "the agenda filter offered")
             page.mode = "month"
             const monday = day(0)
             monday.lines = [dated("CAF", monday.start, "plain"), placed("Doctor", "event", monday.start, 840, 870), other]
-            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday] })
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", hidden: ["local/c"], filter: filter, days: [monday] })
             wait(50)
             compare(root.all(page, c => c.objectName === "monthLine").map(l => l.modelData.item.title).join(" | "), "CAF | Choir")
         }

@@ -3801,6 +3801,161 @@ day-let-plan-done = Le plan place de nouveau « { $title } ».
 agenda-read-only = Ce calendrier ne peut qu’être lu.
 agenda-tasks-only = Cette liste ne tient que des tâches : un événement ne peut y aller.
 agenda-events-only = Ce calendrier ne tient que des événements : une tâche ne peut y aller.
+agenda-availability-only = Seules ses heures occupées sont partagées ici : rien d’autre n’en est montré ni changé.
+# Plusieurs agendas (4 novembre 2026) : le filtre, ce qu’est chaque agenda, les conflits.
+agendas-filter = Agendas
+agendas-filter-hours = Comme disent les heures
+agendas-filter-until = Votre choix tient jusqu’à { $time }, puis les heures décident de nouveau.
+agendas-fold = Replier { $group }
+agendas-unfold = Déplier { $group }
+agendas-group-yours = Les vôtres
+agendas-group-children = Enfants
+agendas-group-parent = L’autre parent
+agendas-group-partners = Partenaires
+agendas-group-shared = Partagés avec vous
+agendas-kept-hidden = gardé caché
+agenda-keep-hidden = Garder caché sur cet appareil
+agenda-show-again = Montrer de nouveau
+# Événements des enfants (plusieurs agendas, partie 3) : qui s’en charge, les doublures, les invitations.
+holder-title = Qui s’en charge
+holder-kind = Type
+holder-kind-none = Aucun type
+holder-kind-health = Santé
+holder-kind-dentist = Dentiste
+holder-kind-school = École
+holder-kind-activity = Activité
+holder-kind-clothes = Vêtements
+holder-kind-other = Autre
+holder-me = Moi
+holder-later = Plus tard
+holder-take-it = M’en charger
+holder-not-this-time = Pas cette fois
+holder-i-take-it = Je m’en charge
+holder-ask-other = Demander à { $who } de s’en charger
+holder-you = vous
+holder-details = Détails : l’agenda de { $name }
+holder-details-agenda = Détails : { $agenda }
+holder-away = Absence
+holder-line-nobody = Personne ne s’en charge encore.
+holder-line-yours-plain = Vous vous en chargez.
+holder-line-yours = Vous vous en chargez, depuis le { $since }.
+holder-line-proposed = On vous demande de vous en charger, depuis le { $since }.
+holder-line-declined = Vous avez dit pas cette fois, le { $since }.
+holder-line-theirs = { $who } s’en charge, depuis le { $since }.
+holder-line-asked = { $who } est sollicité·e, depuis le { $since }.
+holder-line-reopened = { $who } a dit pas cette fois, le { $since } : c’est de nouveau libre.
+holder-line-back = { $who } ramène { $child }.
+holder-line-back-you = Vous ramenez { $child }.
+holder-back = Qui ramène { $child }
+holder-back-same = Ramené·e par la même personne
+holder-said-back = « { $title } » de { $child }, { $when } : qui ramène { $child } est dit.
+holder-why-standing = D’habitude, { $who }.
+holder-why-custody = { $child } est avec { $who } ce jour-là.
+holder-busy = { $who } est occupé·e à ce moment-là.
+holder-you-take = Vous
+holder-you-asked = Vous, sollicité·e
+holder-nobody-yet = Personne encore
+holder-asked-short = { $who }, sollicité·e
+holder-no-date = Sans date
+holder-week-of = Semaine du { $day }
+holder-who-does-what = Qui fait quoi
+holder-all-children = Tous les enfants
+holder-what-i-take = Ce dont je me charge
+holder-previous-week = Semaine précédente
+holder-next-week = Semaine suivante
+holder-nothing-this-week = Rien pour les enfants cette semaine.
+agenda-titles = Montrer ce que disent ses événements
+agendas-set-now = maintenant
+agendas-set-forget = Oublier « { $name } »
+agendas-set-save = Garder ces agendas comme un ensemble…
+agendas-set-name = Un nom pour ces agendas
+agendas-set-times = Vient de lui-même en
+agendas-set-keep = Garder
+holder-question = { $child } : « { $title } », { $when }. Qui s’en charge ?
+holder-proposed = { $who } vous propose d’emmener { $child } à « { $title } », { $when }.
+holder-reopened = { $who } ne peut pas emmener { $child } à « { $title } », { $when } : c’est de nouveau libre. Qui s’en charge ?
+holder-reopened-said = { $who } ne peut pas emmener { $child } à « { $title } », { $when } : c’est de nouveau libre.
+holder-said-me = Vous emmenez { $child } à « { $title } », { $when } : c’est dans votre agenda.
+holder-said-declined = Pas cette fois : « { $title } » de { $child }, { $when }, est de nouveau libre.
+holder-said-other = { $who } est sollicité·e pour emmener { $child } à « { $title } », { $when } : son Sioul lui pose la question.
+holder-said-other-mail = { $who } est sollicité·e pour emmener { $child } à « { $title } », { $when } : l’invitation attend dans les brouillons que vous l’envoyiez.
+holder-made = « { $title } » de { $child }, { $when }, est dans votre agenda : vous vous en chargez.
+holder-followed = « { $title } » de { $child } a changé : votre agenda suit, { $when }.
+holder-given = « { $title } » de { $child } n’est plus dans votre agenda.
+holder-follow-up-added = Dans la liste de { $child } : { $title }.
+holder-follow-up-dentist = Prendre le prochain rendez-vous de dentiste de { $name }
+holder-follow-up-health = Prendre le prochain bilan de santé de { $name }
+holder-follow-up-other = Prendre le prochain rendez-vous de { $name } : { $kind }
+holder-not-child = Ce n’est pas dans l’agenda d’un enfant.
+holder-no-parent = Écrivez d’abord l’adresse de l’autre parent dans les réglages de cet agenda (Agenda ⚙ ▸ Vos agendas).
+holder-no-address = Donnez d’abord une adresse à l’un de vos comptes : elle dit que c’est vous qui vous en chargez.
+holder-invite-details = { $child } : « { $title } », { $when }. Répondez à cette invitation pour dire si vous vous en chargez.
+holder-invite-subject = { $child } : « { $title } », { $when }. Peux-tu t’en charger ?
+holder-invite-body = Bonjour { $who },
+
+    pourrais-tu emmener { $child } à « { $title } », { $when } ? Ton agenda peut répondre à cette invitation.
+holder-invite-cancel-subject = { $child } : « { $title } », { $when } : plus besoin
+holder-invite-cancel-body = Bonjour { $who },
+
+    plus besoin d’emmener { $child } à « { $title } », { $when } : c’est réglé, ou annulé.
+holder-invite-update-drafted = Une mise à jour pour { $who } attend dans les brouillons : elle part quand vous l’envoyez.
+holder-invite-redrafted = L’invitation pour { $who }, encore dans les brouillons, dit maintenant le changement.
+holder-invite-cancel-drafted = Une annulation pour { $who } attend dans les brouillons : elle part quand vous l’envoyez.
+holder-replied-yes = { $who } emmène { $child } à « { $title } », { $when }.
+holder-replied-no = { $who } ne peut pas emmener { $child } à « { $title } », { $when } : c’est de nouveau libre.
+holder-replied-maybe = { $who } n’a pas encore répondu pour « { $title } » de { $child }, { $when }.
+holder-replied-unproven = Sioul n’a pas pu prouver que cette réponse vient de { $who } : rien n’a changé, et « Qui s’en charge ? » est toujours sur la fiche de « { $title } » de { $child }.
+agenda-parent = L’autre parent
+agenda-parent-name = Son nom
+agenda-parent-address = Son adresse
+agenda-parent-answers = Répond
+agenda-parent-answers-mail = Par une invitation dans sa messagerie
+agenda-parent-answers-sioul = Dans son propre Sioul, qui lit cet agenda
+agenda-standing = Qui s’en charge d’habitude
+agenda-standing-ask = Demandé à chaque fois
+children-events = Événements des enfants
+children-stand-ins = Votre doublure va dans
+children-stand-in-usual = Votre agenda personnel
+children-follow-ups = Après le dentiste et les bilans, une tâche pour prendre le suivant
+children-months = Mois d’écart
+agenda-whose = À qui il est
+agenda-whose-yours = À vous
+agenda-whose-child = À un enfant
+agenda-whose-parent = À l’autre parent
+agenda-whose-partner = À un ou une partenaire
+agenda-whose-shared = Partagé avec vous
+agenda-person = Son nom
+agenda-person-child = Le nom de l’enfant
+agenda-for = Pour
+agenda-reaches = Vous atteint
+agenda-reaches-all-day = Toute la journée
+agenda-reaches-outside-work = Hors des heures de travail
+agenda-access = Vous pouvez
+agenda-access-write = Lire et écrire
+agenda-access-read = Lire seulement
+agenda-access-availability = Voir seulement quand il est pris
+agenda-server-read-only = Son serveur vous le laisse lire seulement.
+# Sur la fiche d’un événement : vous à deux endroits. $whose : l’agenda de l’autre événement (le nom d’une personne), « none » pour le vôtre ; $why : « accepted » (une invitation acceptée dans l’agenda d’un autre), « tentative », sinon « none ».
+conflict-same-time = En même temps que « { $title } »{ $whose ->
+        [none] {""}
+       *[other] {" "}de { $whose }
+    }{ $why ->
+        [accepted] , que vous avez accepté.
+        [tentative] , pas encore confirmé.
+       *[none] .
+    }
+conflict-tight = Serré avec « { $title } »{ $whose ->
+        [none] {""}
+       *[other] {" "}de { $whose }
+    } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
+conflict-none-movable = Aucun des deux ne peut être déplacé ici : gardez les deux, ou déplacez le vôtre là où il vit.
+conflict-none-to-ask = Aucun des deux n’est un événement d’enfant dont vous vous chargez : personne à qui demander.
+conflict-keep-both = Garder les deux
+conflict-move-mine = Déplacer le mien
+conflicts-itself = { $agenda } avec lui-même
+conflicts-pair = { $first } avec { $second }
+conflicts-with-itself = Avec lui-même
+conflicts-with = Avec { $agenda }
 agenda-move-which = Déplacé à { $time } : cette fois seulement, ou toutes les fois ?
 agenda-move-set-days = Sa règle fixe ses jours : déplacez cette fois seulement, ou changez sa répétition dans son formulaire.
 health-readable-done = Terminé
@@ -4901,6 +5056,7 @@ home-card-time-range = { $start } – { $end }
 home-card-until-day = Jusqu’au { $day }
 home-card-event-plain = Un événement
 home-card-agenda-empty = Rien dans vos agendas pour le mois à venir.
+home-card-agenda-empty-hours = Les agendas que ces heures montrent n’ont rien pour le mois à venir.
 # Les dates demandées dans l’agenda, à partir de la version 4, sans les détails : chacune par son type seul.
 home-card-date-asked-plain = Une date demandée
 home-card-date-letter-plain = Un rendez-vous d’un courrier
@@ -6506,6 +6662,10 @@ reach-card-let-it-done = Elle arrive au prochain regard du téléphone.
 set-agenda-calendar = Les nouveaux événements vont dans
 set-agenda-calendar-help = L’agenda où va un nouvel événement ; l’éditeur de l’événement peut en choisir un autre, et déplacer un événement plus tard.
 set-agenda-calendar-first = Le premier agenda qui prend des événements
+set-agendas = Vos agendas
+set-agendas-help = Ce qu’est chacun : à qui, pour quoi, quand il vous atteint, ce que vous pouvez en faire. Sioul l’a deviné de ce qu’il voyait ; ouvrez-en un pour dire autrement.
+set-conflicts = Conflits
+set-conflicts-help = Un conflit, c’est vous à deux endroits : les événements de vos agendas, les invitations acceptées, les événements des enfants que vous prenez. Une paire cochée compare tous ses événements, quel que soit qui ils demandent ; une des vôtres décochée, aucun.
 event-calendar-in = Dans { $name }
 event-calendar-here-computer = Seulement sur cet ordinateur : un agenda propre à cet appareil, que votre partage ne transporte pas.
 event-calendar-here-phone = Seulement sur ce téléphone : un agenda propre à cet appareil, que votre partage ne transporte pas.
@@ -6532,7 +6692,7 @@ collection-events-and-tasks = événements et tâches
 
 # The time kept between two events (22 October 2026): set by you alone; otherwise, two events overlap only when their times do.
 set-agenda-between = Temps gardé entre deux événements
-set-agenda-between-help = Plus proches que cela, deux événements sont dits trop proches. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
+set-agenda-between-help = Plus proches que cela, deux événements sont serrés, jamais en même temps. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
 set-agenda-time-zone = Fuseau horaire
 set-agenda-time-zone-help = Le fuseau horaire dans lequel l’agenda, le planning et les rappels disent les heures, et décident d’aujourd’hui, sur cet appareil : le sien, suivi quand il change, ou un autre choisi, pour un ordinateur dont l’horloge reste à la maison pendant un voyage. Un événement garde son instant ; seule la façon dont son heure se lit change. Les prises gardent l’horloge du système.
 set-agenda-time-zone-device = Suivre cet appareil ({ $zone })

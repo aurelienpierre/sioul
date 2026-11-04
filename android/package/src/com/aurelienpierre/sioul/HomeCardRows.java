@@ -214,8 +214,9 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
     /**
      * "Agenda", then each day with something in it: its dates asked first
      * (from version 4: a card of version 3 has none), then each event not
-     * over yet under its day, the day it starts, or today while it runs. Rust
-     * gave them nearest first. In a pause the full card shows the pause
+     * over yet under its day, the day it starts, or today while it runs,
+     * those the frame's hours leave out apart ("events_out": a work agenda's
+     * outside work hours). Rust gave them nearest first. In a pause the full card shows the pause
      * alone; the agenda card says it under its heading. Without a calendar
      * and without a date, nothing.
      */
@@ -246,6 +247,16 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
             JSONObject event = events.optJSONObject(i);
             eventDay[i] = event == null || event.optLong("end") <= now ? -1 : dayOf(days, Math.max(event.optLong("start"), now));
         }
+        // Those the hours leave out then: a work agenda's outside work hours (`Frame::events_out`).
+        JSONArray out = frame == null ? null : frame.optJSONArray("events_out");
+        boolean leftOut = false;
+        for (int i = 0; out != null && i < out.length(); i++) {
+            int at = out.optInt(i, -1);
+            if (at >= 0 && at < eventDay.length && eventDay[at] != -1) {
+                eventDay[at] = -1;
+                leftOut = true;
+            }
+        }
         boolean any = false;
         for (int day = 0; days != null && day < days.length(); day++) {
             List<Row> under = new ArrayList<>();
@@ -269,8 +280,11 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
             rows.addAll(under);
             any = true;
         }
-        if (!any)
-            rows.add(new Row(LINE, null, agenda.optString("empty"), "agenda"));
+        if (!any) {
+            // Some left out by the hours: "The calendars these hours show have nothing…", not "nothing in your calendars".
+            String hours = agenda.optString("empty_hours");
+            rows.add(new Row(LINE, null, leftOut && !hours.isEmpty() ? hours : agenda.optString("empty"), "agenda"));
+        }
     }
 
     /**

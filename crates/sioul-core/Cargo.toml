@@ -39,6 +39,7 @@ psl = "2"
 # Texts (texts.rs): a message's fingerprint, each text once across phones.
 # Already built for every target through sioul-sync (the same version):
 # nothing new is compiled.
+sha1 = "0.10"
 sha2 = "0.10"
 # Factur-X invoices (einvoice.rs): the XML a PDF carries, Flate-compressed.
 # Already built for every target through sioul-sync (the same version and

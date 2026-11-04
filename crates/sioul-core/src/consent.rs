@@ -66,12 +66,29 @@ pub struct Consent {
     /// The errands' record did not read here: an errand renamed on a list
     /// that keeps no category may not be known as one (`keep_errands`).
     pub health_unread: bool,
+    /// What another shares for its availability alone, by address: never given to an agent (`keep_private`).
+    private: BTreeSet<String>,
 }
 
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
     pub fn new(projects: &[Project], outside: bool) -> Consent {
-        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false }
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false, private: BTreeSet::new() }
+    }
+
+    /// Keeps the events of the agendas shared for their availability alone
+    /// from agents, whatever their projects (several agendas, part 4;
+    /// research/agendas.md §6, recommendation 14): what another shares of
+    /// their time is never re-shared, and agents are elsewhere. `events`:
+    /// the events here, each with its file (`agenda::EventRef`).
+    pub fn keep_private(&mut self, events: &[crate::agenda::EventRef]) {
+        let dirs: BTreeSet<std::path::PathBuf> = crate::agendas::current().iter().filter(|a| a.busy()).filter_map(|a| crate::vdir::collections(crate::vdir::Kind::Calendars).into_iter().find(|c| crate::agendas::place(c) == a.id).map(|c| c.dir)).collect();
+        if dirs.is_empty() {
+            return;
+        }
+        for event in events.iter().filter(|e| std::path::Path::new(&e.key).parent().is_some_and(|d| dirs.contains(d))) {
+            self.private.insert(links::event_uri(&event.uid));
+        }
     }
 
     /// Keeps the pharmacy and renewal errands from agents whatever their
@@ -384,6 +401,9 @@ impl Consent {
     /// Whether a thing reaches an agent, by its address.
     pub fn allows(&self, uri: &str) -> bool {
         if links::kind_of(uri.trim()) == Kind::Mail && self.kept_by_account(Some(uri), None) {
+            return false;
+        }
+        if self.private.contains(uri.trim()) {
             return false;
         }
         if self.is_health(uri) {

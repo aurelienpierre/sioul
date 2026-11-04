@@ -1253,8 +1253,9 @@ SioulWindow {
             ]
             // The agenda's Day and Week, one timeline of everything with a time
             // (SIOUL_GRAB_STEPS=agenda; SIOUL_GRAB_PHONE for a phone's, then in
-            // landscape): today's Day, its Show menu, the Week (a phone's: a list of
-            // days), the next week, What comes and the Month; the items alive in each, said in the log.
+            // landscape): today's Day, its Show menu, the agenda filter's list, Agenda ⚙'s
+            // agendas and conflicts, the Week (a phone's: a list of days), the next week,
+            // What comes and the Month; the items alive in each, said in the log.
             // Pictures alone: nothing is changed.
             readonly property var agendaSteps: [
                 () => window.page = 4,
@@ -1266,6 +1267,39 @@ SioulWindow {
                 () => {},
                 () => grabber.savePopup(agendaPage.openShow(), "agenda-show"),
                 () => agendaPage.closeShow(),
+                // The agenda filter's list (several agendas), then Agenda ⚙: the agendas, the conflicts.
+                () => agendaPage.openFilter(),
+                () => {},
+                () => grabber.savePopup(agendaPage.openFilter(), "agenda-filter"),
+                () => agendaPage.closeFilter(),
+                // Who does what (part 4): Léa's week; then the swimming lesson's card from it,
+                // who takes it (part 3).
+                () => agendaPage.whoDoesWhat("cloud/lea"),
+                () => {},
+                () => {},
+                () => grabber.savePopup(agendaPage.whoDoesWhat("cloud/lea"), "agenda-who-does-what"),
+                () => {
+                    const week = agendaPage.whoDoesWhat("cloud/lea")
+                    let row = null
+                    for (const day of week.shown.days || []) {
+                        for (const item of day.items)
+                            row = row || item
+                    }
+                    if (row)
+                        week.openRow(row)
+                },
+                () => {},
+                () => {},
+                () => grabber.saveCounted("agenda-child-card", cardHost),
+                () => window.goBack(),
+                () => agendaPage.openSettings(true, "agendas"),
+                () => {},
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-agendas.png"),
+                () => agendaPage.openSettings(true, "conflicts"),
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-conflicts.png"),
+                () => agendaPage.openSettings(false),
                 () => agendaPage.mode = "week",
                 () => {},
                 () => {},

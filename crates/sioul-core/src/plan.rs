@@ -830,7 +830,8 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let tasks = unique;
     let n = tasks.len();
     let graph = Graph::new(&tasks, &index);
-    let open: Vec<bool> = tasks.iter().map(|t| t.status.is_open()).collect();
+    // A child's task someone else takes, or nobody yet, is not yours to plan (`holders::mark_tasks`).
+    let open: Vec<bool> = tasks.iter().map(|t| t.status.is_open() && !t.elsewhere).collect();
     let open_steps: Vec<usize> = (0..n).map(|i| graph.children[i].iter().filter(|&&c| open[c]).count()).collect();
     let optional: Vec<bool> = (0..n).map(|i| is_optional(tasks[i]) || graph.ancestors(i).iter().any(|&a| is_optional(tasks[a]))).collect();
     // The appointment each task prepares, when the plan knows the events (`pairs`): here, with its

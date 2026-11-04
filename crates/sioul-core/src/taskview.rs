@@ -84,6 +84,11 @@ pub struct Filter {
     /// at 09:00"; `CardView::comes_back`).
     #[serde(skip)]
     pub fresh: BTreeMap<String, String>,
+    /// The lists the agenda filter leaves out now, by place, "account/id"
+    /// (`agendas`: a work list outside work hours, or one turned off by
+    /// hand): their tasks are in no view, the plan whole as ever.
+    #[serde(skip)]
+    pub lists_off: std::collections::BTreeSet<String>,
 }
 
 impl Filter {
@@ -91,6 +96,7 @@ impl Filter {
         (self.kind.is_empty() || task.kind == self.kind)
             && (self.category.is_empty() || task.categories.iter().any(|c| c.eq_ignore_ascii_case(&self.category)))
             && (self.project.is_empty() || task.projects.iter().any(|c| c == &self.project))
+            && !self.lists_off.contains(&task.list_id)
             && (self.fresh.contains_key(&task.uid) || self.quiet.as_ref().is_none_or(|quiet| quiet.keeps(task)))
     }
 
@@ -101,7 +107,7 @@ impl Filter {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.kind.is_empty() && self.category.is_empty() && self.project.is_empty() && self.quiet.is_none()
+        self.kind.is_empty() && self.category.is_empty() && self.project.is_empty() && self.quiet.is_none() && self.lists_off.is_empty()
     }
 }
 
@@ -641,7 +647,7 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
     } else {
         // Nothing free today: the step the plan puts first, and its day.
         let coming = cx.plan.order.iter().filter_map(|u| Some((cx.task(u)?, cx.planned(u)?))).filter(|(_, p)| p.open_steps == 0 && p.start.is_some()).min_by_key(|(_, p)| p.start);
-        let quiet_only = cx.filter.quiet.is_some() && cx.filter.kind.is_empty() && cx.filter.category.is_empty() && cx.filter.project.is_empty();
+        let quiet_only = cx.filter.quiet.is_some() && cx.filter.kind.is_empty() && cx.filter.category.is_empty() && cx.filter.project.is_empty() && cx.filter.lists_off.is_empty();
         view.empty = if !ready.is_empty() {
             cx.tr.text("task-all-aside", None)
         } else if quiet_only {
@@ -1250,6 +1256,25 @@ mod tests {
         let money = Filter { category: "money".into(), ..Filter::default() };
         let cx = Context { filter: &money, ..cx };
         assert_eq!(board(&cx, None, Fold::Open).columns.iter().map(|c| c.cards.len()).sum::<usize>(), 1);
+    }
+
+    /// The agenda filter's lists (several agendas): a list it leaves out has
+    /// its tasks in no view, Now included; the plan stays whole, so the next
+    /// step comes from another list.
+    #[test]
+    fn a_list_the_agenda_filter_leaves_out_is_in_no_view() {
+        let today: Date = "2026-10-05".parse().unwrap();
+        let at = |uid: &str, title: &str, list: &str| Task { list_id: list.into(), ..task(uid, title) };
+        let tasks = vec![at("report", "Send the report", "dav/work-tasks"), at("coat", "Buy a winter coat", "dav/home-tasks")];
+        let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        let tr = Translator::new("en");
+        let filter = Filter { lists_off: ["dav/work-tasks".to_string()].into(), ..Filter::default() };
+        let cx = Context { filter: &filter, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new(), outings: &BTreeMap::new() };
+        let titles: Vec<String> = list(&cx, "project", false, "", Fold::Open).groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
+        assert_eq!(titles, vec!["Buy a winter coat"]);
+        assert_eq!(now(&cx, Weather::Clear, &BTreeSet::new()).now.unwrap().title, "Buy a winter coat");
+        assert_eq!(board(&cx, None, Fold::Open).columns.iter().map(|c| c.cards.len()).sum::<usize>(), 1);
+        assert_eq!(plan.items.len(), 2, "the plan whole");
     }
 
     #[test]

@@ -93,7 +93,7 @@ As built, with the research it follows: [tasks.md](tasks.md).
 - **A kind of thing can keep its holder**, proposed for each new event of that kind, and the next appointment to book comes back to that parent as a task (finding 49).
 - **Nothing enters another parent's agenda until they accept**, and Sioul records who took what and when, never what was read (finding 50).
 - **Who does what names each item's holder, never a total per parent** (finding 51).
-- **Someone else's availability shows to you alone**, as bands without titles, never written, shared again or given to an agent (finding 52); yours is shared per recipient, as busy blocks Sioul derives (finding 53).
+- **Someone else's availability shows to you alone**, as bands without titles, never written, shared again or given to an agent (finding 52); sharing yours as busy blocks Sioul derives, per recipient, is planned (finding 53).
 - **The holder's copy points back to the child's event** by standard lines and a UID derived from it; where Sioul cannot write the holder's agenda, an invitation you send from the Outbox takes its place (finding 54).
 
 ## Money
