@@ -103,6 +103,48 @@ impl Consent {
         self.persons.extend(kept);
     }
 
+    /// Keeps the agendas of persons kept from agents (`closed`, by place:
+    /// `persons::Persons::closed_agendas`): their events and tasks; and in a
+    /// child's agenda (`children`, by place), open or not, the events and
+    /// tasks of the health and dentist kinds (`holders::kind_of`) as health,
+    /// with the stand-ins of yours that point at them (`RELATED-TO`), whatever
+    /// the switch (docs/persons.md). Each tool counts them among what it left
+    /// out, never which.
+    pub fn keep_agendas(&mut self, loaded: &Loaded, closed: &BTreeSet<String>, children: &BTreeSet<String>) {
+        if closed.is_empty() && children.is_empty() {
+            return;
+        }
+        let collections = crate::vdir::collections(crate::vdir::Kind::Calendars);
+        let dirs = |places: &BTreeSet<String>| -> BTreeSet<std::path::PathBuf> { collections.iter().filter(|c| places.contains(&crate::agendas::place(c))).map(|c| c.dir.clone()).collect() };
+        let (closed, children) = (dirs(closed), dirs(children));
+        let folder = |key: &str| std::path::Path::new(key).parent().map(std::path::Path::to_path_buf);
+        let health_kind = |key: &str| std::fs::read_to_string(key).ok().and_then(|text| crate::holders::kind_of(&text)).is_some_and(|k| matches!(k, crate::holders::Kind::Health | crate::holders::Kind::Dentist));
+        let mut health_uids: BTreeSet<String> = BTreeSet::new();
+        for event in &loaded.events {
+            let Some(dir) = folder(&event.key) else { continue };
+            if closed.contains(&dir) {
+                self.persons.insert(links::event_uri(&event.uid));
+            }
+            if children.contains(&dir) && health_kind(&event.key) {
+                self.health.insert(links::event_uri(&event.uid));
+                health_uids.insert(event.uid.clone());
+            }
+        }
+        for task in &loaded.tasks {
+            let Some(dir) = folder(&task.key) else { continue };
+            if closed.contains(&dir) {
+                self.persons.insert(links::task_uri(&task.uid));
+            }
+            if children.contains(&dir) && health_kind(&task.key) {
+                self.health.insert(links::task_uri(&task.uid));
+            }
+        }
+        // Your stand-ins of a child's health or dentist event: health too.
+        for event in loaded.events.iter().filter(|e| e.related.iter().any(|r| health_uids.contains(&r.uid))) {
+            self.health.insert(links::event_uri(&event.uid));
+        }
+    }
+
     /// Keeps the pharmacy and renewal errands from agents whatever their
     /// projects (`health::is_errand`, `recorded`: the UIDs the record keeps,
     /// none when it did not read: `health_unread`, said): each errand's task,

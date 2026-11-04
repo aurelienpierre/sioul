@@ -344,16 +344,22 @@ impl Who {
 /// yours (`mine`) or the other parent's (`other`). None without one, or with
 /// both on that day.
 pub fn custody(whole_days: &[&str], mine: &[String], other: &str) -> Option<Who> {
+    custody_of(whole_days, mine, &[other.to_string()])
+}
+
+/// `custody` with the other parent by every name they go by (their person's
+/// name and full name: docs/persons.md), names compared case and accents aside.
+pub fn custody_of(whole_days: &[&str], mine: &[String], others: &[String]) -> Option<Who> {
     let named = |title: &str| -> Option<String> {
         let title = title.trim();
         let lower = title.to_lowercase();
-        ["with ", "avec "].iter().find(|p| lower.starts_with(*p)).map(|p| title[p.len()..].trim().to_lowercase())
+        ["with ", "avec "].iter().find(|p| lower.starts_with(*p)).map(|p| title[p.len()..].trim().to_string())
     };
-    let same = |a: &str, b: &str| !a.trim().is_empty() && a.trim().to_lowercase() == b.trim().to_lowercase();
+    let same = |a: &str, b: &str| !crate::persons::key(a).is_empty() && crate::persons::key(a) == crate::persons::key(b);
     let found: std::collections::BTreeSet<Who> = whole_days
         .iter()
         .filter_map(|t| named(t))
-        .filter_map(|name| if same(&name, other) { Some(Who::Other) } else if mine.iter().any(|m| same(&name, m)) { Some(Who::Me) } else { None })
+        .filter_map(|name| if others.iter().any(|o| same(&name, o)) { Some(Who::Other) } else if mine.iter().any(|m| same(&name, m)) { Some(Who::Me) } else { None })
         .collect();
     (found.len() == 1).then(|| found.into_iter().next()).flatten()
 }
@@ -1178,6 +1184,10 @@ mod tests {
         assert_eq!(propose(None, custody(&["With Sam", "With Alex"], &mine, "Sam")), None);
         assert_eq!(propose(None, custody(&[], &mine, "Sam")), None);
         assert_eq!(propose(Some(Who::Other), None), Some(Who::Other));
+        // The other parent by their person's names too, accents aside (docs/persons.md).
+        let sam = ["Sam".to_string(), "Samuel Étienne".to_string()];
+        assert_eq!(custody_of(&["Avec samuel etienne"], &mine, &sam), Some(Who::Other));
+        assert_eq!(custody_of(&["With Sam", "With Samuel Étienne"], &mine, &sam), Some(Who::Other), "one parent by two names is one");
     }
 
     /// Its kind is a concept, another application's concepts kept.

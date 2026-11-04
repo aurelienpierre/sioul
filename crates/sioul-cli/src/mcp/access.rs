@@ -41,7 +41,24 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     // What is a person's (docs/persons.md): each person is closed until opened on their
     // page; others' health papers never reach an agent, whatever the switch.
     consent.keep_persons(kept_for_persons(s, loaded));
+    // A closed person's agendas, and a child's health and dentist events whatever the switch.
+    let (closed, children) = agendas_for_persons(s);
+    consent.keep_agendas(loaded, &closed, &children);
     consent
+}
+
+/// The agendas kept for the persons' sake, by place, and the children's
+/// agendas, by place, whose health and dentist events never reach an agent
+/// (`persons::Persons::closed_agendas`, `Consent::keep_agendas`).
+fn agendas_for_persons(s: &Session) -> (std::collections::BTreeSet<String>, std::collections::BTreeSet<String>) {
+    use sioul_core::agendas::{self, Whose};
+    use sioul_core::persons::Persons;
+    let papers = s.config.notes_root_path().and_then(|root| sioul_core::papers::Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default();
+    let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
+    let persons = Persons::as_read(&Persons::default_path(), &s.config.agenda.calendars, &papers, &own);
+    let all: Vec<agendas::Agenda> = agendas::all(&s.config).into_iter().map(|a| a.with_persons(&persons)).collect();
+    let children = all.iter().filter(|a| a.whose == Whose::Child).map(|a| a.id.clone()).collect();
+    (persons.closed_agendas(&all), children)
 }
 
 /// The papers and persons kept from agents for the persons' sake

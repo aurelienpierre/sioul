@@ -132,6 +132,7 @@ fn main() {
         "qml/Household.qml",
         "qml/PersonPage.qml",
         "qml/PersonDialog.qml",
+        "qml/PersonChooser.qml",
         "qml/RoutinesDialog.qml",
         "qml/RoutinePlayer.qml",
         "qml/ContractDialog.qml",

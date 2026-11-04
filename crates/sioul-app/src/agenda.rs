@@ -703,6 +703,9 @@ pub(crate) fn setup() -> String {
                 "tasks": a.tasks,
                 "whose": a.whose.id(),
                 "person": a.person,
+                // Whose it is, and a child's other parent, as persons (docs/persons.md): their ids, "" none.
+                "person_id": a.person_id,
+                "parent_person": a.parent_person,
                 "area": a.area.id(),
                 "reaches": a.reaches.id(),
                 "access": a.access.id(),
@@ -737,7 +740,7 @@ pub(crate) fn setup() -> String {
             pairs.push(serde_json::json!({ "a": a.id, "b": b.id, "ticked": matrix.ticked(&a.id, &b.id), "usual": matrix.usual(&a.id, &b.id) }));
         }
     }
-    json(&serde_json::json!({ "agendas": rows, "pairs": pairs, "children": children, "accounts": crate::servers::accounts(&config) }))
+    json(&serde_json::json!({ "agendas": rows, "pairs": pairs, "children": children, "accounts": crate::servers::accounts(&config), "persons": crate::persons::agenda_choices(&crate::persons::store()) }))
 }
 
 /// One field of an agenda's settings written (`agendas::set_field`); "" takes

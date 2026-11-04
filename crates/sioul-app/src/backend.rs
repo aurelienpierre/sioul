@@ -210,6 +210,10 @@ pub mod qobject {
         #[qinvokable]
         fn person_card_choices(self: &Sioul, query: &QString) -> QString;
 
+        /// An agenda's person chosen ("person", "parent_person"), by id, its name beside; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_agenda_person(self: Pin<&mut Sioul>, id: &QString, field: &QString, person: &QString) -> QString;
+
         /// Lets a sender in: they leave the screener.
         #[qinvokable]
         fn let_in(self: Pin<&mut Sioul>, address: &QString);
@@ -4192,6 +4196,17 @@ impl qobject::Sioul {
 
     fn person_card_choices(&self, query: &QString) -> QString {
         QString::from(&crate::persons::card_choices(&query.to_string()))
+    }
+
+    fn set_agenda_person(self: Pin<&mut Self>, id: &QString, field: &QString, person: &QString) -> QString {
+        let problem = crate::persons::set_agenda_person(&id.to_string(), &field.to_string(), &person.to_string());
+        if problem.is_empty() {
+            // As an agenda's field written (`set_agenda_field`): its name shows everywhere again.
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            pim::show_pim(&qt, &shared);
+            work::show_work(&qt, &shared);
+        }
+        QString::from(&problem)
     }
 
     fn let_in(mut self: Pin<&mut Self>, address: &QString) {

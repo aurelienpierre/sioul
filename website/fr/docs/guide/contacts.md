@@ -37,6 +37,7 @@ Une personne n’est pas un contact. Un contact est une fiche pour joindre quelq
 **La page d’une personne** montre son nom et une ligne, par exemple « Enfant · 12 ans · vit avec vous », puis :
 
 - **Papiers** : les papiers qui sont les siens, chacun avec où il en est, comme sur la page des [Papiers](papers.md#papers), et **Ajouter un papier pour Léa** ;
+- **Agendas** : ses agendas, celui d’un enfant avec **Qui fait quoi** ; pour l’autre parent d’un enfant, les agendas des enfants qu’il ou elle partage ;
 - **Contacts** : les fiches qui sont elle, chacune ouvrant sa fiche, avec **Délier**, et **Lier un contact…** ;
 - en bas, **Ouvert aux agents d’IA**, éteint tant que vous ne l’allumez pas. Votre propre page n’a pas cet interrupteur : vous êtes ouvert comme avant.
 

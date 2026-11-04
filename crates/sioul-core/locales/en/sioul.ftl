@@ -7102,3 +7102,6 @@ person-card-new = New person…
 papers-for = For
 papers-for-new = New person…
 papers-everyone = Everyone
+person-agendas = Agendas
+person-gone = This person is no longer in your household.
+agenda-person-none = Not said

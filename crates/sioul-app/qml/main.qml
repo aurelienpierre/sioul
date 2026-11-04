@@ -3588,6 +3588,15 @@ SioulWindow {
                 () => papersPage.dialog.item && papersPage.dialog.item.opened ? papersPage.dialog.item.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/paper-for-dialog.png")) : console.warn("no paper for a child"),
                 () => {},
                 () => papersPage.dialog.close(),
+                // Agenda ⚙ ▸ Your agendas, the child's line: whose it is and the other parent as persons.
+                () => window.page = 4,
+                () => agendaPage.openSettings(true, "agendas"),
+                () => {},
+                () => agendaPage.openAgendaLine("cloud/lea"),
+                () => {},
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-lea-line.png"),
+                () => agendaPage.openSettings(false),
                 () => window.close()
             ]
             // The Parameters page, from its top to its end.

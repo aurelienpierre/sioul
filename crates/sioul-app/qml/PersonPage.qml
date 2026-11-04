@@ -156,6 +156,43 @@ Panel {
                     }
                 }
 
+                // Their agendas, each with who does what; a child's other parent's, the children's they share.
+                Label {
+                    visible: page.shown !== null && (page.shown.agendas || []).length > 0
+                    Layout.topMargin: 8
+                    text: page.sioul.text("person-agendas")
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                    color: page.theme.accent
+                }
+                Repeater {
+                    model: page.shown ? (page.shown.agendas || []) : []
+
+                    delegate: RowLayout {
+                        id: agendaRow
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: agendaRow.modelData.whose ? agendaRow.modelData.name + " · " + agendaRow.modelData.whose : agendaRow.modelData.name
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: page.theme.text
+                        }
+                        Button {
+                            objectName: "personWhoDoesWhat"
+                            visible: agendaRow.modelData.child
+                            flat: true
+                            text: page.sioul.text("holder-who-does-what")
+                            onClicked: whoDoesWhat.now().openOn(agendaRow.modelData.id)
+                        }
+                    }
+                }
+
                 // The cards that are them, and one to link.
                 Label {
                     visible: page.shown !== null && !page.shown.me && page.shown.cards.length > 0
@@ -281,6 +318,20 @@ Panel {
                     page.reload()
                     page.changed()
                 }
+            }
+        }
+    }
+
+    // Who does what, a week of one child's agenda (`children::who_does_what`).
+    Later {
+        id: whoDoesWhat
+
+        sourceComponent: Component {
+            WhoDoesWhat {
+                sioul: page.sioul
+                theme: page.theme
+                window: page.window
+                narrow: page.width < 560
             }
         }
     }

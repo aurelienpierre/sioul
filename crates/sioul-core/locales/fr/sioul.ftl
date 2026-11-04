@@ -7142,3 +7142,6 @@ person-card-new = Nouvelle personne…
 papers-for = Pour
 papers-for-new = Nouvelle personne…
 papers-everyone = Tout le monde
+person-agendas = Agendas
+person-gone = Cette personne n’est plus parmi vos proches.
+agenda-person-none = Non dit

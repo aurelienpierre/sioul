@@ -376,6 +376,11 @@ sioul-core/src/overlaps.rs	save	1	crate::filelock::replace(path, text.as_bytes()
 sioul-core/src/papers.rs	keep_file	1	std::fs::copy(source, &target)
 sioul-core/src/papers.rs	write	1	std::fs::write(&temporary, doc.to_string())
 
+# sioul-core/src/persons.rs: the persons your admin is done for (data), written whole beside their place: no item.
+sioul-core/src/persons.rs	save	1	std::fs::write(&fresh, text)
+sioul-core/src/persons.rs	save	1	std::fs::rename(&fresh, path)
+sioul-core/src/persons.rs	save	1	std::fs::remove_file(&fresh)
+
 # sioul-core/src/pgp.rs: OpenPGP keys and their copies: no item.
 sioul-core/src/pgp.rs	keep_others_for_their_addresses_at	1	crate::filelock::replace(mark, text.as_bytes())
 sioul-core/src/pgp.rs	write_key	1	std::fs::remove_file(&temporary)

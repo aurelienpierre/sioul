@@ -529,7 +529,15 @@ fn card_as(path: &Path, start: i64, own: &[String]) -> Option<serde_json::Value>
     let taken = holders::taken(&text, Some(start).filter(|s| *s > 0), &zone);
     let kind = holders::kind_of(&text);
     let since = |h: &Holder| h.since.and_then(|s| jiff::Timestamp::from_second(s).ok()).map(|t| tr().day(t.to_zoned(zone.clone()).date())).unwrap_or_default();
-    let name_of = |h: &Holder| if h.among(own) { String::new() } else if !h.name.is_empty() { h.name.clone() } else { h.address.clone() };
+    // Someone of your household by their address (an agenda's other parent): their person's name now (docs/persons.md).
+    let persons = sioul_core::persons::Persons::cached();
+    let name_of = |h: &Holder| {
+        if h.among(own) {
+            return String::new();
+        }
+        let person = sioul_core::persons::by_address(&persons, &h.address, &[], &config.agenda.calendars).and_then(|id| persons.get(&id).map(|p| p.name.clone()));
+        person.unwrap_or_else(|| if !h.name.is_empty() { h.name.clone() } else { h.address.clone() })
+    };
     // A stand-in of yours stands for your hold where a server dropped the line (Google's).
     let stand_in = config_stand_in(&config, &text);
     let state = match &taken.to {
@@ -594,7 +602,10 @@ fn proposal(agenda: &Agenda, text: &str, kind: Option<Kind>, config: &Config, zo
     let whole: Vec<String> = collection.items().iter().flat_map(|p| sioul_core::agenda::file_occurrences(p, &collection, midnight, midnight + 86_400, zone)).filter(|o| o.all_day && !o.cancelled).map(|o| o.summary).collect();
     let whole: Vec<&str> = whole.iter().map(String::as_str).collect();
     let mine: Vec<String> = config.every_account().filter_map(|a| a.name.clone()).chain([tr().text("holder-you", None)]).collect();
-    match holders::custody(&whole, &mine, &agenda.parent) {
+    // The other parent by every name they go by: their person's (docs/persons.md), and the agenda's word.
+    let persons = sioul_core::persons::Persons::cached();
+    let others: Vec<String> = persons.get(&agenda.parent_person).map(|p| vec![p.name.clone(), p.full_name.clone()]).unwrap_or_default().into_iter().chain([agenda.parent.clone()]).filter(|n| !n.trim().is_empty()).collect();
+    match holders::custody_of(&whole, &mine, &others) {
         Some(who) => (Some(who), say("holder-why-custody", &[("child", child_name(agenda)), ("who", who_name(who))])),
         None => (None, String::new()),
     }

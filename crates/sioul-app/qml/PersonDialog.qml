@@ -32,8 +32,8 @@ SafeDialog {
     // Saved: the person's id.
     signal saved(string id)
 
-    // A new person, perhaps from a contact's card (its name, its UID).
-    function begin(name, card, relation) {
+    // A new person, perhaps from a contact's card (its name, its UID), perhaps a child's other parent ("of": the children's ids).
+    function begin(name, card, relation, of) {
         form.personId = ""
         form.card = card || ""
         form.problem = ""
@@ -42,7 +42,7 @@ SafeDialog {
         relationChoice.currentIndex = Math.max(0, form.relations.findIndex(r => r.id === (relation || "")))
         bornField.date = ""
         livesBox.checked = false
-        form.chosenOf = []
+        form.chosenOf = of || []
         form.open()
         nameField.forceActiveFocus()
     }
@@ -150,7 +150,7 @@ SafeDialog {
 
                 theme: form.theme
                 sioul: form.sioul
-                locale: form.window.sioulLocale || Qt.locale()
+                locale: form.window && form.window.sioulLocale ? form.window.sioulLocale : Qt.locale()
                 pickLabel: form.sioul.text("event-pick-day")
             }
             Item {

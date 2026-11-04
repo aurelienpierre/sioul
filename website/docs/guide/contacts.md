@@ -37,6 +37,7 @@ A person is not a contact. A contact is a card for reaching someone; a person is
 **A person's page** shows their name and one line, such as "Child · 12 · lives with you", then:
 
 - **Papers**: the papers that are theirs, each with where it stands, as on the [Papers](papers.md#papers) page, and **Add a paper for Léa**;
+- **Agendas**: their agendas, a child's with **Who does what**; for a child's other parent, the children's agendas they share;
 - **Contacts**: the cards that are them, each opening its card, with **Unlink**, and **Link a card…**;
 - at the foot, **Open to AI agents**, off until you turn it on. Your own page has no such switch: you are open as before.
 

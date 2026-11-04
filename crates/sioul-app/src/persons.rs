@@ -156,6 +156,16 @@ pub(crate) fn page(id: &str) -> String {
         .map(|c| CardRow { uid: c.uid.clone(), key: c.key.clone(), name: c.name.clone(), detail: c.emails.first().map(|e| e.value.clone()).or_else(|| c.phones.first().map(|p| p.value.clone())).unwrap_or_default() })
         .collect();
     let of: Vec<serde_json::Value> = person.of.iter().filter_map(|c| store.get(c)).map(|c| serde_json::json!({ "id": c.id, "name": c.name })).collect();
+    // Their agendas; a child's other parent's, the children's agendas they share (docs/persons.md).
+    let agendas: Vec<serde_json::Value> = if me {
+        Vec::new()
+    } else {
+        sioul_core::agendas::all(&config)
+            .into_iter()
+            .filter(|a| a.person_id == person.id || (a.whose == sioul_core::agendas::Whose::Child && a.parent_person == person.id))
+            .map(|a| serde_json::json!({ "id": a.id, "name": a.name, "child": a.whose == sioul_core::agendas::Whose::Child, "whose": if a.person_id == person.id { String::new() } else { a.person.clone() } }))
+            .collect()
+    };
     json(&serde_json::json!({
         "id": person.id,
         "me": me,
@@ -170,6 +180,7 @@ pub(crate) fn page(id: &str) -> String {
         "of": of,
         "papers": papers,
         "cards": cards,
+        "agendas": agendas,
     }))
 }
 
@@ -256,11 +267,50 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
     answer(saved)
 }
 
+/// The persons an agenda's "Whose name" and "The other parent" offer, by
+/// the agenda's whose: a child's, a partner's, another parent's (docs/persons.md).
+pub(crate) fn agenda_choices(store: &Persons) -> serde_json::Value {
+    let today = sioul_core::zone::now().date();
+    let list = |relation: Relation| store.persons.iter().filter(|p| p.relation() == relation && !p.ended(today)).map(|p| serde_json::json!({ "id": p.id, "name": p.name })).collect::<Vec<_>>();
+    serde_json::json!({ "child": list(Relation::Child), "partner": list(Relation::Partner), "parent": list(Relation::OtherParent) })
+}
+
+/// An agenda's person chosen (`field`: "person", whose it is, or
+/// "parent_person", a child's other parent), by id: the key written, and the
+/// person's name beside it (`name`, `parent`), which older versions show; ""
+/// takes both out. Returns what went wrong, else "".
+pub(crate) fn set_agenda_person(place: &str, field: &str, id: &str) -> String {
+    let name_field = match field {
+        "person" => "name",
+        "parent_person" => "parent",
+        _ => return format!("{field}: not a person of an agenda"),
+    };
+    let store = store();
+    let name = match id.trim() {
+        "" => String::new(),
+        id => match store.get(id) {
+            Some(person) => person.name.clone(),
+            None => return tr().text("person-gone", None),
+        },
+    };
+    let path = crate::backend::config_path();
+    sioul_core::agendas::set_field(&path, place, field, id.trim()).and_then(|()| sioul_core::agendas::set_field(&path, place, name_field, &name)).err().unwrap_or_default()
+}
+
+/// A person's new name written into the agendas that named them by the old
+/// one or hold their key (`persons::renamed_agendas`), so that older versions show it.
+fn rename_agendas(before: &Persons, id: &str, new: &str) {
+    let config = load_config();
+    let path = crate::backend::config_path();
+    for (place, field, value) in persons::renamed_agendas(&config.agenda.calendars, before, id, new) {
+        let _ = sioul_core::agendas::set_field(&path, &place, field, &value);
+    }
+}
+
 /// The papers' holder texts that named a person by `old`, made `new`
 /// (`persons::rename_holders`), those tied to them and those matched by text alike.
 fn rename_texts(id: &str, old: &str, new: &str) {
     let config = load_config();
-    let Some(root) = config.notes_root_path() else { return };
     let own = own_names(&config);
     let local = LocalLinks::load(&LocalLinks::default_path());
     // The store as it was before the new name, to see who the old texts named.
@@ -268,7 +318,10 @@ fn rename_texts(id: &str, old: &str, new: &str) {
     if let Some(p) = before.get_mut(id) {
         p.name = old.to_string();
     }
-    let _ = Wallet::change(&root, |wallet| persons::rename_holders(&mut wallet.papers, &before, &local, &own, id, new));
+    if let Some(root) = config.notes_root_path() {
+        let _ = Wallet::change(&root, |wallet| persons::rename_holders(&mut wallet.papers, &before, &local, &own, id, new));
+    }
+    rename_agendas(&before, id, new);
 }
 
 /// The switch "Open to AI agents" on a person's page; returns what went wrong, else "".
@@ -360,4 +413,61 @@ pub(crate) fn tie_paper(paper: &str, chosen: &[String], texts: &[String]) -> Res
 /// persons with at least one paper, you first, in the household's order.
 pub(crate) fn chips(store: &Persons, holders: &BTreeMap<String, persons::Holders>) -> Vec<serde_json::Value> {
     paper_choices(store).into_iter().filter(|c| c["id"].as_str().is_some_and(|id| holders.values().any(|h| h.has(id)))).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window's paths for persons, on this device's own files (stand-in
+    /// folders, never the person's): a child and a parent saved from their
+    /// form; a paper for the new parent, its tie written and its holder
+    /// text the parent's name; the parent renamed, the paper's text and a
+    /// child's agenda's words following; a card linked, found again and
+    /// offered as theirs; a name taken refused.
+    #[test]
+    fn a_person_saved_renamed_given_a_paper_and_a_card() {
+        sioul_core::config::stand_ins_only();
+        let config = crate::backend::config_path();
+        let notes = sioul_core::config::data_dir().join("persons-test-notes");
+        std::fs::create_dir_all(&notes).unwrap();
+        sioul_core::config::set_value(&config, "case_store", &sioul_core::config::SettingValue::Text(notes.display().to_string())).unwrap();
+        let saved = |id: &str, edit: serde_json::Value| -> serde_json::Value { serde_json::from_str(&save(id, &edit.to_string())).unwrap() };
+        let wren = saved("", serde_json::json!({ "name": "Wren", "relation": "child", "born": "2015-03-04", "lives_with": true }));
+        let wren = wren["id"].as_str().unwrap_or_else(|| panic!("{wren}")).to_string();
+        let ivo = saved("", serde_json::json!({ "name": "Ivo", "relation": "parent" }))["id"].as_str().unwrap().to_string();
+        assert!(saved("", serde_json::json!({ "name": "WREN", "relation": "kin" }))["error"].is_string(), "a name taken within the household");
+        let page_of = |id: &str| serde_json::from_str::<serde_json::Value>(&page(id)).unwrap();
+        assert_eq!(page_of(&wren)["lives_with"], true);
+        assert!(page_of(&wren)["line"].as_str().unwrap().contains(&tr().text("person-relation-child", None)), "{}", page_of(&wren));
+        // A paper for Ivo, as the form's "For" says it: the tie, and the name older versions show.
+        assert_eq!(crate::papers::save("", &serde_json::json!({ "kind": "identity", "title": "Identity card", "for": [ivo] }).to_string()), "");
+        let wallet = Wallet::load(&notes).unwrap();
+        let card = wallet.papers.iter().find(|p| p.title == "Identity card").unwrap().clone();
+        assert_eq!(card.holder, "Ivo");
+        assert_eq!(persons::tied_persons(&LocalLinks::load(&LocalLinks::default_path()), &card.id), [ivo.clone()]);
+        assert_eq!(page_of(&ivo)["papers"].as_array().unwrap().len(), 1);
+        // A child's agenda naming Wren by name: renamed, its words follow; the paper's text follows Ivo's new name.
+        sioul_core::agendas::set_field(&config, "local/wren-test", "whose", "child").unwrap();
+        sioul_core::agendas::set_field(&config, "local/wren-test", "name", "Wren").unwrap();
+        assert!(saved(&wren, serde_json::json!({ "name": "Wren B.", "relation": "child", "born": "2015-03-04", "lives_with": true }))["id"].is_string());
+        assert!(saved(&ivo, serde_json::json!({ "name": "Ivo B.", "relation": "parent" }))["id"].is_string());
+        let said = sioul_core::config::Config::load(&config).unwrap().agenda.calendars["local/wren-test"].clone();
+        assert_eq!(said.name.as_deref(), Some("Wren B."));
+        assert_eq!(Wallet::load(&notes).unwrap().get(&card.id).unwrap().holder, "Ivo B.");
+        // Chosen for an agenda: the key and the name beside it.
+        assert_eq!(set_agenda_person("local/wren-test", "person", &wren), "");
+        let said = sioul_core::config::Config::load(&config).unwrap().agenda.calendars["local/wren-test"].clone();
+        assert_eq!((said.person.as_deref(), said.name.as_deref()), (Some(wren.as_str()), Some("Wren B.")));
+        // A card linked: found again, on the page, offered as theirs.
+        let book = sioul_core::vdir::create(sioul_core::vdir::Kind::Contacts, sioul_core::vdir::LOCAL, "Persons test", None, &[]).unwrap();
+        std::fs::write(book.dir.join("wren.vcf"), "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:card-wren\r\nFN:Wren Blackwood\r\nEMAIL:wren@example.org\r\nEND:VCARD\r\n").unwrap();
+        assert_eq!(link_card(&wren, "card-wren", true), "");
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&of_card("card-wren")).unwrap()["id"], wren.as_str());
+        assert_eq!(page_of(&wren)["cards"][0]["uid"], "card-wren");
+        let offered: serde_json::Value = serde_json::from_str(&card_choices("blackwood")).unwrap();
+        assert_eq!((offered[0]["uid"].as_str(), offered[0]["of"].as_str()), (Some("card-wren"), Some("Wren B.")));
+        assert_eq!(link_card(&wren, "card-wren", false), "");
+        assert_eq!(of_card("card-wren"), "null");
+    }
 }

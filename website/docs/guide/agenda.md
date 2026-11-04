@@ -119,7 +119,7 @@ In the agenda it shows as the task it is, never as an event: the task mark where
 
 Your agendas show together: yours for work and for yourself, one for each child, and those others share with you, another parent's or a partner's when they are busy. Each says what it is, on its line in the Agenda settings, **Your agendas**: open one to change it.
 
-- **Whose it is**: yours, a child's, another parent's, a partner's, or shared with you; and whose name ("Léa"), which names its group in the filter.
+- **Whose it is**: yours, a child's, another parent's, a partner's, or shared with you; and whose: a person of your household, chosen in the list or made there with **New person…** ([People in your household](contacts.md#household)), whose name names its group in the filter. Two agendas of one child are one group.
 - **For**: work, your admin, leisure. A work agenda follows your working hours: outside them, its events are not shown unless you say, and their reminders do not come. A personal one reaches you all day, or only outside work hours if you say so.
 - **You may**: read and write; read only; or see only when it is busy, without its titles, places or notes, whatever its server sends; **Show what its events say** shows their titles, if you wish. What another shares of their time stays with you: never written, never shared again, never given to an AI agent; it only says "Sam is busy then" when you choose who takes a child's event. Read and write is never offered where the server lets you read only. An agenda you only read, or only see busy, is never written by Sioul, its tasks neither.
 
@@ -144,7 +144,7 @@ An AI agent never makes, removes or shares an agenda: these are your own presses
 
 ## Children's events {#childrens-events}
 
-A child's agenda says who may take its events: you, and the other parent, by name and address, in the Agenda settings, **Your agendas**, on its line. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist").
+A child's agenda says who may take its events: you, and the other parent, a person chosen in the list, with the address their invitations go to, in the Agenda settings, **Your agendas**, on its line. A custody day titled with either of their names counts. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist").
 
 - **Who takes it**: a child's event's card says it, "Sam takes it, since 3 November.", or "Nobody takes it yet.", with what you may answer: **Me**, the other parent, **Not this time**, **Ask Sam to take it**. Its **Kind** (health, dentist, school, activity, clothes, other) is chosen there too, and, when one parent drops the child off and the other picks them up, **Who brings Tom back**.
 - **Asked once**: an event or a task that comes into a child's agenda without anyone to take it is asked about once, under the Agenda's head line: "Tom: “Dentist”, Tuesday 10 November at 10:00. Who takes it?" Sioul proposes who usually takes that kind, else who has the child that day (whole days titled "With Sam" in the child's agenda), the proposal shown first. **Later** asks once more at your next admin time, then never.

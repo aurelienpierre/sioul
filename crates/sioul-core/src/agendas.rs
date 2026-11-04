@@ -172,11 +172,20 @@ pub struct Said {
     /// titles), still read only; unsaid, plain busy bands (part 4).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub titles: Option<String>,
+    /// Whose it is, as a person of `persons` (docs/persons.md), by id: `name`
+    /// beside it keeps their name for older versions. Unsaid, `name` is
+    /// matched to a person of its relation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person: Option<String>,
+    /// A child's agenda: the other parent as a person, by id; `parent` keeps
+    /// their name, `parent_address` where invitations go.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_person: Option<String>,
 }
 
 impl Said {
     /// The fields an agenda's settings may write.
-    pub const FIELDS: [&'static str; 9] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles"];
+    pub const FIELDS: [&'static str; 11] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles", "person", "parent_person"];
 }
 
 /// How the other parent of a child's agenda answers (`Said::parent_answers`).
@@ -217,8 +226,11 @@ pub struct Agenda {
     pub events: bool,
     pub tasks: bool,
     pub whose: Whose,
-    /// Whose name, when said ("Léa"); "" for yours.
+    /// Whose name, when said ("Léa"); "" for yours. Their person's name when
+    /// one is theirs (`with_persons`).
     pub person: String,
+    /// Whose it is as a person, by id (`persons`); "" when none is.
+    pub person_id: String,
     pub area: Area,
     pub reaches: Reaches,
     pub access: Access,
@@ -229,6 +241,8 @@ pub struct Agenda {
     pub parent: String,
     pub parent_address: String,
     pub parent_answers: Answers,
+    /// The other parent as a person, by id; "" when none is.
+    pub parent_person: String,
     /// Who usually takes each kind of a child's events.
     pub standing: BTreeMap<crate::holders::Kind, crate::holders::Who>,
     /// For availability: its events' titles shown, by your word (`Said::titles`); off, plain bands.
@@ -273,6 +287,7 @@ impl Agenda {
             tasks: collection.holds("VTODO"),
             whose,
             person,
+            person_id: String::new(),
             area,
             reaches,
             access,
@@ -280,6 +295,7 @@ impl Agenda {
             parent: word(&said.parent),
             parent_address: word(&said.parent_address),
             parent_answers: said.parent_answers.as_deref().and_then(Answers::parse).unwrap_or_default(),
+            parent_person: String::new(),
             standing,
             titles: said.titles.as_deref().is_some_and(|t| t.trim().eq_ignore_ascii_case("shown")),
             said: said.clone(),
@@ -319,9 +335,36 @@ impl Agenda {
         }
     }
 
-    /// The filter's group: whose, and whose name ("child", "léa").
+    /// The filter's group: whose, and whose person ("child", their id), else
+    /// whose name, case and accents aside ("child", "lea"): two agendas of one
+    /// child are one group whatever their names' spelling.
     pub fn group(&self) -> (Whose, String) {
-        (self.whose, self.person.to_lowercase())
+        (self.whose, if self.person_id.is_empty() { crate::persons::key(&self.person) } else { self.person_id.clone() })
+    }
+
+    /// Its persons (docs/persons.md): whose it is (`Said::person`, else its
+    /// name matched to a person of its relation) and, a child's, the other
+    /// parent (`Said::parent_person`, else `parent` matched to a child's other
+    /// parent), each shown by their person's name now. Nothing is written.
+    pub fn with_persons(mut self, persons: &crate::persons::Persons) -> Agenda {
+        use crate::persons::Relation;
+        let relation = match self.whose {
+            Whose::Child => Relation::Child,
+            Whose::Partner => Relation::Partner,
+            Whose::Parent => Relation::OtherParent,
+            Whose::Yours | Whose::Shared => return self,
+        };
+        if let Some(person) = persons.of_agenda(&self.said, relation) {
+            self.person_id = person.id.clone();
+            self.person = person.name.clone();
+        }
+        if self.whose == Whose::Child
+            && let Some(parent) = persons.parent_of_agenda(&self.said)
+        {
+            self.parent_person = parent.id.clone();
+            self.parent = parent.name.clone();
+        }
+        self
     }
 }
 
@@ -358,7 +401,7 @@ pub fn agenda_of(collection: &Collection, config: &Config) -> Agenda {
     let id = place(collection);
     let said = config.agenda.calendars.get(&id).cloned().unwrap_or_default();
     let server = vdir::server_read_only(&collection.account, &collection.id);
-    Agenda::of(collection, &said, config, server, &|| carries_details(&collection.dir))
+    Agenda::of(collection, &said, config, server, &|| carries_details(&collection.dir)).with_persons(&crate::persons::Persons::cached())
 }
 
 /// What the readers of a calendar's events need of its agenda, the
@@ -516,6 +559,8 @@ pub fn set_field(path: &Path, id: &str, field: &str, value: &str) -> Result<(), 
         "parent" => Some(value.to_string()),
         "parent_address" => Some(crate::compose::address_of(value).ok_or_else(|| format!("{value}: not an address"))?),
         "parent_answers" => Some(Answers::parse(value).ok_or_else(|| format!("{value}: mail or sioul"))?.id().to_string()),
+        // A person of `persons`, by id (docs/persons.md).
+        "person" | "parent_person" => Some(value.to_string()),
         "titles" if value.eq_ignore_ascii_case("shown") => Some("shown".to_string()),
         "titles" => return Err(format!("{value}: shown, or nothing")),
         _ => return Err(format!("{field}: not a field of an agenda")),

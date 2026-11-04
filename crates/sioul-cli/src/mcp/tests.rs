@@ -144,6 +144,7 @@ fn make(root: &Path) -> PathBuf {
     vdir::create(Kind::Calendars, vdir::LOCAL, "Agenda", None, &["VEVENT"]).unwrap();
     closed_project(root, &store, &mail);
     persons_fixture(&store);
+    household_agendas(&config);
     health_fixture(&store);
     spam_fixture(root, &mail);
     config
@@ -167,7 +168,7 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     // A step without a project of its own: in its bigger task's.
     let step = TaskEdit { title: "Find the Zeugma form".into(), parent: "zeugma-pay".into(), estimate: 5, ..TaskEdit::default() };
     vdir::write_item(&list.dir.join("zeugma-step.ics"), &tasks::new_task(&step, "zeugma-step", &zone, &Zoned::now()).unwrap()).unwrap();
-    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
     let tomorrow = Zoned::now().date().tomorrow().unwrap();
     let edit = sioul_core::agenda::EventEdit { title: "Zeugma appointment".into(), start: format!("{tomorrow}T10:00"), end: format!("{tomorrow}T11:00"), ..Default::default() };
     let event = sioul_core::agenda::new_event(&edit, &zone).unwrap();
@@ -263,7 +264,7 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
 /// lease of two, one of them that child; a paper tied to the child in
 /// `links.toml` with no holder text; the health card of a parent opened to
 /// agents; a holder text that names nobody. None may be in any answer.
-const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderhollow", "Vellichor", "Gorsebeck"];
+const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderhollow", "Vellichor", "Gorsebeck", "Mirrowvale", "Brightmere"];
 
 /// The household: a child closed to agents, a parent opened; their papers
 /// in the wallet beside the identity card in no project, a passport ending
@@ -271,7 +272,7 @@ const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderh
 /// Old texts read already (`names_read`), so that "Gorsebeck" stays text.
 fn persons_fixture(store: &Path) {
     use sioul_core::papers::{Kind as PaperKind, Paper, Wallet};
-    let persons = "format = 1\nnames_read = 1\n\n[person.p-quorvelle]\nname = \"Quorvelle\"\nfull_name = \"Quorvelle Fenwright\"\nrelation = \"child\"\nborn = 2014-05-12\nagents = false\n\n[person.p-odile]\nname = \"Odile\"\nrelation = \"parent\"\nagents = true\n";
+    let persons = "format = 1\nnames_read = 1\n\n[person.p-quorvelle]\nname = \"Quorvelle\"\nfull_name = \"Quorvelle Fenwright\"\nrelation = \"child\"\nborn = 2014-05-12\nagents = false\n\n[person.p-odile]\nname = \"Odile\"\nrelation = \"parent\"\nagents = true\n\n[person.p-tilda]\nname = \"Tilda\"\nrelation = \"child\"\nagents = true\n";
     let path = sioul_core::persons::Persons::default_path();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, persons).unwrap();
@@ -290,6 +291,40 @@ fn persons_fixture(store: &Path) {
     }
     wallet.save().unwrap();
     sioul_core::links::LocalLinks::add_all(&sioul_core::links::LocalLinks::default_path(), &[sioul_core::links::Edge { from: "sioul:paper/p-school".into(), to: "sioul:person/p-quorvelle".into(), how: "holder".into() }]).unwrap();
+}
+
+/// The children's agendas, on a server's account of their own, read only
+/// there (no writer of the other tests picks them): the closed child's, by
+/// its name alone, with a recital whose title holds "Mirrowvale"; the opened
+/// child's, by its person's key, with a school fair that comes and a dentist
+/// appointment of the dentist kind whose title holds "Brightmere", and your
+/// stand-in of it in your own agenda, which says its title too.
+fn household_agendas(config: &Path) {
+    let account = "household";
+    let zone = jiff::tz::TimeZone::system();
+    let tomorrow = Zoned::now().date().tomorrow().unwrap();
+    let event = |uid: &str, title: &str, hour: i8, extra: &str| {
+        let at = |h: i8| tomorrow.at(h, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{title}\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n", at(hour), at(hour + 1))
+    };
+    let mut said = String::new();
+    for (id, name, whose) in [("quorvelle", "Quorvelle's agenda", "whose = \"child\"\nname = \"Quorvelle\"\n"), ("tilda", "Tilda's agenda", "whose = \"child\"\nname = \"Tilda\"\nperson = \"p-tilda\"\n")] {
+        vdir::prepare(Kind::Calendars, account, id, name, None).unwrap();
+        let state = vdir::state_path(account, Kind::Calendars, id);
+        let mut read_only = vdir::State::load(&state);
+        read_only.read_only = true;
+        read_only.components = vec!["VEVENT".into()];
+        read_only.save(&state).unwrap();
+        said.push_str(&format!("\n[agenda.calendars.\"{account}/{id}\"]\n{whose}"));
+    }
+    let root = Kind::Calendars.root().join(account);
+    vdir::store_item(&root.join("quorvelle/recital.ics"), &event("quorvelle-recital", "Mirrowvale piano recital", 15, "")).unwrap();
+    vdir::store_item(&root.join("tilda/fair.ics"), &event("tilda-fair", "Tilda school fair", 16, &format!("X-SIOUL-CONCEPT;VALUE=URI:{}\r\n", sioul_core::holders::Kind::School.concept()))).unwrap();
+    vdir::store_item(&root.join("tilda/dentist.ics"), &event("tilda-dentist", "Brightmere dentist", 17, &format!("X-SIOUL-CONCEPT;VALUE=URI:{}\r\n", sioul_core::holders::Kind::Dentist.concept()))).unwrap();
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    vdir::store_item(&agenda.dir.join("stand-in-dentist.ics"), &event("stand-in-dentist", "Brightmere dentist", 17, "RELATED-TO;RELTYPE=PARENT:tilda-dentist\r\n")).unwrap();
+    let text = std::fs::read_to_string(config).unwrap();
+    std::fs::write(config, format!("{text}{said}")).unwrap();
 }
 
 /// Words planted in every field of health (`health_never_reaches_an_agent`):
@@ -352,7 +387,7 @@ fn health_fixture(store: &Path) {
     ] {
         vdir::write_item(&list.dir.join(format!("{uid}.ics")), &tasks::new_task(&edit, uid, &zone, &now).unwrap()).unwrap();
     }
-    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
     let tomorrow = now.date().tomorrow().unwrap();
     let edit = sioul_core::agenda::EventEdit { title: "Ask about Ferngale".into(), start: format!("{tomorrow}T15:00"), end: format!("{tomorrow}T15:30"), ..Default::default() };
     let block = sioul_core::agenda::add_lines(&sioul_core::agenda::new_event(&edit, &zone).unwrap(), &[format!("{}:errand-category", sioul_core::blocks::TASK)]).unwrap();
@@ -879,7 +914,9 @@ fn a_closed_project_is_never_shown() {
 /// a paper of two), a text naming nobody, and the health card of a parent
 /// opened to agents are in no answer of any tool, listed, searched or
 /// followed, and counted; the child's address is refused; the opened
-/// parent's identity card comes, with the parent's address.
+/// parent's identity card comes, with the parent's address. A closed
+/// child's agenda is kept, an opened child's comes but for its dentist's
+/// appointment, kept as health whatever the switch, with your stand-in of it.
 #[test]
 fn a_closed_person_is_never_shown() {
     let _ = home();
@@ -905,6 +942,18 @@ fn a_closed_person_is_never_shown() {
         let answer = call(&mut server, tool, arguments.clone());
         assert!(answer["isError"] != true, "{tool} {arguments}: {answer}");
         never(&answer, tool);
+    }
+    // A closed child's agenda is kept, counted; an opened child's school fair comes, its dentist never, nor your stand-in of it.
+    let agenda = call(&mut server, "agenda", json!({ "days": 3 }));
+    assert!(text(&agenda).contains("Tilda school fair"), "the opened child's event comes: {}", text(&agenda));
+    assert!(agenda["structuredContent"]["kept_from_agents"].as_u64().unwrap_or(0) >= 3, "{agenda}");
+    for (tool, arguments) in [("find", json!({ "query": "dentist" })), ("find", json!({ "query": "recital" })), ("reminders", json!({ "days": 3 })), ("list_tasks", json!({ "view": "today" }))] {
+        let answer = call(&mut server, tool, arguments.clone());
+        never(&answer, tool);
+    }
+    for uri in ["sioul:event/quorvelle-recital", "sioul:event/tilda-dentist", "sioul:event/stand-in-dentist"] {
+        let refused = call(&mut server, "links", json!({ "uri": uri }));
+        assert!(refused["isError"] == true && text(&refused).contains("kept from agents"), "{uri}: {}", text(&refused));
     }
     let papers = call(&mut server, "papers", json!({}));
     let shown = &papers["structuredContent"]["papers"];
@@ -1365,7 +1414,7 @@ fn health_never_reaches_an_agent() {
     };
     let holds = |answer: &Value| holds_for(answer, &Value::Null);
     let list_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap().dir;
-    let calendar_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap().dir;
+    let calendar_dir = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap().dir;
     let theirs: Vec<PathBuf> = ["errand-category", "errand-recorded", "errand-title", "errand-step", "google-renamed", "errand-in-saturday", "errand-done", "saturday", "prepare-appointment"]
         .iter()
         .map(|u| list_dir.join(format!("{u}.ics")))
@@ -1448,7 +1497,7 @@ fn a_block_given_a_guest_stays_through_every_task_change() {
     home();
     let mut server = server();
     let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap();
-    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
     let zone = jiff::tz::TimeZone::system();
     let now = Zoned::now();
     let day = now.date().tomorrow().unwrap().tomorrow().unwrap();
@@ -1561,7 +1610,7 @@ fn the_agenda_keeps_every_block_s_address() {
     home();
     let mut server = server();
     let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap();
-    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
     let zone = jiff::tz::TimeZone::system();
     let now = Zoned::now();
     let edit = TaskEdit { title: "Sort the block papers".into(), estimate: 30, ..TaskEdit::default() };
@@ -1604,7 +1653,7 @@ fn the_agenda_keeps_every_block_s_address() {
 fn the_agenda_lists_an_event_over_several_days_once() {
     home();
     let mut server = server();
-    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
     let zone = sioul_core::zone::current();
     let utc = |date: &str, hour: i8| date.parse::<jiff::civil::Date>().unwrap().at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
     let text_of = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:ongoing-trip\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Trip to the coast\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc("2099-11-04", 8), utc("2099-11-06", 19));

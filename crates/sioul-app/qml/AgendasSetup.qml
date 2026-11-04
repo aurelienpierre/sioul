@@ -67,6 +67,29 @@ ColumnLayout {
         setup.read()
     }
 
+    // Sioul's window, with its own properties (its locale), for the person's form.
+    function sioulWindow(): var {
+        return setup.Window.window
+    }
+
+    // A person chosen for an agenda ("person", "parent_person"): the key and the name beside it.
+    function setPerson(id, field, person) {
+        setup.problem = setup.sioul.setAgendaPerson(id, field, person)
+        setup.read()
+    }
+
+    // "New person…" from an agenda's chooser: the person's form, its relation the agenda's; chosen once saved.
+    function newPerson(agenda, field) {
+        const household = JSON.parse(setup.sioul.household() || "{}")
+        const dialog = personForm.now()
+        dialog.relations = household.relations || []
+        dialog.children = (household.persons || []).filter(p => p.relation === "child").map(p => ({ id: p.id, name: p.name }))
+        dialog.place = agenda.id
+        dialog.field = field
+        const relation = field === "parent_person" ? "other-parent" : ({ child: "child", partner: "partner", parent: "other-parent" })[agenda.whose]
+        dialog.begin("", "", relation, field === "parent_person" && agenda.person_id ? [agenda.person_id] : [])
+    }
+
     function toggle(id) {
         const next = Object.assign({}, setup.opened)
         next[id] = !next[id]
@@ -572,11 +595,25 @@ ColumnLayout {
                     Accessible.name: setup.sioul.text("agenda-whose")
                     onActivated: index => setup.save(one.modelData.id, "whose", setup.whoseChoices[index])
                 }
+                // Whose name: a person of the household (docs/persons.md); a shared agenda's, a name typed.
+                PersonChooser {
+                    objectName: "agendaPerson"
+                    visible: ["child", "partner", "parent"].indexOf(one.modelData.whose) >= 0
+                    Layout.fillWidth: true
+                    sioul: setup.sioul
+                    theme: setup.theme
+                    persons: (setup.view.persons || {})[one.modelData.whose] || []
+                    personId: one.modelData.person_id || ""
+                    fallback: one.modelData.person || ""
+                    Accessible.name: setup.sioul.text(one.modelData.whose === "child" ? "agenda-person-child" : "agenda-person")
+                    onChosen: id => setup.setPerson(one.modelData.id, "person", id)
+                    onNewAsked: setup.newPerson(one.modelData, "person")
+                }
                 TextField {
-                    visible: one.modelData.whose !== "yours"
+                    visible: one.modelData.whose === "shared"
                     Layout.fillWidth: true
                     text: one.modelData.person
-                    placeholderText: setup.sioul.text(one.modelData.whose === "child" ? "agenda-person-child" : "agenda-person")
+                    placeholderText: setup.sioul.text("agenda-person")
                     Accessible.name: placeholderText
                     onEditingFinished: if (text.trim() !== one.modelData.person)
                         setup.save(one.modelData.id, "name", text.trim())
@@ -643,15 +680,19 @@ ColumnLayout {
                     text: setup.sioul.text("agenda-parent")
                     color: setup.theme.text
                 }
-                TextField {
+                // The other parent: a person, a child's other parent; their address stays this agenda's (where invitations go).
+                PersonChooser {
                     objectName: "agendaParent"
                     visible: one.modelData.whose === "child"
                     Layout.fillWidth: true
-                    text: one.modelData.parent || ""
-                    placeholderText: setup.sioul.text("agenda-parent-name")
-                    Accessible.name: placeholderText
-                    onEditingFinished: if (text.trim() !== (one.modelData.parent || ""))
-                        setup.save(one.modelData.id, "parent", text.trim())
+                    sioul: setup.sioul
+                    theme: setup.theme
+                    persons: (setup.view.persons || {}).parent || []
+                    personId: one.modelData.parent_person || ""
+                    fallback: one.modelData.parent || ""
+                    Accessible.name: setup.sioul.text("agenda-parent-name")
+                    onChosen: id => setup.setPerson(one.modelData.id, "parent_person", id)
+                    onNewAsked: setup.newPerson(one.modelData, "parent_person")
                 }
                 TextField {
                     objectName: "agendaParentAddress"
@@ -940,6 +981,28 @@ ColumnLayout {
                     flat: true
                     text: setup.sioul.text("agenda-keep")
                     onClicked: setup.sharingAvailability = false
+                }
+            }
+        }
+    }
+
+    // A person's form, from an agenda's "New person…": chosen for that agenda once saved.
+    Later {
+        id: personForm
+
+        sourceComponent: Component {
+            PersonDialog {
+                id: agendaPersonForm
+
+                property string place: ""
+                property string field: ""
+
+                sioul: setup.sioul
+                theme: setup.theme
+                window: setup.sioulWindow()
+                onSaved: id => {
+                    if (id !== "" && agendaPersonForm.place !== "")
+                        setup.setPerson(agendaPersonForm.place, agendaPersonForm.field, id)
                 }
             }
         }

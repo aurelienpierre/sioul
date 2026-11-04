@@ -553,6 +553,63 @@ impl Persons {
         kept
     }
 
+    /// The store as the file holds it now, read again only when the file
+    /// changed (its size and time): what each agenda reads (`agendas::agenda_of`).
+    pub fn cached() -> Persons {
+        use std::sync::Mutex;
+        static CACHE: Mutex<Option<(PathBuf, Option<(u64, std::time::SystemTime)>, Persons)>> = Mutex::new(None);
+        let path = Persons::default_path();
+        let stamp = std::fs::metadata(&path).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+        let Ok(mut cache) = CACHE.lock() else { return Persons::load(&path) };
+        if let Some((at, was, persons)) = cache.as_ref()
+            && *at == path
+            && *was == stamp
+        {
+            return persons.clone();
+        }
+        let persons = Persons::load(&path);
+        *cache = Some((path, stamp, persons.clone()));
+        persons
+    }
+
+    /// The person an agenda is (docs/persons.md): its `person` key when that
+    /// person is here, else its name matched to a person of its relation.
+    pub fn of_agenda(&self, said: &crate::agendas::Said, relation: Relation) -> Option<&Person> {
+        if let Some(id) = said.person.as_deref().map(str::trim).filter(|id| !id.is_empty())
+            && let Some(person) = self.get(id)
+        {
+            return Some(person);
+        }
+        let name = said.name.as_deref().map(str::trim).filter(|n| !n.is_empty())?;
+        self.persons.iter().find(|p| p.relation() == relation && p.named(name))
+    }
+
+    /// A child's agenda's other parent: its `parent_person` key when that
+    /// person is here, else its `parent` matched to a child's other parent.
+    pub fn parent_of_agenda(&self, said: &crate::agendas::Said) -> Option<&Person> {
+        if let Some(id) = said.parent_person.as_deref().map(str::trim).filter(|id| !id.is_empty())
+            && let Some(person) = self.get(id)
+        {
+            return Some(person);
+        }
+        let name = said.parent.as_deref().map(str::trim).filter(|n| !n.is_empty())?;
+        self.persons.iter().find(|p| p.relation() == Relation::OtherParent && p.named(name))
+    }
+
+    /// The agendas kept from AI agents for a person's sake (docs/persons.md),
+    /// by place: a child's, a partner's or another parent's agenda whose
+    /// person is not opened to agents, or that names nobody here. Yours and
+    /// those shared with you by anyone else follow their own consent.
+    pub fn closed_agendas(&self, agendas: &[crate::agendas::Agenda]) -> BTreeSet<String> {
+        use crate::agendas::Whose;
+        agendas
+            .iter()
+            .filter(|a| matches!(a.whose, Whose::Child | Whose::Partner | Whose::Parent))
+            .filter(|a| a.person_id.is_empty() || self.get(&a.person_id).is_none_or(|p| !p.agents))
+            .map(|a| a.id.clone())
+            .collect()
+    }
+
     /// The persons as a read for agents and for the window takes them: the
     /// store, with old texts read as `read_names` would read them when this
     /// device has not yet (nothing written).
@@ -641,6 +698,34 @@ pub fn rename_holders(papers: &mut [Paper], before: &Persons, local: &LocalLinks
         }
     }
     changed
+}
+
+/// A person renamed in the agendas' words (`[agenda.calendars]`): each
+/// agenda whose `person` is theirs, or whose `name` named them by the old
+/// name (`before`: the store as it was), gets `name` = the new one; each
+/// whose `parent_person` is theirs, or whose `parent` named them, gets
+/// `parent` = the new one; so that older versions show it. The fields to
+/// write: (place, field, value).
+pub fn renamed_agendas(calendars: &BTreeMap<String, crate::agendas::Said>, before: &Persons, id: &str, new: &str) -> Vec<(String, &'static str, String)> {
+    use crate::agendas::Whose;
+    let Some(person) = before.get(id) else { return Vec::new() };
+    let mut out = Vec::new();
+    for (place, said) in calendars {
+        let whose = said.whose.as_deref().and_then(Whose::parse);
+        let relation = match whose {
+            Some(Whose::Child) => Some(Relation::Child),
+            Some(Whose::Partner) => Some(Relation::Partner),
+            Some(Whose::Parent) => Some(Relation::OtherParent),
+            _ => None,
+        };
+        if relation.is_some_and(|r| before.of_agenda(said, r).is_some_and(|p| p.id == person.id)) && said.name.as_deref().is_none_or(|n| n.trim() != new.trim()) {
+            out.push((place.clone(), "name", new.trim().to_string()));
+        }
+        if whose == Some(Whose::Child) && before.parent_of_agenda(said).is_some_and(|p| p.id == person.id) && said.parent.as_deref().is_none_or(|n| n.trim() != new.trim()) {
+            out.push((place.clone(), "parent", new.trim().to_string()));
+        }
+    }
+    out
 }
 
 /// The person an address is, by address alone (a holder line's, a
@@ -838,6 +923,43 @@ mod tests {
         assert_eq!(rename_holders(&mut papers, &before, &local, &["Alex".to_string()], &lea, "Léa M."), 2);
         let holders: Vec<&str> = papers.iter().map(|p| p.holder.as_str()).collect();
         assert_eq!(holders, ["Léa M.", "Alex, Léa M.", "Léana", "Lea M.", ""], "a tied paper whose text named nobody keeps it; another name stays");
+    }
+
+    #[test]
+    fn agendas_name_their_persons_by_key_then_by_name_and_follow_a_new_name() {
+        use crate::agendas::{Agenda, Said};
+        let mut persons = Persons::default();
+        let lea = persons.put(Person { name: "Léa".into(), relation: "child".into(), ..Person::default() });
+        let sam = persons.put(Person { name: "Sam".into(), relation: "other-parent".into(), agents: true, ..Person::default() });
+        let text = |t: &str| (!t.is_empty()).then(|| t.to_string());
+        let said = |name: &str, person: &str, parent: &str, parent_person: &str| Said { whose: text("child"), name: text(name), person: text(person), parent: text(parent), parent_person: text(parent_person), ..Said::default() };
+        let calendars: BTreeMap<String, Said> = [
+            ("a/school".to_string(), said("LEA", "", "sam", "")),
+            ("a/sport".to_string(), said("Léa old", &lea, "Samuel", &sam)),
+            ("a/tom".to_string(), said("Tom", "", "", "")),
+        ]
+        .into();
+        assert_eq!(persons.of_agenda(&calendars["a/school"], Relation::Child).map(|p| p.id.clone()), Some(lea.clone()), "by name, case and accents aside");
+        assert_eq!(persons.of_agenda(&calendars["a/sport"], Relation::Child).map(|p| p.id.clone()), Some(lea.clone()), "by its key, whatever its name says");
+        assert_eq!(persons.parent_of_agenda(&calendars["a/sport"]).map(|p| p.id.clone()), Some(sam.clone()));
+        assert!(persons.of_agenda(&calendars["a/tom"], Relation::Child).is_none());
+        // Shown by the person's name; one group for the two agendas of one child.
+        let collection = |id: &str| crate::vdir::Collection { kind: crate::vdir::Kind::Calendars, account: "a".into(), id: id.into(), dir: PathBuf::from(format!("/nowhere/a/{id}")), name: id.into(), color: None, read_only: false, components: vec!["VEVENT".into()] };
+        let agenda = |id: &str| Agenda::of(&collection(id), &calendars[&format!("a/{id}")], &crate::config::Config::default(), false, &|| true).with_persons(&persons);
+        let (school, sport, tom) = (agenda("school"), agenda("sport"), agenda("tom"));
+        assert_eq!((school.person.as_str(), sport.person.as_str(), sport.parent.as_str()), ("Léa", "Léa", "Sam"));
+        assert_eq!(school.group(), sport.group());
+        assert_eq!(tom.group().1, "tom");
+        // A child closed to agents: both agendas kept; one naming nobody too; an opened person's not.
+        let kept = persons.closed_agendas(&[school.clone(), sport.clone(), tom.clone()]);
+        assert_eq!(kept.into_iter().collect::<Vec<_>>(), ["a/school", "a/sport", "a/tom"]);
+        persons.get_mut(&lea).unwrap().agents = true;
+        assert_eq!(persons.closed_agendas(&[school, sport, tom]).into_iter().collect::<Vec<_>>(), ["a/tom"]);
+        // A new name, written where the old one stood for them.
+        let mut renamed = renamed_agendas(&calendars, &persons, &lea, "Léa M.");
+        renamed.sort();
+        assert_eq!(renamed, [("a/school".to_string(), "name", "Léa M.".to_string()), ("a/sport".to_string(), "name", "Léa M.".to_string())]);
+        assert_eq!(renamed_agendas(&calendars, &persons, &sam, "Samuel"), [("a/school".to_string(), "parent", "Samuel".to_string())], "the agenda saying Samuel already keeps it");
     }
 
     #[test]

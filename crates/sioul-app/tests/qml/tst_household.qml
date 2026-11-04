@@ -57,9 +57,15 @@ Item {
                 line: "Child · 12 · lives with you", born: "2014-05-12", lives_with: true, agents: false, holds_papers: true, of: [],
                 papers: [{ id: "lea-id", title: "Identity card with a long name to wrap on a phone", kind_label: "Identity card", line: "valid until Monday 3 May 2027", standing: "valid", persons: ["p-lea"] },
                          { id: "lea-school", title: "School insurance", kind_label: "Insurance", line: "valid until Wednesday 30 June 2027: time to renew it", standing: "renew", persons: ["p-lea"] }],
-                cards: [{ uid: "c-lea", key: "/stand-in/lea.vcf", name: "Léa Martin", detail: "lea@example.org" }]
+                cards: [{ uid: "c-lea", key: "/stand-in/lea.vcf", name: "Léa Martin", detail: "lea@example.org" }],
+                agendas: [{ id: "home/lea-school", name: "Léa, school and activities", child: true, whose: "" }]
             })
         }
+        function whoDoesWhat(from, child, mine) {
+            mock.week = child
+            return JSON.stringify({ days: [], children: [], week: "", from: "", previous: "", next: "" })
+        }
+        property string week: ""
         function papers() {
             return JSON.stringify({ store: true, problem: "", kinds: [], families: [], choices: [], chips: [] })
         }
@@ -95,6 +101,19 @@ Item {
             sioul: mock
             theme: testTheme
             onOpenPerson: id => mock.opened.push(id)
+        }
+        PersonChooser {
+            id: chooser
+
+            property string picked: "unset"
+            property int asked: 0
+
+            Layout.fillWidth: true
+            sioul: mock
+            theme: testTheme
+            persons: [{ id: "p-lea", name: "Léa" }, { id: "p-tom", name: "Tom" }]
+            onChosen: id => chooser.picked = id
+            onNewAsked: chooser.asked += 1
         }
         PersonPage {
             id: person
@@ -189,6 +208,36 @@ Item {
             mouseClick(agents)
             compare(mock.agents[mock.agents.length - 1], "p-lea=true")
             compare(past(person, []).join("; "), "", "nothing past 412 points")
+        }
+
+        function test_a_child_s_agendas_with_who_does_what() {
+            person.personId = ""
+            person.personId = "p-lea"
+            waitForRendering(person)
+            const shown = labels(person, [])
+            verify(shown.indexOf("person-agendas") >= 0 && shown.indexOf("Léa, school and activities") >= 0, shown.join(" | "))
+            mouseClick(find(person, "personWhoDoesWhat"))
+            compare(mock.week, "home/lea-school", "who does what, on that agenda")
+            // Its sheet closed again, so that it covers nothing for the next test.
+            keyClick(Qt.Key_Escape)
+            tryVerify(() => !Overlay.overlay || Overlay.overlay.children.every(c => !c.visible || c.objectName !== "whoDoesWhat"))
+        }
+
+        // Nobody said first, then the persons, then "New person…", which asks the caller.
+        function test_a_person_chosen_or_a_new_one_asked() {
+            compare(chooser.model.length, 4)
+            compare(chooser.model[0], "agenda-person-none")
+            compare(chooser.currentIndex, 0)
+            chooser.personId = "p-tom"
+            compare(chooser.currentIndex, 2)
+            chooser.activated(1)
+            compare(chooser.picked, "p-lea")
+            chooser.activated(3)
+            compare(chooser.asked, 1)
+            compare(chooser.currentIndex, 2, "still the person chosen")
+            chooser.personId = ""
+            chooser.fallback = "Lea (an older text)"
+            compare(chooser.model[0], "Lea (an older text)", "a name naming nobody, as written")
         }
 
         function test_your_own_page_has_no_switch_and_no_cards() {
