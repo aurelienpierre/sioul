@@ -345,7 +345,8 @@ fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator) -> Item
         spam: (t.lane == Lane::SetAside && t.reasons.iter().any(Reason::is_spam)) || t.lane == Lane::Review,
         review: t.lane == Lane::Review,
         moved: t.reasons.contains(&Reason::MovedToJunk),
-        spam_word: learned.map_or(String::new(), |(class, _)| tr.text(&format!("spam-chip-{}", class.as_str()), None)),
+        // Else your provider's word on proven mail, as quiet (`provider_mark`).
+        spam_word: learned.map_or_else(|| provider_mark(&t.card, Role::Inbox, t.trust, tr), |(class, _)| tr.text(&format!("spam-chip-{}", class.as_str()), None)),
         important: t.priority == Priority::Above,
         checks: checks(t.checks.as_ref(), tr),
         topic: t.assessment.as_ref().map(|a| tr.topic(a.topic)).unwrap_or_default(),
@@ -1264,8 +1265,33 @@ pub struct MailItem {
     /// Your filter's quiet word on a message it flagged where it lies ("maybe
     /// spam"; the matrix's "Flag only"), as the Porch and the mailbox say it;
     /// "" for any other, and once you said it is not spam (`labels::Flags`).
+    /// Else your provider's mark (`provider_mark`): a folder's cards, read
+    /// from its index, keep none of your provider's fields, so there it says
+    /// a Subject's tag taken off only.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub spam: String,
+}
+
+/// Your provider's word on a message, as one quiet mark (part 2 of 4
+/// November 2026): "Your provider marked it as spam." when its Subject's tag
+/// was taken off before a signature verified (`Card::provider_tag_restored`),
+/// whoever sent it, or for proven mail from someone you deal with
+/// (`spam::vouched`, `trust` as judged) that your provider flagged; "Your
+/// provider put it in Spam." for proven mail the matrix's row brought back
+/// from a Junk folder (`labels::brought_back`). Out of a Junk folder only (in
+/// one, the folder says it); "" otherwise.
+pub fn provider_mark(card: &Card, role: Role, trust: Trust, tr: &Translator) -> String {
+    if card.provider_tag_restored() {
+        return tr.text("mail-provider-marked", None);
+    }
+    if role == Role::Junk || trust != Trust::Verified {
+        return String::new();
+    }
+    if crate::spam::labels::brought_back(card) && crate::spam::vouched::vouched_now(card, trust) {
+        return tr.text("mail-provider-junked", None);
+    }
+    let flagged = trust::read_spam_verdict(&card.headers).is_some_and(|v| v.flagged);
+    if flagged && crate::spam::vouched::vouched_now(card, trust) { tr.text("mail-provider-marked", None) } else { String::new() }
 }
 
 /// Messages by conversation: each one's newest message of the folder first, the
@@ -1392,6 +1418,10 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
         let mut item = mail_item(card, folder.role, own, &maildir::flags_of(card.path.as_deref().unwrap_or(std::path::Path::new(""))), trusted_ids, own_domains, words, tr);
         if !own {
             item.spam = flags.class_of(&account.id, &folder.name, card).map(|class| tr.text(class.word_id(), None)).unwrap_or_default();
+            if item.spam.is_empty() {
+                let trust = if item.trust_level == "verified" { Trust::Verified } else { Trust::Unverified };
+                item.spam = provider_mark(card, folder.role, trust, tr);
+            }
         }
         item
     };

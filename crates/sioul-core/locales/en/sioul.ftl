@@ -378,6 +378,9 @@ mailbox-day = { $weekday } { $day } { $month }
 mailbox-day-year = { $weekday } { $day } { $month } { $year }
 mailbox-spam-junk = in the junk
 mailbox-spam-provider = your provider: spam
+# Proven mail from someone you deal with (spam::vouched): your provider's word on it, one quiet mark.
+mail-provider-marked = Your provider marked it as spam.
+mail-provider-junked = Your provider put it in Spam.
 mailbox-title = All addresses
 mailbox-chip-all = All
 mailbox-chip-unread = Unread
@@ -783,6 +786,18 @@ undo-many-junked = { $n } messages moved to junk.
 undo-many-not-junk = { $n } messages back in the inbox.
 undo-many-not-spam = { $n } messages not spam, for good: they stay in their lanes.
 undo-spam-kept = Spam, for good: it stays in the Junk folder.
+undo-brought-back = { $n ->
+        [one] Proven mail your provider called spam: back in the inbox.
+       *[other] { $n } proven messages your provider called spam: back in the inbox.
+    }
+undo-not-spam-and-others = { $n ->
+        [one] Not spam. Another message from { $domain }: back in the inbox too.
+       *[other] Not spam. { $n } other messages from { $domain }: back in the inbox too.
+    }
+undo-many-others-back = { $n ->
+        [one] Another message from { $domain }: back in the inbox too.
+       *[other] { $n } other messages from { $domain }: back in the inbox too.
+    }
 undo-review-all-spam = { $n ->
         [one] One message: spam, for good.
        *[other] { $n } messages: spam, for good.
@@ -1824,6 +1839,12 @@ set-spam-class-ham = Probably not spam
 set-spam-action-move = Move to spam
 set-spam-action-flag = Flag only
 set-spam-action-nothing = Do nothing
+set-spam-proven = What it does with proven mail
+set-spam-proven-help = Proven mail: Sioul checked who sent it, and you deal with its domain (you wrote to it; it is in your address books, your Sites or your contracts; you kept its mail or said Not spam to it). On the Porch your provider's word alone never sets it aside. “Bring back” moves it from the Junk folder into the inbox as it arrives, with Undo; “Mark only” leaves it in the Junk folder and shows it among your mail, marked “Your provider put it in Spam.”; “Do nothing” leaves it as your provider put it. Mail you put back in the Junk folder, or said Spam, stays there.
+set-spam-proven-row = Proven mail your provider called spam
+set-spam-proven-bring-back = Bring back
+set-spam-proven-mark = Mark only
+set-spam-proven-nothing = Do nothing
 set-spam-threshold = Spam from
 set-spam-threshold-help = How sure it must be to call a stranger's message probably spam. Higher: fewer of your messages taken for spam, more spam let through.
 set-spam-unsure = Maybe spam from

@@ -316,6 +316,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("spam.actions", "spam-actions", Kind::Radios, SettingValue::Texts(cells));
             s.rows = crate::spam::Class::ALL.iter().map(|c| Choice { value: SettingValue::Text(c.as_str().into()), label: tr.text(&format!("set-spam-class-{}", c.as_str()), None) }).collect();
             s.choices = crate::spam::Action::ALL.iter().map(|a| Choice { value: SettingValue::Text(a.as_str().into()), label: tr.text(&format!("set-spam-action-{}", a.as_str()), None) }).collect();
+            // Its fourth row: proven mail your provider called spam (`spam::vouched`), its own choices.
+            let s = b.push("spam.proven", "spam-proven", Kind::Radios, SettingValue::Texts(vec![format!("proven:{}", config.spam.proven().as_str())]));
+            s.rows = vec![Choice { value: SettingValue::Text("proven".into()), label: tr.text("set-spam-proven-row", None) }];
+            s.choices = crate::spam::vouched::Proven::ALL.iter().map(|p| Choice { value: SettingValue::Text(p.as_str().into()), label: tr.text(&format!("set-spam-proven-{}", p.as_str()), None) }).collect();
             let (spam, unsure) = config.spam.thresholds();
             let hundredths = |t: f32| (f64::from(t) * 100.0).round() / 100.0;
             // Shown as percentages ("%"); each stops a point short of the other: unsure stays below spam.
@@ -1290,6 +1294,15 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             }
             set_value(config_path, "spam.mode", &SettingValue::Text(String::new()))
         }
+        // Proven mail your provider called spam: bring it back, mark it, or nothing.
+        _ if key.starts_with("spam.proven") => {
+            let proven = match value {
+                SettingValue::Text(text) => crate::spam::vouched::Proven::read(text),
+                _ => None,
+            }
+            .ok_or_else(|| format!("{key}: bring-back, mark or nothing"))?;
+            set_value(config_path, "spam.proven", &SettingValue::Text(proven.as_str().into()))
+        }
         "spam.threshold_spam" | "spam.threshold_unsure" => {
             let wanted = match value {
                 SettingValue::Float(f) => *f,
@@ -1415,7 +1428,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
@@ -1647,6 +1660,12 @@ mod tests {
         apply(&path, &config, "spam.actions.ham", &SettingValue::Text("flag".into())).unwrap();
         let config = Config::load(&path).unwrap();
         assert_eq!((config.spam.actions(), config.spam.thresholds(), config.spam.mode.as_deref()), (Actions { spam: Action::Move, unsure: Action::Flag, ham: Action::Flag }, (0.9, 0.5), None));
+        // Proven mail your provider called spam: its own row, bring back unless said.
+        let proven = for_view("mail", &config, &Translator::new("en"), &[], None).into_iter().find(|s| s.key == "spam.proven").unwrap();
+        assert_eq!((proven.kind, proven.rows.len(), proven.choices.len(), proven.value.clone()), (Kind::Radios, 1, 3, SettingValue::Texts(vec!["proven:bring-back".into()])));
+        apply(&path, &config, "spam.proven.proven", &SettingValue::Text("mark".into())).unwrap();
+        assert!(apply(&path, &config, "spam.proven.proven", &SettingValue::Text("move".into())).is_err());
+        assert_eq!(Config::load(&path).unwrap().spam.proven(), crate::spam::vouched::Proven::Mark);
         let matrix = for_view("mail", &config, &Translator::new("en"), &[], None).into_iter().find(|s| s.key == "spam.actions").unwrap();
         assert_eq!((matrix.kind, matrix.rows.len(), matrix.choices.len()), (Kind::Radios, 3, 3));
         assert_eq!(matrix.value, SettingValue::Texts(vec!["spam:move".into(), "unsure:flag".into(), "ham:flag".into()]));

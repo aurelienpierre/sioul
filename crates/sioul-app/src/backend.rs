@@ -3270,6 +3270,14 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         if !report.elsewhere.is_empty() {
             tie_to_projects(&report.elsewhere);
         }
+        // Proven mail your provider put in Spam, as it arrives there: brought back as the
+        // matrix's row says, with Undo (`mail::bring_back`); never at an address's first fetch.
+        if !report.first && !report.elsewhere.is_empty() {
+            let (qt, shared, account, files) = (qt.clone(), Arc::clone(shared), account.clone(), report.elsewhere.clone());
+            std::thread::spawn(move || {
+                crate::mail::bring_back(&qt, &shared, &account, &files);
+            });
+        }
         // Older mail waits for room: said once a session, calmly.
         if report.held_back
             && shared.held_back.lock().is_ok_and(|mut said| said.insert(account.id.clone()))
@@ -3804,8 +3812,12 @@ impl qobject::Sioul {
         }
         let (qt, shared) = (qt.clone(), Arc::clone(&shared));
         std::thread::spawn(move || {
-            let checked: usize = load_config().mail_sources().iter().map(|s| sioul_sync::verify::verify_folder(&s.folder, false)).sum();
-            if checked > 0 {
+            let config = load_config();
+            let checked: usize = config.mail_sources().iter().map(|s| sioul_sync::verify::verify_folder(&s.folder, false)).sum();
+            // Mail stored before Sioul knew your provider's subject tags, checked again once
+            // on this device (part 2 of 4 November 2026; `mail::recheck_tagged`).
+            let rewritten = crate::mail::recheck_tagged(&qt, &shared, &config);
+            if checked + rewritten > 0 {
                 show(&qt, &shared);
             }
         });

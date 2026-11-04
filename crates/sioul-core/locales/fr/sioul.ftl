@@ -399,6 +399,9 @@ mailbox-day-year = { $weekday } { $day ->
     } { $month } { $year }
 mailbox-spam-junk = dans les indésirables
 mailbox-spam-provider = votre fournisseur : indésirable
+# Proven mail from someone you deal with (spam::vouched): your provider's word on it, one quiet mark.
+mail-provider-marked = Votre fournisseur l’a marqué comme indésirable.
+mail-provider-junked = Votre fournisseur l’a mis dans les indésirables.
 mailbox-title = Toutes les adresses
 mailbox-chip-all = Tout
 mailbox-chip-unread = Non lus
@@ -810,6 +813,18 @@ undo-many-junked = { $n } courriels mis dans les indésirables.
 undo-many-not-junk = { $n } courriels de retour dans la boîte de réception.
 undo-many-not-spam = { $n } courriels pas indésirables, pour de bon : ils restent dans leur file.
 undo-spam-kept = Indésirable, pour de bon : il reste dans le dossier Indésirables.
+undo-brought-back = { $n ->
+        [one] Courriel prouvé que votre fournisseur disait indésirable : de retour dans la boîte de réception.
+       *[other] { $n } courriels prouvés que votre fournisseur disait indésirables : de retour dans la boîte de réception.
+    }
+undo-not-spam-and-others = { $n ->
+        [one] Pas indésirable. Un autre courriel de { $domain } : de retour dans la boîte de réception aussi.
+       *[other] Pas indésirable. { $n } autres courriels de { $domain } : de retour dans la boîte de réception aussi.
+    }
+undo-many-others-back = { $n ->
+        [one] Un autre courriel de { $domain } : de retour dans la boîte de réception aussi.
+       *[other] { $n } autres courriels de { $domain } : de retour dans la boîte de réception aussi.
+    }
 undo-review-all-spam = { $n ->
         [one] Un courriel indésirable, pour de bon.
        *[other] { $n } courriels indésirables, pour de bon.
@@ -1848,6 +1863,12 @@ set-spam-class-ham = Probablement pas indésirable
 set-spam-action-move = Déplacer dans les indésirables
 set-spam-action-flag = Signaler seulement
 set-spam-action-nothing = Ne rien faire
+set-spam-proven = Ce qu’il fait du courriel prouvé
+set-spam-proven-help = Courriel prouvé : Sioul a vérifié qui l’envoie, et vous avez affaire à son domaine (vous lui avez écrit ; il est dans vos carnets d’adresses, vos sites ou vos contrats ; vous avez gardé de ses courriels ou dit « Pas indésirable » à l’un d’eux). Sur le Porche, l’avis de votre fournisseur seul ne le met jamais de côté. « Ramener » le déplace du dossier Indésirables vers la boîte de réception à son arrivée, avec Annuler ; « Signaler seulement » le laisse dans le dossier Indésirables et le montre parmi vos courriels, marqué « Votre fournisseur l’a mis dans les indésirables. » ; « Ne rien faire » le laisse où votre fournisseur l’a mis. Le courriel que vous remettez dans les indésirables, ou dont vous dites qu’il est indésirable, y reste.
+set-spam-proven-row = Courriel prouvé que votre fournisseur dit indésirable
+set-spam-proven-bring-back = Ramener
+set-spam-proven-mark = Signaler seulement
+set-spam-proven-nothing = Ne rien faire
 set-spam-threshold = Indésirable à partir de
 set-spam-threshold-help = À quel point il doit être sûr pour dire probablement indésirable le courriel d’un inconnu. Plus haut : moins de vos courriels pris pour indésirables, plus d’indésirables laissés passer.
 set-spam-unsure = Peut-être indésirable à partir de

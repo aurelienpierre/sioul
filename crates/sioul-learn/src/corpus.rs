@@ -177,6 +177,11 @@ pub struct Checked {
     /// The server no longer had the message: nothing was checked, nor will be.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub gone: bool,
+    /// Made by a Sioul that takes your provider's subject tag off before a
+    /// signature fails on it (part 2 of 4 November 2026); one made before,
+    /// failing on a tagged Subject, is made again once (`check_kept`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tags: bool,
 }
 
 impl Checked {
@@ -194,6 +199,27 @@ impl Checked {
     /// Made long after the message came (`features::LATE`).
     pub fn late(&self, date: i64) -> bool {
         date <= 0 || self.at - date > features::LATE
+    }
+
+    /// Whether these checks of `record` are to be made again, once, for your
+    /// provider's subject tag: made before Sioul knew such tags, on the whole
+    /// message, a signature there that did not pass, a filter of your
+    /// provider's that marked it, and a Subject that starts with a tag.
+    pub fn before_tags(&self, record: &Record) -> bool {
+        if self.tags || self.gone || !self.whole || features::stamp_results(&self.results).is_none_or(|r| r.dkim == Some(Outcome::Pass)) {
+            return false;
+        }
+        let header = record.header_bytes();
+        let headers = sioul_core::headers::RawHeaders::parse(&header);
+        features::signed(&headers) && sioul_core::trust::filter_marked(&headers) && sioul_core::trust::without_subject_tags(&header, 1).is_some()
+    }
+
+    /// What is kept of a check made again for the subject tag (`before_tags`;
+    /// `self`, the one before): the new one when a signature passed once the
+    /// tag was taken off, else the one before, made the day the message came,
+    /// marked as made again (the server gone meanwhile, the same).
+    fn again(self, before: &Checked) -> Checked {
+        if !self.gone && self.results.contains("(after your provider's") { self } else { Checked { tags: true, ..before.clone() } }
     }
 }
 
@@ -532,8 +558,12 @@ pub fn read_all(dirs: &Dirs, microsoft: &MicrosoftIds, mut each: impl FnMut(Reco
             let path = dir.join(&file);
             if path.exists() {
                 read_file(&path, Some(committed), |mut record| {
-                    if record.checked.is_none() && !checks.is_empty() {
-                        record.checked = checks.get(&(record.folder.clone(), record.uidvalidity, record.uid)).cloned();
+                    // Made later: those of a record kept unchecked, and those made again (`Checked::before_tags`).
+                    if !checks.is_empty()
+                        && let Some(later) = checks.get(&(record.folder.clone(), record.uidvalidity, record.uid))
+                        && record.checked.as_ref().is_none_or(|c| later.at > c.at || (later.tags && !c.tags))
+                    {
+                        record.checked = Some(later.clone());
                     }
                     each(record);
                 })?;
@@ -1443,13 +1473,13 @@ impl<'c> Run<'c> {
             let raw = fetched.get(&uid);
             async move {
                 match raw {
-                    None => (uid, Checked { at, gone: true, ..Checked::default() }, true),
+                    None => (uid, Checked { at, gone: true, tags: true, ..Checked::default() }, true),
                     // Answered without it: nothing said, and not asked again.
-                    Some(None) => (uid, Checked { at, whole, ..Checked::default() }, true),
+                    Some(None) => (uid, Checked { at, whole, tags: true, ..Checked::default() }, true),
                     Some(Some(raw)) => {
                         let found = checker.one(raw, whole).await;
                         let heard = found.as_ref().is_some_and(|r| r.as_deref().is_none_or(answered));
-                        (uid, Checked { at, results: found.flatten().unwrap_or_default(), whole, gone: false }, heard)
+                        (uid, Checked { at, results: found.flatten().unwrap_or_default(), whole, gone: false, tags: true }, heard)
                     }
                 }
             }
@@ -1541,15 +1571,25 @@ async fn check_kept(session: &mut Imap, account: &Account, dir: &Path, checker: 
     let state_path = dir.join("state.toml");
     let mut state = AccountState::load(&state_path);
     let known = read_checks(dir, state.checks);
-    // What is not checked yet, by folder and UIDVALIDITY: (UID, size).
+    // What is not checked yet, by folder and UIDVALIDITY: (UID, size); and,
+    // once, what was checked before Sioul knew your provider's subject tags
+    // and failed on one (`Checked::before_tags`), with the checks made then.
     let mut wanted: BTreeMap<(String, u32), Vec<(u32, u32)>> = BTreeMap::new();
+    let mut again: HashMap<(String, u32, u32), Checked> = HashMap::new();
     let files: BTreeSet<(String, u64)> = state.folders.values().map(|f| (f.file.clone(), f.committed)).collect();
     for (file, committed) in files {
         let path = dir.join(&file);
         if path.exists() {
             read_file(&path, Some(committed), |record| {
-                if record.checked.is_none() && !known.contains_key(&(record.folder.clone(), record.uidvalidity, record.uid)) {
-                    wanted.entry((record.folder, record.uidvalidity)).or_default().push((record.uid, record.size));
+                let place = (record.folder.clone(), record.uidvalidity, record.uid);
+                let checked = known.get(&place).filter(|later| record.checked.as_ref().is_none_or(|c| later.at > c.at || (later.tags && !c.tags))).or(record.checked.as_ref());
+                match checked {
+                    None => wanted.entry((record.folder, record.uidvalidity)).or_default().push((record.uid, record.size)),
+                    Some(checked) if checked.before_tags(&record) => {
+                        again.insert(place, checked.clone());
+                        wanted.entry((record.folder, record.uidvalidity)).or_default().push((record.uid, record.size));
+                    }
+                    Some(_) => {}
                 }
             })?;
         }
@@ -1572,7 +1612,14 @@ async fn check_kept(session: &mut Imap, account: &Account, dir: &Path, checker: 
         }
         items.sort_unstable_by(|a, b| b.0.cmp(&a.0));
         let examined = if listed.contains(&folder) { Some(imap::within(COMMAND, session.examine(&folder)).await?.ok()) } else { None };
-        let line = |uid: u32, checked: Checked| CheckLine { folder: folder.clone(), uidvalidity: validity, uid, checked };
+        // A check made again keeps the one before unless a signature passed this time (`Checked::again`).
+        let line = |uid: u32, checked: Checked| {
+            let checked = match again.get(&(folder.clone(), validity, uid)) {
+                Some(before) => checked.again(before),
+                None => checked,
+            };
+            CheckLine { folder: folder.clone(), uidvalidity: validity, uid, checked }
+        };
         match examined {
             // Refused now: the next run asks again.
             Some(None) => {}
@@ -1596,7 +1643,7 @@ async fn check_kept(session: &mut Imap, account: &Account, dir: &Path, checker: 
             // The folder gone, or renumbered: its messages cannot be named any more.
             _ => {
                 let at = now();
-                let lines: Vec<CheckLine> = items.iter().map(|&(uid, _)| line(uid, Checked { at, gone: true, ..Checked::default() })).collect();
+                let lines: Vec<CheckLine> = items.iter().map(|&(uid, _)| line(uid, Checked { at, gone: true, tags: true, ..Checked::default() })).collect();
                 keep_checks(&mut state, &state_path, dir, &lines, update)?;
             }
         }
@@ -2188,6 +2235,47 @@ mod tests {
         format!("Authentication-Results: sioul-0123456789ab.invalid;\r\n\t{}\r\n", results.replace("; ", ";\r\n\t"))
     }
 
+    /// Checks made before Sioul knew your provider's subject tags (part 2 of
+    /// 4 November 2026): made again once when a signature failed on a tagged
+    /// Subject a filter of your provider's marked, made whole; kept when a
+    /// signature then passed, else the ones made the day it came, marked
+    /// (`Checked::again`); a later line read over the record's own.
+    #[test]
+    fn checks_made_before_subject_tags_are_made_again_once() {
+        let marked = "X-Spam-Flag: YES\r\nReceived: from mail.bulk.example (mail.bulk.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\nDKIM-Signature: v=1; a=ed25519-sha256; d=notif.post.example; s=s1; h=from:subject; bh=x; b=y\r\nFrom: Notices <notification@notif.post.example>\r\nSubject: ***SPAM*** Votre colis\r\n\r\n";
+        let at = record(1).date + 3600;
+        let failed = Checked { at, results: stamp("dkim=fail header.d=notif.post.example; spf=pass smtp.mailfrom=notif.post.example; dmarc=fail header.from=notif.post.example"), whole: true, gone: false, tags: false };
+        let tagged = Record { header: marked.into(), checked: Some(failed.clone()), ..record(1) };
+        assert!(failed.before_tags(&tagged));
+        // Not again: checked by its header alone, gone, made knowing the tags, a pass, no tag, no filter's mark, no signature.
+        assert!(!Checked { whole: false, ..failed.clone() }.before_tags(&tagged));
+        assert!(!Checked { gone: true, ..failed.clone() }.before_tags(&tagged));
+        assert!(!Checked { tags: true, ..failed.clone() }.before_tags(&tagged));
+        assert!(!Checked { results: stamp("dkim=pass header.d=notif.post.example"), ..failed.clone() }.before_tags(&tagged));
+        for header in [marked.replace("***SPAM*** ", ""), marked.replace("X-Spam-Flag: YES\r\n", ""), marked.replace("DKIM-Signature: v=1; a=ed25519-sha256; d=notif.post.example; s=s1; h=from:subject; bh=x; b=y\r\n", "")] {
+            assert!(!failed.before_tags(&Record { header, ..tagged.clone() }));
+        }
+        // Made again: the new checks when a signature passed without the tag, else the old ones, marked.
+        let proven = Checked { at: at + 400 * 86_400, results: stamp("dkim=pass (after your provider's subject tag) header.d=notif.post.example; dmarc=pass (after your provider's subject tag) header.from=notif.post.example"), whole: true, gone: false, tags: true };
+        assert_eq!(proven.clone().again(&failed), proven);
+        let still = Checked { results: stamp("dkim=fail header.d=notif.post.example"), ..proven.clone() };
+        assert_eq!(still.again(&failed), Checked { tags: true, ..failed.clone() });
+        assert_eq!(Checked { gone: true, results: String::new(), ..proven.clone() }.again(&failed), Checked { tags: true, ..failed.clone() });
+        // Read with its record: a later line over the record's own, never an older one.
+        let dir = scratch("tags-again");
+        let dirs = Dirs::under(&dir);
+        store(&dirs, &[tagged.clone()]).unwrap();
+        let account = dirs.corpus().join("home");
+        let state_path = account.join("state.toml");
+        let mut state = AccountState::load(&state_path);
+        let mut update = Update::default();
+        keep_checks(&mut state, &state_path, &account, &[CheckLine { folder: "INBOX".into(), uidvalidity: 7, uid: 1, checked: proven.clone() }], &mut update).unwrap();
+        let mut read = Vec::new();
+        read_all(&dirs, &MicrosoftIds::default(), |r| read.push(r.checked)).unwrap();
+        assert_eq!(read, vec![Some(proven)]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// Checks made after their records were kept (`verify`) are read with
     /// them, as those made as they were fetched; a group cut short by a
     /// crash is never read, and cut off at the next; the counts read them as
@@ -2200,7 +2288,7 @@ mod tests {
         let day = 86_400;
         let at = record(1).date + 400 * day;
         let header = "DKIM-Signature: v=1; a=rsa-sha256; d=bank.example; s=selector1; bh=x; b=y\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Statement\r\n\r\n";
-        let fresh = |uid: u32, results: &str| Record { uid, date: at - day, header: header.into(), checked: Some(Checked { at, results: stamp(results), whole: true, gone: false }), ..record(uid) };
+        let fresh = |uid: u32, results: &str| Record { uid, date: at - day, header: header.into(), checked: Some(Checked { at, results: stamp(results), whole: true, gone: false, tags: false }), ..record(uid) };
         // Fetched with their checks: one verified, one failing as it came.
         let mut kept = vec![fresh(1, "dkim=pass header.d=bank.example; spf=pass smtp.mailfrom=bank.example; dmarc=pass header.from=bank.example"), fresh(2, "dkim=fail header.d=bank.example; spf=fail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example")];
         // Kept before the checks were made: old mail (a year old), and one never checked.
@@ -2210,7 +2298,7 @@ mod tests {
         let state_path = account.join("state.toml");
         let mut state = AccountState::load(&state_path);
         let line = |uid: u32, checked: Checked| CheckLine { folder: "INBOX".into(), uidvalidity: 7, uid, checked };
-        let old = |results: &str| Checked { at, results: stamp(results), whole: true, gone: false };
+        let old = |results: &str| Checked { at, results: stamp(results), whole: true, gone: false, tags: false };
         let mut update = Update::default();
         let lines = [
             line(3, old("dkim=fail header.d=bank.example header.s=selector1; spf=fail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example")),
@@ -2248,7 +2336,7 @@ mod tests {
         assert_eq!((counts.dmarc.pass, counts.dmarc.fail, counts.dmarc.unknown), (2, 1, 1));
         assert_eq!((counts.verified, counts.late_failures), (2, 1));
         // The next group is appended at what was committed: the crash's leftovers cut off.
-        keep_checks(&mut state, &state_path, &account, &[line(6, Checked { at, results: stamp("dkim=none"), whole: true, gone: false })], &mut update).unwrap();
+        keep_checks(&mut state, &state_path, &account, &[line(6, Checked { at, results: stamp("dkim=none"), whole: true, gone: false, tags: false })], &mut update).unwrap();
         let mut sixth = None;
         read_all(&dirs, &MicrosoftIds::default(), |r| {
             if r.uid == 6 {

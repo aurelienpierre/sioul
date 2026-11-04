@@ -35,6 +35,13 @@
 //! moved, as spam, as all mail in a Junk folder; what was flagged as
 //! probably spam, as spam; what was flagged as maybe spam, not at all, a
 //! doubt being no label, until you say.
+//!
+//! What the matrix's row "Proven mail your provider called spam" did with a
+//! message in a Junk folder (`spam::vouched`) goes into the same logs of
+//! moves, as a line of its own (`Back`): brought back into the inbox, or left
+//! where it was by your Undo. It has no `class`, so that every reader of the
+//! moves (the Porch's lane of the filter's catches, the training, an older
+//! Sioul) leaves it out, as a line it cannot read.
 
 use crate::card::Card;
 use serde::{Deserialize, Serialize};
@@ -261,6 +268,16 @@ pub fn said_ham_in(entries: &[Entry], card: &Card) -> bool {
 
 /// `said_ham_in` for the message on `card` in `account`, whatever the card says of its account.
 fn said_ham_as(entries: &[Entry], account: &str, card: &Card) -> bool {
+    said_as(entries, account, card) == Some(Label::Ham)
+}
+
+/// What the newest entry of `entries` (oldest first) about the message on
+/// `card` says, as `said_ham_in` finds it; none when you said nothing of it.
+pub fn said_in(entries: &[Entry], card: &Card) -> Option<Label> {
+    said_as(entries, card.account.as_deref()?, card)
+}
+
+fn said_as(entries: &[Entry], account: &str, card: &Card) -> Option<Label> {
     let id = card.message_id.as_deref().map(crate::mailindex::bare_id).filter(|id| !id.is_empty());
     entries
         .iter()
@@ -273,7 +290,7 @@ fn said_ham_as(entries: &[Entry], account: &str, card: &Card) -> bool {
                     _ => false,
                 }
         })
-        .is_some_and(|e| e.label == Label::Ham)
+        .map(|e| e.label)
 }
 
 /// One message your own filter moved into its account's Junk folder (the
@@ -307,6 +324,86 @@ impl Moved {
         let origin = crate::maildir::origin_of(file)?;
         Some(Moved { at: jiff::Timestamp::now().as_second(), account: account.to_string(), folder: folder.to_string(), uidvalidity: origin.validity, uid: origin.uid, message_id: message_id_of(file), class })
     }
+}
+
+/// What the matrix's row "Proven mail your provider called spam" did with
+/// one message lying in a Junk folder where your provider put it
+/// (`spam::vouched`, part 2 of 4 November 2026): one line in this device's
+/// log of moves (`moved/`), which every device reads, so that none does it
+/// twice nor fights what you did since. Without a `class`, it is no move
+/// for those who read the moves (`Moved`): they leave it out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Back {
+    /// When, as Unix seconds.
+    pub at: i64,
+    pub account: String,
+    /// The Junk folder it lay in, on the server, and its place there.
+    pub folder: String,
+    pub uidvalidity: u32,
+    pub uid: u32,
+    /// Without its angle brackets; none when the message has none.
+    #[serde(default)]
+    pub message_id: Option<String>,
+    pub back: BackKind,
+}
+
+/// What the row did: brought it back into the inbox, or left it in the Junk
+/// folder because you pressed Undo (it stays there, as you wished).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackKind {
+    Brought,
+    Left,
+}
+
+impl Back {
+    /// The row doing `back` now to the message stored at `file` in the Junk
+    /// folder `folder` of `account`; none for a file Sioul did not fetch.
+    pub fn of_file(account: &str, folder: &str, file: &Path, back: BackKind) -> Option<Back> {
+        let origin = crate::maildir::origin_of(file)?;
+        Some(Back { at: jiff::Timestamp::now().as_second(), account: account.to_string(), folder: folder.to_string(), uidvalidity: origin.validity, uid: origin.uid, message_id: message_id_of(file), back })
+    }
+}
+
+/// Every device's lines of the row under `root` (the spam filter's state folder), oldest first.
+pub fn read_back_in(root: &Path) -> Vec<Back> {
+    let mut lines: Vec<Back> = logs_in(&root.join(MOVED), None).iter().flat_map(|p| read_from::<Back>(p)).collect();
+    lines.sort_by_key(|b| b.at);
+    lines
+}
+
+/// Whether the row did something with the message of `account` whose
+/// Message-ID is `id` (bare), here or on another device (`backs`): it is
+/// done with it, brought back or left, and never does it again.
+pub fn handled(backs: &[Back], account: &str, id: &str) -> bool {
+    backs.iter().any(|b| b.account == account && b.message_id.as_deref() == Some(id))
+}
+
+/// Whether the row brought the message of `account` whose Message-ID is
+/// `id` (bare) back from a Junk folder (`backs`): your provider put it in
+/// Spam, which its quiet mark says.
+pub fn brought(backs: &[Back], account: &str, id: &str) -> bool {
+    backs.iter().any(|b| b.back == BackKind::Brought && b.account == account && b.message_id.as_deref() == Some(id))
+}
+
+/// `brought`, for the message on `card` (its account and Message-ID), with
+/// every device's lines read here, again when one of the files changed (as
+/// the label logs are: `kept`).
+pub fn brought_back(card: &Card) -> bool {
+    let (Some(account), Some(id)) = (card.account.as_deref(), card.message_id.as_deref().map(crate::mailindex::bare_id)) else { return false };
+    type Kept = Option<(PathBuf, std::time::Instant, Seal, Vec<Back>)>;
+    static KEPT: std::sync::Mutex<Kept> = std::sync::Mutex::new(None);
+    let root = state();
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    let fresh = kept.as_ref().is_some_and(|(at, looked, _, _)| *at == root && looked.elapsed() < LOOKED);
+    if !fresh {
+        let seal = seal_of(&logs_in(&root.join(MOVED), None));
+        match kept.as_mut() {
+            Some((at, looked, known, _)) if *at == root && *known == seal => *looked = std::time::Instant::now(),
+            _ => *kept = Some((root.clone(), std::time::Instant::now(), seal, read_back_in(&root))),
+        }
+    }
+    kept.as_ref().is_some_and(|(_, _, _, backs)| brought(backs, account, &id))
 }
 
 /// One message your own filter flagged where it is (the matrix's "Flag
@@ -492,6 +589,36 @@ mod tests {
         let after = Entry { at: 1_791_360_100, ..before.clone() };
         assert!(!unreviewed(&moved, &[before, after]));
         assert!(!unreviewed(&Moved { message_id: None, ..moved }, &[]), "without a Message-ID it cannot be found again");
+        let _ = std::fs::remove_dir_all(root.parent().unwrap());
+    }
+
+    /// The row's lines (`Back`) share the logs of moves: each reader leaves
+    /// the other's lines out, an older Sioul's reader of moves too (it needs a
+    /// `class`); handled by any device's line about the message.
+    #[test]
+    fn the_rows_lines_are_no_moves() {
+        let root = scratch("back").join("spam");
+        let file = root.join(format!("1759400000.U7-42.sioul{}2,S", crate::maildir::INFO));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&file, "From: Notices <notification@notif.post.example>\r\nMessage-ID: <notice-1@notif.post.example>\r\nSubject: Votre colis\r\n\r\nIl arrive.\r\n").unwrap();
+        let moved = Moved { at: 1_791_360_000, ..Moved::of_file("home", "INBOX", &file, super::super::Class::Spam).unwrap() };
+        let back = Back { at: 1_791_360_100, ..Back::of_file("home", "Junk", &file, BackKind::Brought).unwrap() };
+        append_to(&own_moved_log(&root, "desk"), &moved).unwrap();
+        append_to(&own_moved_log(&root, "desk"), &back).unwrap();
+        let text = std::fs::read_to_string(own_moved_log(&root, "desk")).unwrap();
+        assert_eq!(
+            text.lines().nth(1).unwrap(),
+            r#"{"at":1791360100,"account":"home","folder":"Junk","uidvalidity":7,"uid":42,"message_id":"notice-1@notif.post.example","back":"brought"}"#
+        );
+        assert_eq!(read_moved_in(&root), vec![moved], "never a move");
+        assert_eq!(read_back_in(&root), vec![back.clone()]);
+        // Left by your Undo, on the phone: handled all the same, by any device.
+        append_to(&own_moved_log(&root, "phone"), &Back { at: 1_791_360_200, back: BackKind::Left, uid: 43, message_id: Some("notice-2@notif.post.example".into()), ..back }).unwrap();
+        let backs = read_back_in(&root);
+        assert_eq!(backs.iter().map(|b| b.back).collect::<Vec<_>>(), [BackKind::Brought, BackKind::Left]);
+        assert!(handled(&backs, "home", "notice-1@notif.post.example") && handled(&backs, "home", "notice-2@notif.post.example"));
+        assert!(!handled(&backs, "work", "notice-1@notif.post.example") && !handled(&backs, "home", "other@notif.post.example"));
+        assert!(brought(&backs, "home", "notice-1@notif.post.example") && !brought(&backs, "home", "notice-2@notif.post.example"), "left is not brought back");
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 

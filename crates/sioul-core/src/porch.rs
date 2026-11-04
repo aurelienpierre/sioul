@@ -1513,7 +1513,15 @@ fn set_aside(card: &Card, ctx: &Context, trust: Trust, sender: Sender, protected
     if protected {
         return None;
     }
-    trust::read_spam_verdict(&card.headers).filter(|s| s.flagged).map(|spam| (Lane::SetAside, Reason::Spam { source: spam.source, score: spam.score }))
+    let spam = trust::read_spam_verdict(&card.headers).filter(|s| s.flagged)?;
+    provider_sets_aside(card, trust, spam, &crate::spam::vouched::current())
+}
+
+/// Your provider's spam verdict (`spam`), which sets a stranger's mail aside,
+/// but never on its word alone proven mail from someone you deal with
+/// (`spam::vouched`, part 2 of 4 November 2026): that takes its own lane.
+pub(crate) fn provider_sets_aside(card: &Card, trust: Trust, spam: trust::SpamVerdict, dealings: &crate::spam::vouched::Dealings) -> Option<(Lane, Reason)> {
+    (!crate::spam::vouched::vouched(card, trust, dealings)).then_some((Lane::SetAside, Reason::Spam { source: spam.source, score: spam.score }))
 }
 
 /// A stranger's message your own filter judged (`learned`: only of mail no
