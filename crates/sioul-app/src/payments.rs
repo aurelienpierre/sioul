@@ -209,12 +209,15 @@ pub(crate) fn same_candidates(key: &str) -> String {
     let Ok((_, _, books, at)) = found(key) else { return "[]".into() };
     let movement = &books.movements[at];
     let near = |d: jiff::civil::Date| (d - movement.day).get_days().abs();
-    let mut list: Vec<&movements::Movement> = books.movements.iter().enumerate().filter(|(i, m)| *i != at && m.way == movement.way && near(m.day) <= 31).map(|(_, m)| m).collect();
+    // A share set aside may be paid any day of its quarter, before its declaration's day.
+    let aside = movement.sources.iter().any(|s| s.kind == movements::Kind::SetAside);
+    let within = |d: jiff::civil::Date| if aside { (-92..=31).contains(&(d - movement.day).get_days()) } else { near(d) <= 31 };
+    let mut list: Vec<&movements::Movement> = books.movements.iter().enumerate().filter(|(i, m)| *i != at && m.way == movement.way && within(m.day)).map(|(_, m)| m).collect();
     list.sort_by_key(|m| (near(m.day), (m.sum.amount().cents() - movement.sum.amount().cents()).abs()));
     let rows: Vec<serde_json::Value> = list
         .iter()
         .take(10)
-        .map(|m| json!({ "key": m.steady_key(), "label": m.label, "date": sioul_core::moneyview::short_day(tr(), m.day), "amount": sioul_core::moneyview::sum_words(tr(), m.sum) }))
+        .map(|m| json!({ "key": m.steady_key(), "label": sioul_core::moneyview::who(tr(), m), "date": sioul_core::moneyview::short_day(tr(), m.day), "amount": sioul_core::moneyview::sum_words(tr(), m.sum) }))
         .collect();
     serde_json::Value::Array(rows).to_string()
 }

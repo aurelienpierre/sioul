@@ -249,7 +249,7 @@ fn accounts_into(view: &mut View, books: &sioul_core::movements::Books, aheads: 
                     id,
                     key: m.steady_key().to_string(),
                     date: tr().day_in(m.day, today),
-                    label: m.label.clone(),
+                    label: row.who.clone(),
                     amount: tr().money(m.sum.amount()),
                     cents: m.sum.amount().cents(),
                     place,

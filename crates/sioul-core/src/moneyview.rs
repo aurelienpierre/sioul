@@ -122,7 +122,18 @@ fn share(m: &Movement, budget: &str) -> Option<Money> {
 
 /// Planned or told before it happened: a recurring payment, a line, a letter, an invoice, a contract.
 fn planned_kind(m: &Movement) -> bool {
-    m.sources.iter().any(|s| matches!(s.kind, Kind::Preset | Kind::Line | Kind::Letter | Kind::Invoice | Kind::Contract))
+    m.sources.iter().any(|s| matches!(s.kind, Kind::Preset | Kind::Line | Kind::Letter | Kind::Invoice | Kind::Contract | Kind::SetAside))
+}
+
+/// Who a movement is, as a row or a list says it: a share set aside by its words ("Taxes and contributions, 22 %").
+pub fn who(tr: &Translator, m: &Movement) -> String {
+    if m.sources.iter().any(|s| s.kind == Kind::SetAside) {
+        let mut args = i18n::args();
+        args.set("share", m.label.clone());
+        tr.text("set-aside-label", Some(&args))
+    } else {
+        m.label.clone()
+    }
 }
 
 /// "rent, energy"; each once.
@@ -148,16 +159,18 @@ pub fn budget_words(ledger: &Ledger, budget: &Budget, end_of: &crate::budget::Pe
     let mut aside = Vec::new();
     for m in movements.iter().filter(|m| m.day >= start && m.day <= end) {
         let Some(amount) = share(m, &budget.id) else { continue };
-        if m.sources.iter().any(|s| s.kind == Kind::SetAside) {
+        // A share set aside still to declare; paid early, it is said paid.
+        if m.sources.iter().any(|s| s.kind == Kind::SetAside) && m.state != State::Done {
             aside.push(m);
             continue;
         }
         if !planned_kind(m) || m.way == Way::Between {
             continue;
         }
+        let label = who(tr, m);
         let item = || {
             let mut args = i18n::args();
-            args.set("label", m.label.clone());
+            args.set("label", label.clone());
             args.set("amount", if m.sum.about() { sum_words(tr, m.sum) } else { tr.money(Money(amount.cents().abs())) });
             args.set("day", tr.day_in(m.day, today));
             tr.text("bw-item", Some(&args))
@@ -165,10 +178,10 @@ pub fn budget_words(ledger: &Ledger, budget: &Budget, end_of: &crate::budget::Pe
         let out = amount.is_negative();
         let waiting = matches!(m.state, State::Planned | State::Announced | State::NotFinal);
         match m.state {
-            State::Done => (if out { &mut paid } else { &mut came_in }).push(m.label.clone()),
-            State::NotSeen => not_seen.push(m.label.clone()),
-            _ if waiting && m.day < today && !exported(m.account.as_deref()) => (if out { &mut paid } else { &mut came_in }).push(m.label.clone()),
-            _ if waiting && m.day < today && m.state != State::NotFinal => not_seen.push(m.label.clone()),
+            State::Done => (if out { &mut paid } else { &mut came_in }).push(label.clone()),
+            State::NotSeen => not_seen.push(label.clone()),
+            _ if waiting && m.day < today && !exported(m.account.as_deref()) => (if out { &mut paid } else { &mut came_in }).push(label.clone()),
+            _ if waiting && m.day < today && m.state != State::NotFinal => not_seen.push(label.clone()),
             _ => (if out { &mut to_come } else { &mut to_come_in }).push(item()),
         }
     }
@@ -203,7 +216,7 @@ pub fn budget_words(ledger: &Ledger, budget: &Budget, end_of: &crate::budget::Pe
             said.push(tr.text("bw-over", Some(&args)));
         }
     }
-    for m in movements.iter().filter(|m| m.sources.iter().any(|s| s.kind == Kind::SetAside) && share(m, &budget.id).is_some() && m.day >= today && m.day > end) {
+    for m in movements.iter().filter(|m| m.sources.iter().any(|s| s.kind == Kind::SetAside) && m.state != State::Done && share(m, &budget.id).is_some() && m.day >= today && m.day > end) {
         aside.push(m);
     }
     if let Some(next) = aside.iter().filter(|m| m.day >= today).min_by_key(|m| m.day) {
@@ -310,13 +323,7 @@ pub fn coming_row(ledger: &Ledger, m: &Movement, doubtful: &BTreeSet<String>, tr
     }
     let mut from = i18n::args();
     from.set("list", ahead::list(tr, &words));
-    let who = if m.sources.iter().any(|s| s.kind == Kind::SetAside) {
-        let mut args = i18n::args();
-        args.set("share", m.label.clone());
-        tr.text("set-aside-label", Some(&args))
-    } else {
-        m.label.clone()
-    };
+    let who = who(tr, m);
     ComingRow {
         address: m.address(),
         key: m.steady_key().to_string(),

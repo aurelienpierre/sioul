@@ -14,7 +14,7 @@
 //! is spent from its budget's estimate (food, clothes), never added on top of
 //! it. Reserves top the accounts up, in your order, each with its own delay.
 
-use crate::bank::{self, Bank, Expected, Movement};
+use crate::bank::{self, Bank, Movement};
 use crate::budget::{BankAccount, Direction, Ledger, Line, Period};
 use crate::money::Money;
 use jiff::ToSpan;
@@ -287,21 +287,6 @@ impl Ledger {
     }
 }
 
-/// Money a reserve should send to a bank account before it runs under its floor.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TopUp {
-    pub account: String,
-    pub reserve: String,
-    pub amount: Money,
-    /// The day the account would go under its floor, and the payment then.
-    pub needed_by: Date,
-    pub payment: String,
-    /// The last day to ask, the reserve's delay before `needed_by`; today when already past.
-    pub ask_by: Date,
-    /// Asked today, it still arrives after `needed_by`.
-    pub late: bool,
-}
-
 /// A bank account's balance known, and its day: the newest of its exports',
 /// whatever name each gave it (`BankAccount::exports`: its number, its IBAN,
 /// none). Each name is the same account, so their balances are one balance
@@ -333,42 +318,6 @@ pub fn movements_of<'a>(bank: &'a Bank, account: &BankAccount) -> Vec<&'a Moveme
 /// first account to fill (a budget filled by two counts on the first).
 pub fn carried_by<'a>(ledger: &'a Ledger, account: &BankAccount) -> Vec<String> {
     account.fills.iter().filter(|b| ledger.bank_accounts.iter().find(|a| a.fills.contains(b)).is_some_and(|a| a.id == account.id)).cloned().collect()
-}
-
-/// What tops each bank account up in the coming month: its balance carried
-/// forward with its own movements and its budgets' recurring payments and
-/// planned lines; on the first day it would go under its floor, what is
-/// missing (rounded up to ten), taken from its reserves in order, each as far
-/// as it holds above its own floor, asked its delay ahead.
-pub fn top_ups(ledger: &Ledger, bank: &Bank, today: Date, looked: &crate::words::Words) -> Vec<TopUp> {
-    let horizon = today.checked_add(31.days()).unwrap_or(today);
-    // The reserves' balances count the money already moved, read from the exports.
-    let ledger = &ledger.with_bank(bank, looked);
-    let mut out = Vec::new();
-    for account in ledger.bank_accounts.iter().filter(|a| !a.topped_up_by.is_empty()) {
-        let Some((as_of, start)) = balance_of(bank, account) else { continue };
-        let movements: Vec<&Movement> = movements_of(bank, account);
-        let budgets = carried_by(ledger, account);
-        let flows: Vec<Expected> = bank::expected(&movements, ledger, Some(&budgets), as_of, today, horizon, &looked.bank.filler);
-        let (_, below) = bank::carry(start, as_of, &flows, today, horizon, account.floor);
-        let Some((day, at, balance)) = below else { continue };
-        let missing = account.floor.cents() - balance.cents();
-        let mut missing = (missing + 999) / 1000 * 1000;
-        for id in &account.topped_up_by {
-            let Some(reserve) = ledger.reserves.iter().find(|r| &r.id == id) else { continue };
-            let room = (ledger.reserve_status(reserve, today).balance_now - reserve.floor).cents();
-            if room <= 0 || missing <= 0 {
-                continue;
-            }
-            let amount = missing.min(room);
-            missing -= amount;
-            let delay = i64::from(reserve.delay_days);
-            let ask_by = day.checked_sub(delay.days()).unwrap_or(day).max(today);
-            let late = today.checked_add(delay.days()).unwrap_or(today) > day;
-            out.push(TopUp { account: account.id.clone(), reserve: reserve.id.clone(), amount: Money(amount), needed_by: day, payment: flows[at].label.clone(), ask_by, late });
-        }
-    }
-    out
 }
 
 /// The period a movement's month is in, for the window: "October 2026" groups.
@@ -848,27 +797,10 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    #[test]
-    fn reserves_top_up_in_order_with_their_delay() {
-        let mut ledger = ledger();
-        ledger.reserves[0].balance = Money(100000);
-        // A tax on 25 October that the account will not hold.
-        ledger.lines.push(toml::from_str::<Ledger>("[[line]]\nbudget = 'duties'\ndate = 2026-10-25\namount = -1500\nlabel = 'Tax'\nplanned = true\n").unwrap().lines.remove(0));
-        let ups = top_ups(&ledger, &bank(), day("2026-10-08"), crate::words::Words::builtin_ref());
-        // The Livret A first, as far as it holds (1,000 less the 500 moved out on the 5th), at once;
-        // then the assurance vie for the rest, asked ten days ahead.
-        assert_eq!(ups.iter().map(|u| u.reserve.as_str()).collect::<Vec<_>>(), vec!["livret-a", "av"], "{ups:#?}");
-        assert_eq!((ups[0].amount, ups[0].ask_by, ups[0].late), (Money(50000), day("2026-10-25"), false));
-        assert_eq!((ups[1].ask_by, ups[1].late, ups[1].payment.as_str()), (day("2026-10-15"), false, "Tax"));
-        assert_eq!(ups[1].amount.cents() % 1000, 0, "rounded up to ten");
-        // Asked on the 20th, the assurance vie arrives after the tax.
-        assert!(top_ups(&ledger, &bank(), day("2026-10-20"), crate::words::Words::builtin_ref()).iter().any(|u| u.reserve == "av" && u.late));
-    }
-
     /// The review of 5 October 2026 (money): one account read under two names
     /// (an export first read without its number, kept under its card's id;
     /// later ones with it) has one balance, the newest, never the sum, and a
-    /// movement read under both is counted once, in the budgets and the top-ups.
+    /// movement read under both is counted once, in the budgets and what tops the account up.
     #[test]
     fn one_account_under_two_names_counts_its_money_once() {
         let ledger = ledger();

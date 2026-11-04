@@ -37,7 +37,7 @@ Sioul reads your bank's export files and the mail about payments, holds them aga
 - **Its period starts**: on the 1st, or with an income, your pay or a monthly benefit: from one pay to the next, as you live it.
 - **Balance to reach** by the end of each period: 0 to break even; more is saving.
 - **For**: work, your admin, leisure. It decides the hours the budget is in view ([Hours](hours.md)). None ticked: your admin.
-- **Set aside for taxes**, for work: a share of each income, in percent, set aside as it arrives for the declaration, **each month** or **each quarter**. Off until you set it.
+- **Set aside for taxes**, for work: a share of each income, in percent, set aside as it arrives for the declaration, **each month** or **each quarter**. Off until you set it. Paid before the declaration's day, **The same as…** on its row joins it to the bank's line that paid it: counted once, said paid.
 
 What a budget did not spend carries over, as an envelope keeps what is left: money set aside in October for a bill due in December is still there in December.
 

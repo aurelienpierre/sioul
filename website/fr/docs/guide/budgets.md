@@ -37,7 +37,7 @@ Sioul lit les fichiers d’export de votre banque et les courriels qui parlent d
 - **Sa période commence** : le 1er, ou avec une entrée, votre salaire ou une prestation mensuelle : d’une paie à la suivante, comme vous la vivez.
 - **Solde à atteindre** à la fin de chaque période : 0 pour l’équilibre ; au-dessus, c’est de l’épargne.
 - **Pour** : le travail, vos démarches, les loisirs. Cela décide des heures où le budget est en vue ([Les heures](hours.md)). Rien de coché : vos démarches.
-- **Mettre de côté pour les impôts**, pour le travail : une part de chaque entrée, en pour cent, mise de côté dès son arrivée pour la déclaration, **chaque mois** ou **chaque trimestre**. Rien tant que vous ne la fixez pas.
+- **Mettre de côté pour les impôts**, pour le travail : une part de chaque entrée, en pour cent, mise de côté dès son arrivée pour la déclaration, **chaque mois** ou **chaque trimestre**. Rien tant que vous ne la fixez pas. Payée avant le jour de la déclaration, **Le même que…** sur sa ligne la joint à la ligne de la banque qui l’a payée : comptée une fois, dite payée.
 
 Ce qu’un budget n’a pas dépensé est reporté, comme une enveloppe garde ce qui reste : l’argent mis de côté en octobre pour une facture de décembre est encore là en décembre.
 

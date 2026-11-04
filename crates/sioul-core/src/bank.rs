@@ -612,44 +612,6 @@ impl Bank {
     }
 }
 
-/// What the watch found, each said in a sentence by the window.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Finding {
-    /// Expected around `date`, not seen.
-    Missed { label: String, amount: Money, date: Date },
-    /// Seen on `date` with another amount.
-    Changed { label: String, expected: Money, actual: Money, date: Date },
-    /// The balance would go below zero on `date`, with `label` leaving then;
-    /// `short` is missing; the reserve that covers it, if one does.
-    Short { label: String, amount: Money, date: Date, short: Money, reserve: Option<String> },
-}
-
-/// One payment expected ahead.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Expected {
-    pub date: Date,
-    pub label: String,
-    pub amount: Money,
-}
-
-/// The watch: its findings, the balance known, the days ahead.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Watch {
-    pub balance: Option<(Date, Money)>,
-    pub findings: Vec<Finding>,
-    /// The next seven days' payments.
-    pub coming: Vec<Expected>,
-    /// The balance, day by day, until a month from today.
-    pub forecast: Vec<(Date, Money)>,
-}
-
-impl Watch {
-    /// The balance expected on `date`, when the forecast reaches it.
-    pub fn balance_on(&self, date: Date) -> Option<Money> {
-        self.forecast.iter().rev().find(|(d, _)| *d <= date).map(|(_, m)| *m)
-    }
-}
-
 /// The words of a label that can name a payment: folded, three letters at
 /// least, no number, none of `filler`: the words that name nothing, "the",
 /// "pour", and what every bank line says ("PRLV SEPA", "CARTE", "VIREMENT";
@@ -686,128 +648,6 @@ pub(crate) fn matches_words(theirs: &[String], movement: &Movement, label: &[Str
     named || (same && (movement.date.since(date).map_or(99, |s| s.get_days().abs())) <= 3)
 }
 
-/// Holds the movements against the ledger's recurring payments and planned
-/// lines, their labels compared without `filler` (`words::BankWords::filler`).
-pub fn watch(bank: &Bank, ledger: &Ledger, today: Date, filler: &[String]) -> Watch {
-    let mut out = Watch { balance: bank.balance_in(ledger), ..Watch::default() };
-    let first = bank.movements.iter().map(|m| m.date).min();
-    let last = bank.movements.iter().map(|m| m.date).max();
-    let mut used: Vec<bool> = vec![false; bank.movements.len()];
-    // Past occurrences inside what the exports cover: seen, changed, or missed.
-    if let (Some(first), Some(last)) = (first, last) {
-        let from = first.checked_add(3.days()).unwrap_or(first);
-        let to = last.checked_sub(7.days()).unwrap_or(last);
-        for preset in ledger.presets.iter().filter(|p| !p.estimate) {
-            let label = words(filler, &preset.label);
-            for date in preset.occurrences(from, to) {
-                let found = bank.movements.iter().enumerate().find(|(i, m)| !used[*i] && matches(filler, m, &label, preset.amount, date));
-                match found {
-                    Some((i, m)) => {
-                        used[i] = true;
-                        let gap = (m.amount.cents() - preset.amount.cents()).abs();
-                        if gap > preset.amount.cents().abs() / 20 && gap > 200 {
-                            out.findings.push(Finding::Changed { label: preset.label.clone(), expected: preset.amount, actual: m.amount, date: m.date });
-                        }
-                    }
-                    None => out.findings.push(Finding::Missed { label: preset.label.clone(), amount: preset.amount, date }),
-                }
-            }
-        }
-    }
-    // Ahead: from the balance known, what is expected, day by day.
-    let Some((as_of, start)) = out.balance else { return out };
-    let horizon = today.checked_add(31.days()).unwrap_or(today);
-    let movements: Vec<&Movement> = bank.movements.iter().collect();
-    let flows = expected(&movements, ledger, None, as_of, today, horizon, filler);
-    let week = today.checked_add(7.days()).unwrap_or(today);
-    out.coming = flows.iter().filter(|f| f.date >= today && f.date <= week && f.amount.is_negative() && !ledger.presets.iter().any(|p| p.estimate && p.label == f.label)).cloned().collect();
-    let (forecast, below) = carry(start, as_of, &flows, today, horizon, Money::ZERO);
-    out.forecast = forecast;
-    // Bank accounts with their reserves say what tops them up (`accounts::top_ups`).
-    if let Some((date, at, balance)) = below
-        && ledger.bank_accounts.iter().all(|a| a.topped_up_by.is_empty())
-    {
-        let short = Money(-balance.cents());
-        let reserve = ledger.reserves.iter().find(|r| (r.balance - r.floor).cents() >= short.cents()).map(|r| r.title.clone());
-        out.findings.push(Finding::Short { label: flows[at].label.clone(), amount: flows[at].amount, date, short, reserve });
-    }
-    out
-}
-
-/// What is expected on an account from `as_of` to `horizon`: its movements
-/// read after the balance, then the recurring payments and planned lines of
-/// `budgets` (every budget's when None) not seen yet, daily spending spread
-/// over its days; in date order.
-pub(crate) fn expected(movements: &[&Movement], ledger: &Ledger, budgets: Option<&[String]>, as_of: Date, today: Date, horizon: Date, filler: &[String]) -> Vec<Expected> {
-    let ours = |budget: &str| budgets.is_none_or(|list| list.iter().any(|b| b == budget));
-    let last = movements.iter().map(|m| m.date).max();
-    let seen_until = last.unwrap_or(as_of).max(as_of);
-    let mut flows: Vec<Expected> = Vec::new();
-    for m in movements.iter().filter(|m| m.date > as_of) {
-        flows.push(Expected { date: m.date, label: m.label.clone(), amount: m.amount });
-    }
-    for preset in ledger.presets.iter().filter(|p| ours(&p.budget)) {
-        if preset.estimate {
-            // Spending without a trace, spread over its period's days.
-            let per_day = |d: Date| {
-                let (a, b) = preset.every.bounds(d);
-                let days = b.since(a).map_or(30, |s| i64::from(s.get_days()) + 1).max(1);
-                Money(preset.amount.cents() / days)
-            };
-            let mut d = as_of.tomorrow().unwrap_or(as_of);
-            while d <= horizon {
-                if preset.from.is_none_or(|f| d >= f) && preset.until.is_none_or(|u| d <= u) {
-                    flows.push(Expected { date: d, label: preset.label.clone(), amount: per_day(d) });
-                }
-                let Ok(next) = d.tomorrow() else { break };
-                d = next;
-            }
-            continue;
-        }
-        let label = words(filler, &preset.label);
-        for date in preset.occurrences(as_of.tomorrow().unwrap_or(as_of), horizon) {
-            // Already passed in an export read after the balance: counted there.
-            if date <= seen_until && movements.iter().any(|m| m.date > as_of && matches(filler, m, &label, preset.amount, date)) {
-                continue;
-            }
-            flows.push(Expected { date: date.max(today), label: preset.label.clone(), amount: preset.amount });
-        }
-    }
-    for line in ledger.lines.iter().filter(|l| l.planned && l.date > as_of && l.date <= horizon && l.preset.is_none() && ours(&l.budget)) {
-        flows.push(Expected { date: line.date.max(today), label: line.label.clone(), amount: line.amount });
-    }
-    flows.sort_by(|a, b| (a.date, a.amount.cents()).cmp(&(b.date, b.amount.cents())));
-    flows
-}
-
-/// The balance from `start` on `as_of`, carried day by day with `flows`, as
-/// seen from today to `horizon`; and the first day from today it goes below
-/// `floor` with a payment out: that day, the flow that takes it there, the
-/// balance then.
-pub(crate) fn carry(start: Money, as_of: Date, flows: &[Expected], today: Date, horizon: Date, floor: Money) -> (Vec<(Date, Money)>, Option<(Date, usize, Money)>) {
-    let mut forecast = Vec::new();
-    let mut below = None;
-    let mut balance = start;
-    let mut day = as_of;
-    let mut at = 0;
-    while day <= horizon {
-        while at < flows.len() && flows[at].date <= day {
-            balance += flows[at].amount;
-            if below.is_none() && balance.cents() < floor.cents() && flows[at].amount.is_negative() && day >= today {
-                below = Some((day, at, balance));
-            }
-            at += 1;
-        }
-        if day >= today {
-            forecast.push((day, balance));
-        }
-        // The horizon's own flows count too.
-        let Ok(next) = day.tomorrow() else { break };
-        day = next;
-    }
-    (forecast, below)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -820,10 +660,6 @@ mod tests {
 
     fn words(text: &str) -> Vec<String> {
         super::words(&Words::builtin().bank.filler, text)
-    }
-
-    fn watch(bank: &Bank, ledger: &Ledger, today: Date) -> Watch {
-        super::watch(bank, ledger, today, &Words::builtin().bank.filler)
     }
 
     #[test]
@@ -900,47 +736,6 @@ mod tests {
             txn_2,payout,po_1,-100.00,0.00,-100.00,eur,2026-10-03 06:00:00,2026-10-03 06:00:00,STRIPE PAYOUT\n";
         let s = read(stripe).unwrap();
         assert_eq!(s.movements.iter().map(|m| (m.amount, m.label.as_str(), m.id.as_str())).collect::<Vec<_>>(), vec![(Money(2397), "Support · charge", "txn_1"), (Money(-10000), "STRIPE PAYOUT · payout", "txn_2")]);
-    }
-
-    #[test]
-    fn missed_changed_and_short() {
-        let ledger: Ledger = toml::from_str(
-            "[[budget]]\nid = 'home'\ntitle = 'Home'\nperiod = 'month'\n\
-             [[preset]]\nid = 'rent'\nbudget = 'home'\nlabel = 'Loyer agence'\namount = -780\nevery = 'month'\nday = 1\n\
-             [[preset]]\nid = 'edf'\nbudget = 'home'\nlabel = 'EDF'\namount = -62\nevery = 'month'\nday = 5\n\
-             [[preset]]\nid = 'insurance'\nbudget = 'home'\nlabel = 'Accident insurance'\namount = -15\nevery = 'month'\nday = 10\n\
-             [[preset]]\nid = 'wages'\nbudget = 'home'\nlabel = 'Salaire'\namount = 1200\nevery = 'month'\nday = 28\n\
-             [[reserve]]\nid = 'savings'\ntitle = 'Livret A'\nbalance = 2000\nas_of = 2026-09-30\n",
-        )
-        .unwrap();
-        let mut bank = Bank::default();
-        let movement = |date: &str, amount: i64, label: &str| Movement { account: "a".into(), date: day(date), amount: Money(amount), label: label.into(), id: format!("{date}{amount}") };
-        bank.movements = vec![
-            movement("2026-08-01", -78000, "PRLV LOYER AGENCE"),
-            movement("2026-08-05", -6200, "PRLV EDF"),
-            movement("2026-08-10", -1500, "PRLV ACCIDENT INSURANCE"),
-            movement("2026-08-28", 120000, "VIR SALAIRE"),
-            movement("2026-09-01", -78000, "PRLV LOYER AGENCE"),
-            movement("2026-09-05", -7140, "PRLV EDF"),
-            // The insurance did not pass in September.
-            movement("2026-09-28", 120000, "VIR SALAIRE"),
-            movement("2026-10-01", -78000, "PRLV LOYER AGENCE"),
-        ];
-        bank.accounts = vec![Account { id: "a".into(), title: String::new(), balance: Some((day("2026-10-01"), Money(30000))) }];
-        let watch = watch(&bank, &ledger, day("2026-10-03"));
-        assert!(watch.findings.contains(&Finding::Missed { label: "Accident insurance".into(), amount: Money(-1500), date: day("2026-09-10") }), "{:#?}", watch.findings);
-        assert!(watch.findings.contains(&Finding::Changed { label: "EDF".into(), expected: Money(-6200), actual: Money(-7140), date: day("2026-09-05") }), "{:#?}", watch.findings);
-        // €300 on 1 October; EDF (62) on the 5th, insurance (15) on the 10th, wages on the 28th, then rent (780) on 1 November.
-        // Before the wages: 300 − 62 − 15 = 223; after: 1423; the rent leaves 643: no shortfall this month.
-        assert!(!watch.findings.iter().any(|f| matches!(f, Finding::Short { .. })), "{:#?}", watch.findings);
-        assert_eq!(watch.balance_on(day("2026-10-12")), Some(Money(22300)));
-        assert_eq!(watch.coming.iter().map(|e| e.label.as_str()).collect::<Vec<_>>(), vec!["EDF", "Accident insurance"], "the next seven days, the 10th included");
-        // Without the wages: short on 1 November, the savings cover it.
-        let mut poorer = ledger.clone();
-        poorer.presets.retain(|p| p.label != "Salaire");
-        let watch = self::watch(&bank, &poorer, day("2026-10-03"));
-        let short = watch.findings.iter().find(|f| matches!(f, Finding::Short { .. })).expect("short");
-        assert_eq!(short, &Finding::Short { label: "Loyer agence".into(), amount: Money(-78000), date: day("2026-11-01"), short: Money(55700), reserve: Some("Livret A".into()) });
     }
 
     #[test]

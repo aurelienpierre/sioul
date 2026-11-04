@@ -6,7 +6,7 @@
 // Work, Admin and Leisure, ticked as the hours say until you tick others;
 // "As the hours say" sets them back, while your ticks hold; one "?" says how
 // it works. Rust keeps the ticks and decides when they end (`areafilter`);
-// this lays them out. Mail's All addresses uses it; Budgets will.
+// this lays them out. Mail's All addresses and the Budgets page use it.
 
 pragma ComponentBehavior: Bound
 

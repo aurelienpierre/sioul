@@ -319,6 +319,8 @@ pub fn not_same(root: &Path, a: &str, b: &str) -> Result<(), String> {
 /// of the payee is taught the name it goes by, for its next ones.
 pub fn same(root: &Path, words: &crate::words::Words, movement: &Movement, other: &Movement) -> Result<(), String> {
     let (bank, known) = match (movement.bank_label.as_ref(), other.bank_label.as_ref()) {
+        // A share set aside has no payee's name to teach.
+        _ if movement.has_kind(Kind::SetAside) || other.has_kind(Kind::SetAside) => (String::new(), String::new()),
         (Some(_), None) => (payee(words, movement), other.label.clone()),
         (None, Some(_)) => (payee(words, other), movement.label.clone()),
         _ => (String::new(), String::new()),

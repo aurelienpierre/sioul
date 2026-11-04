@@ -1080,6 +1080,10 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
     // 5. The store's links: what the matching or your hand joined before
     // holds, whatever came since; an automatic link counts until you correct it.
     for link in &store.links {
+        // A share set aside is made after the matching (7b): its links are read there.
+        if link.movement.starts_with("setaside:") || link.source.starts_with("setaside:") {
+            continue;
+        }
         let Some(target) = out.iter().position(|m| m.has(&link.movement)) else { continue };
         let probable = link.how == "probable";
         if let Some(own) = out.iter().position(|m| m.has(&link.source)) {
@@ -1223,6 +1227,21 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
             m.account = carrier(&budget.id);
             out.push(m);
         }
+    }
+
+    // 7c. A share set aside, paid before the declaration's day and said "the
+    // same as" the bank's line that paid it ("The same as…"): one movement, done
+    // on the bank's day with its amount, counted once.
+    for link in store.links.iter().filter(|l| l.movement.starts_with("setaside:") || l.source.starts_with("setaside:")) {
+        let (aside, other) = if link.movement.starts_with("setaside:") { (&link.movement, &link.source) } else { (&link.source, &link.movement) };
+        let Some(target) = out.iter().position(|m| m.has_kind(Kind::SetAside) && m.has(aside)) else { continue };
+        let Some(own) = out.iter().position(|m| !m.has_kind(Kind::SetAside) && m.has(other)) else { continue };
+        if apart_both(&out[own], &out[target]) {
+            continue;
+        }
+        let fact = out.remove(own);
+        let target = if own < target { target - 1 } else { target };
+        join(&mut out[target], fact, link.how == "probable");
     }
 
     // 8. Placements by your hand, for what the files cannot place.
@@ -1609,8 +1628,9 @@ pub fn counted(ledger: &Ledger, movements: &[Movement], today: Date) -> Ledger {
         preset,
     };
     for m in movements {
-        // A share set aside for the declaration: planned in its budget until its day.
-        if let Some(aside) = m.sources.iter().find(|s| s.kind == Kind::SetAside) {
+        // A share set aside for the declaration: planned in its budget until its
+        // day; paid early and joined to its bank line, that line counts, once.
+        if let Some(aside) = m.sources.iter().find(|s| s.kind == Kind::SetAside).filter(|_| !m.has_kind(Kind::Bank)) {
             for (budget, amount) in m.place.budgets().into_iter().map(|b| (b.to_string(), m.sum.amount())).take(1) {
                 out.lines.push(line(&budget, m.day, amount, &m.label, None, None, &aside.key, m.day > today));
             }

@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! A page's filter by area (docs/areas.md, "A page's filter by area"):
-//! Mail's All addresses, and later Budgets. Three switches, Work, Admin and
+//! Mail's All addresses and the Budgets page. Three switches, Work, Admin and
 //! Leisure, ticked as the hours say (`hours_say`, the caller's own rule on
 //! top); the person may tick others at once, and that holds until the hours
 //! change (the next change of area: the end of the time it was ticked in, or

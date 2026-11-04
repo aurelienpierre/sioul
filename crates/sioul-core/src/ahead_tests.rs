@@ -8,7 +8,7 @@
 
 use super::*;
 use crate::i18n::Translator;
-use crate::movements::{self, State};
+use crate::movements::{self, Movement, State};
 use crate::view::{self, MoneyPage};
 use std::path::PathBuf;
 
@@ -294,6 +294,48 @@ fn a_share_of_each_income_is_set_aside_for_the_declaration() {
     assert!(!books.movements.iter().any(|m| m.sources.iter().any(|s| s.kind == movements::Kind::SetAside)));
     // The declaration's days, monthly and quarterly.
     assert_eq!((movements::declaration_day(day("2026-11-15"), false), movements::declaration_day(day("2026-02-01"), true)), (day("2026-12-31"), day("2026-04-30")));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A share set aside, paid before its declaration's day: until said the same
+/// as the bank's line that paid it, two movements counted twice; said so
+/// ("The same as…"), one movement, done on the bank's day, counted once as
+/// its line, and said paid, nothing left to set aside for that declaration.
+#[test]
+fn a_share_paid_early_and_said_the_same_counts_once() {
+    let root = folder("aside-paid");
+    let ledger = "[[budget]]\nid = 'studio'\ntitle = 'Studio'\nperiod = 'month'\narea = 'work'\nset_aside = 22\ndeclare = 'quarter'\n\
+        [[line]]\nid = 'a'\nbudget = 'studio'\ndate = 2026-10-15\namount = 1000\nlabel = 'Client A'\n\
+        [[line]]\nid = 'b'\nbudget = 'studio'\ndate = 2026-11-20\namount = 500\nlabel = 'Client B'\n\
+        [[bank_account]]\nid = 'main'\ntitle = 'Main account'\nfills = ['studio']\nexports = ['0123456A']\n";
+    // Paid on 25 November, for the declaration of 31 January.
+    let bank = "[[account]]\nid = '0123456A'\nbalance = 2000.0\nas_of = 2026-11-26\n\
+        [[movement]]\naccount = '0123456A'\ndate = 2026-11-25\namount = -330.0\nlabel = 'PRLV URSSAF EXAMPLE'\nid = 'U1'\n";
+    write(&root, ledger, bank);
+    let today = day("2026-11-27");
+    let words = crate::words::Words::builtin();
+    let is_aside = |m: &Movement| m.sources.iter().any(|s| s.kind == movements::Kind::SetAside);
+    let books = movements::books(&root, &words, today);
+    let aside = books.movements.iter().find(|m| is_aside(m)).expect("the share set aside").clone();
+    let paid = books.movements.iter().find(|m| m.has("bank:main/U1")).expect("the bank's line").clone();
+    assert_eq!((aside.state, aside.day, paid.state), (State::Planned, day("2027-01-31"), State::Done));
+    assert_eq!(books.counted.lines.iter().filter(|l| l.amount == Money(-33_000)).count(), 2, "counted twice until said the same");
+    movements::acts::same(&root, &words, &aside, &paid).unwrap();
+    let books = movements::books(&root, &words, today);
+    let joined: Vec<&Movement> = books.movements.iter().filter(|m| is_aside(m)).collect();
+    assert_eq!(joined.len(), 1);
+    let one = joined[0];
+    assert_eq!((one.state, one.day, one.sum.amount()), (State::Done, day("2026-11-25"), Money(-33_000)));
+    assert!(one.has("bank:main/U1") && books.movements.iter().filter(|m| m.has("bank:main/U1")).count() == 1, "one movement");
+    assert_eq!(books.counted.lines.iter().filter(|l| l.amount == Money(-33_000)).count(), 1, "counted once, as its bank line");
+    assert!(!books.counted.lines.iter().any(|l| l.planned && l.links.iter().any(|k| k.starts_with("setaside:"))));
+    // Said paid, in its words; nothing left to set aside for that declaration.
+    let tr = Translator::new("en");
+    let view = page(&root, today, Area::ALL, false, &tr);
+    let studio = view.budgets.iter().find(|b| b.id == "studio").unwrap();
+    assert!(studio.words.iter().any(|w| w == "Paid: Taxes and contributions, 22 %."), "{:?}", studio.words);
+    assert!(!studio.words.iter().any(|w| w.starts_with("Set aside")), "{:?}", studio.words);
+    assert!(!view.coming.iter().flat_map(|w| w.rows.iter()).any(|r| r.who.starts_with("Taxes")), "nothing coming of it");
     let _ = std::fs::remove_dir_all(&root);
 }
 
