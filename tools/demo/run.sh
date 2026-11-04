@@ -68,9 +68,14 @@ if [[ ! -x "$app" ]]; then
     echo "run.sh: no $app: build it first (CARGO_INCREMENTAL=0 cargo build$([[ $build == release ]] && echo " --release") -p sioul-app)." >&2
     exit 1
 fi
-# A worktree's target may be a link to a build folder elsewhere, under the
-# home the sandbox hides: the program is bound in at its own path.
-app=$(readlink -f "$app")
+# A checkout's target may be a link to a folder elsewhere (a worktree's own
+# build folder, under the home the sandbox hides): that folder is bound too,
+# read-only, so that the program is found inside.
+built=()
+if [[ -L "$repo/target" ]]; then
+    target=$(readlink -f "$repo/target")
+    built=(--ro-bind "$target" "$target")
+fi
 
 read -r now zone < <(python3 "$repo/tools/demo/moment.py" ${RUN_HOUR:+--hour "$RUN_HOUR"})
 if [[ "$now" == none ]]; then
@@ -110,7 +115,7 @@ fi
 echo "run.sh: $steps, in $language, at $now (TZ=$zone), $build build, into $out"
 status=0
 env -u DISPLAY -u WAYLAND_DISPLAY -u SESSION_MANAGER -u DBUS_SESSION_BUS_ADDRESS \
-    bwrap --die-with-parent --unshare-net --dev-bind / / --tmpfs /home "${hide[@]}" --ro-bind "$repo" "$repo" --ro-bind "$app" "$app" \
+    bwrap --die-with-parent --unshare-net --dev-bind / / --tmpfs /home "${hide[@]}" --ro-bind "$repo" "$repo" "${built[@]}" \
     --bind "$profile/config" "$home/.config" --bind "$profile/data" "$home/.local/share" \
     --bind "$profile/state" "$home/.local/state" --bind "$profile/cache" "$home/.cache" \
     --bind "$profile/notes" "$home/Notes" --bind "$out" "$out" --bind "$runtime" "$runtime" --chdir "$home" \

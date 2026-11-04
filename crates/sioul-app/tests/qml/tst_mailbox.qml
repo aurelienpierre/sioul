@@ -4,15 +4,17 @@
 // The mailbox on a computer (the unified mailbox's part 4, MailPage.qml), on
 // a stand-in for Sioul and its window: "All addresses" chosen when Mail
 // opens; its rows one line each under their days, their addresses' marks;
-// the chips, one at a time, and the marks that keep one address, asked of
-// Rust and kept on this device; a resting address's line and "Show its
-// mail"; "Earlier messages"; a tap opening through the window's one opener,
+// the chips, one at a time, asked of Rust and kept on this device; the
+// filter (part 1 of 4 November 2026): the areas ticked, each address switched
+// on or off, no resting line; Spam and Not spam on the rows to settle, in
+// their menus and the reader; "Earlier messages"; a tap opening through the window's one opener,
 // Back leaving the list where it was; a selection across two addresses
 // acted on and dragged onto a folder; neither list handed the other's rows
 // on the way to a folder and back; a row held by two addresses acted on as
 // one message, each copy at once; the rows by pages of sixty; on a phone
 // (part 5), two lines a row within their objects, a long press, Select,
-// Back, the other folders asked for. Run by tools/qml-test.sh.
+// Back, the other folders asked for, the filter in the folders' sheet within
+// 412 points. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -77,19 +79,35 @@ Item {
         rowOf(4, "Yesterday", "home", "Dinner on Friday"),
         rowOf(5, "Monday 26 October", "work", "You have won", { kinds: ["spam"], spam: "your provider: spam" })
     ]
+    // What each stand-in address is for, as its card says.
+    readonly property var areasOf: ({ work: ["work"], home: ["admin", "leisure"] })
+
+    // The filter as the stand-in Rust keeps it: the hours tick work; your
+    // ticks ("" ticks none) while they hold; the addresses switched off.
+    function shownFilter() {
+        const ticked = mock.ticked === null ? "work" : mock.ticked
+        const areas = ticked === "" ? [] : ticked.split("+")
+        const words = { work: "Work", admin: "Admin", leisure: "Leisure" }
+        return { work: areas.indexOf("work") >= 0, admin: areas.indexOf("admin") >= 0, leisure: areas.indexOf("leisure") >= 0, label: areas.length ? areas.map(a => words[a]).join(" · ") : "Nothing ticked", own: mock.ticked !== null }
+    }
+    function addressShown(account) {
+        const filter = root.shownFilter()
+        return mock.off.indexOf(account) < 0 && root.areasOf[account].some(a => filter[a])
+    }
 
     // What the stand-in Rust answers to an ask: the rows it keeps, cut into
     // the pages it publishes (sixty rows each, as many as asked for).
     function pagesFor(ask) {
         const every = root.allRows.concat(root.bulkRows(mock.bulk))
-        const rows = every.filter(r => !root.keysOf(r).every(k => mock.gone.indexOf(k) >= 0) && (ask.account === "" || r.accounts.indexOf(ask.account) >= 0)
+        const rows = every.filter(r => !root.keysOf(r).every(k => mock.gone.indexOf(k) >= 0)
             && (ask.chip === "spam" ? !!r.spam : !r.spam)
             && (ask.chip !== "sent" || r.kinds.indexOf("sent") >= 0)
             && (ask.chip !== "unread" || !r.read)
-            && (ask.account !== "" || ask.shown_resting.indexOf("home") >= 0 || r.accounts.some(a => a !== "home"))
+            && r.accounts.some(a => root.addressShown(a))
             && (ask.query === "" || r.subject.toLowerCase().indexOf(ask.query.toLowerCase()) >= 0))
         const shown = rows.slice(0, ask.rows || 60)
-        const head = { resting: ask.shown_resting.indexOf("home") >= 0 ? [] : [{ account: "home", line: "noa@home.example.org rests until 09:00." }], addresses: [root.marks.work, root.marks.home], earlier: ask.windows < 2, sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: ask.account, windows: ask.windows, prefix: root.prefix }
+        const marks = [root.marks.work, root.marks.home].map(m => Object.assign({ on: mock.off.indexOf(m.account) < 0 }, m))
+        const head = { resting: [], addresses: marks, filter: root.shownFilter(), earlier: ask.windows < 2, sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: "", windows: ask.windows, prefix: root.prefix }
         const pages = []
         for (let start = 0; start === 0 || start < shown.length; start += 60) {
             const part = shown.slice(start, start + 60)
@@ -118,6 +136,9 @@ Item {
         property var gone: []
         property var moved: []
         property var openedFolders: []
+        // The filter as kept: your ticks (null: as the hours say), the addresses switched off.
+        property var ticked: null
+        property var off: []
 
         signal messageRead(string key, string reading, string invitation)
         signal mailboxPage(string text)
@@ -142,6 +163,16 @@ Item {
         }
         function bringFolders() {
             mock.broughtFolders += 1
+        }
+        // The filter: kept, nothing asked; the page asks the mailbox again itself.
+        function tickMailAreas(areas) {
+            mock.ticked = areas
+        }
+        function mailAreasAsHours() {
+            mock.ticked = null
+        }
+        function switchMailAddress(id, on) {
+            mock.off = on ? mock.off.filter(a => a !== id) : mock.off.concat([id])
         }
         function mailboxView() {
             return mock.kept
@@ -265,10 +296,12 @@ Item {
         name: "Mailbox"
         when: windowShown
 
-        // Each test on a computer's size and the stand-in's own rows, whatever the one before left.
+        // Each test on a computer's size, the stand-in's own rows and the hours' filter, whatever the one before left.
         function init() {
             fakeWindow.compact = false
             mock.bulk = 0
+            mock.ticked = null
+            mock.off = []
         }
 
         function find(item, name) {
@@ -331,9 +364,17 @@ Item {
             return all(page, i => i.objectName === "mailboxRow:" + subject && i.visible)[0] || null
         }
 
+        // An address's switch beside the chips, as the newest page made it (a page
+        // made again replaces its delegates; the old ones go a moment later).
+        function addressSwitch(page, account) {
+            const found = all(page, i => i.objectName === "address:" + account && i.visible)
+            return found[found.length - 1] || null
+        }
+
         // "All addresses", chosen when Mail opens on a computer: received and sent
-        // in time order, under their days, one line each; a resting address's
-        // mail out, its line saying so; the marks of both addresses.
+        // in time order, under their days, one line each; the marks of both
+        // addresses; the filter as the hours say (work's), saying so, and no
+        // resting line: home's own mail out until its area is ticked.
         function test_all_addresses_is_chosen_when_mail_opens() {
             const page = made()
             compare(page.account, "")
@@ -349,16 +390,107 @@ Item {
             verify(both.height < 40, "one line: " + both.height)
             compare((page.marksText(page.listItems[0].marks).match(/<span/g) || []).length, 2, "both addresses' marks, as text")
             verify(page.marksText(page.listItems[0].marks).indexOf("H") > 0, "each its own letter")
-            compare(find(page, "mailboxResting").text, "noa@home.example.org rests until 09:00.")
-            // "Show its mail": the resting address's mail too, this time.
-            find(page, "mailboxShowResting").clicked()
-            compare(lastAsk().shown_resting, ["home"])
+            const areas = find(page, "mailboxAreas")
+            verify(areas.visible && find(areas, "areaFilter").text.indexOf("Work") === 0, "the filter says what shows")
+            compare(all(page, i => i.objectName === "mailboxResting" || i.objectName === "mailboxShowResting").length, 0, "no resting line")
+            verify(lastAsk().account === undefined && lastAsk().shown_resting === undefined, "the filter is Rust's: never asked")
+            // Admin and leisure ticked too: home's mail in, the list asked anew.
+            page.tickAreas("work+admin+leisure")
+            compare(mock.ticked, "work+admin+leisure")
+            verify(lastAsk().fresh)
             compare(page.listItems.map(r => r.subject), ["On both lists", "Quote for the cooperative", "Sent to Iris", "Dinner on Friday"])
-            verify(find(page, "mailboxResting") === null || !find(page, "mailboxResting").visible)
+            verify(find(areas, "areaFilter").text.indexOf("Work · Admin · Leisure") === 0)
+            // As the hours say again.
+            page.areasAsHours()
+            compare(mock.ticked, null)
+            compare(page.listItems.map(r => r.subject), ["On both lists", "Quote for the cooperative", "Sent to Iris"])
         }
 
-        // The chips, one at a time, nothing counted; the marks keep one
-        // address, then all again; what was chosen kept, read back next time.
+        // The filter's boxes and the addresses' switches (part 1 of 4 November
+        // 2026): a box ticked asks Rust and the list anew; an address switched
+        // off leaves only what another address shows holds, its mark hollow,
+        // then on again; what shows is both: areas ticked and addresses on.
+        function test_the_filter_s_boxes_and_switches() {
+            const page = made()
+            const areas = find(page, "mailboxAreas")
+            areas.unfold()
+            tryCompare(areas, "unfolded", true)
+            const leisure = all(page.Overlay.overlay, i => i.objectName === "area:leisure" && i.visible)[0]
+            verify(leisure && !leisure.checked)
+            mouseClick(leisure)
+            compare(mock.ticked, "work+leisure")
+            tryVerify(() => page.listItems.some(r => r.subject === "Dinner on Friday"))
+            verify(all(page.Overlay.overlay, i => i.objectName === "areaFilterAsHours" && i.visible).length === 1, "your ticks: As the hours say offered")
+            areas.fold()
+            // Work switched off: what home holds stays (the list to both), its own mail too.
+            wait(50)
+            const workMark = addressSwitch(page, "work")
+            verify(workMark.checkable && workMark.checked)
+            mouseClick(workMark)
+            compare(mock.off, ["work"])
+            compare(page.listItems.map(r => r.subject), ["On both lists", "Dinner on Friday"])
+            wait(50)
+            verify(!addressSwitch(page, "work").checked && addressSwitch(page, "work").contentItem.hollow, "off: its outline alone")
+            // Leisure unticked again: home shows nothing ticked for it, work is off: nothing at all.
+            page.tickAreas("work")
+            compare(page.listItems.length, 0)
+            wait(50)
+            mouseClick(addressSwitch(page, "work"))
+            compare(mock.off, [])
+            compare(page.listItems.map(r => r.subject), ["On both lists", "Quote for the cooperative", "Sent to Iris"])
+        }
+
+        // Spam and Not spam (part 1 of 4 November 2026): on every row your
+        // filter flagged or that lies in a junk folder, beside its quiet word on
+        // a computer, in its menu instead of Junk, and in the reader; the act
+        // is the Porch's own (`act`, each address's copy); rows not flagged
+        // offer Junk as before. A folder's flagged row, the same.
+        function test_spam_and_not_spam_on_rows_to_settle() {
+            const page = made()
+            find(page, "chip:spam").clicked()
+            tryVerify(() => rowItem(page, "You have won") !== null)
+            const row = rowItem(page, "You have won")
+            const spam = all(row, i => i.objectName === "rowSpam" && i.visible)[0]
+            const notSpam = all(row, i => i.objectName === "rowNotSpam" && i.visible)[0]
+            verify(spam && notSpam, "both beside the row")
+            notSpam.clicked()
+            compare(mock.acted[mock.acted.length - 1], { keys: [root.keyOf(5, "work")], action: "not-spam", one: true })
+            spam.clicked()
+            compare(mock.acted[mock.acted.length - 1].action, "spam")
+            // Its menu: Spam and Not spam, no Junk.
+            openMenu(page, "You have won")
+            tryVerify(() => menuItem(page, "ui-not-spam") !== null)
+            verify(menuItem(page, "ui-spam") !== null && menuItem(page, "ui-junk") === null)
+            menuItem(page, "ui-not-spam").triggered()
+            compare(mock.acted[mock.acted.length - 1].action, "not-spam")
+            // The reader: both, too.
+            page.clickRow(0, page.listItems[0].key, 0)
+            tryVerify(() => find(page, "mailReader") !== null && find(page, "mailReader").item !== null)
+            const reader = find(page, "mailReader")
+            tryVerify(() => find(reader, "readerSpam") !== null && find(reader, "readerSpam").visible && find(reader, "readerNotSpam").visible)
+            page.back()
+            // A row not flagged: no word to settle, Junk in its menu.
+            find(page, "chip:all").clicked()
+            tryVerify(() => rowItem(page, "Quote for the cooperative") !== null)
+            verify(all(rowItem(page, "Quote for the cooperative"), i => i.objectName === "rowSpam" && i.visible).length === 0)
+            openMenu(page, "Quote for the cooperative")
+            tryVerify(() => menuItem(page, "ui-junk") !== null)
+            verify(menuItem(page, "ui-spam") === null)
+            menuItem(page, "ui-junk").triggered()
+            // A folder's row your filter flagged: the same buttons.
+            const flagged = { key: "/stand-in/mail/work/cur/17770008.U7-8.sioul:2,S", uri: "mid:f8@example.org", who: "Ben", address: "ben@example.org", subject: "A doubt", date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false, spam: "maybe spam" }
+            mock.mailFolder = JSON.stringify({ items: [flagged], title: "Inbox", sentence: "", role: "inbox", earlier: false })
+            page.openFolder("work", "INBOX")
+            tryVerify(() => find(page, "folderList").count === 1)
+            wait(50)
+            const settle = all(page, i => i.objectName === "rowNotSpam" && i.visible)[0]
+            verify(settle, "Not spam on the folder's flagged row")
+            settle.clicked()
+            compare(mock.acted[mock.acted.length - 1], { keys: [flagged.key], action: "not-spam", one: true })
+            mock.mailFolder = ""
+        }
+
+        // The chips, one at a time, nothing counted; what was chosen kept, read back next time.
         function test_the_chips_and_the_marks() {
             const page = made()
             find(page, "chip:spam").clicked()
@@ -368,18 +500,13 @@ Item {
             find(page, "chip:sent").clicked()
             compare(page.listItems.map(r => r.subject), ["Sent to Iris"])
             find(page, "chip:all").clicked()
-            find(page, "address:home").clicked()
-            compare(lastAsk().account, "home")
-            compare(page.listItems.map(r => r.subject), ["On both lists", "Dinner on Friday"])
-            find(page, "address:home").clicked()
-            compare(lastAsk().account, "", "a second tap: every address")
             // No chip says a number.
             for (const chip of ["all", "unread", "sent", "spam"])
                 verify(!/[0-9]/.test(find(page, "chip:" + chip).text), chip)
-            // Kept on this device: the next page starts from it.
+            // Kept on this device: the next page starts from it; an older Sioul's one address is no filter.
             mock.kept = JSON.stringify({ chip: "unread", account: "work" })
             const next = made()
-            compare([next.boxChip, next.boxAccount], ["unread", "work"])
+            compare(next.boxChip, "unread")
             compare(lastAsk().chip, "unread")
             mock.kept = "{}"
         }
@@ -417,7 +544,7 @@ Item {
         // dragged onto a folder, as from a search.
         function test_a_selection_across_addresses_acted_on_and_dragged() {
             const page = made()
-            find(page, "mailboxShowResting").clicked()
+            page.tickAreas("work+admin+leisure")
             const items = page.listItems
             const workRow = items.findIndex(r => r.subject === "Quote for the cooperative")
             const homeRow = items.findIndex(r => r.subject === "Dinner on Friday")
@@ -487,7 +614,7 @@ Item {
             compare(mock.acted[mock.acted.length - 1], { keys: [both], action: "trash" })
             tryVerify(() => page.listItems.every(r => r.subject !== "On both lists"))
             // One copy: acted on once, by its key.
-            page.showResting("home")
+            page.tickAreas("work+admin+leisure")
             openMenu(page, "Dinner on Friday")
             tryVerify(() => menuItem(page, "ui-trash") !== null)
             const before = mock.acted.length
@@ -499,14 +626,13 @@ Item {
         // The quick search, typed, asks Rust across every address after a pause.
         function test_the_quick_search_asks_across_addresses() {
             const page = made()
-            page.boxShownResting = ["home"]
+            page.tickAreas("work+admin+leisure")
             const field = all(page, i => i.objectName === "mailSearchField" && i.visible)[0]
             verify(field, "the search field in sight")
             field.text = "dinner"
             field.textEdited()
             tryCompare(page, "query", "dinner")
             tryVerify(() => lastAsk().query === "dinner")
-            compare(lastAsk().shown_resting, ["home"])
             compare(page.listItems.map(r => r.subject), ["Dinner on Friday"])
             verify(page.boxShown, "still the mailbox")
         }
@@ -573,7 +699,7 @@ Item {
             tryCompare(page.boxRows, "length", 120)
             compare([lastAsk().rows, lastAsk().fresh], [120, false])
             list.positionViewAtEnd()
-            // Three of the stand-in's rows (the resting address's own left out) and the 130.
+            // Three of the stand-in's rows (home's own left out by the filter) and the 130.
             tryVerify(() => page.boxRows.length === 133 && !page.boxMore)
             tryVerify(() => find(page, "mailboxEarlier").visible)
             compare(boxModel(page).count, 133)
@@ -662,6 +788,50 @@ Item {
             compare(all(page, i => i.objectName && i.objectName.indexOf("folder:inbox:") === 0).length, 0)
             page.foldersShown = true
             tryVerify(() => all(page, i => i.objectName && i.objectName.indexOf("folder:inbox:") === 0).length >= 1)
+            fakeWindow.compact = false
+        }
+
+        // On a phone (part 1 of 4 November 2026): the filter in the folders'
+        // sheet, not beside the chips: its button, each address a box with its
+        // whole address; nothing past 412 points; a box switched off asks Rust
+        // and the list anew; the row's long press offers Spam and Not spam.
+        function test_a_phone_s_filter_is_in_the_folders_sheet() {
+            fakeWindow.compact = true
+            const page = made()
+            page.width = 412
+            page.height = 891
+            verify(find(page, "mailboxAreas") === null && find(page, "address:work") === null, "nothing of it beside the chips, not even made")
+            verify(find(page, "mailboxFilterSheet") === null, "the sheet's own made only while it shows")
+            page.foldersShown = true
+            tryVerify(() => find(page, "mailboxFilterSheet") !== null && find(page, "mailboxFilterSheet").visible)
+            // Laid out at the phone's width before anything is measured or tapped.
+            wait(100)
+            const sheet = find(page, "mailboxFilterSheet")
+            const home = all(sheet, i => i.objectName === "addressBox:home" && i.visible)[0]
+            verify(home && home.checked && home.text === "noa@home.example.org")
+            for (const item of all(sheet, i => i.visible && i.width > 0)) {
+                const right = item.mapToItem(page, item.width, 0).x
+                verify(right <= 412.5, item.objectName + " passes the edge: " + right)
+            }
+            mouseClick(home)
+            compare(mock.off, ["home"])
+            verify(lastAsk().fresh)
+            // The sheet's filter unfolds within the phone's width.
+            const areas = find(sheet, "sheetAreas")
+            areas.unfold()
+            tryCompare(areas, "unfolded", true)
+            for (const box of all(page.Overlay.overlay, i => i.objectName.indexOf("area:") === 0 && i.visible)) {
+                const at = box.mapToItem(null, 0, 0)
+                verify(at.x >= 0 && at.x + box.width <= 412.5, box.objectName + ": " + at.x + "+" + box.width)
+            }
+            areas.fold()
+            page.foldersShown = false
+            // A long press on a row to settle: Spam and Not spam in its menu.
+            find(page, "chip:spam").clicked()
+            tryVerify(() => rowItem(page, "You have won") !== null)
+            rowItem(page, "You have won").pressAndHold()
+            tryVerify(() => menuItem(page, "ui-not-spam") !== null)
+            verify(menuItem(page, "ui-spam") !== null)
             fakeWindow.compact = false
         }
 

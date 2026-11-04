@@ -136,6 +136,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.notices = sioul_sync::share::NOTICES_SHARED;
         // It keeps a leg that is a step's time: offered once every device says so (part 7).
         entry.legs = sioul_sync::share::LEGS_AS_STEPS;
+        // It has the store of money movements: it travels once every device says so.
+        entry.movements = sioul_sync::share::MOVEMENTS_SHARED;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;
