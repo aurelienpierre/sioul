@@ -19,6 +19,7 @@
 //! - a task, an event, a contact: `sioul:task/<UID>`, `sioul:event/<UID>`, `sioul:contact/<UID>`;
 //! - a note: `sioul:note/<path in the notes folder>`;
 //! - a draft: `sioul:draft/<id>`; a paper: `sioul:paper/<id>`;
+//! - a person your admin is done for: `sioul:person/<id>` (`persons`; you, `sioul:person/me`);
 //! - a contract: `sioul:contract/<id>`; a paper letter: `sioul:letter/<id>`;
 //!   an invoice you issued: `sioul:invoice/<number>` (the unified agenda,
 //!   part 4: each date asked opens the card of what it belongs to by them);
@@ -49,6 +50,8 @@ pub enum Kind {
     Draft,
     Note,
     Contact,
+    /// A person your admin is done for (`persons`): a child, a parent you help, a partner, you.
+    Person,
     Budget,
     Project,
     Paper,
@@ -72,6 +75,7 @@ pub fn kind_of(uri: &str) -> Kind {
             "task" => Kind::Task,
             "event" => Kind::Event,
             "contact" => Kind::Contact,
+            "person" => Kind::Person,
             "note" => Kind::Note,
             "draft" => Kind::Draft,
             "budget" => Kind::Budget,
@@ -185,6 +189,11 @@ pub fn contact_uri(uid: &str) -> String {
 
 pub fn paper_uri(id: &str) -> String {
     format!("sioul:paper/{}", encode(id))
+}
+
+/// A person of `persons`, by their id; you are `sioul:person/me`.
+pub fn person_uri(id: &str) -> String {
+    format!("sioul:person/{}", encode(id))
 }
 
 /// A contract of Budgets ▸ Contracts, by its id.
@@ -777,6 +786,17 @@ impl World<'_> {
                 out.title = sender.unwrap_or_else(|| id.clone());
                 out.key = id.clone();
                 out.found = true;
+            }
+            // A person, by their name in the store (`persons`, a small file); you by your own word, `me`.
+            Kind::Person => {
+                let persons = crate::persons::Persons::load(&crate::persons::Persons::default_path());
+                out.key = id.clone();
+                out.found = id == crate::persons::ME;
+                if let Some(person) = persons.get(&id) {
+                    out.title = person.name.clone();
+                    out.detail = person.relation.clone();
+                    out.found = true;
+                }
             }
             // A paper of the wallet, a contract, an invoice: named by its link's
             // label where the item gives one; its card reads it.

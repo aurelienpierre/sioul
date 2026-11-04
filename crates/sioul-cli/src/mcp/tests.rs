@@ -143,6 +143,7 @@ fn make(root: &Path) -> PathBuf {
     vdir::write_item(&list.dir.join("receipt.ics"), &tasks::new_task(&edit, "receipt", &jiff::tz::TimeZone::system(), &Zoned::now()).unwrap()).unwrap();
     vdir::create(Kind::Calendars, vdir::LOCAL, "Agenda", None, &["VEVENT"]).unwrap();
     closed_project(root, &store, &mail);
+    persons_fixture(&store);
     health_fixture(&store);
     spam_fixture(root, &mail);
     config
@@ -255,6 +256,40 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     let restored = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-2");
     sioul_core::texts::append(&restored, &[sms("sms-902", &["+33199001234"], "See you tomorrow at the market.", 40)], &seal, None).unwrap();
     let _ = std::fs::read_to_string(store.join("sioul-budgets.toml")).map(|budgets| std::fs::write(store.join("sioul-budgets.toml"), format!("{budgets}\n[[budget]]\nid = \"zeugma\"\ntitle = \"Zeugma income\"\nperiod = \"month\"\ntarget = 0\n")));
+}
+
+/// Words planted in what is a person's (`a_closed_person_is_never_shown`):
+/// a child closed to agents (their name and full name), the street of a
+/// lease of two, one of them that child; a paper tied to the child in
+/// `links.toml` with no holder text; the health card of a parent opened to
+/// agents; a holder text that names nobody. None may be in any answer.
+const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderhollow", "Vellichor", "Gorsebeck"];
+
+/// The household: a child closed to agents, a parent opened; their papers
+/// in the wallet beside the identity card in no project, a passport ending
+/// soon (a reminder), and a tie from a paper to the child in Sioul's links.
+/// Old texts read already (`names_read`), so that "Gorsebeck" stays text.
+fn persons_fixture(store: &Path) {
+    use sioul_core::papers::{Kind as PaperKind, Paper, Wallet};
+    let persons = "format = 1\nnames_read = 1\n\n[person.p-quorvelle]\nname = \"Quorvelle\"\nfull_name = \"Quorvelle Fenwright\"\nrelation = \"child\"\nborn = 2014-05-12\nagents = false\n\n[person.p-odile]\nname = \"Odile\"\nrelation = \"parent\"\nagents = true\n";
+    let path = sioul_core::persons::Persons::default_path();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, persons).unwrap();
+    let soon = Zoned::now().date().checked_add(40.days()).unwrap();
+    let mut wallet = Wallet::load(store).unwrap();
+    for (id, kind, title, holder) in [
+        ("p-passport", PaperKind::Passport, "Passport", "Quorvelle Fenwright"),
+        ("p-lease", PaperKind::RentReceipt, "Lease of Saltmarrow street", "Odile, Quorvelle"),
+        ("p-school", PaperKind::Insurance, "Tinderhollow school insurance", ""),
+        ("p-odile-id", PaperKind::Identity, "Identity card of Odile", "Odile"),
+        ("p-odile-health", PaperKind::HealthCard, "Vellichor health card", "Odile"),
+        ("p-car", PaperKind::Other, "Car registration", "Gorsebeck"),
+    ] {
+        let until = (kind == PaperKind::Passport).then_some(soon);
+        wallet.put(Paper { id: id.into(), kind, title: title.into(), holder: holder.into(), until, ..Default::default() });
+    }
+    wallet.save().unwrap();
+    sioul_core::links::LocalLinks::add_all(&sioul_core::links::LocalLinks::default_path(), &[sioul_core::links::Edge { from: "sioul:paper/p-school".into(), to: "sioul:person/p-quorvelle".into(), how: "holder".into() }]).unwrap();
 }
 
 /// Words planted in every field of health (`health_never_reaches_an_agent`):
@@ -837,6 +872,52 @@ fn a_closed_project_is_never_shown() {
     }
     assert_eq!(snapshot(&[home.root.join("store/taxes")]), before, "nothing written");
     assert!(!Draft::all().iter().any(|d| d.body.contains("Paid.") || d.subject == "Taxes"), "no draft");
+}
+
+/// Each person is closed to agents until opened (docs/persons.md): a
+/// closed child's papers (by their holder text, by a tie in Sioul's links,
+/// a paper of two), a text naming nobody, and the health card of a parent
+/// opened to agents are in no answer of any tool, listed, searched or
+/// followed, and counted; the child's address is refused; the opened
+/// parent's identity card comes, with the parent's address.
+#[test]
+fn a_closed_person_is_never_shown() {
+    let _ = home();
+    let mut server = server();
+    let planted: Vec<String> = PERSON_WORDS.iter().map(|w| sioul_core::words::folded(w)).collect();
+    let never = |answer: &Value, what: &str| {
+        // The agent's own words said back ("Nothing matches “Quorvelle”") are not the person's.
+        let said = sioul_core::words::folded(&answer.to_string()).replace("“quorvelle”", "“…”");
+        if let Some(word) = planted.iter().find(|w| said.contains(w.as_str())) {
+            panic!("{what}: “{word}” in {answer}");
+        }
+    };
+    for (tool, arguments) in [
+        ("papers", json!({})),
+        ("reminders", json!({ "days": 92 })),
+        ("find", json!({ "query": "Quorvelle" })),
+        ("find", json!({ "query": "passport" })),
+        ("find", json!({ "query": "insurance" })),
+        ("search_contacts", json!({})),
+        ("links", json!({ "uri": "sioul:person/p-odile" })),
+        ("agenda", json!({ "days": 5 })),
+    ] {
+        let answer = call(&mut server, tool, arguments.clone());
+        assert!(answer["isError"] != true, "{tool} {arguments}: {answer}");
+        never(&answer, tool);
+    }
+    let papers = call(&mut server, "papers", json!({}));
+    let shown = &papers["structuredContent"]["papers"];
+    let odile = shown.as_array().unwrap().iter().find(|p| p["uri"] == "sioul:paper/p-odile-id").unwrap_or_else(|| panic!("the opened parent's paper comes: {papers}"));
+    assert_eq!(odile["for"], json!(["sioul:person/p-odile"]), "{odile}");
+    assert!(papers["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 5 && text(&papers).contains("left out on purpose"), "{papers}");
+    // Asked for by address: refused, saying so.
+    for (tool, arguments) in [("links", json!({ "uri": "sioul:person/p-quorvelle" })), ("links", json!({ "uri": "sioul:paper/p-school" })), ("links", json!({ "uri": "sioul:paper/p-odile-health" }))] {
+        let refused = call(&mut server, tool, arguments.clone());
+        assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
+        assert!(text(&refused).contains("kept from agents"), "{tool}: {}", text(&refused));
+        never(&refused, tool);
+    }
 }
 
 /// A folder of 600 messages, more than a first look reads in the window

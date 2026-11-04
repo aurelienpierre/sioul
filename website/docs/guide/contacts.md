@@ -6,7 +6,7 @@ description: Contacts in Sioul - names first, details folded; duplicates found a
 
 ## In short {#in-short}
 
-Contacts holds the people you deal with: their names first, their details folded until you open them. Sioul finds the same person written twice and merges the cards when you say so, with thirty days to undo each merge. It shows everyone with a postal address on one map, once you allow it. Each person is on a list, safe, neutral, restricted or blocked, or is a stranger, and that list decides when their mail, their calls and their messages reach you; a forged message cannot take their place. Your contacts stay on your own server, at Google or on this device, and Sioul reaches them only over an encrypted connection.
+Contacts holds the people you deal with: their names first, their details folded until you open them. Sioul finds the same person written twice and merges the cards when you say so, with thirty days to undo each merge. It shows everyone with a postal address on one map, once you allow it. Each person is on a list, safe, neutral, restricted or blocked, or is a stranger, and that list decides when their mail, their calls and their messages reach you; a forged message cannot take their place. Your contacts stay on your own server, at Google or on this device, and Sioul reaches them only over an encrypted connection. At the head of the page, your household: the people your admin is done for, each with their papers.
 
 <figure markdown="span">
   [![The Contacts page: a search field, a button for a new contact and one for the map above a list of names, each with an address or a number under it; one contact open on the right, with their role and organisation, an e-mail address with Write, a phone number with Call, "Your contacts: in your address book, on no list." and How Iris Calloway reaches you, a small map with a pin at their address, and what is tied to them: two tasks and two events.](../assets/screens/contacts.png){ loading=lazy }](../assets/screens/contacts.png "Open the picture at full size")
@@ -20,12 +20,31 @@ Contacts holds the people you deal with: their names first, their details folded
 - The map sends nothing until you allow it. Then it sends postal addresses alone, one at a time, to OpenStreetMap: never a name, a number or an e-mail address.
 - Nobody can borrow a place on your lists. Mail that shows a safe contact's address but fails that address's checks counts as a stranger's, and mail forged outright is set aside. Someone you blocked stays blocked, whatever their message proves.
 - Who is on which list, and the calls your phones screened, travel between your devices sealed with your passphrase: the server of the shared folder never reads them.
+- The people of your household stay on your own devices, sealed when they travel: never written into a contact card, never sent to a server, each closed to AI agents until you open them ([People in your household](#household)).
 
 ## The list
 
 Names come first, with one line under each, and a search field sits on top: a few letters of a name, an organisation, an e-mail address or a phone number find a contact. The search does not look into postal addresses.
 
 When your cards have categories, a choice under the search field shows the contacts of one category only, or **All categories**.
+
+## People in your household {#household}
+
+At the head of the page, **Household** is a row of names: you first, then the people your admin is done for, a child, a parent you help, a partner, family, someone you help, and after a small gap a child's other parent. A name opens that person's page, in the place of a card; on a phone it takes the page. Right click, or a long press on a phone, gives **Open** and **Rename**. **Add a person** at the end of the row adds one.
+
+A person is not a contact. A contact is a card for reaching someone; a person is who your papers are for. A baby is a person with no card; someone with a home card and a work card is one person with two.
+
+**A person's page** shows their name and one line, such as "Child · 12 · lives with you", then:
+
+- **Papers**: the papers that are theirs, each with where it stands, as on the [Papers](papers.md#papers) page, and **Add a paper for Léa**;
+- **Contacts**: the cards that are them, each opening its card, with **Unlink**, and **Link a card…**;
+- at the foot, **Open to AI agents**, off until you turn it on. Your own page has no such switch: you are open as before.
+
+**Edit** changes their name, how papers write it ("Léa Martin"), who they are to you, their date of birth, whether they live with you, and for a child's other parent, whose. A new name is also written into the papers that named the old one, so that a device on an older Sioul shows it too.
+
+**On a contact's card**, **This is a person in your household…** links the card to one of them, or makes a new person of it. Once linked, the button opens their page instead.
+
+**Where they come from.** The first time, Sioul reads the names your agendas and papers already gave: a child's agenda gives that child, and its other parent; a paper "for Odile" gives Odile. A paper with no name, or with yours, is yours. These persons count from then on; a wrong one is changed on its page. Nothing else is written.
 
 ## A contact
 
@@ -118,6 +137,18 @@ Changing a contact's photo in Sioul is planned. vCard files cannot be imported o
 - **Who decides a person's list**, the most precise first: their own address or number on a list; their card; their categories; a domain or the start of a number (`*@example.org`, a switchboard's first digits); then neutral, when they are in an address book or you let them in. At the same level, blocked comes before restricted, neutral and safe.
 - **A card's photo** is read from the card itself. A card whose photo is a web address (`https` only) never has it fetched by itself: the card offers **Load the photo**, naming the server. Pressed, Sioul asks that server once (twenty seconds and one megabyte at most, a picture only) and keeps the copy here, which the card shows from then on.
 
+## Why it works this way {#why-it-works-this-way}
+
+A person is not a card. A card is for reaching someone, and every app of your phone reads it, as does the server that keeps it; a baby has no card, and one person may have two. So a person is Sioul's own record, kept on your devices, linked to the cards that are them.
+
+Nothing is written into your cards. vCard has a line for relations (RFC 6350), but no address book keeps it as a link that every app follows: Google keeps a name and a type, Apple a labelled name, Nextcloud a typed text, and Google's contacts server has no place for it at all. Written into a card, "Léa: child" would be read by every app that reads your contacts, and the people closest to us are the ones who can misuse such details: abusive partners turn ordinary family features into watching (Freed et al. 2018; Levy & Schneier 2020).
+
+Each person is closed to AI agents until you open them. Keeping your family's papers on your own devices is a household matter, which data protection law leaves to you (GDPR art. 2(2)(c)); what an agent reads goes to the company that runs its model, outside your household, and children's data deserve particular protection (GDPR recital 38). So an agent sees a person's papers only once you open that person, and nobody's health papers but yours.
+
+Sioul watches nobody: no location, no "last seen", no reading of anyone's messages, no tally of what was done for whom. Children rated parental monitoring apps one star in three reviews out of four, and more control went with more risk, not less (Ghosh et al. 2018); adult children wanted sensors and tracking more than their mothers did (Berridge & Wetle 2020). Care ends in the answer of the one cared for (Tronto 1993): Sioul keeps nothing about someone that you could not show them.
+
+More in [what the research says](../dev/research.md), findings 55 to 60.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 **Finding duplicates is not Sioul's alone.** Google Contacts suggests merges under "Merge & fix". Apple Contacts looks for duplicates on the Mac, and on iPhone and iPad finds cards with the same first and last name. KAddressBook finds cards with the same name or nickname, or a shared e-mail address, and Proton Contacts offers to merge cards with the same name. What Sioul does its own way:
@@ -147,6 +178,7 @@ As of October 2026, from each app's own documentation.
     | Gets a deleted contact back | partly³¹ | ✓ | partly⁹ | ✓ | ✗ | ✗ |
     | Imports and exports vCard files | ✗³² | ✓ | ✓ | partly³³ | ✓ | ✓ |
     | Puts your contacts' birthdays in your calendar | ✗³⁴ | ✓ | ✓ | ✓ | ✗ | ✓³⁵ |
+    | For other people: the people your admin is done for | ✓³⁶ | partly³⁷ | partly³⁸ | ? | ? | ? |
 
     1. New Outlook and Outlook on the web hide a card that is an exact copy or a subset of another, without asking and without merging; classic Outlook asks only when you save or import a duplicate.
     2. Only with the Duplicate Contacts Manager add-on, made by someone else: you edit or delete one card of each pair.
@@ -183,6 +215,9 @@ As of October 2026, from each app's own documentation.
     33. Classic Outlook opens and saves single vCards; new Outlook and the web import and export CSV only.
     34. Sioul makes no birthday calendar; one your server keeps (Nextcloud keeps one) shows as any other calendar you can only read.
     35. In Fossify Calendar; Etar has none.
+    36. Persons kept by you, on your devices, linked to their papers and their cards, each closed to AI agents until opened ([People in your household](#household)).
+    37. A contact's "Relation" keeps another person's name and a type, as text; Family Link makes a child's account part of a family group, whose parent sees its location.
+    38. "Related names" are labelled names that link to no card; Family Sharing's organizer sees members' Screen Time, and members share their location unless they turn it off.
 
 === "Technical"
 

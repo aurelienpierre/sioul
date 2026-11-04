@@ -108,6 +108,7 @@ Money is planned over time, from one income to the next, and each sum in or out 
 - **Work money may set aside a share of each payment for taxes** as it arrives, and reserves are counted in weeks of the person's own spending (finding 44).
 
 ## Contacts and the map
+- **Persons**: a person is who papers, agendas and letters are for: you, a child, a parent you help, a partner, a child's other parent (findings 55, 56). It is Sioul's own record, sealed on your devices and linked to contact cards, never written into them (findings 57, 60). Each is closed to AI agents until opened (finding 57). Sioul never watches anyone, and what it keeps about a person can be handed to them (findings 58, 59; [persons.md](persons.md)).
 - **CardDAV, vCard 4.**
 - **Deduplication**: normalise (case, accents, phone numbers in international format, addresses), pair candidates (a shared email or phone is certain; close names are a maybe), merge field by field, with undo and history.
 - **The map**: OpenStreetMap, geocoded with Nominatim at one request a second, with a cache. Tiles offline or from OpenFreeMap: the OpenStreetMap tile servers refuse heavy use.
@@ -167,6 +168,14 @@ Mail clients, task tools and one research prototype each solved part of what Sio
 - **Fantastical** shows sets of calendars switched by the hour, by place or by the system's focus mode, and mirrors one calendar's events into another as "Blocked Time", knowing its copies by a property of its own. Sioul takes the sets, switched by hand or by its own times and never by place (finding 46), and the derived copy: the holder's copy of a child's event, and the busy blocks shared with one person (findings 53 and 54).
 - **Google, Outlook, Proton and Nextcloud** share a calendar as busy times only ("See only free/busy", "Can view when I'm busy", "Limited view"; Nextcloud event by event). Sioul takes busy-only sharing for what it shares, made per recipient (finding 53), and keeps what others share on the reader's side: bands without titles, never shared again nor given to an agent (finding 52).
 
+- **Trustworthy** keeps each family member's identity papers, with reminders before they end. Sioul takes it: papers for each person of the household, their where-each-stands and one reminder ([persons.md](persons.md)).
+- **OurFamilyWizard's Info Bank** keeps a child's profile without the child needing an account, and neither parent deletes the other's entries. Sioul takes both: a person needs no account, and a child's other parent is a person whose own entries stay theirs.
+- **Apple Family Sharing and Google Family Link** make each member an account in a family group, whose organizer sees others' activity and, with Google, their location. Sioul avoids it: persons exist in your own Sioul only, and nobody is watched (finding 58).
+- **Cozi** gives a family one shared login in which everyone edits everything. Sioul avoids it: a person is kept by you, sealed on your devices (finding 57).
+- **Everplans** shares a plan item by item with deputies, now or after death. It is the model for a later hand-over of what Sioul keeps about a person, not built (finding 59).
+- **Digiposte** keeps a family's papers in one store, shared by expiring links. Sioul keeps them on your devices and shares nothing by itself.
+- **Life360** shares live location, its history and driving reports within a circle. Sioul refuses all of it (finding 58).
+
 None of them combines what Sioul combines: mail checked, genuine or forged, and held until the hours the person chose; the mail, the websites' secure mailboxes, the tasks, notes and people of one matter gathered into its project; steps that wait for each other, kept in the person's own CalDAV server and planned within the hours and the capacity the person gives; plain files on the person's own devices; money movements kept with every mail, letter, contract and bank line that tells of them; a child's events and tasks each taken by one parent, the details kept once in the child's agenda; and AI agents that may draft but never send ([mcp.md](mcp.md)).
 
 Sources, read on 8 October 2026:
@@ -199,6 +208,12 @@ Sources on shared agendas, read on 4 November 2026:
 - TimeTree, "Virtual member released": https://timetreeapp.com/intl/en/newsroom/2024-07-16/veirtual-member-released
 - Flexibits, "Calendar sets": https://flexibits.com/fantastical-ios/help/calendar-sets ; "Calendar mirroring": https://flexibits.com/fantastical/help/calendar-mirroring
 - Google, "Share your calendar": https://support.google.com/calendar/answer/37082 ; Microsoft, "Share your calendar in Outlook on the web": https://support.microsoft.com/en-us/outlook/share-your-calendar-in-outlook-on-the-web ; Proton, "Share a calendar via link": https://proton.me/support/share-calendar-via-link ; Nextcloud server, `apps/dav/lib/CalDAV/CalendarObject.php`: https://github.com/nextcloud/server/blob/master/apps/dav/lib/CalDAV/CalendarObject.php
+
+Sources on persons, read on 4 November 2026 ([research/persons.md](research/persons.md), §6):
+- Trustworthy, "Collaborators" (help centre): https://help.trustworthy.com/en/articles/10391553 ; Everplans, "What level of information can I share with my deputies?": https://help.everplans.com/hc/en-us/articles/18124427235860-What-level-of-information-can-I-share-with-my-deputies
+- OurFamilyWizard, "Info Bank": https://www.ourfamilywizard.com/product-features/info-bank ; Cozi, "How to add family to Cozi": https://www.cozi.com/blog/how-to-add-family-to-cozi/
+- Apple, "Manage Family Sharing" (Personal Safety User Guide): https://support.apple.com/guide/personal-safety/ips75b3b794f ; Google, "Manage your child's Google Account with Family Link": https://support.google.com/families/answer/7103262
+- La Poste, "Digiposte, famille": https://www.laposte.fr/digiposte/famille ; Life360, App Store listing: https://apps.apple.com/app/life360-find-family-friends/id384830320
 
 ## The name
 

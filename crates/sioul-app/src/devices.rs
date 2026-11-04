@@ -138,6 +138,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.legs = sioul_sync::share::LEGS_AS_STEPS;
         // It has the store of money movements: it travels once every device says so.
         entry.movements = sioul_sync::share::MOVEMENTS_SHARED;
+        // It has the persons' store: it travels once every device says so.
+        entry.persons = sioul_sync::share::PERSONS_SHARED;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

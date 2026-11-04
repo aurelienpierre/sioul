@@ -168,6 +168,7 @@ mod map;
 mod outlook;
 mod outside;
 mod papers;
+mod persons;
 mod payments;
 mod pauses;
 mod phonemsgs;

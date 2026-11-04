@@ -68,12 +68,15 @@ pub struct Consent {
     pub health_unread: bool,
     /// What another shares for its availability alone, by address: never given to an agent (`keep_private`).
     private: BTreeSet<String>,
+    /// What is a person's kept from agents, by address (`keep_persons`): a
+    /// closed person's papers and address, others' health papers.
+    persons: BTreeSet<String>,
 }
 
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
     pub fn new(projects: &[Project], outside: bool) -> Consent {
-        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false, private: BTreeSet::new() }
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false, private: BTreeSet::new(), persons: BTreeSet::new() }
     }
 
     /// Keeps the events of the agendas shared for their availability alone
@@ -89,6 +92,15 @@ impl Consent {
         for event in events.iter().filter(|e| std::path::Path::new(&e.key).parent().is_some_and(|d| dirs.contains(d))) {
             self.private.insert(links::event_uri(&event.uid));
         }
+    }
+
+    /// Keeps what is a person's from agents whatever its projects
+    /// (`persons::Persons::kept_from_agents`, docs/persons.md): the papers
+    /// of a person not opened to agents, others' health papers whatever the
+    /// switch, and the closed persons' own addresses. Each tool counts them
+    /// among what it left out, never which.
+    pub fn keep_persons(&mut self, kept: impl IntoIterator<Item = String>) {
+        self.persons.extend(kept);
     }
 
     /// Keeps the pharmacy and renewal errands from agents whatever their
@@ -403,7 +415,7 @@ impl Consent {
         if links::kind_of(uri.trim()) == Kind::Mail && self.kept_by_account(Some(uri), None) {
             return false;
         }
-        if self.private.contains(uri.trim()) {
+        if self.private.contains(uri.trim()) || self.persons.contains(uri.trim()) {
             return false;
         }
         if self.is_health(uri) {

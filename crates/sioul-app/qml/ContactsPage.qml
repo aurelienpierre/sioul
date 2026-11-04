@@ -6,7 +6,9 @@
 // addresses and numbers, "Write" and "Call" next to each; the rest (postal
 // addresses, birthday, notes, web sites) folded under "More". Editing happens
 // in place; deleting waits ten seconds with "Undo". "Duplicates" opens in the
-// place of a card. Right click on a name for what is not in view.
+// place of a card. Right click on a name for what is not in view. At the
+// head, the household (« Proches », docs/persons.md): a person's page opens
+// in the place of a card too.
 
 pragma ComponentBehavior: Bound
 
@@ -38,7 +40,12 @@ Item {
             page.takeShown()
         }
     }
-    onVisibleChanged: page.takeShown()
+    onVisibleChanged: {
+        page.takeShown()
+        // The household as it is now: persons come from your other devices too.
+        if (page.visible)
+            household.reload()
+    }
     Component.onCompleted: page.takeShown()
     property string openKey: ""
     property var person: null
@@ -48,11 +55,17 @@ Item {
     // The duplicates, in the place of a card: made the first time they are looked at.
     property bool duplicatesShown: false
     property bool duplicatesMade: false
-    // On a phone, the contact open (or its form, or the duplicates) takes the
-    // page; Back leaves the form as Cancel does, then closes what is open (main.qml).
-    readonly property bool canGoBack: page.person !== null || page.editing || page.duplicatesShown
+    // A person of the household whose page is open, by id; "" none.
+    property string personId: ""
+    property bool personMade: false
+    // On a phone, the contact open (or its form, or the duplicates, or a
+    // person's page) takes the page; Back leaves the form as Cancel does,
+    // then closes what is open (main.qml).
+    readonly property bool canGoBack: page.person !== null || page.editing || page.duplicatesShown || page.personId !== ""
     function back() {
-        if (page.duplicatesShown) {
+        if (page.personId !== "") {
+            page.openPerson("")
+        } else if (page.duplicatesShown) {
             page.duplicatesShown = false
         } else if (page.editing) {
             page.editing = false
@@ -86,16 +99,42 @@ Item {
             page.open(answer.key)
     }
 
-    function open(key) {
-        if (key)
+    // A person's page, in the place of a card ("" closes it).
+    function openPerson(id) {
+        if (id !== "") {
+            page.open("")
             page.duplicatesShown = false
+            page.personMade = true
+        }
+        page.personId = id
+        if (id !== "" && personLoader.item)
+            (personLoader.item as PersonPage).reload()
+    }
+
+    // The person's form: new (a name and a card perhaps), or theirs.
+    function personFormNow() {
+        const dialog = personForm.now()
+        const household = JSON.parse(page.sioul.household() || "{}")
+        dialog.relations = household.relations || []
+        dialog.children = (household.persons || []).filter(p => p.relation === "child").map(p => ({ id: p.id, name: p.name }))
+        return dialog
+    }
+
+    function open(key) {
+        if (key) {
+            page.duplicatesShown = false
+            page.personId = ""
+        }
         page.openKey = key
         page.editing = false
         page.moreShown = false
         page.problem = ""
         page.person = key ? JSON.parse(page.sioul.contact(key) || "null") : null
         page.readMail()
+        page.cardPerson = page.person && page.person.uid ? JSON.parse(page.sioul.personOfCard(page.person.uid) || "null") : null
     }
+    // The person of the household the open card is, {id, name}, or null.
+    property var cardPerson: null
 
     function readMail() {
         page.mail = page.person ? JSON.parse(page.sioul.personOf(page.openKey) || "null") || page.noMail : page.noMail
@@ -235,14 +274,31 @@ Item {
 
         ColumnLayout {
             // Alone, the list takes the page; beside a card or the duplicates, its left part.
-            readonly property bool alone: page.person === null && !page.duplicatesShown
+            readonly property bool alone: page.person === null && !page.duplicatesShown && page.personId === ""
 
-            visible: !(page.window.compact && (page.person !== null || page.editing || page.duplicatesShown))
+            visible: !(page.window.compact && (page.person !== null || page.editing || page.duplicatesShown || page.personId !== ""))
             Layout.fillHeight: true
             Layout.fillWidth: alone
             Layout.minimumWidth: 0
             Layout.preferredWidth: alone ? columns.width : Math.round((columns.width - columns.spacing) * 0.38)
             spacing: 8
+
+            // The household, at the head: you, the others, a person to add.
+            Household {
+                id: household
+
+                Layout.fillWidth: true
+                sioul: page.sioul
+                theme: page.theme
+                chosen: page.personId
+                onOpenPerson: id => page.openPerson(id)
+                onAddPerson: page.personFormNow().begin("", "", "")
+                onRenamePerson: id => {
+                    const person = JSON.parse(page.sioul.personPage(id) || "null")
+                    if (person)
+                        page.personFormNow().edit(person)
+                }
+            }
 
             RowLayout {
                 Layout.fillWidth: true
@@ -270,7 +326,7 @@ Item {
                     icon.name: "contact-new"
                     icon.color: page.theme.text
                     // Narrow beside an open card, or on a phone: the icon alone, its name on hover.
-                    display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
                     ToolTip.text: page.theme.plain(text)
                     Accessible.name: text
@@ -282,7 +338,7 @@ Item {
                     text: page.mapShown ? page.sioul.text("map-list") : page.sioul.text("map-show")
                     icon.name: page.mapShown ? "view-list-text" : "mark-location"
                     icon.color: page.theme.text
-                    display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
                     ToolTip.text: page.theme.plain(text)
@@ -295,7 +351,7 @@ Item {
                     icon.name: "edit-copy"
                     icon.color: page.theme.text
                     highlighted: page.duplicatesShown
-                    display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
                     ToolTip.text: page.theme.plain(text)
@@ -683,6 +739,24 @@ Item {
                                         color: page.theme.text
                                     }
                                 }
+                                // The person of your household this card is, or one to make of it.
+                                Button {
+                                    objectName: "cardPersonButton"
+                                    visible: page.person !== null && (page.person.uid || "") !== ""
+                                    flat: true
+                                    icon.name: page.cardPerson ? "go-next" : "list-add"
+                                    icon.color: page.theme.text
+                                    text: page.cardPerson ? page.theme.plain(page.sioul.textWith("person-of-card", "name", page.cardPerson.name)) : page.sioul.text("person-card-link")
+                                    onClicked: {
+                                        if (page.cardPerson) {
+                                            page.openPerson(page.cardPerson.id)
+                                            return
+                                        }
+                                        cardLink.target = page.person
+                                        cardLink.choices = (JSON.parse(page.sioul.household() || "{}").persons || []).filter(p => p.id !== "me")
+                                        cardLink.popup()
+                                    }
+                                }
                                 Button {
                                     visible: page.person !== null
                                     Layout.leftMargin: 18
@@ -957,6 +1031,31 @@ Item {
                 }
             }
         }
+
+        // A person's page, in the place of a card: made the first time one is opened.
+        Loader {
+            id: personLoader
+
+            active: page.personMade
+            visible: page.personId !== ""
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.62)
+
+            sourceComponent: Component {
+                PersonPage {
+                    theme: page.theme
+                    sioul: page.sioul
+                    window: page.window
+                    personId: page.personId
+                    onCloseAsked: page.openPerson("")
+                    onEditAsked: person => page.personFormNow().edit(person)
+                    onOpenContact: key => page.open(key)
+                    onChanged: household.reload()
+                }
+            }
+        }
     }
 
     // Right click on a name.
@@ -997,6 +1096,60 @@ Item {
                     onTriggered: page.window.linkFrom(rowMenuForm.source)
                 }
             }
+        }
+    }
+
+    // A person's form: new from Household or a card, or theirs.
+    Later {
+        id: personForm
+
+        sourceComponent: Component {
+            PersonDialog {
+                sioul: page.sioul
+                theme: page.theme
+                window: page.window
+                onSaved: id => {
+                    household.reload()
+                    if (page.person && page.person.uid)
+                        page.cardPerson = JSON.parse(page.sioul.personOfCard(page.person.uid) || "null")
+                    if (id !== "" && page.person === null)
+                        page.openPerson(id)
+                    else if (personLoader.item)
+                        (personLoader.item as PersonPage).reload()
+                }
+            }
+        }
+    }
+
+    // "This is a person in your household…": one of them, or a new person, with this card.
+    SioulMenu {
+        id: cardLink
+
+        property var target: null
+        property var choices: []
+
+        Instantiator {
+            model: cardLink.choices
+
+            delegate: MenuItem {
+                required property var modelData
+
+                text: page.theme.plain(modelData.name)
+                onTriggered: {
+                    page.problem = page.sioul.linkPersonCard(modelData.id, cardLink.target.uid, true)
+                    page.cardPerson = JSON.parse(page.sioul.personOfCard(cardLink.target.uid) || "null")
+                    household.reload()
+                }
+            }
+            onObjectAdded: (index, object) => cardLink.insertItem(index, object)
+            onObjectRemoved: (index, object) => cardLink.removeItem(object)
+        }
+        MenuSeparator {
+            visible: cardLink.choices.length > 0
+        }
+        MenuItem {
+            text: page.sioul.text("person-card-new")
+            onTriggered: page.personFormNow().begin(cardLink.target.name, cardLink.target.uid, "")
         }
     }
 

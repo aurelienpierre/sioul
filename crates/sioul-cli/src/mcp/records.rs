@@ -62,11 +62,14 @@ fn day(date: Option<Date>) -> String {
 
 pub fn papers(s: &Session, _args: &Args) -> Result<Answer, String> {
     let wallet = papers::Wallet::load(&store(s)?)?;
-    let (consent, _) = consent(s);
+    let (consent, loaded) = consent(s);
     let today = sioul_core::zone::now().date();
     let before = wallet.papers.len();
-    // A paper is in no project unless tied to one.
+    // A paper is in no project unless tied to one; a closed person's, and others' health papers, are kept (`access::of`).
     let shown: Vec<&papers::Paper> = wallet.papers.iter().filter(|p| consent.allows(&links::paper_uri(&p.id))).collect();
+    // Whom each is for, by address: the persons opened to agents, and you (`sioul:person/me`).
+    let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
+    let persons = sioul_core::persons::Persons::as_read(&sioul_core::persons::Persons::default_path(), &s.config.agenda.calendars, &wallet.papers, &own);
     let closed = before - shown.len();
     let mut lines = Vec::new();
     let mut out = Vec::new();
@@ -87,6 +90,7 @@ pub fn papers(s: &Session, _args: &Args) -> Result<Answer, String> {
             "uri": links::paper_uri(&paper.id), "kind": paper.kind.id(), "kind_said": kind, "title": paper.title, "holder": paper.holder,
             "issued": day(paper.issued), "until": day(paper.until), "renew_from": day(paper.renew_from()), "standing": standing,
             "renewal": paper.renewal,
+            "for": persons.holders_of(paper, &loaded.local, &own).persons.iter().map(|id| links::person_uri(id)).collect::<Vec<_>>(),
         }));
     }
     if out.is_empty() && closed == 0 {

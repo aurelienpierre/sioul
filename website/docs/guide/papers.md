@@ -15,7 +15,7 @@ Papers keeps the documents you are asked for again and again (an identity card, 
 - An attachment becomes a paper only after your antivirus checked it (a phone has none Sioul can call: there it is kept unchecked, and Sioul says so), and a program never does.
 - Between your devices, papers travel by your folder's own sync, or through Sioul's sharing once you switch **Papers** on: each file sealed apart, so that the folder and its server see neither names nor contents ([Sharing](sharing.md)).
 - The tasks made from a letter or a renewal go to your task list: if that list is on your calendar server, their titles are there too. Choose a list kept on this device if you would rather not.
-- An AI agent, only if you connect one, can read the letters' texts with codes and account numbers masked; it sees your papers' files by their names only, never what they hold.
+- An AI agent, only if you connect one, can read the letters' texts with codes and account numbers masked; it sees your papers' files by their names only, never what they hold. Papers for someone of your household reach it only once you open that person, and nobody's health papers but yours ever do.
 
 ## Papers {#papers}
 
@@ -43,10 +43,12 @@ In words, never in red:
 - **Name**: "Passport", "Rent receipt September";
 - **File**: a scan or a photo, copied into your papers;
 - **Issued on** and **Valid until**. For a passport, an identity card or a warranty, an end is proposed from the issue when you give none;
-- **Whose**, in a household;
+- **For**: you, or people of your household, several at once (a joint tax notice, a lease of two), or **New person…** ([People in your household](contacts.md#household));
 - **Notes**.
 
 From a message, **Keep in papers** beside an attachment does the same: the antivirus checks the file, it is kept, and the form opens with a name and a kind guessed from the file's name and the subject. You only say what cannot be guessed.
+
+When some papers are for others, chips above the list show **Everyone**'s, or one person's: you, Léa, Odile. A person's page in Contacts shows their papers too.
 
 To send one, the writing window has **A paper**, beside **Attach**. One that has ended, or is older than usually asked, says so in the list.
 
@@ -129,6 +131,14 @@ What you are bound to (your rent, energy, insurances, subscriptions), with its r
 
 If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read the letters' texts as it reads your notes, with one-time codes, account and card numbers masked. It sees your papers' files by their names only, never what they hold.
 
+## Why it works this way {#why-it-works-this-way}
+
+Admin is done for others too. One adult in four delayed or gave up care because of its paperwork (Kyle & Frakt 2021), people who coordinate a parent's care and medicines give up their own activities five times as often (Wolff et al. 2016), and in France 9.3 million people help a relative, their money and their everyday steps among what they do (DREES 2023). So a paper can be for someone of your household, and gets the care yours get: where it stands, one reminder, a renewal planned.
+
+Each relation gives you a different part. A child's papers are kept for the child, whose authority over their own life grows with age and is whole at eighteen (Code civil, art. 371-1 and 414): that is when they are theirs, and Sioul will say so once, at sixteen for the carte Vitale and at eighteen. An adult you help decides for themself: support must follow their "will and preferences", never replace them (the UN Convention on the Rights of Persons with Disabilities, art. 12). So Sioul never marks anyone as unable to decide; a procuration or a judge's measure is a paper, with its dates and its renewal, like any other (to come). A partner is an equal: the papers you share, the lease, the joint tax notice, are for both of you.
+
+More in [what the research says](../dev/research.md), findings 55 to 60.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 As of October 2026, from each app's own documentation.
@@ -150,6 +160,7 @@ As of October 2026, from each app's own documentation.
 | Scans with your phone's camera | ✗¹³ | partly¹⁴ | partly¹⁵ | ✓ | ✓ | ✓ |
 | Searches the text of every document | ✗¹⁶ | ✓ | ✓ | ✓ | ✓ | partly² |
 | Several people, each with their own access | partly¹⁷ | ✓ | ✓ | partly¹⁸ | partly¹⁹ | partly²⁰ |
+| For other people: papers for each person of your household | ✓²¹ | ? | ? | ? | ? | partly²² |
 
 1. On your own computer, by your system's Tesseract and Poppler.
 2. "Recherche dans le contenu", in Premium.
@@ -167,10 +178,12 @@ As of October 2026, from each app's own documentation.
 14. "Mobile devices are supported", with scanning tools of your choice.
 15. An Android app uploads files.
 16. Notes are searched by title, folder and tags.
-17. **Whose** says whose paper it is in a household; sharing is between your own devices only.
+17. **For** says whom each paper is for in your household; sharing is between your own devices only.
 18. Sharing by link or e-mail.
 19. Tasks can be assigned to others.
 20. Sharing with an expiry date and a code.
+21. Persons kept by you, on your devices, linked to their papers and agendas, each closed to AI agents until opened. Elsewhere, Trustworthy keeps each family member's identity papers with reminders; Apple's and Google's family groups make each member an account, with their location.
+22. "Everything is stored in the same place for the whole family", shared by links.
 
 **For technical readers**
 
@@ -212,6 +225,8 @@ Others do more in places: all five search the text of every document, Adobe Scan
 
 **The antivirus.** **Keep in papers** goes through your system's antivirus first: ClamAV on Linux and macOS (`clamdscan`, else `clamscan`), Microsoft Defender through AMSI on Windows ([Attachments and the antivirus](privacy-security.md#attachments-and-the-antivirus)). Without one, Sioul asks you first; a phone has none Sioul can call, and there the file is kept unchecked. A program (`.exe`, `.js`, `.lnk`, `.desktop`…) is never kept as a paper, and mail set aside never has its attachments opened.
 
-**An AI agent.** Its `read_note` tool reads text notes only (`.md`, `.txt`), masked; a PDF or a picture is named, never read; `sioul-papers.toml` is not a note.
+**Whom a paper is for.** Each person a paper is for is a tie in Sioul's own `links.toml` (`sioul:paper/<id>` to `sioul:person/<id>`), and the paper's `holder` keeps their names, joined by ", ", which an older Sioul shows; a paper with neither is yours. A name written by an older Sioul is matched to a person by name, case and accents aside ([People in your household](contacts.md#household)).
+
+**An AI agent.** Its `read_note` tool reads text notes only (`.md`, `.txt`), masked; a PDF or a picture is named, never read; `sioul-papers.toml` is not a note. Its `papers` tool leaves out, and counts, the papers of a person not opened to agents and every health paper of anyone but you.
 
 **What is not built.** Searching inside every letter from the window (notes are searched by title, path and tags); reading scans on a phone, which has no text-recognition programs; a check that a letter is genuine.

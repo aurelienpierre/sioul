@@ -642,7 +642,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "papers",
         title: "Papers",
-        description: "The papers wallet: each paper the person keeps (an identity card, a tax notice, rent receipts, bank details…), its kind, who it is for, when it was issued, until when it holds, when renewing starts, and whether it is recent enough to send. Its file is not given. Read-only.",
+        description: "The papers wallet: each paper the person keeps (an identity card, a tax notice, rent receipts, bank details…), its kind, who it is for (by name, and by address: sioul:person/me for the person, sioul:person/<id> for someone of their household), when it was issued, until when it holds, when renewing starts, and whether it is recent enough to send. Its file is not given; the papers of someone the person keeps from agents, and health papers of anyone but the person, are left out. Read-only.",
         writes: false,
         idempotent: true,
         open_world: false,

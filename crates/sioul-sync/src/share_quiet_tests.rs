@@ -839,3 +839,57 @@ fn the_money_movements_store_waits_for_a_device_that_has_it() {
     assert_eq!((desk_store.apart.len(), desk_store.links.len(), desk_store.format), (1, 1, 1), "{}", store(&desk_notes));
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The persons' store (`data/persons.toml`) beside a phone whose entry does
+/// not say it has the store, as 705576a's never does: kept on the desk; once
+/// the phone says so, the next exchanges join the two. The persons each
+/// device read from its old texts carry the same ids (`persons::name_id`),
+/// so that they join as one, each field kept: a date of birth said on the
+/// desk before the phone had the store stays. From then on each field
+/// travels apart: a field added on the desk and another on the phone in the
+/// same exchanges both stay. Whether the old texts were read stays on each
+/// device (`names_read`).
+#[test]
+fn the_persons_store_waits_for_a_device_that_has_it() {
+    use sioul_core::persons::{Persons, Relation, name_id};
+    let base = scratch("persons-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.persons = PERSONS_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let lea = name_id(Relation::Child, "Léa");
+    let read_apart = format!("[person.{lea}]\nname = \"Léa\"\nrelation = \"child\"\nagents = false\n");
+    desk.write(PERSONS, &format!("format = 1\nnames_read = 1\n\n{read_apart}born = 2014-05-12\n"));
+    phone.write(PERSONS, &format!("format = 1\n\n{read_apart}"));
+    let rounds = |now: &mut i64| {
+        for _ in 0..2 {
+            background(&desk, &folder, &key, *now);
+            *now += MINUTE;
+            background(&phone, &folder, &key, *now);
+            *now += MINUTE;
+        }
+    };
+    rounds(&mut now);
+    let read = |c: &Computer| Persons::read(&c.path(PERSONS)).unwrap();
+    assert_eq!(read(&phone).persons[0].born, None, "kept on the desk: {}", phone.read(PERSONS));
+    // The phone updated: its entry says it has the store; the next exchanges join the two.
+    entry(&phone, &folder, &key, |e| e.persons = PERSONS_SHARED);
+    rounds(&mut now);
+    assert_eq!((read(&desk).persons.len(), read(&phone).persons.len()), (1, 1), "one Léa on each: {}", phone.read(PERSONS));
+    assert_eq!(read(&desk).persons, read(&phone).persons, "the same Léa on both: {}\n{}", desk.read(PERSONS), phone.read(PERSONS));
+    assert_eq!(read(&phone).persons[0].born, Some("2014-05-12".parse().unwrap()), "the desk's date of birth joined: {}", phone.read(PERSONS));
+    // From then on, field by field: lives with you said on the desk, a full name on the phone.
+    desk.write(PERSONS, &desk.read(PERSONS).replace("relation = \"child\"", "relation = \"child\"\nlives_with = true"));
+    phone.write(PERSONS, &phone.read(PERSONS).replace("name = \"Léa\"", "name = \"Léa\"\nfull_name = \"Léa Martin\""));
+    rounds(&mut now);
+    let (on_desk, on_phone) = (read(&desk), read(&phone));
+    assert_eq!((on_phone.persons[0].lives_with, on_phone.persons[0].full_name.as_str()), (Some(true), "Léa Martin"), "phone: {}\ndesk: {}", phone.read(PERSONS), desk.read(PERSONS));
+    assert_eq!(on_desk.persons, on_phone.persons, "the same Léa on both: {}", desk.read(PERSONS));
+    assert_eq!((on_desk.names_read, on_phone.names_read), (1, 0), "read on each device apart");
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -2,9 +2,10 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A paper of the wallet, new or changed: what it is, its file, from when and
-// until when it holds, whose it is. A file from elsewhere is copied into the
-// wallet's folder when saved; an end is proposed from the issue for a passport,
-// an identity card or a warranty.
+// until when it holds, whom it is for (you, or persons of your household,
+// several at once: docs/persons.md). A file from elsewhere is copied into
+// the wallet's folder when saved; an end is proposed from the issue for a
+// passport, an identity card or a warranty.
 
 pragma ComponentBehavior: Bound
 
@@ -25,19 +26,35 @@ SafeDialog {
     property string problem: ""
     // Its file: a path, or a file:// address just chosen.
     property string file: ""
+    // Whom it may be for, {id, name}, you first (papers::view's `choices`).
+    property var choices: []
+    // Whom it is for, by person id ("me" for you), and texts naming nobody, kept as written.
+    property var chosen: ["me"]
+    property var texts: []
+
+    function readChoices() {
+        form.choices = (JSON.parse(form.sioul.papers() || "{}").choices) || []
+    }
+
+    function toggle(id, on) {
+        const others = form.chosen.filter(c => c !== id)
+        form.chosen = on ? others.concat([id]) : others
+    }
 
     signal saved
 
-    // A new paper, perhaps from a file (an attachment kept, a scan).
-    function begin(file, title, kind) {
+    // A new paper, perhaps from a file (an attachment kept, a scan), perhaps for someone ("forIds").
+    function begin(file, title, kind, forIds) {
         form.paperId = ""
+        form.readChoices()
+        form.chosen = forIds && forIds.length > 0 ? forIds : ["me"]
+        form.texts = []
         form.problem = ""
         kindChoice.currentIndex = Math.max(0, form.kinds.findIndex(k => k.id === (kind || "other")))
         titleField.text = title || ""
         form.file = file || ""
         issuedField.date = ""
         untilField.date = ""
-        holderField.text = ""
         notesArea.text = ""
         form.open()
         titleField.forceActiveFocus()
@@ -46,13 +63,15 @@ SafeDialog {
     // A paper of the wallet, changed.
     function edit(paper) {
         form.paperId = paper.id
+        form.readChoices()
+        form.chosen = (paper.persons || []).length > 0 ? paper.persons : ((paper.texts || []).length > 0 ? [] : ["me"])
+        form.texts = paper.texts || []
         form.problem = ""
         kindChoice.currentIndex = Math.max(0, form.kinds.findIndex(k => k.id === paper.kind))
         titleField.text = paper.title
         form.file = paper.file
         issuedField.date = paper.issued
         untilField.date = paper.until
-        holderField.text = paper.holder
         notesArea.text = paper.notes
         form.open()
     }
@@ -156,14 +175,46 @@ SafeDialog {
                 color: form.theme.muted
             }
             Label {
-                text: form.sioul.text("papers-holder")
+                Layout.alignment: Qt.AlignTop
+                Layout.topMargin: 6
+                text: form.sioul.text("papers-for")
                 color: form.theme.muted
             }
-            TextField {
-                id: holderField
-
+            // You, the household's persons, several at once; a text naming nobody stays until unticked.
+            Flow {
+                objectName: "paperFor"
                 Layout.fillWidth: true
-                placeholderText: form.sioul.text("papers-holder-hint")
+                spacing: 4
+
+                Repeater {
+                    model: form.choices.concat(form.texts.map(t => ({ id: "", name: t, text: true })))
+
+                    delegate: CheckBox {
+                        id: forBox
+
+                        required property var modelData
+
+                        objectName: "paperFor:" + forBox.modelData.name
+                        text: form.theme.plain(forBox.modelData.name)
+                        checked: forBox.modelData.text ? true : form.chosen.indexOf(forBox.modelData.id) >= 0
+                        onToggled: {
+                            if (forBox.modelData.text)
+                                form.texts = form.texts.filter(t => t !== forBox.modelData.name)
+                            else
+                                form.toggle(forBox.modelData.id, forBox.checked)
+                        }
+                    }
+                }
+                Button {
+                    objectName: "paperForNew"
+                    flat: true
+                    text: form.sioul.text("papers-for-new")
+                    onClicked: {
+                        const dialog = newPerson.now()
+                        dialog.relations = (JSON.parse(form.sioul.household() || "{}").relations || []).filter(r => r.id !== "other-parent")
+                        dialog.begin("", "", "")
+                    }
+                }
             }
             Label {
                 Layout.alignment: Qt.AlignTop
@@ -213,13 +264,31 @@ SafeDialog {
                     highlighted: true
                     text: form.sioul.text("ui-save")
                     onClicked: {
-                        const edit = { kind: form.kinds[kindChoice.currentIndex].id, title: titleField.text, file: form.file, issued: issuedField.date, until: untilField.date, holder: holderField.text, notes: notesArea.text }
+                        const edit = { kind: form.kinds[kindChoice.currentIndex].id, title: titleField.text, file: form.file, issued: issuedField.date, until: untilField.date, for: form.chosen.length > 0 || form.texts.length > 0 ? form.chosen : ["me"], texts: form.texts, notes: notesArea.text }
                         form.problem = form.sioul.savePaper(form.paperId, JSON.stringify(edit))
                         if (form.problem === "") {
                             form.close()
                             form.saved()
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // A new person, from "For": ticked once saved.
+    Later {
+        id: newPerson
+
+        sourceComponent: Component {
+            PersonDialog {
+                sioul: form.sioul
+                theme: form.theme
+                window: form.window
+                onSaved: id => {
+                    form.readChoices()
+                    if (id !== "")
+                        form.toggle(id, true)
                 }
             }
         }

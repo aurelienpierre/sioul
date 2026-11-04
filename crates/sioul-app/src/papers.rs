@@ -22,7 +22,11 @@ struct PaperView {
     kind: &'static str,
     kind_label: String,
     title: String,
+    /// Whom it is for, in words: "" yours alone, else "You, Léa" (`persons::label`).
     holder: String,
+    /// Whom it is for, by person id (`ME` for you), and what names nobody, as written.
+    persons: Vec<String>,
+    texts: Vec<String>,
     notes: String,
     /// Its file where it is on this computer; "" without one.
     file: String,
@@ -59,9 +63,18 @@ struct PapersView {
     problem: String,
     kinds: Vec<Choice>,
     families: Vec<Family>,
+    /// The persons a paper may be for (the form's "For"): {id, name}, you first.
+    choices: Vec<serde_json::Value>,
+    /// The persons with a paper (the page's chips, after "Everyone").
+    chips: Vec<serde_json::Value>,
 }
 
-fn view_of(wallet: &Wallet, paper: &Paper, today: jiff::civil::Date) -> PaperView {
+/// A paper as the page, its card and a person's page show it, as JSON.
+pub(crate) fn view_json(wallet: &Wallet, paper: &Paper, store: &sioul_core::persons::Persons, local: &sioul_core::links::LocalLinks, own: &[String], today: jiff::civil::Date) -> serde_json::Value {
+    serde_json::to_value(view_of(wallet, paper, &store.holders_of(paper, local, own), store, today)).unwrap_or_default()
+}
+
+fn view_of(wallet: &Wallet, paper: &Paper, holders: &sioul_core::persons::Holders, store: &sioul_core::persons::Persons, today: jiff::civil::Date) -> PaperView {
     let file = wallet.file_path(paper);
     let date = |d: jiff::civil::Date| tr().day_in(d, today);
     let (standing, line) = match paper.standing(today) {
@@ -77,7 +90,9 @@ fn view_of(wallet: &Wallet, paper: &Paper, today: jiff::civil::Date) -> PaperVie
         kind: paper.kind.id(),
         kind_label: tr().text(&format!("paper-kind-{}", paper.kind.id()), None),
         title: paper.title.clone(),
-        holder: paper.holder.clone(),
+        holder: crate::persons::label(store, holders),
+        persons: holders.persons.clone(),
+        texts: holders.texts.clone(),
         notes: paper.notes.clone(),
         file_name: file.as_ref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
         file_there: file.as_ref().is_some_and(|f| f.is_file()),
@@ -96,18 +111,25 @@ pub(crate) fn view() -> String {
     let kinds = Kind::ALL.iter().map(|k| Choice { id: k.id(), label: tr().text(&format!("paper-kind-{}", k.id()), None) }).collect();
     let wallet = match wallet() {
         Ok(wallet) => wallet,
-        Err(problem) => return json(&PapersView { store: load_config().notes_root_path().is_some(), problem, kinds, families: Vec::new() }),
+        Err(problem) => return json(&PapersView { store: load_config().notes_root_path().is_some(), problem, kinds, ..PapersView::default() }),
     };
     let today = sioul_core::zone::now().date();
+    let config = load_config();
+    let of = crate::persons::ForPapers::read(&config);
+    let holders: std::collections::BTreeMap<String, sioul_core::persons::Holders> = wallet.papers.iter().map(|p| (p.id.clone(), of.store.holders_of(p, &of.local, &of.own))).collect();
+    let label = |p: &Paper| holders.get(&p.id).map(|h| crate::persons::label(&of.store, h)).unwrap_or_default();
     let mut families: Vec<Family> = Vec::new();
     for family in ["identity", "health", "home", "money", "warranty", "other"] {
         let mut papers: Vec<&Paper> = wallet.papers.iter().filter(|p| p.kind.family() == family).collect();
-        papers.sort_by(|a, b| (a.kind.id(), &a.holder, &a.title).cmp(&(b.kind.id(), &b.holder, &b.title)));
+        papers.sort_by(|a, b| (a.kind.id(), label(a), &a.title).cmp(&(b.kind.id(), label(b), &b.title)));
         if !papers.is_empty() {
-            families.push(Family { id: family, label: tr().text(&format!("paper-family-{family}"), None), papers: papers.into_iter().map(|p| view_of(&wallet, p, today)).collect() });
+            let views = papers.into_iter().map(|p| view_of(&wallet, p, &holders[&p.id], &of.store, today)).collect();
+            families.push(Family { id: family, label: tr().text(&format!("paper-family-{family}"), None), papers: views });
         }
     }
-    json(&PapersView { store: true, problem: String::new(), kinds, families })
+    let choices = crate::persons::paper_choices(&of.store);
+    let chips = crate::persons::chips(&of.store, &holders);
+    json(&PapersView { store: true, problem: String::new(), kinds, families, choices, chips })
 }
 
 /// What the form gives back.
@@ -124,8 +146,17 @@ struct PaperEdit {
     issued: String,
     #[serde(default)]
     until: String,
+    /// Whom it is for as a text, from a caller that chooses no persons.
     #[serde(default)]
     holder: String,
+    /// Whom it is for, by person id ("me" for you; several allowed), when the
+    /// form's chooser said: their ties written in Sioul's links, `holder`
+    /// written with their names (docs/persons.md).
+    #[serde(default, rename = "for")]
+    for_persons: Option<Vec<String>>,
+    /// Holder texts that name nobody, kept as written beside them.
+    #[serde(default)]
+    texts: Vec<String>,
     #[serde(default)]
     notes: String,
 }
@@ -174,8 +205,18 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
     };
     // An end proposed from the issue when the kind's usual length is known and none was given.
     let until = until.or_else(|| issued.and_then(|d| sioul_core::papers::usual_end(kind, d)));
+    let holder = match &edit.for_persons {
+        None => edit.holder.trim().to_string(),
+        // The names older versions show; the ties themselves once the paper has its id.
+        Some(chosen) => {
+            let store = crate::persons::store();
+            let chosen: Vec<String> = chosen.iter().filter(|id| *id == sioul_core::persons::ME || store.get(id).is_some()).cloned().collect();
+            let you = crate::persons::own_names(&load_config()).into_iter().next().unwrap_or_else(crate::persons::you);
+            sioul_core::persons::holder_text(&store, &chosen, &edit.texts, &you)
+        }
+    };
     // Set over the wallet as the file holds it now (the file copied first), under its lock, which the sharing takes too.
-    Wallet::change(&wallet.root, |wallet| {
+    let saved = Wallet::change(&wallet.root, |wallet| {
         let old = wallet.get(id).cloned().unwrap_or_default();
         let paper = Paper {
             id: old.id.clone(),
@@ -184,22 +225,29 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
             file,
             issued,
             until,
-            holder: edit.holder.trim().to_string(),
+            holder,
             notes: edit.notes.trim().to_string(),
             // A new end: a new renewal to plan.
             renewal: if old.until == until { old.renewal.clone() } else { String::new() },
             added: old.added.or_else(|| Some(sioul_core::zone::now().date())),
         };
-        wallet.put(paper);
-    })
-    .err()
-    .unwrap_or_default()
+        wallet.put(paper)
+    });
+    match (saved, &edit.for_persons) {
+        (Err(e), _) => e,
+        (Ok(id), Some(chosen)) => crate::persons::tie_paper(&id, chosen, &edit.texts).err().unwrap_or_default(),
+        (Ok(_), None) => String::new(),
+    }
 }
 
 /// A paper taken out; its file stays where it is.
 pub(crate) fn remove(id: &str) -> String {
     let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
-    Wallet::change(&root, |wallet| wallet.remove(id)).err().unwrap_or_default()
+    if let Err(e) = Wallet::change(&root, |wallet| wallet.remove(id)) {
+        return e;
+    }
+    // Its ties to persons go with it.
+    sioul_core::links::LocalLinks::change(&sioul_core::links::LocalLinks::default_path(), |local| sioul_core::persons::tie_paper(local, id, &[sioul_core::persons::ME.to_string()])).err().unwrap_or_default()
 }
 
 /// Its renewal, as a task in your usual list (your phone has it): from when

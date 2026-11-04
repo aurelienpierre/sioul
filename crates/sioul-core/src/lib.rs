@@ -267,6 +267,7 @@ pub mod places;
 pub mod porch;
 pub mod presets;
 pub mod papers;
+pub mod persons;
 pub mod pause;
 pub mod quiet;
 pub mod reach;

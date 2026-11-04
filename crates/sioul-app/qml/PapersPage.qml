@@ -19,7 +19,9 @@ Item {
     required property var theme
     required property var window
 
-    property var shown: ({ store: false, problem: "", kinds: [], families: [] })
+    property var shown: ({ store: false, problem: "", kinds: [], families: [], choices: [], chips: [] })
+    // The person whose papers are shown (a chip), "" everyone's.
+    property string forId: ""
     property string problem: ""
     // A narrow screen (a phone): a paper's buttons under it.
     readonly property bool narrow: page.width < 560
@@ -29,6 +31,8 @@ Item {
 
     function reload() {
         page.shown = JSON.parse(page.sioul.papers())
+        if (page.forId !== "" && !(page.shown.chips || []).some(c => c.id === page.forId))
+            page.forId = ""
         if (page.wanted !== "") {
             const id = page.wanted
             page.wanted = ""
@@ -108,6 +112,39 @@ Item {
                 font.pixelSize: 13
                 color: page.theme.muted
             }
+            // Whose papers: everyone's, or one person's (docs/persons.md).
+            Flow {
+                objectName: "papersFor"
+                visible: (page.shown.chips || []).length > 1
+                Layout.fillWidth: true
+                spacing: 6
+
+                Repeater {
+                    model: [{ id: "", name: page.sioul.text("papers-everyone") }].concat(page.shown.chips || [])
+
+                    delegate: Button {
+                        id: forChip
+
+                        required property var modelData
+
+                        implicitWidth: Math.min(implicitContentWidth + leftPadding + rightPadding, 220)
+                        objectName: "papersFor:" + forChip.modelData.name
+                        // The one shown: a firmer border and its name in bold, never the style's filled button.
+                        readonly property bool chosen: page.forId === forChip.modelData.id
+
+                        flat: true
+                        text: page.theme.plain(forChip.modelData.name)
+                        font.pixelSize: 13
+                        font.weight: forChip.chosen ? Font.DemiBold : Font.Normal
+                        background: Rectangle {
+                            radius: height / 2
+                            color: forChip.chosen || forChip.hovered ? page.theme.surface : "transparent"
+                            border.color: forChip.visualFocus ? page.theme.focus : forChip.chosen ? page.theme.accent : page.theme.line
+                        }
+                        onClicked: page.forId = forChip.modelData.id
+                    }
+                }
+            }
             Label {
                 visible: page.shown.problem !== "" || page.problem !== ""
                 Layout.fillWidth: true
@@ -132,7 +169,10 @@ Item {
                     id: family
 
                     required property var modelData
+                    // Its papers for the person chosen, or everyone's.
+                    readonly property var papers: family.modelData.papers.filter(p => page.forId === "" || (p.persons || []).indexOf(page.forId) >= 0)
 
+                    visible: family.papers.length > 0
                     Layout.fillWidth: true
                     Layout.topMargin: 12
                     spacing: 6
@@ -145,7 +185,7 @@ Item {
                         color: page.theme.accent
                     }
                     Repeater {
-                        model: family.modelData.papers
+                        model: family.papers
 
                         delegate: Rectangle {
                             id: row

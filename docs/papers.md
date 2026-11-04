@@ -15,7 +15,7 @@ title = "Passeport"
 file = "papers/Passeport.pdf"
 issued = 2016-12-21
 until = 2026-12-20
-holder = ""          # in a household: whose
+holder = ""          # whom it is for, by name: empty, yours (persons.md)
 renewal = "…"        # the task made to renew it
 added = 2026-10-03
 ```
@@ -36,6 +36,9 @@ added = 2026-10-03
 - **Where it stands**, in words, never in red: "valid until 20 December", "valid until 20 December: time to renew it", "ended on …", "from 30 June, older than what is usually asked". A date in another year carries its year.
 - **The reminder** ([reminders.md](reminders.md)): once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper added after renewing began (you just saw it), nor once its renewal is planned.
 - **Plan the renewal**: a task in your usual list (your phone has it), from when renewing starts (or today) to the day it ends, tied to the paper, with the steps known for its kind (France: the pre-request on ants.gouv.fr and a town hall that takes them; the ANEF site for a residence permit; ameli for the CSS).
+
+## Whom each is for
+A paper is yours, or for persons of your household, several at once (a joint tax notice, a lease of two): the form's "For" chooses them, the Papers page's chips show one person's, and a person's page lists theirs ([persons.md](persons.md)). Each person chosen is a tie in `links.toml`, how `holder`, and `holder` keeps their names for older versions; a paper with neither is yours. A text with no tie is matched to persons by name at each read.
 
 ## How papers come in
 - **From a mail**: "Keep in papers" beside an attachment: the antivirus checks it (or, without one, you are asked, as for opening), it is copied into `papers/`, and the form opens with a name and a kind guessed from the file's name and the subject ("avis_impot_2026.pdf": a tax notice; "quittance": a rent receipt); you say the dates.

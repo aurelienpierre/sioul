@@ -15,7 +15,7 @@ La page Papiers garde les documents qu’on vous demande encore et encore (une c
 - Une pièce jointe ne devient un papier qu’après la vérification de votre antivirus (un téléphone n’en a pas que Sioul puisse appeler : là, elle est gardée sans vérification, et Sioul le dit), et un programme ne le devient jamais.
 - Entre vos appareils, les papiers voyagent par la synchronisation de votre dossier, ou par le partage de Sioul une fois **Papiers** activé : chaque fichier scellé à part, pour que le dossier et son serveur n’en voient ni les noms ni le contenu ([Le partage](sharing.md)).
 - Les tâches faites à partir d’une lettre ou d’un renouvellement vont dans votre liste de tâches : si cette liste est sur votre serveur d’agenda, leurs titres y sont aussi. Choisissez une liste gardée sur cet appareil si vous préférez que non.
-- Un agent d’IA, seulement si vous en connectez un, peut lire le texte des lettres avec les codes et les numéros de compte masqués ; il ne voit les fichiers de vos papiers que par leurs noms, jamais ce qu’ils contiennent.
+- Un agent d’IA, seulement si vous en connectez un, peut lire le texte des lettres avec les codes et les numéros de compte masqués ; il ne voit les fichiers de vos papiers que par leurs noms, jamais ce qu’ils contiennent. Les papiers d’une personne de vos proches ne lui parviennent qu’une fois cette personne ouverte, et jamais les papiers de santé de personne d’autre que vous.
 
 ## Les papiers {#papers}
 
@@ -43,10 +43,12 @@ En mots, jamais en rouge :
 - **Nom** : « Passeport », « Quittance septembre » ;
 - **Fichier** : un scan ou une photo, copié dans vos papiers ;
 - **Délivré le** et **Valable jusqu’au**. Pour un passeport, une carte d’identité ou une garantie, une fin est proposée d’après la date de délivrance quand vous n’en donnez pas ;
-- **À qui**, dans un foyer ;
+- **Pour** : vous, ou des personnes de vos proches, plusieurs à la fois (un avis d’impôt commun, un bail à deux), ou **Nouvelle personne…** ([Vos proches](contacts.md#household)) ;
 - **Notes**.
 
 Depuis un courriel, **Garder dans les papiers**, à côté d’une pièce jointe, fait de même : l’antivirus vérifie le fichier, il est gardé, et le formulaire s’ouvre avec un nom et un type devinés d’après le nom du fichier et l’objet du courriel. Vous ne dites que ce qui ne se devine pas.
+
+Quand des papiers sont pour d’autres, des pastilles au-dessus de la liste montrent ceux de **Tout le monde**, ou d’une seule personne : vous, Léa, Odile. La page d’une personne, dans Contacts, montre aussi ses papiers.
 
 Pour en envoyer un, la fenêtre d’écriture a **Un papier**, à côté de **Joindre**. Un papier fini, ou plus vieux que ce qui est demandé d’habitude, le dit dans la liste.
 
@@ -129,6 +131,14 @@ Ce qui vous engage (votre loyer, l’énergie, les assurances, les abonnements),
 
 Si vous connectez un agent d’IA ([Avec un agent d’IA](ai-agent.md)), il peut lire le texte des lettres comme il lit vos notes, les codes à usage unique et les numéros de compte et de carte masqués. Il ne voit les fichiers de vos papiers que par leurs noms, jamais ce qu’ils contiennent.
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+Les démarches se font aussi pour d’autres. Un adulte sur quatre a retardé ou renoncé à des soins à cause de leurs formalités (Kyle et Frakt 2021), les personnes qui coordonnent les soins et les médicaments d’un parent renoncent cinq fois plus souvent à leurs propres activités (Wolff et al. 2016), et en France 9,3 millions de personnes aident un proche, son argent et ses démarches du quotidien parmi ce qu’elles font (DREES 2023). Un papier peut donc être pour une personne de vos proches, et reçoit le soin que reçoivent les vôtres : où il en est, un rappel, un renouvellement prévu.
+
+Chaque lien vous donne une part différente. Les papiers d’un enfant sont gardés pour lui, dont l’autorité sur sa propre vie grandit avec l’âge et devient entière à dix-huit ans (Code civil, art. 371-1 et 414) : ils sont alors les siens, et Sioul le dira une fois, à seize ans pour la carte Vitale et à dix-huit ans. Un adulte que vous aidez décide pour lui-même : le soutien doit suivre « sa volonté et ses préférences », jamais s’y substituer (Convention des Nations unies relative aux droits des personnes handicapées, art. 12). Sioul ne marque donc jamais personne comme incapable de décider ; une procuration ou une mesure du juge est un papier, avec ses dates et son renouvellement, comme les autres (à venir). Avec un ou une partenaire, vous êtes à égalité : les papiers que vous partagez, le bail, l’avis d’impôt commun, sont pour vous deux.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 55 à 60.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
 En octobre 2026, d’après la documentation de chaque application.
@@ -150,6 +160,7 @@ En octobre 2026, d’après la documentation de chaque application.
 | Scanne avec l’appareil photo de votre téléphone | ✗¹³ | en partie¹⁴ | en partie¹⁵ | ✓ | ✓ | ✓ |
 | Cherche dans le texte de chaque document | ✗¹⁶ | ✓ | ✓ | ✓ | ✓ | en partie² |
 | Plusieurs personnes, chacune avec son propre accès | en partie¹⁷ | ✓ | ✓ | en partie¹⁸ | en partie¹⁹ | en partie²⁰ |
+| Pour d’autres personnes : des papiers pour chaque personne de vos proches | ✓²¹ | ? | ? | ? | ? | en partie²² |
 
 1. Sur votre propre ordinateur, par Tesseract et Poppler, ceux de votre système.
 2. « Recherche dans le contenu », dans l’offre Premium.
@@ -167,10 +178,12 @@ En octobre 2026, d’après la documentation de chaque application.
 14. « Mobile devices are supported », avec les outils de scan de votre choix.
 15. Une application Android envoie des fichiers.
 16. Les notes se cherchent par titre, dossier et étiquettes.
-17. **À qui** dit à qui est un papier dans un foyer ; le partage se fait entre vos propres appareils seulement.
+17. **Pour** dit pour qui est chaque papier parmi vos proches ; le partage se fait entre vos propres appareils seulement.
 18. Un partage par lien ou par courriel.
 19. Des tâches peuvent être confiées à d’autres.
 20. Un partage avec une date d’expiration et un code.
+21. Des personnes gardées par vous, sur vos appareils, liées à leurs papiers et à leurs agendas, chacune fermée aux agents d’IA tant qu’elle n’est pas ouverte. Ailleurs, Trustworthy garde les papiers d’identité de chaque membre de la famille, avec des rappels ; les groupes familiaux d’Apple et de Google font de chaque membre un compte, avec sa position.
+22. « Tout est stocké au même endroit pour toute la famille », partagé par des liens.
 
 **Côté technique**
 
@@ -212,6 +225,8 @@ D’autres en font plus par endroits : les cinq cherchent dans le texte de cha
 
 **L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord ; un téléphone n’en a pas que Sioul puisse appeler, et là le fichier est gardé sans vérification. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et les courriels mis de côté n’ont jamais leurs pièces jointes ouvertes.
 
-**Un agent d’IA.** Son outil `read_note` ne lit que les notes en texte (`.md`, `.txt`), masquées ; un PDF ou une image est nommé, jamais lu ; `sioul-papers.toml` n’est pas une note.
+**Pour qui est un papier.** Chaque personne pour qui est un papier est un lien dans le `links.toml` de Sioul (`sioul:paper/<id>` vers `sioul:person/<id>`), et le `holder` du papier garde leurs noms, joints par des virgules, qu’un Sioul plus ancien montre ; un papier sans l’un ni l’autre est le vôtre. Un nom écrit par un Sioul plus ancien est rapproché d’une personne par son nom, sans tenir compte de la casse ni des accents ([Vos proches](contacts.md#household)).
+
+**Un agent d’IA.** Son outil `read_note` ne lit que les notes en texte (`.md`, `.txt`), masquées ; un PDF ou une image est nommé, jamais lu ; `sioul-papers.toml` n’est pas une note. Son outil `papers` laisse de côté, en les comptant, les papiers d’une personne qui ne lui est pas ouverte et tout papier de santé d’une autre personne que vous.
 
 **Ce qui n’est pas fait.** Chercher dans toutes les lettres depuis la fenêtre (les notes se cherchent par titre, chemin et étiquettes) ; lire les scans sur un téléphone, qui n’a pas de programmes de reconnaissance de texte ; vérifier qu’une lettre est authentique.

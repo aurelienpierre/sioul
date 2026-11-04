@@ -1989,6 +1989,7 @@ from_domains = ["{W.choir}"]
     write_bank(p)
     write_contracts(p)
     write_papers(p)
+    write_persons(p)
     write_letters(p)
 
 
@@ -2344,7 +2345,15 @@ def write_papers(p: Profile):
         ("laptop", "warranty", t("Laptop: proof of purchase", "Ordinateur portable : preuve d'achat"), t("Laptop invoice.pdf", "Facture ordinateur.pdf"),
          date(2025, 2, 14), date(2027, 2, 13),
          [t("Invoice", "Facture"), t("Laptop, 14 inches", "Ordinateur portable, 14 pouces"), t("Two years' warranty", "Garantie de deux ans")]),
+        # The household's (write_persons): Léa's, by the holder text; Maud's, the parent helped.
+        ("lea-id", "identity", t("Identity card", "Carte d'identité"), t("Lea identity card.pdf", "Carte d'identité Léa.pdf"), date(2022, 6, 20), date(2027, 6, 19),
+         [t("Identity card", "Carte d'identité"), "Léa Ferrand", t("Valid until: 19 June 2027", "Valable jusqu'au 19 juin 2027")]),
+        ("lea-school", "insurance", t("School insurance", "Assurance scolaire"), t("School insurance.pdf", "Assurance scolaire.pdf"), date(c.today.year, 9, 1), date(c.today.year + 1, 8, 31),
+         [t("School insurance", "Assurance scolaire"), "Léa Ferrand"]),
+        ("maud-id", "identity", t("Identity card", "Carte d'identité"), t("Maud identity card.pdf", "Carte d'identité Maud.pdf"), date(2017, 2, 3), c.day(60),
+         [t("Identity card", "Carte d'identité"), "Maud Ferrand", t(f"Valid until: {long_date(c.day(60), year=True)}", f"Valable jusqu'au {long_date(c.day(60), year=True)}")]),
     ]
+    holders = {"lea-id": "Léa", "lea-school": "Léa", "maud-id": "Maud Ferrand"}
     out = ["# The papers wallet (docs/papers.md).", ""]
     for pid, kind, title, file, issued, until, text in papers:
         p.write(p.notes / "papers" / file, pdf(text + ["", t("Specimen: invented for Sioul's demo.", "Spécimen : inventé pour la démo de Sioul.")]),
@@ -2352,8 +2361,42 @@ def write_papers(p: Profile):
         out += ["[[paper]]", f'id = "{pid}"', f'kind = "{kind}"', f"title = {toml_string(title)}", f"file = {toml_string('papers/' + file)}", f"issued = {issued}"]
         if until:
             out.append(f"until = {until}")
+        if pid in holders:
+            out.append(f"holder = {toml_string(holders[pid])}")
         out += [f"added = {min(issued + timedelta(days=3), c.day(-20))}", ""]
     p.write(p.notes / "sioul-papers.toml", "\n".join(out))
+
+
+def write_persons(p: Profile):
+    """The household (docs/persons.md): Léa, a child of 12 who lives with you;
+    Sam, Léa's other parent, as Léa's agenda names Sam in the configuration;
+    Maud, the mother you help, tied to Maud's card. Old texts read already, so
+    that the partner's agenda gives no second Sam."""
+    p.write(p.data / "persons.toml", """# The people your admin is done for (docs/persons.md).
+format = 1
+names_read = 1
+
+[person.demo-person-lea]
+name = "Léa"
+full_name = "Léa Ferrand"
+relation = "child"
+born = 2014-05-12
+lives_with = true
+agents = false
+
+[person.demo-person-sam]
+name = "Sam"
+relation = "other-parent"
+of = ["demo-person-lea"]
+agents = false
+
+[person.demo-person-maud]
+name = "Maud"
+full_name = "Maud Ferrand"
+relation = "parent"
+cards = ["demo-contact-maud"]
+agents = false
+""")
 
 
 # --- What Sioul keeps itself: time, invoices, health, weather, site news -------

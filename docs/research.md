@@ -19,6 +19,7 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 - **People with irregular or tight income** (paid by the week, by benefits or by clients): the pay cycle (38), forecasts that forget expenses (42), how long the money lasts (44).
 - **Parents who share a child's care, in one home or two**: several agendas (46), one person in two places (47), the noticing and reminding (48), a holder from end to end (49), parents in parallel (50), records that invite score-keeping (51), availability kept private (52), one event in two agendas (54).
 - **People who share their time with a partner, or with several**: several agendas (46), availability kept private (52), a bare "busy" (53).
+- **People who do admin for a child, a parent they help, or a partner**: admin done for others (55), each relation's mandate (56), the household's shelter (57), care without watching (58), the cared-for's answer (59), relations no server keeps (60).
 
 ## The findings
 
@@ -185,6 +186,34 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 54. **One event in two agendas is tied by UID on one server, and by address across servers.**
    - `RELATED-TO` names another event by its UID, PARENT making this one subordinate to it, and `URL` gives "a location where a more dynamic rendition" of the event can be found (RFC 5545); a link by UID must stay within one calendar (RFC 9253); a server that schedules sends invitations itself for attendees unless told `SCHEDULE-AGENT=CLIENT` (RFC 6638); an invitation keeps one UID on both sides, and each update from its organiser replaces the attendee's copy (RFC 5546; Nextcloud's issue tracker); a name-based UUID comes out the same each time from the same names (RFC 9562). Nextcloud keeps every line it is given, Google less, and Outlook has no CalDAV ([compatibility.md](compatibility.md)).
    - **Rule**: where Sioul can write the holder's agenda, the holder gets a copy there, tied to the child's event by `RELATED-TO;RELTYPE=PARENT`, `URL` and `X-SIOUL-LINK;LINKREL=latest-version`, with a UID derived from it so it is never made twice, and following its moves and its cancellation; in a work agenda, a health or school copy says "Away" and is confidential; where Sioul cannot write it, an invitation from your own address waits in the Outbox until you send it, its attendee line marked `SCHEDULE-AGENT=CLIENT`; otherwise, who takes an event is never written as an attendee. Not yet tried against Google, Outlook or Nextcloud. Detail: [research/agendas.md](research/agendas.md), §4.
+
+55. **Admin is done for others too, and the one who does it carries it.**
+   - In a US survey, three adults in four did at least one administrative task for their own care in a year, and 24.4 % delayed or gave up care because of one, a rate comparable to cost barriers (Kyle & Frakt 2021; a representative panel). Among 1,739 unpaid carers of older adults, those giving substantial help coordinating care and managing medicines were more than five times as likely to give up valued activities (Wolff et al. 2016; a national survey).
+   - In France, 9.3 million people help a relative regularly, "managing their budget, their money or their everyday administrative steps" among the tasks counted (DREES 2023), and each carer does more as fewer help more people (Verhagen 2026; official statistics). A quarter of US adults, half of those in their forties, have a parent of 65 or more and a minor child, or support an adult child (Pew Research Center 2026; a survey).
+   - **Rule**: a person's papers get the care your own get: where each stands, one reminder, a renewal planned, one holder; nothing new to watch. Detail: [research/persons.md](research/persons.md), §2.
+
+56. **Each relation gives a different mandate.**
+   - Parental authority exists for the child's interest, includes the child's private life, and associates the child "according to their age and degree of maturity"; majority comes at eighteen (Code civil art. 371-1, 414; legal text). An adult with a disability enjoys legal capacity on an equal basis, and support must respect "the rights, will and preferences of the person", never substitute (CRPD art. 12; General comment No. 1); in 2021 the Committee asked France to repeal substituted decision-making (CRPD/C/FRA/CO/1; legal text). Spouses and PACS partners answer together for the household's everyday debts, cohabitants not, and none acts in the other's name without a mandate (Code civil art. 218, 220, 515-4, 515-8).
+   - **Rule**: a child's papers are kept for the child and handed over, said once at 16 and 18 (to come); an adult is never marked unable to decide, a legal measure being a dated paper (to come); a partner is a person for what the household shares, never a dependant; a child's other parent is a person of that child's, never a holder of papers. Detail: [research/persons.md](research/persons.md), §1.
+
+57. **The household's shelter ends where the data leaves it.**
+   - The GDPR does not apply to "a purely personal or household activity" (art. 2(2)(c), recital 18), read narrowly: publishing to anyone is not one (*Lindqvist*, C-101/01, 2003), nor a home camera filming the street (*Ryneš*, C-212/13, 2014). Children merit "specific protection" (recital 38), health is a special category (art. 9), and some of an adolescent's care is secret from the parents by law (Code de la santé publique, art. L1111-5) (legal text).
+   - That an AI agent's provider and a shared server are outside the household is Sioul's own inference from these texts.
+   - **Rule**: persons live sealed on your own devices, in Sioul's data folder, shared only by Sioul's sealed sharing; each is closed to AI agents until opened; others' health papers never reach an agent, whatever the switch. Detail: [research/persons.md](research/persons.md), §3.1 and §3.2.
+
+58. **Monitoring harms the cared-for and serves control.**
+   - Children gave one star in 76 % of 736 reviews of online-safety apps, finding them invasive and bad for their relationship with their parents; in 215 parent–teen pairs, more parental control went with more online risk, not less (Ghosh et al. 2018, two studies; reviews and a correlational survey). Adult children wanted sensors and tracking more than their mothers did, and underestimated them (Berridge & Wetle 2020; interviews). Intimate abusers use ordinary features: shared accounts, family plans, location sharing (Freed et al. 2018; Levy & Schneier 2020).
+   - Surveillance of children should not be "routine, indiscriminate or without the child's knowledge" (CRC General comment No. 25, §75); parental control should be proportionate to age and maturity, transparent to the child, without permanent geolocation (CNIL 2021, recommendation 5).
+   - **Rule**: no location, "last seen", supervision or reading of anyone's messages or accounts; no total or history of what was done for whom (finding 51); nothing of a person on anyone else's device. Detail: [research/persons.md](research/persons.md), §3.2 to §3.4.
+
+59. **Care ends in the cared-for's response.**
+   - Care has phases: noticing a need, taking responsibility, giving care, and care-receiving, the cared-for's own judgement of whether the care met the need (Fisher & Tronto 1990; Tronto 1993; theory); dependency work is work, and whoever does it is owed support (Kittay 1999; theory).
+   - That what Sioul keeps about a person should be easy to show them, by the person's act, is Sioul's own inference: no study tests it.
+   - **Rule**: what Sioul keeps about a person can be handed to them in one file, by your act, never sent (to come); a person's own word ends Sioul's part. Detail: [research/persons.md](research/persons.md), §3.5 and §3.6.
+
+60. **No server keeps a relation as a reference.**
+   - vCard's `RELATED` is a typed address or text written on one card (RFC 6350), JSContact's `relatedTo` a map of UIDs (RFC 9553) (standards). Google keeps a related person's name and a type, Apple a labelled name, Nextcloud a typed text; Google's CardDAV speaks vCard 3.0, which has no `RELATED` (vendor documentation; Nextcloud's code). FHIR gives a relation a period, apart from the person's own record (HL7 FHIR R5, RelatedPerson; standard).
+   - **Rule**: a person is Sioul's own record, linked to cards by UID, its relation in RFC 6350's words where they exist, with a period; nothing is written into the cards. Detail: [research/persons.md](research/persons.md), §5.
 
 ## Sources
 - Kushlev & Dunn (2015), Checking email less frequently reduces stress, *Computers in Human Behavior* 43.
@@ -376,3 +405,26 @@ Sioul is designed for the people for whom admin costs most. Each group below has
   - Thayer, Bietz, Derthick & Lee (2012), I love you, let's share calendars: calendar sharing as relationship work, CSCW 2012. doi:10.1145/2145204.2145317
   - TimeTree, "Virtual member released" (2024) and "Renewal" (2026). https://timetreeapp.com/intl/en/newsroom/2024-07-16/veirtual-member-released, https://timetreeapp.com/intl/en/newsroom/2026-01-13/renewal-timetree-newsroom
   - 2houses, "First steps on 2houses". https://www.2houses.com/en/blog/first-steps-on-2houses
+- Findings 55 to 60, with their DOIs; "(abstract only)" marks a source read at its abstract or in a summary of it; the laws, the apps' help pages and the standards, and what each source gave, are in [research/persons.md](research/persons.md), §1 to §6 and §9:
+  - Berridge & Wetle (2020), Why older adults and their children disagree about in-home surveillance technology, sensors, and tracking, *The Gerontologist* 60(5). doi:10.1093/geront/gnz068 (abstract only)
+  - CNIL (2021), Recommandation 5 : promouvoir des outils de contrôle parental respectueux de la vie privée et de l'intérêt de l'enfant. https://cnil.fr/fr/recommandation-5-promouvoir-des-outils-de-controle-parental-respectueux-de-la-vie-privee-et-de
+  - Code civil, art. 218, 220, 371-1, 414, 515-4, 515-8; Code de la santé publique, art. L1111-5. https://www.legifrance.gouv.fr/codes/texte_lc/LEGITEXT000006070721/
+  - Committee on the Rights of the Child (2021), General comment No. 25 on children's rights in relation to the digital environment, CRC/C/GC/25, §75 (read in the 5Rights Foundation's explanatory notes). https://digitallibrary.un.org/record/3906061
+  - Committee on the Rights of Persons with Disabilities (2014), General comment No. 1, CRPD/C/GC/1; (2021), Concluding observations on the initial report of France, CRPD/C/FRA/CO/1. https://undocs.org/CRPD/C/GC/1, https://www.ecoi.net/en/document/2062451.html
+  - Court of Justice of the EU, C-101/01 *Lindqvist* (2003), C-212/13 *Ryneš* (2014). https://curia.europa.eu
+  - DREES (2023), 9,3 millions de personnes déclarent apporter une aide régulière à un proche en situation de handicap ou de perte d'autonomie, *Études et résultats* 1255. https://drees.solidarites-sante.gouv.fr/publications/etudes-et-resultats/93-millions-de-personnes-declarent-apporter-une-aide-reguliere-un
+  - Fisher & Tronto (1990), Toward a feminist theory of caring, in Abel & Nelson (eds.), *Circles of Care*, SUNY Press
+  - Freed, Palmer, Minchala, Levy, Ristenpart & Dell (2018), "A stalker's paradise": how intimate partner abusers exploit technology, CHI 2018. doi:10.1145/3173574.3174241 (abstract only)
+  - Ghosh, Badillo-Urquiola, Guha, LaViola & Wisniewski (2018), Safety vs. surveillance: what children have to say about mobile apps for parental control, CHI 2018. doi:10.1145/3173574.3173698 (abstract only); Ghosh, Badillo-Urquiola, Rosson, Xu, Carroll & Wisniewski (2018), A matter of control or safety? CHI 2018. doi:10.1145/3173574.3173768 (abstract only)
+  - HL7 International (2023), FHIR R5, RelatedPerson. https://hl7.org/fhir/R5/relatedperson.html
+  - Kittay (1999), *Love's Labor: Essays on Women, Equality, and Dependency*, Routledge
+  - Kyle & Frakt (2021), Patient administrative burden in the US health care system, *Health Services Research* 56(5). doi:10.1111/1475-6773.13861 (abstract only)
+  - Levy & Schneier (2020), Privacy threats in intimate relationships, *Journal of Cybersecurity* 6(1). doi:10.1093/cybsec/tyaa006
+  - Pew Research Center (2026), More than half of Americans in their 40s are "sandwiched" between an aging parent and their own children. https://www.pewresearch.org/short-reads/2026/08/27/more-than-half-of-americans-in-their-40s-are-sandwiched-between-an-aging-parent-and-their-own-children/
+  - Regulation (EU) 2016/679 (GDPR), art. 2(2)(c), 9, recitals 18 and 38. https://eur-lex.europa.eu/eli/reg/2016/679/oj
+  - RFC 6350 (vCard 4.0), RFC 9553 (JSContact). https://www.rfc-editor.org/rfc/rfc6350, https://www.rfc-editor.org/rfc/rfc9553
+  - Tronto (1993), *Moral Boundaries: A Political Argument for an Ethic of Care*, Routledge
+  - United Nations (2006), Convention on the Rights of Persons with Disabilities, art. 12. https://www.un.org/development/desa/disabilities/convention-on-the-rights-of-persons-with-disabilities/article-12-equal-recognition-before-the-law.html
+  - Verhagen (2026), Le nombre de proches aidants à la vie quotidienne baisse de 6 % entre 2008 et 2022, et l'aide apportée s'intensifie, *Études et résultats* 1377, DREES. https://drees.solidarites-sante.gouv.fr/sites/default/files/2026-06/Embargo_ER1377_Proches_aidants.pdf
+  - Wolff, Spillman, Freedman & Kasper (2016), A national profile of family and unpaid caregivers who assist older adults with health care activities, *JAMA Internal Medicine* 176(3). doi:10.1001/jamainternmed.2015.7664 (abstract only)
+  - Google, People API (Relation) and CardDAV API; Apple, ABPersonRelatedNamesProperty; Nextcloud Contacts, `src/models/rfcProps.js`; sabre/vobject, `lib/VCardConverter.php`. https://developers.google.com/people/api/rest/v1/people, https://developers.google.com/people/carddav, https://github.com/nextcloud/contacts/tree/main/src/models, https://github.com/sabre-io/vobject/blob/master/lib/VCardConverter.php

@@ -6,7 +6,7 @@ description: Les contacts dans Sioul – les noms d’abord, les détails repli�
 
 ## En bref {#in-short}
 
-Les contacts réunissent les personnes à qui vous avez affaire : leur nom d’abord, leurs détails repliés jusqu’à ce que vous les ouvriez. Sioul trouve la même personne écrite deux fois et fusionne les fiches quand vous le dites, avec trente jours pour annuler chaque fusion. Il montre sur une seule carte toutes les personnes qui ont une adresse postale, une fois que vous l’avez permis. Chaque personne est sur une liste, sûre, neutre, restreinte ou bloquée, ou bien c’est une inconnue, et cette liste décide quand ses courriels, ses appels et ses messages vous joignent ; un courriel falsifié ne peut pas prendre sa place. Vos contacts restent sur votre propre serveur, chez Google ou sur cet appareil, et Sioul ne les joint que par une connexion chiffrée.
+Les contacts réunissent les personnes à qui vous avez affaire : leur nom d’abord, leurs détails repliés jusqu’à ce que vous les ouvriez. Sioul trouve la même personne écrite deux fois et fusionne les fiches quand vous le dites, avec trente jours pour annuler chaque fusion. Il montre sur une seule carte toutes les personnes qui ont une adresse postale, une fois que vous l’avez permis. Chaque personne est sur une liste, sûre, neutre, restreinte ou bloquée, ou bien c’est une inconnue, et cette liste décide quand ses courriels, ses appels et ses messages vous joignent ; un courriel falsifié ne peut pas prendre sa place. Vos contacts restent sur votre propre serveur, chez Google ou sur cet appareil, et Sioul ne les joint que par une connexion chiffrée. En tête de la page, vos proches : les personnes pour qui vous faites des démarches, chacune avec ses papiers.
 
 <figure markdown="span">
   [![La page Contacts : un champ de recherche, un bouton pour un nouveau contact et un pour la carte au-dessus d’une liste de noms, chacun avec une adresse ou un numéro dessous ; un contact ouvert à droite, avec sa fonction et son organisation, une adresse électronique avec Écrire, un numéro de téléphone avec Appeler, « Vos contacts : dans votre carnet d’adresses, sur aucune liste. » et Comment Iris Calvet vous joint, une petite carte avec une épingle à son adresse, et ce qui lui est lié : deux tâches et deux événements.](../assets/screens/fr/contacts.png){ loading=lazy }](../assets/screens/fr/contacts.png "Ouvrir l’image en grand")
@@ -20,12 +20,31 @@ Les contacts réunissent les personnes à qui vous avez affaire : leur nom d�
 - La carte n’envoie rien tant que vous ne l’avez pas permis. Ensuite, elle n’envoie que des adresses postales, une à la fois, à OpenStreetMap : jamais un nom, un numéro ni une adresse électronique.
 - Personne ne peut emprunter une place sur vos listes. Un courriel qui montre l’adresse d’un contact sûr mais échoue aux vérifications de cette adresse compte comme celui d’un inconnu, et un courriel franchement falsifié est mis de côté. Quelqu’un que vous avez bloqué reste bloqué, quoi que prouve son courriel.
 - Qui est sur quelle liste, et les appels que vos téléphones ont filtrés, voyagent entre vos appareils scellés par votre phrase de passe : le serveur du dossier partagé ne les lit jamais.
+- Vos proches restent sur vos propres appareils, scellés quand ils voyagent : jamais écrits dans un contact, jamais envoyés à un serveur, chacun fermé aux agents d’IA tant que vous ne l’ouvrez pas ([Vos proches](#household)).
 
 ## La liste {#the-list}
 
 Les noms viennent d’abord, avec une ligne sous chacun, et un champ de recherche est en haut : quelques lettres d’un nom, d’une organisation, d’une adresse électronique ou d’un numéro de téléphone suffisent à trouver un contact. La recherche ne regarde pas les adresses postales.
 
 Quand vos fiches ont des catégories, un choix sous le champ de recherche montre les contacts d’une seule catégorie, ou **Toutes les catégories**.
+
+## Vos proches {#household}
+
+En tête de la page, **Proches** est une rangée de noms : vous d’abord, puis les personnes pour qui vous faites des démarches, un enfant, un parent que vous aidez, un ou une partenaire, de la famille, une personne que vous aidez, et après un petit espace l’autre parent d’un enfant. Un nom ouvre la page de cette personne, à la place d’une fiche ; sur un téléphone, elle prend la page. Un clic droit, ou un appui long sur un téléphone, propose **Ouvrir** et **Renommer**. **Ajouter une personne**, au bout de la rangée, en ajoute une.
+
+Une personne n’est pas un contact. Un contact est une fiche pour joindre quelqu’un ; une personne est celle pour qui sont vos papiers. Un bébé est une personne sans fiche ; quelqu’un qui a une fiche personnelle et une fiche professionnelle est une seule personne avec deux fiches.
+
+**La page d’une personne** montre son nom et une ligne, par exemple « Enfant · 12 ans · vit avec vous », puis :
+
+- **Papiers** : les papiers qui sont les siens, chacun avec où il en est, comme sur la page des [Papiers](papers.md#papers), et **Ajouter un papier pour Léa** ;
+- **Contacts** : les fiches qui sont elle, chacune ouvrant sa fiche, avec **Délier**, et **Lier un contact…** ;
+- en bas, **Ouvert aux agents d’IA**, éteint tant que vous ne l’allumez pas. Votre propre page n’a pas cet interrupteur : vous êtes ouvert comme avant.
+
+**Modifier** change son nom, la façon dont les papiers l’écrivent (« Léa Martin »), son type, sa date de naissance, si elle vit avec vous, et pour l’autre parent d’un enfant, de quel enfant. Un nouveau nom s’écrit aussi dans les papiers qui portaient l’ancien, pour qu’un appareil resté sur un Sioul plus ancien le montre aussi.
+
+**Sur la fiche d’un contact**, **C’est une personne de vos proches…** lie la fiche à l’une d’elles, ou en fait une nouvelle personne. Une fois liée, le bouton ouvre plutôt sa page.
+
+**D’où elles viennent.** La première fois, Sioul lit les noms que vos agendas et vos papiers donnaient déjà : l’agenda d’un enfant donne cet enfant, et son autre parent ; un papier « pour Odile » donne Odile. Un papier sans nom, ou à votre nom, est le vôtre. Ces personnes comptent dès lors ; une erreur se corrige sur sa page. Rien d’autre n’est écrit.
 
 ## Un contact {#a-contact}
 
@@ -118,6 +137,18 @@ Changer la photo d’un contact dans Sioul est prévu. Les fichiers vCard ne s�
 - **Qui décide de la liste d’une personne**, le plus précis d’abord : son adresse ou son numéro sur une liste ; sa fiche ; ses catégories ; un domaine ou le début d’un numéro (`*@example.org`, les premiers chiffres d’un standard) ; puis neutre, quand elle est dans un carnet d’adresses ou que vous l’avez laissée entrer. À niveau égal, bloqué passe avant restreint, neutre et sûr.
 - **La photo d’une fiche** est lue dans la fiche elle-même. Une fiche dont la photo est une adresse web (`https` seulement) ne la fait jamais venir d’elle-même : la fiche propose **Charger la photo**, en nommant le serveur. Si vous appuyez, Sioul le demande une fois à ce serveur (vingt secondes et un mégaoctet au plus, une image seulement) et en garde la copie ici, que la fiche montre ensuite.
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+Une personne n’est pas une fiche. Une fiche sert à joindre quelqu’un, et toutes les applications de votre téléphone la lisent, comme le serveur qui la garde ; un bébé n’a pas de fiche, et une personne peut en avoir deux. Une personne est donc une fiche de Sioul, gardée sur vos appareils, liée aux contacts qui sont elle.
+
+Rien n’est écrit dans vos fiches. Le format vCard a une ligne pour les liens entre personnes (RFC 6350), mais aucun carnet d’adresses ne la garde comme un lien que toutes les applications suivent : Google garde un nom et un type, Apple un nom étiqueté, Nextcloud un texte typé, et le serveur de contacts de Google n’a aucune place pour elle. Écrit dans une fiche, « Léa : enfant » serait lu par toutes les applications qui lisent vos contacts, et ce sont les plus proches qui peuvent mal user de tels détails : des partenaires violents font des fonctions familiales ordinaires un moyen de surveiller (Freed et al. 2018 ; Levy et Schneier 2020).
+
+Chaque personne est fermée aux agents d’IA tant que vous ne l’ouvrez pas. Garder les papiers de votre famille sur vos propres appareils est une affaire domestique, que le droit des données vous laisse (RGPD, art. 2, § 2, c) ; ce qu’un agent lit part chez l’entreprise qui fait tourner son modèle, hors de votre foyer, et les données des enfants méritent une protection particulière (RGPD, considérant 38). Un agent ne voit donc les papiers d’une personne qu’une fois cette personne ouverte, et jamais les papiers de santé de personne d’autre que vous.
+
+Sioul ne surveille personne : pas de position, pas de « vu à », pas de lecture des messages de quiconque, pas de compte de ce qui a été fait pour qui. Les enfants ont mis une étoile aux applications de contrôle parental dans trois avis sur quatre, et plus de contrôle allait avec plus de risques, non moins (Ghosh et al. 2018) ; des enfants adultes voulaient des capteurs et du suivi plus que leurs mères (Berridge et Wetle 2020). Le soin s’achève dans la réponse de qui le reçoit (Tronto 1993) : Sioul ne garde rien sur quelqu’un que vous ne pourriez lui montrer.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 55 à 60.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
 **Trouver les doublons n’est pas propre à Sioul.** Google Contacts propose des fusions sous « Fusionner et corriger ». Apple Contacts cherche les doublons sur le Mac, et sur iPhone et iPad trouve les fiches qui ont le même prénom et le même nom. KAddressBook trouve les fiches qui ont le même nom ou le même surnom, ou une adresse électronique en commun, et Proton Contacts propose de fusionner les fiches qui portent le même nom. Ce que Sioul fait à sa façon :
@@ -147,6 +178,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Retrouve un contact supprimé | en partie³¹ | ✓ | en partie⁹ | ✓ | ✗ | ✗ |
     | Importe et exporte des fichiers vCard | ✗³² | ✓ | ✓ | en partie³³ | ✓ | ✓ |
     | Met les anniversaires de vos contacts dans votre agenda | ✗³⁴ | ✓ | ✓ | ✓ | ✗ | ✓³⁵ |
+    | Pour d’autres personnes : celles pour qui vous faites des démarches | ✓³⁶ | en partie³⁷ | en partie³⁸ | ? | ? | ? |
 
     1. Le nouvel Outlook et Outlook sur le web cachent une fiche qui est la copie exacte d’une autre, ou une partie d’une autre, sans demander et sans fusionner ; Outlook classique ne demande que quand vous enregistrez ou importez un doublon.
     2. Seulement avec le module complémentaire Duplicate Contacts Manager, fait par quelqu’un d’autre : vous modifiez ou supprimez une fiche de chaque paire.
@@ -183,6 +215,9 @@ En octobre 2026, d’après la documentation de chaque application.
     33. Outlook classique ouvre et enregistre des vCard une par une ; le nouvel Outlook et le web importent et exportent du CSV seulement.
     34. Sioul ne fait pas d’agenda des anniversaires ; celui que garde votre serveur (Nextcloud en garde un) s’affiche comme tout agenda que vous ne pouvez que lire.
     35. Dans Fossify Calendar ; Etar n’en a pas.
+    36. Des personnes gardées par vous, sur vos appareils, liées à leurs papiers et à leurs fiches, chacune fermée aux agents d’IA tant qu’elle n’est pas ouverte ([Vos proches](#household)).
+    37. La « relation » d’un contact garde le nom d’une autre personne et un type, en texte ; Family Link fait du compte d’un enfant un membre d’un groupe familial, dont le parent voit la position.
+    38. Les « noms associés » sont des noms étiquetés, liés à aucune fiche ; l’organisateur du Partage familial voit le Temps d’écran des membres, et les membres partagent leur position à moins de l’éteindre.
 
 === "Technique"
 

@@ -181,6 +181,35 @@ pub mod qobject {
         #[qinvokable]
         fn plan_renewal(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
+        /// The household, as JSON (`persons::household`): you first, the
+        /// others, children's other parents apart, the relations a form offers.
+        #[qinvokable]
+        fn household(self: &Sioul) -> QString;
+
+        /// A person's page, as JSON (`persons::page`); "null" when gone.
+        #[qinvokable]
+        fn person_page(self: &Sioul, id: &QString) -> QString;
+
+        /// A person saved from their form (new when `id` is empty): {"id"} or {"error"}.
+        #[qinvokable]
+        fn save_person(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
+
+        /// "Open to AI agents" on a person's page; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_person_agents(self: Pin<&mut Sioul>, id: &QString, on: bool) -> QString;
+
+        /// A card linked to a person, or taken off them; returns what went wrong, else "".
+        #[qinvokable]
+        fn link_person_card(self: Pin<&mut Sioul>, id: &QString, uid: &QString, linked: bool) -> QString;
+
+        /// The person a contact card is, as JSON {id, name}, or "null".
+        #[qinvokable]
+        fn person_of_card(self: &Sioul, uid: &QString) -> QString;
+
+        /// Cards to link to a person, by the words typed, as JSON.
+        #[qinvokable]
+        fn person_card_choices(self: &Sioul, query: &QString) -> QString;
+
         /// Lets a sender in: they leave the screener.
         #[qinvokable]
         fn let_in(self: Pin<&mut Sioul>, address: &QString);
@@ -4086,6 +4115,34 @@ impl qobject::Sioul {
         QString::from(&crate::papers::plan_renewal(&self.qt_thread(), &self.shared(), &id.to_string()))
     }
 
+    fn household(&self) -> QString {
+        QString::from(&crate::persons::household())
+    }
+
+    fn person_page(&self, id: &QString) -> QString {
+        QString::from(&crate::persons::page(&id.to_string()))
+    }
+
+    fn save_person(self: Pin<&mut Self>, id: &QString, edit: &QString) -> QString {
+        QString::from(&crate::persons::save(&id.to_string(), &edit.to_string()))
+    }
+
+    fn set_person_agents(self: Pin<&mut Self>, id: &QString, on: bool) -> QString {
+        QString::from(&crate::persons::set_agents(&id.to_string(), on))
+    }
+
+    fn link_person_card(self: Pin<&mut Self>, id: &QString, uid: &QString, linked: bool) -> QString {
+        QString::from(&crate::persons::link_card(&id.to_string(), &uid.to_string(), linked))
+    }
+
+    fn person_of_card(&self, uid: &QString) -> QString {
+        QString::from(&crate::persons::of_card(&uid.to_string()))
+    }
+
+    fn person_card_choices(&self, query: &QString) -> QString {
+        QString::from(&crate::persons::card_choices(&query.to_string()))
+    }
+
     fn let_in(mut self: Pin<&mut Self>, address: &QString) {
         let address = address.to_string();
         let line = match KnownSenders::let_in(&load_config().known_senders_path(), &address) {
@@ -7046,8 +7103,9 @@ impl qobject::Sioul {
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
         // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
-        // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page"].contains(&steps.as_str()) && offline()) {
+        // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
+        // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

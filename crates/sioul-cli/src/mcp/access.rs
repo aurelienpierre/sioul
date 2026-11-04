@@ -38,7 +38,23 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     consent.keep_errands(loaded, recorded.as_ref());
     // What another shares for its availability alone never reaches an agent (several agendas, part 4).
     consent.keep_private(&loaded.events);
+    // What is a person's (docs/persons.md): each person is closed until opened on their
+    // page; others' health papers never reach an agent, whatever the switch.
+    consent.keep_persons(kept_for_persons(s, loaded));
     consent
+}
+
+/// The papers and persons kept from agents for the persons' sake
+/// (`persons::Persons::kept_from_agents`): the store as this device reads
+/// it, old texts read as Sioul's window reads them when they were not yet.
+/// A wallet that does not read keeps nothing more here: its papers are not
+/// given either (`records::papers` fails).
+fn kept_for_persons(s: &Session, loaded: &Loaded) -> std::collections::BTreeSet<String> {
+    use sioul_core::persons::Persons;
+    let papers = s.config.notes_root_path().and_then(|root| sioul_core::papers::Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default();
+    let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
+    let persons = Persons::as_read(&Persons::default_path(), &s.config.agenda.calendars, &papers, &own);
+    persons.kept_from_agents(&papers, &loaded.local, &own)
 }
 
 /// What an answer listing tasks, events or time says when the errands'
@@ -72,14 +88,14 @@ pub fn for_mail(s: &Session, index: MailIndex) -> (Consent, MailIndex) {
 pub fn left_out(count: usize) -> Option<String> {
     (count > 0).then(|| {
         let things = if count == 1 { "1 more thing belongs".to_string() } else { format!("{count} more things belong") };
-        format!("({things} to projects the person keeps from agents, to no project while those are kept from agents, or to a work or school account kept from agents, or are health, which agents never see: left out on purpose. Do not guess what they are; ask the person if it matters.)")
+        format!("({things} to projects the person keeps from agents, to no project while those are kept from agents, to a work or school account kept from agents, or to someone of the household kept from agents, or are health, which agents never see: left out on purpose. Do not guess what they are; ask the person if it matters.)")
     })
 }
 
 /// A thing the agent asked for by its address, kept from agents.
 pub fn kept(what: &str) -> String {
     format!(
-        "{what} is kept from agents: it belongs to a project the person has not opened to agents, to no project while things outside projects are closed to them, or to a work or school account kept from agents, or it is health, which agents never see. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul, or in Settings ▸ AI agents, where work and school accounts are opened too."
+        "{what} is kept from agents: it belongs to a project the person has not opened to agents, to no project while things outside projects are closed to them, to a work or school account kept from agents, or to someone of the household the person has not opened to agents, or it is health, which agents never see. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul, or in Settings ▸ AI agents, where work and school accounts are opened too; someone of the household on their page in Contacts."
     )
 }
 

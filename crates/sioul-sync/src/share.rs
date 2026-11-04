@@ -469,6 +469,31 @@ fn movements_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.movements >= MOVEMENTS_SHARED))
 }
 static PAPERS_RULES: Rules = Rules { keyed: &[keyed("paper", &["id"])], whole: &[], local: &[], next: None };
+/// The persons your admin is done for (`sioul_core::persons`): each person
+/// a table named by its id (`[person.<id>]`), each of its fields an entry, so
+/// that a name changed on the phone and a birth date added on the computer
+/// both stay (an array's element would travel whole); each name said to be
+/// no person by itself. Whether the old texts were read stays on each device.
+static PERSONS_RULES: Rules = Rules { keyed: &[keyed("not_persons", &[])], whole: &[], local: &["names_read"], next: None };
+
+/// The persons' store, in the data folder beside Sioul's links.
+pub const PERSONS: &str = "data/persons.toml";
+
+/// What a device's entry says once its Sioul has the persons' store (`devices::Entry::persons`).
+pub const PERSONS_SHARED: u32 = 1;
+
+/// Whether the persons' store travels: at least one other device counts
+/// (`present`), and every one of them says in its sealed entry that its
+/// Sioul has the store (`devices::Entry::persons`), as the money movements'
+/// store waits (`movements_shared`): until then each device keeps its
+/// persons to itself, and an older Sioul (705576a, or a computer's fallback
+/// 7208782), which has no such store, never holds a record it would keep
+/// waiting. The persons each device read from its old texts have the same
+/// ids on both (`persons::name_id`), so that the first exchange joins them.
+fn persons_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.persons >= PERSONS_SHARED))
+}
 /// In the notes folder, what the other parts carry: projects, budgets, the
 /// bank, contracts (projects), the papers' wallet and its folder (papers).
 const NOT_NOTES: &[&str] = &[
@@ -691,6 +716,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // Who may reach you during do-not-disturb, beside the mail lists (docs/do-not-disturb.md).
         file("senders", "config/dnd-people.toml", c.join(sioul_core::everywhere::PEOPLE_FILE), Shape::Toml(&DND_PEOPLE_RULES)),
         file("settings", "data/links.toml", d.join("links.toml"), Shape::Toml(&LINKS_RULES)),
+        // The persons your admin is done for: travels once every other device says it has the store (`persons_shared`).
+        file("settings", PERSONS, d.join(sioul_core::persons::FILE), Shape::Toml(&PERSONS_RULES)),
         file("health", "data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
         // Each day's own meals, naps and nights: one entry per field of a block of a day.
         file("health", "data/health-days.toml", d.join("health-days.toml"), Shape::Toml(&PLAIN_RULES)),
@@ -2508,6 +2535,12 @@ struct Memory {
     /// older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     notices_open: bool,
+    /// The persons' store (`PERSONS`) travelled from here once every device
+    /// said it has it (`persons_shared`): from then on it stays in this
+    /// device's exchanges, as `movements_open` keeps the money movements.
+    /// Missing: not yet. An older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    persons_open: bool,
     /// How far each other computer's records were read: its round and the bytes read in it.
     #[serde(default)]
     read: BTreeMap<String, (u32, u64)>,
@@ -5393,9 +5426,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if sealed == Some(true) {
         memory.seal_salt = salt;
     }
-    // Your own time around meetings, the money movements' store and the notices' words: each left
-    // out until every device has its store (`own_time_shared`, `movements_shared`, `notices_shared`),
-    // then kept in for good (`Memory::own_time_open`, `Memory::movements_open`, `Memory::notices_open`).
+    // Your own time around meetings, the money movements' store, the notices' words and the persons'
+    // store: each left out until every device has its store (`own_time_shared`, `movements_shared`,
+    // `notices_shared`, `persons_shared`), then kept in for good (`Memory::own_time_open`,
+    // `Memory::movements_open`, `Memory::notices_open`, `Memory::persons_open`).
     let gated: Vec<Store>;
     let own_time = stores.iter().any(|s| s.name == OWN_TIME);
     if own_time && !memory.own_time_open && own_time_shared(sharing, &memory, now_ms) {
@@ -5409,7 +5443,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if notices && !memory.notices_open && notices_shared(sharing, &memory, now_ms) {
         memory.notices_open = true;
     }
-    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open);
+    let persons = stores.iter().any(|s| s.name == PERSONS);
+    if persons && !memory.persons_open && persons_shared(sharing, &memory, now_ms) {
+        memory.persons_open = true;
+    }
+    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open);
     let stores: &[Store] = if stores.iter().any(left_out) {
         gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
         &gated
