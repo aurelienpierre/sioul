@@ -326,10 +326,20 @@ Item {
                     // As wide as its longest choice ("Toutes les catégories" was cut),
                     // within its line: on a phone, the line but the settings' button.
                     implicitContentWidthPolicy: ComboBox.WidestText
-                    width: Math.min(Math.max(page.narrow ? page.halfFlow : 170, implicitWidth), page.narrow ? viewsFlow.width - tasksSettings.width - viewsFlow.spacing : 280)
+                    width: Math.min(Math.max(page.narrow ? page.halfFlow : 170, implicitWidth), page.narrow ? viewsFlow.width - tasksSettings.width - (tasksAgendas.visible ? tasksAgendas.width + viewsFlow.spacing : 0) - viewsFlow.spacing : 280)
                     model: choices.map(c => c === "" ? page.sioul.text("task-filter-any-category") : page.theme.plain(c))
                     currentIndex: Math.max(0, choices.findIndex(c => c.toLowerCase() === page.categoryFilter.toLowerCase()))
                     onActivated: index => page.sioul.filterTasks(page.kindFilter, choices[index])
+                }
+                // Which lists every view shows (several agendas): the agenda's one filter, its lists here.
+                AgendaFilter {
+                    id: tasksAgendas
+
+                    sioul: page.sioul
+                    theme: page.theme
+                    shown: page.shown && page.shown.agendas ? page.shown.agendas : ({ chosen: false, groups: [] })
+                    narrow: page.narrow
+                    iconOnly: true
                 }
                 SettingsButton {
                     id: tasksSettings

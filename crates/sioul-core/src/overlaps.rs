@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Two events at once (docs/client.md, "Calendars"): found among
-//! the coming days' events, the time kept before and after each counted
-//! (`demands::Margins`): going from one to the other takes time too. Said
-//! on the Porch for today and above the agenda, until set aside for good;
-//! an event moved is a new question.
+//! Two events at once (docs/client.md, "Conflicts"): found among the coming
+//! days' events, the time kept before and after each counted
+//! (`demands::Margins`): going from one to the other takes time too. A
+//! conflict is one person in two places (`conflicts`): the events that need
+//! you, and the exceptions of Agenda ⚙'s matrix (`agendas::Matrix`). It is
+//! shown where you look (side by side in the timeline, a sentence in the
+//! event's card), never listed nor counted; one that someone else's change
+//! made is said once, at an admin window (`Notices`). Set aside for good, it
+//! is said no more; an event moved is a new question.
 
 use crate::agenda::Occurrence;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Two events that overlap, or follow each other closer than a time you
@@ -29,6 +33,9 @@ pub struct Overlap {
     /// "before" (the second's own Before), "setting" (Settings ▸ Agenda,
     /// Time kept between two events); "" when they overlap.
     pub source: String,
+    /// One of them is tentative: busy tentatively (RFC 4791 §7.10's BUSY-TENTATIVE).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub tentative: bool,
 }
 
 impl Overlap {
@@ -47,7 +54,31 @@ impl Overlap {
 /// set it), the longest of the three, never added. No other time is ever
 /// put between two events: none from places, the plan or a default.
 pub fn overlaps(events: &[Occurrence], between: u32) -> Vec<Overlap> {
-    let mut timed: Vec<&Occurrence> = events.iter().filter(|e| !e.cancelled && !e.all_day && e.end > e.start).collect();
+    pairs(events.iter().filter(|e| !e.cancelled && !e.all_day && e.end > e.start).collect(), between)
+}
+
+/// Whether an event takes time, for conflicts (research on several agendas,
+/// §5.1; CalDAV's own table of busy time, RFC 4791 §7.10): opaque (no TRANSP,
+/// or OPAQUE), not cancelled, not declined by you; a whole day only when its
+/// file says OPAQUE, as the large calendars make whole days free; none of a
+/// calendar transparent as a whole (`Occurrence::transparent`). Tentative
+/// takes time, tentatively (`Overlap::tentative`).
+pub fn takes_time(event: &Occurrence) -> bool {
+    !event.cancelled && !event.declined && !event.transparent && event.end > event.start && (!event.all_day || event.opaque)
+}
+
+/// The conflicts among `events`: one person in two places (§5.2). Two events
+/// that take time (`takes_time`) and overlap, or follow closer than the time
+/// kept around them ("tight": their margins alone overlap, never "at the same
+/// time"), compared as the matrix says (`agendas::Matrix::compares`: both
+/// need you, unless you said otherwise of their agendas' pair). What may be
+/// done of each is the caller's: none is moved here.
+pub fn conflicts(events: &[Occurrence], between: u32, matrix: &crate::agendas::Matrix) -> Vec<Overlap> {
+    pairs(events.iter().filter(|e| takes_time(e)).collect(), between).into_iter().filter(|o| matrix.compares(&o.first, &o.second)).collect()
+}
+
+/// The pairs of `timed` that overlap or follow too close, each once, the earlier first.
+fn pairs(mut timed: Vec<&Occurrence>, between: u32) -> Vec<Overlap> {
     timed.sort_by(|a, b| (a.start, &a.uid).cmp(&(b.start, &b.uid)));
     let mut out = Vec::new();
     for (i, first) in timed.iter().enumerate() {
@@ -64,14 +95,15 @@ pub fn overlaps(events: &[Occurrence], between: u32) -> Vec<Overlap> {
             // Sorted by start: the second starts at or after the first.
             let key = format!("{}@{}|{}@{}", first.uid, first.start, second.uid, second.start);
             let gap = (second.start - first.end).div_euclid(60);
+            let tentative = first.tentative || second.tentative;
             if second.start < first.end {
-                out.push(Overlap { key, first: (*first).clone(), second: (*second).clone(), gap, needed: 0, source: String::new() });
+                out.push(Overlap { key, first: (*first).clone(), second: (*second).clone(), gap, needed: 0, source: String::new(), tentative });
                 continue;
             }
             let kept = [(first.margins.after, "after"), (second.margins.before, "before"), (between, "setting")];
             let Some((needed, source)) = kept.into_iter().filter(|(m, _)| *m > 0).max_by_key(|(m, _)| *m) else { continue };
             if second.start - first.end < i64::from(needed) * 60 {
-                out.push(Overlap { key, first: (*first).clone(), second: (*second).clone(), gap, needed: i64::from(needed), source: source.to_string() });
+                out.push(Overlap { key, first: (*first).clone(), second: (*second).clone(), gap, needed: i64::from(needed), source: source.to_string(), tentative });
             }
         }
     }
@@ -184,6 +216,113 @@ impl SetAside {
     }
 }
 
+/// The conflicts this device has seen, and those someone else's change made,
+/// to say once (research on several agendas, §5.3): a conflict you come upon
+/// while looking, or made yourself, is never said; one made when another
+/// person moved or added an event (a child's event you take, moved by
+/// another parent; an invitation its organizer moved) is said once, as a
+/// notice of the Porch's kind, when its area is in view (an admin window;
+/// never in the evening for work matters). Kept in
+/// `$XDG_STATE_HOME/sioul/conflicts.toml`, this device's own.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notices {
+    /// When this device first looked (Unix seconds): what was there then is no news.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<i64>,
+    /// Each event looked at, by UID, where it started then: what moved since is a change.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub starts: BTreeMap<String, i64>,
+    /// The conflicts there at the last look, by key (`Overlap::key`).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub seen: BTreeSet<String>,
+    /// Those someone else's change made, to say once: key → when found.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub due: BTreeMap<String, i64>,
+    /// Those said (shown once, or answered): key → when.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub said: BTreeMap<String, i64>,
+}
+
+/// Whether an event's changes may be another person's: an event of an agenda
+/// not yours (a child's, another's), or a meeting with others (its
+/// organizer moves it). Your own plain events change by your hand alone, on
+/// any of your devices.
+pub fn changed_by_others(event: &Occurrence) -> bool {
+    event.theirs || event.with_others
+}
+
+impl Notices {
+    pub fn default_path() -> PathBuf {
+        crate::config::state_dir().join("conflicts.toml")
+    }
+
+    pub fn load(path: &Path) -> Notices {
+        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    pub fn save(&self, path: &Path) -> Result<(), String> {
+        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(fail)?;
+        }
+        let text = toml::to_string(self).map_err(|e| e.to_string())?;
+        crate::filelock::replace(path, text.as_bytes()).map_err(fail)
+    }
+
+    /// A look at the conflicts of now, among `events` (those read, whose
+    /// starts it keeps): a conflict not there at the last look, one of whose
+    /// events moved or came since, each of them so being another's
+    /// (`changed_by_others`), is due; a conflict you made (your own event
+    /// moved onto another), or that came because you answered an invitation
+    /// (nothing moved), is not. The first look takes everything as it is.
+    /// Conflicts gone leave what was said of them. Whether anything changed.
+    pub fn look(&mut self, events: &[Occurrence], conflicts: &[Overlap], now: i64) -> bool {
+        let before = self.clone();
+        let first = self.since.is_none();
+        self.since.get_or_insert(now);
+        let keys: BTreeSet<String> = conflicts.iter().map(|o| o.key.clone()).collect();
+        if !first {
+            for o in conflicts.iter().filter(|o| !self.seen.contains(&o.key) && !self.said.contains_key(&o.key)) {
+                let changed: Vec<&Occurrence> = [&o.first, &o.second].into_iter().filter(|e| self.starts.get(&e.uid) != Some(&e.start)).collect();
+                if !changed.is_empty() && changed.iter().all(|e| changed_by_others(e)) {
+                    self.due.entry(o.key.clone()).or_insert(now);
+                }
+            }
+        }
+        self.due.retain(|key, _| keys.contains(key));
+        self.said.retain(|key, _| keys.contains(key));
+        self.seen = keys;
+        // Each event's start, as read now; one out of the read keeps its last for a fortnight of looks.
+        for e in events {
+            self.starts.insert(e.uid.clone(), e.start);
+        }
+        let read: BTreeSet<&str> = events.iter().map(|e| e.uid.as_str()).collect();
+        let horizon = now - 14 * 86_400;
+        self.starts.retain(|uid, start| read.contains(uid.as_str()) || *start > horizon);
+        *self != before
+    }
+
+    /// The conflicts to say now, of `conflicts`: due, not said, not set aside,
+    /// not over, and their area in view now (`areas::in_view`): a work matter
+    /// (one of them of a work agenda) in work's time, any other in admin's.
+    pub fn to_say<'a>(&self, conflicts: &'a [Overlap], aside: &SetAside, now: i64, time: crate::areas::Time, week: crate::areas::Week) -> Vec<&'a Overlap> {
+        conflicts
+            .iter()
+            .filter(|o| self.due.contains_key(&o.key) && !self.said.contains_key(&o.key) && !aside.holds(o) && o.first.end.max(o.second.end) > now)
+            .filter(|o| {
+                let area = if o.first.work || o.second.work { crate::areas::Area::WORK } else { crate::areas::Area::ADMIN };
+                crate::areas::in_view(area, time, week)
+            })
+            .collect()
+    }
+
+    /// A conflict said, or answered: never said again.
+    pub fn said_now(&mut self, key: &str, now: i64) {
+        self.said.insert(key.to_string(), now);
+        self.due.remove(key);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +330,87 @@ mod tests {
 
     fn event(uid: &str, start: i64, end: i64, margins: Margins) -> Occurrence {
         Occurrence { uid: uid.into(), key: format!("{uid}.ics"), summary: uid.into(), start, end, margins, ..Occurrence::default() }
+    }
+
+    /// A conflict is said once when someone else's change made it: an
+    /// invitation its organizer moved onto your meeting is due, said in an
+    /// admin window, never again once said; the first look, your own event
+    /// moved onto another, or an invitation you accepted (nothing moved) is
+    /// no news; a work matter waits for work's time.
+    #[test]
+    fn a_conflict_someone_else_made_is_said_once_in_its_hours() {
+        use crate::areas::{Time, Week};
+        let none = Margins::default();
+        let matrix = crate::agendas::Matrix::default();
+        let meeting = Occurrence { agenda: "a/home".into(), ..event("meeting", 36_000, 39_600, none) };
+        let invited = |start: i64, accepted: bool| Occurrence { with_others: true, invited: true, accepted, agenda: "a/home".into(), ..event("invited", start, start + 3_600, none) };
+        let week = Week { work_hours: true, admin_hours: true, meals: false, sleep: false };
+        let look = |notices: &mut Notices, events: &[Occurrence], now: i64| {
+            let found = conflicts(events, 0, &matrix);
+            notices.look(events, &found, now);
+            found
+        };
+        // First look: the invitation elsewhere, then its organizer moves it onto the meeting.
+        let mut notices = Notices::default();
+        assert!(look(&mut notices, &[meeting.clone(), invited(50_000, true)], 1_000).is_empty());
+        let found = look(&mut notices, &[meeting.clone(), invited(37_000, true)], 2_000);
+        assert_eq!(found.len(), 1);
+        assert!(notices.due.contains_key(&found[0].key), "made by its organizer's change");
+        let aside = SetAside::default();
+        assert!(notices.to_say(&found, &aside, 2_000, Time::Leisure, week).is_empty(), "never in the evening");
+        assert_eq!(notices.to_say(&found, &aside, 2_000, Time::Admin, week).len(), 1, "at an admin window");
+        notices.said_now(&found[0].key, 2_100);
+        look(&mut notices, &[meeting.clone(), invited(37_000, true)], 2_200);
+        assert!(notices.to_say(&found, &aside, 2_200, Time::Admin, week).is_empty(), "said once");
+        // A work matter: in work's time alone.
+        let work = Occurrence { work: true, ..meeting.clone() };
+        let mut notices = Notices::default();
+        look(&mut notices, &[work.clone(), invited(50_000, true)], 1_000);
+        let found = look(&mut notices, &[work.clone(), invited(37_000, true)], 2_000);
+        assert!(notices.to_say(&found, &aside, 2_000, Time::Admin, week).is_empty() && notices.to_say(&found, &aside, 2_000, Time::Work, week).len() == 1);
+        // Your own event moved onto the invitation: you made it.
+        let mut notices = Notices::default();
+        look(&mut notices, &[meeting.clone(), invited(50_000, true)], 1_000);
+        let mine = Occurrence { start: 50_500, end: 52_000, ..meeting.clone() };
+        let found = look(&mut notices, &[mine, invited(50_000, true)], 2_000);
+        assert_eq!(found.len(), 1);
+        assert!(notices.due.is_empty(), "your own move is no news");
+        // An invitation you accept onto your meeting: nothing moved, no news.
+        let mut notices = Notices::default();
+        assert!(look(&mut notices, &[meeting.clone(), invited(37_000, false)], 1_000).is_empty(), "not accepted: it needs nobody");
+        let found = look(&mut notices, &[meeting.clone(), invited(37_000, true)], 2_000);
+        assert_eq!(found.len(), 1);
+        assert!(notices.due.is_empty());
+        // Set aside ("Keep both"): never said either.
+        let mut notices = Notices::default();
+        look(&mut notices, &[meeting.clone(), invited(50_000, true)], 1_000);
+        let found = look(&mut notices, &[meeting.clone(), invited(37_000, true)], 2_000);
+        let mut kept = SetAside::default();
+        kept.set(&found[0].key);
+        assert!(notices.to_say(&found, &kept, 2_000, Time::Admin, week).is_empty());
+    }
+
+    /// What takes time (§5.1): opaque, not cancelled, not declined; a whole
+    /// day only when it says OPAQUE; a calendar transparent as a whole
+    /// none; tentative takes time, tentatively. Margins alone are tight.
+    #[test]
+    fn what_takes_time_and_what_is_tight() {
+        let none = Margins::default();
+        let matrix = crate::agendas::Matrix::default();
+        let at = |uid: &str, start: i64, end: i64| event(uid, start, end, none);
+        let day = Occurrence { all_day: true, ..at("day", 0, 86_400) };
+        let busy_day = Occurrence { opaque: true, ..day.clone() };
+        let meeting = at("meeting", 36_000, 39_600);
+        let count = |events: &[Occurrence]| conflicts(events, 0, &matrix).len();
+        assert_eq!(count(&[day.clone(), meeting.clone()]), 0, "a whole day is free");
+        assert_eq!(count(&[busy_day, meeting.clone()]), 1, "unless it says OPAQUE");
+        for free in [Occurrence { transparent: true, ..at("free", 36_000, 39_600) }, Occurrence { cancelled: true, ..at("gone", 36_000, 39_600) }, Occurrence { declined: true, ..at("no", 36_000, 39_600) }] {
+            assert_eq!(count(&[free.clone(), meeting.clone()]), 0, "{}", free.uid);
+        }
+        let maybe = conflicts(&[Occurrence { tentative: true, ..at("maybe", 37_000, 38_000) }, meeting.clone()], 0, &matrix);
+        assert!(maybe.len() == 1 && maybe[0].tentative && maybe[0].at_once());
+        let tight = conflicts(&[meeting.clone(), Occurrence { margins: Margins { before: 30, after: 0 }, ..at("next", 40_200, 42_000) }], 0, &matrix);
+        assert!(tight.len() == 1 && !tight[0].at_once(), "their margins alone overlap: tight");
     }
 
     /// A leg and its appointment are one outing (part E): the bus 15 minutes

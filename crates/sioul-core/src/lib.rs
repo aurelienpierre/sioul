@@ -147,6 +147,7 @@
 //!
 //! - [`contacts`]: contacts, one vCard per person.
 //! - [`agenda`]: calendars: events from iCalendar files, repeating ones expanded.
+//! - [`agendas`]: several agendas: whose each one is, when it reaches you, what you may do with it, which warn of overlaps.
 //! - [`agentwrites`]: what an AI agent changed, said in the window with Undo.
 //! - [`appointments`]: a task made an appointment, an appointment made a task, as the person says.
 //! - [`vdir`]: address books and calendars on disk: one folder per collection, one file per item.
@@ -177,6 +178,7 @@
 
 pub mod accounts;
 pub mod agenda;
+pub mod agendas;
 pub mod anchors;
 pub mod agentwrites;
 pub mod appointments;

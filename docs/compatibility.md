@@ -66,6 +66,7 @@ Code: `crates/sioul-sync/src/dav.rs`, a small client on `ureq` and `roxmltree`; 
 | PROPFIND Depth 1: `resourcetype`, `displayname`, `getetag` | RFC 4918 | listing collections and items | — |
 | `current-user-privilege-set` | RFC 3744 §5.4 | collections that can only be read (none of `write`, `write-content`, `all`, `bind`) | taken as writable |
 | `supported-calendar-component-set` | RFC 4791 §5.2.3 | which calendars hold tasks (VTODO) | a calendar that says nothing is offered for events and tasks |
+| `schedule-calendar-transp` | RFC 6638 §9.1 | a calendar that takes none of your time as a whole (`transparent`): its events hold no time and make no conflict ([client.md](client.md#conflicts)) | opaque, as the RFC has it |
 | `calendar-color` | Apple's namespace, `http://apple.com/ns/ical/` | a calendar's colour | none |
 | `getctag` | CalendarServer's namespace | a collection unchanged since the last round is not compared | its items' tags are compared each round |
 | REPORT `sync-collection`, `sync-token` | RFC 6578 | only what changed | every item's `getetag` (PROPFIND Depth 1), compared with what is known: slower |

@@ -154,6 +154,8 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
 
 Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **Toutes les catégories**, ne montrent que les tâches d’un projet, d’un type ou d’une catégorie, dans chaque vue, Maintenant compris : « le prochain appel ». Le plan reste entier : un appel qui attend un message attend toujours. Sioul se souvient de vos choix.
 
+**Agendas**, à côté, est le filtre de l’agenda lui-même, ses listes de tâches ici ([Agenda](agenda.md#several-agendas)) : une liste qu’il laisse de côté, une liste de travail le soir ou une que vous avez décochée, garde ses tâches hors de chaque vue, Maintenant compris, le plan entier. Ce que vous cochez tient jusqu’à ce que vos heures de travail changent. Une liste que vous lisez seulement reste telle quelle : ses tâches s’ouvrent pour être lues.
+
 ## Une tâche, ouverte {#a-task-open}
 
 Une tâche s’ouvre dans sa carte à droite, à côté de la liste (sur un téléphone, elle prend la page), depuis n’importe quelle vue et depuis l’[agenda](agenda.md) : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.

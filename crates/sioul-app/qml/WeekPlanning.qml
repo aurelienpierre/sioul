@@ -44,6 +44,8 @@ ColumnLayout {
     required property var locale
     // The days shown (the agenda's JSON, version 3), and the hours they show.
     property var days: []
+    // Conflicting pairs of the days (`conflicts`): {a, b, tight}, each a row, a bracket between them.
+    property var brackets: []
     property var frame: ({ from: 7 * 60, to: 22 * 60 })
     // Today's doses as the Health job last read them (`doseMarks`, parsed),
     // when it read them (`doseReadAt`), and when Sioul came back on the screen.
@@ -244,6 +246,8 @@ ColumnLayout {
             datedKind: src.type === "dated" ? src.kind || "" : "",
             cancelled: detail.cancelled === true,
             tentative: detail.tentative === true,
+            // A busy time of an agenda for its availability only: a quiet block, its agenda's name.
+            busy: detail.busy === true,
             readOnly: detail.read_only === true,
             withOthers: detail.with_others === true,
             location: detail.location || "",
@@ -450,6 +454,16 @@ ColumnLayout {
                     doses.push(planning.rowOf(placed, day, i, ""))
         }
         const marks = planning.marksOf(doses)
+        // Conflicts (several agendas): two things of a day joined by a thin bracket, both drawn.
+        const joined = []
+        for (let i = 0; i < days.length; i++)
+            for (const pair of days[i].conflicts || []) {
+                const a = rows.find(r => r.day === i && r.itemId === pair.a)
+                const b = rows.find(r => r.day === i && r.itemId === pair.b)
+                if (a && b)
+                    joined.push({ a: a, b: b, tight: pair.tight === true })
+            }
+        planning.brackets = planning.listed ? [] : joined
         planning.diff(daysModel, dayRows)
         planning.diff(things, planning.listed ? [] : rows)
         planning.diff(listRows, planning.listed ? planning.listOf(days, rows, marks) : [])
@@ -1484,6 +1498,7 @@ ColumnLayout {
                     required property bool ends
                     required property bool cancelled
                     required property bool tentative
+                    required property bool busy
                     required property string location
                     required property string list
                     required property string date
@@ -1560,14 +1575,14 @@ ColumnLayout {
                         width: parent.width - (card.isNeed ? 2 : 0)
                         height: card.isNight ? parent.height - y : Math.max(card.isNeed ? 0 : planning.cardLeast, Math.min(parent.height, card.properBottom) - y)
                         radius: asCard ? 4 : 0
-                        // The plan's proposal outlined, never a promise; the next one filled.
-                        color: card.isNight ? planning.tint(card.hue, 0.12) : card.isNeed ? planning.tint(card.hue, card.tone === "quiet" ? 0.14 : 0.28) : card.isBand ? "transparent" : card.isStep && !card.pinned ? (card.comingNext ? planning.tint(planning.theme.accent, 0.16) : planning.theme.background) : card.chosen ? planning.theme.line : planning.theme.background
+                        // The plan's proposal outlined, never a promise; the next one filled; a busy time a quiet fill.
+                        color: card.busy ? planning.tint(card.hue, 0.16) : card.isNight ? planning.tint(card.hue, 0.12) : card.isNeed ? planning.tint(card.hue, card.tone === "quiet" ? 0.14 : 0.28) : card.isBand ? "transparent" : card.isStep && !card.pinned ? (card.comingNext ? planning.tint(planning.theme.accent, 0.16) : planning.theme.background) : card.chosen ? planning.theme.line : planning.theme.background
                         border.width: !asCard ? 0 : card.chosen || card.taken || card.underWay || card.focused ? 2 : 1
-                        border.color: card.taken || card.chosen || card.underWay || card.comingNext ? planning.theme.accent : card.focused ? planning.theme.focus : card.isBand || card.done ? planning.theme.line : card.kind === "event" || card.kind === "block" ? card.hue : planning.theme.accent
+                        border.color: card.taken || card.chosen || card.underWay || card.comingNext ? planning.theme.accent : card.focused ? planning.theme.focus : card.isBand || card.done || card.busy ? planning.theme.line : card.kind === "event" || card.kind === "block" ? card.hue : planning.theme.accent
                     }
-                    // Its calendar's colour, as a bar: an appointment, a block.
+                    // Its calendar's colour, as a bar: an appointment, a block (a busy time's fill says it).
                     Rectangle {
-                        visible: card.kind === "event" || card.kind === "block"
+                        visible: (card.kind === "event" || card.kind === "block") && !card.busy
                         y: Math.max(0, card.properTop)
                         width: 3
                         height: Math.max(0, card.properBottom - card.properTop)
@@ -1612,7 +1627,7 @@ ColumnLayout {
                             font.italic: card.isQuiet || card.isBand || (card.isLeg && card.certainty === "unconfirmed")
                             font.strikeout: card.cancelled
                             font.weight: card.underWay ? Font.DemiBold : Font.Normal
-                            color: card.isQuiet || card.isBand || card.done || card.isLeg ? planning.theme.muted : planning.theme.text
+                            color: card.isQuiet || card.isBand || card.done || card.isLeg || card.busy ? planning.theme.muted : planning.theme.text
                         }
                         Label {
                             readonly property string beside: card.location !== "" ? card.location : card.list !== "" ? planning.sioul.textWith("agenda-task-of", "list", card.list) : ""
@@ -1627,6 +1642,57 @@ ColumnLayout {
                             font.pixelSize: 11
                             color: planning.theme.muted
                         }
+                    }
+                }
+            }
+
+            // A conflict: a thin neutral bracket joining the pair (one person in two
+            // places, several agendas): across the gap of two cards side by side, else
+            // along their right edge from one to the other. No colour, no mark, no count.
+            Repeater {
+                model: planning.brackets
+
+                delegate: Item {
+                    id: bracket
+
+                    required property var modelData
+                    readonly property var first: planning.boxOf(bracket.modelData.a)
+                    readonly property var second: planning.boxOf(bracket.modelData.b)
+                    readonly property bool across: bracket.first.x + bracket.first.width <= bracket.second.x + 1 || bracket.second.x + bracket.second.width <= bracket.first.x + 1
+                    readonly property var leftBox: bracket.first.x <= bracket.second.x ? bracket.first : bracket.second
+                    readonly property var rightBox: bracket.first.x <= bracket.second.x ? bracket.second : bracket.first
+                    readonly property var upper: bracket.first.y <= bracket.second.y ? bracket.first : bracket.second
+                    readonly property var lower: bracket.first.y <= bracket.second.y ? bracket.second : bracket.first
+
+                    objectName: "conflictBracket"
+                    z: 4
+                    x: bracket.across ? bracket.leftBox.x + bracket.leftBox.width - 6 : Math.min(bracket.first.x + bracket.first.width, bracket.second.x + bracket.second.width) - 5
+                    y: bracket.across ? Math.max(bracket.first.y, bracket.second.y) + 6 : bracket.upper.y + bracket.upper.height / 2
+                    width: bracket.across ? Math.max(8, bracket.rightBox.x - bracket.x + 6) : 4
+                    height: bracket.across ? 4 : Math.max(8, bracket.lower.y + bracket.lower.height / 2 - bracket.y)
+                    opacity: 0.8
+
+                    // Its line, and its two short ends.
+                    Rectangle {
+                        x: bracket.across ? 0 : 3
+                        y: bracket.across ? 3 : 0
+                        width: bracket.across ? bracket.width : 1
+                        height: bracket.across ? 1 : bracket.height
+                        color: planning.theme.muted
+                    }
+                    Rectangle {
+                        x: 0
+                        y: 0
+                        width: bracket.across ? 1 : 4
+                        height: bracket.across ? 4 : 1
+                        color: planning.theme.muted
+                    }
+                    Rectangle {
+                        x: bracket.across ? bracket.width - 1 : 0
+                        y: bracket.across ? 0 : bracket.height - 1
+                        width: bracket.across ? 1 : 4
+                        height: bracket.across ? 4 : 1
+                        color: planning.theme.muted
                     }
                 }
             }

@@ -473,12 +473,15 @@ pub fn every_collection(kind: Kind) -> Vec<Collection> {
                     }
                 }
             }
+            // Read only by its server's rights, or by your word on its agenda (`agendas`):
+            // every view and every writer then leaves it as it is.
+            let chosen = kind == Kind::Calendars && crate::agendas::chosen_read_only(&account_id, &id);
             found.push(Collection {
                 kind,
                 account: account_id.clone(),
                 name: read("displayname").unwrap_or_else(|| id.clone()),
                 color: read("color"),
-                read_only: state.read_only,
+                read_only: state.read_only || chosen,
                 components: state.components.clone(),
                 id,
                 dir,
@@ -671,6 +674,11 @@ pub struct State {
     /// For calendars: what the server lets it hold ("VEVENT", "VTODO"); empty when it does not say.
     #[serde(default)]
     pub components: Vec<String>,
+    /// For calendars: its server says it takes none of your time as a whole
+    /// (RFC 6638 §9.1, `schedule-calendar-transp` transparent): its events
+    /// hold no time and make no conflict (`agendas`, `overlaps::takes_time`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub transparent: bool,
     /// Made here: the next sync creates it on the server, then sends its items.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending: bool,
@@ -795,37 +803,60 @@ fn calendar_marks(path: &Path) -> Option<(bool, Vec<String>)> {
     let rest = path.strip_prefix(Kind::Calendars.root()).ok()?;
     let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
     let [account, id, _file] = parts.as_slice() else { return None };
-    Some(marks_of(&state_path(account, Kind::Calendars, id)))
+    let marks = marks_of(&state_path(account, Kind::Calendars, id));
+    // Your word on its agenda counts as its server's: read only, or its availability only (`agendas`).
+    Some((marks.read_only || crate::agendas::chosen_read_only(account, id), marks.components))
+}
+
+/// Whether a calendar's server lets you read it only, as its last sync said
+/// (`State::read_only`), whatever you said of its agenda.
+pub fn server_read_only(account: &str, id: &str) -> bool {
+    marks_of(&state_path(account, Kind::Calendars, id)).read_only
+}
+
+/// Whether a calendar's server says it takes none of your time as a whole
+/// (`State::transparent`).
+pub fn calendar_transparent(account: &str, id: &str) -> bool {
+    marks_of(&state_path(account, Kind::Calendars, id)).transparent
+}
+
+/// What a calendar's sync state says of it as a whole.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Marks {
+    read_only: bool,
+    components: Vec<String>,
+    transparent: bool,
 }
 
 /// A calendar's read-only mark and what it may hold, from its sync state
 /// (`State::read_only`, `components`), parsed again only when that file
 /// changed (its time or its size), never at each write: the state holds a
 /// row per item its server has (review of 36002ea, can-wait 13).
-fn marks_of(state: &Path) -> (bool, Vec<String>) {
-    type Seen = std::collections::BTreeMap<PathBuf, (Option<std::time::SystemTime>, u64, bool, Vec<String>)>;
+fn marks_of(state: &Path) -> Marks {
+    type Seen = std::collections::BTreeMap<PathBuf, (Option<std::time::SystemTime>, u64, Marks)>;
     static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(std::collections::BTreeMap::new());
     let meta = std::fs::metadata(state).ok();
     let (when, size) = (meta.as_ref().and_then(|m| m.modified().ok()), meta.as_ref().map_or(0, std::fs::Metadata::len));
     let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((at, length, mark, components)) = seen.get(state)
+    if let Some((at, length, marks)) = seen.get(state)
         && (*at, *length) == (when, size)
     {
-        return (*mark, components.clone());
+        return marks.clone();
     }
     // A state that does not read now is never kept for its stamp (the check
     // of ef8c0ca, low 21): the marks last read meanwhile, read again next time.
     match std::fs::read_to_string(state).ok().and_then(|text| toml::from_str::<State>(&text).ok()) {
         Some(read) => {
-            seen.insert(state.to_path_buf(), (when, size, read.read_only, read.components.clone()));
-            (read.read_only, read.components)
+            let marks = Marks { read_only: read.read_only, components: read.components, transparent: read.transparent };
+            seen.insert(state.to_path_buf(), (when, size, marks.clone()));
+            marks
         }
         // No state at all: a calendar of this device's own, which no server makes read-only.
         None if meta.is_none() => {
-            seen.insert(state.to_path_buf(), (when, size, false, Vec::new()));
-            (false, Vec::new())
+            seen.insert(state.to_path_buf(), (when, size, Marks::default()));
+            Marks::default()
         }
-        None => seen.get(state).map_or((false, Vec::new()), |(_, _, mark, components)| (*mark, components.clone())),
+        None => seen.get(state).map_or_else(Marks::default, |(_, _, marks)| marks.clone()),
     }
 }
 
