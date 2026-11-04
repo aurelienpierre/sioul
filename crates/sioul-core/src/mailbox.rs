@@ -37,11 +37,18 @@
 //!   where it lies (its log); your provider's flag on a stranger's mail; what
 //!   you said is not spam (`$NotJunk`, the label log) wins. Spam rows show
 //!   under the Spam chip only (decision 7), with their quiet word.
-//! - **Calm** (§4.7): a resting address's rows leave the list, one line
-//!   saying so; mail whose time has not come (its cell ○ Later) shows
-//!   without its dot (decision 12); spam, forged and hostile mail never have
-//!   one; nothing is counted (decision 13).
+//! - **Calm** (§4.7): the window's filter (`Filter`, docs/areas.md, "A
+//!   page's filter by area") shows the addresses whose area is ticked, as
+//!   the hours say unless you ticked others (`hours_say`, `areafilter`),
+//!   and that are on; without it (an agent's), a resting address's rows
+//!   leave the list, one line saying so. Mail whose time has not come (its
+//!   cell ○ Later) shows without its dot (decision 12); spam, forged and
+//!   hostile mail never have one; nothing is counted (decision 13).
+//! - **Your word at once**: what you said of a message (Spam, Not spam)
+//!   while it waits for its Undo counts as said already (`World::waiting`):
+//!   its row changes kind at once.
 
+use crate::areas::Area;
 use crate::card::Card;
 use crate::config::Account;
 use crate::folders::{Folder, Role};
@@ -124,12 +131,66 @@ pub struct Ask {
     /// The list holds nothing yet: every page is new to it (the window's, `mail::MailboxPages`).
     #[serde(default)]
     pub fresh: bool,
+    /// The window's filter, its areas and addresses (`Filter`): then no address
+    /// rests and `shown_resting` is not read. None: an agent's, as before.
+    #[serde(default)]
+    pub filter: Option<Filter>,
 }
 
 impl Default for Ask {
     fn default() -> Ask {
-        Ask { chip: Chip::All, account: String::new(), windows: 1, query: String::new(), shown_resting: Vec::new(), rows: PAGE, fresh: false }
+        Ask { chip: Chip::All, account: String::new(), windows: 1, query: String::new(), shown_resting: Vec::new(), rows: PAGE, fresh: false, filter: None }
     }
+}
+
+/// Mail's filter, the window's alone (an agent's `mailbox` keeps its own
+/// rules): the areas ticked, as the hours say unless you ticked others
+/// (`hours_say`, `areafilter::AreaFilter`), and the addresses switched off.
+/// An address shows when it is on and its area meets the ticks (`area_of`);
+/// a message, when one of the addresses holding it shows.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Filter {
+    /// The areas ticked: "work+admin", "" for none.
+    #[serde(default, with = "area_text")]
+    pub areas: Area,
+    /// The addresses switched off, by id; every one is on unless said here.
+    #[serde(default)]
+    pub off: Vec<String>,
+}
+
+impl Filter {
+    /// Whether the filter shows an address's mail: on, and its area ticked.
+    pub fn shows(&self, account: &Account) -> bool {
+        !self.off.contains(&account.id) && area_of(account).meets(self.areas)
+    }
+}
+
+/// An area as text in a JSON or TOML: "work+admin"; "" (or words it does not know) for none.
+mod area_text {
+    use crate::areas::Area;
+
+    pub fn serialize<S: serde::Serializer>(area: &Area, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&area.id())
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Area, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Area::parse(&text).unwrap_or_default())
+    }
+}
+
+/// What an address is for, as its card says (Accounts, "What this address is
+/// for"); unsaid, work, as everywhere else: an address you did not classify
+/// never reaches your evenings (docs/areas.md).
+pub fn area_of(account: &Account) -> Area {
+    account.area.as_deref().and_then(Area::parse).unwrap_or(Area::WORK)
+}
+
+/// What Mail's filter ticks by itself now: what the hours bring
+/// (`areafilter::hours_say`), and nothing while you sleep or pause, when
+/// every address rests (docs/areas.md, "Sleep").
+pub fn hours_say(mode: &crate::quiet::Mode) -> Area {
+    if mode.sleeps() { Area::default() } else { crate::areafilter::hours_say(mode) }
 }
 
 /// An address as the mailbox takes it, ranked as Mail's column ranks them.
@@ -158,7 +219,7 @@ pub fn tints(ranked: &[&Account]) -> Vec<u8> {
 /// the line saying until when ("work@example.org rests until 09:00."; while
 /// you sleep, every address). The window's mailbox and the agents' read the same.
 pub fn addresses(config: &crate::config::Config, mode: &crate::quiet::Mode, now: &jiff::Zoned, tr: &Translator, folders: impl Fn(&str) -> Vec<Folder>) -> Vec<Address> {
-    use crate::areas::{Area, Time, in_view};
+    use crate::areas::{Time, in_view};
     let hours = (mode.time != Time::Any).then_some((mode.time, mode.week));
     let mut ranked: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
     ranked.sort_by_key(|a| a.priority);
@@ -176,7 +237,7 @@ pub fn addresses(config: &crate::config::Config, mode: &crate::quiet::Mode, now:
         .iter()
         .zip(tints)
         .map(|(account, tint)| {
-            let area = account.area.as_deref().and_then(Area::parse).unwrap_or(Area::WORK);
+            let area = area_of(account);
             let rests = hours.is_some_and(|(time, week)| time == Time::Sleep || !in_view(area, time, week));
             let resting = rests.then(|| {
                 if mode.sleeps() {
@@ -211,6 +272,10 @@ pub struct World {
     pub words: std::sync::Arc<crate::words::Words>,
     /// Your own domains, as the Porch has them (`Config::own_domains`): their ARC seals vouch here too.
     pub own_domains: Vec<String>,
+    /// What you said of a message while it waits for its Undo (the window's
+    /// Spam, Not spam, Junk, Not junk), by its file: said already for its
+    /// row, which changes kind at once; its file is where it was meanwhile.
+    pub waiting: BTreeMap<PathBuf, labels::Label>,
 }
 
 impl World {
@@ -229,6 +294,7 @@ impl World {
             assessments: crate::shield::AiCache::load_all(),
             words: crate::words::current(),
             own_domains: config.own_domains(),
+            waiting: BTreeMap::new(),
         }
     }
 }
@@ -474,6 +540,9 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
     let query = ask.query.trim().to_lowercase();
     let since = now - WINDOW_DAYS * 86_400 * i64::from(ask.windows.max(1));
     let mut older = false;
+    // The window's filter: the addresses it shows (every one without it). Their
+    // folders are all read all the same: a message one of them holds keeps every mark.
+    let passes: Vec<bool> = addresses.iter().map(|a| ask.filter.as_ref().is_none_or(|f| f.shows(&a.account))).collect();
     // Each folder's recent lines, kept in this process; a search reads them all.
     let mut looks: Vec<(usize, &Folder, mailcache::Recent)> = Vec::new();
     let (mut budget, mut indexing) = (fill, false);
@@ -487,7 +556,7 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
                 budget = budget.saturating_sub(recent.read);
             }
             indexing |= recent.waiting > 0;
-            older |= recent.older && folder.role != Role::Trash;
+            older |= recent.older && folder.role != Role::Trash && passes[i];
             looks.push((i, folder, recent));
         }
     }
@@ -497,7 +566,7 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         for (path, line) in recent.lines.iter() {
             let sent = mailcache::sent_at(line);
             if query.is_empty() && sent < since {
-                older |= folder.role != Role::Trash;
+                older |= folder.role != Role::Trash && passes[*i];
                 continue;
             }
             if !found(line, &query) {
@@ -540,13 +609,23 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         }
         let from_own = card.from_address.as_deref().is_some_and(|f| own.contains(&f.trim().to_ascii_lowercase()));
         let sent_copy = |c: &Copy| c.role == Role::Sent || (c.role == Role::All && from_own);
+        // What you just said, waiting for its Undo, is newer than anything kept: said already.
+        let waiting = copies.iter().find_map(|c| world.waiting.get(c.path).copied());
+        let said_spam = waiting == Some(labels::Label::Spam);
         // What you said wins: not spam, even where it lies in a Junk folder.
-        let said_ham = copies.iter().any(|c| c.flags.contains(maildir::NOT_JUNK)) || labels::said_ham_in(&world.said, &card);
+        let said_ham = match waiting {
+            Some(label) => label == labels::Label::Ham,
+            None => copies.iter().any(|c| c.flags.contains(maildir::NOT_JUNK)) || labels::said_ham_in(&world.said, &card),
+        };
         let received_copy = |c: &Copy| (matches!(c.role, Role::Inbox | Role::Other | Role::Archive | Role::All) || (c.role == Role::Junk && said_ham)) && !sent_copy(c);
         let stranger = !knows(world, &card);
         let spam_word = |c: &Copy| -> Option<String> {
             if said_ham {
                 return None;
+            }
+            // Said spam just now: on its way into the junk.
+            if said_spam {
+                return Some(tr.text("mailbox-spam-junk", None));
             }
             let id = c.line.message_id.as_deref().map(crate::mailindex::bare_id);
             let account = &addresses[c.address].account.id;
@@ -569,7 +648,7 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         let spam_words: Vec<Option<String>> = copies.iter().map(|c| spam_word(c)).collect();
         // Flagged probably not spam where it lies (the matrix's "Flag only" for ham): its word,
         // as the Porch's review queue says it, on a row that stays in All (decided 3 November 2026).
-        let flag_word = (!said_ham)
+        let flag_word = (!said_ham && !said_spam)
             .then(|| {
                 copies.iter().find_map(|c| {
                     let origin = maildir::origin_of(&c.path)?;
@@ -591,10 +670,14 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         }) else {
             continue;
         };
-        // Its addresses, ranked; a resting one's rows leave the list, unless another holds it or you asked.
+        // Its addresses, ranked. With the window's filter, it shows when one of them
+        // does; else a resting one's rows leave the list, unless another holds it or you asked.
         let mut held: Vec<usize> = copies.iter().map(|c| c.address).collect::<BTreeSet<usize>>().into_iter().collect();
         held.sort_unstable();
-        let rests = held.iter().all(|i| addresses[*i].resting.is_some() && !ask.shown_resting.contains(&addresses[*i].account.id));
+        let rests = match ask.filter {
+            Some(_) => held.iter().all(|i| !passes[*i]),
+            None => held.iter().all(|i| addresses[*i].resting.is_some() && !ask.shown_resting.contains(&addresses[*i].account.id)),
+        };
         if rests || (!ask.account.is_empty() && !held.iter().any(|i| addresses[*i].account.id == ask.account)) {
             continue;
         }
@@ -654,8 +737,7 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             let unproven = !matches!(trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain()).0, Trust::Verified);
             let who = if unproven { Who::Stranger } else { world.senders.who_of(&card) };
             let always = !unproven && card.from_address.as_deref().is_some_and(|a| world.always.admits_address(a));
-            let area = address.account.area.as_deref().and_then(crate::areas::Area::parse).unwrap_or(crate::areas::Area::WORK);
-            world.attention.mail_from(who, always, from_own, area, &world.now).shown
+            world.attention.mail_from(who, always, from_own, area_of(&address.account), &world.now).shown
         };
         let at = jiff::Timestamp::from_second(first.sent).map(|t| t.to_zoned(zone.clone())).unwrap_or_else(|_| jiff::Timestamp::UNIX_EPOCH.to_zoned(zone.clone()));
         let mut subject = item.subject.clone();
@@ -700,7 +782,9 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             sent,
         });
     }
-    let sentence = if !rows.is_empty() {
+    // The filter shows no address: its own state says so, nothing more.
+    let none_shown = ask.filter.is_some() && !passes.contains(&true);
+    let sentence = if !rows.is_empty() || none_shown {
         String::new()
     } else if !query.is_empty() {
         let mut args = i18n::args();
@@ -713,7 +797,12 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
     };
     Page {
         rows,
-        resting: addresses.iter().filter(|a| !ask.shown_resting.contains(&a.account.id)).filter_map(|a| Some(Resting { account: a.account.id.clone(), line: a.resting.clone()? })).collect(),
+        // The window's filter says it all: no resting line beside it.
+        resting: if ask.filter.is_some() {
+            Vec::new()
+        } else {
+            addresses.iter().filter(|a| !ask.shown_resting.contains(&a.account.id)).filter_map(|a| Some(Resting { account: a.account.id.clone(), line: a.resting.clone()? })).collect()
+        },
         addresses: if several { (0..addresses.len()).map(mark).collect() } else { Vec::new() },
         earlier: query.is_empty() && older,
         more,
@@ -829,6 +918,7 @@ mod tests {
             assessments: BTreeMap::new(),
             words: crate::words::current(),
             own_domains: Vec::new(),
+            waiting: BTreeMap::new(),
         }
     }
 
@@ -1153,5 +1243,131 @@ mod tests {
         assert_eq!(both.rows[..PAGE].iter().map(|r| &r.key).collect::<Vec<_>>(), first.rows.iter().map(|r| &r.key).collect::<Vec<_>>(), "the first page as it was");
         let found = stand.page(&world, &Ask { query: "note".into(), ..Ask::default() }, &BTreeSet::new());
         assert_eq!((found.rows.len(), found.more, found.earlier), (PAGE, true, false));
+    }
+
+    /// The window's filter (docs/areas.md, "A page's filter by area"): what
+    /// shows is the mail of the addresses that are on and whose area is
+    /// ticked; an address without an area is work's, as everywhere; a message
+    /// two addresses hold shows when one of them does, with both marks; no
+    /// resting line beside the filter, whatever rests; "Earlier messages" and
+    /// the list's sentence only for what it shows.
+    #[test]
+    fn the_filter_shows_the_addresses_ticked_and_on() {
+        let mut stand = Stand::new("filter");
+        // A third address, its area unsaid.
+        let id = format!("plain-filter-{}", std::process::id());
+        let mut plain = Account::imap(&id, "noa@plain.example.org", "imap.example.org", 993, crate::config::Security::Tls, None);
+        plain.maildir = Some(stand.base.join(&id).display().to_string());
+        for sub in ["tmp", "new", "cur"] {
+            std::fs::create_dir_all(plain.maildir_path().join(sub)).unwrap();
+        }
+        stand.addresses.push(Address { account: plain, folders: vec![folder("INBOX", Some("/"), Some(Role::Inbox))], trusted: vec!["mx.example.org".into()], tint: 2, resting: None });
+        let at = NOW - 3600;
+        stand.put(0, "INBOX", 1, "work@example.org", "Iris <iris@client.example>", "noa@work.example.org", "Work mail", at, at, "S", "", "Plans.");
+        stand.put(1, "INBOX", 2, "home@example.org", "Ana <ana@example.org>", "noa@home.example.org", "Home mail", at - 60, at - 60, "S", "", "Hello.");
+        stand.put(2, "INBOX", 3, "plain@example.org", "Ben <ben@example.org>", "noa@plain.example.org", "Unsaid mail", at - 120, at - 120, "S", "", "Hi.");
+        stand.put(0, "INBOX", 4, "both@example.org", "List <news@list.example.org>", "noa@work.example.org", "On both", at - 180, at - 180, "S", "List-Id: <news.list.example.org>\r\n", "News.");
+        stand.put(1, "INBOX", 5, "both@example.org", "List <news@list.example.org>", "noa@home.example.org", "On both", at - 180, at - 170, "S", "List-Id: <news.list.example.org>\r\n", "News.");
+        stand.put(0, "Archive", 6, "old@example.org", "Iris <iris@client.example>", "noa@work.example.org", "Three weeks ago", NOW - 21 * 86_400, NOW - 21 * 86_400, "S", "", "…");
+        // Work rests now (the evening): beside the filter, it says nothing.
+        stand.addresses[0].resting = Some("noa@work.example.org rests until 09:00.".into());
+        let world = world_at(crate::areas::Time::Leisure, "", "");
+        let (work, home, plain) = (stand.addresses[0].account.id.clone(), stand.addresses[1].account.id.clone(), stand.addresses[2].account.id.clone());
+        let with = |areas: Area, off: &[&String]| stand.page(&world, &Ask { filter: Some(Filter { areas, off: off.iter().map(|s| s.to_string()).collect() }), ..Ask::default() }, &BTreeSet::new());
+        let leisure = with(Area::LEISURE, &[]);
+        assert_eq!(subjects(&leisure), ["Home mail", "On both"]);
+        assert_eq!(row(&leisure, "On both").marks.len(), 2, "both marks, the hidden address's too");
+        assert!(leisure.resting.is_empty() && !leisure.earlier, "no resting line; nothing earlier of what shows");
+        let at_work = with(Area::WORK, &[]);
+        assert_eq!(subjects(&at_work), ["Work mail", "Unsaid mail", "On both"], "unsaid is work's; a resting address shows when ticked");
+        assert!(at_work.earlier && at_work.resting.is_empty());
+        assert_eq!(subjects(&with(Area::ADMIN, &[])), ["Home mail", "On both"]);
+        // The addresses, on or off, and the areas: both must say yes.
+        assert_eq!(subjects(&with(Area::ALL, &[&home])), ["Work mail", "Unsaid mail", "On both"]);
+        assert_eq!(subjects(&with(Area::WORK, &[&work])), ["Unsaid mail"]);
+        assert_eq!(subjects(&with(Area::LEISURE, &[&home])), Vec::<&str>::new());
+        // Nothing shown: no sentence, the filter's own state says it.
+        for nothing in [with(Area::default(), &[]), with(Area::ALL, &[&work, &home, &plain])] {
+            assert!(nothing.rows.is_empty() && nothing.sentence.is_empty() && !nothing.earlier, "{:?}", nothing.sentence);
+            assert_eq!(nothing.addresses.len(), 3, "the marks stay, to switch an address back on");
+        }
+        // Without it (an agent's): the resting line and the rule of before.
+        let agents = stand.page(&world, &Ask::default(), &BTreeSet::new());
+        assert_eq!(agents.resting.len(), 1);
+        assert!(!subjects(&agents).contains(&"Work mail"));
+        // Read from the window's ask as JSON: the areas as words.
+        let asked: Ask = serde_json::from_str(r#"{"chip":"all","filter":{"areas":"admin+leisure","off":["home"]}}"#).unwrap();
+        assert_eq!(asked.filter, Some(Filter { areas: Area::PERSONAL, off: vec!["home".into()] }));
+        let none: Ask = serde_json::from_str(r#"{"filter":{"areas":""}}"#).unwrap();
+        assert_eq!(none.filter, Some(Filter::default()));
+    }
+
+    /// Mail's filter ticks what the hours bring, and nothing while you sleep
+    /// or pause, when every address rests (docs/areas.md, "Sleep").
+    #[test]
+    fn mail_ticks_what_the_hours_bring_and_nothing_at_night() {
+        use crate::areas::{Time, Week};
+        use crate::quiet::{Mode, Reason};
+        let week = Week { work_hours: true, admin_hours: true, ..Week::default() };
+        let mode = |time, reason| Mode { quiet: time != Time::Work, time, week, reason, until: None, back: None, label: String::new() };
+        assert_eq!(hours_say(&mode(Time::Work, Reason::Working)), Area::WORK);
+        assert_eq!(hours_say(&mode(Time::Admin, Reason::AdminTime)), Area::ADMIN);
+        assert_eq!(hours_say(&mode(Time::Leisure, Reason::Evening)), Area::LEISURE);
+        assert_eq!(hours_say(&mode(Time::Meals, Reason::Meal)), Area::LEISURE);
+        assert_eq!(hours_say(&mode(Time::Sleep, Reason::Sleep)), Area::default());
+        assert_eq!(hours_say(&mode(Time::Sleep, Reason::Paused)), Area::default());
+        assert_eq!(hours_say(&Mode { week: Week::default(), ..mode(Time::Any, Reason::NoHours) }), Area::ALL);
+    }
+
+    /// Spam and Not spam (part 1 of 4 November 2026): while it waits for its
+    /// Undo, what you said counts at once (its file still where it was); once
+    /// done (the file in the junk or out of it, the label logged), the same.
+    /// Spam: under Spam only, "in the junk"; Not spam: received, its words
+    /// gone (your filter's flag, the junk's, "probably not spam").
+    #[test]
+    fn spam_and_not_spam_change_the_row_at_once_and_after() {
+        let stand = Stand::new("settle");
+        let at = NOW - 3600;
+        let account = stand.addresses[0].account.id.clone();
+        let plain = stand.put(0, "INBOX", 1, "plain@example.org", "Shop <news@shop.example>", "noa@work.example.org", "Plain", at, at, "", "", "News.");
+        let flagged = stand.put(0, "INBOX", 2, "flagged@example.org", "Ads <ads@shop.example>", "noa@work.example.org", "Flagged", at, at, "", "", "Buy.");
+        let junk = stand.put(0, "Junk", 3, "junk@example.org", "Club <club@club.example>", "noa@work.example.org", "In the junk", at, at, "", "", "Hi.");
+        let ham = stand.put(0, "INBOX", 4, "ham@example.org", "Shop <letters@shop.example>", "noa@work.example.org", "Probably fine", at, at, "", "", "News.");
+        let mut world = world_at(crate::areas::Time::Work, "", "");
+        let place = |path: &Path, id: &str, class| {
+            let origin = maildir::origin_of(path).unwrap();
+            labels::Moved { at, account: account.clone(), folder: "INBOX".into(), uidvalidity: origin.validity, uid: origin.uid, message_id: Some(id.into()), class }
+        };
+        world.flagged.push(place(&flagged, "flagged@example.org", crate::spam::Class::Spam));
+        world.flagged.push(place(&ham, "ham@example.org", crate::spam::Class::Ham));
+        let kinds = |world: &World, chip: Chip| -> BTreeMap<String, (Vec<&'static str>, String, String)> {
+            stand.page(world, &Ask { chip, ..Ask::default() }, &BTreeSet::new()).rows.into_iter().map(|r| (r.subject.clone(), (r.kinds.clone(), r.spam.clone(), r.flag.clone()))).collect()
+        };
+        let before = kinds(&world, Chip::All);
+        assert_eq!(before.keys().collect::<Vec<_>>(), ["Plain", "Probably fine"]);
+        assert_eq!(before["Probably fine"].2, "probably not spam");
+        // Said while waiting for the Undo: Spam on Plain, Not spam on the three others.
+        for (path, label) in [(&plain, labels::Label::Spam), (&flagged, labels::Label::Ham), (&junk, labels::Label::Ham), (&ham, labels::Label::Ham)] {
+            world.waiting.insert(path.clone(), label);
+        }
+        let waiting = kinds(&world, Chip::All);
+        assert_eq!(waiting.keys().collect::<Vec<_>>(), ["Flagged", "In the junk", "Probably fine"]);
+        assert!(waiting.values().all(|(k, spam, flag)| *k == ["received"] && spam.is_empty() && flag.is_empty()), "{waiting:?}");
+        let spam = kinds(&world, Chip::Spam);
+        assert_eq!(spam.into_iter().collect::<Vec<_>>(), [("Plain".to_string(), (vec!["spam"], "in the junk".to_string(), String::new()))]);
+        // Done: Plain moved into the junk, the labels in the log, nothing waiting.
+        world.waiting.clear();
+        let moved = stand.dir(0, "Junk").join("cur").join(format!("{}{}2,S", plain.file_name().unwrap().to_string_lossy(), maildir::INFO));
+        std::fs::rename(&plain, &moved).unwrap();
+        let said = |path: &Path, folder: &str, id: &str, source: labels::Source| {
+            let origin = maildir::origin_of(path).unwrap();
+            labels::Entry { at: at + 60, account: account.clone(), folder: folder.into(), uidvalidity: origin.validity, uid: origin.uid, message_id: Some(id.into()), label: source.label(), source }
+        };
+        world.said = vec![said(&moved, "INBOX", "plain@example.org", labels::Source::Junk), said(&flagged, "INBOX", "flagged@example.org", labels::Source::NotSpam), said(&ham, "INBOX", "ham@example.org", labels::Source::NotSpam)];
+        let junked = stand.put(0, "INBOX", 9, "junk@example.org", "Club <club@club.example>", "noa@work.example.org", "In the junk", at, at, "", "", "Hi.");
+        std::fs::remove_file(&junk).unwrap();
+        world.said.push(said(&junked, "Junk", "junk@example.org", labels::Source::NotJunk));
+        assert_eq!(kinds(&world, Chip::All), waiting, "the same once done");
+        assert_eq!(kinds(&world, Chip::Spam).keys().collect::<Vec<_>>(), ["Plain"]);
     }
 }

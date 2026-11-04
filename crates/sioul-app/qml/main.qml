@@ -1425,17 +1425,31 @@ SioulWindow {
                 () => window.close()
             ]
             // The mailbox (the unified mailbox's parts 4 and 5): "All addresses"
-            // as Mail opens, a resting address's line, a selection across two
-            // addresses, the Spam chip, a message opened and Back; on a phone
-            // (SIOUL_GRAB_PHONE), then again turned sideways. The objects under
-            // Mail counted at each (sioul-objects), what passes the window's edge said.
+            // as Mail opens, its filter unfolded (on a phone in the folders'
+            // sheet), every area ticked, a selection across two addresses, the
+            // Spam chip with Spam and Not spam, a row's menu, a message opened
+            // and Back; on a phone (SIOUL_GRAB_PHONE), then again turned sideways.
+            // The objects under Mail counted at each (sioul-objects), what passes
+            // the window's edge said.
             readonly property var mailboxSteps: [
                 () => window.page = 2,
                 () => {},
                 () => {},
                 () => grabber.saveCounted("mailbox", mailPage),
-                // The resting address's mail too, then the first message of each address chosen.
-                () => mailPage.showResting(""),
+                // A phone: the folders' sheet first, its filter and each address's box.
+                () => mailPage.foldersShown = window.phoneGrab,
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.saveCounted("mailbox-sheet", mailPage)
+                },
+                () => mailPage.unfoldAreas(),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("mailbox-filter"),
+                // Every area ticked (the resting address's mail too), then the first message of each address chosen.
+                () => mailPage.foldAreas(),
+                () => mailPage.tickAreas("work+admin+leisure"),
                 () => {},
                 () => {
                     mailPage.chooseAcross()
@@ -1448,6 +1462,10 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.saveCounted("mailbox-spam", mailPage),
+                () => mailPage.openRowMenu(0),
+                () => {},
+                () => grabber.saveWindow("mailbox-spam-menu"),
+                () => mailPage.closeRowMenu(),
                 () => mailPage.chooseChip("all"),
                 () => {},
                 () => mailPage.clickRow(0, mailPage.listItems[0].key, 0),

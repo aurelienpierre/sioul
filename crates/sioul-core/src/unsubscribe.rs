@@ -10,13 +10,18 @@
 //! to the list's address does it, sent as any message is; else only a web page
 //! can, and it opens in the browser.
 //!
-//! Nothing is contacted for mail set aside (forged, spam, a borrowed name, a
-//! blocked sender) or hostile, nor when nothing proves the address it names
-//! is the list's own: a valid signature of the domain shown in From (the
-//! message verified), or a valid signature covering `List-Unsubscribe` by the
-//! domain the address belongs to. A forged message could otherwise make Sioul
-//! post to, or write to, anyone. What was done is kept on this device
-//! (`Record`), so that a list is not asked twice and you can see it.
+//! Nothing is contacted for forged mail, a borrowed name, a blocked sender or
+//! hostile mail, nor when nothing proves the address it names is the list's
+//! own: a valid signature of the domain shown in From (the message verified),
+//! or a valid signature covering `List-Unsubscribe` by the domain the address
+//! belongs to. A forged message could otherwise make Sioul post to, or write
+//! to, anyone. Spam is a matter of proof (part 1 of 4 November 2026): from a
+//! verified sender, its list's way out is used whatever the verdict, yours
+//! or the filters' (someone gave your address without your consent to a
+//! sending service that keeps the rules); from an unverified one, never, as
+//! answering would tell whoever forged it that your address is read. What
+//! was done is kept on this device (`Record`), so that a list is not asked
+//! twice and you can see it.
 
 use crate::card::Card;
 use crate::headers::RawHeaders;
@@ -133,13 +138,17 @@ fn way(card: &Card, headers: &RawHeaders, values: &[&str], first: &str, trusted_
     if reasons.iter().any(|r| matches!(r, Reason::Impersonation { .. })) {
         return Err(Refusal::Borrowed);
     }
-    if reasons.iter().any(Reason::is_spam) || *lane == Lane::SetAside {
+    let verified = trust == Trust::Verified;
+    // Spam and a doubt, a matter of proof (part 1 of 4 November 2026): a verified
+    // sender's way out is used whatever the verdict. Unverified, spam is never
+    // answered, nor a doubt (decided 3 November 2026): either would tell whoever
+    // forged it that your address is read. "Not spam" brings the button back:
+    // said not spam, the message is protected, your filter no longer judges it
+    // (`porch::protected`).
+    if !verified && (reasons.iter().any(Reason::is_spam) || *lane == Lane::SetAside) {
         return Err(Refusal::Spam);
     }
-    // Maybe spam too (decided 3 November 2026): answering a doubt says your address is
-    // read as well. "Not spam" brings the button back: said not spam, the message is
-    // protected, and your filter no longer judges it (`porch::protected`).
-    if reasons.iter().any(|r| matches!(r, Reason::Unsure { .. })) {
+    if !verified && reasons.iter().any(|r| matches!(r, Reason::Unsure { .. })) {
         return Err(Refusal::Doubt);
     }
     if values.len() > 1 || headers.all("List-Unsubscribe-Post").count() > 1 {
@@ -148,7 +157,6 @@ fn way(card: &Card, headers: &RawHeaders, values: &[&str], first: &str, trusted_
     let uris = uris(first);
     let signed = signatures(headers, trusted_ids);
     let from = card.sender_domain().unwrap_or("").to_ascii_lowercase();
-    let verified = trust == Trust::Verified;
     // The address it names is its list's: the message is verified, or the
     // domain the address belongs to signed `List-Unsubscribe`.
     let proven = |domain: &str| verified || signed.iter().any(|s| s.covers("list-unsubscribe") && trust::aligned(&s.domain, domain));
@@ -180,6 +188,15 @@ fn way(card: &Card, headers: &RawHeaders, values: &[&str], first: &str, trusted_
         unproven = true;
     }
     Err(if unproven { Refusal::Unproven } else { Refusal::Unusable })
+}
+
+/// A message lying in a junk folder (yours or your provider's): from an
+/// unverified sender, refused as spam; a verified sender's way out stays,
+/// and the message stays where it is (part 1 of 4 November 2026).
+pub fn in_junk(offer: &mut Offer, trust: Trust) {
+    if trust != Trust::Verified {
+        offer.way = Err(Refusal::Spam);
+    }
 }
 
 /// The domain a `Way::Mail` writes to.
@@ -515,19 +532,23 @@ mod tests {
         let card = letter(list, "signer.example", "from:to:list-unsubscribe", "fail");
         let found = offer(&card, &ids, Trust::Unverified, &Lane::Filed, &[Reason::Newsletter]).unwrap();
         assert_eq!(found.way, Ok(Way::Mail { to: "club-leave@lists.signer.example".into(), subject: "unsubscribe".into(), body: "unsubscribe".into() }));
-        // Forged, spam, a borrowed name, blocked, hostile: never.
+        // Forged, a borrowed name, blocked, hostile: never, whoever sent it.
         let card = letter(&format!("{links}{POST}"), "letters.example", BOTH, "pass");
         for (lane, reasons, refusal) in [
             (Lane::SetAside, vec![Reason::Forged], Refusal::Forged),
-            (Lane::SetAside, vec![Reason::Spam { source: "rspamd", score: None }], Refusal::Spam),
-            (Lane::Review, vec![Reason::LearnedSpam { p: 0.97 }], Refusal::Spam),
-            // Maybe spam, flagged where it lies (decided 3 November 2026).
-            (Lane::Review, vec![Reason::Unsure { p: 0.62 }], Refusal::Doubt),
             (Lane::SetAside, vec![Reason::Impersonation { brand: "Bank".into(), domain: "letters.example".into() }], Refusal::Borrowed),
             (Lane::SetAside, vec![Reason::Blocked], Refusal::Blocked),
             (Lane::Hostile, vec![Reason::Hostile], Refusal::Hostile),
         ] {
             assert_eq!(offer(&card, &ids, Trust::Verified, &lane, &reasons).unwrap().way, Err(refusal));
+        }
+        // Spam and a doubt from an unverified sender: never (decided 3 November 2026).
+        for (lane, reasons, refusal) in [
+            (Lane::SetAside, vec![Reason::Spam { source: "rspamd", score: None }], Refusal::Spam),
+            (Lane::Review, vec![Reason::LearnedSpam { p: 0.97 }], Refusal::Spam),
+            (Lane::Review, vec![Reason::Unsure { p: 0.62 }], Refusal::Doubt),
+        ] {
+            assert_eq!(offer(&card, &ids, Trust::Unverified, &lane, &reasons).unwrap().way, Err(refusal));
         }
         // Said not spam: no doubt left (`porch::protected`), the button is back; probably not spam keeps it.
         assert!(offer(&card, &ids, Trust::Verified, &Lane::Filed, &[Reason::Newsletter]).unwrap().way.is_ok());
@@ -535,6 +556,59 @@ mod tests {
         // No List-Unsubscribe: no button at all.
         let card = letter("", "letters.example", BOTH, "pass");
         assert!(judged(&card).is_none());
+    }
+
+    /// Unsubscribing follows proof, not the verdict (part 1 of 4 November
+    /// 2026): verified or not, × spam (your provider's, your filter's), maybe
+    /// spam or not spam, × the header's way (one click, a message, a page).
+    /// A verified sender's way out is used whatever the verdict, as it would
+    /// be for its ham; an unverified sender's spam and doubts are refused, its
+    /// ham only through the list's own signature; in a junk folder the same.
+    #[test]
+    fn unsubscribing_follows_proof_not_the_verdict() {
+        let ids = vec![SIOUL.to_string()];
+        let verdicts: [(&str, Lane, Vec<Reason>); 4] = [
+            ("spam", Lane::SetAside, vec![Reason::Spam { source: "SpamAssassin", score: None }]),
+            ("learned", Lane::Review, vec![Reason::LearnedSpam { p: 0.97 }]),
+            ("maybe", Lane::Review, vec![Reason::Unsure { p: 0.62 }]),
+            ("ham", Lane::Filed, vec![Reason::Newsletter]),
+        ];
+        let ways = [
+            // One click: both headers signed by the sender's domain.
+            (format!("List-Unsubscribe: <https://letters.example/u/a1b2>, <mailto:leave@letters.example>\r\n{POST}"), BOTH, "one-click"),
+            // A message: no one click, the list's address first.
+            ("List-Unsubscribe: <mailto:leave@letters.example>, <https://letters.example/u/a1b2>\r\n".to_string(), "from:to:subject:date", "mail"),
+            // A page alone.
+            ("List-Unsubscribe: <https://letters.example/preferences>\r\n".to_string(), "from:to:subject:date", "page"),
+        ];
+        for (header, signed, way) in &ways {
+            let card = letter(header, "letters.example", signed, "pass");
+            for (verdict, lane, reasons) in &verdicts {
+                let verified = offer(&card, &ids, Trust::Verified, lane, reasons).unwrap().way;
+                assert_eq!(verified.as_ref().map(Way::id), Ok(*way), "verified, {verdict}, {way}");
+                let unverified = offer(&card, &ids, Trust::Unverified, lane, reasons).unwrap().way;
+                let expected = match *verdict {
+                    "spam" | "learned" => Err(Refusal::Spam),
+                    "maybe" => Err(Refusal::Doubt),
+                    // Ham: only the one click, whose signature covers its own header, is proven.
+                    _ if *way == "one-click" => Ok("one-click"),
+                    _ => Err(Refusal::Unproven),
+                };
+                assert_eq!(unverified.as_ref().map(Way::id).map_err(|r| *r), expected, "unverified, {verdict}, {way}");
+                // In a junk folder: the verified way stays, the unverified one is spam.
+                let mut junked = offer(&card, &ids, Trust::Verified, lane, reasons).unwrap();
+                in_junk(&mut junked, Trust::Verified);
+                assert_eq!(junked.way.as_ref().map(Way::id), Ok(*way), "verified in the junk, {verdict}, {way}");
+                let mut junked = offer(&card, &ids, Trust::Unverified, lane, reasons).unwrap();
+                in_junk(&mut junked, Trust::Unverified);
+                assert_eq!(junked.way, Err(Refusal::Spam), "unverified in the junk, {verdict}, {way}");
+            }
+        }
+        // The button's words for spam: "Unsubscribe", as for any list.
+        let card = letter(&ways[0].0, "letters.example", BOTH, "pass");
+        let found = offer(&card, &ids, Trust::Verified, &Lane::SetAside, &verdicts[0].2).unwrap();
+        let shown = view(&found, &Record::default(), Some("you@example.org"), &Translator::new("en"), jiff::civil::date(2026, 11, 4));
+        assert!(shown.offered && shown.label == "Unsubscribe", "{shown:?}");
     }
 
     #[test]

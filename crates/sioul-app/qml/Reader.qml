@@ -99,6 +99,9 @@ Panel {
     // Its folder's purpose ("inbox", "trash", "junk", "archive", "all"…), for the
     // actions that fit there.
     readonly property string role: reading && reading.role ? reading.role : ""
+    // A message to settle, Spam or Not spam: your filter flagged it where it
+    // lies, a mailbox's row says spam, or it lies in a junk folder.
+    readonly property bool settles: reader.role === "junk" || (reader.item !== null && !reader.item.server && !reader.item.review && (typeof reader.item.spam === "string" && reader.item.spam !== "" || !!reader.item.flag))
     // Narrow: the actions show their icons only, their names on hover, as
     // soon as their names would not fit in the row (French ones are longer).
     // Narrower still (a phone): "junk" goes in the menu under ⋮.
@@ -1262,19 +1265,23 @@ Panel {
                     text: reader.sioul.text("ui-let-in")
                     onClicked: reader.sioul.letIn(reader.item.address)
                 }
-                // In the review queue, your word on your own filter's: Spam (into
-                // the Junk folder, or kept there), or Not spam (back in its lane,
-                // from the Junk folder into the inbox); for good, with ten seconds
-                // to undo; `$Junk` or `$NotJunk` told to the server, the act kept in
-                // this device's label log, which every device and the next training read.
-                // Set aside as spam by your provider: Not spam alone.
+                // Your word on a message your filter flagged (probably spam, maybe
+                // spam, probably not spam), your provider's word on it, or one in a
+                // junk folder, as in the review queue: Spam (into the Junk folder,
+                // or kept there), or Not spam (back in its lane, from the Junk
+                // folder into the inbox); for good, with ten seconds to undo;
+                // `$Junk` or `$NotJunk` told to the server, the act kept in this
+                // device's label log, which every device and the next training read.
+                // Set aside as spam by your provider on the Porch: Not spam alone.
                 Button {
-                    visible: reader.item !== null && !!reader.item.review
+                    objectName: "readerSpam"
+                    visible: reader.settles || (reader.item !== null && !!reader.item.review)
                     text: reader.sioul.text("ui-spam")
                     onClicked: reader.act("spam")
                 }
                 Button {
-                    visible: reader.item !== null && !!reader.item.spam
+                    objectName: "readerNotSpam"
+                    visible: reader.settles || (reader.item !== null && !!reader.item.spam)
                     text: reader.sioul.text("ui-not-spam")
                     onClicked: reader.act("not-spam")
                 }
