@@ -98,4 +98,14 @@ final class MailNotes
             .build();
         context.getSystemService(NotificationManager.class).notify(TAG, NOTE, note);
     }
+
+    /**
+     * The notification taken away, each message it told dismissed, read or
+     * done on one of your devices (Rust's `notices::withdraw_if_settled`).
+     * Any thread; nothing when none shows.
+     */
+    static void withdraw(Context context)
+    {
+        context.getSystemService(NotificationManager.class).cancel(TAG, NOTE);
+    }
 }

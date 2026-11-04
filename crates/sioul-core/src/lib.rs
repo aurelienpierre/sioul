@@ -130,6 +130,7 @@
 //! ## Hours, pauses and reminders
 //!
 //! - [`areas`]: what things are for (work, your admin, leisure), and which time is for what.
+//! - [`areafilter`]: a page's filter by area (Mail's All addresses): ticked as the hours say, or as you ticked until they change.
 //! - [`window`]: working hours: the days and hours work can reach you.
 //! - [`quiet`]: the time now (work, admin, a meal, sleep, leisure), and what comes then.
 //! - [`needs`]: the day's needs, set first: meals, naps and night sleep.
@@ -182,6 +183,7 @@ pub mod anchors;
 pub mod agentwrites;
 pub mod appointments;
 pub mod appnotes;
+pub mod areafilter;
 pub mod areas;
 pub mod attention;
 pub mod bank;
@@ -248,6 +250,7 @@ pub mod overlaps;
 pub mod own_time;
 pub mod pairs;
 pub mod notes;
+pub mod notices;
 pub mod payments;
 pub mod pgp;
 pub mod phonemsgs;

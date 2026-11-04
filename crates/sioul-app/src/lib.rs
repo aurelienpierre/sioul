@@ -160,6 +160,7 @@ mod mailnote;
 mod openmail;
 #[cfg(target_os = "android")]
 mod nfc;
+mod notices;
 mod letters;
 mod map;
 // Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).

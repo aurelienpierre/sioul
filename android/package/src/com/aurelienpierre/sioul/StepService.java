@@ -167,6 +167,10 @@ public final class StepService extends Service
             case "sms-app":
                 // The phone's SMS app, for Settings ▸ This phone ▸ On your computers.
                 return JSONObject.quote(PhoneMessages.smsApp(context));
+            case "mail-withdraw":
+                // New mail's notification, each of its messages dealt with on some device (Rust's notices).
+                MailNotes.withdraw(context);
+                return "true";
             default:
                 // texts: read and sent for your computers (Texts.java, TextSend.java).
                 if (verb.startsWith("texts-"))

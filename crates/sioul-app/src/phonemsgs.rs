@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use sioul_core::appnotes::{Decision, Kind, Ledger, Posted};
 use sioul_core::calls;
 use sioul_core::config::{Config, state_dir};
+use sioul_core::notices::Kind as NoticeKind;
 use sioul_core::everywhere::People;
 use sioul_core::phonemsgs::{self as rules, Choices, Extra, Line, Send};
 use sioul_core::porch::{By, Senders, Standing};
@@ -188,7 +189,8 @@ pub(crate) fn view() -> String {
         Some(folds) => all.into_iter().filter(|l| !(l.kind == "text" && !l.group && folds(&l.key, l.at))).collect(),
         None => all,
     };
-    let lines = porch_lines(&config, &all, &now);
+    let notice_of = notices_of(&all);
+    let lines: Vec<Value> = porch_lines(&config, &all, &now).iter().map(|line| row_of(line, &notice_of)).collect();
     let (tel, sms) = crate::calls::link_apps();
     // texts: Text back opens the conversation in Sioul when texts are read on this computer.
     json!({ "lines": lines, "links": { "tel": tel, "sms": sms }, "texts": crate::texts::readable(), "notices": crate::texts::notices() }).to_string()
@@ -203,13 +205,16 @@ pub(crate) fn seen_for(keys: &[String]) {
         return;
     }
     let now = sioul_core::zone::now().timestamp().as_millisecond();
-    let seen = calls::read_seen(&root);
-    let ids: Vec<String> = rules::read_logs(&root, now).into_iter().filter(|l| l.kind == "text" && keys.contains(&l.key) && !seen.seen.contains(&l.id)).map(|l| l.id).collect();
-    if !ids.is_empty()
-        && let Err(e) = calls::mark_seen(&root, &here_id(), &ids, now)
-    {
-        eprintln!("sioul: phone messages: {e}");
-    }
+    let all = rules::read_logs(&root, now);
+    let seen = crate::notices::seen_of(NoticeKind::Phone, &notices_of(&all));
+    // Read with their conversation: their notices Read on every device (an older Sioul reads it as Seen).
+    let ids: Vec<String> = all.iter().filter(|l| l.kind == "text" && keys.contains(&l.key) && !seen.seen.contains(&l.id)).map(|l| sioul_core::notices::phone_id(&l.device, &l.id)).collect();
+    crate::notices::say_quietly(NoticeKind::Phone, ids, sioul_core::notices::Mark::Read);
+}
+
+/// Each message's notice (`notices::phone_id`), by the message's own id.
+pub(crate) fn notices_of(all: &[Line]) -> std::collections::BTreeMap<String, String> {
+    all.iter().map(|l| (l.id.clone(), sioul_core::notices::phone_id(&l.device, &l.id))).collect()
 }
 
 /// A phone's text's sender's own rows, as the phone read them (decision 16):
@@ -250,10 +255,24 @@ fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLi
     let phone = |device: &str| calls::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
     let column = |at: i64| column_at(&clock, at, now);
     let lister = rules::Lister { now, tr: tr(), region, name_of: &name_of, shows: &shows, phone: &phone, column: &column };
-    let mut lines = rules::lines(all, &calls::read_seen(&rules::folder()), &lister);
+    // Each message its notice: a line goes once each of its messages is dismissed or read on any device.
+    let seen = crate::notices::seen_of(NoticeKind::Phone, &notices_of(all));
+    let mut lines = rules::lines(all, &seen, &lister);
     // What each line offers a reply from this computer (`replies`).
     crate::replies::fill(&mut lines, all, now);
     lines
+}
+
+/// A line as the Porch's row: its notice, `ids` its messages' notices (what Dismiss and Mark read name).
+fn row_of(line: &rules::PorchLine, notice_of: &std::collections::BTreeMap<String, String>) -> Value {
+    use sioul_core::notices::Notice;
+    let ids: Vec<String> = line.ids.iter().filter_map(|raw| notice_of.get(raw).cloned()).collect();
+    let notice = Notice { address: line.dial.clone(), at: line.at, when: line.when.clone(), who: if line.who.is_empty() { line.head.clone() } else { line.who.clone() }, what: line.what.clone(), ..Notice::new(NoticeKind::Phone, ids.first().cloned().unwrap_or_default(), "phone") };
+    let mut row = serde_json::to_value(line).unwrap_or_default();
+    row["notice"] = serde_json::to_value(&notice).unwrap_or_default();
+    row["ids"] = json!(ids);
+    row["targets"] = json!([]);
+    row
 }
 
 /// A person's messages of the week (`numbers`: theirs, as written), for
@@ -353,7 +372,7 @@ fn set_answers(package: &str, on: bool) -> Result<(), String> {
 }
 
 /// What the window asks (`Sioul::phone_messages`): "view" (the Porch's
-/// section), "seen" {ids}, "unseen" {at} (within its ten seconds), "block"
+/// section; Dismiss and Mark read are the notices', `notices::call`), "block"
 /// {number}, "setup" (the phone's tab), "set" {key: `app.<package>` or `answers.<package>`, value}, "part" {on};
 /// "reply" {phone, verb ("reply", "read"), notice, app, line, words, again}
 /// (a reply from this computer, `replies::ask`: {key, said}), "take-back" {key}.
@@ -364,18 +383,6 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
     let answer = |said: String, shared: bool, at: i64| (json!({ "said": said, "shared": shared, "at": at }).to_string(), shared);
     match verb {
         "view" => (view(), false),
-        // In this device's own seen log, which the sharing carries: gone from every device's Porch.
-        "seen" => {
-            let ids: Vec<String> = asked["ids"].as_array().map(|a| a.iter().filter_map(|i| i.as_str().map(str::to_string)).collect()).unwrap_or_default();
-            match calls::mark_seen(&rules::folder(), &here_id(), &ids, jiff::Timestamp::now().as_millisecond()) {
-                Ok(at) => answer(tr().text("phonemsgs-seen-said", None), true, at),
-                Err(e) => answer(e, false, 0),
-            }
-        }
-        "unseen" => match calls::unmark_seen(&rules::folder(), &here_id(), asked["at"].as_i64().unwrap_or(0)) {
-            Ok(gone) => answer(String::new(), gone, 0),
-            Err(e) => answer(e, false, 0),
-        },
         // On your blocked list, as a number: nothing of theirs leaves the phone again.
         "block" => {
             let number = text("number");

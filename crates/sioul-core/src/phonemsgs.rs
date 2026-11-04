@@ -713,6 +713,13 @@ pub struct PorchLine {
     /// filled where the computer knows its phone's word); none: as before.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub answer: Option<crate::replies::Answer>,
+    /// The line as the Porch's row says it (`notices`): its newest words (a
+    /// code's line, that a code came), when it came as Mail's rows say a
+    /// date, that time (ms), and the app it came by when not the SMS app's.
+    pub what: String,
+    pub when: String,
+    pub at: i64,
+    pub app: String,
 }
 
 /// What the Porch's lines need besides the logs.
@@ -816,7 +823,7 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
     let phone = Some((l.phone)(&first.device)).filter(|p| *p != tr.text("calls-phone-yours", None) && *p != tr.text("calls-phone-other", None)).unwrap_or_default();
     if first.code {
         let mut args = crate::i18n::args();
-        args.set("who", who);
+        args.set("who", who.clone());
         args.set("time", time(first));
         let head = if date == today {
             tr.text("phonemsgs-code", Some(&args))
@@ -824,7 +831,10 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
             args.set("day", calls::day_words(tr, date, today));
             tr.text("phonemsgs-code-day", Some(&args))
         };
-        return PorchLine { ids, head: calls::capitalized(&head), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known, texted: false, code: true, who: String::new(), answer: None };
+        // Its row: who sent it, that a code came and stays on the phone, when.
+        let when = row_when(first, l);
+        let row_who = calls::capitalized(&who);
+        return PorchLine { ids, head: calls::capitalized(&head), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known, texted: false, code: true, who: row_who, answer: None, what: tr.text("phonemsgs-code-row", None), when, at: first.at, app: String::new() };
     }
     let mut context_said = context(tr, column);
     if date != today {
@@ -862,7 +872,14 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
         String::new()
     };
     let texted = first.kind == "text" && !first.group && first.who != "automaton" && phones::is_whole(&keyed);
+    let newest = group[group.len() - 1];
+    let what = [said_text(newest, tr)].into_iter().find(|t| !t.is_empty()).unwrap_or_else(|| tr.text("phonemsgs-no-words", None));
+    let when = row_when(newest, l);
     PorchLine {
+        what,
+        when,
+        at: newest.at,
+        app,
         ids,
         head,
         said,
@@ -875,6 +892,11 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
         who: named,
         answer: None,
     }
+}
+
+/// When a message came, as Mail's rows say a date ("Tue 3 Nov 09:41").
+fn row_when(m: &Line, l: &Lister) -> String {
+    l.tr.date(&calls::local(m.at, l.now), true)
 }
 
 /// A person's messages of the week (`keys`, their numbers as Sioul keys

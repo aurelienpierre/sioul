@@ -441,6 +441,8 @@ pub(crate) struct PorchInput {
     items: Vec<Triaged>,
     senders: Senders,
     store: Option<ProjectStore>,
+    /// The words said of notices on any device (`notices`): a message dismissed is not listed.
+    states: sioul_core::notices::States,
 }
 
 /// The plan, as the window last made it.
@@ -833,7 +835,8 @@ fn porch_at(m: &Moment, input: &PorchInput, mode: &Mode, at: &Zoned) -> PorchMad
         .iter()
         .filter(|l| !l.folded && !matches!(l.key.as_str(), "set-aside" | "review" | "hostile"))
         .flat_map(|l| l.items.iter())
-        .filter(|i| !i.hidden && !i.spam)
+        // Dismissed or settled on any device: gone from the card as from the Porch; read, listed as a mail card lists it, not bold.
+        .filter(|i| !i.hidden && !i.spam && !matches!(input.states.of(&i.notice.id, sioul_core::notices::State::default()).mark, sioul_core::notices::Mark::Dismissed | sioul_core::notices::Mark::Done))
         .map(|i| mail_line(m, i, triaged.get(&i.key).copied()))
         .collect();
     if listed.is_empty() {
@@ -1331,7 +1334,7 @@ pub(crate) fn porch_seen(items: &[Triaged], senders: &Senders, store: Option<&Pr
     if !on() {
         return;
     }
-    *PORCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(PorchInput { items: items.to_vec(), senders: senders.clone(), store: store.cloned() }));
+    *PORCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(PorchInput { items: items.to_vec(), senders: senders.clone(), store: store.cloned(), states: crate::notices::states(&|_, _| None) }));
     soon(false);
 }
 
@@ -1646,7 +1649,7 @@ pub(crate) fn mail_came() {
     let senders = Senders::load(&config);
     let state = sioul_core::state::PorchState::load(&sioul_core::state::PorchState::default_path());
     let items = porch::gather(&config.mail_sources(), store.as_ref(), &known, &senders, &state, now.timestamp().as_second());
-    let input = PorchInput { items, senders, store };
+    let input = PorchInput { items, senders, store, states: crate::notices::states(&|_, _| None) };
     let overrides = Overrides::load(&Overrides::default_path());
     let blocks = crate::hours::blocks(&now);
     let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: tr(), details: details(), dnd: None };
@@ -1848,7 +1851,7 @@ mod tests {
         items.push(code);
         // People you know, marked safe: their mail comes at every time but sleep (the usual matrix).
         let senders = Senders { safe: sioul_core::porch::SenderList::parse("marie@example.org\npaul@example.org\nlea@example.org\ntom@example.org\n"), ..Senders::default() };
-        PorchInput { items, senders, store: None }
+        PorchInput { items, senders, store: None, states: sioul_core::notices::States::default() }
     }
 
     fn task(uid: &str, title: &str) -> Task {
@@ -2200,6 +2203,16 @@ mod tests {
         let first = sent_at("Ana <ana@example.org>", "Hello", stamp("2026-10-01T09:00[Europe/Paris]"), false);
         assert_eq!(mail_when(&fr, first.card.date, &now).last().unwrap().text, "1er oct.");
         assert_eq!(mail_when(&fr, Some(stamp("2026-10-04T09:00[Europe/Paris]")), &now)[0].text, "hier");
+        // Dismissed on another device: gone from the card as from the Porch (the notices' words).
+        let words = std::env::temp_dir().join(format!("sioul-homecard-notices-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&words);
+        let paul = input.items.iter().find(|t| t.card.subject == "The photos").map(|t| sioul_core::notices::mail_id_of(&t.card)).unwrap();
+        sioul_core::notices::say(&words, "phone", &[paul], sioul_core::notices::Mark::Dismissed, now.timestamp().as_millisecond()).unwrap();
+        input.states = sioul_core::notices::States::read(&words);
+        let card = snapshot(&moment, Some(&input), None, None, &[]);
+        let listed: Vec<&str> = card.frames[0].porch.as_ref().unwrap().mail.iter().map(|at| card.mail[*at].sender.as_str()).collect();
+        assert_eq!(listed, ["Ana", "Marie Dupont", "Léa"]);
+        let _ = std::fs::remove_dir_all(&words);
         // At most twenty, the newest.
         let mut many = porch_input(&now);
         many.items = (0..30).map(|i| sent_at(&format!("Someone <s{i}@example.org>"), &format!("Note {i}"), stamp("2026-10-05T08:00[Europe/Paris]") - i * 60, false)).collect();

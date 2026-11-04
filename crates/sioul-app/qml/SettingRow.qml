@@ -416,7 +416,8 @@ ColumnLayout {
         }
     }
 
-    // Some of a list, each ticked or not: the projects the Porch shows.
+    // Some of a list, each ticked or not: the projects the Porch shows, one
+    // per line; the words' languages and countries, side by side.
     Loader {
         active: field.setting.kind === "picks"
         visible: active
@@ -427,8 +428,9 @@ ColumnLayout {
                 id: picks
 
                 readonly property var on: field.setting.kind === "picks" ? field.setting.value : []
+                readonly property bool lines: field.setting.key === "porch.projects"
 
-                spacing: 12
+                spacing: picks.lines ? 0 : 12
 
                 Repeater {
                     model: field.setting.kind === "picks" ? field.setting.choices : []
@@ -438,6 +440,7 @@ ColumnLayout {
 
                         required property var modelData
 
+                        width: picks.lines ? picks.width : implicitWidth
                         text: field.theme.plain(pick.modelData.label)
                         checked: picks.on.indexOf(pick.modelData.value) >= 0
                         onToggled: {

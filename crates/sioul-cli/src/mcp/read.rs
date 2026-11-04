@@ -532,7 +532,7 @@ fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&ProjectS
     let to: Vec<String> = reading.as_ref().map(|r| r.to.iter().map(person).map(|p| one_line(&p)).collect()).unwrap_or_default();
     let cc: Vec<String> = reading.as_ref().map(|r| r.cc.iter().map(person).map(|p| one_line(&p)).collect()).unwrap_or_default();
     let attachments: Vec<&reading::Attachment> = reading.as_ref().map(|r| r.attachments.iter().filter(|a| !a.mime.to_ascii_lowercase().starts_with("application/pgp")).collect()).unwrap_or_default();
-    let lane = lane_title(s, &t.lane, store);
+    let lane = lane_title(s, &t, store);
     let reasons: Vec<String> = t.reasons.iter().map(|r| one_line(&s.tr.reason(r, store))).collect();
     // Its address: its Message-ID, else its digest in its account (`sioul:mail/…`).
     let uri = card.message_id.as_deref().map(links::mail_uri).or_else(|| s.config.account_of(path).and_then(|a| mailfind::address_of_file(&a.id, path))).unwrap_or_default();
@@ -574,12 +574,12 @@ fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&ProjectS
     Answer { text: lines.join("\n"), data }
 }
 
-/// A lane's title, as the Porch shows it.
-fn lane_title(s: &Session, lane: &Lane, store: Option<&ProjectStore>) -> String {
-    if *lane == Lane::RightNow {
+/// A message's lane's title, as the Porch shows it (what you sent yourself apart from the people you know).
+fn lane_title(s: &Session, t: &Triaged, store: Option<&ProjectStore>) -> String {
+    if t.lane == Lane::RightNow {
         return s.tr.text("right-now-title", None);
     }
-    view::lanes(&s.config, store, &s.tr).into_iter().find(|l| &l.lane == lane).map(|l| l.title).unwrap_or_default()
+    view::lanes(&s.config, store, &s.tr).into_iter().find(|l| l.holds(t)).map(|l| l.title).unwrap_or_default()
 }
 
 // Tasks.

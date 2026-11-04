@@ -2060,19 +2060,46 @@ pub(crate) fn notices() -> Value {
     let region = sioul_core::reach::region(&config);
     let (texts, _, _) = records(&here, &seal);
     let (marks, _) = marked(&here, &seal);
-    let mut list: Vec<(i64, Value)> = rules::unread(&texts, &marks, now.timestamp().as_millisecond())
+    // Each text its notice (`notices::text_id`); a conversation's row holds those not dismissed on any device.
+    let states = crate::notices::states(&|_, _| None);
+    let notice_of = |t: &Text| sioul_core::notices::text_id(&t.device, &t.thread, &t.id);
+    let unread = rules::unread(&texts, &marks, now.timestamp().as_millisecond());
+    let current: Vec<String> = unread.values().flatten().map(|t| notice_of(t)).collect();
+    crate::notices::forget_once_a_day(&[sioul_core::notices::Kind::Text], &current);
+    let mut list: Vec<(i64, Value)> = unread
         .into_iter()
-        .map(|(id, unread)| {
-            let newest = unread[0];
+        .filter_map(|(id, unread)| {
+            let unread: Vec<&Text> = unread.into_iter().filter(|t| !states.of(&notice_of(t), sioul_core::notices::State::default()).mark.settled()).collect();
+            let newest = *unread.first()?;
             let who = newest.with.iter().map(|k| name_of(k).unwrap_or_else(|| sioul_core::calls::shown_number(k, region))).collect::<Vec<_>>().join(", ");
             let first: String = if newest.body.is_empty() { tr().text("phonemsgs-picture", None) } else { newest.body.chars().take(80).collect() };
             let late = newest.late();
             let (sent, late) = if late > 0 { (rules::time_of_day(newest.time(), &now), rules::late_span(late, tr())) } else { (String::new(), String::new()) };
-            (newest.at, json!({ "conversation": id, "who": who, "first": first, "when": rules::time_of_day(newest.at, &now), "count": unread.len(), "sent": sent, "late": late }))
+            let notice = sioul_core::notices::Notice {
+                // What opens it: the conversation, on the Texts page.
+                address: id.clone(),
+                at: newest.at,
+                // As Mail's rows say a date.
+                when: sioul_core::view::date(tr(), Some(newest.at / 1000)),
+                who: who.clone(),
+                what: first.clone(),
+                ..sioul_core::notices::Notice::new(sioul_core::notices::Kind::Text, notice_of(newest), "phone")
+            };
+            let ids: Vec<String> = unread.iter().map(|t| notice_of(t)).collect();
+            Some((newest.at, json!({ "conversation": id, "who": who, "first": first, "when": rules::time_of_day(newest.at, &now), "count": unread.len(), "sent": sent, "late": late, "notice": notice, "ids": ids, "targets": [id] })))
         })
         .collect();
     list.sort_by(|a, b| b.0.cmp(&a.0));
     Value::Array(list.into_iter().map(|(_, v)| v).collect())
+}
+
+/// A conversation read from the Porch (its notice's Mark read, once its ten
+/// seconds are over: `notices`): as opening it in Texts reads it, on every
+/// device, its phone's notifications seen with it.
+pub(crate) fn read(id: &str) {
+    let Some((here, seal, _)) = sealed() else { return };
+    let (texts, _, _) = records(&here, &seal);
+    mark_read(&here, &seal, id, &texts);
 }
 
 /// Whether a phone's notification of a text (its sender's key, its time) is

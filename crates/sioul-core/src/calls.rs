@@ -1341,6 +1341,13 @@ pub struct Line {
     /// "The same number called again at 06:48, and that call rang.": a call
     /// that rang from the same number after the line's last, the same day; "" none.
     pub again: String,
+    /// The line as the Porch's row says it (`notices`): who called ("Noa",
+    /// "A number not in your contacts"), what ("While you slept, twice"),
+    /// when its last call came, as Mail's rows say a date, and that time (ms).
+    pub who: String,
+    pub what: String,
+    pub when: String,
+    pub at: i64,
 }
 
 /// What the list needs besides the calls.
@@ -1457,6 +1464,22 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
             tr.text(&format!("calls-line-more{on}"), Some(&args))
         }
     };
+    // The row's own words: who, what (the time of day, which phone only among several:
+    // the section says "From your phone" already, how many times), when.
+    let row_phone = Some(phone.clone()).filter(|p| *p != tr.text("calls-phone-yours", None) && *p != tr.text("calls-phone-other", None)).unwrap_or_default();
+    let row_on = if row_phone.is_empty() { "" } else { "-on" };
+    let mut row_args = crate::i18n::args();
+    row_args.set("context", context_words.clone());
+    row_args.set("phone", row_phone);
+    row_args.set("count", tr.count(group.len(), false, false));
+    let times = match group.len() {
+        1 => "",
+        2 => "-twice",
+        _ => "-more",
+    };
+    let what = capitalized(&tr.text(&format!("calls-row{times}{row_on}"), Some(&row_args)));
+    let last = group[group.len() - 1];
+    let when = jiff::Timestamp::from_millisecond(last.at).map(|t| tr.date(&t.to_zoned(l.now.time_zone().clone()), true)).unwrap_or_default();
     let rang = rang_after(calls, group, date, l);
     let again = rang
         .map(|h| {
@@ -1507,6 +1530,19 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
         message,
         why,
         again,
+        who: capitalized(&args_who(tr, first.hidden, name.as_deref(), &unknown)),
+        what,
+        when,
+        at: last.at,
+    }
+}
+
+/// Who called, as a row says it: a hidden number, the name your address books give, else what the screening judged.
+fn args_who(tr: &Translator, hidden: bool, name: Option<&str>, unknown: &str) -> String {
+    if hidden {
+        tr.text("calls-who-hidden", None)
+    } else {
+        name.map_or_else(|| tr.text(unknown, None), str::to_string)
     }
 }
 

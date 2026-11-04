@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// "From your phone", on a computer's Porch (docs/porch.md, "From your phone";
-// docs/android.md, "Messages on your computers"): the messages your phone's
-// notifications brought, for the apps you chose there, once the phone let
-// them through and while their sender may reach you; never counted, no
-// badge, never a notification here. One line per conversation and part of
-// the day: who, when, the words (or "a picture", or only who and when); a
-// code said, never shown. What you may do: reply, through the
+// The texts and the other apps' notifications your phone brought, rows of
+// the Porch's "From your phone" on a computer (docs/porch.md, "From your
+// phone"; docs/android.md, "Messages on your computers"): for the apps you
+// chose there, once the phone let them through and while their sender may
+// reach you; never counted, no badge, never a notification here. A text
+// the Texts page holds is one row, opening it there. Another app's is a row
+// per conversation and part of the day: who, the newest words (or "a
+// picture", or only who and when; a code said, never shown), when, the
+// earlier ones under it. Its main action replies, through the
 // notification's own Reply on your phone while the phone says it works
 // (replies.rs; a text from a number goes as one of Sioul's own texts where
 // this computer reads them), your reply then under their messages with its
-// state in words, Take back while it waits; else "Reply on your phone", or
-// text back or call back (the system's app for such links, KDE Connect
-// handing them to your phone; else copy the number); and "Seen", which
-// takes the line away on every device, with ten seconds to undo, and never
-// touches the phone's notification; the rest in the line's menu (⋮, a right
-// click, a long press, the Menu key or Shift+F10): Mark as read in the app,
-// with its warning, how they reach you, add to your contacts, block.
+// state in words, Take back while it waits; else text back or call back
+// (the system's app for such links, KDE Connect handing them to your phone;
+// else copy the number). Mark read and Dismiss act at once on every device,
+// with ten seconds to undo; neither touches the phone's notification. The
+// rest is in the row's menu (⋮, a right click, a long press, the Menu key or
+// Shift+F10): Mark as read in the app, with its warning, how they reach you,
+// add to your contacts, block.
 
 pragma ComponentBehavior: Bound
 
@@ -31,23 +33,26 @@ ColumnLayout {
     required property var sioul
     required property var theme
     required property var window
+    // The Porch (PorchPage.qml): its words on notices (`say`), the rows still new (`newOnes`).
+    required property var porch
 
-    // phonemsgs.rs's `view`: {lines: [{ids, head, said: [{time, from, text}],
-    // note, number, dial, known, texted, code, who, answer}], links: {tel, sms}};
-    // `answer` (replies.rs's `Answer`): {phone, notice, app, label, line,
-    // offered, read, texts, placeholder, note, read_item, read_warning,
+    // phonemsgs.rs's `view`: {lines: [{ids (their notices), notice, head, what, when, app,
+    // said: [{time, from, text}], note, number, dial, known, texted, code, who, answer}],
+    // links: {tel, sms}, texts, notices: [{conversation, notice, ids, targets, who, first,
+    // when, count, sent, late}]}; `answer` (replies.rs's `Answer`): {phone, notice, app,
+    // label, line, offered, read, texts, placeholder, note, read_item, read_warning,
     // on_phone, limit, mine: [{key, time, text, said, waiting, again, texts}]}.
     property var shown: ({ lines: [], links: { tel: false, sms: false }, texts: false, notices: [] })
-    property string said: ""
-    // The last Seen pressed here (its time), undone within ten seconds.
-    property real undoAt: 0
     readonly property bool canCall: !!section.shown.links && section.shown.links.tel === true
     readonly property bool canText: !!section.shown.links && section.shown.links.sms === true
-    readonly property bool narrow: !!section.window && section.window.compact === true
-    // The line whose reply box is open (by its first message's id), and what
-    // is typed in each: kept as the lines are read again each minute.
+    // The line whose reply box is open (by its first notice), and what is
+    // typed in each: kept as the lines are read again each minute.
     property string replyingTo: ""
     property var drafts: ({})
+    // The rows shown: the Porch's section counts them.
+    readonly property var textRows: section.porch.newOnes(section.shown.notices)
+    readonly property var lineRows: section.porch.newOnes(section.shown.lines)
+    readonly property int count: section.textRows.length + section.lineRows.length
 
     function act(verb, args) {
         return JSON.parse(section.sioul.phoneMessages(verb, JSON.stringify(args || {})) || "null")
@@ -59,7 +64,8 @@ ColumnLayout {
     }
 
     function answered(answer) {
-        section.said = answer && answer.said ? answer.said : ""
+        if (answer && answer.said)
+            section.sioul.status = answer.said
         return answer
     }
 
@@ -102,19 +108,72 @@ ColumnLayout {
         section.reload()
     }
 
-    spacing: 6
-    visible: section.shown.lines.length > 0 || section.shown.notices.length > 0 || undoTimer.running
-    Component.onCompleted: section.reload()
+    // A line's main action: Reply where offered; else text back, call back, or its number copied.
+    function mainOf(line, canReply) {
+        if (canReply)
+            return { id: "reply", text: section.sioul.text("replies-reply"), icon: "mail-reply-sender" }
+        if (line.texted && (section.canText || section.shown.texts))
+            return { id: "text", text: section.sioul.text("calls-text-back"), icon: "mail-message-new" }
+        if (line.texted && section.canCall)
+            return { id: "call", text: section.sioul.text("calls-call-back"), icon: "call-start" }
+        if (line.dial !== "" && !section.canCall && !section.canText && !section.shown.texts)
+            return { id: "copy", text: section.sioul.text("calls-copy"), icon: "edit-copy" }
+        return { id: "", text: "", icon: "" }
+    }
 
-    Timer {
-        id: undoTimer
+    // The rest, in its menu.
+    function moreOf(line, main) {
+        const more = []
+        if (main !== "call" && line.texted && section.canCall)
+            more.push({ id: "call", text: section.sioul.text("calls-call-back"), icon: "call-start" })
+        // The app's own Mark as read, with its warning first (decision 13).
+        if (!!line.answer && line.answer.read && !line.answer.texts)
+            more.push({ id: "app-read", text: line.answer.read_item, icon: "" })
+        // A text: its conversation on the Texts page.
+        if (!!line.answer && line.answer.texts)
+            more.push({ id: "texts", text: section.sioul.text("replies-open-texts"), icon: "sioul-texts" })
+        if (line.dial !== "") {
+            more.push({ id: "sheet", text: section.sioul.text("attention-sheet-sender"), icon: "" })
+            if (!line.known)
+                more.push({ id: "contact", text: section.sioul.text("calls-add-contact"), icon: "contact-new" })
+            more.push({ id: "block", text: section.sioul.text("calls-block"), icon: "dialog-cancel" })
+        }
+        return more
+    }
 
-        interval: 10000
-        onTriggered: {
-            section.undoAt = 0
-            section.said = ""
+    function chosen(id, row) {
+        const line = row.modelData
+        if (id === "reply") {
+            row.replySaid = ""
+            section.replyingTo = row.key
+        } else if (id === "text") {
+            if (section.shown.texts)
+                section.window.openTexts(line.dial)
+            else
+                Qt.openUrlExternally("sms:" + line.dial)
+        } else if (id === "call") {
+            Qt.openUrlExternally("tel:" + line.dial)
+        } else if (id === "copy") {
+            section.window.copy(line.number)
+            section.sioul.status = section.sioul.text("calls-copied")
+        } else if (id === "app-read") {
+            readAsk.answer = line.answer
+            readAsk.ask(section.sioul.text("replies-read-title"), line.answer.read_warning, section.sioul.text("replies-read-confirm"))
+        } else if (id === "texts") {
+            section.window.openTexts(line.dial)
+        } else if (id === "sheet") {
+            section.window.openPersonSheet("", JSON.stringify(["tel:" + line.dial]))
+        } else if (id === "contact") {
+            section.window.newContactWith(line.number)
+        } else if (id === "block") {
+            blockAsk.number = line.dial
+            blockAsk.ask(section.sioul.text("phonemsgs-block-title"), section.sioul.textWith("phonemsgs-block-ask", "number", line.number), section.sioul.text("calls-block"))
         }
     }
+
+    spacing: 0
+    visible: section.count > 0
+    Component.onCompleted: section.reload()
 
     // At each minute's turn (a sender's time may have come), and when the Porch is sorted again.
     Connections {
@@ -132,504 +191,282 @@ ColumnLayout {
         }
     }
 
-    Panel {
-        Layout.fillWidth: true
-        theme: section.theme
+    // A text the Texts page holds, not read yet: one row, its sender and first
+    // words, opening it there (23 October 2026); the phone's notification of it
+    // is folded into it in Rust (`texts::folding`).
+    Repeater {
+        model: section.textRows
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 10
+        delegate: NoticeRow {
+            id: notice
 
-            Label {
-                Layout.fillWidth: true
-                text: section.sioul.text("phonemsgs-title")
-                font.weight: Font.DemiBold
-                wrapMode: Text.Wrap
-                color: section.theme.text
-            }
-            RowLayout {
-                visible: section.said !== ""
-                Layout.fillWidth: true
-                spacing: 8
+            required property var modelData
 
-                Label {
-                    Layout.fillWidth: true
-                    text: section.said
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: section.theme.muted
-                }
-                Button {
-                    visible: undoTimer.running && section.undoAt > 0
-                    flat: true
-                    text: section.sioul.text("ui-undo")
-                    onClicked: {
-                        section.act("unseen", { at: section.undoAt })
-                        section.undoAt = 0
-                        section.said = ""
-                        undoTimer.stop()
-                        section.reload()
-                    }
-                }
-            }
+            objectName: "textNotice"
+            sioul: section.sioul
+            theme: section.theme
+            compact: section.porch.narrowRows
+            notice: notice.modelData.notice
+            iconName: "sioul-texts"
+            // A text that came 5 minutes or more after it was sent says when it was sent too.
+            note: notice.modelData.sent ? section.sioul.textArgs("texts-notice-late", JSON.stringify({ sent: notice.modelData.sent, late: notice.modelData.late || "" })) : ""
+            mainText: section.sioul.text("ui-open")
+            mainIcon: "sioul-texts"
+            onOpened: section.window.openTexts(notice.modelData.conversation)
+            onMainPressed: section.window.openTexts(notice.modelData.conversation)
+            onReadPressed: section.porch.say("read", notice.modelData)
+            onDismissPressed: section.porch.say("dismiss", notice.modelData)
+        }
+    }
+    Repeater {
+        model: section.lineRows
 
-            // A text the Texts page holds, not read yet: one notice, its sender and
-            // first words, opening it there (23 October 2026); the phone's
-            // notification of it is folded into it in Rust (`texts::folding`).
+        delegate: NoticeRow {
+            id: line
+
+            required property var modelData
+            // What it offers a reply from here; null for an older phone's lines (Text back as before).
+            readonly property var answer: line.modelData.answer || null
+            readonly property string key: line.modelData.ids && line.modelData.ids.length > 0 ? line.modelData.ids[0] : ""
+            readonly property bool replying: section.replyingTo !== "" && section.replyingTo === line.key
+            readonly property bool canReply: line.answer !== null && (line.answer.offered || line.answer.texts)
+            readonly property var main: section.mainOf(line.modelData, line.canReply && !line.replying)
+            property string replySaid: ""
+
+            sioul: section.sioul
+            theme: section.theme
+            compact: section.porch.narrowRows
+            notice: line.modelData.notice
+            iconName: line.modelData.code ? "dialog-password" : "mail-message"
+            chips: line.modelData.app ? [line.modelData.app] : []
+            mainText: line.main.text
+            mainIcon: line.main.icon
+            more: section.moreOf(line.modelData, line.main.id)
+            onMainPressed: section.chosen(line.main.id, line)
+            onReadPressed: section.porch.say("read", line.modelData)
+            onDismissPressed: section.porch.say("dismiss", line.modelData)
+            onChosen: id => section.chosen(id, line)
+
+            // Its earlier messages, under the newest: the time, the writer in a group, the words (plain text, never a link opened).
             Repeater {
-                model: section.shown.notices
+                model: (line.modelData.said || []).slice(0, -1)
 
-                delegate: ItemDelegate {
-                    id: notice
+                delegate: RowLayout {
+                    id: message
 
                     required property var modelData
 
-                    objectName: "textNotice"
                     Layout.fillWidth: true
-                    padding: 6
-                    onClicked: {
-                        section.window.openTexts(notice.modelData.conversation)
-                        section.reload()
-                    }
-                    Accessible.name: notice.said
+                    spacing: 10
 
-                    // Said on arrival; a text that came 5 minutes or more after it was sent says when it was sent too.
-                    readonly property bool many: notice.modelData.count > 1
-                    readonly property string key: notice.modelData.sent ? (notice.many ? "texts-notice-many-sent" : "texts-notice-sent") : (notice.many ? "texts-notice-many" : "texts-notice")
-                    readonly property string said: section.sioul.textArgs(notice.key, JSON.stringify({ who: notice.modelData.who, first: notice.modelData.first, time: notice.modelData.when, count: notice.modelData.count, sent: notice.modelData.sent || "", late: notice.modelData.late || "" }))
-
-                    contentItem: Label {
-                        text: notice.said
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: section.theme.text
-                    }
-                }
-            }
-            Repeater {
-                model: section.shown.lines
-
-                delegate: ColumnLayout {
-                    id: line
-
-                    required property var modelData
-                    // What it offers a reply from here; null for an older phone's lines (Text back as before).
-                    readonly property var answer: line.modelData.answer || null
-                    readonly property string key: line.modelData.ids && line.modelData.ids.length > 0 ? line.modelData.ids[0] : ""
-                    readonly property bool replying: section.replyingTo !== "" && section.replyingTo === line.key
-                    readonly property bool canReply: line.answer !== null && (line.answer.offered || line.answer.texts)
-                    property string replySaid: ""
-
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    // Who wrote, in which part of the day: what the app and your contacts say, never more.
                     Label {
-                        Layout.fillWidth: true
-                        text: line.modelData.head
+                        Layout.alignment: Qt.AlignTop
+                        text: message.modelData.time
                         textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: section.theme.text
-                    }
-                    // Each message: its time, its writer in a group, its words (plain text, never a link opened).
-                    Repeater {
-                        model: line.modelData.said || []
-
-                        delegate: RowLayout {
-                            id: message
-
-                            required property var modelData
-
-                            Layout.fillWidth: true
-                            spacing: 10
-
-                            Label {
-                                Layout.alignment: Qt.AlignTop
-                                text: message.modelData.time
-                                textFormat: Text.PlainText
-                                font.features: { "tnum": 1 }
-                                color: section.theme.muted
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                visible: text !== ""
-                                text: (message.modelData.from !== "" ? message.modelData.from + " · " : "") + message.modelData.text
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                color: section.theme.text
-                            }
-                        }
-                    }
-                    // Your replies from this computer, under their messages, each with its state in words.
-                    Repeater {
-                        model: line.answer ? line.answer.mine : []
-
-                        delegate: ColumnLayout {
-                            id: mine
-
-                            required property var modelData
-
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 10
-
-                                Label {
-                                    Layout.alignment: Qt.AlignTop
-                                    text: mine.modelData.time
-                                    textFormat: Text.PlainText
-                                    font.features: { "tnum": 1 }
-                                    color: section.theme.muted
-                                }
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: section.sioul.text("replies-you") + " · " + mine.modelData.text
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    color: section.theme.text
-                                }
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: mine.modelData.said
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                font.pixelSize: 13
-                                color: section.theme.muted
-                            }
-                            Flow {
-                                visible: (mine.modelData.waiting && !mine.modelData.texts) || mine.modelData.again
-                                Layout.fillWidth: true
-                                spacing: 6
-
-                                Button {
-                                    visible: mine.modelData.waiting && !mine.modelData.texts
-                                    flat: true
-                                    text: section.sioul.text("replies-take-back")
-                                    onClicked: section.takeBack(mine.modelData.key)
-                                }
-                                Button {
-                                    visible: mine.modelData.again
-                                    flat: true
-                                    text: section.sioul.text("replies-send-again")
-                                    onClicked: section.sendAgain(line.answer, mine.modelData)
-                                }
-                            }
-                        }
-                    }
-                    // The reply's box, under the line: Send (Ctrl+Enter), Escape closes; what is typed kept.
-                    ColumnLayout {
-                        visible: line.replying
-                        Layout.fillWidth: true
-                        spacing: 4
-
-                        Label {
-                            visible: line.answer !== null && line.answer.note !== "" && !section.sioul.viewFlag("replies-note-" + line.answer.app)
-                            Layout.fillWidth: true
-                            text: line.answer ? line.answer.note : ""
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            font.pixelSize: 13
-                            color: section.theme.muted
-                        }
-                        TextArea {
-                            id: words
-
-                            objectName: "replyWords"
-                            Layout.fillWidth: true
-                            placeholderText: line.answer ? section.theme.plain(line.answer.placeholder) : ""
-                            textFormat: TextEdit.PlainText
-                            wrapMode: TextEdit.Wrap
-                            text: section.drafts[line.key] || ""
-                            onTextChanged: section.drafts[line.key] = words.text
-                            Accessible.name: placeholderText
-                            Keys.onPressed: event => {
-                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
-                                    line.replySaid = section.send(line, words.text)
-                                    event.accepted = true
-                                } else if (event.key === Qt.Key_Escape) {
-                                    section.replyingTo = ""
-                                    event.accepted = true
-                                }
-                            }
-                            Component.onCompleted: {
-                                if (line.replying)
-                                    words.forceActiveFocus()
-                            }
-                        }
-                        // The characters left, near the limit only.
-                        Label {
-                            visible: line.answer !== null && words.length > line.answer.limit - 200
-                            text: line.answer ? section.sioul.textWith("replies-left", "count", String(line.answer.limit - words.length)) : ""
-                            textFormat: Text.PlainText
-                            font.pixelSize: 13
-                            color: section.theme.muted
-                        }
-                        Label {
-                            visible: line.replySaid !== ""
-                            Layout.fillWidth: true
-                            text: line.replySaid
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: section.theme.muted
-                        }
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 6
-
-                            Button {
-                                enabled: words.text.trim() !== "" && line.answer !== null && words.length <= line.answer.limit
-                                text: section.sioul.text("replies-send")
-                                onClicked: line.replySaid = section.send(line, words.text)
-                            }
-                            Button {
-                                flat: true
-                                text: section.sioul.text("ui-cancel")
-                                onClicked: section.replyingTo = ""
-                            }
-                        }
-                    }
-                    // Its notification gone, or its Reply closed to Sioul: on the phone (a text: Text back).
-                    Label {
-                        visible: line.answer !== null && !line.canReply && !line.modelData.texted
-                        Layout.fillWidth: true
-                        text: line.answer ? line.answer.on_phone : ""
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: section.theme.muted
-                    }
-                    Label {
-                        visible: line.modelData.number !== ""
-                        Layout.fillWidth: true
-                        text: line.modelData.number
-                        textFormat: Text.PlainText
+                        font.pixelSize: 13
                         font.features: { "tnum": 1 }
                         color: section.theme.muted
                     }
                     Label {
-                        visible: line.modelData.note !== ""
                         Layout.fillWidth: true
-                        text: line.modelData.note
+                        visible: text !== ""
+                        text: (message.modelData.from !== "" ? message.modelData.from + " · " : "") + message.modelData.text
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: section.theme.text
+                    }
+                }
+            }
+            // Your replies from this computer, under their messages, each with its state in words.
+            Repeater {
+                model: line.answer ? line.answer.mine : []
+
+                delegate: ColumnLayout {
+                    id: mine
+
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        Label {
+                            Layout.alignment: Qt.AlignTop
+                            text: mine.modelData.time
+                            textFormat: Text.PlainText
+                            font.pixelSize: 13
+                            font.features: { "tnum": 1 }
+                            color: section.theme.muted
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: section.sioul.text("replies-you") + " · " + mine.modelData.text
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: section.theme.text
+                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: mine.modelData.said
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         font.pixelSize: 13
                         color: section.theme.muted
                     }
-                    // The line's own actions, few and calm: Reply first, then a call back, Seen last;
-                    // the rest in its menu (⋮, a right click, a long press, the Menu key).
                     Flow {
+                        visible: (mine.modelData.waiting && !mine.modelData.texts) || mine.modelData.again
                         Layout.fillWidth: true
                         spacing: 6
 
-                        // Through the notification's own Reply, or as a text of Sioul's own: the box under the line.
                         Button {
-                            visible: line.canReply && !line.replying
-                            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                            text: section.sioul.text("replies-reply")
-                            icon.name: "mail-reply-sender"
-                            icon.color: section.theme.text
-                            display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                            ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: section.theme.plain(text)
-                            Accessible.name: text
-                            onClicked: {
-                                line.replySaid = ""
-                                section.replyingTo = line.key
-                            }
-                        }
-                        // On a computer, through the system's app for such links (KDE Connect hands them to your phone).
-                        Button {
-                            // texts: in Sioul's Texts page when texts are read here, else the system's app; Reply takes its place when offered.
-                            visible: line.modelData.texted && (section.canText || section.shown.texts) && !line.canReply
-                            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                            text: section.sioul.text("calls-text-back")
-                            icon.name: "mail-message-new"
-                            icon.color: section.theme.text
-                            display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                            ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: section.theme.plain(text)
-                            Accessible.name: text
-                            onClicked: {
-                                if (section.shown.texts)
-                                    section.window.openTexts(line.modelData.dial)
-                                else
-                                    Qt.openUrlExternally("sms:" + line.modelData.dial)
-                            }
-                        }
-                        Button {
-                            visible: line.modelData.texted && section.canCall
-                            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                            text: section.sioul.text("calls-call-back")
-                            icon.name: "call-start"
-                            icon.color: section.theme.text
-                            display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                            ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: section.theme.plain(text)
-                            Accessible.name: text
-                            onClicked: Qt.openUrlExternally("tel:" + line.modelData.dial)
-                        }
-                        // No app for them here: the number, to answer from the phone yourself.
-                        Button {
-                            visible: line.modelData.dial !== "" && !section.canCall && !section.canText && !section.shown.texts
-                            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-                            text: section.sioul.text("calls-copy")
-                            icon.name: "edit-copy"
-                            icon.color: section.theme.text
-                            display: section.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                            ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                            ToolTip.text: section.theme.plain(text)
-                            Accessible.name: text
-                            onClicked: {
-                                section.window.copy(line.modelData.number)
-                                section.said = section.sioul.text("calls-copied")
-                            }
-                        }
-                        Button {
-                            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                            visible: mine.modelData.waiting && !mine.modelData.texts
                             flat: true
-                            text: section.sioul.text("calls-seen")
-                            // Seen here, gone from every device's Porch; ten seconds to undo.
-                            onClicked: {
-                                const answer = section.answered(section.act("seen", { ids: line.modelData.ids }))
-                                section.undoAt = answer && answer.at ? answer.at : 0
-                                if (section.undoAt > 0)
-                                    undoTimer.restart()
-                                section.reload()
-                            }
+                            text: section.sioul.text("replies-take-back")
+                            onClicked: section.takeBack(mine.modelData.key)
                         }
-                        ToolButton {
-                            id: more
-
-                            visible: line.modelData.dial !== "" || (line.answer !== null && (line.answer.read || line.answer.texts))
-                            icon.name: "overflow-menu"
-                            icon.color: section.theme.text
-                            Accessible.name: section.sioul.text("ui-more")
-                            ToolTip.visible: more.hovered
-                            ToolTip.text: section.sioul.text("ui-more")
-                            ToolTip.delay: 400
-                            onClicked: lineMenu.now().show(line.modelData, more)
+                        Button {
+                            visible: mine.modelData.again
+                            flat: true
+                            text: section.sioul.text("replies-send-again")
+                            onClicked: section.sendAgain(line.answer, mine.modelData)
                         }
                     }
+                }
+            }
+            // The reply's box, under the line: Send (Ctrl+Enter), Escape closes; what is typed kept.
+            ColumnLayout {
+                visible: line.replying
+                Layout.fillWidth: true
+                spacing: 4
 
+                Label {
+                    visible: line.answer !== null && line.answer.note !== "" && !section.sioul.viewFlag("replies-note-" + line.answer.app)
+                    Layout.fillWidth: true
+                    text: line.answer ? line.answer.note : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: section.theme.muted
+                }
+                TextArea {
+                    id: words
+
+                    objectName: "replyWords"
+                    Layout.fillWidth: true
+                    placeholderText: line.answer ? section.theme.plain(line.answer.placeholder) : ""
+                    textFormat: TextEdit.PlainText
+                    wrapMode: TextEdit.Wrap
+                    text: section.drafts[line.key] || ""
+                    onTextChanged: section.drafts[line.key] = words.text
+                    Accessible.name: placeholderText
                     Keys.onPressed: event => {
-                        if (more.visible && (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier)))) {
-                            lineMenu.now().show(line.modelData, more)
+                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
+                            line.replySaid = section.send(line, words.text)
+                            event.accepted = true
+                        } else if (event.key === Qt.Key_Escape) {
+                            section.replyingTo = ""
                             event.accepted = true
                         }
                     }
-                    TapHandler {
-                        id: longPress
-
-                        enabled: more.visible
-                        acceptedDevices: PointerDevice.TouchScreen
-                        onLongPressed: {
-                            line.Window.window.menuAt = line.mapToItem(null, longPress.point.position.x, longPress.point.position.y)
-                            lineMenu.now().show(line.modelData, null)
-                        }
-                    }
-                    TapHandler {
-                        enabled: more.visible
-                        acceptedButtons: Qt.RightButton
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onTapped: lineMenu.now().show(line.modelData, null)
+                    Component.onCompleted: {
+                        if (line.replying)
+                            words.forceActiveFocus()
                     }
                 }
-            }
-            // The menu of a line: one for the section, made the first time it opens.
-            Later {
-                id: lineMenu
+                // The characters left, near the limit only.
+                Label {
+                    visible: line.answer !== null && words.length > line.answer.limit - 200
+                    text: line.answer ? section.sioul.textWith("replies-left", "count", String(line.answer.limit - words.length)) : ""
+                    textFormat: Text.PlainText
+                    font.pixelSize: 13
+                    color: section.theme.muted
+                }
+                Label {
+                    visible: line.replySaid !== ""
+                    Layout.fillWidth: true
+                    text: line.replySaid
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: section.theme.muted
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
 
-                sourceComponent: Component {
-                    SioulMenu {
-                        id: lineMenuForm
-
-                        property var line: null
-
-                        function show(line, at) {
-                            lineMenuForm.line = line
-                            if (at) {
-                                const below = at.mapToItem(lineMenuForm.parent, 0, at.height)
-                                lineMenuForm.popup(below.x, below.y)
-                            } else {
-                                lineMenuForm.popup()
-                            }
-                        }
-
-                        // The app's own Mark as read, with its warning first (decision 13).
-                        MenuItem {
-                            visible: lineMenuForm.line !== null && !!lineMenuForm.line.answer && lineMenuForm.line.answer.read && !lineMenuForm.line.answer.texts
-                            height: visible ? implicitHeight : 0
-                            text: visible ? section.theme.plain(lineMenuForm.line.answer.read_item) : ""
-                            onTriggered: {
-                                readAsk.answer = lineMenuForm.line.answer
-                                readAsk.ask(section.sioul.text("replies-read-title"), lineMenuForm.line.answer.read_warning, section.sioul.text("replies-read-confirm"))
-                            }
-                        }
-                        // A text: its conversation on the Texts page.
-                        MenuItem {
-                            visible: lineMenuForm.line !== null && !!lineMenuForm.line.answer && lineMenuForm.line.answer.texts
-                            height: visible ? implicitHeight : 0
-                            text: section.sioul.text("replies-open-texts")
-                            onTriggered: section.window.openTexts(lineMenuForm.line.dial)
-                        }
-                        // Their list, Always through, their calls and messages: their sheet.
-                        MenuItem {
-                            visible: lineMenuForm.line !== null && lineMenuForm.line.dial !== ""
-                            height: visible ? implicitHeight : 0
-                            text: section.sioul.text("attention-sheet-sender")
-                            onTriggered: section.window.openPersonSheet("", JSON.stringify(["tel:" + lineMenuForm.line.dial]))
-                        }
-                        MenuItem {
-                            visible: lineMenuForm.line !== null && !lineMenuForm.line.known && lineMenuForm.line.dial !== ""
-                            height: visible ? implicitHeight : 0
-                            text: section.sioul.text("calls-add-contact")
-                            icon.name: "contact-new"
-                            icon.color: section.theme.text
-                            onTriggered: section.window.newContactWith(lineMenuForm.line.number)
-                        }
-                        MenuItem {
-                            visible: lineMenuForm.line !== null && lineMenuForm.line.dial !== ""
-                            height: visible ? implicitHeight : 0
-                            text: section.sioul.text("calls-block")
-                            icon.name: "dialog-cancel"
-                            icon.color: section.theme.text
-                            onTriggered: {
-                                blockAsk.number = lineMenuForm.line.dial
-                                blockAsk.ask(section.sioul.text("phonemsgs-block-title"), section.sioul.textWith("phonemsgs-block-ask", "number", lineMenuForm.line.number), section.sioul.text("calls-block"))
-                            }
-                        }
+                    Button {
+                        enabled: words.text.trim() !== "" && line.answer !== null && words.length <= line.answer.limit
+                        text: section.sioul.text("replies-send")
+                        onClicked: line.replySaid = section.send(line, words.text)
+                    }
+                    Button {
+                        flat: true
+                        text: section.sioul.text("ui-cancel")
+                        onClicked: section.replyingTo = ""
                     }
                 }
             }
-            // Mark as read, asked once with its warning: the phone sends the app's own action, nothing else.
-            ConfirmDialog {
-                id: readAsk
-
-                property var answer: null
-
-                sioul: section.sioul
-                theme: section.theme
-                onConfirmed: {
-                    if (readAsk.answer)
-                        section.answered(section.act("reply", { phone: readAsk.answer.phone, verb: "read", notice: readAsk.answer.notice, app: readAsk.answer.app, line: readAsk.answer.line, words: "" }))
-                    section.reload()
-                }
+            // Its notification gone, or its Reply closed to Sioul: on the phone (a text: Text back).
+            Label {
+                visible: line.answer !== null && !line.canReply && !line.modelData.texted
+                Layout.fillWidth: true
+                text: line.answer ? line.answer.on_phone : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: section.theme.muted
             }
-            // Blocking is asked once: their calls go to voicemail, their messages stay on the phone.
-            ConfirmDialog {
-                id: blockAsk
-
-                property string number: ""
-
-                sioul: section.sioul
-                theme: section.theme
-                onConfirmed: {
-                    section.answered(section.act("block", { number: blockAsk.number }))
-                    section.reload()
-                }
+            Label {
+                // Someone your address books do not name: their number, under who the app said they are.
+                visible: line.modelData.number !== "" && line.modelData.number !== line.notice.who && !line.modelData.known
+                Layout.fillWidth: true
+                text: line.modelData.number
+                textFormat: Text.PlainText
+                font.pixelSize: 13
+                font.features: { "tnum": 1 }
+                color: section.theme.muted
             }
+            Label {
+                visible: line.modelData.note !== ""
+                Layout.fillWidth: true
+                text: line.modelData.note
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: section.theme.muted
+            }
+        }
+    }
+    // Mark as read, asked once with its warning: the phone sends the app's own action, nothing else.
+    ConfirmDialog {
+        id: readAsk
+
+        property var answer: null
+
+        sioul: section.sioul
+        theme: section.theme
+        onConfirmed: {
+            if (readAsk.answer)
+                section.answered(section.act("reply", { phone: readAsk.answer.phone, verb: "read", notice: readAsk.answer.notice, app: readAsk.answer.app, line: readAsk.answer.line, words: "" }))
+            section.reload()
+        }
+    }
+    // Blocking is asked once: their calls go to voicemail, their messages stay on the phone.
+    ConfirmDialog {
+        id: blockAsk
+
+        property string number: ""
+
+        sioul: section.sioul
+        theme: section.theme
+        onConfirmed: {
+            section.answered(section.act("block", { number: blockAsk.number }))
+            section.reload()
         }
     }
 }
