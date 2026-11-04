@@ -662,6 +662,52 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// The notices' words wait for every device to have their store, as your
+/// own time does: a phone still on a Sioul without it (705576a) would keep
+/// their records waiting at every exchange. The desk's log stays on the desk
+/// and the phone's steps place everything they read; once the phone says it
+/// has the store, the desk's next exchange sends the log, and the phone
+/// reads the desk's word.
+#[test]
+fn the_notices_words_wait_for_a_device_that_has_their_store() {
+    let base = scratch("notices-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.notices = NOTICES_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let said = "{\"at\":1793000000000,\"ids\":[\"mail:home:0000000000000001\"],\"state\":\"dismissed\"}\n";
+    desk.write("state/notices/desk.jsonl", said);
+    for _ in 0..2 {
+        assert_eq!(background(&desk, &folder, &key, now).sent, 0, "kept to itself");
+        now += MINUTE;
+    }
+    // The phone as 705576a: no such store, none known.
+    let older = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != NOTICES).collect::<Vec<_>>();
+    super::tests::OLDER.with(|o| *o.borrow_mut() = vec![NOTICES.to_string()]);
+    for _ in 0..3 {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let outcome = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None }, &older, now).unwrap();
+        assert_eq!(outcome.pending, 0, "nothing it cannot place: {outcome:?}");
+    }
+    assert!(!phone.path("state/notices/desk.jsonl").exists(), "nothing written there");
+    // The phone updated: the desk's next exchange sends the log.
+    super::tests::OLDER.with(|o| o.borrow_mut().clear());
+    entry(&phone, &folder, &key, |e| e.notices = NOTICES_SHARED);
+    now += MINUTE;
+    background(&desk, &folder, &key, now);
+    now += MINUTE;
+    let came = background(&phone, &folder, &key, now);
+    assert!(came.written.contains(NOTICES), "{came:?}");
+    assert_eq!(phone.read("state/notices/desk.jsonl"), said);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// A device with no own time of its own (the phone, just updated), while a
 /// device on an older Sioul still counts: another device says it reads own
 /// time, so may hold some to send; Settings there names the device that keeps

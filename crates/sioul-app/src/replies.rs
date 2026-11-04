@@ -577,9 +577,9 @@ pub(crate) fn fill(lines: &mut Vec<sioul_core::phonemsgs::PorchLine>, all: &[Lin
         }
     }
     if !seen.is_empty() {
-        if let Err(e) = calls::mark_seen(&root, &here, &seen, now_ms) {
-            eprintln!("sioul: replies: {e}");
-        }
+        // The app's own Mark as read, handed on the phone: their notices Read on every device.
+        let notices: Vec<String> = seen.iter().filter_map(|id| by_id.get(id.as_str())).map(|l| sioul_core::notices::phone_id(&l.device, &l.id)).collect();
+        crate::notices::say_quietly(sioul_core::notices::Kind::Phone, notices, sioul_core::notices::Mark::Read);
         lines.retain(|l| !l.ids.iter().any(|id| seen.contains(id)));
     }
 }
