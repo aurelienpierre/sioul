@@ -1420,6 +1420,12 @@ pub mod qobject {
         #[qinvokable]
         fn letters_add(self: Pin<&mut Sioul>, files: &QString) -> QString;
 
+        /// Scans chosen elsewhere (a JSON array of file addresses) linked where
+        /// they are, never copied, to be read at a coming minute: what happened,
+        /// in a sentence (`letters::link`).
+        #[qinvokable]
+        fn letters_link(self: Pin<&mut Sioul>, files: &QString) -> QString;
+
         /// The money watch, as JSON (`bank::view`).
         #[qinvokable]
         fn bank(self: &Sioul) -> QString;
@@ -3414,6 +3420,14 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         if !report.elsewhere.is_empty() {
             tie_to_projects(&report.elsewhere);
         }
+        // Proven mail your provider put in Spam, as it arrives there: brought back as the
+        // matrix's row says, with Undo (`mail::bring_back`); never at an address's first fetch.
+        if !report.first && !report.elsewhere.is_empty() {
+            let (qt, shared, account, files) = (qt.clone(), Arc::clone(shared), account.clone(), report.elsewhere.clone());
+            std::thread::spawn(move || {
+                crate::mail::bring_back(&qt, &shared, &account, &files);
+            });
+        }
         // Older mail waits for room: said once a session, calmly.
         if report.held_back
             && shared.held_back.lock().is_ok_and(|mut said| said.insert(account.id.clone()))
@@ -3948,8 +3962,12 @@ impl qobject::Sioul {
         }
         let (qt, shared) = (qt.clone(), Arc::clone(&shared));
         std::thread::spawn(move || {
-            let checked: usize = load_config().mail_sources().iter().map(|s| sioul_sync::verify::verify_folder(&s.folder, false)).sum();
-            if checked > 0 {
+            let config = load_config();
+            let checked: usize = config.mail_sources().iter().map(|s| sioul_sync::verify::verify_folder(&s.folder, false)).sum();
+            // Mail stored before Sioul knew your provider's subject tags, checked again once
+            // on this device (part 2 of 4 November 2026; `mail::recheck_tagged`).
+            let rewritten = crate::mail::recheck_tagged(&qt, &shared, &config);
+            if checked + rewritten > 0 {
                 show(&qt, &shared);
             }
         });
@@ -5418,6 +5436,12 @@ impl qobject::Sioul {
         QString::from(&crate::letters::add(&files.to_string()))
     }
 
+    fn letters_link(mut self: Pin<&mut Self>, files: &QString) -> QString {
+        let said = crate::letters::link(&files.to_string());
+        self.as_mut().letters_changed();
+        QString::from(&said)
+    }
+
     fn bank(&self) -> QString {
         QString::from(&crate::bank::view())
     }
@@ -6779,6 +6803,13 @@ impl qobject::Sioul {
         for row in rows.iter_mut().filter(|r| r.key == "passwords_shown") {
             row.value = config::SettingValue::Bool(work::view_flag(&self.shared(), "passwords-shown"));
         }
+        // Where scans arrive: what installs the reading programs, when this computer lacks them.
+        for row in rows.iter_mut().filter(|r| r.key == "letters.inbox") {
+            let hint = crate::letters::reader_hint();
+            if !hint.is_empty() {
+                row.help = format!("{} {}", row.help, say("letters-reader-missing", &[("hint", hint)]));
+            }
+        }
         // colour: what this screen gets, said under its switch; neither line on a
         // phone, whose sites open in the browser (docs/colour.md).
         if cfg!(target_os = "android") {
@@ -7017,8 +7048,8 @@ impl qobject::Sioul {
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
         // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
-        // budgets page, What is coming with its month, the bank accounts (pictures alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page"].contains(&steps.as_str()) && offline()) {
+        // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

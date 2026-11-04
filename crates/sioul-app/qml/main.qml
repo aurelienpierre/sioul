@@ -182,11 +182,11 @@ SioulWindow {
     }
 
     // Each page's name, by its place in the pages' stack.
-    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers", "texts-page-title"]
+    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers", "texts-page-title", "ui-letters"]
     // Each page is made when it is first shown, then kept: the window opens
     // with the Porch alone, and a page asked for (a link, "New") is made
     // before it is used, as the page is set first.
-    property var made: sioul.grabFolder() !== "" && sioul.grabSteps() !== "memory" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true }) : ({ 0: true })
+    property var made: sioul.grabFolder() !== "" && sioul.grabSteps() !== "memory" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 15: true }) : ({ 0: true })
     onPageChanged: {
         window.placesOpen = false
         // On a phone the card covers the page: the page asked for shows (review of 590eb18, M3).
@@ -200,10 +200,10 @@ SioulWindow {
     // Each page's file, read the first time it is made (setSource, for their
     // required properties): what it imports (maps, PDFs, sites, sounds) is
     // loaded then, not as the window opens. Android has its own Sites page.
-    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml", "TextsPage.qml"]
+    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml", "TextsPage.qml", "LettersPage.qml"]
     onMadeChanged: window.makePages()
     function makePages() {
-        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader, textsPageLoader]
+        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader, textsPageLoader, lettersPageLoader]
         for (let i = 0; i < loaders.length; i++) {
             if (window.made[i] !== true || loaders[i].status !== Loader.Null)
                 continue
@@ -231,6 +231,8 @@ SioulWindow {
     readonly property var papersPage: papersPageLoader.item
     // texts: the Texts page, a computer's only (a phone has its own SMS app).
     readonly property var textsPage: textsPageLoader.item
+    // Paper letters: their own page, waiting then filed (LettersPage.qml).
+    readonly property var lettersPage: lettersPageLoader.item
     // The page in view; on a phone, a page showing one thing it opened
     // (a message, a task) says so (canGoBack) and closes it (back()).
     readonly property var shownPage: pages.children[window.page] ? pages.children[window.page].item : null
@@ -436,10 +438,12 @@ SioulWindow {
             window.page = 13
             papersPage.startNew()
         } else if (kind === "letter") {
-            // Paper letters live on the Porch: a scan chosen, copied where scans are read.
-            window.page = 0
-            if (window.porchPage)
-                window.porchPage.addScan()
+            // Paper letters have their page: a scan chosen there, copied where scans are read.
+            window.page = 15
+            Qt.callLater(() => {
+                if (window.lettersPage)
+                    window.lettersPage.addScan()
+            })
         } else if (kind === "stopped") {
             window.askNeed("")
         }
@@ -696,6 +700,17 @@ SioulWindow {
         return true
     }
 
+    // A paper letter on its page (LettersPage.qml), its card in view: from
+    // the Porch's row, a link, a reminder. Made the first time if need be.
+    function openLetter(id) {
+        cardHost.leave()
+        window.page = 15
+        Qt.callLater(() => {
+            if (window.lettersPage)
+                window.lettersPage.openLetter(id || "")
+        })
+    }
+
     // A contract's page, or a budget's (a dated card's "Its page").
     function openPage(kind, key) {
         cardHost.leave()
@@ -764,8 +779,10 @@ SioulWindow {
             papersPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:paper/".length)))
         } else if (item.kind === "contract") {
             window.openPage("contract", item.key || decodeURIComponent(item.uri.slice("sioul:contract/".length)))
-        } else if (item.kind === "letter" || item.kind === "invoice")
-            window.page = item.kind === "letter" ? 0 : 7
+        } else if (item.kind === "letter")
+            window.openLetter(item.key || decodeURIComponent((item.uri || "").slice("sioul:letter/".length)))
+        else if (item.kind === "invoice")
+            window.page = 7
         // A project's address, or as it was written before the one name ("sioul:case/").
         else if (item.kind === "project")
             window.openProject(item.key || decodeURIComponent(item.uri.replace(/^sioul:(project|case)\//, "")))
@@ -1231,7 +1248,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "letters-page": grabber.lettersPageSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2787,6 +2804,20 @@ SioulWindow {
                 () => JSON.parse(sioul.letters()).letters.forEach(l => sioul.status = sioul.letterTask(l.id)),
                 () => {},
                 () => JSON.parse(sioul.letters()).letters.forEach(l => sioul.status = sioul.letterDone(l.id, "")),
+                () => {},
+                () => window.close()
+            ]
+            // The Letters page: its letters waiting, then filed, its bar, then its ⚙
+            // (pictures alone, on a demo profile; docs/porch.md, "Paper letters").
+            readonly property var lettersPageSteps: [
+                () => window.page = 15,
+                () => {},
+                () => {},
+                () => grabber.save("letters-page"),
+                () => window.lettersPage.openSettings(),
+                () => {},
+                () => {},
+                () => window.lettersPage.grabSettings(grabber.folder + "/letters-settings.png"),
                 () => {},
                 () => window.close()
             ]
@@ -5087,6 +5118,9 @@ SioulWindow {
                     }
                     Loader {
                         id: textsPageLoader
+                    }
+                    Loader {
+                        id: lettersPageLoader
                     }
                 }
 

@@ -15,7 +15,10 @@
 //!   messages aside), or carrying `$NotJunk` (or `NonJunk`, `NotJunk`,
 //!   `$NonJunk`, other mail apps' words for it).
 //! - **Left out**: flagged by your own filter as maybe spam, until you say:
-//!   a doubt is no label.
+//!   a doubt is no label. Proven mail from someone you deal with in a Junk
+//!   folder, without a keyword (`sioul_core::spam::vouched`, part 2 of 4
+//!   November 2026): your provider's word alone is no label for it, until you
+//!   say Spam (your Not spam, a ham, as always).
 //! - **Your actions** (every device's label log: junk, not junk, "Spam",
 //!   "Not spam", block) beat everything, the newest one winning: a message
 //!   you said is not spam is never learned as spam, whatever its folder,
@@ -38,6 +41,12 @@ use sioul_core::folders::Role;
 pub use sioul_core::spam::labels::{Entry, Flagged, Label, Moved};
 use sioul_core::spam::Class;
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+/// The rules the labels are decided by, numbered: 2 since proven mail from
+/// someone you deal with in a Junk folder is left out (part 2 of 4 November
+/// 2026). A training made under older ones is followed by one at the next
+/// good moment, the week not waited for (`auto::decide`).
+pub const RULES: u32 = 2;
 
 /// What decided a label, weakest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -67,6 +76,9 @@ pub struct Copy {
     pub key: String,
     pub junk: bool,
     pub not_junk: bool,
+    /// In a Junk folder without a keyword, proven mail from someone you deal
+    /// with (`Copy::judged`): no say, until you say.
+    pub vouched: bool,
 }
 
 /// The keywords that say junk: `$Junk` (RFC 5788's registry), and `Junk`,
@@ -82,7 +94,17 @@ impl Copy {
         let key = message_id(&header).unwrap_or_else(|| format!("header:{:016x}", fnv64(&header)));
         let junk = JUNK.iter().any(|k| record.has_flag(k));
         let not_junk = NOT_JUNK.iter().any(|k| record.has_flag(k));
-        Copy { place: record.place(), role: record.role, date: record.date, key, junk, not_junk }
+        Copy { place: record.place(), role: record.role, date: record.date, key, junk, not_junk, vouched: false }
+    }
+
+    /// `of`, and whether a Junk folder's copy without a keyword is proven
+    /// mail from someone you deal with (`dealings`): its sender judged as the
+    /// Porch judges it, Sioul's own checks first (`corpus::Checked::reading`),
+    /// else the stamps of the ids trusted for its account (`trusted`).
+    pub fn judged(record: &Record, trusted: &BTreeMap<String, Vec<String>>, dealings: &sioul_core::spam::vouched::Dealings) -> Copy {
+        let mut copy = Copy::of(record);
+        copy.vouched = copy.role == Role::Junk && !copy.junk && !copy.not_junk && !dealings.is_empty() && vouched(record, trusted.get(&record.account).map_or(&[][..], Vec::as_slice), dealings);
+        copy
     }
 
     /// What this copy says by itself: a not-junk keyword (your correction)
@@ -98,6 +120,17 @@ impl Copy {
             (Label::Ham, Evidence::Folder)
         }
     }
+}
+
+/// Whether the message of `record` is proven mail from someone you deal with (`Copy::judged`).
+fn vouched(record: &Record, trusted: &[String], dealings: &sioul_core::spam::vouched::Dealings) -> bool {
+    use sioul_core::trust;
+    let Some(card) = crate::spamcore::card_of(record) else { return false };
+    let own = record.checked.as_ref().and_then(|c| c.reading(record.date, sioul_core::spam::features::signed(&card.headers)));
+    let results = own.or_else(|| trust::read_auth_results(&card.headers, trusted));
+    let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &trust::sealers(trusted, &[]))).flatten();
+    let (judged, _) = trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain());
+    sioul_core::spam::vouched::vouched(&card, judged, dealings)
 }
 
 /// A header block's Message-ID, bare, read as the label log reads it
@@ -161,6 +194,10 @@ pub struct Summary {
     /// which you said nothing: learned as all Junk mail is (among `by_junk_folder`).
     #[serde(default)]
     pub filter_moved: u64,
+    /// Proven mail from someone you deal with in a Junk folder, about which
+    /// you said nothing: left out (your provider's word alone is no label for it).
+    #[serde(default)]
+    pub vouched: u64,
     /// Labels decided by each kind of evidence.
     pub by_log: u64,
     pub by_keyword: u64,
@@ -171,13 +208,16 @@ pub struct Summary {
     pub by_folder: u64,
     /// Ham and spam per account (the copy learned from).
     pub accounts: BTreeMap<String, (u64, u64)>,
+    /// The rules they were decided by (`RULES`); 0 before they were numbered.
+    #[serde(default)]
+    pub rules: u32,
 }
 
 /// One label per message, from every copy read and the logs (see the
 /// module): `log`, what you said; `moved` and `flagged`, what your own
 /// filter moved into a Junk folder and what it flagged where it is.
 pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved], flagged: &[Flagged]) -> (Vec<Labeled>, Summary) {
-    let mut summary = Summary { records: copies.len() as u64, ..Summary::default() };
+    let mut summary = Summary { records: copies.len() as u64, rules: RULES, ..Summary::default() };
     // What your filter moved, by account and Message-ID: learned as all Junk mail is, counted apart.
     let moved: HashSet<(&str, &str)> = moved.iter().filter_map(|m| Some((m.account.as_str(), m.message_id.as_deref()?))).collect();
     // What your filter flagged, the newest flag of each message: by account
@@ -239,6 +279,14 @@ pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved], flagged: &[Flag
                 continue;
             }
         }
+        // Proven mail you deal with, in a Junk folder by your provider's word alone: no say either.
+        if action.is_none() && copies.iter().any(|c| c.vouched) {
+            copies.retain(|c| !c.vouched);
+            if copies.is_empty() {
+                summary.vouched += 1;
+                continue;
+            }
+        }
         let decided = match action {
             Some(action) => {
                 // The copy where you acted, else the one whose own word agrees, else the first.
@@ -295,7 +343,33 @@ mod tests {
     use super::*;
 
     fn copy(account: &str, folder: &str, role: Role, uid: u32, key: &str) -> Copy {
-        Copy { place: Place { account: account.into(), folder: folder.into(), uidvalidity: 1, uid }, role, date: i64::from(uid), key: key.into(), junk: false, not_junk: false }
+        Copy { place: Place { account: account.into(), folder: folder.into(), uidvalidity: 1, uid }, role, date: i64::from(uid), key: key.into(), junk: false, not_junk: false, vouched: false }
+    }
+
+    /// Proven mail from someone you deal with, in a Junk folder by your
+    /// provider's word alone, is left out; your Spam makes it spam, your Not
+    /// spam ham; a copy elsewhere still speaks for it; an unproven one in the
+    /// Junk folder stays spam.
+    #[test]
+    fn vouched_mail_in_junk_is_left_out_until_you_say() {
+        let vouched = |uid: u32, key: &str| Copy { vouched: true, ..copy("home", "Junk", Role::Junk, uid, key) };
+        let copies = vec![
+            vouched(1, "notice@notif.post.example"),
+            vouched(2, "said-spam@notif.post.example"),
+            vouched(3, "said-ham@notif.post.example"),
+            vouched(4, "kept@notif.post.example"),
+            copy("work", "INBOX", Role::Inbox, 5, "kept@notif.post.example"),
+            copy("home", "Junk", Role::Junk, 6, "ads@lottery.example"),
+        ];
+        let log = [action(10, "Junk", 2, Some("said-spam@notif.post.example"), Label::Spam), action(11, "Junk", 3, Some("said-ham@notif.post.example"), Label::Ham)];
+        let (labeled, summary) = decide(copies, &log, &[], &[]);
+        let says = |key| label_of(&labeled, key).map(|l| (l.label, l.evidence));
+        assert_eq!(says("notice@notif.post.example"), None, "your provider's word alone: no label");
+        assert_eq!(says("said-spam@notif.post.example"), Some((Label::Spam, Evidence::Log)));
+        assert_eq!(says("said-ham@notif.post.example"), Some((Label::Ham, Evidence::Log)));
+        assert_eq!(says("kept@notif.post.example"), Some((Label::Ham, Evidence::Folder)), "its inbox copy speaks");
+        assert_eq!(says("ads@lottery.example"), Some((Label::Spam, Evidence::JunkFolder)));
+        assert_eq!(summary.vouched, 1);
     }
 
     fn action(at: i64, folder: &str, uid: u32, id: Option<&str>, label: Label) -> Entry {

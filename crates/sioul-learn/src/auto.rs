@@ -108,6 +108,9 @@ pub struct Facts {
     pub trainer: Trainer,
     /// When the last training ended, by hand or by itself (`trained.toml`).
     pub last_trained: Option<i64>,
+    /// That training decided its labels by older rules (`labels::RULES`):
+    /// the next one does not wait for the week.
+    pub outdated: bool,
     /// The last run by itself.
     pub last_run: Option<Run>,
     /// A training runs: the window's, or a job's (`a_job_runs`).
@@ -167,7 +170,7 @@ pub fn decide(f: &Facts, now: i64) -> Decision {
     if f.running {
         return wait(Wait::Running);
     }
-    if f.last_trained.is_some_and(|at| now - at < WEEK) {
+    if !f.outdated && f.last_trained.is_some_and(|at| now - at < WEEK) {
         return wait(Wait::Recent);
     }
     // A run by itself that ended without a training since (stopped, failed, vanished): not again too soon.
@@ -205,6 +208,7 @@ pub fn facts(dirs: &Dirs, enabled: bool, here: &str, window_trains: bool, focus:
         enabled,
         trainer: trainer(dirs, here),
         last_trained: crate::train::last(dirs).map(|s| s.trained_at).filter(|at| *at > 0),
+        outdated: crate::train::last(dirs).is_some_and(|s| s.labels.rules < crate::labels::RULES),
         last_run: Run::load(dirs),
         running: window_trains || a_job_runs(dirs),
         focus: Some(focus),
@@ -295,6 +299,7 @@ mod tests {
             enabled: true,
             trainer: Trainer::Here,
             last_trained: Some(NOW - WEEK - 1),
+            outdated: false,
             last_run: None,
             running: false,
             focus: Some(false),
@@ -307,6 +312,16 @@ mod tests {
         assert_eq!(decide(&ready(), NOW), Decision::Train { fetch: true });
         // Never trained here (no `trained.toml`), the table this computer's: it may.
         assert_eq!(decide(&Facts { last_trained: None, ..ready() }, NOW), Decision::Train { fetch: true });
+    }
+
+    /// A training whose labels were decided by older rules (`labels::RULES`)
+    /// is followed by one without waiting for the week; the rest still holds.
+    #[test]
+    fn new_label_rules_do_not_wait_for_the_week() {
+        let recent = Facts { last_trained: Some(NOW - 3600), ..ready() };
+        assert_eq!(decide(&recent, NOW), Decision::Wait(Wait::Recent));
+        assert_eq!(decide(&Facts { outdated: true, ..recent.clone() }, NOW), Decision::Train { fetch: true });
+        assert_eq!(decide(&Facts { outdated: true, power: power(Some(true), Some(false), Some(false), Some(false)), ..recent }, NOW), Decision::Wait(Wait::InUse));
     }
 
     /// Each condition alone holds it back, its reason said.

@@ -163,6 +163,7 @@ fn main() {
         "qml/Interruption.qml",
         "qml/BankSection.qml",
         "qml/LettersSection.qml",
+        "qml/LettersPage.qml",
         "qml/PauseCover.qml",
         "qml/PauseSetup.qml",
         "qml/ReachButton.qml",

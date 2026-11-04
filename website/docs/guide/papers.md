@@ -75,17 +75,19 @@ Rent receipts, payslips and attestations have no end: they are said older than t
 
 The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, by you, a scanner, or someone who opens the post for you, is read by Sioul on a computer (a phone does not read them) and waits for your hours as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a delay written "within two months" is remembered by no one: the card says it as a date.
 
+The letters have their own page, **Letters** in the sidebar. It opens on the letters waiting, each a card, then those filed, by year, the newest first. A new letter also comes on the Porch, as mail does, and opens here.
+
 ### Setting it up {#setting-it-up}
 
-1. In the Porch's ⚙, **Paper letters ▸ Where scans arrive**: the folder your scans come to. Unset, it is `letters/inbox` in your notes folder. A phone's scanner app syncing into it works too.
-2. Sioul reads scans with two programs of your system. Without them, the scans wait, unread, and the Porch says how to install them ([Install](install.md#the-packages)).
-3. On the Porch, under **Paper letters**, **Open the folder** opens it and **Add a scan…** copies a PDF or a picture into it; the **New** menu's **A paper letter (scan)…** does the same from any page ([The Porch](porch.md#paper-letters)).
+1. In the Letters page's ⚙, **Where scans arrive**: the folder your scans come to. Unset, it is `letters/inbox` in your notes folder. A phone's scanner app syncing into it works too. A folder you chose earlier in the Porch's settings stays the one used.
+2. Sioul reads scans with two programs of your system. Without them, the scans wait, unread, and the page says how to install them, under its bar and in its ⚙ ([Install](install.md#the-packages)).
+3. On the page's bar, **Add a scan…** copies a PDF or a picture into that folder; **Link scans…** links scans you keep elsewhere, where they are: they are read like the others and never copied, and if one is later moved or deleted, its card says so; **Open the folder** opens it. The **New** menu's **A paper letter (scan)…** adds a scan from any page.
 
-PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your device.
+PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your device. A phone shows the letters a computer read, without adding or linking.
 
 ### The card {#the-card}
 
-On the Porch, each letter is a card: who sent it and what it is, then a sentence each for what it found:
+On the Letters page, each letter waiting is a card: who sent it and what it is, then a sentence each for what it found:
 
 - "Asks for €86.40."
 - "By Sunday 15 November", with the words that set it, as the letter writes them.
@@ -99,7 +101,7 @@ Then:
 - **A task for that date**: a task in your usual list, due that day, tied to the scan, such as "Pay the water bill €86.40";
 - **Into the agenda**, for an appointment;
 - the project it belongs to;
-- **Done, filed**: the scan moves to `letters/<year>/`, named by its day, its sender and its kind; its text is kept.
+- **Done, filed**: the scan moves to `letters/<year>/`, named by its day, its sender and its kind; its text is kept. A linked scan stays where it is. The letter then shows among those filed, under its year, its scan one click away.
 
 ### Not there yet {#not-there-yet}
 

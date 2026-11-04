@@ -271,6 +271,13 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         return b.out;
     }
     match view {
+        // The Letters page's own: where scans arrive (on the Porch's settings
+        // before, `[letters] inbox` as it was: the old setting is the one read).
+        "letters" => {
+            b.group = tr.text("set-letters-group", None);
+            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.notes_root_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
+            b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
+        }
         "porch" => {
             // Working hours and days off are Sioul's as a whole: in the settings page.
             b.note(tr.text("set-hours-elsewhere", None), Vec::new());
@@ -344,6 +351,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("spam.actions", "spam-actions", Kind::Radios, SettingValue::Texts(cells));
             s.rows = crate::spam::Class::ALL.iter().map(|c| Choice { value: SettingValue::Text(c.as_str().into()), label: tr.text(&format!("set-spam-class-{}", c.as_str()), None) }).collect();
             s.choices = crate::spam::Action::ALL.iter().map(|a| Choice { value: SettingValue::Text(a.as_str().into()), label: tr.text(&format!("set-spam-action-{}", a.as_str()), None) }).collect();
+            // Its fourth row: proven mail your provider called spam (`spam::vouched`), its own choices.
+            let s = b.push("spam.proven", "spam-proven", Kind::Radios, SettingValue::Texts(vec![format!("proven:{}", config.spam.proven().as_str())]));
+            s.rows = vec![Choice { value: SettingValue::Text("proven".into()), label: tr.text("set-spam-proven-row", None) }];
+            s.choices = crate::spam::vouched::Proven::ALL.iter().map(|p| Choice { value: SettingValue::Text(p.as_str().into()), label: tr.text(&format!("set-spam-proven-{}", p.as_str()), None) }).collect();
             let (spam, unsure) = config.spam.thresholds();
             let hundredths = |t: f32| (f64::from(t) * 100.0).round() / 100.0;
             // Shown as percentages ("%"); each stops a point short of the other: unsure stays below spam.
@@ -1323,6 +1334,15 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             }
             set_value(config_path, "spam.mode", &SettingValue::Text(String::new()))
         }
+        // Proven mail your provider called spam: bring it back, mark it, or nothing.
+        _ if key.starts_with("spam.proven") => {
+            let proven = match value {
+                SettingValue::Text(text) => crate::spam::vouched::Proven::read(text),
+                _ => None,
+            }
+            .ok_or_else(|| format!("{key}: bring-back, mark or nothing"))?;
+            set_value(config_path, "spam.proven", &SettingValue::Text(proven.as_str().into()))
+        }
         "spam.threshold_spam" | "spam.threshold_unsure" => {
             let wanted = match value {
                 SettingValue::Float(f) => *f,
@@ -1448,7 +1468,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
@@ -1462,6 +1482,7 @@ mod tests {
         assert_eq!(notes, 1 + 1 + 9, "{porch:?}");
         // The letters' folder is on the Letters page, with the letters.
         assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
+        assert_eq!(keys("letters"), vec!["letters.inbox"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).
@@ -1654,6 +1675,31 @@ mod tests {
         assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("b"), route("c"), route("a")])), routes(vec![route("a2"), route("b"), route("c")]));
     }
 
+    /// Where scans arrive, moved from the Porch's settings to the Letters page:
+    /// the same `[letters] inbox` read and written, the notes folder's
+    /// `letters/inbox` when unset (part 3 of 4 November 2026).
+    #[test]
+    fn the_letters_folder_is_the_letters_pages() {
+        let dir = std::env::temp_dir().join(format!("sioul-letters-setting-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let tr = Translator::new("en");
+        let inbox_of = |config: &Config| for_view("letters", config, &tr, &[], None).into_iter().find(|s| s.key == "letters.inbox").map(|s| (s.kind, s.value));
+        // As an older Sioul wrote it, under the Porch.
+        std::fs::write(&path, format!("case_store = \"{}\"\n\n[letters]\ninbox = \"/stand-in/Scans\"\n", dir.join("Notes").display())).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert_eq!(inbox_of(&config), Some((Kind::Folder, SettingValue::Text("/stand-in/Scans".into()))));
+        assert!(for_view("porch", &config, &tr, &[], None).iter().all(|s| s.key != "letters.inbox"), "no longer the Porch's");
+        apply(&path, &config, "letters.inbox", &SettingValue::Text("/stand-in/Post".into())).unwrap();
+        assert_eq!(Config::load(&path).unwrap().letters.inbox.as_deref(), Some("/stand-in/Post"));
+        // Unset: the notes folder's own.
+        std::fs::write(&path, format!("case_store = \"{}\"\n", dir.join("Notes").display())).unwrap();
+        let unset = Config::load(&path).unwrap();
+        assert_eq!(inbox_of(&unset).map(|(_, v)| v), Some(SettingValue::Text(dir.join("Notes").join("letters").join("inbox").display().to_string())));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn lists_emptied_and_secrets_kept_out() {
         let dir = std::env::temp_dir().join(format!("sioul-apply-{}", std::process::id()));
@@ -1681,6 +1727,12 @@ mod tests {
         apply(&path, &config, "spam.actions.ham", &SettingValue::Text("flag".into())).unwrap();
         let config = Config::load(&path).unwrap();
         assert_eq!((config.spam.actions(), config.spam.thresholds(), config.spam.mode.as_deref()), (Actions { spam: Action::Move, unsure: Action::Flag, ham: Action::Flag }, (0.9, 0.5), None));
+        // Proven mail your provider called spam: its own row, bring back unless said.
+        let proven = for_view("mail", &config, &Translator::new("en"), &[], None).into_iter().find(|s| s.key == "spam.proven").unwrap();
+        assert_eq!((proven.kind, proven.rows.len(), proven.choices.len(), proven.value.clone()), (Kind::Radios, 1, 3, SettingValue::Texts(vec!["proven:bring-back".into()])));
+        apply(&path, &config, "spam.proven.proven", &SettingValue::Text("mark".into())).unwrap();
+        assert!(apply(&path, &config, "spam.proven.proven", &SettingValue::Text("move".into())).is_err());
+        assert_eq!(Config::load(&path).unwrap().spam.proven(), crate::spam::vouched::Proven::Mark);
         let matrix = for_view("mail", &config, &Translator::new("en"), &[], None).into_iter().find(|s| s.key == "spam.actions").unwrap();
         assert_eq!((matrix.kind, matrix.rows.len(), matrix.choices.len()), (Kind::Radios, 3, 3));
         assert_eq!(matrix.value, SettingValue::Texts(vec!["spam:move".into(), "unsure:flag".into(), "ham:flag".into()]));

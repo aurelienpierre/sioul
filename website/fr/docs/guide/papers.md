@@ -75,17 +75,19 @@ Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : pa
 
 L’enveloppe reste dehors. Un scan, une photo prise au téléphone ou un PDF déposé dans un dossier, par vous, par un scanner, ou par une personne qui ouvre le courrier pour vous, est lu par Sioul sur un ordinateur (un téléphone ne les lit pas) et attend vos heures sous forme de carte, comme un courriel. Ouvrir le courrier fait partie de l’angoisse administrative (Money and Mental Health 2018), et un délai écrit « dans un délai de deux mois » n’est retenu par personne : la carte le dit sous forme de date.
 
+Les lettres ont leur propre page, **Courrier** dans la barre latérale. Elle s’ouvre sur les lettres qui attendent, chacune une carte, puis sur celles classées, par année, la plus récente d’abord. Une nouvelle lettre vient aussi sur le Porche, comme un courriel, et s’ouvre ici.
+
 ### Mise en place {#setting-it-up}
 
-1. Dans le ⚙ du Porche, **Courrier papier ▸ Où arrivent les scans** : le dossier où arrivent vos scans. S’il n’est pas réglé, c’est `letters/inbox` dans votre dossier de notes. L’appli de scan d’un téléphone qui s’y synchronise convient aussi.
-2. Sioul lit les scans avec deux programmes de votre système. Sans eux, les scans attendent, non lus, et le Porche dit comment les installer ([Installer](install.md#the-packages)).
-3. Sur le Porche, sous **Courrier papier**, **Ouvrir le dossier** l’ouvre et **Ajouter un scan…** y copie un PDF ou une image ; dans le menu **Nouveau**, **Une lettre papier (scan)…** fait de même depuis n’importe quelle page ([Le Porche](porch.md#paper-letters)).
+1. Dans le ⚙ de la page Courrier, **Où arrivent les scans** : le dossier où arrivent vos scans. S’il n’est pas réglé, c’est `letters/inbox` dans votre dossier de notes. L’appli de scan d’un téléphone qui s’y synchronise convient aussi. Un dossier choisi avant dans les réglages du Porche reste celui qui sert.
+2. Sioul lit les scans avec deux programmes de votre système. Sans eux, les scans attendent, non lus, et la page dit comment les installer, sous sa barre et dans son ⚙ ([Installer](install.md#the-packages)).
+3. Sur la barre de la page, **Ajouter un scan…** copie un PDF ou une image dans ce dossier ; **Lier des scans…** lie des scans que vous gardez ailleurs, là où ils sont : ils sont lus comme les autres et jamais copiés, et si l’un est ensuite déplacé ou supprimé, sa carte le dit ; **Ouvrir le dossier** l’ouvre. Dans le menu **Nouveau**, **Une lettre papier (scan)…** ajoute un scan depuis n’importe quelle page.
 
-Les fichiers PDF, PNG, JPEG, TIFF et WebP sont lus. Un fichier encore en cours d’écriture est lu la minute suivante. Rien ne quitte votre appareil.
+Les fichiers PDF, PNG, JPEG, TIFF et WebP sont lus. Un fichier encore en cours d’écriture est lu la minute suivante. Rien ne quitte votre appareil. Un téléphone montre les lettres qu’un ordinateur a lues, sans ajouter ni lier.
 
 ### La carte {#the-card}
 
-Sur le Porche, chaque lettre est une carte : qui l’a envoyée et ce que c’est, puis une phrase pour chaque chose trouvée :
+Sur la page Courrier, chaque lettre qui attend est une carte : qui l’a envoyée et ce que c’est, puis une phrase pour chaque chose trouvée :
 
 - « Demande 86,40 €. »
 - « Au plus tard le dimanche 15 novembre », avec les mots qui fixent cette date, tels que la lettre les écrit.
@@ -99,7 +101,7 @@ Puis :
 - **Une tâche pour cette date** : une tâche dans votre liste habituelle, à faire pour ce jour-là, liée au scan, comme « Payer la facture d’eau 86,40 € » ;
 - **Dans l’agenda**, pour un rendez-vous ;
 - le projet auquel elle appartient ;
-- **Fini, classé** : le scan va dans `letters/<année>/`, nommé d’après son jour, son expéditeur et son type ; son texte est gardé.
+- **Fini, classé** : le scan va dans `letters/<année>/`, nommé d’après son jour, son expéditeur et son type ; son texte est gardé. Un scan lié reste où il est. La lettre se montre ensuite parmi celles classées, sous son année, son scan à un clic.
 
 ### Pas encore là {#not-there-yet}
 

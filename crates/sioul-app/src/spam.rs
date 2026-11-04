@@ -39,8 +39,9 @@ use std::sync::{Arc, Mutex};
 /// fetch, which brings two weeks of it, nor what was there before), judged as
 /// the Porch judges it, protections first: what your own filter judges, of a
 /// class you chose "Move to spam" for, goes into the account's Junk folder on
-/// the server, as the Junk button does but without a keyword nor a label; of
-/// a class you chose "Flag only" for, it stays where it is. Each move and
+/// the server, as the Junk button does but without a keyword nor a label,
+/// unless it is proven mail from someone you deal with (`spam::vouched`),
+/// only flagged then; of a class you chose "Flag only" for, it stays where it is. Each move and
 /// each flag goes into this device's logs of what the filter did: the Porch
 /// lists them among its catches ("Not spam" brings one back), and the
 /// training learns from them until you say otherwise. It reaches the server:
@@ -60,13 +61,16 @@ pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> us
     let known = porch::KnownSenders::load(&config.known_senders_path());
     let senders = porch::Senders::load(&config);
     let judged = porch::judge(new, &config.mail_sources(), store.as_ref(), &known, &senders, jiff::Timestamp::now().as_second());
+    // Never moved by a filter: proven mail from someone you deal with (`spam::vouched`,
+    // part 2 of 4 November 2026). Your filter flags it where it is, at most.
+    let proven = |file: &PathBuf| judged.iter().any(|t| t.card.path.as_ref() == Some(file) && sioul_core::spam::vouched::vouched_now(&t.card, t.trust));
+    let (kept, to_move): (Vec<_>, Vec<_>) = chosen(&judged, &filter, Action::Move).into_iter().partition(|(file, _)| proven(file));
     // Flagged where it is: written here only, nothing changes on the server.
-    for (file, class) in chosen(&judged, &filter, Action::Flag) {
+    for (file, class) in chosen(&judged, &filter, Action::Flag).into_iter().chain(kept) {
         if let Err(e) = sioul_sync::mailbox::flagged(account, &file, class) {
             eprintln!("sioul: spam: {}: {e:?}", account.id);
         }
     }
-    let to_move = chosen(&judged, &filter, Action::Move);
     if to_move.is_empty() {
         return 0;
     }

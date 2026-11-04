@@ -379,6 +379,9 @@ mailbox-day = { $weekday } { $day } { $month }
 mailbox-day-year = { $weekday } { $day } { $month } { $year }
 mailbox-spam-junk = in the junk
 mailbox-spam-provider = your provider: spam
+# Proven mail from someone you deal with (spam::vouched): your provider's word on it, one quiet mark.
+mail-provider-marked = Your provider marked it as spam.
+mail-provider-junked = Your provider put it in Spam.
 mailbox-title = All addresses
 mailbox-chip-all = All
 mailbox-chip-unread = Unread
@@ -896,6 +899,18 @@ undo-many-junked = { $n } messages moved to junk.
 undo-many-not-junk = { $n } messages back in the inbox.
 undo-many-not-spam = { $n } messages not spam, for good: they stay in their lanes.
 undo-spam-kept = Spam, for good: it stays in the Junk folder.
+undo-brought-back = { $n ->
+        [one] Proven mail your provider called spam: back in the inbox.
+       *[other] { $n } proven messages your provider called spam: back in the inbox.
+    }
+undo-not-spam-and-others = { $n ->
+        [one] Not spam. Another message from { $domain }: back in the inbox too.
+       *[other] Not spam. { $n } other messages from { $domain }: back in the inbox too.
+    }
+undo-many-others-back = { $n ->
+        [one] Another message from { $domain }: back in the inbox too.
+       *[other] { $n } other messages from { $domain }: back in the inbox too.
+    }
 undo-review-all-spam = { $n ->
         [one] One message: spam, for good.
        *[other] { $n } messages: spam, for good.
@@ -1937,6 +1952,12 @@ set-spam-class-ham = Probably not spam
 set-spam-action-move = Move to spam
 set-spam-action-flag = Flag only
 set-spam-action-nothing = Do nothing
+set-spam-proven = What it does with proven mail
+set-spam-proven-help = Proven mail: Sioul checked who sent it, and you deal with its domain (you wrote to it; it is in your address books, your Sites or your contracts; you kept its mail or said Not spam to it). On the Porch your provider's word alone never sets it aside. “Bring back” moves it from the Junk folder into the inbox as it arrives, with Undo; “Mark only” leaves it in the Junk folder and shows it among your mail, marked “Your provider put it in Spam.”; “Do nothing” leaves it as your provider put it. Mail you put back in the Junk folder, or said Spam, stays there.
+set-spam-proven-row = Proven mail your provider called spam
+set-spam-proven-bring-back = Bring back
+set-spam-proven-mark = Mark only
+set-spam-proven-nothing = Do nothing
 set-spam-threshold = Spam from
 set-spam-threshold-help = How sure it must be to call a stranger's message probably spam. Higher: fewer of your messages taken for spam, more spam let through.
 set-spam-unsure = Maybe spam from
@@ -3626,6 +3647,7 @@ paper-renew-money = A new one should come; ask for it if not.
 paper-renew-warranty = Its guarantee ends: anything to report before?
 paper-renew-other = It ends soon.
 ui-papers = Papers
+ui-letters = Letters
 new-paper = A paper
 new-letter = A paper letter (scan)…
 papers-help = The papers asked again and again, each with its file and how long it holds. Kept in your notes folder (papers/): they travel with it. A reminder comes when one should be renewed.
@@ -4164,9 +4186,21 @@ letters-added = { $n ->
        *[other] { $Count } scans in the folder: Sioul reads them within a minute or two.
     }
 letters-add-not-scan = { $name } is neither a PDF nor a picture: Sioul reads only those.
+letters-link = Link scans…
+letters-link-title = Scans to link where they are
+letters-linked = { $n ->
+        [one] Linked: the scan stays where it is, and Sioul reads it within a minute or two.
+       *[other] { $Count } scans linked: they stay where they are, and Sioul reads them within a minute or two.
+    }
+letters-link-missing = { $name } is no longer there: nothing was linked.
+letters-linked-here = Linked: the scan stays in { $file }.
+letters-gone = This scan is no longer at { $file }: it was moved or deleted. The letter stays here.
+letters-waiting-read = Not read yet: Sioul reads it within a minute or two.
+letters-filed = Filed
+letters-none = No paper letter yet. The scans you add or link show here.
 letters-add-failed = { $name } could not be copied into the folder ({ $detail }).
 letters-folder-failed = The folder { $folder } could not be made ({ $detail }).
-letters-no-folder = No folder for scans yet: Porch ⚙ ▸ Paper letters ▸ Where scans arrive.
+letters-no-folder = No folder for scans yet: Letters ⚙ ▸ Where scans arrive.
 letters-unread = Its text could not be read ({ $problem }); its scan is here.
 letters-scan = See the scan
 letters-task = A task for that date
@@ -4205,7 +4239,7 @@ letter-task-contract = Read { $sender }'s contract
 letter-task-other = Answer { $sender }
 set-letters-group = Paper letters
 set-letters-inbox = Where scans arrive
-set-letters-inbox-help = A folder where you, a scanner or a helper puts the post as PDF or photos (a phone's scanner app syncing there works too). Each scan is read by Sioul on a computer (Tesseract, Poppler; a phone does not read them) and waits for the Porch's window as a card: who, what, how much, by when.
+set-letters-inbox-help = A folder where you, a scanner or a helper puts the post as PDF or photos (a phone's scanner app syncing there works too). Each scan is read by Sioul on a computer (Tesseract, Poppler; a phone does not read them) and waits on this page as a card: who, what, how much, by when. Scans kept elsewhere can be linked where they are instead (Link scans…).
 set-calls-group = Calls
 set-porch-calls = Calls your phones declined
 set-porch-calls-help = Listed on the Porch of each of your devices, each at a time its caller may reach you, never counted. Off, each phone lists only its own, and your computers none.

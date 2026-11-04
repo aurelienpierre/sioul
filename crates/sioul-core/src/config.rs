@@ -369,9 +369,19 @@ pub struct SpamSettings {
     /// on when unsaid.
     #[serde(default)]
     pub train_by_itself: Option<bool>,
+    /// Proven mail your provider called spam (`spam::vouched`): "bring-back"
+    /// (into the inbox as it arrives; unsaid), "mark" (left in the Junk
+    /// folder, marked), "nothing".
+    #[serde(default)]
+    pub proven: Option<String>,
 }
 
 impl SpamSettings {
+    /// What is done with proven mail your provider called spam (bring it back unless said).
+    pub fn proven(&self) -> crate::spam::vouched::Proven {
+        self.proven.as_deref().and_then(crate::spam::vouched::Proven::read).unwrap_or_default()
+    }
+
     /// Whether the filter trains again by itself (on unless said otherwise).
     pub fn trains_by_itself(&self) -> bool {
         self.train_by_itself.unwrap_or(true)
@@ -2186,8 +2196,27 @@ pub fn sioul_authserv_id() -> String {
     std::process::id().hash(&mut hasher);
     path.hash(&mut hasher);
     let id = format!("sioul-{:012x}.invalid", hasher.finish() & 0xffff_ffff_ffff);
-    let _ = std::fs::create_dir_all(state_dir()).and_then(|()| std::fs::write(&path, &id));
-    id
+    // Made once, by whoever comes first: two processes (or threads) starting
+    // together keep the one written first, never two ids for one installation.
+    let _ = std::fs::create_dir_all(state_dir());
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut file) => {
+            use std::io::Write;
+            let _ = file.write_all(id.as_bytes());
+            id
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Written by another just now: read once it holds its id.
+            for _ in 0..50 {
+                if let Some(id) = std::fs::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid")) {
+                    return id;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            id
+        }
+        Err(_) => id,
+    }
 }
 
 /// Where the configuration lives by default.

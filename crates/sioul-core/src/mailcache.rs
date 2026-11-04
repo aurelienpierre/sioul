@@ -708,6 +708,27 @@ pub fn folders(root: &Path) -> Vec<String> {
     out
 }
 
+/// The lines of these messages forgotten, by the unique part of their file
+/// names (`maildir::unique_part`), so that the next look reads them again:
+/// for a file Sioul wrote again in place, its name kept (its checks made
+/// again: `sioul_sync::verify::recheck_tagged`). Written whole beside, then
+/// renamed, under the index's lock; nothing when none of them is there.
+pub fn forget(account: &str, local: &str, uniques: &[String]) {
+    let Some(index) = index_path(account, local) else { return };
+    let header = format!("{FORMAT}\t{}", stamp(&crate::words::current()));
+    crate::filelock::with_lock(&index, || {
+        let Some((mut known, _)) = read_index(&index, &header) else { return };
+        let before = known.len();
+        for unique in uniques {
+            known.remove(unique);
+        }
+        if known.len() < before {
+            let lines: Vec<&Line> = known.values().collect();
+            let _ = write_whole(&index, &header, &lines);
+        }
+    });
+}
+
 /// The line `account`'s folder `local` keeps for the file whose name's unique
 /// part is `unique`, whether the file is there or gone (its line stays until
 /// the index is compacted): what a hint to a file gone says it was.

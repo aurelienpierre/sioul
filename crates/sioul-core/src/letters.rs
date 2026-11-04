@@ -16,7 +16,9 @@
 //! (Bhargava & Manoli 2015).
 //!
 //! `letters/letters.toml` in the notes folder, each letter's text beside it
-//! (`letters/<id>.txt`), the scans filed in `letters/<year>/`.
+//! (`letters/<id>.txt`), the scans filed in `letters/<year>/`; a scan linked
+//! from elsewhere (the Letters page's "Link scans…", `Letter::linked`) stays
+//! where it is, never copied, never moved.
 
 use crate::money::Money;
 use crate::words::{LetterWords, Words};
@@ -346,6 +348,11 @@ pub struct Letter {
     pub task_elsewhere: String,
     /// Why it could not be read ("no OCR program"), if it could not.
     pub problem: String,
+    /// A scan linked where it is, elsewhere on this computer (the Letters
+    /// page's "Link scans…"): read like the others, never copied, never moved
+    /// when filed. Written only when true (`linked = true`); an older Sioul
+    /// reads the file without it, and files such a scan as it files any.
+    pub linked: bool,
 }
 
 impl Letter {
@@ -445,6 +452,7 @@ impl Letters {
                     task: text_of(t, "task"),
                     task_elsewhere: text_of(t, "task_elsewhere"),
                     problem: text_of(t, "problem"),
+                    linked: t.get("linked").and_then(toml::Value::as_bool).unwrap_or(false),
                 })
             })
             .collect();
@@ -478,8 +486,12 @@ impl Letters {
         std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(folder.join(format!("{id}.txt")), text)).map_err(|e| e.to_string())
     }
 
-    /// Its scan moved out of the inbox into `letters/<year>/`, named by its day, sender and kind.
+    /// Its scan moved out of the inbox into `letters/<year>/`, named by its
+    /// day, sender and kind; a linked scan stays where it is.
     pub fn file_away(&self, letter: &mut Letter) -> Result<(), String> {
+        if letter.linked {
+            return Ok(());
+        }
         let from = self.file_path(letter);
         let day = letter.reading.dated.or(letter.received).unwrap_or(Date::constant(2000, 1, 1));
         let folder = Letters::folder(&self.root).join(day.year().to_string());
@@ -533,6 +545,9 @@ impl Letters {
             }
             if l.reading.registered {
                 t["registered"] = toml_edit::value(true);
+            }
+            if l.linked {
+                t["linked"] = toml_edit::value(true);
             }
             list.push(t);
         }
@@ -643,6 +658,37 @@ mod tests {
         assert_eq!(again.list, vec![letter]);
         assert_eq!(again.text(&again.list[0]), "the text");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A scan linked where it is (the Letters page's "Link scans…"): kept as
+    /// linked, read back so, never moved when filed; a file without the mark
+    /// reads as before, unlinked.
+    #[test]
+    fn a_linked_scan_stays_where_it_is() {
+        let root = std::env::temp_dir().join(format!("sioul-letters-linked-{}", std::process::id()));
+        let elsewhere = std::env::temp_dir().join(format!("sioul-letters-linked-from-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&elsewhere);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        let scan = elsewhere.join("courrier.pdf");
+        std::fs::write(&scan, b"%PDF").unwrap();
+        let mut letters = Letters::load(&root).unwrap();
+        let mut letter = Letter { id: "l1".into(), file: scan.display().to_string(), received: Some(day("2026-11-02")), status: "new".into(), linked: true, ..Letter::default() };
+        letters.file_away(&mut letter).unwrap();
+        assert_eq!(letter.file, scan.display().to_string(), "never moved");
+        assert!(scan.is_file() && !Letters::folder(&root).join("2026").exists());
+        assert_eq!(letters.file_path(&letter), scan);
+        letters.put(letter.clone());
+        letters.save().unwrap();
+        let text = std::fs::read_to_string(Letters::folder(&root).join(MANIFEST)).unwrap();
+        assert!(text.contains("linked = true"), "{text}");
+        assert_eq!(Letters::load(&root).unwrap().list, vec![letter]);
+        // Written before the mark: unlinked, as it was.
+        std::fs::write(Letters::folder(&root).join(MANIFEST), "[[letter]]\nid = \"old\"\nfile = \"letters/inbox/a.pdf\"\nstatus = \"new\"\nkind = \"other\"\n").unwrap();
+        assert!(!Letters::load(&root).unwrap().list[0].linked);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&elsewhere);
     }
     /// A letter's task as a Google list knows it: noted beside the letter at
     /// the sync (`note_elsewhere`), read back, written only when new, and

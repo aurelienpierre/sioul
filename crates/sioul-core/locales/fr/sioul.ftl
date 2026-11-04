@@ -403,6 +403,9 @@ mailbox-day-year = { $weekday } { $day ->
     } { $month } { $year }
 mailbox-spam-junk = dans les indésirables
 mailbox-spam-provider = votre fournisseur : indésirable
+# Proven mail from someone you deal with (spam::vouched): your provider's word on it, one quiet mark.
+mail-provider-marked = Votre fournisseur l’a marqué comme indésirable.
+mail-provider-junked = Votre fournisseur l’a mis dans les indésirables.
 mailbox-title = Toutes les adresses
 mailbox-chip-all = Tout
 mailbox-chip-unread = Non lus
@@ -926,6 +929,18 @@ undo-many-junked = { $n } courriels mis dans les indésirables.
 undo-many-not-junk = { $n } courriels de retour dans la boîte de réception.
 undo-many-not-spam = { $n } courriels pas indésirables, pour de bon : ils restent dans leur file.
 undo-spam-kept = Indésirable, pour de bon : il reste dans le dossier Indésirables.
+undo-brought-back = { $n ->
+        [one] Courriel prouvé que votre fournisseur disait indésirable : de retour dans la boîte de réception.
+       *[other] { $n } courriels prouvés que votre fournisseur disait indésirables : de retour dans la boîte de réception.
+    }
+undo-not-spam-and-others = { $n ->
+        [one] Pas indésirable. Un autre courriel de { $domain } : de retour dans la boîte de réception aussi.
+       *[other] Pas indésirable. { $n } autres courriels de { $domain } : de retour dans la boîte de réception aussi.
+    }
+undo-many-others-back = { $n ->
+        [one] Un autre courriel de { $domain } : de retour dans la boîte de réception aussi.
+       *[other] { $n } autres courriels de { $domain } : de retour dans la boîte de réception aussi.
+    }
 undo-review-all-spam = { $n ->
         [one] Un courriel indésirable, pour de bon.
        *[other] { $n } courriels indésirables, pour de bon.
@@ -1964,6 +1979,12 @@ set-spam-class-ham = Probablement pas indésirable
 set-spam-action-move = Déplacer dans les indésirables
 set-spam-action-flag = Signaler seulement
 set-spam-action-nothing = Ne rien faire
+set-spam-proven = Ce qu’il fait du courriel prouvé
+set-spam-proven-help = Courriel prouvé : Sioul a vérifié qui l’envoie, et vous avez affaire à son domaine (vous lui avez écrit ; il est dans vos carnets d’adresses, vos sites ou vos contrats ; vous avez gardé de ses courriels ou dit « Pas indésirable » à l’un d’eux). Sur le Porche, l’avis de votre fournisseur seul ne le met jamais de côté. « Ramener » le déplace du dossier Indésirables vers la boîte de réception à son arrivée, avec Annuler ; « Signaler seulement » le laisse dans le dossier Indésirables et le montre parmi vos courriels, marqué « Votre fournisseur l’a mis dans les indésirables. » ; « Ne rien faire » le laisse où votre fournisseur l’a mis. Le courriel que vous remettez dans les indésirables, ou dont vous dites qu’il est indésirable, y reste.
+set-spam-proven-row = Courriel prouvé que votre fournisseur dit indésirable
+set-spam-proven-bring-back = Ramener
+set-spam-proven-mark = Signaler seulement
+set-spam-proven-nothing = Ne rien faire
 set-spam-threshold = Indésirable à partir de
 set-spam-threshold-help = À quel point il doit être sûr pour dire probablement indésirable le courriel d’un inconnu. Plus haut : moins de vos courriels pris pour indésirables, plus d’indésirables laissés passer.
 set-spam-unsure = Peut-être indésirable à partir de
@@ -3653,6 +3674,7 @@ paper-renew-money = Un nouveau devrait venir ; demandez-le sinon.
 paper-renew-warranty = Sa garantie finit : quelque chose à signaler avant ?
 paper-renew-other = Il finit bientôt.
 ui-papers = Papiers
+ui-letters = Courrier
 new-paper = Un papier
 new-letter = Une lettre papier (scan)…
 papers-help = Les papiers demandés encore et encore, chacun avec son fichier et sa durée. Gardés dans le dossier des notes (papers/) : ils voyagent avec lui. Un rappel vient quand l’un est à renouveler.
@@ -4191,9 +4213,21 @@ letters-added = { $n ->
        *[other] { $Count } scans dans le dossier : Sioul les lit d’ici une minute ou deux.
     }
 letters-add-not-scan = { $name } n’est ni un PDF ni une image : Sioul ne lit que ceux-là.
+letters-link = Lier des scans…
+letters-link-title = Des scans à lier là où ils sont
+letters-linked = { $n ->
+        [one] Lié : le scan reste où il est, et Sioul le lit d’ici une minute ou deux.
+       *[other] { $Count } scans liés : ils restent où ils sont, et Sioul les lit d’ici une minute ou deux.
+    }
+letters-link-missing = { $name } n’est plus là : rien n’a été lié.
+letters-linked-here = Lié : le scan reste dans { $file }.
+letters-gone = Ce scan n’est plus dans { $file } : il a été déplacé ou supprimé. La lettre reste ici.
+letters-waiting-read = Pas encore lu : Sioul le lit d’ici une minute ou deux.
+letters-filed = Classées
+letters-none = Pas encore de lettre papier. Les scans que vous ajoutez ou liez s’affichent ici.
 letters-add-failed = { $name } n’a pas pu être copié dans le dossier ({ $detail }).
 letters-folder-failed = Le dossier { $folder } n’a pas pu être créé ({ $detail }).
-letters-no-folder = Pas encore de dossier pour les scans : Porche ⚙ ▸ Courrier papier ▸ Où arrivent les scans.
+letters-no-folder = Pas encore de dossier pour les scans : Courrier ⚙ ▸ Où arrivent les scans.
 letters-unread = Son texte n’a pas pu être lu ({ $problem }) ; son scan est là.
 letters-scan = Voir le scan
 letters-task = Une tâche pour cette date
@@ -4232,7 +4266,7 @@ letter-task-contract = Lire le contrat de { $sender }
 letter-task-other = Répondre à { $sender }
 set-letters-group = Courrier papier
 set-letters-inbox = Où arrivent les scans
-set-letters-inbox-help = Un dossier où vous, un scanner ou une personne qui vous aide déposez le courrier en PDF ou en photos (l’appli de scan d’un téléphone qui s’y synchronise convient aussi). Chaque scan est lu par Sioul sur un ordinateur (Tesseract, Poppler ; un téléphone ne les lit pas) et attend la fenêtre du Porche comme une carte : qui, quoi, combien, pour quand.
+set-letters-inbox-help = Un dossier où vous, un scanner ou une personne qui vous aide déposez le courrier en PDF ou en photos (l’appli de scan d’un téléphone qui s’y synchronise convient aussi). Chaque scan est lu par Sioul sur un ordinateur (Tesseract, Poppler ; un téléphone ne les lit pas) et attend sur cette page comme une carte : qui, quoi, combien, pour quand. Les scans gardés ailleurs peuvent plutôt être liés là où ils sont (Lier des scans…).
 set-calls-group = Appels
 set-porch-calls = Appels refusés par vos téléphones
 set-porch-calls-help = Listés sur le Porche de chacun de vos appareils, chacun à un moment où cette personne peut vous joindre, jamais comptés. Désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun.
