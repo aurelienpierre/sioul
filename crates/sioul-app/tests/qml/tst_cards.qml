@@ -56,6 +56,8 @@ Item {
             "/c/bus.ics": { id: "event:c/bus.ics", key: "/c/bus.ics", uid: "bus", start: 3999997800, end: 3999999300, all_day: false, summary: "Bus 24", when: "Monday · 08:30 – 08:55", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "" },
             "/c/dentist.ics": { id: "event:c/dentist.ics", key: "/c/dentist.ics", uid: "dentist", start: 4000000000, end: 4000003600, all_day: false, summary: "Dentist", when: "Monday · 09:00 – 10:00", before: 15, after: 0, location: "Rue Blanche", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "" },
             "/c/board.ics": { id: "event:c/board.ics", key: "/c/board.ics", uid: "board", start: 4000172800, end: 4000176400, all_day: false, summary: "Board", when: "Wednesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "chair@example.org", attendees: [], why: "" },
+            "/c/lea/swim.ics": { id: "event:c/lea/swim.ics", key: "/c/lea/swim.ics", uid: "swim", start: 4000010000, end: 4000013600, all_day: false, summary: "Swimming", when: "Monday · 11:46 – 12:46", before: 0, after: 0, location: "Pool", calendar: "Léa", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "",
+                child: { kind: "activity", kinds: [{ id: "activity", label: "holder-kind-activity" }, { id: "dentist", label: "holder-kind-dentist" }], state: "nobody", line: "holder-line-nobody", back: "", other: "Sam", proposal: "other", why: "holder-why-custody", busy: "holder-busy", writable: true } },
             "/c/holidays.ics": { id: "event:c/holidays.ics", key: "/c/holidays.ics", uid: "holidays", start: 4000086400, end: 4000090000, all_day: false, summary: "Town fair", when: "Tuesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Holidays", color: null, recurring: false, cancelled: false, tentative: false, read_only: true, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "This calendar can only be read." }
         })
 
@@ -81,6 +83,15 @@ Item {
         function related(uri) { return "[]" }
         function deleteEvent(key, start, onlyThis) {
             mock.calls.push({ what: "deleteEvent", key: key, start: start, onlyThis: onlyThis })
+            return ""
+        }
+        // A child's event (part 3): who takes it answered, its kind chosen.
+        function takeChild(key, start, who) {
+            mock.calls.push({ what: "takeChild", key: key, start: start, who: who })
+            return ""
+        }
+        function setChildKind(key, kind) {
+            mock.calls.push({ what: "setChildKind", key: key, kind: kind })
             return ""
         }
         function needItem(date, key) {
@@ -382,6 +393,22 @@ Item {
             wait(20)
             compare(host.eventCard.title, "card-gone")
             verify(!root.find(host.eventCard, "cardEdit").visible)
+        }
+
+        // A child's event (part 3): who takes it, the proposal and why first, the
+        // answers that fit (Me, Sam), its kind; an answer goes to takeChild.
+        function test_a_child_s_event_says_who_takes_it() {
+            const host = makeHost()
+            verify(host.show({ kind: "event", srcKey: "/c/lea/swim.ics", srcStart: 4000010000 }))
+            const card = host.eventCard
+            compare(root.find(card, "eventHolder").text, "holder-line-nobody")
+            // A Loader's item is found as its child and as its item: each once.
+            const found = root.all(card, c => c.objectName === "eventHolderAnswer" && c.visible)
+            const answers = found.filter((a, i) => found.indexOf(a) === i)
+            compare(answers.map(a => a.text + (a.highlighted ? "*" : "")).join(" | "), "holder-me | Sam*", "the proposal marked")
+            answers[1].clicked()
+            compare(JSON.stringify(mock.calls[0]), JSON.stringify({ what: "takeChild", key: "/c/lea/swim.ics", start: 0, who: "other" }))
+            verify(root.find(card, "eventChildKind").visible, "its kind offered")
         }
 
         // The card you came from, one level deep: Back goes to it, then closes.

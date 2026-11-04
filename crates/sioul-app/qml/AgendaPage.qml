@@ -189,15 +189,34 @@ Item {
         return page.cardRef !== null && (page.cardRef.itemId || "") === row.id
     }
 
+    // Children's events asked about now (several agendas, part 3: `children::questions`), the nearest first.
+    property var questions: []
+    function readQuestions() {
+        try {
+            page.questions = page.visible ? JSON.parse(page.sioul.holderQuestions() || "[]") : []
+        } catch (e) {
+            page.questions = []
+        }
+    }
+    // A question answered: "me", "other", "accept", "decline" or "later".
+    function answerQuestion(question, who) {
+        const problem = page.sioul.takeChild(question.key, question.start, who)
+        if (problem !== "")
+            page.sioul.status = problem
+        page.readQuestions()
+    }
+
     Connections {
         target: page.sioul
 
         function onAgendaChanged() {
             page.takeShown()
+            page.readQuestions()
         }
     }
     onVisibleChanged: {
         page.takeShown()
+        page.readQuestions()
         if (page.visible) {
             page.readAgain()
             if (page.dosesAsked)
@@ -430,6 +449,11 @@ Item {
         filterButtonNarrow.close()
     }
 
+    // A child's week, who does what (part 4), as the filter opens it beside its agenda.
+    function whoDoesWhat(child) {
+        return (page.narrow ? filterButtonNarrow : filterButton).whoDoesWhat(child)
+    }
+
     // For the window's tests.
     function fillEvent(text, from, to, how) {
         eventDialog.now().fill(text, from, to, how)
@@ -568,6 +592,7 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    window: page.window
                     iconOnly: page.width < 1000
                     Layout.preferredWidth: page.width < 1000 ? 40 : -1
                 }
@@ -628,6 +653,7 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    window: page.window
                     narrow: true
                 }
                 Button {
@@ -689,6 +715,54 @@ Item {
                     color: page.theme.text
                     Accessible.role: Accessible.StaticText
                     Accessible.name: page.headNow ? page.headNow.said : ""
+                }
+            }
+            // One question about a child's event at a time, asked once (part 3): who takes it.
+            ColumnLayout {
+                id: question
+
+                readonly property var asked: page.questions.length > 0 ? page.questions[0] : null
+
+                objectName: "agendaQuestion"
+                visible: question.asked !== null
+                Layout.fillWidth: true
+                spacing: 4
+
+                Label {
+                    Layout.fillWidth: true
+                    text: question.asked ? question.asked.line : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.text
+                }
+                Label {
+                    visible: question.asked !== null && question.asked.why !== ""
+                    Layout.fillWidth: true
+                    text: question.asked ? question.asked.why : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.muted
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Repeater {
+                        model: !question.asked ? [] : question.asked.asking === "proposed"
+                            ? [{ who: "accept", label: page.sioul.text("holder-take-it") }, { who: "decline", label: page.sioul.text("holder-not-this-time") }, { who: "later", label: page.sioul.text("holder-later") }]
+                            : [{ who: "me", label: page.sioul.text("holder-me") }].concat(question.asked.other !== "" ? [{ who: "other", label: question.asked.other }] : []).concat([{ who: "later", label: page.sioul.text("holder-later") }])
+
+                        delegate: Button {
+                            id: questionAnswer
+
+                            required property var modelData
+
+                            objectName: "agendaQuestionAnswer"
+                            text: page.theme.plain(questionAnswer.modelData.label)
+                            highlighted: question.asked !== null && question.asked.proposal === questionAnswer.modelData.who
+                            onClicked: page.answerQuestion(question.asked, questionAnswer.modelData.who)
+                        }
+                    }
                 }
             }
             // The medicines could not be read here: said where their doses would be.

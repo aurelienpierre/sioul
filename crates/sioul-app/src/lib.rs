@@ -132,6 +132,7 @@ mod blocks;
 mod calendarfile;
 mod calls;
 mod capacity;
+mod children;
 // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
 #[cfg(not(target_os = "android"))]
 mod colour;

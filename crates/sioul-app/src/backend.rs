@@ -614,6 +614,59 @@ pub mod qobject {
         #[qinvokable]
         fn agendas_as_hours(self: Pin<&mut Sioul>) -> QString;
 
+        /// An agenda kept hidden on this device for good ("Keep hidden"), or
+        /// shown again ("Show again"), by its place (`agenda::keep_hidden`);
+        /// returns what went wrong, else "".
+        #[qinvokable]
+        fn keep_agenda_hidden(self: Pin<&mut Sioul>, id: &QString, hidden: bool) -> QString;
+
+        /// Who takes a child's event or task (several agendas, part 3,
+        /// `children::take`): "me", "other", "accept", "decline" or "later";
+        /// `start` the time of a repeating event, 0 its series. Said with
+        /// Undo; returns what went wrong, else "".
+        #[qinvokable]
+        fn take_child(self: Pin<&mut Sioul>, key: &QString, start: f64, who: &QString) -> QString;
+
+        /// A child's event's or task's kind ("dentist"; "" none), on its series; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_child_kind(self: Pin<&mut Sioul>, key: &QString, kind: &QString) -> QString;
+
+        /// The questions about children's events due now, as JSON (`children::questions`):
+        /// what the Agenda shows under its head line, and the Porch may list.
+        #[qinvokable]
+        fn holder_questions(self: &Sioul) -> QString;
+
+        /// Who usually takes a kind of a child agenda's events: "me", "other", "" each asked.
+        #[qinvokable]
+        fn set_standing_holder(self: Pin<&mut Sioul>, id: &QString, kind: &QString, who: &QString) -> QString;
+
+        /// Where your stand-ins of a kind go (an agenda's place; "" your personal agenda).
+        #[qinvokable]
+        fn set_stand_in_agenda(self: Pin<&mut Sioul>, kind: &QString, place: &QString) -> QString;
+
+        /// Follow-up tasks after the dentist's and check-ups, on or off.
+        #[qinvokable]
+        fn set_follow_ups(self: Pin<&mut Sioul>, on: bool) -> QString;
+
+        /// A named set of agendas chosen in the filter (part 4): its agendas
+        /// shown, the others left out, until work's hours change.
+        #[qinvokable]
+        fn use_agenda_set(self: Pin<&mut Sioul>, name: &QString) -> QString;
+
+        /// A named set kept: `agendas` a JSON list of places ("" or "null" takes the set out),
+        /// `times` a JSON list of "work", "admin", "leisure" that bring it by themselves.
+        #[qinvokable]
+        fn keep_agenda_set(self: Pin<&mut Sioul>, name: &QString, agendas: &QString, times: &QString) -> QString;
+
+        /// Who does what, a week of the children's agendas (part 4, `children::who_does_what`):
+        /// `from` a day of the week ("" this one), `child` one child's agenda ("" all), `mine` what you take alone.
+        #[qinvokable]
+        fn who_does_what(self: &Sioul, from: &QString, child: &QString, mine: bool) -> QString;
+
+        /// Months between a kind's events, for its follow-up: 0 none, below 0 the kind's own.
+        #[qinvokable]
+        fn set_rhythm(self: Pin<&mut Sioul>, kind: &QString, months: i32) -> QString;
+
         /// Agenda ⚙'s blocks (`agenda::setup`): each agenda with what it is,
         /// and the matrix of conflicts, as JSON.
         #[qinvokable]
@@ -629,10 +682,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_agendas_compared(self: Pin<&mut Sioul>, a: &QString, b: &QString, ticked: bool) -> QString;
 
-        /// A conflict notice answered, "keep" (both, set aside) or "move" (your
-        /// own event's file to open in its form): JSON {problem, open}
-        /// (`pim::answer_conflict`). The notices themselves are the `overlaps`
-        /// property, for the Porch.
+        /// A conflict notice answered, "keep" (both, set aside), "move" (your
+        /// own event's file to open in its form) or "ask" (the child's event
+        /// you take, of the two, asked of the other parent: part 3): JSON
+        /// {problem, open} (`pim::answer_conflict`). The notices themselves
+        /// are the `overlaps` property, for the Porch.
         #[qinvokable]
         fn answer_conflict(self: Pin<&mut Sioul>, key: &QString, answer: &QString) -> QString;
 
@@ -4685,8 +4739,73 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn keep_agenda_hidden(self: Pin<&mut Self>, id: &QString, hidden: bool) -> QString {
+        let problem = crate::agenda::keep_hidden(&id.to_string(), hidden);
+        // Every view follows the one filter, the home card too.
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        crate::homecard::now();
+        QString::from(&problem)
+    }
+
     fn agendas_setup(&self) -> QString {
         QString::from(&crate::agenda::setup())
+    }
+
+    fn take_child(self: Pin<&mut Self>, key: &QString, start: f64, who: &QString) -> QString {
+        // A time of Unix seconds, as the card holds it (a whole number in a double).
+        #[allow(clippy::cast_possible_truncation)]
+        let start = start as i64;
+        QString::from(&crate::children::take(&self.qt_thread(), &self.shared(), &key.to_string(), start, &who.to_string()))
+    }
+
+    fn set_child_kind(self: Pin<&mut Self>, key: &QString, kind: &QString) -> QString {
+        QString::from(&crate::children::set_kind(&self.qt_thread(), &self.shared(), &key.to_string(), &kind.to_string()))
+    }
+
+    fn holder_questions(&self) -> QString {
+        QString::from(&crate::children::questions())
+    }
+
+    fn set_standing_holder(self: Pin<&mut Self>, id: &QString, kind: &QString, who: &QString) -> QString {
+        let Some(kind) = sioul_core::holders::Kind::parse(&kind.to_string()) else { return QString::from("") };
+        let who = sioul_core::holders::Who::parse(&who.to_string());
+        QString::from(&sioul_core::agendas::set_standing(&config_path(), &id.to_string(), kind, who).err().unwrap_or_default())
+    }
+
+    fn set_stand_in_agenda(self: Pin<&mut Self>, kind: &QString, place: &QString) -> QString {
+        let Some(kind) = sioul_core::holders::Kind::parse(&kind.to_string()) else { return QString::from("") };
+        let place = place.to_string();
+        QString::from(&sioul_core::agendas::set_stand_in_agenda(&config_path(), kind, Some(place.as_str()).filter(|p| !p.is_empty())).err().unwrap_or_default())
+    }
+
+    fn use_agenda_set(self: Pin<&mut Self>, name: &QString) -> QString {
+        let problem = crate::agenda::use_set(&name.to_string());
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn keep_agenda_set(self: Pin<&mut Self>, name: &QString, agendas: &QString, times: &QString) -> QString {
+        let agendas: Option<Vec<String>> = serde_json::from_str(&agendas.to_string()).ok().flatten();
+        let times: Vec<String> = serde_json::from_str(&times.to_string()).unwrap_or_default();
+        let problem = crate::agenda::keep_set(&name.to_string(), agendas, times);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn who_does_what(&self, from: &QString, child: &QString, mine: bool) -> QString {
+        QString::from(&crate::children::who_does_what(&from.to_string(), &child.to_string(), mine))
+    }
+
+    fn set_follow_ups(self: Pin<&mut Self>, on: bool) -> QString {
+        QString::from(&sioul_core::agendas::set_follow_ups(&config_path(), on).err().unwrap_or_default())
+    }
+
+    fn set_rhythm(self: Pin<&mut Self>, kind: &QString, months: i32) -> QString {
+        let Some(kind) = sioul_core::holders::Kind::parse(&kind.to_string()) else { return QString::from("") };
+        QString::from(&sioul_core::agendas::set_rhythm(&config_path(), kind, u32::try_from(months).ok()).err().unwrap_or_default())
     }
 
     fn set_agenda_field(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
@@ -4707,7 +4826,7 @@ impl qobject::Sioul {
     }
 
     fn answer_conflict(self: Pin<&mut Self>, key: &QString, answer: &QString) -> QString {
-        let answered = crate::pim::answer_conflict(&key.to_string(), &answer.to_string());
+        let answered = crate::pim::answer_conflict(&self.qt_thread(), &self.shared(), &key.to_string(), &answer.to_string());
         crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
         QString::from(&answered)
     }

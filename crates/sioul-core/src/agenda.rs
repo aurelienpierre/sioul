@@ -115,6 +115,16 @@ pub struct Occurrence {
     /// reminders waiting while work rests (`reminders`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub work: bool,
+    /// Its agenda is personal and kept out of your work hours (`agendas::Reach::OutsideWork`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub outside_work: bool,
+    /// Its agenda is a child's (`agendas::Whose::Child`): its holder takes
+    /// its reminders, through their stand-in (`holders`), never it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub child: bool,
+    /// A stand-in: the UID of the child's event it stands for (`holders::stands_for`); "" otherwise.
+    #[serde(skip)]
+    pub stands_for: String,
     /// You are among its guests (one of your accounts' addresses, `mark_answers`):
     /// an invitation, which needs you once you accept it.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -153,6 +163,17 @@ impl Occurrence {
     /// yours: `agendas`). Whole days are left out where times are counted.
     pub fn holds_time(&self) -> bool {
         !self.cancelled && !self.transparent && !self.declined && !self.theirs
+    }
+
+    /// When its agenda reaches you, by the hours (`agendas::Agenda::reach`).
+    pub fn reach(&self) -> crate::agendas::Reach {
+        if self.work {
+            crate::agendas::Reach::WorkHours
+        } else if self.outside_work {
+            crate::agendas::Reach::OutsideWork
+        } else {
+            crate::agendas::Reach::Always
+        }
     }
 }
 
@@ -523,6 +544,7 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
     let busy = marks.busy;
     let with_others = !busy && meeting_with_others(&text, own);
     let anchor = if busy { None } else { crate::anchors::parse(&text) };
+    let stands_for = if text.contains("latest-version") { crate::holders::stands_for(&text).unwrap_or_default() } else { String::new() };
     // Its own clock, said beside its time when it is another than the one
     // shown (none for UTC on a device showing UTC); never a task's time
     // block's, written in UTC and said here alone.
@@ -560,7 +582,8 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
             Occurrence {
                 key: path.display().to_string(),
                 uid: component.uid().unwrap_or_default().to_string(),
-                summary: marks.name.clone(),
+                // Its own title only when you asked to see what it says (part 4); else its agenda's name.
+                summary: Some(lines::unescape(&text_of(component, &ICalendarProperty::Summary))).filter(|t| marks.titles && !t.trim().is_empty()).unwrap_or_else(|| marks.name.clone()),
                 start,
                 end,
                 all_day,
@@ -610,7 +633,7 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
                 ..Occurrence::default()
             }
         };
-        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, opaque, ..occurrence });
+        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, stands_for: stands_for.clone(), opaque, ..occurrence });
     }
     // Your own time around a meeting, kept in your own file, wins over the
     // meeting's lines (decision 18): every reader expands through here.
@@ -2379,7 +2402,7 @@ pub fn moved_to(text: &str, start: i64, zone: &TimeZone) -> Option<i64> {
 
 /// A DATE-TIME line's instant, Unix seconds: in UTC, in the zone it names, or
 /// floating in `zone`; a date alone, its midnight in `zone`.
-fn instant_in(line: &str, zone: &TimeZone) -> Option<i64> {
+pub(crate) fn instant_in(line: &str, zone: &TimeZone) -> Option<i64> {
     let value = lines::value(line).trim().to_string();
     let named = lines::param(line, "TZID");
     if let Some(at) = instant_of(&value, named.as_deref()) {
