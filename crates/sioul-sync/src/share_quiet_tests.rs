@@ -743,3 +743,53 @@ fn your_own_time_keeps_travelling_once_it_has() {
     assert_eq!((before(&desk), before(&phone)), (Some(25), Some(25)), "the change kept on both");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The money movements' store (`notes/sioul-movements.toml`, beside the
+/// budget file) beside a phone whose entry does not say it has the store, as
+/// 705576a's never does: never sent while it does not, so that an older
+/// Sioul holds no record it would keep waiting; the desk's file kept to
+/// itself. Once the phone's entry says so, the desk's next exchange sends
+/// it; a correction made on the phone comes back, entry by entry.
+#[test]
+fn the_money_movements_store_waits_for_a_device_that_has_it() {
+    let base = scratch("movements-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    for notes in [&desk_notes, &phone_notes] {
+        std::fs::create_dir_all(notes).unwrap();
+    }
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.movements = MOVEMENTS_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let store = |notes: &Path| std::fs::read_to_string(notes.join(sioul_core::movements::STORE)).unwrap_or_default();
+    std::fs::write(desk_notes.join(sioul_core::movements::STORE), "format = 1\n\n[[apart]]\na = \"bank:main/A1\"\nb = \"line:l1\"\n").unwrap();
+    for _ in 0..2 {
+        desk.exchange_notes(&folder, &key, now, &desk_notes);
+        now += MINUTE;
+        phone.exchange_notes(&folder, &key, now, &phone_notes);
+        now += MINUTE;
+    }
+    assert!(store(&phone_notes).is_empty(), "kept on the desk: {}", store(&phone_notes));
+    // The phone updated: its entry says it has the store; the desk's next exchange sends it.
+    entry(&phone, &folder, &key, |e| e.movements = MOVEMENTS_SHARED);
+    desk.exchange_notes(&folder, &key, now, &desk_notes);
+    now += MINUTE;
+    let came = phone.exchange_notes(&folder, &key, now, &phone_notes);
+    assert!(came.written.contains(MOVEMENTS), "{came:?}");
+    let read = |notes: &Path| sioul_core::movements::Store::load(notes).unwrap();
+    assert_eq!(read(&phone_notes), read(&desk_notes), "the same store on both");
+    // A source joined on the phone travels back, beside what was there.
+    sioul_core::movements::Store::edit(&phone_notes, |edit| edit.link("preset:rent/2026-11-01", "sioul:letter/2026-10-28-1a2b", "hand", None)).unwrap();
+    now += MINUTE;
+    phone.exchange_notes(&folder, &key, now, &phone_notes);
+    now += MINUTE;
+    desk.exchange_notes(&folder, &key, now, &desk_notes);
+    let desk_store = read(&desk_notes);
+    assert_eq!((desk_store.apart.len(), desk_store.links.len(), desk_store.format), (1, 1, 1), "{}", store(&desk_notes));
+    let _ = std::fs::remove_dir_all(&base);
+}

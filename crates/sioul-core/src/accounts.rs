@@ -63,6 +63,9 @@ pub struct Placed {
     pub movement: Movement,
     pub place: Place,
     pub why: Why,
+    /// The day of the recurring payment's occurrence it stands for, when it
+    /// was found by its words or amount around that day (step 5).
+    pub occurrence: Option<Date>,
 }
 
 /// The bank account a movement kept under `name` belongs to.
@@ -80,12 +83,28 @@ fn folded(text: &str) -> String {
 }
 
 
+/// What a bank movement could be the same payment as, for `place_with`'s
+/// test of "not the same": a line of the budget file (its place), or a
+/// preset's occurrence (the preset's place and its day).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Other {
+    Line(usize),
+    Preset(usize, Date),
+}
+
 /// Every movement of the declared bank accounts, placed (see the module's
 /// notes), oldest first. Movements of no declared account are left out: they
 /// only feed the money watch.
 /// `looked`: the words of labels that name nothing, and what PayPal and
 /// Stripe write for money moved to or from a bank (`words::AccountWords`).
 pub fn place(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words) -> Vec<Placed> {
+    place_with(ledger, bank, looked, &|_, _, _| false)
+}
+
+/// The same, never taking a movement for the same payment as what `apart`
+/// says it is not (an account's id, the movement's id, the line or the
+/// occurrence): the person's "Not the same" (`movements::Apart`).
+pub fn place_with(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words, apart: &dyn Fn(&str, &str, Other) -> bool) -> Vec<Placed> {
     let mut movements: Vec<(&BankAccount, &Movement)> = bank.movements.iter().filter_map(|m| account_of(ledger, &m.account).map(|a| (a, m))).collect();
     movements.sort_by(|a, b| (a.1.date, &a.1.id).cmp(&(b.1.date, &b.1.id)));
     // A movement read under two names of one account (an export first read
@@ -122,18 +141,18 @@ pub fn place(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words) -> Vec<
                 }
                 Place::Budgets(shares)
             };
-            out.push(Placed { account: account.id.clone(), movement: m.clone(), place, why: Why::Hand });
+            out.push(Placed { account: account.id.clone(), movement: m.clone(), place, why: Why::Hand, occurrence: None });
             continue;
         }
         // 2. A line the budgets hold already: read from mail on the day, the bank a few days after.
         let from = m.date.checked_sub(7.days()).unwrap_or(m.date);
         let to = m.date.checked_add(3.days()).unwrap_or(m.date);
         let known = ledger.lines.iter().enumerate().position(|(i, l)| {
-            !known_taken[i] && !l.planned && l.reserve.is_none() && l.amount == m.amount && l.date >= from && l.date <= to && (account.fills.is_empty() || account.fills.contains(&l.budget))
+            !known_taken[i] && !l.planned && l.reserve.is_none() && l.amount == m.amount && l.date >= from && l.date <= to && (account.fills.is_empty() || account.fills.contains(&l.budget)) && !apart(&account.id, &m.id, Other::Line(i))
         });
         if let Some(i) = known {
             known_taken[i] = true;
-            out.push(Placed { account: account.id.clone(), movement: m.clone(), place: Place::Known(i), why: Why::Mail });
+            out.push(Placed { account: account.id.clone(), movement: m.clone(), place: Place::Known(i), why: Why::Mail, occurrence: None });
             continue;
         }
         // 3. Money moved with PayPal or Stripe, when their own exports cover the day:
@@ -147,7 +166,7 @@ pub fn place(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words) -> Vec<
             named && covered.get(other.id.as_str()).is_some_and(|(a, b)| m.date >= a.checked_sub(10.days()).unwrap_or(*a) && m.date <= b.checked_add(10.days()).unwrap_or(*b))
         });
         if let Some(other) = partner {
-            out.push(Placed { account: account.id.clone(), movement: m.clone(), place: Place::Transfer(other.id.clone()), why: Why::Between });
+            out.push(Placed { account: account.id.clone(), movement: m.clone(), place: Place::Transfer(other.id.clone()), why: Why::Between, occurrence: None });
             continue;
         }
         // 4. The first rule that names it; a rule without words takes every movement its way.
@@ -166,18 +185,18 @@ pub fn place(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words) -> Vec<
                 let budget = rule.budget.clone().or_else(|| preset.map(|i| ledger.presets[i].budget.clone())).or(first.clone());
                 budget.map_or(Place::Nowhere, |b| whole(b, preset.map(|i| key(ledger, i))))
             };
-            out.push(Placed { account: account.id.clone(), movement: m.clone(), place, why: Why::Rule });
+            out.push(Placed { account: account.id.clone(), movement: m.clone(), place, why: Why::Rule, occurrence: None });
             continue;
         }
         // 5. The recurring payment it stands for, in a budget it fills.
         let preset = ledger.presets.iter().enumerate().filter(|(_, p)| !p.estimate && (account.fills.is_empty() || account.fills.contains(&p.budget))).find_map(|(i, p)| {
             let words = bank::words(&looked.bank.filler, &p.label);
             let around = (m.date.checked_sub(10.days()).ok()?, m.date.checked_add(5.days()).ok()?);
-            p.occurrences(around.0, around.1).into_iter().find(|d| !preset_taken.contains(&(i, *d)) && bank::matches(&looked.bank.filler, m, &words, p.amount, *d)).map(|d| (i, d))
+            p.occurrences(around.0, around.1).into_iter().find(|d| !preset_taken.contains(&(i, *d)) && bank::matches(&looked.bank.filler, m, &words, p.amount, *d) && !apart(&account.id, &m.id, Other::Preset(i, *d))).map(|d| (i, d))
         });
         if let Some((i, date)) = preset {
             preset_taken.push((i, date));
-            out.push(Placed { account: account.id.clone(), movement: m.clone(), place: whole(ledger.presets[i].budget.clone(), Some(key(ledger, i))), why: Why::Preset });
+            out.push(Placed { account: account.id.clone(), movement: m.clone(), place: whole(ledger.presets[i].budget.clone(), Some(key(ledger, i))), why: Why::Preset, occurrence: Some(date) });
             continue;
         }
         // 6. The account's first budget.
@@ -185,7 +204,7 @@ pub fn place(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words) -> Vec<
             Some(budget) => (whole(budget, None), Why::First),
             None => (Place::Nowhere, Why::Unknown),
         };
-        out.push(Placed { account: account.id.clone(), movement: m.clone(), place, why });
+        out.push(Placed { account: account.id.clone(), movement: m.clone(), place, why, occurrence: None });
     }
     spend_from_estimates(ledger, &mut out);
     out
@@ -246,6 +265,7 @@ impl Ledger {
         for item in place(self, bank, looked) {
             let link = format!("bank:{}/{}", item.account, item.movement.id);
             let line = |budget: String, amount: Money, preset: Option<String>, reserve: Option<String>| Line {
+                id: String::new(),
                 budget,
                 date: item.movement.date,
                 amount,

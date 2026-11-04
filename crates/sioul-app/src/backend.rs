@@ -5731,6 +5731,7 @@ impl qobject::Sioul {
             } else {
                 let date: jiff::civil::Date = movement.date.parse().unwrap_or(today);
                 let line = budget::Line {
+                    id: String::new(),
                     budget: movement.budget.clone(),
                     date,
                     amount: sioul_core::money::Money::from_units(movement.amount),

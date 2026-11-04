@@ -104,6 +104,18 @@ pub struct Budget {
     pub area: Option<String>,
 }
 
+impl Budget {
+    /// What it is for (docs/areas.md): its `area`; "personal", the word for
+    /// leisure money before areas had three, is leisure; unsaid, your admin.
+    pub fn area_of(&self) -> crate::areas::Area {
+        match self.area.as_deref() {
+            Some("personal") => crate::areas::Area::LEISURE,
+            Some(other) => crate::areas::Area::parse(other).unwrap_or(crate::areas::Area::ADMIN),
+            None => crate::areas::Area::ADMIN,
+        }
+    }
+}
+
 /// A payment that comes back: rent, insurance, wages; or an estimate of what is
 /// spent without a trace (food, cash). Mail can stand for one of its occurrences:
 /// a line linked to it (`preset`) replaces a fixed preset's amount, and is spent
@@ -130,6 +142,17 @@ pub struct Preset {
     /// An estimate (daily spending), not a fixed payment.
     #[serde(default)]
     pub estimate: bool,
+    /// Its amount is "about" that much (an energy bill): matched within a
+    /// tenth, and said "about" (`movements::Sum`). An older Sioul reads the
+    /// preset without it, as an exact amount.
+    #[serde(default)]
+    pub about: bool,
+    /// The range it falls in, when known ("between €50 and €70"), in
+    /// euros, its sign taken from `amount`; an older Sioul reads `amount` alone.
+    #[serde(default)]
+    pub low: Option<Money>,
+    #[serde(default)]
+    pub high: Option<Money>,
     #[serde(default)]
     pub links: Vec<String>,
 }
@@ -167,6 +190,12 @@ impl Preset {
 /// One credit or debit of a budget.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Line {
+    /// Its id (`ids`), given when Sioul writes it (`record_line`), by which
+    /// your devices merge it and a money movement names it
+    /// (`movements::Source`); empty for a line written by hand or by an
+    /// older Sioul, until the sharing gives it one.
+    #[serde(default)]
+    pub id: String,
     pub budget: String,
     #[serde(deserialize_with = "dates::required")]
     pub date: Date,
@@ -293,7 +322,7 @@ pub struct Assignment {
 }
 
 /// A movement's share in one budget.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Part {
     pub budget: String,
     pub amount: Money,
@@ -671,6 +700,7 @@ impl MailLine {
     /// The line it becomes in a budget; none without an amount.
     pub fn line(&self, budget: &str) -> Option<Line> {
         Some(Line {
+            id: String::new(),
             budget: budget.to_string(),
             date: self.date,
             amount: self.signed()?,
@@ -1021,9 +1051,10 @@ pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String>
         let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let mut table = Table::new();
-        // Its own id, given now (`ids`): your devices merge each line by it, so
-        // that two lines the same stay two (docs/database.md, "The format of what travels").
-        table["id"] = value(crate::ids::new());
+        // Its own id, given now (`ids`) unless the line came with one: your
+        // devices merge each line by it, so that two lines the same stay two
+        // (docs/database.md, "The format of what travels").
+        table["id"] = value(if line.id.trim().is_empty() { crate::ids::new() } else { line.id.trim().to_string() });
         table["budget"] = value(line.budget.as_str());
         let date = toml_edit::Date { year: line.date.year() as u16, month: line.date.month() as u8, day: line.date.day() as u8 };
         table["date"] = value(toml_edit::Datetime { date: Some(date), time: None, offset: None });
@@ -1812,6 +1843,7 @@ mod tests {
             [[reserve]]\nid = 'savings'\ntitle = 'Savings'\nbalance = 1000\nas_of = 2026-10-01\n\n# Notes at the end.\n";
         std::fs::write(&path, text).unwrap();
         let line = Line {
+            id: String::new(),
             budget: "home".into(),
             date: date("2026-10-02"),
             amount: Money(-2999),
@@ -1843,6 +1875,7 @@ mod tests {
         let home = ledger.budgets[0].clone();
         assert_eq!(ledger.status(&home, today).projected, Money(-32000));
         let line = |amount: f64, preset: &str| Line {
+            id: String::new(),
             budget: "home".into(),
             date: date("2026-10-12"),
             amount: Money::from_units(amount),
