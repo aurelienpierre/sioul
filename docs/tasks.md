@@ -45,6 +45,7 @@ Tasks are CalDAV tasks (VTODO, RFC 5545 §3.6.2) in task lists on your calendar 
 | Light, heavy or what gives back: chosen, or computed from its costs once one is rated (none for the usual) | `X-SIOUL-ENERGY:HEAVY` |
 | Comes back | `RRULE:FREQ=…`; done, it moves to its next turn after today, as tasks.org does |
 | Done | `STATUS:COMPLETED`, `COMPLETED`, `PERCENT-COMPLETE:100` |
+| A call-back task, made by the calls' rules ([porch.md](porch.md), "Calls missed, and calls of yours that did not reach them") | `X-SIOUL-CALL-BACK:sioul:contact/<UID>` (whom it is for), `X-SIOUL-CALLS:<start in ms>-in,<start>-out` (its calls, each its start and way); once a call in which you spoke closed it, as "What closes by itself" does (below), `X-SIOUL-CALLED:<that call>`, kept when you open it again, after which no call closes it again |
 
 - **Editing keeps the rest**: tasks are changed line by line, as contacts and events are; what Sioul does not edit (alarms, another application's fields) comes back exactly; a form saved unchanged writes nothing.
 - **New lists** are created on the server with MKCALENDAR (RFC 4791 §5.3.1), new address books with an extended MKCOL (RFC 5689), at the next sync; until then they wait here, and a sync never deletes them. A list in the account `local` stays on this device.

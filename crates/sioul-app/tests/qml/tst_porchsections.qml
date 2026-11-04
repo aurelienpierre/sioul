@@ -32,6 +32,13 @@ Item {
                  trust: "", trust_level: "verified", subject: subject, date: "", preview: "", reasons: [], attachments: [], screener: false, summary: "", checks: "",
                  notice: { id: "mail:alice:000000000000000" + n, kind: "mail", who: "Ana " + n, what: subject, when: "Wed 4 Nov 09:1" + n, readable: true, state: { mark: state || "new", at: 0, device: "" } } }
     }
+    // A row of From your phone from a phone's history (`calls::history_lines`): a missed call, or a call of yours that did not reach them.
+    function call(kind, who) {
+        return { ids: ["1793000000000-+33199001234-" + who], kind: kind, text: "", number: "01 99 00 12 34", dial: "+33199001234", known: true, hidden: false,
+                 doubt: "", message: null, why: "", again: "", targets: [],
+                 notice: { id: "call:phone-1:" + who, kind: "call", who: who, what: kind === "missed" ? "Missed call at 09:30" : "Your call at 14:10 was not answered",
+                           when: "Wed 4 Nov 14:10", readable: false, state: { mark: "new", at: 0, device: "" } } }
+    }
     function porchWith(people, filed) {
         return JSON.stringify({
             open: true, closed: null, summary: "", status: "", all: false, right_now: [],
@@ -47,6 +54,8 @@ Item {
         property string status: ""
         property string overlaps: "[]"
         property string missedView: "[]"
+        // The calls' rows `calls::view` gives.
+        property var callLines: []
         // What the window asked of the notices, in order: [verb, args].
         property var asked: []
         property var flags: ({})
@@ -87,7 +96,7 @@ Item {
         function readMessage(key) {
         }
         function callsView() {
-            return JSON.stringify({ lines: [] })
+            return JSON.stringify({ lines: mock.callLines, phone: false, links: { tel: true, sms: true } })
         }
         function phoneMessages(verb, json) {
             return JSON.stringify({ lines: [], notices: [] })
@@ -172,6 +181,7 @@ Item {
         function init() {
             mock.asked = []
             mock.flags = {}
+            mock.callLines = []
             mock.porch = root.porchWith([root.message(1, "The plan"), root.message(2, "Lunch")], [root.message(3, "A newsletter")])
             porch.gone = {}
             porch.lastSaid = null
@@ -264,6 +274,24 @@ Item {
             const people = section("people")
             verify(people === null || !people.visible, "no section with nothing new, no line saying so")
             verify(section("filed").visible)
+        }
+
+        // From a phone's history: a missed call says Text back, a call of yours that did not
+        // reach them Text them, each with its call in the menu; no "Why?" without a reason.
+        function test_calls_missed_or_not_reached_are_worded_by_their_kind() {
+            mock.callLines = [root.call("missed", "Noa Linden"), root.call("unreached", "Ada")]
+            mock.porch = root.porchWith([root.message(1, "The plan")], [])
+            porch.porchText = mock.porch
+            wait(50)
+            const rowOf = who => all(porch, i => i.visible && i.notice !== undefined && i.notice !== null && i.notice.who === who && typeof i.dismissPressed === "function")[0] || null
+            const missed = rowOf("Noa Linden")
+            const unreached = rowOf("Ada")
+            verify(missed !== null && unreached !== null, "both rows in From your phone")
+            compare(missed.mainText, "calls-text-back")
+            compare(unreached.mainText, "calls-text-them")
+            compare(missed.more.map(m => m.text).indexOf("calls-call-back") >= 0, true)
+            compare(unreached.more.map(m => m.text).indexOf("calls-call-again") >= 0, true)
+            compare(unreached.more.filter(m => m.id === "why").length, 0, "no reason to give")
         }
 
         // The "?": its help once, in a tooltip; pressed, in its popup.

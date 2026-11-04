@@ -196,11 +196,29 @@ pub struct PorchSettings {
     /// and the computers none. On unless said.
     #[serde(default = "yes")]
     pub calls: bool,
+    /// A missed call from someone in your address books makes a task, "Call
+    /// back …" (docs/porch.md, "Calls"; `callback`). On unless said.
+    #[serde(default = "yes")]
+    pub call_back: bool,
+    /// A call of yours to someone in your address books that did not reach
+    /// them makes a task, "Call … again". On unless said.
+    #[serde(default = "yes")]
+    pub call_again: bool,
+    /// Shorter than this (seconds), a call of yours reached their voicemail,
+    /// likely, not them; at least this long, either way, you spoke
+    /// (`calls::Call::spoke`). 90 unless said; 60, 90 and 120 offered
+    /// (`calls::VOICEMAIL_SECONDS`).
+    #[serde(default = "voicemail_seconds")]
+    pub voicemail_seconds: u32,
+}
+
+fn voicemail_seconds() -> u32 {
+    crate::calls::VOICEMAIL_DEFAULT
 }
 
 impl Default for PorchSettings {
     fn default() -> PorchSettings {
-        PorchSettings { hidden_projects: Vec::new(), calls: true }
+        PorchSettings { hidden_projects: Vec::new(), calls: true, call_back: true, call_again: true, voicemail_seconds: voicemail_seconds() }
     }
 }
 

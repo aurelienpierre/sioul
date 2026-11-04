@@ -453,6 +453,37 @@ pub fn forget(folder: &Path, here: &str, kinds: &[Kind], current: &dyn Fn(&str) 
     Ok(went)
 }
 
+/// How long a Read word on mail holds against the message's own `\Seen`:
+/// a day, while every copy of the message takes the flag (`forget_read_mail`).
+pub const MAIL_READ_HOLDS_MS: i64 = DAY_MS;
+
+/// Read words on mail given back to the messages' own `\Seen` once it said
+/// the same for a day (`MAIL_READ_HOLDS_MS`), so that a word said here never
+/// fights the server: this device's own (`here`), whose Read made the
+/// message read here at once, so that what its flag says now is the
+/// server's (an unread elsewhere since included); another device's once
+/// every message it names is read here (`seen`), the server having said
+/// the same. From then on the message's flag alone says: a later unread on
+/// the server shows it again. Dismissed words stay as they are (`forget`).
+/// A line that does not read stays. Returns how many lines went.
+pub fn forget_read_mail(folder: &Path, here: &str, seen: &dyn Fn(&str) -> bool, now_ms: i64) -> Result<usize, String> {
+    let own = calls::file_safe(here);
+    let mut went = 0;
+    for (device, path) in calls::device_files(folder) {
+        let mine = device == own;
+        went += calls::rewrite_lines(&path, |text| {
+            serde_json::from_str::<Line>(text).is_ok_and(|line| {
+                line.state == Mark::Read
+                    && now_ms - line.at > MAIL_READ_HOLDS_MS
+                    && !line.ids.is_empty()
+                    && line.ids.iter().all(|id| Kind::of_id(id) == Some(Kind::Mail))
+                    && (mine || line.ids.iter().all(|id| seen(id)))
+            })
+        })?;
+    }
+    Ok(went)
+}
+
 // ---------------------------------------------------------------- reading
 
 /// What reading notices reads too, each kind through its item's own path:
@@ -797,6 +828,43 @@ mod tests {
         assert_eq!(forget(&dir, "desk", &[Kind::Mail], &still, NOW + 7 * DAY_MS).unwrap(), 1, "the one said yesterday, a week on");
         assert_eq!(States::read(&dir).of(kept, State::default()).mark, Mark::Dismissed);
         assert_eq!(forget(&dir, "desk", &[Kind::Text], &|_| false, NOW).unwrap(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A Read word on mail never fights the server: a day on, it gives way
+    /// to the message's own `\Seen`, after which an unread elsewhere shows
+    /// the message again; a Dismiss stays, and so does another device's Read
+    /// while its message is not read here yet.
+    #[test]
+    fn a_read_word_on_mail_gives_way_to_the_server_after_a_day() {
+        let dir = scratch("read-mail");
+        let (read, fresh, phones, waits, dismissed, text) = (
+            "mail:home:00000000000000c1",
+            "mail:home:00000000000000c2",
+            "mail:home:00000000000000c3",
+            "mail:home:00000000000000c4",
+            "mail:home:00000000000000c5",
+            "text:phone-1:12:sms-2@1",
+        );
+        let two_days = NOW - 2 * DAY_MS;
+        say(&dir, "desk", &[read.to_string()], Mark::Read, two_days).unwrap();
+        say(&dir, "desk", &[fresh.to_string()], Mark::Read, NOW - 3_600_000).unwrap();
+        say(&dir, "phone", &[phones.to_string()], Mark::Read, two_days).unwrap();
+        say(&dir, "phone", &[waits.to_string()], Mark::Read, two_days).unwrap();
+        say(&dir, "desk", &[dismissed.to_string()], Mark::Dismissed, two_days).unwrap();
+        say(&dir, "desk", &[text.to_string()], Mark::Read, two_days).unwrap();
+        // Here, every message but the last the phone read has its \Seen.
+        let seen = |id: &str| id != waits;
+        assert_eq!(forget_read_mail(&dir, "desk", &seen, NOW).unwrap(), 2, "the desk's own day-old Read, the phone's its flag confirms");
+        let states = States::read(&dir);
+        // Marked unread in another client: the server's word is the message's again.
+        assert_eq!(states.of(read, State::derived(Mark::New)).mark, Mark::New);
+        assert_eq!(states.of(read, State::derived(Mark::Read)).mark, Mark::Read);
+        assert_eq!(states.of(phones, State::derived(Mark::New)).mark, Mark::New);
+        assert_eq!(states.of(fresh, State::derived(Mark::New)).mark, Mark::Read, "said an hour ago: it still holds");
+        assert_eq!(states.of(waits, State::derived(Mark::New)).mark, Mark::Read, "the phone's, not read here yet");
+        assert_eq!(states.of(dismissed, State::derived(Mark::New)).mark, Mark::Dismissed, "a Dismiss stays");
+        assert_eq!(states.of(text, State::default()).mark, Mark::Read, "a text's Read is not mail's");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

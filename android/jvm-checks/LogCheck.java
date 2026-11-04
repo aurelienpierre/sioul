@@ -20,8 +20,9 @@ import org.json.JSONObject;
  * are written there for Rust's test (calls::tests::java_s_lines_read_here).
  * Then the numbers you called (Calls.rememberCalled, Calls.calledAt): kept
  * only the days the table counts, 14 at most, and not at all while it counts
- * none (review of part 2, F5). Fiction numbers only (ARCEP's 01 99 00 and
- * 04 65 71).
+ * none (review of part 2, F5). Then a row of the phone's call history as
+ * Rust reads it (Calls.historyRow). Fiction numbers only (ARCEP's 01 99 00
+ * and 04 65 71).
  */
 public final class LogCheck
 {
@@ -125,6 +126,11 @@ public final class LogCheck
         for (File file : left == null ? new File[0] : left)
             file.delete();
         folder.delete();
+        // The phone's call history as Rust reads its rows (calls.rs, `HistoryRow`): when the
+        // call began, how long, its type, the number as the network gave it, its presentation.
+        JSONObject row = Calls.historyRow(at, 42, 2, "04 65 71 63 25", 1);
+        expect("a history row's fields", row.getLong("at") == at && row.getLong("seconds") == 42 && row.getInt("type") == 2 && row.getString("number").equals("04 65 71 63 25") && row.getInt("presentation") == 1);
+        expect("a history row without a number", Calls.historyRow(at, 0, 3, null, 2).getString("number").isEmpty());
         String sample = System.getenv("SIOUL_CALLS_SAMPLE");
         if (sample != null && !sample.isEmpty())
             Files.write(new File(sample).toPath(), (String.join("\n", lines) + "\n").getBytes(StandardCharsets.UTF_8));

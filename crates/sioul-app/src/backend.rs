@@ -2918,6 +2918,8 @@ fn compute(shared: &Shared) -> Views {
     items.retain(|t| t.card.path.as_ref().is_none_or(|p| !hidden.contains(p)));
     // Every message's notice, whatever the hour shows: what the words said of them are kept for (`notices::forget`).
     let notices: Vec<String> = items.iter().map(|t| sioul_core::notices::mail_id_of(&t.card)).collect();
+    // Those read here: a day on, a Read word said of them gives way to their own \Seen (`notices::forget_read_mail`).
+    let read_here: Vec<String> = items.iter().filter(|t| t.card.path.as_deref().is_some_and(|p| sioul_core::maildir::flags_of(p).contains('S'))).map(|t| sioul_core::notices::mail_id_of(&t.card)).collect();
     // The phone's home screen card: the Porch as each coming time will show it (homecard.rs).
     crate::homecard::porch_seen(&items, &world.senders, world.store.as_ref());
     // What reaches you now (docs/attention.md): codes and what you sent
@@ -2949,7 +2951,7 @@ fn compute(shared: &Shared) -> Views {
     let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, opened || mode.quiet);
     porch.all = shared.opened_anyway.load(Ordering::Relaxed);
     // Each message's notice as the words said on any device leave it: the Porch shows the new ones.
-    crate::notices::apply_mail(&mut porch, &notices);
+    crate::notices::apply_mail(&mut porch, &notices, &read_here);
     // After a pause, the Porch rests until the next admin hours, unless opened (docs/pauses.md).
     crate::pauses::porch_rests(&mut porch, opened, &now);
     if mode.quiet {

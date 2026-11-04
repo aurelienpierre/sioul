@@ -1122,8 +1122,10 @@ def write_calls(p: Profile):
     """The calls a phone of yours screened, as its log reaches a computer
     through the sharing (crates/sioul-core/src/calls.rs, `Held`; the phone's
     name in the sharing invented): what that computer's Porch lists of those it
-    declined, at the times their callers may reach you, and the doctor's calls
-    of the month on her sheet. Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
+    declined, at the times their callers may reach you, and on the doctor's
+    sheet the calls of the month; and its call history (`Logged`): the calls
+    missed, one of yours that did not reach them. Fiction numbers: ARCEP's
+    01 99 00 and 04 65 71."""
     c = p.clock
 
     def call(moment: datetime, key: str, who: str, column: str, why: str = "matrix", rang: bool = False) -> str:
@@ -1147,6 +1149,26 @@ def write_calls(p: Profile):
         call(c.at(c.today, "12:40"), "", "hidden", "meals"),
     ]
     p.write(p.state / "calls" / "log" / "demo-phone.jsonl", "".join(lines))
+
+    # The phone's call history (`Logged`), once Sioul may read it: Marc's two calls
+    # missed this morning, and one of yours to Sophie that reached a voicemail
+    # (docs/porch.md, "Calls missed, and calls of yours that did not reach them").
+    def logged(moment: datetime, key: str, kind: str, out: bool = False, seconds: int = 0) -> str:
+        line = {"at": unix(moment) * 1000, "key": key}
+        if out:
+            line["out"] = True
+        if seconds:
+            line.update({"answered": True, "seconds": seconds})
+        line["kind"] = kind
+        return json.dumps(line, separators=(",", ":")) + "\n"
+
+    marc, sophie = "+33465716325", "+33465713052"
+    history = [
+        logged(c.at(c.today, "09:12"), marc, "missed"),
+        logged(c.at(c.today, "09:40"), marc, "missed"),
+        logged(c.at(c.today, "11:05"), sophie, "outgoing", out=True, seconds=38),
+    ]
+    p.write(p.state / "calls" / "log" / "history" / "demo-phone.jsonl", "".join(history))
 
 
 def write_phone_messages(p: Profile):

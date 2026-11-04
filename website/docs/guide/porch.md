@@ -165,9 +165,9 @@ After those cards, the Porch shows what came in sections, each drawn the same wa
 2. **Each project**, then your protected public address.
 3. **From yourself**.
 4. **From people you know**.
-5. **From your phone**: the calls Sioul declined, on your phone and on your other devices, each at a time its caller may reach you, with **Text back**, and **Call back** in its menu ([Calls](calls.md#afterwards-on-the-porch)); on a computer, the texts and other apps' notifications your phone sends there, with **Reply** where it works ([What reaches you](notifications.md#messages-on-your-computers)).
+5. **From your phone**: the calls Sioul declined, on your phone and on your other devices, each at a time its caller may reach you, with **Text back**, and **Call back** in its menu ([Calls](calls.md#afterwards-on-the-porch)); once Sioul may read the phone's call history, the calls you missed and those of yours that did not reach them too ([Calls](calls.md#calls-missed)); on a computer, the texts and other apps' notifications your phone sends there, with **Reply** where it works ([What reaches you](notifications.md#messages-on-your-computers)).
 6. **Sites**: what the websites you keep in Sioul notified, a row per site. Opening the site reads its news ([Sites](sites.md)).
-7. **Money**: this week's payments, each with its day and its amount, as your bank's file says them; **Open in Budgets** ([Budgets](budgets.md#the-bank-watch)). Not while you sleep.
+7. **Money**: what is due or expected in the next two weeks, money in as well as out, each with its day, whether it is planned, announced or not final yet, and its amount; what was expected and did not pass on its account is said once. **Open in Budgets** ([Budgets](budgets.md)). Work money only in your work hours, and nothing while you sleep.
 8. **Paper letters**, only while one waits ([below](#paper-letters)). Not while you sleep.
 9. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded.
 
@@ -221,6 +221,7 @@ The ⚙ at the top of the Porch holds what is the Porch's alone, and how a messa
 
 - **Projects shown here**: which projects have a section on the Porch, one per line. The others' mail stays on their page in Projects.
 - **Calls ▸ Calls your phones declined**: on unless you turn it off, the calls your phones declined wait on this device's Porch too; off, each phone lists only its own, and your computers none ([Calls](calls.md#on-your-computers)).
+- **Calls ▸ A task to call back**, **A task to call again**: on unless you turn them off, a missed call from someone in your address books makes a task "Call back …", a call of yours that did not reach them "Call … again"; **A call that reached their voicemail**: 90 seconds unless you choose 60 or 120 ([Calls](calls.md#calls-missed)).
 - **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
 - **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
 
