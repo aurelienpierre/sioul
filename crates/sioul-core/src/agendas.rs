@@ -154,11 +154,53 @@ pub struct Said {
     /// "write", "read", "availability".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access: Option<String>,
+    /// A child's agenda: the other parent who may take its events, by name
+    /// and address (part 3, `holders`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_address: Option<String>,
+    /// How that parent answers: "sioul", their Sioul reads this agenda and
+    /// answers in it; "mail", by an invitation (unsaid: by mail).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_answers: Option<String>,
+    /// Who usually takes each kind of its events ("dentist" = "other"):
+    /// `[agenda.calendars."<place>".holders]`, proposed for each new one.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub holders: BTreeMap<String, String>,
+    /// An agenda for availability: "shown" shows what its events say (their
+    /// titles), still read only; unsaid, plain busy bands (part 4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub titles: Option<String>,
 }
 
 impl Said {
     /// The fields an agenda's settings may write.
-    pub const FIELDS: [&'static str; 5] = ["whose", "name", "area", "reaches", "access"];
+    pub const FIELDS: [&'static str; 9] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles"];
+}
+
+/// How the other parent of a child's agenda answers (`Said::parent_answers`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Answers {
+    /// By an invitation Sioul drafts, which leaves when you send it.
+    #[default]
+    Mail,
+    /// In their own Sioul, which reads this agenda: no mail.
+    Sioul,
+}
+
+impl Answers {
+    pub fn id(self) -> &'static str {
+        match self {
+            Answers::Mail => "mail",
+            Answers::Sioul => "sioul",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Answers> {
+        [Answers::Mail, Answers::Sioul].into_iter().find(|a| a.id() == text.trim().to_ascii_lowercase())
+    }
 }
 
 /// One agenda as it is now: what you said of it, the rest by default.
@@ -182,6 +224,15 @@ pub struct Agenda {
     pub access: Access,
     /// Its server lets you read it only: read and write is not offered.
     pub server_read_only: bool,
+    /// A child's agenda: the other parent, by name and address ("" unsaid),
+    /// and how they answer (`holders`).
+    pub parent: String,
+    pub parent_address: String,
+    pub parent_answers: Answers,
+    /// Who usually takes each kind of a child's events.
+    pub standing: BTreeMap<crate::holders::Kind, crate::holders::Who>,
+    /// For availability: its events' titles shown, by your word (`Said::titles`); off, plain bands.
+    pub titles: bool,
     /// What you said of it, field by field.
     pub said: Said,
 }
@@ -210,6 +261,9 @@ impl Agenda {
             None => Access::Write,
         };
         let person = if whose == Whose::Yours { String::new() } else { said.name.as_deref().map(str::trim).unwrap_or_default().to_string() };
+        let child = whose == Whose::Child;
+        let word = |field: &Option<String>| if child { field.as_deref().map(str::trim).unwrap_or_default().to_string() } else { String::new() };
+        let standing = if child { said.holders.iter().filter_map(|(k, w)| Some((crate::holders::Kind::parse(k)?, crate::holders::Who::parse(w)?))).collect() } else { BTreeMap::new() };
         Agenda {
             id: place(collection),
             account: collection.account.clone(),
@@ -223,6 +277,11 @@ impl Agenda {
             reaches,
             access,
             server_read_only,
+            parent: word(&said.parent),
+            parent_address: word(&said.parent_address),
+            parent_answers: said.parent_answers.as_deref().and_then(Answers::parse).unwrap_or_default(),
+            standing,
+            titles: said.titles.as_deref().is_some_and(|t| t.trim().eq_ignore_ascii_case("shown")),
             said: said.clone(),
         }
     }
@@ -314,6 +373,12 @@ pub struct Marks {
     pub work: bool,
     /// Its server says it takes none of your time as a whole (`vdir::calendar_transparent`).
     pub transparent: bool,
+    /// A personal agenda you keep out of your work hours (`Reach::OutsideWork`).
+    pub outside_work: bool,
+    /// A child's agenda.
+    pub child: bool,
+    /// For availability, its events' titles shown by your word (`Agenda::titles`).
+    pub titles: bool,
 }
 
 /// The marks of a collection's agenda (`Marks`).
@@ -321,7 +386,7 @@ pub fn marks_of(collection: &Collection) -> Marks {
     let config = read_config();
     let agenda = agenda_of(collection, &config);
     let transparent = vdir::calendar_transparent(&collection.account, &collection.id);
-    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent }
+    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, titles: agenda.titles }
 }
 
 /// Whether you chose to keep an agenda from every writer: read only, or its
@@ -448,6 +513,11 @@ pub fn set_field(path: &Path, id: &str, field: &str, value: &str) -> Result<(), 
         "area" => Some(Area::parse(value).ok_or_else(|| format!("{value}: work, admin, leisure, joined by +"))?.id()),
         "reaches" => Some(Reaches::parse(value).ok_or_else(|| format!("{value}: all-day or outside-work"))?.id().to_string()),
         "access" => Some(Access::parse(value).ok_or_else(|| format!("{value}: write, read or availability"))?.id().to_string()),
+        "parent" => Some(value.to_string()),
+        "parent_address" => Some(crate::compose::address_of(value).ok_or_else(|| format!("{value}: not an address"))?),
+        "parent_answers" => Some(Answers::parse(value).ok_or_else(|| format!("{value}: mail or sioul"))?.id().to_string()),
+        "titles" if value.eq_ignore_ascii_case("shown") => Some("shown".to_string()),
+        "titles" => return Err(format!("{value}: shown, or nothing")),
         _ => return Err(format!("{field}: not a field of an agenda")),
     };
     edit_agenda_table(path, "calendars", |calendars| {
@@ -471,6 +541,146 @@ pub fn set_field(path: &Path, id: &str, field: &str, value: &str) -> Result<(), 
             }
         }
         Ok(())
+    })
+}
+
+/// Who usually takes a kind of a child agenda's events (`Said::holders`):
+/// "me", "other"; none takes your word out (each one asked then).
+pub fn set_standing(path: &Path, id: &str, kind: crate::holders::Kind, who: Option<crate::holders::Who>) -> Result<(), String> {
+    edit_agenda_table(path, "calendars", |calendars| {
+        if who.is_some() && !calendars.contains_key(id) {
+            let mut table = toml_edit::Table::new();
+            table.set_implicit(false);
+            calendars.insert(id, toml_edit::Item::Table(table));
+        }
+        let Some(table) = calendars.get_mut(id).and_then(toml_edit::Item::as_table_like_mut) else { return Ok(()) };
+        match who {
+            Some(who) => {
+                if !table.contains_key("holders") {
+                    let mut holders = toml_edit::Table::new();
+                    holders.set_implicit(false);
+                    table.insert("holders", toml_edit::Item::Table(holders));
+                }
+                let holders = table.get_mut("holders").and_then(toml_edit::Item::as_table_like_mut).ok_or_else(|| format!("{id}: holders is not a table"))?;
+                holders.insert(kind.id(), toml_edit::value(who.id()));
+            }
+            None => {
+                if let Some(holders) = table.get_mut("holders").and_then(toml_edit::Item::as_table_like_mut) {
+                    holders.remove(kind.id());
+                    if holders.is_empty() {
+                        table.remove("holders");
+                    }
+                }
+            }
+        }
+        if table.is_empty() {
+            calendars.remove(id);
+        }
+        Ok(())
+    })
+}
+
+/// Where your stand-ins of a kind go (`[agenda.stand_ins]`, an agenda's
+/// place); none: your personal agenda (`holders::stand_in_agenda`).
+pub fn set_stand_in_agenda(path: &Path, kind: crate::holders::Kind, place: Option<&str>) -> Result<(), String> {
+    edit_agenda_table(path, "stand_ins", |table| {
+        match place.map(str::trim).filter(|p| !p.is_empty()) {
+            Some(place) => {
+                table.insert(kind.id(), toml_edit::value(place));
+            }
+            None => {
+                table.remove(kind.id());
+            }
+        }
+        Ok(())
+    })
+}
+
+/// How many months after a held event of a kind its follow-up comes
+/// (`[agenda.rhythms]`); none: the kind's own (`holders::Kind::rhythm`), 0 none at all.
+pub fn set_rhythm(path: &Path, kind: crate::holders::Kind, months: Option<u32>) -> Result<(), String> {
+    edit_agenda_table(path, "rhythms", |table| {
+        match months {
+            Some(months) => {
+                table.insert(kind.id(), toml_edit::value(i64::from(months.min(60))));
+            }
+            None => {
+                table.remove(kind.id());
+            }
+        }
+        Ok(())
+    })
+}
+
+/// A named set of agendas for the filter (research/agendas.md §6,
+/// recommendation 17, after Fantastical's sets and TimeTree's filters,
+/// §3): `[agenda.sets."Tom and Léa"]`, its agendas by place, and Sioul's own
+/// times that bring it by themselves ("work", "admin", "leisure"); never a
+/// place, which would need tracking. It travels with the settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Set {
+    #[serde(default)]
+    pub agendas: Vec<String>,
+    /// In these times it is what the filter shows unless you say; none: chosen by hand alone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub times: Vec<String>,
+}
+
+/// The times a set may come with: Sioul's own, never a place.
+pub const SET_TIMES: [&str; 3] = ["work", "admin", "leisure"];
+
+/// The set the time brings now, the first by name: one tied to `time`
+/// (the hours' word: "work", "admin", "leisure", "work+admin" for both).
+pub fn set_of_time<'a>(sets: &'a BTreeMap<String, Set>, time: &str) -> Option<(&'a String, &'a Set)> {
+    sets.iter().find(|(_, set)| set.times.iter().any(|t| time.split('+').any(|now| now == t)))
+}
+
+/// A set written by its name, or taken out (none); the times kept to Sioul's own.
+pub fn set_set(path: &Path, name: &str, set: Option<&Set>) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("a set needs a name".into());
+    }
+    edit_agenda_table(path, "sets", |sets| {
+        match set {
+            Some(set) => {
+                let mut table = toml_edit::Table::new();
+                table.set_implicit(false);
+                table.insert("agendas", toml_edit::value(set.agendas.iter().map(String::as_str).collect::<toml_edit::Array>()));
+                let times: toml_edit::Array = set.times.iter().filter(|t| SET_TIMES.contains(&t.as_str())).map(String::as_str).collect();
+                if !times.is_empty() {
+                    table.insert("times", toml_edit::value(times));
+                }
+                sets.insert(name, toml_edit::Item::Table(table));
+            }
+            None => {
+                sets.remove(name);
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Follow-up tasks on or off (`[agenda] follow_ups`): on, the default, takes your word out.
+pub fn set_follow_ups(path: &Path, on: bool) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        if !doc.contains_key("agenda") {
+            if on {
+                return Ok(());
+            }
+            doc["agenda"] = toml_edit::table();
+        }
+        let agenda = doc["agenda"].as_table_mut().ok_or_else(|| format!("{}: agenda is not a table", path.display()))?;
+        if on {
+            agenda.remove("follow_ups");
+        } else {
+            agenda.insert("follow_ups", toml_edit::value(false));
+        }
+        if agenda.is_empty() {
+            doc.remove("agenda");
+        }
+        crate::config::write_document(path, &doc)
     })
 }
 
@@ -567,7 +777,13 @@ impl Hours {
 /// Whether the hours admit an agenda now: a work agenda in work hours, a
 /// personal one kept outside them outside them; no hours set, everything.
 pub fn usual(agenda: &Agenda, hours: Hours) -> bool {
-    match agenda.reach() {
+    admits(agenda.reach(), hours)
+}
+
+/// Whether the hours admit an agenda of this reach (`usual`): what the home
+/// card asks of each event's (`agenda::Occurrence::reach`), its frames' hours apart.
+pub fn admits(reach: Reach, hours: Hours) -> bool {
+    match reach {
         Reach::Always => true,
         Reach::WorkHours => !hours.set || hours.work,
         Reach::OutsideWork => !hours.set || !hours.work,
@@ -605,30 +821,39 @@ impl Override {
     }
 }
 
-/// Whether an agenda is shown now: your word while it holds, else the hours'.
-pub fn shown(agenda: &Agenda, hours: Hours, over: Option<&Override>, now: i64) -> bool {
+/// What an agenda does unless your word holds: left out when you keep it
+/// hidden on this device (`kept`, the places Show kept hidden for good),
+/// else as the hours admit it (`usual`).
+pub fn default_on(agenda: &Agenda, hours: Hours, kept: &BTreeSet<String>) -> bool {
+    !kept.contains(&agenda.id) && usual(agenda, hours)
+}
+
+/// Whether an agenda is shown now: your word while it holds; else left out
+/// when kept hidden on this device; else the hours' (`default_on`).
+pub fn shown(agenda: &Agenda, hours: Hours, over: Option<&Override>, kept: &BTreeSet<String>, now: i64) -> bool {
     match over.filter(|o| o.holds(hours, now)) {
         Some(o) if o.on.contains(&agenda.id) => true,
         Some(o) if o.off.contains(&agenda.id) => false,
-        _ => usual(agenda, hours),
+        _ => default_on(agenda, hours, kept),
     }
 }
 
 /// The places of the agendas left out now.
-pub fn hidden(agendas: &[Agenda], hours: Hours, over: Option<&Override>, now: i64) -> BTreeSet<String> {
-    agendas.iter().filter(|a| !shown(a, hours, over, now)).map(|a| a.id.clone()).collect()
+pub fn hidden(agendas: &[Agenda], hours: Hours, over: Option<&Override>, kept: &BTreeSet<String>, now: i64) -> BTreeSet<String> {
+    agendas.iter().filter(|a| !shown(a, hours, over, kept, now)).map(|a| a.id.clone()).collect()
 }
 
 /// `ids` turned on or off: the override as it becomes, made now if none
-/// holds; an agenda turned back to what the hours say leaves it; none left,
-/// none at all (back to the hours).
-pub fn turned(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: bool, hours: Hours, now: i64) -> Option<Override> {
+/// holds; an agenda turned back to what it does unless you say
+/// (`default_on`) leaves it; none left, none at all (back to the hours).
+/// One kept hidden and turned on shows until work's hours change, as any.
+pub fn turned(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: bool, hours: Hours, kept: &BTreeSet<String>, now: i64) -> Option<Override> {
     let mut over = over.filter(|o| o.holds(hours, now)).cloned().unwrap_or(Override { work: hours.work, until: hours.until, ..Override::default() });
     for id in ids {
         over.on.remove(id);
         over.off.remove(id);
         let Some(agenda) = agendas.iter().find(|a| &a.id == id) else { continue };
-        if on != usual(agenda, hours) {
+        if on != default_on(agenda, hours, kept) {
             if on { over.on.insert(id.clone()) } else { over.off.insert(id.clone()) };
         }
     }
@@ -745,7 +970,7 @@ mod tests {
         let busy = of("home", true, false, &Said::default());
         assert_eq!((busy.whose, busy.access, busy.busy()), (Whose::Shared, Access::Availability, true), "read only, no details: availability only");
         // What you say wins; read and write is never more than the server allows.
-        let said = Said { whose: Some("child".into()), name: Some(" Léa ".into()), area: Some("leisure".into()), reaches: Some("outside-work".into()), access: Some("write".into()) };
+        let said = Said { whose: Some("child".into()), name: Some(" Léa ".into()), area: Some("leisure".into()), reaches: Some("outside-work".into()), access: Some("write".into()), ..Said::default() };
         let child = of("home", true, true, &said);
         assert_eq!((child.whose, child.person.as_str(), child.area, child.access, child.reach()), (Whose::Child, "Léa", Area::LEISURE, Access::Read, Reach::OutsideWork));
         let chosen = of("home", false, true, &Said { access: Some("availability".into()), ..Said::default() });
@@ -794,28 +1019,51 @@ mod tests {
         let at_work = Hours { set: true, work: true, until: Some(1_000) };
         let after = Hours { set: true, work: false, until: Some(2_000) };
         let ids = |set: BTreeSet<String>| set.into_iter().collect::<Vec<_>>();
-        assert_eq!(ids(hidden(&all, at_work, None, 500)), ["a/evening"], "at work: the evening's agenda waits");
-        assert_eq!(ids(hidden(&all, after, None, 1_500)), ["a/work"], "after work: the work agenda waits");
-        assert!(hidden(&all, Hours::NONE, None, 0).is_empty(), "no hours set: everything");
+        let none = BTreeSet::new();
+        assert_eq!(ids(hidden(&all, at_work, None, &none, 500)), ["a/evening"], "at work: the evening's agenda waits");
+        assert_eq!(ids(hidden(&all, after, None, &none, 1_500)), ["a/work"], "after work: the work agenda waits");
+        assert!(hidden(&all, Hours::NONE, None, &none, 0).is_empty(), "no hours set: everything");
         // At 18:00 the work agenda shown, by hand: it holds until work's hours change.
-        let over = turned(None, &all, &["a/work".to_string()], true, after, 1_500).unwrap();
+        let over = turned(None, &all, &["a/work".to_string()], true, after, &none, 1_500).unwrap();
         assert_eq!((over.work, over.until, ids(over.on.clone())), (false, Some(2_000), vec!["a/work".to_string()]));
-        assert!(hidden(&all, after, Some(&over), 1_900).is_empty(), "held");
+        assert!(hidden(&all, after, Some(&over), &none, 1_900).is_empty(), "held");
         let next_day = Hours { set: true, work: true, until: Some(3_000) };
-        assert_eq!(ids(hidden(&all, next_day, Some(&over), 2_000)), ["a/evening"], "work's hours changed: the hours decide again");
+        assert_eq!(ids(hidden(&all, next_day, Some(&over), &none, 2_000)), ["a/evening"], "work's hours changed: the hours decide again");
         // The time it was to change came, whatever the hours say now (an hour moved meanwhile).
-        assert_eq!(ids(hidden(&all, after, Some(&over), 2_000)), ["a/work"], "its time came");
+        assert_eq!(ids(hidden(&all, after, Some(&over), &none, 2_000)), ["a/work"], "its time came");
         // Turned back to what the hours say: nothing left of it.
-        assert_eq!(turned(Some(&over), &all, &["a/work".to_string()], false, after, 1_600), None);
+        assert_eq!(turned(Some(&over), &all, &["a/work".to_string()], false, after, &none, 1_600), None);
         // A whole group off, one of them back on: only the difference is kept.
         let group = ["a/home".to_string(), "a/evening".to_string()];
-        let off = turned(None, &all, &group, false, after, 1_500).unwrap();
+        let off = turned(None, &all, &group, false, after, &none, 1_500).unwrap();
         assert_eq!(ids(off.off.clone()), ["a/evening", "a/home"]);
-        let back = turned(Some(&off), &all, &["a/home".to_string()], true, after, 1_500).unwrap();
+        let back = turned(Some(&off), &all, &["a/home".to_string()], true, after, &none, 1_500).unwrap();
         assert_eq!((ids(back.off.clone()), back.on.is_empty()), (vec!["a/evening".to_string()], true));
         // An override no longer holding is never built upon.
-        let fresh = turned(Some(&off), &all, &["a/home".to_string()], false, next_day, 2_100).unwrap();
+        let fresh = turned(Some(&off), &all, &["a/home".to_string()], false, next_day, &none, 2_100).unwrap();
         assert_eq!((fresh.work, ids(fresh.off)), (true, vec!["a/home".to_string()]));
+    }
+
+    /// An agenda kept hidden on this device (what Show hid for good) stays
+    /// hidden across every change of the hours; ticked, it shows until work's
+    /// hours change, as any word of yours, then it is hidden again; your word
+    /// turning it back off leaves nothing of it.
+    #[test]
+    fn an_agenda_kept_hidden_stays_hidden_across_the_hours() {
+        let home = agenda("home", Area::PERSONAL, Reaches::AllDay);
+        let club = agenda("club", Area::PERSONAL, Reaches::AllDay);
+        let all = [home, club];
+        let kept: BTreeSet<String> = ["a/club".to_string()].into();
+        let ids = |set: BTreeSet<String>| set.into_iter().collect::<Vec<_>>();
+        let at_work = Hours { set: true, work: true, until: Some(1_000) };
+        let after = Hours { set: true, work: false, until: Some(2_000) };
+        for (hours, now) in [(at_work, 500), (after, 1_500), (Hours::NONE, 0)] {
+            assert_eq!(ids(hidden(&all, hours, None, &kept, now)), ["a/club"], "hidden for good: {hours:?}");
+        }
+        let over = turned(None, &all, &["a/club".to_string()], true, at_work, &kept, 500).unwrap();
+        assert!(over.on.contains("a/club") && hidden(&all, at_work, Some(&over), &kept, 900).is_empty(), "ticked: shown");
+        assert_eq!(ids(hidden(&all, after, Some(&over), &kept, 1_500)), ["a/club"], "work's hours changed: hidden again");
+        assert_eq!(turned(Some(&over), &all, &["a/club".to_string()], false, at_work, &kept, 600), None, "back to kept hidden: no word left");
     }
 
     /// Work's hours as the agendas follow them, from the week's hours: on
@@ -920,6 +1168,20 @@ mod tests {
         assert_eq!((b.summary.as_str(), b.location.as_str(), b.notes.as_str(), b.organizer.as_str()), ("Sam's busy times", "", "", ""), "its name, nothing more");
         assert!(b.attendees.is_empty() && b.alarms.is_empty() && b.margins == crate::demands::Margins::default() && b.busy && b.theirs && b.read_only && !b.holds_time());
         assert!(crate::agenda::file_occurrences(&free, &now(&calendar), 4_000_000_000, 4_200_000_000, &zone).is_empty(), "its free time left out");
+        // Its switch (part 4): what its events say shown, its title alone; off again, its name.
+        set_field(&config, &place(&calendar), "titles", "shown").unwrap();
+        let said = read(&now(&calendar));
+        assert_eq!((said[0].summary.as_str(), said[0].location.as_str(), said[0].busy), ("Dentist for Tom", "", true), "its title, nothing more");
+        assert!(set_field(&config, &place(&calendar), "titles", "everything").is_err());
+        set_field(&config, &place(&calendar), "titles", "").unwrap();
+        assert_eq!(read(&now(&calendar))[0].summary, "Sam's busy times");
+        // Never given to an agent (part 4, recommendation 14): kept from the MCP whatever its projects.
+        let refs: Vec<crate::agenda::EventRef> = [(&event, full), (&plain, plain_text)].iter().filter_map(|(p, t)| crate::agenda::event_ref(t, &p.display().to_string(), &zone)).collect();
+        let mut consent = crate::consent::Consent::new(&[], true);
+        assert!(consent.allows(&crate::links::event_uri("dentist")));
+        consent.keep_private(&refs);
+        assert!(!consent.allows(&crate::links::event_uri("dentist")) && !consent.allows(&crate::links::event_uri("swim")), "its events kept from agents");
+        assert!(consent.allows(&crate::links::event_uri("elsewhere")));
         for (path, text) in [(&plain, plain_text), (&task, task_text)] {
             assert!(vdir::write_item(path, text).is_err(), "{}: never written", path.display());
             assert!(vdir::remove_item(path).is_err(), "{}: never taken out", path.display());
@@ -936,6 +1198,30 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&calendar.dir);
         let _ = std::fs::remove_dir_all(&list.dir);
+    }
+
+    /// Named sets (part 4): the one Sioul's own time brings, the first by
+    /// name, both hours at once bringing either's; one by hand alone none;
+    /// written in place with the times kept to Sioul's own (never a place),
+    /// its comments kept, and taken out.
+    #[test]
+    fn a_set_comes_by_hand_or_with_its_times() {
+        let set = |agendas: &[&str], times: &[&str]| Set { agendas: agendas.iter().map(|a| a.to_string()).collect(), times: times.iter().map(|t| t.to_string()).collect() };
+        let sets: BTreeMap<String, Set> = [("My week".to_string(), set(&["a/work"], &["work"])), ("Tom and Léa".to_string(), set(&["a/tom", "a/lea"], &["leisure"])), ("By hand".to_string(), set(&["a/home"], &[]))].into();
+        let name = |time: &str| set_of_time(&sets, time).map(|(n, _)| n.clone());
+        assert_eq!((name("leisure"), name("work+admin"), name("admin"), name("any")), (Some("Tom and Léa".into()), Some("My week".into()), None, None));
+        let dir = std::env::temp_dir().join(format!("sioul-sets-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\n[agenda]\nday_start = 8\n").unwrap();
+        set_set(&path, "Tom and Léa", Some(&set(&["a/tom"], &["leisure", "the beach"]))).unwrap();
+        let read = || toml::from_str::<Config>(&std::fs::read_to_string(&path).unwrap()).unwrap().agenda.sets;
+        assert_eq!(read().get("Tom and Léa"), Some(&set(&["a/tom"], &["leisure"])), "a place is no time of Sioul's");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("# mine"));
+        set_set(&path, "Tom and Léa", None).unwrap();
+        assert!(read().is_empty());
+        assert!(set_set(&path, " ", Some(&set(&[], &[]))).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Conflicts follow people (research §5.2): two of your events at once

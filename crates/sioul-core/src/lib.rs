@@ -220,6 +220,7 @@ pub mod github;
 pub mod handed;
 pub mod headers;
 pub mod health;
+pub mod holders;
 pub mod i18n;
 pub mod ids;
 pub mod interop;

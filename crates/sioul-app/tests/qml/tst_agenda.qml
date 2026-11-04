@@ -58,6 +58,8 @@ Item {
         property var turned: null
         function turnAgendas(ids, on) { mock.turned = { ids: JSON.parse(ids), on: on }; return "" }
         function agendasAsHours() { mock.turned = "hours"; return "" }
+        // Children's events asked about (part 3): none here.
+        function holderQuestions() { return "[]" }
     }
 
     QtObject {

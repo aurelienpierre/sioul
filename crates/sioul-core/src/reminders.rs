@@ -461,7 +461,9 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
     // Your addresses: an event you declined is not reminded.
     let own: Vec<String> = config.every_account().filter_map(|a| a.address.clone()).collect();
 
-    for event in events.iter().filter(|e| !e.cancelled && !declined(e, &own)) {
+    // A child's event reminds its holder through their stand-in (`holders`), never itself: the
+    // other parent's Sioul shows it with its holder's name, and nothing more.
+    for event in events.iter().filter(|e| !e.cancelled && !declined(e, &own) && !e.child) {
         let Some(start) = at(event.start) else { continue };
         let when = if event.all_day { tr.day(start.date()) } else { tr.date(&start, true) };
         let place = |text: String| if event.location.is_empty() { text } else if text.is_empty() { event.location.clone() } else { format!("{text} · {}", event.location) };

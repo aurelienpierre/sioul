@@ -554,9 +554,34 @@ pub struct AgendaSettings {
     /// `"<a>|<a>"`; unsaid, the defaults (`agendas::Matrix`).
     #[serde(default)]
     pub overlaps: std::collections::BTreeMap<String, bool>,
+    /// Where your stand-ins of a child's events go, by kind ("dentist" =
+    /// "<account>/<id>"); unsaid, your personal agenda (`holders`).
+    #[serde(default)]
+    pub stand_ins: std::collections::BTreeMap<String, String>,
+    /// A follow-up task after a held event of a kind with a rhythm
+    /// ("Book Tom's next dentist appointment"): on unless said off.
+    #[serde(default)]
+    pub follow_ups: Option<bool>,
+    /// Months between such events, by kind; unsaid, the kind's own (the
+    /// dentist six, a check-up twelve), 0 none.
+    #[serde(default)]
+    pub rhythms: std::collections::BTreeMap<String, u32>,
+    /// Named sets of agendas for the filter (`[agenda.sets."<name>"]`, `agendas::Set`).
+    #[serde(default)]
+    pub sets: std::collections::BTreeMap<String, crate::agendas::Set>,
 }
 
 impl AgendaSettings {
+    /// Whether follow-up tasks are made: on unless you said off.
+    pub fn follow_ups(&self) -> bool {
+        self.follow_ups.unwrap_or(true)
+    }
+
+    /// Months between a kind's events, for its follow-up; none, no follow-up.
+    pub fn rhythm(&self, kind: crate::holders::Kind) -> Option<u32> {
+        self.rhythms.get(kind.id()).copied().or_else(|| kind.rhythm()).filter(|m| *m > 0)
+    }
+
     /// The time kept between two events: yours, else none.
     pub fn between(&self) -> u32 {
         self.between.unwrap_or(0).min(24 * 60)

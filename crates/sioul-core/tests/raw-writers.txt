@@ -45,6 +45,9 @@ sioul-app/src/calendarfile.rs	take	1	std::fs::remove_file(&next)
 sioul-app/src/calls.rs	listen	1	std::fs::write(&out, bytes)
 sioul-app/src/calls.rs	listen	1	std::fs::remove_file(old)
 
+# sioul-app/src/children.rs: what each invitation to take a child's event said, for its updates (state): no item.
+sioul-app/src/children.rs	write_sent	1	sioul_core::filelock::replace(&path, text.as_bytes())
+
 # sioul-app/src/crypto.rs: a key exported where you choose: no item.
 sioul-app/src/crypto.rs	export	1	std::fs::write(&path, armored)
 
@@ -77,7 +80,7 @@ sioul-app/src/letters.rs	add	1	std::fs::copy(&source, free_name(&inbox, &name))
 sioul-app/src/mail.rs	perform_moving	1	std::fs::remove_file(file)
 
 # sioul-app/src/mail.rs: the mailbox's chip and address chosen on this device (state): no item.
-sioul-app/src/mail.rs	keep_mailbox_view_in	1	sioul_core::filelock::replace(path, text.as_bytes())
+sioul-app/src/mail.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
 
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
@@ -293,6 +296,9 @@ sioul-core/src/health.rs	write_synced	1	std::fs::rename(&temporary, path)
 sioul-core/src/health.rs	set_aside	1	std::fs::remove_file(witness)
 sioul-core/src/health.rs	set_aside	1	std::fs::rename(path, &aside)
 
+# sioul-core/src/holders.rs: what this device asked of the children's events (state): no item.
+sioul-core/src/holders.rs	save	1	crate::filelock::replace(path, text.as_bytes())
+
 # sioul-core/src/invoice.rs: invoices (a folder of their own): no item.
 sioul-core/src/invoice.rs	save_in	1	std::fs::write(&temporary, toml::to_string(invoice).map_err(|e| e.to_string())?)
 sioul-core/src/invoice.rs	save_in	1	std::fs::rename(&temporary, &path)
@@ -336,6 +342,10 @@ sioul-core/src/mailcache.rs	look	1	write_whole(&index, &header, &all)
 sioul-core/src/mailnote.rs	save	1	std::fs::write(&temporary, text)
 sioul-core/src/mailnote.rs	save	1	std::fs::rename(&temporary, path)
 
+# sioul-core/src/movements.rs: Sioul's own record of your money movements (a file of its own, written beside then renamed under its lock): no item.
+sioul-core/src/movements.rs	edit	1	std::fs::write(&temporary, written)
+sioul-core/src/movements.rs	edit	1	std::fs::rename(&temporary, &path)
+
 # sioul-core/src/needs.rs: meals, naps and sleep (a file of their own): no item.
 sioul-core/src/needs.rs	load	1	std::fs::copy(path, path.with_extension("toml.unreadable"))
 sioul-core/src/needs.rs	write	1	std::fs::write(&temporary, text)
@@ -350,6 +360,9 @@ sioul-core/src/notes.rs	rename_folder	1	std::fs::rename(vault.root.join(&path), 
 sioul-core/src/notes.rs	remove_folder	1	std::fs::remove_dir(&full)
 sioul-core/src/notes.rs	write	1	std::fs::write(&temporary, text)
 sioul-core/src/notes.rs	write	1	std::fs::rename(&temporary, &target)
+
+# sioul-core/src/notices.rs: the notices this device's notifications told (state, never shared): no item.
+sioul-core/src/notices.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 
 # sioul-core/src/overlaps.rs: overlaps set aside, and the conflicts seen and said (state): no item.
 sioul-core/src/overlaps.rs	save	1	std::fs::write(path, toml::to_string(self).map_err(|e| e.to_string())?)

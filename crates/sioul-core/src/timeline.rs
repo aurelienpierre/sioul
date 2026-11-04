@@ -1386,7 +1386,10 @@ pub struct HeadInputs<'a> {
 /// A thing the head line names: an appointment, a pinned task, a meal, a
 /// nap, the winding down; never a proposal of the plan, never a dose.
 fn fixed(item: &Item) -> bool {
-    matches!(item.kind, Kind::Event | Kind::Block | Kind::Meal | Kind::Nap | Kind::Night) && item.tone != Tone::Muted || (item.kind == Kind::Step && item.certainty == Certainty::Held)
+    // An event that holds none of your time is no fixed point of your day: someone else's (a
+    // child's event another takes: the other parent receives nothing more about it, several
+    // agendas, part 3), one you declined, one marked free.
+    matches!(item.kind, Kind::Event | Kind::Block | Kind::Meal | Kind::Nap | Kind::Night) && item.tone != Tone::Muted && (item.kind != Kind::Event || item.holds_time) || (item.kind == Kind::Step && item.certainty == Certainty::Held)
 }
 
 /// The head line from now to midnight, as frames given ahead (the unified
