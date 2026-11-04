@@ -71,7 +71,7 @@ La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : �
 Le calme, c’est chaque fois que ce n’est pas le moment du travail : les loisirs (la soirée, les jours sans heures de travail, les congés, le reste d’une journée close avec **Fini pour aujourd’hui**), les heures de démarches, un repas, le sommeil. Le travail se repose jusqu’à son retour :
 
 - le Porche montre les codes, et les courriels que vos listes laissent passer à ce moment ;
-- les adresses de travail se replient sur la page Courriels, sans leurs points ;
+- les adresses de travail se replient sur la page Courriels, sans leurs points, et **Toutes les adresses** ne coche que ce que les heures apportent ([Courriels](mail.md#all-addresses)) ;
 - les sites de travail gardent leurs notifications pour plus tard ;
 - Projets ne montre que les vôtres, et Temps attend derrière **Montrer quand même** ;
 - Tâches ne montre que ce qui convient au moment présent.

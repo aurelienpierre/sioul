@@ -71,7 +71,7 @@ The status line says what now is, and until when: "Admin time until 19:00: offic
 Quiet time is whenever it is not work's time: leisure (the evening, days without working hours, time off, the rest of a day you closed with **Done for today**), admin hours, a meal, sleep. Work rests until it comes back:
 
 - the Porch shows codes, and the mail your lists let through now;
-- work addresses fold on the Mail page, without their dots;
+- work addresses fold on the Mail page, without their dots, and **All addresses** ticks only what the hours bring ([Mail](mail.md#all-addresses));
 - work sites keep their notifications for later;
 - Projects shows only yours, and Time waits behind **Show anyway**;
 - Tasks shows only what fits now.

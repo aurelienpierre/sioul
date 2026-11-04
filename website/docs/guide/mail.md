@@ -33,8 +33,9 @@ Once you set them up:
 - **One list of all your mail**, newest first: what came to every address and what you sent, in the order it was written. **All addresses** sits at the top of the left column, and Mail opens on it, on a computer and on a phone.
 - **Each message once**: a message that reached two of your addresses, or that you sent to yourself, is one row. With more than one address, a small square in the address's colour, with its first letter, says which holds it; you choose each address's colour in Accounts (**Its colour**), and your other devices draw the same.
 - **One line a message** on a computer, two on a phone (who and the time, then the subject): who wrote ("To Jane" for what you sent), the subject, the time; a small dot for what you have not read; the days as headers ("Today", "Yesterday", "Monday 26 October"). No preview, and nothing counted.
-- **Chips above the list**: **All**, **Unread**, **Sent**, **Spam**, one at a time; the squares at their end keep one address, and a second tap brings them all back. What you chose stays on this device. Spam waits under its own chip, with its quiet word ("probably spam", "your provider: spam"); what you said is not spam stays in the list.
-- **Calm**: in quiet time a work address rests: its mail leaves the list and one line says so, "noa@work.example.org rests until 09:00.", with **Show its mail**. Mail whose time has not come yet (your lists say later) shows without its dot. Mail from blocked senders never shows; a shielded address's hostile mail shows as "Someone at example.org", its words hidden.
+- **Chips above the list**: **All**, **Unread**, **Sent**, **Spam**, one at a time. What you chose stays on this device. Spam waits under its own chip, with its quiet word ("probably spam", "your provider: spam"); what you said is not spam stays in the list.
+- **What shows, by area and by address**: beside the chips, a button says what the list shows, "Admin · Leisure". It opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say: work's addresses in working hours, your admin's in admin hours, leisure's the rest of the time, and none while you sleep ([Hours](hours.md)). Tick another, and it shows at once; your ticks hold until the hours change (a day at most), and **As the hours say** sets them back. After them, each address's square switches it off or on; switched off, only its outline shows. The list holds the mail of the addresses switched on whose area is ticked (an address whose use you did not say counts as work: Accounts, "What this address is for"). On a phone, the filter is in the folders button's sheet, each address there by its whole name. The **?** in the filter says the same in short.
+- **Calm**: mail whose time has not come yet (your lists say later) shows without its dot. Mail from blocked senders never shows; a shielded address's hostile mail shows as "Someone at example.org", its words hidden.
 - **Two weeks**, then **Earlier messages**, at the end of the list, adds two more each time; a crowded fortnight comes as you scroll. The search above it looks through every address; **More…** opens the search by conditions.
 - **A click opens a message** beside the list; Back closes it, the list where it was. Ctrl and Shift choose several, across addresses, to mark them read, archive, delete or move them at once, or drag them onto a folder. A right click offers what a folder's row offers. A message that reached two of your addresses is one row: marking it read or deleting it does so in both.
 - **Each address has its own letter** on its colour, never the same letter twice, so two addresses that start alike still read apart.
@@ -86,6 +87,8 @@ A message you archive, junk, put in the trash or move **stays on this device**: 
 
 What you mark **Junk**, or **Not junk** in the junk folder, teaches your own spam filter at its next training ([below](#your-own-spam-filter)).
 
+**Spam** and **Not spam** settle a message your filter flagged (probably spam, maybe spam, probably not spam), one your provider called spam, and any message in a junk folder: beside its quiet word on a computer, in its menu (a long press on a phone), and in the reader. **Spam** puts it in the junk folder, or keeps it there; **Not spam** takes it out of the junk folder, or leaves it where it is without its mark. Its row changes at once, with **Undo** for ten seconds, and what you said teaches your filter, as on the Porch.
+
 A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as read or unread, flag, **Move to…**, **Show the source**, block the sender, **How they reach you…** (their list, Always through, what reaches you from them: [A person's sheet](notifications.md#a-persons-sheet)), **Keep as a contract…**.
 
 Opening a message marks it read, as any mail program does. Sioul never sends a read receipt.
@@ -114,7 +117,7 @@ A newsletter or a list's message that says how to leave it has **Unsubscribe** a
 
 **Undo** stays in the status line for those ten seconds. Then the line says "Unsubscribed from Type & Pixels.", or why not. The message itself stays where it is.
 
-The button rests, dimmed, on mail that is forged, set aside as spam or called probably spam or maybe spam by your own filter, in the junk folder, borrowing a name, hostile, from a sender you blocked, or when nothing proves that the address it names belongs to the list: answering such mail would tell its sender that your address is read, or reach someone else. Its tip, or a tap on a phone, says why. On a message your filter only doubts, **Not spam** brings the button back.
+Leaving follows proof, not the verdict. From a sender Sioul verified (its domain signed the message), **Unsubscribe** works whatever the spam verdict, yours or a filter's, and in the junk folder too, the message staying there: some spam comes through real mailing services because someone gave them your address without asking, and those services let you leave. The button rests, dimmed, on mail that is forged, borrowing a name, hostile or from a sender you blocked; on spam, a doubt of your filter's or the junk folder's mail from a sender nothing verifies; and when nothing proves that the address it names belongs to the list: answering such mail would tell its sender that your address is read, or reach someone else. Its tip, or a tap on a phone, says why. On a message your filter only doubts, **Not spam** brings the button back.
 
 A list you left shows **Unsubscribed**, and when. If its mail keeps coming, block the sender: ⋮ ▸ **How they reach you…** ▸ **Blocked**. The lists you left are in the Mail page's ⚙, under **Lists you left**, on this device.
 
@@ -174,7 +177,7 @@ On a computer, your key can live on a security key, such as a YubiKey, which nev
 
 ## In quiet time {#in-quiet-time}
 
-Outside working hours, work addresses fold, without their dots: "Work mail rests until work comes back. It is all here if you look for it." While you sleep, every address folds: "While you sleep, mail rests: nothing notifies, and the Porch shows only what your lists let through now. The rest is all here if you look for it." See [Hours](hours.md).
+Outside working hours, work addresses fold in the column, without their dots, and **All addresses** ticks what the hours bring: leisure's addresses in the evening, nothing while you sleep ([above](#all-addresses)); tick an area to see its mail. Folders opened by hand: "Work mail rests until work comes back. It is all here if you look for it." While you sleep: "While you sleep, mail rests: nothing notifies, and the Porch shows only what your lists let through now. The rest is all here if you look for it." See [Hours](hours.md).
 
 ## Not there yet {#not-there-yet}
 

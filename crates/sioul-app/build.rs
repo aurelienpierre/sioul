@@ -87,6 +87,7 @@ fn main() {
         "qml/PhoneSetup.qml",
         "qml/MoveDialog.qml",
         "qml/MailSearch.qml",
+        "qml/AreaFilter.qml",
         "qml/AddMenu.qml",
         "qml/ThingActions.qml",
         "qml/LinkPicker.qml",

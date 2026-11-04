@@ -99,40 +99,50 @@ pub(crate) struct MailViews {
     pub drafts: String,
 }
 
-/// The mailbox's chip and address as chosen on this device (the agenda's
-/// view is kept so): `$XDG_STATE_HOME/sioul/mailbox-view.toml`.
-#[derive(serde::Serialize, serde::Deserialize, Default, PartialEq)]
+/// The mailbox's chip and filter as chosen on this device (the agenda's view
+/// is kept so): `$XDG_STATE_HOME/sioul/mailbox-view.toml`. Never shared: each
+/// device keeps its own; an older Sioul reads the chip and leaves the rest.
+#[derive(serde::Serialize, serde::Deserialize, Default, PartialEq, Clone, Debug)]
 struct MailboxView {
     #[serde(default)]
     chip: sioul_core::mailbox::Chip,
+    /// An older Sioul's "one address alone": still written, empty, never read.
     #[serde(default)]
     account: String,
+    /// The addresses switched off in the filter, by id; every other is on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    off: Vec<String>,
+    /// The areas you ticked, while they hold (`areafilter::AreaFilter`).
+    #[serde(default, skip_serializing_if = "is_as_the_hours_say")]
+    areas: sioul_core::areafilter::AreaFilter,
+}
+
+fn is_as_the_hours_say(filter: &sioul_core::areafilter::AreaFilter) -> bool {
+    *filter == sioul_core::areafilter::AreaFilter::default()
 }
 
 fn mailbox_view_path() -> PathBuf {
     sioul_core::config::state_dir().join("mailbox-view.toml")
 }
 
-/// The chip and address last chosen, as JSON {chip, account}.
+/// The chip last chosen, as JSON {chip, …}.
 pub(crate) fn mailbox_view() -> String {
     mailbox_view_in(&mailbox_view_path())
 }
 
 fn mailbox_view_in(path: &Path) -> String {
-    let kept: MailboxView = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
-    json(&kept)
+    json(&kept_view(path))
 }
 
-/// The chip and address asked, kept for the next time (written when they change).
-pub(crate) fn keep_mailbox_view(ask: &sioul_core::mailbox::Ask) {
-    keep_mailbox_view_in(&mailbox_view_path(), ask);
+/// What this device keeps of the mailbox's view; nothing kept, or unreadable: the defaults.
+fn kept_view(path: &Path) -> MailboxView {
+    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
-fn keep_mailbox_view_in(path: &Path, ask: &sioul_core::mailbox::Ask) {
-    let view = MailboxView { chip: ask.chip, account: ask.account.clone() };
-    let kept: MailboxView = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
-    if kept != view
-        && let Ok(text) = toml::to_string(&view)
+/// The view written back, only when it changed.
+fn write_view(path: &Path, view: &MailboxView) {
+    if kept_view(path) != *view
+        && let Ok(text) = toml::to_string(view)
     {
         // Its folder made first: on a new device nothing else may have made it yet.
         if let Some(dir) = path.parent() {
@@ -140,6 +150,79 @@ fn keep_mailbox_view_in(path: &Path, ask: &sioul_core::mailbox::Ask) {
         }
         let _ = sioul_core::filelock::replace(path, text.as_bytes());
     }
+}
+
+/// The chip asked, kept for the next time (written when it changes); the filter's own choices kept as they are.
+pub(crate) fn keep_mailbox_view(ask: &sioul_core::mailbox::Ask) {
+    keep_mailbox_view_in(&mailbox_view_path(), ask);
+}
+
+fn keep_mailbox_view_in(path: &Path, ask: &sioul_core::mailbox::Ask) {
+    let view = MailboxView { chip: ask.chip, account: ask.account.clone(), ..kept_view(path) };
+    write_view(path, &view);
+}
+
+/// Mail's filter at `mode`, `now` in Unix seconds (docs/areas.md, "A page's
+/// filter by area"): what the mailbox shows (the areas ticked, as the hours
+/// say unless you ticked others; the addresses switched off), and what the
+/// filter's button says.
+pub(crate) fn mailbox_filter(mode: &sioul_core::quiet::Mode, now: i64) -> (sioul_core::mailbox::Filter, sioul_core::areafilter::Shown) {
+    mailbox_filter_in(&mailbox_view_path(), mode, now)
+}
+
+fn mailbox_filter_in(path: &Path, mode: &sioul_core::quiet::Mode, now: i64) -> (sioul_core::mailbox::Filter, sioul_core::areafilter::Shown) {
+    let kept = kept_view(path);
+    let said = sioul_core::mailbox::hours_say(mode);
+    let shown = sioul_core::areafilter::shown(&kept.areas, said, now, tr());
+    (sioul_core::mailbox::Filter { areas: kept.areas.shown(said, now), off: kept.off }, shown)
+}
+
+/// The areas you ticked in Mail's filter ("work+leisure", "" for none), at
+/// `mode`: kept until the hours change, or a day at most.
+pub(crate) fn tick_mailbox_areas(areas: &str, mode: &sioul_core::quiet::Mode, now: i64) {
+    tick_mailbox_areas_in(&mailbox_view_path(), areas, mode, now);
+}
+
+fn tick_mailbox_areas_in(path: &Path, areas: &str, mode: &sioul_core::quiet::Mode, now: i64) {
+    let mut view = kept_view(path);
+    let ticked = sioul_core::areas::Area::parse(areas).unwrap_or_default();
+    view.areas.tick(ticked, sioul_core::mailbox::hours_say(mode), mode.until.as_ref().map(|z| z.timestamp().as_second()), now);
+    write_view(path, &view);
+}
+
+/// "As the hours say": your ticks in Mail's filter forgotten.
+pub(crate) fn mailbox_areas_as_hours() {
+    let path = mailbox_view_path();
+    let mut view = kept_view(&path);
+    view.areas.as_hours();
+    write_view(&path, &view);
+}
+
+/// An address switched on or off in Mail's filter.
+pub(crate) fn switch_mailbox_address(id: &str, on: bool) {
+    switch_mailbox_address_in(&mailbox_view_path(), id, on);
+}
+
+fn switch_mailbox_address_in(path: &Path, id: &str, on: bool) {
+    let mut view = kept_view(path);
+    view.off.retain(|a| a != id);
+    if !on && !id.is_empty() {
+        view.off.push(id.to_string());
+    }
+    write_view(path, &view);
+}
+
+/// Your ticks in Mail's filter forgotten once they no longer hold (the
+/// window's minute), so that a later time saying the same never brings them
+/// back; whether they were.
+pub(crate) fn settle_mailbox_areas(mode: &sioul_core::quiet::Mode, now: i64) -> bool {
+    let path = mailbox_view_path();
+    let mut view = kept_view(&path);
+    let settled = view.areas.settle(sioul_core::mailbox::hours_say(mode), now);
+    if settled {
+        write_view(&path, &view);
+    }
+    settled
 }
 
 /// The mailbox as the window takes it (§6): pages of `mailbox::PAGE` rows,
@@ -152,20 +235,24 @@ pub(crate) struct MailboxPages {
     pub made: Duration,
 }
 
-/// The mailbox as `ask` asks it (`mailbox::page`): the addresses that sync,
-/// ranked as Mail's column ranks them, their colours, who rests now and
-/// until when, the world read once; cut into the pages the window takes.
-pub(crate) fn mailbox_pages(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>) -> MailboxPages {
+/// The mailbox as `ask` asks it (`mailbox::page`), through this device's
+/// filter (`mailbox_filter`): the addresses that sync, ranked as Mail's
+/// column ranks them, their colours, the world read once, what you said
+/// waiting for its Undo (`waiting`) as said; cut into the pages the window takes.
+pub(crate) fn mailbox_pages(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>, waiting: &BTreeMap<PathBuf, sioul_core::spam::labels::Label>) -> MailboxPages {
     let started = std::time::Instant::now();
-    let page = mailbox_page(config, ask, hidden);
-    MailboxPages { texts: page_texts(&page), indexing: page.indexing, made: started.elapsed() }
-}
-
-fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>) -> sioul_core::mailbox::Page {
     let now = sioul_core::zone::now();
     let mode = crate::hours::mode_at(&now);
-    let addresses = sioul_core::mailbox::addresses(config, &mode, &now, tr(), mailbox::folders);
-    let world = sioul_core::mailbox::World::load(config, crate::hours::attention_at(&mode, &now));
+    let (filter, shown) = mailbox_filter(&mode, now.timestamp().as_second());
+    let ask = sioul_core::mailbox::Ask { filter: Some(filter), ..ask.clone() };
+    let page = mailbox_page(config, &ask, hidden, waiting, &mode, &now);
+    MailboxPages { texts: page_texts(&page, &ask, &shown), indexing: page.indexing, made: started.elapsed() }
+}
+
+fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>, waiting: &BTreeMap<PathBuf, sioul_core::spam::labels::Label>, mode: &sioul_core::quiet::Mode, now: &jiff::Zoned) -> sioul_core::mailbox::Page {
+    let addresses = sioul_core::mailbox::addresses(config, mode, now, tr(), mailbox::folders);
+    let mut world = sioul_core::mailbox::World::load(config, crate::hours::attention_at(mode, now));
+    world.waiting = waiting.clone();
     sioul_core::mailbox::page(&addresses, &world, ask, hidden, tr(), now.timestamp().as_second(), &sioul_core::zone::current(), sioul_core::mailbox::STEP_FILL)
 }
 
@@ -214,7 +301,8 @@ struct RowOut<'a> {
 }
 
 /// One page of the mailbox as it crosses: its rows from `start`, whether
-/// more follow, and what the list's head shows.
+/// more follow, and what the list's head shows: the filter (`filter`) and
+/// each address's mark, switched on or off.
 #[derive(serde::Serialize)]
 struct PageOut<'a> {
     start: usize,
@@ -223,11 +311,20 @@ struct PageOut<'a> {
     earlier: bool,
     sentence: &'a str,
     resting: &'a [sioul_core::mailbox::Resting],
-    addresses: &'a [sioul_core::mailbox::Mark],
+    addresses: &'a [AddressOut<'a>],
+    filter: &'a sioul_core::areafilter::Shown,
     chip: sioul_core::mailbox::Chip,
     account: &'a str,
     windows: u32,
     prefix: &'a str,
+}
+
+/// An address's mark as the filter shows it: switched on or off.
+#[derive(serde::Serialize)]
+struct AddressOut<'a> {
+    #[serde(flatten)]
+    mark: &'a sioul_core::mailbox::Mark,
+    on: bool,
 }
 
 /// The folder every key of the page lies under, its separator kept: what
@@ -243,8 +340,11 @@ fn key_prefix(keys: &[&str]) -> String {
 
 /// The page's rows cut into the pages the window takes, each published only
 /// when it changed (`show_mail_here`); one page, empty, when nothing shows.
-fn page_texts(page: &sioul_core::mailbox::Page) -> Vec<String> {
+/// `ask` the page was made for (its filter's addresses switched off), `filter` its button.
+fn page_texts(page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, filter: &sioul_core::areafilter::Shown) -> Vec<String> {
     use sioul_core::mailbox::PAGE;
+    let off: &[String] = ask.filter.as_ref().map_or(&[], |f| f.off.as_slice());
+    let addresses: Vec<AddressOut> = page.addresses.iter().map(|mark| AddressOut { mark, on: !off.contains(&mark.account) }).collect();
     let keys: Vec<&str> = page.rows.iter().flat_map(|r| r.keys.iter().map(String::as_str).chain(std::iter::once(r.key.as_str()))).collect();
     let prefix = key_prefix(&keys);
     let relative = |key: &'_ str| key.strip_prefix(prefix.as_str()).unwrap_or(key).to_string();
@@ -289,7 +389,8 @@ fn page_texts(page: &sioul_core::mailbox::Page) -> Vec<String> {
                 earlier: page.earlier,
                 sentence: &page.sentence,
                 resting: &page.resting,
-                addresses: &page.addresses,
+                addresses: &addresses,
+                filter,
                 chip: page.chip,
                 account: &page.account,
                 windows: page.windows,
@@ -350,6 +451,60 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
         add(&pending.work, &mut files, &mut drafts);
     }
     (files, drafts)
+}
+
+/// What you said of a message, spam or not, by the act that says it (Spam
+/// and Junk; Not spam and Not junk); none for the other acts.
+fn said_by(action: &Action) -> Option<sioul_core::spam::labels::Label> {
+    use sioul_core::spam::labels::Label;
+    match action {
+        Action::Junk => Some(Label::Spam),
+        Action::NotJunk | Action::NotSpam => Some(Label::Ham),
+        _ => None,
+    }
+}
+
+/// The messages you said spam or not, while "Undo" is offered: each one's
+/// account, file, and the act. Mail shows them as said at once (part 1 of 4
+/// November 2026): the mailbox's row changes kind, a folder's row its word.
+fn waiting_words(shared: &Shared) -> Vec<(Account, PathBuf, Action)> {
+    fn add(work: &Work, said: &mut Vec<(Account, PathBuf, Action)>) {
+        match work {
+            Work::Act { account, file, action } if said_by(action).is_some() => said.push((account.clone(), file.clone(), action.clone())),
+            Work::Many(works) => works.iter().for_each(|w| add(w, said)),
+            _ => {}
+        }
+    }
+    let mut said = Vec::new();
+    for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
+        add(&pending.work, &mut said);
+    }
+    said
+}
+
+/// What `waiting` means for the mailbox: each file's word (`mailbox::World::waiting`),
+/// and `hidden` less those files, which stay in view meanwhile.
+fn mailbox_waiting(hidden: &BTreeSet<PathBuf>, waiting: &[(Account, PathBuf, Action)]) -> (BTreeSet<PathBuf>, BTreeMap<PathBuf, sioul_core::spam::labels::Label>) {
+    let said: BTreeMap<PathBuf, sioul_core::spam::labels::Label> = waiting.iter().filter_map(|(_, file, action)| Some((file.clone(), said_by(action)?))).collect();
+    (hidden.iter().filter(|f| !said.contains_key(*f)).cloned().collect(), said)
+}
+
+/// What `waiting` means for a folder's list: "Not spam" said of a message
+/// where it lies (it stays there) shows at once, its flag gone, never hidden
+/// meanwhile; the moves in or out of the junk leave the folder as before.
+fn folder_waiting(hidden: &BTreeSet<PathBuf>, waiting: &[(Account, PathBuf, Action)], flags: &mut sioul_core::spam::labels::Flags) -> BTreeSet<PathBuf> {
+    let mut shown = BTreeSet::new();
+    for (account, file, action) in waiting {
+        if *action != Action::NotSpam {
+            continue;
+        }
+        let folder = mailbox::folder_of(account, file).map(|f| f.name).unwrap_or_default();
+        if let Some(said) = sioul_core::spam::labels::Entry::of_file(&account.id, &folder, file, sioul_core::spam::labels::Source::NotSpam) {
+            flags.said.push(said);
+        }
+        shown.insert(file.clone());
+    }
+    hidden.iter().filter(|f| !shown.contains(*f)).cloned().collect()
 }
 
 /// Contacts and events deleted, and occurrences left out, while "Undo" is offered.
@@ -538,21 +693,27 @@ fn names(entries: &[String]) -> String {
 pub(crate) fn views(shared: &Shared) -> MailViews {
     let config = load_config();
     let (files, drafts) = hidden(shared);
+    let waiting = waiting_words(shared);
     let accounts: Vec<(Account, Vec<Folder>)> = config.accounts.iter().filter(|a| a.syncs()).map(|a| (a.clone(), mailbox::folders(&a.id))).collect();
     let open = shared.open_folder.lock().ok().and_then(|o| o.clone());
     let folder = open.and_then(|open| {
         let (account, folders) = accounts.iter().find(|(a, _)| a.id == open.account)?;
         let folder = folders.iter().find(|f| f.name == open.folder)?;
+        let mut flags = sioul_core::spam::labels::Flags::load();
+        let files = folder_waiting(&files, &waiting, &mut flags);
         let (cards, sent) = folder_cards(account, folders, folder, &files, config.mail.threads);
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
         let now = sioul_core::zone::now().timestamp().as_second();
-        Some(json(&view::folder(account, folder, cards, &trusted, &config.own_domains(), &sioul_core::words::Words::of(&config), open.all, &open.query, tr(), now, sent, &sioul_core::spam::labels::Flags::load())))
+        Some(json(&view::folder(account, folder, cards, &trusted, &config.own_domains(), &sioul_core::words::Words::of(&config), open.all, &open.query, tr(), now, sent, &flags)))
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
     let hours = (mode.time != sioul_core::areas::Time::Any).then_some((mode.time, mode.week));
     let asked = shared.open_mailbox.lock().ok().and_then(|o| o.clone());
-    let mailbox = asked.map(|ask| mailbox_pages(&config, &ask, &files));
+    let mailbox = asked.map(|ask| {
+        let (files, said) = mailbox_waiting(&files, &waiting);
+        mailbox_pages(&config, &ask, &files, &said)
+    });
     MailViews { accounts: json(&view::mail_accounts(&accounts, tr(), hours)), folder: folder.unwrap_or_default(), mailbox, drafts: json(&rows) }
 }
 
@@ -1328,10 +1489,11 @@ fn unsubscribe_offer(config: &Config, triaged: &sioul_core::porch::Triaged) -> O
     let account = triaged.card.account.as_deref();
     let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == account).map(|s| s.trusted_ids).unwrap_or_default();
     let mut offer = unsubscribe::offer(&triaged.card, &trusted, triaged.trust, &triaged.lane, &triaged.reasons)?;
-    // In the junk, as spam: answering it tells its sender your address is read.
+    // In the junk: an unverified sender's is spam, answering it tells its sender your
+    // address is read; a verified sender's way out stays, the message where it is.
     let file = triaged.card.path.as_deref();
     if file.and_then(|f| mailbox::folder_of(config.account_of(f)?, f)).is_some_and(|f| f.role == Role::Junk) {
-        offer.way = Err(unsubscribe::Refusal::Spam);
+        unsubscribe::in_junk(&mut offer, triaged.trust);
     }
     let sender = account.and_then(|id| config.account(id)).filter(|a| a.syncs() && a.address.is_some()).cloned();
     Some((offer, sender))
@@ -1848,9 +2010,11 @@ mod tests {
             sent: 0,
         };
         let marks = vec![Mark { account: "work".into(), letter: "N".into(), tint: 0, title: "noa@work.example.org".into() }, Mark { account: "home".into(), letter: "H".into(), tint: 1, title: "noa@home.example.org".into() }];
+        let (ask, shown) = (sioul_core::mailbox::Ask::default(), sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: "Work".into(), own: false });
+        let texts_of = |page: &Page| page_texts(page, &ask, &shown);
         let page_of = |rows: Vec<Row>, more: bool| Page { rows, resting: Vec::new(), addresses: marks.clone(), earlier: true, more, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let rows: Vec<Row> = (0..PAGE * 2 + 10).map(|n| row(n, if n == 1 { &["work", "home"] } else { &["work"] })).collect();
-        let texts = page_texts(&page_of(rows.clone(), false));
+        let texts = texts_of(&page_of(rows.clone(), false));
         assert_eq!(texts.len(), 3);
         let pages: Vec<serde_json::Value> = texts.iter().map(|t| serde_json::from_str(t).unwrap()).collect();
         assert_eq!(pages.iter().map(|p| (p["start"].as_u64().unwrap(), p["rows"].as_array().unwrap().len(), p["more"].as_bool().unwrap())).collect::<Vec<_>>(), [(0, PAGE, true), (PAGE as u64, PAGE, true), (2 * PAGE as u64, 10, false)]);
@@ -1864,9 +2028,9 @@ mod tests {
         assert!(changed_pages(&mut held, &texts).is_empty(), "nothing changed: nothing crosses");
         let mut shifted = vec![row(999, &["work"])];
         shifted.extend(rows.iter().cloned());
-        assert_eq!(changed_pages(&mut held, &page_texts(&page_of(shifted, false))).len(), 3, "a new message at the top shifts every page");
+        assert_eq!(changed_pages(&mut held, &texts_of(&page_of(shifted, false))).len(), 3, "a new message at the top shifts every page");
         // A page fewer: the last one left says no more follow.
-        let fewer = page_texts(&page_of(rows[..PAGE + 5].to_vec(), false));
+        let fewer = texts_of(&page_of(rows[..PAGE + 5].to_vec(), false));
         let changed = changed_pages(&mut held, &fewer);
         assert_eq!(serde_json::from_str::<serde_json::Value>(changed.last().unwrap()).unwrap()["more"], false);
         // The window's list emptied (another chip): every page new to it again.
@@ -1878,10 +2042,10 @@ mod tests {
         asked_fresh(&mut again, &mut held);
         assert_eq!(held.len(), fewer.len(), "not fresh: what it holds is kept");
         // Nothing shows: one empty page all the same.
-        assert_eq!(page_texts(&page_of(Vec::new(), false)).len(), 1);
+        assert_eq!(texts_of(&page_of(Vec::new(), false)).len(), 1);
         // Each page within its budget (§6), these rows' keys as long as a phone's.
         let long: Vec<Row> = (0..PAGE).map(|n| Row { key: format!("/data/user/0/com.aurelienpierre.sioul/files/mail/a-long-account-id/cur/1777000000.U7-{n}.sioul:2,S"), keys: vec![format!("/data/user/0/com.aurelienpierre.sioul/files/mail/a-long-account-id/cur/1777000000.U7-{n}.sioul:2,S")], subject: "A subject of an ordinary length, about the matter at hand".into(), who: "Someone Sending".into(), ..row(n, &["work"]) }).collect();
-        let text = &page_texts(&page_of(long, false))[0];
+        let text = &texts_of(&page_of(long, false))[0];
         assert!(text.len() <= 32 * 1024 && text.len() / PAGE <= 450, "{} bytes, {} a row", text.len(), text.len() / PAGE);
         assert_eq!(key_prefix(&["/a/b/c", "/a/b/d", "/a/x"]), "/a/");
         assert_eq!(key_prefix(&["C:\\mail\\a\\1", "C:\\mail\\b\\2"]), "C:\\mail\\");
@@ -1913,6 +2077,75 @@ mod tests {
         keep_mailbox_view_in(&path, &sioul_core::mailbox::Ask { chip: sioul_core::mailbox::Chip::Spam, account: "work".into(), windows: 3, query: "x".into(), shown_resting: vec!["home".into()], ..sioul_core::mailbox::Ask::default() });
         assert_eq!(mailbox_view_in(&path), r#"{"chip":"spam","account":"work"}"#);
         let _ = std::fs::remove_dir_all(&fresh);
+    }
+
+    /// Mail's filter, kept on this device (part 1 of 4 November 2026): an
+    /// older Sioul's file read (its chip kept, its one address never used);
+    /// an address switched off, then on again; the areas ticked holding
+    /// until the hours change, the hours' again then; the chip changed
+    /// beside them, the filter kept.
+    #[test]
+    fn mail_s_filter_is_kept_on_this_device() {
+        use sioul_core::areas::{Area, Time, Week};
+        use sioul_core::quiet::{Mode, Reason};
+        sioul_core::config::stand_ins_only();
+        let fresh = sioul_core::config::state_dir().join(format!("mailbox-filter-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fresh);
+        let path = fresh.join("sioul").join("mailbox-view.toml");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "chip = \"spam\"\naccount = \"work\"\n").unwrap();
+        let now = 1_800_000_000;
+        let end = jiff::Timestamp::from_second(now + 3600).unwrap().to_zoned(jiff::tz::TimeZone::UTC);
+        let week = Week { work_hours: true, admin_hours: true, ..Week::default() };
+        let at_work = Mode { quiet: false, time: Time::Work, week, reason: Reason::Working, until: Some(end), back: None, label: String::new() };
+        let evening = Mode { quiet: true, time: Time::Leisure, reason: Reason::Evening, until: None, ..at_work.clone() };
+        let (filter, shown) = mailbox_filter_in(&path, &at_work, now);
+        assert_eq!(filter, sioul_core::mailbox::Filter { areas: Area::WORK, off: Vec::new() }, "the older file's address is no filter");
+        assert!(!shown.own && shown.work && !shown.leisure);
+        assert_eq!(kept_view(&path).chip, sioul_core::mailbox::Chip::Spam);
+        // Home off, leisure ticked at work.
+        switch_mailbox_address_in(&path, "home", false);
+        tick_mailbox_areas_in(&path, "work+leisure", &at_work, now);
+        let (filter, shown) = mailbox_filter_in(&path, &at_work, now + 60);
+        assert_eq!(filter, sioul_core::mailbox::Filter { areas: Area { leisure: true, ..Area::WORK }, off: vec!["home".into()] });
+        assert!(shown.own && shown.leisure);
+        // The chip changed beside: the filter kept.
+        keep_mailbox_view_in(&path, &sioul_core::mailbox::Ask::default());
+        let kept = kept_view(&path);
+        assert_eq!((kept.chip, kept.off.clone(), kept.areas.ticked.clone()), (sioul_core::mailbox::Chip::All, vec!["home".to_string()], Some("work+leisure".into())));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("[areas]") && text.contains("off = [\"home\"]"), "{text}");
+        // Work ends: the hours' again.
+        assert_eq!(mailbox_filter_in(&path, &evening, now + 3600).0.areas, Area::LEISURE);
+        assert_eq!(mailbox_filter_in(&path, &at_work, now + 3600).0.areas, Area::WORK, "its time over");
+        // Home on again, the hours' own ticked: nothing of the filter left in the file.
+        switch_mailbox_address_in(&path, "home", true);
+        tick_mailbox_areas_in(&path, "work", &at_work, now + 120);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "chip = \"all\"\naccount = \"\"\n");
+        let _ = std::fs::remove_dir_all(&fresh);
+    }
+
+    /// Spam and Not spam waiting for their Undo (part 1 of 4 November 2026):
+    /// said at once in the mailbox (its files in view, their words given);
+    /// in a folder, Not spam where it lies stays in view, the moves in and
+    /// out of the junk leave the folder as before.
+    #[test]
+    fn what_you_said_waiting_for_its_undo_shows_at_once() {
+        use sioul_core::spam::labels::Label;
+        let account = Account::imap("work", "noa@work.example.org", "imap.example.org", 993, sioul_core::config::Security::Tls, None);
+        let junked = PathBuf::from("/stand-in/INBOX/cur/1.U7-1.sioul:2,S");
+        let unjunked = PathBuf::from("/stand-in/.Junk/cur/2.U7-2.sioul:2,S");
+        let kept = PathBuf::from("/stand-in/INBOX/cur/3.U7-3.sioul:2,S");
+        let archived = PathBuf::from("/stand-in/INBOX/cur/4.U7-4.sioul:2,S");
+        let waiting = vec![(account.clone(), junked.clone(), Action::Junk), (account.clone(), unjunked.clone(), Action::NotJunk), (account.clone(), kept.clone(), Action::NotSpam)];
+        let hidden: BTreeSet<PathBuf> = [&junked, &unjunked, &kept, &archived].into_iter().cloned().collect();
+        let (left, said) = mailbox_waiting(&hidden, &waiting);
+        assert_eq!(left, BTreeSet::from([archived.clone()]), "only what is no word of yours leaves the mailbox");
+        assert_eq!(said, BTreeMap::from([(junked.clone(), Label::Spam), (unjunked.clone(), Label::Ham), (kept.clone(), Label::Ham)]));
+        let mut flags = sioul_core::spam::labels::Flags::default();
+        let left = folder_waiting(&hidden, &waiting, &mut flags);
+        assert_eq!(left, BTreeSet::from([junked, unjunked, archived]), "a folder: only Not spam where it lies stays");
+        assert_eq!([Action::Junk, Action::NotJunk, Action::NotSpam, Action::Archive].map(|a| said_by(&a)), [Some(Label::Spam), Some(Label::Ham), Some(Label::Ham), None]);
     }
 
     /// A removal done now (a letter's task made again, `remove_now`): its
@@ -2250,6 +2483,8 @@ mod tests {
             sioul_core::mailbox::page(&addresses, &world, ask, &none, tr(), now, &zone, sioul_core::mailbox::STEP_FILL)
         };
         use sioul_core::mailbox::{Ask, Chip};
+        let shown = sioul_core::areafilter::Shown { work: true, admin: true, leisure: true, label: String::new(), own: false };
+        let page_texts = |page: &sioul_core::mailbox::Page| page_texts(page, &Ask::default(), &shown);
         // The first index: the newest of each folder at once, then steps while the page shows.
         let at = std::time::Instant::now();
         let first = make(&Ask::default());

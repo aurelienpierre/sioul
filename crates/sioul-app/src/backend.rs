@@ -288,19 +288,32 @@ pub mod qobject {
         fn open_folder(self: Pin<&mut Sioul>, account: &QString, folder: &QString, all: bool, query: &QString);
 
         /// Shows the mailbox, every address's mail in time order: `ask` as JSON
-        /// (`mailbox::Ask`: chip, account, windows, query, shown_resting, rows,
-        /// fresh); "" while Mail does not show it (nothing is made meanwhile).
-        /// Its pages come by `mailbox_page`. The chip and the address chosen are
-        /// kept on this device.
+        /// (`mailbox::Ask`: chip, windows, query, rows, fresh), through this
+        /// device's filter (`mail::mailbox_filter`); "" while Mail does not show
+        /// it (nothing is made meanwhile). Its pages come by `mailbox_page`. The
+        /// chip chosen is kept on this device.
         #[qinvokable]
         fn open_mailbox(self: Pin<&mut Sioul>, ask: &QString);
+
+        /// The areas ticked in Mail's filter ("work+leisure", "" for none): kept
+        /// until the hours change, a day at most. The window asks the mailbox again.
+        #[qinvokable]
+        fn tick_mail_areas(self: Pin<&mut Sioul>, areas: &QString);
+
+        /// "As the hours say": the areas you ticked in Mail's filter forgotten.
+        #[qinvokable]
+        fn mail_areas_as_hours(self: Pin<&mut Sioul>);
+
+        /// An address switched on or off in Mail's filter, by its id.
+        #[qinvokable]
+        fn switch_mail_address(self: Pin<&mut Sioul>, id: &QString, on: bool);
 
         /// The mailbox shows on a phone: the other folders' round asked at once,
         /// as "Sync now" asks it, said nowhere (decision 19); once a minute at most.
         #[qinvokable]
         fn bring_folders(self: Pin<&mut Sioul>);
 
-        /// The mailbox's chip and address as last chosen on this device: JSON {chip, account}.
+        /// The mailbox's chip as last chosen on this device: JSON {chip, …}.
         #[qinvokable]
         fn mailbox_view(self: &Sioul) -> QString;
 
@@ -4298,6 +4311,19 @@ impl qobject::Sioul {
         QString::from(&mail::mailbox_view())
     }
 
+    fn tick_mail_areas(self: Pin<&mut Self>, areas: &QString) {
+        let now = sioul_core::zone::now();
+        mail::tick_mailbox_areas(&areas.to_string(), &crate::hours::mode_at(&now), now.timestamp().as_second());
+    }
+
+    fn mail_areas_as_hours(self: Pin<&mut Self>) {
+        mail::mailbox_areas_as_hours();
+    }
+
+    fn switch_mail_address(self: Pin<&mut Self>, id: &QString, on: bool) {
+        mail::switch_mailbox_address(&id.to_string(), on);
+    }
+
     fn bring_folders(self: Pin<&mut Self>) {
         let shared = self.shared();
         let now = std::time::Instant::now();
@@ -5984,6 +6010,8 @@ impl qobject::Sioul {
         // The weather follows the hours; fetched again when half an hour old.
         update_weather(&self.qt_thread(), &self.shared());
         let line = mode_json();
+        // Mail's filter: the areas you ticked forgotten once the hours changed (written here, on the window's thread).
+        let settled = mail::settle_mailbox_areas(&crate::hours::mode_at(&now), now.timestamp().as_second());
         if self.as_ref().mode().to_string() != line {
             let was_quiet = self.as_ref().mode().to_string().contains("\"quiet\":true");
             self.as_mut().set_mode(QString::from(&line));
@@ -5992,7 +6020,12 @@ impl qobject::Sioul {
                 let (qt, shared) = (self.qt_thread(), self.shared());
                 show(&qt, &shared);
                 work::show_work(&qt, &shared);
+            } else if self.shared().open_mailbox.lock().is_ok_and(|o| o.is_some()) {
+                // Another time (admin's to leisure): the mailbox's filter follows the hours.
+                mail::show_mail(&self.qt_thread(), &self.shared());
             }
+        } else if settled && self.shared().open_mailbox.lock().is_ok_and(|o| o.is_some()) {
+            mail::show_mail(&self.qt_thread(), &self.shared());
         }
     }
 
