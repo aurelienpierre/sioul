@@ -1907,10 +1907,12 @@ impl Call {
         self.direction == Direction::Incoming && !self.answered && matches!(self.kind.as_str(), "missed" | "rejected")
     }
 
-    /// You spoke: answered, either way, and at least as long as the
-    /// voicemail threshold (`threshold`, seconds).
+    /// You spoke: a call of theirs you answered, however short (you picked
+    /// up), or a call of yours answered and at least as long as the
+    /// voicemail threshold (`threshold`, seconds), shorter being their
+    /// voicemail, likely.
     pub fn spoke(&self, threshold: u32) -> bool {
-        self.answered && self.seconds >= i64::from(threshold)
+        self.answered && (self.direction == Direction::Incoming || self.seconds >= i64::from(threshold))
     }
 
     /// Not reached: a call of yours not answered, or shorter than the

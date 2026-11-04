@@ -82,10 +82,12 @@ pub enum Kind {
     Letter,
     /// Money due or expected (`money:`).
     Money,
+    /// A conflict in your agenda waiting for an answer (`agenda:`).
+    Agenda,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 7] = [Kind::Mail, Kind::Text, Kind::Call, Kind::Phone, Kind::Site, Kind::Letter, Kind::Money];
+    pub const ALL: [Kind; 8] = [Kind::Mail, Kind::Text, Kind::Call, Kind::Phone, Kind::Site, Kind::Letter, Kind::Money, Kind::Agenda];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -96,6 +98,7 @@ impl Kind {
             Kind::Site => "site",
             Kind::Letter => "letter",
             Kind::Money => "money",
+            Kind::Agenda => "agenda",
         }
     }
 
@@ -293,6 +296,12 @@ pub fn letter_id(letter: &str) -> String {
 /// Money due or expected: `money:<the item>`.
 pub fn money_id(item: &str) -> String {
     format!("money:{}", part(item))
+}
+
+/// A conflict of your agenda waiting for an answer (`overlaps::Overlap::key`):
+/// `agenda:<digest of its key>`, the key holding the events' files.
+pub fn agenda_id(conflict: &str) -> String {
+    format!("agenda:{}", digest(conflict))
 }
 
 /// The source's own id inside a notice's (what an older Seen log names): a
@@ -697,6 +706,10 @@ mod tests {
         assert_ne!(site_id("bank", 1_793_000_000, "Your statement"), site_id("bank", 1_793_000_000, "A message"));
         assert_eq!(Kind::of_id("letter:ab12"), Some(Kind::Letter));
         assert_eq!(Kind::of_id(&money_id("rent-2026-11")), Some(Kind::Money));
+        // A conflict: by the digest of its key, which holds the events' files.
+        let conflict = agenda_id("/cal/home/a.ics@1794000000|/cal/home/b.ics@1794001800");
+        assert_eq!((Kind::of_id(&conflict), conflict.len()), (Some(Kind::Agenda), "agenda:".len() + 16));
+        assert!(!conflict.contains("cal/home"), "no file in it");
         // A `:` inside a part never splits the id otherwise.
         assert_eq!(call_id("a:b", "c"), "call:a_b:c");
     }

@@ -12,9 +12,10 @@
 //!   task's line ("also at 14:10"), never a count; the line is written again
 //!   only while it is still the one the rules wrote (yours, once you changed
 //!   it, stays).
-//! - **It closes by itself** once you spoke with them after its first call,
-//!   either way: a call answered and at least as long as the voicemail
-//!   threshold (`Call::spoke`), done at that call's end, as docs/tasks.md's
+//! - **It closes by itself** once you spoke with them after its first call:
+//!   a call of theirs you answered, however short, or one of yours answered
+//!   and at least as long as the voicemail threshold (`Call::spoke`), done at
+//!   that call's end, as docs/tasks.md's
 //!   "What closes by itself" does it: nothing said, nothing counted. A task
 //!   you open again after that stays yours to close: no call closes it again.
 //! - **Written once, by one device**: the phone that had the call, when it
@@ -348,8 +349,9 @@ mod tests {
 
     /// A call from the phone's history, as Android's types say it: missed
     /// (or declined by hand), not reached (not answered, or shorter than the
-    /// threshold), spoken (answered, at least the threshold, either way);
-    /// never a voicemail's row nor a blocked call.
+    /// threshold), spoken (a call of theirs answered, however short; one of
+    /// yours answered and at least the threshold); never a voicemail's row
+    /// nor a blocked call.
     #[test]
     fn calls_are_said_from_the_phone_s_history() {
         let fr = crate::phones::region_named("FR");
@@ -366,6 +368,7 @@ mod tests {
         assert!(spoken.spoke(90) && !spoken.not_reached(90) && !spoken.spoke(120));
         let taken = call("10:20", 1, 300, NOA);
         assert!(taken.spoke(90) && !taken.missed());
+        assert!(call("10:25", 1, 40, NOA).spoke(90), "a call of theirs you answered, however short: you picked up");
         assert!(!call("10:30", 7, 0, NOA).missed(), "answered on another device of the line");
         // Not calls to say: a voicemail's row, a blocked call (the log has Sioul's).
         for kind in [4, 6, 9] {
@@ -450,10 +453,11 @@ mod tests {
         assert!(matches!(again.as_slice(), [Write::New { .. }]), "{again:?}");
     }
 
-    /// The task closes by itself once you spoke with them, either way,
-    /// after its first call: done at that call's end, the call named, the
-    /// same bytes whenever; never by a call before it, nor a short one, and
-    /// never again once you opened it again.
+    /// The task closes by itself once you spoke with them after its first
+    /// call (a call of theirs you answered, however short; one of yours at
+    /// least the threshold): done at that call's end, the call named, the
+    /// same bytes whenever; never by a call before it, nor a short one of
+    /// yours, and never again once you opened it again.
     #[test]
     fn the_task_closes_by_itself_once_you_spoke() {
         let kept = kept_after(&apply(&[call("09:30", 3, 0, NOA)], &[], &rules(), &tr(), &paris()), &[]);
@@ -469,6 +473,10 @@ mod tests {
             assert!(text.contains(&format!("X-SIOUL-CALLED:{}", Mark::of(&spoken).word())));
             assert_eq!(apply(std::slice::from_ref(&spoken), &kept, &rules(), &tr(), &paris()), writes, "the same bytes");
         }
+        // A call of theirs you answered closes it, however short: you picked up.
+        let writes = apply(&[call("10:30", 1, 40, NOA)], &kept, &rules(), &tr(), &paris());
+        let [Write::Changed { text, .. }] = writes.as_slice() else { panic!("{writes:?}") };
+        assert_eq!(tasks::task_of_text(text, &paris()).unwrap().status, Status::Completed, "answered 0:40");
         // Opened again after a call closed it: yours to close; a new missed call still joins it.
         let closed = kept_after(&apply(&[call("11:00", 1, 300, NOA)], &kept, &rules(), &tr(), &paris()), &kept);
         let reopened = Kept { text: tasks::set_status(&closed[0].text, Status::NeedsAction, &paris(), &zoned(at("12:00"), &paris())).unwrap(), open: true, ..closed[0].clone() };

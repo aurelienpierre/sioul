@@ -166,10 +166,11 @@ Après ces cartes, le Porche montre ce qui est arrivé en sections, toutes dessi
 3. **De vous-même**.
 4. **De personnes que vous connaissez**.
 5. **De votre téléphone** : les appels refusés par Sioul, sur votre téléphone et sur vos autres appareils, chacun à un moment où son auteur peut vous joindre, avec **Répondre par SMS**, et **Rappeler** dans son menu ([Les appels](calls.md#afterwards-on-the-porch)) ; dès que Sioul peut lire l’historique des appels du téléphone, les appels que vous avez manqués et ceux des vôtres qui n’ont pas abouti aussi ([Les appels](calls.md#calls-missed)) ; sur un ordinateur, les SMS et les notifications des autres applications que votre téléphone y envoie, avec **Répondre** là où cela marche ([Ce qui vous joint](notifications.md#messages-on-your-computers)).
-6. **Sites** : ce que les sites que vous gardez dans Sioul ont notifié, une ligne par site. Ouvrir le site lit ses nouvelles ([Les sites](sites.md)).
-7. **Argent** : ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, chacun avec son jour, s’il est prévu, annoncé ou pas encore définitif, et son montant ; ce qui était attendu sans passer sur son compte est dit une fois. **Ouvrir dans Budgets** ([Les budgets](budgets.md)). L’argent du travail seulement à vos heures de travail, et rien pendant votre sommeil.
-8. **Courrier papier**, seulement quand une lettre attend ([plus bas](#paper-letters)). Pas pendant votre sommeil.
-9. **Rangé**, replié ; **Nouveaux expéditeurs** ; **Comptes moins importants**, replié ; **Retenu par votre filtre à indésirables**, replié ; **Mis de côté**, replié.
+6. **Agenda** : deux de vos événements en même temps, ou trop proches pour le temps que vous gardez entre eux, quand le changement de quelqu’un d’autre l’a fait, chacun dit une fois à un moment où son agenda peut vous joindre : **Déplacer le mien** ouvre votre propre événement, **Garder les deux** ne le dit plus.
+7. **Sites** : ce que les sites que vous gardez dans Sioul ont notifié, une ligne par site. Ouvrir le site lit ses nouvelles ([Les sites](sites.md)).
+8. **Argent** : ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, chacun avec son jour, s’il est prévu, annoncé ou pas encore définitif, et son montant ; ce qui était attendu sans passer sur son compte est dit une fois. **Ouvrir dans Budgets** ([Les budgets](budgets.md)). L’argent du travail seulement à vos heures de travail, et rien pendant votre sommeil.
+9. **Courrier papier**, seulement quand une lettre attend ([plus bas](#paper-letters)). Pas pendant votre sommeil.
+10. **Rangé**, replié ; **Nouveaux expéditeurs** ; **Comptes moins importants**, replié ; **Retenu par votre filtre à indésirables**, replié ; **Mis de côté**, replié.
 
 Chaque ligne dit qui, quoi et quand sur une ligne (deux sur un téléphone), avec son action principale : **Ouvrir**, **Répondre**, **Répondre par SMS**, **Voir le scan**, **Ouvrir dans Budgets**. À côté, deux boutons discrets :
 

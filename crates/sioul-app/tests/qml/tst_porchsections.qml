@@ -56,6 +56,9 @@ Item {
         property string missedView: "[]"
         // The calls' rows `calls::view` gives.
         property var callLines: []
+        // The agenda's conflicts as rows (`notices::agenda_rows`), and the answers given.
+        property var agendaRows: []
+        property var answered: []
         // What the window asked of the notices, in order: [verb, args].
         property var asked: []
         property var flags: ({})
@@ -95,6 +98,13 @@ Item {
         }
         function readMessage(key) {
         }
+        function answerConflict(key, answer) {
+            mock.answered = mock.answered.concat([[key, answer]])
+            return JSON.stringify({ problem: "", open: answer === "move" ? "/cal/home/a.ics" : "" })
+        }
+        function setOverlapAside(keys) {
+            return ""
+        }
         function callsView() {
             return JSON.stringify({ lines: mock.callLines, phone: false, links: { tel: true, sms: true } })
         }
@@ -109,6 +119,8 @@ Item {
             const args = JSON.parse(json)
             if (verb === "view")
                 return JSON.stringify({ sites: [], money: [], letters: [] })
+            if (verb === "agenda")
+                return JSON.stringify(mock.agendaRows)
             mock.asked = mock.asked.concat([[verb, args]])
             if (verb === "undo")
                 return JSON.stringify({ said: "", at: 0 })
@@ -125,7 +137,11 @@ Item {
 
         function openMail(ref) {
         }
+        // What the Porch opened, in order.
+        property var openedThings: []
+
         function openThing(item) {
+            fakeWindow.openedThings = fakeWindow.openedThings.concat([item])
         }
         function copy(text) {
         }
@@ -182,6 +198,9 @@ Item {
             mock.asked = []
             mock.flags = {}
             mock.callLines = []
+            mock.agendaRows = []
+            mock.answered = []
+            fakeWindow.openedThings = []
             mock.porch = root.porchWith([root.message(1, "The plan"), root.message(2, "Lunch")], [root.message(3, "A newsletter")])
             porch.gone = {}
             porch.lastSaid = null
@@ -292,6 +311,31 @@ Item {
             compare(missed.more.map(m => m.text).indexOf("calls-call-back") >= 0, true)
             compare(unreached.more.map(m => m.text).indexOf("calls-call-again") >= 0, true)
             compare(unreached.more.filter(m => m.id === "why").length, 0, "no reason to give")
+        }
+
+        // The agenda's conflict waiting for an answer: Move mine answers it and opens your own event at
+        // that time; the row goes at once, said Done on every device; Keep both is in its menu.
+        function test_a_conflict_is_answered_from_its_row() {
+            const key = "/cal/home/a.ics@1794000000|/cal/home/b.ics@1794001800"
+            mock.agendaRows = [{ ids: ["agenda:0123456789abcdef"], targets: [], notice: { id: "agenda:0123456789abcdef", kind: "agenda", who: "Dentist", what: "14:00 – 15:00 · At the same time as “Swimming”", when: "Thu 12 Nov", readable: false, state: { mark: "new", at: 0, device: "" } },
+                                 conflict: { key: key, answers: ["move", "keep"], first: { key: "/cal/home/a.ics", start: 1794000000, title: "Dentist" }, second: { key: "/cal/home/b.ics", start: 1794001800, title: "Swimming" } } }]
+            porch.agendaStamp += 1
+            wait(50)
+            const rowOf = who => all(porch, i => i.visible && i.notice !== undefined && i.notice !== null && i.notice.who === who && typeof i.dismissPressed === "function")[0] || null
+            const row = rowOf("Dentist")
+            verify(row !== null, "the conflict is a row")
+            compare(row.mainText, "conflict-move-mine")
+            compare(row.more[0].text, "conflict-keep-both")
+            row.mainPressed()
+            compare(mock.answered, [[key, "move"]])
+            compare(fakeWindow.openedThings.length, 1)
+            compare(fakeWindow.openedThings[0].key, "/cal/home/a.ics")
+            compare(fakeWindow.openedThings[0].start, 1794000000, "that time of it")
+            const done = mock.asked.filter(a => a[0] === "done")
+            compare(done.length, 1)
+            compare(done[0][1].ids, ["agenda:0123456789abcdef"])
+            wait(50)
+            verify(rowOf("Dentist") === null, "gone at once")
         }
 
         // The "?": its help once, in a tooltip; pressed, in its popup.

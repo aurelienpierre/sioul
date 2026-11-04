@@ -1166,6 +1166,44 @@ pub fn state_of(ask: &Ask, outcomes: &[&Outcome], app: &str, tr: &crate::i18n::T
 /// private replies folder: each conversation's key (a hash) and until when
 /// its messages come through at once (decision 18).
 pub const ANSWERED: &str = "answered.json";
+/// The SMS app's notifications for the listener to take away, there, by the
+/// phone's names for them (`notice`), written whole by the phone's step:
+/// their conversations read elsewhere (`Withdraw`; AppNotes.withdraw).
+pub const WITHDRAW: &str = "withdraw.json";
+
+/// What the listener is asked to take away (`WITHDRAW`): when it was said
+/// (ms), and the notifications, by name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Withdraw {
+    #[serde(default)]
+    pub at: i64,
+    #[serde(default)]
+    pub names: Vec<String>,
+}
+
+impl Withdraw {
+    /// As the private folder `folder` holds it; nothing when it does not read.
+    pub fn load(folder: &Path) -> Withdraw {
+        std::fs::read_to_string(folder.join(WITHDRAW)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    /// Written whole in `folder`, beside then put in place (the listener
+    /// watches the name), only when its names changed; none to take away,
+    /// the file gone. Whether it was written.
+    pub fn save(&self, folder: &Path) -> Result<bool, String> {
+        let path = folder.join(WITHDRAW);
+        if Withdraw::load(folder).names == self.names && (path.exists() || self.names.is_empty()) {
+            return Ok(false);
+        }
+        if self.names.is_empty() {
+            return std::fs::remove_file(&path).map(|()| true).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(false) } else { Err(format!("{}: {e}", path.display())) });
+        }
+        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        let text = serde_json::to_string(self).map_err(|e| e.to_string())?;
+        crate::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(true)
+    }
+}
 /// A conversation answered from a computer comes through at once this long
 /// after the reply was handed, as a second call within a quarter of an hour
 /// rings: their answer to your answer is not held. Never during a pause.
@@ -1435,6 +1473,22 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sioul-replies-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    /// The notifications for the listener to take away: written whole only
+    /// when they changed (the listener watches the name), none left, no file.
+    #[test]
+    fn what_the_listener_takes_away_is_written_when_it_changes() {
+        let dir = scratch("withdraw");
+        assert_eq!(Withdraw::load(&dir), Withdraw::default());
+        let two = Withdraw { at: NOW, names: vec!["n1".into(), "n2".into()] };
+        assert!(two.save(&dir).unwrap());
+        assert_eq!(Withdraw::load(&dir).names, ["n1", "n2"]);
+        assert!(!Withdraw { at: NOW + MINUTE, ..two.clone() }.save(&dir).unwrap(), "the same names: not written again");
+        assert!(Withdraw { at: NOW, names: Vec::new() }.save(&dir).unwrap());
+        assert!(!dir.join(WITHDRAW).exists(), "none left: the file gone");
+        assert!(!Withdraw::default().save(&dir).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn words() -> std::sync::Arc<crate::words::Words> {

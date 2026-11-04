@@ -165,7 +165,8 @@ fn mark_of(verb: &str) -> Option<Mark> {
 }
 
 /// What the window asks (`Sioul::notices`): "view" (the Porch's sections
-/// that are not mail, `view`); "dismiss", "read", "done" {kind, ids,
+/// that are not mail, `view`); "agenda" (the agenda's conflicts as rows: the
+/// `overlaps` property given, `agenda_rows`); "dismiss", "read", "done" {kind, ids,
 /// targets}: the word said, {at, said} to take it back; "undo" {kind, ids,
 /// targets, mark, at}: taken back within its ten seconds. Answers its JSON,
 /// and whether what travels changed (to share now).
@@ -175,6 +176,9 @@ pub(crate) fn call(qt: &QtThread, shared: &Arc<Shared>, verb: &str, json: &str) 
     let now = jiff::Timestamp::now().as_millisecond();
     if verb == "view" {
         return (view().to_string(), false);
+    }
+    if verb == "agenda" {
+        return (agenda_rows(json, &sioul_core::zone::now()).to_string(), false);
     }
     if verb == "undo" {
         let mark = asked["mark"].as_str().and_then(Mark::parse).unwrap_or(Mark::Dismissed);
@@ -326,6 +330,85 @@ fn money(now: &jiff::Zoned) -> (Vec<(Value, Vec<String>)>, Vec<String>) {
         rows.push((row(notice, vec![id.clone()], Vec::new(), json!({ "amount": amount, "state": coming.state.id() })), vec![id]));
     }
     (rows, every)
+}
+
+/// The agenda's conflicts waiting for an answer, as the Porch's rows
+/// (docs/porch.md, "Agenda"): `overlaps`, the property the agenda's job
+/// makes (`pim::overlaps_of`), whose rules are the agenda's own (only those
+/// someone else's change made, each once, at its time); each a notice of
+/// its own, `agenda:<digest of its key>`, work's when one of its events is
+/// on a work agenda, else admin's, as the agenda says it, shown while that
+/// area is in view now (the property is made when the agenda changes, not
+/// at each minute) and while no word settled it on any device: Dismiss,
+/// or Done once Keep both or Move answered it.
+fn agenda_rows(overlaps: &str, now: &jiff::Zoned) -> Value {
+    let rows: Vec<Value> = serde_json::from_str(overlaps).unwrap_or_default();
+    if rows.is_empty() {
+        return json!([]);
+    }
+    let mode = crate::backend::mode_now();
+    let calendars = sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars);
+    let work = |key: &str| std::path::Path::new(key).parent().and_then(|dir| calendars.iter().find(|c| c.dir == dir)).is_some_and(|c| sioul_core::agendas::marks_of(c).work);
+    let (shown, current) = agenda_rows_in(rows, now, mode.time, mode.week, &states(&|_, _| None), &work, tr());
+    forget_once_a_day(&[Kind::Agenda], &current);
+    shown
+}
+
+/// `agenda_rows` at a time of the day and week (`time`, `week`), with the
+/// words said (`states`) and whether an event's file is on a work agenda
+/// (`work`): the rows shown, and every conflict's notice (what its words are kept for).
+fn agenda_rows_in(rows: Vec<Value>, now: &jiff::Zoned, time: sioul_core::areas::Time, week: sioul_core::areas::Week, states: &States, work: &dyn Fn(&str) -> bool, tr: &sioul_core::i18n::Translator) -> (Value, Vec<String>) {
+    let mut current = Vec::new();
+    let mut out = Vec::new();
+    for conflict in rows {
+        let key = conflict["key"].as_str().unwrap_or_default().to_string();
+        if key.is_empty() {
+            continue;
+        }
+        let id = rules::agenda_id(&key);
+        current.push(id.clone());
+        let during = conflict["kind"] == "during";
+        let events: Vec<&Value> = if during { vec![&conflict["event"]] } else { vec![&conflict["first"], &conflict["second"]] };
+        let area = if events.iter().any(|e| work(e["key"].as_str().unwrap_or_default())) { sioul_core::areas::Area::WORK } else { sioul_core::areas::Area::ADMIN };
+        if !sioul_core::areas::in_view(area, time, week) || settled(states, std::slice::from_ref(&id)) {
+            continue;
+        }
+        let first = events[0];
+        let at = first["start"].as_i64().unwrap_or(0) * 1000;
+        let day = conflict["day"].as_str().and_then(|d| d.parse::<jiff::civil::Date>().ok()).unwrap_or_else(|| now.date());
+        let title = |e: &Value| e["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).map_or_else(|| tr.text("agenda-untitled", None), str::to_string);
+        let when = |e: &Value| e["when"].as_str().unwrap_or_default().to_string();
+        let what = if during {
+            let mut args = sioul_core::i18n::args();
+            args.set("span", when(first));
+            tr.text("porch-conflict-during", Some(&args))
+        } else {
+            let second = events[1];
+            let mut args = sioul_core::i18n::args();
+            args.set("title", title(second));
+            args.set("whose", "none");
+            args.set("why", if conflict["tentative"] == true { "tentative" } else { "none" });
+            let said = if conflict["at_once"] == true {
+                tr.text("conflict-same-time", Some(&args))
+            } else {
+                args.set("gap", conflict["gap"].as_i64().unwrap_or(0));
+                args.set("needed", conflict["needed"].as_i64().unwrap_or(0));
+                args.set("source", conflict["source"].as_str().unwrap_or_default().to_string());
+                tr.text("conflict-tight", Some(&args))
+            };
+            format!("{} · {}", when(first), said.trim_end_matches('.'))
+        };
+        let notice = Notice { address: first["key"].as_str().unwrap_or_default().to_string(), at, when: tr.day_short(day), who: title(first), what, ..Notice::new(Kind::Agenda, id.clone(), "agenda").with_area(Some(area)) };
+        let mut shown = row(notice, vec![id], Vec::new(), json!({}));
+        shown["conflict"] = row_copy(&conflict);
+        out.push(shown);
+    }
+    (Value::Array(out), current)
+}
+
+/// A conflict's own fields, for the Porch's answers (its key, its events, what may be done).
+fn row_copy(row: &Value) -> Value {
+    json!({ "key": row["key"], "kind": row["kind"], "keys": row["keys"], "answers": row["answers"], "first": row["first"], "second": row["second"], "event": row["event"] })
 }
 
 /// An account's shortfall, first in Money: the budgets' own notice (their
@@ -495,6 +578,42 @@ mod tests {
         assert_eq!(coming_words(&coming(120_000, "EUR", true, State::Announced, None), &tr).2, "about +€1,200");
         assert_eq!(coming_words(&coming(-1_250, "CHF", false, State::NotSeen, None), &tr), ("Linden Housing".into(), "Not seen on its account".into(), "−12.50 CHF".into()));
         assert_eq!(coming_words(&coming(-990, "EUR", false, State::NotFinal, None), &tr).1, "Not final yet");
+    }
+
+    /// The agenda's conflicts as the Porch's rows: each its own notice, by
+    /// its key's digest, what it says and what may be done kept; at work's
+    /// time a conflict of a work agenda, else admin's; gone once a word
+    /// settled it on any device.
+    #[test]
+    fn a_conflict_is_a_row_until_a_word_settles_it() {
+        use sioul_core::areas::{Time, Week};
+        let tr = sioul_core::i18n::Translator::new("en");
+        let now: jiff::Zoned = "2026-11-04T10:00:00+01:00[Europe/Paris]".parse().unwrap();
+        let pair = json!({ "key": "/cal/home/a.ics@1794000000|/cal/home/b.ics@1794001800", "day": "2026-11-12", "today": false,
+            "first": { "key": "/cal/home/a.ics", "start": 1_794_000_000, "title": "Dentist", "when": "14:00 – 15:00" },
+            "second": { "key": "/cal/home/b.ics", "start": 1_794_001_800, "title": "Swimming", "when": "14:30 – 15:30" },
+            "gap": 0, "needed": 0, "at_once": true, "tentative": false, "answers": ["move", "keep"], "source": "" });
+        let week = Week { work_hours: true, admin_hours: true, meals: false, sleep: false };
+        let mine = |_: &str| false;
+        let (shown, current) = agenda_rows_in(vec![pair.clone()], &now, Time::Admin, week, &States::default(), &mine, &tr);
+        let id = rules::agenda_id(pair["key"].as_str().unwrap());
+        assert_eq!(current, [id.clone()]);
+        let row = &shown[0];
+        assert_eq!(row["notice"]["id"], id.as_str());
+        assert_eq!(row["notice"]["kind"], "agenda");
+        assert_eq!((row["notice"]["who"].as_str(), row["notice"]["what"].as_str(), row["notice"]["when"].as_str()), (Some("Dentist"), Some("14:00 – 15:00 · At the same time as “Swimming”"), Some("Thu 12 Nov")));
+        assert_eq!(row["conflict"]["answers"], json!(["move", "keep"]));
+        assert_eq!(row["conflict"]["first"]["key"], "/cal/home/a.ics");
+        // A work agenda's: at work's time only.
+        let work = |key: &str| key.ends_with("b.ics");
+        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, Time::Admin, week, &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(0));
+        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, Time::Work, week, &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(1));
+        // Dismissed on another device: gone.
+        let dir = std::env::temp_dir().join(format!("sioul-app-agenda-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        rules::say(&dir, "desk", std::slice::from_ref(&id), Mark::Dismissed, 1_000).unwrap();
+        assert_eq!(agenda_rows_in(vec![pair], &now, Time::Admin, week, &States::read(&dir), &mine, &tr).0.as_array().map(Vec::len), Some(0));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A row with every notice settled is left out; one with a notice still
