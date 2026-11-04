@@ -407,6 +407,7 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
         if let Some(budget_id) = project.budget.as_deref().filter(|b| !b.is_empty()) {
             let ledger = store.root.join(budget::LEDGER);
             let line = Line {
+                id: String::new(),
                 budget: budget_id.to_string(),
                 date: made.due.parse().unwrap_or(today),
                 amount: Money(made.total_cents),

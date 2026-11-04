@@ -119,6 +119,8 @@
 //! - [`budget`]: budgets, reserves, and the lines between them.
 //! - [`accounts`]: bank accounts, and the budgets each movement goes to.
 //! - [`bank`]: the money watch: the bank's exports held against the recurring payments.
+//! - [`movements`]: money movements: each sum in or out once, with every source that tells of it.
+//! - [`due`]: what money is due or expected soon, for the Porch.
 //! - [`money`]: exact amounts, and the amounts written in mail.
 //! - [`contracts`]: contracts and subscriptions: when each renews, how to stop it.
 //! - [`papers`]: the papers wallet: the papers asked again and again, and when each ends.
@@ -197,6 +199,7 @@ pub mod composed;
 pub mod config;
 pub mod contracts;
 pub mod dated;
+pub mod due;
 pub mod dayview;
 pub mod demands;
 pub mod description;
@@ -234,6 +237,7 @@ pub mod mailto;
 pub mod mms;
 pub mod money;
 pub mod moves;
+pub mod movements;
 pub mod needs;
 pub mod ongoing;
 pub mod overlaps;

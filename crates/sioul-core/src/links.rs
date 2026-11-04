@@ -25,6 +25,7 @@
 //! - a project: `sioul:project/<id>`; one written before the name changed,
 //!   `sioul:case/<id>`, still reads as the same project, and always will;
 //! - a budget line: `sioul:budget/<budget>/<position in the file>`;
+//! - a money movement: `sioul:movement/<its id, or a source's key>` (`movements`);
 //! - anything else: its URL.
 
 use crate::agenda::EventRef;
@@ -208,6 +209,12 @@ pub fn draft_uri(id: &str) -> String {
 /// A budget line by its budget and its position in the file.
 pub fn budget_uri(budget: &str, position: usize) -> String {
     format!("sioul:budget/{}/{position}", encode(budget))
+}
+
+/// A money movement (`movements::Movement`), by its id or by the key of any
+/// of its sources: "sioul:movement/preset:rent%2F2026-11-01".
+pub fn movement_uri(id: &str) -> String {
+    format!("sioul:movement/{}", encode(id))
 }
 
 /// A site of Sioul's Sites, by its id.
