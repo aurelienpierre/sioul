@@ -152,11 +152,25 @@ If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read what 
 
 ## Why it works this way {#why-it-works-this-way}
 
-Arrears grow silently: a debit stops, nothing says so, and nobody looks when accounts go badly (Olafsson & Pagel 2017). A payment reminder that ignores the balance can push an account into overdraft (Medina 2021). So Sioul reads the bank's own movements, and says when the account will not hold a payment, before it happens.
+Money does not flow evenly through a month: spending rises when pay arrives, and bills follow it (Stephens 2003; Gelman et al. 2014); people who keep a budget count by their pay rather than by the calendar (Zhang et al. 2022). So the page starts from today's balance and your next income: whether the account holds every payment until then, what is left for everyday spending, and the lowest point.
+
+The same numbers shown in red make people expect worse (Bazley, Cronqvist & Mormann 2021), and lessons in managing money fade within two years (Fernandes, Lynch & Netemeyer 2014). So each budget says in plain words what is paid and what is still to come, with no colour, bar or percentage, and no accounting word to learn.
+
+People forecasting their own money count what will come in and forget what will go out, unusual expenses most of all (Berman et al. 2016; Sussman & Alter 2012). So Sioul makes the forecast itself: What is coming lists every payment expected, in and out, and the past year's unusual spending has a line of its own. A forecast that states its doubt is used better, and trusted more after it errs (Joslyn & LeClerc 2012), so an income not yet certain is shown with its condition.
+
+Arrears grow silently: a debit stops, nothing says so, and nobody looks when accounts go badly (Olafsson & Pagel 2017). Bank alerts cut overdraft charges by a quarter when they came by default (Caflisch et al. 2018), and few people sign up for them on their own. So Sioul reads the bank's own movements, and says when the account will not hold a payment, before it happens, at your next admin window, whichever budgets the hour shows.
+
+A reminder helps most when it names what the money is for (Karlan et al. 2016), and one that ignores the balance can push an account into overdraft (Medina 2021). So a payment you make by hand has one reminder, a few days ahead, saying whether the account will hold it.
+
+A payment is often told by a mail, a letter or an invoice, then by the bank. Sioul keeps them together as one payment and links them itself: keeping records by hand weighs on many people (Rudberg Selin, Unéus & Knudsen 2026), so nothing waits for you to check, and a link that is wrong is undone in one step.
+
+Most people who keep a budget sort money into kinds of their own, from two to one per bill (Zhang et al. 2022), and an expense that fits none of them is the one that escapes (Heath & Soll 1996). So budgets are the kinds you choose, Sioul files every payment, and moving one says what it changes.
+
+Irregular income is common: in a year of household diaries, monthly income varied by about 40 % (Hannagan & Morduch 2015), and getting through a lean month and a large expense together took about six weeks of take-home pay (Farrell, Greig & Yu 2019). So reserves are counted in weeks of your own spending, and a work budget can set aside a share of each payment for taxes as it arrives, as money set apart in an envelope is kept (Soman & Cheema 2011).
 
 ## Compared with other apps {#compared-with-other-apps}
 
-As of October 2026, from each app's own documentation.
+As of November 2026, from each app's own documentation.
 
 ✓ documented; **partly**, with a note; ✗ not found in the app's own documentation (for Sioul: not built); ? not confirmed; — not applicable. Sioul's column was checked against its code.
 
@@ -165,7 +179,7 @@ As of October 2026, from each app's own documentation.
 | | Sioul | YNAB | Actual | Firefly III | GnuCash | Bankin' |
 |---|---|---|---|---|---|---|
 | Budgets by what money is for; unspent money kept | ✓ | ✓ | ✓ | partly¹ | partly² | partly³ |
-| Where each budget stands, at the period's pace, in words | ✓ | partly⁴ | ✗ | ✗ | partly⁵ | ✗ |
+| Where each budget stands, in words: paid, still to come, left | ✓ | partly⁴ | ✗ | ✗ | partly⁵ | ✗ |
 | Payments expected, matched with the bank's movements | ✓ | ✓ | ✓ | ✓ | ✓ | partly⁶ |
 | Says when an expected payment did not leave, or took another amount | ✓ | ✗ | partly⁷ | partly⁸ | ✗ | ✗ |
 | Says ahead that an account will not hold a payment, and what to move by when | ✓ | ✗ | ✗ | ✗ | ✗ | partly⁹ |
@@ -175,6 +189,9 @@ As of October 2026, from each app's own documentation.
 | Connects to your bank by itself | ✗¹² | ✓ | ✓ | ✓¹¹ | partly¹³ | ✓ |
 | Reports and charts | partly¹⁴ | ✓ | ✓ | ✓ | ✓ | partly¹⁵ |
 | Investments, several currencies, double-entry books | ✗¹⁶ | partly¹⁷ | partly¹⁸ | ✓ | ✓ | partly¹⁹ |
+| How the account stands until your next income: what is left, the lowest point | ✓ | ✗ | ✗ | ? | partly²⁰ | partly⁶ |
+| What is coming: every payment expected, in and out, by date | ✓ | partly²¹ | partly²² | ? | partly²³ | partly²⁴ |
+| One payment with all that tells of it: mail, letter, contract, bank line | ✓ | partly²⁵ | ✗ | partly²⁶ | partly²⁷ | ? |
 
 1. By the kind of budget: a fixed amount each period is gone at the next one; "add money … every month" makes it grow.
 2. A budget sets planned amounts per account and period against the actual ones, in reports.
@@ -189,12 +206,20 @@ As of October 2026, from each app's own documentation.
 11. Through the Data Importer, installed beside it.
 12. By choice: you download the file from your bank, and Sioul reads it on your device.
 13. German banks through HBCI/FinTS, and banks that speak OFX.
-14. Each budget's balance by days, weeks, months or years.
+14. Each budget's balance by days, weeks, months or years, and the balance ahead until the next income.
 15. Budget history, and this month against last month, in Bankin' Plus.
 16. An amount in another currency is marked, not converted.
 17. Investment accounts kept as tracking accounts; another currency in a separate budget.
 18. Reports include investment accounts.
 19. Savings and stock accounts, in Bankin' Plus.
+20. A "Projected Minimum" balance in each register's summary bar.
+21. Scheduled transactions, at the top of each account's register.
+22. Schedules in the register, up to a length you choose.
+23. Scheduled transactions, created or reminded a chosen number of days ahead.
+24. The upcoming operations that some banks send (ING France, Crédit Mutuel).
+25. One photo per transaction; no PDF.
+26. Attachments, on transactions among other things.
+27. One linked file or web address per transaction.
 
 **For technical readers**
 
@@ -205,6 +230,7 @@ As of October 2026, from each app's own documentation.
 | Encrypted end to end between your devices | ✓¹ | ✗² | partly³ | — | — | ✗ |
 | Export formats read | OFX, QFX, CAMT.053, CSV, PayPal, Stripe | CSV, OFX, QFX, QIF | CSV, QIF, OFX, QFX, CAMT | CSV, CAMT.053 | QIF, OFX, QFX, CSV, MT940, MT942, CAMT.052 and more | — |
 | A file read twice adds nothing | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| A bank line matched to what was expected | a reference first (the bank's id, a SEPA mandate, an invoice number), then amount, days apart and name: sure, probable or apart | the same amount within 10 days | a schedule within 2 days; an import by the same amount within 7 days, the same payee first | a rule, the amount between a subscription's minimum and maximum | a score of amount, date, cheque number and words | ? |
 | Bank connections through | none | Plaid, MX | Enable Banking, SimpleFIN, Pluggy.ai, Akahu; GoCardless⁴ | GoCardless, Enable Banking, SimpleFIN, FinTS and others | AqBanking (HBCI/FinTS), OFX | its own (Bridge, licensed by the ACPR) |
 | Free software | ✓ GPL-3.0+ | ✗ | ✓ MIT | ✓ AGPL-3.0 | ✓ GPL | ✗ |
 
@@ -213,16 +239,17 @@ As of October 2026, from each app's own documentation.
 3. Optional; bank-sync tokens are not covered, and the copy on your device is not encrypted.
 4. Listed as "not accepting new accounts".
 
-Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the bank by themselves, and GnuCash does for German banks; GnuCash and Firefly III keep double-entry books, investments and several currencies; the four budget apps make fuller reports, and their phone apps have more use behind them. What Sioul adds is the watch in sentences, the mail read as payments and counted once, and your contracts with their notice deadlines, all without a bank connection.
+Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the bank by themselves, and GnuCash does for German banks; GnuCash and Firefly III keep double-entry books, investments and several currencies; the four budget apps make fuller reports, and their phone apps have more use behind them; PocketSmith, not in the table, forecasts each account's balance for every day, years ahead. What Sioul adds is the account said until your next income, each payment kept with the mail, letter and contract that tell of it, the watch in sentences, and your contracts with their notice deadlines, all without a bank connection.
 
 ??? info "Sources"
-    All read on 8 October 2026.
+    Read on 8 October 2026; the rows on the next income, what is coming, a payment's sources and matching, on 4 November 2026.
 
     - **YNAB**, its help centre (glossary, progress bars, file import, direct import in Europe, scheduled transactions, overspending, and its index), its security page and its prices: <https://support.ynab.com/en_us/ynab-glossary-a-guide-BJd80SORq>, <https://support.ynab.com/en_us/progress-bars-a-guide-SkDEhot09>, <https://support.ynab.com/en_us/file-based-import-a-guide-Bkj4Sszyo>, <https://support.ynab.com/en_us/direct-import-in-europe-Syae1z_A9>, <https://support.ynab.com/en_us/scheduled-transactions-a-guide-BygrAIFA9>, <https://support.ynab.com/en_us/overspending-in-ynab-a-guide-ryWoxEyi>, <https://support.ynab.com/llms.txt>, <https://ynab.com/security>, <https://www.ynab.com/pricing>
     - **Actual Budget**, its documentation on budgeting, importing, bank sync, rules, schedules, sync, installing and reports, and its repository (`schedules.ts` for "missed"): <https://actualbudget.org/docs/budgeting/>, <https://actualbudget.org/docs/transactions/importing>, <https://actualbudget.org/docs/advanced/bank-sync>, <https://actualbudget.org/docs/budgeting/rules/>, <https://actualbudget.org/docs/schedules>, <https://actualbudget.org/docs/getting-started/sync>, <https://actualbudget.org/docs/install/>, <https://actualbudget.org/docs/reports/>, <https://github.com/actualbudget/actual>
     - **Firefly III**, its documentation on budgets, subscriptions, file imports and data providers, and its repository: <https://docs.firefly-iii.org/how-to/firefly-iii/finances/budgets/>, <https://docs.firefly-iii.org/explanation/financial-concepts/budgets/>, <https://docs.firefly-iii.org/explanation/financial-concepts/subscriptions/>, <https://docs.firefly-iii.org/how-to/data-importer/import/file/>, <https://docs.firefly-iii.org/tutorials/data-importer/data-providers/>, <https://github.com/firefly-iii/firefly-iii>
     - **GnuCash**, its features page, its manual on importing and on preferences, and its guide's chapter on budgets: <https://www.gnucash.org/features.phtml>, <https://www.gnucash.org/docs/v5/C/gnucash-manual/trans-import.html>, <https://www.gnucash.org/docs/v5/C/gnucash-manual/set-prefs.html>, <https://code.gnucash.org/docs/C/gnucash-guide/chapter_budgets.html>
     - **Bankin'**, its own description in Apple's App Store (its help centre could not be read), its Plus and Pro page and its home page: <https://apps.apple.com/fr/app/bankin-la-meilleure-app-pour-g%C3%A9rer-mon-argent/id447040033>, <https://bankin.com/fr/pluspro.html>, <https://bankin.com>
+    - **Added on 4 November 2026**: YNAB on matching and photos, <https://support.ynab.com/en_us/approving-and-matching-transactions-a-guide-ByYNZaQ1i>, <https://support.ynab.com/en_us/add-context-to-transactions-HyCpTR4bg>; Actual's matching in its repository, `packages/loot-core/src/server/accounts/sync.ts`; Firefly III's attachments, <https://docs.firefly-iii.org/api/storeattachment/> (through a search summary); GnuCash's register, <https://www.gnucash.org/docs/v5/C/gnucash-manual/gui-acct-reg.html>, its scheduled transactions and linked documents, through a search summary, <https://code.gnucash.org/docs/C/gnucash-manual/trans-sched-slr.html>, <https://code.gnucash.org/docs/C/gnucash-manual/trans-assoc.html>, and its matching, `gnucash/import-export/import-backend.cpp` at <https://github.com/Gnucash/gnucash>; Bankin' on upcoming operations, through a search summary, <https://support.bankin.com/hc/fr/articles/360027356511-Op%C3%A9rations-%C3%A0-venir>; PocketSmith's forecast, <https://www.pocketsmith.com/features/budgets-and-planning>
 
 ## For technical readers {#for-technical-readers}
 
