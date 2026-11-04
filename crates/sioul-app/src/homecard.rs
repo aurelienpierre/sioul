@@ -134,8 +134,8 @@ pub(crate) struct Snapshot {
     reminders: Vec<ReminderLine>,
     /// The calls declined, in the Porch's words; each frame says which it lists.
     calls: Vec<String>,
-    /// Two events at once, today's and tomorrow's, each said on its own day
-    /// until both are over.
+    /// The conflicts someone else's change made, today's and tomorrow's,
+    /// each said on its own day until both are over (`overlap_lines`).
     overlaps: Vec<Timed>,
     /// Where you stopped, the line you left, until you say it is done: "Where
     /// you stopped: …"; details off, that it waits; "" none.
@@ -461,6 +461,9 @@ pub(crate) struct AgendaInput {
     read_on: Date,
     /// Two events at once set aside for good, a pair or a long event whole (`overlaps::SetAside`): not said.
     aside: sioul_core::overlaps::SetAside,
+    /// The conflicts due to be said (`overlaps::Notices`): none, read from their
+    /// file at each card, as the agenda's job keeps it; given, for the tests.
+    notices: Option<sioul_core::overlaps::Notices>,
 }
 
 /// The weather the card is made with: whether a place is chosen, and the
@@ -656,16 +659,27 @@ fn reminder_lines(tr: &Translator, all: &[Reminder], details: bool, now: i64) ->
         .collect()
 }
 
-/// Two events at once today and tomorrow, each said on its own day until
-/// both are over, as the Porch says today's (`overlaps`): the time to get
-/// there and back counted; those set aside for good left out.
+/// The conflicts someone else's change made, today and tomorrow, each said
+/// on its own day until both are over or it is answered, as the Porch says
+/// them (`pim::overlaps_of`, `overlaps::Notices`): one person in two places,
+/// the time to get there and back counted; never one you came upon, nor
+/// one set aside for good.
 fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
+    match &input.notices {
+        Some(given) => overlap_lines_with(m, input, given),
+        None => overlap_lines_with(m, input, &sioul_core::overlaps::Notices::load(&sioul_core::overlaps::Notices::default_path())),
+    }
+}
+
+/// `overlap_lines`, with the conflicts due to be said (`notices`) given.
+fn overlap_lines_with(m: &Moment, input: &AgendaInput, notices: &sioul_core::overlaps::Notices) -> Vec<Timed> {
     let zone = m.now.time_zone().clone();
     let now = m.now.timestamp().as_second();
     let day_of = |at: i64| Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
     let tomorrow = m.now.date().tomorrow().ok();
-    sioul_core::overlaps::overlaps(&input.events, m.config.agenda.between())
+    sioul_core::overlaps::conflicts(&input.events, m.config.agenda.between(), &sioul_core::agendas::Matrix::current())
         .into_iter()
+        .filter(|o| notices.due.contains_key(&o.key) && !notices.said.contains_key(&o.key))
         .filter(|o| !input.aside.holds(o) && o.first.end.max(o.second.end) > now)
         .filter_map(|o| {
             let day = day_of(o.second.start)?;
@@ -1379,7 +1393,7 @@ fn agenda_input(now: &Zoned) -> Option<Arc<AgendaInput>> {
     let events = crate::pim::agenda_read(midnight, reach, &removed, &skipped);
     let calendars = !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty();
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
-    let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside });
+    let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside, notices: None });
     *kept = Some(Arc::clone(&input));
     Some(input)
 }
@@ -1896,7 +1910,10 @@ mod tests {
                 ..Occurrence::default()
             })
             .collect();
-        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: Default::default() }
+        // Every conflict among them due, as if someone else's change had made it: the card says it.
+        let events: Vec<Occurrence> = events;
+        let due = sioul_core::overlaps::conflicts(&events, 0, &sioul_core::agendas::Matrix::default()).into_iter().map(|o| (o.key, 0)).collect();
+        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: Default::default(), notices: Some(sioul_core::overlaps::Notices { due, ..Default::default() }) }
     }
 
     /// A dated task showed in the computer's
@@ -1942,7 +1959,7 @@ mod tests {
         let blocks = blocks(&now);
         let overrides = Overrides::default();
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
-        let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: Default::default() };
+        let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: Default::default(), notices: None };
         let card = agenda_lines(&moment, &input, &tasks, &[]).unwrap();
         let mut home: Vec<String> = card.events.iter().filter(|e| ours(&e.key)).map(|e| e.title.clone()).collect();
         home.sort();
@@ -2301,7 +2318,7 @@ mod tests {
         let far = events_of(&[("Far away", "2026-11-20T10:00[Europe/Paris]", "2026-11-20T11:00[Europe/Paris]", false, None, false)]);
         assert!(snapshot(&moment, None, None, Some(&far), &[]).agenda.unwrap().events.is_empty());
         // No calendar at all: no agenda on the card.
-        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default() };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default(), notices: None };
         assert!(snapshot(&moment, None, None, Some(&none), &[]).agenda.is_none());
         // In French, as the phone's agenda says it.
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "fr", &[]);
@@ -2315,10 +2332,12 @@ mod tests {
         assert_eq!(fr.card.words.mail, "Courriels");
     }
 
-    /// A long event set aside whole from its warning (fix W1): the card says
-    /// none of its overlaps either, as the Porch and the agenda.
+    /// The card says a conflict only once someone else's change made it, as
+    /// the Porch does (`overlaps::Notices`): none you came upon; due, it is
+    /// said; a long event set aside whole from its warning (fix W1), none of
+    /// its conflicts either, as the Porch and the agenda.
     #[test]
-    fn a_long_event_set_aside_whole_is_not_said() {
+    fn a_conflict_is_said_once_due_and_a_long_event_set_aside_never() {
         let now = at("2026-10-05T10:00[Europe/Paris]");
         let (config, tr, overrides) = (config(), Translator::new("en"), Overrides::default());
         let blocks = blocks(&now);
@@ -2327,11 +2346,15 @@ mod tests {
             ("Residency", "2026-10-05T09:00[Europe/Paris]", "2026-10-20T09:00[Europe/Paris]", false, None, false),
             ("Dentist", "2026-10-05T11:00[Europe/Paris]", "2026-10-05T12:00[Europe/Paris]", false, None, false),
         ]);
-        assert_eq!(overlap_lines(&moment, &input).len(), 1, "said before");
+        let none = sioul_core::overlaps::Notices::default();
+        assert!(overlap_lines_with(&moment, &input, &none).is_empty(), "come upon: never said");
+        let found = sioul_core::overlaps::conflicts(&input.events, 0, &sioul_core::agendas::Matrix::default());
+        let due = sioul_core::overlaps::Notices { due: found.iter().map(|o| (o.key.clone(), 0)).collect(), ..Default::default() };
+        assert_eq!(overlap_lines_with(&moment, &input, &due).len(), 1, "made by someone else's change: said");
         let residency = input.events.iter().find(|e| e.summary == "Residency").unwrap();
         let aside = sioul_core::overlaps::SetAside { events: [sioul_core::overlaps::occurrence_id(residency)].into(), ..Default::default() };
         let quiet = AgendaInput { aside, ..input };
-        assert!(overlap_lines(&moment, &quiet).is_empty(), "set aside whole");
+        assert!(overlap_lines_with(&moment, &quiet, &due).is_empty(), "set aside whole");
     }
 
     /// The dates asked of the coming month, at the head of their days
@@ -2419,7 +2442,7 @@ mod tests {
         // No calendar, dates all the same: the agenda with them alone.
         let tr = Translator::new("en");
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
-        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default() };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default(), notices: None };
         let alone = snapshot_with(&moment, None, Some(&plan), Some(&none), &[], &More { dates: &dates, ..More::default() }).agenda.unwrap();
         assert!(alone.events.is_empty() && alone.dates.len() == 5);
     }

@@ -84,6 +84,15 @@ pub enum Kind {
     /// **Lock** while it is open (the window asks `bitwarden_state`, and
     /// locks with `bitwarden_lock`). Nothing in `value`, nothing saved.
     Vault,
+    /// The agendas, the window's own block (`AgendasSetup.qml`): each one's
+    /// whose, what it is for, when it reaches you, what you may do with it
+    /// (`agendas`). The window reads and writes them itself (`agendas_setup`,
+    /// `set_agenda_field`). Nothing in `value`.
+    Agendas,
+    /// The matrix of conflicts, the window's own block (`ConflictMatrix.qml`):
+    /// a box per pair of agendas, the exceptions to the rule its sentence
+    /// says (`agendas::Matrix`). Nothing in `value`.
+    Conflicts,
 }
 
 /// One of a setting's choices.
@@ -424,6 +433,11 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.ai_key(config);
         }
         "agenda" => {
+            // What each agenda is, then which of them are compared for conflicts (several agendas, 4 November 2026).
+            if !crate::vdir::collections(crate::vdir::Kind::Calendars).is_empty() {
+                b.push("agendas", "agendas", Kind::Agendas, SettingValue::Text(String::new()));
+                b.push("conflicts", "conflicts", Kind::Conflicts, SettingValue::Text(String::new()));
+            }
             b.collections(config, "calendars", crate::vdir::Kind::Calendars, "VEVENT");
             // Where a new event goes, chosen here (until then the first that takes events).
             let writable: Vec<Choice> = crate::vdir::collections(crate::vdir::Kind::Calendars)

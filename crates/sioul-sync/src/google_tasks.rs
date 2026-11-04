@@ -409,7 +409,9 @@ fn pull(api: &Api, list: &str, dir: &Path, state: &mut State, report: &mut Repor
             }
         };
         let text = merged(&before, task, parent.as_deref());
-        vdir::write_item(&dir.join(&file), &text).map_err(SyncError::Disk)?;
+        // What Google sent, as it came (the sync's copy, as CalDAV's pull keeps it): a list
+        // you keep read only in Sioul still follows its server (`agenda::guard`).
+        vdir::store_item(&dir.join(&file), &text).map_err(SyncError::Disk)?;
         let item = ItemState { href: id.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() };
         match position {
             Some(i) => state.items[i] = item,

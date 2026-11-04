@@ -1466,6 +1466,10 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("calendars", "work", t("Work", "Travail"), "#4c6b5c", ["VEVENT"]),
         ("calendars", "home-tasks", t("Home", "Maison"), "#9a7b4f", ["VTODO"]),
         ("calendars", "work-tasks", t("Work tasks", "Tâches du travail"), "#4c6b5c", ["VTODO"]),
+        # Several agendas (4 November 2026): a child's, shared with another parent, and a
+        # partner's, shared for when they are busy alone (read only, one word for every title).
+        ("calendars", "lea", "Léa", "#b07d3f", ["VEVENT"]),
+        ("calendars", "sam", "Sam", "#4f6d8f", ["VEVENT"]),
         ("contacts", "contacts", "Contacts", None, []),
     ]
     for kind, cid, name, colour, components in collections:
@@ -1473,7 +1477,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
         p.write(folder / "displayname", name)
         if colour:
             p.write(folder / "color", colour)
-        state = [f"url = {toml_string(DAV_URL + kind + '/noa/' + cid + '/')}", f"ctag = \"demo-{cid}-1\"", "read_only = false",
+        read_only = "true" if cid == "sam" else "false"
+        state = [f"url = {toml_string(DAV_URL + kind + '/noa/' + cid + '/')}", f"ctag = \"demo-{cid}-1\"", f"read_only = {read_only}",
                  "components = " + toml_list(components)]
         p.write(p.state / "dav" / DAV / kind / f"{cid}.toml", "\n".join(state) + "\n")
 
@@ -1505,6 +1510,11 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("work", event(c, "fernhill-pages", t("Fernhill: pages kick-off", "Fougères : lancement des pages"), c.weekday_after(8), "10:00", "11:00",
                        location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),
         ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Étienne")),
+        # Léa's agenda: a swimming lesson, a dentist; Sam's, busy times alone.
+        ("lea", event(c, "lea-swimming", t("Swimming lesson", "Cours de natation"), c.this_week(2), "17:00", "18:00", location=t("Riverside pool", "Piscine des Berges"))),
+        ("lea", event(c, "lea-dentist", t("Dentist", "Dentiste"), c.weekday_after(3), "10:00", "10:30", location=t("2 Rue Imaginaire, Lyon", "2 rue Imaginaire, Lyon"))),
+        ("sam", event(c, "sam-busy-1", "Busy", c.this_week(1), "09:00", "12:00")),
+        ("sam", event(c, "sam-busy-2", "Busy", c.this_week(3), "14:00", "18:00")),
     ]
     if ONGOING:
         events += ongoing_events(c)
@@ -2652,6 +2662,15 @@ list = "{DAV}/home-tasks"
 
 [agenda]
 day_start = 8
+
+# Several agendas: what each one is (Agenda ⚙ ▸ Your agendas).
+[agenda.calendars."{DAV}/lea"]
+whose = "child"
+name = "Léa"
+
+[agenda.calendars."{DAV}/sam"]
+whose = "partner"
+name = "Sam"
 
 [map]
 geocode = false

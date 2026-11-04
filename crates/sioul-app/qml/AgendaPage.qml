@@ -109,28 +109,6 @@ Item {
     }
     readonly property int monthBarHeight: 15
 
-    // A warning for two events at once as it is said (`pim::overlaps_of`): an event of 24
-    // hours or more once, "During Residency (Mon 2 Nov 10:00 → Mon 30 Nov 10:15): 34 other
-    // events" (fix W1); else the pair, each event by its clock times or, over several days,
-    // its span (`when`, fix W2). `today`: as the Porch says today's.
-    function warningWords(row, today) {
-        if (row.kind === "during")
-            return page.sioul.textArgs(today ? "overlap-during-today" : "overlap-during", JSON.stringify({ title: row.event.title, span: row.event.when, count: today ? row.others_today : row.others }))
-        const one = e => e.title + " (" + (e.when || e.from + " – " + e.to) + ")"
-        const words = { first: one(row.first), second: one(row.second), gap: row.gap, needed: row.needed, source: row.source }
-        // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
-        if (today)
-            return page.sioul.textArgs(row.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify(words))
-        words.day = new Date(row.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
-        return page.sioul.textArgs(row.at_once ? "overlap-day" : "overlap-day-close", JSON.stringify(words))
-    }
-
-    // What a warning's "Don't mention it again" sets aside (`pim::set_overlap_aside`): a pair's
-    // key; a long event whole and the pairs it holds, which a Sioul before reads.
-    function warningAside(row) {
-        return row.kind === "during" ? [row.key].concat(row.keys || []).join("\n") : row.key
-    }
-
     // An event over several days' lines through a day of a list (`lines`, `ongoing::Line`),
     // made only for a day that has some, so that the lists cost nothing more without
     // them: SpanLine.qml on `parent` (the list's content), from `from(line)` to
@@ -238,22 +216,12 @@ Item {
     // "Show anyway": the steps quiet time folds on coming days, drawn.
     property bool showAnyway: false
     // What every view shows on this device ("Show", agenda-view.toml):
-    // {steps, needs, doses, calendars: [{id, name}]}, a calendar by its place
-    // ("account/id"), two of one name apart; all shown until you say.
+    // {steps, needs, doses, legs}; all shown until you say.
     property var view: JSON.parse(page.sioul.agendaView() || "{}")
-    readonly property var hiddenCalendars: (page.view.calendars || []).map(c => c.id)
-    readonly property var hide: ({ steps: page.view.steps === false, needs: page.view.needs === false, doses: page.view.doses === false, calendars: page.hiddenCalendars })
-    // The calendars of the days shown, and those Show hides: Show's list, {id, name}.
-    readonly property var calendarsShown: {
-        const out = (page.view.calendars || []).slice()
-        for (const day of page.shown.days)
-            for (const row of (day.head || []).concat(day.timed || [], day.lines || [], (day.comes || {}).rows || [], page.shown.spans || [])) {
-                const source = row.item.source || {}
-                if (source.type === "calendar" && source.collection && !out.some(c => c.id === source.collection))
-                    out.push({ id: source.collection, name: source.calendar || source.collection })
-            }
-        return out.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-    }
+    // What the views leave out: Show's parts, and the agendas the filter leaves out now, by
+    // place ("account/id", the agenda's `hidden`: what the hours admit, or your word until
+    // work's hours change; AgendaFilter.qml).
+    readonly property var hide: ({ steps: page.view.steps === false, needs: page.view.needs === false, doses: page.view.doses === false, calendars: page.shown.hidden || [] })
     // Whether a day shown has steps quiet time folds: "Show anyway" offered.
     readonly property bool anyFolded: page.shown.days.some(d => (d.bands || []).length > 0)
 
@@ -264,20 +232,13 @@ Item {
         page.saveView(changed)
     }
 
-    function showCalendar(calendar, on) {
-        const hidden = (page.view.calendars || []).filter(c => c.id !== calendar.id)
-        if (!on)
-            hidden.push({ id: calendar.id, name: calendar.name })
-        page.saveView(Object.assign({}, page.view, { calendars: hidden }))
-    }
-
     function saveView(changed) {
         const problem = page.sioul.setAgendaView(JSON.stringify(changed))
         if (problem !== "") {
             page.sioul.status = problem
         } else {
             page.view = changed
-            // The lines' lanes leave a hidden calendar out (`ongoing::spans`): laid out again.
+            // Rides as events of their own are made in Rust: laid out again.
             page.readAgain()
         }
     }
@@ -447,6 +408,28 @@ Item {
         showMenu.close()
     }
 
+    // For the window's pictures: Agenda ⚙, open at one of its settings or closed, and as an image.
+    function openSettings(open, key) {
+        const button = page.narrow ? agendaSettingsNarrow : agendaSettings
+        button.show(open)
+        if (open && key)
+            Qt.callLater(() => button.scrollTo(key))
+    }
+
+    function grabSettings(path) {
+        (page.narrow ? agendaSettingsNarrow : agendaSettings).grab(path)
+    }
+
+    // For the window's pictures: the agenda filter's list open (it is given back), then closed.
+    function openFilter() {
+        return (page.narrow ? filterButtonNarrow : filterButton).open()
+    }
+
+    function closeFilter() {
+        filterButton.close()
+        filterButtonNarrow.close()
+    }
+
     // For the window's tests.
     function fillEvent(text, from, to, how) {
         eventDialog.now().fill(text, from, to, how)
@@ -534,58 +517,6 @@ Item {
             Layout.preferredWidth: columns.width
             spacing: 8
 
-            // Two events at once in the next two weeks, the time to get there and
-            // back counted: said above the agenda until you say to leave it.
-            ColumnLayout {
-                id: overlapsList
-
-                // Made with the agenda, off the window's thread.
-                readonly property var rows: JSON.parse(page.sioul.overlaps || "[]")
-                // Three above any view at most, then "+n more", which unfolds the rest (fix W1:
-                // a month-long event's warnings hid the view under them).
-                property bool unfolded: false
-
-                visible: overlapsList.rows.length > 0
-                Layout.fillWidth: true
-                spacing: 4
-
-                Repeater {
-                    model: overlapsList.unfolded ? overlapsList.rows : overlapsList.rows.slice(0, 3)
-
-                    delegate: RowLayout {
-                        id: clash
-
-                        required property var modelData
-
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Label {
-                            Layout.fillWidth: true
-                            // Its words wrap at the row's width: they never widen it past a phone's
-                            // (found in the ongoing round's pictures: a month-long event's warnings).
-                            Layout.preferredWidth: 0
-                            text: page.warningWords(clash.modelData, false)
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: page.theme.text
-                        }
-                        Button {
-                            flat: true
-                            text: page.sioul.text("overlap-set-aside")
-                            onClicked: page.sioul.setOverlapAside(page.warningAside(clash.modelData))
-                        }
-                    }
-                }
-                Button {
-                    objectName: "overlapsMore"
-                    visible: overlapsList.rows.length > 3
-                    flat: true
-                    text: overlapsList.unfolded ? page.sioul.text("overlap-fewer") : page.sioul.textArgs("overlap-more", JSON.stringify({ count: overlapsList.rows.length - 3 }))
-                    onClicked: overlapsList.unfolded = !overlapsList.unfolded
-                }
-            }
-
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
@@ -629,7 +560,18 @@ Item {
                     currentIndex: page.modes.indexOf(page.mode)
                     onActivated: index => page.mode = page.modes[index]
                 }
-                // What every view shows here: the plan's steps, meals and the night, doses, each calendar.
+                // Which agendas every view draws (several agendas): the one filter, on a phone on the title's line.
+                AgendaFilter {
+                    id: filterButton
+
+                    visible: !page.narrow && (page.shown.filter || { groups: [] }).groups.length > 0
+                    sioul: page.sioul
+                    theme: page.theme
+                    shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    iconOnly: page.width < 1000
+                    Layout.preferredWidth: page.width < 1000 ? 40 : -1
+                }
+                // What every view shows here: the plan's steps, meals and the night, doses, rides.
                 // Words beside its icon on a wide window; on a phone, on the title's line.
                 Button {
                     id: showButton
@@ -655,6 +597,8 @@ Item {
                     onClicked: page.newEvent("")
                 }
                 SettingsButton {
+                    id: agendaSettings
+
                     visible: !page.narrow
                     sioul: page.sioul
                     theme: page.theme
@@ -668,11 +612,23 @@ Item {
 
                 Label {
                     Layout.fillWidth: true
+                    // What the buttons leave of the line, its words wrapping: it never widens the line.
+                    Layout.preferredWidth: 0
                     text: page.title()
                     textFormat: Text.PlainText
                     font.pixelSize: 19
                     wrapMode: Text.Wrap
                     color: page.theme.text
+                }
+                AgendaFilter {
+                    id: filterButtonNarrow
+
+                    visible: (page.shown.filter || { groups: [] }).groups.length > 0
+                    Layout.preferredWidth: 40
+                    sioul: page.sioul
+                    theme: page.theme
+                    shown: page.shown.filter || ({ chosen: false, groups: [] })
+                    narrow: true
                 }
                 Button {
                     id: showButtonNarrow
@@ -687,6 +643,8 @@ Item {
                     onClicked: page.openShow()
                 }
                 SettingsButton {
+                    id: agendaSettingsNarrow
+
                     sioul: page.sioul
                     theme: page.theme
                     view: "agenda"
@@ -699,7 +657,7 @@ Item {
                 id: headLine
 
                 readonly property var day: page.mode === "day" && page.shown.days.length === 1 ? page.shown.days[0] : null
-                readonly property var chips: headLine.day && page.narrow ? (headLine.day.head || []).filter(p => !(p.item.source && p.item.source.type === "calendar" && page.hiddenCalendars.indexOf(p.item.source.collection) >= 0)) : []
+                readonly property var chips: headLine.day && page.narrow ? (headLine.day.head || []).filter(p => !(p.item.source && p.item.source.type === "calendar" && page.hide.calendars.indexOf(p.item.source.collection) >= 0)) : []
 
                 // Above What comes too, while it shows today (§4.2).
                 visible: (page.mode === "day" || page.mode === "week" || page.mode === "agenda") && (page.headNow !== null || headLine.chips.length > 0)
@@ -1222,7 +1180,8 @@ Item {
         }
     }
 
-    // Show: what every view draws on this device (the Day, the Week, What comes and the Month).
+    // Show: what every view draws on this device (the Day, the Week, What comes and the Month);
+    // which agendas they draw is the filter's (AgendaFilter.qml).
     Later {
         id: showMenu
 
@@ -1268,27 +1227,6 @@ Item {
                     checkable: true
                     checked: page.showAnyway
                     onTriggered: page.showAnyway = checked
-                }
-                MenuSeparator {
-                    visible: page.calendarsShown.length > 0
-                    height: visible ? implicitHeight : 0
-                }
-                Instantiator {
-                    model: page.calendarsShown
-
-                    delegate: MenuItem {
-                        id: calendarLine
-
-                        required property var modelData
-
-                        // "&" marks a shortcut in a menu: "&&" is one.
-                        text: page.theme.plain(calendarLine.modelData.name.replace(/&/g, "&&"))
-                        checkable: true
-                        checked: page.hiddenCalendars.indexOf(calendarLine.modelData.id) < 0
-                        onTriggered: page.showCalendar(calendarLine.modelData, checked)
-                    }
-                    onObjectAdded: (index, object) => showForm.insertItem(6 + index, object)
-                    onObjectRemoved: (index, object) => showForm.removeItem(object)
                 }
             }
         }

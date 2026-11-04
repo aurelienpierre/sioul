@@ -3673,6 +3673,55 @@ day-let-plan-done = Le plan place de nouveau « { $title } ».
 agenda-read-only = Ce calendrier ne peut qu’être lu.
 agenda-tasks-only = Cette liste ne tient que des tâches : un événement ne peut y aller.
 agenda-events-only = Ce calendrier ne tient que des événements : une tâche ne peut y aller.
+agenda-availability-only = Seules ses heures occupées sont partagées ici : rien d’autre n’en est montré ni changé.
+# Plusieurs agendas (4 novembre 2026) : le filtre, ce qu’est chaque agenda, les conflits.
+agendas-filter = Agendas
+agendas-filter-hours = Comme disent les heures
+agendas-filter-until = Votre choix tient jusqu’à { $time }, puis les heures décident de nouveau.
+agendas-fold = Replier { $group }
+agendas-unfold = Déplier { $group }
+agendas-group-yours = Les vôtres
+agendas-group-children = Enfants
+agendas-group-parent = L’autre parent
+agendas-group-partners = Partenaires
+agendas-group-shared = Partagés avec vous
+agenda-whose = À qui il est
+agenda-whose-yours = À vous
+agenda-whose-child = À un enfant
+agenda-whose-parent = À l’autre parent
+agenda-whose-partner = À un ou une partenaire
+agenda-whose-shared = Partagé avec vous
+agenda-person = Son nom
+agenda-person-child = Le nom de l’enfant
+agenda-for = Pour
+agenda-reaches = Vous atteint
+agenda-reaches-all-day = Toute la journée
+agenda-reaches-outside-work = Hors des heures de travail
+agenda-access = Vous pouvez
+agenda-access-write = Lire et écrire
+agenda-access-read = Lire seulement
+agenda-access-availability = Voir seulement quand il est pris
+agenda-server-read-only = Son serveur vous le laisse lire seulement.
+# Sur la fiche d’un événement : vous à deux endroits. $whose : l’agenda de l’autre événement (le nom d’une personne), « none » pour le vôtre ; $why : « accepted » (une invitation acceptée dans l’agenda d’un autre), « tentative », sinon « none ».
+conflict-same-time = En même temps que « { $title } »{ $whose ->
+        [none] {""}
+       *[other] {" "}de { $whose }
+    }{ $why ->
+        [accepted] , que vous avez accepté.
+        [tentative] , pas encore confirmé.
+       *[none] .
+    }
+conflict-tight = Serré avec « { $title } »{ $whose ->
+        [none] {""}
+       *[other] {" "}de { $whose }
+    } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
+conflict-none-movable = Aucun des deux ne peut être déplacé ici : gardez les deux, ou déplacez le vôtre là où il vit.
+conflict-keep-both = Garder les deux
+conflict-move-mine = Déplacer le mien
+conflicts-itself = { $agenda } avec lui-même
+conflicts-pair = { $first } avec { $second }
+conflicts-with-itself = Avec lui-même
+conflicts-with = Avec { $agenda }
 agenda-move-which = Déplacé à { $time } : cette fois seulement, ou toutes les fois ?
 agenda-move-set-days = Sa règle fixe ses jours : déplacez cette fois seulement, ou changez sa répétition dans son formulaire.
 health-readable-done = Terminé
@@ -6373,6 +6422,10 @@ reach-card-let-it-done = Elle arrive au prochain regard du téléphone.
 set-agenda-calendar = Les nouveaux événements vont dans
 set-agenda-calendar-help = L’agenda où va un nouvel événement ; l’éditeur de l’événement peut en choisir un autre, et déplacer un événement plus tard.
 set-agenda-calendar-first = Le premier agenda qui prend des événements
+set-agendas = Vos agendas
+set-agendas-help = Ce qu’est chacun : à qui, pour quoi, quand il vous atteint, ce que vous pouvez en faire. Sioul l’a deviné de ce qu’il voyait ; ouvrez-en un pour dire autrement.
+set-conflicts = Conflits
+set-conflicts-help = Un conflit, c’est vous à deux endroits : les événements de vos agendas, les invitations acceptées, les événements des enfants que vous prenez. Une paire cochée compare tous ses événements, quel que soit qui ils demandent ; une des vôtres décochée, aucun.
 event-calendar-in = Dans { $name }
 event-calendar-here-computer = Seulement sur cet ordinateur : un agenda propre à cet appareil, que votre partage ne transporte pas.
 event-calendar-here-phone = Seulement sur ce téléphone : un agenda propre à cet appareil, que votre partage ne transporte pas.
@@ -6399,7 +6452,7 @@ collection-events-and-tasks = événements et tâches
 
 # The time kept between two events (22 October 2026): set by you alone; otherwise, two events overlap only when their times do.
 set-agenda-between = Temps gardé entre deux événements
-set-agenda-between-help = Plus proches que cela, deux événements sont dits trop proches. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
+set-agenda-between-help = Plus proches que cela, deux événements sont serrés, jamais en même temps. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
 set-agenda-time-zone = Fuseau horaire
 set-agenda-time-zone-help = Le fuseau horaire dans lequel l’agenda, le planning et les rappels disent les heures, et décident d’aujourd’hui, sur cet appareil : le sien, suivi quand il change, ou un autre choisi, pour un ordinateur dont l’horloge reste à la maison pendant un voyage. Un événement garde son instant ; seule la façon dont son heure se lit change. Les prises gardent l’horloge du système.
 set-agenda-time-zone-device = Suivre cet appareil ({ $zone })

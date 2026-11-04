@@ -67,6 +67,13 @@ struct Shown {
     /// For each day shown, the bars passing through it beyond three ("+2").
     #[serde(skip_serializing_if = "no_more")]
     bars_more: Vec<u32>,
+    /// The agendas the filter leaves out now, by place (`FilterNow::hidden`):
+    /// their things are not among the days; the lists' and the grids' rows
+    /// of them, if any, are left out by the page too.
+    #[serde(skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    hidden: std::collections::BTreeSet<String>,
+    /// The filter as its list shows it, the agendas that take events (`FilterNow::shown`).
+    filter: FilterShown,
 }
 
 fn no_more(more: &[u32]) -> bool {
@@ -123,6 +130,20 @@ struct DayShown {
     /// writes for them (an event's first row, "Ongoing since …", its end mark).
     #[serde(skip_serializing_if = "nothing_through")]
     through: sioul_core::ongoing::Through,
+    /// The Day's and the Week's conflicts of the day (`overlaps::conflicts`):
+    /// two of its timed things by their ids, a thin bracket joining them;
+    /// `tight` when only the time kept around them overlaps.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    conflicts: Vec<Bracket>,
+}
+
+/// Two conflicting things of a day, joined by a thin neutral bracket in the grids.
+#[derive(Debug, Clone, Serialize)]
+struct Bracket {
+    a: String,
+    b: String,
+    #[serde(skip_serializing_if = "is_false")]
+    tight: bool,
 }
 
 /// A day of What comes: its rows with their details, its doses, the plan's line.
@@ -198,6 +219,9 @@ struct Detail {
     task: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     list: String,
+    /// A busy time of an agenda for its availability only (`agendas`): drawn as a quiet block.
+    #[serde(skip_serializing_if = "is_false")]
+    busy: bool,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -206,7 +230,7 @@ fn is_false(value: &bool) -> bool {
 
 impl Detail {
     fn of(o: &Occurrence) -> Detail {
-        Detail { end: o.end, location: o.location.clone(), cancelled: o.cancelled, tentative: o.tentative, read_only: o.read_only, with_others: o.with_others, task: o.task.clone(), list: o.list.clone() }
+        Detail { end: o.end, location: o.location.clone(), cancelled: o.cancelled, tentative: o.tentative, read_only: o.read_only, with_others: o.with_others, task: o.task.clone(), list: o.list.clone(), busy: o.busy }
     }
 }
 
@@ -290,6 +314,9 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         "organizer": o.organizer,
         "attendees": o.attendees,
         "why": item.map(|i| i.can.why).unwrap_or_default(),
+        // One person in two places, said once on the card (research on several agendas, §5.3).
+        "conflicts": pim::conflicts_known(&o.key, o.start),
+        "busy": o.busy,
     }))
 }
 
@@ -304,11 +331,10 @@ pub(crate) fn event_details(key: &str, start: i64) -> String {
 }
 
 /// What the Day and the Week show on this device ("Show"): the plan's steps,
-/// meals, naps and the night, doses, and each calendar, all shown unless you
-/// say. A calendar hidden is kept by its place, "account/id", with its name
-/// for Show's list: two calendars of one name stay apart (review of 3a2fbd4,
-/// later 11). Kept in the state folder, never shared: each device shows what
-/// you ask of it there. Written only when it changes.
+/// meals, naps and the night, doses, rides as events of their own; and the
+/// agenda filter's word while it holds (`filter`, several agendas). Kept in
+/// the state folder, never shared: each device shows what you ask of it
+/// there. Written only when it changes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(default)]
 pub(crate) struct View {
@@ -319,15 +345,22 @@ pub(crate) struct View {
     /// rather than a quiet line in the appointment's lead (part E; D25). Off
     /// unless you say; an older Show without it reads as off.
     legs: bool,
+    /// The agenda filter: agendas turned on or off against the hours, until
+    /// work's hours change (`agendas::Override`); none, as the hours say.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<sioul_core::agendas::Override>,
+    /// Calendars Show hid by their places until 4 November 2026: read once
+    /// into the filter, as your word until work's hours change, and never
+    /// written again (a Sioul before shows them all).
+    #[serde(skip_serializing)]
     calendars: Vec<HiddenCalendar>,
     /// Calendars hidden by their names alone, as Show kept them until 28
-    /// October 2026: read once, each name as every calendar it names then,
-    /// and never written again.
+    /// October 2026: read once, each name as every calendar it names then.
     #[serde(skip_serializing)]
     calendars_hidden: Vec<String>,
 }
 
-/// A calendar Show hides: its place (`timeline::collection_of`), and its name when it was hidden.
+/// A calendar an older Show hid: its place (`timeline::collection_of`), and its name when it was hidden.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 struct HiddenCalendar {
     id: String,
@@ -337,14 +370,7 @@ struct HiddenCalendar {
 
 impl Default for View {
     fn default() -> View {
-        View { steps: true, needs: true, doses: true, legs: false, calendars: Vec::new(), calendars_hidden: Vec::new() }
-    }
-}
-
-impl View {
-    /// Whether a thing of this source is left out: an event or a block of a calendar hidden.
-    fn hides(&self, source: &timeline::Source) -> bool {
-        matches!(source, timeline::Source::Calendar { collection, .. } if self.calendars.iter().any(|c| c.id == *collection))
+        View { steps: true, needs: true, doses: true, legs: false, filter: None, calendars: Vec::new(), calendars_hidden: Vec::new() }
     }
 }
 
@@ -352,23 +378,29 @@ fn view_path() -> std::path::PathBuf {
     sioul_core::config::state_dir().join("agenda-view.toml")
 }
 
-/// What Show says, as JSON (`{steps, needs, doses, calendars: [{id, name}]}`);
-/// the default when nothing was said or the file does not read.
+/// What Show says, as JSON (`{steps, needs, doses, legs}`); the default when
+/// nothing was said or the file does not read. The filter is the agenda's
+/// own JSON (`filter`).
 pub(crate) fn view() -> String {
-    json(&read_view())
+    let mut view = read_view();
+    view.filter = None;
+    json(&view)
 }
 
 fn read_view() -> View {
     let Ok(text) = std::fs::read_to_string(view_path()) else { return View::default() };
     let mut view: View = toml::from_str(&text).unwrap_or_default();
-    if !view.calendars_hidden.is_empty() {
-        // An older Show, by names: each name as the calendars it names now, written once in places.
+    if !view.calendars_hidden.is_empty() || !view.calendars.is_empty() {
+        // An older Show, by names: each name as the calendars it names now.
         let names = std::mem::take(&mut view.calendars_hidden);
+        let mut hidden: Vec<String> = std::mem::take(&mut view.calendars).into_iter().map(|c| c.id).collect();
         for collection in sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).into_iter().filter(|c| names.contains(&c.name)) {
-            let id = format!("{}/{}", collection.account, collection.id);
-            if !view.calendars.iter().any(|c| c.id == id) {
-                view.calendars.push(HiddenCalendar { id, name: collection.name.clone() });
-            }
+            hidden.push(sioul_core::agendas::place(&collection));
+        }
+        // Your word, kept as the filter's until work's hours change, then the hours decide.
+        if view.filter.is_none() {
+            let now = filter_now_with(None);
+            view.filter = sioul_core::agendas::turned(None, &now.agendas, &hidden, false, now.hours, now.now);
         }
         let _ = write_view_over(&text, &view);
     }
@@ -390,12 +422,17 @@ fn write_view_over(was: &str, view: &View) -> std::io::Result<bool> {
 }
 
 /// Show changed (`view`'s JSON): written whole, beside then in place, under
-/// the file's lock, as an older Show's rewriting is. Returns what went
-/// wrong, else "".
+/// the file's lock, as an older Show's rewriting is; the filter's word kept
+/// as the file holds it (its own writer is `turn`). Returns what went wrong, else "".
 pub(crate) fn set_view(asked: &str) -> String {
-    let Ok(view) = serde_json::from_str::<View>(asked) else { return tr().text("agenda-show-not-saved", None) };
+    let Ok(mut view) = serde_json::from_str::<View>(asked) else { return tr().text("agenda-show-not-saved", None) };
+    // Calendars are the filter's now: what an older page sends of them is left aside.
+    view.calendars.clear();
+    view.calendars_hidden.clear();
     sioul_core::filelock::with_lock(&view_path(), || {
-        if view == read_view() {
+        let now = read_view();
+        view.filter = now.filter.clone();
+        if view == now {
             return String::new();
         }
         write_view(&view).map_or_else(|_| tr().text("agenda-show-not-saved", None), |()| String::new())
@@ -409,6 +446,200 @@ fn write_view(view: &View) -> std::io::Result<()> {
     }
     let text = toml::to_string(view).unwrap_or_default();
     sioul_core::filelock::replace(&path, text.as_bytes())
+}
+
+/// The agenda filter as it stands now (several agendas): every agenda, work's
+/// hours, and your word while it holds.
+pub(crate) struct FilterNow {
+    agendas: Vec<sioul_core::agendas::Agenda>,
+    hours: sioul_core::agendas::Hours,
+    over: Option<sioul_core::agendas::Override>,
+    now: i64,
+    zoned: Zoned,
+}
+
+/// The filter now, your word read from Show's file.
+pub(crate) fn filter_now() -> FilterNow {
+    let over = read_view().filter;
+    filter_now_with(over)
+}
+
+fn filter_now_with(over: Option<sioul_core::agendas::Override>) -> FilterNow {
+    let config = load_config();
+    let zoned = sioul_core::zone::now();
+    let hours = sioul_core::agendas::Hours::now(&config, &zoned);
+    FilterNow { agendas: sioul_core::agendas::all(&config), hours, over, now: zoned.timestamp().as_second(), zoned }
+}
+
+impl FilterNow {
+    /// The places of the agendas left out now.
+    pub(crate) fn hidden(&self) -> std::collections::BTreeSet<String> {
+        sioul_core::agendas::hidden(&self.agendas, self.hours, self.over.as_ref(), self.now)
+    }
+
+    /// Your word holds now.
+    fn chosen(&self) -> bool {
+        self.over.as_ref().is_some_and(|o| o.holds(self.hours, self.now))
+    }
+
+    /// The filter as its list shows it: the agendas taking events (the agenda's
+    /// pages) or tasks (the task views), grouped by whose they are, yours
+    /// first, each with whether it shows now and whether the hours would show it.
+    pub(crate) fn shown(&self, tasks: bool) -> FilterShown {
+        use sioul_core::agendas::{Whose, shown, usual};
+        let mut groups: Vec<GroupShown> = Vec::new();
+        let mut sorted: Vec<&sioul_core::agendas::Agenda> = self.agendas.iter().filter(|a| if tasks { a.tasks } else { a.events }).collect();
+        sorted.sort_by(|a, b| (a.whose, a.person.to_lowercase(), a.name.to_lowercase(), &a.id).cmp(&(b.whose, b.person.to_lowercase(), b.name.to_lowercase(), &b.id)));
+        for agenda in sorted {
+            let (whose, person) = agenda.group();
+            let key = format!("{}:{person}", whose.id());
+            if groups.last().is_none_or(|g| g.key != key) {
+                let title = match whose {
+                    Whose::Yours => tr().text("agendas-group-yours", None),
+                    _ if !agenda.person.is_empty() => agenda.person.clone(),
+                    Whose::Child => tr().text("agendas-group-children", None),
+                    Whose::Parent => tr().text("agendas-group-parent", None),
+                    Whose::Partner => tr().text("agendas-group-partners", None),
+                    Whose::Shared => tr().text("agendas-group-shared", None),
+                };
+                groups.push(GroupShown { key: key.clone(), title, agendas: Vec::new() });
+            }
+            if let Some(group) = groups.last_mut() {
+                group.agendas.push(AgendaShown { id: agenda.id.clone(), name: agenda.name.clone(), colour: agenda.colour.clone(), on: shown(agenda, self.hours, self.over.as_ref(), self.now), usual: usual(agenda, self.hours) });
+            }
+        }
+        let until = if self.chosen() {
+            self.over.as_ref().and_then(|o| o.until).and_then(|until| jiff::Timestamp::from_second(until).ok()).map(|t| sioul_core::quiet::until_text(tr(), &t.to_zoned(self.zoned.time_zone().clone()), &self.zoned)).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        FilterShown { chosen: self.chosen(), until, groups }
+    }
+}
+
+/// The agenda filter as its list shows it (`FilterNow::shown`).
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct FilterShown {
+    /// Your word holds now: "As the hours say" gives the hours back.
+    chosen: bool,
+    /// When the hours decide again, in words ("17:00", "tomorrow at 09:00"); "" without an end.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    until: String,
+    groups: Vec<GroupShown>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct GroupShown {
+    /// "yours:", "child:léa": whose, and whose name.
+    key: String,
+    title: String,
+    agendas: Vec<AgendaShown>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AgendaShown {
+    id: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    colour: Option<String>,
+    /// Shown now.
+    on: bool,
+    /// What the hours say of it now.
+    usual: bool,
+}
+
+/// Agendas turned on or off by hand (`ids`, their places): your word until
+/// work's hours change (`agendas::turned`), kept in Show's file under its
+/// lock. Returns what went wrong, else "".
+pub(crate) fn turn(ids: &[String], on: bool) -> String {
+    write_filter(|now| sioul_core::agendas::turned(now.over.as_ref(), &now.agendas, ids, on, now.hours, now.now))
+}
+
+/// "As the hours say": your word on the filter taken back.
+pub(crate) fn as_the_hours_say() -> String {
+    write_filter(|_| None)
+}
+
+fn write_filter(change: impl FnOnce(&FilterNow) -> Option<sioul_core::agendas::Override>) -> String {
+    sioul_core::filelock::with_lock(&view_path(), || {
+        let mut view = read_view();
+        let now = filter_now_with(view.filter.clone());
+        let filter = change(&now);
+        if filter == view.filter {
+            return String::new();
+        }
+        view.filter = filter;
+        write_view(&view).map_or_else(|_| tr().text("agenda-show-not-saved", None), |()| String::new())
+    })
+}
+
+/// Agenda ⚙'s two blocks, as JSON (several agendas): each agenda (calendars
+/// and task lists) with what it is, what was said of it and what may be
+/// chosen; then the matrix of conflicts between the agendas that take
+/// events, each pair with whether its box is ticked and what it shows
+/// unsaid. Read when the panel opens (the collections and the configuration).
+pub(crate) fn setup() -> String {
+    let config = load_config();
+    let agendas = sioul_core::agendas::all(&config);
+    let matrix = sioul_core::agendas::Matrix::of(&config, &agendas);
+    let collections = sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars);
+    let rows: Vec<serde_json::Value> = agendas
+        .iter()
+        .map(|a| {
+            let place = collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| c.place(&config)).unwrap_or_default();
+            serde_json::json!({
+                "id": a.id,
+                "name": a.name,
+                "colour": a.colour,
+                "place": if place.is_empty() { tr().text("collection-here", None) } else { place },
+                "events": a.events,
+                "tasks": a.tasks,
+                "whose": a.whose.id(),
+                "person": a.person,
+                "area": a.area.id(),
+                "reaches": a.reaches.id(),
+                "access": a.access.id(),
+                "server_read_only": a.server_read_only,
+                "for_work": a.for_work(),
+                "said": a.said,
+            })
+        })
+        .collect();
+    let events: Vec<&sioul_core::agendas::Agenda> = agendas.iter().filter(|a| a.events).collect();
+    let mut pairs = Vec::new();
+    for (i, a) in events.iter().enumerate() {
+        for b in &events[i..] {
+            pairs.push(serde_json::json!({ "a": a.id, "b": b.id, "ticked": matrix.ticked(&a.id, &b.id), "usual": matrix.usual(&a.id, &b.id) }));
+        }
+    }
+    json(&serde_json::json!({ "agendas": rows, "pairs": pairs }))
+}
+
+/// One field of an agenda's settings written (`agendas::set_field`); "" takes
+/// it back to the default. Returns what went wrong, else "".
+pub(crate) fn set_field(id: &str, field: &str, value: &str) -> String {
+    sioul_core::agendas::set_field(&crate::backend::config_path(), id, field, value).err().unwrap_or_default()
+}
+
+/// A pair of the matrix ticked or not: your word, or none when the box is
+/// back to what it shows unsaid. Returns what went wrong, else "".
+pub(crate) fn set_compared(a: &str, b: &str, ticked: bool) -> String {
+    let config = load_config();
+    let matrix = sioul_core::agendas::Matrix::of(&config, &sioul_core::agendas::all(&config));
+    sioul_core::agendas::set_warns(&crate::backend::config_path(), a, b, matrix.word_for(a, b, ticked)).err().unwrap_or_default()
+}
+
+/// The order of an agenda's lane in the Day and the Week (`timeline::lanes`):
+/// yours first, then each child's, another parent's, partners', shared ones;
+/// Sioul's own things (steps, meals) with yours, before your calendars.
+fn lane_of(agendas: &[sioul_core::agendas::Agenda]) -> impl Fn(&timeline::Item) -> (u32, String) + '_ {
+    move |item: &timeline::Item| match &item.source {
+        timeline::Source::Calendar { collection, .. } => {
+            let rank = agendas.iter().find(|a| a.id == *collection).map_or(0, |a| sioul_core::agendas::Whose::ALL.iter().position(|w| *w == a.whose).unwrap_or(0));
+            (u32::try_from(rank).unwrap_or(0), collection.clone())
+        }
+        _ => (0, String::new()),
+    }
 }
 
 /// Midnight of `date` where you are, Unix seconds.
@@ -613,17 +844,37 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         items = timeline::merge(items, stamp, &open);
     }
     named(&mut items);
+    // The agenda filter (several agendas): what the hours admit, unless you said
+    // otherwise until work's hours change. What it leaves out takes no lane, no
+    // bar and no column: it is not among the days.
+    let filter = filter_now();
+    let filtered = filter.hidden();
+    let left_out = |source: &timeline::Source| matches!(source, timeline::Source::Calendar { collection, .. } if filtered.contains(collection));
     // Events over several days, drawn once (`ongoing::spans`): a list writes each
     // once and draws its line; a grid draws its bars. `timeline::days` lays out
     // the rest, as it is: What comes without any of them, the grids without
-    // their bars (an evening past midnight keeps its hours there). Show's hidden
-    // calendars take no lane.
-    let show = read_view();
-    let spans = sioul_core::ongoing::spans(&items, state.from, state.days, &zone, tr(), &|item| show.hides(&item.source));
-    let laid: Vec<timeline::Item> = items.iter().filter(|item| if mode == Mode::Comes { !spans.spanning(&item.id) } else { !spans.bar(&item.id) }).cloned().collect();
+    // their bars (an evening past midnight keeps its hours there).
+    let spans = sioul_core::ongoing::spans(&items, state.from, state.days, &zone, tr(), &|item| left_out(&item.source));
+    let laid: Vec<timeline::Item> = items.iter().filter(|item| !left_out(&item.source)).filter(|item| if mode == Mode::Comes { !spans.spanning(&item.id) } else { !spans.bar(&item.id) }).cloned().collect();
     let mut days = timeline::days(&laid, state.from, state.days, today, &zone, tr());
     timeline::set_hours(&mut days, &load_config().week_hours(), &zone);
     let (frame, head) = if drawn { dressed(&mut days, &items, plan.as_deref(), &occurrences, (read_from, to), &tasks, &now) } else { (None, Vec::new()) };
+    // The Day and the Week: overlapping agendas side by side in lanes, yours first;
+    // conflicts joined by a thin bracket (one person in two places, §5.3 of the research).
+    let mut brackets: Vec<Vec<Bracket>> = days.iter().map(|_| Vec::new()).collect();
+    if drawn {
+        let lane = lane_of(&filter.agendas);
+        let found = pim::conflicts_among(&occurrences);
+        for (day, kept) in days.iter_mut().zip(brackets.iter_mut()) {
+            timeline::lanes(&mut day.timed, &lane);
+            let id_of = |o: &Occurrence| day.timed.iter().find(|p| matches!(&p.item.source, timeline::Source::Calendar { key, start, .. } if *key == o.key && *start == o.start)).map(|p| p.item.id.clone());
+            for conflict in &found {
+                if let (Some(a), Some(b)) = (id_of(&conflict.first), id_of(&conflict.second)) {
+                    kept.push(Bracket { a, b, tight: !conflict.at_once() });
+                }
+            }
+        }
+    }
     // What comes: each day's rows (`timeline::comes`), and today's head line above them.
     let planned: &[sioul_core::tasks::Task] = plan.as_ref().map(|p| p.loaded().tasks.as_slice()).unwrap_or_default();
     let quiet = plan.as_ref().and_then(|p| p.quiet());
@@ -668,7 +919,8 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             .zip(comes)
             .zip(lines)
             .zip(spans.days.clone())
-            .map(|(((d, comes), (lines, off)), through)| DayShown {
+            .zip(brackets)
+            .map(|((((d, comes), (lines, off)), through), conflicts)| DayShown {
                 date: d.date,
                 title: d.title,
                 today: d.today,
@@ -692,11 +944,14 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
                 off,
                 comes: comes.map(|c| ComesShown { rows: c.rows.into_iter().map(row).collect(), doses: c.doses, plan: c.plan }),
                 through,
+                conflicts,
             })
             .collect(),
         spans: spans.events.iter().cloned().map(|placed| Row { detail: detail(&placed), spans: false, placed }).collect(),
         bars: spans.bars.clone(),
         bars_more: spans.bars_more.clone(),
+        filter: filter.shown(false),
+        hidden: filtered.clone(),
     };
     (json(&shown), read)
 }
@@ -956,7 +1211,7 @@ fn named(items: &mut [timeline::Item]) {
 /// appointments come from the days' read when it holds tomorrow (`read`, its
 /// span), else are read, and are marked with their tasks (`known`). Every
 /// thing is named as the timeline names it (`named`: an errand by its kind,
-/// never by its prescription), a calendar that Show hides is left out, and a
+/// never by its prescription), an agenda the filter leaves out is left out, and a
 /// task's block that quiet time hides now (`hidden`) is said as work.
 fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurrences: &[Occurrence], read: (i64, i64), known: &[sioul_core::tasks::Task], hidden: &dyn Fn(&str) -> bool, now: &Zoned) -> Vec<timeline::HeadFrame> {
     let zone = now.time_zone().clone();
@@ -974,8 +1229,9 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
         .map(|(from, until, mode)| (from.timestamp().as_second(), until.timestamp().as_second(), mode))
         .collect();
     let (start, end) = (midnight(today, &zone), next_midnight.timestamp().as_second());
-    let view = read_view();
-    let shown = |item: &timeline::Item| !view.hides(&item.source);
+    // What the agenda filter leaves out now is not said either.
+    let filtered = filter_now().hidden();
+    let shown = |item: &timeline::Item| !matches!(&item.source, timeline::Source::Calendar { collection, .. } if filtered.contains(collection));
     let worded = |mut item: timeline::Item| {
         if matches!(item.kind, timeline::Kind::Block | timeline::Kind::Step) && item.privacy != timeline::Privacy::Health && !item.owner.is_empty() && hidden(&item.owner) {
             item.title = tr().text("head-work", None);
@@ -1410,12 +1666,12 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert_eq!(read_view(), View::default());
         let all: serde_json::Value = serde_json::from_str(&view()).unwrap();
-        assert_eq!(all, serde_json::json!({ "steps": true, "needs": true, "doses": true, "legs": false, "calendars": [] }));
+        assert_eq!(all, serde_json::json!({ "steps": true, "needs": true, "doses": true, "legs": false }));
         assert_eq!(set_view(r#"{"steps": true, "needs": false, "doses": true, "calendars": [{"id": "local/club", "name": "Club"}]}"#), "");
-        assert_eq!(read_view(), View { needs: false, calendars: vec![HiddenCalendar { id: "local/club".into(), name: "Club".into() }], ..View::default() });
+        assert_eq!(read_view(), View { needs: false, ..View::default() }, "calendars are the filter's: an older page's left aside");
         let written = std::fs::metadata(&path).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert_eq!(set_view(r#"{"needs": false, "calendars": [{"id": "local/club", "name": "Club"}]}"#), "", "what is not said stays shown");
+        assert_eq!(set_view(r#"{"needs": false}"#), "", "what is not said stays shown");
         assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), written, "the same said again writes nothing");
         assert_eq!(set_view("not json"), tr().text("agenda-show-not-saved", None));
         std::fs::write(&path, "steps = [").unwrap();
@@ -1448,33 +1704,35 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Show hides a calendar by its place, never by its name: of two
-    /// calendars named alike, the one hidden alone; an older Show, kept by
-    /// names, read once as every calendar its names name, written in places
-    /// (review of 3a2fbd4, later 11).
+    /// What an older Show hid, by places or by names, becomes the filter's
+    /// word, read once: both twins of a name it named left out until work's
+    /// hours change, never written back as it was; turned on again by hand,
+    /// the word goes; "As the hours say" takes it all back. Show's own
+    /// parts are never touched by the filter's writer, nor the filter by Show's.
     #[test]
-    fn show_hides_a_calendar_by_its_place() {
+    fn an_older_show_s_calendars_become_the_filter_s_word() {
         let _view = view_held();
         sioul_core::config::stand_ins_only();
         let first = vdir::create(Kind::Calendars, vdir::LOCAL, "Twin name", None, &["VEVENT"]).unwrap();
         let second = vdir::create(Kind::Calendars, vdir::LOCAL, "Twin name", None, &["VEVENT"]).unwrap();
-        let place = |c: &vdir::Collection| format!("{}/{}", c.account, c.id);
-        assert_ne!(place(&first), place(&second));
-        let source = |c: &vdir::Collection| timeline::Source::Calendar { key: c.dir.join("a.ics").display().to_string(), uid: "a".into(), start: 0, recurring: false, calendar: "Twin name".into(), collection: timeline::collection_of(&c.dir.join("a.ics").display().to_string()), clock: String::new() };
-        assert_eq!(timeline::collection_of(&first.dir.join("a.ics").display().to_string()), place(&first), "a file's calendar by its place");
-        let one = View { calendars: vec![HiddenCalendar { id: place(&first), name: "Twin name".into() }], ..View::default() };
-        assert!(one.hides(&source(&first)) && !one.hides(&source(&second)), "the one hidden alone");
-        // Kept by names before: read once as both, in places, and written so.
+        let other = vdir::create(Kind::Calendars, vdir::LOCAL, "Club", None, &["VEVENT"]).unwrap();
+        let place = sioul_core::agendas::place;
         std::fs::create_dir_all(view_path().parent().unwrap()).unwrap();
-        std::fs::write(view_path(), "steps = true\nneeds = true\ndoses = true\ncalendars_hidden = [\"Twin name\"]\n").unwrap();
-        let read = read_view();
-        assert!(read.hides(&source(&first)) && read.hides(&source(&second)), "as it hid them: {read:?}");
+        std::fs::write(view_path(), format!("steps = false\nneeds = true\ndoses = true\ncalendars_hidden = [\"Twin name\"]\n[[calendars]]\nid = \"{}\"\nname = \"Club\"\n", place(&other))).unwrap();
+        let hidden = filter_now().hidden();
+        assert!(hidden.contains(&place(&first)) && hidden.contains(&place(&second)) && hidden.contains(&place(&other)), "{hidden:?}");
         let text = std::fs::read_to_string(view_path()).unwrap();
-        assert!(!text.contains("calendars_hidden") && text.contains(&place(&first)) && text.contains(&place(&second)), "{text}");
-        assert_eq!(read_view(), read, "read once: the same since");
+        assert!(!text.contains("calendars_hidden") && !text.contains("[[calendars]]") && text.contains("[filter]") && text.contains("steps = false"), "{text}");
+        assert_eq!(turn(&[place(&other)], true), "");
+        assert!(!filter_now().hidden().contains(&place(&other)), "turned on again");
+        assert_eq!(set_view(r#"{"steps": true, "needs": true, "doses": true}"#), "");
+        assert!(filter_now().hidden().contains(&place(&first)), "Show's writer keeps the filter's word");
+        assert_eq!(as_the_hours_say(), "");
+        assert!(filter_now().hidden().is_empty() && read_view().steps, "as the hours say: no hours set, everything");
         let _ = std::fs::remove_file(view_path());
-        let _ = std::fs::remove_dir_all(&first.dir);
-        let _ = std::fs::remove_dir_all(&second.dir);
+        for c in [first, second, other] {
+            let _ = std::fs::remove_dir_all(&c.dir);
+        }
     }
 
     /// The agenda's job makes its days while another thread holds every
@@ -1600,9 +1858,16 @@ mod tests {
         }
         let shared = Arc::new(Shared::default());
         assert!(!shared.agenda_asked.load(Ordering::Relaxed));
-        // The job's own run (review of 85da7f0, later 13): the overlaps, and no days.
+        // The job's own run (review of 85da7f0, later 13): the conflicts found, and no days. Since
+        // several agendas the Porch is told only those someone else's change made (none here: a
+        // first look), and the cards know every one.
         let first = run(&shared);
-        assert!(first.overlaps.contains("overlap-dentist") && first.overlaps.contains("overlap-bank"), "{}", first.overlaps);
+        let dentist = calendar.dir.join("overlap-dentist.ics").display().to_string();
+        let start = sioul_core::agenda::occurrences(now.timestamp().as_second(), now.timestamp().as_second() + 86_400).into_iter().find(|o| o.uid == "overlap-dentist").map(|o| o.start).unwrap();
+        // Other tests' calendars meanwhile may hold events then too: the bank's is among them.
+        let said = pim::conflicts_known(&dentist, start);
+        assert!(said.iter().any(|s| s.contains("overlap-bank")), "found without the page: {said:?}");
+        assert!(!first.overlaps.contains("overlap-dentist"), "a conflict nobody else made is said to nobody: {}", first.overlaps);
         assert!(first.days.is_none(), "no days made: the page never asked, no plan yet");
         // From the first plan, the days, again at each run until the window has
         // shown them: a newer run never drops them (review of 85da7f0, later 10).
@@ -1808,11 +2073,10 @@ mod tests {
         let quiet = head_frames(&[quiet_block], work::plan_shown().as_deref(), &[], (0, 0), &known, &|uid| uid == "kinds-task", &evening);
         let said = quiet.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");
         assert!(said.contains(&tr().text("head-work", None)) && !said.contains("Quarterly report"), "{said}");
-        // A calendar that Show hides is left out of it, its first appointment with it.
+        // An agenda the filter leaves out is left out of it, its first appointment with it.
         {
             let _view = view_held();
-            let calendar_name = std::fs::read_to_string(calendar.dir.join("displayname")).unwrap();
-            assert_eq!(set_view(&serde_json::json!({ "calendars": [{ "id": format!("{}/{}", calendar.account, calendar.id), "name": calendar_name.trim() }] }).to_string()), "");
+            assert_eq!(turn(&[format!("{}/{}", calendar.account, calendar.id)], false), "");
             let hidden = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &evening);
             let _ = std::fs::remove_file(view_path());
             let said = hidden.iter().map(|f| f.text.as_str()).collect::<Vec<_>>().join(" | ");

@@ -14,6 +14,7 @@ Code: `crates/sioul-core/src/reminders.rs` (what to remind, when), `crates/sioul
 | A wait over (a step done, then "wait 14 days for the answer") | when the wait ends, at the next working hours, once the task is free (every task it waits for done; the longest wait) | the same |
 | A payment planned (a bill, a tax: a planned line of a budget) | when work starts, 2 working days before | no |
 
+- **A work agenda's events** ([client.md](client.md#several-agendas)): their reminders, before them, the working day before and their alarms, wait while work rests, as work's dates do, since recovery needs detachment from work (Sonnentag & Fritz 2007, [areas.md](areas.md); research/agendas.md §6, recommendation 2); outside work's hours they do not come, and one too late then is not told. An agenda for its availability only carries no alarm and no reminder: only its busy times are read.
 - **Working days** are those of your working hours, less days off; without working hours, Monday to Friday, 9:00 to 17:00.
 - **Once**: each reminder is marked when told (`$XDG_STATE_HOME/sioul/reminded/`, a small file each, forgotten after two months). Never repeated, no count of what was missed, no red.
 - **Not for what you just made**: a task made after its reminder's time, an event changed after it, is not reminded: you just saw it.

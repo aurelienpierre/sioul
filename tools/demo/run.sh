@@ -104,10 +104,17 @@ fi
 if [[ -d /run/dbus ]]; then
     hide+=(--tmpfs /run/dbus)
 fi
+# A worktree's target may be a link to a build folder elsewhere (each worktree its own):
+# that folder too, read only, where the link leads, under the sandbox's empty /home.
+builds=()
+if [[ -L "$repo/target" ]]; then
+    built=$(realpath "$repo/target")
+    builds=(--ro-bind "$built" "$built")
+fi
 echo "run.sh: $steps, in $language, at $now (TZ=$zone), $build build, into $out"
 status=0
 env -u DISPLAY -u WAYLAND_DISPLAY -u SESSION_MANAGER -u DBUS_SESSION_BUS_ADDRESS \
-    bwrap --die-with-parent --unshare-net --dev-bind / / --tmpfs /home "${hide[@]}" --ro-bind "$repo" "$repo" \
+    bwrap --die-with-parent --unshare-net --dev-bind / / --tmpfs /home "${hide[@]}" --ro-bind "$repo" "$repo" "${builds[@]}" \
     --bind "$profile/config" "$home/.config" --bind "$profile/data" "$home/.local/share" \
     --bind "$profile/state" "$home/.local/state" --bind "$profile/cache" "$home/.cache" \
     --bind "$profile/notes" "$home/Notes" --bind "$out" "$out" --bind "$runtime" "$runtime" --chdir "$home" \

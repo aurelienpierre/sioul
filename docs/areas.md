@@ -19,6 +19,7 @@ A source or a task is for **work**, for **your own admin** (bills, letters, offi
 | A budget | its form ("Edit"): "For" (`[[budget]] area`) | your admin; the older `personal` reads as leisure |
 | A site | the site's ⋮ ▸ For (`area`) | by its type: secure mailboxes and client areas (offices, banks, suppliers) are admin; chats, social networks and dating, leisure; video calls and other sites, admin and leisure |
 | A task | the task's panel, "For" (`X-SIOUL-AREA`) | by its tags and projects: work's (`[quiet] work`, a client's project, GitHub), leisure's (joy, family, friends…), both personal ones (health), else admin |
+| An agenda (a calendar or a task list) | Agenda ⚙ ▸ Your agendas, its line: "For" (`[agenda.calendars."<account>/<id>"] area`; [client.md](client.md#several-agendas)) | work when its account says work alone, else your admin and leisure: a work agenda follows the work hours, a personal one reaches you all day unless you say outside work hours |
 | An app's notifications, on a phone | Settings ▸ What reaches you ▸ Exceptions, under the app: "For" ([android.md](android.md#notifications-from-other-apps)) | any time: the matrix decides alone ([attention.md](attention.md)) |
 
 Mail addresses are the one place nothing is mixed for you: asking what each address is for is what separates a business address from a personal one.

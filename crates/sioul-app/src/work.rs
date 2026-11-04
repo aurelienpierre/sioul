@@ -400,6 +400,9 @@ struct TasksShown {
     budget: String,
     /// In free time, leisure offered, never a list to finish (docs/pauses.md).
     free: Vec<serde_json::Value>,
+    /// The agenda filter, as its list shows it on this page: the lists that
+    /// take tasks, grouped by whose they are (`agenda::FilterNow::shown`).
+    agendas: crate::agenda::FilterShown,
 }
 
 /// Today, laid out: the events of today and the steps the plan gives today, those the page shows.
@@ -882,7 +885,9 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         }
         // The phone's home screen card: the next step as each coming time will have it (homecard.rs).
         crate::homecard::plan_seen(&desk.loaded, &desk.plan, &desk.today, &desk.spent, &desk.stopped);
-        let page_filter = Filter { project: state.project.clone(), quiet: desk.filter.quiet.clone(), fresh: fresh_lines(&desk.loaded.tasks, desk.filter.quiet.as_ref()), ..state.filter.clone() };
+        // The one agenda filter of every view (several agendas): a list it leaves out now is in no view here.
+        let agendas = crate::agenda::filter_now();
+        let page_filter = Filter { project: state.project.clone(), quiet: desk.filter.quiet.clone(), fresh: fresh_lines(&desk.loaded.tasks, desk.filter.quiet.as_ref()), lists_off: agendas.hidden(), ..state.filter.clone() };
         let cx = desk.context_with(&page_filter);
         let project = Some(state.project.as_str()).filter(|c| !c.is_empty());
         let rest = desk.settings.rest_days();
@@ -913,6 +918,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             first_step_task: first.1,
             budget: desk.next_budget(),
             free: crate::pauses::offers(&desk.loaded.tasks, desk.filter.quiet.as_ref(), crate::hours::mode_now().free()),
+            agendas: agendas.shown(true),
         };
         let tasks_json = crate::backend::json(&shown);
         drop(shown);
