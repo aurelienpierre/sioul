@@ -3777,6 +3777,7 @@ holder-invite-cancel-drafted = A cancellation for { $who } waits in Drafts: it l
 holder-replied-yes = { $who } takes { $child } to “{ $title }”, { $when }.
 holder-replied-no = { $who } can’t take { $child } to “{ $title }”, { $when }: it is open again.
 holder-replied-maybe = { $who } has not said yet for { $child }’s “{ $title }”, { $when }.
+holder-replied-unproven = Sioul could not prove that this answer comes from { $who }: nothing changed, and “Who takes it?” is still on the card of { $child }’s “{ $title }”.
 agenda-parent = The other parent
 agenda-parent-name = Their name
 agenda-parent-address = Their address

@@ -779,25 +779,45 @@ fn busy_then(here: &[(Agenda, Collection)], parent: &str, start: i64, end: i64) 
 
 // ---------------------------------------------------------------- an answer by mail
 
+/// Whether a message comes from the address it shows, as the Porch judges
+/// its sender (porch.rs, `checks_with`): not forged (`trust::judge_sender`,
+/// a list excused as the Porch excuses it) and authenticated
+/// (`trust::authenticated`, with the account's sealers): its results read
+/// by the account's trusted ids (`trusted_ids`), your domains its own.
+fn proven_sender(card: &sioul_core::card::Card, trusted_ids: &[String], own_domains: &[String]) -> bool {
+    use sioul_core::trust;
+    let auth = trust::read_auth_results(&card.headers, trusted_ids);
+    let sealers = trust::sealers(trusted_ids, own_domains);
+    let excused = card.is_list.then(|| trust::list_excused(auth.as_ref(), &card.headers, &sealers)).flatten();
+    let (judged, _) = trust::judge_sender(auth.as_ref(), excused.as_ref(), card.sender_domain());
+    judged != trust::Trust::Forged && trust::authenticated(auth.as_ref(), &card.headers, &sealers)
+}
+
 /// A REPLY in your mail to a child's event's invitation (RFC 5546 §3.2.3):
 /// the holder line it names gets its answer and when it was given, once,
-/// when the message is from the address it answers for. Returns the line
-/// the reader says ("Sam takes Tom’s “Dentist”, Tuesday 10 November at
-/// 10:00."), or none for a REPLY of no child's event.
-pub(crate) fn replied(reply: &str, from: &str) -> Option<String> {
+/// when the message is from the address it answers for and the Porch would
+/// take it as coming from there (`proven_sender`): a From is easy to forge,
+/// and a forged "Sam takes it" would leave a child's appointment with
+/// nobody. Unproven, nothing is written, and the reader says so. Returns
+/// the line the reader says ("Sam takes Tom to “Dentist”, Tuesday 10
+/// November at 10:00."), or none for a REPLY of no child's event.
+pub(crate) fn replied(reply: &str, message: &sioul_core::card::Card, trusted_ids: &[String], own_domains: &[String]) -> Option<String> {
     let (uid, address, answer, _) = holders::reply_of(reply)?;
-    if !address.eq_ignore_ascii_case(from.trim()) {
+    if !message.from_address.as_deref().is_some_and(|from| address.eq_ignore_ascii_case(from.trim())) {
         return None;
     }
     let config = load_config();
     let here = agendas_here(&config);
     let zone = sioul_core::zone::current();
     let (path, text, agenda) = child_items(&here).into_iter().find(|(_, t, _)| holders::uid_of(t).as_deref() == Some(uid.as_str()))?;
+    let (title, when) = named(&text);
+    let who = holders::taken(&text, None, &zone).to.filter(|h| h.is(&address)).map(|h| if h.name.is_empty() { h.address } else { h.name }).unwrap_or(address);
+    if !proven_sender(message, trusted_ids, own_domains) {
+        return Some(say("holder-replied-unproven", &[("who", who), ("child", child_name(&agenda)), ("title", title)]));
+    }
     if let Some(written) = holders::replied(&text, reply, &zone) {
         vdir::write_item(&path, &written).ok()?;
     }
-    let (title, when) = named(&text);
-    let who = holders::taken(&text, None, &zone).to.filter(|h| h.is(&address)).map(|h| if h.name.is_empty() { h.address } else { h.name }).unwrap_or(address);
     let id = if answer == Answer::Accepted { "holder-replied-yes" } else if answer == Answer::Declined { "holder-replied-no" } else { "holder-replied-maybe" };
     Some(say(id, &[("who", who), ("child", child_name(&agenda)), ("title", title), ("when", when)]))
 }
@@ -890,5 +910,39 @@ mod tests {
             let _ = std::fs::remove_dir_all(&c.dir);
         }
         let _ = agendas::set_stand_in_agenda(&config, Kind::Dentist, None);
+    }
+
+    /// A REPLY the Porch would not take as coming from its sender (SPF and
+    /// DKIM failing, no DMARC pass, by the account's trusted results) changes
+    /// nothing, and the reader says so; the same REPLY, proven, sets the
+    /// answer at its DTSTAMP.
+    #[test]
+    fn an_unproven_reply_changes_nothing() {
+        sioul_core::config::stand_ins_only();
+        let config = crate::backend::config_path();
+        let lea = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, "Léa, a reply", None, &["VEVENT"]).unwrap();
+        for (field, value) in [("whose", "child"), ("name", "Léa"), ("parent", "Sam"), ("parent_address", "sam@example.org")] {
+            agendas::set_field(&config, &agendas::place(&lea), field, value).unwrap();
+        }
+        let asked = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:reply-dentist\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Dentist\r\nX-SIOUL-TAKEN-BY;CN=Sam;PARTSTAT=NEEDS-ACTION;SINCE=20991101T090000Z:mailto:sam@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let file = lea.dir.join("reply-dentist.ics");
+        vdir::write_item(&file, asked).unwrap();
+        let asked = std::fs::read_to_string(&file).unwrap();
+        let reply = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:reply-dentist\r\nDTSTAMP:20991102T090000Z\r\nATTENDEE;PARTSTAT=ACCEPTED;CN=Sam:mailto:sam@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let message = |results: &str| {
+            let raw = format!("From: Sam <sam@example.org>\r\nTo: alex@example.org\r\nSubject: Accepted: Dentist\r\nMessage-ID: <reply-1@example.org>\r\nAuthentication-Results: mx.example.net; {results}\r\n\r\nAccepted.\r\n");
+            sioul_core::card::Card::from_bytes(raw.as_bytes()).unwrap()
+        };
+        let trusted = vec!["mx.example.net".to_string()];
+        let failing = message("spf=fail smtp.mailfrom=example.org; dkim=fail header.d=example.org; dmarc=none header.from=example.org");
+        let said = replied(reply, &failing, &trusted, &[]).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), asked, "nothing written");
+        assert_eq!(said, say("holder-replied-unproven", &[("who", "Sam".into()), ("child", "Léa".into()), ("title", "Dentist".into())]));
+        // Proven (SPF passing, nothing forged): the answer is written, at its DTSTAMP.
+        let passing = message("spf=pass smtp.mailfrom=example.org; dkim=fail header.d=example.org; dmarc=none header.from=example.org");
+        replied(reply, &passing, &trusted, &[]).unwrap();
+        let holder = holders::taken(&std::fs::read_to_string(&file).unwrap(), None, &sioul_core::zone::current()).to.unwrap();
+        assert_eq!((holder.answer, holder.since), (Answer::Accepted, sioul_core::moves::read_utc("20991102T090000Z")));
+        let _ = std::fs::remove_dir_all(&lea.dir);
     }
 }

@@ -3801,6 +3801,7 @@ holder-invite-cancel-drafted = Une annulation pour { $who } attend dans les brou
 holder-replied-yes = { $who } emmène { $child } à « { $title } », { $when }.
 holder-replied-no = { $who } ne peut pas emmener { $child } à « { $title } », { $when } : c’est de nouveau libre.
 holder-replied-maybe = { $who } n’a pas encore répondu pour « { $title } » de { $child }, { $when }.
+holder-replied-unproven = Sioul n’a pas pu prouver que cette réponse vient de { $who } : rien n’a changé, et « Qui s’en charge ? » est toujours sur la fiche de « { $title } » de { $child }.
 agenda-parent = L’autre parent
 agenda-parent-name = Son nom
 agenda-parent-address = Son adresse

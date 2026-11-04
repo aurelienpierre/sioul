@@ -1182,9 +1182,13 @@ pub(crate) fn invitation(key: &str) -> String {
     let Some(asked) = agenda::invitation(&text, &zone) else { return String::new() };
     // An answer to the invitation to take a child's event (several agendas, part 3): its holder
     // line set from it, said in the reader, nothing to press.
+    // Written only when the Porch would take it as coming from them (`children::replied`).
     if asked.method == "REPLY" {
-        let from = std::fs::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)).and_then(|c| c.from_address).unwrap_or_default();
-        let Some(line) = crate::children::replied(&text, &from) else { return String::new() };
+        let Some(message) = std::fs::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)) else { return String::new() };
+        let config = load_config();
+        let account = config.account_of(&path).map(|a| a.id.clone()).unwrap_or_default();
+        let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
+        let Some(line) = crate::children::replied(&text, &message, &trusted, &config.own_domains()) else { return String::new() };
         return json(&InvitationView { method: asked.method, summary: line, when: String::new(), location: String::new(), organizer: String::new(), known: true });
     }
     let at = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone())).ok();
