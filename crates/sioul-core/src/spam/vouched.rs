@@ -6,8 +6,9 @@
 //! message verified for its From (`Trust::Verified`: DMARC passed for its
 //! domain, or a signature of that domain passed, by Sioul's own check first),
 //! whose From's organisational domain (`trust::organisational`) is one you
-//! dealt with, never a domain millions share (the list `Config::own_domains`
-//! leaves out). Any one dealing is enough:
+//! dealt with; at a domain millions share (the list `Config::own_domains`
+//! leaves out), never the domain, only the exact address you dealt with.
+//! Any one dealing is enough:
 //!
 //! - **Sent**: you wrote to an address there (the To, Cc and Bcc of the
 //!   newest `SENT_READ` messages of each Sent folder);
@@ -76,13 +77,16 @@ pub enum Dealing {
     NotSpam,
 }
 
-/// The organisational domains you deal with, and those your own word refused.
+/// The organisational domains you deal with, the exact addresses you deal
+/// with at a domain millions share, and those your own word refused.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Dealings {
     domains: BTreeMap<String, Dealing>,
-    /// Your newest word on its mail said spam.
+    /// At a shared domain, the address itself, lower case: never its domain.
+    addresses: BTreeMap<String, Dealing>,
+    /// Your newest word on its mail said spam: domains, and addresses at shared ones.
     refused: BTreeSet<String>,
-    /// Domains millions share: never vouched.
+    /// Domains millions share: never vouched as domains.
     shared: BTreeSet<String>,
 }
 
@@ -92,44 +96,59 @@ fn organisational_of(text: &str) -> Option<String> {
     (!domain.is_empty() && domain.contains('.')).then(|| trust::organisational(&domain)).flatten()
 }
 
+/// An address as compared: lower case, without its angle brackets; none for what is not one.
+fn address_of(text: &str) -> Option<String> {
+    let address = text.trim().trim_matches(['<', '>', ' ']).to_ascii_lowercase();
+    address.split_once('@').is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.')).then_some(address)
+}
+
 impl Dealings {
-    /// A dealing with the domain of `text` (an address, a host, a domain); the first kind kept.
+    /// What a dealing or a word is kept under for `text` (an address, a host,
+    /// a domain): its organisational domain; at a domain millions share, the
+    /// address itself, and nothing for the domain alone.
+    fn key_of(&self, text: &str) -> Option<String> {
+        let domain = organisational_of(text)?;
+        if self.shared.contains(&domain) { address_of(text) } else { Some(domain) }
+    }
+
+    /// A dealing with `text` (an address, a host, a domain; `key_of`); the first kind kept.
     pub fn with(&mut self, text: &str, how: Dealing) {
-        if let Some(domain) = organisational_of(text) {
-            self.domains.entry(domain).or_insert(how);
-        }
+        let Some(key) = self.key_of(text) else { return };
+        let kept = if key.contains('@') { &mut self.addresses } else { &mut self.domains };
+        kept.entry(key).or_insert(how);
     }
 
-    /// Your newest word on the mail of `text`'s domain said spam.
+    /// Your newest word on the mail of `text` (its domain, or the address at a shared one) said spam.
     pub fn refuse(&mut self, text: &str) {
-        if let Some(domain) = organisational_of(text) {
-            self.refused.insert(domain);
+        if let Some(key) = self.key_of(text) {
+            self.refused.insert(key);
         }
     }
 
-    /// A domain millions share (`words::BrandWords::shared`), never vouched.
+    /// A domain millions share (`words::BrandWords::shared`): never vouched as
+    /// a domain, only address by address. Said before any dealing.
     pub fn share(&mut self, text: &str) {
         if let Some(domain) = organisational_of(text) {
             self.shared.insert(domain);
         }
     }
 
-    /// No domain dealt with: nothing is vouched.
+    /// Nothing dealt with: nothing is vouched.
     pub fn is_empty(&self) -> bool {
-        self.domains.is_empty()
+        self.domains.is_empty() && self.addresses.is_empty()
     }
 
-
-
-    /// How you dealt with the domain of `text`, if you deal with it now: never a
-    /// shared domain, nor one your newest word refused.
+    /// How you dealt with the sender `text`, if you deal with it now: by its
+    /// domain, at a shared domain by its exact address; never one your newest
+    /// word refused.
     pub fn of(&self, text: &str) -> Option<Dealing> {
-        let domain = organisational_of(text)?;
-        if self.shared.contains(&domain) || self.refused.contains(&domain) {
+        let key = self.key_of(text)?;
+        if self.refused.contains(&key) {
             return None;
         }
-        self.domains.get(&domain).copied()
+        if key.contains('@') { self.addresses.get(&key).copied() } else { self.domains.get(&key).copied() }
     }
+
 
     /// Every dealing found, from the configuration's addresses, books, sites
     /// and contracts, and from the mail kept here and the label logs (see the
@@ -177,8 +196,8 @@ impl Dealings {
                 budget = budget.saturating_sub(recent.read);
                 let lines = recent.lines;
                 if folder.role == Role::Sent {
-                    for domain in sent_to(&lines) {
-                        dealings.with(&domain, Dealing::Sent);
+                    for address in sent_to(&lines) {
+                        dealings.with(&address, Dealing::Sent);
                     }
                     continue;
                 }
@@ -203,18 +222,18 @@ impl Dealings {
                 }
             }
         }
-        // Your words, every device's, the newest on each domain deciding.
-        let mut newest: HashMap<String, crate::spam::labels::Label> = HashMap::new();
+        // Your words, every device's, the newest on each domain (an address at a shared one) deciding.
+        let mut newest: HashMap<String, (crate::spam::labels::Label, String)> = HashMap::new();
         for entry in crate::spam::labels::read_all() {
             let Some(from) = entry.message_id.as_deref().and_then(|id| domain_of_id.get(id)) else { continue };
-            if let Some(domain) = organisational_of(from) {
-                newest.insert(domain, entry.label);
+            if let Some(key) = dealings.key_of(from) {
+                newest.insert(key, (entry.label, from.clone()));
             }
         }
-        for (domain, label) in newest {
+        for (label, from) in newest.into_values() {
             match label {
-                crate::spam::labels::Label::Ham => dealings.with(&domain, Dealing::NotSpam),
-                crate::spam::labels::Label::Spam => dealings.refuse(&domain),
+                crate::spam::labels::Label::Ham => dealings.with(&from, Dealing::NotSpam),
+                crate::spam::labels::Label::Spam => dealings.refuse(&from),
             }
         }
         dealings
@@ -231,9 +250,9 @@ const DEALT_DAYS: i64 = 400;
 /// (the mailbox's `STEP_FILL`): the indexes fill as the mailbox's do.
 const GATHER_FILL: usize = crate::mailbox::STEP_FILL;
 
-/// The recipients' domains of the sent mail in `lines` (a Sent folder's), its
-/// newest `SENT_READ`: each message's header block read once in this
-/// process, kept by its file.
+/// The recipients' addresses of the sent mail in `lines` (a Sent folder's),
+/// lower case, its newest `SENT_READ`: each message's header block read
+/// once in this process, kept by its file.
 fn sent_to(lines: &[(PathBuf, crate::mailcache::Line)]) -> Vec<String> {
     static READ: Mutex<Option<HashMap<PathBuf, Vec<String>>>> = Mutex::new(None);
     let mut newest: Vec<&(PathBuf, crate::mailcache::Line)> = lines.iter().collect();
@@ -246,7 +265,7 @@ fn sent_to(lines: &[(PathBuf, crate::mailcache::Line)]) -> Vec<String> {
         let domains = read.entry(path.clone()).or_insert_with(|| {
             let Some(raw) = crate::mailcache::headers_of(path) else { return Vec::new() };
             let Some(headers) = mail_parser::MessageParser::default().parse_headers(&raw[..]) else { return Vec::new() };
-            [headers.to(), headers.cc(), headers.bcc()].into_iter().flatten().flat_map(|a| a.iter()).filter_map(|a| a.address()).filter_map(|a| a.rsplit_once('@').map(|(_, d)| d.to_ascii_lowercase())).collect()
+            [headers.to(), headers.cc(), headers.bcc()].into_iter().flatten().flat_map(|a| a.iter()).filter_map(|a| a.address()).filter_map(address_of).collect()
         });
         out.extend(domains.iter().cloned());
     }
@@ -265,6 +284,13 @@ pub fn vouched(card: &Card, trust: Trust, dealings: &Dealings) -> bool {
 pub fn shared(words: &crate::words::Words, text: &str) -> bool {
     let Some(domain) = organisational_of(text) else { return false };
     words.brands.shared.iter().any(|s| organisational_of(s).as_deref() == Some(domain.as_str()))
+}
+
+/// What the sender `from` is dealt with by, as `Dealings` keeps it with
+/// `words`' shared domains: its organisational domain, or at a domain
+/// millions share its exact address, lower case.
+pub fn sender_key(words: &crate::words::Words, from: &str) -> Option<String> {
+    if shared(words, from) { address_of(from) } else { organisational_of(from) }
 }
 
 /// How far the sender of the message on `card` is proven, as the Porch
@@ -335,9 +361,15 @@ mod tests {
             assert_eq!(dealings.of(from), Some(how), "{from}");
             assert!(vouched(&card(from), Trust::Verified, &dealings), "{from}");
         }
-        // A domain millions share: never, whoever deals with someone there.
-        assert_eq!(dealings.of("someone@gmail.example"), None);
-        assert!(!vouched(&card("someone@gmail.example"), Trust::Verified, &dealings));
+        // A domain millions share: never as a domain; the exact address you dealt with, yes.
+        assert_eq!(dealings.of("someone@gmail.example"), Some(Dealing::Book), "the address itself");
+        assert!(vouched(&card("Someone@Gmail.example"), Trust::Verified, &dealings), "its case aside");
+        assert_eq!(dealings.of("other@gmail.example"), None, "another address there: no dealing");
+        assert!(!vouched(&card("other@gmail.example"), Trust::Verified, &dealings));
+        dealings.with("gmail.example", Dealing::Site);
+        assert_eq!(dealings.of("third@gmail.example"), None, "the shared domain itself is never a dealing");
+        dealings.refuse("someone@gmail.example");
+        assert_eq!(dealings.of("someone@gmail.example"), None, "your Spam on that address refuses it alone");
         // Unproven: never, the domain shown being anyone's to write.
         assert!(!vouched(&card("notification@notif.post.example"), Trust::Unverified, &dealings));
         assert!(!vouched(&card("notification@notif.post.example"), Trust::Forged, &dealings));

@@ -271,6 +271,13 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
         return b.out;
     }
     match view {
+        // The Letters page's own: where scans arrive (on the Porch's settings
+        // before, `[letters] inbox` as it was: the old setting is the one read).
+        "letters" => {
+            b.group = tr.text("set-letters-group", None);
+            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.notes_root_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
+            b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
+        }
         "porch" => {
             // Working hours and days off are Sioul's as a whole: in the settings page.
             b.note(tr.text("set-hours-elsewhere", None), Vec::new());
@@ -1453,6 +1460,7 @@ mod tests {
         assert_eq!(notes, 1 + 1 + 9, "{porch:?}");
         // The letters' folder is on the Letters page, with the letters.
         assert_eq!(keys("porch"), vec!["porch.calls", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
+        assert_eq!(keys("letters"), vec!["letters.inbox"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).
@@ -1643,6 +1651,31 @@ mod tests {
         assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("a3"), route("b")])), routes(vec![route("a2"), route("b")]));
         // Moved by another device: found by what it held.
         assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("b"), route("c"), route("a")])), routes(vec![route("a2"), route("b"), route("c")]));
+    }
+
+    /// Where scans arrive, moved from the Porch's settings to the Letters page:
+    /// the same `[letters] inbox` read and written, the notes folder's
+    /// `letters/inbox` when unset (part 3 of 4 November 2026).
+    #[test]
+    fn the_letters_folder_is_the_letters_pages() {
+        let dir = std::env::temp_dir().join(format!("sioul-letters-setting-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let tr = Translator::new("en");
+        let inbox_of = |config: &Config| for_view("letters", config, &tr, &[], None).into_iter().find(|s| s.key == "letters.inbox").map(|s| (s.kind, s.value));
+        // As an older Sioul wrote it, under the Porch.
+        std::fs::write(&path, format!("case_store = \"{}\"\n\n[letters]\ninbox = \"/stand-in/Scans\"\n", dir.join("Notes").display())).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert_eq!(inbox_of(&config), Some((Kind::Folder, SettingValue::Text("/stand-in/Scans".into()))));
+        assert!(for_view("porch", &config, &tr, &[], None).iter().all(|s| s.key != "letters.inbox"), "no longer the Porch's");
+        apply(&path, &config, "letters.inbox", &SettingValue::Text("/stand-in/Post".into())).unwrap();
+        assert_eq!(Config::load(&path).unwrap().letters.inbox.as_deref(), Some("/stand-in/Post"));
+        // Unset: the notes folder's own.
+        std::fs::write(&path, format!("case_store = \"{}\"\n", dir.join("Notes").display())).unwrap();
+        let unset = Config::load(&path).unwrap();
+        assert_eq!(inbox_of(&unset).map(|(_, v)| v), Some(SettingValue::Text(dir.join("Notes").join("letters").join("inbox").display().to_string())));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

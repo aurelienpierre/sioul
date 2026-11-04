@@ -91,7 +91,8 @@ Item {
                 id: placesRepeater
 
                 // In the order of their keys, Ctrl+1 to Ctrl+0; the papers'
-                // page came after the others, its place is by the budgets.
+                // page came after the others, its place is by the budgets, and
+                // the paper letters' by the papers.
                 // texts: Texts, on a computer, under Mail (TextsPage.qml),
                 // which says how to turn texts on when they are not read here
                 // yet; a phone has its own SMS app.
@@ -108,6 +109,7 @@ Item {
                     { page: 8, name: "ui-time", iconName: "clock" },
                     { page: 9, name: "ui-budgets", iconName: "wallet-open" },
                     { page: 13, name: "ui-papers", iconName: "view-certificate" },
+                    { page: 15, name: "ui-letters", iconName: "mail-mark-unread" },
                     { page: 10, name: "ui-health", iconName: "love" }
                 ].filter(place => place.page !== 14 || Qt.platform.os !== "android")
 
