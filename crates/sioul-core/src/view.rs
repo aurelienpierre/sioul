@@ -509,7 +509,20 @@ pub fn date(tr: &Translator, seconds: Option<i64>) -> String {
 #[derive(Debug, Serialize)]
 pub struct BudgetsView {
     pub title: String,
+    /// Each bank account shown, from one income to the next, in sentences (`ahead`).
+    pub accounts: Vec<crate::moneyview::AccountSay>,
+    /// The page's one chart: the balance ahead of the first account shown.
+    pub chart: Option<crate::moneyview::ChartView>,
+    /// What the hour or your ticks leave out, in words: "Work budgets are kept for your work hours."
+    pub left_out: Vec<String>,
+    /// The area filter's state, as the window keeps it (`areafilter::Shown`); none outside the window.
+    pub filter: Option<crate::areafilter::Shown>,
     pub budgets: Vec<BudgetCard>,
+    pub coming_title: String,
+    /// What is coming, week by week (`moneyview::coming`).
+    pub coming: Vec<crate::moneyview::WeekView>,
+    /// The past year's unusual spending, as the forecast counts it; "" without.
+    pub unusual: String,
     pub reserves_title: String,
     pub reserves: Vec<ReserveCard>,
     pub mail_title: String,
@@ -517,6 +530,25 @@ pub struct BudgetsView {
     pub mail: Vec<MailRow>,
     /// The budgets a line can go to.
     pub choices: Vec<Choice>,
+    /// The incomes a budget's period may start with (`Budget::starts_with`).
+    pub incomes: Vec<Choice>,
+}
+
+/// The incomes a budget's period may start with: each monthly money in,
+/// fixed, with an id, named with its day ("Salary (day 28)").
+pub fn incomes(ledger: &Ledger, tr: &Translator) -> Vec<Choice> {
+    ledger
+        .presets
+        .iter()
+        .filter(|p| p.every == Period::Month && !p.estimate && !p.amount.is_negative())
+        .filter_map(|p| {
+            let id = p.id.clone().filter(|id| !id.trim().is_empty() && !id.starts_with('#'))?;
+            let mut args = i18n::args();
+            args.set("income", p.label.clone());
+            args.set("day", i64::from(p.day));
+            Some(Choice { id, title: tr.text("budget-starts-income", Some(&args)) })
+        })
+        .collect()
 }
 
 /// One figure of a card: a label and a value, on their own line.
@@ -532,12 +564,15 @@ pub struct BudgetCard {
     pub title: String,
     /// "monthly", "mensuel".
     pub period: String,
-    /// "better", "as-planned", "short", for the interface's colours and icons.
+    /// "better", "as-planned", "short": what the verdict says, for an icon; never a colour.
     pub mood: &'static str,
-    /// The verdict, at the period's pace: "On track", "Ahead of its pace by €40".
+    /// One sentence about the period's end, with the reserve that covers it:
+    /// "By 30 November it should end as planned."
     pub verdict: String,
-    /// "10 % of October gone; 12 % of what it still needs has come in."
-    pub pace: String,
+    /// The budget in words (`moneyview::budget_words`): "Paid: rent, energy.",
+    /// "Still to come: phone, €19.99, Monday 12 November.", "Food: €180 left until 28 November."
+    pub words: Vec<String>,
+    /// The figures, for the budget opened (its ledger).
     pub figures: Vec<Figure>,
     /// What is kept for later, and what a reserve does at the end of the period.
     pub notes: Vec<String>,
@@ -566,7 +601,7 @@ pub struct MailRow {
     pub credit: bool,
     /// The budget its rule gives it, else none: you choose.
     pub budget: Option<String>,
-    /// "recorded", "duplicate", "proposed".
+    /// "recorded", "duplicate", "joined", "proposed".
     pub state: &'static str,
     /// What becomes of it, in a few words.
     pub note: String,
@@ -582,41 +617,101 @@ pub struct Choice {
     pub title: String,
 }
 
-/// Budgets, reserves and the mail about money, itemized: each figure on its own
-/// line, the verdict apart.
+/// Budgets, reserves and the mail about money, every budget, from the
+/// budget file alone (no movement: no account, nothing coming).
 pub fn budgets(ledger: &Ledger, mail: &[MailLine], tr: &Translator, today: jiff::civil::Date) -> BudgetsView {
+    budgets_page(&MoneyPage { ledger, bank: &crate::bank::Bank::default(), movements: &[], mail, shown: crate::areas::Area::ALL, own: false }, tr, today)
+}
+
+/// What the budgets page is made from: the books' counted budget file and
+/// the bank's file (`movements::books`), the money movements, the mail
+/// about money, and the areas the filter shows (as the hours say, or as you
+/// ticked: `own`).
+pub struct MoneyPage<'a> {
+    pub ledger: &'a Ledger,
+    pub bank: &'a crate::bank::Bank,
+    pub movements: &'a [crate::movements::Movement],
+    pub mail: &'a [MailLine],
+    pub shown: crate::areas::Area,
+    pub own: bool,
+}
+
+/// The budgets page (docs/accounting.md, "The budgets page"): each account
+/// shown from one income to the next, the one chart, what the hour leaves
+/// out, the budgets shown by area in words, what is coming, the reserves in
+/// weeks of your own spending, the mail about money. Every budget stays a
+/// choice for a line, whatever the hour: what a page shows is no limit on
+/// what a movement may be given to (the owner's report of 4 November 2026:
+/// a line taken in from the bank could not go to a budget hidden at that hour).
+pub fn budgets_page(page: &MoneyPage, tr: &Translator, today: jiff::civil::Date) -> BudgetsView {
+    let ledger = page.ledger;
     let mut args = i18n::args();
     args.set("month", tr.month_year(today));
+    let aheads = crate::ahead::of(ledger, page.bank, page.movements, today);
+    let exported: BTreeSet<String> = page.bank.movements.iter().map(|b| crate::accounts::account_of(ledger, &b.account).map_or_else(String::new, |a| a.id.clone())).collect();
+    let exported = |account: Option<&str>| exported.contains(account.unwrap_or(""));
+    let shown = page.shown;
+    let pace = crate::moneyview::own_pace(page.movements, today);
     BudgetsView {
         title: tr.text("budgets-title", Some(&args)),
-        budgets: ledger.budgets.iter().map(|b| budget_card(ledger, b, tr, today)).collect(),
+        accounts: crate::moneyview::accounts(&aheads, shown, tr, today),
+        chart: crate::moneyview::chart(&aheads, shown, tr, today),
+        left_out: crate::moneyview::left_out(ledger, shown, page.own, tr),
+        filter: None,
+        budgets: ledger.budgets.iter().filter(|b| b.area_of().meets(shown)).map(|b| budget_card(ledger, b, page.movements, &exported, tr, today)).collect(),
+        coming_title: tr.text("coming-title", None),
+        coming: crate::moneyview::coming(ledger, page.movements, &aheads, tr, today, &|m| m.area.meets(shown), &exported),
+        unusual: crate::moneyview::unusual_line(&aheads, tr),
         reserves_title: tr.text("reserves-title", None),
-        reserves: ledger.reserves.iter().map(|r| reserve_card(ledger, r, tr, today)).collect(),
+        reserves: ledger.reserves.iter().map(|r| reserve_card(ledger, r, pace, tr, today)).collect(),
         mail_title: tr.text("mail-section", None),
-        mail: mail.iter().filter(|l| l.state != MailState::Ignored).map(|l| mail_row(ledger, mail, l, tr)).collect(),
+        mail: page.mail.iter().filter(|l| l.state != MailState::Ignored).map(|l| mail_row(ledger, page.mail, l, tr)).collect(),
         choices: ledger.budgets.iter().map(|b| Choice { id: b.id.clone(), title: b.title.clone() }).collect(),
+        incomes: incomes(ledger, tr),
     }
 }
 
-/// "10 % of the month gone; 12 % of what it still needs has come in.", or what it may spend.
-fn pace_sentence(pace: &crate::budget::Pace, tr: &Translator, monthly: bool) -> String {
-    let percent = |x: f64| ((x * 100.0).round().clamp(0.0, 999.0) as i64).to_string();
-    let mut args = i18n::args();
-    args.set("gone", percent(pace.gone));
-    let period = if monthly { "month" } else { "year" };
-    let id = if pace.needed.cents() > 0 {
-        args.set("part", percent(pace.unscheduled.cents() as f64 / pace.needed.cents() as f64));
-        "needs"
-    } else if pace.needed.cents() < 0 {
-        args.set("part", percent((-pace.unscheduled.cents()).max(0) as f64 / (-pace.needed.cents()) as f64));
-        "may-spend"
-    } else {
-        "nothing-needed"
-    };
-    tr.text(&format!("pace-{id}-{period}"), Some(&args))
+/// The page in plain lines, as `sioul budgets` and the MCP's `budgets` say
+/// it: each account's sentences, each budget in words, what is coming, the
+/// reserves.
+pub fn budgets_lines(view: &BudgetsView) -> Vec<String> {
+    let mut lines = vec![view.title.clone()];
+    for a in &view.accounts {
+        lines.push(format!("  {}", a.title));
+        lines.extend(a.sentences.iter().map(|s| format!("    {s}")));
+    }
+    lines.extend(view.left_out.iter().map(|l| format!("  {l}")));
+    for card in &view.budgets {
+        lines.push(format!("  {} ({})", card.title, card.period));
+        lines.extend(card.words.iter().chain(std::iter::once(&card.verdict)).filter(|l| !l.is_empty()).map(|l| format!("    {l}")));
+    }
+    if !view.coming.is_empty() {
+        lines.push(String::new());
+        lines.push(view.coming_title.clone());
+    }
+    for week in &view.coming {
+        lines.push(format!("  {}", week.title));
+        for row in &week.rows {
+            let sign = if row.way == "in" { "+" } else { "" };
+            let budget = if row.budget.is_empty() { String::new() } else { format!(" · {}", row.budget) };
+            lines.push(format!("    {} · {} · {sign}{}{budget} · {}", row.date, row.who, row.amount, row.state));
+        }
+    }
+    if !view.unusual.is_empty() {
+        lines.push(format!("  {}", view.unusual));
+    }
+    if !view.reserves.is_empty() {
+        lines.push(String::new());
+        lines.push(view.reserves_title.clone());
+    }
+    for reserve in &view.reserves {
+        lines.push(format!("  {}", reserve.title));
+        lines.extend(reserve.figures.iter().map(|f| format!("    {}: {}", f.label, f.value)));
+    }
+    lines
 }
 
-fn budget_card(ledger: &Ledger, budget: &Budget, tr: &Translator, today: jiff::civil::Date) -> BudgetCard {
+fn budget_card(ledger: &Ledger, budget: &Budget, movements: &[crate::movements::Movement], exported: &dyn Fn(Option<&str>) -> bool, tr: &Translator, today: jiff::civil::Date) -> BudgetCard {
     let status = ledger.status(budget, today);
     let pace = ledger.pace(budget, today);
     let figure = |id: &str, pairs: &[(&str, String)], value: Money| {
@@ -643,32 +738,25 @@ fn budget_card(ledger: &Ledger, budget: &Budget, tr: &Translator, today: jiff::c
     if status.earmarked != Money::ZERO {
         figures.push(figure("fig-earmarked", &[], status.earmarked));
     }
-    // Judged at its pace: what simply happens is weighed against the part of the period gone.
-    let (mood, verdict) = match pace.verdict {
-        Verdict::Better => ("better", "badge-pace-better"),
-        Verdict::AsPlanned => ("as-planned", "badge-pace-on-track"),
-        Verdict::Short => ("short", "badge-pace-short"),
+    // Its status and pace made once: each reads every line of the period, and of twelve before it.
+    let end = ledger.period_end_of(budget, &status, &pace, today);
+    let mood = match end.verdict {
+        Verdict::Better => "better",
+        Verdict::AsPlanned => "as-planned",
+        Verdict::Short => "short",
     };
-    let mut args = i18n::args();
-    args.set("gap", tr.money(pace.ahead.abs()));
-    let mut notes = Vec::new();
-    if let Some((reserve, amount)) = &status.reserve_transfer {
+    let (words, verdict) = crate::moneyview::budget_words(ledger, budget, &end, movements, tr, today, exported);
+    // From one income to the next: its period said by its days.
+    let period = if ledger.income_of(budget).is_some() {
+        let (start, end) = ledger.bounds(budget, today);
         let mut args = i18n::args();
-        args.set("reserve", ledger.reserve_title(reserve).to_string());
-        args.set("amount", tr.money(amount.abs()));
-        args.set("end", tr.day_month(status.end));
-        notes.push(tr.text(if amount.is_negative() { "budget-swept" } else { "budget-drawn" }, Some(&args)));
-    }
-    BudgetCard {
-        id: budget.id.clone(),
-        title: budget.title.clone(),
-        period: tr.text(if budget.period == Period::Month { "period-month" } else { "period-year" }, None),
-        mood,
-        verdict: tr.text(verdict, Some(&args)),
-        pace: pace_sentence(&pace, tr, budget.period == Period::Month),
-        figures,
-        notes,
-    }
+        args.set("from", tr.day_month(start));
+        args.set("to", tr.day_month(end));
+        tr.text("period-from-income", Some(&args))
+    } else {
+        tr.text(if budget.period == Period::Month { "period-month" } else { "period-year" }, None)
+    };
+    BudgetCard { id: budget.id.clone(), title: budget.title.clone(), period, mood, verdict, words, figures, notes: Vec::new() }
 }
 
 /// One movement of a budget, as its ledger lists it.
@@ -719,11 +807,19 @@ pub struct BudgetDetail {
     pub area: String,
     /// "month" or "year", for its form.
     pub period_kind: String,
+    /// The income its period starts with, by its preset's id; "" for the calendar month.
+    pub starts_with: String,
+    /// The incomes it may start with.
+    pub incomes: Vec<Choice>,
+    /// The share set aside for taxes, in percent; 0 for none.
+    pub set_aside: f64,
+    /// "month" or "quarter".
+    pub declare: String,
 }
 
 /// A budget's ledger for the period around `anchor`, and its balance by `step`.
-pub fn budget_detail(ledger: &Ledger, budget: &Budget, anchor: jiff::civil::Date, step: &str, tr: &Translator, today: jiff::civil::Date) -> BudgetDetail {
-    let (start, end) = budget.period.bounds(anchor);
+pub fn budget_detail(ledger: &Ledger, budget: &Budget, movements: &[crate::movements::Movement], anchor: jiff::civil::Date, step: &str, tr: &Translator, today: jiff::civil::Date) -> BudgetDetail {
+    let (start, end) = ledger.bounds(budget, anchor);
     let moves = ledger.movements(budget, start, end, today);
     let money_in: Money = moves.iter().filter(|m| !m.amount.is_negative()).map(|m| m.amount).sum();
     let money_out: Money = moves.iter().filter(|m| m.amount.is_negative()).map(|m| m.amount).sum();
@@ -750,15 +846,25 @@ pub fn budget_detail(ledger: &Ledger, budget: &Budget, anchor: jiff::civil::Date
             future: p.future,
         })
         .collect();
-    let mut card = budget_card(ledger, budget, tr, today);
+    let mut card = budget_card(ledger, budget, movements, &|_| true, tr, today);
     if !(start <= today && today <= end) {
-        // Another period: its movements only, no pace.
+        // Another period: its movements only, nothing said of how it goes.
         card.verdict = String::new();
-        card.pace = String::new();
+        card.words.clear();
     }
+    let period_title = if ledger.income_of(budget).is_some() {
+        let mut args = i18n::args();
+        args.set("from", tr.day_month(start));
+        args.set("to", tr.day_month(end));
+        tr.text("period-from-income", Some(&args))
+    } else if budget.period == Period::Month {
+        tr.month_year(start)
+    } else {
+        start.year().to_string()
+    };
     BudgetDetail {
         card,
-        period_title: if budget.period == Period::Month { tr.month_year(start) } else { start.year().to_string() },
+        period_title,
         from: start.to_string(),
         movements: moves
             .iter()
@@ -768,7 +874,13 @@ pub fn budget_detail(ledger: &Ledger, budget: &Budget, anchor: jiff::civil::Date
                 date: tr.day(m.date),
                 day: m.date.to_string(),
                 value: m.amount.cents() as f64 / 100.0,
-                label: m.label.clone(),
+                label: if m.set_aside {
+                    let mut args = i18n::args();
+                    args.set("share", m.label.clone());
+                    tr.text("set-aside-label", Some(&args))
+                } else {
+                    m.label.clone()
+                },
                 amount: tr.money(m.amount),
                 incoming: !m.amount.is_negative(),
                 planned: m.planned,
@@ -789,18 +901,22 @@ pub fn budget_detail(ledger: &Ledger, budget: &Budget, anchor: jiff::civil::Date
             None => String::new(),
         },
         period_kind: if budget.period == Period::Year { "year".into() } else { "month".into() },
+        starts_with: budget.starts_with.clone().unwrap_or_default(),
+        incomes: incomes(ledger, tr),
+        set_aside: budget.set_aside.filter(|s| s.is_finite() && *s > 0.0).unwrap_or(0.0),
+        declare: if budget.declare.as_deref() == Some("month") { "month".into() } else { "quarter".into() },
         points,
     }
 }
 
-fn reserve_card(ledger: &Ledger, reserve: &Reserve, tr: &Translator, today: jiff::civil::Date) -> ReserveCard {
+fn reserve_card(ledger: &Ledger, reserve: &Reserve, pace: Money, tr: &Translator, today: jiff::civil::Date) -> ReserveCard {
     let status = ledger.reserve_status(reserve, today);
     let mut month = i18n::args();
     month.set("done", tr.money(status.month_done));
     month.set("planned", tr.money(status.month_planned));
     let mut year_end = i18n::args();
     year_end.set("date", tr.day_month(today.last_of_year()));
-    let pace = match status.months_left {
+    let pace_words = match status.months_left {
         Some(months) => {
             // A number, for its plural: "about a month", "about 16 months".
             let mut args = i18n::args();
@@ -819,8 +935,13 @@ fn reserve_card(ledger: &Ledger, reserve: &Reserve, tr: &Translator, today: jiff
     figures.extend([
         Figure { label: tr.text("fig-this-month", None), value: tr.text("fig-month-flows", Some(&month)) },
         Figure { label: tr.text("fig-by-date", Some(&year_end)), value: tr.money(status.year_end) },
-        Figure { label: tr.text("fig-pace", None), value: pace },
+        Figure { label: tr.text("fig-pace", None), value: pace_words },
     ]);
+    // In weeks of your own spending (research §6, recommendation 10; Farrell et al. 2019).
+    let room = (status.balance_now - reserve.floor).cents();
+    if pace.cents() > 0 && room > 0 {
+        figures.push(Figure { label: tr.text("fig-own-pace", None), value: crate::ahead::weeks_text(tr, room / pace.cents()) });
+    }
     ReserveCard { id: reserve.id.clone(), title: reserve.title.clone(), figures }
 }
 
@@ -842,6 +963,8 @@ fn mail_row(ledger: &Ledger, all: &[MailLine], line: &MailLine, tr: &Translator)
             let other = all.iter().find(|l| &l.key == other).map_or_else(String::new, |l| format!("{} ({})", l.payment.party, date_of(tr, l.date)));
             ("duplicate", say("note-duplicate", "other", other))
         }
+        // The same payment as a movement already counted, joined without a question.
+        MailState::Joined { label, day, probable, .. } => ("joined", say(if *probable { "note-joined-probable" } else { "note-joined" }, "other", format!("{label} ({})", date_of(tr, *day)))),
         _ => match (&line.preset, signed) {
             (Some(preset), None) => ("proposed", say("note-preset", "preset", preset_label(preset))),
             (Some(preset), Some(_)) => ("proposed", say("note-preset-amount", "preset", preset_label(preset))),

@@ -9,7 +9,7 @@
 
 use crate::backend::{json, load_config, say, tr};
 use serde::Serialize;
-use sioul_core::bank::{Bank, Finding};
+use sioul_core::bank::Bank;
 use sioul_core::budget::Ledger;
 use sioul_core::money::Money;
 
@@ -20,11 +20,11 @@ struct View {
     any: bool,
     /// "€845.10 on Saturday 3 October, from your bank's file."
     balance: String,
+    /// What the movements found, calmly: a payment not seen, an amount that
+    /// changed, a payment the account would not hold.
     findings: Vec<String>,
     /// The week's payments: "Thursday 8 October · EDF · €62.00".
     coming: Vec<String>,
-    /// The balance, day by day: {day ("2026-10-03"), cents}.
-    forecast: Vec<Point>,
     /// For the Porch: the week's payments in one line, and whether the account holds them.
     week: String,
     /// What the watch found, for the Porch to point at the Budgets page.
@@ -70,7 +70,7 @@ struct AccountView {
     /// "€100.00", or "" without a floor.
     floor_text: String,
     topped_up_by: Vec<Named>,
-    /// What tops it up this month, in sentences.
+    /// What tops it up before its next income, in sentences (`ahead::Cover`).
     top_ups: Vec<String>,
     /// Newest first.
     movements: Vec<MovementView>,
@@ -82,17 +82,24 @@ struct AccountView {
 
 #[derive(Serialize)]
 struct MovementView {
+    /// The bank's id, by which `place_movement` names it.
     id: String,
+    /// Its steadiest key, by which a split, "Not the same" or "The same as…" name it.
+    key: String,
     date: String,
     label: String,
     amount: String,
     cents: i64,
     /// Where it went, in words.
     place: String,
-    /// "hand", "mail", "rule", "between", "preset", "first", "unknown".
+    /// "hand", "mail", "rule", "between", "preset", "first", "unknown", or "same" (joined to what was planned or told).
     why: String,
     /// Your choice for it: `budget:<id>`, `none`, or `""` (as the rules say).
     chosen: String,
+    /// What tells of it, the bank's line with the rest: the mail's invoice, the letter, the contract.
+    sources: Vec<sioul_core::moneyview::SourceView>,
+    /// A source probably joined: "Not the same" beside it.
+    probable: bool,
 }
 
 #[derive(Serialize)]
@@ -111,67 +118,77 @@ struct RuleView {
     everywhere: bool,
 }
 
-#[derive(Serialize)]
-struct Point {
-    day: String,
-    cents: i64,
-}
-
-fn finding_text(finding: &Finding, today: jiff::civil::Date) -> String {
-    let day = |d: jiff::civil::Date| tr().day_in(d, today);
-    let money = |m: Money| tr().money(m.abs());
-    match finding {
-        Finding::Missed { label, amount, date } => {
-            let title = say(if amount.is_negative() { "money-missed-out" } else { "money-missed-in" }, &[("label", label.clone()), ("amount", money(*amount))]);
-            format!("{title}. {}", say("money-missed-why", &[("date", day(*date))]))
-        }
-        Finding::Changed { label, expected, actual, date } => say("money-changed", &[("label", label.clone()), ("actual", money(*actual)), ("date", day(*date)), ("expected", money(*expected))]),
-        Finding::Short { label, amount, date, short, reserve } => {
-            let title = say("money-short", &[("label", label.clone()), ("date", day(*date)), ("amount", money(*amount))]);
-            let body = match reserve {
-                Some(r) => say("money-short-reserve", &[("short", money(*short)), ("reserve", r.clone())]),
-                None => say("money-short-ask", &[("short", money(*short))]),
-            };
-            format!("{title}. {body}")
-        }
-    }
-}
-
-/// The bank's part of the Budgets page, as JSON.
+/// The bank's part of the Budgets page, as JSON: from the money movements
+/// (`movements::books`) and each account's stretch to its next income
+/// (`ahead`), as the budgets page reads them.
 pub(crate) fn view() -> String {
     let config = load_config();
     let looked = sioul_core::words::Words::of(&config);
     let Some(root) = config.notes_root_path() else { return json(&View { problem: tr().text("papers-no-store", None), ..View::default() }) };
-    let bank = match Bank::load(&root) {
-        Ok(bank) => bank,
-        Err(problem) => return json(&View { store: true, problem, ..View::default() }),
-    };
+    if let Err(problem) = Bank::load(&root) {
+        return json(&View { store: true, problem, ..View::default() });
+    }
     let today = sioul_core::zone::now().date();
-    let ledger = Ledger::load(&root).unwrap_or_default();
-    let watch = sioul_core::bank::watch(&bank, &ledger, today, &looked.bank.filler);
+    let books = sioul_core::movements::books(&root, &looked, today);
+    let (bank, ledger) = (&books.bank, &books.counted);
+    let aheads = sioul_core::ahead::of(ledger, bank, &books.movements, today);
     // Each account once, whatever names its exports gave it (`Bank::balance_in`).
-    let mut view = View { store: true, any: !bank.movements.is_empty() || watch.balance.is_some(), ..View::default() };
-    if let Some((date, amount)) = watch.balance {
+    let mut view = View { store: true, any: !bank.movements.is_empty() || bank.balance_in(ledger).is_some(), ..View::default() };
+    if let Some((date, amount)) = bank.balance_in(ledger) {
         view.balance = say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))]);
     }
-    view.findings = watch.findings.iter().map(|f| finding_text(f, today)).collect();
-    view.coming = watch.coming.iter().map(|e| format!("{} · {} · {}", tr().day_in(e.date, today), e.label, tr().money(e.amount.abs()))).collect();
-    view.forecast = watch.forecast.iter().map(|(d, m)| Point { day: d.to_string(), cents: m.cents() }).collect();
-    view.attention = watch.findings.len();
-    accounts_into(&mut view, &bank, &ledger, today, &looked);
-    if !watch.coming.is_empty() {
-        let list = watch.coming.iter().take(4).map(|e| format!("{} {} ({})", e.label, tr().money(e.amount.abs()), tr().weekday_short(e.date))).collect::<Vec<_>>().join(", ");
-        let week = today.checked_add(jiff::Span::new().days(7)).unwrap_or(today);
-        let held = watch.forecast.iter().filter(|(d, _)| *d <= week).all(|(_, m)| !m.is_negative());
+    view.findings = findings(&books.ledger, &books.movements, &aheads, today);
+    view.attention = view.findings.len();
+    let week = today.checked_add(jiff::Span::new().days(7)).unwrap_or(today);
+    let coming: Vec<&sioul_core::ahead::Flow> = aheads.iter().flat_map(|a| a.flows.iter()).filter(|f| f.day <= week && f.amount.is_negative()).collect();
+    view.coming = coming.iter().map(|f| format!("{} · {} · {}", tr().day_in(f.day, today), f.label, tr().money(Money(-f.amount.cents())))).collect();
+    if !coming.is_empty() {
+        let list = coming.iter().take(4).map(|f| format!("{} {} ({})", f.label, tr().money(Money(-f.amount.cents())), tr().weekday_short(f.day))).collect::<Vec<_>>().join(", ");
+        let held = aheads.iter().all(|a| a.short.as_ref().is_none_or(|s| s.day > week));
         view.week = say(if held { "bank-week-held" } else { "bank-week-short" }, &[("list", list)]);
     }
+    accounts_into(&mut view, &books, &aheads, today);
     json(&view)
 }
 
+/// What the movements found, in words, once each on the reminders' side:
+/// a payment not seen on its account, a recurring payment that took another
+/// amount, a payment an account would not hold before its next income.
+fn findings(file: &Ledger, movements: &[sioul_core::movements::Movement], aheads: &[sioul_core::ahead::Ahead], today: jiff::civil::Date) -> Vec<String> {
+    use sioul_core::movements::{Kind, State, Way};
+    let day = |d: jiff::civil::Date| tr().day_in(d, today);
+    let month_ago = today.checked_sub(jiff::Span::new().days(31)).unwrap_or(today);
+    let mut out = Vec::new();
+    for m in movements.iter().filter(|m| m.day >= month_ago && m.day <= today) {
+        let amount = tr().money(Money(m.sum.amount().cents().abs()));
+        if m.state == State::NotSeen {
+            let title = say(if m.way == Way::In { "money-missed-in" } else { "money-missed-out" }, &[("label", m.label.clone()), ("amount", amount)]);
+            out.push(format!("{title}. {}", say("money-missed-why", &[("date", day(m.day))])));
+            continue;
+        }
+        // A recurring payment that took another amount: by a twentieth, and €2 at least.
+        let preset = m.sources.iter().find(|s| s.kind == Kind::Preset).and_then(|s| s.key.strip_prefix("preset:")).and_then(|k| k.rsplit_once('/')).and_then(|(p, _)| (0..file.presets.len()).find(|&i| sioul_core::movements::preset_key(file, i) == p)).map(|i| &file.presets[i]);
+        if m.state == State::Done
+            && m.sources.iter().any(|s| s.kind == Kind::Bank)
+            && let Some(preset) = preset.filter(|p| !p.about && p.low.is_none())
+        {
+            let gap = (m.sum.amount().cents() - preset.amount.cents()).abs();
+            if gap > preset.amount.cents().abs() / 20 && gap > 200 {
+                out.push(say("money-changed", &[("label", preset.label.clone()), ("actual", amount), ("date", day(m.day)), ("expected", tr().money(Money(preset.amount.cents().abs())))]));
+            }
+        }
+    }
+    out.extend(sioul_core::ahead::shortfalls(aheads).iter().map(|s| s.sentence(tr(), today)));
+    out
+}
+
 /// The bank accounts' part of the view: each with its balance, its budgets,
-/// its movements placed and why, its rules, what tops it up.
-fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civil::Date, looked: &sioul_core::words::Words) {
-    use sioul_core::accounts::{self, Place, Why};
+/// its movements placed and why, with what else tells of each, its rules,
+/// what tops it up.
+fn accounts_into(view: &mut View, books: &sioul_core::movements::Books, aheads: &[sioul_core::ahead::Ahead], today: jiff::civil::Date) {
+    use sioul_core::accounts::{self, Why};
+    use sioul_core::movements::{Kind, Place, State};
+    let (bank, ledger) = (&books.bank, &books.ledger);
     let budget_title = |id: &str| ledger.budgets.iter().find(|b| b.id == id).map_or(id.to_string(), |b| b.title.clone());
     let reserve_title = |id: &str| ledger.reserves.iter().find(|r| r.id == id).map_or(id.to_string(), |r| r.title.clone());
     let account_title = |id: &str| ledger.bank_accounts.iter().find(|a| a.id == id).map_or(id.to_string(), |a| a.title.clone());
@@ -185,59 +202,61 @@ fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civ
         .iter()
         .map(|r| ReserveView { id: r.id.clone(), title: r.title.clone(), balance: r.balance.cents() as f64 / 100.0, as_of: r.as_of.to_string(), floor: r.floor.cents() as f64 / 100.0, delay_days: r.delay_days })
         .collect();
-    let placed = accounts::place(ledger, bank, looked);
-    let ups = accounts::top_ups(ledger, bank, today, looked);
     for account in &ledger.bank_accounts {
         let balance = accounts::balance_of(bank, account).map(|(date, amount)| say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))])).unwrap_or_default();
-        let mine: Vec<&accounts::Placed> = placed.iter().filter(|p| p.account == account.id).collect();
+        // Its own lines, as the matching left them: each with whatever else tells of it.
+        let mine: Vec<&sioul_core::movements::Movement> = books.movements.iter().filter(|m| m.account.as_deref() == Some(account.id.as_str()) && m.sources.iter().any(|s| matches!(s.kind, Kind::Bank | Kind::Hold)) && matches!(m.state, State::Done | State::NotFinal)).collect();
         let movements = mine
             .iter()
             .rev()
             .take(120)
-            .map(|p| {
-                let place = match &p.place {
-                    Place::Budgets(shares) => shares
-                        .iter()
-                        .map(|s| {
-                            let preset = s.preset.as_deref().map(preset_label).filter(|l| !l.is_empty());
-                            let title = budget_title(&s.budget);
-                            let title = match preset {
-                                Some(label) => format!("{title} · {label}"),
-                                None => title,
-                            };
-                            if shares.len() > 1 { format!("{title} {}", tr().money(s.amount.abs())) } else { title }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", "),
+            .map(|m| {
+                let bank_source = m.sources.iter().find(|s| matches!(s.kind, Kind::Bank | Kind::Hold));
+                let id = bank_source.and_then(|s| s.key.rsplit_once('/')).map(|(_, id)| id.to_string()).unwrap_or_default();
+                let place = match &m.place {
+                    Place::Budget(b) => {
+                        let preset = m.stands_for().map(preset_label).filter(|l| !l.is_empty());
+                        match preset {
+                            Some(label) => format!("{} · {label}", budget_title(b)),
+                            None => budget_title(b),
+                        }
+                    }
+                    Place::Parts(parts) => parts.iter().map(|(b, a)| format!("{} {}", budget_title(b), tr().money(Money(a.cents().abs())))).collect::<Vec<_>>().join(", "),
                     Place::Reserve { reserve, budget } => say("bank-place-reserve", &[("reserve", reserve_title(reserve)), ("budget", budget_title(budget))]),
-                    Place::Transfer(other) => say("bank-place-transfer", &[("account", account_title(other))]),
-                    Place::Known(line) => say("bank-place-known", &[("label", ledger.lines.get(*line).map(|l| l.label.clone()).unwrap_or_default())]),
-                    Place::Nowhere => tr().text("bank-place-none", None),
+                    Place::Transfer { from, to } => say("bank-place-transfer", &[("account", account_title(if *from == account.id { to } else { from }))]),
+                    Place::Nowhere | Place::Unplaced => tr().text("bank-place-none", None),
                 };
-                let why = match p.why {
-                    Why::Hand => "hand",
-                    Why::Mail => "mail",
-                    Why::Rule => "rule",
-                    Why::Between => "between",
-                    Why::Preset => "preset",
-                    Why::First => "first",
-                    Why::Unknown => "unknown",
+                // Joined to what was planned or told: said as the same payment.
+                let joined = m.sources.iter().any(|s| !matches!(s.kind, Kind::Bank | Kind::Hold | Kind::Contract));
+                let why = match m.why_placed() {
+                    _ if joined => "same",
+                    Some(Why::Hand) => "hand",
+                    Some(Why::Mail) => "mail",
+                    Some(Why::Rule) => "rule",
+                    Some(Why::Between) => "between",
+                    Some(Why::Preset) => "preset",
+                    Some(Why::First) => "first",
+                    Some(Why::Unknown) | None => "unknown",
                 };
                 let chosen = ledger
                     .assignments
                     .iter()
-                    .find(|a| account.owns(&a.account) && a.movement == p.movement.id)
+                    .find(|a| account.owns(&a.account) && a.movement == id)
                     .map(|a| if a.none { "none".to_string() } else { a.budget.as_deref().map(|b| format!("budget:{b}")).unwrap_or_default() })
                     .unwrap_or_default();
+                let row = sioul_core::moneyview::coming_row(ledger, m, &Default::default(), tr(), today);
                 MovementView {
-                    id: p.movement.id.clone(),
-                    date: tr().day_in(p.movement.date, today),
-                    label: p.movement.label.clone(),
-                    amount: tr().money(p.movement.amount),
-                    cents: p.movement.amount.cents(),
+                    id,
+                    key: m.steady_key().to_string(),
+                    date: tr().day_in(m.day, today),
+                    label: row.who.clone(),
+                    amount: tr().money(m.sum.amount()),
+                    cents: m.sum.amount().cents(),
                     place,
                     why: why.to_string(),
                     chosen,
+                    probable: row.probable,
+                    sources: row.sources,
                 }
             })
             .collect();
@@ -266,22 +285,26 @@ fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civ
                 RuleView { id: s.id.clone(), place, words: s.words.clone(), direction: direction.to_string(), to, to_title, everywhere: s.account.is_empty() }
             })
             .collect();
-        let top_ups = ups
-            .iter()
-            .filter(|u| u.account == account.id)
-            .map(|u| {
-                let delay = ledger.reserves.iter().find(|r| r.id == u.reserve).map_or(0, |r| r.delay_days);
-                let args = [
-                    ("reserve", reserve_title(&u.reserve)),
-                    ("amount", tr().money(u.amount)),
-                    ("date", tr().day_in(u.needed_by, today)),
-                    ("payment", u.payment.clone()),
-                    ("ask", tr().day_in(u.ask_by, today)),
-                    ("days", delay.to_string()),
-                ];
-                say(if u.late { "money-topup-late" } else if delay == 0 { "money-topup-now" } else { "money-topup-ask" }, &args)
+        let stretch = aheads.iter().find(|a| a.account == account.id);
+        let top_ups = stretch
+            .and_then(|a| a.short.as_ref().map(|short| (a, short)))
+            .map(|(a, short)| {
+                a.covers
+                    .iter()
+                    .map(|c| {
+                        let args = [
+                            ("reserve", c.title.clone()),
+                            ("amount", tr().money(c.amount)),
+                            ("date", tr().day_in(short.day, today)),
+                            ("payment", short.payment.clone()),
+                            ("ask", tr().day_in(c.by, today)),
+                            ("days", c.delay.to_string()),
+                        ];
+                        say(if c.late { "money-topup-late" } else if c.delay == 0 { "money-topup-now" } else { "money-topup-ask" }, &args)
+                    })
+                    .collect()
             })
-            .collect();
+            .unwrap_or_default();
         view.accounts.push(AccountView {
             id: account.id.clone(),
             title: account.title.clone(),
@@ -293,8 +316,8 @@ fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civ
             floor_text: if account.floor.cents() > 0 { tr().money(account.floor) } else { String::new() },
             topped_up_by: account.topped_up_by.iter().map(|r| Named { id: r.clone(), title: reserve_title(r) }).collect(),
             top_ups,
+            unplaced: mine.iter().filter(|m| m.why_placed() == Some(Why::Unknown) && matches!(m.place, Place::Nowhere | Place::Unplaced)).count(),
             movements,
-            unplaced: mine.iter().filter(|p| p.why == Why::Unknown).count(),
             rules,
         });
     }
@@ -315,11 +338,6 @@ pub(crate) fn save_account(id: &str, edit: &str) -> String {
 
 pub(crate) fn remove_account(id: &str) -> String {
     ledger_path().and_then(|path| sioul_core::accounts::remove_bank_account(&path, id)).err().unwrap_or_default()
-}
-
-/// One movement placed by your hand: `budget:<id>`, `none`, or `""` (as the rules say).
-pub(crate) fn place_movement(account: &str, movement: &str, choice: &str) -> String {
-    ledger_path().and_then(|path| sioul_core::accounts::set_assignment(&path, account, movement, choice)).err().unwrap_or_default()
 }
 
 /// A rule made (`shown` empty) or changed: `shown` the rule as the window
@@ -386,8 +404,11 @@ pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
             return (false, e);
         }
     }
-    // Taken into the movements as the file holds them now, under its lock, which the sharing takes too.
-    let added = match Bank::change(&root, |bank| bank.import(&statement, &title)) {
+    // Taken into the movements as the file holds them now, under its lock, which the
+    // sharing takes too; its holds kept apart, its new lines resolved against what
+    // was planned and announced (`movements::acts::take_in`).
+    let words = sioul_core::words::Words::of(&config);
+    let added = match sioul_core::movements::acts::take_in(&root, &statement, &title, &words, sioul_core::zone::now().date()) {
         Ok(added) => added,
         Err(e) => return (false, e),
     };

@@ -112,6 +112,56 @@ pub fn start(card: &Card) -> String {
     card.excerpt.chars().take(READ).collect()
 }
 
+/// An attachment read for an invoice's own data is no larger.
+const INVOICE_LARGEST: usize = 10 * 1024 * 1024;
+
+/// What a message's attached invoice says of itself, when it carries its
+/// data (`einvoice`: a Factur-X PDF, a UBL or CII XML): read from the message
+/// once per run of Sioul, by its file, then remembered.
+pub fn invoice_of(card: &Card) -> Option<crate::einvoice::EInvoice> {
+    use mail_parser::MimeHeaders;
+    use std::sync::{Mutex, OnceLock};
+    static READ: OnceLock<Mutex<std::collections::HashMap<std::path::PathBuf, Option<crate::einvoice::EInvoice>>>> = OnceLock::new();
+    let carries = card.attachments.iter().any(|name| {
+        let name = name.to_ascii_lowercase();
+        name.ends_with(".pdf") || name.ends_with(".xml")
+    });
+    let path = card.path.as_ref().filter(|_| carries)?;
+    let read = READ.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    if let Some(known) = read.lock().ok().and_then(|r| r.get(path).cloned()) {
+        return known;
+    }
+    let found = std::fs::read(path).ok().filter(|raw| raw.len() <= 4 * INVOICE_LARGEST).and_then(|raw| {
+        let message = mail_parser::MessageParser::default().parse(&raw)?;
+        message.attachments().filter(|part| part.contents().len() <= INVOICE_LARGEST).find_map(|part| {
+            let name = part.attachment_name().unwrap_or("").to_ascii_lowercase();
+            let bytes = part.contents();
+            if name.ends_with(".xml") {
+                std::str::from_utf8(bytes).ok().and_then(crate::einvoice::from_xml)
+            } else if name.ends_with(".pdf") || bytes.starts_with(b"%PDF") {
+                crate::einvoice::from_pdf(bytes)
+            } else {
+                None
+            }
+        })
+    });
+    if let Ok(mut r) = read.lock() {
+        r.insert(path.clone(), found.clone());
+    }
+    found
+}
+
+/// How many instalments a message says a purchase is paid in ("en 3 fois",
+/// "in 4 instalments": `Payments::instalments`, "#" standing for the number).
+pub fn instalments(words: &Words, text: &str) -> Option<u32> {
+    let folded: String = fold(text).into_iter().collect();
+    words.payments.instalments.iter().map(|t| crate::words::folded(t)).filter(|t| t.contains('#')).find_map(|template| {
+        let pattern = template.split('#').map(regex::escape).collect::<Vec<_>>().join(r"(\d{1,2})");
+        let found = regex::Regex::new(&format!(r"(?:^|\W){pattern}(?:\W|$)")).ok()?.captures(&folded)?;
+        found.get(1)?.as_str().parse::<u32>().ok().filter(|n| (2..=24).contains(n))
+    })
+}
+
 fn kind_in(words: &Words, folded: &[char]) -> Option<PaymentKind> {
     let p = &words.payments;
     [(PaymentKind::Refund, &p.refund), (PaymentKind::Paid, &p.paid), (PaymentKind::Received, &p.received), (PaymentKind::Order, &p.order), (PaymentKind::Bill, &p.bill)]

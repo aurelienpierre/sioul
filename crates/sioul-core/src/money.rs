@@ -54,6 +54,13 @@ impl From<f64> for Money {
     }
 }
 
+/// Written as it is read: in units, `-250.5` (a kept copy of the money movements, `movements::books`).
+impl serde::Serialize for Money {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_f64(self.0 as f64 / 100.0)
+    }
+}
+
 // Saturating: a hand-written `amount = inf` (or a number past any real
 // balance) gives the largest amount, never an overflow.
 impl Add for Money {

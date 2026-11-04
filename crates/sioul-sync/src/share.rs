@@ -441,9 +441,10 @@ static CONTRACTS_RULES: Rules = Rules { keyed: &[keyed("contract", &["id"])], wh
 /// keeps the newer word, and two devices adding some keep both: a source
 /// joined by the source, "Not the same" by both keys, a placement by its
 /// movement, a card hold by its account and id, a name taught by the
-/// bank's name. Its format, a setting of its own.
+/// bank's name, your answer on a payee's next movements by the payee. Its
+/// format, a setting of its own.
 static MOVEMENTS_RULES: Rules = Rules {
-    keyed: &[keyed("link", &["source"]), keyed("apart", &["a", "b"]), keyed("move", &["movement"]), keyed("hold", &["account", "id"]), keyed("name", &["bank"])],
+    keyed: &[keyed("link", &["source"]), keyed("apart", &["a", "b"]), keyed("move", &["movement"]), keyed("hold", &["account", "id"]), keyed("name", &["bank"]), keyed("decided", &["payee"])],
     whole: &[],
     local: &[],
     next: None,
