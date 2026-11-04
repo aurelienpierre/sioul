@@ -6,7 +6,7 @@
 // on the phone's home card opens in the Porch's own reader while the Porch
 // shows it, found by its address (this version's card) or its file (an
 // older card's), else through the window's opener by its address; a code's
-// card opens its message through the opener by its address, its file a
+// row opens its message through the opener by its address, its file a
 // hint. Run by tools/qml-test.sh.
 
 import QtQuick
@@ -29,9 +29,11 @@ Item {
     readonly property string codeKey: "/stand-in/mail/alice/cur/1777000001.U1-2.sioul:2,S"
     readonly property string porchJson: JSON.stringify({
         open: true, closed: null, summary: "", status: "", all: false,
-        right_now: [{ key: root.codeKey, address: "mid:code-1@example.org", title: "Code from Example Bank (verified)", code: "482913", validity: "valid about 10 minutes", warning: null }],
+        right_now: [{ key: root.codeKey, address: "mid:code-1@example.org", title: "Code from Example Bank (verified)", code: "482913", validity: "valid about 10 minutes", warning: null,
+                      notice: { id: "mail:alice:00000000000000c1", kind: "mail", who: "Code from Example Bank (verified)", what: "482913, valid about 10 minutes", when: "", readable: true, state: { mark: "new" } } }],
         lanes: [{ key: "people", title: "People", folded: false, counted: true, about: "", rules: [], settings: "", items: [
-            { key: root.shownKey, uri: "mid:plan@example.org", account: "alice", sender: "Ana", address: "ana@example.org", trust: "", trust_level: "known", subject: "The plan", date: "", preview: "", reasons: [], attachments: [], screener: false }
+            { key: root.shownKey, uri: "mid:plan@example.org", account: "alice", sender: "Ana", address: "ana@example.org", trust: "", trust_level: "known", subject: "The plan", date: "", preview: "", reasons: [], attachments: [], screener: false,
+              notice: { id: "mail:alice:00000000000000a1", kind: "mail", who: "Ana", what: "The plan", when: "", readable: true, state: { mark: "new" } } }
         ] }]
     })
 
@@ -76,6 +78,18 @@ Item {
         }
         function bank() {
             return "{}"
+        }
+        function notices(verb, json) {
+            return verb === "view" ? JSON.stringify({ sites: [], money: [], letters: [] }) : "{}"
+        }
+        function callsView() {
+            return JSON.stringify({ lines: [] })
+        }
+        function phoneMessages(verb, json) {
+            return JSON.stringify({ lines: [], notices: [] })
+        }
+        function lettersFolder() {
+            return ""
         }
         function refreshHealth() {
         }
@@ -196,12 +210,12 @@ Item {
             compare(porch.openKey, root.shownKey)
         }
 
-        // A code's card: its message through the opener, by its address, its file a hint.
-        function test_a_code_s_card_opens_its_message_by_its_address() {
-            // The same card reached by two ways (an item's children and its contentItem): once.
-            const cards = all(porch, c => c.card !== undefined && c.card !== null && c.card.code === "482913" && typeof c.open === "function").filter((c, i, found) => found.indexOf(c) === i)
-            compare(cards.length, 1, "one code card")
-            cards[0].open(cards[0].card.key)
+        // A code's row: its message through the opener, by its address, its file a hint.
+        function test_a_code_s_row_opens_its_message_by_its_address() {
+            // The same row reached by two ways (an item's children and its contentItem): once.
+            const rows = all(porch, c => c.notice !== undefined && c.notice !== null && c.notice.id === "mail:alice:00000000000000c1" && typeof c.opened === "function").filter((c, i, found) => found.indexOf(c) === i)
+            compare(rows.length, 1, "one code's row")
+            rows[0].opened()
             compare(JSON.stringify(fakeWindow.mailAsked), JSON.stringify([{ address: "mid:code-1@example.org", file: root.codeKey }]))
         }
     }

@@ -2340,8 +2340,6 @@ site-share-screens = Tout un écran
 site-share-windows = Une fenêtre
 site-fill-login = Remplir l’identifiant
 site-downloading = Téléchargement de { $file } dans vos téléchargements.
-site-notified = Du nouveau sur { $site }
-site-notified-more = et { $n } de plus
 site-open = Ouvrir { $site }
 bitwarden-missing = Votre compte Bitwarden se règle dans les réglages de cette page (⚙) : son adresse, et son serveur quand ce n’est pas bitwarden.com.
 bitwarden-unlock-help = Votre clé de sécurité, ou votre mot de passe principal, ouvre le coffre ici, par Sioul lui-même ; rien n’en est gardé, et le coffre reste ouvert jusqu’à ce que vous le verrouilliez, après le temps choisi dans les réglages de la page Sites (⚙), ou jusqu’à la fermeture de Sioul.
@@ -2769,6 +2767,28 @@ lane-about-low = Des adresses que vous avez classées moins importantes.
 lane-about-set-aside = Falsifié, empruntant un nom, indésirable ou bloqué. Rien n’est supprimé.
 lane-about-review = Ce que votre filtre à indésirables a retenu attend ici, sans notification. Sioul en apprend tel quel ; si l’un n’est pas indésirable, « Pas indésirable » le remet à sa place et l’apprend au filtre.
 lane-about-hostile = Insultes, harcèlement ou menaces envoyés à votre adresse publique. Leurs mots restent cachés.
+lane-yourself = De vous-même
+lane-about-yourself = Ce que vous avez envoyé de l’une de vos adresses à une autre.
+rule-yourself = Un courriel de l’une de vos propres adresses, vérifié, vient ici, sauf si les règles d’un projet ou sa conversation le prennent d’abord.
+# The Porch's notices (docs/porch.md, "Notices"): every row's two quiet actions, and what they say for their ten seconds.
+notice-read = Marquer comme lu
+notice-dismiss = Écarter
+notice-said-dismissed = Écarté sur chacun de vos appareils.
+notice-said-read = Marqué comme lu sur chacun de vos appareils.
+notice-said-done = Fait, sur chacun de vos appareils.
+notice-attached = pièce jointe
+# The Porch's sections other than mail's: each title, and its "?".
+ui-section-help = Ce que contient cette section
+ui-section-folded = repliée
+ui-section-unfolded = dépliée
+porch-about-right-now = Les codes, mots de passe et liens que vous avez demandés à un site : ici tout de suite, quelle que soit l’heure.
+porch-about-phone = Ce que votre téléphone a apporté : les appels qu’il a refusés, ses SMS et les notifications des autres applications que vous avez choisi de voir ici, chacun quand son expéditeur peut vous joindre. Sioul ne voit pas votre messagerie : quelqu’un qui a appelé a peut-être laissé un message. Écarter en retire un sur chacun de vos appareils ; Marquer comme lu marque aussi un SMS comme lu sur la page SMS.
+porch-sites = Sites
+porch-about-sites = Ce que vos sites ont signalé pendant votre absence, une ligne par site. Ouvrir un site lit ses nouvelles.
+porch-money = Argent
+porch-about-money = Les paiements de la semaine, tels que Budgets les lit dans le relevé de votre banque.
+porch-open-budgets = Ouvrir dans Budgets
+porch-about-letters = Le courrier papier lu sur ses scans, jusqu’à ce que vous le rangiez.
 rule-order = Chaque courriel va dans la première file qui le prend, dans cet ordre : mis de côté, hostile, ce que votre propre filtre à indésirables signale, codes, projets, ce que vous vous envoyez, votre adresse publique, adresses moins importantes, infolettres, quelqu’un de nouveau, personnes que vous connaissez.
 rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un courriel de quelqu’un de nouveau, les y ajoute.
 rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, comme un expéditeur qu’un domaine seul nomme sur une liste, sauf si un projet ou la règle des infolettres prend le courriel d’abord.
@@ -2805,7 +2825,6 @@ rule-where-routes = Ses règles se choisissent sur sa page dans Projets.
 hostile-someone = Quelqu’un
 hostile-someone-at = Quelqu’un chez { $domain }
 hostile-subject = Un courriel mis de côté comme hostile
-ui-lane-help = Comment les courriels arrivent ici
 set-filed-words = Mots des expéditeurs automatiques
 set-filed-words-help = Un expéditeur dont l’adresse contient l’un de ces mots est automatique : ses courriels sont rangés avec les infolettres. Ils sont dans Paramètres ▸ Mots, avec les autres mots que Sioul repère.
 set-words-add = Ajouter un mot
@@ -3700,6 +3719,161 @@ day-let-plan-done = Le plan place de nouveau « { $title } ».
 agenda-read-only = Ce calendrier ne peut qu’être lu.
 agenda-tasks-only = Cette liste ne tient que des tâches : un événement ne peut y aller.
 agenda-events-only = Ce calendrier ne tient que des événements : une tâche ne peut y aller.
+agenda-availability-only = Seules ses heures occupées sont partagées ici : rien d’autre n’en est montré ni changé.
+# Plusieurs agendas (4 novembre 2026) : le filtre, ce qu’est chaque agenda, les conflits.
+agendas-filter = Agendas
+agendas-filter-hours = Comme disent les heures
+agendas-filter-until = Votre choix tient jusqu’à { $time }, puis les heures décident de nouveau.
+agendas-fold = Replier { $group }
+agendas-unfold = Déplier { $group }
+agendas-group-yours = Les vôtres
+agendas-group-children = Enfants
+agendas-group-parent = L’autre parent
+agendas-group-partners = Partenaires
+agendas-group-shared = Partagés avec vous
+agendas-kept-hidden = gardé caché
+agenda-keep-hidden = Garder caché sur cet appareil
+agenda-show-again = Montrer de nouveau
+# Événements des enfants (plusieurs agendas, partie 3) : qui s’en charge, les doublures, les invitations.
+holder-title = Qui s’en charge
+holder-kind = Type
+holder-kind-none = Aucun type
+holder-kind-health = Santé
+holder-kind-dentist = Dentiste
+holder-kind-school = École
+holder-kind-activity = Activité
+holder-kind-clothes = Vêtements
+holder-kind-other = Autre
+holder-me = Moi
+holder-later = Plus tard
+holder-take-it = M’en charger
+holder-not-this-time = Pas cette fois
+holder-i-take-it = Je m’en charge
+holder-ask-other = Demander à { $who } de s’en charger
+holder-you = vous
+holder-details = Détails : l’agenda de { $name }
+holder-details-agenda = Détails : { $agenda }
+holder-away = Absence
+holder-line-nobody = Personne ne s’en charge encore.
+holder-line-yours-plain = Vous vous en chargez.
+holder-line-yours = Vous vous en chargez, depuis le { $since }.
+holder-line-proposed = On vous demande de vous en charger, depuis le { $since }.
+holder-line-declined = Vous avez dit pas cette fois, le { $since }.
+holder-line-theirs = { $who } s’en charge, depuis le { $since }.
+holder-line-asked = { $who } est sollicité·e, depuis le { $since }.
+holder-line-reopened = { $who } a dit pas cette fois, le { $since } : c’est de nouveau libre.
+holder-line-back = { $who } ramène { $child }.
+holder-line-back-you = Vous ramenez { $child }.
+holder-back = Qui ramène { $child }
+holder-back-same = Ramené·e par la même personne
+holder-said-back = « { $title } » de { $child }, { $when } : qui ramène { $child } est dit.
+holder-why-standing = D’habitude, { $who }.
+holder-why-custody = { $child } est avec { $who } ce jour-là.
+holder-busy = { $who } est occupé·e à ce moment-là.
+holder-you-take = Vous
+holder-you-asked = Vous, sollicité·e
+holder-nobody-yet = Personne encore
+holder-asked-short = { $who }, sollicité·e
+holder-no-date = Sans date
+holder-week-of = Semaine du { $day }
+holder-who-does-what = Qui fait quoi
+holder-all-children = Tous les enfants
+holder-what-i-take = Ce dont je me charge
+holder-previous-week = Semaine précédente
+holder-next-week = Semaine suivante
+holder-nothing-this-week = Rien pour les enfants cette semaine.
+agenda-titles = Montrer ce que disent ses événements
+agendas-set-now = maintenant
+agendas-set-forget = Oublier « { $name } »
+agendas-set-save = Garder ces agendas comme un ensemble…
+agendas-set-name = Un nom pour ces agendas
+agendas-set-times = Vient de lui-même en
+agendas-set-keep = Garder
+holder-question = { $child } : « { $title } », { $when }. Qui s’en charge ?
+holder-proposed = { $who } vous propose d’emmener { $child } à « { $title } », { $when }.
+holder-reopened = { $who } ne peut pas emmener { $child } à « { $title } », { $when } : c’est de nouveau libre. Qui s’en charge ?
+holder-reopened-said = { $who } ne peut pas emmener { $child } à « { $title } », { $when } : c’est de nouveau libre.
+holder-said-me = Vous emmenez { $child } à « { $title } », { $when } : c’est dans votre agenda.
+holder-said-declined = Pas cette fois : « { $title } » de { $child }, { $when }, est de nouveau libre.
+holder-said-other = { $who } est sollicité·e pour emmener { $child } à « { $title } », { $when } : son Sioul lui pose la question.
+holder-said-other-mail = { $who } est sollicité·e pour emmener { $child } à « { $title } », { $when } : l’invitation attend dans les brouillons que vous l’envoyiez.
+holder-made = « { $title } » de { $child }, { $when }, est dans votre agenda : vous vous en chargez.
+holder-followed = « { $title } » de { $child } a changé : votre agenda suit, { $when }.
+holder-given = « { $title } » de { $child } n’est plus dans votre agenda.
+holder-follow-up-added = Dans la liste de { $child } : { $title }.
+holder-follow-up-dentist = Prendre le prochain rendez-vous de dentiste de { $name }
+holder-follow-up-health = Prendre le prochain bilan de santé de { $name }
+holder-follow-up-other = Prendre le prochain rendez-vous de { $name } : { $kind }
+holder-not-child = Ce n’est pas dans l’agenda d’un enfant.
+holder-no-parent = Écrivez d’abord l’adresse de l’autre parent dans les réglages de cet agenda (Agenda ⚙ ▸ Vos agendas).
+holder-no-address = Donnez d’abord une adresse à l’un de vos comptes : elle dit que c’est vous qui vous en chargez.
+holder-invite-details = { $child } : « { $title } », { $when }. Répondez à cette invitation pour dire si vous vous en chargez.
+holder-invite-subject = { $child } : « { $title } », { $when }. Peux-tu t’en charger ?
+holder-invite-body = Bonjour { $who },
+
+    pourrais-tu emmener { $child } à « { $title } », { $when } ? Ton agenda peut répondre à cette invitation.
+holder-invite-cancel-subject = { $child } : « { $title } », { $when } : plus besoin
+holder-invite-cancel-body = Bonjour { $who },
+
+    plus besoin d’emmener { $child } à « { $title } », { $when } : c’est réglé, ou annulé.
+holder-invite-update-drafted = Une mise à jour pour { $who } attend dans les brouillons : elle part quand vous l’envoyez.
+holder-invite-redrafted = L’invitation pour { $who }, encore dans les brouillons, dit maintenant le changement.
+holder-invite-cancel-drafted = Une annulation pour { $who } attend dans les brouillons : elle part quand vous l’envoyez.
+holder-replied-yes = { $who } emmène { $child } à « { $title } », { $when }.
+holder-replied-no = { $who } ne peut pas emmener { $child } à « { $title } », { $when } : c’est de nouveau libre.
+holder-replied-maybe = { $who } n’a pas encore répondu pour « { $title } » de { $child }, { $when }.
+holder-replied-unproven = Sioul n’a pas pu prouver que cette réponse vient de { $who } : rien n’a changé, et « Qui s’en charge ? » est toujours sur la fiche de « { $title } » de { $child }.
+agenda-parent = L’autre parent
+agenda-parent-name = Son nom
+agenda-parent-address = Son adresse
+agenda-parent-answers = Répond
+agenda-parent-answers-mail = Par une invitation dans sa messagerie
+agenda-parent-answers-sioul = Dans son propre Sioul, qui lit cet agenda
+agenda-standing = Qui s’en charge d’habitude
+agenda-standing-ask = Demandé à chaque fois
+children-events = Événements des enfants
+children-stand-ins = Votre doublure va dans
+children-stand-in-usual = Votre agenda personnel
+children-follow-ups = Après le dentiste et les bilans, une tâche pour prendre le suivant
+children-months = Mois d’écart
+agenda-whose = À qui il est
+agenda-whose-yours = À vous
+agenda-whose-child = À un enfant
+agenda-whose-parent = À l’autre parent
+agenda-whose-partner = À un ou une partenaire
+agenda-whose-shared = Partagé avec vous
+agenda-person = Son nom
+agenda-person-child = Le nom de l’enfant
+agenda-for = Pour
+agenda-reaches = Vous atteint
+agenda-reaches-all-day = Toute la journée
+agenda-reaches-outside-work = Hors des heures de travail
+agenda-access = Vous pouvez
+agenda-access-write = Lire et écrire
+agenda-access-read = Lire seulement
+agenda-access-availability = Voir seulement quand il est pris
+agenda-server-read-only = Son serveur vous le laisse lire seulement.
+# Sur la fiche d’un événement : vous à deux endroits. $whose : l’agenda de l’autre événement (le nom d’une personne), « none » pour le vôtre ; $why : « accepted » (une invitation acceptée dans l’agenda d’un autre), « tentative », sinon « none ».
+conflict-same-time = En même temps que « { $title } »{ $whose ->
+        [none] {""}
+       *[other] {" "}de { $whose }
+    }{ $why ->
+        [accepted] , que vous avez accepté.
+        [tentative] , pas encore confirmé.
+       *[none] .
+    }
+conflict-tight = Serré avec « { $title } »{ $whose ->
+        [none] {""}
+       *[other] {" "}de { $whose }
+    } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
+conflict-none-movable = Aucun des deux ne peut être déplacé ici : gardez les deux, ou déplacez le vôtre là où il vit.
+conflict-none-to-ask = Aucun des deux n’est un événement d’enfant dont vous vous chargez : personne à qui demander.
+conflict-keep-both = Garder les deux
+conflict-move-mine = Déplacer le mien
+conflicts-itself = { $agenda } avec lui-même
+conflicts-pair = { $first } avec { $second }
+conflicts-with-itself = Avec lui-même
+conflicts-with = Avec { $agenda }
 agenda-move-which = Déplacé à { $time } : cette fois seulement, ou toutes les fois ?
 agenda-move-set-days = Sa règle fixe ses jours : déplacez cette fois seulement, ou changez sa répétition dans son formulaire.
 health-readable-done = Terminé
@@ -4799,6 +4973,7 @@ home-card-time-range = { $start } – { $end }
 home-card-until-day = Jusqu’au { $day }
 home-card-event-plain = Un événement
 home-card-agenda-empty = Rien dans vos agendas pour le mois à venir.
+home-card-agenda-empty-hours = Les agendas que ces heures montrent n’ont rien pour le mois à venir.
 # Les dates demandées dans l’agenda, à partir de la version 4, sans les détails : chacune par son type seul.
 home-card-date-asked-plain = Une date demandée
 home-card-date-letter-plain = Un rendez-vous d’un courrier
@@ -4958,6 +5133,13 @@ calls-line-more = { $context }, { $who } a appelé { $count } fois, la dernière
 calls-line-once-on = { $context }, { $who } a appelé { $phone } à { $time }.
 calls-line-twice-on = { $context }, { $who } a appelé { $phone } deux fois, à { $first } et à { $second }.
 calls-line-more-on = { $context }, { $who } a appelé { $phone } { $count } fois, la dernière à { $time }.
+# A declined call's row on the Porch (`calls::Line::what`): the time of day it was, on which phone, how many times.
+calls-row = { $context }
+calls-row-on = { $context }, sur { $phone }
+calls-row-twice = { $context }, deux fois
+calls-row-twice-on = { $context }, sur { $phone }, deux fois
+calls-row-more = { $context }, { $count } fois
+calls-row-more-on = { $context }, sur { $phone }, { $count } fois
 calls-phone-yours = votre téléphone
 calls-phone-other = votre autre téléphone
 calls-phone-named = votre téléphone ({ $name })
@@ -5011,14 +5193,12 @@ calls-switch-tip-on = { $line } Un clic les filtre à nouveau.
 calls-for-60 = Pendant une heure
 calls-until-off = Jusqu’à ce que je l’arrête
 calls-open-settings = Réglages des appels…
-calls-title = Appels refusés par Sioul
 calls-listen = Écouter
 calls-text-back = Répondre par SMS
 calls-call-back = Rappeler
 calls-add-contact = Ajouter aux contacts
 calls-block = Bloquer
 calls-why = Pourquoi ?
-calls-seen = Vu
 calls-block-title = Bloquer ce numéro ?
 calls-block-ask = Les appels du { $number } iront sur votre messagerie à chaque fois, sans être listés. Ses SMS arrivent encore : les numéros bloqués d’Android les arrêtent.
 calls-blocked-said = Bloqué : ses appels vont sur votre messagerie, sans être listés.
@@ -5026,7 +5206,6 @@ calls-open-blocked = Numéros bloqués d’Android (appels et SMS)
 calls-listen-gone = Le son de ce message n’est plus dans vos courriels.
 calls-copy = Copier le numéro
 calls-copied = Numéro copié.
-calls-seen-said = Marqué vu : cette ligne quitte le Porche de chacun de vos appareils.
 calls-block-ask-elsewhere = Les appels du { $number } iront sur votre messagerie à chaque fois, sans être listés. Ses SMS arrivent encore : les numéros bloqués de votre téléphone les arrêtent.
 calls-setup-what-title = Ce que Sioul fait des appels
 calls-setup-what = Quand quelqu’un qui ne peut pas vous joindre maintenant appelle, Sioul refuse l’appel simplement, comme vous le feriez à la main : votre opérateur l’envoie sur votre messagerie. Rien ne sonne, rien ne s’affiche pendant ce temps. Ensuite, le Porche liste qui a appelé, à un moment où ces personnes peuvent vous joindre, en proposant d’abord de répondre par écrit.
@@ -5435,6 +5614,7 @@ phonemsgs-with-picture = { $text } (avec une image)
 phonemsgs-no-words = un message sans mots
 phonemsgs-code = Un code est arrivé de { $who } à { $time }. Il reste sur votre téléphone.
 phonemsgs-code-day = { $day }, un code est arrivé de { $who } à { $time }. Il reste sur votre téléphone.
+phonemsgs-code-row = Un code est arrivé. Il reste sur votre téléphone.
 phonemsgs-head = { $context }, { $who } a écrit :
 phonemsgs-head-app = { $context }, { $who } a écrit sur { $app } :
 phonemsgs-head-on = { $context }, { $who } a écrit à { $phone } :
@@ -5449,7 +5629,6 @@ phonemsgs-history-line = { $when } : { $text }
 phonemsgs-history-app = { $when }, sur { $app } : { $text }
 phonemsgs-history-code = { $when } : un code, qui reste sur votre téléphone.
 phonemsgs-history-withheld = { $when } : un message sur { $app } ; ses mots restent sur votre téléphone.
-phonemsgs-seen-said = Marqué vu : cette ligne quitte le Porche de chacun de vos appareils. La notification de votre téléphone reste telle quelle.
 phonemsgs-blocked-said = Bloqué : ses appels vont sur votre messagerie, et ses messages attendent pour de bon sur votre téléphone, jamais sur vos ordinateurs.
 phonemsgs-block-title = Bloquer ce numéro ?
 phonemsgs-block-ask = { $number } rejoint votre liste de numéros bloqués : ses appels vont sur votre messagerie, ses messages attendent pour de bon sur votre téléphone, et rien de lui n’atteint vos ordinateurs.
@@ -6400,6 +6579,10 @@ reach-card-let-it-done = Elle arrive au prochain regard du téléphone.
 set-agenda-calendar = Les nouveaux événements vont dans
 set-agenda-calendar-help = L’agenda où va un nouvel événement ; l’éditeur de l’événement peut en choisir un autre, et déplacer un événement plus tard.
 set-agenda-calendar-first = Le premier agenda qui prend des événements
+set-agendas = Vos agendas
+set-agendas-help = Ce qu’est chacun : à qui, pour quoi, quand il vous atteint, ce que vous pouvez en faire. Sioul l’a deviné de ce qu’il voyait ; ouvrez-en un pour dire autrement.
+set-conflicts = Conflits
+set-conflicts-help = Un conflit, c’est vous à deux endroits : les événements de vos agendas, les invitations acceptées, les événements des enfants que vous prenez. Une paire cochée compare tous ses événements, quel que soit qui ils demandent ; une des vôtres décochée, aucun.
 event-calendar-in = Dans { $name }
 event-calendar-here-computer = Seulement sur cet ordinateur : un agenda propre à cet appareil, que votre partage ne transporte pas.
 event-calendar-here-phone = Seulement sur ce téléphone : un agenda propre à cet appareil, que votre partage ne transporte pas.
@@ -6426,7 +6609,7 @@ collection-events-and-tasks = événements et tâches
 
 # The time kept between two events (22 October 2026): set by you alone; otherwise, two events overlap only when their times do.
 set-agenda-between = Temps gardé entre deux événements
-set-agenda-between-help = Plus proches que cela, deux événements sont dits trop proches. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
+set-agenda-between-help = Plus proches que cela, deux événements sont serrés, jamais en même temps. 0 : aucun, comme au début. L’Avant et l’Après propres à chaque événement comptent aussi, le plus long d’entre eux, jamais ajoutés.
 set-agenda-time-zone = Fuseau horaire
 set-agenda-time-zone-help = Le fuseau horaire dans lequel l’agenda, le planning et les rappels disent les heures, et décident d’aujourd’hui, sur cet appareil : le sien, suivi quand il change, ou un autre choisi, pour un ordinateur dont l’horloge reste à la maison pendant un voyage. Un événement garde son instant ; seule la façon dont son heure se lit change. Les prises gardent l’horloge du système.
 set-agenda-time-zone-device = Suivre cet appareil ({ $zone })
@@ -6465,11 +6648,8 @@ conversion-lost-waiting = { $n ->
 task-done-stays = Une tâche faite reste une tâche : c’est la trace du travail fait.
 
 # A text not read yet, on the Porch: one notice, opening it in Texts (23 October 2026).
-texts-notice = { $time }, un SMS de { $who } : « { $first } »
-texts-notice-many = { $time }, { $count } SMS de { $who }, le dernier : « { $first } »
-# The same notice for a text that reached the phone 5 minutes or more after it was sent (27 October 2026).
-texts-notice-sent = { $time }, un SMS de { $who } : « { $first } » (envoyé à { $sent }, { $late } plus tôt)
-texts-notice-many-sent = { $time }, { $count } SMS de { $who }, le dernier : « { $first } » (envoyé à { $sent }, { $late } plus tôt)
+# A text's row on the Porch, when it came 5 minutes or more after it was sent.
+texts-notice-late = Envoyé à { $sent }, { $late } plus tôt.
 
 # A text that reached the phone 5 minutes or more after it was sent (docs/texts.md, "When a text was sent"):
 # the thread places it at its sending time and says beside it "22:10 · arrivé à 01:55, 3 h 45 plus tard".

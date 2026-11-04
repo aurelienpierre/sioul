@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The Porch: verified codes on top, whatever the time; then, inside an admin
-// window, a few sentences and the lanes; outside, only when it opens. A
-// message opens on the right, in the Reader.
+// The Porch (docs/porch.md): what came, as notices, in sections every one
+// alike (PorchSection.qml), each notice a row (NoticeRow.qml): codes first,
+// whatever the time; then, inside an admin window, each project, what you
+// sent yourself, the people you know, what your phone brought, the sites'
+// notifications, the week's money, the paper letters, then what is filed,
+// someone new, less important accounts, your filter's catches, what is set
+// aside; outside the window, only when it opens. Dismiss and Mark read act
+// at once, with ten seconds to undo. A message opens on the right, in the Reader.
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Item {
@@ -24,8 +30,10 @@ Item {
     readonly property var view: page.porchText ? JSON.parse(page.porchText) : ({ open: false, closed: null, right_now: [], summary: "", status: "", lanes: [] })
 
     function takeShown() {
-        if (page.visible)
+        if (page.visible) {
             page.porchText = page.sioul.porch
+            page.readNotices()
+        }
     }
 
     Connections {
@@ -34,11 +42,82 @@ Item {
         function onPorchChanged() {
             page.takeShown()
         }
+        function onLettersChanged() {
+            page.readNotices()
+        }
     }
-    // Lanes whose "?" is open, by key.
-    property var helpShown: ({})
-    // What sites notified, kept for the Porch.
-    property var siteNotices: JSON.parse(page.sioul.siteNotices() || "[]")
+    // The Porch's sections that are not mail, as notices (`notices::view`):
+    // {sites, money, letters}, each a list of rows; read while shown.
+    property var notices: ({ sites: [], money: [], letters: [] })
+    function readNotices() {
+        if (page.visible)
+            page.notices = JSON.parse(page.sioul.notices("view", "{}") || "{}")
+    }
+    // The notices just dismissed or read here, by id: gone from the rows at
+    // once, before the Porch is read again; back with Undo.
+    property var gone: ({})
+    // The last word said here, for its ten seconds: {verb, row, at, said}.
+    property var lastSaid: null
+
+    // The rows still new (not dismissed, read or done on any device), and
+    // the message open in the Reader, which stays while it is read.
+    function newOnes(rows) {
+        return (rows || []).filter(row => {
+            const notice = row.notice || {}
+            if (row.key && page.sameMessage(row.key, page.openKey))
+                return true
+            if (page.gone[notice.id] === true)
+                return false
+            return !notice.state || notice.state.mark === "new"
+        })
+    }
+
+    // A word said of a row's notices (`notices::call`): "dismiss", "read",
+    // "done"; gone from the Porch at once, ten seconds to undo.
+    function say(verb, row) {
+        const asked = { kind: row.kind || (row.notice ? row.notice.kind : ""), ids: row.ids || [row.notice.id], targets: row.targets || [] }
+        const answer = JSON.parse(page.sioul.notices(verb, JSON.stringify(asked)) || "{}")
+        if (!answer.at) {
+            if (answer.said)
+                page.sioul.status = answer.said
+            return
+        }
+        const next = Object.assign({}, page.gone)
+        for (const id of asked.ids)
+            next[id] = true
+        page.gone = next
+        page.lastSaid = { asked: asked, mark: answer.mark, at: answer.at, said: answer.said }
+        undoTimer.restart()
+    }
+
+    function undo() {
+        const last = page.lastSaid
+        if (last === null)
+            return
+        page.sioul.notices("undo", JSON.stringify(Object.assign({ mark: last.mark, at: last.at }, last.asked)))
+        const next = Object.assign({}, page.gone)
+        for (const id of last.asked.ids)
+            delete next[id]
+        page.gone = next
+        page.lastSaid = null
+        undoTimer.stop()
+    }
+
+    Timer {
+        id: undoTimer
+
+        interval: 10000
+        onTriggered: page.lastSaid = null
+    }
+
+    // Rows on two lines, their quiet actions in their menu: a phone, or the
+    // list narrowed beside a message open in the Reader.
+    readonly property bool narrowRows: page.window.compact || list.availableWidth < 640
+
+    // Sections after the phone's, the sites', the money's and the letters'.
+    function isLate(key) {
+        return ["filed", "screener", "low", "review", "set-aside", "hostile"].indexOf(key) >= 0
+    }
     // Notes or papers gone many at once here and held, not said yet
     // (`share::withheld`): read when the Porch shows and at each minute.
     property var withheld: []
@@ -117,6 +196,7 @@ Item {
         function onNowChanged() {
             if (page.visible) {
                 page.reloadDoses()
+                page.readNotices()
                 if (!page.withheldRead)
                     page.readWithheld()
             }
@@ -127,7 +207,7 @@ Item {
         target: page.sioul
 
         function onSitesChanged() {
-            page.siteNotices = JSON.parse(page.sioul.siteNotices() || "[]")
+            page.readNotices()
         }
     }
     // The message being read, by its file; it stays open across refreshes.
@@ -186,9 +266,6 @@ Item {
                     return item
         return null
     }
-    // Lanes folded or unfolded by hand, by key; the others keep their default.
-    property var unfolded: ({})
-
     // A message keeps the start of its file name when reading or flagging it renames it.
     function sameMessage(a, b) {
         return a !== "" && b !== "" && a.split(/[\/\\]/).pop().split(/[:!]/)[0] === b.split(/[\/\\]/).pop().split(/[:!]/)[0]
@@ -210,9 +287,13 @@ Item {
     }
 
     // A scan of a paper letter, chosen and copied into the folder scans are
-    // read from (the New menu's "A paper letter (scan)…").
+    // read from (the New menu's "A paper letter (scan)…"); without a folder,
+    // where one is chosen: Settings.
     function addScan() {
-        letters.addScan()
+        if (page.sioul.lettersFolder() === "")
+            page.window.showParameters("case_store")
+        else
+            scanPicker.open()
     }
 
     function grabSettings(path) {
@@ -235,14 +316,24 @@ Item {
             reader.item.reasonsShown = true
     }
 
+    // A lane's section, by its key, among the Porch's (the window's images).
+    function laneSectionOf(key) {
+        for (const lanes of [earlyLanes, lateLanes])
+            for (let i = 0; i < lanes.count; ++i) {
+                const section = lanes.itemAt(i)
+                if (section !== null && section.key === key)
+                    return section
+            }
+        return null
+    }
+
     // A lane at the top of the list (the window's images).
     function scrollToLane(key) {
-        const at = page.view.lanes.findIndex(lane => lane.key === key)
-        const row = at < 0 ? null : laneRows.itemAt(at)
+        const section = page.laneSectionOf(key)
         const flick = list.contentItem as Flickable
-        if (row === null || flick === null)
+        if (section === null || flick === null)
             return
-        const top = row.mapToItem(flick.contentItem, 0, 0).y
+        const top = section.mapToItem(flick.contentItem, 0, 0).y
         flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
     }
 
@@ -254,45 +345,76 @@ Item {
 
     // A lane opened, as its title opens it (the window's images).
     function openLane(key) {
-        const next = Object.assign({}, page.unfolded)
-        next[key] = true
-        page.unfolded = next
-    }
-
-    function isFolded(lane) {
-        return page.unfolded[lane.key] === undefined ? lane.folded : !page.unfolded[lane.key]
-    }
-
-    function toggle(lane) {
-        const next = Object.assign({}, page.unfolded)
-        next[lane.key] = isFolded(lane)
-        page.unfolded = next
+        const section = page.laneSectionOf(key)
+        if (section !== null)
+            section.unfold()
     }
 
     function trustIcon(level) {
         return level === "verified" ? "security-high" : level === "forged" ? "security-low" : "security-medium"
     }
 
-    function toggleHelp(key) {
-        const next = Object.assign({}, page.helpShown)
-        next[key] = !next[key]
-        page.helpShown = next
+    // The first new message of the first lane dismissed, as its row's Dismiss does (the window's images).
+    function dismissFirst() {
+        for (const lane of view.lanes) {
+            const shown = page.newOnes(lane.items)
+            if (shown.length > 0) {
+                page.say("dismiss", page.mailRow(shown[0]))
+                return
+            }
+        }
     }
 
-    // A small number in words ("three"), as the translations write them,
-    // digits beyond twelve: no counts that read as badges (docs/design.md).
-    function countWords(n) {
-        const id = "count-" + n
-        const words = page.sioul.text(id)
-        return words === id ? String(n) : words
+    // A section's help, once, and what changes it: in a popup (`helpPopup`).
+    function showHelp(lane) {
+        helpPopup.now().show(lane)
     }
 
-    function laneIcon(key) {
-        if (key.startsWith("project:"))
-            return "folder-documents"
-        if (key.startsWith("public:"))
-            return "mail-message"
-        return { "people": "user-identity", "screener": "contact-new", "filed": "folder-mail", "low": "go-bottom", "review": "view-filter", "set-aside": "mail-mark-junk", "hostile": "dialog-cancel" }[key] || "mail-message"
+    // The help's popup, when made (the window's pictures), and closed.
+    function helpItem() {
+        return helpPopup.item
+    }
+    function closeHelp() {
+        if (helpPopup.item !== null)
+            helpPopup.item.close()
+    }
+
+    // A lane's help as its "?" says it: what it holds, how mail lands there.
+    function helpOf(lane) {
+        return [lane.about].concat(lane.rules || []).filter(t => !!t).join("\n\n")
+    }
+
+    // A message as AddMenu ties things to it.
+    function sourceOf(item) {
+        return { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.sender, address: item.hidden ? "" : item.address, known: !item.screener }
+    }
+
+    // A message's notice's row: its kind, its notice, the file Read marks.
+    function mailRow(item) {
+        return { kind: "mail", ids: [item.notice.id], targets: [item.key], notice: item.notice }
+    }
+
+    // A letter opened: on its scan, as a letter opens until the Letters page opens it.
+    function openLetter(letter) {
+        if (letter.file)
+            Qt.openUrlExternally(page.theme.fileUrl(letter.file))
+    }
+
+    // A letter's own actions (its row's menu): a task for its date, its
+    // appointment in the agenda, done (filed with its project).
+    function letterAct(id, letter) {
+        let problem = ""
+        if (id === "task")
+            problem = page.sioul.letterTask(letter.id)
+        else if (id === "open-task")
+            page.window.openTask(letter.task)
+        else if (id === "event")
+            problem = page.sioul.letterEvent(letter.id)
+        else if (id === "done")
+            problem = page.sioul.letterDone(letter.id, letter.project || "")
+        if (problem !== "")
+            page.sioul.status = problem
+        page.readNotices()
     }
 
     RowLayout {
@@ -357,17 +479,6 @@ Item {
                     onClicked: page.sioul.openAnyway()
                 }
 
-                // Opened: what came, in a few sentences, before the cards (docs/design.md, "Opening").
-                Label {
-                    visible: page.view.open && page.view.summary !== ""
-                    Layout.fillWidth: true
-                    text: page.view.summary
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    font.pixelSize: 17
-                    lineHeight: 1.3
-                    color: page.theme.text
-                }
                 // On a phone: other apps' notifications held until their time, and those back (docs/android.md).
                 Label {
                     visible: page.view.open && (page.view.apps_line || "") !== ""
@@ -904,87 +1015,41 @@ Item {
                     }
                 }
 
-                // The calls Sioul declined on this phone, each at a time its caller may
-                // reach you, whatever the Porch's own hours (CallsSection.qml, docs/porch.md).
-                CallsSection {
-                    Layout.fillWidth: true
+                // Right now: the one exception to the hours, a code's message at
+                // once, whatever the time (docs/porch.md, "Right now").
+                PorchSection {
                     sioul: page.sioul
                     theme: page.theme
-                    window: page.window
-                }
-                // What your phone's notifications brought, on a computer, each at a time its
-                // sender may reach you (PhoneMessagesSection.qml, docs/porch.md, "From your phone").
-                PhoneMessagesSection {
-                    Layout.fillWidth: true
-                    sioul: page.sioul
-                    theme: page.theme
-                    window: page.window
-                }
+                    compact: page.window.compact
+                    key: "right-now"
+                    title: page.sioul.text("right-now-title")
+                    help: page.sioul.text("porch-about-right-now")
+                    count: page.newOnes(page.view.right_now).length
+                    onHelpAsked: page.showHelp({ key: "right-now", title: page.sioul.text("right-now-title"), about: page.sioul.text("porch-about-right-now"), rules: [], settings: "" })
 
-                // Money, in the window: the week's payments, and whether the account holds them.
-                RowLayout {
-                    id: money
+                    Repeater {
+                        model: page.newOnes(page.view.right_now)
 
-                    property var bank: null
+                        delegate: NoticeRow {
+                            id: codeRow
 
-                    // Asleep, none: no money at night.
-                    visible: page.view.open && page.window.moment.sleep !== true && money.bank !== null && (money.bank.week !== "" || money.bank.attention > 0)
-                    Layout.fillWidth: true
-                    spacing: 8
+                            required property var modelData
 
-                    Component.onCompleted: money.bank = JSON.parse(page.sioul.bank())
-                    Connections {
-                        target: page
-
-                        function onVisibleChanged() {
-                            if (page.visible)
-                                money.bank = JSON.parse(page.sioul.bank())
+                            sioul: page.sioul
+                            theme: page.theme
+                            window: page.window
+                            compact: page.narrowRows
+                            notice: codeRow.modelData.notice
+                            iconName: codeRow.modelData.warning ? "security-medium" : "security-high"
+                            note: codeRow.modelData.warning || ""
+                            mainText: codeRow.modelData.code ? page.sioul.text("ui-copy") : ""
+                            mainIcon: "edit-copy"
+                            onMainPressed: page.window.copy(codeRow.modelData.code)
+                            // Codes are in no lane: their message through the window's one opener, by its address.
+                            onOpened: page.window.openMail({ address: codeRow.modelData.address || "", file: codeRow.modelData.key })
+                            onReadPressed: page.say("read", { kind: "mail", ids: [codeRow.modelData.notice.id], targets: [codeRow.modelData.key] })
+                            onDismissPressed: page.say("dismiss", { kind: "mail", ids: [codeRow.modelData.notice.id], targets: [codeRow.modelData.key] })
                         }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: money.bank === null ? "" : [money.bank.week, money.bank.attention > 0 ? page.sioul.textArgs("bank-attention", JSON.stringify({ count: money.bank.attention })) : ""].filter(t => t !== "").join(" ")
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: page.theme.muted
-                    }
-                    Button {
-                        visible: money.bank !== null && money.bank.attention > 0
-                        flat: true
-                        text: page.sioul.text("ui-budgets")
-                        onClicked: page.window.page = 9
-                    }
-                }
-
-                // Paper letters, read from their scans: in the window, like mail. On a
-                // computer, where their scans go is said before any comes (LettersSection.qml).
-                LettersSection {
-                    id: letters
-
-                    visible: page.view.open && page.window.moment.sleep !== true && (letters.place || letters.shown.letters.length > 0 || letters.shown.missing !== "")
-                    Layout.fillWidth: true
-                    sioul: page.sioul
-                    theme: page.theme
-                    window: page.window
-                    onSettingsWanted: page.openSettings(true)
-                }
-
-                // Right now: the one exception to the windows. A card opens its
-                // message, as the Porch's other cards do (23 October 2026).
-                Repeater {
-                    model: page.view.right_now
-
-                    delegate: CodeCard {
-                        required property var modelData
-
-                        Layout.fillWidth: true
-                        sioul: page.sioul
-                        theme: page.theme
-                        card: modelData
-                        onCopy: code => page.window.copy(code)
-                        // Codes are in no lane: their message through the window's one opener, by its address.
-                        onOpen: key => page.window.openMail({ address: modelData.address || "", file: key })
                     }
                 }
 
@@ -1016,422 +1081,201 @@ Item {
                     }
                 }
 
-                // What your sites notified while you were away, each site with its lines.
+                // Each project, your public addresses, what you sent yourself, the people you know.
                 Repeater {
-                    model: page.view.open ? page.siteNotices : []
+                    id: earlyLanes
 
-                    delegate: Panel {
-                        id: siteNotice
+                    model: page.view.open ? page.view.lanes.filter(lane => !page.isLate(lane.key)) : []
+                    delegate: laneSection
+                }
 
-                        required property var modelData
+                // From your phone: its calls, texts and other apps' notifications, each at a
+                // time its sender may reach you, whatever the Porch's own hours
+                // (CallsSection.qml, PhoneMessagesSection.qml, docs/porch.md, "From your phone").
+                PorchSection {
+                    id: phoneSection
+
+                    sioul: page.sioul
+                    theme: page.theme
+                    compact: page.window.compact
+                    key: "phone"
+                    title: page.sioul.text("phonemsgs-title")
+                    help: page.sioul.text("porch-about-phone")
+                    count: calls.count + phoneMessages.count
+                    onHelpAsked: page.showHelp({ key: "phone", title: page.sioul.text("phonemsgs-title"), about: page.sioul.text("porch-about-phone"), rules: [], settings: "" })
+
+                    CallsSection {
+                        id: calls
 
                         Layout.fillWidth: true
+                        sioul: page.sioul
                         theme: page.theme
+                        window: page.window
+                        porch: page
+                    }
+                    PhoneMessagesSection {
+                        id: phoneMessages
 
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 4
+                        Layout.fillWidth: true
+                        sioul: page.sioul
+                        theme: page.theme
+                        window: page.window
+                        porch: page
+                    }
+                }
 
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
+                // The sites' notifications kept for the Porch, a row per site.
+                PorchSection {
+                    sioul: page.sioul
+                    theme: page.theme
+                    compact: page.window.compact
+                    key: "sites"
+                    title: page.sioul.text("porch-sites")
+                    help: page.sioul.text("porch-about-sites")
+                    count: page.view.open ? page.newOnes(page.notices.sites || []).length : 0
+                    onHelpAsked: page.showHelp({ key: "sites", title: page.sioul.text("porch-sites"), about: page.sioul.text("porch-about-sites"), rules: [], settings: "" })
 
-                                Icon {
-                                    iconName: "internet-web-browser"
-                                    size: 16
-                                }
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: page.sioul.textWith("site-notified", "site", siteNotice.modelData.name)
-                                    textFormat: Text.PlainText
-                                    font.weight: Font.DemiBold
-                                    elide: Text.ElideRight
-                                    color: page.theme.text
-                                }
-                                Button {
-                                    text: page.sioul.text("ui-open")
-                                    onClicked: page.window.openSite(siteNotice.modelData.id)
-                                }
-                            }
+                    Repeater {
+                        model: page.view.open ? page.newOnes(page.notices.sites || []) : []
+
+                        delegate: NoticeRow {
+                            id: siteRow
+
+                            required property var modelData
+
+                            sioul: page.sioul
+                            theme: page.theme
+                            compact: page.narrowRows
+                            notice: siteRow.modelData.notice
+                            iconName: "internet-services"
+                            mainText: page.sioul.text("ui-open")
+                            mainIcon: "internet-services"
+                            onOpened: page.window.openSite(siteRow.modelData.site)
+                            onMainPressed: page.window.openSite(siteRow.modelData.site)
+                            onDismissPressed: page.say("dismiss", siteRow.modelData)
+
+                            // Its earlier lines, under the newest.
                             Repeater {
-                                model: siteNotice.modelData.items.slice(-4)
+                                model: (siteRow.modelData.lines || []).slice(0, -1).slice(-3)
 
                                 delegate: Label {
                                     required property string modelData
 
                                     Layout.fillWidth: true
-                                    Layout.leftMargin: 24
                                     text: modelData
                                     textFormat: Text.PlainText
                                     elide: Text.ElideRight
-                                    color: page.theme.text
+                                    font.pixelSize: 13
+                                    color: page.theme.muted
                                 }
-                            }
-                            Label {
-                                visible: siteNotice.modelData.items.length > 4
-                                Layout.leftMargin: 24
-                                text: page.sioul.textWith("site-notified-more", "n", String(siteNotice.modelData.items.length - 4))
-                                font.pixelSize: 12
-                                color: page.theme.muted
                             }
                         }
                     }
                 }
 
-                // Open: the lanes, each saying what it holds.
+                // Money: what the week holds, as Budgets reads it; none at night.
+                PorchSection {
+                    sioul: page.sioul
+                    theme: page.theme
+                    compact: page.window.compact
+                    key: "money"
+                    title: page.sioul.text("porch-money")
+                    help: page.sioul.text("porch-about-money")
+                    count: page.view.open && page.window.moment.sleep !== true ? page.newOnes(page.notices.money || []).length : 0
+                    onHelpAsked: page.showHelp({ key: "money", title: page.sioul.text("porch-money"), about: page.sioul.text("porch-about-money"), rules: [], settings: "" })
+
+                    Repeater {
+                        model: page.view.open && page.window.moment.sleep !== true ? page.newOnes(page.notices.money || []) : []
+
+                        delegate: NoticeRow {
+                            id: moneyRow
+
+                            required property var modelData
+
+                            sioul: page.sioul
+                            theme: page.theme
+                            compact: page.narrowRows
+                            notice: moneyRow.modelData.notice
+                            iconName: "view-financial-budget"
+                            amount: moneyRow.modelData.amount || ""
+                            mainText: page.sioul.text("porch-open-budgets")
+                            mainIcon: "view-financial-budget"
+                            onOpened: page.window.page = 9
+                            onMainPressed: page.window.page = 9
+                            onDismissPressed: page.say("dismiss", moneyRow.modelData)
+                        }
+                    }
+                }
+
+                // Paper letters waiting, read from their scans: in the window, like mail; only while one waits.
+                PorchSection {
+                    sioul: page.sioul
+                    theme: page.theme
+                    compact: page.window.compact
+                    key: "letters"
+                    title: page.sioul.text("letters")
+                    help: page.sioul.text("porch-about-letters")
+                    count: page.view.open && page.window.moment.sleep !== true ? page.newOnes(page.notices.letters || []).length : 0
+                    onHelpAsked: page.showHelp({ key: "letters", title: page.sioul.text("letters"), about: page.sioul.text("porch-about-letters"), rules: [], settings: "" })
+
+                    Repeater {
+                        model: page.view.open && page.window.moment.sleep !== true ? page.newOnes(page.notices.letters || []) : []
+
+                        delegate: NoticeRow {
+                            id: letterRow
+
+                            required property var modelData
+                            readonly property var letter: letterRow.modelData.letter || ({})
+
+                            sioul: page.sioul
+                            theme: page.theme
+                            compact: page.narrowRows
+                            notice: letterRow.modelData.notice
+                            iconName: "mail-mark-unread"
+                            // A scan not read: why, said calmly.
+                            note: (letterRow.letter.problem || "") !== "" ? page.sioul.textWith("letters-unread", "problem", letterRow.letter.problem) : ""
+                            // Until the Letters page opens a letter: its scan, as a letter opens now.
+                            mainText: page.sioul.text("letters-scan")
+                            mainIcon: "document-open"
+                            more: [letterRow.letter.deadline !== "" && letterRow.letter.task === "" ? { id: "task", text: page.sioul.text("letters-task") } : null,
+                                   letterRow.letter.task !== "" ? { id: "open-task", text: page.sioul.text("letters-task-made") } : null,
+                                   letterRow.letter.appointment ? { id: "event", text: page.sioul.text("letters-event") } : null,
+                                   { id: "done", text: page.sioul.text("letters-done") }].filter(m => m !== null)
+                            onOpened: page.openLetter(letterRow.letter)
+                            onMainPressed: page.openLetter(letterRow.letter)
+                            onDismissPressed: page.say("dismiss", letterRow.modelData)
+                            onChosen: id => page.letterAct(id, letterRow.letter)
+
+                            // What it says: what it asks, by when.
+                            Repeater {
+                                model: letterRow.letter.lines || []
+
+                                delegate: Label {
+                                    required property string modelData
+
+                                    Layout.fillWidth: true
+                                    text: modelData
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: page.theme.muted
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Filed mail, someone new, less important accounts, your filter's catches, what is set aside, hostile mail.
                 Repeater {
-                    id: laneRows
+                    id: lateLanes
 
-                    model: page.view.open ? page.view.lanes : []
-
-                    delegate: ColumnLayout {
-                        id: lane
-
-                        required property var modelData
-                        readonly property bool folded: page.isFolded(modelData)
-
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        // The lane's title folds and unfolds it; its "?" says how mail lands
-                        // here and holds what changes it. The title fills the row, and wraps
-                        // onto a second line rather than lose words (French titles run long).
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            ItemDelegate {
-                                id: laneTitle
-
-                                Layout.fillWidth: true
-                                leftPadding: 8
-                                rightPadding: 8
-                                onClicked: page.toggle(lane.modelData)
-                                Accessible.name: lane.modelData.title
-
-                                background: Rectangle {
-                                    color: laneTitle.hovered ? page.theme.surface : "transparent"
-                                    radius: page.theme.radius
-                                    border.color: laneTitle.visualFocus ? page.theme.focus : "transparent"
-                                    border.width: 2
-                                }
-                                contentItem: RowLayout {
-                                    spacing: 8
-
-                                    // The caret, as wide as the shields below it, which line up under it.
-                                    Label {
-                                        Layout.preferredWidth: 16
-                                        horizontalAlignment: Text.AlignHCenter
-                                        text: lane.folded ? "▸" : "▾"
-                                        color: page.theme.text
-                                    }
-                                    // In the text's colour: Breeze draws "set aside" with a red sign.
-                                    Icon {
-                                        iconName: page.laneIcon(lane.modelData.key)
-                                        color: page.theme.text
-                                    }
-                                    Label {
-                                        Layout.fillWidth: true
-                                        text: lane.modelData.title
-                                        textFormat: Text.PlainText
-                                        font.pixelSize: 17
-                                        font.weight: Font.DemiBold
-                                        wrapMode: Text.WordWrap
-                                        maximumLineCount: 2
-                                        elide: Text.ElideRight
-                                        color: page.theme.text
-                                    }
-                                    // How many, in words while few; never for the review queue: no badge to clear.
-                                    Label {
-                                        visible: lane.modelData.counted !== false
-                                        text: page.countWords(lane.modelData.items.length)
-                                        textFormat: Text.PlainText
-                                        color: page.theme.muted
-                                    }
-                                }
-                            }
-                            ToolButton {
-                                text: "?"
-                                checkable: true
-                                checked: page.helpShown[lane.modelData.key] === true
-                                Accessible.name: page.sioul.text("ui-lane-help")
-                                ToolTip.visible: hovered
-                                ToolTip.text: page.sioul.text("ui-lane-help")
-                                ToolTip.delay: 300
-                                onClicked: page.toggleHelp(lane.modelData.key)
-                            }
-                        }
-                        // What it holds, under its title.
-                        Label {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 8 + 16 + 8
-                            text: lane.modelData.about
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            font.pixelSize: 13
-                            color: page.theme.muted
-                        }
-                        // How mail lands here, and what changes it: made while shown, its
-                        // settings read again each time. Each setting (SettingRow.qml) is
-                        // read by its file, which the Porch then does not load at its start.
-                        Loader {
-                            id: help
-
-                            readonly property bool shown: page.helpShown[lane.modelData.key] === true
-
-                            visible: help.shown
-                            active: help.shown
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 8
-                            Layout.topMargin: 4
-                            Layout.bottomMargin: 4
-
-                            sourceComponent: Panel {
-                                id: rules
-
-                                property var rows: JSON.parse(page.sioul.settings(lane.modelData.settings))
-
-                                theme: page.theme
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    spacing: 8
-
-                                    Repeater {
-                                        model: lane.modelData.rules
-
-                                        delegate: Label {
-                                            required property string modelData
-
-                                            Layout.fillWidth: true
-                                            text: modelData
-                                            textFormat: Text.PlainText
-                                            wrapMode: Text.Wrap
-                                            lineHeight: 1.25
-                                            color: page.theme.text
-                                        }
-                                    }
-                                    Repeater {
-                                        model: rules.rows
-
-                                        delegate: Loader {
-                                            id: ruleRow
-
-                                            required property var modelData
-
-                                            Layout.fillWidth: true
-                                            Layout.topMargin: 6
-                                            Component.onCompleted: ruleRow.setSource("SettingRow.qml", { setting: ruleRow.modelData, sioul: page.sioul, theme: page.theme })
-
-                                            Connections {
-                                                target: ruleRow.item
-
-                                                function onSave(key, value, shown) {
-                                                    const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
-                                                    if (problem === "")
-                                                        rules.rows = JSON.parse(page.sioul.settings(lane.modelData.settings))
-                                                    else
-                                                        page.sioul.status = problem
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // The review queue, opened: your word on all of it at once, ten seconds to undo.
-                        Flow {
-                            visible: lane.modelData.key === "review" && !lane.folded
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 16 + 8
-                            spacing: 6
-
-                            Button {
-                                flat: true
-                                text: page.sioul.text("ui-not-spam-all")
-                                onClicked: page.sioul.actMany(JSON.stringify(lane.modelData.items.map(item => item.key)), "not-spam")
-                            }
-                            Button {
-                                flat: true
-                                text: page.sioul.text("ui-spam-all")
-                                onClicked: page.sioul.actMany(JSON.stringify(lane.modelData.items.map(item => item.key)), "spam")
-                            }
-                        }
-
-                        Repeater {
-                            model: lane.folded ? [] : lane.modelData.items
-
-                            delegate: ItemDelegate {
-                                id: row
-
-                                required property var modelData
-
-                                Layout.fillWidth: true
-                                // Under its lane: the shield beneath the lane's icon, the sender beneath its title.
-                                Layout.leftMargin: 16 + 8
-                                highlighted: page.sameMessage(page.openKey, modelData.key)
-                                // Its words for screen readers: the row has no text of its own.
-                                Accessible.name: [row.modelData.sender, row.modelData.subject, row.modelData.date].filter(t => !!t).join(", ")
-                                leftPadding: 8
-                                rightPadding: 10
-                                topPadding: 8
-                                bottomPadding: 8
-                                onClicked: page.openKey = modelData.key
-                                Keys.onReturnPressed: page.openKey = modelData.key
-                                Keys.onEnterPressed: page.openKey = modelData.key
-
-                                // On a touch screen, the menu comes at a long press; letting go then opens nothing.
-                                onPressAndHold: {
-                                    row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
-                                    itemMenu.show(row.modelData)
-                                }
-                                TapHandler {
-                                    acceptedButtons: Qt.RightButton
-                                    // A touch has no buttons: on a touch screen, the row's long press.
-                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                    onTapped: itemMenu.show(row.modelData)
-                                }
-
-                                background: Rectangle {
-                                    color: row.highlighted || row.hovered ? page.theme.surface : "transparent"
-                                    radius: page.theme.radius
-                                    border.color: row.visualFocus ? page.theme.focus : row.highlighted ? page.theme.line : "transparent"
-                                    border.width: row.visualFocus ? 2 : 1
-                                }
-
-                                contentItem: ColumnLayout {
-                                    spacing: 3
-
-                                    RowLayout {
-                                        spacing: 8
-
-                                        Icon {
-                                            iconName: page.trustIcon(row.modelData.trust_level)
-                                            size: 16
-                                            tip: row.modelData.checks
-                                        }
-                                        Label {
-                                            Layout.fillWidth: true
-                                            text: row.modelData.sender
-                                            textFormat: Text.PlainText
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                            color: page.theme.text
-                                        }
-                                        Icon {
-                                            visible: row.modelData.attachments.length > 0
-                                            iconName: "mail-attachment"
-                                            size: 16
-                                        }
-                                        Label {
-                                            text: row.modelData.date
-                                            textFormat: Text.PlainText
-                                            color: page.theme.muted
-                                            font.pixelSize: 13
-                                        }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.leftMargin: 16 + 8
-                                        spacing: 6
-
-                                        Label {
-                                            Layout.fillWidth: true
-                                            text: row.modelData.subject
-                                            textFormat: Text.PlainText
-                                            elide: Text.ElideRight
-                                            font.italic: row.modelData.hidden
-                                            color: row.modelData.hidden ? page.theme.muted : page.theme.text
-                                        }
-                                        // In words, quiet: an account ranked more important (no
-                                        // orange mark); a public address's topic, and a rude tone.
-                                        Repeater {
-                                            model: [row.modelData.important ? page.sioul.text("priority-above") : "", row.modelData.topic, row.modelData.tone === "rude" ? page.sioul.text("tone-rude") : ""].filter(t => !!t)
-
-                                            delegate: Rectangle {
-                                                id: chip
-
-                                                required property string modelData
-
-                                                implicitWidth: chipText.implicitWidth + 12
-                                                implicitHeight: chipText.implicitHeight + 4
-                                                radius: height / 2
-                                                color: "transparent"
-                                                border.color: page.theme.line
-
-                                                Label {
-                                                    id: chipText
-
-                                                    anchors.centerIn: parent
-                                                    text: chip.modelData
-                                                    textFormat: Text.PlainText
-                                                    font.pixelSize: 11
-                                                    color: page.theme.muted
-                                                }
-                                            }
-                                        }
-                                        // Your own filter's word on a message in the review queue
-                                        // ("maybe spam"), as quiet; never why.
-                                        Rectangle {
-                                            visible: !!row.modelData.spam_word
-                                            implicitWidth: spamWord.implicitWidth + 12
-                                            implicitHeight: spamWord.implicitHeight + 4
-                                            radius: height / 2
-                                            color: "transparent"
-                                            border.color: page.theme.line
-
-                                            Label {
-                                                id: spamWord
-
-                                                anchors.centerIn: parent
-                                                text: row.modelData.spam_word || ""
-                                                textFormat: Text.PlainText
-                                                font.pixelSize: 11
-                                                color: page.theme.muted
-                                            }
-                                        }
-                                    }
-                                    Label {
-                                        visible: row.modelData.summary !== ""
-                                        Layout.fillWidth: true
-                                        Layout.leftMargin: 16 + 8
-                                        text: row.modelData.summary
-                                        textFormat: Text.PlainText
-                                        elide: Text.ElideRight
-                                        font.pixelSize: 13
-                                        color: page.theme.muted
-                                    }
-                                    // In the review queue: your word, Spam or Not spam, ten seconds to undo.
-                                    Flow {
-                                        visible: !!row.modelData.review
-                                        Layout.fillWidth: true
-                                        Layout.leftMargin: 16 + 8
-                                        spacing: 4
-
-                                        Button {
-                                            flat: true
-                                            font.pixelSize: 13
-                                            text: page.sioul.text("ui-not-spam")
-                                            Accessible.name: row.modelData.subject + ", " + text
-                                            onClicked: page.sioul.act(row.modelData.key, "not-spam", "")
-                                        }
-                                        Button {
-                                            flat: true
-                                            font.pixelSize: 13
-                                            text: page.sioul.text("ui-spam")
-                                            Accessible.name: row.modelData.subject + ", " + text
-                                            onClicked: page.sioul.act(row.modelData.key, "spam", "")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    model: page.view.open ? page.view.lanes.filter(lane => page.isLate(lane.key)) : []
+                    delegate: laneSection
                 }
 
+                // Closes the Porch on the mail it holds: only while some is shown.
                 Button {
-                    visible: page.view.open && page.view.lanes.length > 0
+                    visible: page.view.open && page.view.lanes.some(lane => page.newOnes(lane.items).length > 0)
                     Layout.topMargin: page.theme.gap
                     text: page.sioul.text("ui-done")
                     onClicked: {
@@ -1479,37 +1323,231 @@ Item {
         }
     }
 
-    // Right click on a message: something new tied to it, or a tie to something
-    // that exists. Made the first time it is asked for.
-    Loader {
-        id: itemMenu
+    // A lane of mail, as a section (each project, your public addresses, what
+    // you sent yourself, the people you know; filed, someone new, less
+    // important, your filter's catches, set aside, hostile): its messages
+    // still new, the one open in the Reader too.
+    Component {
+        id: laneSection
 
-        function show(item) {
-            itemMenu.active = true
-            itemMenu.item.show(item)
+        PorchSection {
+            id: lane
+
+            required property var modelData
+            readonly property var shown: page.newOnes(lane.modelData.items)
+
+            sioul: page.sioul
+            theme: page.theme
+            compact: page.window.compact
+            key: lane.modelData.key
+            title: lane.modelData.title
+            help: page.helpOf(lane.modelData)
+            foldedByDefault: lane.modelData.folded
+            count: lane.shown.length
+            onHelpAsked: page.showHelp(lane.modelData)
+
+            // The review queue, opened: your word on all of it at once, ten seconds to undo.
+            Flow {
+                visible: lane.modelData.key === "review"
+                Layout.fillWidth: true
+                Layout.leftMargin: 8
+                spacing: 6
+
+                Button {
+                    flat: true
+                    text: page.sioul.text("ui-not-spam-all")
+                    onClicked: page.sioul.actMany(JSON.stringify(lane.shown.map(item => item.key)), "not-spam")
+                }
+                Button {
+                    flat: true
+                    text: page.sioul.text("ui-spam-all")
+                    onClicked: page.sioul.actMany(JSON.stringify(lane.shown.map(item => item.key)), "spam")
+                }
+            }
+            Repeater {
+                model: lane.folded ? [] : lane.shown
+
+                delegate: NoticeRow {
+                    id: message
+
+                    required property var modelData
+
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                    compact: page.narrowRows
+                    notice: message.modelData.notice
+                    highlighted: page.sameMessage(page.openKey, message.modelData.key)
+                    iconName: page.trustIcon(message.modelData.trust_level)
+                    iconTip: message.modelData.checks || ""
+                    veiled: message.modelData.hidden === true
+                    // In words, quiet: an account ranked more important (no orange mark); a
+                    // public address's topic, a rude tone; your own filter's word ("maybe spam"), never why.
+                    chips: [message.modelData.important ? page.sioul.text("priority-above") : "", message.modelData.topic, message.modelData.tone === "rude" ? page.sioul.text("tone-rude") : "",
+                            message.modelData.spam_word || "", message.modelData.attachments.length > 0 ? page.sioul.text("notice-attached") : ""].filter(t => !!t)
+                    note: message.modelData.summary || ""
+                    source: page.sourceOf(message.modelData)
+                    onOpened: page.openKey = message.modelData.key
+                    onReadPressed: page.say("read", page.mailRow(message.modelData))
+                    onDismissPressed: page.say("dismiss", page.mailRow(message.modelData))
+
+                    // In the review queue: your word, Spam or Not spam, ten seconds to undo.
+                    Flow {
+                        visible: !!message.modelData.review
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Button {
+                            flat: true
+                            font.pixelSize: 13
+                            text: page.sioul.text("ui-not-spam")
+                            Accessible.name: message.modelData.subject + ", " + text
+                            onClicked: page.sioul.act(message.modelData.key, "not-spam", "")
+                        }
+                        Button {
+                            flat: true
+                            font.pixelSize: 13
+                            text: page.sioul.text("ui-spam")
+                            Accessible.name: message.modelData.subject + ", " + text
+                            onClicked: page.sioul.act(message.modelData.key, "spam", "")
+                        }
+                    }
+                }
+            }
         }
+    }
 
-        active: false
-        sourceComponent: SioulMenu {
-            id: menu
+    // What was just said, for ten seconds: its line and Undo, over the list's foot.
+    Panel {
+        objectName: "noticeUndo"
+        visible: page.lastSaid !== null
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: columns.horizontalCenter
+        anchors.bottomMargin: page.theme.gap
+        width: Math.min(page.width - 2 * page.theme.gap, implicitWidth)
+        theme: page.theme
 
-            property var source: null
+        RowLayout {
+            id: undoRow
 
-            function show(item) {
-                menu.source = { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.sender, address: item.hidden ? "" : item.address, known: !item.screener }
-                menu.popup()
+            anchors.fill: parent
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: page.lastSaid ? page.lastSaid.said : ""
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: page.theme.text
             }
-
-            AddMenu {
-                sioul: page.sioul
-                window: page.window
-                source: menu.source
-            }
-            MenuItem {
-                enabled: menu.source !== null && menu.source.uri !== ""
-                text: page.sioul.text("ui-link-existing")
-                onTriggered: page.window.linkFrom(menu.source)
+            Button {
+                objectName: "noticeUndoButton"
+                flat: true
+                text: page.sioul.text("ui-undo")
+                onClicked: page.undo()
             }
         }
+    }
+
+    // A section's help, once, and what changes it (each setting read by its
+    // file, SettingRow.qml, which the Porch then does not load at its start).
+    Later {
+        id: helpPopup
+
+        sourceComponent: Component {
+            SafePopup {
+                id: help
+
+                property var lane: null
+                property var rows: []
+
+                function show(lane) {
+                    help.lane = lane
+                    help.rows = lane.settings ? JSON.parse(page.sioul.settings(lane.settings)) : []
+                    help.open()
+                }
+
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(560, Math.min(page.width, help.roomWidth) - 2 * page.theme.gap)
+                height: Math.min(implicitHeight, help.roomHeight - 2 * page.theme.gap)
+                padding: 16
+
+                contentItem: ScrollView {
+                    contentWidth: availableWidth
+
+                    ColumnLayout {
+                        width: help.availableWidth
+                        spacing: 8
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: help.lane ? help.lane.title : ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 17
+                            font.weight: Font.DemiBold
+                            color: page.theme.text
+                        }
+                        Repeater {
+                            model: help.lane ? [help.lane.about].concat(help.lane.rules || []).filter(t => !!t) : []
+
+                            delegate: Label {
+                                required property string modelData
+
+                                Layout.fillWidth: true
+                                text: modelData
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                lineHeight: 1.25
+                                color: page.theme.text
+                            }
+                        }
+                        Repeater {
+                            model: help.rows
+
+                            delegate: Loader {
+                                id: ruleRow
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                Layout.topMargin: 6
+                                Component.onCompleted: ruleRow.setSource("SettingRow.qml", { setting: ruleRow.modelData, sioul: page.sioul, theme: page.theme })
+
+                                Connections {
+                                    target: ruleRow.item
+
+                                    function onSave(key, value, shown) {
+                                        const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
+                                        if (problem === "")
+                                            help.rows = JSON.parse(page.sioul.settings(help.lane.settings))
+                                        else
+                                            page.sioul.status = problem
+                                    }
+                                }
+                            }
+                        }
+                        Button {
+                            Layout.alignment: Qt.AlignRight
+                            text: page.sioul.text("ui-close")
+                            onClicked: help.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // PDF and pictures, the kinds Sioul reads; several at once. Each copied,
+    // the chosen file left where it was; what happened said on the status line.
+    FileDialog {
+        id: scanPicker
+
+        title: page.sioul.text("letters-add-scan-title")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [page.sioul.text("letters-add-scan-filter") + " (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.webp)"]
+        onAccepted: page.sioul.status = page.sioul.lettersAdd(JSON.stringify(Array.from(scanPicker.selectedFiles, f => f.toString())))
     }
 }

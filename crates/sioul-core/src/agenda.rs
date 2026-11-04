@@ -98,6 +98,46 @@ pub struct Occurrence {
     /// "UTC", "America/New_York"; "" otherwise, and for a whole day. Said beside
     /// your time: "14:00 here · 15:00 Paris".
     pub clock: String,
+    /// Its agenda's place, "account/id" (`agendas`): what the filter and the
+    /// matrix of overlaps name it by; "" when read without its calendar.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub agenda: String,
+    /// Its agenda is someone else's (`agendas::Whose`): shown, warned of as
+    /// the matrix says, never holding your time (`holds_time`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub theirs: bool,
+    /// Its agenda gives its availability only: its title is the agenda's
+    /// name, without place, notes, guests or alarms, whatever its file says
+    /// (`file_occurrences_as`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub busy: bool,
+    /// Its agenda is for work alone: it follows the work hours, its
+    /// reminders waiting while work rests (`reminders`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub work: bool,
+    /// Its agenda is personal and kept out of your work hours (`agendas::Reach::OutsideWork`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub outside_work: bool,
+    /// Its agenda is a child's (`agendas::Whose::Child`): its holder takes
+    /// its reminders, through their stand-in (`holders`), never it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub child: bool,
+    /// A stand-in: the UID of the child's event it stands for (`holders::stands_for`); "" otherwise.
+    #[serde(skip)]
+    pub stands_for: String,
+    /// You are among its guests (one of your accounts' addresses, `mark_answers`):
+    /// an invitation, which needs you once you accept it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub invited: bool,
+    /// You accepted it, or tentatively: the guest that is you answered
+    /// PARTSTAT=ACCEPTED or TENTATIVE (`mark_answers`): an invitation that
+    /// needs you, whatever its agenda.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub accepted: bool,
+    /// Its file says TRANSP:OPAQUE: a whole day said busy, which takes the
+    /// day's time where a whole day otherwise takes none (`overlaps::takes_time`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub opaque: bool,
 }
 
 /// Someone invited, and what they answered.
@@ -110,18 +150,47 @@ pub struct Attendee {
 }
 
 impl Occurrence {
+    /// Whether it needs you, so that you would be in two places with another
+    /// that does (research on several agendas, §5.2): an invitation once you
+    /// accepted it, wherever it is; any other event of your own agendas.
+    pub fn needs_you(&self) -> bool {
+        if self.invited { self.accepted } else { !self.theirs }
+    }
+
     /// Whether it takes time from the plan, your hours and your meals
     /// (`plan::event_spans`, `capacity`): not cancelled, not transparent, not
-    /// declined by you. Whole days are left out where times are counted.
+    /// declined by you, of an agenda of yours (a partner's busy time is not
+    /// yours: `agendas`). Whole days are left out where times are counted.
     pub fn holds_time(&self) -> bool {
-        !self.cancelled && !self.transparent && !self.declined
+        !self.cancelled && !self.transparent && !self.declined && !self.theirs
+    }
+
+    /// When its agenda reaches you, by the hours (`agendas::Agenda::reach`).
+    pub fn reach(&self) -> crate::agendas::Reach {
+        if self.work {
+            crate::agendas::Reach::WorkHours
+        } else if self.outside_work {
+            crate::agendas::Reach::OutsideWork
+        } else {
+            crate::agendas::Reach::Always
+        }
     }
 }
 
-/// Each event `own` (your addresses) declined marked so (`Occurrence::declined`).
+/// Each event `own` (your addresses) declined marked so (`Occurrence::declined`),
+/// and each you accepted (`Occurrence::accepted`).
 pub fn mark_declined(events: &mut [Occurrence], own: &[String]) {
+    mark_answers(events, own);
+}
+
+/// Your answers to each event's invitation, by your addresses `own`:
+/// among its guests, declined, accepted (or tentatively).
+pub fn mark_answers(events: &mut [Occurrence], own: &[String]) {
     for event in events.iter_mut() {
-        event.declined = event.attendees.iter().any(|a| a.answer == "declined" && own.iter().any(|o| o.trim().eq_ignore_ascii_case(a.address.trim())));
+        let mine: Vec<&str> = event.attendees.iter().filter(|a| own.iter().any(|o| o.trim().eq_ignore_ascii_case(a.address.trim()))).map(|a| a.answer.as_str()).collect();
+        event.invited = !mine.is_empty();
+        event.declined = mine.contains(&"declined");
+        event.accepted = mine.iter().any(|a| matches!(*a, "accepted" | "tentative"));
     }
 }
 
@@ -470,8 +539,12 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
 /// can-wait 13).
 pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i64, zone: &TimeZone, own: &[String]) -> Vec<Occurrence> {
     let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
-    let with_others = meeting_with_others(&text, own);
-    let anchor = crate::anchors::parse(&text);
+    // What its agenda is to you (`agendas`): for its availability only, nothing but its times.
+    let marks = crate::agendas::marks_of(calendar);
+    let busy = marks.busy;
+    let with_others = !busy && meeting_with_others(&text, own);
+    let anchor = if busy { None } else { crate::anchors::parse(&text) };
+    let stands_for = if text.contains("latest-version") { crate::holders::stands_for(&text).unwrap_or_default() } else { String::new() };
     // Its own clock, said beside its time when it is another than the one
     // shown (none for UTC on a device showing UTC); never a task's time
     // block's, written in UTC and said here alone.
@@ -496,40 +569,71 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
             continue;
         }
         let status = text_of(component, &ICalendarProperty::Status).to_ascii_uppercase();
-        let (organizer, attendees) = people(component);
-        let (margins, demands) = demands_of(component);
-        found.push(Occurrence {
-            key: path.display().to_string(),
-            uid: component.uid().unwrap_or_default().to_string(),
-            summary: lines::unescape(&text_of(component, &ICalendarProperty::Summary)),
-            location: lines::unescape(&text_of(component, &ICalendarProperty::Location)),
-            notes: lines::unescape(&text_of(component, &ICalendarProperty::Description)),
-            start,
-            end,
-            all_day,
-            recurring: component.is_recurrent_or_override(),
-            calendar: calendar.name.clone(),
-            color: calendar.color.clone(),
-            cancelled: status == "CANCELLED",
-            tentative: status == "TENTATIVE",
-            transparent: text_of(component, &ICalendarProperty::Transp).eq_ignore_ascii_case("TRANSPARENT"),
-            declined: false,
-            organizer,
-            attendees,
-            read_only: calendar.read_only,
-            alarms: alarms_of(&ical, component, start, end - start),
-            margins,
-            demands,
-            task: text_of(component, &ICalendarProperty::Other(crate::blocks::TASK.to_string())),
-            turn: text_of(component, &ICalendarProperty::Other(crate::blocks::TURN.to_string())),
-            remind: remind_of(&ical, component),
-            with_others,
-            list: String::new(),
-            anchor: anchor.clone(),
-            leg_of: String::new(),
-            legs_doubt: false,
-            clock: if all_day { String::new() } else { clock.clone() },
-        });
+        let transp = text_of(component, &ICalendarProperty::Transp);
+        // A calendar transparent as a whole (its server's `schedule-calendar-transp`) takes no time.
+        let transparent = transp.eq_ignore_ascii_case("TRANSPARENT") || marks.transparent;
+        let opaque = transp.eq_ignore_ascii_case("OPAQUE") && !marks.transparent;
+        // Availability only: a time marked free is no busy time, and is left out.
+        if busy && transparent {
+            continue;
+        }
+        let occurrence = if busy {
+            // Its times and whether it is cancelled or tentative, nothing else of what its server sent.
+            Occurrence {
+                key: path.display().to_string(),
+                uid: component.uid().unwrap_or_default().to_string(),
+                // Its own title only when you asked to see what it says (part 4); else its agenda's name.
+                summary: Some(lines::unescape(&text_of(component, &ICalendarProperty::Summary))).filter(|t| marks.titles && !t.trim().is_empty()).unwrap_or_else(|| marks.name.clone()),
+                start,
+                end,
+                all_day,
+                recurring: component.is_recurrent_or_override(),
+                calendar: calendar.name.clone(),
+                color: calendar.color.clone(),
+                cancelled: status == "CANCELLED",
+                tentative: status == "TENTATIVE",
+                read_only: true,
+                clock: if all_day { String::new() } else { clock.clone() },
+                ..Occurrence::default()
+            }
+        } else {
+            let (organizer, attendees) = people(component);
+            let (margins, demands) = demands_of(component);
+            Occurrence {
+                key: path.display().to_string(),
+                uid: component.uid().unwrap_or_default().to_string(),
+                summary: lines::unescape(&text_of(component, &ICalendarProperty::Summary)),
+                location: lines::unescape(&text_of(component, &ICalendarProperty::Location)),
+                notes: lines::unescape(&text_of(component, &ICalendarProperty::Description)),
+                start,
+                end,
+                all_day,
+                recurring: component.is_recurrent_or_override(),
+                calendar: calendar.name.clone(),
+                color: calendar.color.clone(),
+                cancelled: status == "CANCELLED",
+                tentative: status == "TENTATIVE",
+                transparent,
+                declined: false,
+                organizer,
+                attendees,
+                read_only: calendar.read_only,
+                alarms: alarms_of(&ical, component, start, end - start),
+                margins,
+                demands,
+                task: text_of(component, &ICalendarProperty::Other(crate::blocks::TASK.to_string())),
+                turn: text_of(component, &ICalendarProperty::Other(crate::blocks::TURN.to_string())),
+                remind: remind_of(&ical, component),
+                with_others,
+                list: String::new(),
+                anchor: anchor.clone(),
+                leg_of: String::new(),
+                legs_doubt: false,
+                clock: if all_day { String::new() } else { clock.clone() },
+                ..Occurrence::default()
+            }
+        };
+        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, stands_for: stands_for.clone(), opaque, ..occurrence });
     }
     // Your own time around a meeting, kept in your own file, wins over the
     // meeting's lines (decision 18): every reader expands through here.
@@ -548,9 +652,9 @@ pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
         .filter(|c| c.holds("VEVENT"))
         .flat_map(|calendar| calendar.items().into_iter().flat_map(|path| file_occurrences_as(&path, calendar, from, to, &zone, &own)).collect::<Vec<_>>())
         .collect();
-    if all.iter().any(|e| e.attendees.iter().any(|a| a.answer == "declined")) {
-        let own: Vec<String> = crate::config::Config::load(&crate::config::default_path()).map(|c| c.every_account().filter_map(|a| a.address.clone()).collect()).unwrap_or_default();
-        mark_declined(&mut all, &own);
+    // Your answers, by your accounts' addresses: an invitation needs you once accepted, none once declined.
+    if all.iter().any(|e| !e.attendees.is_empty()) {
+        mark_answers(&mut all, &own);
     }
     // An appointment's time kept around it from its legs, while it has some (part E):
     // the plan, the day, quiet time, pauses, health, reach and the reminders all read it here.
@@ -684,6 +788,10 @@ pub enum Refusal {
     TasksOnly,
     /// A task where events only go.
     EventsOnly,
+    /// A busy time of an agenda for its availability only (`agendas`): never
+    /// written, and nothing more of it is known here. Said by the views;
+    /// its writers refuse it as read only.
+    Availability,
 }
 
 impl Refusal {
@@ -695,6 +803,7 @@ impl Refusal {
             (Refusal::WithOthers, _) => "event-change-with-others",
             (Refusal::TasksOnly, _) => "agenda-tasks-only",
             (Refusal::EventsOnly, _) => "agenda-events-only",
+            (Refusal::Availability, _) => "agenda-availability-only",
         }
     }
 }
@@ -720,10 +829,12 @@ pub fn may_change(text: &str, read_only: bool, own: &[String], _change: Change) 
 /// `may_change` for the file at `path` as it is now, its calendar's
 /// read-only mark and your addresses read here: every writer's last word
 /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`). A file
-/// that holds no event (a task, a contact), or none of a calendar, passes; a
-/// new event is refused only in a calendar you only read. What holds no
-/// event, before and after, is asked nothing more than its read: no sync
-/// state parsed, no address asked (review of 36002ea, can-wait 13).
+/// of no calendar (a contact) passes; a task passes but in a calendar or a
+/// list you only read; a new event is refused only in a calendar you only
+/// read. What holds no event, before and after, is asked nothing more than
+/// its read: no sync state parsed, no address asked (review of 36002ea,
+/// can-wait 13). A calendar you only read is one its server keeps so, or one
+/// whose agenda you keep read only or for its availability (`agendas`).
 pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
     // A file of no calendar's folder (a contact): nothing read (the check of ef8c0ca, low 21).
     let Some(read_only) = vdir::calendar_read_only(path) else { return Ok(()) };
@@ -744,7 +855,9 @@ pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
     let old = std::fs::read_to_string(path).ok().filter(|text| holds_event(text));
     let new_event = matches!(change, Change::Write(new) if holds_event(new));
     if old.is_none() && !new_event {
-        return Ok(());
+        // A task too stays as it is in a calendar or a list you only read, by its
+        // server's rights or by your word on its agenda (`agendas`, 4 November 2026).
+        return if read_only { Err(Refusal::ReadOnly) } else { Ok(()) };
     }
     match (old, change) {
         (Some(text), change) => may_change(&text, read_only, &own_addresses(), change),
@@ -796,6 +909,7 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
     // Said once for the whole read: a translator is not made per event.
     let read_only = said(Refusal::ReadOnly, &Change::Move);
     let with_others = said(Refusal::WithOthers, &Change::Move);
+    let availability = said(Refusal::Availability, &Change::Move);
     let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).unwrap_or_default();
     occurrences
         .iter()
@@ -803,7 +917,9 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
             let block = !o.task.is_empty() && !o.with_others;
             // A leg whose appointment was read with it (`anchors::mark`): a quiet line in its lead.
             let leg = !o.leg_of.is_empty() && !block;
-            let why = if o.read_only {
+            let why = if o.busy {
+                availability.clone()
+            } else if o.read_only {
                 read_only.clone()
             } else if o.with_others {
                 with_others.clone()
@@ -842,7 +958,8 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
                 said: String::new(),
                 tone: if o.cancelled || o.declined {
                     Tone::Muted
-                } else if o.tentative {
+                } else if o.tentative || o.busy {
+                    // A busy time of an agenda for availability only: a quiet block, its agenda's name.
                     Tone::Quiet
                 } else {
                     Tone::Plain
@@ -2285,7 +2402,7 @@ pub fn moved_to(text: &str, start: i64, zone: &TimeZone) -> Option<i64> {
 
 /// A DATE-TIME line's instant, Unix seconds: in UTC, in the zone it names, or
 /// floating in `zone`; a date alone, its midnight in `zone`.
-fn instant_in(line: &str, zone: &TimeZone) -> Option<i64> {
+pub(crate) fn instant_in(line: &str, zone: &TimeZone) -> Option<i64> {
     let value = lines::value(line).trim().to_string();
     let named = lines::param(line, "TZID");
     if let Some(at) = instant_of(&value, named.as_deref()) {
@@ -3402,7 +3519,9 @@ mod tests {
             line[begin..end].to_string()
         }
         // What goes in as it came: the door itself, the sync's copy of the server, your answer to an invitation.
-        let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-sync/src/dav.rs", "upgrade"), ("sioul-app/src/pim.rs", "answer")];
+        // Google Tasks' pull keeps what Google sent as it came, as CalDAV's does: a list kept
+        // read only in Sioul still follows its server (several agendas, 4 November 2026).
+        let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-sync/src/dav.rs", "upgrade"), ("sioul-app/src/pim.rs", "answer"), ("sioul-sync/src/google_tasks.rs", "pull")];
         // The raw writers: the standard library's (a file written, renamed, copied, linked,
         // opened to write or taken out), and Sioul's own byte writers.
         let raw = [
@@ -3644,7 +3763,15 @@ mod tests {
             marked.save(&state).unwrap();
             assert_eq!(guard(&own, Change::Delete).is_err(), read_only, "its mark read again once its state changed");
         }
-        assert_eq!(guard(&task, Change::Write("BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t-1\r\nSUMMARY:Done\r\nEND:VTODO\r\nEND:VCALENDAR\r\n")), Ok(()), "a task: nothing asked");
+        // A task in a calendar you only read stays as it is too (several agendas, 4 November 2026); in one you write, nothing asked.
+        let done = "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t-1\r\nSUMMARY:Done\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        assert_eq!(guard(&task, Change::Write(done)), Err(Refusal::ReadOnly), "a task of a calendar you only read");
+        let mut marked = vdir::State::load(&state);
+        marked.read_only = false;
+        marked.save(&state).unwrap();
+        assert_eq!(guard(&task, Change::Write(done)), Ok(()), "a task: nothing asked");
+        marked.read_only = true;
+        marked.save(&state).unwrap();
         assert_eq!(guard(&dir.join("new.ics"), Change::Write("begin:vevent\r\nend:vevent\r\n")), Err(Refusal::ReadOnly), "a new event in any case");
         let series = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nATTENDEE:mailto:Jane@example.org\r\nBEGIN:VALARM\r\nACTION:EMAIL\r\nATTENDEE:mailto:me@example.org\r\nEND:VALARM\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:g\r\nRECURRENCE-ID:20991030T090000Z\r\nATTENDEE:mailto:jane@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         assert_eq!(guests(series), 1, "one guest, named in two times of it");

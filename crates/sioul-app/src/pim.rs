@@ -416,14 +416,20 @@ struct EventView {
     stays: String,
 }
 
-/// Two events at once among `events` (the next two weeks', those whose
-/// deletion waits left out), or closer than a time you set between them
-/// (`overlaps::overlaps`), those set aside left out, as JSON, as they are
-/// said (`overlaps::warnings`), for the Porch and the agenda:
-/// - a pair, {key, day, today, first, second, gap, needed, at_once, source},
-///   each event {key, start, title, from, to, when} ("09:30"; `when` its
-///   clock times, or its span when it runs past its day: fix W2), `gap` and
-///   `needed` in minutes, `source` where that time is set, in words;
+/// The conflicts among `events` (the next two weeks', those whose deletion
+/// waits left out): one person in two places (`overlaps::conflicts`, the
+/// matrix of Agenda ⚙ for the exceptions), remembered for the events' cards
+/// (`conflicts_known`); then those someone else's change made, to say once
+/// at an admin window (`overlaps::Notices`, this device's memory of what it
+/// saw, `conflicts.toml`), as JSON, as they are said (`overlaps::warnings`),
+/// for the Porch (the `overlaps` property: since several agendas the Porch
+/// lists no conflict you came upon, only these):
+/// - a pair, {key, day, today, first, second, gap, needed, at_once, source,
+///   tentative, notice, answers}, each event {key, start, title, from, to,
+///   when} ("09:30"; `when` its clock times, or its span when it runs past
+///   its day: fix W2), `gap` and `needed` in minutes, `source` where that
+///   time is set, in words; `answers` what may be done ("move": your own
+///   event, where Sioul may write it; "keep": both, set aside);
 /// - an event of 24 hours or more once, {kind: "during", key, keys, day,
 ///   today, event, others, others_today} (fix W1): `key` `during:<uid>@<start>`
 ///   and `keys` its pairs, what its "Don't mention it again" sets aside
@@ -431,9 +437,107 @@ struct EventView {
 ///   `others_today` those today.
 pub(crate) fn overlaps_of(events: &[agenda::Occurrence]) -> String {
     let now = sioul_core::zone::now();
+    let stamp = now.timestamp().as_second();
+    let found = conflicts_among(events);
+    let path = sioul_core::overlaps::Notices::default_path();
+    let mut notices = sioul_core::overlaps::Notices::load(&path);
+    if notices.look(events, &found, stamp) {
+        let _ = notices.save(&path);
+    }
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
-    let between = load_config().agenda.between();
-    json(&warning_rows(sioul_core::overlaps::overlaps(events, between), &aside, &now))
+    let mode = crate::hours::mode_now();
+    let said: Vec<sioul_core::overlaps::Overlap> = notices.to_say(&found, &aside, stamp, mode.time, mode.week).into_iter().cloned().collect();
+    json(&warning_rows(said, &aside, &now))
+}
+
+/// The conflicts among `events`, as the matrix says now, remembered for the
+/// events' cards (`conflicts_known`): those of the last reads of the next two
+/// weeks and of the days shown, an event's time by its file and start.
+pub(crate) fn conflicts_among(events: &[agenda::Occurrence]) -> Vec<sioul_core::overlaps::Overlap> {
+    let matrix = sioul_core::agendas::Matrix::current();
+    let found = sioul_core::overlaps::conflicts(events, load_config().agenda.between(), &matrix);
+    if let Ok(mut known) = KNOWN_CONFLICTS.lock() {
+        let read: std::collections::BTreeSet<(String, i64)> = events.iter().map(|e| (e.key.clone(), e.start)).collect();
+        // What this read covers is said again by it; the rest stays as last read.
+        known.retain(|o| !read.contains(&(o.first.key.clone(), o.first.start)) && !read.contains(&(o.second.key.clone(), o.second.start)));
+        known.extend(found.iter().cloned());
+    }
+    found
+}
+
+/// The conflicts last found (`conflicts_among`).
+static KNOWN_CONFLICTS: std::sync::Mutex<Vec<sioul_core::overlaps::Overlap>> = std::sync::Mutex::new(Vec::new());
+
+/// What an event's card says of its conflicts, one sentence each (research
+/// on several agendas, §5.3): "At the same time as “Swimming”." or "Tight
+/// with “Dentist”: 10 min between them, …", the other event's agenda named
+/// when it is someone else's ("Léa’s “Swimming”"), "which you accepted" for
+/// an invitation of another's agenda; never a count nor a list elsewhere.
+pub(crate) fn conflicts_known(key: &str, start: i64) -> Vec<String> {
+    let known = KNOWN_CONFLICTS.lock().map(|k| k.clone()).unwrap_or_default();
+    let agendas = sioul_core::agendas::current();
+    let whose = |o: &agenda::Occurrence| -> String {
+        agendas.iter().find(|a| a.id == o.agenda && a.theirs()).map(|a| if a.person.is_empty() { a.name.clone() } else { a.person.clone() }).unwrap_or_default()
+    };
+    let mut out = Vec::new();
+    for conflict in known.iter().filter(|c| (c.first.key == key && c.first.start == start) || (c.second.key == key && c.second.start == start)) {
+        let other = if conflict.first.key == key && conflict.first.start == start { &conflict.second } else { &conflict.first };
+        let title = if other.summary.trim().is_empty() { tr().text("agenda-untitled", None) } else { other.summary.trim().to_string() };
+        let mut args = sioul_core::i18n::args();
+        args.set("title", title);
+        let owner = whose(other);
+        args.set("whose", if owner.is_empty() { "none".to_string() } else { owner });
+        let why = if conflict.tentative {
+            "tentative"
+        } else if other.theirs && other.invited && other.accepted {
+            "accepted"
+        } else {
+            "none"
+        };
+        args.set("why", why);
+        if conflict.at_once() {
+            out.push(tr().text("conflict-same-time", Some(&args)));
+        } else {
+            args.set("gap", conflict.gap.to_string());
+            args.set("needed", conflict.needed.to_string());
+            args.set("source", if conflict.source.is_empty() { String::new() } else { tr().text(&format!("overlap-source-{}", conflict.source), None) });
+            out.push(tr().text("conflict-tight", Some(&args)));
+        }
+    }
+    out
+}
+
+/// A conflict notice answered: "keep" sets the pair aside and says it no
+/// more; "move" says it no more and gives back your own event's file to
+/// open in its form, where Sioul may write it ("" when neither may be moved
+/// here). Returns {problem, open} as JSON.
+pub(crate) fn answer_conflict(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &str) -> String {
+    let stamp = sioul_core::zone::now().timestamp().as_second();
+    let path = sioul_core::overlaps::Notices::default_path();
+    let mut notices = sioul_core::overlaps::Notices::load(&path);
+    let known = KNOWN_CONFLICTS.lock().map(|k| k.clone()).unwrap_or_default();
+    let conflict = known.iter().find(|c| c.key == key).cloned();
+    let mut open = String::new();
+    let problem = match answer {
+        "keep" => set_overlap_aside(key),
+        "move" => {
+            // Your own event of the two, where Sioul may write it: its form opens.
+            open = conflict.iter().flat_map(|c| [&c.first, &c.second]).find(|e| !e.theirs && !e.read_only && !e.with_others).map(|e| e.key.clone()).unwrap_or_default();
+            if open.is_empty() { tr().text("conflict-none-movable", None) } else { String::new() }
+        }
+        // The child's event you take, of the two (several agendas, part 3): the other parent is
+        // asked to take it, by their Sioul or an invitation drafted for them.
+        "ask" => match conflict.iter().flat_map(|c| [&c.first, &c.second]).find_map(|e| if e.child { Some(e.key.clone()) } else { crate::children::child_key(&e.stands_for) }) {
+            Some(child) => crate::children::take(qt, shared, &child, 0, "other"),
+            None => tr().text("conflict-none-to-ask", None),
+        },
+        _ => format!("{answer}: keep, move or ask"),
+    };
+    if problem.is_empty() {
+        notices.said_now(key, stamp);
+        let _ = notices.save(&path);
+    }
+    serde_json::json!({ "problem": problem, "open": open }).to_string()
 }
 
 /// The warnings' rows of `overlaps` at `now` (`overlaps_of`): over already, or set aside, left out.
@@ -457,7 +561,14 @@ fn warning_rows(overlaps: Vec<sioul_core::overlaps::Overlap>, aside: &sioul_core
     sioul_core::overlaps::warnings(open)
         .into_iter()
         .map(|warning| match warning {
-            Warning::Pair(o) => serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": today(&o), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed, "at_once": o.at_once(), "source": if o.source.is_empty() { String::new() } else { tr().text(&format!("overlap-source-{}", o.source), None) } }),
+            Warning::Pair(o) => {
+                // What may be done of it (the conflict notice's answers): the other parent asked to take
+                // the child's event you take (part 3), your own event moved, where Sioul may write it; both kept.
+                let movable = [&o.first, &o.second].iter().any(|e| !e.theirs && !e.read_only && !e.with_others);
+                let askable = [&o.first, &o.second].iter().any(|e| !e.stands_for.is_empty());
+                let answers: Vec<&str> = [askable.then_some("ask"), movable.then_some("move"), Some("keep")].into_iter().flatten().collect();
+                serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": today(&o), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed, "at_once": o.at_once(), "tentative": o.tentative, "notice": true, "answers": answers, "source": if o.source.is_empty() { String::new() } else { tr().text(&format!("overlap-source-{}", o.source), None) } })
+            }
             Warning::During { event, overlaps } => {
                 let id = occurrence_id(&event);
                 let other = |o: &sioul_core::overlaps::Overlap| if occurrence_id(&o.first) == id { occurrence_id(&o.second) } else { occurrence_id(&o.first) };
@@ -1069,6 +1180,17 @@ pub(crate) fn invitation(key: &str) -> String {
     let Some(text) = reading::calendar(&path) else { return String::new() };
     let zone = sioul_core::zone::current();
     let Some(asked) = agenda::invitation(&text, &zone) else { return String::new() };
+    // An answer to the invitation to take a child's event (several agendas, part 3): its holder
+    // line set from it, said in the reader, nothing to press.
+    // Written only when the Porch would take it as coming from them (`children::replied`).
+    if asked.method == "REPLY" {
+        let Some(message) = std::fs::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)) else { return String::new() };
+        let config = load_config();
+        let account = config.account_of(&path).map(|a| a.id.clone()).unwrap_or_default();
+        let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
+        let Some(line) = crate::children::replied(&text, &message, &trusted, &config.own_domains()) else { return String::new() };
+        return json(&InvitationView { method: asked.method, summary: line, when: String::new(), location: String::new(), organizer: String::new(), known: true });
+    }
     let at = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone())).ok();
     let when = match (at(asked.start), at(asked.end)) {
         (Some(start), _) if asked.all_day => tr().day(start.date()),
@@ -1685,7 +1807,8 @@ mod tests {
         sioul_core::config::stand_ins_only();
         let start = Zoned::now().timestamp().as_second() + 3 * 86_400;
         let one = |key: &str, from: i64| agenda::Occurrence { key: key.into(), uid: key.into(), summary: key.into(), start: from, end: from + 3_600, recurring: true, ..Default::default() };
-        let rows: serde_json::Value = serde_json::from_str(&overlaps_of(&[one("/c/daily.ics", start), one("/c/other.ics", start + 1_800)])).unwrap();
+        let found = sioul_core::overlaps::conflicts(&[one("/c/daily.ics", start), one("/c/other.ics", start + 1_800)], 0, &sioul_core::agendas::Matrix::default());
+        let rows = serde_json::Value::Array(warning_rows(found, &sioul_core::overlaps::SetAside::default(), &Zoned::now()));
         assert_eq!(rows[0]["first"]["start"], start, "{rows}");
         assert_eq!(rows[0]["second"]["start"], start + 1_800, "{rows}");
     }

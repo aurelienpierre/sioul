@@ -24,7 +24,6 @@ fn main() {
         "qml/GoogleMail.qml",
         "qml/MicrosoftMail.qml",
         "qml/Panel.qml",
-        "qml/CodeCard.qml",
         "qml/WrapCheckBox.qml",
         "qml/PlainComboBox.qml",
         "qml/SafeDialog.qml",
@@ -35,6 +34,10 @@ fn main() {
         "qml/Places.qml",
         "qml/AddressField.qml",
         "qml/AgendaPage.qml",
+        "qml/AgendaFilter.qml",
+        "qml/AgendasSetup.qml",
+        "qml/WhoDoesWhat.qml",
+        "qml/ConflictMatrix.qml",
         "qml/ContactsPage.qml",
         "qml/ContactForm.qml",
         "qml/ContactDuplicates.qml",
@@ -166,6 +169,9 @@ fn main() {
         "qml/CallsSetup.qml",
         "qml/PhoneMessagesSection.qml",
         "qml/PhoneMessagesSetup.qml",
+        // The Porch's notices: every section and every row alike.
+        "qml/PorchSection.qml",
+        "qml/NoticeRow.qml",
         // texts: SMS phase (b).
         "qml/TextsPage.qml",
         "qml/TextsSending.qml",

@@ -36,6 +36,8 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     consent.keep_accounts(kept_accounts(&s.config), &loaded.mail);
     let recorded = sioul_core::health::HealthState::errand_uids(&sioul_core::health::HealthState::default_path());
     consent.keep_errands(loaded, recorded.as_ref());
+    // What another shares for its availability alone never reaches an agent (several agendas, part 4).
+    consent.keep_private(&loaded.events);
     consent
 }
 

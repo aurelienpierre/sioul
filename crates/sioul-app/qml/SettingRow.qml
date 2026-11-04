@@ -281,6 +281,35 @@ ColumnLayout {
         }
     }
 
+    // The agendas (AgendasSetup.qml) and the matrix of conflicts (ConflictMatrix.qml), Agenda ⚙'s
+    // own blocks (several agendas); their sentence said first there, once.
+    Loader {
+        active: field.setting.kind === "agendas"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            AgendasSetup {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+    Loader {
+        active: field.setting.kind === "conflicts"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ConflictMatrix {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+
     // The mail filters: the list, each in words, its editor (MailFilters.qml); their sentence said first there.
     Loader {
         active: field.setting.kind === "filters"
@@ -416,7 +445,8 @@ ColumnLayout {
         }
     }
 
-    // Some of a list, each ticked or not: the projects the Porch shows.
+    // Some of a list, each ticked or not: the projects the Porch shows, one
+    // per line; the words' languages and countries, side by side.
     Loader {
         active: field.setting.kind === "picks"
         visible: active
@@ -427,8 +457,9 @@ ColumnLayout {
                 id: picks
 
                 readonly property var on: field.setting.kind === "picks" ? field.setting.value : []
+                readonly property bool lines: field.setting.key === "porch.projects"
 
-                spacing: 12
+                spacing: picks.lines ? 0 : 12
 
                 Repeater {
                     model: field.setting.kind === "picks" ? field.setting.choices : []
@@ -438,6 +469,7 @@ ColumnLayout {
 
                         required property var modelData
 
+                        width: picks.lines ? picks.width : implicitWidth
                         text: field.theme.plain(pick.modelData.label)
                         checked: picks.on.indexOf(pick.modelData.value) >= 0
                         onToggled: {
@@ -1216,7 +1248,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "conflicts"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

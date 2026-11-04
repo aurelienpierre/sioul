@@ -80,6 +80,13 @@ pub struct Entry {
     /// serde, unknown fields left aside, and writes its own entry alone).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub own_time: u32,
+    /// Whether its Sioul has the notices' store (`share::NOTICES`, the
+    /// Porch's notices): 1 from a build that has it, 0 from an older one.
+    /// The store travels only once every other device that counts says 1
+    /// (`share::notices_shared`), as your own time does. An older Sioul reads
+    /// the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub notices: u32,
     /// Whether its Sioul keeps a leg that is a step's time (the unified
     /// agenda's part 7, composed tasks §4.2: a leg with `X-SIOUL-TASK`): 1
     /// from such a build, 0 from an older one, whose block upkeep reads no
@@ -89,6 +96,16 @@ pub struct Entry {
     /// An older Sioul reads the entry as before, the field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub legs: u32,
+    /// Whether its Sioul has the store of money movements
+    /// (`share::MOVEMENTS`, `sioul_core::movements::STORE`): 1 from a build
+    /// that has it, 0 from an older one (705576a and before). The store
+    /// travels only once every other device that counts says 1
+    /// (`share::movements_shared`), as your own time around meetings does:
+    /// an older Sioul, which has no such store, would keep its records
+    /// waiting at every exchange. An older Sioul reads the entry as before,
+    /// the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub movements: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]

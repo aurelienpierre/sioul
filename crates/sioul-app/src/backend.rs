@@ -62,7 +62,8 @@ pub mod qobject {
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
-        // Two events at once in the next two weeks (`pim::overlaps_of`), made with the agenda, off the window's thread.
+        // The conflict notices to say now (`pim::overlaps_of`): those someone else's change made,
+        // once, at an admin window, for the Porch; made with the agenda, off the window's thread.
         #[qproperty(QString, overlaps)]
         // A re-plan due after a write (`work::replan_asked`), until its publish or the end of its
         // run: the timeline keeps what was let go drawn there meanwhile (review of 590eb18, later 2).
@@ -602,6 +603,92 @@ pub mod qobject {
         /// Show changed, on this device alone; returns what went wrong, else "".
         #[qinvokable]
         fn set_agenda_view(self: Pin<&mut Sioul>, view: &QString) -> QString;
+
+        /// The agenda filter: the agendas `ids` (a JSON list of places) turned
+        /// on or off by hand, until work's hours change (`agenda::turn`);
+        /// returns what went wrong, else "".
+        #[qinvokable]
+        fn turn_agendas(self: Pin<&mut Sioul>, ids: &QString, on: bool) -> QString;
+
+        /// "As the hours say": the filter's word taken back.
+        #[qinvokable]
+        fn agendas_as_hours(self: Pin<&mut Sioul>) -> QString;
+
+        /// An agenda kept hidden on this device for good ("Keep hidden"), or
+        /// shown again ("Show again"), by its place (`agenda::keep_hidden`);
+        /// returns what went wrong, else "".
+        #[qinvokable]
+        fn keep_agenda_hidden(self: Pin<&mut Sioul>, id: &QString, hidden: bool) -> QString;
+
+        /// Who takes a child's event or task (several agendas, part 3,
+        /// `children::take`): "me", "other", "accept", "decline" or "later";
+        /// `start` the time of a repeating event, 0 its series. Said with
+        /// Undo; returns what went wrong, else "".
+        #[qinvokable]
+        fn take_child(self: Pin<&mut Sioul>, key: &QString, start: f64, who: &QString) -> QString;
+
+        /// A child's event's or task's kind ("dentist"; "" none), on its series; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_child_kind(self: Pin<&mut Sioul>, key: &QString, kind: &QString) -> QString;
+
+        /// The questions about children's events due now, as JSON (`children::questions`):
+        /// what the Agenda shows under its head line, and the Porch may list.
+        #[qinvokable]
+        fn holder_questions(self: &Sioul) -> QString;
+
+        /// Who usually takes a kind of a child agenda's events: "me", "other", "" each asked.
+        #[qinvokable]
+        fn set_standing_holder(self: Pin<&mut Sioul>, id: &QString, kind: &QString, who: &QString) -> QString;
+
+        /// Where your stand-ins of a kind go (an agenda's place; "" your personal agenda).
+        #[qinvokable]
+        fn set_stand_in_agenda(self: Pin<&mut Sioul>, kind: &QString, place: &QString) -> QString;
+
+        /// Follow-up tasks after the dentist's and check-ups, on or off.
+        #[qinvokable]
+        fn set_follow_ups(self: Pin<&mut Sioul>, on: bool) -> QString;
+
+        /// A named set of agendas chosen in the filter (part 4): its agendas
+        /// shown, the others left out, until work's hours change.
+        #[qinvokable]
+        fn use_agenda_set(self: Pin<&mut Sioul>, name: &QString) -> QString;
+
+        /// A named set kept: `agendas` a JSON list of places ("" or "null" takes the set out),
+        /// `times` a JSON list of "work", "admin", "leisure" that bring it by themselves.
+        #[qinvokable]
+        fn keep_agenda_set(self: Pin<&mut Sioul>, name: &QString, agendas: &QString, times: &QString) -> QString;
+
+        /// Who does what, a week of the children's agendas (part 4, `children::who_does_what`):
+        /// `from` a day of the week ("" this one), `child` one child's agenda ("" all), `mine` what you take alone.
+        #[qinvokable]
+        fn who_does_what(self: &Sioul, from: &QString, child: &QString, mine: bool) -> QString;
+
+        /// Months between a kind's events, for its follow-up: 0 none, below 0 the kind's own.
+        #[qinvokable]
+        fn set_rhythm(self: Pin<&mut Sioul>, kind: &QString, months: i32) -> QString;
+
+        /// Agenda ⚙'s blocks (`agenda::setup`): each agenda with what it is,
+        /// and the matrix of conflicts, as JSON.
+        #[qinvokable]
+        fn agendas_setup(self: &Sioul) -> QString;
+
+        /// One field of an agenda's settings ("whose", "name", "area",
+        /// "reaches", "access"; "" back to the default); returns what went
+        /// wrong, else "".
+        #[qinvokable]
+        fn set_agenda_field(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
+
+        /// A pair of the matrix of conflicts ticked or not; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_agendas_compared(self: Pin<&mut Sioul>, a: &QString, b: &QString, ticked: bool) -> QString;
+
+        /// A conflict notice answered, "keep" (both, set aside), "move" (your
+        /// own event's file to open in its form) or "ask" (the child's event
+        /// you take, of the two, asked of the other parent: part 3): JSON
+        /// {problem, open} (`pim::answer_conflict`). The notices themselves
+        /// are the `overlaps` property, for the Porch.
+        #[qinvokable]
+        fn answer_conflict(self: Pin<&mut Sioul>, key: &QString, answer: &QString) -> QString;
 
         /// The choices of an event's reminder before it, JSON [{value, label}];
         /// `current` among them when it is another time.
@@ -1902,6 +1989,13 @@ pub mod qobject {
         #[qinvokable]
         fn phone_messages(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
+        /// The Porch's notices (`notices::call`): "view" (its sections that
+        /// are not mail: the sites', the money's, the letters'), "dismiss",
+        /// "read", "done" {kind, ids, targets} ({said, at, mark}), "undo"
+        /// {kind, ids, targets, mark, at}; their JSON.
+        #[qinvokable]
+        fn notices(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
+
         /// texts: read and sent through your phone (`texts::call`): "view",
         /// "conversation", "send", "send-mms", "again", "parts", "media", "save-media", "close",
         /// "unattach", "setup", "ask", "part", "cap", "sending", "limit"; their JSON.
@@ -2909,6 +3003,8 @@ fn compute(shared: &Shared) -> Views {
     let hidden = mail::hidden_files(shared);
     let mut items = world.gather(&PorchState::load(&PorchState::default_path()));
     items.retain(|t| t.card.path.as_ref().is_none_or(|p| !hidden.contains(p)));
+    // Every message's notice, whatever the hour shows: what the words said of them are kept for (`notices::forget`).
+    let notices: Vec<String> = items.iter().map(|t| sioul_core::notices::mail_id_of(&t.card)).collect();
     // The phone's home screen card: the Porch as each coming time will show it (homecard.rs).
     crate::homecard::porch_seen(&items, &world.senders, world.store.as_ref());
     // What reaches you now (docs/attention.md): codes and what you sent
@@ -2939,6 +3035,8 @@ fn compute(shared: &Shared) -> Views {
     let opened = shared.opened_anyway.load(Ordering::Relaxed) || shared.reachable.load(Ordering::Relaxed);
     let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, opened || mode.quiet);
     porch.all = shared.opened_anyway.load(Ordering::Relaxed);
+    // Each message's notice as the words said on any device leave it: the Porch shows the new ones.
+    crate::notices::apply_mail(&mut porch, &notices);
     // After a pause, the Porch rests until the next admin hours, unless opened (docs/pauses.md).
     crate::pauses::porch_rests(&mut porch, opened, &now);
     if mode.quiet {
@@ -4388,6 +4486,8 @@ impl qobject::Sioul {
 
     fn flush(self: Pin<&mut Self>) {
         mail::flush(&self.shared());
+        // A text's Read waiting for its ten seconds: read in Texts now.
+        crate::notices::flush();
         securitykey::closing();
     }
 
@@ -4633,6 +4733,114 @@ impl qobject::Sioul {
 
     fn set_agenda_view(self: Pin<&mut Self>, view: &QString) -> QString {
         QString::from(&crate::agenda::set_view(&view.to_string()))
+    }
+
+    fn turn_agendas(self: Pin<&mut Self>, ids: &QString, on: bool) -> QString {
+        let ids: Vec<String> = serde_json::from_str(&ids.to_string()).unwrap_or_default();
+        let problem = crate::agenda::turn(&ids, on);
+        // Every view follows the one filter: the agenda's days and the task views.
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn agendas_as_hours(self: Pin<&mut Self>) -> QString {
+        let problem = crate::agenda::as_the_hours_say();
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn keep_agenda_hidden(self: Pin<&mut Self>, id: &QString, hidden: bool) -> QString {
+        let problem = crate::agenda::keep_hidden(&id.to_string(), hidden);
+        // Every view follows the one filter, the home card too.
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        crate::homecard::now();
+        QString::from(&problem)
+    }
+
+    fn agendas_setup(&self) -> QString {
+        QString::from(&crate::agenda::setup())
+    }
+
+    fn take_child(self: Pin<&mut Self>, key: &QString, start: f64, who: &QString) -> QString {
+        // A time of Unix seconds, as the card holds it (a whole number in a double).
+        #[allow(clippy::cast_possible_truncation)]
+        let start = start as i64;
+        QString::from(&crate::children::take(&self.qt_thread(), &self.shared(), &key.to_string(), start, &who.to_string()))
+    }
+
+    fn set_child_kind(self: Pin<&mut Self>, key: &QString, kind: &QString) -> QString {
+        QString::from(&crate::children::set_kind(&self.qt_thread(), &self.shared(), &key.to_string(), &kind.to_string()))
+    }
+
+    fn holder_questions(&self) -> QString {
+        QString::from(&crate::children::questions())
+    }
+
+    fn set_standing_holder(self: Pin<&mut Self>, id: &QString, kind: &QString, who: &QString) -> QString {
+        let Some(kind) = sioul_core::holders::Kind::parse(&kind.to_string()) else { return QString::from("") };
+        let who = sioul_core::holders::Who::parse(&who.to_string());
+        QString::from(&sioul_core::agendas::set_standing(&config_path(), &id.to_string(), kind, who).err().unwrap_or_default())
+    }
+
+    fn set_stand_in_agenda(self: Pin<&mut Self>, kind: &QString, place: &QString) -> QString {
+        let Some(kind) = sioul_core::holders::Kind::parse(&kind.to_string()) else { return QString::from("") };
+        let place = place.to_string();
+        QString::from(&sioul_core::agendas::set_stand_in_agenda(&config_path(), kind, Some(place.as_str()).filter(|p| !p.is_empty())).err().unwrap_or_default())
+    }
+
+    fn use_agenda_set(self: Pin<&mut Self>, name: &QString) -> QString {
+        let problem = crate::agenda::use_set(&name.to_string());
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn keep_agenda_set(self: Pin<&mut Self>, name: &QString, agendas: &QString, times: &QString) -> QString {
+        let agendas: Option<Vec<String>> = serde_json::from_str(&agendas.to_string()).ok().flatten();
+        let times: Vec<String> = serde_json::from_str(&times.to_string()).unwrap_or_default();
+        let problem = crate::agenda::keep_set(&name.to_string(), agendas, times);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn who_does_what(&self, from: &QString, child: &QString, mine: bool) -> QString {
+        QString::from(&crate::children::who_does_what(&from.to_string(), &child.to_string(), mine))
+    }
+
+    fn set_follow_ups(self: Pin<&mut Self>, on: bool) -> QString {
+        QString::from(&sioul_core::agendas::set_follow_ups(&config_path(), on).err().unwrap_or_default())
+    }
+
+    fn set_rhythm(self: Pin<&mut Self>, kind: &QString, months: i32) -> QString {
+        let Some(kind) = sioul_core::holders::Kind::parse(&kind.to_string()) else { return QString::from("") };
+        QString::from(&sioul_core::agendas::set_rhythm(&config_path(), kind, u32::try_from(months).ok()).err().unwrap_or_default())
+    }
+
+    fn set_agenda_field(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        let problem = crate::agenda::set_field(&id.to_string(), &field.to_string(), &value.to_string());
+        if problem.is_empty() {
+            // What an agenda is changes what reaches you, what may be written and what holds your time: everything again.
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            pim::show_pim(&qt, &shared);
+            work::show_work(&qt, &shared);
+        }
+        QString::from(&problem)
+    }
+
+    fn set_agendas_compared(self: Pin<&mut Self>, a: &QString, b: &QString, ticked: bool) -> QString {
+        let problem = crate::agenda::set_compared(&a.to_string(), &b.to_string(), ticked);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn answer_conflict(self: Pin<&mut Self>, key: &QString, answer: &QString) -> QString {
+        let answered = crate::pim::answer_conflict(&self.qt_thread(), &self.shared(), &key.to_string(), &answer.to_string());
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&answered)
     }
 
     fn reminder_choices(&self, current: &QString) -> QString {
@@ -5769,6 +5977,7 @@ impl qobject::Sioul {
             } else {
                 let date: jiff::civil::Date = movement.date.parse().unwrap_or(today);
                 let line = budget::Line {
+                    id: String::new(),
                     budget: movement.budget.clone(),
                     date,
                     amount: sioul_core::money::Money::from_units(movement.amount),
@@ -6239,6 +6448,17 @@ impl qobject::Sioul {
         QString::from(&answer)
     }
 
+    fn notices(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let (answer, said) = crate::notices::call(&qt, &shared, &verb.to_string(), &json.to_string());
+        // A word said or taken back: the Porch sorted again, your other devices told at once.
+        if said {
+            show(&qt, &shared);
+            crate::share::exchange(&qt, &shared);
+        }
+        QString::from(&answer)
+    }
+
     // texts: SMS phase (b).
     fn texts(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
         let (answer, shared) = crate::texts::call(&verb.to_string(), &json.to_string());
@@ -6690,15 +6910,17 @@ impl qobject::Sioul {
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), "agenda" the
-        // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), "cards" every
+        // agenda's Day and Week, its Show menu, its filter's list, Agenda ⚙'s agendas and conflicts,
+        // a phone's Week list and landscape (pictures alone), "cards" every
         // object's card opened from the agenda and Tasks, then Back (pictures alone), "taskviews" Now, the List
         // folded and a task opened, the Board, the Gantt and a composed task's details, on a phone the List
         // and Now sideways too (pictures alone), "mail-open" a
         // message opened as a tie, then one not on this device (docs/client.md), "safe-area" the event form
         // with Android's system bars stood in for, below then beside (pictures alone), "mailbox" every
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
-        // mailbox and a folder timed and counted (make-demo.py's --bulk), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure"].contains(&steps.as_str()) && offline()) {
+        // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
+        // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -6952,7 +7174,7 @@ mod tests {
     /// message does not print, Open alone.
     #[test]
     fn a_code_s_notification_opens_its_message() {
-        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), address: "mid:code-1@example.org".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None };
+        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), address: "mid:code-1@example.org".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None, notice: sioul_core::notices::Notice::default() };
         assert_eq!(code_actions(&code).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["copy", "open"]);
         // Open names its message by its address, its file a hint (the unified mailbox's part 2).
         assert_eq!(code_opens(&code), ("mail", "mid:code-1@example.org".to_string(), "/stand-in/mail/cur/1.U1-1.sioul".to_string()));

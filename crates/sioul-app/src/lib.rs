@@ -132,6 +132,7 @@ mod blocks;
 mod calendarfile;
 mod calls;
 mod capacity;
+mod children;
 // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
 #[cfg(not(target_os = "android"))]
 mod colour;
@@ -160,6 +161,7 @@ mod mailnote;
 mod openmail;
 #[cfg(target_os = "android")]
 mod nfc;
+mod notices;
 mod letters;
 mod map;
 // Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).

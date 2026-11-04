@@ -258,6 +258,13 @@ pub struct Task {
     pub list_id: String,
     pub color: Option<String>,
     pub read_only: bool,
+    /// A child's task: who takes it (`holders`, its holder line); none unsaid.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub holder: Option<crate::holders::Holder>,
+    /// Someone else takes it, or nobody yet, in a child's list (`holders::mark_tasks`):
+    /// on the child's page with its holder's name, never in your plan nor your Next.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub elsewhere: bool,
 }
 
 impl Task {
@@ -624,6 +631,11 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
                 }
             }
             "RELATED-TO" => task.relations.push(relation_of(line)),
+            crate::holders::TAKEN_BY => {
+                if let Some(holder) = crate::holders::parse_line(line).filter(|h| !h.back && task.holder.is_none()) {
+                    task.holder = Some(holder);
+                }
+            }
             "X-SIOUL-BILLABLE" => task.billable = Some(value.trim().eq_ignore_ascii_case("TRUE")),
             "X-SIOUL-ENERGY" => task.energy = energy_of(value),
             "X-SIOUL-OFFICE-HOURS" => task.office_times = crate::window::ranges_text(&crate::window::parse_ranges(&lines::unescape(value))),
@@ -1421,7 +1433,14 @@ pub fn of_file(path: &Path, text: &str, list: &Collection, zone: &TimeZone) -> O
 
 /// Every task of every list.
 pub fn all(zone: &TimeZone) -> Vec<Task> {
-    lists().iter().flat_map(|list| list.items().into_iter().filter_map(|path| read(&path, list, zone)).collect::<Vec<_>>()).collect()
+    let mut tasks: Vec<Task> = lists().iter().flat_map(|list| list.items().into_iter().filter_map(|path| read(&path, list, zone)).collect::<Vec<_>>()).collect();
+    // A child's task is in your plan when you take it (several agendas, part 3).
+    let config = crate::agendas::read_config();
+    let children: std::collections::BTreeSet<String> = config.agenda.calendars.iter().filter(|(_, said)| said.whose.as_deref().and_then(crate::agendas::Whose::parse) == Some(crate::agendas::Whose::Child)).map(|(place, _)| place.clone()).collect();
+    if !children.is_empty() {
+        crate::holders::mark_tasks(&mut tasks, &children, &crate::agenda::own_addresses());
+    }
+    tasks
 }
 
 /// Where a new task goes: a writable list made for tasks, then one that also

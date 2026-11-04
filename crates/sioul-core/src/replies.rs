@@ -1728,7 +1728,7 @@ mod tests {
         // The newer notification: its live line still says Alice's conversation; its newest line here is Bob's.
         let bob = phonemsgs::Line { at: NOW - MINUTE, id: format!("{}-bb33", NOW - MINUTE), notice: "1111222233334444".into(), talk: "0000111122223333".into(), name: "Bob".into(), key: "+33261910000".into(), text: "Salut !".into(), ..line.clone() };
         let code = phonemsgs::Line { at: NOW - MINUTE / 2, id: format!("{}-cc44", NOW - MINUTE / 2), notice: "1111222233334444".into(), code: true, text: String::new(), ..line.clone() };
-        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: String::new(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None };
+        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: String::new(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None, what: String::new(), when: String::new(), at: 0, app: String::new() };
         let live = |notice: &str, reply: bool, gone: i64| (("phone".to_string(), notice.to_string()), Live { notice: notice.into(), app: line.app.clone(), talk: line.talk.clone(), reply, read: reply, gone, at: NOW, device: "phone".into() });
         let lives: BTreeMap<_, _> = [live(&line.notice, false, NOW), live("1111222233334444", true, 0)].into();
         let (shared, time, none, no_one, nobody) = (|_: &str| Some(NOW), |_: i64| "14:03".to_string(), |_: &str, _: &str, _: i64| Vec::new(), |_: &str| false, BTreeSet::new());
@@ -2139,7 +2139,7 @@ mod tests {
     fn a_porch_line_offers_a_reply_while_the_phone_can_send_it() {
         let tr = crate::i18n::Translator::new("en");
         let line = phonemsgs::Line { device: "phone".into(), ..alice_line() };
-        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: "Alice wrote on Signal:".into(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None };
+        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: "Alice wrote on Signal:".into(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None, what: String::new(), when: String::new(), at: 0, app: String::new() };
         let live = |notice: &str, reply: bool, gone: i64, at: i64| (("phone".to_string(), notice.to_string()), Live { notice: notice.into(), app: line.app.clone(), talk: line.talk.clone(), reply, read: reply, gone, at, device: "phone".into() });
         let shared = |_: &str| Some(NOW);
         let time = |_: i64| "14:03".to_string();
@@ -2220,7 +2220,7 @@ mod tests {
         let line = phonemsgs::Line { device: "phone".into(), ..alice_line() };
         let newer = phonemsgs::Line { at: NOW - MINUTE, id: format!("{}-bb22", NOW - MINUTE), notice: "1111222233334444".into(), text: "Tu es où ?".into(), ..line.clone() };
         let lines = vec![line.clone(), newer.clone()];
-        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: String::new(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None };
+        let porch = phonemsgs::PorchLine { ids: vec![line.id.clone()], head: String::new(), said: Vec::new(), note: String::new(), number: String::new(), dial: String::new(), known: true, texted: false, code: false, who: "Alice".into(), answer: None, what: String::new(), when: String::new(), at: 0, app: String::new() };
         let live = |notice: &str, reply: bool, gone: i64| (("phone".to_string(), notice.to_string()), Live { notice: notice.into(), app: line.app.clone(), talk: line.talk.clone(), reply, read: reply, gone, at: NOW, device: "phone".into() });
         let (shared, time, none, no_one, nobody) = (|_: &str| Some(NOW), |_: i64| "14:03".to_string(), |_: &str, _: &str, _: i64| Vec::new(), |_: &str| false, BTreeSet::new());
         let dir = scratch("porch-to-phone");

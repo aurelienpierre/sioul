@@ -134,8 +134,8 @@ pub(crate) struct Snapshot {
     reminders: Vec<ReminderLine>,
     /// The calls declined, in the Porch's words; each frame says which it lists.
     calls: Vec<String>,
-    /// Two events at once, today's and tomorrow's, each said on its own day
-    /// until both are over.
+    /// The conflicts someone else's change made, today's and tomorrow's,
+    /// each said on its own day until both are over (`overlap_lines`).
     overlaps: Vec<Timed>,
     /// Where you stopped, the line you left, until you say it is done: "Where
     /// you stopped: …"; details off, that it waits; "" none.
@@ -238,6 +238,13 @@ struct Frame {
     doses: bool,
     /// The agenda shows: not in a pause, whose card shows the pause alone.
     events: bool,
+    /// The events left out then, their places in `AgendaLines::events`: as
+    /// the hours leave their agendas out by default (`agendas::admits`, the
+    /// window's filter before your word), a work agenda's outside work
+    /// hours, a personal one kept out of them in them. The card takes no
+    /// word of the filter's (review of parts 1 and 2). An older Java shows them all.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    events_out: Vec<usize>,
     /// The reminders shown then, their places in `Snapshot::reminders`: as
     /// the row of dates of the matrix of what reaches you lets them come
     /// (work's in work's times only); none asleep, in a pause or in free time
@@ -309,6 +316,10 @@ struct Mail {
 struct AgendaLines {
     /// Said when none comes: "Nothing in your calendars for the coming month."
     empty: String,
+    /// Said instead when none comes in a frame that leaves some out
+    /// (`Frame::events_out`): "The calendars these hours show have nothing
+    /// for the coming month." An older Java says `empty`.
+    empty_hours: String,
     /// Every day of the reach, in order: Java lists each event under the day
     /// it starts, or today while it runs.
     days: Vec<Day>,
@@ -376,6 +387,9 @@ struct Event {
     since: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     ongoing: String,
+    /// When its agenda reaches you (`Occurrence::reach`): which frames leave it out.
+    #[serde(skip)]
+    reach: sioul_core::agendas::Reach,
 }
 
 fn is_zero_ms(value: &i64) -> bool {
@@ -441,6 +455,8 @@ pub(crate) struct PorchInput {
     items: Vec<Triaged>,
     senders: Senders,
     store: Option<ProjectStore>,
+    /// The words said of notices on any device (`notices`): a message dismissed is not listed.
+    states: sioul_core::notices::States,
 }
 
 /// The plan, as the window last made it.
@@ -461,6 +477,9 @@ pub(crate) struct AgendaInput {
     read_on: Date,
     /// Two events at once set aside for good, a pair or a long event whole (`overlaps::SetAside`): not said.
     aside: sioul_core::overlaps::SetAside,
+    /// The conflicts due to be said (`overlaps::Notices`): none, read from their
+    /// file at each card, as the agenda's job keeps it; given, for the tests.
+    notices: Option<sioul_core::overlaps::Notices>,
 }
 
 /// The weather the card is made with: whether a place is chosen, and the
@@ -486,6 +505,9 @@ struct More<'a> {
     calls: Option<CallsAt<'a>>,
     /// Where you stopped: the line left.
     stopped: Option<String>,
+    /// The agendas kept hidden on this device (`agenda::kept_hidden`, the
+    /// calendars an older Show hid): their events left out of the card.
+    kept: BTreeSet<String>,
 }
 
 /// What a card is made from, besides the Porch and the plan.
@@ -656,16 +678,27 @@ fn reminder_lines(tr: &Translator, all: &[Reminder], details: bool, now: i64) ->
         .collect()
 }
 
-/// Two events at once today and tomorrow, each said on its own day until
-/// both are over, as the Porch says today's (`overlaps`): the time to get
-/// there and back counted; those set aside for good left out.
+/// The conflicts someone else's change made, today and tomorrow, each said
+/// on its own day until both are over or it is answered, as the Porch says
+/// them (`pim::overlaps_of`, `overlaps::Notices`): one person in two places,
+/// the time to get there and back counted; never one you came upon, nor
+/// one set aside for good.
 fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
+    match &input.notices {
+        Some(given) => overlap_lines_with(m, input, given),
+        None => overlap_lines_with(m, input, &sioul_core::overlaps::Notices::load(&sioul_core::overlaps::Notices::default_path())),
+    }
+}
+
+/// `overlap_lines`, with the conflicts due to be said (`notices`) given.
+fn overlap_lines_with(m: &Moment, input: &AgendaInput, notices: &sioul_core::overlaps::Notices) -> Vec<Timed> {
     let zone = m.now.time_zone().clone();
     let now = m.now.timestamp().as_second();
     let day_of = |at: i64| Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
     let tomorrow = m.now.date().tomorrow().ok();
-    sioul_core::overlaps::overlaps(&input.events, m.config.agenda.between())
+    sioul_core::overlaps::conflicts(&input.events, m.config.agenda.between(), &sioul_core::agendas::Matrix::current())
         .into_iter()
+        .filter(|o| notices.due.contains_key(&o.key) && !notices.said.contains_key(&o.key))
         .filter(|o| !input.aside.holds(o) && o.first.end.max(o.second.end) > now)
         .filter_map(|o| {
             let day = day_of(o.second.start)?;
@@ -692,15 +725,16 @@ fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
 /// meal, a nap or the night begins, starts proper (winding down becomes
 /// sleep at bedtime) or ends, when the Porch opens or closes, when it stops
 /// resting after a pause, and at midnight, so that "tomorrow" in a frame's
-/// words stays true.
-fn timeline(m: &Moment) -> Vec<(Zoned, Zoned, Mode)> {
+/// words stays true; and when work's hours change under free time or a
+/// pause (`work_hours`), as the agendas they let through change then.
+fn timeline(m: &Moment, hours: &[(Zoned, sioul_core::agendas::Hours)]) -> Vec<(Zoned, Zoned, Mode)> {
     let Some(horizon) = midnight_after(m.now).and_then(|z| midnight_after(&z)) else { return Vec::new() };
     let zone = m.now.time_zone().clone();
     let instant = |seconds: i64| Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
     let rests = m.overrides.porch_rests_until.and_then(instant);
     // The do-not-disturb's end too: its line goes then.
     let quiet_end = m.dnd.and_then(|d| d.until).filter(|until| *until > 0).and_then(instant);
-    let ends: Vec<Zoned> = rests.into_iter().chain(quiet_end).collect();
+    let ends: Vec<Zoned> = rests.into_iter().chain(quiet_end).chain(hours.iter().skip(1).map(|(at, _)| at.clone())).collect();
     // One way of cutting the time ahead, for the card and the agenda's head line (`quiet::frames`).
     quiet::frames(&m.config.week_hours(), &m.config.time_off, m.overrides, m.blocks, &m.config.windows, m.now, &horizon, &ends, FRAMES)
 }
@@ -833,7 +867,8 @@ fn porch_at(m: &Moment, input: &PorchInput, mode: &Mode, at: &Zoned) -> PorchMad
         .iter()
         .filter(|l| !l.folded && !matches!(l.key.as_str(), "set-aside" | "review" | "hostile"))
         .flat_map(|l| l.items.iter())
-        .filter(|i| !i.hidden && !i.spam)
+        // Dismissed or settled on any device: gone from the card as from the Porch; read, listed as a mail card lists it, not bold.
+        .filter(|i| !i.hidden && !i.spam && !matches!(input.states.of(&i.notice.id, sioul_core::notices::State::default()).mark, sioul_core::notices::Mark::Dismissed | sioul_core::notices::Mark::Done))
         .map(|i| mail_line(m, i, triaged.get(&i.key).copied()))
         .collect();
     if listed.is_empty() {
@@ -918,8 +953,10 @@ fn agenda_day(tr: &Translator, day: Date, today: Date, zone: &jiff::tz::TimeZone
 /// None without a calendar.
 /// A task's time block shows as the task it is, as in the agenda: its time,
 /// then "Task · " and its list (21 October 2026; `agenda::mark_tasks`, with
-/// `tasks`, the plan's).
-fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Task], dated: &[Dated]) -> Option<AgendaLines> {
+/// `tasks`, the plan's). The agendas kept hidden on this device (`kept`)
+/// are left out for good; those the hours leave out, frame by frame
+/// (`Frame::events_out`).
+fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Task], dated: &[Dated], kept: &BTreeSet<String>) -> Option<AgendaLines> {
     let dates = date_lines(m, dated, tasks);
     if !input.calendars && dates.is_empty() {
         return None;
@@ -931,7 +968,7 @@ fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Tas
     let now = m.now.timestamp().as_second();
     let end = today.checked_add(Span::new().days(HORIZON_DAYS + 1)).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(i64::MAX, |z| z.timestamp().as_second());
     // An instant event still takes its minute.
-    let mut coming: Vec<&Occurrence> = marked.iter().filter(|e| !e.cancelled && e.end.max(e.start + 60) > now && e.start < end).collect();
+    let mut coming: Vec<&Occurrence> = marked.iter().filter(|e| !e.cancelled && e.end.max(e.start + 60) > now && e.start < end && !kept.contains(&e.agenda)).collect();
     // Nearest first, a day's whole-day events before its times (Java's days only go forward).
     coming.sort_by(|a, b| (a.start, !a.all_day, &a.summary).cmp(&(b.start, !b.all_day, &b.summary)));
     let events = coming
@@ -958,11 +995,37 @@ fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Tas
                 color: colour(e.color.as_deref()),
                 since,
                 ongoing,
+                reach: e.reach(),
             }
         })
         .collect();
     let days = (0..=HORIZON_DAYS).filter_map(|i| today.checked_add(Span::new().days(i)).ok()).filter_map(|day| agenda_day(m.tr, day, today, &zone)).collect();
-    Some(AgendaLines { empty: m.tr.text("home-card-agenda-empty", None), days, events, dates })
+    Some(AgendaLines { empty: m.tr.text("home-card-agenda-empty", None), empty_hours: m.tr.text("home-card-agenda-empty-hours", None), days, events, dates })
+}
+
+/// Work's hours as the agendas follow them (`agendas::Hours`), from now to
+/// the card's end: each state from its time, the first now's. Free time,
+/// the pause, a meal or the night inside work hours change nothing (`Hours::at`).
+fn work_hours(m: &Moment) -> Vec<(Zoned, sioul_core::agendas::Hours)> {
+    let Some(horizon) = midnight_after(m.now).and_then(|z| midnight_after(&z)) else { return Vec::new() };
+    let zone = m.now.time_zone().clone();
+    let mut out = Vec::new();
+    let mut at = m.now.clone();
+    while out.len() < FRAMES {
+        let hours = sioul_core::agendas::Hours::at(m.config, m.overrides, &at);
+        out.push((at.clone(), hours));
+        let Some(next) = hours.until.filter(|until| *until > at.timestamp().as_second() && *until < horizon.timestamp().as_second()).and_then(|until| Timestamp::from_second(until).ok()) else { break };
+        at = next.to_zoned(zone.clone());
+    }
+    out
+}
+
+/// The events a frame from `from` leaves out (`Frame::events_out`): those
+/// whose agendas the hours then leave out.
+fn events_out(lines: Option<&AgendaLines>, hours: &[(Zoned, sioul_core::agendas::Hours)], from: &Zoned) -> Vec<usize> {
+    let Some(lines) = lines else { return Vec::new() };
+    let Some((_, then)) = hours.iter().rev().find(|(at, _)| at.timestamp() <= from.timestamp()).or(hours.first()) else { return Vec::new() };
+    lines.events.iter().enumerate().filter(|(_, e)| !sioul_core::agendas::admits(e.reach, *then)).map(|(at, _)| at).collect()
 }
 
 /// The dates asked within the agenda's reach, nearest first, each given
@@ -1201,7 +1264,10 @@ fn snapshot_with(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput
             })
             .collect()
     };
-    let frames: Vec<Frame> = timeline(m)
+    // The agenda's lines first: each frame says which of its events the hours leave out then.
+    let agenda_made = agenda.and_then(|a| agenda_lines(m, a, plan.map(|p| p.loaded.tasks.as_slice()).unwrap_or_default(), more.dates, &more.kept));
+    let hours = work_hours(m);
+    let frames: Vec<Frame> = timeline(m, &hours)
         .into_iter()
         .enumerate()
         .map(|(index, (from, until, mode))| {
@@ -1228,6 +1294,7 @@ fn snapshot_with(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput
                 codes: !mode.paused() && comes(Own::Codes, &mode),
                 doses: !mode.paused() && comes(Own::Doses, &mode),
                 events: !mode.paused(),
+                events_out: events_out(agenda_made.as_ref(), &hours, &from),
                 reminders: reminders.iter().enumerate().filter(|(_, (_, work))| !mode.paused() && shows(*work, &mode)).map(|(at, _)| at).collect(),
                 calls: call_at(&mode, &from),
                 overlaps: !rests,
@@ -1251,7 +1318,7 @@ fn snapshot_with(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput
         today: today_lines(m, &more.weather, end),
         frames,
         mail,
-        agenda: agenda.and_then(|a| agenda_lines(m, a, plan.map(|p| p.loaded.tasks.as_slice()).unwrap_or_default(), more.dates)),
+        agenda: agenda_made,
         codes: porch.map(|p| codes(m, p)).unwrap_or_default(),
         doses: dose_lines(m.tr, doses, m.details),
         reminders: reminders.into_iter().map(|(line, _)| line).collect(),
@@ -1331,7 +1398,7 @@ pub(crate) fn porch_seen(items: &[Triaged], senders: &Senders, store: Option<&Pr
     if !on() {
         return;
     }
-    *PORCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(PorchInput { items: items.to_vec(), senders: senders.clone(), store: store.cloned() }));
+    *PORCH.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(PorchInput { items: items.to_vec(), senders: senders.clone(), store: store.cloned(), states: crate::notices::states(&|_, _| None) }));
     soon(false);
 }
 
@@ -1379,7 +1446,7 @@ fn agenda_input(now: &Zoned) -> Option<Arc<AgendaInput>> {
     let events = crate::pim::agenda_read(midnight, reach, &removed, &skipped);
     let calendars = !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty();
     let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
-    let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside });
+    let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside, notices: None });
     *kept = Some(Arc::clone(&input));
     Some(input)
 }
@@ -1588,7 +1655,7 @@ fn refresh(tell: bool) {
     let reminded = REMINDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone().unwrap_or_default();
     let calls = crate::calls::for_card();
     let stopped = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()).map(|s| s.text);
-    let more = More { weather: weather_input(), dates: &dates, reminders: &reminded, calls: calls.as_deref(), stopped };
+    let more = More { weather: weather_input(), dates: &dates, reminders: &reminded, calls: calls.as_deref(), stopped, kept: crate::agenda::kept_hidden() };
     let card = snapshot_with(&moment, Some(&porch), Some(&plan), agenda.as_deref(), &doses, &more);
     let said = content(&card);
     let Ok(text) = serde_json::to_string(&card) else { return };
@@ -1646,7 +1713,7 @@ pub(crate) fn mail_came() {
     let senders = Senders::load(&config);
     let state = sioul_core::state::PorchState::load(&sioul_core::state::PorchState::default_path());
     let items = porch::gather(&config.mail_sources(), store.as_ref(), &known, &senders, &state, now.timestamp().as_second());
-    let input = PorchInput { items, senders, store };
+    let input = PorchInput { items, senders, store, states: crate::notices::states(&|_, _| None) };
     let overrides = Overrides::load(&Overrides::default_path());
     let blocks = crate::hours::blocks(&now);
     let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: tr(), details: details(), dnd: None };
@@ -1848,7 +1915,7 @@ mod tests {
         items.push(code);
         // People you know, marked safe: their mail comes at every time but sleep (the usual matrix).
         let senders = Senders { safe: sioul_core::porch::SenderList::parse("marie@example.org\npaul@example.org\nlea@example.org\ntom@example.org\n"), ..Senders::default() };
-        PorchInput { items, senders, store: None }
+        PorchInput { items, senders, store: None, states: sioul_core::notices::States::default() }
     }
 
     fn task(uid: &str, title: &str) -> Task {
@@ -1896,7 +1963,10 @@ mod tests {
                 ..Occurrence::default()
             })
             .collect();
-        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: Default::default() }
+        // Every conflict among them due, as if someone else's change had made it: the card says it.
+        let events: Vec<Occurrence> = events;
+        let due = sioul_core::overlaps::conflicts(&events, 0, &sioul_core::agendas::Matrix::default()).into_iter().map(|o| (o.key, 0)).collect();
+        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: Default::default(), notices: Some(sioul_core::overlaps::Notices { due, ..Default::default() }) }
     }
 
     /// A dated task showed in the computer's
@@ -1942,8 +2012,8 @@ mod tests {
         let blocks = blocks(&now);
         let overrides = Overrides::default();
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
-        let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: Default::default() };
-        let card = agenda_lines(&moment, &input, &tasks, &[]).unwrap();
+        let input = AgendaInput { events: crate::pim::agenda_read(midnight, reach, &none.0, &none.1), calendars: true, read_on: now.date(), aside: Default::default(), notices: None };
+        let card = agenda_lines(&moment, &input, &tasks, &[], &BTreeSet::new()).unwrap();
         let mut home: Vec<String> = card.events.iter().filter(|e| ours(&e.key)).map(|e| e.title.clone()).collect();
         home.sort();
         assert_eq!(home, ["block", "dentist", "orphan", "stray"], "the same items");
@@ -2200,6 +2270,16 @@ mod tests {
         let first = sent_at("Ana <ana@example.org>", "Hello", stamp("2026-10-01T09:00[Europe/Paris]"), false);
         assert_eq!(mail_when(&fr, first.card.date, &now).last().unwrap().text, "1er oct.");
         assert_eq!(mail_when(&fr, Some(stamp("2026-10-04T09:00[Europe/Paris]")), &now)[0].text, "hier");
+        // Dismissed on another device: gone from the card as from the Porch (the notices' words).
+        let words = std::env::temp_dir().join(format!("sioul-homecard-notices-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&words);
+        let paul = input.items.iter().find(|t| t.card.subject == "The photos").map(|t| sioul_core::notices::mail_id_of(&t.card)).unwrap();
+        sioul_core::notices::say(&words, "phone", &[paul], sioul_core::notices::Mark::Dismissed, now.timestamp().as_millisecond()).unwrap();
+        input.states = sioul_core::notices::States::read(&words);
+        let card = snapshot(&moment, Some(&input), None, None, &[]);
+        let listed: Vec<&str> = card.frames[0].porch.as_ref().unwrap().mail.iter().map(|at| card.mail[*at].sender.as_str()).collect();
+        assert_eq!(listed, ["Ana", "Marie Dupont", "Léa"]);
+        let _ = std::fs::remove_dir_all(&words);
         // At most twenty, the newest.
         let mut many = porch_input(&now);
         many.items = (0..30).map(|i| sent_at(&format!("Someone <s{i}@example.org>"), &format!("Note {i}"), stamp("2026-10-05T08:00[Europe/Paris]") - i * 60, false)).collect();
@@ -2301,7 +2381,7 @@ mod tests {
         let far = events_of(&[("Far away", "2026-11-20T10:00[Europe/Paris]", "2026-11-20T11:00[Europe/Paris]", false, None, false)]);
         assert!(snapshot(&moment, None, None, Some(&far), &[]).agenda.unwrap().events.is_empty());
         // No calendar at all: no agenda on the card.
-        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default() };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default(), notices: None };
         assert!(snapshot(&moment, None, None, Some(&none), &[]).agenda.is_none());
         // In French, as the phone's agenda says it.
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "fr", &[]);
@@ -2315,10 +2395,68 @@ mod tests {
         assert_eq!(fr.card.words.mail, "Courriels");
     }
 
-    /// A long event set aside whole from its warning (fix W1): the card says
-    /// none of its overlaps either, as the Porch and the agenda.
+    /// The card follows the hours' default (review of parts 1 and 2): a
+    /// work agenda's events are left out of each frame outside work hours,
+    /// listed in them, a meal inside them too; a personal agenda kept out
+    /// of work hours, the other way; Free time is not work's; an agenda kept
+    /// hidden on this device is never listed. No word of the filter's reaches it.
     #[test]
-    fn a_long_event_set_aside_whole_is_not_said() {
+    fn the_card_follows_the_hours_default() {
+        let now = at("2026-10-05T10:00[Europe/Paris]");
+        let (config, tr) = (config(), Translator::new("en"));
+        let blocks = blocks(&now);
+        let mut input = events_of(&[
+            ("Review", "2026-10-06T10:00[Europe/Paris]", "2026-10-06T11:00[Europe/Paris]", false, None, false),
+            ("Choir", "2026-10-05T19:00[Europe/Paris]", "2026-10-05T20:30[Europe/Paris]", false, None, false),
+            ("Swim", "2026-10-06T07:00[Europe/Paris]", "2026-10-06T08:00[Europe/Paris]", false, None, false),
+            ("Old club", "2026-10-06T18:00[Europe/Paris]", "2026-10-06T19:00[Europe/Paris]", false, None, false),
+        ]);
+        for (event, agenda) in input.events.iter_mut().zip(["work/main", "me/personal", "me/sport", "me/club"]) {
+            event.agenda = agenda.into();
+        }
+        input.events[0].work = true;
+        input.events[2].outside_work = true;
+        let more = More { kept: ["me/club".to_string()].into(), ..More::default() };
+        let card_at = |now: &Zoned, overrides: &Overrides| {
+            let moment = Moment { now, config: &config, overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
+            snapshot_with(&moment, None, None, Some(&input), &[], &more)
+        };
+        let card_with = |overrides: &Overrides| card_at(&now, overrides);
+        let shown = |card: &Snapshot, when: &str| {
+            let t = at(when).timestamp().as_millisecond();
+            let frame = card.frames.iter().find(|f| f.from <= t && t < f.until).unwrap();
+            let agenda = card.agenda.as_ref().unwrap();
+            agenda.events.iter().enumerate().filter(|(i, _)| !frame.events_out.contains(i)).map(|(_, e)| e.title.clone()).collect::<Vec<_>>().join(", ")
+        };
+        let card = card_with(&Overrides::default());
+        let agenda = card.agenda.as_ref().unwrap();
+        assert_eq!(agenda.events.iter().map(|e| e.title.as_str()).collect::<Vec<_>>(), ["Choir", "Swim", "Review"], "kept hidden: never listed");
+        assert_eq!(shown(&card, "2026-10-05T10:00[Europe/Paris]"), "Choir, Review", "work hours: the work agenda's, not the one kept out of them");
+        assert_eq!(card.frames.iter().find(|f| f.kind == "meals" && f.from < at("2026-10-05T17:00[Europe/Paris]").timestamp().as_millisecond()).map(|f| f.events_out.len()), Some(1), "a meal inside work hours is still work's");
+        assert_eq!(shown(&card, "2026-10-05T18:00[Europe/Paris]"), "Choir, Swim", "outside work hours: the other way");
+        assert_eq!(shown(&card, "2026-10-06T09:30[Europe/Paris]"), "Choir, Review", "the next morning at work: back");
+        assert_eq!(agenda.empty_hours, "The calendars these hours show have nothing for the coming month.");
+        // Free time, pressed at 15:00 in work hours: not work's, the work agenda left out until it
+        // ends, back the next morning at work.
+        let free = Overrides { free_since: Some(at("2026-10-05T15:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() };
+        let card = card_at(&at("2026-10-05T15:10[Europe/Paris]"), &free);
+        assert_eq!(card.frames[0].kind, "free-time");
+        assert_eq!(shown(&card, "2026-10-05T15:30[Europe/Paris]"), "Choir, Swim");
+        assert_eq!(shown(&card, "2026-10-06T09:30[Europe/Paris]"), "Choir, Review");
+        // The JSON Java reads: the places left out, none when none is.
+        let text = serde_json::to_value(&card_with(&Overrides::default())).unwrap();
+        let times = text["times"].as_array().unwrap();
+        assert_eq!(times[0].get("events_out"), Some(&serde_json::json!([1])));
+        assert!(times.iter().any(|t| t["events_out"] == serde_json::json!([2])));
+        assert!(text["agenda"]["events"][0].get("reach").is_none());
+    }
+
+    /// The card says a conflict only once someone else's change made it, as
+    /// the Porch does (`overlaps::Notices`): none you came upon; due, it is
+    /// said; a long event set aside whole from its warning (fix W1), none of
+    /// its conflicts either, as the Porch and the agenda.
+    #[test]
+    fn a_conflict_is_said_once_due_and_a_long_event_set_aside_never() {
         let now = at("2026-10-05T10:00[Europe/Paris]");
         let (config, tr, overrides) = (config(), Translator::new("en"), Overrides::default());
         let blocks = blocks(&now);
@@ -2327,11 +2465,15 @@ mod tests {
             ("Residency", "2026-10-05T09:00[Europe/Paris]", "2026-10-20T09:00[Europe/Paris]", false, None, false),
             ("Dentist", "2026-10-05T11:00[Europe/Paris]", "2026-10-05T12:00[Europe/Paris]", false, None, false),
         ]);
-        assert_eq!(overlap_lines(&moment, &input).len(), 1, "said before");
+        let none = sioul_core::overlaps::Notices::default();
+        assert!(overlap_lines_with(&moment, &input, &none).is_empty(), "come upon: never said");
+        let found = sioul_core::overlaps::conflicts(&input.events, 0, &sioul_core::agendas::Matrix::default());
+        let due = sioul_core::overlaps::Notices { due: found.iter().map(|o| (o.key.clone(), 0)).collect(), ..Default::default() };
+        assert_eq!(overlap_lines_with(&moment, &input, &due).len(), 1, "made by someone else's change: said");
         let residency = input.events.iter().find(|e| e.summary == "Residency").unwrap();
         let aside = sioul_core::overlaps::SetAside { events: [sioul_core::overlaps::occurrence_id(residency)].into(), ..Default::default() };
         let quiet = AgendaInput { aside, ..input };
-        assert!(overlap_lines(&moment, &quiet).is_empty(), "set aside whole");
+        assert!(overlap_lines_with(&moment, &quiet, &due).is_empty(), "set aside whole");
     }
 
     /// The dates asked of the coming month, at the head of their days
@@ -2419,7 +2561,7 @@ mod tests {
         // No calendar, dates all the same: the agenda with them alone.
         let tr = Translator::new("en");
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
-        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default() };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default(), notices: None };
         let alone = snapshot_with(&moment, None, Some(&plan), Some(&none), &[], &More { dates: &dates, ..More::default() }).agenda.unwrap();
         assert!(alone.events.is_empty() && alone.dates.len() == 5);
     }
@@ -2806,7 +2948,7 @@ mod tests {
             ("Trip to the sea", "2026-10-14T00:00[Europe/Paris]", "2026-10-17T00:00[Europe/Paris]", true, None, false),
         ]);
         let reminded = some_reminders();
-        let more = More { weather: WeatherInput { place: true, forecast: Some(forecast_at(&now)) }, dates: &some_dates(), reminders: &reminded, calls: Some(&some_calls), stopped: Some("Halfway through the CAF's form, page 2".into()) };
+        let more = More { weather: WeatherInput { place: true, forecast: Some(forecast_at(&now)) }, dates: &some_dates(), reminders: &reminded, calls: Some(&some_calls), stopped: Some("Halfway through the CAF's form, page 2".into()), kept: BTreeSet::new() };
         snapshot_with(&moment, Some(&porch_input(&now)), Some(&plan_input(&now)), Some(&agenda), doses, &more)
     }
 

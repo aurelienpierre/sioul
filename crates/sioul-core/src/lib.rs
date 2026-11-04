@@ -119,6 +119,8 @@
 //! - [`budget`]: budgets, reserves, and the lines between them.
 //! - [`accounts`]: bank accounts, and the budgets each movement goes to.
 //! - [`bank`]: the money watch: the bank's exports held against the recurring payments.
+//! - [`movements`]: money movements: each sum in or out once, with every source that tells of it.
+//! - [`due`]: what money is due or expected soon, for the Porch.
 //! - [`money`]: exact amounts, and the amounts written in mail.
 //! - [`contracts`]: contracts and subscriptions: when each renews, how to stop it.
 //! - [`papers`]: the papers wallet: the papers asked again and again, and when each ends.
@@ -145,6 +147,7 @@
 //!
 //! - [`contacts`]: contacts, one vCard per person.
 //! - [`agenda`]: calendars: events from iCalendar files, repeating ones expanded.
+//! - [`agendas`]: several agendas: whose each one is, when it reaches you, what you may do with it, which warn of overlaps.
 //! - [`agentwrites`]: what an AI agent changed, said in the window with Undo.
 //! - [`appointments`]: a task made an appointment, an appointment made a task, as the person says.
 //! - [`vdir`]: address books and calendars on disk: one folder per collection, one file per item.
@@ -175,6 +178,7 @@
 
 pub mod accounts;
 pub mod agenda;
+pub mod agendas;
 pub mod anchors;
 pub mod agentwrites;
 pub mod appointments;
@@ -199,6 +203,7 @@ pub mod composed;
 pub mod config;
 pub mod contracts;
 pub mod dated;
+pub mod due;
 pub mod dayview;
 pub mod demands;
 pub mod description;
@@ -215,6 +220,7 @@ pub mod github;
 pub mod handed;
 pub mod headers;
 pub mod health;
+pub mod holders;
 pub mod i18n;
 pub mod ids;
 pub mod interop;
@@ -236,12 +242,14 @@ pub mod mailto;
 pub mod mms;
 pub mod money;
 pub mod moves;
+pub mod movements;
 pub mod needs;
 pub mod ongoing;
 pub mod overlaps;
 pub mod own_time;
 pub mod pairs;
 pub mod notes;
+pub mod notices;
 pub mod payments;
 pub mod pgp;
 pub mod phonemsgs;

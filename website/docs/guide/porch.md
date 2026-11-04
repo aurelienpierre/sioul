@@ -6,11 +6,11 @@ description: The Porch, where new mail waits in Sioul - checked, sorted into lan
 
 ## In short {#in-short}
 
-The Porch is where new mail from every address waits until you look. Before anything is shown, Sioul checks each message, genuine or forged, and sorts it into a lane by who wrote it and what it is for: people you know, someone new waiting in the screener, a project, newsletters, what is set aside. It opens in the hours you choose and stays quiet outside them, while the codes and links you just asked a site for come at once. Nothing is counted at you, and nothing is deleted.
+The Porch is where new mail from every address waits until you look. Before anything is shown, Sioul checks each message, genuine or forged, and sorts it into a lane by who wrote it and what it is for: people you know, someone new waiting in the screener, a project, newsletters, what is set aside. It opens in the hours you choose and stays quiet outside them, while the codes and links you just asked a site for come at once. Each new thing is a row you can mark read or dismiss, on every device at once. Nothing is counted at you, and nothing is deleted.
 
 <figure markdown="span">
-  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; what came, in a few sentences; the card to join your other devices; a line on money; paper letters; two cards for a confirmation link and a code from verified senders, the code with a Copy button and how long it stays valid; a chat's news.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
-  <figcaption>Codes and links on top, the sites' news, then the lanes.</figcaption>
+  [![The Porch in working hours. At the top, "Open until 17:00." and its settings, Show all mail now under them; the card to join your other devices; then its sections, each a title with its "?" and its chevron: Right now, a code from a verified sender with Copy; a project's mail; the people you know; From your phone; Sites; Money, each payment with its amount on the right; each row with Mark read and Dismiss beside it.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  <figcaption>Codes on top, then each section, a row per new thing.</figcaption>
 </figure>
 
 ## Protected by default {#what-is-protected}
@@ -38,7 +38,7 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…):
 
 - on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; none while you sleep: the card waits here;
-- the same card on top of the Porch, with **Copy**; on a phone, on the Porch and on Sioul's card on your home screen, since a phone does not notify codes yet.
+- its row on top of the Porch, in **Right now**, with **Copy**; on a phone, on the Porch and on Sioul's card on your home screen, since a phone does not notify codes yet.
 
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
 
@@ -75,9 +75,9 @@ Each message goes to the first lane that takes it, in this order. Three of them 
 
 **Senders you blocked** never appear on the Porch: their mail is set aside for good, never shown, never counted and never told. Nothing is deleted.
 
-Mail you send yourself, from one of your addresses to another (a file sent from your phone), comes with the people you know, at any hour, never screened, when it is verified: a forged own address is a classic trick.
+Mail you send yourself, from one of your addresses to another (a file sent from your phone), comes in its own section, **From yourself**, at any hour, never screened, when it is verified: a forged own address is a classic trick.
 
-Under each lane's title, one line says what it holds. Its **?** (How mail lands here) says, sentence by sentence, how mail lands there, and where to change it.
+Each lane is a section of the Porch, with nothing written under its title. Its **?** says what it holds and how mail lands there; pressed (or tapped on a phone), it also shows what changes it, and where to change the rest.
 
 ### Letting someone in {#letting-someone-in}
 
@@ -151,27 +151,42 @@ When there is something, a few lines come before the lanes:
 - **Two events at once today**, the time to get there and back counted, with **Open "…"** for each and **Don't mention it again**. See [Agenda](agenda.md#two-events-at-once).
 - **Today's doses not marked yet**, from their time on, whether a notification reminded you or not: each with its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). Whatever your hours: a dose is not mail. Each stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, they wait for your waking. When another device may know more, the doubt is said under the dose: check before taking it. See [Health](health.md#reminders).
 - **Doses due while Sioul was closed**, neither marked nor reminded anywhere: **Taken…** (when you took it) or **Not taken**. A dose whose reminder could not be shown while Sioul was open (notifications not working) is asked about the same way, under its own heading. When another device may know more, the doubt is said under the dose. See [Health](health.md#reminders).
-- **Calls Sioul declined**, on your phone and on your other devices, each at a time its caller may reach you: "While you slept, a number not in your contacts called at 09:30.", with **Text back**, **Call back**, **Listen** when Free mailed the voicemail. See [Calls](calls.md#afterwards-on-the-porch).
-- **From your phone**, on a computer, when you send your phone's messages there: who wrote, when and what, at a time they may reach you, with **Reply**, **Call back** and **Seen** (**Text back** where no Reply is offered); your reply shows under their messages with what became of it. See [What reaches you](notifications.md#messages-on-your-computers).
-- **"*The site* has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
-- **Paper letters**: on a computer, always one line on where their scans go, with **Open the folder** and **Add a scan…**; then each scan read, as a card: who, what, how much, by when. See [Paper letters](#paper-letters), below.
-- **This week's payments**, in one line: "This week: Electricity €62 (Mon). The account holds them." When something about money needs a look, it says so, without a count. See [Budgets](budgets.md#the-bank-watch).
 
 <figure markdown="span">
   [![A card at the top of the Porch: "Your hours are not set: work and your admin come at any time.", a sentence on what each kind of hours brings, and two buttons, "Set my hours" and "Leave as is".](../assets/screens/porch-hours.png){ loading=lazy }](../assets/screens/porch-hours.png "Open the picture at full size")
   <figcaption>Until your hours are set, the Porch asks once.</figcaption>
 </figure>
 
+## The sections, and what you can do with each row {#the-sections}
+
+After those cards, the Porch shows what came in sections, each drawn the same way: its title, a **?** that says once what it holds, and a chevron that folds it. Your folding is kept on this device. A section with nothing new is not shown at all. In this order:
+
+1. **Right now**: codes and links, whatever the hour.
+2. **Each project**, then your protected public address.
+3. **From yourself**.
+4. **From people you know**.
+5. **From your phone**: the calls Sioul declined, on your phone and on your other devices, each at a time its caller may reach you, with **Text back**, and **Call back** in its menu ([Calls](calls.md#afterwards-on-the-porch)); on a computer, the texts and other apps' notifications your phone sends there, with **Reply** where it works ([What reaches you](notifications.md#messages-on-your-computers)).
+6. **Sites**: what the websites you keep in Sioul notified, a row per site. Opening the site reads its news ([Sites](sites.md)).
+7. **Money**: this week's payments, each with its day and its amount, as your bank's file says them; **Open in Budgets** ([Budgets](budgets.md#the-bank-watch)). Not while you sleep.
+8. **Paper letters**, only while one waits ([below](#paper-letters)). Not while you sleep.
+9. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded.
+
+Each row says who, what and when on one line (two on a phone), with its main action: **Open**, **Reply**, **Text back**, **See the scan**, **Open in Budgets**. Beside it, two quiet buttons:
+
+- **Mark read**: the row goes, and what it is about is read too. A message is marked read here and on its server, as reading it would; a text is marked read on the Texts page. Calls and letters have no read state: only Dismiss.
+- **Dismiss**: the row goes from the Porch, and nothing else changes: the message stays unread in your mailbox, the letter waits.
+
+Both act at once on all your devices, with ten seconds to change your mind: **Undo**, at the foot of the list. On a phone, both are in the row's menu, at a long press; on a computer the menu (**⋮**, a right click) holds the rest of what can be done, and something new made from it, such as a task. A message read elsewhere, on your phone or in another mail program, leaves the Porch by itself; so does its notification, where Sioul showed one.
+
 ## Paper letters {#paper-letters}
 
-Sioul reads your paper post too, from scans, and on a computer the Porch says where they go before any comes:
+Sioul reads your paper post too, from scans:
 
-- **The folder**: the line under **Paper letters** names it. Unset, it is `letters/inbox` in your notes folder; choose another in the Porch's ⚙, **Paper letters ▸ Where scans arrive**. You, a scanner, a phone's scanner app syncing into it, or someone who opens your post for you can put scans there.
-- **Open the folder** opens it. **Add a scan…** copies PDF files or pictures (PNG, JPEG, TIFF, WebP) into it, several at once; the file you chose stays where it was. The **New** menu's **A paper letter (scan)…** does the same from any page.
-- **What Sioul reads**: who sent the letter, what it is (a bill, a reminder, a decision, an appointment…), how much it asks and by when, a delay such as "within two months" turned into a date. Within a minute or two each scan becomes a card here, with a task for its date, its appointment in the agenda and its scan one click away. See [Papers and letters](papers.md#paper-letters).
-- **Reading needs two programs** of your system, Tesseract and Poppler. When they are missing, the line says so and gives the command that installs them ([Install](install.md#the-packages)). Nothing leaves your computer.
+- **The folder**: unset, it is `letters/inbox` in your notes folder; another is chosen with the letters' own settings. You, a scanner, a phone's scanner app syncing into it, or someone who opens your post for you can put scans there. The **New** menu's **A paper letter (scan)…** copies PDF files or pictures (PNG, JPEG, TIFF, WebP) into it, several at once; the file you chose stays where it was.
+- **What Sioul reads**: who sent the letter, what it is (a bill, a reminder, a decision, an appointment…), how much it asks and by when, a delay such as "within two months" turned into a date. Within a minute or two each scan becomes a row of **Paper letters** here, what it asks under it, with **See the scan**; its menu makes a task for its date, puts its appointment in the agenda, or files it when you are done. See [Papers and letters](papers.md#paper-letters).
+- **Reading needs two programs** of your system, Tesseract and Poppler. Nothing leaves your computer.
 
-A phone reads no scans: it shows the cards your computer made, without the line.
+A phone reads no scans: it shows the letters your computer read.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -204,8 +219,7 @@ Hostile mail goes to its own folded lane, which shows neither the sender's name 
 
 The ⚙ at the top of the Porch holds what is the Porch's alone, and how a message opened here reads:
 
-- **Projects shown here**: which projects have a lane on the Porch. The others' mail stays on their page in Projects.
-- **Paper letters ▸ Where scans arrive**: the folder your scans come to.
+- **Projects shown here**: which projects have a section on the Porch, one per line. The others' mail stays on their page in Projects.
 - **Calls ▸ Calls your phones declined**: on unless you turn it off, the calls your phones declined wait on this device's Porch too; off, each phone lists only its own, and your computers none ([Calls](calls.md#on-your-computers)).
 - **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
 - **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
@@ -346,6 +360,8 @@ Each inbox stays open with IMAP IDLE (RFC 2177), renewed every five minutes, so 
 ### What the Porch keeps, and where {#what-the-porch-keeps-and-where}
 
 Fetching uses `EXAMINE` and `BODY.PEEK`, so nothing is marked read. **Done for now** is kept on your device, as the newest message shown for each address (its UIDVALIDITY and UID), and reaches your other devices sealed when you share between them; the server is never told.
+
+Each row is a *notice*, named by its source alone, the same on every device (a message by its address and Message-ID). What you say of it (**Dismiss**, **Mark read**) is a line in your device's own log, which reaches your other devices sealed; the newest word wins. A word is forgotten a week after it was said, once what it is about has left the Porch. A Sioul too old to know this log still reads the calls' and the phone's messages' words, which are written where it looks for them.
 
 ### Notifications {#notifications}
 

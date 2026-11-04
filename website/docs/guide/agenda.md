@@ -1,12 +1,12 @@
 ---
-description: The Agenda in Sioul - what comes from today, the day, the week and the month; time to get there and back around each event, kept free by your plan; two events at once said; one quiet reminder; invitations answered, nothing added before you answer; compared with other calendars.
+description: The Agenda in Sioul - what comes from today, the day, the week and the month; several agendas, yours, your children's and others', filtered by your hours; time to get there and back around each event, kept free by your plan; you in two places shown where you look; one quiet reminder; invitations answered, nothing added before you answer; compared with other calendars.
 ---
 
 # Agenda
 
 ## In short {#in-short}
 
-The agenda shows what comes, from today, as a calm list of days, with the day, the week and the month one switch away. Each event can keep time before it, to get ready and get there, and after it, to come back: your plan keeps that time free, lays your tasks around your events, and moves a meal that falls in one. Sioul tells you when two events overlap, and reminds you once, quietly, before you need to leave. Your events stay on your own calendar server, at Google or on this device, and nothing from an invitation enters your calendar until you answer it.
+The agenda shows what comes, from today, as a calm list of days, with the day, the week and the month one switch away. Each event can keep time before it, to get ready and get there, and after it, to come back: your plan keeps that time free, lays your tasks around your events, and moves a meal that falls in one. Your agendas, your children's and those others share with you show together, filtered by your hours; Sioul shows where you would be in two places, and reminds you once, quietly, before you need to leave. Your events stay on your own calendar server, at Google or on this device, and nothing from an invitation enters your calendar until you answer it.
 
 <figure markdown="span">
   [![The Agenda on "Week": at the top, Today, two arrows and "Week of 5 October", the choice of view, and New event; below, seven columns of days from Monday, events placed at their hours, and a thin line marking the current hour.](../assets/screens/agenda-week.png){ loading=lazy }](../assets/screens/agenda-week.png "Open the picture at full size")
@@ -104,7 +104,7 @@ Let go, and it is saved and sent to your calendar server; **Undo** waits ten sec
 - **A calendar you can only read**, a meeting with others (its organiser's server would tell every guest), whole-day events and doses do not move.
 - **With a mouse**: press and drag; the wheel scrolls. **On a touch screen**: hold the event until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu.
 - Only within the hours shown; further, use **Edit**.
-- If it now overlaps another event, Sioul says so above the agenda, as for any two events at once. Your plan goes around its new time at once.
+- If you would now be in two places, it stands beside the other, a thin bracket joining them, and its card says so ([Two events at once](#two-events-at-once)). Your plan goes around its new time at once.
 
 ## Tasks pinned to a time
 
@@ -115,11 +115,42 @@ In the agenda it shows as the task it is, never as an event: the task mark where
 - **Make it an appointment**, in a task's details or its menu: the event form opens with the task's title, place and notes, at its time, in the calendar for new events (or another you choose). Saved, the event replaces the task and its time: never both, never neither, even when Sioul stops in between. A task with steps of its own stays a task.
 - **Make it a task**, on an event of your own: a task in your usual list, on its day, its length as its estimate, its time kept as the task's time when it is still to come. An invitation stays an event: others expect you there.
 
+## Several agendas {#several-agendas}
+
+Your agendas show together: yours for work and for yourself, one for each child, and those others share with you, another parent's or a partner's when they are busy. Each says what it is, on its line in the Agenda settings, **Your agendas**: open one to change it.
+
+- **Whose it is**: yours, a child's, another parent's, a partner's, or shared with you; and whose name ("Léa"), which names its group in the filter.
+- **For**: work, your admin, leisure. A work agenda follows your working hours: outside them, its events are not shown unless you say, and their reminders do not come. A personal one reaches you all day, or only outside work hours if you say so.
+- **You may**: read and write; read only; or see only when it is busy, without its titles, places or notes, whatever its server sends; **Show what its events say** shows their titles, if you wish. What another shares of their time stays with you: never written, never shared again, never given to an AI agent; it only says "Sam is busy then" when you choose who takes a child's event. Read and write is never offered where the server lets you read only. An agenda you only read, or only see busy, is never written by Sioul, its tasks neither.
+
+Sioul says each until you do: an agenda of an account for work alone is for work; one shared with you that you can only read is someone else's, for when they are busy only if its events carry nothing more; every other one is yours, for your admin and leisure, all day. What you say travels with your settings to your other devices.
+
+An agenda that is someone else's shows, and holds none of your time: your plan lays your tasks around your own events only. In **Day** and **Week**, what overlaps stands side by side, each agenda in its own lane and colour, yours first; an agenda you only see busy draws quiet blocks named after it.
+
+**Agendas**, at the top of the page, chooses which agendas every view shows: the agendas grouped by whose they are, a box for each and one for each group, each group folded or open. At first it shows what your hours admit: no work agenda in the evening. What you tick holds until your working hours change, then your hours decide again; **As the hours say** gives them back at once. A calendar you hid with an older Sioul's **Show** stays hidden on this device: the list names it "kept hidden", unticked, and ticking it shows it until your hours change; **Show again**, on its line in **Agenda ⚙ ▸ Your agendas**, ends that, and **Keep hidden on this device** hides another for good. **Keep these as a set…** names the agendas shown ("Tom and Léa", "My week"), and may tie them to your times: in leisure, say, the set is what shows unless you say. A set's button shows it at once, until your hours change; × forgets it. The same choice follows you from **Day** to **Week**, to the Month and to What comes, and to the Tasks page, where **Agendas** lists your task lists: a list left out keeps its tasks out of every view there, your plan whole. On a phone the list opens from the bottom of the screen.
+
+## Children's events {#childrens-events}
+
+A child's agenda says who may take its events: you, and the other parent, by name and address, in the Agenda settings, **Your agendas**, on its line. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist").
+
+- **Who takes it**: a child's event's card says it, "Sam takes it, since 3 November.", or "Nobody takes it yet.", with what you may answer: **Me**, the other parent, **Not this time**, **Ask Sam to take it**. Its **Kind** (health, dentist, school, activity, clothes, other) is chosen there too, and, when one parent drops the child off and the other picks them up, **Who brings Tom back**.
+- **Asked once**: an event or a task that comes into a child's agenda without anyone to take it is asked about once, under the Agenda's head line: "Tom: “Dentist”, Tuesday 10 November at 10:00. Who takes it?" Sioul proposes who usually takes that kind, else who has the child that day (whole days titled "With Sam" in the child's agenda), the proposal shown first. **Later** asks once more at your next admin time, then never.
+- **You take it**: it comes into your own agenda, as an event of its own that follows the child's (moved, renamed, cancelled), with your time around it, your reminder and your rides; its description says "Details: Tom’s agenda". In an agenda for work, a health, dentist or school event says only "Away". The child's event reminds nobody: whoever takes it is reminded through their own.
+- **The other parent takes it**: with Sioul, theirs asks them, "Alex proposes that you take Tom to “Dentist”, Tuesday 10 November at 10:00.", **Take it** or **Not this time**, and it enters their agenda only if they take it. Without Sioul, an invitation waits in your Drafts until you send it; their calendar's answer, opened in your mail, says whether they take it. If they cannot, it is open again, said to you once.
+- **What is kept**: only acts, "Sam took it on 3 November", never when something was read; no count of who did what.
+- **Tasks** in a child's list (a winter coat) work the same: one is in your plan when you take it, never when someone else does.
+- **Who does what**: beside each child's agenda in **Agendas**, a button opens its week: each event and task with who takes it, "Nobody yet" when nobody does; **What I take** keeps yours, across children. It shows no count of who did more.
+- **After the dentist's or a check-up** you took, a task comes in the child's list: "Book Tom’s next dentist appointment", due a month before the six months are up (a year for a check-up). One switch in the Agenda settings turns these off; how many months for each kind is there too.
+
 ## Two events at once
 
-When two events overlap, Sioul says so, and when they follow each other closer than a time you set, it says they are too close: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said. Two events overlap only when their times do. No time is ever put between them unless you set it: an event's own **Before** and **After** (in its form, and said in its details), or **Time kept between two events** in the Agenda settings, 0 at first; the longest counts, never added. Too close, the line says the minutes between them, the time you set and where you set it.
+What matters is you in two places. Your agendas' events need you, the work agenda's too at any hour, as do the invitations you accepted, wherever they are, and the children's events you take. Two of them at the same time are a conflict; one closer to the other than the time you keep around them is tight, never at the same time. A child's event nobody takes yet is nobody's conflict, and an agenda you only see busy conflicts with nothing.
 
-An event of 24 hours or more is said once, whatever it overlaps: "During Studio residency (Mon 2 Nov 10:00 → Mon 30 Nov 10:15): 34 other events"; its **Don't mention it again** sets that event aside whole, its overlaps to come too. An event over several days is named by its span, not its clock times alone ("Concert (22:00 → 02:00 (Wed))"). Above the agenda, three warnings at most, then "+2 more", which shows the others ("Fewer" folds them again).
+- **Where you look**: in **Day** and **Week** the two stand side by side, a thin bracket joining them; their cards say it in a sentence, "At the same time as Léa’s “Swimming”.", or "Tight with “Dentist”: 10 min between them, less than the 30 min kept after the first (its After)." No list, no count, no colour.
+- **Said once**, when someone else's change made it (another parent moved an event you take, an organiser moved an invitation you accepted): as a notice on the [Porch](porch.md), at your next admin time, and never in the evening for a work matter, with **Keep both** (never said again), a button to move yours, or, for a child's event you take, **Ask Sam to take it**. A conflict you come upon, or make yourself, is never notified.
+- **The exceptions**, in the Agenda settings, **Conflicts**: a box for each pair of agendas, each with itself, the rule said once above them. Ticked at first: your own agendas among themselves. Tick two children's agendas whose events share one car, and their events are compared before anyone takes them; untick two of yours, and they never are.
+
+No time is ever put between two events unless you set it: an event's own **Before** and **After** (in its form, and said in its details), or **Time kept between two events** in the Agenda settings, 0 at first; the longest counts, never added. A whole day takes no time unless its event says busy; one marked free never does, nor a calendar its server marks as taking none. Two calendars holding the same event (the same UID at the same start) are not two events. An event of 24 hours or more makes one notice, whatever it overlaps, named by its span; **Keep both** sets it aside whole, its conflicts to come too.
 
 ## Your day around your events {#your-day-around-your-events}
 
@@ -129,7 +160,7 @@ What an event asks of you counts too: a day's events take their share of what th
 
 ## Invitations
 
-An invitation that comes by mail shows in the message: **Accept**, **Maybe**, **Decline**. Accepted, or maybe, the event goes into your calendar, and your answer goes to the organiser from the address the invitation came to; declined, only your answer goes. Nothing enters your calendar before you answer. An event sent for information shows **Add to my calendar**; a cancelled one, **Take it out of my calendar**. Inviting people from Sioul is not built yet ([Not there yet](#not-there-yet)). See [Mail](mail.md#invitations).
+An invitation that comes by mail shows in the message: **Accept**, **Maybe**, **Decline**. Accepted, or maybe, the event goes into your calendar, and your answer goes to the organiser from the address the invitation came to; declined, only your answer goes. Nothing enters your calendar before you answer. An event sent for information shows **Add to my calendar**; a cancelled one, **Take it out of my calendar**. Inviting people from Sioul is not built yet, except to offer a child's event to its other parent ([Children's events](#childrens-events)). See [Mail](mail.md#invitations).
 
 ## A calendar file {#a-calendar-file}
 
@@ -137,7 +168,7 @@ A calendar file (`.ics`: a booking, a ticket, an event a site lets you download)
 
 ## Reminders
 
-A quiet reminder before each event, a quarter of an hour before it and its time to get ready and get there: "14:00 · Town hall, in 45 minutes", then "Getting ready, getting there: from 13:30." and where, with **Open**. How long before is yours (Settings ▸ Reminders ▸ **Before an event**), and each event can say its own: **Remind**, in its form and in its details, which also say when it reminds; for every time a repeating event comes. An outing, an appointment with a ride before it or a task preparing it with things to bring, is reminded once, in that reminder's place, as **leaving**: "Leave in 15 minutes for Doctor (14:00)", then "Bus 24 at 13:10." and "Bring: Health card, Glasses, Keys, and 1 more.", the unticked things to bring of its list (its Bring list, or a list with no group; never what is to check), three at most; it opens the appointment's card. On a phone whose lock screen hides private content, it says only "Sioul has a reminder for you." Not for whole days, nor for an event cancelled or declined. Calendars you can only read (holidays, subscriptions) get no reminder from Sioul, unless an event in them asks for one; their own alarms still come.
+A quiet reminder before each event, a quarter of an hour before it and its time to get ready and get there: "14:00 · Town hall, in 45 minutes", then "Getting ready, getting there: from 13:30." and where, with **Open**. How long before is yours (Settings ▸ Reminders ▸ **Before an event**), and each event can say its own: **Remind**, in its form and in its details, which also say when it reminds; for every time a repeating event comes. An outing, an appointment with a ride before it or a task preparing it with things to bring, is reminded once, in that reminder's place, as **leaving**: "Leave in 15 minutes for Doctor (14:00)", then "Bus 24 at 13:10." and "Bring: Health card, Glasses, Keys, and 1 more.", the unticked things to bring of its list (its Bring list, or a list with no group; never what is to check), three at most; it opens the appointment's card. On a phone whose lock screen hides private content, it says only "Sioul has a reminder for you." Not for whole days, nor for an event cancelled or declined. Calendars you can only read (holidays, subscriptions) get no reminder from Sioul, unless an event in them asks for one; their own alarms still come. A work agenda's reminders wait for your working hours, and one too late by then is not told; an agenda you only see busy reminds of nothing.
 
 Another, half an hour before work ends, on the last working day before an event: "Mon 12 Oct 09:00 · Town hall", and where. The alarms an event carries (set by you, your phone, or whoever invited you) come at their time too; one within five minutes of Sioul's reminder is told once. While you sleep, a reminder waits for your waking, unless the event itself is in the night: you chose it. No sound, never repeated; on a phone too, Sioul open or not. See [Settings](settings.md#reminders).
 
@@ -145,7 +176,7 @@ Another, half an hour before work ends, on the last working day before an event:
 
 **Day** shows one day with taller hours; swipe across it to go to the next day or the one before. **Week** is a list of days: each thing on its line in time order, today's doses on one line.
 
-On Android, Sioul syncs your calendars itself and keeps its own copy of them: your phone's calendar app shows the same events only through its own sync (DAVx⁵, say). Reminders come while Sioul is closed: Sioul hands the coming ones to Android ahead of time, and Android wakes it at each one's time, so that Sioul checks the event still stands. Sioul's agenda card on the home screen ("Sioul — Agenda") lists your coming events, and the dates asked of you at the head of their days (a form asked for, a last day for notice, a paper's last valid day, a payment), with the time left; with **Details on the home screen** off, it shows the events' times without their titles, and each date by its kind alone ("A date asked") ([Settings](settings.md#display)). If your phone's calendar app also rings an event's own alarms, turn one of the two off, so that you hear them once; Sioul's own reminder before an event never rings there.
+On Android, Sioul syncs your calendars itself and keeps its own copy of them: your phone's calendar app shows the same events only through its own sync (DAVx⁵, say). Reminders come while Sioul is closed: Sioul hands the coming ones to Android ahead of time, and Android wakes it at each one's time, so that Sioul checks the event still stands. Sioul's agenda card on the home screen ("Sioul — Agenda") lists your coming events, and the dates asked of you at the head of their days (a form asked for, a last day for notice, a paper's last valid day, a payment), with the time left; with **Details on the home screen** off, it shows the events' times without their titles, and each date by its kind alone ("A date asked") ([Settings](settings.md#display)). The card follows your hours, not what you ticked in **Agendas**: a work agenda's events are not on it outside your working hours, and a calendar kept hidden on the phone never is. If your phone's calendar app also rings an event's own alarms, turn one of the two off, so that you hear them once; Sioul's own reminder before an event never rings there.
 
 ## The Agenda settings
 
@@ -155,7 +186,9 @@ The ⚙ at the top of the page:
 
 - **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays. One you can only read says so, and is never offered for a new event.
 - **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
-- **Time kept between two events**: 0 at first. Closer than this, two events are said to be too close, never to overlap.
+- **Time kept between two events**: 0 at first. Closer than this, two events are tight, never at the same time.
+- **Your agendas**: what each agenda is: whose, what for, when it reaches you, what you may do with it ([Several agendas](#several-agendas)).
+- **Conflicts**: which agendas are compared beyond the rule, a box for each pair ([Two events at once](#two-events-at-once)).
 - **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
 - **The day starts at**: the hour the day and week views start on when neither your nights (set in [Health](health.md)) nor your hours say otherwise.
 
@@ -173,7 +206,7 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
+Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul, except to offer a child's event to another parent; sharing your own busy times with someone (**Share my availability…**); exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
 
 ## Going further {#going-further}
 
@@ -184,11 +217,31 @@ Changing one occurrence's title or place (its time moves by hand), and choosing 
 - **A calendar file in a message**: an `.ics` that a message carries goes into your calendar with **Add to my calendar**.
 - **Two calendars, one event**: the same event in two of your calendars (the same UID at the same start) is not taken for two events at once.
 
+## Why it works this way {#why-it-works-this-way}
+
+People keep several calendars, one for each part of their life or each person they share it with, so as to show each one what concerns them (Thayer et al. 2012). So each agenda says whose it is and what it is for, and one choice, **Agendas**, decides what every view shows.
+
+What matters about two events at once is you, needed in two places. Couples argued over clashes that neither had looked for ("You didn't look at my calendar", Thayer et al. 2012), and family plans break when something changes (Davidoff, Zimmerman & Dey 2010). So Sioul compares what needs you, shows a conflict where you look, and says it once when someone else's change made it.
+
+The heaviest part of running a family is noticing, planning and reminding, more than doing. In the studies, mothers did most of the anticipating and the checking, while deciding was shared more evenly (Daminger 2019); mothers counted explaining things to others as work in itself (Robertson et al. 2019); and in 41 of 44 families the mother kept the family calendar and reminded the others (Neustaedter, Brush & Greenberg 2009). Carrying it all in one's head costs (Offer 2014), and so does feeling solely responsible (Ciciolla & Luthar 2019). So when a parent takes a child's event, its reminders, its time to get there and its follow-up go with it, and the details stay in one place, the child's agenda.
+
+Eve Rodsky's *Fair Play* (2019) gives each recurring task one holder, from noticing it is due to doing it, since handing over only the doing leaves the other person managing it. So a parent can keep a kind of thing, such as a child's dentist, and the next appointment to book comes back to them.
+
+Most separated parents run their days side by side rather than together (Maccoby & Mnookin 1992; Amato, Kane & James 2011), and in conflict, messages can be used to withhold and to control (Ganong et al. 2012). So nothing enters another parent's agenda until they accept it; Sioul keeps who took what and when, never when something was read; and a parent who uses another calendar receives a standard invitation, which you send yourself.
+
+The page of who does what shows no totals per parent. Co-parenting apps' records "may encourage petty account-keeping" (Relationships Australia Victoria 2024), and keeping a tally of each one's part is how people behave in an exchange, and what they avoid with those close to them (Clark 1984). Each item says who takes it, and since when: that is the tracking.
+
+An agenda shared with you to show when someone is busy stays yours to read. "A shared calendar may set the expectation that co-parents have the right to monitor each other's movements" (Relationships Australia Victoria 2024), and people keep separate calendars so as not to open their whole lives to scrutiny (Thayer et al. 2012). So its busy times show only to you, as plain bands without titles, and Sioul never shares them again, exports them or gives them to an agent.
+
+More in [what the research says](../dev/research.md), findings 46 to 54.
+
 ## Compared with other apps {#compared-with-other-apps}
 
-**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul cannot send invitations, export `.ics` files or subscribe to a calendar by its address, or show birthdays by itself, where most others can; and among these apps, only Proton encrypts what an event says end to end, its times aside.
+**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul sends an invitation only to offer a child's event to another parent, and cannot export `.ics` files or subscribe to a calendar by its address, or show birthdays by itself, where most others can; and among these apps, only Proton encrypts what an event says end to end, its times aside.
 
-As of October 2026, from each app's own documentation.
+**A child's events, each taken by one parent.** Sioul gives each child an agenda, and each of its events and tasks one parent, who gets its reminders, its time to get there and the next appointment to book, while the details stay in the child's agenda; nothing enters another parent's agenda until they accept. OurFamilyWizard marks who drives, in a calendar of its own beside each parent's; AppClose adds a shared event to a calendar once it is accepted. None of the apps read warns when one person is needed in two places across agendas, or moves the reminders to whoever takes an event.
+
+As of November 2026, from each app's own documentation.
 
 ✓ documented; **partly**, with a note; ✗ not found in the app's own documentation (for Sioul: not built); ? not confirmed; — not applicable. Sioul's column was checked against its code.
 
@@ -203,10 +256,10 @@ As of October 2026, from each app's own documentation.
     | Several reminders for one event | partly¹⁹ | ✓ | ✓ | ?²⁰ | ✓²¹ | ✓ |
     | Repeats on rules like "the first Monday" | partly²² | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Answers invitations that come by mail | ✓ | ✓ | ✓ | ✓ | ✓ | partly²³ |
-    | Sends invitations | ✗ | ✓ | ✓²⁴ | ✓ | ✓ | ✓ |
-    | Moves an event by dragging, with undo | ✓ | ✓ | partly²⁵ | ?²⁶ | ✓ | partly²⁷ |
+    | Sends invitations | partly²⁴ | ✓ | ✓²⁵ | ✓ | ✓ | ✓ |
+    | Moves an event by dragging, with undo | ✓ | ✓ | partly²⁶ | ?²⁷ | ✓ | partly²⁸ |
     | Moves an event to another calendar | ✓ | ✓ | ✓ | ✓ | ✓ | ? |
-    | Shows your contacts' birthdays | ✗²⁸ | ✓ | ✓ | ✓ | ✗ | ? |
+    | Shows your contacts' birthdays | ✗²⁹ | ✓ | ✓ | ✓ | ✗ | ? |
 
     1. **Before** and **After**, 5 minutes to 2 hours each, kept free by your plan and counted by the overlap check and the reminder.
     2. Neither the event form nor the complete settings on Android have a travel or preparation time.
@@ -219,7 +272,7 @@ As of October 2026, from each app's own documentation.
     9. From the event's place, your likely location and the traffic or transit, for trips under three hours.
     10. Not on a computer or the web; the phone app's "Time to Leave" came from Cortana, retired in 2023.
     11. The travel block shows when to leave; an alert for it is not described.
-    12. On the Porch for today, and above the agenda for two weeks, with each event's time to get there and back.
+    12. Two events that need you at once, side by side with a thin bracket, each one's time to get there and back counted; said once on the Porch when someone else's change made it.
     13. For invitations: a conflict notice, a view of where the invitation falls, and a choice to decline conflicting invitations.
     14. The AI Planner warns when a meeting lands on a planned task; two overlapping events are not described.
     15. Your plan lays your tasks in your hours around your events, their Before and After and five minutes around each; a meal that falls in an event moves after it; the days around a heavy event hold less.
@@ -231,11 +284,12 @@ As of October 2026, from each app's own documentation.
     21. Several per event; one default for all calendars; reminders come only while Thunderbird runs.
     22. Sioul keeps any rule made elsewhere, and makes every so many days, weeks, months or years.
     23. Morgen answers on events with guests, through the calendar's provider; it reads no mail.
-    24. With iCloud, Exchange and some CalDAV servers.
-    25. Drag to move on the Mac and the iPhone; an undo is not described in Apple's guides.
-    26. Dragging an event to another calendar is described; moving it in the grid, and undoing that, are not described in the pages read.
-    27. Drag and drop is described; an undo is not.
-    28. Sioul makes no birthday calendar; one your server keeps (Nextcloud keeps one) shows as any other calendar you can only read.
+    24. Only to offer a child's event to another parent whose agenda Sioul cannot write: a draft, which leaves when you press Send. Not yet tried against Google, Outlook or Nextcloud.
+    25. With iCloud, Exchange and some CalDAV servers.
+    26. Drag to move on the Mac and the iPhone; an undo is not described in Apple's guides.
+    27. Dragging an event to another calendar is described; moving it in the grid, and undoing that, are not described in the pages read.
+    28. Drag and drop is described; an undo is not.
+    29. Sioul makes no birthday calendar; one your server keeps (Nextcloud keeps one) shows as any other calendar you can only read.
 
 === "Technical"
 
@@ -266,7 +320,46 @@ As of October 2026, from each app's own documentation.
     14. The title, description, place and guests are encrypted on your device; the start and end, time zone, repetition and alarms are only signed, and Proton's servers read them.
     15. The web client's code is under GPL-3.0; Proton says all its apps are open source.
 
+=== "Shared agendas"
+
+    | | Sioul | OurFamilyWizard | AppClose | TalkingParents | TimeTree | Google | Fantastical |
+    |---|---|---|---|---|---|---|---|
+    | Says who takes a child's event | ✓¹ | partly² | ? | ✗ | partly³ | partly⁴ | ✗ |
+    | Sends its reminders, and the next one to book, to whoever takes it | ✓⁵ | ✗⁶ | ? | ✗ | ? | ? | ✗ |
+    | Puts the event taken in the taker's own calendar, tied to the child's | ✓⁷ | partly⁸ | partly⁹ | partly¹⁰ | ? | partly¹¹ | partly¹² |
+    | Enters someone's calendar only once they accept | ✓ | ✗¹³ | ✓ | ✗ | ✗¹⁴ | ? | ? |
+    | Warns when one person is needed in two places, across agendas | ✓¹⁵ | ✗ | ? | ✗ | ✗ | ? | partly¹⁶ |
+    | Shares your availability as busy times only | ✗¹⁷ | ✗ | ? | ✗ | ✗ | ✓¹⁸ | partly¹⁹ |
+    | A dated record of who took what | ✓²⁰ | ✓²¹ | partly²² | ✓²³ | ? | partly²⁴ | ✗ |
+
+    1. One holder per event or task of a child's agenda, two when one parent takes the child there and the other brings them back; a kind of thing, such as the dentist, can keep its holder.
+    2. A "Pick-Up and Drop-Off Parent", one for both ways, shown by the colour of the event's start and end.
+    3. Participants, children among them, without an account of their own.
+    4. Guests only.
+    5. Its reminders, its time to get there and back, and, after an appointment that comes back (the dentist), a task to book the next one.
+    6. A reminder "for yourself".
+    7. A copy in the holder's own agenda that follows the child's event, or an invitation where Sioul cannot write that agenda.
+    8. An `.ics` export.
+    9. A shared event, once accepted, goes into one of the receiver's calendars.
+    10. Shared events can be copied to a personal Google calendar.
+    11. An invitation puts a copy of the event in each guest's calendar.
+    12. Mirroring copies a calendar's events into another, as "Blocked Time" or with their titles.
+    13. Events are shared by default; a "Private" box keeps one to its author.
+    14. Each calendar's members see its events.
+    15. Your agendas' events, the child events you take and the invitations you accepted; the pairs of agendas compared are in the Agenda settings.
+    16. Mirroring blocks the time in another calendar, which prevents a double booking rather than warning of it.
+    17. Planned, not built yet: a calendar of busy blocks, made in one of your CalDAV accounts from the agendas you pick, for one person at a time.
+    18. "See only free/busy (hide details)", person by person.
+    19. Mirrors as "Blocked Time".
+    20. Who took what, and when; never when something was read.
+    21. A past event can no longer be changed, even by its author; changes to the parenting schedule keep a record.
+    22. Requests stay pending until approved or declined.
+    23. When each event was created, edited and viewed.
+    24. Each guest's answer.
+
 **Other calendars.** Fantastical (Mac, iPhone, iPad, Apple Watch, Vision Pro, Windows) adds, with its Premium plan, a travel time before an event, from home, work or the previous event, and "time to leave" alerts from your location and the traffic; it reads any CalDAV account, places no tasks by itself, and does not describe a warning for overlapping events. Reclaim.ai, a web app over Google Calendar or Outlook only, adds travel time before and after events with an address, and time to prepare or unwind around meetings; it places habits such as lunch in a window and moves them when a meeting lands on them, and keeps your primary calendar's events in its own databases. On Android, Fossify Calendar adds your contacts' birthdays and moves events by dragging, by whole hours; Etar does neither.
+
+**Families and shared agendas.** Cozi and FamCal give each family member a colour, and Cozi sends an event's reminders to the members you choose; 2houses keeps the custody days and the requests to change them. Apple's shared reminder lists assign a reminder to one person. Outlook ("Can view when I'm busy") and Proton ("Limited view", by link) also share a calendar as busy times only, Nextcloud event by event, and iCloud not at all.
 
 ??? info "Sources"
     - Google Calendar: settings on Android, <https://support.google.com/calendar/answer/6084644?co=GENIE.Platform%3DAndroid>, read 8 October 2026.
@@ -322,6 +415,24 @@ As of October 2026, from each app's own documentation.
     - Reclaim.ai: Habits, <https://help.reclaim.ai/en/articles/17124978-habits-agents-overview-automate-your-recurring-routines>, read 8 October 2026.
     - Reclaim.ai: security, <https://reclaim.ai/security>, read 8 October 2026.
     - Reclaim.ai: prices, <https://reclaim.ai/pricing>, read 8 October 2026.
+    - OurFamilyWizard: adding an event to the calendar, <https://support.ourfamilywizard.com/hc/en-us/articles/42667018503437-How-do-I-add-an-event-to-the-calendar>, read 4 November 2026.
+    - OurFamilyWizard: what a co-parent can see, <https://www.ourfamilywizard.com/blog/sharing-calendars-what-can-my-co-parent-see>, read 4 November 2026.
+    - AppClose: creating an event, through a search summary, <https://support.appclose.com/hc/en-us/articles/30836914343451-How-do-I-create-an-event>, read 4 November 2026.
+    - AppClose: a swap days request, through a search summary, <https://support.appclose.com/hc/en-us/articles/27579820894491-How-do-I-create-a-swap-days-request>, read 4 November 2026.
+    - TalkingParents: the shared calendar, <https://talkingparents.com/features/shared-calendar>, read 4 November 2026.
+    - TimeTree: who sees a calendar's events, <https://support.timetreeapp.com/hc/en-us/articles/900002172746-Can-other-calendar-members-see-my-events>, read 4 November 2026.
+    - TimeTree: virtual members, <https://timetreeapp.com/intl/en/newsroom/2024-07-16/veirtual-member-released>, read 4 November 2026.
+    - Google Calendar: sharing a calendar, <https://support.google.com/calendar/answer/37082>, read 4 November 2026.
+    - Google for Developers: the Events resource, <https://developers.google.com/workspace/calendar/api/v3/reference/events>, read 4 November 2026.
+    - Fantastical: calendar mirroring, <https://flexibits.com/fantastical/help/calendar-mirroring>, read 4 November 2026.
+    - Cozi: getting started with the calendar, <https://www.cozi.com/?p=4725>, read 4 November 2026.
+    - FamCal: its description in Apple's App Store, <https://apps.apple.com/us/app/id1098999871>, read 4 November 2026.
+    - 2houses: first steps, <https://www.2houses.com/en/blog/first-steps-on-2houses>, read 4 November 2026.
+    - Apple: sharing and assigning reminders, <https://support.apple.com/en-us/105124>, read 4 November 2026.
+    - Calendar for Mac: sharing iCloud calendars, <https://support.apple.com/guide/calendar/icl32362>, read 4 November 2026.
+    - Outlook: sharing your calendar on the web, <https://support.microsoft.com/en-us/outlook/share-your-calendar-in-outlook-on-the-web>, read 4 November 2026.
+    - Proton: sharing a calendar by link, <https://proton.me/support/share-calendar-via-link>, read 4 November 2026.
+    - Nextcloud: what its server shows of a confidential event to a calendar's readers, <https://github.com/nextcloud/server/blob/master/apps/dav/lib/CalDAV/CalendarObject.php>, read 4 November 2026.
 
 ## For technical readers {#for-technical-readers}
 

@@ -6,11 +6,11 @@ description: "Le Porche, où les nouveaux courriels attendent dans Sioul : vé
 
 ## En bref {#in-short}
 
-Le Porche est l’endroit où les nouveaux courriels de toutes vos adresses attendent que vous regardiez. Avant que rien ne s’affiche, Sioul vérifie chaque courriel, authentique ou falsifié, et le range dans une file selon qui l’a écrit et à quoi il sert : les personnes que vous connaissez, quelqu’un de nouveau en attente de votre accord, un projet, les infolettres, ce qui est mis de côté. Il ouvre aux heures que vous choisissez et reste silencieux en dehors, tandis que les codes et les liens que vous venez de demander à un site arrivent tout de suite. Rien n’est compté devant vous, et rien n’est supprimé.
+Le Porche est l’endroit où les nouveaux courriels de toutes vos adresses attendent que vous regardiez. Avant que rien ne s’affiche, Sioul vérifie chaque courriel, authentique ou falsifié, et le range dans une file selon qui l’a écrit et à quoi il sert : les personnes que vous connaissez, quelqu’un de nouveau en attente de votre accord, un projet, les infolettres, ce qui est mis de côté. Il ouvre aux heures que vous choisissez et reste silencieux en dehors, tandis que les codes et les liens que vous venez de demander à un site arrivent tout de suite. Chaque nouveauté est une ligne que vous pouvez marquer comme lue ou écarter, sur tous vos appareils à la fois. Rien n’est compté devant vous, et rien n’est supprimé.
 
 <figure markdown="span">
-  [![Le Porche aux heures de travail. En haut, « Ouvert jusqu’à 17:00. » et ses réglages, Montrer tous les courriels maintenant en dessous ; ce qui est arrivé, en quelques phrases ; la carte pour rejoindre vos autres appareils ; une ligne sur l’argent ; le courrier papier ; deux cartes, pour un lien de confirmation et un code venus d’expéditeurs vérifiés, le code avec un bouton Copier et sa durée de validité ; les nouvelles d’une discussion.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
-  <figcaption>Les codes et les liens en haut, les nouvelles des sites, puis les files.</figcaption>
+  [![Le Porche aux heures de travail. En haut, « Ouvert jusqu’à 17:00. » et ses réglages, Montrer tous les courriels maintenant en dessous ; la carte pour rejoindre vos autres appareils ; puis ses sections, chacune un titre avec son « ? » et son chevron : Tout de suite, un code d’un expéditeur vérifié avec Copier ; les courriels d’un projet ; les personnes que vous connaissez ; De votre téléphone ; Sites ; Argent, chaque paiement avec son montant à droite ; chaque ligne avec Marquer comme lu et Écarter à côté.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  <figcaption>Les codes en haut, puis chaque section, une ligne par nouveauté.</figcaption>
 </figure>
 
 ## Protégé par défaut {#what-is-protected}
@@ -38,7 +38,7 @@ Pendant tout ce temps, les courriels continuent d’arriver en arrière-plan. Le
 Les codes à usage unique, les mots de passe temporaires, les réinitialisations de mot de passe, les liens de connexion et les liens pour confirmer une adresse viennent de quelque chose que vous venez de demander à un site, et ils expirent. Sioul les montre donc tout de suite, à n’importe quelle heure, même quand ils viennent d’une adresse automatique de site (no-reply…) :
 
 - sur un ordinateur, une seule notification, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ; aucune pendant le sommeil : la carte attend ici ;
-- la même carte en haut du Porche, avec **Copier** ; sur un téléphone, sur le Porche et sur la carte de Sioul sur votre écran d’accueil, puisqu’un téléphone ne notifie pas encore les codes.
+- sa ligne en haut du Porche, dans **Tout de suite**, avec **Copier** ; sur un téléphone, sur le Porche et sur la carte de Sioul sur votre écran d’accueil, puisqu’un téléphone ne notifie pas encore les codes.
 
 Rien d’autre ne s’ouvre avec. Une fois expiré, le code est masqué, et le courriel va dans sa file. Il expire quand le courriel le dit, sinon quand son type expire d’habitude : un code après 30 minutes, un lien de connexion après une heure, une réinitialisation de mot de passe après deux heures, un lien pour confirmer une adresse après un jour, un mot de passe temporaire après une semaine.
 
@@ -75,9 +75,9 @@ Chaque courriel va dans la première file qui le prend, dans cet ordre. Trois d�
 
 **Les expéditeurs que vous avez bloqués** n’apparaissent jamais sur le Porche : leurs courriels sont mis de côté pour de bon, jamais montrés, jamais comptés et jamais dits. Rien n’est supprimé.
 
-Les courriels que vous vous envoyez vous-même, d’une de vos adresses à une autre (un fichier envoyé depuis votre téléphone), viennent avec les personnes que vous connaissez, à toute heure, sans jamais passer par le filtre d’accueil, quand ils sont vérifiés : falsifier votre propre adresse est une ruse classique.
+Les courriels que vous vous envoyez vous-même, d’une de vos adresses à une autre (un fichier envoyé depuis votre téléphone), viennent dans leur propre section, **De vous-même**, à toute heure, sans jamais passer par le filtre d’accueil, quand ils sont vérifiés : falsifier votre propre adresse est une ruse classique.
 
-Sous le titre de chaque file, une ligne dit ce qu’elle contient. Son **?** (Comment les courriels arrivent ici) dit, phrase par phrase, comment les courriels y arrivent, et où le changer.
+Chaque file est une section du Porche, sans rien d’écrit sous son titre. Son **?** dit ce qu’elle contient et comment les courriels y arrivent ; pressé (ou touché sur un téléphone), il montre aussi ce qui le change, et où changer le reste.
 
 ### Laisser entrer quelqu’un {#letting-someone-in}
 
@@ -151,27 +151,42 @@ Quand il y a quelque chose, quelques lignes viennent avant les files :
 - **Deux événements en même temps aujourd’hui**, le temps d’y aller et d’en revenir compté, avec **Ouvrir « … »** pour chacun et **Ne plus en parler**. Voir [L’agenda](agenda.md#two-events-at-once).
 - **Les prises du jour pas encore marquées**, à partir de leur heure, qu’une notification vous les ait rappelées ou non : chacune avec son heure, son nom et **Pris** (plus d’une demi-heure en retard, **Pris…** demande quand vous l’avez prise). Quelles que soient vos heures : une prise n’est pas un courriel. Chacune reste jusqu’à ce que vous la marquiez, que la journée finisse ou que douze heures soient passées ; pendant votre sommeil, si les prises restent silencieuses, elles attendent votre réveil. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise : vérifiez avant de la prendre. Voir [La santé](health.md#reminders).
 - **Les prises prévues pendant que Sioul était fermé**, ni marquées ni rappelées nulle part : **Pris…** (quand vous l’avez prise) ou **Pas pris**. Une prise dont le rappel n’a pas pu s’afficher alors que Sioul était ouvert (notifications qui ne marchaient pas) est demandée de la même façon, sous son propre titre. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise. Voir [La santé](health.md#reminders).
-- **Les appels refusés par Sioul**, sur votre téléphone et sur vos autres appareils, chacun à un moment où son auteur peut vous joindre : « Pendant votre sommeil, un numéro absent de vos contacts a appelé à 09:30. », avec **Répondre par SMS**, **Rappeler**, **Écouter** quand Free a envoyé le message vocal par courriel. Voir [Les appels](calls.md#afterwards-on-the-porch).
-- **De votre téléphone**, sur un ordinateur, quand vous y envoyez les messages de votre téléphone : qui a écrit, quand et quoi, à un moment où la personne peut vous joindre, avec **Répondre**, **Rappeler** et **Vu** (**Répondre par SMS** là où aucune réponse n’est proposée) ; votre réponse s’affiche sous leurs messages avec ce qu’elle est devenue. Voir [Ce qui vous joint](notifications.md#messages-on-your-computers).
-- **« Du nouveau sur &lt;site&gt; »** : ce que les sites que vous gardez dans Sioul ont notifié, et qui vous attend. Ouvrir le site efface ses nouvelles. Voir [Les sites](sites.md).
-- **Courrier papier** : sur un ordinateur, toujours une ligne sur l’endroit où vont ses scans, avec **Ouvrir le dossier** et **Ajouter un scan…** ; puis chaque scan lu, en carte : qui, quoi, combien, pour quand. Voir [Le courrier papier](#paper-letters), plus bas.
-- **Les paiements de la semaine**, en une ligne : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. » Quand quelque chose demande un coup d’œil côté argent, la ligne le dit, sans nombre. Voir [Les budgets](budgets.md#the-bank-watch).
 
 <figure markdown="span">
   [![Une carte en haut du Porche : « Vos heures ne sont pas réglées : travail et démarches arrivent à toute heure. », une phrase sur ce qu’apporte chaque type d’heures, et deux boutons, « Régler mes heures » et « Laisser ainsi ».](../assets/screens/fr/porch-hours.png){ loading=lazy }](../assets/screens/fr/porch-hours.png "Ouvrir l’image en grand")
   <figcaption>Tant que vos heures ne sont pas réglées, le Porche demande une fois.</figcaption>
 </figure>
 
+## Les sections, et ce que vous pouvez faire de chaque ligne {#the-sections}
+
+Après ces cartes, le Porche montre ce qui est arrivé en sections, toutes dessinées de la même façon : leur titre, un **?** qui dit une fois ce que chacune contient, et un chevron qui la replie. Votre façon de les replier est gardée sur cet appareil. Une section sans rien de nouveau ne s’affiche pas du tout. Dans cet ordre :
+
+1. **Tout de suite** : les codes et les liens, quelle que soit l’heure.
+2. **Chaque projet**, puis votre adresse publique protégée.
+3. **De vous-même**.
+4. **De personnes que vous connaissez**.
+5. **De votre téléphone** : les appels refusés par Sioul, sur votre téléphone et sur vos autres appareils, chacun à un moment où son auteur peut vous joindre, avec **Répondre par SMS**, et **Rappeler** dans son menu ([Les appels](calls.md#afterwards-on-the-porch)) ; sur un ordinateur, les SMS et les notifications des autres applications que votre téléphone y envoie, avec **Répondre** là où cela marche ([Ce qui vous joint](notifications.md#messages-on-your-computers)).
+6. **Sites** : ce que les sites que vous gardez dans Sioul ont notifié, une ligne par site. Ouvrir le site lit ses nouvelles ([Les sites](sites.md)).
+7. **Argent** : les paiements de la semaine, chacun avec son jour et son montant, tels que le relevé de votre banque les dit ; **Ouvrir dans Budgets** ([Les budgets](budgets.md#the-bank-watch)). Pas pendant votre sommeil.
+8. **Courrier papier**, seulement quand une lettre attend ([plus bas](#paper-letters)). Pas pendant votre sommeil.
+9. **Rangé**, replié ; **Nouveaux expéditeurs** ; **Comptes moins importants**, replié ; **Retenu par votre filtre à indésirables**, replié ; **Mis de côté**, replié.
+
+Chaque ligne dit qui, quoi et quand sur une ligne (deux sur un téléphone), avec son action principale : **Ouvrir**, **Répondre**, **Répondre par SMS**, **Voir le scan**, **Ouvrir dans Budgets**. À côté, deux boutons discrets :
+
+- **Marquer comme lu** : la ligne s’en va, et ce dont elle parle est lu aussi. Un courriel est marqué comme lu ici et sur son serveur, comme le lire le ferait ; un SMS est marqué comme lu sur la page SMS. Les appels et les lettres n’ont pas d’état lu : seulement Écarter.
+- **Écarter** : la ligne quitte le Porche, et rien d’autre ne change : le courriel reste non lu dans votre boîte, la lettre attend.
+
+Les deux agissent tout de suite sur tous vos appareils, avec dix secondes pour changer d’avis : **Annuler**, au pied de la liste. Sur un téléphone, les deux sont dans le menu de la ligne, d’un appui long ; sur un ordinateur, le menu (**⋮**, un clic droit) contient le reste de ce qui peut être fait, et quelque chose de nouveau fait à partir d’elle, comme une tâche. Un courriel lu ailleurs, sur votre téléphone ou dans un autre logiciel de courrier, quitte le Porche de lui-même ; sa notification aussi, là où Sioul en a montré une.
+
 ## Le courrier papier {#paper-letters}
 
-Sioul lit aussi votre courrier papier, à partir de scans, et sur un ordinateur le Porche dit où ils vont avant qu’aucun n’arrive :
+Sioul lit aussi votre courrier papier, à partir de scans :
 
-- **Le dossier** : la ligne sous **Courrier papier** le nomme. Non réglé, c’est `letters/inbox` dans votre dossier de notes ; choisissez-en un autre dans le ⚙ du Porche, **Courrier papier ▸ Où arrivent les scans**. Vous, un scanner, l’application de scan d’un téléphone qui s’y synchronise, ou une personne qui ouvre votre courrier pour vous pouvez y déposer des scans.
-- **Ouvrir le dossier** l’ouvre. **Ajouter un scan…** y copie des fichiers PDF ou des images (PNG, JPEG, TIFF, WebP), plusieurs à la fois ; le fichier choisi reste où il était. Dans le menu **Nouveau**, **Une lettre papier (scan)…** fait de même depuis n’importe quelle page.
-- **Ce que Sioul lit** : qui a envoyé la lettre, ce qu’elle est (une facture, une relance, une décision, une convocation…), combien elle demande et pour quand, un délai comme « dans un délai de deux mois » changé en date. D’ici une minute ou deux, chaque scan devient ici une carte, avec une tâche pour sa date, son rendez-vous dans l’agenda et son scan à portée de clic. Voir [Les papiers et les lettres](papers.md#paper-letters).
-- **La lecture demande deux programmes** de votre système, Tesseract et Poppler. S’ils manquent, la ligne le dit et donne la commande qui les installe ([Installer](install.md#the-packages)). Rien ne quitte votre ordinateur.
+- **Le dossier** : non réglé, c’est `letters/inbox` dans votre dossier de notes ; un autre se choisit dans les réglages du courrier. Vous, un scanner, l’application de scan d’un téléphone qui s’y synchronise, ou une personne qui ouvre votre courrier pour vous pouvez y déposer des scans. Dans le menu **Nouveau**, **Une lettre papier (scan)…** y copie des fichiers PDF ou des images (PNG, JPEG, TIFF, WebP), plusieurs à la fois ; le fichier choisi reste où il était.
+- **Ce que Sioul lit** : qui a envoyé la lettre, ce qu’elle est (une facture, une relance, une décision, une convocation…), combien elle demande et pour quand, un délai comme « dans un délai de deux mois » changé en date. D’ici une minute ou deux, chaque scan devient ici une ligne de **Courrier papier**, ce qu’elle demande en dessous, avec **Voir le scan** ; son menu fait une tâche pour sa date, met son rendez-vous dans l’agenda, ou la range quand vous en avez fini. Voir [Les papiers et les lettres](papers.md#paper-letters).
+- **La lecture demande deux programmes** de votre système, Tesseract et Poppler. Rien ne quitte votre ordinateur.
 
-Un téléphone ne lit aucun scan : il montre les cartes faites par votre ordinateur, sans la ligne.
+Un téléphone ne lit aucun scan : il montre les lettres lues par votre ordinateur.
 
 ## Pourquoi il fonctionne ainsi {#why-it-works-this-way}
 
@@ -204,8 +219,7 @@ Les courriels hostiles vont dans leur propre file, repliée, qui ne montre ni le
 
 Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche, et la lecture d’un courriel ouvert ici :
 
-- **Projets montrés ici** : quels projets ont une file sur le Porche. Les courriels des autres restent sur leur page dans Projets.
-- **Courrier papier ▸ Où arrivent les scans** : le dossier où arrivent vos scans.
+- **Projets montrés ici** : quels projets ont une section sur le Porche, un par ligne. Les courriels des autres restent sur leur page dans Projets.
 - **Appels ▸ Appels refusés par vos téléphones** : activé sauf si vous l’éteignez, les appels refusés par vos téléphones attendent aussi sur le Porche de cet appareil ; désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun ([Les appels](calls.md#on-your-computers)).
 - **Lecture du texte** : la police, sa taille et l’interligne d’un courriel ouvert ici, les mêmes que dans le ⚙ de la page Courriels.
 - **Comment les courriels sont triés** : chaque file, dans l’ordre du tri, avec ses règles ; les expéditeurs que vous connaissez ; les mots qui rendent un expéditeur automatique (no-reply…).
@@ -346,6 +360,8 @@ Chaque boîte de réception reste ouverte avec IMAP IDLE (RFC 2177), renouvelé 
 ### Ce que le Porche garde, et où {#what-the-porch-keeps-and-where}
 
 La relève utilise `EXAMINE` et `BODY.PEEK` : rien n’est marqué comme lu. **Terminé pour l’instant** est gardé sur votre appareil, comme le courriel le plus récent montré pour chaque adresse (son UIDVALIDITY et son UID), et rejoint vos autres appareils scellé quand vous partagez entre eux ; le serveur n’en sait jamais rien.
+
+Chaque ligne est un *avis*, nommé par sa source seule, la même sur chaque appareil (un courriel par son adresse et son Message-ID). Ce que vous en dites (**Écarter**, **Marquer comme lu**) est une ligne dans le journal propre de votre appareil, qui rejoint vos autres appareils scellée ; le mot le plus récent l’emporte. Un mot est oublié une semaine après avoir été dit, une fois que ce dont il parle a quitté le Porche. Un Sioul trop ancien pour connaître ce journal lit encore les mots sur les appels et les messages du téléphone, écrits là où il les cherche.
 
 ### Les notifications {#notifications}
 
