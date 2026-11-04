@@ -24,6 +24,8 @@ ColumnLayout {
     property var shown: ({ store: false, any: false, balance: "", findings: [], coming: [], forecast: [], problem: "", accounts: [], budgets: [], reserves: [] })
     property string said: ""
     property bool saidWell: true
+    // Asked once, after a movement was moved: {payee, budget, title, way}; null for nothing to ask.
+    property var asking: null
     // The account an export is being taken in for; "" for one named by the export.
     property string importing: ""
     // The accounts whose movements are unfolded.
@@ -43,6 +45,26 @@ ColumnLayout {
     function say(problem) {
         section.said = problem
         section.saidWell = problem === ""
+        section.reload()
+    }
+
+    // A movement placed from its row (`placeMovement`): its effect said ("Home holds
+    // €12 more for October."), and whether its payee's next ones go there too asked once.
+    function placed(answer) {
+        const done = JSON.parse(answer)
+        section.said = done.problem || done.said || ""
+        section.saidWell = !done.problem
+        section.asking = done.ask || null
+        section.reload()
+    }
+
+    // Your answer: a yes is a rule of the budget file, which the rules list shows.
+    function answer(next) {
+        const a = section.asking
+        section.asking = null
+        if (a)
+            section.said = section.sioul.decidePayee(a.payee, a.budget, a.way, next)
+        section.saidWell = true
         section.reload()
     }
 
@@ -108,6 +130,29 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: section.saidWell && section.shown.problem === "" ? section.theme.muted : section.theme.warm
+    }
+    // Once a movement was moved: whether its payee's next movements go there too, asked once.
+    Flow {
+        visible: section.asking !== null
+        Layout.fillWidth: true
+        spacing: 8
+
+        Label {
+            width: Math.min(implicitWidth, section.width)
+            text: section.asking ? section.sioul.textArgs("moved-ask", JSON.stringify({ payee: section.asking.payee, budget: section.asking.title })) : ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: section.theme.text
+        }
+        Button {
+            text: section.sioul.text("moved-ask-yes")
+            onClicked: section.answer(true)
+        }
+        Button {
+            flat: true
+            text: section.sioul.text("moved-ask-no")
+            onClicked: section.answer(false)
+        }
     }
 
     // Each bank account.
@@ -295,7 +340,7 @@ ColumnLayout {
                             model: row.choices.map(c => section.theme.plain(c.title))
                             currentIndex: Math.max(0, row.choices.findIndex(c => c.id === row.modelData.chosen))
                             Accessible.name: section.sioul.text("bank-movement-where")
-                            onActivated: index => section.say(section.sioul.placeMovement(card.modelData.id, row.modelData.id, row.choices[index].id))
+                            onActivated: index => section.placed(section.sioul.placeMovement(card.modelData.id, row.modelData.id, row.choices[index].id))
                         }
                     }
                 }

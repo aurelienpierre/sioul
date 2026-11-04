@@ -468,6 +468,12 @@ Panel {
                 text: reader.sioul.text("contracts-keep")
                 onTriggered: reader.window.contractFromMail(reader.reading.subject, reader.reading.from_name || reader.reading.from_address)
             }
+            MenuItem {
+                visible: reader.reading !== null
+                height: visible ? implicitHeight : 0
+                text: reader.sioul.text("payment-from")
+                onTriggered: reader.window.askPayment("mail", reader.key, reader.item ? reader.item.trust_level : "")
+            }
             MenuSeparator {}
             MenuItem {
                 visible: reader.reading !== null && !!reader.reading.from_address

@@ -461,6 +461,8 @@ kind-bill = Facture
 kind-refund = Remboursement
 note-recorded = Compté dans { $budget }
 note-duplicate = Même paiement que { $other }
+note-joined = Le même paiement que { $other }
+note-joined-probable = Sans doute le même paiement que { $other }
 note-preset = Compté par le prévu « { $preset } »
 note-preset-amount = Remplace le prévu « { $preset } » pour son mois une fois ajouté
 note-no-amount = Le courriel ne donne pas de montant.
@@ -468,6 +470,17 @@ note-doubtful = D’un expéditeur nouveau et non vérifié : vérifiez qu’i
 ui-add-line = Ajouter
 ui-not-payment = Pas un paiement
 ui-line-added = Ajouté à { $budget }.
+payment-from = Un paiement…
+payment-title = Un paiement
+payment-who = Qui
+payment-unread = Ce courriel ou ce courrier ne se lit pas ici.
+payment-origin-mail = D’un courriel : « { $title } », ajouté par Sioul le { $date }.
+payment-origin-letter = D’un courrier de { $title }, ajouté par Sioul le { $date }.
+moved-more = { $budget } a { $amount } de plus pour { $period }.
+moved-ask = Les prochains paiements à { $payee } : dans { $budget } aussi ?
+moved-ask-yes = Oui, désormais
+moved-ask-no = Celui-ci seulement
+moved-next-yes = Les prochains paiements à { $payee } iront dans { $budget }.
 ui-line-ignored = Laissé hors des budgets.
 
 ## Les blocages et les noms empruntés.

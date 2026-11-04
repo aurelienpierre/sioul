@@ -67,9 +67,11 @@ Quelle réserve couvre quel budget s’écrit dans le fichier des budgets : à
 
 Sous les budgets, les courriels qui parlent d’argent, du plus récent au plus ancien. Sioul lit, en français et en anglais, ce que dit un courriel : un paiement reçu ou fait, une commande, une facture, un remboursement ; le montant ; qui a payé, ou qui a été payé.
 
-Chaque ligne dit où elle en est : *Compté dans* un budget, *Même paiement que* tel autre courriel (une commande et son paiement ne comptent qu’une fois), ou en attente de vous, avec **Ajouter** et **Pas un paiement**. Une ligne venue d’un expéditeur nouveau et non vérifié demande de vérifier d’abord que le courriel est authentique. Les courriels falsifiés, les indésirables et les expéditeurs bloqués ne sont jamais lus comme des paiements. Un montant dans une autre monnaie est marqué « à convertir » : Sioul ne le convertit pas encore.
+Chaque ligne dit où elle en est : *Compté dans* un budget ; *Même paiement que* tel autre courriel (une commande et son paiement ne comptent qu’une fois) ; *Le même paiement que* un paiement déjà compté, une facture et son prélèvement, un reçu et son paiement par carte, que le courriel rejoint de lui-même, ou *Sans doute* le même quand Sioul n’en est pas sûr ; ou en attente de vous, avec **Ajouter** et **Pas un paiement**. Une ligne venue d’un expéditeur nouveau et non vérifié demande de vérifier d’abord que le courriel est authentique, et ne rejoint rien d’elle-même. Les courriels falsifiés, les indésirables et les expéditeurs bloqués ne sont jamais lus comme des paiements. Un montant dans une autre monnaie est marqué « à convertir » : Sioul ne le convertit pas encore.
 
 Des règles dans le fichier des budgets peuvent envoyer d’elles-mêmes vers un budget les paiements d’un expéditeur, ou ceux qui portent un mot.
+
+**Un paiement…**, dans le menu d’un courriel, dans la liste du Courrier et sur la carte d’un courrier papier, fait de n’importe quel courriel ou courrier un paiement, quoi que Sioul y ait lu : un court formulaire rempli de ce qu’il dit (qui, le montant, le jour), n’importe quel budget. Le courriel ou le courrier en reste la source.
 
 ## Les comptes bancaires {#bank-accounts}
 
@@ -80,7 +82,9 @@ Des règles dans le fichier des budgets peuvent envoyer d’elles-mêmes vers un
 
 **Nouveau compte bancaire** : son **Nom**, son **Type** (une banque, PayPal, Stripe, autre chose), **Remplit** : les budgets qu’il remplit, **Gardé au-dessus de** : le montant sous lequel il ne doit pas descendre, et **Renfloué par** : les réserves qui le renflouent, dans votre ordre.
 
-**Prendre un export…**, sur sa carte : le fichier de relevé que donne votre banque (OFX ou QFX, CAMT.053, ou son CSV), le téléchargement d’activité de PayPal, ou l’historique du solde de Stripe. Lire deux fois le même fichier n’ajoute rien. Rien n’est demandé à la banque elle-même : vous téléchargez le fichier, Sioul le lit. Chaque mouvement va ensuite dans un budget selon votre choix, vos règles ou le paiement qu’il représente, et dit pourquoi ([Où va chaque mouvement](#where-each-movement-goes)).
+**Prendre un export…**, sur sa carte : le fichier de relevé que donne votre banque (OFX ou QFX, CAMT.053, ou son CSV), le téléchargement d’activité de PayPal, ou l’historique du solde de Stripe. Lire deux fois le même fichier n’ajoute rien. Rien n’est demandé à la banque elle-même : vous téléchargez le fichier, Sioul le lit. Un paiement que le fichier dit pas encore définitif (une empreinte de carte) attend à part que la ligne de la banque arrive. Chaque mouvement va ensuite dans un budget selon votre choix, vos règles ou le paiement qu’il représente, et dit pourquoi ([Où va chaque mouvement](#where-each-movement-goes)).
+
+**Où il va**, sur la ligne d’un mouvement, propose tous les budgets, quelle que soit l’heure. Déplacé, le mouvement dit ce que cela change (« Maison a 12 € de plus pour octobre 2026. ») et demande une fois si les prochains paiements de ce bénéficiaire y vont aussi ; **Oui, désormais** écrit une règle, que vous retrouvez dans **Règles…**.
 
 ### Renfloué à temps {#topped-up-in-time}
 
@@ -115,9 +119,9 @@ Sioul ne montre jamais d’offres, de comparatifs ni de « meilleures affaires
 
 ## Où tout est gardé {#where-it-is-kept}
 
-Dans des fichiers texte simples, à la racine de votre dossier de notes : `sioul-budgets.toml` (budgets, réserves, lignes, règles, comptes bancaires), `sioul-bank.toml` (les mouvements de la banque), `sioul-contracts.toml`. Lisibles, modifiables à la main, versionnés avec git si vous voulez. Ils voyagent avec votre dossier de notes, ou scellés par le partage de Sioul une fois **Projets et argent** activé dans le partage ([Le partage](sharing.md)) ; rien n’est envoyé nulle part ailleurs.
+Dans des fichiers texte simples, à la racine de votre dossier de notes : `sioul-budgets.toml` (budgets, réserves, lignes, règles, comptes bancaires), `sioul-bank.toml` (les mouvements de la banque), `sioul-movements.toml` (ce que Sioul a appris de vos paiements : lesquels sont les mêmes, les empreintes pas encore définitives, vos réponses), `sioul-contracts.toml`. Lisibles, modifiables à la main, versionnés avec git si vous voulez. Ils voyagent avec votre dossier de notes, ou scellés par le partage de Sioul une fois **Projets et argent** activé dans le partage ([Le partage](sharing.md)) ; rien n’est envoyé nulle part ailleurs.
 
-Pendant les loisirs, un repas et le sommeil, seuls les budgets de loisirs sont en vue. Voir [Les heures](hours.md).
+Pendant les loisirs, un repas et le sommeil, seuls les budgets de loisirs sont en vue ; tous les budgets restent proposés pour un paiement, à toute heure. Voir [Les heures](hours.md).
 
 ## Pour aller plus loin {#going-further}
 
@@ -133,6 +137,8 @@ Dans cet ordre :
 6. **Le premier budget du compte**.
 
 Chaque mouvement dit pourquoi il est allé là.
+
+Les budgets comptent chaque paiement une fois. Sioul reconnaît quel paiement est une ligne de la banque, une ligne déjà comptée, un paiement régulier, la facture d’un courrier, une facture que vous avez envoyée, d’abord par ce qu’ils partagent (le mandat d’un prélèvement, le numéro d’une facture ou d’une commande), puis par le montant, le jour et le nom du bénéficiaire, chaque type avec sa marge : un prélèvement autour de son jour, un paiement par carte à quelques pour cent près pour un pourboire, le virement d’un client des semaines après la facture, un remboursement jusqu’à huit semaines plus tard. Ce qui n’est que sans doute le même, il le dit. Deux factures réglées par un seul virement, une commande débitée en plusieurs fois, la somme mensuelle d’une carte à débit différé et un achat en plusieurs fois sont reconnus ensemble, pour que rien ne compte deux fois.
 
 ### Les dépenses du quotidien {#daily-spending}
 

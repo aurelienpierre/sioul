@@ -1339,9 +1339,24 @@ pub mod qobject {
         #[qinvokable]
         fn remove_bank_account(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
-        /// One movement placed by hand: "budget:<id>", "none", or "" (as the rules say).
+        /// One movement placed by hand: "budget:<id>", "none", or "" (as the rules say):
+        /// {said, ask: {payee, budget, title, way}|null} or {problem} (`payments::place`).
         #[qinvokable]
         fn place_movement(self: Pin<&mut Sioul>, account: &QString, movement: &QString, choice: &QString) -> QString;
+
+        /// "A payment…" from a message by its file (`kind` "mail", `trust` its
+        /// sender's level) or a letter by its id (`kind` "letter"): {payment,
+        /// title, budgets} or {problem} (`payments::from`).
+        #[qinvokable]
+        fn payment_from(self: &Sioul, kind: &QString, key: &QString, trust: &QString) -> QString;
+
+        /// The payment's form saved into the budget file: {said} or {problem}.
+        #[qinvokable]
+        fn add_payment(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// Your answer, once, on whether a payee's next movements go to a budget too: what it did, in words.
+        #[qinvokable]
+        fn decide_payee(self: Pin<&mut Sioul>, payee: &QString, budget: &QString, way: &QString, next: bool) -> QString;
 
         /// A rule for movements made (`rule` "") or changed (`rule`: the rule as
         /// shown, JSON: named by its id, or its place while it holds the same).
@@ -2933,19 +2948,17 @@ fn compute(shared: &Shared) -> Views {
     }
     // Closed, the Porch shows only codes: "Done for now" has nothing to close.
     let shown = if porch.open { PorchState::newest_shown(&items) } else { BTreeMap::new() };
-    let budgets = world.ledger().map_or_else(String::new, |mut ledger| {
-        // Budgets as their area goes: leisure money ("personal"), work's, the rest admin.
-        if mode.time != sioul_core::areas::Time::Any {
-            // "personal" was the word for leisure money before areas had three.
-            let area_of = |b: &sioul_core::budget::Budget| match b.area.as_deref() {
-                Some("personal") => sioul_core::areas::Area::LEISURE,
-                Some(other) => sioul_core::areas::Area::parse(other).unwrap_or(sioul_core::areas::Area::ADMIN),
-                None => sioul_core::areas::Area::ADMIN,
-            };
-            ledger.budgets.retain(|b| sioul_core::areas::in_view(area_of(b), mode.time, mode.week));
+    let budgets = world.ledger().map_or_else(String::new, |ledger| {
+        // Budgets shown as their area goes at this hour (`Budget::area_of`: leisure
+        // money, work's, the rest admin); every budget stays a choice for a line,
+        // whatever the hour (`view::budgets_at`: the owner's report of 4 November 2026).
+        let shown = |b: &sioul_core::budget::Budget| mode.time == sioul_core::areas::Time::Any || sioul_core::areas::in_view(b.area_of(), mode.time, mode.week);
+        let mut mail = world.mail_lines(&ledger);
+        // Mail about money that tells of a movement already counted joins it, without a question.
+        if let Some(root) = world.config.notes_root_path() {
+            let _ = sioul_core::movements::acts::join_mails(&root, &sioul_core::words::Words::of(&world.config), &mut mail, now.date());
         }
-        let mail = world.mail_lines(&ledger);
-        json(&view::budgets(&ledger, &mail, tr(), now.date()))
+        json(&view::budgets_at(&ledger, &mail, tr(), now.date(), &shown))
     });
     let statuses = shared.statuses.lock().map(|s| s.clone()).unwrap_or_default();
     let wanted = shared.password_wanted.lock().map(|w| w.clone()).unwrap_or_default();
@@ -5167,9 +5180,25 @@ impl qobject::Sioul {
     }
 
     fn place_movement(self: Pin<&mut Self>, account: &QString, movement: &QString, choice: &QString) -> QString {
-        let problem = crate::bank::place_movement(&account.to_string(), &movement.to_string(), &choice.to_string());
+        let answer = crate::payments::place(&account.to_string(), &movement.to_string(), &choice.to_string());
         show(&self.qt_thread(), &self.shared());
-        QString::from(&problem)
+        QString::from(&answer)
+    }
+
+    fn payment_from(&self, kind: &QString, key: &QString, trust: &QString) -> QString {
+        QString::from(&crate::payments::from(&kind.to_string(), &key.to_string(), &trust.to_string()))
+    }
+
+    fn add_payment(self: Pin<&mut Self>, edit: &QString) -> QString {
+        let answer = crate::payments::add(&edit.to_string());
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&answer)
+    }
+
+    fn decide_payee(self: Pin<&mut Self>, payee: &QString, budget: &QString, way: &QString, next: bool) -> QString {
+        let said = crate::payments::decide(&payee.to_string(), &budget.to_string(), &way.to_string(), next);
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&said)
     }
 
     fn save_bank_rule(self: Pin<&mut Self>, rule: &QString, edit: &QString) -> QString {

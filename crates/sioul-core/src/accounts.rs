@@ -375,17 +375,13 @@ pub fn month_of(date: Date) -> Date {
 }
 
 impl Ledger {
-    /// The budget file at the root of a notes folder, with its bank accounts'
-    /// movements counted (`with_bank`) when it declares some.
+    /// The budget file at the root of a notes folder, each money movement
+    /// counted once (`movements::counted`): its bank accounts' lines, the
+    /// matching's pairs, your placements. What every budget page, reminder
+    /// and date counts.
     pub fn load_with_bank(root: &std::path::Path, looked: &crate::words::Words) -> Result<Ledger, String> {
         let ledger = Ledger::load(root)?;
-        if ledger.bank_accounts.is_empty() {
-            return Ok(ledger);
-        }
-        Ok(match Bank::load(root) {
-            Ok(bank) => ledger.with_bank(&bank, looked),
-            Err(_) => ledger,
-        })
+        Ok(crate::movements::counted_in(root, &ledger, looked, crate::zone::now().date()))
     }
 }
 
@@ -532,6 +528,34 @@ pub fn set_assignment(path: &std::path::Path, account: &str, movement: &str, cho
             }
             all.push(table);
         }
+        write(path, &doc)
+    })
+}
+
+/// One movement split by your hand between budgets: each its share, signed as
+/// the movement (`[[assign]]`'s `parts`, which every version reads), in place
+/// of any choice made for it before.
+pub fn set_parts(path: &std::path::Path, account: &str, movement: &str, parts: &[(String, Money)]) -> Result<(), String> {
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        if parts.iter().any(|(budget, _)| budget.trim().is_empty()) || parts.len() < 2 {
+            return Err(format!("{}: parts need two budgets at least", path.display()));
+        }
+        let mut doc = open(path)?;
+        let all = tables(&mut doc, "assign")?;
+        all.retain(|t| !(t.get("account").and_then(Item::as_str) == Some(account) && t.get("movement").and_then(Item::as_str) == Some(movement)));
+        let mut table = Table::new();
+        table["account"] = value(account);
+        table["movement"] = value(movement);
+        let mut list = Array::new();
+        for (budget, amount) in parts {
+            let mut part = toml_edit::InlineTable::new();
+            part.insert("budget", budget.trim().into());
+            part.insert("amount", (amount.cents() as f64 / 100.0).into());
+            list.push(part);
+        }
+        table["parts"] = value(list);
+        all.push(table);
         write(path, &doc)
     })
 }

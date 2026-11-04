@@ -503,7 +503,7 @@ pub struct MailRow {
     pub credit: bool,
     /// The budget its rule gives it, else none: you choose.
     pub budget: Option<String>,
-    /// "recorded", "duplicate", "proposed".
+    /// "recorded", "duplicate", "joined", "proposed".
     pub state: &'static str,
     /// What becomes of it, in a few words.
     pub note: String,
@@ -522,11 +522,20 @@ pub struct Choice {
 /// Budgets, reserves and the mail about money, itemized: each figure on its own
 /// line, the verdict apart.
 pub fn budgets(ledger: &Ledger, mail: &[MailLine], tr: &Translator, today: jiff::civil::Date) -> BudgetsView {
+    budgets_at(ledger, mail, tr, today, &|_| true)
+}
+
+/// The same, showing the budgets `shown` keeps (those the hour admits:
+/// `areas::in_view`), while every budget stays a choice for a line, whatever
+/// the hour: what a page shows is no limit on what a movement may be given to
+/// (the owner's report of 4 November 2026: a line taken in from the bank
+/// could not go to a budget hidden at that hour).
+pub fn budgets_at(ledger: &Ledger, mail: &[MailLine], tr: &Translator, today: jiff::civil::Date, shown: &dyn Fn(&Budget) -> bool) -> BudgetsView {
     let mut args = i18n::args();
     args.set("month", tr.month_year(today));
     BudgetsView {
         title: tr.text("budgets-title", Some(&args)),
-        budgets: ledger.budgets.iter().map(|b| budget_card(ledger, b, tr, today)).collect(),
+        budgets: ledger.budgets.iter().filter(|b| shown(b)).map(|b| budget_card(ledger, b, tr, today)).collect(),
         reserves_title: tr.text("reserves-title", None),
         reserves: ledger.reserves.iter().map(|r| reserve_card(ledger, r, tr, today)).collect(),
         mail_title: tr.text("mail-section", None),
@@ -779,6 +788,8 @@ fn mail_row(ledger: &Ledger, all: &[MailLine], line: &MailLine, tr: &Translator)
             let other = all.iter().find(|l| &l.key == other).map_or_else(String::new, |l| format!("{} ({})", l.payment.party, date_of(tr, l.date)));
             ("duplicate", say("note-duplicate", "other", other))
         }
+        // The same payment as a movement already counted, joined without a question.
+        MailState::Joined { label, day, probable, .. } => ("joined", say(if *probable { "note-joined-probable" } else { "note-joined" }, "other", format!("{label} ({})", date_of(tr, *day)))),
         _ => match (&line.preset, signed) {
             (Some(preset), None) => ("proposed", say("note-preset", "preset", preset_label(preset))),
             (Some(preset), Some(_)) => ("proposed", say("note-preset-amount", "preset", preset_label(preset))),

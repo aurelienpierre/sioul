@@ -13,7 +13,8 @@
 //!
 //! Done movements and transfers between your own accounts are not listed:
 //! nothing is due of them. The rows are facts in plain fields; the Porch
-//! words them.
+//! words them, and follows the hours by each row's area: work money is not
+//! said outside work's hours (docs/areas.md), and a budget's title cannot tell it.
 
 use crate::movements::{self, Movement, Place, State, Way};
 use jiff::ToSpan;
@@ -36,9 +37,11 @@ pub struct Coming {
     pub about: bool,
     /// The budget it counts in, by its title (parts: each title, joined by ", "); none in none yet.
     pub budget: Option<String>,
+    /// What it is for (`movements::Movement::area`): its budgets'; in none, its account's.
+    pub area: crate::areas::Area,
     /// planned, announced, not-final or not-seen (`State::id`).
     pub state: State,
-    /// Where it opens: `sioul:movement/<id>` (`links::movement_uri`).
+    /// Where it opens: `sioul:movement/<its steadiest key>` (`Movement::address`).
     pub address: String,
 }
 
@@ -82,7 +85,7 @@ fn row(m: &Movement, title: &dyn Fn(&str) -> String) -> Coming {
         Place::Transfer { .. } | Place::Nowhere | Place::Unplaced => None,
         place => Some(place.budgets().iter().map(|b| title(b)).collect::<Vec<_>>().join(", ")),
     };
-    Coming { day: m.day, label: m.label.clone(), amount_cents: m.sum.amount().cents(), currency: m.currency.clone(), about: m.sum.about(), budget, state: m.state, address: m.address() }
+    Coming { day: m.day, label: m.label.clone(), amount_cents: m.sum.amount().cents(), currency: m.currency.clone(), about: m.sum.about(), budget, area: m.area, state: m.state, address: m.address() }
 }
 
 #[cfg(test)]
@@ -126,14 +129,16 @@ mod tests {
         std::fs::write(root.join(movements::STORE), "format = 1\n[[hold]]\naccount = '0123456A'\nid = 'H1'\ndate = 2026-11-03\namount = -60.0\nlabel = 'CB STATION EXEMPLE'\n").unwrap();
         let today = day("2026-11-04");
         let rows = coming_in(&root, &crate::words::Words::builtin(), today, 14);
-        let seen: Vec<(String, &str, i64, bool, Option<&str>, &str)> = rows.iter().map(|c| (c.day.to_string(), c.label.as_str(), c.amount_cents, c.about, c.budget.as_deref(), c.state.id())).collect();
+        let seen: Vec<(String, &str, i64, bool, Option<&str>, crate::areas::Area, &str)> = rows.iter().map(|c| (c.day.to_string(), c.label.as_str(), c.amount_cents, c.about, c.budget.as_deref(), c.area, c.state.id())).collect();
+        let (admin, work) = (crate::areas::Area::ADMIN, crate::areas::Area::WORK);
         assert_eq!(
             seen,
             vec![
-                ("2026-10-20".to_string(), "Accident insurance", -1500, false, Some("Home"), "not-seen"),
-                ("2026-11-03".to_string(), "CB STATION EXEMPLE", -6000, true, Some("Home"), "not-final"),
-                ("2026-11-10".to_string(), "Client A", 48000, false, Some("Work"), "announced"),
-                ("2026-11-12".to_string(), "EDF", -5200, true, Some("Home"), "planned"),
+                ("2026-10-20".to_string(), "Accident insurance", -1500, false, Some("Home"), admin, "not-seen"),
+                ("2026-11-03".to_string(), "CB STATION EXEMPLE", -6000, true, Some("Home"), admin, "not-final"),
+                // Client A pays into Work: said in work's hours only, whatever its budget's title.
+                ("2026-11-10".to_string(), "Client A", 48000, false, Some("Work"), work, "announced"),
+                ("2026-11-12".to_string(), "EDF", -5200, true, Some("Home"), admin, "planned"),
             ],
             "{rows:#?}"
         );

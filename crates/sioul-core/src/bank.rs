@@ -40,6 +40,10 @@ pub struct Statement {
     pub movements: Vec<Movement>,
     /// The balance and its day, when the export gives one.
     pub balance: Option<(Date, Money)>,
+    /// The lines it says are not final yet (card holds, `BankWords::pending`;
+    /// CAMT's `PDNG`): never movements, which `sioul-bank.toml` keeps for good;
+    /// the account's holds in `sioul-movements.toml` (`movements::Hold`).
+    pub pending: Vec<Movement>,
 }
 
 /// An amount as banks write it: "-62,00", "1 234,56", "1,234.56", "+780.00 EUR", "(62.00)".
@@ -115,8 +119,9 @@ pub fn read(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
     };
     // Ids made where the bank gives none: the same movement read twice keeps its id.
     let mut seen: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for m in &mut statement.movements {
-        m.account = statement.account.clone();
+    let account = statement.account.clone();
+    for m in statement.movements.iter_mut().chain(statement.pending.iter_mut()) {
+        m.account = account.clone();
         if m.id.is_empty() {
             let base = format!("{}|{}|{}", m.date, m.amount.cents(), m.label);
             let n = seen.entry(base.clone()).or_insert(0);
@@ -124,7 +129,7 @@ pub fn read(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
             m.id = format!("{:016x}", fnv(&format!("{base}|{n}")));
         }
     }
-    if statement.movements.is_empty() && statement.balance.is_none() {
+    if statement.movements.is_empty() && statement.balance.is_none() && statement.pending.is_empty() {
         return Err("no movement".into());
     }
     Ok(statement)
@@ -225,7 +230,10 @@ fn read_camt(text: &str) -> Result<Statement, String> {
             statement.balance = closing;
         }
         for entry in stmt.children().filter(|c| c.tag_name().name() == "Ntry") {
-            if text_at(entry, &["Sts"]).or_else(|| text_at(entry, &["Sts", "Cd"])).is_some_and(|s| s != "BOOK") {
+            // Booked entries are movements; pending ones (a card hold) are not final yet; the rest, nothing.
+            let status = text_at(entry, &["Sts"]).or_else(|| text_at(entry, &["Sts", "Cd"]));
+            let pending = status.as_deref() == Some("PDNG");
+            if status.is_some_and(|s| s != "BOOK") && !pending {
                 continue;
             }
             let Some(date) = text_at(entry, &["BookgDt", "Dt"]).or_else(|| text_at(entry, &["ValDt", "Dt"])).and_then(|d| parse_date(&d)) else { continue };
@@ -240,7 +248,19 @@ fn read_camt(text: &str) -> Result<Statement, String> {
             let party = details.and_then(|d| name(d, if amount.is_negative() { "Cdtr" } else { "Dbtr" })).unwrap_or_default();
             let label = if !party.is_empty() && !label.contains(&party) { format!("{party} {label}") } else { label };
             let id = text_at(entry, &["AcctSvcrRef"]).or_else(|| text_at(entry, &["NtryRef"])).unwrap_or_default();
-            statement.movements.push(Movement { account: String::new(), date, amount, label, id });
+            // The SEPA mandate and the creditor of a direct debit, said in its
+            // label for the matching's keys; only beside the bank's own id, since
+            // a label makes the id of a line without one, and the same file
+            // taken in again must add nothing.
+            let mandate = details.and_then(|d| text_at(d, &["Refs", "MndtId"]));
+            let creditor = details.and_then(|d| text_at(d, &["RltdPties", "Cdtr", "Id", "PrvtId", "Othr", "Id"]).or_else(|| text_at(d, &["RltdPties", "Cdtr", "Pty", "Id", "PrvtId", "Othr", "Id"])));
+            let label = if id.is_empty() { label } else { [Some(label), mandate.map(|m| format!("RUM {m}")), creditor.map(|c| format!("ICS {c}"))].into_iter().flatten().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ") };
+            let movement = Movement { account: String::new(), date, amount, label, id };
+            if pending {
+                statement.pending.push(movement);
+            } else {
+                statement.movements.push(movement);
+            }
         }
     }
     Ok(statement)
@@ -376,11 +396,12 @@ fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
         {
             continue;
         }
-        if let Some(col) = c.status {
-            let status = fold(row.get(col).map_or("", String::as_str));
-            if words.skipped.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && status.starts_with(&w)) {
-                continue;
-            }
+        // A pending row is a card hold, not final yet: kept apart; refused and cancelled ones, nothing.
+        let status = c.status.map(|col| fold(row.get(col).map_or("", String::as_str))).unwrap_or_default();
+        let said = |list: &[String]| list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && status.starts_with(&w));
+        let pending = said(&words.pending);
+        if !pending && said(&words.skipped) {
+            continue;
         }
         if c.impact.and_then(|i| row.get(i)).is_some_and(|v| words.memo.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && fold(v).starts_with(&w))) {
             continue;
@@ -401,14 +422,19 @@ fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
             (true, _) => kind,
             (false, true) => name,
         };
-        if let Some(b) = c.balance.and_then(|b| row.get(b)).and_then(|v| parse_amount(v)) {
+        if let Some(b) = c.balance.and_then(|b| row.get(b)).and_then(|v| parse_amount(v)).filter(|_| !pending) {
             let when = (date, c.time.and_then(|t| row.get(t)).cloned().unwrap_or_default());
             if latest.as_ref().is_none_or(|(w, _)| when >= *w) {
                 latest = Some((when, b));
             }
         }
         let id = c.id.and_then(|i| row.get(i)).cloned().unwrap_or_default();
-        statement.movements.push(Movement { account: String::new(), date, amount, label, id });
+        let movement = Movement { account: String::new(), date, amount, label, id };
+        if pending {
+            statement.pending.push(movement);
+        } else {
+            statement.movements.push(movement);
+        }
     }
     // The day of a balance written above: the day said, else the newest movement's.
     if let Some(amount) = pre_balance {

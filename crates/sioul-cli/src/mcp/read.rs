@@ -1200,12 +1200,10 @@ pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
 pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     let root = s.config.notes_root_path().filter(|r| r.join(budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     let ledger = budget::Ledger::load(&root)?;
-    // With the bank accounts' movements, read from the exports beside the file.
+    // Each money movement counted once: the bank accounts' lines read from the
+    // exports beside the file, joined to what was planned and announced (`movements::counted`).
+    let ledger = sioul_core::movements::counted_in(&root, &ledger, &sioul_core::words::Words::of(&s.config), sioul_core::zone::now().date());
     let bank = bank::Bank::load(&root);
-    let ledger = match &bank {
-        Ok(bank) => ledger.with_bank(bank, &sioul_core::words::Words::of(&s.config)),
-        Err(_) => ledger,
-    };
     // Budgets kept from agents (a closed project's invoices go there, or it is
     // tied to one; any not in a project while those are closed), and lines tied to a closed project.
     let consent = access::of(s, &Loaded::read(&s.config));

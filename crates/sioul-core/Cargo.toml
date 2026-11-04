@@ -40,6 +40,10 @@ psl = "2"
 # Already built for every target through sioul-sync (the same version):
 # nothing new is compiled.
 sha2 = "0.10"
+# Factur-X invoices (einvoice.rs): the XML a PDF carries, Flate-compressed.
+# Already built for every target through sioul-sync (the same version and
+# features): nothing new is compiled.
+flate2 = "1"
 
 [dev-dependencies]
 fluent-syntax.workspace = true

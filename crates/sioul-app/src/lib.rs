@@ -166,6 +166,7 @@ mod map;
 mod outlook;
 mod outside;
 mod papers;
+mod payments;
 mod pauses;
 mod phonemsgs;
 // texts: SMS phase (b).

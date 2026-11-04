@@ -120,6 +120,8 @@
 //! - [`accounts`]: bank accounts, and the budgets each movement goes to.
 //! - [`bank`]: the money watch: the bank's exports held against the recurring payments.
 //! - [`movements`]: money movements: each sum in or out once, with every source that tells of it.
+//! - [`matching`]: telling that two things tell of one payment: keys, a score, one to one.
+//! - [`einvoice`]: Factur-X and UBL invoices, which carry their own data.
 //! - [`due`]: what money is due or expected soon, for the Porch.
 //! - [`money`]: exact amounts, and the amounts written in mail.
 //! - [`contracts`]: contracts and subscriptions: when each renews, how to stop it.
@@ -210,6 +212,7 @@ pub mod dose_reminders;
 pub mod filelock;
 pub mod contacts;
 pub mod duplicates;
+pub mod einvoice;
 pub mod everywhere;
 pub mod folders;
 pub mod github;
@@ -231,6 +234,7 @@ pub mod mailindex;
 pub mod mailmoved;
 pub mod mailsearch;
 pub mod maildir;
+pub mod matching;
 pub mod mailnote;
 pub mod mailto;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).

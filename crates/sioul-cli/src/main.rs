@@ -611,12 +611,13 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
         .or_else(|| s.config.notes_root_path().map(|root| root.join(budget::LEDGER)))
         .ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     let ledger = Ledger::load_file(&path)?;
-    // With the bank accounts' movements, read from the exports beside the file.
-    let ledger = match path.parent().map(sioul_core::bank::Bank::load) {
-        Some(Ok(bank)) => ledger.with_bank(&bank, &sioul_core::words::Words::of(&s.config)),
-        _ => ledger,
-    };
     let today = sioul_core::zone::now().date();
+    // Each money movement counted once: the bank accounts' lines read from the
+    // exports beside the file, joined to what was planned and announced (`movements::counted`).
+    let ledger = match path.parent() {
+        Some(root) => sioul_core::movements::counted_in(root, &ledger, &sioul_core::words::Words::of(&s.config), today),
+        None => ledger,
+    };
     let mut args = sioul_core::i18n::args();
     args.set("month", s.tr.month_year(today));
     println!("{}", s.tr.text("budgets-title", Some(&args)));

@@ -674,6 +674,14 @@ pub struct MailLine {
     pub state: MailState,
     /// From someone new and not verified: a fake "your payment" is a classic trick.
     pub doubtful: bool,
+    /// Its references, for the matching's keys (`matching::references`): an
+    /// invoice's, an order's, a mandate's, a creditor's; its attached
+    /// invoice's own (`payments::invoice_of`).
+    pub refs: Vec<String>,
+    /// The day it is due, when its attached invoice says it.
+    pub due: Option<Date>,
+    /// A purchase paid in instalments: how many (`payments::instalments`).
+    pub instalments: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -688,6 +696,10 @@ pub enum MailState {
     Duplicate(String),
     /// Waits for you: add it, or not.
     Proposed,
+    /// The same payment as a movement already counted, which it joins as a
+    /// source without a question (`movements::acts::join_mails`): its
+    /// address, who it names, its day; probably so when not sure.
+    Joined { address: String, label: String, day: Date, probable: bool },
 }
 
 impl MailLine {
@@ -765,10 +777,39 @@ fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Optio
     // the same on every device and after a renumbering), else its file.
     let digest = || crate::mailfind::address_of_file(card.account.as_deref()?, card.path.as_deref()?);
     let key = card.message_id.as_ref().map(|id| format!("mid:{id}")).or_else(digest).or_else(|| card.path.as_ref().map(|p| format!("file:{}", p.display())))?;
+    // What it says for the matching, and what its attached invoice says of itself.
+    let text = format!("{}\n{}", card.subject, payments::start(card));
+    let mut refs = crate::matching::references(&words.payments.references, &text);
+    let invoice = payments::invoice_of(card);
+    if let Some(invoice) = &invoice {
+        refs.extend(invoice.references());
+        refs.sort();
+        refs.dedup();
+        // Its amount, when the message gave none, in a currency Sioul names (`money`); else none.
+        let currency = match invoice.currency.to_ascii_uppercase().as_str() {
+            "EUR" => Some("EUR"),
+            "USD" => Some("USD"),
+            "GBP" => Some("GBP"),
+            "CHF" => Some("CHF"),
+            "CAD" => Some("CAD"),
+            _ => None,
+        };
+        if payment.amount.is_none()
+            && let (Some(money), Some(currency)) = (invoice.amount, currency)
+        {
+            payment.amount = Some(Amount { money: money.abs(), currency });
+        }
+        if payment.party == card.sender() && !invoice.seller.trim().is_empty() {
+            payment.party = invoice.seller.trim().to_string();
+        }
+    }
     Some(MailLine {
         key,
         path: card.path.clone(),
         date,
+        refs,
+        due: invoice.as_ref().and_then(|i| i.due),
+        instalments: payments::instalments(words, &text),
         label: rule.and_then(|r| r.label.clone()).unwrap_or_else(|| payment.party.clone()),
         subject: card.subject.clone(),
         sender: card.sender().to_string(),

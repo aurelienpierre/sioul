@@ -317,11 +317,6 @@ pub(crate) fn remove_account(id: &str) -> String {
     ledger_path().and_then(|path| sioul_core::accounts::remove_bank_account(&path, id)).err().unwrap_or_default()
 }
 
-/// One movement placed by your hand: `budget:<id>`, `none`, or `""` (as the rules say).
-pub(crate) fn place_movement(account: &str, movement: &str, choice: &str) -> String {
-    ledger_path().and_then(|path| sioul_core::accounts::set_assignment(&path, account, movement, choice)).err().unwrap_or_default()
-}
-
 /// A rule made (`shown` empty) or changed: `shown` the rule as the window
 /// showed it (JSON, `RuleView`), found by its id, or at its place while it
 /// still holds what was shown (`accounts::save_split`).
@@ -386,8 +381,11 @@ pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
             return (false, e);
         }
     }
-    // Taken into the movements as the file holds them now, under its lock, which the sharing takes too.
-    let added = match Bank::change(&root, |bank| bank.import(&statement, &title)) {
+    // Taken into the movements as the file holds them now, under its lock, which the
+    // sharing takes too; its holds kept apart, its new lines resolved against what
+    // was planned and announced (`movements::acts::take_in`).
+    let words = sioul_core::words::Words::of(&config);
+    let added = match sioul_core::movements::acts::take_in(&root, &statement, &title, &words, sioul_core::zone::now().date()) {
         Ok(added) => added,
         Err(e) => return (false, e),
     };

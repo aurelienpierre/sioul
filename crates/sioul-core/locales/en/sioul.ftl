@@ -440,6 +440,8 @@ kind-bill = Bill
 kind-refund = Refund
 note-recorded = Counted in { $budget }
 note-duplicate = Same payment as { $other }
+note-joined = The same payment as { $other }
+note-joined-probable = Probably the same payment as { $other }
 note-preset = Counted by the preset “{ $preset }”
 note-preset-amount = Replaces the preset “{ $preset }” for its month once added
 note-no-amount = The message gives no amount.
@@ -447,6 +449,17 @@ note-doubtful = From someone new and not verified: check it is genuine before co
 ui-add-line = Add
 ui-not-payment = Not a payment
 ui-line-added = Added to { $budget }.
+payment-from = A payment…
+payment-title = A payment
+payment-who = Who
+payment-unread = This message or letter cannot be read here.
+payment-origin-mail = From mail: “{ $title }”, added by Sioul on { $date }.
+payment-origin-letter = From a letter of { $title }, added by Sioul on { $date }.
+moved-more = { $budget } holds { $amount } more for { $period }.
+moved-ask = Next payments to { $payee }: to { $budget } too?
+moved-ask-yes = Yes, from now on
+moved-ask-no = Only this one
+moved-next-yes = Next payments to { $payee } go to { $budget }.
 ui-line-ignored = Left out of the budgets.
 
 ## Blocking and borrowed names.

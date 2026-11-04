@@ -4399,6 +4399,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "directories",
+ "flate2",
  "fluent-bundle",
  "fluent-syntax",
  "icu_normalizer",

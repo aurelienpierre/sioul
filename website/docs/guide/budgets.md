@@ -67,7 +67,9 @@ Which reserve covers which budget is written in the budget file: at the end of e
 
 Below the budgets, the mail about money, newest first. Sioul reads, in English and French, what a message says: a payment received or made, an order, a bill, a refund; the amount; who paid, or was paid.
 
-Each line says where it stands: *counted*, *the same payment as* another message (an order and its payment count once), or waiting for you, with **Add** and **Not a payment**. A line from someone new and not verified says to check it is genuine first. Forged mail, spam and blocked senders are never read as payments. An amount in another currency is marked "to convert": Sioul does not convert it yet.
+Each line says where it stands: *counted*; *the same payment as* another message (an order and its payment count once); *the same payment as* a payment already counted, a bill and its debit, a receipt and its card payment, which the message joins by itself, or *probably* so when Sioul is not sure; or waiting for you, with **Add** and **Not a payment**. A line from someone new and not verified says to check it is genuine first, and joins nothing by itself. Forged mail, spam and blocked senders are never read as payments. An amount in another currency is marked "to convert": Sioul does not convert it yet.
+
+**A payment…**, in a message's menu, in Mail's list and on a paper letter's card, turns any message or letter into a payment, whatever Sioul read in it: a short form filled from what it says (who, the amount, the day), any budget. The message or the letter stays its source.
 
 Rules in the budget file can send a sender's or a word's payments to a budget by themselves.
 
@@ -80,7 +82,9 @@ Rules in the budget file can send a sender's or a word's payments to a budget by
 
 **New bank account**: its **Name**, its **Kind** (a bank, PayPal, Stripe, something else), the budgets it **Fills**, the amount it is **Kept above**, and the reserves it is **Topped up by**, in your order.
 
-**Take in an export…**, on its card: the file your bank gives (OFX or QFX, CAMT.053, or its CSV), PayPal's activity download, or Stripe's balance history. Reading the same file twice adds nothing. Nothing is fetched from the bank itself: you download the file, Sioul reads it. Each movement then goes to a budget by your hand, your rules, or the payment it stands for, and says why ([Where each movement goes](#where-each-movement-goes)).
+**Take in an export…**, on its card: the file your bank gives (OFX or QFX, CAMT.053, or its CSV), PayPal's activity download, or Stripe's balance history. Reading the same file twice adds nothing. Nothing is fetched from the bank itself: you download the file, Sioul reads it. A payment the file says is not final yet (a card hold) waits apart until the bank's line for it comes. Each movement then goes to a budget by your hand, your rules, or the payment it stands for, and says why ([Where each movement goes](#where-each-movement-goes)).
+
+**Where it goes**, on a movement's row, offers every budget, whatever the hour. Moved, the movement says what it changes ("Home holds €12 more for October 2026.") and asks once whether that payee's next payments go there too; **Yes, from now on** writes a rule you find under **Rules…**.
 
 ### Topped up in time {#topped-up-in-time}
 
@@ -115,9 +119,9 @@ Sioul never shows offers, comparisons or "better deals": only facts about your c
 
 ## Where it is kept {#where-it-is-kept}
 
-In plain files at the root of your notes folder: `sioul-budgets.toml` (budgets, reserves, lines, rules, bank accounts), `sioul-bank.toml` (the bank's movements), `sioul-contracts.toml`. Readable, editable by hand, versioned with git if you like. They travel with your notes folder, or sealed through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)); nothing is sent anywhere else.
+In plain files at the root of your notes folder: `sioul-budgets.toml` (budgets, reserves, lines, rules, bank accounts), `sioul-bank.toml` (the bank's movements), `sioul-movements.toml` (what Sioul learnt of your payments: which ones are the same, the holds not final yet, your answers), `sioul-contracts.toml`. Readable, editable by hand, versioned with git if you like. They travel with your notes folder, or sealed through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)); nothing is sent anywhere else.
 
-In leisure, during a meal and while you sleep, only the budgets for leisure are in view. See [Hours](hours.md).
+In leisure, during a meal and while you sleep, only the budgets for leisure are in view; every budget can still be chosen for a payment, at any hour. See [Hours](hours.md).
 
 ## Going further {#going-further}
 
@@ -133,6 +137,8 @@ In this order:
 6. **The account's first budget**.
 
 Each movement says why it went where it did.
+
+The budgets count each payment once. Sioul tells which payment a bank's line is, a line already counted, a recurring payment, a letter's bill, an invoice you sent, first by what they share (a direct debit's mandate, an invoice's or an order's number), then by the amount, the day and the payee's name, each kind with its own room: a debit around its day, a card payment a few percent apart for a tip, a client's transfer weeks after the invoice, a refund up to eight weeks later. What it is only probably the same as, it says so. Two invoices paid by one transfer, an order charged in parts, a deferred-debit card's monthly sum and a purchase in instalments are told together, so nothing counts twice.
 
 ### Daily spending {#daily-spending}
 

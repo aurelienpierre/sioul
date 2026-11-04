@@ -290,3 +290,382 @@ fn an_older_budget_file_reads_as_before() {
     assert_eq!(a.len(), b.len());
     assert_eq!(one(&b, "preset:#0/2026-10-01").sum, Sum::Between(Money(-59000), Money(-61000)));
 }
+
+/// What is kept names a movement by its steadiest key, never by the digest
+/// of a line written by hand, which changes as soon as the line is edited:
+/// a hand-written line standing for its occurrence, moved, then its label
+/// edited, stays moved; one the bank's line joined, the same.
+#[test]
+fn a_move_names_the_steadiest_key() {
+    let root = folder("steady");
+    let text = |label: &str| {
+        format!(
+            "{BUDGETS}\
+             [[preset]]\nid = 'phone'\nbudget = 'home'\nlabel = 'Phone'\namount = -19.99\nevery = 'month'\nday = 12\n\
+             [[line]]\nbudget = 'home'\ndate = 2026-10-12\namount = -29.99\nlabel = '{label}'\npreset = 'phone'\n\
+             [[line]]\nbudget = 'home'\ndate = 2026-10-03\namount = -23.98\nlabel = '{label} shop'\n\
+             [[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home', 'leisure']\nexports = ['0123456A']\n"
+        )
+    };
+    let mut bank = Bank::default();
+    bank.movements = vec![line("0123456A", "A1", "2026-10-04", -2398, "CB SHOP")];
+    let read = |label: &str, store: &Store| derived(&ledger(&text(label)), &bank, &[], &[], store, "2026-10-01", "2026-10-31", "2026-10-20");
+    let before = read("Phone bill", &Store::default());
+    let phone = one(&before, "preset:phone/2026-10-12");
+    assert!(phone.id.starts_with("line:~"), "its id, for this reading: the line's digest");
+    assert_eq!(phone.steady_key(), "preset:phone/2026-10-12", "kept by its occurrence");
+    let shop = one(&before, "bank:main/A1");
+    assert_eq!(shop.steady_key(), "bank:main/A1", "kept by its bank line");
+    assert_eq!(shop.address(), crate::links::movement_uri("bank:main/A1"));
+    // Both moved to leisure, each by its steadiest key, as the window writes it.
+    Store::edit(&root, |edit| {
+        edit.place(phone.steady_key(), Some("leisure"), &[], false);
+        edit.place(shop.steady_key(), Some("leisure"), &[], false);
+    })
+    .unwrap();
+    let store = Store::load(&root).unwrap();
+    // The labels edited by hand: new digests, the moves hold.
+    let after = read("Mobile", &store);
+    let (phone, shop) = (one(&after, "preset:phone/2026-10-12"), one(&after, "bank:main/A1"));
+    assert!(!after.iter().any(|m| m.id == before.iter().find(|m| m.has("preset:phone/2026-10-12")).unwrap().id), "the digest changed");
+    assert_eq!((phone.place.clone(), shop.place.clone()), (Place::Budget("leisure".into()), Place::Budget("leisure".into())));
+    assert_eq!(phone.area, Area::LEISURE);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+// ---------------------------------------------------------------- part 2: matching, moving, mail
+
+use crate::budget::{MailLine, MailState};
+use crate::payments::{Payment as Told, PaymentKind};
+
+fn mail(key: &str, on: &str, kind: PaymentKind, cents: i64, currency: &'static str, party: &str) -> MailLine {
+    MailLine {
+        key: key.into(),
+        path: None,
+        date: day(on),
+        payment: Told { kind, amount: Some(crate::money::Amount { money: Money(cents), currency }), party: party.into() },
+        subject: String::new(),
+        sender: party.into(),
+        sender_domain: None,
+        budget: None,
+        preset: None,
+        label: party.into(),
+        state: MailState::Proposed,
+        doubtful: false,
+        refs: Vec::new(),
+        due: None,
+        instalments: None,
+    }
+}
+
+/// The keys (research §5.2): a mandate's reference, learnt from October's
+/// debit, holds November's, whose amount changed; an invoice's number in a
+/// client's transfer pays it.
+#[test]
+fn each_key_makes_a_pair_sure() {
+    let ledger = ledger(&format!(
+        "{BUDGETS}\
+         [[preset]]\nid = 'energy'\nbudget = 'home'\nlabel = 'Energy'\namount = -52\nevery = 'month'\nday = 5\n\
+         [[line]]\nid = 'inv'\nbudget = 'work'\ndate = 2026-11-30\namount = 480\nlabel = 'Client A'\nplanned = true\nlinks = ['sioul:invoice/2026-002']\n\
+         [[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home', 'work']\nexports = ['0123456A']\n"
+    ));
+    let mut bank = Bank::default();
+    bank.movements = vec![
+        line("0123456A", "A1", "2026-10-05", -5200, "PRLV SEPA ENERGIE EXEMPLE RUM EX-778899 ICS FR12ZZZ123456"),
+        line("0123456A", "A2", "2026-11-05", -7430, "PRLV SEPA EXPL RUM EX-778899 ICS FR12ZZZ123456"),
+        line("0123456A", "A3", "2026-11-10", 48000, "VIR CLIENT A FACTURE 2026-002"),
+        line("0123456A", "A4", "2026-11-12", -100, "CB BAKERY"),
+    ];
+    let all = derived(&ledger, &bank, &[], &[], &Store::default(), "2026-10-01", "2026-11-30", "2026-11-20");
+    assert!(one(&all, "preset:energy/2026-10-05").has("bank:main/A1"));
+    let november = one(&all, "preset:energy/2026-11-05");
+    assert!(november.has("bank:main/A2"), "the mandate's key holds a changed amount: {all:#?}");
+    assert_eq!((november.sum, november.state), (Sum::Exact(Money(-7430)), State::Done));
+    assert!(!november.sources.iter().any(|s| s.probable), "sure: the key says it");
+    let invoice = one(&all, "line:inv");
+    assert!(invoice.has("bank:main/A3") && invoice.state == State::Done, "{invoice:#?}");
+}
+
+/// The traps of research §5.3, one each: equal amounts the names tell apart;
+/// a monthly schedule beside the year's balance; an order charged in parts;
+/// two coffees and one receipt (distinct bank ids, never duplicates); a
+/// deferred-debit card's sum; a hold the bank posted with another amount.
+#[test]
+fn the_traps() {
+    let ledger = ledger(&format!(
+        "{BUDGETS}\
+         [[preset]]\nid = 'stream'\nbudget = 'leisure'\nlabel = 'Exemplestream'\namount = -9.99\nevery = 'month'\nday = 5\n\
+         [[preset]]\nid = 'music'\nbudget = 'leisure'\nlabel = 'Musicexemple'\namount = -9.99\nevery = 'month'\nday = 5\n\
+         [[preset]]\nid = 'energy'\nbudget = 'home'\nlabel = 'Energy'\namount = -52\nevery = 'month'\nday = 5\n\
+         [[line]]\nid = 'order'\nbudget = 'home'\ndate = 2026-11-02\namount = -100\nlabel = 'Shop order'\nlinks = ['mid:order@shop.example']\n\
+         [[line]]\nid = 'balance'\nbudget = 'home'\ndate = 2026-11-20\namount = -84.20\nlabel = 'Energy, the year balance'\nplanned = true\nlinks = ['mid:balance@energy.example']\n\
+         [[line]]\nid = 'coffee'\nbudget = 'leisure'\ndate = 2026-11-06\namount = -2.50\nlabel = 'Cafe Exemple'\nlinks = ['mid:coffee@cafe.example']\n\
+         [[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home', 'leisure']\nexports = ['0123456A']\n"
+    ));
+    let mut bank = Bank::default();
+    bank.movements = vec![
+        line("0123456A", "D1", "2026-10-07", -2000, "CB LIBRAIRIE EXEMPLE"),
+        line("0123456A", "D2", "2026-10-20", -3550, "CB PHARMACIE EXEMPLE"),
+        line("0123456A", "O1", "2026-11-03", -6000, "CB SHOP"),
+        line("0123456A", "O2", "2026-11-04", -4000, "CB SHOP"),
+        line("0123456A", "M1", "2026-11-05", -999, "CB MUSICEXEMPLE"),
+        line("0123456A", "S1", "2026-11-05", -999, "CB EXEMPLESTREAM"),
+        line("0123456A", "E1", "2026-11-05", -5200, "PRLV SEPA ENERGY"),
+        line("0123456A", "DT", "2026-11-05", -5550, "FACTURE CARTE DU 05/11"),
+        line("0123456A", "C1", "2026-11-06", -250, "CB CAFE EXEMPLE"),
+        line("0123456A", "C2", "2026-11-06", -250, "CB CAFE EXEMPLE"),
+        line("0123456A", "P1", "2026-11-14", -4210, "CB STATION EXEMPLE"),
+        line("0123456A", "E2", "2026-11-23", -8420, "PRLV SEPA ENERGY"),
+    ];
+    let store: Store = toml::from_str("format = 1\n[[hold]]\naccount = '0123456A'\nid = 'H1'\ndate = 2026-11-12\namount = -45.0\nlabel = 'CB STATION EXEMPLE'\n").unwrap();
+    let all = derived(&ledger, &bank, &[], &[], &store, "2026-10-01", "2026-11-30", "2026-11-25");
+    // Equal amounts by chance: the names decide.
+    assert!(one(&all, "preset:stream/2026-11-05").has("bank:main/S1") && one(&all, "preset:music/2026-11-05").has("bank:main/M1"), "{all:#?}");
+    // A monthly schedule, and the year's balance its own: each its own line of the bank.
+    assert!(one(&all, "preset:energy/2026-11-05").has("bank:main/E1"));
+    let balance = one(&all, "line:balance");
+    assert!(balance.has("bank:main/E2") && balance.state == State::Done, "{balance:#?}");
+    // An order charged in parts: one movement, its two charges probably together, the receipt's amount.
+    let order = one(&all, "line:order");
+    assert!(order.has("bank:main/O1") && order.has("bank:main/O2"), "{order:#?}");
+    assert_eq!((order.sum, order.day), (Sum::Exact(Money(-10000)), day("2026-11-03")));
+    assert!(order.sources.iter().filter(|s| s.kind == Kind::Bank).all(|s| s.probable));
+    // Two coffees, one receipt: one of them, probably; the other a movement of its own.
+    let coffee = one(&all, "line:coffee");
+    let joined: Vec<&str> = coffee.sources.iter().filter(|s| s.kind == Kind::Bank).map(|s| s.key.as_str()).collect();
+    assert_eq!(joined.len(), 1, "{coffee:#?}");
+    assert!(coffee.sources.iter().any(|s| s.kind == Kind::Bank && s.probable));
+    let other = if joined[0] == "bank:main/C1" { "bank:main/C2" } else { "bank:main/C1" };
+    assert_eq!(one(&all, other).state, State::Done);
+    // A deferred-debit card's sum settles October's card payments: in no budget, together with them.
+    let total = one(&all, "bank:main/DT");
+    assert_eq!(total.place, Place::Nowhere);
+    assert_eq!(total.together.len(), 2, "{total:#?}");
+    assert!(one(&all, "bank:main/D1").together.contains(&total.steady_key().to_string()));
+    // A hold the bank posted, a little less: no longer "not final yet"; the line itself done.
+    assert!(!all.iter().any(|m| m.state == State::NotFinal));
+    assert_eq!(one(&all, "bank:main/P1").state, State::Done);
+}
+
+/// Mail about money joins what is counted, without a question (research
+/// §6, recommendation 5): a refund five weeks later under its processor's
+/// name; a receipt in dollars by its payee's name; an invoice by its
+/// Factur-X number; a sender not verified stays proposed, to be checked
+/// first; what matches nothing stays proposed. Kept as links, read back.
+#[test]
+fn mail_about_money_joins_what_is_counted() {
+    let root = folder("mails");
+    std::fs::write(root.join(crate::budget::LEDGER), format!("{BUDGETS}[[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home', 'leisure']\nexports = ['0123456A']\n")).unwrap();
+    std::fs::write(
+        root.join(crate::bank::MANIFEST),
+        "[[movement]]\naccount = '0123456A'\ndate = 2026-11-30\namount = 23.98\nlabel = 'PAYPAL *SHOP REMBOURSEMENT'\nid = 'R1'\n\
+         [[movement]]\naccount = '0123456A'\ndate = 2026-11-03\namount = -18.47\nlabel = 'CB EXEMPLEAI SAN FRANCISCO'\nid = 'U1'\n\
+         [[movement]]\naccount = '0123456A'\ndate = 2026-11-21\namount = -84.20\nlabel = 'PRLV SEPA EXPL FA-2026-0042'\nid = 'F1'\n",
+    )
+    .unwrap();
+    let words = crate::words::Words::builtin();
+    let mut factur_x = mail("mid:bill@energy.example", "2026-11-02", PaymentKind::Bill, 8420, "EUR", "Énergie Exemple");
+    factur_x.refs = vec!["ref:FA20260042".into()];
+    factur_x.due = Some(day("2026-11-20"));
+    let mut doubtful = mail("mid:fake@pay.example", "2026-11-03", PaymentKind::Paid, 1847, "EUR", "Exempleai");
+    doubtful.doubtful = true;
+    let mut lines = vec![
+        mail("mid:refund@shop.example", "2026-10-25", PaymentKind::Refund, 2398, "EUR", "Shop"),
+        mail("mid:receipt@ai.example", "2026-11-02", PaymentKind::Paid, 2000, "USD", "Exempleai"),
+        factur_x,
+        doubtful,
+        mail("mid:nothing@shop.example", "2026-11-02", PaymentKind::Paid, 777, "EUR", "Elsewhere"),
+    ];
+    let today = day("2026-12-01");
+    assert_eq!(acts::join_mails(&root, &words, &mut lines, today).unwrap(), 3);
+    let state = |key: &str| lines.iter().find(|l| l.key == key).unwrap().state.clone();
+    assert!(matches!(state("mid:refund@shop.example"), MailState::Joined { .. }));
+    assert!(matches!(state("mid:receipt@ai.example"), MailState::Joined { .. }));
+    assert!(matches!(state("mid:bill@energy.example"), MailState::Joined { probable: false, .. }), "the invoice's number makes it sure");
+    assert_eq!((state("mid:fake@pay.example"), state("mid:nothing@shop.example")), (MailState::Proposed, MailState::Proposed));
+    // Kept: the store holds each link with what the message said, and the movements show it.
+    let store = Store::load(&root).unwrap();
+    let refund = store.links.iter().find(|l| l.source == "mid:refund@shop.example").unwrap();
+    assert_eq!((refund.movement.as_str(), refund.amount, refund.day), ("bank:main/R1", Some(Money(2398)), Some(day("2026-10-25"))));
+    let movements = load(&root, &words, day("2026-10-01"), day("2026-12-31"), today);
+    assert!(movements.find("bank:main/R1").unwrap().has("mid:refund@shop.example"));
+    // Again: nothing new is written; what was joined is said so from its link.
+    let mut again: Vec<MailLine> = lines.iter().map(|l| MailLine { state: if l.doubtful || l.key.contains("nothing") { l.state.clone() } else { MailState::Proposed }, ..l.clone() }).collect();
+    assert_eq!(acts::join_mails(&root, &words, &mut again, today).unwrap(), 0);
+    assert!(matches!(again.iter().find(|l| l.key == "mid:refund@shop.example").unwrap().state, MailState::Joined { .. }));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// An export taken in twice adds nothing (research §5.3: the bank's own ids):
+/// its booked lines once, its hold replaced, its pair with the rent kept as a link once.
+#[test]
+fn an_export_taken_in_twice_adds_nothing() {
+    let root = folder("take-in");
+    std::fs::write(root.join(crate::budget::LEDGER), format!("{BUDGETS}[[preset]]\nid = 'rent'\nbudget = 'home'\nlabel = 'Rent'\namount = -600\nevery = 'month'\nday = 1\n[[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home']\nexports = ['FR7600000000000000000000000']\n")).unwrap();
+    let camt = r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02"><BkToCstmrStmt><Stmt><Acct><Id><IBAN>FR7600000000000000000000000</IBAN></Id></Acct>
+        <Bal><Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">900.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Dt><Dt>2026-11-03</Dt></Dt></Bal>
+        <Ntry><Amt Ccy="EUR">600.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts><BookgDt><Dt>2026-11-02</Dt></BookgDt><AcctSvcrRef>R1</AcctSvcrRef><NtryDtls><TxDtls><RltdPties><Cdtr><Nm>RENT AGENCY</Nm></Cdtr></RltdPties></TxDtls></NtryDtls></Ntry>
+        <Ntry><Amt Ccy="EUR">4.50</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts><BookgDt><Dt>2026-11-02</Dt></BookgDt><AcctSvcrRef>R2</AcctSvcrRef><AddtlNtryInf>CB BAKERY</AddtlNtryInf></Ntry>
+        <Ntry><Amt Ccy="EUR">45.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>PDNG</Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt><AcctSvcrRef>R3</AcctSvcrRef><AddtlNtryInf>CB STATION</AddtlNtryInf></Ntry>
+        </Stmt></BkToCstmrStmt></Document>"#;
+    let words = crate::words::Words::builtin();
+    let statement = crate::bank::read(&words.bank, camt).unwrap();
+    assert_eq!((statement.movements.len(), statement.pending.len()), (2, 1), "booked apart from pending");
+    let today = day("2026-11-04");
+    let first = acts::take_in(&root, &statement, "Main", &words, today).unwrap();
+    assert_eq!(first, acts::TakenIn { read: 2, new: 2, holds: 1, joined: 1 });
+    let store = Store::load(&root).unwrap();
+    assert_eq!(store.links.iter().map(|l| (l.movement.as_str(), l.source.as_str(), l.how.as_str())).collect::<Vec<_>>(), vec![("preset:rent/2026-11-01", "bank:main/R1", "sure")]);
+    let again = acts::take_in(&root, &statement, "Main", &words, today).unwrap();
+    assert_eq!(again, acts::TakenIn { read: 2, new: 0, holds: 1, joined: 0 });
+    let store = Store::load(&root).unwrap();
+    assert_eq!((store.links.len(), store.holds.len()), (1, 1));
+    assert_eq!(Bank::load(&root).unwrap().movements.len(), 2);
+    // The hold is not final yet; the rent done; the bakery its own.
+    let all = load(&root, &words, day("2026-11-01"), day("2026-11-30"), today);
+    assert_eq!(all.find("hold:main/R3").map(|m| m.state), Some(State::NotFinal));
+    assert_eq!(all.find("bank:main/R1").map(|m| m.id.as_str()), Some("preset:rent/2026-11-01"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Every budget is a choice for a line, whatever the hour (the owner's
+/// report): the page shows what the hour admits, a line goes anywhere.
+#[test]
+fn every_budget_is_a_choice_at_any_hour() {
+    let root = folder("hidden");
+    std::fs::write(root.join(crate::budget::LEDGER), format!("{BUDGETS}[[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home']\nexports = ['0123456A']\n")).unwrap();
+    std::fs::write(root.join(crate::bank::MANIFEST), "[[movement]]\naccount = '0123456A'\ndate = 2026-11-03\namount = 480.0\nlabel = 'VIR CLIENT B'\nid = 'W1'\n").unwrap();
+    let ledger = Ledger::load(&root).unwrap();
+    let tr = crate::i18n::Translator::new("en");
+    // In leisure's hours, work's budget is not shown, and still chosen.
+    let view = crate::view::budgets_at(&ledger, &[], &tr, day("2026-11-04"), &|b| crate::areas::in_view(b.area_of(), crate::areas::Time::Leisure, crate::areas::Week::default()));
+    assert!(!view.budgets.iter().any(|c| c.id == "work") && view.choices.iter().any(|c| c.id == "work"));
+    let words = crate::words::Words::builtin();
+    let today = day("2026-11-04");
+    let all = load(&root, &words, day("2026-11-01"), day("2026-11-30"), today);
+    let client = all.find("bank:main/W1").unwrap().clone();
+    acts::move_to(&root, &words, &client, &Place::Budget("work".into())).unwrap();
+    let all = load(&root, &words, day("2026-11-01"), day("2026-11-30"), today);
+    assert_eq!(all.find("bank:main/W1").unwrap().place, Place::Budget("work".into()));
+    assert!(std::fs::read_to_string(root.join(crate::budget::LEDGER)).unwrap().contains("budget = \"work\""), "in the file's [[assign]], which every version reads");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Moving a movement says its effect ("Home holds €12 more"), asks once
+/// whether the payee's next ones go there too, and a yes is a rule of the
+/// budget file (research §6, recommendation 6: the person's act is the consent).
+#[test]
+fn a_move_says_its_effect_and_asks_once() {
+    let root = folder("move");
+    std::fs::write(root.join(crate::budget::LEDGER), format!("{BUDGETS}[[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home', 'leisure']\nexports = ['0123456A']\n")).unwrap();
+    std::fs::write(
+        root.join(crate::bank::MANIFEST),
+        "[[movement]]\naccount = '0123456A'\ndate = 2026-10-02\namount = -12.0\nlabel = 'CB CINEMA LE PALACE'\nid = 'C1'\n\
+         [[movement]]\naccount = '0123456A'\ndate = 2026-10-20\namount = -12.0\nlabel = 'CB CINEMA LE PALACE'\nid = 'C2'\n\
+         [[movement]]\naccount = '0123456A'\ndate = 2026-10-21\namount = -30.0\nlabel = 'CB LIBRAIRIE EXEMPLE'\nid = 'L1'\n",
+    )
+    .unwrap();
+    let words = crate::words::Words::builtin();
+    let today = day("2026-10-25");
+    let read = || load(&root, &words, day("2026-10-01"), day("2026-10-31"), today);
+    let first = read().find("bank:main/C1").unwrap().clone();
+    let moved = acts::move_to(&root, &words, &first, &Place::Budget("leisure".into())).unwrap();
+    assert_eq!((moved.budget.as_str(), moved.more, moved.day), ("home", Money(1200), day("2026-10-02")), "Home holds €12 more");
+    assert_eq!(moved.ask.as_deref(), Some("cinema palace"));
+    acts::decide(&root, "cinema palace", "leisure", Way::Out, false).unwrap();
+    let second = read().find("bank:main/C2").unwrap().clone();
+    assert_eq!(acts::move_to(&root, &words, &second, &Place::Budget("leisure".into())).unwrap().ask, None, "asked once");
+    // A yes: the payee's next movements go there by a rule of the file.
+    let book = read().find("bank:main/L1").unwrap().clone();
+    let ask = acts::move_to(&root, &words, &book, &Place::Budget("leisure".into())).unwrap().ask.unwrap();
+    acts::decide(&root, &ask, "leisure", Way::Out, true).unwrap();
+    let ledger = Ledger::load(&root).unwrap();
+    assert!(ledger.splits.iter().any(|s| s.words == vec!["librairie exemple".to_string()] && s.budget.as_deref() == Some("leisure")), "{:?}", ledger.splits);
+    // Split between two budgets, from its row: in the file's [[assign]], in parts.
+    let parts = vec![("home".to_string(), Money(-1000)), ("leisure".to_string(), Money(-2000))];
+    acts::move_to(&root, &words, &read().find("bank:main/L1").unwrap().clone(), &Place::Parts(parts.clone())).unwrap();
+    assert_eq!(read().find("bank:main/L1").unwrap().place, Place::Parts(parts));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// "A payment…" from any mail (research §6, recommendation 12): a short form
+/// filled from what it says, any budget, the mail its source; the same from
+/// a letter; without a budget, nothing is written.
+#[test]
+fn a_payment_made_from_a_mail() {
+    let root = folder("payment");
+    std::fs::write(root.join(crate::budget::LEDGER), BUDGETS).unwrap();
+    let words = crate::words::Words::builtin();
+    let raw = "From: Shop Exemple <shop@shop.example>\r\nSubject: Votre reçu\r\nDate: Mon, 02 Nov 2026 10:00:00 +0100\r\nMessage-ID: <r1@shop.example>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nMerci de votre visite.\r\nTotal 42,50 €\r\n";
+    let card = crate::card::Card::from_bytes(raw.as_bytes()).unwrap();
+    let mut payment = acts::Payment::from_card(&words, &card, "mid:r1@shop.example", false);
+    assert_eq!((payment.amount, payment.day.as_str(), payment.source.as_str()), (-42.5, "2026-11-02", "mid:r1@shop.example"));
+    assert!(payment.record(&root, day("2026-11-04"), "From mail").is_err(), "a budget is needed");
+    payment.budget = "leisure".into();
+    let id = payment.record(&root, day("2026-11-04"), "From mail: Votre reçu").unwrap();
+    let ledger = Ledger::load(&root).unwrap();
+    let line = ledger.lines.iter().find(|l| l.id == id).unwrap();
+    assert_eq!((line.amount, line.planned, line.links.clone()), (Money(-4250), false, vec!["mid:r1@shop.example".to_string()]));
+    let all = load(&root, &words, day("2026-11-01"), day("2026-11-30"), day("2026-11-04"));
+    let made = all.find(&format!("line:{id}")).unwrap();
+    assert!(made.state == State::Announced && made.has("mid:r1@shop.example"), "{made:#?}");
+    // A letter's bill: its amount to pay, its date asked.
+    let letter = Letter { id: "2026-11-03-7c".into(), reading: crate::letters::Reading { sender: "Tax office".into(), amount: Some(Money(32000)), deadline: Some(day("2026-11-20")), ..Default::default() }, ..Letter::default() };
+    let from_letter = acts::Payment::from_letter(&letter);
+    assert_eq!((from_letter.amount, from_letter.day.as_str(), from_letter.source.as_str()), (-320.0, "2026-11-20", "sioul:letter/2026-11-03-7c"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The budgets count each movement once (`counted`): the rent's bank line in
+/// place of its preset; a receipt with its tip; a planned line the bank
+/// settled, done; a card payment of its own.
+#[test]
+fn budgets_count_each_movement_once() {
+    let ledger = ledger(&format!(
+        "{BUDGETS}\
+         [[preset]]\nid = 'rent'\nbudget = 'home'\nlabel = 'Rent'\namount = -600\nevery = 'month'\nday = 1\n\
+         [[line]]\nid = 'shop'\nbudget = 'home'\ndate = 2026-10-01\namount = -23.98\nlabel = 'Shop'\nlinks = ['mid:shop@pay.example']\n\
+         [[line]]\nid = 'plumber'\nbudget = 'home'\ndate = 2026-10-25\namount = -120\nlabel = 'Plumber'\nplanned = true\n\
+         [[bank_account]]\nid = 'main'\ntitle = 'Main'\nfills = ['home']\nexports = ['0123456A']\n"
+    ));
+    let mut bank = Bank::default();
+    bank.movements = vec![
+        line("0123456A", "A1", "2026-10-01", -60000, "PRLV SEPA RENT AGENCY"),
+        line("0123456A", "A2", "2026-10-03", -2500, "CB SHOP"),
+        line("0123456A", "A3", "2026-10-26", -12000, "CB PLUMBER"),
+        line("0123456A", "A4", "2026-10-10", -1200, "CB CINEMA"),
+    ];
+    let today = day("2026-10-31");
+    let all = derived(&ledger, &bank, &[], &[], &Store::default(), "2026-09-01", "2026-12-31", "2026-10-31");
+    let counted = counted(&ledger, &all, today);
+    let home = counted.budgets.iter().find(|b| b.id == "home").unwrap();
+    let status = counted.status(home, today);
+    assert_eq!((status.so_far, status.to_come), (Money(-60000 - 2500 - 12000 - 1200), Money::ZERO), "{:#?}", counted.lines);
+    // The file's lines keep their places: their addresses hold.
+    assert_eq!(counted.lines[..ledger.lines.len()].iter().map(|l| l.label.as_str()).collect::<Vec<_>>(), ["Shop", "Plumber"]);
+}
+
+/// A CSV export (PayPal's, in French) taken in twice: its pending row is a
+/// hold, never a movement; the second time adds nothing, and its hold is
+/// replaced, not doubled (research §5.3: holds; the bank's own ids).
+#[test]
+fn a_csv_taken_in_twice_adds_nothing_and_keeps_its_hold_apart() {
+    let root = folder("csv");
+    std::fs::write(root.join(crate::budget::LEDGER), format!("{BUDGETS}[[bank_account]]\nid = 'paypal'\ntitle = 'PayPal'\nkind = 'paypal'\nfills = ['leisure']\n")).unwrap();
+    let csv = "\u{feff}\"Date\",\"Heure\",\"Fuseau horaire\",\"Nom\",\"Type\",\"État\",\"Devise\",\"Avant commission\",\"Commission\",\"Net\",\"Solde\",\"Numéro de transaction\"\n\
+        \"02/11/2026\",\"10:02:11\",\"Europe/Paris\",\"Shop Exemple\",\"Paiement Express Checkout\",\"Terminé\",\"EUR\",\"-23,98\",\"0,00\",\"-23,98\",\"76,02\",\"T1\"\n\
+        \"03/11/2026\",\"09:30:00\",\"Europe/Paris\",\"Station Exemple\",\"Paiement\",\"En attente\",\"EUR\",\"-45,00\",\"0,00\",\"-45,00\",\"76,02\",\"T2\"\n\
+        \"03/11/2026\",\"09:40:00\",\"Europe/Paris\",\"Someone\",\"Paiement envoyé\",\"Refusé\",\"EUR\",\"-5,00\",\"0,00\",\"-5,00\",\"76,02\",\"T3\"\n";
+    let words = crate::words::Words::builtin();
+    let mut statement = crate::bank::read(&words.bank, csv).unwrap();
+    statement.account = "paypal".into();
+    assert_eq!((statement.movements.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), statement.pending.iter().map(|m| m.id.as_str()).collect::<Vec<_>>()), (vec!["T1"], vec!["T2"]), "refused left out, pending apart");
+    assert_eq!(statement.balance, Some((day("2026-11-02"), Money(7602))), "a pending row sets no balance");
+    let today = day("2026-11-04");
+    assert_eq!(acts::take_in(&root, &statement, "PayPal", &words, today).unwrap(), acts::TakenIn { read: 1, new: 1, holds: 1, joined: 0 });
+    assert_eq!(acts::take_in(&root, &statement, "PayPal", &words, today).unwrap(), acts::TakenIn { read: 1, new: 0, holds: 1, joined: 0 });
+    assert_eq!((Bank::load(&root).unwrap().movements.len(), Store::load(&root).unwrap().holds.len()), (1, 1));
+    let all = load(&root, &words, day("2026-11-01"), day("2026-11-30"), today);
+    assert_eq!(all.find("hold:paypal/T2").map(|m| m.state), Some(State::NotFinal));
+    let _ = std::fs::remove_dir_all(&root);
+}

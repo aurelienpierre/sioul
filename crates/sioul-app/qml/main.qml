@@ -541,6 +541,15 @@ SioulWindow {
     }
     readonly property var howWasItPopup: howWasItForm.item
 
+    // "A payment…" from a message, by its file (`kind` "mail", `trust` its sender's
+    // level), or a paper letter, by its id (`kind` "letter"): a short form filled from
+    // what it says, any budget (PaymentForm.qml, made the first time).
+    function askPayment(kind, key, trust) {
+        if (paymentForm.item === null)
+            paymentForm.setSource("PaymentForm.qml", { sioul: sioul, theme: theme })
+        paymentForm.item.ask(JSON.parse(sioul.paymentFrom(kind, key, trust || "")))
+    }
+
     // A mail kept as a contract: the Budgets page, the form started from it.
     function contractFromMail(subject, from) {
         window.page = 9
@@ -4629,6 +4638,9 @@ SioulWindow {
     }
     Loader {
         id: howWasItForm
+    }
+    Loader {
+        id: paymentForm
     }
     Loader {
         id: railTip

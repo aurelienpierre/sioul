@@ -168,6 +168,12 @@ pub struct Payments {
     /// A subject naming an order and saying it is confirmed.
     pub order_words: Vec<String>,
     pub confirmed_words: Vec<String>,
+    /// Words before a reference that ties a payment to a bank's line
+    /// (`matching::references`): an invoice's, an order's, a mandate's.
+    pub references: Vec<String>,
+    /// A purchase paid in instalments, "#" standing for their number
+    /// ("en # fois"): its bank lines are probably together (`matching`).
+    pub instalments: Vec<String>,
 }
 
 /// A CSV export's columns, by their names (`bank`).
@@ -211,6 +217,17 @@ pub struct BankWords {
     pub skipped: Vec<String>,
     /// A balance impact saying the row moves no money.
     pub memo: Vec<String>,
+    /// Payment processors a card line names before the shop ("PAYPAL *SHOP"),
+    /// taken off to compare names (`matching::tokens`).
+    pub processors: Vec<String>,
+    /// A deferred-debit card's sum of the month's card payments, in a label
+    /// (`matching`): one line that settles them, counted once.
+    pub deferred: Vec<String>,
+    /// A card payment's label, by its first words ("CB", "CARTE"): what such a sum settles.
+    pub card: Vec<String>,
+    /// Statuses of rows that are card holds, not final yet: read apart
+    /// (`bank::Statement::pending`), never as movements.
+    pub pending: Vec<String>,
 }
 
 /// Money moved between your own accounts (`accounts`).

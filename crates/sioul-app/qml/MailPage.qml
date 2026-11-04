@@ -1970,6 +1970,12 @@ Item {
                     text: page.sioul.text("ui-move-to")
                     onTriggered: page.askMove(page.selected[rowMenuForm.target.key] ? page.selectedKeys : [rowMenuForm.target.key])
                 }
+                MenuItem {
+                    visible: !rowMenuForm.remote
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("payment-from")
+                    onTriggered: page.window.askPayment("mail", rowMenuForm.target.key, rowMenuForm.target.trust_level)
+                }
                 MenuSeparator {}
                 AddMenu {
                     enabled: !rowMenuForm.remote

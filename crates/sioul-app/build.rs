@@ -97,6 +97,7 @@ fn main() {
         "qml/BudgetDetail.qml",
         "qml/BalanceChart.qml",
         "qml/MovementDialog.qml",
+        "qml/PaymentForm.qml",
         "qml/ContactMap.qml",
         "qml/SitesPage.qml",
         "qml/DoneDialog.qml",

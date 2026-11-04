@@ -19,7 +19,8 @@
 //! passed while no export of its account can tell stays planned: the budgets
 //! count it as done, as they always did, but Sioul does not claim it.
 
-use crate::accounts::{self, Other, Place as Placed};
+use crate::accounts::{self, Place as Placed};
+use crate::matching::Evidence;
 use crate::areas::Area;
 use crate::bank::{self, Bank};
 use crate::budget::{Ledger, Line, Preset};
@@ -254,8 +255,22 @@ pub struct Movement {
     /// What else it is tied to: tasks, events, projects, notes.
     pub links: Vec<String>,
     pub state: State,
+    /// The movements it is probably together with, by their steadiest keys:
+    /// an order charged in parts, instalments, two invoices paid at once, a
+    /// deferred-debit card's sum and the card payments it settles.
+    pub together: Vec<String>,
     /// It waits for a line of the bank: an occurrence, a planned line, a letter's bill.
     waits: bool,
+    /// How `accounts::place` placed its bank line, when it is one's own.
+    why: Option<accounts::Why>,
+    /// What the matching compares: its kind, its references, the names it goes by.
+    evidence: Option<crate::matching::Evidence>,
+    refs: Vec<String>,
+    names: Vec<String>,
+    /// The preset its bank line stands for or is spent from, as `accounts::place` said (a rule naming it, an estimate).
+    stands: Option<String>,
+    /// Its bank line's label, as the bank wrote it: the payee's name for its next movements.
+    bank_label: Option<String>,
 }
 
 impl Movement {
@@ -264,9 +279,22 @@ impl Movement {
         self.id == key || self.sources.iter().any(|s| s.key == key)
     }
 
-    /// Its address: `sioul:movement/<id>`.
+    /// The key that whatever is kept names it by (a `[[move]]`, a `[[link]]`'s
+    /// movement, an address), the steadiest of its sources': its bank line's;
+    /// else a line's with an id; else its occurrence; else its letter, its
+    /// invoice, its mail; else a card hold's. A line written by hand without
+    /// an id is named by a digest of what it holds, which changes as soon as
+    /// the line is edited: only when nothing else names it. A contract names
+    /// every occurrence of its preset, never one movement. Its `id` stays the
+    /// first in `Kind`'s order, for one reading; what is kept outlives it.
+    pub fn steady_key(&self) -> &str {
+        steadiest(self.sources.iter()).unwrap_or(self.id.as_str())
+    }
+
+    /// Its address: `sioul:movement/<its steadiest key>` (`steady_key`); one
+    /// naming any other of its sources finds it too (`Movements::find`).
     pub fn address(&self) -> String {
-        crate::links::movement_uri(&self.id)
+        crate::links::movement_uri(self.steady_key())
     }
 
     fn has_kind(&self, kind: Kind) -> bool {
@@ -290,6 +318,24 @@ impl Movement {
             self.id = first.key.clone();
         }
     }
+}
+
+/// The steadiest key among `sources` (`Movement::steady_key`'s order): a bank
+/// line's, a line's with an id, an occurrence's, a letter's, an invoice's, a
+/// mail's, a hold's, a digest's last; a contract's never.
+pub(crate) fn steadiest<'a>(sources: impl Iterator<Item = &'a Source>) -> Option<&'a str> {
+    let rank = |s: &Source| match s.kind {
+        Kind::Bank => 0,
+        Kind::Line if !s.key.starts_with("line:~") => 1,
+        Kind::Preset => 2,
+        Kind::Letter => 3,
+        Kind::Invoice => 4,
+        Kind::Mail => 5,
+        Kind::Hold => 6,
+        Kind::Line => 7,
+        Kind::Contract => 8,
+    };
+    sources.filter(|s| s.kind != Kind::Contract).min_by(|a, b| (rank(a), &a.key).cmp(&(rank(b), &b.key))).map(|s| s.key.as_str())
 }
 
 /// The movements of a notes folder.
@@ -327,16 +373,39 @@ pub struct Store {
     pub holds: Vec<Hold>,
     #[serde(default, rename = "name")]
     pub names: Vec<Name>,
+    #[serde(default, rename = "decided")]
+    pub decided: Vec<Decided>,
+}
+
+/// What you answered, once, after moving a movement: whether this payee's
+/// next movements go to that budget too. Named by the payee, so it is never
+/// asked again; a yes is also a rule of the budget file (`[[split]]`), which
+/// every version reads, and which the bank's rules list shows.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Decided {
+    /// The payee's name, as the matching compares it (`matching::tokens`, joined by spaces).
+    pub payee: String,
+    pub budget: String,
+    /// Yes: its next movements go there too.
+    #[serde(default)]
+    pub next: bool,
 }
 
 /// A source joined to a movement, by the matching or by your hand; one per
 /// source, named by it.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Link {
-    /// The movement, by its id or any of its sources' keys.
+    /// The movement, by its steadiest key (`Movement::steady_key`), or any of its sources' keys.
     pub movement: String,
     /// The source joined, by its key ("mid:…", "sioul:letter/…", "bank:…").
     pub source: String,
+    /// The other movements it is probably together with, by their steadiest
+    /// keys: the charges of an order in parts, a purchase's instalments.
+    #[serde(default)]
+    pub together: Vec<String>,
+    /// A purchase paid in instalments: how many, as its message says.
+    #[serde(default)]
+    pub instalments: Option<u32>,
     /// "sure", "probable" (said "probably the same as …") or "hand".
     #[serde(default)]
     pub how: String,
@@ -576,6 +645,18 @@ impl Edit {
     pub fn name(&mut self, bank: &str, known: &str) {
         self.put("name", &[("bank", bank)], vec![("known", Some(value(known)))]);
     }
+
+    /// The other movements a joined source is probably together with, and a
+    /// purchase's instalments, on its link (`link` first).
+    pub fn link_together(&mut self, source: &str, others: &[String], instalments: Option<u32>) {
+        let others = (!others.is_empty()).then(|| value(others.iter().map(String::as_str).collect::<toml_edit::Array>()));
+        self.put("link", &[("source", source)], vec![("together", others), ("instalments", instalments.map(|n| value(i64::from(n))))]);
+    }
+
+    /// Your answer, once, on a payee's next movements.
+    pub fn decide(&mut self, payee: &str, budget: &str, next: bool) {
+        self.put("decided", &[("payee", payee)], vec![("budget", Some(value(budget))), ("next", Some(value(next)))]);
+    }
 }
 
 /// Two keys in their order: a pair named once whichever comes first.
@@ -695,18 +776,50 @@ fn stood_for(ledger: &Ledger, line: &Line) -> Option<usize> {
     (!preset.occurrences(start, end).is_empty()).then_some(index)
 }
 
+/// A reference as the matching compares it (`matching::references`): its kind, its letters and digits.
+fn reference(kind: &str, value: &str) -> Option<String> {
+    let compact: String = value.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_uppercase();
+    (compact.len() >= 4).then(|| format!("{kind}:{compact}"))
+}
+
+/// A movement with nothing but what is given; the rest is filled by its source.
+fn bare(id: String, sum: Sum, day: Date, label: String, place: Place, sources: Vec<Source>, state: State) -> Movement {
+    let way = way_of(sum.amount());
+    Movement { id, account: None, way, sum, currency: "EUR".into(), day, expected: None, label, place, area: Area::default(), sources, links: Vec::new(), state, together: Vec::new(), waits: false, why: None, evidence: None, refs: Vec::new(), names: Vec::new(), stands: None, bank_label: None }
+}
+
+/// Whether a movement waits for the bank's line, for the matching: what was
+/// planned, written or announced, with no line of the bank yet.
+fn expects(m: &Movement) -> bool {
+    m.way != Way::Between && m.evidence.is_some() && !m.has_kind(Kind::Bank) && !m.has_kind(Kind::Hold) && (m.has_kind(Kind::Preset) || m.has_kind(Kind::Line) || m.has_kind(Kind::Letter))
+}
+
+/// Whether a movement is a line of the bank alone, for the matching to join.
+fn is_fact(m: &Movement) -> bool {
+    m.way != Way::Between && m.sources.len() == 1 && matches!(m.sources[0].kind, Kind::Bank | Kind::Hold)
+}
+
+/// Whether a label is a card payment's, by its first words (`BankWords::card`).
+fn card_like(words: &crate::words::BankWords, label: &str) -> bool {
+    let folded: String = crate::text::fold(label).into_iter().collect();
+    words.card.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && (folded == w || folded.starts_with(&format!("{w} "))))
+}
+
 /// Every movement whose day falls between `from` and `to`, in day order
 /// (see the module's notes): occurrences of the fixed presets and the lines
 /// of the file; the bank's lines and the holds, placed as `accounts::place`
-/// places them, each joining the line or the occurrence it is the same
-/// payment as; transfers as one movement with two sides; lines of accounts
-/// not declared only confirming occurrences, as the watch does; letters with
-/// an amount and a date; then the store's links, "Not the same" and
-/// placements; then what was not seen.
+/// places them, each a movement of its own; transfers as one movement with
+/// two sides; letters with an amount and a date; the store's links; then
+/// the matching (`matching`), which joins each line of the bank to what was
+/// planned or announced, lines of accounts not declared only confirming it,
+/// as the watch does; then what is probably together; the store's
+/// placements; what was not seen.
 pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement> {
     let ledger = input.ledger;
     let store = input.store;
-    let filler = &input.words.bank.filler;
+    let bank_words = &input.words.bank;
+    let filler = &bank_words.filler;
+    let leads = &input.words.payments.references;
     let apart_pairs: BTreeSet<(String, String)> = store.apart.iter().map(|a| ordered(&a.a, &a.b)).map(|(a, b)| (a.to_string(), b.to_string())).collect();
     let apart = |a: &str, b: &str| {
         let (a, b) = ordered(a, b);
@@ -716,35 +829,35 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
     let apart_from = |key: &str, m: &Movement| m.sources.iter().any(|s| apart(key, &s.key));
     let apart_both = |a: &Movement, b: &Movement| a.sources.iter().any(|s| apart_from(&s.key, b));
     let lines = line_keys(ledger);
-    // The account that fills a budget first carries it (`accounts::carried_by`).
+    // The account that fills a budget first carries it (`accounts::carried_by`);
+    // any account that fills it may pay it.
     let carrier = |budget: &str| ledger.bank_accounts.iter().find(|a| a.fills.iter().any(|b| b == budget)).map(|a| a.id.clone());
+    let payers = |budget: &str| -> Vec<String> { ledger.bank_accounts.iter().filter(|a| a.fills.iter().any(|b| b == budget)).map(|a| a.id.clone()).collect() };
     let (lo, hi) = (shifted(from, -EDGE_DAYS), shifted(to, EDGE_DAYS));
     let mut out: Vec<Movement> = Vec::new();
 
-    // 1. Each fixed preset's occurrences, with the contracts that name it.
+    // 1. Each fixed preset's occurrences, with the contracts that name it:
+    // their names and their references (your number with them) too.
     for (index, preset) in ledger.presets.iter().enumerate().filter(|(_, p)| !p.estimate) {
         let key = preset_key(ledger, index);
-        let contracts: Vec<Source> = input.contracts.iter().filter(|c| !c.preset.is_empty() && preset.id.as_deref() == Some(c.preset.as_str())).map(|c| Source::new(Kind::Contract, crate::links::contract_uri(&c.id), crate::links::contract_uri(&c.id))).collect();
+        let named: Vec<&Contract> = input.contracts.iter().filter(|c| !c.preset.is_empty() && preset.id.as_deref() == Some(c.preset.as_str())).collect();
+        let contracts: Vec<Source> = named.iter().map(|c| Source::new(Kind::Contract, crate::links::contract_uri(&c.id), crate::links::contract_uri(&c.id))).collect();
+        let mut names = vec![preset.label.clone()];
+        names.extend(named.iter().flat_map(|c| [c.party.clone(), c.title.clone()]).filter(|n| !n.trim().is_empty()));
+        let refs: Vec<String> = named.iter().filter_map(|c| reference("ref", &c.reference)).collect();
+        let evidence = if preset.amount.is_negative() { Evidence::Debit } else { Evidence::Transfer };
         for day in preset.occurrences(lo, hi) {
             let id = occurrence_key(&key, day);
             let mut sources = vec![Source::new(Kind::Preset, id.clone(), String::new())];
             sources.extend(contracts.iter().cloned());
-            out.push(Movement {
-                id,
-                account: carrier(&preset.budget),
-                way: way_of(preset.amount),
-                sum: preset_sum(preset),
-                currency: "EUR".into(),
-                day,
-                expected: None,
-                label: preset.label.clone(),
-                place: Place::Budget(preset.budget.clone()),
-                area: Area::default(),
-                sources,
-                links: preset.links.clone(),
-                state: State::Planned,
-                waits: true,
-            });
+            let mut m = bare(id, preset_sum(preset), day, preset.label.clone(), Place::Budget(preset.budget.clone()), sources, State::Planned);
+            m.account = carrier(&preset.budget);
+            m.links = preset.links.clone();
+            m.waits = true;
+            m.evidence = Some(evidence);
+            m.refs = refs.clone();
+            m.names = names.clone();
+            out.push(m);
         }
     }
 
@@ -756,10 +869,22 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         }
         let key = lines[place].clone();
         let (docs, links) = documents(&line.links);
-        let state = match (line.planned, docs.iter().any(|d| d.kind.announces())) {
+        let told = docs.iter().any(|d| d.kind.announces());
+        let state = match (line.planned, told) {
             (_, true) => State::Announced,
             (true, false) => State::Planned,
             (false, false) => State::Done,
+        };
+        let invoice = docs.iter().any(|d| d.kind == Kind::Invoice);
+        let refs: Vec<String> = docs.iter().filter(|d| d.kind == Kind::Invoice).filter_map(|d| reference("ref", &crate::links::id_of(&d.key))).collect();
+        // What it is, for the matching: an invoice you issued; a payment a
+        // message told (a receipt); else a payment or a transfer by hand, its amount exact.
+        let evidence = if invoice {
+            Evidence::Invoice
+        } else if !line.planned && told {
+            Evidence::Card
+        } else {
+            Evidence::Transfer
         };
         let source = Source::new(Kind::Line, key.clone(), crate::links::budget_uri(&line.budget, place));
         if let Some(index) = stood_for(ledger, line) {
@@ -779,59 +904,48 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
                 m.sources.push(source);
                 m.sources.extend(docs);
                 m.links.extend(links);
-                // A receipt says it was paid: only what is still planned waits for the bank's line.
+                m.names.push(line.label.clone());
+                m.refs.extend(refs);
+                // A receipt says it was paid, and is matched as one; only what
+                // is still planned waits for the bank's line.
+                if !line.planned && told {
+                    m.evidence = Some(Evidence::Card);
+                }
                 m.waits = line.planned;
                 m.anchor();
                 continue;
             }
         }
-        out.push(Movement {
-            id: key,
-            account: carrier(&line.budget),
-            way: way_of(line.amount),
-            sum: Sum::Exact(line.amount),
-            currency: "EUR".into(),
-            day: line.date,
-            expected: None,
-            label: line.label.clone(),
-            place: match &line.reserve {
-                Some(reserve) => Place::Reserve { reserve: reserve.clone(), budget: line.budget.clone() },
-                None => Place::Budget(line.budget.clone()),
-            },
-            area: Area::default(),
-            sources: std::iter::once(source).chain(docs).collect(),
-            links,
-            state,
-            // Announced for a day to come (a bill), or planned: the bank's line is awaited.
-            waits: line.planned,
-        });
+        let place = match &line.reserve {
+            Some(reserve) => Place::Reserve { reserve: reserve.clone(), budget: line.budget.clone() },
+            None => Place::Budget(line.budget.clone()),
+        };
+        let mut m = bare(key, Sum::Exact(line.amount), line.date, line.label.clone(), place, std::iter::once(source).chain(docs).collect(), state);
+        m.account = carrier(&line.budget);
+        m.links = links;
+        // Planned, or announced for a day to come (a bill): the bank's line is awaited.
+        m.waits = line.planned;
+        m.evidence = Some(evidence);
+        m.refs = refs;
+        m.names = vec![line.label.clone()];
+        out.push(m);
     }
 
-    // 3. The bank's lines and the holds of the declared accounts, placed. Each
-    // source's movement, and each preset's occurrences, found by their keys.
-    let mut index: HashMap<String, usize> = HashMap::new();
-    let mut by_preset: HashMap<String, Vec<usize>> = HashMap::new();
-    for (at, m) in out.iter().enumerate() {
-        for s in &m.sources {
-            index.insert(s.key.clone(), at);
-            if let Some((preset, _)) = s.key.strip_prefix("preset:").and_then(|rest| rest.rsplit_once('/')) {
-                by_preset.entry(preset.to_string()).or_default().push(at);
-            }
-        }
-    }
-    let holds = live_holds(store, input.bank, today);
+    // 3. The bank's lines and the holds of the declared accounts, each placed
+    // (by your hand, a transfer, a rule, the account's first budget: never by
+    // the same payment, which the matching says below) and a movement of its own.
+    let holds = live_holds(store, input.bank, bank_words, today);
     let mut bank = input.bank.clone();
     bank.movements.extend(holds.iter().map(|h| bank::Movement { account: h.account.clone(), date: h.date, amount: h.amount, label: h.label.clone(), id: h.id.clone() }));
     let is_hold = |account: &str, id: &str| holds.iter().any(|h| h.id == id && accounts::account_of(ledger, &h.account).is_some_and(|a| a.id == account));
     let key_of = |account: &str, id: &str| if is_hold(account, id) { hold_key(account, id) } else { bank_key(account, id) };
-    let placed = accounts::place_with(ledger, &bank, input.words, &|account, id, other| {
-        let key = key_of(account, id);
-        match other {
-            Other::Line(i) => lines.get(i).is_some_and(|line| apart(&key, line)),
-            Other::Preset(i, day) => apart(&key, &occurrence_key(&preset_key(ledger, i), day)),
-        }
-    });
-    let mut used: BTreeSet<(String, String)> = BTreeSet::new();
+    // Everything "not the same" for `place`: the matching alone tells the same payment.
+    let placed = accounts::place_with(ledger, &bank, input.words, &|_, _, _| true);
+    // The name a correction taught for a payee's bank name (`[[name]]`).
+    let taught = |label: &str| {
+        let payee = crate::matching::tokens(bank_words, label).join(" ");
+        store.names.iter().find(|n| !payee.is_empty() && n.bank == payee).map(|n| n.known.clone())
+    };
     for p in &placed {
         // Outside the days asked, it joins nothing asked of.
         if p.movement.date < lo || p.movement.date > hi {
@@ -839,30 +953,7 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         }
         let hold = is_hold(&p.account, &p.movement.id);
         let key = key_of(&p.account, &p.movement.id);
-        used.insert((p.movement.account.clone(), p.movement.id.clone()));
         let source = Source::new(if hold { Kind::Hold } else { Kind::Bank }, key.clone(), String::new());
-        // The line, or the occurrence, it is the same payment as.
-        let target = match &p.place {
-            Placed::Known(i) => lines.get(*i).and_then(|line| index.get(line).copied()),
-            Placed::Budgets(shares) if shares.len() == 1 => shares[0].preset.as_deref().and_then(|preset| {
-                let fixed = (0..ledger.presets.len()).find(|&i| !ledger.presets[i].estimate && preset_key(ledger, i) == preset)?;
-                let (start, end) = ledger.presets[fixed].every.bounds(p.movement.date);
-                let free = |at: usize| !out[at].has_kind(Kind::Bank) && !apart_from(&key, &out[at]);
-                match p.occurrence {
-                    Some(day) => index.get(&occurrence_key(preset, day)).copied().filter(|&at| free(at)),
-                    None => by_preset.get(preset)?.iter().copied().filter(|&at| free(at) && out[at].day >= start && out[at].day <= end).min_by_key(|&at| days_apart(out[at].day, p.movement.date)),
-                }
-            }),
-            _ => None,
-        };
-        if let Some(at) = target {
-            let m = &mut out[at];
-            m.settle(&p.account, p.movement.date, p.movement.amount, hold);
-            m.sources.push(source);
-            m.anchor();
-            index.insert(key, at);
-            continue;
-        }
         let (way, place) = match &p.place {
             Placed::Budgets(shares) if shares.len() == 1 => (way_of(p.movement.amount), Place::Budget(shares[0].budget.clone())),
             Placed::Budgets(shares) => (way_of(p.movement.amount), Place::Parts(shares.iter().map(|s| (s.budget.clone(), s.amount)).collect())),
@@ -871,71 +962,26 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
             Placed::Transfer(other) => (Way::Between, Place::Transfer { from: other.clone(), to: p.account.clone() }),
             Placed::Known(_) | Placed::Nowhere => (way_of(p.movement.amount), Place::Nowhere),
         };
-        index.insert(key.clone(), out.len());
-        out.push(Movement {
-            id: key,
-            account: Some(p.account.clone()),
-            way,
-            sum: if hold { Sum::About(p.movement.amount) } else { Sum::Exact(p.movement.amount) },
-            currency: "EUR".into(),
-            day: p.movement.date,
-            expected: None,
-            label: p.movement.label.clone(),
-            place,
-            area: Area::default(),
-            sources: vec![source],
-            links: Vec::new(),
-            state: if hold { State::NotFinal } else { State::Done },
-            waits: false,
-        });
+        let sum = if hold { Sum::About(p.movement.amount) } else { Sum::Exact(p.movement.amount) };
+        let mut m = bare(key, sum, p.movement.date, p.movement.label.clone(), place, vec![source], if hold { State::NotFinal } else { State::Done });
+        m.way = way;
+        m.account = Some(p.account.clone());
+        m.why = Some(p.why);
+        m.stands = match &p.place {
+            Placed::Budgets(shares) if shares.len() == 1 => shares[0].preset.clone(),
+            _ => None,
+        };
+        m.refs = crate::matching::label_references(leads, &p.movement.label);
+        m.names = std::iter::once(p.movement.label.clone()).chain(taught(&p.movement.label)).collect();
+        m.bank_label = Some(p.movement.label.clone());
+        out.push(m);
     }
-    drop(index);
     pair_transfers(&mut out);
+    // The lines of accounts not declared keep no books: they only confirm
+    // what was planned, as the watch reads them.
+    let confirming: Vec<bank::Movement> = input.bank.movements.iter().filter(|b| accounts::account_of(ledger, &b.account).is_none() && b.date >= lo && b.date <= hi).cloned().collect();
 
-    // 4. Occurrences and planned lines still waiting: a line of an account not
-    // declared (which keeps no books: the watch's own test), or a declared
-    // one's that a rule or the first budget put in the same budget for
-    // nothing more precise, tells they passed.
-    let mut order: Vec<usize> = (0..out.len()).filter(|&i| out[i].waits && (out[i].has_kind(Kind::Preset) || out[i].has_kind(Kind::Line)) && !out[i].has_kind(Kind::Bank) && !out[i].has_kind(Kind::Hold)).collect();
-    order.sort_by_key(|&i| out[i].day);
-    let mut absorbed: BTreeSet<usize> = BTreeSet::new();
-    let undeclared: Vec<&bank::Movement> = input.bank.movements.iter().filter(|b| accounts::account_of(ledger, &b.account).is_none()).collect();
-    let why_of: HashMap<String, (accounts::Why, &bank::Movement)> = placed.iter().map(|p| (bank_key(&p.account, &p.movement.id), (p.why, &p.movement))).collect();
-    for i in order {
-        let (label, amount, day, budget) = (bank::words(filler, &out[i].label), out[i].sum.amount(), out[i].day, out[i].place.budgets().first().map(|b| b.to_string()));
-        let undeclared = undeclared.iter().filter(|b| !used.contains(&(b.account.clone(), b.id.clone()))).filter(|b| bank::matches(filler, b, &label, amount, day)).filter(|b| !apart_from(&bank_key(&b.account, &b.id), &out[i])).min_by_key(|b| days_apart(b.date, day)).map(|b| (*b).clone());
-        if let Some(b) = undeclared {
-            used.insert((b.account.clone(), b.id.clone()));
-            let m = &mut out[i];
-            m.settle(&b.account, b.date, b.amount, false);
-            m.sources.push(Source::new(Kind::Bank, bank_key(&b.account, &b.id), String::new()));
-            m.anchor();
-            continue;
-        }
-        let (near_from, near_to) = (shifted(day, -EARLIER_DAYS), shifted(day, LATER_DAYS));
-        let declared = (0..out.len())
-            .filter(|&j| out[j].day >= near_from && out[j].day <= near_to && j != i && !absorbed.contains(&j) && out[j].sources.len() == 1 && out[j].sources[0].kind == Kind::Bank)
-            .filter(|&j| budget.as_deref().is_some_and(|b| out[j].place == Place::Budget(b.to_string())))
-            .filter(|&j| why_of.get(&out[j].id).is_some_and(|(why, b)| matches!(why, accounts::Why::Rule | accounts::Why::First) && bank::matches(filler, b, &label, amount, day)))
-            .filter(|&j| !apart_both(&out[j], &out[i]))
-            .min_by_key(|&j| days_apart(out[j].day, day));
-        if let Some(j) = declared {
-            absorbed.insert(j);
-            let line = out[j].clone();
-            let m = &mut out[i];
-            m.settle(line.account.as_deref().unwrap_or_default(), line.day, line.sum.amount(), false);
-            m.sources.extend(line.sources);
-            m.anchor();
-        }
-    }
-    let mut index = 0;
-    out.retain(|_| {
-        let keep = !absorbed.contains(&index);
-        index += 1;
-        keep
-    });
-
-    // 5. Letters with an amount and a date asked: a bill announced, joined to
+    // 4. Letters with an amount and a date asked: a bill announced, joined to
     // the planned movement it announces, else proposed in no budget.
     for letter in input.letters.iter().filter(|l| l.status != "done") {
         let (Some(amount), Some(day)) = (letter.reading.amount, letter.reading.deadline) else { continue };
@@ -953,41 +999,36 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
             Some(at) => {
                 let m = &mut out[at];
                 m.sources.push(source);
+                m.names.push(letter.reading.sender.clone());
+                m.refs.extend(reference("ref", &letter.reading.reference));
                 if m.state == State::Planned {
                     m.state = State::Announced;
                 }
             }
-            None => out.push(Movement {
-                id: key,
-                account: None,
-                way: Way::Out,
-                sum: Sum::Exact(amount),
-                currency: "EUR".into(),
-                day,
-                expected: None,
-                label: letter.reading.sender.clone(),
-                place: Place::Unplaced,
-                area: Area::default(),
-                sources: vec![source],
-                links: Vec::new(),
-                state: State::Announced,
-                waits: true,
-            }),
+            None => {
+                let mut m = bare(key, Sum::Exact(amount), day, letter.reading.sender.clone(), Place::Unplaced, vec![source], State::Announced);
+                m.waits = true;
+                m.evidence = Some(Evidence::Bill);
+                m.names = vec![letter.reading.sender.clone()];
+                m.refs = reference("ref", &letter.reading.reference).into_iter().collect();
+                out.push(m);
+            }
         }
     }
 
-    // 6. The store: sources joined, then placements by your hand.
+    // 5. The store's links: what the matching or your hand joined before
+    // holds, whatever came since; an automatic link counts until you correct it.
     for link in &store.links {
         let Some(target) = out.iter().position(|m| m.has(&link.movement)) else { continue };
         let probable = link.how == "probable";
         if let Some(own) = out.iter().position(|m| m.has(&link.source)) {
-            if own != target && apart_both(&out[own], &out[target]) {
-                continue;
-            }
             if own == target {
                 if let Some(s) = out[target].sources.iter_mut().find(|s| s.key == link.source) {
                     s.probable = probable;
                 }
+                continue;
+            }
+            if apart_both(&out[own], &out[target]) {
                 continue;
             }
             // The source's own movement (a bank line's, a letter's) is the same one: merged.
@@ -1005,8 +1046,98 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         if source.kind.announces() && m.state == State::Planned {
             m.state = State::Announced;
         }
+        if !link.label.trim().is_empty() {
+            m.names.push(link.label.clone());
+        }
         m.sources.push(source);
     }
+
+    // 6. The matching: what waits, against the bank's lines no link joined;
+    // twice, the second time with the mandates' references the sure pairs
+    // of the first taught (a debit's RUM and ICS, month after month).
+    let mut used = vec![false; confirming.len()];
+    for pass in 0..2 {
+        if pass == 1 {
+            learn_mandates(&mut out);
+        }
+        let waiting: Vec<usize> = (0..out.len()).filter(|&i| expects(&out[i])).collect();
+        let facts: Vec<usize> = (0..out.len()).filter(|&j| is_fact(&out[j])).collect();
+        let others: Vec<usize> = (0..confirming.len()).filter(|&k| !used[k]).collect();
+        let side_of = |m: &Movement, expected: bool| crate::matching::Side {
+            way: m.way,
+            sum: m.sum,
+            currency: m.currency.clone(),
+            day: m.day,
+            evidence: m.evidence.unwrap_or(Evidence::Transfer),
+            accounts: if expected { m.place.budgets().first().map(|b| payers(b)).unwrap_or_default() } else { m.account.clone().into_iter().collect() },
+            names: m.names.iter().map(|n| crate::matching::tokens(bank_words, n)).collect(),
+            refs: m.refs.clone(),
+        };
+        let expected: Vec<crate::matching::Side> = waiting.iter().map(|&i| side_of(&out[i], true)).collect();
+        let mut sides: Vec<crate::matching::Side> = facts.iter().map(|&j| side_of(&out[j], false)).collect();
+        sides.extend(others.iter().map(|&k| {
+            let b = &confirming[k];
+            crate::matching::Side {
+                way: way_of(b.amount),
+                sum: Sum::Exact(b.amount),
+                currency: "EUR".into(),
+                day: b.date,
+                evidence: Evidence::Transfer,
+                accounts: Vec::new(),
+                names: vec![crate::matching::tokens(bank_words, &b.label)],
+                refs: crate::matching::label_references(leads, &b.label),
+            }
+        }));
+        let idf = crate::matching::Idf::of(expected.iter().chain(sides.iter()).flat_map(|s| s.names.iter()));
+        let allowed = |e: usize, f: usize| {
+            let m = &out[waiting[e]];
+            match facts.get(f) {
+                Some(&j) => !apart_both(m, &out[j]),
+                None => {
+                    let b = &confirming[others[f - facts.len()]];
+                    !apart_from(&bank_key(&b.account, &b.id), m)
+                }
+            }
+        };
+        let pairs = crate::matching::assign(&expected, &sides, &idf, &allowed);
+        let mut gone: BTreeSet<usize> = BTreeSet::new();
+        for pair in pairs {
+            let at = waiting[pair.expected];
+            let probable = pair.outcome == crate::matching::Outcome::Probable;
+            match facts.get(pair.fact) {
+                Some(&j) => {
+                    let fact = out[j].clone();
+                    join(&mut out[at], fact, probable);
+                    gone.insert(j);
+                }
+                None => {
+                    let k = others[pair.fact - facts.len()];
+                    used[k] = true;
+                    let b = &confirming[k];
+                    let m = &mut out[at];
+                    m.settle(&b.account, b.date, b.amount, false);
+                    m.bank_label = Some(b.label.clone());
+                    let mut source = Source::new(Kind::Bank, bank_key(&b.account, &b.id), String::new());
+                    source.probable = probable;
+                    m.sources.push(source);
+                    m.anchor();
+                }
+            }
+        }
+        let mut index = 0;
+        out.retain(|_| {
+            let keep = !gone.contains(&index);
+            index += 1;
+            keep
+        });
+    }
+
+    // 7. What is probably together: two invoices paid by one transfer, an
+    // order charged in parts, a deferred-debit card's sum and the card
+    // payments it settles, a purchase's instalments.
+    together(&mut out, input, &apart_both);
+
+    // 8. Placements by your hand, for what the files cannot place.
     for placed in &store.moves {
         let Some(m) = out.iter_mut().find(|m| m.has(&placed.movement)) else { continue };
         m.place = if placed.none {
@@ -1025,7 +1156,7 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         };
     }
 
-    // 7. Not seen: its window passed inside what its account's exports cover,
+    // 9. Not seen: its window passed inside what its account's exports cover,
     // with no line. With no account declared, every export tells, as the watch reads them.
     let mut of_account: HashMap<Option<String>, Vec<&bank::Movement>> = HashMap::new();
     for b in &input.bank.movements {
@@ -1053,7 +1184,7 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         }
     }
 
-    // 8. What each is for: its budgets', else its account's.
+    // 10. What each is for: its budgets', else its account's.
     let budget_area = |id: &str| ledger.budgets.iter().find(|b| b.id == id).map_or(Area::ADMIN, crate::budget::Budget::area_of);
     let account_area = |id: &str| ledger.bank_accounts.iter().find(|a| a.id == id).map(|a| a.fills.iter().fold(Area::default(), |area, b| area.with(budget_area(b)))).filter(|a| !a.is_empty()).unwrap_or(Area::ADMIN);
     for m in &mut out {
@@ -1068,21 +1199,181 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
     out
 }
 
+/// The mandates' references (RUM, ICS) a debit's bank line carried once
+/// joined to its preset's occurrence, given to the occurrences still waiting:
+/// the next month's line is then that preset's by its key, even when its
+/// amount changed.
+fn learn_mandates(out: &mut [Movement]) {
+    let preset_of = |m: &Movement| m.sources.iter().find(|s| s.kind == Kind::Preset).and_then(|s| s.key.strip_prefix("preset:")).and_then(|k| k.rsplit_once('/')).map(|(p, _)| p.to_string());
+    let mut learnt: HashMap<String, Vec<String>> = HashMap::new();
+    for m in out.iter().filter(|m| m.has_kind(Kind::Bank)) {
+        if let Some(preset) = preset_of(m) {
+            learnt.entry(preset).or_default().extend(m.refs.iter().filter(|r| r.starts_with("rum:") || r.starts_with("ics:")).cloned());
+        }
+    }
+    for m in out.iter_mut().filter(|m| expects(m)) {
+        if let Some(refs) = preset_of(m).and_then(|p| learnt.get(&p)) {
+            for r in refs {
+                if !m.refs.contains(r) {
+                    m.refs.push(r.clone());
+                }
+            }
+        }
+    }
+}
+
+/// What is probably together (`Movement::together`), on what the matching
+/// left: two or three invoices you issued that one client's transfer pays
+/// (one movement); an order a receipt told, charged in two or three parts
+/// (one movement, its lines of the bank together); a deferred-debit card's
+/// sum, settling the month's card payments (in no budget, beside them); a
+/// purchase's instalments a message told (each in its own month).
+fn together(out: &mut Vec<Movement>, input: &Input, apart_both: &dyn Fn(&Movement, &Movement) -> bool) {
+    let words = &input.words.bank;
+    let names = |m: &Movement| m.names.iter().map(|n| crate::matching::tokens(words, n)).collect::<Vec<_>>();
+    let all: Vec<Vec<String>> = out.iter().flat_map(names).collect();
+    let idf = crate::matching::Idf::of(all.iter());
+    let alike = |a: &Movement, b: &Movement| {
+        let (x, y) = (names(a), names(b));
+        x.iter().flat_map(|p| y.iter().map(move |q| (p, q))).map(|(p, q)| crate::matching::similarity(p, q, &idf)).fold(0.0, f64::max)
+    };
+    // Two or three invoices, one client's transfer.
+    let mut i = 0;
+    while i < out.len() {
+        if !(is_fact(&out[i]) && out[i].way == Way::In) {
+            i += 1;
+            continue;
+        }
+        let day = out[i].day;
+        let candidates: Vec<(usize, Money)> = (0..out.len())
+            .filter(|&e| expects(&out[e]) && out[e].evidence == Some(Evidence::Invoice) && out[e].way == Way::In && !apart_both(&out[e], &out[i]))
+            .filter(|&e| {
+                let (from, until) = Evidence::Invoice.window(out[e].day);
+                day >= from && day <= until
+            })
+            .map(|e| (e, out[e].sum.amount()))
+            .collect();
+        match crate::matching::adding_up(out[i].sum.amount(), &candidates, 0).filter(|set| set.iter().all(|&e| alike(&out[e], &out[i]) >= 0.3 || out[e].names.iter().all(|n| n.trim().is_empty()))) {
+            Some(mut set) => {
+                set.sort_unstable();
+                let fact = out.remove(i);
+                let shift = |at: usize| if at > i { at - 1 } else { at };
+                let first = shift(set[0]);
+                // The invoices become one movement, the transfer's.
+                for &e in set.iter().skip(1).rev() {
+                    let other = out.remove(shift(e));
+                    merge(&mut out[first], other, true);
+                }
+                join(&mut out[first], fact, true);
+                i = 0;
+            }
+            None => i += 1,
+        }
+    }
+    // An order in parts: a receipt's amount, two or three card payments to the same payee.
+    let mut e = 0;
+    while e < out.len() {
+        if !(expects(&out[e]) && out[e].evidence == Some(Evidence::Card)) {
+            e += 1;
+            continue;
+        }
+        let (from, until) = Evidence::Card.window(out[e].day);
+        let candidates: Vec<(usize, Money)> = (0..out.len())
+            .filter(|&j| is_fact(&out[j]) && out[j].way == out[e].way && out[j].day >= from && out[j].day <= until && !apart_both(&out[e], &out[j]) && alike(&out[e], &out[j]) >= 0.5)
+            .map(|j| (j, out[j].sum.amount()))
+            .collect();
+        match crate::matching::adding_up(out[e].sum.amount(), &candidates, 100) {
+            Some(mut set) => {
+                set.sort_unstable();
+                let total: Money = set.iter().map(|&j| out[j].sum.amount()).sum();
+                let first_day = set.iter().map(|&j| out[j].day).min().unwrap_or(out[e].day);
+                let mut facts = Vec::new();
+                for &j in set.iter().rev() {
+                    facts.push(out.remove(j));
+                }
+                let e_at = e - set.iter().filter(|&&j| j < e).count();
+                for fact in facts.into_iter().rev() {
+                    join(&mut out[e_at], fact, true);
+                }
+                out[e_at].sum = Sum::Exact(total);
+                out[e_at].day = first_day;
+                e = 0;
+            }
+            None => e += 1,
+        }
+    }
+    // A deferred-debit card's sum: the card payments of the month before its
+    // own, on its account, as such cards are debited at the start of the next month.
+    let deferred: Vec<usize> = (0..out.len()).filter(|&d| out[d].way == Way::Out && out[d].has_kind(Kind::Bank) && out[d].names.iter().any(|n| crate::words::holds_word(&words.deferred, &crate::words::folded(n)))).collect();
+    for d in deferred {
+        let (account, day, total) = (out[d].account.clone(), out[d].day, out[d].sum.amount());
+        let month = day.first_of_month().yesterday().unwrap_or(day);
+        let (first, last) = (month.first_of_month(), month.last_of_month());
+        let settled: Vec<usize> = (0..out.len())
+            .filter(|&c| c != d && out[c].way == Way::Out && out[c].has_kind(Kind::Bank) && out[c].account == account && out[c].day >= first && out[c].day <= last && out[c].names.iter().any(|n| card_like(words, n)) && out[c].together.is_empty())
+            .collect();
+        let sum: Money = settled.iter().map(|&c| out[c].sum.amount()).sum();
+        if settled.is_empty() || (sum.cents() - total.cents()).abs() > total.cents().abs() / 100 + 1 {
+            continue;
+        }
+        let keys: Vec<String> = settled.iter().map(|&c| out[c].steady_key().to_string()).collect();
+        let own = out[d].steady_key().to_string();
+        for &c in &settled {
+            out[c].together.push(own.clone());
+        }
+        let m = &mut out[d];
+        m.place = Place::Nowhere;
+        m.together = keys;
+        for s in m.sources.iter_mut().filter(|s| s.kind == Kind::Bank) {
+            s.probable = true;
+        }
+    }
+    // A purchase's instalments: the message joined to the first (its link
+    // says how many), the next ones each about its share, a month apart.
+    for link in input.store.links.iter().filter(|l| l.instalments.is_some_and(|n| n > 1)) {
+        let Some(first) = out.iter().position(|m| m.has(&link.source)) else { continue };
+        let n = i64::from(link.instalments.unwrap_or(1));
+        let share = link.amount.map_or(out[first].sum.amount(), |total| Money(-total.cents().abs() / n));
+        let (day, start) = (out[first].day, out[first].steady_key().to_string());
+        let mut found = Vec::new();
+        for k in 1..n {
+            let (from, until) = (shifted(day, 25 * k), shifted(day, 35 * k + 5));
+            let next = (0..out.len()).find(|&j| j != first && !found.contains(&j) && out[j].has_kind(Kind::Bank) && out[j].day >= from && out[j].day <= until && (out[j].sum.amount().cents() - share.cents()).abs() <= share.cents().abs() / 50 + 1 && alike(&out[first], &out[j]) >= 0.5);
+            if let Some(j) = next {
+                found.push(j);
+            }
+        }
+        let keys: Vec<String> = found.iter().map(|&j| out[j].steady_key().to_string()).collect();
+        for &j in &found {
+            if !out[j].together.contains(&start) {
+                out[j].together.push(start.clone());
+            }
+        }
+        for key in keys.into_iter().chain(link.together.iter().cloned()) {
+            if !out[first].together.contains(&key) && key != start {
+                out[first].together.push(key);
+            }
+        }
+    }
+}
+
 /// The holds still holding: listed by the store, not yet posted (a line of
 /// the bank with the same id, or on the same account within two weeks with
-/// a word of its label or nearly its amount), and younger than two weeks.
-fn live_holds(store: &Store, bank: &Bank, today: Date) -> Vec<Hold> {
+/// the same payee, by the first word of its name as the matching reads it,
+/// or nearly its amount), and younger than two weeks.
+fn live_holds(store: &Store, bank: &Bank, words: &crate::words::BankWords, today: Date) -> Vec<Hold> {
+    let payee = |label: &str| crate::matching::tokens(words, label).into_iter().next();
     store
         .holds
         .iter()
         .filter(|h| days_apart(h.date, today) <= HOLD_DAYS || h.date > today)
         .filter(|h| {
-            let words = bank::words(&[], &h.label);
+            let held = payee(&h.label);
             !bank.movements.iter().any(|b| {
                 let same_account = b.account == h.account;
                 let posted_later = b.date >= shifted(h.date, -1) && b.date <= shifted(h.date, HOLD_DAYS);
                 let near = (b.amount.cents() - h.amount.cents()).abs() <= h.amount.cents().abs() / 5;
-                let named = bank::words(&[], &b.label).iter().any(|w| words.contains(w));
+                let named = held.is_some() && payee(&b.label) == held;
                 (same_account && b.id == h.id) || (same_account && posted_later && b.amount.is_negative() == h.amount.is_negative() && (named || near))
             })
         })
@@ -1112,6 +1403,7 @@ fn pair_transfers(out: &mut Vec<Movement>) {
             m.sum = leaving;
             m.account = Some(from.clone());
             m.sources.extend(other.sources);
+            m.names.extend(other.names);
             m.anchor();
             continue;
         }
@@ -1119,17 +1411,39 @@ fn pair_transfers(out: &mut Vec<Movement>) {
     }
 }
 
+/// The bank's line `fact` is the same payment as `into`: its day, amount,
+/// account and state win; its placement wins when it is yours or a rule's
+/// (`[[assign]]`, `[[split]]`), never the account's first budget alone.
+fn join(into: &mut Movement, fact: Movement, probable: bool) {
+    if into.day != fact.day {
+        into.expected = Some(into.expected.unwrap_or(into.day));
+    }
+    into.day = fact.day;
+    into.sum = fact.sum;
+    into.account = fact.account.clone().or(into.account.take());
+    into.state = fact.state;
+    if matches!(fact.why, Some(accounts::Why::Hand | accounts::Why::Rule)) {
+        into.place = fact.place.clone();
+    }
+    into.why = fact.why;
+    into.bank_label = fact.bank_label.clone().or(into.bank_label.take());
+    into.sources.extend(fact.sources.into_iter().map(|mut s| {
+        s.probable = probable;
+        s
+    }));
+    into.refs.extend(fact.refs);
+    into.names.extend(fact.names);
+    into.together.extend(fact.together);
+    into.anchor();
+}
+
 /// `other` is the same payment as `into`: its sources join; the bank's facts win.
 fn merge(into: &mut Movement, other: Movement, probable: bool) {
-    let settled = other.has_kind(Kind::Bank) || other.has_kind(Kind::Hold);
-    if settled && !into.has_kind(Kind::Bank) {
-        if into.day != other.day {
-            into.expected = Some(into.expected.unwrap_or(into.day));
+    if other.has_kind(Kind::Bank) || other.has_kind(Kind::Hold) {
+        if !into.has_kind(Kind::Bank) {
+            join(into, other, probable);
+            return;
         }
-        into.day = other.day;
-        into.sum = other.sum;
-        into.account = other.account.clone().or(into.account.take());
-        into.state = other.state;
     } else if other.state == State::Announced && into.state == State::Planned {
         into.state = State::Announced;
     }
@@ -1138,6 +1452,9 @@ fn merge(into: &mut Movement, other: Movement, probable: bool) {
         s
     }));
     into.links.extend(other.links);
+    into.refs.extend(other.refs);
+    into.names.extend(other.names);
+    into.together.extend(other.together);
     into.anchor();
 }
 
@@ -1153,6 +1470,151 @@ pub fn load(root: &Path, words: &crate::words::Words, from: Date, to: Date, toda
     let input = Input { ledger: &ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words };
     Movements { list: derive(&input, from, to, today) }
 }
+
+// ---------------------------------------------------------------- counting
+
+/// The budget file with each money movement counted once, for the budgets
+/// to count (`budget::Ledger::status`), in memory; the file is not written.
+/// The file's lines and presets count as they always did; then, for each
+/// movement a declared account's line tells:
+/// - with a line of the file (a receipt, a planned bill, two invoices one
+///   transfer paid): those lines count, done now, and what the bank's amount
+///   differs from them (a tip) on a line beside them;
+/// - else its own line, on its day, in its budget or its parts, standing for
+///   the preset whose occurrence it is (the real amount in place of the
+///   planned one), or spent from an estimate;
+/// - transfers between your accounts, and what is in no budget, count nowhere.
+///
+/// A movement placed by your hand where the files cannot say it (`[[move]]`)
+/// counts where you placed it: its occurrence's planned amount leaves its
+/// preset's budget for the one you chose. Lines of accounts not declared keep
+/// no books (they only confirm), as before. The lines added carry the bank
+/// line's key in their links, so a budget's page lists them without "Delete";
+/// the file's own lines keep their places, so their addresses hold.
+pub fn counted(ledger: &Ledger, movements: &[Movement], today: Date) -> Ledger {
+    let mut out = ledger.clone();
+    for (i, preset) in out.presets.iter_mut().enumerate() {
+        if preset.id.is_none() {
+            preset.id = Some(format!("#{i}"));
+        }
+    }
+    let keys = line_keys(ledger);
+    let declared = |key: &str| key.strip_prefix("bank:").or_else(|| key.strip_prefix("hold:")).and_then(|rest| rest.rsplit_once('/')).is_some_and(|(account, _)| ledger.bank_accounts.iter().any(|a| a.id == account));
+    let preset_of = |key: &str| -> Option<(usize, Date)> {
+        let (preset, day) = key.strip_prefix("preset:")?.rsplit_once('/')?;
+        let index = (0..ledger.presets.len()).find(|&i| preset_key(ledger, i) == preset)?;
+        Some((index, day.parse().ok()?))
+    };
+    let line = |budget: &str, day: Date, amount: Money, label: &str, preset: Option<String>, reserve: Option<String>, link: &str, planned: bool| Line {
+        id: String::new(),
+        budget: budget.to_string(),
+        date: day,
+        amount,
+        label: label.to_string(),
+        planned,
+        reserve,
+        links: vec![link.to_string()],
+        preset,
+    };
+    for m in movements {
+        let bank = m.sources.iter().find(|s| matches!(s.kind, Kind::Bank | Kind::Hold) && declared(&s.key)).map(|s| s.key.clone());
+        let file: Vec<usize> = m.sources.iter().filter(|s| s.kind == Kind::Line).filter_map(|s| keys.iter().position(|k| *k == s.key)).collect();
+        let occurrence = m.sources.iter().find(|s| s.kind == Kind::Preset).and_then(|s| preset_of(&s.key));
+        // Where the files place it, and where it is.
+        let natural: Vec<String> = if file.is_empty() { occurrence.map(|(i, _)| vec![ledger.presets[i].budget.clone()]).unwrap_or_default() } else { file.iter().map(|&i| ledger.lines[i].budget.clone()).collect() };
+        let here: Vec<String> = m.place.budgets().iter().map(|b| b.to_string()).collect();
+        let moved = matches!(m.place, Place::Parts(_)) || (!here.is_empty() && here != natural);
+        // The occurrence, taken out of its preset's budget by a line of nothing standing for it.
+        let absorb = |out: &mut Ledger, link: &str| {
+            if let Some((i, day)) = occurrence {
+                let preset = &ledger.presets[i];
+                out.lines.push(line(&preset.budget, day, Money::ZERO, &preset.label, Some(preset_key(ledger, i)), None, link, false));
+            }
+        };
+        // Where it counts instead: its budget, or each part.
+        let shares = |amount: Money| -> Vec<(String, Money)> {
+            match &m.place {
+                Place::Budget(b) | Place::Reserve { budget: b, .. } => vec![(b.clone(), amount)],
+                Place::Parts(parts) => parts.clone(),
+                Place::Transfer { .. } | Place::Nowhere | Place::Unplaced => Vec::new(),
+            }
+        };
+        let reserve = match &m.place {
+            Place::Reserve { reserve, .. } => Some(reserve.clone()),
+            _ => None,
+        };
+        let Some(link) = bank else {
+            // Nothing of the bank: only a placement by your hand changes what the files count.
+            if !moved || file.len() > 1 {
+                continue;
+            }
+            let link = format!("move:{}", m.steady_key());
+            if let Some(&first) = file.first() {
+                let parts = shares(ledger.lines[first].amount);
+                if let Some((budget, amount)) = parts.first() {
+                    out.lines[first].budget = budget.clone();
+                    out.lines[first].amount = *amount;
+                }
+                for (budget, amount) in parts.iter().skip(1) {
+                    out.lines.push(line(budget, ledger.lines[first].date, *amount, &ledger.lines[first].label, None, None, &link, ledger.lines[first].planned));
+                }
+            } else if let Some((i, day)) = occurrence {
+                absorb(&mut out, &link);
+                let planned = m.state == State::Planned || m.state == State::Announced;
+                for (budget, amount) in shares(ledger.presets[i].amount) {
+                    out.lines.push(line(&budget, day, amount, &m.label, None, None, &link, planned && day > today));
+                }
+            }
+            continue;
+        };
+        if !file.is_empty() {
+            // The file's lines tell it, done now; the bank's own amount, where it differs, beside them.
+            for &i in &file {
+                out.lines[i].planned = false;
+            }
+            let told: Money = file.iter().map(|&i| ledger.lines[i].amount).sum();
+            let rest = m.sum.amount() - told;
+            if rest != Money::ZERO {
+                let budget = here.first().cloned().unwrap_or_else(|| ledger.lines[file[0]].budget.clone());
+                out.lines.push(line(&budget, m.day, rest, &m.label, None, None, &link, false));
+            }
+            if moved && file.len() == 1 && here.len() == 1 {
+                out.lines[file[0]].budget = here[0].clone();
+            }
+            continue;
+        }
+        // The bank's line alone counts: standing for its occurrence in that preset's budget, or spent from an estimate.
+        let stands = match occurrence {
+            Some((i, _)) if !moved => Some(preset_key(ledger, i)),
+            Some(_) => {
+                absorb(&mut out, &link);
+                None
+            }
+            None => m.stands.clone(),
+        };
+        for (budget, amount) in shares(m.sum.amount()) {
+            out.lines.push(line(&budget, m.day, amount, &m.label, stands.clone(), reserve.clone(), &link, false));
+        }
+    }
+    out
+}
+
+/// The budget file of a notes folder with its movements counted once
+/// (`counted`), from the first day anything in it tells (its lines, its
+/// budgets' starts, the bank's lines) to a year ahead.
+pub fn counted_in(root: &Path, ledger: &Ledger, words: &crate::words::Words, today: Date) -> Ledger {
+    let bank = Bank::load(root).unwrap_or_default();
+    let first = bank.movements.iter().map(|m| m.date).chain(ledger.lines.iter().map(|l| l.date)).chain(ledger.budgets.iter().filter_map(|b| b.since)).min().unwrap_or(today).min(today);
+    let (from, to) = (shifted(first.first_of_month(), -31), shifted(today, 400));
+    let contracts = crate::contracts::Contracts::load(root).map(|c| c.list).unwrap_or_default();
+    let letters = crate::letters::Letters::load(root).map(|l| l.list).unwrap_or_default();
+    let store = Store::load(root).unwrap_or_default();
+    let input = Input { ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words };
+    counted(ledger, &derive(&input, from, to, today), today)
+}
+
+#[path = "movements_acts.rs"]
+pub mod acts;
 
 #[cfg(test)]
 #[path = "movements_tests.rs"]
