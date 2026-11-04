@@ -165,6 +165,10 @@ ColumnLayout {
                         text: section.sioul.text("letters-event")
                         onClicked: section.problem = section.sioul.letterEvent(card.modelData.id)
                     }
+                    Button {
+                        text: section.sioul.text("payment-from")
+                        onClicked: section.window.askPayment("letter", card.modelData.id, "")
+                    }
                     PlainComboBox {
                         id: projectChoice
 

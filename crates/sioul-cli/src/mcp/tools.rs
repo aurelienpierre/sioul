@@ -455,7 +455,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "budgets",
         title: "Budgets",
-        description: "Budgets and reserves at a glance, as the Budgets page says them: each budget's period, whether it is on track, ahead or short at its pace, and its figures; each reserve's balance and how long it lasts; the bank accounts' last known balance, and what the money watch noticed (a payment missed or changed, a day an account may run short). Reading only: nothing moves money. Account numbers are masked.",
+        description: "The budgets as the Budgets page says them, in words: each bank account until its next income (whether it holds every payment, what is left for everyday spending, its lowest point, what covers a shortfall), each budget (what is paid, what is still to come, what is left, how its period should end), what is coming week by week, each reserve and how long it lasts. Reading only: nothing moves money. Account numbers are masked.",
         writes: false,
         idempotent: true,
         open_world: false,

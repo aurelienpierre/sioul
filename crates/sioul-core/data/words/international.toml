@@ -97,3 +97,8 @@ ringing = [
 [spam]
 # A provider's spam mark at the start of a subject, taken off before anything reads it.
 provider_tags = ["spam", "junk", "pourriel", "indésirable"]
+
+# Bank and payment-processor exports (bank.rs, matching.rs).
+[bank]
+# Payment processors whose name a card line puts before the shop's ("PAYPAL *SHOP"): taken off to compare names.
+processors = ["paypal", "sumup", "sq", "zettle", "izettle", "stripe", "payplug", "adyen", "mollie", "klarna", "alma", "oney", "lydia", "lyf", "viva"]

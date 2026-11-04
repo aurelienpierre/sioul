@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// A budget: its name, its period, the balance to reach by the end of each
-// period, and what it is for: work, your admin, leisure, any of them together
-// (docs/areas.md), which says the hours it is in view. Taking one out keeps
-// its lines in the file.
+// A budget: its name, its period and the day it starts (the 1st, or an
+// income's day: from one pay to the next), the balance to reach by the end
+// of each period, what it is for: work, your admin, leisure, any of them
+// together (docs/areas.md), which says the hours it is in view; for work, the
+// share of each income set aside for taxes and how often it is declared.
+// Taking one out keeps its lines in the file.
 
 pragma ComponentBehavior: Bound
 
@@ -29,6 +31,10 @@ SafeDialog {
     readonly property var periods: ["month", "year"]
     // "work", "admin+leisure"…; "" when none is ticked: your admin.
     property string area: ""
+    // The incomes a period may start with: [{id, title}] (`view::incomes`), for a new budget the page's.
+    property var incomes: []
+    // The first choice is the calendar month.
+    readonly property var startChoices: [{ id: "", title: dialog.sioul.text("budget-starts-first") }].concat(dialog.incomes)
 
     // Saved: the budget's id.
     signal saved(string id)
@@ -44,6 +50,11 @@ SafeDialog {
         period.currentIndex = shown ? Math.max(0, dialog.periods.indexOf(shown.period_kind)) : 0
         target.text = shown && shown.target_cents !== 0 ? String(shown.target_cents / 100).replace(".", Qt.locale(dialog.sioul.text("qt-locale")).decimalPoint) : ""
         dialog.area = shown ? shown.area : ""
+        if (shown && shown.incomes)
+            dialog.incomes = shown.incomes
+        starts.currentIndex = Math.max(0, dialog.startChoices.findIndex(c => c.id === (shown ? shown.starts_with : "")))
+        aside.text = shown && shown.set_aside > 0 ? String(shown.set_aside).replace(".", Qt.locale(dialog.sioul.text("qt-locale")).decimalPoint) : ""
+        declare.currentIndex = shown && shown.declare === "month" ? 0 : 1
         dialog.open()
         title.forceActiveFocus()
     }
@@ -63,7 +74,21 @@ SafeDialog {
             dialog.problem = dialog.sioul.textWith("amount-unreadable", "text", target.text.trim())
             return
         }
-        const edit = { title: title.text, period: dialog.periods[period.currentIndex], target: goal, area: dialog.area }
+        const share = dialog.amount(aside.text)
+        if (Number.isNaN(share)) {
+            dialog.problem = dialog.sioul.textWith("amount-unreadable", "text", aside.text.trim())
+            return
+        }
+        const monthly = dialog.periods[period.currentIndex] === "month"
+        const edit = {
+            title: title.text,
+            period: dialog.periods[period.currentIndex],
+            target: goal,
+            area: dialog.area,
+            starts_with: monthly && starts.currentIndex > 0 ? dialog.startChoices[starts.currentIndex].id : "",
+            set_aside: dialog.area.split("+").indexOf("work") >= 0 ? share : 0,
+            declare: declare.currentIndex === 0 ? "month" : "quarter"
+        }
         const answer = JSON.parse(dialog.sioul.saveBudget(dialog.budgetId, JSON.stringify(edit)))
         if (answer.error) {
             dialog.problem = answer.error
@@ -103,6 +128,19 @@ SafeDialog {
 
             Layout.fillWidth: true
             model: dialog.periods.map(p => dialog.sioul.text("budget-period-" + p))
+        }
+        // From one income to the next: a monthly budget may start on its income's day.
+        Label {
+            visible: period.currentIndex === 0 && dialog.incomes.length > 0
+            text: dialog.sioul.text("budget-starts")
+            color: dialog.theme.muted
+        }
+        PlainComboBox {
+            id: starts
+
+            visible: period.currentIndex === 0 && dialog.incomes.length > 0
+            Layout.fillWidth: true
+            model: dialog.startChoices.map(c => dialog.theme.plain(c.title))
         }
         Label {
             text: dialog.sioul.text("budget-field-target")
@@ -148,6 +186,49 @@ SafeDialog {
             Label {
                 Layout.fillWidth: true
                 text: dialog.sioul.text("budget-field-area-help")
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: dialog.theme.muted
+            }
+        }
+        // Work money: a share of each income set aside for the declaration; off until set.
+        Label {
+            visible: dialog.area.split("+").indexOf("work") >= 0
+            Layout.alignment: Qt.AlignTop
+            Layout.topMargin: 8
+            text: dialog.sioul.text("budget-set-aside")
+            color: dialog.theme.muted
+        }
+        ColumnLayout {
+            visible: dialog.area.split("+").indexOf("work") >= 0
+            spacing: 4
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                TextField {
+                    id: aside
+
+                    Layout.preferredWidth: 80
+                    placeholderText: "0"
+                    inputMethodHints: Qt.ImhFormattedNumbersOnly
+                    horizontalAlignment: Text.AlignRight
+                }
+                Label {
+                    text: dialog.sioul.text("budget-declare")
+                    color: dialog.theme.muted
+                }
+                PlainComboBox {
+                    id: declare
+
+                    Layout.fillWidth: true
+                    model: [dialog.sioul.text("budget-declare-month"), dialog.sioul.text("budget-declare-quarter")]
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: dialog.sioul.text("budget-set-aside-help")
                 wrapMode: Text.Wrap
                 font.pixelSize: 12
                 color: dialog.theme.muted

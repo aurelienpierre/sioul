@@ -83,6 +83,19 @@ impl Period {
     }
 }
 
+/// The period from an income's day in the month holding `day` (or the
+/// month before, when that day is still to come) to the day before its day
+/// in the next month (`Ledger::bounds`).
+fn income_bounds(income: &Preset, day: Date) -> (Date, Date) {
+    let month = |d: Date, months: i64| d.first_of_month().checked_add(Span::new().months(months)).ok();
+    let start = match income.date_in(day.first_of_month()) {
+        Some(start) if start <= day => start,
+        _ => month(day, -1).and_then(|m| income.date_in(m)).unwrap_or(day.first_of_month()),
+    };
+    let end = month(start, 1).and_then(|m| income.date_in(m)).and_then(|next| next.yesterday().ok()).unwrap_or(start.last_of_month());
+    (start, end)
+}
+
 /// An envelope with a goal.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Budget {
@@ -102,6 +115,20 @@ pub struct Budget {
     /// "personal" for leisure money: it stays in view in quiet time.
     #[serde(default)]
     pub area: Option<String>,
+    /// Its period starts on this income's day: a monthly money-in preset's
+    /// id, the pay or the benefits that fill it; from one income to the next
+    /// (docs/accounting.md, "From one income to the next"). Without it, or
+    /// once that preset is gone, the calendar month; an older Sioul reads the
+    /// calendar month.
+    #[serde(default)]
+    pub starts_with: Option<String>,
+    /// A share of each income set aside for taxes and contributions, in
+    /// percent (a work budget's, docs/accounting.md, "Work money"); none or 0: off.
+    #[serde(default)]
+    pub set_aside: Option<f64>,
+    /// How often that share is declared: "month", or "quarter" (the default).
+    #[serde(default)]
+    pub declare: Option<String>,
 }
 
 impl Budget {
@@ -155,6 +182,12 @@ pub struct Preset {
     pub high: Option<Money>,
     #[serde(default)]
     pub links: Vec<String>,
+    /// You pay it yourself (money out), or send its invoice (money in): one
+    /// reminder a few days before (docs/reminders.md). Without it, it leaves
+    /// or comes by itself (a direct debit, a standing order), and is told
+    /// only when the account will not hold it. An older Sioul reads it without.
+    #[serde(default)]
+    pub by_hand: bool,
 }
 
 impl Preset {
@@ -466,6 +499,56 @@ pub struct ReserveStatus {
 }
 
 impl Ledger {
+    /// The period of `budget` holding `day`: its calendar month or year; for
+    /// a monthly budget that starts on its income's day (`starts_with`), from
+    /// that income's day to the day before its next one (Zhang et al. 2022:
+    /// periods follow pay; docs/accounting.md, "From one income to the next").
+    pub fn bounds(&self, budget: &Budget, day: Date) -> (Date, Date) {
+        match self.income_of(budget) {
+            Some(income) => income_bounds(income, day),
+            None => budget.period.bounds(day),
+        }
+    }
+
+    /// The income a budget's period starts with (`Budget::starts_with`): a
+    /// monthly preset of money in, fixed; none for a yearly budget.
+    pub fn income_of(&self, budget: &Budget) -> Option<&Preset> {
+        let id = budget.starts_with.as_deref().filter(|id| !id.trim().is_empty())?;
+        if budget.period != Period::Month {
+            return None;
+        }
+        self.presets.iter().find(|p| p.id.as_deref() == Some(id) && p.every == Period::Month && !p.estimate && !p.amount.is_negative())
+    }
+
+    /// The period a preset's occurrence on `date` counts in, its lines
+    /// standing for it there: its budget's, when that budget starts on its
+    /// income's day and the preset comes each month; else its own month or year.
+    pub fn preset_bounds(&self, preset: &Preset, date: Date) -> (Date, Date) {
+        let income = (preset.every == Period::Month).then(|| self.budgets.iter().find(|b| b.id == preset.budget).and_then(|b| self.income_of(b))).flatten();
+        match income {
+            Some(income) => income_bounds(income, date),
+            None => preset.every.bounds(date),
+        }
+    }
+
+    /// A preset's dates from `from` to `to`, included: its own days; a
+    /// monthly estimate of a budget that starts on its income's day is spent
+    /// over that period, and falls on its last day.
+    pub fn occurrences_of(&self, preset: &Preset, from: Date, to: Date) -> Vec<Date> {
+        let income = (preset.estimate && preset.every == Period::Month).then(|| self.budgets.iter().find(|b| b.id == preset.budget).and_then(|b| self.income_of(b))).flatten();
+        let Some(income) = income else { return preset.occurrences(from, to) };
+        let mut dates = Vec::new();
+        let (_, mut end) = income_bounds(income, from);
+        while end <= to {
+            if preset.active(end) {
+                dates.push(end);
+            }
+            let Ok(next) = end.tomorrow() else { break };
+            end = income_bounds(income, next).1;
+        }
+        dates
+    }
+
     /// Reads `sioul-budgets.toml` at the root of a notes folder.
     pub fn load(root: &Path) -> Result<Ledger, String> {
         Ledger::load_file(&root.join(LEDGER))
@@ -489,7 +572,7 @@ impl Ledger {
 
     /// How a budget's current period is going.
     pub fn status(&self, budget: &Budget, today: Date) -> BudgetStatus {
-        let (start, end) = budget.period.bounds(today);
+        let (start, end) = self.bounds(budget, today);
         self.status_for(budget, start, end, today, self.opening(budget, start, today))
     }
 
@@ -551,7 +634,7 @@ impl Ledger {
             .presets
             .iter()
             .filter(|p| p.budget == budget)
-            .flat_map(|p| p.occurrences(from, to).into_iter().flat_map(move |d| self.occurrence(p, d, today)));
+            .flat_map(|p| self.occurrences_of(p, from, to).into_iter().flat_map(move |d| self.occurrence(p, d, today)));
         lines.chain(presets).collect()
     }
 
@@ -559,8 +642,8 @@ impl Ledger {
     fn absorbing(&self, line: &Line) -> Option<&Preset> {
         let id = line.preset.as_deref()?;
         let preset = self.presets.iter().find(|p| p.id.as_deref() == Some(id) && p.budget == line.budget)?;
-        let (start, end) = preset.every.bounds(line.date);
-        (!preset.occurrences(start, end).is_empty()).then_some(preset)
+        let (start, end) = self.preset_bounds(preset, line.date);
+        (!self.occurrences_of(preset, start, end).is_empty()).then_some(preset)
     }
 
     /// One occurrence of a preset, with the lines standing for it in its period.
@@ -568,7 +651,7 @@ impl Ledger {
     /// fixed preset is replaced by them (the real amount); an estimate is an
     /// envelope they are spent from, and what remains of it is still to come.
     fn occurrence(&self, preset: &Preset, date: Date, today: Date) -> Vec<Flow> {
-        let (start, end) = preset.every.bounds(date);
+        let (start, end) = self.preset_bounds(preset, date);
         let actual: Option<Money> = preset.id.as_deref().and_then(|id| {
             let linked: Vec<&Line> = self
                 .lines
@@ -645,8 +728,8 @@ impl Ledger {
         while status.end <= until {
             let transfer = status.reserve_transfer.as_ref().map_or(Money::ZERO, |(_, m)| *m);
             total += transfer;
-            let Some(next) = budget.period.next(status.start) else { break };
-            let (s, e) = budget.period.bounds(next);
+            let Ok(next) = status.end.tomorrow() else { break };
+            let (s, e) = self.bounds(budget, next);
             // A sweep takes only the surplus beyond what is set aside (`gap` excludes it).
             status = self.status_for(budget, s, e, today, status.projected + transfer);
         }
@@ -674,6 +757,14 @@ pub struct MailLine {
     pub state: MailState,
     /// From someone new and not verified: a fake "your payment" is a classic trick.
     pub doubtful: bool,
+    /// Its references, for the matching's keys (`matching::references`): an
+    /// invoice's, an order's, a mandate's, a creditor's; its attached
+    /// invoice's own (`payments::invoice_of`).
+    pub refs: Vec<String>,
+    /// The day it is due, when its attached invoice says it.
+    pub due: Option<Date>,
+    /// A purchase paid in instalments: how many (`payments::instalments`).
+    pub instalments: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -688,6 +779,10 @@ pub enum MailState {
     Duplicate(String),
     /// Waits for you: add it, or not.
     Proposed,
+    /// The same payment as a movement already counted, which it joins as a
+    /// source without a question (`movements::acts::join_mails`): its
+    /// address, who it names, its day; probably so when not sure.
+    Joined { address: String, label: String, day: Date, probable: bool },
 }
 
 impl MailLine {
@@ -765,10 +860,39 @@ fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Optio
     // the same on every device and after a renumbering), else its file.
     let digest = || crate::mailfind::address_of_file(card.account.as_deref()?, card.path.as_deref()?);
     let key = card.message_id.as_ref().map(|id| format!("mid:{id}")).or_else(digest).or_else(|| card.path.as_ref().map(|p| format!("file:{}", p.display())))?;
+    // What it says for the matching, and what its attached invoice says of itself.
+    let text = format!("{}\n{}", card.subject, payments::start(card));
+    let mut refs = crate::matching::references(&words.payments.references, &text);
+    let invoice = payments::invoice_of(card);
+    if let Some(invoice) = &invoice {
+        refs.extend(invoice.references());
+        refs.sort();
+        refs.dedup();
+        // Its amount, when the message gave none, in a currency Sioul names (`money`); else none.
+        let currency = match invoice.currency.to_ascii_uppercase().as_str() {
+            "EUR" => Some("EUR"),
+            "USD" => Some("USD"),
+            "GBP" => Some("GBP"),
+            "CHF" => Some("CHF"),
+            "CAD" => Some("CAD"),
+            _ => None,
+        };
+        if payment.amount.is_none()
+            && let (Some(money), Some(currency)) = (invoice.amount, currency)
+        {
+            payment.amount = Some(Amount { money: money.abs(), currency });
+        }
+        if payment.party == card.sender() && !invoice.seller.trim().is_empty() {
+            payment.party = invoice.seller.trim().to_string();
+        }
+    }
     Some(MailLine {
         key,
         path: card.path.clone(),
         date,
+        refs,
+        due: invoice.as_ref().and_then(|i| i.due),
+        instalments: payments::instalments(words, &text),
         label: rule.and_then(|r| r.label.clone()).unwrap_or_else(|| payment.party.clone()),
         subject: card.subject.clone(),
         sender: card.sender().to_string(),
@@ -861,6 +985,17 @@ pub struct BudgetEdit {
     /// What it is for: "work", "admin", "leisure", joined by "+" (docs/areas.md); written over `personal` when given.
     #[serde(default)]
     pub area: Option<String>,
+    /// The income its period starts with (`Budget::starts_with`): a preset's
+    /// id, "" for the calendar month; None leaves the file's as it is.
+    #[serde(default)]
+    pub starts_with: Option<String>,
+    /// The share set aside for taxes, in percent (`Budget::set_aside`); 0
+    /// takes it out; None leaves the file's as it is.
+    #[serde(default)]
+    pub set_aside: Option<f64>,
+    /// "month" or "quarter" (`Budget::declare`).
+    #[serde(default)]
+    pub declare: Option<String>,
 }
 
 fn write_ledger(path: &Path, doc: &DocumentMut) -> Result<(), String> {
@@ -911,6 +1046,24 @@ pub fn save_budget(path: &Path, id: &str, edit: &BudgetEdit) -> Result<String, S
             None => {
                 table.remove("area");
             }
+        }
+        match edit.starts_with.as_deref().map(str::trim) {
+            Some("") => {
+                table.remove("starts_with");
+            }
+            Some(income) => table["starts_with"] = value(income),
+            None => {}
+        }
+        match edit.set_aside {
+            Some(share) if share.is_finite() && share > 0.0 => {
+                table["set_aside"] = value((share.min(100.0) * 100.0).round() / 100.0);
+                table["declare"] = value(if edit.declare.as_deref() == Some("month") { "month" } else { "quarter" });
+            }
+            Some(_) => {
+                table.remove("set_aside");
+                table.remove("declare");
+            }
+            None => {}
         }
         write_ledger(path, &doc)?;
         Ok(id)
@@ -1120,7 +1273,7 @@ impl Ledger {
             if out.len() >= 12 || budget.since.is_some_and(|s| end < s) {
                 break;
             }
-            let (from, _) = budget.period.bounds(end);
+            let (from, _) = self.bounds(budget, end);
             let flows = self.flows(budget, budget.since.map_or(from, |s| s.max(from)), end, today);
             let lines = self.lines.iter().filter(|l| l.budget == budget.id && !l.planned && l.date >= from && l.date <= end).count();
             if lines > 0 {
@@ -1135,7 +1288,7 @@ impl Ledger {
 
     /// The current period at its pace (see `Pace`).
     pub fn pace(&self, budget: &Budget, today: Date) -> Pace {
-        let (start, end) = budget.period.bounds(today);
+        let (start, end) = self.bounds(budget, today);
         let opening = self.opening(budget, start, today);
         let from = budget.since.map_or(start, |s| s.max(start));
         let flows = self.flows(budget, from, end, today);
@@ -1170,6 +1323,67 @@ impl Ledger {
     }
 }
 
+/// How a budget's current period should end (the budgets page's one
+/// sentence about it, docs/accounting.md, "Each budget in words"): its last
+/// day, the balance then against its target, if the rest goes as planned, or
+/// at the pace of its past periods when there are three at least
+/// (`Pace::realistic`); and the reserve that covers a gap or takes a surplus.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeriodEnd {
+    pub end: Date,
+    /// Positive: better than planned; negative: short.
+    pub gap: Money,
+    pub verdict: Verdict,
+    /// Drawn from a reserve (positive), or swept into it (negative).
+    pub reserve: Option<(String, Money)>,
+}
+
+impl Ledger {
+    /// How `budget`'s current period should end (`PeriodEnd`): at the pace
+    /// of its past periods when there are three, else what is ahead or behind
+    /// its pace today carried to the end (`Pace::realistic`), so that a budget
+    /// whose money comes later in its period is not said short in its first days.
+    pub fn period_end(&self, budget: &Budget, today: Date) -> PeriodEnd {
+        self.period_end_of(budget, &self.status(budget, today), &self.pace(budget, today), today)
+    }
+
+    /// `period_end`, from its period's status and pace already made.
+    pub fn period_end_of(&self, budget: &Budget, status: &BudgetStatus, pace: &Pace, today: Date) -> PeriodEnd {
+        let (gap, verdict) = if pace.history >= 3 {
+            let gap = pace.realistic - status.earmarked - budget.target;
+            let from = budget.since.map_or(status.start, |s| s.max(status.start));
+            let flows = self.flows(budget, from, status.end, today);
+            let tolerance = tolerance(&flows, still_needed(budget, status.opening, &flows));
+            let verdict = match gap.cents() {
+                g if g > tolerance => Verdict::Better,
+                g if g < -tolerance => Verdict::Short,
+                _ => Verdict::AsPlanned,
+            };
+            (gap, verdict)
+        } else {
+            (pace.ahead, pace.verdict)
+        };
+        let reserve = self.covers.iter().find(|c| c.budget == budget.id).and_then(|c| (gap.is_negative() || (c.sweep && gap.cents() > 0)).then(|| (c.reserve.clone(), -gap)));
+        PeriodEnd { end: status.end, gap, verdict, reserve }
+    }
+
+    /// What is left of an estimate (food, outings) in its current period,
+    /// and that period's last day: its amount less what was spent from it
+    /// (the lines standing for it), in its sign; past zero, more than
+    /// planned. None for a fixed preset, or one not running now.
+    pub fn estimate_left(&self, preset: &Preset, today: Date) -> Option<(Money, Date)> {
+        if !preset.estimate {
+            return None;
+        }
+        let (start, end) = self.preset_bounds(preset, today);
+        if self.occurrences_of(preset, start, end).is_empty() {
+            return None;
+        }
+        let spent: Money = preset.id.as_deref().map_or(Money::ZERO, |id| self.lines.iter().filter(|l| l.preset.as_deref() == Some(id) && l.budget == preset.budget && l.date >= start && l.date <= end).map(|l| l.amount).sum());
+        Some((preset.amount - spent, end))
+    }
+}
+
 /// One movement of a budget's period, as its ledger lists it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Movement {
@@ -1182,6 +1396,14 @@ pub struct Movement {
     pub recurring: bool,
     /// Its line in the file, when it is one: `sioul:budget/<budget>/<position>`.
     pub line: Option<usize>,
+    /// A work budget's share set aside for its declaration (`movements::Kind::SetAside`), said as such.
+    pub set_aside: bool,
+}
+
+/// Whether a line was counted in memory (`movements::counted`), never written
+/// in the file: a bank account's, a placement's, a share set aside.
+fn in_memory(line: &Line) -> bool {
+    line.links.iter().any(|k| k.starts_with("bank:") || k.starts_with("hold:") || k.starts_with("move:") || k.starts_with("setaside:"))
 }
 
 /// The balance on a day, and whether that day is still to come.
@@ -1202,17 +1424,17 @@ impl Ledger {
             .enumerate()
             .filter(|(_, l)| l.budget == budget.id && l.date >= from && l.date <= to)
             // A bank account's movement is no line of the file: changed where it was placed.
-            .map(|(i, l)| Movement { date: l.date, label: l.label.clone(), amount: l.amount, planned: l.planned, recurring: false, line: (!l.links.iter().any(|k| k.starts_with("bank:"))).then_some(i) })
+            .map(|(i, l)| Movement { date: l.date, label: l.label.clone(), amount: l.amount, planned: l.planned, recurring: false, line: (!in_memory(l)).then_some(i), set_aside: l.links.iter().any(|k| k.starts_with("setaside:")) })
             .collect();
         for preset in self.presets.iter().filter(|p| p.budget == budget.id) {
-            for date in preset.occurrences(from, to) {
+            for date in self.occurrences_of(preset, from, to) {
                 // A line standing for this occurrence is listed itself.
                 let stood_for = preset.id.as_deref().is_some_and(|id| {
-                    let (start, end) = preset.every.bounds(date);
+                    let (start, end) = self.preset_bounds(preset, date);
                     self.lines.iter().any(|l| l.preset.as_deref() == Some(id) && l.budget == budget.id && l.date >= start && l.date <= end)
                 });
                 if !stood_for {
-                    out.push(Movement { date, label: preset.label.clone(), amount: preset.amount, planned: date > today, recurring: true, line: None });
+                    out.push(Movement { date, label: preset.label.clone(), amount: preset.amount, planned: date > today, recurring: true, line: None, set_aside: false });
                 }
             }
         }
@@ -1278,6 +1500,9 @@ pub struct PresetEdit {
     pub until: String,
     #[serde(default)]
     pub estimate: bool,
+    /// You pay it yourself, or send its invoice (`Preset::by_hand`).
+    #[serde(default)]
+    pub by_hand: bool,
 }
 
 /// Adds a recurring movement to the budget file, its comments kept.
@@ -1313,6 +1538,8 @@ pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(
         }
         if preset.estimate {
             table["estimate"] = value(true);
+        } else if preset.by_hand {
+            table["by_hand"] = value(true);
         }
         let origin: String = origin.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
         let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
@@ -1465,12 +1692,12 @@ mod tests {
     fn budgets_made_changed_and_taken_out() {
         let path = std::env::temp_dir().join(format!("sioul-budget-edit-{}.toml", std::process::id()));
         std::fs::write(&path, "# mine\n[[budget]]\nid = \"food\"\ntitle = \"Food\"\nperiod = \"month\"\n\n[[line]]\nbudget = \"food\"\ndate = 2026-10-01\namount = -12.5\nlabel = \"Market\"\n").unwrap();
-        let id = save_budget(&path, "", &BudgetEdit { title: "Holidays".into(), period: "year".into(), target: 300.0, personal: true, area: None }).unwrap();
+        let id = save_budget(&path, "", &BudgetEdit { title: "Holidays".into(), period: "year".into(), target: 300.0, personal: true, ..BudgetEdit::default() }).unwrap();
         assert_eq!(id, "holidays");
         let ledger = Ledger::load_file(&path).unwrap();
         let holidays = ledger.budgets.iter().find(|b| b.id == "holidays").unwrap();
         assert_eq!((holidays.period, holidays.target.cents(), holidays.area.as_deref()), (Period::Year, 30_000, Some("personal")));
-        save_budget(&path, "food", &BudgetEdit { title: "Groceries".into(), period: "month".into(), target: 0.0, personal: false, area: None }).unwrap();
+        save_budget(&path, "food", &BudgetEdit { title: "Groceries".into(), period: "month".into(), target: 0.0, personal: false, ..BudgetEdit::default() }).unwrap();
         assert_eq!(Ledger::load_file(&path).unwrap().budget_title("food"), "Groceries");
         let market = SeenLine { budget: "food".into(), date: date("2026-10-01"), amount: Money(-1250), label: "Market".into() };
         assert!(remove_line(&path, 0, &market).unwrap());

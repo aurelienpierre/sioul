@@ -1445,9 +1445,51 @@ pub mod qobject {
         #[qinvokable]
         fn remove_bank_account(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
-        /// One movement placed by hand: "budget:<id>", "none", or "" (as the rules say).
+        /// One movement placed by hand: "budget:<id>", "none", or "" (as the rules say):
+        /// {said, ask: {payee, budget, title, way}|null} or {problem} (`payments::place`).
         #[qinvokable]
         fn place_movement(self: Pin<&mut Sioul>, account: &QString, movement: &QString, choice: &QString) -> QString;
+
+        /// "A payment…" from a message by its file (`kind` "mail", `trust` its
+        /// sender's level) or a letter by its id (`kind` "letter"): {payment,
+        /// title, budgets} or {problem} (`payments::from`).
+        #[qinvokable]
+        fn payment_from(self: &Sioul, kind: &QString, key: &QString, trust: &QString) -> QString;
+
+        /// The payment's form saved into the budget file: {said} or {problem}.
+        #[qinvokable]
+        fn add_payment(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// Your answer, once, on whether a payee's next movements go to a budget too: what it did, in words.
+        #[qinvokable]
+        fn decide_payee(self: Pin<&mut Sioul>, payee: &QString, budget: &QString, way: &QString, next: bool) -> QString;
+
+        /// A movement of the budgets page moved by its key: to `budget:<id>`,
+        /// or split (`parts`: [{budget, amount}] in units, the rest in
+        /// `budget:<id>`): {said, ask} or {problem} (`payments::move_movement`).
+        #[qinvokable]
+        fn move_movement(self: Pin<&mut Sioul>, key: &QString, choice: &QString, parts: &QString) -> QString;
+
+        /// "Not the same payment": a source probably joined to a movement, taken apart: what went wrong, else "".
+        #[qinvokable]
+        fn not_same_movement(self: Pin<&mut Sioul>, key: &QString, source: &QString) -> QString;
+
+        /// The movements that may be the same payment as this one, as JSON [{key, label, date, amount}].
+        #[qinvokable]
+        fn same_candidates(self: &Sioul, key: &QString) -> QString;
+
+        /// "The same as…": two movements one payment: what went wrong, else "".
+        #[qinvokable]
+        fn same_movement(self: Pin<&mut Sioul>, key: &QString, other: &QString) -> QString;
+
+        /// The areas ticked in the budgets' filter ("work+leisure", "" for none),
+        /// kept until the hours change, a day at most (`areafilter`).
+        #[qinvokable]
+        fn tick_budget_areas(self: Pin<&mut Sioul>, areas: &QString);
+
+        /// "As the hours say": your ticks in the budgets' filter forgotten.
+        #[qinvokable]
+        fn budget_areas_as_hours(self: Pin<&mut Sioul>);
 
         /// A rule for movements made (`rule` "") or changed (`rule`: the rule as
         /// shown, JSON: named by its id, or its place while it holds the same).
@@ -3050,19 +3092,21 @@ fn compute(shared: &Shared) -> Views {
     }
     // Closed, the Porch shows only codes: "Done for now" has nothing to close.
     let shown = if porch.open { PorchState::newest_shown(&items) } else { BTreeMap::new() };
-    let budgets = world.ledger().map_or_else(String::new, |mut ledger| {
-        // Budgets as their area goes: leisure money ("personal"), work's, the rest admin.
-        if mode.time != sioul_core::areas::Time::Any {
-            // "personal" was the word for leisure money before areas had three.
-            let area_of = |b: &sioul_core::budget::Budget| match b.area.as_deref() {
-                Some("personal") => sioul_core::areas::Area::LEISURE,
-                Some(other) => sioul_core::areas::Area::parse(other).unwrap_or(sioul_core::areas::Area::ADMIN),
-                None => sioul_core::areas::Area::ADMIN,
-            };
-            ledger.budgets.retain(|b| sioul_core::areas::in_view(area_of(b), mode.time, mode.week));
-        }
-        let mail = world.mail_lines(&ledger);
-        json(&view::budgets(&ledger, &mail, tr(), now.date()))
+    let budgets = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()).map_or_else(String::new, |root| {
+        // The money read once (`movements::books`, made again only when a file changed).
+        let words = sioul_core::words::Words::of(&world.config);
+        let books = sioul_core::movements::books(&root, &words, now.date());
+        let mut mail = world.mail_lines(&books.counted);
+        // Mail about money that tells of a movement already counted joins it, without a question.
+        let _ = sioul_core::movements::acts::join_mails(&root, &words, &mut mail, now.date());
+        // Budgets shown by area, as the hours say or as you ticked (Mail's filter,
+        // `areafilter`); a shortfall on an account shows whatever the filter;
+        // every budget stays a choice for a line, whatever the hour (the owner's report of 4 November 2026).
+        let (shown, filter) = crate::payments::budget_filter(&mode, now.timestamp().as_second());
+        let page = view::MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &mail, shown, own: filter.own };
+        let mut page = view::budgets_page(&page, tr(), now.date());
+        page.filter = Some(filter);
+        json(&page)
     });
     let statuses = shared.statuses.lock().map(|s| s.clone()).unwrap_or_default();
     let wanted = shared.password_wanted.lock().map(|w| w.clone()).unwrap_or_default();
@@ -5265,10 +5309,11 @@ impl qobject::Sioul {
     fn budget_detail(&self, id: &QString, anchor: &QString, step: &QString) -> QString {
         let world = World::load();
         let today = sioul_core::zone::now().date();
-        let Some(ledger) = world.ledger() else { return QString::default() };
-        let Some(found) = ledger.budgets.iter().find(|b| b.id == id.to_string()) else { return QString::default() };
+        let Some(root) = world.config.notes_root_path().filter(|root| sioul_core::budget::Ledger::load(root).is_ok()) else { return QString::default() };
+        let books = sioul_core::movements::books(&root, &sioul_core::words::Words::of(&world.config), today);
+        let Some(found) = books.counted.budgets.iter().find(|b| b.id == id.to_string()) else { return QString::default() };
         let anchor = anchor.to_string().parse().unwrap_or(today);
-        QString::from(&json(&view::budget_detail(&ledger, found, anchor, &step.to_string(), tr(), today)))
+        QString::from(&json(&view::budget_detail(&books.counted, found, &books.movements, anchor, &step.to_string(), tr(), today)))
     }
 
     fn keep_folder(self: Pin<&mut Self>, account: &QString, folder: &QString, kept: bool) -> QString {
@@ -5425,9 +5470,58 @@ impl qobject::Sioul {
     }
 
     fn place_movement(self: Pin<&mut Self>, account: &QString, movement: &QString, choice: &QString) -> QString {
-        let problem = crate::bank::place_movement(&account.to_string(), &movement.to_string(), &choice.to_string());
+        let answer = crate::payments::place(&account.to_string(), &movement.to_string(), &choice.to_string());
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&answer)
+    }
+
+    fn payment_from(&self, kind: &QString, key: &QString, trust: &QString) -> QString {
+        QString::from(&crate::payments::from(&kind.to_string(), &key.to_string(), &trust.to_string()))
+    }
+
+    fn add_payment(self: Pin<&mut Self>, edit: &QString) -> QString {
+        let answer = crate::payments::add(&edit.to_string());
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&answer)
+    }
+
+    fn decide_payee(self: Pin<&mut Self>, payee: &QString, budget: &QString, way: &QString, next: bool) -> QString {
+        let said = crate::payments::decide(&payee.to_string(), &budget.to_string(), &way.to_string(), next);
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&said)
+    }
+
+    fn move_movement(self: Pin<&mut Self>, key: &QString, choice: &QString, parts: &QString) -> QString {
+        let answer = crate::payments::move_movement(&key.to_string(), &choice.to_string(), &parts.to_string());
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&answer)
+    }
+
+    fn not_same_movement(self: Pin<&mut Self>, key: &QString, source: &QString) -> QString {
+        let problem = crate::payments::not_same(&key.to_string(), &source.to_string());
         show(&self.qt_thread(), &self.shared());
         QString::from(&problem)
+    }
+
+    fn same_candidates(&self, key: &QString) -> QString {
+        QString::from(&crate::payments::same_candidates(&key.to_string()))
+    }
+
+    fn same_movement(self: Pin<&mut Self>, key: &QString, other: &QString) -> QString {
+        let problem = crate::payments::same(&key.to_string(), &other.to_string());
+        show(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn tick_budget_areas(self: Pin<&mut Self>, areas: &QString) {
+        let now = sioul_core::zone::now();
+        crate::payments::tick_areas(&areas.to_string(), &crate::hours::mode_at(&now), now.timestamp().as_second());
+        show(&self.qt_thread(), &self.shared());
+    }
+
+    fn budget_areas_as_hours(self: Pin<&mut Self>) {
+        crate::payments::areas_as_hours();
+        show(&self.qt_thread(), &self.shared());
     }
 
     fn save_bank_rule(self: Pin<&mut Self>, rule: &QString, edit: &QString) -> QString {
@@ -5962,6 +6056,9 @@ impl qobject::Sioul {
             until: String,
             #[serde(default)]
             estimate: bool,
+            /// You pay it yourself, or send its invoice (`Preset::by_hand`).
+            #[serde(default)]
+            by_hand: bool,
         }
         let world = World::load();
         let outcome = (|| {
@@ -5984,6 +6081,7 @@ impl qobject::Sioul {
                     from: movement.from.clone(),
                     until: movement.until.clone(),
                     estimate: movement.estimate,
+                    by_hand: movement.by_hand,
                 };
                 budget::record_preset(&path, &preset, &origin)?;
             } else {
@@ -6242,6 +6340,15 @@ impl qobject::Sioul {
         // The weather follows the hours; fetched again when half an hour old.
         update_weather(&self.qt_thread(), &self.shared());
         let line = mode_json();
+        // The budgets' filter follows the hours too: another time that leaves the quiet as it was
+        // (admin's to leisure) shows the budgets again (`payments::budget_filter`).
+        let other_time = {
+            let before = self.as_ref().mode().to_string();
+            before != line && before.contains("\"quiet\":true") == line.contains("\"quiet\":true")
+        };
+        if other_time {
+            show(&self.qt_thread(), &self.shared());
+        }
         // Mail's filter: the areas you ticked forgotten once the hours changed (written here, on the window's thread).
         let settled = mail::settle_mailbox_areas(&crate::hours::mode_at(&now), now.timestamp().as_second());
         if self.as_ref().mode().to_string() != line {
@@ -6938,9 +7045,9 @@ impl qobject::Sioul {
         // with Android's system bars stood in for, below then beside (pictures alone), "mailbox" every
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
         // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
-        // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "letters-page" the
-        // Letters page and its settings (pictures alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "letters-page"].contains(&steps.as_str()) && offline()) {
+        // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
+        // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

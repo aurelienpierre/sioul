@@ -219,7 +219,7 @@ Read or checked on 4 November 2026; every DOI below resolved at Crossref with ma
 - Stephens, M. Jr. (2003). "3rd of tha month": do Social Security recipients smooth consumption between checks? *American Economic Review* 93(1), 406–422. doi:10.1257/000282803321455386
 - Sussman, A. B. & Alter, A. L. (2012). The exception is the rule: underestimating and overspending on exceptional expenses. *Journal of Consumer Research* 39(4), 800–814. doi:10.1086/665833
 - Thaler, R. H. (1985). Mental accounting and consumer choice. *Marketing Science* 4(3), 199–214. doi:10.1287/mksc.4.3.199
-- Thaler, R. H. (1999). Mental accounting matters. *Journal of Behavioral Decision Making* 12(3), 183–206. doi:10.1002/(SICI)1099-0771(199909)12:3<183::AID-BDM318>3.0.CO;2-F
+- Thaler, R. H. (1999). Mental accounting matters. *Journal of Behavioral Decision Making* 12(3), 183–206. `doi:10.1002/(SICI)1099-0771(199909)12:3<183::AID-BDM318>3.0.CO;2-F`
 - Zhang, C. Y., Sussman, A. B., Wang-Ly, N. & Lyu, J. K. (2022). How consumers budget. *Journal of Economic Behavior & Organization* 204, 69–88. doi:10.1016/j.jebo.2022.09.025
 
 **Apps** (help pages; "snippet" as in section 3)

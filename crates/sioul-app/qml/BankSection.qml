@@ -3,11 +3,12 @@
 
 // Where the money is, on the Budgets page (docs/accounting.md, "Bank
 // accounts"): each bank account (a current account, PayPal, Stripe) with its
-// exports taken in, its balance, the budgets it fills, what tops it up, and
-// its movements, each saying where it went and why, changed by hand when the
-// rules got it wrong. Then the watch: in words what passed and what did not,
-// the week's payments, and the balance carried forward a month as a plain
-// line (zero marked, no red).
+// exports taken in, its balance, the budgets it fills, what tops it up before
+// its next income, and its movements, each saying where it went and why, with
+// what else tells of it (the mail's invoice, the letter, the contract);
+// moved, split or said not the same from its row. Then, in words, what the
+// movements found: a payment not seen, an amount that changed. What is coming
+// and the balance ahead are the page's own, above.
 
 pragma ComponentBehavior: Bound
 
@@ -21,9 +22,11 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    property var shown: ({ store: false, any: false, balance: "", findings: [], coming: [], forecast: [], problem: "", accounts: [], budgets: [], reserves: [] })
+    property var shown: ({ store: false, any: false, balance: "", findings: [], coming: [], problem: "", accounts: [], budgets: [], reserves: [] })
     property string said: ""
     property bool saidWell: true
+    // Asked once, after a movement was moved: {payee, budget, title, way}; null for nothing to ask.
+    property var asking: null
     // The account an export is being taken in for; "" for one named by the export.
     property string importing: ""
     // The accounts whose movements are unfolded.
@@ -37,12 +40,31 @@ ColumnLayout {
 
     function reload() {
         section.shown = JSON.parse(section.sioul.bank())
-        curve.requestPaint()
     }
 
     function say(problem) {
         section.said = problem
         section.saidWell = problem === ""
+        section.reload()
+    }
+
+    // A movement placed from its row (`placeMovement`): its effect said ("Home holds
+    // €12 more for October."), and whether its payee's next ones go there too asked once.
+    function placed(answer) {
+        const done = JSON.parse(answer)
+        section.said = done.problem || done.said || ""
+        section.saidWell = !done.problem
+        section.asking = done.ask || null
+        section.reload()
+    }
+
+    // Your answer: a yes is a rule of the budget file, which the rules list shows.
+    function answer(next) {
+        const a = section.asking
+        section.asking = null
+        if (a)
+            section.said = section.sioul.decidePayee(a.payee, a.budget, a.way, next)
+        section.saidWell = true
         section.reload()
     }
 
@@ -108,6 +130,29 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: section.saidWell && section.shown.problem === "" ? section.theme.muted : section.theme.warm
+    }
+    // Once a movement was moved: whether its payee's next movements go there too, asked once.
+    Flow {
+        visible: section.asking !== null
+        Layout.fillWidth: true
+        spacing: 8
+
+        Label {
+            width: Math.min(implicitWidth, section.width)
+            text: section.asking ? section.sioul.textArgs("moved-ask", JSON.stringify({ payee: section.asking.payee, budget: section.asking.title })) : ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: section.theme.text
+        }
+        Button {
+            text: section.sioul.text("moved-ask-yes")
+            onClicked: section.answer(true)
+        }
+        Button {
+            flat: true
+            text: section.sioul.text("moved-ask-no")
+            onClicked: section.answer(false)
+        }
     }
 
     // Each bank account.
@@ -289,13 +334,34 @@ ColumnLayout {
                                 font.pixelSize: 12
                                 color: row.modelData.why === "unknown" ? section.theme.warm : section.theme.muted
                             }
+                            // What else tells of it, beside the bank's line.
+                            Label {
+                                visible: row.modelData.sources.length > 1
+                                Layout.fillWidth: true
+                                text: section.sioul.textWith("coming-from", "list", row.modelData.sources.map(s => s.words).join(", ")) + (row.modelData.probable ? "  " + section.sioul.text("coming-probably") : "")
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 12
+                                color: section.theme.muted
+                            }
                         }
-                        PlainComboBox {
-                            Layout.preferredWidth: 190
-                            model: row.choices.map(c => section.theme.plain(c.title))
-                            currentIndex: Math.max(0, row.choices.findIndex(c => c.id === row.modelData.chosen))
-                            Accessible.name: section.sioul.text("bank-movement-where")
-                            onActivated: index => section.say(section.sioul.placeMovement(card.modelData.id, row.modelData.id, row.choices[index].id))
+                        RowLayout {
+                            spacing: 4
+
+                            PlainComboBox {
+                                Layout.preferredWidth: section.narrow ? 220 : 190
+                                model: row.choices.map(c => section.theme.plain(c.title))
+                                currentIndex: Math.max(0, row.choices.findIndex(c => c.id === row.modelData.chosen))
+                                Accessible.name: section.sioul.text("bank-movement-where")
+                                onActivated: index => section.placed(section.sioul.placeMovement(card.modelData.id, row.modelData.id, row.choices[index].id))
+                            }
+                            // Split, not the same, the same as…, what tells of it opened.
+                            ToolButton {
+                                objectName: "bankMovementMore"
+                                text: "⋯"
+                                Accessible.name: section.sioul.text("movement-split")
+                                onClicked: actions.show({ key: row.modelData.key, who: row.modelData.label, amount: row.modelData.amount, cents: row.modelData.cents, budget_id: row.modelData.chosen.startsWith("budget:") ? row.modelData.chosen.slice(7) : "", sources: row.modelData.sources, probable: row.modelData.probable })
+                            }
                         }
                     }
                 }
@@ -303,7 +369,7 @@ ColumnLayout {
         }
     }
 
-    // The watch: what passed and what did not, the week, the month ahead.
+    // What the movements found, in words: a payment not seen, an amount that changed.
     Label {
         visible: section.shown.balance !== "" && section.shown.accounts.length === 0
         Layout.fillWidth: true
@@ -325,70 +391,14 @@ ColumnLayout {
             color: section.theme.warm
         }
     }
-    Label {
-        visible: section.shown.coming.length > 0
-        Layout.fillWidth: true
-        Layout.topMargin: 4
-        text: section.sioul.text("bank-coming")
-        font.pixelSize: 13
-        color: section.theme.muted
-    }
-    Repeater {
-        model: section.shown.coming
+    MovementActions {
+        id: actions
 
-        delegate: Label {
-            required property string modelData
-
-            Layout.fillWidth: true
-            text: modelData
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            color: section.theme.text
-            font.features: { "tnum": 1 }
-        }
-    }
-    // The month ahead: the balance as a line, zero dashed.
-    Label {
-        visible: section.shown.forecast.length > 1
-        Layout.fillWidth: true
-        Layout.topMargin: 4
-        text: section.sioul.text("bank-forecast")
-        font.pixelSize: 13
-        color: section.theme.muted
-    }
-    Canvas {
-        id: curve
-
-        visible: section.shown.forecast.length > 1
-        Layout.fillWidth: true
-        Layout.preferredHeight: 90
-        onWidthChanged: requestPaint()
-
-        onPaint: {
-            const ctx = getContext("2d")
-            ctx.reset()
-            const points = section.shown.forecast
-            if (points.length < 2)
-                return
-            const values = points.map(p => p.cents)
-            const low = Math.min(0, ...values)
-            const high = Math.max(0, ...values)
-            const span = Math.max(1, high - low)
-            const y = v => height - 6 - (v - low) / span * (height - 12)
-            const x = i => i / (points.length - 1) * width
-            ctx.strokeStyle = section.theme.line
-            ctx.setLineDash([4, 3])
-            ctx.beginPath()
-            ctx.moveTo(0, y(0))
-            ctx.lineTo(width, y(0))
-            ctx.stroke()
-            ctx.setLineDash([])
-            ctx.strokeStyle = section.theme.accent
-            ctx.lineWidth = 1.5
-            ctx.beginPath()
-            points.forEach((p, i) => i === 0 ? ctx.moveTo(x(i), y(p.cents)) : ctx.lineTo(x(i), y(p.cents)))
-            ctx.stroke()
-        }
+        sioul: section.sioul
+        theme: section.theme
+        window: section.Window.window
+        budgets: section.shown.budgets
+        onSaid: (text, ask) => section.placed(JSON.stringify({ said: text, ask: ask }))
     }
 
     FileDialog {

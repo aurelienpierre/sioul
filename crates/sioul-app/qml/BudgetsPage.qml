@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Budgets and reserves at a glance, itemized: each figure on its own line, the
-// verdict apart with its icon. Then the mail about money, newest first: what is
-// counted, what is the same payment told twice, and what waits for you.
+// The budgets page, from one income to the next (docs/accounting.md, "The
+// budgets page"): each account shown in a few sentences (until when it holds
+// every payment, what is left for everyday spending, its lowest point), its
+// one chart; what the hour leaves out, in words; each budget in words (what
+// is paid, what is still to come, what is left, how its period should end);
+// what is coming, week by week; the reserves, the bank accounts, the
+// contracts, the mail about money. No percentage, no colour, no bar. Budgets
+// show by area with Mail's filter (AreaFilter.qml), as the hours say until
+// you tick others; a shortfall on an account always shows.
 
 pragma ComponentBehavior: Bound
 
@@ -84,6 +90,18 @@ Item {
             flick.contentY = Math.max(0, Math.min(bankLoader.y - 8, flick.contentHeight - flick.height))
     }
 
+    // What is coming in view, the month beside it on a computer: for the window's images.
+    function showComing() {
+        const flick = scroll.contentItem as Flickable
+        if (flick)
+            flick.contentY = Math.max(0, Math.min(coming.y - 8, flick.contentHeight - flick.height))
+    }
+
+    function showMonth() {
+        coming.month = !page.window.compact
+        page.showComing()
+    }
+
     // A contract shown, or started from a mail.
     function openContract(id) {
         page.contractsNow().open(id)
@@ -98,8 +116,13 @@ Item {
             page.openId = page.view.budgets[0].id
     }
 
-    function moodColor(mood) {
-        return mood === "short" ? theme.warm : mood === "reserve" ? theme.muted : theme.accent
+    // An act on a movement said: its effect, and whether the payee's next ones go there too, asked once.
+    property string said: ""
+    property var asking: null
+
+    function acted(text, ask) {
+        page.said = text
+        page.asking = ask
     }
 
     function moodIcon(mood) {
@@ -155,14 +178,38 @@ Item {
                     text: page.view ? page.view.title : page.sioul.text("ui-budgets")
                     textFormat: Text.PlainText
                     font.pixelSize: 22
+                    elide: Text.ElideRight
                     color: page.theme.text
                 }
+                // Budgets by area, as Mail's: as the hours say, until you tick others.
+                AreaFilter {
+                    objectName: "budgetAreas"
+                    visible: page.view !== null && !!page.view.filter && !page.window.compact
+                    sioul: page.sioul
+                    theme: page.theme
+                    shown: page.view ? page.view.filter : null
+                    help: page.sioul.text("budgets-filter-help")
+                    onTicked: areas => page.sioul.tickBudgetAreas(areas)
+                    onAsHours: page.sioul.budgetAreasAsHours()
+                }
                 Button {
-                    text: page.sioul.text("budget-new")
+                    text: page.window.compact ? "" : page.sioul.text("budget-new")
                     icon.name: "list-add"
                     icon.color: page.theme.text
+                    Accessible.name: page.sioul.text("budget-new")
                     onClicked: newBudget.now().edit("", null)
                 }
+            }
+            // On a phone, the filter under the title: within 412 points.
+            AreaFilter {
+                objectName: "budgetAreasPhone"
+                visible: page.view !== null && !!page.view.filter && page.window.compact
+                sioul: page.sioul
+                theme: page.theme
+                shown: page.view ? page.view.filter : null
+                help: page.sioul.text("budgets-filter-help")
+                onTicked: areas => page.sioul.tickBudgetAreas(areas)
+                onAsHours: page.sioul.budgetAreasAsHours()
             }
             Label {
                 visible: page.view === null
@@ -170,6 +217,105 @@ Item {
                 text: page.sioul.text("ui-no-budgets")
                 wrapMode: Text.Wrap
                 color: page.theme.muted
+            }
+
+            // Each account shown, from one income to the next, in a few sentences.
+            Repeater {
+                model: page.view && page.view.accounts ? page.view.accounts : []
+
+                delegate: ColumnLayout {
+                    id: account
+
+                    required property var modelData
+
+                    objectName: "aheadAccount"
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: account.modelData.title
+                        textFormat: Text.PlainText
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                        color: page.theme.text
+                    }
+                    Repeater {
+                        model: account.modelData.sentences
+
+                        delegate: Label {
+                            required property string modelData
+
+                            Layout.fillWidth: true
+                            text: modelData
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                    }
+                }
+            }
+            // The one chart: the first account's balance ahead, to its next income.
+            AheadChart {
+                objectName: "aheadChart"
+                visible: page.view !== null && !!page.view.chart
+                Layout.fillWidth: true
+                Layout.preferredHeight: page.window.compact ? 120 : 150
+                theme: page.theme
+                shown: page.view ? page.view.chart : null
+            }
+            // What the hour leaves out, in words; never how many.
+            Repeater {
+                model: page.view && page.view.left_out ? page.view.left_out : []
+
+                delegate: Label {
+                    required property string modelData
+
+                    Layout.fillWidth: true
+                    text: modelData
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: page.theme.muted
+                }
+            }
+            // What an act on a movement did, and the question asked once.
+            Label {
+                visible: page.said !== ""
+                Layout.fillWidth: true
+                text: page.said
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: page.theme.text
+            }
+            Flow {
+                visible: page.asking !== null
+                Layout.fillWidth: true
+                spacing: 8
+
+                Label {
+                    text: page.asking ? page.sioul.textArgs("moved-ask", JSON.stringify({ payee: page.asking.payee, budget: page.asking.title })) : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.text
+                }
+                Button {
+                    text: page.sioul.text("moved-ask-yes")
+                    onClicked: {
+                        const a = page.asking
+                        page.asking = null
+                        page.said = page.sioul.decidePayee(a.payee, a.budget, a.way, true)
+                    }
+                }
+                Button {
+                    flat: true
+                    text: page.sioul.text("moved-ask-no")
+                    onClicked: {
+                        const a = page.asking
+                        page.asking = null
+                        page.said = page.sioul.decidePayee(a.payee, a.budget, a.way, false)
+                    }
+                }
             }
 
             // The budgets.
@@ -217,93 +363,54 @@ Item {
                             }
                         }
 
-                        // The verdict, apart.
-                        Rectangle {
-                            Layout.preferredWidth: verdictRow.implicitWidth + 20
-                            Layout.preferredHeight: verdictRow.implicitHeight + 10
-                            radius: page.theme.radius
-                            color: "transparent"
-                            border.color: page.moodColor(budgetCard.modelData.mood)
-
-                            RowLayout {
-                                id: verdictRow
-
-                                anchors.centerIn: parent
-                                spacing: 6
-
-                                Icon {
-                                    iconName: page.moodIcon(budgetCard.modelData.mood)
-                                    size: 16
-                                }
-                                Label {
-                                    text: budgetCard.modelData.verdict
-                                    textFormat: Text.PlainText
-                                    color: page.moodColor(budgetCard.modelData.mood)
-                                    font.weight: Font.DemiBold
-                                }
-                            }
-                        }
-
-                        Label {
-                            visible: budgetCard.modelData.pace !== ""
-                            Layout.fillWidth: true
-                            text: budgetCard.modelData.pace
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: page.theme.text
-                        }
-
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: 2
-                            columnSpacing: page.theme.gap
-                            rowSpacing: 4
-
-                            Repeater {
-                                model: budgetCard.modelData.figures.reduce((all, f) => all.concat([f.label, f.value]), [])
-
-                                delegate: Label {
-                                    id: cell
-
-                                    required property string modelData
-                                    required property int index
-
-                                    Layout.fillWidth: cell.index % 2 === 0
-                                    Layout.alignment: cell.index % 2 === 0 ? Qt.AlignLeft : Qt.AlignRight
-                                    text: cell.modelData
-                                    textFormat: Text.PlainText
-                                    color: cell.index % 2 === 0 ? page.theme.muted : page.theme.text
-                                    font.features: { "tnum": 1 }
-                                }
-                            }
-                        }
-
+                        // The budget in words: what is paid, what is still to come, what is left.
                         Repeater {
-                            model: budgetCard.modelData.notes
+                            model: budgetCard.modelData.words
 
-                            delegate: RowLayout {
-                                id: note
-
+                            delegate: Label {
                                 required property string modelData
 
                                 Layout.fillWidth: true
-                                spacing: 8
+                                text: modelData
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: page.theme.text
+                            }
+                        }
+                        // How its period should end, in one sentence, with the reserve that covers it.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
 
-                                Icon {
-                                    iconName: "view-financial-account-savings"
-                                    size: 16
-                                }
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: note.modelData
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    color: page.theme.muted
-                                }
+                            Icon {
+                                Layout.alignment: Qt.AlignTop
+                                iconName: page.moodIcon(budgetCard.modelData.mood)
+                                size: 16
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: budgetCard.modelData.verdict
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: page.theme.text
                             }
                         }
                     }
                 }
+            }
+
+            // What is coming, week by week; the month on demand beside it.
+            ComingSection {
+                id: coming
+
+                objectName: "comingSection"
+                visible: page.view !== null
+                Layout.fillWidth: true
+                sioul: page.sioul
+                theme: page.theme
+                window: page.window
+                view: page.view
+                onSaid: (text, ask) => page.acted(text, ask)
             }
 
             // The reserves: savings accounts, made and changed here.
@@ -381,6 +488,8 @@ Item {
                                     Layout.alignment: reserveCell.index % 2 === 0 ? Qt.AlignLeft : Qt.AlignRight
                                     text: reserveCell.modelData
                                     textFormat: Text.PlainText
+                                    // A long label wraps, never under its figure (a phone's 412 points).
+                                    wrapMode: reserveCell.index % 2 === 0 ? Text.Wrap : Text.NoWrap
                                     color: reserveCell.index % 2 === 0 ? page.theme.muted : page.theme.text
                                     font.features: { "tnum": 1 }
                                 }
@@ -583,6 +692,7 @@ Item {
 
                 sioul: page.sioul
                 theme: page.theme
+                incomes: page.view ? page.view.incomes : []
                 onSaved: id => page.openId = id
             }
         }

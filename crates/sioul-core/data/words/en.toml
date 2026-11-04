@@ -160,6 +160,10 @@ leads = ["from", "to"]
 order_words = ["order"]
 # …and saying it is confirmed.
 confirmed_words = ["confirmed"]
+# Words before a reference that ties a payment to a bank's line (matching.rs): an invoice's, an order's, a notice's, a mandate's.
+references = ["invoice", "inv", "order", "contract", "customer number", "mandate", "mandate reference", "creditor identifier"]
+# A purchase paid in instalments, "#" its number of them (matching.rs).
+instalments = ["in # instalments", "in # installments", "in # payments", "pay in #"]
 
 # Bank and payment-processor exports (bank.rs).
 [bank]
@@ -167,12 +171,18 @@ confirmed_words = ["confirmed"]
 filler = [
     "the", "and", "for", "from", "with", "your", "our", "you", "its", "this", "that", "are", "was", "not", "but", "all",
     "any", "per", "via", "off", "out", "sepa", "payment", "transfer", "card", "purchase", "debit", "credit", "ref",
-    "reference",
+    "reference", "mandate",
 ]
 # Statuses of rows left out: pending, refused, cancelled.
 skipped = ["pending", "denied", "cancel", "reversed", "failed"]
 # A balance impact that says the row moves no money.
 memo = ["memo"]
+# A card payment's label, by its first words (matching.rs): what a deferred-debit card's sum settles.
+card = ["card", "pos", "card payment"]
+# Statuses of rows that are card holds, not final yet (movements.rs): kept apart from the movements.
+pending = ["pending"]
+# A deferred-debit card's sum of the month's card payments (matching.rs).
+deferred = ["card statement", "deferred debit", "card total"]
 
 # A CSV export's columns, found by their names (a name starting with one of these; `name`, `net`, `kind`, `status`, `impact`, `balance`, `time`, `currency` and `id` are exact names).
 [bank.columns]

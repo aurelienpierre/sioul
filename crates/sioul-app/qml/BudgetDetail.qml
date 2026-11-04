@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// A budget opened: how its period goes at its pace, its balance as a line
+// A budget opened: its period in words, its balance as a line
 // (days, weeks, months or years; what is planned dotted), and its ledger:
 // every movement of the period, newest first. Movements are added by hand
 // here, once or recurring.
@@ -130,21 +130,28 @@ ColumnLayout {
         color: detail.theme.text
     }
 
-    // How the period goes, at its pace.
+    // The budget in words: what is paid, what is still to come, what is
+    // left; then how its period should end. No percentage, no colour.
+    Repeater {
+        model: detail.shown ? detail.shown.card.words : []
+
+        delegate: Label {
+            required property string modelData
+
+            Layout.fillWidth: true
+            text: modelData
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: detail.theme.text
+        }
+    }
     Label {
         visible: detail.shown !== null && detail.shown.card.verdict !== ""
         Layout.fillWidth: true
         text: detail.shown ? detail.shown.card.verdict : ""
         textFormat: Text.PlainText
-        font.weight: Font.DemiBold
-        color: detail.shown && detail.shown.card.mood === "short" ? detail.theme.warm : detail.theme.accent
-    }
-    Label {
-        visible: detail.shown !== null && detail.shown.card.pace !== ""
-        Layout.fillWidth: true
-        text: detail.shown ? detail.shown.card.pace : ""
-        textFormat: Text.PlainText
         wrapMode: Text.Wrap
+        font.weight: Font.DemiBold
         color: detail.theme.text
     }
     // What it is for, which says the hours it is in view; changed in its form ("Edit").

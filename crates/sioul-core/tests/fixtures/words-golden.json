@@ -783,7 +783,10 @@
    "debit",
    "credit",
    "ref",
-   "reference"
+   "reference",
+   "rum",
+   "ics",
+   "mandate"
   ],
   "bank.columns.date": [
    "date",
@@ -2899,6 +2902,81 @@
    "Impots",
    "Free Mobile",
    "Societe Generale"
+  ],
+  "payments.references": [
+   "facture",
+   "fact",
+   "commande",
+   "cde",
+   "avis",
+   "dossier",
+   "contrat",
+   "client",
+   "numero client",
+   "rum",
+   "mandat",
+   "reference unique de mandat",
+   "ics",
+   "identifiant creancier",
+   "invoice",
+   "inv",
+   "order",
+   "contract",
+   "customer number",
+   "mandate",
+   "mandate reference",
+   "creditor identifier"
+  ],
+  "payments.instalments": [
+   "en # fois",
+   "# fois sans frais",
+   "#x sans frais",
+   "# echeances",
+   "in # instalments",
+   "in # installments",
+   "in # payments",
+   "pay in #"
+  ],
+  "bank.processors": [
+   "paypal",
+   "sumup",
+   "sq",
+   "zettle",
+   "izettle",
+   "stripe",
+   "payplug",
+   "adyen",
+   "mollie",
+   "klarna",
+   "alma",
+   "oney",
+   "lydia",
+   "lyf",
+   "viva"
+  ],
+  "bank.deferred": [
+   "facture carte",
+   "debit differe",
+   "carte a debit differe",
+   "total carte",
+   "releve carte",
+   "arrete carte",
+   "card statement",
+   "deferred debit",
+   "card total"
+  ],
+  "bank.card": [
+   "cb",
+   "carte",
+   "paiement par carte",
+   "achat cb",
+   "card",
+   "pos",
+   "card payment"
+  ],
+  "bank.pending": [
+   "en attente",
+   "pending"
   ]
  }
 }
