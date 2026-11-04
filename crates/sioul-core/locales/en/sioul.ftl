@@ -2858,6 +2858,8 @@ porch-about-letters = The paper letters read from their scans, until you file th
 porch-agenda = Agenda
 porch-about-agenda = Two events of yours at once, or closer than the time you keep between them, when someone else's change made it: each said once, at a time its agenda may reach you. Keep both says it no more; Move mine opens your own event to move it.
 porch-conflict-during = { $span }, with other events during it
+porch-shortfall-what = A payment it would not hold
+letters-its-page = Its page
 rule-order = Each message goes to the first lane that takes it, in this order: set aside, hostile, what your own spam filter flags, codes, projects, what you send yourself, your public address, less important addresses, newsletters, someone new, people you know.
 rule-people = Anyone in your address books, or on a list by their own address, comes here, as do the senders you let in: your list of them holds { $n } entries, and "Let in", in a message from someone new, adds them.
 rule-screener = A stranger (in none of your address books, on no list) waits here, and so does a sender a domain alone names on a list, unless a project or the newsletter rule takes the message first.
@@ -3760,15 +3762,9 @@ task-rest-offer = After something heavy, something that gives back:
 task-mode-day = The day
 day-all-day = All day: { $what }
 day-margin = Around: { $what }
-overlap-today = Today, two events at once: { $first } and { $second }.
 overlap-day = { $day }, two events at once: { $first } and { $second }.
 overlap-open = Open “{ $title }”
-overlap-set-aside = Don’t mention it again
 overlap-during = During { $title } ({ $span }): { $count ->
-        [one] one other event
-       *[other] { $count } other events
-    }
-overlap-during-today = Today, during { $title } ({ $span }): { $count ->
         [one] one other event
        *[other] { $count } other events
     }
@@ -6706,7 +6702,6 @@ zone-other = Another time zone…
 event-clock = Time zone
 event-clock-local = Local time ({ $zone })
 event-clock-utc = UTC
-overlap-today-close = Today, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-source-after = kept after the first (its After)
 overlap-source-before = kept before the second (its Before)

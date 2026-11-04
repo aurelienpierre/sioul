@@ -411,10 +411,27 @@ fn row_copy(row: &Value) -> Value {
     json!({ "key": row["key"], "kind": row["kind"], "keys": row["keys"], "answers": row["answers"], "first": row["first"], "second": row["second"], "event": row["event"] })
 }
 
-/// An account's shortfall, first in Money: the budgets' own notice (their
-/// part 3), none until it is there.
+/// An account's shortfalls, first in Money: the budgets' own notices
+/// (`ahead::shortfall_notices`), one per account and day of the shortfall,
+/// of every area, so said whatever the hours show; each opening Budgets.
+/// Its sentence (the payment, what is missing, what covers it) under the
+/// row whole, which one line would cut; the row says the account and its day.
 fn shortfall() -> Vec<(Value, Vec<String>)> {
-    Vec::new()
+    let config = load_config();
+    let Some(root) = config.notes_root_path() else { return Vec::new() };
+    let words = sioul_core::words::Words::of(&config);
+    let tr = tr();
+    let zone = sioul_core::zone::current();
+    sioul_core::ahead::shortfall_notices(&root, &words, tr, sioul_core::zone::now().date())
+        .into_iter()
+        .map(|notice| {
+            let id = notice.id.clone();
+            let sentence = notice.what.clone();
+            let day = jiff::Timestamp::from_millisecond(notice.at).map(|t| t.to_zoned(zone.clone()).date()).ok();
+            let notice = Notice { what: tr.text("porch-shortfall-what", None), when: day.map(|d| tr.day_short(d)).unwrap_or(notice.when.clone()), ..notice };
+            (row(notice, vec![id.clone()], Vec::new(), json!({ "note": sentence })), vec![id])
+        })
+        .collect()
 }
 
 /// A movement's row in words: who, its state ("Planned", "Not seen on its

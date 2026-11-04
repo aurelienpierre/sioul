@@ -682,16 +682,19 @@ fn reminder_lines(tr: &Translator, all: &[Reminder], details: bool, now: i64) ->
 /// on its own day until both are over or it is answered, as the Porch says
 /// them (`pim::overlaps_of`, `overlaps::Notices`): one person in two places,
 /// the time to get there and back counted; never one you came upon, nor
-/// one set aside for good.
+/// one set aside for good, nor one dismissed or answered on the Porch of
+/// any device (the notices' words on `agenda:<digest of its key>`).
 fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
+    let words = crate::notices::states(&|_, _| None);
     match &input.notices {
-        Some(given) => overlap_lines_with(m, input, given),
-        None => overlap_lines_with(m, input, &sioul_core::overlaps::Notices::load(&sioul_core::overlaps::Notices::default_path())),
+        Some(given) => overlap_lines_with(m, input, given, &words),
+        None => overlap_lines_with(m, input, &sioul_core::overlaps::Notices::load(&sioul_core::overlaps::Notices::default_path()), &words),
     }
 }
 
-/// `overlap_lines`, with the conflicts due to be said (`notices`) given.
-fn overlap_lines_with(m: &Moment, input: &AgendaInput, notices: &sioul_core::overlaps::Notices) -> Vec<Timed> {
+/// `overlap_lines`, with the conflicts due to be said (`notices`) and the
+/// notices' words said on any device (`words`) given.
+fn overlap_lines_with(m: &Moment, input: &AgendaInput, notices: &sioul_core::overlaps::Notices, words: &sioul_core::notices::States) -> Vec<Timed> {
     let zone = m.now.time_zone().clone();
     let now = m.now.timestamp().as_second();
     let day_of = |at: i64| Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
@@ -700,6 +703,8 @@ fn overlap_lines_with(m: &Moment, input: &AgendaInput, notices: &sioul_core::ove
         .into_iter()
         .filter(|o| notices.due.contains_key(&o.key) && !notices.said.contains_key(&o.key))
         .filter(|o| !input.aside.holds(o) && o.first.end.max(o.second.end) > now)
+        // Dismissed or answered on a Porch: said no more here either.
+        .filter(|o| !words.of(&sioul_core::notices::agenda_id(&o.key), sioul_core::notices::State::default()).mark.settled())
         .filter_map(|o| {
             let day = day_of(o.second.start)?;
             if day != m.now.date() && Some(day) != tomorrow {
@@ -2466,14 +2471,24 @@ mod tests {
             ("Dentist", "2026-10-05T11:00[Europe/Paris]", "2026-10-05T12:00[Europe/Paris]", false, None, false),
         ]);
         let none = sioul_core::overlaps::Notices::default();
-        assert!(overlap_lines_with(&moment, &input, &none).is_empty(), "come upon: never said");
+        let unsaid = sioul_core::notices::States::default();
+        assert!(overlap_lines_with(&moment, &input, &none, &unsaid).is_empty(), "come upon: never said");
         let found = sioul_core::overlaps::conflicts(&input.events, 0, &sioul_core::agendas::Matrix::default());
         let due = sioul_core::overlaps::Notices { due: found.iter().map(|o| (o.key.clone(), 0)).collect(), ..Default::default() };
-        assert_eq!(overlap_lines_with(&moment, &input, &due).len(), 1, "made by someone else's change: said");
+        assert_eq!(overlap_lines_with(&moment, &input, &due, &unsaid).len(), 1, "made by someone else's change: said");
+        // Dismissed, or answered, on the Porch of any device: said no more on the card.
+        let dir = std::env::temp_dir().join(format!("sioul-homecard-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for mark in [sioul_core::notices::Mark::Dismissed, sioul_core::notices::Mark::Done] {
+            let ids: Vec<String> = found.iter().map(|o| sioul_core::notices::agenda_id(&o.key)).collect();
+            sioul_core::notices::say(&dir, "desk", &ids, mark, 1_000).unwrap();
+            assert!(overlap_lines_with(&moment, &input, &due, &sioul_core::notices::States::read(&dir)).is_empty(), "{mark:?} on a Porch");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
         let residency = input.events.iter().find(|e| e.summary == "Residency").unwrap();
         let aside = sioul_core::overlaps::SetAside { events: [sioul_core::overlaps::occurrence_id(residency)].into(), ..Default::default() };
         let quiet = AgendaInput { aside, ..input };
-        assert!(overlap_lines_with(&moment, &quiet, &due).is_empty(), "set aside whole");
+        assert!(overlap_lines_with(&moment, &quiet, &due, &unsaid).is_empty(), "set aside whole");
     }
 
     /// The dates asked of the coming month, at the head of their days

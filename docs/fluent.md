@@ -75,7 +75,7 @@ date-long = { $weekday } { $day ->
 **From QML**, through the bridge object, always by a literal name:
 - `sioul.text("stopped-done")`: a message without arguments;
 - `sioul.textWith("stopped-at", "when", card.stopped.when)`: one argument, by name and value;
-- `sioul.textArgs("overlap-today", JSON.stringify({ first: …, second: … }))`: several, as a JSON object.
+- `sioul.textArgs("moved-ask", JSON.stringify({ payee: …, budget: … }))`: several, as a JSON object.
 
 **From the window's Rust** (`crates/sioul-app/src/backend.rs`):
 - `tr()` is the session's `Translator`, made once (the configuration's language, else the system's), so a change of language takes effect when Sioul starts again;

@@ -2885,6 +2885,8 @@ porch-about-letters = Le courrier papier lu sur ses scans, jusqu’à ce que vou
 porch-agenda = Agenda
 porch-about-agenda = Deux de vos événements en même temps, ou plus proches que le temps que vous gardez entre eux, quand le changement de quelqu’un d’autre l’a fait : chacun dit une fois, à un moment où son agenda peut vous joindre. Garder les deux ne le dit plus ; Déplacer le mien ouvre votre propre événement pour le déplacer.
 porch-conflict-during = { $span }, avec d’autres événements pendant celui-ci
+porch-shortfall-what = Un paiement qu’il ne tiendrait pas
+letters-its-page = Sa page
 rule-order = Chaque courriel va dans la première file qui le prend, dans cet ordre : mis de côté, hostile, ce que votre propre filtre à indésirables signale, codes, projets, ce que vous vous envoyez, votre adresse publique, adresses moins importantes, infolettres, quelqu’un de nouveau, personnes que vous connaissez.
 rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un courriel de quelqu’un de nouveau, les y ajoute.
 rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, comme un expéditeur qu’un domaine seul nomme sur une liste, sauf si un projet ou la règle des infolettres prend le courriel d’abord.
@@ -3787,15 +3789,9 @@ task-rest-offer = Après quelque chose de lourd, quelque chose qui recharge :
 task-mode-day = La journée
 day-all-day = Toute la journée : { $what }
 day-margin = Autour : { $what }
-overlap-today = Aujourd’hui, deux événements en même temps : { $first } et { $second }.
 overlap-day = { $day }, deux événements en même temps : { $first } et { $second }.
 overlap-open = Ouvrir « { $title } »
-overlap-set-aside = Ne plus en parler
 overlap-during = Pendant { $title } ({ $span }) : { $count ->
-        [one] un autre événement
-       *[other] { $count } autres événements
-    }
-overlap-during-today = Aujourd’hui, pendant { $title } ({ $span }) : { $count ->
         [one] un autre événement
        *[other] { $count } autres événements
     }
@@ -6740,7 +6736,6 @@ zone-other = Un autre fuseau horaire…
 event-clock = Fuseau horaire
 event-clock-local = Heure locale ({ $zone })
 event-clock-utc = UTC
-overlap-today-close = Aujourd’hui, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-source-after = gardées après le premier (son Après)
 overlap-source-before = gardées avant le second (son Avant)

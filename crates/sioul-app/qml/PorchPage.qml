@@ -436,7 +436,13 @@ Item {
     }
 
     // A letter opened: on its scan, as a letter opens until the Letters page opens it.
+    // A letter opened on the Letters page (main.qml's `openLetter`); its scan alone by "See the scan".
     function openLetter(letter) {
+        if (letter.id)
+            page.window.openLetter(letter.id)
+    }
+
+    function seeScan(letter) {
         if (letter.file)
             Qt.openUrlExternally(page.theme.fileUrl(letter.file))
     }
@@ -1223,6 +1229,8 @@ Item {
                             notice: moneyRow.modelData.notice
                             iconName: "view-financial-budget"
                             amount: moneyRow.modelData.amount || ""
+                            // A shortfall's sentence whole: the payment, what is missing, what covers it.
+                            note: moneyRow.modelData.note || ""
                             mainText: page.sioul.text("porch-open-budgets")
                             mainIcon: "view-financial-budget"
                             onOpened: page.window.page = 9
@@ -1259,7 +1267,7 @@ Item {
                             iconName: "mail-mark-unread"
                             // A scan not read: why, said calmly.
                             note: (letterRow.letter.problem || "") !== "" ? page.sioul.textWith("letters-unread", "problem", letterRow.letter.problem) : ""
-                            // Until the Letters page opens a letter: its scan, as a letter opens now.
+                            // The row opens the letter on the Letters page; its main action, the scan.
                             mainText: page.sioul.text("letters-scan")
                             mainIcon: "document-open"
                             more: [letterRow.letter.deadline !== "" && letterRow.letter.task === "" ? { id: "task", text: page.sioul.text("letters-task") } : null,
@@ -1267,7 +1275,7 @@ Item {
                                    letterRow.letter.appointment ? { id: "event", text: page.sioul.text("letters-event") } : null,
                                    { id: "done", text: page.sioul.text("letters-done") }].filter(m => m !== null)
                             onOpened: page.openLetter(letterRow.letter)
-                            onMainPressed: page.openLetter(letterRow.letter)
+                            onMainPressed: page.seeScan(letterRow.letter)
                             onDismissPressed: page.say("dismiss", letterRow.modelData)
                             onChosen: id => page.letterAct(id, letterRow.letter)
 
