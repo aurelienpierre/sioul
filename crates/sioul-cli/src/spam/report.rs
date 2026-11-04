@@ -932,6 +932,7 @@ pub(crate) fn dry_run(s: &Session, ask: &DryAsk) -> Result<Report, String> {
     let now = jiff::Timestamp::now().as_second();
     let mut accounts = Vec::new();
     let (mut would_move, mut would_flag): (Vec<(f64, Listed)>, Vec<(f64, Listed)>) = (Vec::new(), Vec::new());
+    let dealings = sioul_core::spam::vouched::Dealings::gather(&s.config);
     let mut all = 0usize;
     for src in chosen {
         let account = src.account.clone().unwrap_or_default();
@@ -962,8 +963,9 @@ pub(crate) fn dry_run(s: &Session, ask: &DryAsk) -> Result<Report, String> {
                 listed_blocked += 1;
                 continue;
             };
+            // Proven mail from someone you deal with is never moved by a filter: flagged at most (`spam::vouched`).
             match action {
-                Action::Move => would_move.push((f64::from(p), item)),
+                Action::Move if !sioul_core::spam::vouched::vouched(&t.card, t.trust, &dealings) => would_move.push((f64::from(p), item)),
                 _ => would_flag.push((f64::from(p), item)),
             }
         }

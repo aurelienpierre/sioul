@@ -48,7 +48,8 @@ import org.json.JSONObject;
  * (TextsAsk), the rows Rust's reader asks for by their ids (the whole
  * history, every column, multimedia messages and their parts), a part's
  * content, every row there is with its date, the texts Sioul sent lately
- * (to find one after a crash),
+ * (to find one after a crash), which of the texts Sioul holds the SMS app
+ * has read (`flags`),
  * and a text to send (TextSend), whether the phone's texts changed since the
  * last look and whether it charges (`changes`). Heard: a new text, which
  * brings a step soon. The background service watches Android's provider of
@@ -339,6 +340,11 @@ public final class Texts
             if (!allowed(context, Manifest.permission.READ_SMS))
                 return new JSONObject().put("allowed", false).toString();
             return arriving(resolver).put("allowed", true).toString();
+        case "texts-flags":
+            // Which of the texts Sioul holds the phone's SMS app has read (texts.rs, `read_on_phone`).
+            if (!allowed(context, Manifest.permission.READ_SMS))
+                return new JSONObject().put("allowed", false).toString();
+            return flags(resolver, asked.optJSONArray("sms_ids"), asked.optJSONArray("mms_ids")).put("allowed", true).toString();
         case "texts-changes":
             // Watched in this process too (the window's, without steps of its own): a step asks Android only after a change.
             watch(context, StepService.inThisProcess());
@@ -633,6 +639,32 @@ public final class Texts
         // The conversations' people only when there is something to read: most steps find nothing new.
         JSONObject threads = texts.length() > 0 ? threads(resolver) : new JSONObject();
         return new JSONObject().put("texts", texts).put("threads", threads).put("sms", lastSms).put("mms", lastMms);
+    }
+
+    /**
+     * Whether the phone's SMS app has read each of these rows, as the
+     * provider says (its `read` column; Rust's `texts::read_on_phone`): {sms:
+     * {id: 1 or 0}, mms: {id: 1 or 0}}; a row gone, or none asked, left out.
+     * Only the ids and that column are read, a few rows at a step.
+     */
+    static JSONObject flags(ContentResolver resolver, JSONArray smsIds, JSONArray mmsIds) throws JSONException
+    {
+        return new JSONObject().put("sms", readFlags(resolver, Telephony.Sms.CONTENT_URI, smsIds)).put("mms", readFlags(resolver, Telephony.Mms.CONTENT_URI, mmsIds));
+    }
+
+    /** The `read` column of the rows `ids` names in `table`, by id; none for no id, or a table that cannot be read. */
+    private static JSONObject readFlags(ContentResolver resolver, Uri table, JSONArray ids) throws JSONException
+    {
+        JSONObject read = new JSONObject();
+        if (ids == null || ids.length() == 0)
+            return read;
+        try (Cursor cursor = resolver.query(table, new String[] { "_id", "read" }, rows(ids), null, null)) {
+            while (cursor != null && cursor.moveToNext())
+                read.put(Long.toString(cursor.getLong(0)), cursor.getInt(1));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Texts: whether the texts were read could not be asked: " + e.getClass().getSimpleName());
+        }
+        return read;
     }
 
     /** Every row of a query, every column copied (the cursor closed after). */

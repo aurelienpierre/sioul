@@ -125,6 +125,8 @@ public final class AppNotes extends NotificationListenerService
     private final Runnable review = () -> review("files");
     /** What is due sent after the step wrote it: one runnable, so that a burst of changes runs it once. */
     private final Runnable answer = this::answer;
+    /** The SMS app's notifications taken away after the step named them: one runnable for a burst of changes. */
+    private final Runnable withdraw = this::withdraw;
 
     /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why", "line"}. */
     static native String nativeDecide(String json);
@@ -137,8 +139,9 @@ public final class AppNotes extends NotificationListenerService
      * (what is due now: {due: [{key, verb, notice}]}), "check" ({key, held,
      * posted}: the live notification found for one, {go, crossed} or {go:
      * false, state}), "taken" ({key}: written and flushed first, {go, words}),
-     * "result" ({key, state, crossed, held}), "removed" ({package, key}: a
-     * relayed notification gone, {shared}).
+     * "result" ({key, state, crossed, held}), "removed" ({package, key,
+     * reason}: a notification gone, {shared}), "withdraw" (the SMS app's
+     * notifications of conversations read elsewhere: {names}).
      */
     static native String nativeReply(String verb, String json);
 
@@ -148,6 +151,8 @@ public final class AppNotes extends NotificationListenerService
     private static final String DUE = "due.jsonl";
     /** The conversations answered from a computer lately, there (Rust's `replies::ANSWERED`): what is held of them comes now. */
     private static final String ANSWERED = "answered.json";
+    /** The SMS app's notifications to take away, there (Rust's `phonemsgs::WITHDRAW`): their conversations read elsewhere. */
+    private static final String WITHDRAW = "withdraw.json";
     /** Changes to what is due settle this long before it is read. */
     private static final long DUE_SETTLE_MS = 300;
 
@@ -468,6 +473,7 @@ public final class AppNotes extends NotificationListenerService
             review("connected");
             // What became due while Android had not bound the listener yet.
             answer();
+            withdraw();
         });
     }
 
@@ -517,10 +523,14 @@ public final class AppNotes extends NotificationListenerService
     }
 
     /**
-     * A notification gone, as Android says it: for one relayed to your
-     * computers, its going said there (Rust's `replies::went`), so that they
-     * no longer offer its Reply. Never for Sioul's own holding
-     * (REASON_SNOOZED), which is no going.
+     * A notification gone, as Android says it, with why (Android 8 and
+     * later; Sioul needs Android 9): for one relayed to your computers, its
+     * going said there (Rust's `replies::went`), so that they no longer
+     * offer its Reply; and, when you opened it, swiped it away or its app
+     * withdrew it (an SMS app does once the conversation is read), its
+     * messages read on every device (Rust's `phonemsgs::read_by_removal`
+     * decides by the reason). Never for Sioul's own holding (REASON_SNOOZED),
+     * which is no going.
      */
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn, RankingMap rankings, int reason)
@@ -529,15 +539,15 @@ public final class AppNotes extends NotificationListenerService
             return;
         String pkg = sbn.getPackageName();
         String key = sbn.getKey();
-        worker.post(() -> removed(pkg, key));
+        worker.post(() -> removed(pkg, key, reason));
     }
 
-    /** A notification's going said to Rust, and a step soon when your computers have it to read. On the worker thread. */
-    private void removed(String pkg, String key)
+    /** A notification's going said to Rust, with why, and a step soon when your computers have it to read. On the worker thread. */
+    private void removed(String pkg, String key, int reason)
     {
         try {
             DoseAlarms.load(getApplicationContext());
-            String answer = nativeReply("removed", new JSONObject().put("package", pkg).put("key", key).toString());
+            String answer = nativeReply("removed", new JSONObject().put("package", pkg).put("key", key).put("reason", reason).toString());
             if (answer != null && !answer.isEmpty() && !"null".equals(answer) && new JSONObject(answer).optBoolean("shared", false))
                 StepService.soon(getApplicationContext());
         } catch (Throwable e) {
@@ -678,6 +688,9 @@ public final class AppNotes extends NotificationListenerService
                 if (DUE.equals(name)) {
                     worker.removeCallbacks(answer);
                     worker.postDelayed(answer, DUE_SETTLE_MS);
+                } else if (WITHDRAW.equals(name)) {
+                    worker.removeCallbacks(withdraw);
+                    worker.postDelayed(withdraw, DUE_SETTLE_MS);
                 } else if (ANSWERED.equals(name)) {
                     worker.removeCallbacks(review);
                     worker.postDelayed(review, SETTLE_MS);
@@ -694,6 +707,56 @@ public final class AppNotes extends NotificationListenerService
         for (FileObserver observer : watches)
             observer.stopWatching();
         watches.clear();
+    }
+
+    // ---------------------------------------------------------------- read elsewhere
+
+    /**
+     * The SMS app's notifications of conversations read on another device,
+     * or in Sioul's Texts, taken away from the phone's shade
+     * (cancelNotification): Rust names them by the phone's own name for
+     * each (`replies::notice`), and Java finds each among what Android shows
+     * by that name (`Replies.live`), this phone's own profile only. The SMS
+     * app's own unread mark stays: only the default SMS app may change the
+     * SMS provider. Android then says each removed as Sioul's own
+     * (REASON_LISTENER_CANCEL), which reads nothing more. On the worker thread.
+     */
+    private void withdraw()
+    {
+        if (!connected)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeReply("withdraw", "{}");
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            JSONArray names = new JSONObject(answer).optJSONArray("names");
+            StatusBarNotification[] sbns = getActiveNotifications();
+            if (names == null || names.length() == 0 || sbns == null)
+                return;
+            String[] packages = new String[sbns.length];
+            String[] keys = new String[sbns.length];
+            boolean[] own = new boolean[sbns.length];
+            for (int i = 0; i < sbns.length; i++) {
+                packages[i] = sbns[i] == null ? null : sbns[i].getPackageName();
+                keys[i] = sbns[i] == null ? null : sbns[i].getKey();
+                own[i] = sbns[i] != null && Process.myUserHandle().equals(sbns[i].getUser());
+            }
+            int taken = 0;
+            for (int n = 0; n < names.length(); n++) {
+                int found = Replies.live(packages, keys, own, names.optString(n, ""));
+                if (found >= 0) {
+                    cancelNotification(keys[found]);
+                    taken++;
+                }
+            }
+            // How many, never which.
+            if (taken > 0)
+                Log.i(TAG, "Notes: " + taken + " notification(s) of texts read elsewhere taken away.");
+        } catch (Throwable e) {
+            // Sioul's library that does not load, Rust that fails, the access taken back: the notifications stay.
+            Log.w(TAG, "Notes: the notifications of texts read elsewhere stay: " + e.getClass().getSimpleName());
+        }
     }
 
     // ---------------------------------------------------------------- replies from your computers

@@ -165,7 +165,8 @@ fn mark_of(verb: &str) -> Option<Mark> {
 }
 
 /// What the window asks (`Sioul::notices`): "view" (the Porch's sections
-/// that are not mail, `view`); "dismiss", "read", "done" {kind, ids,
+/// that are not mail, `view`); "agenda" (the agenda's conflicts as rows: the
+/// `overlaps` property given, `agenda_rows`); "dismiss", "read", "done" {kind, ids,
 /// targets}: the word said, {at, said} to take it back; "undo" {kind, ids,
 /// targets, mark, at}: taken back within its ten seconds. Answers its JSON,
 /// and whether what travels changed (to share now).
@@ -175,6 +176,9 @@ pub(crate) fn call(qt: &QtThread, shared: &Arc<Shared>, verb: &str, json: &str) 
     let now = jiff::Timestamp::now().as_millisecond();
     if verb == "view" {
         return (view().to_string(), false);
+    }
+    if verb == "agenda" {
+        return (agenda_rows(json, &sioul_core::zone::now()).to_string(), false);
     }
     if verb == "undo" {
         let mark = asked["mark"].as_str().and_then(Mark::parse).unwrap_or(Mark::Dismissed);
@@ -196,8 +200,11 @@ pub(crate) fn call(qt: &QtThread, shared: &Arc<Shared>, verb: &str, json: &str) 
 /// The Porch's mail (`backend::compute`): each message's notice as the words
 /// said on any device leave it, what its file says counting too (a message
 /// read elsewhere is Read); `current`, every message's notice the Porch
-/// gathered, whatever the hour shows, for the words kept (`forget`).
-pub(crate) fn apply_mail(porch: &mut sioul_core::view::PorchView, current: &[String]) {
+/// gathered, whatever the hour shows, for the words kept (`forget`); `seen`,
+/// those of them read here, to which a day-old Read word gives way
+/// (`forget_read_mail`): a Read never fights the server.
+pub(crate) fn apply_mail(porch: &mut sioul_core::view::PorchView, current: &[String], seen: &[String]) {
+    give_read_back_hourly(seen);
     let states = states(&|_, _| None);
     for item in porch.lanes.iter_mut().flat_map(|l| l.items.iter_mut()) {
         item.notice.state = states.of(&item.notice.id, item.notice.state.clone());
@@ -206,6 +213,30 @@ pub(crate) fn apply_mail(porch: &mut sioul_core::view::PorchView, current: &[Str
         code.notice.state = states.of(&code.notice.id, code.notice.state.clone());
     }
     forget_once_a_day(&[Kind::Mail], current);
+}
+
+/// When mail's Read words were last given back to the messages' flags (ms).
+static GAVE_BACK: Mutex<i64> = Mutex::new(0);
+
+/// Mail's day-old Read words given back to the messages' own `\Seen`, once
+/// an hour (`notices::forget_read_mail`); `seen`, the messages read here.
+fn give_read_back_hourly(seen: &[String]) {
+    let now = jiff::Timestamp::now().as_millisecond();
+    let due = GAVE_BACK.lock().is_ok_and(|mut last| {
+        let due = now - *last >= 3_600_000;
+        if due {
+            *last = now;
+        }
+        due
+    });
+    if !due {
+        return;
+    }
+    let logs = logs();
+    let seen: std::collections::HashSet<&str> = seen.iter().map(String::as_str).collect();
+    if let Err(e) = rules::forget_read_mail(&logs.folder, &logs.device, &|id| seen.contains(id), now) {
+        eprintln!("sioul: notices: {e}");
+    }
 }
 
 // ---------------------------------------------------------------- the Porch's sections
@@ -230,9 +261,10 @@ fn settled(states: &States, ids: &[String]) -> bool {
 /// their own views (`calls::view`, `phonemsgs::view`).
 pub(crate) fn view() -> Value {
     let states = states(&|_, _| None);
-    let (sites, money, letters) = (sites(), money(), letters());
-    // Once a day: the words of these kinds forgotten once a week old and their notices gone.
-    let current: Vec<String> = sites.iter().chain(&money).chain(&letters).flat_map(|(_, ids)| ids.iter().cloned()).collect();
+    let ((sites, every_site), (money, every_movement), letters) = (sites(), money(&sioul_core::zone::now()), letters());
+    // Once a day: the words of these kinds forgotten once a week old and their notices
+    // gone, whatever the hour shows (a work movement dismissed stays dismissed in the evening).
+    let current: Vec<String> = every_site.into_iter().chain(every_movement).chain(letters.iter().flat_map(|(_, ids)| ids.iter().cloned())).collect();
     forget_once_a_day(&[Kind::Site, Kind::Money, Kind::Letter], &current);
     let keep = |rows: Vec<(Value, Vec<String>)>| -> Vec<Value> { rows.into_iter().filter(|(_, ids)| !settled(&states, ids)).map(|(row, _)| row).collect() };
     json!({ "sites": keep(sites), "money": keep(money), "letters": keep(letters) })
@@ -240,18 +272,22 @@ pub(crate) fn view() -> Value {
 
 /// The sites' notifications kept for the Porch (`sites::notified`), one row
 /// per site, its lines under it, newest last; in quiet time, only your own
-/// sites' (`sites::waiting`'s rule).
-fn sites() -> Vec<(Value, Vec<String>)> {
+/// sites' (`sites::waiting`'s rule). With every site's notices' ids, whatever
+/// the hour shows: what their words are kept for (`forget`).
+fn sites() -> (Vec<(Value, Vec<String>)>, Vec<String>) {
     use sioul_core::sites::Notices;
     let notices = Notices::load(&Notices::default_path());
     let mode = crate::backend::mode_now();
-    sioul_core::sites::sites(&load_config())
+    let all = sioul_core::sites::sites(&load_config());
+    let ids_of = |site: &sioul_core::sites::Site| -> Vec<String> { notices.of(&site.id).iter().map(|n| rules::site_id(&site.id, n.at, &format!("{}\u{1f}{}", n.title, n.text))).collect() };
+    let every: Vec<String> = all.iter().flat_map(ids_of).collect();
+    let rows = all
         .into_iter()
         .filter(|site| sioul_core::areas::in_view(site.area, mode.time, mode.week))
         .filter_map(|site| {
             let mine = notices.of(&site.id);
             let newest = mine.iter().max_by_key(|n| n.at)?;
-            let ids: Vec<String> = mine.iter().map(|n| rules::site_id(&site.id, n.at, &format!("{}\u{1f}{}", n.title, n.text))).collect();
+            let ids = ids_of(&site);
             let lines: Vec<String> = mine.iter().map(|n| if n.text.is_empty() { n.title.clone() } else { say("site-news-line", &[("title", n.title.clone()), ("text", n.text.clone())]) }).collect();
             let at = newest.at * 1000;
             let notice = Notice {
@@ -264,37 +300,158 @@ fn sites() -> Vec<(Value, Vec<String>)> {
             };
             Some((row(notice, ids.clone(), vec![site.id.clone()], json!({ "site": site.id, "lines": lines })), ids))
         })
+        .collect();
+    (rows, every)
+}
+
+/// How far ahead the Money section looks (docs/porch.md, "Money").
+const MONEY_DAYS: u32 = 14;
+
+/// The Porch's Money (`due::coming`, the money movements'): what is due or
+/// expected in the next two weeks, what the bank still holds on a card, and
+/// what was expected and not seen on its account, said once (Dismiss keeps
+/// it said); each its day, who, its state in words and its budget, its
+/// signed amount; opening it opens Budgets. Work money is said only in
+/// work's hours, as each row's area says (docs/areas.md); nothing while you
+/// sleep (the page). An account's shortfall comes first, once the budgets
+/// say one (`shortfall`). With every movement's notice, whatever the hour
+/// shows: what their words are kept for (`forget`).
+fn money(now: &jiff::Zoned) -> (Vec<(Value, Vec<String>)>, Vec<String>) {
+    let mode = crate::backend::mode_now();
+    let tr = tr();
+    let mut rows = shortfall();
+    let coming = sioul_core::due::coming(now.date(), MONEY_DAYS);
+    let every: Vec<String> = coming.iter().map(|c| rules::money_id(&c.address)).chain(rows.iter().flat_map(|(_, ids)| ids.iter().cloned())).collect();
+    for coming in coming.into_iter().filter(|c| sioul_core::areas::in_view(c.area, mode.time, mode.week)) {
+        let (who, what, amount) = coming_words(&coming, tr);
+        let id = rules::money_id(&coming.address);
+        let at = coming.day.to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_millisecond()).unwrap_or(0);
+        let notice = Notice { address: coming.address.clone(), at, when: tr.day_short(coming.day), who, what, ..Notice::new(Kind::Money, id.clone(), "money").with_area(Some(coming.area)) };
+        rows.push((row(notice, vec![id.clone()], Vec::new(), json!({ "amount": amount, "state": coming.state.id() })), vec![id]));
+    }
+    (rows, every)
+}
+
+/// The agenda's conflicts waiting for an answer, as the Porch's rows
+/// (docs/porch.md, "Agenda"): `overlaps`, the property the agenda's job
+/// makes (`pim::overlaps_of`), whose rules are the agenda's own (only those
+/// someone else's change made, each once, at its time); each a notice of
+/// its own, `agenda:<digest of its key>`, work's when one of its events is
+/// on a work agenda, else admin's, as the agenda says it, shown while that
+/// area is in view now (the property is made when the agenda changes, not
+/// at each minute) and while no word settled it on any device: Dismiss,
+/// or Done once Keep both or Move answered it.
+fn agenda_rows(overlaps: &str, now: &jiff::Zoned) -> Value {
+    let rows: Vec<Value> = serde_json::from_str(overlaps).unwrap_or_default();
+    if rows.is_empty() {
+        return json!([]);
+    }
+    let mode = crate::backend::mode_now();
+    let calendars = sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars);
+    let work = |key: &str| std::path::Path::new(key).parent().and_then(|dir| calendars.iter().find(|c| c.dir == dir)).is_some_and(|c| sioul_core::agendas::marks_of(c).work);
+    let (shown, current) = agenda_rows_in(rows, now, mode.time, mode.week, &states(&|_, _| None), &work, tr());
+    forget_once_a_day(&[Kind::Agenda], &current);
+    shown
+}
+
+/// `agenda_rows` at a time of the day and week (`time`, `week`), with the
+/// words said (`states`) and whether an event's file is on a work agenda
+/// (`work`): the rows shown, and every conflict's notice (what its words are kept for).
+fn agenda_rows_in(rows: Vec<Value>, now: &jiff::Zoned, time: sioul_core::areas::Time, week: sioul_core::areas::Week, states: &States, work: &dyn Fn(&str) -> bool, tr: &sioul_core::i18n::Translator) -> (Value, Vec<String>) {
+    let mut current = Vec::new();
+    let mut out = Vec::new();
+    for conflict in rows {
+        let key = conflict["key"].as_str().unwrap_or_default().to_string();
+        if key.is_empty() {
+            continue;
+        }
+        let id = rules::agenda_id(&key);
+        current.push(id.clone());
+        let during = conflict["kind"] == "during";
+        let events: Vec<&Value> = if during { vec![&conflict["event"]] } else { vec![&conflict["first"], &conflict["second"]] };
+        let area = if events.iter().any(|e| work(e["key"].as_str().unwrap_or_default())) { sioul_core::areas::Area::WORK } else { sioul_core::areas::Area::ADMIN };
+        if !sioul_core::areas::in_view(area, time, week) || settled(states, std::slice::from_ref(&id)) {
+            continue;
+        }
+        let first = events[0];
+        let at = first["start"].as_i64().unwrap_or(0) * 1000;
+        let day = conflict["day"].as_str().and_then(|d| d.parse::<jiff::civil::Date>().ok()).unwrap_or_else(|| now.date());
+        let title = |e: &Value| e["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).map_or_else(|| tr.text("agenda-untitled", None), str::to_string);
+        let when = |e: &Value| e["when"].as_str().unwrap_or_default().to_string();
+        let what = if during {
+            let mut args = sioul_core::i18n::args();
+            args.set("span", when(first));
+            tr.text("porch-conflict-during", Some(&args))
+        } else {
+            let second = events[1];
+            let mut args = sioul_core::i18n::args();
+            args.set("title", title(second));
+            args.set("whose", "none");
+            args.set("why", if conflict["tentative"] == true { "tentative" } else { "none" });
+            let said = if conflict["at_once"] == true {
+                tr.text("conflict-same-time", Some(&args))
+            } else {
+                args.set("gap", conflict["gap"].as_i64().unwrap_or(0));
+                args.set("needed", conflict["needed"].as_i64().unwrap_or(0));
+                args.set("source", conflict["source"].as_str().unwrap_or_default().to_string());
+                tr.text("conflict-tight", Some(&args))
+            };
+            format!("{} · {}", when(first), said.trim_end_matches('.'))
+        };
+        let notice = Notice { address: first["key"].as_str().unwrap_or_default().to_string(), at, when: tr.day_short(day), who: title(first), what, ..Notice::new(Kind::Agenda, id.clone(), "agenda").with_area(Some(area)) };
+        let mut shown = row(notice, vec![id], Vec::new(), json!({}));
+        shown["conflict"] = row_copy(&conflict);
+        out.push(shown);
+    }
+    (Value::Array(out), current)
+}
+
+/// A conflict's own fields, for the Porch's answers (its key, its events, what may be done).
+fn row_copy(row: &Value) -> Value {
+    json!({ "key": row["key"], "kind": row["kind"], "keys": row["keys"], "answers": row["answers"], "first": row["first"], "second": row["second"], "event": row["event"] })
+}
+
+/// An account's shortfalls, first in Money: the budgets' own notices
+/// (`ahead::shortfall_notices`), one per account and day of the shortfall,
+/// of every area, so said whatever the hours show; each opening Budgets.
+/// Its sentence (the payment, what is missing, what covers it) under the
+/// row whole, which one line would cut; the row says the account and its day.
+fn shortfall() -> Vec<(Value, Vec<String>)> {
+    let config = load_config();
+    let Some(root) = config.notes_root_path() else { return Vec::new() };
+    let words = sioul_core::words::Words::of(&config);
+    let tr = tr();
+    let zone = sioul_core::zone::current();
+    sioul_core::ahead::shortfall_notices(&root, &words, tr, sioul_core::zone::now().date())
+        .into_iter()
+        .map(|notice| {
+            let id = notice.id.clone();
+            let sentence = notice.what.clone();
+            let day = jiff::Timestamp::from_millisecond(notice.at).map(|t| t.to_zoned(zone.clone()).date()).ok();
+            let notice = Notice { what: tr.text("porch-shortfall-what", None), when: day.map(|d| tr.day_short(d)).unwrap_or(notice.when.clone()), ..notice };
+            (row(notice, vec![id.clone()], Vec::new(), json!({ "note": sentence })), vec![id])
+        })
         .collect()
 }
 
-/// The week's money, as Budgets reads it from your bank's file
-/// (`bank::view`): what the watch found, then each payment coming, its day,
-/// what it is and its amount; each opens Budgets. Part 2 of the Porch's
-/// notices reads `due::coming` instead.
-fn money() -> Vec<(Value, Vec<String>)> {
-    let bank: Value = serde_json::from_str(&crate::bank::view()).unwrap_or_default();
-    let mut rows = Vec::new();
-    for finding in bank["findings"].as_array().into_iter().flatten().filter_map(Value::as_str) {
-        let id = rules::money_id(&format!("finding-{}", rules::digest(finding)));
-        let notice = Notice { who: tr().text("ui-budgets", None), what: finding.to_string(), ..Notice::new(Kind::Money, id.clone(), "money") };
-        rows.push((row(notice, vec![id.clone()], Vec::new(), json!({ "amount": "" })), vec![id]));
-    }
-    for coming in bank["coming"].as_array().into_iter().flatten().filter_map(Value::as_str) {
-        let (day, label, amount) = coming_parts(coming);
-        let id = rules::money_id(&format!("coming-{}", rules::digest(coming)));
-        let notice = Notice { who: label, when: day, ..Notice::new(Kind::Money, id.clone(), "money") };
-        rows.push((row(notice, vec![id.clone()], Vec::new(), json!({ "amount": amount })), vec![id]));
-    }
-    rows
-}
-
-/// A payment coming, as Budgets writes it ("Thursday 8 October · EDF ·
-/// €62.00"): its day, what it is, its amount; anything else whole as what it is.
-fn coming_parts(coming: &str) -> (String, String, String) {
-    match coming.split(" · ").collect::<Vec<_>>().as_slice() {
-        [day, label, amount] => (day.to_string(), label.to_string(), amount.to_string()),
-        _ => (String::new(), coming.to_string(), String::new()),
-    }
+/// A movement's row in words: who, its state ("Planned", "Not seen on its
+/// account") and its budget, and its signed amount in the locale's format
+/// ("−€62.00", "+€1,200"; "about" an estimate; another currency by its code).
+fn coming_words(c: &sioul_core::due::Coming, tr: &sioul_core::i18n::Translator) -> (String, String, String) {
+    let state = tr.text(&format!("due-state-{}", c.state.id()), None);
+    let what = std::iter::once(state).chain(c.budget.clone().filter(|b| !b.is_empty())).collect::<Vec<_>>().join(" · ");
+    let money = sioul_core::money::Money(c.amount_cents);
+    // The locale's money is in euros (`Translator::money`); another currency by its code.
+    let figure = if c.currency.is_empty() || c.currency.eq_ignore_ascii_case("EUR") { tr.money(money) } else { format!("{} {}", tr.number(money), c.currency) };
+    let signed = if c.amount_cents > 0 { format!("+{figure}") } else { figure };
+    let amount = if c.about {
+        let mut args = sioul_core::i18n::args();
+        args.set("amount", signed);
+        tr.text("due-about", Some(&args))
+    } else {
+        signed
+    };
+    (c.label.clone(), what, amount)
 }
 
 /// The paper letters waiting (`letters::view`), one row each: who sent it,
@@ -417,12 +574,63 @@ mod tests {
         assert_eq!(mark_of("seen"), None);
     }
 
-    /// A payment coming, its day, what it is and its amount apart (the amount right-aligned in its row).
+    /// A movement's row: its state in words, its budget, its signed amount,
+    /// "about" an estimate, another currency by its code.
     #[test]
-    fn a_payment_coming_is_split_for_its_row() {
-        assert_eq!(coming_parts("Thursday 8 October · EDF · €62.00"), ("Thursday 8 October".into(), "EDF".into(), "€62.00".into()));
-        assert_eq!(coming_parts("jeudi 8 octobre · EDF · 62,00 €"), ("jeudi 8 octobre".into(), "EDF".into(), "62,00 €".into()));
-        assert_eq!(coming_parts("Something else"), (String::new(), "Something else".into(), String::new()), "whole, never lost");
+    fn a_movement_is_said_in_words() {
+        let tr = sioul_core::i18n::Translator::new("en");
+        let coming = |cents: i64, currency: &str, about: bool, state: sioul_core::movements::State, budget: Option<&str>| sioul_core::due::Coming {
+            day: "2026-11-09".parse().unwrap(),
+            label: "Linden Housing".into(),
+            amount_cents: cents,
+            currency: currency.into(),
+            about,
+            budget: budget.map(str::to_string),
+            area: sioul_core::areas::Area::ADMIN,
+            state,
+            address: "sioul:movement/rent".into(),
+        };
+        use sioul_core::movements::State;
+        assert_eq!(coming_words(&coming(-62_000, "EUR", false, State::Planned, Some("Home")), &tr), ("Linden Housing".into(), "Planned · Home".into(), "−€620".into()));
+        assert_eq!(coming_words(&coming(120_000, "EUR", true, State::Announced, None), &tr).2, "about +€1,200");
+        assert_eq!(coming_words(&coming(-1_250, "CHF", false, State::NotSeen, None), &tr), ("Linden Housing".into(), "Not seen on its account".into(), "−12.50 CHF".into()));
+        assert_eq!(coming_words(&coming(-990, "EUR", false, State::NotFinal, None), &tr).1, "Not final yet");
+    }
+
+    /// The agenda's conflicts as the Porch's rows: each its own notice, by
+    /// its key's digest, what it says and what may be done kept; at work's
+    /// time a conflict of a work agenda, else admin's; gone once a word
+    /// settled it on any device.
+    #[test]
+    fn a_conflict_is_a_row_until_a_word_settles_it() {
+        use sioul_core::areas::{Time, Week};
+        let tr = sioul_core::i18n::Translator::new("en");
+        let now: jiff::Zoned = "2026-11-04T10:00:00+01:00[Europe/Paris]".parse().unwrap();
+        let pair = json!({ "key": "/cal/home/a.ics@1794000000|/cal/home/b.ics@1794001800", "day": "2026-11-12", "today": false,
+            "first": { "key": "/cal/home/a.ics", "start": 1_794_000_000, "title": "Dentist", "when": "14:00 – 15:00" },
+            "second": { "key": "/cal/home/b.ics", "start": 1_794_001_800, "title": "Swimming", "when": "14:30 – 15:30" },
+            "gap": 0, "needed": 0, "at_once": true, "tentative": false, "answers": ["move", "keep"], "source": "" });
+        let week = Week { work_hours: true, admin_hours: true, meals: false, sleep: false };
+        let mine = |_: &str| false;
+        let (shown, current) = agenda_rows_in(vec![pair.clone()], &now, Time::Admin, week, &States::default(), &mine, &tr);
+        let id = rules::agenda_id(pair["key"].as_str().unwrap());
+        assert_eq!(current, [id.clone()]);
+        let row = &shown[0];
+        assert_eq!(row["notice"]["id"], id.as_str());
+        assert_eq!(row["notice"]["kind"], "agenda");
+        assert_eq!((row["notice"]["who"].as_str(), row["notice"]["what"].as_str(), row["notice"]["when"].as_str()), (Some("Dentist"), Some("14:00 – 15:00 · At the same time as “Swimming”"), Some("Thu 12 Nov")));
+        assert_eq!(row["conflict"]["answers"], json!(["move", "keep"]));
+        assert_eq!(row["conflict"]["first"]["key"], "/cal/home/a.ics");
+        // A work agenda's: at work's time only.
+        let work = |key: &str| key.ends_with("b.ics");
+        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, Time::Admin, week, &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(0));
+        assert_eq!(agenda_rows_in(vec![pair.clone()], &now, Time::Work, week, &States::default(), &work, &tr).0.as_array().map(Vec::len), Some(1));
+        // Dismissed on another device: gone.
+        let dir = std::env::temp_dir().join(format!("sioul-app-agenda-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        rules::say(&dir, "desk", std::slice::from_ref(&id), Mark::Dismissed, 1_000).unwrap();
+        assert_eq!(agenda_rows_in(vec![pair], &now, Time::Admin, week, &States::read(&dir), &mine, &tr).0.as_array().map(Vec::len), Some(0));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A row with every notice settled is left out; one with a notice still

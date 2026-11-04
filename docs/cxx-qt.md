@@ -92,7 +92,7 @@ fn set_stopped(self: Pin<&mut Self>, text: &QString) -> QString {
 ## JSON across the bridge
 The types that cross are few: `QString`, `bool`, `i32` and `f64`. Everything with a shape goes as JSON text in a `QString`, in both directions:
 - **Rust to QML**: the views of `crates/sioul-core/src/view.rs` (`PorchView`, its lanes, its cards…) are serialized with serde (`backend::json`) and set as properties; small answers are built with `serde_json::json!`. QML parses them: `JSON.parse(page.sioul.overlaps || "[]")`.
-- **QML to Rust**: a form's values, or a sentence's arguments, as one JSON object: `sioul.textArgs("overlap-today", JSON.stringify({ first: …, second: … }))`; `note_time(edit)` takes "JSON: day, at, minutes, project, task, note, unbilled".
+- **QML to Rust**: a form's values, or a sentence's arguments, as one JSON object: `sioul.textArgs("moved-ask", JSON.stringify({ payee: …, budget: … }))`; `note_time(edit)` takes "JSON: day, at, minutes, project, task, note, unbilled".
 - **Why**: the window reads the same views the command line prints and AI agents receive (`view.rs`: "an agent or a script can read the very same"), and JavaScript reads JSON directly, into objects and arrays that bindings and `Repeater`s use. No Qt list model has to be written for each list.
 - **Answers that can fail** return the problem as text, empty when all went well: `set_stopped` returns "what went wrong, else """. QML shows it, or goes on when it is empty.
 

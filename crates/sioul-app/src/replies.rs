@@ -17,9 +17,14 @@
 //! - **What happened** ("result"): said in the private folder, never the
 //!   words; a reply handed is looked for in its app's next notification, and
 //!   said "shown" when its words are there as yours (`heard`).
-//! - **Gone** ("removed"): a relayed notification gone from the phone, said
-//!   in its live lines (`replies::went`), so that your computers no longer
-//!   offer its Reply.
+//! - **Gone** ("removed", with Android's reason): a relayed notification
+//!   gone from the phone, said in its live lines (`replies::went`), so that
+//!   your computers no longer offer its Reply; opened, swiped away or
+//!   withdrawn by its app, its messages Read on every device
+//!   (`phonemsgs::read_by_removal`, `phonemsgs::read_here`).
+//! - **Taken away** ("withdraw"): the SMS app's notifications of
+//!   conversations read elsewhere, as the phone's step named them
+//!   (`replies::Withdraw`, `phonemsgs::withdraw_read`), for Java to cancel.
 //!
 //! And for the lines the listener writes (`phonemsgs::note`): what each
 //! relayed notification offers, in this phone's live lines (`offered`).
@@ -94,7 +99,9 @@ fn listener(verb: &str, json: &str) -> Value {
         "check" => check(key, &asked["posted"]),
         "taken" => taken(key),
         "result" => result(key, &asked),
-        "removed" => json!({ "shared": removed(asked["package"].as_str().unwrap_or_default(), asked["key"].as_str().unwrap_or_default()) }),
+        "removed" => json!({ "shared": removed(asked["package"].as_str().unwrap_or_default(), asked["key"].as_str().unwrap_or_default(), asked["reason"].as_i64().unwrap_or(-1)) }),
+        // The SMS app's notifications of conversations read elsewhere, for Java to take away (`phonemsgs::withdraw_read`).
+        "withdraw" => json!({ "names": rules::Withdraw::load(&folder).names }),
         _ => Value::Null,
     }
 }
@@ -240,18 +247,21 @@ pub(crate) fn relayed(now_ms: i64) {
 
 /// A relayed notification gone from the phone, said in its live lines;
 /// nothing for one never relayed. Whether a line was written.
-fn removed(package: &str, key: &str) -> bool {
+fn removed(package: &str, key: &str, reason: i64) -> bool {
     if package.is_empty() || key.is_empty() {
         return false;
     }
-    let Some(own) = own_live() else { return false };
-    match rules::went(&own, &rules::notice(package, key), now_ms()) {
+    let notice = rules::notice(package, key);
+    let went = own_live().is_some_and(|own| match rules::went(&own, &notice, now_ms()) {
         Ok(written) => written,
         Err(e) => {
             eprintln!("sioul: replies: {e}");
             false
         }
-    }
+    });
+    // Opened, swiped away, or withdrawn by its app: its messages read on every device.
+    let read = phonemsgs::read_by_removal(reason) && crate::phonemsgs::read_here(&notice);
+    went || read
 }
 
 // ---------------------------------------------------------------- the request, and never twice
@@ -307,7 +317,10 @@ pub(crate) fn phone_step() -> bool {
         return false;
     }
     let Some((here, folder, key)) = sharing() else { return false };
-    step(&here, &folder, &key, now_ms())
+    let changed = step(&here, &folder, &key, now_ms());
+    // The SMS app's notifications of conversations read elsewhere: named for the listener to take away.
+    crate::phonemsgs::withdraw_read(&here);
+    changed
 }
 
 /// `phone_step`'s work: the requests under every root (the records' copy,

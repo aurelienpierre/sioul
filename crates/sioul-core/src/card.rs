@@ -64,6 +64,14 @@ impl Card {
         let from = message.from().and_then(|a| a.first());
         let headers = RawHeaders::parse(raw);
         let excerpt = excerpt_of(message);
+        // What was proven, never your provider's tag no one signed: the Subject
+        // without the tags Sioul's own check took off before a signature verified
+        // over it (`trust::restored_tags`, part 2 of 4 November 2026).
+        let subject = message.subject().unwrap_or("");
+        let subject = match crate::trust::own_stamp_id().and_then(|own| crate::trust::restored_tags(&headers, &own)) {
+            Some(tags) => crate::trust::subject_without_tags(subject, tags),
+            None => subject.to_string(),
+        };
         Card {
             path: None,
             account: None,
@@ -71,7 +79,7 @@ impl Card {
             from_name: from.and_then(|a| a.name()).map(str::to_string),
             from_address: from.and_then(|a| a.address()).map(|a| a.to_ascii_lowercase()),
             to: message.to().map(|a| a.iter().filter_map(|p| p.name().or(p.address()).map(str::to_string)).collect()).unwrap_or_default(),
-            subject: message.subject().unwrap_or("").to_string(),
+            subject,
             date: message.date().map(|d| d.to_timestamp()),
             message_id: message.message_id().map(str::to_string),
             excerpt,
@@ -81,6 +89,13 @@ impl Card {
             shape: shape_of(message),
             code: None,
         }
+    }
+
+    /// Whether Sioul's own check took your provider's tag off its Subject
+    /// before a signature verified (`trust::restored_tags`): the Subject shown
+    /// is the signed one, with one quiet mark, "Your provider marked it as spam."
+    pub fn provider_tag_restored(&self) -> bool {
+        crate::trust::own_stamp_id().is_some_and(|own| crate::trust::restored_tags(&self.headers, &own).is_some())
     }
 
     /// The domain of the sender's address.

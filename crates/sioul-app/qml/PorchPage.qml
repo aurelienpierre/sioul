@@ -90,6 +90,46 @@ Item {
         undoTimer.restart()
     }
 
+    // The agenda's conflicts read again each minute: a time's area comes into view, or leaves it.
+    property int agendaStamp: 0
+
+    // An event of a conflict opened at that time of it (a series' Thursday, not its next).
+    function openEvent(e) {
+        if (e && e.key)
+            page.window.openThing({ kind: "event", key: e.key, start: e.start || 0, uri: "" })
+    }
+
+    // A conflict answered (`pim::answer_conflict`): "keep" says it no more, both events kept;
+    // "move" opens your own event to move it. Either settles its notice on every device (Done),
+    // gone at once; what went wrong is said.
+    function answerConflict(row, answer) {
+        const conflict = row.conflict || {}
+        let problem = ""
+        let open = ""
+        if (conflict.kind === "during") {
+            // A long event's warning: the event whole, and the pairs it holds, which a Sioul before reads.
+            problem = page.sioul.setOverlapAside([conflict.key].concat(conflict.keys || []).join("\n"))
+        } else {
+            const answered = JSON.parse(page.sioul.answerConflict(conflict.key, answer) || "{}")
+            problem = answered.problem || ""
+            open = answered.open || ""
+        }
+        if (problem !== "") {
+            page.sioul.status = problem
+            return
+        }
+        const asked = { kind: "agenda", ids: row.ids || [row.notice.id], targets: [] }
+        page.sioul.notices("done", JSON.stringify(asked))
+        const next = Object.assign({}, page.gone)
+        for (const id of asked.ids)
+            next[id] = true
+        page.gone = next
+        if (open !== "") {
+            const events = [conflict.first, conflict.second].filter(e => e && e.key === open)
+            page.window.openThing({ kind: "event", key: open, start: events.length > 0 ? events[0].start || 0 : 0, uri: "" })
+        }
+    }
+
     function undo() {
         const last = page.lastSaid
         if (last === null)
@@ -197,6 +237,7 @@ Item {
             if (page.visible) {
                 page.reloadDoses()
                 page.readNotices()
+                page.agendaStamp += 1
                 if (!page.withheldRead)
                     page.readWithheld()
             }
@@ -395,7 +436,13 @@ Item {
     }
 
     // A letter opened: on its scan, as a letter opens until the Letters page opens it.
+    // A letter opened on the Letters page (main.qml's `openLetter`); its scan alone by "See the scan".
     function openLetter(letter) {
+        if (letter.id)
+            page.window.openLetter(letter.id)
+    }
+
+    function seeScan(letter) {
         if (letter.file)
             Qt.openUrlExternally(page.theme.fileUrl(letter.file))
     }
@@ -741,79 +788,6 @@ Item {
                     window: page.window
                 }
 
-                // Two events at once today, the time to get there and back counted:
-                // said here until you open one to move it, or say to leave it.
-                Panel {
-                    id: overlapsCard
-
-                    // Made with the agenda, off the window's thread.
-                    readonly property var rows: JSON.parse(page.sioul.overlaps || "[]").filter(o => o.today)
-
-                    visible: overlapsCard.rows.length > 0
-                    Layout.fillWidth: true
-                    theme: page.theme
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 6
-
-                        Repeater {
-                            model: overlapsCard.rows
-
-                            delegate: ColumnLayout {
-                                id: overlap
-
-                                required property var modelData
-                                readonly property bool during: overlap.modelData.kind === "during"
-
-                                Layout.fillWidth: true
-                                spacing: 4
-
-                                Label {
-                                    Layout.fillWidth: true
-                                    // An event of 24 hours or more once, today's other events counted (fix W1);
-                                    // else the pair, each by its times or, over several days, its span (fix W2).
-                                    // At once only when their times overlap; else too close, the time you set named with its place (22 October 2026).
-                                    text: {
-                                        const row = overlap.modelData
-                                        if (overlap.during)
-                                            return page.sioul.textArgs("overlap-during-today", JSON.stringify({ title: row.event.title, span: row.event.when, count: row.others_today }))
-                                        const one = e => e.title + " (" + (e.when || e.from + " – " + e.to) + ")"
-                                        return page.sioul.textArgs(row.at_once ? "overlap-today" : "overlap-today-close", JSON.stringify({ first: one(row.first), second: one(row.second), gap: row.gap, needed: row.needed, source: row.source }))
-                                    }
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    color: page.theme.text
-                                }
-                                Flow {
-                                    Layout.fillWidth: true
-                                    spacing: 6
-
-                                    Repeater {
-                                        model: overlap.during ? [overlap.modelData.event] : [overlap.modelData.first, overlap.modelData.second]
-
-                                        delegate: Button {
-                                            id: openOne
-
-                                            required property var modelData
-
-                                            text: page.theme.plain(page.sioul.textWith("overlap-open", "title", openOne.modelData.title))
-                                            // That time of it, a series' Thursday, not its next (review of 590eb18, later 6).
-                                            onClicked: page.window.openThing({ kind: "event", key: openOne.modelData.key, start: openOne.modelData.start || 0, uri: "" })
-                                        }
-                                    }
-                                    Button {
-                                        flat: true
-                                        text: page.sioul.text("overlap-set-aside")
-                                        // A long event's warning: the event whole, and the pairs it holds, which a Sioul before reads.
-                                        onClicked: page.sioul.setOverlapAside(overlap.during ? [overlap.modelData.key].concat(overlap.modelData.keys || []).join("\n") : overlap.modelData.key)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 // Nothing read here, the health file nor its last read: said,
                 // never an empty list read as no doses (review of 36002ea's check, low 19).
                 Panel {
@@ -1124,6 +1098,63 @@ Item {
                     }
                 }
 
+                // The agenda's conflicts waiting for an answer (`notices::agenda_rows`, from the
+                // agenda's `overlaps`): only those someone else's change made, each once, at its
+                // time, as the agenda says them; Move mine opens your own event, Keep both says it
+                // no more; either settles its notice on every device (docs/porch.md, "Agenda").
+                PorchSection {
+                    id: agendaSection
+
+                    readonly property var conflicts: page.view.open ? page.newOnes(JSON.parse(page.sioul.notices("agenda", page.agendaStamp >= 0 ? (page.sioul.overlaps || "[]") : "[]") || "[]")) : []
+
+                    sioul: page.sioul
+                    theme: page.theme
+                    compact: page.window.compact
+                    key: "agenda"
+                    title: page.sioul.text("porch-agenda")
+                    help: page.sioul.text("porch-about-agenda")
+                    count: agendaSection.conflicts.length
+                    onHelpAsked: page.showHelp({ key: "agenda", title: page.sioul.text("porch-agenda"), about: page.sioul.text("porch-about-agenda"), rules: [], settings: "" })
+
+                    Repeater {
+                        model: agendaSection.conflicts
+
+                        delegate: NoticeRow {
+                            id: conflictRow
+
+                            required property var modelData
+                            readonly property var conflict: conflictRow.modelData.conflict || ({})
+                            readonly property bool movable: (conflictRow.conflict.answers || []).indexOf("move") >= 0
+                            readonly property var events: conflictRow.conflict.kind === "during" ? [conflictRow.conflict.event] : [conflictRow.conflict.first, conflictRow.conflict.second]
+
+                            sioul: page.sioul
+                            theme: page.theme
+                            compact: page.narrowRows
+                            notice: conflictRow.modelData.notice
+                            iconName: "view-calendar-day"
+                            mainText: page.sioul.text(conflictRow.movable ? "conflict-move-mine" : "conflict-keep-both")
+                            mainIcon: ""
+                            more: {
+                                const more = conflictRow.movable ? [{ id: "keep", text: page.sioul.text("conflict-keep-both"), icon: "" }] : []
+                                for (let i = 0; i < conflictRow.events.length; ++i) {
+                                    const e = conflictRow.events[i] || {}
+                                    more.push({ id: "open-" + i, text: page.theme.plain(page.sioul.textWith("overlap-open", "title", e.title || "")), icon: "" })
+                                }
+                                return more
+                            }
+                            onOpened: page.openEvent(conflictRow.events[0])
+                            onMainPressed: page.answerConflict(conflictRow.modelData, conflictRow.movable ? "move" : "keep")
+                            onDismissPressed: page.say("dismiss", conflictRow.modelData)
+                            onChosen: id => {
+                                if (id === "keep")
+                                    page.answerConflict(conflictRow.modelData, "keep")
+                                else if (id.indexOf("open-") === 0)
+                                    page.openEvent(conflictRow.events[Number(id.slice(5))])
+                            }
+                        }
+                    }
+                }
+
                 // The sites' notifications kept for the Porch, a row per site.
                 PorchSection {
                     sioul: page.sioul
@@ -1198,6 +1229,8 @@ Item {
                             notice: moneyRow.modelData.notice
                             iconName: "view-financial-budget"
                             amount: moneyRow.modelData.amount || ""
+                            // A shortfall's sentence whole: the payment, what is missing, what covers it.
+                            note: moneyRow.modelData.note || ""
                             mainText: page.sioul.text("porch-open-budgets")
                             mainIcon: "view-financial-budget"
                             onOpened: page.window.page = 9
@@ -1234,7 +1267,7 @@ Item {
                             iconName: "mail-mark-unread"
                             // A scan not read: why, said calmly.
                             note: (letterRow.letter.problem || "") !== "" ? page.sioul.textWith("letters-unread", "problem", letterRow.letter.problem) : ""
-                            // Until the Letters page opens a letter: its scan, as a letter opens now.
+                            // The row opens the letter on the Letters page; its main action, the scan.
                             mainText: page.sioul.text("letters-scan")
                             mainIcon: "document-open"
                             more: [letterRow.letter.deadline !== "" && letterRow.letter.task === "" ? { id: "task", text: page.sioul.text("letters-task") } : null,
@@ -1242,7 +1275,7 @@ Item {
                                    letterRow.letter.appointment ? { id: "event", text: page.sioul.text("letters-event") } : null,
                                    { id: "done", text: page.sioul.text("letters-done") }].filter(m => m !== null)
                             onOpened: page.openLetter(letterRow.letter)
-                            onMainPressed: page.openLetter(letterRow.letter)
+                            onMainPressed: page.seeScan(letterRow.letter)
                             onDismissPressed: page.say("dismiss", letterRow.modelData)
                             onChosen: id => page.letterAct(id, letterRow.letter)
 

@@ -159,6 +159,7 @@ error-no-windows = No admin windows in the configuration (examples/config.toml).
 when-on = on { $date }
 date-long = { $weekday } { $day } { $month } at { $time }
 date-short = { $weekday } { $day } { $month } { $time }
+date-short-day = { $weekday } { $day } { $month }
 weekday-1 = Monday
     .short = Mon
 weekday-2 = Tuesday
@@ -378,6 +379,9 @@ mailbox-day = { $weekday } { $day } { $month }
 mailbox-day-year = { $weekday } { $day } { $month } { $year }
 mailbox-spam-junk = in the junk
 mailbox-spam-provider = your provider: spam
+# Proven mail from someone you deal with (spam::vouched): your provider's word on it, one quiet mark.
+mail-provider-marked = Your provider marked it as spam.
+mail-provider-junked = Your provider put it in Spam.
 mailbox-title = All addresses
 mailbox-chip-all = All
 mailbox-chip-unread = Unread
@@ -895,6 +899,18 @@ undo-many-junked = { $n } messages moved to junk.
 undo-many-not-junk = { $n } messages back in the inbox.
 undo-many-not-spam = { $n } messages not spam, for good: they stay in their lanes.
 undo-spam-kept = Spam, for good: it stays in the Junk folder.
+undo-brought-back = { $n ->
+        [one] Proven mail your provider called spam: back in the inbox.
+       *[other] { $n } proven messages your provider called spam: back in the inbox.
+    }
+undo-not-spam-and-others = { $n ->
+        [one] Not spam. Another message from { $domain }: back in the inbox too.
+       *[other] Not spam. { $n } other messages from { $domain }: back in the inbox too.
+    }
+undo-many-others-back = { $n ->
+        [one] Another message from { $domain }: back in the inbox too.
+       *[other] { $n } other messages from { $domain }: back in the inbox too.
+    }
 undo-review-all-spam = { $n ->
         [one] One message: spam, for good.
        *[other] { $n } messages: spam, for good.
@@ -1936,6 +1952,12 @@ set-spam-class-ham = Probably not spam
 set-spam-action-move = Move to spam
 set-spam-action-flag = Flag only
 set-spam-action-nothing = Do nothing
+set-spam-proven = What it does with proven mail
+set-spam-proven-help = Proven mail: Sioul checked who sent it, and you deal with its domain (you wrote to it; it is in your address books, your Sites or your contracts; you kept its mail or said Not spam to it). On the Porch your provider's word alone never sets it aside. “Bring back” moves it from the Junk folder into the inbox as it arrives, with Undo; “Mark only” leaves it in the Junk folder and shows it among your mail, marked “Your provider put it in Spam.”; “Do nothing” leaves it as your provider put it. Mail you put back in the Junk folder, or said Spam, stays there.
+set-spam-proven-row = Proven mail your provider called spam
+set-spam-proven-bring-back = Bring back
+set-spam-proven-mark = Mark only
+set-spam-proven-nothing = Do nothing
 set-spam-threshold = Spam from
 set-spam-threshold-help = How sure it must be to call a stranger's message probably spam. Higher: fewer of your messages taken for spam, more spam let through.
 set-spam-unsure = Maybe spam from
@@ -2840,13 +2862,25 @@ ui-section-help = What this section holds
 ui-section-folded = folded
 ui-section-unfolded = unfolded
 porch-about-right-now = Codes, passwords and links you asked a site for: here at once, whatever the time.
-porch-about-phone = What your phone brought: the calls it declined, its texts and the other apps' notifications you chose to see here, each while its sender may reach you. Sioul cannot see your voicemail: a caller may have left a message. Dismiss takes one away on every device; Mark read marks a text read in Texts too.
+porch-about-phone = What your phone brought: the calls it declined, the calls you missed and those of yours that did not reach them, its texts and the other apps' notifications you chose to see here, each while its sender may reach you. Sioul cannot see your voicemail: a caller may have left a message. Dismiss takes one away on every device; Mark read marks a text read in Texts too.
 porch-sites = Sites
 porch-about-sites = What your sites notified while you were away, a row per site. Opening a site reads its news.
 porch-money = Money
-porch-about-money = The week's payments, as Budgets reads them from your bank's file.
+porch-about-money = What is due or expected in the next two weeks, money in as well as out, what your bank still holds on a card, and what was expected and not seen on its account. Work money only in work's hours.
 porch-open-budgets = Open in Budgets
+# The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
+due-state-planned = Planned
+due-state-announced = Announced
+due-state-not-final = Not final yet
+due-state-not-seen = Not seen on its account
+due-state-done = Done
+due-about = about { $amount }
 porch-about-letters = The paper letters read from their scans, until you file them.
+porch-agenda = Agenda
+porch-about-agenda = Two events of yours at once, or closer than the time you keep between them, when someone else's change made it: each said once, at a time its agenda may reach you. Keep both says it no more; Move mine opens your own event to move it.
+porch-conflict-during = { $span }, with other events during it
+porch-shortfall-what = A payment it would not hold
+letters-its-page = Its page
 rule-order = Each message goes to the first lane that takes it, in this order: set aside, hostile, what your own spam filter flags, codes, projects, what you send yourself, your public address, less important addresses, newsletters, someone new, people you know.
 rule-people = Anyone in your address books, or on a list by their own address, comes here, as do the senders you let in: your list of them holds { $n } entries, and "Let in", in a message from someone new, adds them.
 rule-screener = A stranger (in none of your address books, on no list) waits here, and so does a sender a domain alone names on a list, unless a project or the newsletter rule takes the message first.
@@ -3613,6 +3647,7 @@ paper-renew-money = A new one should come; ask for it if not.
 paper-renew-warranty = Its guarantee ends: anything to report before?
 paper-renew-other = It ends soon.
 ui-papers = Papers
+ui-letters = Letters
 new-paper = A paper
 new-letter = A paper letter (scan)…
 papers-help = The papers asked again and again, each with its file and how long it holds. Kept in your notes folder (papers/): they travel with it. A reminder comes when one should be renewed.
@@ -3749,15 +3784,9 @@ task-rest-offer = After something heavy, something that gives back:
 task-mode-day = The day
 day-all-day = All day: { $what }
 day-margin = Around: { $what }
-overlap-today = Today, two events at once: { $first } and { $second }.
 overlap-day = { $day }, two events at once: { $first } and { $second }.
 overlap-open = Open “{ $title }”
-overlap-set-aside = Don’t mention it again
 overlap-during = During { $title } ({ $span }): { $count ->
-        [one] one other event
-       *[other] { $count } other events
-    }
-overlap-during-today = Today, during { $title } ({ $span }): { $count ->
         [one] one other event
        *[other] { $count } other events
     }
@@ -4241,9 +4270,21 @@ letters-added = { $n ->
        *[other] { $Count } scans in the folder: Sioul reads them within a minute or two.
     }
 letters-add-not-scan = { $name } is neither a PDF nor a picture: Sioul reads only those.
+letters-link = Link scans…
+letters-link-title = Scans to link where they are
+letters-linked = { $n ->
+        [one] Linked: the scan stays where it is, and Sioul reads it within a minute or two.
+       *[other] { $Count } scans linked: they stay where they are, and Sioul reads them within a minute or two.
+    }
+letters-link-missing = { $name } is no longer there: nothing was linked.
+letters-linked-here = Linked: the scan stays in { $file }.
+letters-gone = This scan is no longer at { $file }: it was moved or deleted. The letter stays here.
+letters-waiting-read = Not read yet: Sioul reads it within a minute or two.
+letters-filed = Filed
+letters-none = No paper letter yet. The scans you add or link show here.
 letters-add-failed = { $name } could not be copied into the folder ({ $detail }).
 letters-folder-failed = The folder { $folder } could not be made ({ $detail }).
-letters-no-folder = No folder for scans yet: Porch ⚙ ▸ Paper letters ▸ Where scans arrive.
+letters-no-folder = No folder for scans yet: Letters ⚙ ▸ Where scans arrive.
 letters-unread = Its text could not be read ({ $problem }); its scan is here.
 letters-scan = See the scan
 letters-task = A task for that date
@@ -4282,10 +4323,17 @@ letter-task-contract = Read { $sender }'s contract
 letter-task-other = Answer { $sender }
 set-letters-group = Paper letters
 set-letters-inbox = Where scans arrive
-set-letters-inbox-help = A folder where you, a scanner or a helper puts the post as PDF or photos (a phone's scanner app syncing there works too). Each scan is read by Sioul on a computer (Tesseract, Poppler; a phone does not read them) and waits for the Porch's window as a card: who, what, how much, by when.
+set-letters-inbox-help = A folder where you, a scanner or a helper puts the post as PDF or photos (a phone's scanner app syncing there works too). Each scan is read by Sioul on a computer (Tesseract, Poppler; a phone does not read them) and waits on this page as a card: who, what, how much, by when. Scans kept elsewhere can be linked where they are instead (Link scans…).
 set-calls-group = Calls
 set-porch-calls = Calls your phones declined
 set-porch-calls-help = Listed on the Porch of each of your devices, each at a time its caller may reach you, never counted. Off, each phone lists only its own, and your computers none.
+set-porch-call-back = A task to call back
+set-porch-call-back-help = A missed call from someone in your address books makes a task, “Call back” and their name, for that day, without a reminder. Another call of theirs adds its time to it; it is done by itself once you spoke with them.
+set-porch-call-again = A task to call again
+set-porch-call-again-help = A call of yours to someone in your address books that did not reach them, not answered or shorter than the time below, makes a task, “Call … again”, for that day, without a reminder. It is done by itself once you spoke with them.
+set-porch-voicemail-seconds = A call that reached their voicemail
+set-porch-voicemail-seconds-help = A call of yours shorter than this likely reached their voicemail, not them. A call of yours this long or longer, or any call of theirs you answered, is one in which you spoke: it closes their task.
+set-voicemail-seconds = { $seconds } seconds
 password-show = Show the password
 password-hide = Hide the password
 set-passwords-shown = Show passwords as you type
@@ -5349,6 +5397,22 @@ calls-open-blocked = Android's blocked numbers (calls and texts)
 calls-listen-gone = This message's sound is no longer in your mail.
 calls-copy = Copy the number
 calls-copied = Number copied.
+calls-missed-row = Missed call at { $time }
+calls-unreached-row = Your call at { $time } was not answered
+calls-unreached-short-row = Your call at { $time } lasted { $length }: their voicemail, perhaps
+calls-also-at = also at { $time }
+calls-history-on = { $what }, on { $phone }
+calls-call-again = Call again
+calls-text-them = Text them
+call-task-back = Call back { $name }
+call-task-again = Call { $name } again
+call-task-at = at { $time }
+call-task-on = on { $day } at { $time }
+call-task-missed = Missed call { $when }
+call-task-unreached = Your call { $when } did not reach them
+call-task-also = also { $when }
+call-task-you-called = you called { $when }
+call-task-they-called = they called { $when }
 calls-block-ask-elsewhere = Calls from { $number } will go to voicemail whenever they come, and will not be listed. Texts still arrive: your phone's own blocked numbers stop those.
 calls-setup-what-title = What Sioul does with calls
 calls-setup-what = When someone who may not reach you now calls, Sioul declines the call plainly, as you would by hand: your operator sends it to your voicemail. Nothing rings, nothing shows meanwhile. Afterwards the Porch lists who called, at a time they may reach you, with a text back offered first.
@@ -5368,6 +5432,8 @@ calls-setup-ask-help = Android asks: “Set Sioul as your default caller ID & sp
 calls-setup-replaces = One app at a time screens calls: if your phone app filters spam itself, Sioul takes its place.
 calls-setup-contacts-off = Sioul may not read this phone's contacts: Android then rings their calls without asking Sioul. Sioul screens the others.
 calls-setup-contacts-allow = Allow reading contacts
+calls-setup-history-off = Sioul does not read this phone's call history: it cannot say which calls you missed, nor which of yours did not reach them, nor make their tasks.
+calls-setup-history-allow = Let Sioul read the call history
 calls-setup-android-block = Your phone app's own “Block numbers not in contacts” acts before Sioul is asked: while it is on, a second call or Expecting a call cannot help those numbers.
 calls-setup-change = Android's default apps
 calls-setup-change-help = To stop, choose “None” as caller ID & spam app there.
@@ -6754,7 +6820,6 @@ zone-other = Another time zone…
 event-clock = Time zone
 event-clock-local = Local time ({ $zone })
 event-clock-utc = UTC
-overlap-today-close = Today, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-source-after = kept after the first (its After)
 overlap-source-before = kept before the second (its Before)

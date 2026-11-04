@@ -291,6 +291,13 @@ pub enum Action {
     /// the Porch's lane of its catches and the training read (in the Junk
     /// folder, learned as spam until you say otherwise).
     Filtered(sioul_core::spam::Class),
+    /// Proven mail your provider put in its Junk folder, brought back into
+    /// the inbox by the matrix's row "Proven mail your provider called spam"
+    /// (`spam::vouched`, part 2 of 4 November 2026): no keyword set and no
+    /// line in the label log (nobody said anything); the row's line goes
+    /// into this device's log of moves (`labels::Back`), so that every device
+    /// knows it and none brings it back twice.
+    BroughtBack,
 }
 
 /// Where moved messages' files went here: each file before, and after.
@@ -308,8 +315,11 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
     if *action == Action::Archive && matches!(folder.role, Role::Archive | Role::All) {
         return Ok(Vec::new());
     }
-    // Already in a Junk folder: nothing for the filter to move.
+    // Already in a Junk folder: nothing for the filter to move; brought back only from one.
     if matches!(action, Action::Filtered(_)) && folder.role == Role::Junk {
+        return Ok(Vec::new());
+    }
+    if *action == Action::BroughtBack && folder.role != Role::Junk {
         return Ok(Vec::new());
     }
     // Read here before the message leaves this folder; written once the server took the act.
@@ -318,6 +328,7 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
         Action::Filtered(class) => labels::Moved::of_file(&account.id, &folder.name, file, *class),
         _ => None,
     };
+    let back = (*action == Action::BroughtBack).then(|| labels::Back::of_file(&account.id, &folder.name, file, labels::BackKind::Brought)).flatten();
     // Its address, read before it moves: noted as on its way before the command (`Intent`).
     let address = kept_with(action, "", folder.role).is_none().then(|| mailfind::address_of_file(&account.id, file)).flatten();
     let mut intent = Intent::new(&account.id, address.iter().cloned().collect());
@@ -330,9 +341,10 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
     let went = intent.after(went)?;
     // Done on the server: a log that cannot be written is said, after the rest is done here.
     let root = labels::state();
-    let logged = match (&label, &moved) {
-        (Some(label), _) => labels::append_to(&labels::own_log(&root, &device()), label),
-        (_, Some(moved)) => labels::append_to(&labels::own_moved_log(&root, &device()), moved),
+    let logged = match (&label, &moved, &back) {
+        (Some(label), _, _) => labels::append_to(&labels::own_log(&root, &device()), label),
+        (_, Some(moved), _) => labels::append_to(&labels::own_moved_log(&root, &device()), moved),
+        (_, _, Some(back)) => labels::append_to(&labels::own_moved_log(&root, &device()), back),
         _ => Ok(()),
     }
     .map_err(SyncError::Disk);
@@ -413,7 +425,7 @@ fn kept_with(action: &Action, flags: &str, role: Role) -> Option<String> {
         Action::Flag(flag) => Some(if *flag { format!("{flags}F") } else { flags.replace('F', "") }),
         Action::NotSpam => Some(format!("{}{}", flags.replace(maildir::JUNK, ""), maildir::NOT_JUNK)),
         Action::Junk if role == Role::Junk => Some(format!("{}{}", flags.replace(maildir::NOT_JUNK, "").replace(maildir::JUNK, ""), maildir::JUNK)),
-        Action::Move(_) | Action::Trash | Action::Junk | Action::Archive | Action::NotJunk | Action::Filtered(_) => None,
+        Action::Move(_) | Action::Trash | Action::Junk | Action::Archive | Action::NotJunk | Action::Filtered(_) | Action::BroughtBack => None,
     }
 }
 
@@ -442,6 +454,17 @@ pub fn flagged(account: &Account, file: &Path, class: sioul_core::spam::Class) -
     labels::append_to(&labels::own_flagged_log(&labels::state(), &device()), &flag).map_err(SyncError::Disk)
 }
 
+/// Writes into this device's log of moves that the matrix's row "Proven
+/// mail your provider called spam" leaves the message stored at `file`, in
+/// a Junk folder of `account`, where it is: you pressed Undo as it was
+/// being brought back (`labels::BackKind::Left`). Nothing changes on the
+/// server nor here; no device brings it back again.
+pub fn left_in_junk(account: &Account, file: &Path) -> Result<(), SyncError> {
+    let folder = folder_of(account, file).ok_or_else(|| SyncError::Said(said::UNKNOWN_FOLDER, String::new()))?;
+    let back = labels::Back::of_file(&account.id, &folder.name, file, labels::BackKind::Left).ok_or_else(|| SyncError::Said(said::NOT_FETCHED, String::new()))?;
+    labels::append_to(&labels::own_moved_log(&labels::state(), &device()), &back).map_err(SyncError::Disk)
+}
+
 /// What an act says of a message, for the label log: none for those that
 /// say nothing of spam, nor for your own filter's move (its own log's).
 fn said(action: &Action) -> Option<labels::Source> {
@@ -449,7 +472,7 @@ fn said(action: &Action) -> Option<labels::Source> {
         Action::Junk => Some(labels::Source::Junk),
         Action::NotJunk => Some(labels::Source::NotJunk),
         Action::NotSpam => Some(labels::Source::NotSpam),
-        Action::Read(_) | Action::Flag(_) | Action::Move(_) | Action::Trash | Action::Archive | Action::Filtered(_) => None,
+        Action::Read(_) | Action::Flag(_) | Action::Move(_) | Action::Trash | Action::Archive | Action::Filtered(_) | Action::BroughtBack => None,
     }
 }
 
@@ -578,7 +601,7 @@ const SET: usize = 200;
 /// new folder, `follow`). A folder that fails is said (the first problem),
 /// the others are still done. Returns where moved files went.
 pub fn act_many(account: &Account, password: &str, files: &[PathBuf], remote: &[(String, ImapOrigin)], action: &Action) -> Result<Moved, SyncError> {
-    if said(action).is_some() || matches!(action, Action::Filtered(_)) {
+    if said(action).is_some() || matches!(action, Action::Filtered(_) | Action::BroughtBack) {
         let (mut first, mut followed) = (None, Vec::new());
         for file in files {
             match act(account, password, file, action) {
@@ -759,6 +782,8 @@ async fn act_set(session: &mut Imap, account: &Account, folder: &Folder, validit
             let _ = store(session, uid, "+FLAGS.SILENT ($NotJunk)").await;
             "INBOX".to_string()
         }
+        // Back into the inbox, as it came: nobody said anything of it.
+        Action::BroughtBack => "INBOX".to_string(),
         // A server without keywords keeps nothing: the label log then says it, on this device.
         Action::NotSpam => {
             let _ = store(session, uid, "-FLAGS.SILENT ($Junk)").await;
@@ -1210,11 +1235,16 @@ mod tests {
         assert_eq!(kept_with(&Action::Junk, "S", Role::Inbox), None);
         assert_eq!(kept_with(&Action::NotJunk, "S", Role::Junk), None);
         assert_eq!(kept_with(&Action::Filtered(sioul_core::spam::Class::Spam), "", Role::Inbox), None);
+        // Proven mail brought back by the matrix's row: it leaves the Junk folder, its letters as they were.
+        assert_eq!(kept_with(&Action::BroughtBack, "S", Role::Junk), None);
+        assert_eq!(moved_flags(&Action::BroughtBack, "S"), "S");
         // Said spam where your filter moved it: it stays, `$Junk` now.
         assert_eq!(kept_with(&Action::Junk, &format!("S{}", maildir::NOT_JUNK), Role::Junk), Some(format!("S{}", maildir::JUNK)));
         // What goes into the label log, and what does not: your filter's move is never a label.
         assert_eq!([&Action::Junk, &Action::NotJunk, &Action::NotSpam].map(said), [Some(labels::Source::Junk), Some(labels::Source::NotJunk), Some(labels::Source::NotSpam)]);
         assert_eq!([&Action::Read(true), &Action::Trash, &Action::Archive, &Action::Filtered(sioul_core::spam::Class::Spam)].map(said), [None, None, None, None]);
+        // Nobody said anything of proven mail brought back: no label.
+        assert_eq!(said(&Action::BroughtBack), None);
     }
 
     /// The code of an answer, as the server writes it, read by imap-proto.

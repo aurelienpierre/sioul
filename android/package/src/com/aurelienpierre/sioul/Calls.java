@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.CallLog;
 import android.provider.ContactsContract;
 import android.provider.Settings;
 import android.telecom.Call;
@@ -1153,6 +1154,11 @@ final class Calls
             return state(context).toString();
         case "calls-ask-role":
             return start(context, new Intent(context, CallsSetup.class)) ? "true" : "false";
+        case "calls-ask-history":
+            // Android's question for reading the call history, from a hidden activity.
+            return start(context, new Intent(context, CallsSetup.class).putExtra(CallsSetup.ASKED, CallsSetup.HISTORY)) ? "true" : "false";
+        case "calls-history":
+            return history(context, asked.optLong("since", 0), asked.optInt("max", HISTORY_MAX)).toString();
         case "calls-open-roles":
             return openRoles(context) ? "true" : "false";
         case "calls-open-blocked":
@@ -1167,8 +1173,8 @@ final class Calls
 
     /**
      * What this phone allows: {api, available (the role exists here),
-     * held (Sioul holds it), contacts (READ_CONTACTS), table (one is
-     * written), emergency_at (ms)}.
+     * held (Sioul holds it), contacts (READ_CONTACTS), history
+     * (READ_CALL_LOG), table (one is written), emergency_at (ms)}.
      */
     static JSONObject state(Context context) throws JSONException
     {
@@ -1186,9 +1192,58 @@ final class Calls
         state.put("available", available);
         state.put("held", held);
         state.put("contacts", context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED);
+        state.put("history", context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED);
         state.put("table", new File(folder(context), TABLE).isFile());
         state.put("emergency_at", emergencyAt(context));
         return state;
+    }
+
+    // ---------------------------------------------------------------- the phone's call history
+
+    /** The rows of the call history handed to Rust at once, at most. */
+    static final int HISTORY_MAX = 500;
+
+    /**
+     * The phone's own call history (Android's call log, read, never
+     * written) since `since` (ms, by when each call began), oldest first,
+     * `max` rows at most, for Rust (calls.rs, `HistoryRow`, `carry_history`):
+     * {granted, rows: [{at, seconds, type, number, presentation}]}. Without
+     * READ_CALL_LOG, granted false and no row. The number goes to Rust
+     * alone, which keeps its key and lets the rest go.
+     */
+    static JSONObject history(Context context, long since, int max) throws JSONException
+    {
+        JSONObject answer = new JSONObject();
+        JSONArray rows = new JSONArray();
+        boolean granted = context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED;
+        answer.put("granted", granted);
+        answer.put("rows", rows);
+        if (!granted)
+            return answer;
+        String[] columns = { CallLog.Calls.DATE, CallLog.Calls.DURATION, CallLog.Calls.TYPE, CallLog.Calls.NUMBER, CallLog.Calls.NUMBER_PRESENTATION };
+        try (Cursor cursor = context.getContentResolver().query(CallLog.Calls.CONTENT_URI, columns, CallLog.Calls.DATE + " > ?", new String[] { Long.toString(since) }, CallLog.Calls.DATE + " ASC")) {
+            while (cursor != null && cursor.moveToNext() && rows.length() < max)
+                rows.put(historyRow(cursor.getLong(0), cursor.getLong(1), cursor.getInt(2), cursor.isNull(3) ? "" : cursor.getString(3), cursor.getInt(4)));
+        } catch (SecurityException | IllegalArgumentException e) {
+            Log.w(TAG, "Calls: the call history not read: " + e);
+        }
+        return answer;
+    }
+
+    /**
+     * A row of the call history as Rust reads it (`HistoryRow`): when the
+     * call began (ms), how long it lasted (s), its type (CallLog.Calls.TYPE),
+     * the number as the network gave it, its presentation.
+     */
+    static JSONObject historyRow(long at, long seconds, int type, String number, int presentation) throws JSONException
+    {
+        JSONObject row = new JSONObject();
+        row.put("at", at);
+        row.put("seconds", seconds);
+        row.put("type", type);
+        row.put("number", number == null ? "" : number);
+        row.put("presentation", presentation);
+        return row;
     }
 
     /** Android's page of default apps, where "Caller ID &amp; spam app" is chosen or set to none. */

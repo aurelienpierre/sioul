@@ -362,6 +362,15 @@ impl Translator {
         if d.year() == today.year() { self.day(d) } else { format!("{} {}", self.day(d), d.year()) }
     }
 
+    /// A day as Mail's rows say it, without a time: "Wed 4 Nov", "mer. 4 nov.".
+    pub fn day_short(&self, d: Date) -> String {
+        let mut args = FluentArgs::new();
+        args.set("weekday", self.weekday_short(d));
+        args.set("day", d.day());
+        args.set("month", self.month_short(d));
+        self.text("date-short-day", Some(&args))
+    }
+
     /// "Mon", "lun.".
     pub fn weekday_short(&self, d: Date) -> String {
         let id = format!("weekday-{}", d.weekday().to_monday_one_offset());

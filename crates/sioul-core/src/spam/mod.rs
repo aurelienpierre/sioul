@@ -18,6 +18,7 @@ pub mod features;
 pub mod labels;
 pub mod table;
 pub mod tokenize;
+pub mod vouched;
 
 use crate::card::Card;
 use serde::{Deserialize, Serialize};

@@ -27,6 +27,8 @@ Item {
 
         property var changes: []
         property string hidden: "voicemail"
+        // Whether Android lets Sioul read the call history (`Calls.state`'s "history").
+        property bool history: false
         function text(key) { return key }
         function textWith(key, name, value) { return key + "(" + value + ")" }
         function reminderOpened(link, a, b) {}
@@ -34,7 +36,7 @@ Item {
             const choices = [{ value: "voicemail", label: "screening-rule-voicemail" }, { value: "work", label: "screening-rule-work" }, { value: "ring", label: "screening-rule-ring" }]
             return JSON.stringify({
                 android: true,
-                state: { api: 34, available: true, held: true, contacts: true, table: true, emergency_at: 0 },
+                state: { api: 34, available: true, held: true, contacts: true, history: mock.history, table: true, emergency_at: 0 },
                 moment: {},
                 screening: {
                     title: "screening-title",
@@ -54,6 +56,8 @@ Item {
             mock.changes = mock.changes.concat([[verb, asked]])
             if (verb === "set" && asked.key === "screening.hidden")
                 mock.hidden = asked.value
+            if (verb === "ask-history")
+                mock.history = true
             return mock.setup()
         }
     }
@@ -74,6 +78,33 @@ Item {
     TestCase {
         name: "CallsSetup"
         when: windowShown
+
+        function all(item, test, into) {
+            const found = into || []
+            if (!item)
+                return found
+            if (test(item) && found.indexOf(item) < 0)
+                found.push(item)
+            const kids = item.children || []
+            for (let i = 0; i < kids.length; ++i)
+                all(kids[i], test, found)
+            return found
+        }
+
+        // The call history not read yet: said, with Android's question one press away; read, nothing said.
+        function test_the_call_history_is_asked_for_once() {
+            mock.changes = []
+            mock.history = false
+            setup.reload()
+            const ask = () => all(setup, i => i.visible && i.text === "calls-setup-history-allow" && typeof i.clicked === "function")
+            tryCompare(ask(), "length", 1)
+            verify(all(setup, i => i.visible && i.text === "calls-setup-history-off").length === 1, "what is missing, said")
+            mouseClick(ask()[0])
+            compare(mock.changes.length, 1)
+            compare(mock.changes[0][0], "ask-history")
+            tryCompare(ask(), "length", 0)
+            mock.changes = []
+        }
 
         function test_the_screening_s_rows_are_drawn_and_saved_through_the_page() {
             tryVerify(() => findChild(setup, "screening-row-screening.hidden") !== null)

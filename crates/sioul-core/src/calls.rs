@@ -43,6 +43,15 @@
 //! gone from all. A call is kept `KEPT_DAYS`: each device takes its own lines
 //! out after that (`trim_own`), and the sharing takes them out everywhere.
 //!
+//! **The phone's call history** (`HISTORY_FOLDER`), once you let Sioul read
+//! it: Java reads Android's call log (Calls.history) and Rust keeps each call
+//! in this phone's own history (`carry_history`), carried as the log is:
+//! which way, answered or not, how long (`Logged`), from when Sioul may read
+//! it. Every device reads every phone's (`read_histories`), each a `Call`: the
+//! Porch lists the missed calls and those of yours that did not reach them
+//! (`history_lines`); the phone that had a call writes the call-back tasks
+//! (`callback`).
+//!
 //! **Expecting a call** (once "Let every call through", the same press) is
 //! pressed on any device: each device's own table in do-not-disturb's switch
 //! file (`state/do-not-disturb.toml`, shared) carries its last press,
@@ -1204,12 +1213,12 @@ pub(crate) fn rewrite_lines(path: &Path, drop: impl Fn(&str) -> bool) -> Result<
     })
 }
 
-/// This device's own lines kept past `KEPT_DAYS` taken out of its log and of
-/// its seen log under `root` (the calls' folder): the sharing then takes them
-/// out on every device. A line that does not read stays. Returns how many went.
+/// This device's own lines kept past `KEPT_DAYS` taken out of its log, of
+/// its seen log and of its call history under `root` (the calls' folder):
+/// the sharing then takes them out on every device. A line that does not read stays. Returns how many went.
 pub fn trim_own(root: &Path, device: &str, now_ms: i64) -> Result<usize, String> {
     let old = older_than(KEPT_DAYS, now_ms);
-    Ok(rewrite_lines(&own_file(root, LOG, device), &old)? + rewrite_lines(&own_file(root, SEEN_LOG, device), &old)?)
+    Ok(rewrite_lines(&own_file(root, LOG, device), &old)? + rewrite_lines(&own_file(root, SEEN_LOG, device), &old)? + rewrite_lines(&own_file(root, HISTORY_FOLDER, device), &old)?)
 }
 
 /// Another device's lines kept `LATE_DAYS` past their month taken out here
@@ -1220,7 +1229,7 @@ pub fn trim_own(root: &Path, device: &str, now_ms: i64) -> Result<usize, String>
 pub fn trim_others(root: &Path, here: &str, now_ms: i64) -> Result<usize, String> {
     let old = older_than(KEPT_DAYS + LATE_DAYS, now_ms);
     let mut gone = 0;
-    for folder in [LOG, SEEN_LOG] {
+    for folder in [LOG, SEEN_LOG, HISTORY_FOLDER] {
         for (device, path) in device_files(&root.join(folder)) {
             if device != file_safe(here) {
                 gone += rewrite_lines(&path, &old)?;
@@ -1348,6 +1357,9 @@ pub struct Line {
     pub what: String,
     pub when: String,
     pub at: i64,
+    /// "declined" (the screening sent it to voicemail), "missed" (it rang,
+    /// nobody answered), "unreached" (a call of yours that did not reach them).
+    pub kind: &'static str,
 }
 
 /// What the list needs besides the calls.
@@ -1534,6 +1546,7 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
         what,
         when,
         at: last.at,
+        kind: "declined",
     }
 }
 
@@ -1676,6 +1689,329 @@ pub fn message_words(tr: &Translator, seconds: Option<u32>) -> String {
             tr.text("calls-left-message", Some(&args))
         }
         None => tr.text("calls-left-message-plain", None),
+    }
+}
+
+// ---------------------------------------------------------------- the phone's call history
+
+/// The folder of the phones' call histories, inside the log's (`LOG`): one
+/// file per phone, `<device>.jsonl`, written by that phone alone. Inside the
+/// log's folder, it travels in the calls' own store, which every Sioul's
+/// sharing carries whole, folders included, while 0.0.7 and before read only
+/// the log's own files (`device_files`), never a folder in it.
+pub const HISTORY_FOLDER: &str = "log/history";
+/// A history read again goes back this far before the last call kept (ms):
+/// a call enters Android's call history when it ends, by when it began.
+const HISTORY_OVERLAP_MS: i64 = 6 * 3_600_000;
+/// The voicemail threshold's choices (seconds): a call of yours shorter than
+/// that reached their voicemail, likely, not them.
+pub const VOICEMAIL_SECONDS: [u32; 3] = [60, 90, 120];
+/// The voicemail threshold unless said.
+pub const VOICEMAIL_DEFAULT: u32 = 90;
+
+/// A row of the phone's own call history (Android's call log) as Java reads
+/// it (Calls.history): when it began (ms), how long it lasted (s), its type,
+/// the number as the network gave it and its presentation.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct HistoryRow {
+    #[serde(default)]
+    pub at: i64,
+    #[serde(default)]
+    pub seconds: i64,
+    /// `CallLog.Calls.TYPE`: 1 incoming, 2 outgoing, 3 missed, 4 voicemail,
+    /// 5 declined by hand, 6 blocked, 7 answered on another device.
+    #[serde(default, rename = "type")]
+    pub kind: i32,
+    #[serde(default)]
+    pub number: String,
+    /// `CallLog.Calls.NUMBER_PRESENTATION`: 1, the number given.
+    #[serde(default)]
+    pub presentation: i32,
+}
+
+/// A call of a phone's history as it keeps it (`HISTORY_FOLDER`), a line
+/// each, carried to your other devices: which way, answered or not, how
+/// long; never the number as the network gave it, only its key.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Logged {
+    /// When it began (ms).
+    pub at: i64,
+    /// The number as Sioul keys it (`phones::key`); "" for a hidden number.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub key: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hidden: bool,
+    /// You called; else they did.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub out: bool,
+    /// Taken: an incoming call answered (here, or on another device of the
+    /// line), a call of yours that connected (its time counted).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub answered: bool,
+    /// How long it lasted once answered (s).
+    #[serde(default, skip_serializing_if = "is_no_time")]
+    pub seconds: i64,
+    /// What the phone's history says it was: "incoming", "outgoing",
+    /// "missed", "rejected" (declined by hand), "elsewhere" (answered on
+    /// another device of the line).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    /// The phone it came to or went from: its name in the sharing, its
+    /// file's. Never written in a line.
+    #[serde(skip)]
+    pub device: String,
+}
+
+fn is_no_time(value: &i64) -> bool {
+    *value == 0
+}
+
+impl Logged {
+    /// A row of the phone's history as its line: none for a voicemail's row,
+    /// nor for a call blocked (Sioul's are in the log already, `Held`;
+    /// Android's own blocked list's are nobody's to say), nor one without a
+    /// time.
+    pub fn of(row: &HistoryRow, region: Option<&Region>) -> Option<Logged> {
+        let (kind, out, answered) = match row.kind {
+            1 => ("incoming", false, true),
+            2 => ("outgoing", true, row.seconds > 0),
+            3 => ("missed", false, false),
+            5 => ("rejected", false, false),
+            7 => ("elsewhere", false, true),
+            _ => return None,
+        };
+        if row.at <= 0 {
+            return None;
+        }
+        let hidden = row.presentation != 1 || !row.number.chars().any(|c| c.is_ascii_digit());
+        let key = if hidden { String::new() } else { phones::key(&row.number, region) };
+        Some(Logged { at: row.at, key, hidden, out, answered, seconds: if answered { row.seconds.max(0) } else { 0 }, kind: kind.into(), device: String::new() })
+    }
+
+    /// Its id on its phone: when, who, which way ("…-in", "…-out"); never
+    /// a declined call's (`Held::id`), which says no way.
+    pub fn id(&self) -> String {
+        format!("{}-{}-{}", self.at, if self.hidden { "hidden" } else { self.key.as_str() }, if self.out { "out" } else { "in" })
+    }
+}
+
+/// The rows Java read of this phone's call history (`rows`) copied into its
+/// own history (`own`), under its lock: those not in it yet (by their id),
+/// never a blocked caller's (`blocked`, by their key: their calls never
+/// leave their phone), none past `KEPT_DAYS` nor one to come. Two processes
+/// copying at once never write a line twice. Returns the calls written,
+/// oldest first: what the call-back rules read (`callback`), once.
+pub fn carry_history(own: &Path, rows: &[HistoryRow], region: Option<&Region>, blocked: &dyn Fn(&str) -> bool, now_ms: i64) -> Result<Vec<Logged>, String> {
+    let mut fresh: Vec<Logged> = rows.iter().filter_map(|r| Logged::of(r, region)).filter(|l| now_ms - l.at <= KEPT_DAYS * DAY_MS && l.at <= now_ms + 60_000 && (l.hidden || !blocked(&l.key))).collect();
+    if fresh.is_empty() {
+        return Ok(Vec::new());
+    }
+    fresh.sort_by_key(|l| l.at);
+    crate::filelock::with_lock(own, || {
+        let mut known: BTreeSet<String> = read_lines::<Logged>(own).iter().map(Logged::id).collect();
+        let mut text = String::new();
+        let mut written = Vec::new();
+        for line in fresh {
+            if known.insert(line.id()) {
+                text.push_str(&serde_json::to_string(&line).map_err(|e| e.to_string())?);
+                text.push('\n');
+                written.push(line);
+            }
+        }
+        if !written.is_empty() {
+            append_private(own, &text)?;
+        }
+        Ok(written)
+    })
+}
+
+/// Since when this phone's history is read again (ms; `own`, its own file):
+/// the last call kept, less `HISTORY_OVERLAP_MS`; with none kept, the same
+/// back from now: Sioul reads your call history from when it may, never the
+/// months before.
+pub fn history_since(own: &Path, now_ms: i64) -> i64 {
+    let last = read_lines::<Logged>(own).iter().map(|l| l.at).filter(|at| *at <= now_ms + 60_000).max().unwrap_or(now_ms);
+    (last - HISTORY_OVERLAP_MS).max(now_ms - KEPT_DAYS * DAY_MS)
+}
+
+/// Every phone's history under `root` (the calls' folder), each call with
+/// its phone (`device`), oldest first; none kept past `KEPT_DAYS`, never a
+/// blocked caller's (`blocked`, by their key, as your lists say now).
+pub fn read_histories(root: &Path, blocked: &dyn Fn(&str) -> bool, now_ms: i64) -> Vec<Logged> {
+    let mut calls: Vec<Logged> = device_files(&root.join(HISTORY_FOLDER))
+        .into_iter()
+        .flat_map(|(device, path)| read_lines::<Logged>(&path).into_iter().map(move |l| Logged { device: device.clone(), ..l }))
+        .filter(|l| l.at > 0 && now_ms - l.at <= KEPT_DAYS * DAY_MS && (l.hidden || !blocked(&l.key)))
+        .collect();
+    calls.sort_by(|a, b| (a.at, &a.device).cmp(&(b.at, &b.device)));
+    calls
+}
+
+/// Which way a call went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    Incoming,
+    Outgoing,
+}
+
+/// A call (docs/porch.md, "Calls"): what a phone's history says of it, who
+/// it was with when your address books have the number, and its notice's
+/// state. What the Porch and the call-back rules read (`callback`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Call {
+    /// Its id on its phone (`Logged::id`), and that phone, by its name in the sharing.
+    pub id: String,
+    pub phone: String,
+    /// The number as Sioul keys it; "" for a hidden number.
+    pub number: String,
+    pub hidden: bool,
+    /// Their card, when your address books have the number.
+    pub contact: Option<crate::tasks::ContactRef>,
+    pub direction: Direction,
+    pub answered: bool,
+    /// When it began (ms), and how long it lasted once answered (s).
+    pub at: i64,
+    pub seconds: i64,
+    /// The phone's word for it (`Logged::kind`).
+    pub kind: String,
+    /// Its notice's state (`notices::call_id`): New until a word is said of it.
+    pub state: crate::notices::State,
+}
+
+impl Call {
+    pub fn of(logged: &Logged, contact: Option<crate::tasks::ContactRef>, state: crate::notices::State) -> Call {
+        Call {
+            id: logged.id(),
+            phone: logged.device.clone(),
+            number: logged.key.clone(),
+            hidden: logged.hidden,
+            contact,
+            direction: if logged.out { Direction::Outgoing } else { Direction::Incoming },
+            answered: logged.answered,
+            at: logged.at,
+            seconds: logged.seconds,
+            kind: logged.kind.clone(),
+            state,
+        }
+    }
+
+    /// Its notice's id, the same on every device.
+    pub fn notice(&self) -> String {
+        crate::notices::call_id(&self.phone, &self.id)
+    }
+
+    /// Missed: an incoming call nobody answered, as its phone's history
+    /// says (missed, or declined by hand on the phone).
+    pub fn missed(&self) -> bool {
+        self.direction == Direction::Incoming && !self.answered && matches!(self.kind.as_str(), "missed" | "rejected")
+    }
+
+    /// You spoke: a call of theirs you answered, however short (you picked
+    /// up), or a call of yours answered and at least as long as the
+    /// voicemail threshold (`threshold`, seconds), shorter being their
+    /// voicemail, likely.
+    pub fn spoke(&self, threshold: u32) -> bool {
+        self.answered && (self.direction == Direction::Incoming || self.seconds >= i64::from(threshold))
+    }
+
+    /// Not reached: a call of yours not answered, or shorter than the
+    /// voicemail threshold (their voicemail, likely).
+    pub fn not_reached(&self, threshold: u32) -> bool {
+        self.direction == Direction::Outgoing && !self.spoke(threshold)
+    }
+
+    /// Who it was with, the same for each of their numbers: their card,
+    /// else their number; none for a hidden number.
+    pub fn person(&self) -> Option<String> {
+        self.contact.as_ref().map(|c| c.uri.clone()).filter(|u| !u.is_empty()).or_else(|| (!self.hidden && !self.number.is_empty()).then(|| self.number.clone()))
+    }
+}
+
+/// The Porch's rows of the phones' histories (From your phone): the missed
+/// calls and those of yours that did not reach them, of the last two weeks
+/// (`LISTED_DAYS`), each while no word settled its notice on any device,
+/// while its caller may reach you (`Lister::shows`), and until you spoke
+/// with them after it (`Call::spoke`, either way); one row per phone,
+/// person, kind and day, each time said ("also at 09:41"), never a count.
+/// `calls`, oldest first.
+pub fn history_lines(calls: &[Call], threshold: u32, l: &Lister) -> Vec<Line> {
+    let now_ms = l.now.timestamp().as_millisecond();
+    let shows = |c: &Call| (l.shows)(&Held { key: c.number.clone(), hidden: c.hidden, ..Held::default() });
+    let spoke_after = |c: &Call| c.person().is_some_and(|p| calls.iter().any(|o| o.at > c.at && o.person().as_deref() == Some(p.as_str()) && o.spoke(threshold)));
+    let mut groups: Vec<(&'static str, String, &str, jiff::civil::Date, Vec<&Call>)> = Vec::new();
+    for c in calls {
+        let kind = if c.missed() {
+            "missed"
+        } else if c.not_reached(threshold) {
+            "unreached"
+        } else {
+            continue;
+        };
+        if c.state.mark.settled() || now_ms - c.at > LISTED_DAYS * DAY_MS || c.at > now_ms + 60_000 || !shows(c) || spoke_after(c) {
+            continue;
+        }
+        let person = c.person().unwrap_or_else(|| "hidden".into());
+        let day = local(c.at, l.now).date();
+        match groups.iter_mut().find(|(k, p, phone, d, _)| *k == kind && *p == person && *phone == c.phone && *d == day) {
+            Some((_, _, _, _, group)) => group.push(c),
+            None => groups.push((kind, person, c.phone.as_str(), day, vec![c])),
+        }
+    }
+    groups.into_iter().map(|(kind, _, phone, _, group)| row_of_calls(kind, &group, phone, l)).collect()
+}
+
+/// A row of calls from a phone's history: who, its times, which phone among several.
+fn row_of_calls(kind: &'static str, group: &[&Call], phone: &str, l: &Lister) -> Line {
+    let tr = l.tr;
+    let first = group[0];
+    let last = group[group.len() - 1];
+    let time = |c: &Call| local(c.at, l.now).strftime("%H:%M").to_string();
+    let name = first.contact.as_ref().map(|c| c.name.trim().to_string()).filter(|n| !n.is_empty()).or_else(|| if first.hidden { None } else { (l.name_of)(&first.number) });
+    let number = if first.hidden { String::new() } else { shown_number(&first.number, l.region) };
+    let who = if first.hidden { tr.text("calls-who-hidden", None) } else { name.clone().unwrap_or_else(|| number.clone()) };
+    let mut args = crate::i18n::args();
+    args.set("time", time(first));
+    let head = if kind == "missed" {
+        tr.text("calls-missed-row", Some(&args))
+    } else if first.answered {
+        args.set("length", length(u32::try_from(first.seconds).unwrap_or(0)));
+        tr.text("calls-unreached-short-row", Some(&args))
+    } else {
+        tr.text("calls-unreached-row", Some(&args))
+    };
+    let mut said = vec![head];
+    said.extend(group[1..].iter().map(|c| {
+        let mut args = crate::i18n::args();
+        args.set("time", time(c));
+        tr.text("calls-also-at", Some(&args))
+    }));
+    let mut what = said.join(", ");
+    // Which phone, only among several: the section says "From your phone" already.
+    let on = (l.phone)(phone);
+    if !on.is_empty() && on != tr.text("calls-phone-yours", None) && on != tr.text("calls-phone-other", None) {
+        let mut args = crate::i18n::args();
+        args.set("what", what);
+        args.set("phone", on);
+        what = tr.text("calls-history-on", Some(&args));
+    }
+    let when = jiff::Timestamp::from_millisecond(last.at).map(|t| tr.date(&t.to_zoned(l.now.time_zone().clone()), true)).unwrap_or_default();
+    Line {
+        ids: group.iter().map(|c| c.id.clone()).collect(),
+        text: format!("{}: {what}.", capitalized(&who)),
+        number,
+        dial: if first.hidden { String::new() } else { first.number.clone() },
+        known: name.is_some(),
+        hidden: first.hidden,
+        doubt: String::new(),
+        message: None,
+        why: String::new(),
+        again: String::new(),
+        who: capitalized(&who),
+        what: capitalized(&what),
+        when,
+        at: last.at,
+        kind,
     }
 }
 
@@ -2474,6 +2810,53 @@ mod tests {
 
     fn ms(text: &str) -> i64 {
         at(text).timestamp().as_millisecond()
+    }
+
+    /// The phones' histories on the Porch: a missed call and the calls of
+    /// yours that did not reach them, one row per phone, person, kind and
+    /// day, each time said ("also at"), never a count; a short call's doubt
+    /// said; gone once you spoke with them after, either way, or once
+    /// dismissed; never a call you spoke in, nor one older than two weeks.
+    #[test]
+    fn the_histories_say_what_was_missed_and_what_did_not_reach_them() {
+        let now = at("2026-11-04T16:00[Europe/Paris]");
+        let row = |time: &str, kind: i32, seconds: i64, number: &str| {
+            let logged = Logged { device: "phone-1".into(), ..Logged::of(&HistoryRow { at: ms(&format!("2026-11-04T{time}[Europe/Paris]")), seconds, kind, number: number.into(), presentation: 1 }, fr()).unwrap() };
+            let contact = (logged.key == "+33465716325").then(|| crate::tasks::ContactRef { name: "Marc Duval".into(), uri: "sioul:contact/marc".into() });
+            Call::of(&logged, contact, crate::notices::State::default())
+        };
+        let marc = "04 65 71 63 25";
+        let calls = vec![
+            row("09:12", 3, 0, marc),
+            row("09:40", 3, 0, marc),
+            row("11:05", 2, 38, "01 99 00 12 34"),
+            row("12:00", 2, 0, "01 99 00 12 34"),
+            row("12:30", 1, 600, "04 65 71 30 52"),
+            Call { at: ms("2026-10-01T09:00[Europe/Paris]"), ..row("09:00", 3, 0, "04 65 71 80 00") },
+        ];
+        let tr = Translator::new("en");
+        let (none, all, here) = (|_: &str| None, |_: &Held| true, |_: &str| String::new());
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &here };
+        let said: Vec<(String, String, &str)> = history_lines(&calls, 90, &l).into_iter().map(|line| (line.who, line.what, line.kind)).collect();
+        assert_eq!(
+            said,
+            [
+                ("Marc Duval".to_string(), "Missed call at 09:12, also at 09:40".to_string(), "missed"),
+                ("01 99 00 12 34".to_string(), "Your call at 11:05 lasted 0:38: their voicemail, perhaps, also at 12:00".to_string(), "unreached"),
+            ]
+        );
+        // Spoken with after: gone by itself; dismissed: gone.
+        let mut later = calls.clone();
+        later.push(row("15:00", 1, 120, marc));
+        assert!(history_lines(&later, 90, &l).iter().all(|line| line.who != "Marc Duval"));
+        let mut dismissed = calls.clone();
+        dismissed[0].state.mark = crate::notices::Mark::Dismissed;
+        dismissed[1].state.mark = crate::notices::Mark::Dismissed;
+        assert!(history_lines(&dismissed, 90, &l).iter().all(|line| line.who != "Marc Duval"));
+        // In French.
+        let tr = Translator::new("fr");
+        let l = Lister { tr: &tr, ..l };
+        assert_eq!(history_lines(&calls[..2], 90, &l)[0].what, "Appel manqué à 09:12, aussi à 09:40");
     }
 
     #[test]

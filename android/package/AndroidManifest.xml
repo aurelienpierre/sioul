@@ -64,6 +64,11 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- The phone's call history read (never written), asked in Settings ▸
+         This phone ▸ Calls (CallsSetup.java): the calls you missed and those
+         of yours that did not reach them, for the Porch of each of your
+         devices and the call-back tasks (docs/android.md, "Calls"). -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <!-- The sync apps asked to look for changes now rather than at their next
          round (crates/sioul-app/src/share.rs, android/main.cpp): Murena's
          eDrive, which carries the sharing folder on /e/OS, every half hour. -->

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The calls your phones declined, rows of the Porch's "From your phone" on
-// every device (docs/porch.md, "Calls declined"; docs/android.md, "Calls"):
+// The calls your phones declined, and, from their call histories, the calls
+// you missed and those of yours that did not reach them: rows of the Porch's
+// "From your phone" on every device (docs/porch.md, "Calls declined" and
+// "Calls"; docs/android.md, "Calls"):
 // each shown at the times its caller may reach you, by phone or in writing;
 // never counted, no badge. A row says who, the time of day it was, when;
 // under it a later call that rang, the voicemail your operator mailed; that
@@ -31,8 +33,9 @@ ColumnLayout {
     // The Porch (PorchPage.qml): its words on notices (`say`), the rows still new (`newOnes`).
     required property var porch
 
-    // calls.rs's `view`: {lines: [{ids (their notices), notice, text, number, dial, known,
-    // hidden, doubt, message: {text, path, sound}, why, again}], phone, links: {tel, sms}}.
+    // calls.rs's `view`: {lines: [{ids (their notices), notice, kind ("declined", "missed",
+    // "unreached"), text, number, dial, known, hidden, doubt, message: {text, path, sound},
+    // why, again}], phone, links: {tel, sms}}.
     property var shown: ({ lines: [], phone: false, links: { tel: false, sms: false } })
     // The voicemail being played: its line's first notice, and its sound's address.
     property string playing: ""
@@ -60,13 +63,22 @@ ColumnLayout {
 
     // A row's main action, written first: a text before a call (docs/research.md,
     // finding 29); else a call back; else, a computer with no app for them, its number copied.
+    // A call of yours that did not reach them says "Text them" and "Call again".
+    function textWord(line) {
+        return section.sioul.text(line.kind === "unreached" ? "calls-text-them" : "calls-text-back")
+    }
+
+    function callWord(line) {
+        return section.sioul.text(line.kind === "unreached" ? "calls-call-again" : "calls-call-back")
+    }
+
     function mainOf(line) {
         if (line.dial === "")
             return { id: "", text: "", icon: "" }
         if (section.canText)
-            return { id: "text", text: section.sioul.text("calls-text-back"), icon: "mail-message-new" }
+            return { id: "text", text: section.textWord(line), icon: "mail-message-new" }
         if (section.canCall)
-            return { id: "call", text: section.sioul.text("calls-call-back"), icon: "call-start" }
+            return { id: "call", text: section.callWord(line), icon: "call-start" }
         return { id: "copy", text: section.sioul.text("calls-copy"), icon: "edit-copy" }
     }
 
@@ -74,7 +86,7 @@ ColumnLayout {
     function moreOf(line) {
         const more = []
         if (line.dial !== "" && section.canText && section.canCall)
-            more.push({ id: "call", text: section.sioul.text("calls-call-back"), icon: "call-start" })
+            more.push({ id: "call", text: section.callWord(line), icon: "call-start" })
         if (line.message && line.message.sound !== null && line.message.sound !== undefined)
             more.push({ id: "listen", text: section.sioul.text("calls-listen"), icon: "media-playback-start" })
         if (line.dial !== "" && !line.known)
@@ -83,7 +95,9 @@ ColumnLayout {
             more.push({ id: "block", text: section.sioul.text("calls-block"), icon: "dialog-cancel" })
             more.push({ id: "sheet", text: section.sioul.text("attention-sheet-sender"), icon: "" })
         }
-        more.push({ id: "why", text: section.sioul.text("calls-why"), icon: "" })
+        // Why it went to voicemail: a declined call's alone.
+        if ((line.why || "") !== "")
+            more.push({ id: "why", text: section.sioul.text("calls-why"), icon: "" })
         return more
     }
 

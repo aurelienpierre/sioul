@@ -168,6 +168,10 @@ date-short = { $weekday } { $day ->
         [1] 1er
        *[other] { $day }
     } { $month } { $time }
+date-short-day = { $weekday } { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month }
 weekday-1 = lundi
     .short = lun.
 weekday-2 = mardi
@@ -399,6 +403,9 @@ mailbox-day-year = { $weekday } { $day ->
     } { $month } { $year }
 mailbox-spam-junk = dans les indésirables
 mailbox-spam-provider = votre fournisseur : indésirable
+# Proven mail from someone you deal with (spam::vouched): your provider's word on it, one quiet mark.
+mail-provider-marked = Votre fournisseur l’a marqué comme indésirable.
+mail-provider-junked = Votre fournisseur l’a mis dans les indésirables.
 mailbox-title = Toutes les adresses
 mailbox-chip-all = Tout
 mailbox-chip-unread = Non lus
@@ -922,6 +929,18 @@ undo-many-junked = { $n } courriels mis dans les indésirables.
 undo-many-not-junk = { $n } courriels de retour dans la boîte de réception.
 undo-many-not-spam = { $n } courriels pas indésirables, pour de bon : ils restent dans leur file.
 undo-spam-kept = Indésirable, pour de bon : il reste dans le dossier Indésirables.
+undo-brought-back = { $n ->
+        [one] Courriel prouvé que votre fournisseur disait indésirable : de retour dans la boîte de réception.
+       *[other] { $n } courriels prouvés que votre fournisseur disait indésirables : de retour dans la boîte de réception.
+    }
+undo-not-spam-and-others = { $n ->
+        [one] Pas indésirable. Un autre courriel de { $domain } : de retour dans la boîte de réception aussi.
+       *[other] Pas indésirable. { $n } autres courriels de { $domain } : de retour dans la boîte de réception aussi.
+    }
+undo-many-others-back = { $n ->
+        [one] Un autre courriel de { $domain } : de retour dans la boîte de réception aussi.
+       *[other] { $n } autres courriels de { $domain } : de retour dans la boîte de réception aussi.
+    }
 undo-review-all-spam = { $n ->
         [one] Un courriel indésirable, pour de bon.
        *[other] { $n } courriels indésirables, pour de bon.
@@ -1960,6 +1979,12 @@ set-spam-class-ham = Probablement pas indésirable
 set-spam-action-move = Déplacer dans les indésirables
 set-spam-action-flag = Signaler seulement
 set-spam-action-nothing = Ne rien faire
+set-spam-proven = Ce qu’il fait du courriel prouvé
+set-spam-proven-help = Courriel prouvé : Sioul a vérifié qui l’envoie, et vous avez affaire à son domaine (vous lui avez écrit ; il est dans vos carnets d’adresses, vos sites ou vos contrats ; vous avez gardé de ses courriels ou dit « Pas indésirable » à l’un d’eux). Sur le Porche, l’avis de votre fournisseur seul ne le met jamais de côté. « Ramener » le déplace du dossier Indésirables vers la boîte de réception à son arrivée, avec Annuler ; « Signaler seulement » le laisse dans le dossier Indésirables et le montre parmi vos courriels, marqué « Votre fournisseur l’a mis dans les indésirables. » ; « Ne rien faire » le laisse où votre fournisseur l’a mis. Le courriel que vous remettez dans les indésirables, ou dont vous dites qu’il est indésirable, y reste.
+set-spam-proven-row = Courriel prouvé que votre fournisseur dit indésirable
+set-spam-proven-bring-back = Ramener
+set-spam-proven-mark = Signaler seulement
+set-spam-proven-nothing = Ne rien faire
 set-spam-threshold = Indésirable à partir de
 set-spam-threshold-help = À quel point il doit être sûr pour dire probablement indésirable le courriel d’un inconnu. Plus haut : moins de vos courriels pris pour indésirables, plus d’indésirables laissés passer.
 set-spam-unsure = Peut-être indésirable à partir de
@@ -2864,13 +2889,25 @@ ui-section-help = Ce que contient cette section
 ui-section-folded = repliée
 ui-section-unfolded = dépliée
 porch-about-right-now = Les codes, mots de passe et liens que vous avez demandés à un site : ici tout de suite, quelle que soit l’heure.
-porch-about-phone = Ce que votre téléphone a apporté : les appels qu’il a refusés, ses SMS et les notifications des autres applications que vous avez choisi de voir ici, chacun quand son expéditeur peut vous joindre. Sioul ne voit pas votre messagerie : quelqu’un qui a appelé a peut-être laissé un message. Écarter en retire un sur chacun de vos appareils ; Marquer comme lu marque aussi un SMS comme lu sur la page SMS.
+porch-about-phone = Ce que votre téléphone a apporté : les appels qu’il a refusés, les appels que vous avez manqués et ceux des vôtres qui n’ont pas abouti, ses SMS et les notifications des autres applications que vous avez choisi de voir ici, chacun quand son expéditeur peut vous joindre. Sioul ne voit pas votre messagerie : quelqu’un qui a appelé a peut-être laissé un message. Écarter en retire un sur chacun de vos appareils ; Marquer comme lu marque aussi un SMS comme lu sur la page SMS.
 porch-sites = Sites
 porch-about-sites = Ce que vos sites ont signalé pendant votre absence, une ligne par site. Ouvrir un site lit ses nouvelles.
 porch-money = Argent
-porch-about-money = Les paiements de la semaine, tels que Budgets les lit dans le relevé de votre banque.
+porch-about-money = Ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, ce que votre banque retient encore sur une carte, et ce qui était attendu sans passer sur son compte. L’argent du travail seulement aux heures de travail.
 porch-open-budgets = Ouvrir dans Budgets
+# The Porch's Money (`due::coming`): each movement's state, and an estimate's amount.
+due-state-planned = Prévu
+due-state-announced = Annoncé
+due-state-not-final = Pas encore définitif
+due-state-not-seen = Pas vu sur son compte
+due-state-done = Fait
+due-about = environ { $amount }
 porch-about-letters = Le courrier papier lu sur ses scans, jusqu’à ce que vous le rangiez.
+porch-agenda = Agenda
+porch-about-agenda = Deux de vos événements en même temps, ou plus proches que le temps que vous gardez entre eux, quand le changement de quelqu’un d’autre l’a fait : chacun dit une fois, à un moment où son agenda peut vous joindre. Garder les deux ne le dit plus ; Déplacer le mien ouvre votre propre événement pour le déplacer.
+porch-conflict-during = { $span }, avec d’autres événements pendant celui-ci
+porch-shortfall-what = Un paiement qu’il ne tiendrait pas
+letters-its-page = Sa page
 rule-order = Chaque courriel va dans la première file qui le prend, dans cet ordre : mis de côté, hostile, ce que votre propre filtre à indésirables signale, codes, projets, ce que vous vous envoyez, votre adresse publique, adresses moins importantes, infolettres, quelqu’un de nouveau, personnes que vous connaissez.
 rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un courriel de quelqu’un de nouveau, les y ajoute.
 rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, comme un expéditeur qu’un domaine seul nomme sur une liste, sauf si un projet ou la règle des infolettres prend le courriel d’abord.
@@ -3637,6 +3674,7 @@ paper-renew-money = Un nouveau devrait venir ; demandez-le sinon.
 paper-renew-warranty = Sa garantie finit : quelque chose à signaler avant ?
 paper-renew-other = Il finit bientôt.
 ui-papers = Papiers
+ui-letters = Courrier
 new-paper = Un papier
 new-letter = Une lettre papier (scan)…
 papers-help = Les papiers demandés encore et encore, chacun avec son fichier et sa durée. Gardés dans le dossier des notes (papers/) : ils voyagent avec lui. Un rappel vient quand l’un est à renouveler.
@@ -3773,15 +3811,9 @@ task-rest-offer = Après quelque chose de lourd, quelque chose qui recharge :
 task-mode-day = La journée
 day-all-day = Toute la journée : { $what }
 day-margin = Autour : { $what }
-overlap-today = Aujourd’hui, deux événements en même temps : { $first } et { $second }.
 overlap-day = { $day }, deux événements en même temps : { $first } et { $second }.
 overlap-open = Ouvrir « { $title } »
-overlap-set-aside = Ne plus en parler
 overlap-during = Pendant { $title } ({ $span }) : { $count ->
-        [one] un autre événement
-       *[other] { $count } autres événements
-    }
-overlap-during-today = Aujourd’hui, pendant { $title } ({ $span }) : { $count ->
         [one] un autre événement
        *[other] { $count } autres événements
     }
@@ -4265,9 +4297,21 @@ letters-added = { $n ->
        *[other] { $Count } scans dans le dossier : Sioul les lit d’ici une minute ou deux.
     }
 letters-add-not-scan = { $name } n’est ni un PDF ni une image : Sioul ne lit que ceux-là.
+letters-link = Lier des scans…
+letters-link-title = Des scans à lier là où ils sont
+letters-linked = { $n ->
+        [one] Lié : le scan reste où il est, et Sioul le lit d’ici une minute ou deux.
+       *[other] { $Count } scans liés : ils restent où ils sont, et Sioul les lit d’ici une minute ou deux.
+    }
+letters-link-missing = { $name } n’est plus là : rien n’a été lié.
+letters-linked-here = Lié : le scan reste dans { $file }.
+letters-gone = Ce scan n’est plus dans { $file } : il a été déplacé ou supprimé. La lettre reste ici.
+letters-waiting-read = Pas encore lu : Sioul le lit d’ici une minute ou deux.
+letters-filed = Classées
+letters-none = Pas encore de lettre papier. Les scans que vous ajoutez ou liez s’affichent ici.
 letters-add-failed = { $name } n’a pas pu être copié dans le dossier ({ $detail }).
 letters-folder-failed = Le dossier { $folder } n’a pas pu être créé ({ $detail }).
-letters-no-folder = Pas encore de dossier pour les scans : Porche ⚙ ▸ Courrier papier ▸ Où arrivent les scans.
+letters-no-folder = Pas encore de dossier pour les scans : Courrier ⚙ ▸ Où arrivent les scans.
 letters-unread = Son texte n’a pas pu être lu ({ $problem }) ; son scan est là.
 letters-scan = Voir le scan
 letters-task = Une tâche pour cette date
@@ -4306,10 +4350,17 @@ letter-task-contract = Lire le contrat de { $sender }
 letter-task-other = Répondre à { $sender }
 set-letters-group = Courrier papier
 set-letters-inbox = Où arrivent les scans
-set-letters-inbox-help = Un dossier où vous, un scanner ou une personne qui vous aide déposez le courrier en PDF ou en photos (l’appli de scan d’un téléphone qui s’y synchronise convient aussi). Chaque scan est lu par Sioul sur un ordinateur (Tesseract, Poppler ; un téléphone ne les lit pas) et attend la fenêtre du Porche comme une carte : qui, quoi, combien, pour quand.
+set-letters-inbox-help = Un dossier où vous, un scanner ou une personne qui vous aide déposez le courrier en PDF ou en photos (l’appli de scan d’un téléphone qui s’y synchronise convient aussi). Chaque scan est lu par Sioul sur un ordinateur (Tesseract, Poppler ; un téléphone ne les lit pas) et attend sur cette page comme une carte : qui, quoi, combien, pour quand. Les scans gardés ailleurs peuvent plutôt être liés là où ils sont (Lier des scans…).
 set-calls-group = Appels
 set-porch-calls = Appels refusés par vos téléphones
 set-porch-calls-help = Listés sur le Porche de chacun de vos appareils, chacun à un moment où cette personne peut vous joindre, jamais comptés. Désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun.
+set-porch-call-back = Une tâche pour rappeler
+set-porch-call-back-help = Un appel manqué d’une personne de vos carnets d’adresses fait une tâche, « Rappeler » et son nom, pour ce jour-là, sans rappel. Un autre de ses appels y ajoute son heure ; elle se fait d’elle-même une fois que vous vous êtes parlé.
+set-porch-call-again = Une tâche pour réessayer
+set-porch-call-again-help = Un appel de votre part à une personne de vos carnets d’adresses qui n’a pas abouti, sans réponse ou plus court que la durée ci-dessous, fait une tâche, « Réessayer d’appeler » et son nom, pour ce jour-là, sans rappel. Elle se fait d’elle-même une fois que vous vous êtes parlé.
+set-porch-voicemail-seconds = Un appel tombé sur sa messagerie
+set-porch-voicemail-seconds-help = Un appel de votre part plus court que cela est sans doute tombé sur sa messagerie, pas sur la personne. Un appel de votre part aussi long ou plus, ou tout appel de sa part auquel vous avez répondu, est un appel où vous vous êtes parlé : il clôt sa tâche.
+set-voicemail-seconds = { $seconds } secondes
 password-show = Afficher le mot de passe
 password-hide = Masquer le mot de passe
 set-passwords-shown = Afficher les mots de passe pendant la saisie
@@ -5373,6 +5424,22 @@ calls-open-blocked = Numéros bloqués d’Android (appels et SMS)
 calls-listen-gone = Le son de ce message n’est plus dans vos courriels.
 calls-copy = Copier le numéro
 calls-copied = Numéro copié.
+calls-missed-row = Appel manqué à { $time }
+calls-unreached-row = Votre appel de { $time } est resté sans réponse
+calls-unreached-short-row = Votre appel de { $time } a duré { $length } : sa messagerie, peut-être
+calls-also-at = aussi à { $time }
+calls-history-on = { $what }, sur { $phone }
+calls-call-again = Rappeler
+calls-text-them = Lui écrire
+call-task-back = Rappeler { $name }
+call-task-again = Réessayer d’appeler { $name }
+call-task-at = à { $time }
+call-task-on = le { $day } à { $time }
+call-task-missed = Appel manqué { $when }
+call-task-unreached = Votre appel { $when } n’a pas abouti
+call-task-also = aussi { $when }
+call-task-you-called = vous avez appelé { $when }
+call-task-they-called = appel manqué { $when }
 calls-block-ask-elsewhere = Les appels du { $number } iront sur votre messagerie à chaque fois, sans être listés. Ses SMS arrivent encore : les numéros bloqués de votre téléphone les arrêtent.
 calls-setup-what-title = Ce que Sioul fait des appels
 calls-setup-what = Quand quelqu’un qui ne peut pas vous joindre maintenant appelle, Sioul refuse l’appel simplement, comme vous le feriez à la main : votre opérateur l’envoie sur votre messagerie. Rien ne sonne, rien ne s’affiche pendant ce temps. Ensuite, le Porche liste qui a appelé, à un moment où ces personnes peuvent vous joindre, en proposant d’abord de répondre par écrit.
@@ -5392,6 +5459,8 @@ calls-setup-ask-help = Android demande : « Définir Sioul comme appli numé
 calls-setup-replaces = Une seule application filtre les appels à la fois : si votre application Téléphone filtre elle-même le spam, Sioul prend sa place.
 calls-setup-contacts-off = Sioul ne peut pas lire les contacts de ce téléphone : Android fait alors sonner leurs appels sans demander à Sioul. Sioul filtre les autres.
 calls-setup-contacts-allow = Autoriser la lecture des contacts
+calls-setup-history-off = Sioul ne lit pas l’historique des appels de ce téléphone : il ne peut dire ni quels appels vous avez manqués, ni lesquels des vôtres n’ont pas abouti, ni en faire des tâches.
+calls-setup-history-allow = Laisser Sioul lire l’historique des appels
 calls-setup-android-block = Le réglage « Bloquer les numéros absents des contacts » de votre application Téléphone agit avant que Sioul soit consulté : tant qu’il est activé, un deuxième appel ou « J’attends un appel » ne peut rien pour ces numéros.
 calls-setup-change = Applications par défaut d’Android
 calls-setup-change-help = Pour arrêter, choisissez-y « Aucune » comme appli numéro de l’appelant et spam.
@@ -6785,7 +6854,6 @@ zone-other = Un autre fuseau horaire…
 event-clock = Fuseau horaire
 event-clock-local = Heure locale ({ $zone })
 event-clock-utc = UTC
-overlap-today-close = Aujourd’hui, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-day-close = { $day }, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-source-after = gardées après le premier (son Après)
 overlap-source-before = gardées avant le second (son Avant)

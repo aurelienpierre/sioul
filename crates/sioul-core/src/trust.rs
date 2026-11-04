@@ -780,6 +780,220 @@ fn seen_ip(received: &str) -> Option<IpAddr> {
     bracketed_ip(received).or_else(|| from_clause(received).and_then(|(_, rest)| parenthesised_ip(rest)))
 }
 
+// Your provider's subject tag (part 2 of 4 November 2026). A filter that calls
+// a message spam often writes a tag at the start of its Subject
+// (SpamAssassin's `rewrite_header Subject`, Amavis, rspamd's "rewrite
+// subject"), whatever string its administrator chose; a signature over the
+// Subject then fails, though nothing its sender wrote changed. The tags are
+// found by their shape, never by a list of words, and a Subject without them
+// is taken only when a signature verifies over it: a signature can only
+// verify over the Subject its signer signed.
+
+/// The most tags taken off one Subject, one at a time.
+pub const SUBJECT_TAGS: usize = 3;
+
+/// Where each of the first tags at the start of a Subject's value ends, its
+/// spaces after it included (a fold too: a line end and the spaces of the
+/// next line), as many as there are up to `SUBJECT_TAGS`, the first one's
+/// start before them: `(start, ends)`, offsets into `value`. A tag is text
+/// between stars ("***Possible-SPAM***", "*****SPAM*****"), brackets
+/// ("[SPAM]"), braces ("{Spam?}") or parentheses ("(Pourriel)"), at most 60
+/// bytes inside, or a word ending with a colon ("SPAM:"), at most 40 bytes.
+/// An encoded Subject (RFC 2047) keeps its tag before its encoded words, as
+/// `rewrite_header` writes it: there it is found; a Subject encoded again
+/// whole, its tag inside the encoded text, has none to find.
+pub fn subject_tag_ends(value: &[u8]) -> (usize, Vec<usize>) {
+    let spaces = |at: usize| -> usize {
+        let mut at = at;
+        loop {
+            match value.get(at) {
+                Some(b' ' | b'\t') => at += 1,
+                Some(b'\r') if value.get(at + 1) == Some(&b'\n') && matches!(value.get(at + 2), Some(b' ' | b'\t')) => at += 2,
+                Some(b'\n') if matches!(value.get(at + 1), Some(b' ' | b'\t')) => at += 1,
+                _ => return at,
+            }
+        }
+    };
+    let start = spaces(0);
+    let mut ends = Vec::new();
+    let mut at = start;
+    while ends.len() < SUBJECT_TAGS {
+        let Some(end) = tag_at(value, at) else { break };
+        at = spaces(end);
+        ends.push(at);
+    }
+    (start, ends)
+}
+
+/// The end of one tag starting at `at` (`subject_tag_ends`), its closing mark included.
+fn tag_at(value: &[u8], at: usize) -> Option<usize> {
+    let inside = |b: &u8, close: u8| *b != close && *b != b'\r' && *b != b'\n';
+    match *value.get(at)? {
+        b'*' => {
+            let open = value[at..].iter().take_while(|b| **b == b'*').count();
+            let text = value[at + open..].iter().take_while(|b| inside(b, b'*')).count();
+            let close = value[at + open + text..].iter().take_while(|b| **b == b'*').count();
+            (text > 0 && text <= 60 && close > 0).then_some(at + open + text + close)
+        }
+        open @ (b'[' | b'{' | b'(') => {
+            let close = match open {
+                b'[' => b']',
+                b'{' => b'}',
+                _ => b')',
+            };
+            let text = value[at + 1..].iter().take_while(|b| inside(b, close)).count();
+            (text > 0 && text <= 60 && value.get(at + 1 + text) == Some(&close)).then_some(at + 2 + text)
+        }
+        _ => {
+            let word = value[at..].iter().take_while(|b| !b.is_ascii_whitespace() && !matches!(b, b':' | b'*' | b'[' | b']' | b'{' | b'}' | b'(' | b')')).count();
+            (word > 0 && word <= 40 && value.get(at + word) == Some(&b':')).then_some(at + word + 1)
+        }
+    }
+}
+
+/// The message with its Subject's first `tags` tags taken off, each with the
+/// spaces after it, in its raw header block, all else byte for byte; none
+/// when it has no Subject, more than one (no signer's choice can be told
+/// then), or fewer tags.
+pub fn without_subject_tags(raw: &[u8], tags: usize) -> Option<Vec<u8>> {
+    if tags == 0 {
+        return None;
+    }
+    let block = header_block_end(raw);
+    let mut subject: Option<(usize, usize)> = None;
+    let mut at = 0;
+    while at < block {
+        // One field: its first line, then the lines that fold it (starting with a space or a tab).
+        let line_end = |from: usize| raw[from..block].iter().position(|b| *b == b'\n').map_or(block, |p| from + p + 1);
+        let mut end = line_end(at);
+        while end < block && matches!(raw.get(end), Some(b' ' | b'\t')) {
+            end = line_end(end);
+        }
+        let field = &raw[at..end];
+        if field.len() > 8 && field[..8].eq_ignore_ascii_case(b"subject:") {
+            if subject.is_some() {
+                return None;
+            }
+            subject = Some((at + 8, end));
+        }
+        at = end;
+    }
+    let (value_start, value_end) = subject?;
+    let value = &raw[value_start..value_end];
+    let (start, ends) = subject_tag_ends(value);
+    let cut = *ends.get(tags - 1)?;
+    let mut out = Vec::with_capacity(raw.len());
+    out.extend_from_slice(&raw[..value_start + start]);
+    out.extend_from_slice(&raw[value_start + cut..]);
+    Some(out)
+}
+
+/// Where a raw message's header block ends: its empty line's start, else its end.
+fn header_block_end(raw: &[u8]) -> usize {
+    let mut at = 0;
+    while at < raw.len() {
+        if raw[at..].starts_with(b"\r\n") || raw[at..].starts_with(b"\n") {
+            return at;
+        }
+        at = raw[at..].iter().position(|b| *b == b'\n').map_or(raw.len(), |p| at + p + 1);
+    }
+    raw.len()
+}
+
+/// A decoded Subject without its first `tags` tags (`subject_tag_ends`): what
+/// its signer wrote, once Sioul's own check found a signature over it
+/// (`restored_tags`); as it is when it holds fewer.
+pub fn subject_without_tags(subject: &str, tags: usize) -> String {
+    let (start, ends) = subject_tag_ends(subject.as_bytes());
+    match tags.checked_sub(1).and_then(|k| ends.get(k)) {
+        Some(&end) => subject.get(end..).map_or_else(|| subject.to_string(), |rest| format!("{}{rest}", &subject[..start])),
+        None => subject.to_string(),
+    }
+}
+
+/// Whether a spam filter of your provider's marked the message as spam, as
+/// your provider wrote it on arrival (`written_on_arrival`): SpamAssassin's
+/// `X-Spam-Flag: YES` or `X-Spam-Status: Yes`, rspamd's `X-Spam: Yes`, its
+/// verdict, or its action (`X-Rspamd-Action`) other than "no action" or a
+/// greylist. That is when subjects are rewritten, and it names who changed it.
+pub fn filter_marked(headers: &RawHeaders) -> bool {
+    let provider = written_on_arrival(headers);
+    let action = provider.first("X-Rspamd-Action").map(|a| a.trim().to_ascii_lowercase());
+    read_spam_verdict(headers).is_some_and(|v| v.flagged) || action.is_some_and(|a| !a.is_empty() && a != "no action" && a != "greylist")
+}
+
+/// The words Sioul's own check writes after a result that needed the
+/// Subject without your provider's tag (`sioul_sync::verify`): one tag, or
+/// several ("after your provider's 2 subject tags").
+pub fn after_tags_comment(tags: usize) -> String {
+    if tags <= 1 { "(after your provider's subject tag)".to_string() } else { format!("(after your provider's {tags} subject tags)") }
+}
+
+/// How many tags Sioul's own check took off the Subject before a signature
+/// verified over it, as its stamp says (`after_tags_comment`), under its own
+/// id for this installation (`own_id`): no sender knows that id, so no one
+/// else can say it. None when the stamp says nothing of it.
+pub fn restored_tags(headers: &RawHeaders, own_id: &str) -> Option<usize> {
+    let own = own_id.trim();
+    if own.is_empty() {
+        return None;
+    }
+    let stamp = headers.all("Authentication-Results").find(|v| v.split(';').next().and_then(|id| id.split_whitespace().next()).is_some_and(|id| id.eq_ignore_ascii_case(own)))?;
+    let (_, rest) = stamp.split_once("(after your provider's ")?;
+    let rest = rest.trim_start();
+    if rest.starts_with("subject tag)") {
+        return Some(1);
+    }
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    let n: usize = digits.parse().ok()?;
+    rest[digits.len()..].trim_start().starts_with("subject tags)").then_some(n.clamp(1, SUBJECT_TAGS))
+}
+
+/// The original a report of your provider's filter carries whole
+/// (SpamAssassin's `report_safe` 1: `message/rfc822`; 2: `text/plain`,
+/// either marked `x-spam-type=original`), when a filter marked the report;
+/// with how many tags the report's Subject has before the original's.
+pub fn report_original(raw: &[u8]) -> Option<(Vec<u8>, usize)> {
+    use mail_parser::{MimeHeaders, PartType};
+    if !filter_marked(&RawHeaders::parse(raw)) {
+        return None;
+    }
+    // The Content-Type parameter SpamAssassin marks the original with.
+    const SPAM_TYPE: &str = "x-spam-type";
+    let report = mail_parser::MessageParser::default().parse(raw)?;
+    let part = report.parts.iter().skip(1).find(|p| p.content_type().and_then(|t| t.attribute(SPAM_TYPE)).is_some_and(|t| t.eq_ignore_ascii_case("original")))?;
+    // As it was sent, byte for byte: the part's own bytes when not encoded again.
+    let original = match (&part.body, part.encoding) {
+        (PartType::Message(_) | PartType::Text(_), mail_parser::Encoding::None) => raw.get(part.offset_body as usize..part.offset_end as usize)?.to_vec(),
+        (PartType::Message(_) | PartType::Text(_), _) => part.contents().to_vec(),
+        _ => return None,
+    };
+    let inner = mail_parser::MessageParser::default().parse_headers(&original)?;
+    inner.from()?;
+    // The report's Subject: the original's, after its tags.
+    let theirs = inner.subject().unwrap_or("").trim().to_string();
+    let ours = report.subject().unwrap_or("");
+    let tags = (0..=SUBJECT_TAGS).find(|&n| subject_without_tags(ours, n).trim() == theirs).unwrap_or(0);
+    Some((original, tags))
+}
+
+/// The id Sioul's own checks are written under on this installation
+/// (`config::sioul_authserv_id`), read from its state folder, never made
+/// here; none before the first check ever made it. Kept once known.
+pub fn own_stamp_id() -> Option<String> {
+    static KEPT: std::sync::Mutex<Option<(std::path::PathBuf, String)>> = std::sync::Mutex::new(None);
+    let path = crate::config::state_dir().join("authserv-id");
+    let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((known, id)) = kept.as_ref()
+        && *known == path
+    {
+        return Some(id.clone());
+    }
+    let id = std::fs::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid"))?;
+    *kept = Some((path, id.clone()));
+    Some(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1163,5 +1377,84 @@ List-Id: <news.lists.club.example>
         );
         let ips: Vec<String> = route_ips(&h).iter().map(ToString::to_string).collect();
         assert_eq!(ips, vec!["192.0.2.1", "2001:db8::7"]);
+    }
+
+    /// A provider's subject tags by their shape (part 2 of 4 November 2026):
+    /// stars, brackets, braces, parentheses, a word with its colon; one at a
+    /// time, each with its spaces and a fold after it; never a word list, and
+    /// nothing found where the tag hides inside an encoded word.
+    #[test]
+    fn subject_tags_are_found_by_their_shape() {
+        let cut = |value: &str| {
+            let (start, ends) = subject_tag_ends(value.as_bytes());
+            ends.iter().map(|&end| value[end..].to_string()).collect::<Vec<_>>().into_iter().map(|rest| (start, rest)).collect::<Vec<_>>()
+        };
+        assert_eq!(cut(" ***Possible-SPAM*** Registered letter"), vec![(1, "Registered letter".to_string())]);
+        for (value, rest) in [("[SPAM] Invoice", "Invoice"), ("{Spam?} Invoice", "Invoice"), ("(Pourriel)  Invoice", "Invoice"), ("*****SPAM***** Invoice", "Invoice"), ("SPAM: Invoice", "Invoice"), ("[VERDÄCHTIG] Rechnung", "Rechnung")] {
+            assert_eq!(cut(value).first().map(|(_, r)| r.as_str()), Some(rest), "{value}");
+        }
+        // Several, one at a time; three at most.
+        assert_eq!(cut("[SPAM] [External] Re: Hello").iter().map(|(_, r)| r.as_str()).collect::<Vec<_>>(), ["[External] Re: Hello", "Re: Hello", "Hello"]);
+        // A fold after the tag goes with it.
+        assert_eq!(cut(" ***SPAM***\r\n Hello").first().map(|(_, r)| r.as_str()), Some("Hello"));
+        // Nothing of that shape, an empty mark, a tag encoded inside a word: none.
+        for value in ["Hello [SPAM]", "[] Hello", "** Hello", " =?UTF-8?B?W1NQQU1dIEhlbGxv?=", ""] {
+            assert!(cut(value).is_empty(), "{value}");
+        }
+        // Before encoded words, as rewrite_header writes it: found.
+        assert_eq!(cut(" [SPAM] =?UTF-8?B?SGVsbG8=?=").first().map(|(_, r)| r.as_str()), Some("=?UTF-8?B?SGVsbG8=?="));
+        // A decoded Subject, as a card shows it.
+        assert_eq!(subject_without_tags("***Possible-SPAM*** Letter", 1), "Letter");
+        assert_eq!(subject_without_tags("[SPAM] [External] Hello", 1), "[External] Hello");
+        assert_eq!(subject_without_tags("Hello", 1), "Hello");
+        assert_eq!(subject_without_tags("[SPAM] Hello", 0), "[SPAM] Hello");
+    }
+
+    /// The raw Subject restored in place, every other byte as it was: the
+    /// tag and its spaces only, a folded Subject too; none without a single
+    /// Subject or enough tags.
+    #[test]
+    fn a_subject_is_restored_in_its_raw_header_block() {
+        let raw = b"From: Notices <notification@notif.post.example>\r\nSubject: ***Possible-SPAM*** Proof of\r\n posting\r\nTo: noa@example.org\r\n\r\nBody, Subject: [SPAM] not a header.\r\n";
+        let restored = without_subject_tags(raw, 1).unwrap();
+        assert_eq!(String::from_utf8(restored).unwrap(), "From: Notices <notification@notif.post.example>\r\nSubject: Proof of\r\n posting\r\nTo: noa@example.org\r\n\r\nBody, Subject: [SPAM] not a header.\r\n");
+        assert!(without_subject_tags(raw, 2).is_none(), "one tag only");
+        assert!(without_subject_tags(b"Subject: [SPAM] a\r\nSubject: [SPAM] b\r\n\r\n", 1).is_none(), "two Subjects: no choice is made");
+        assert!(without_subject_tags(b"From: a@example.org\r\n\r\n", 1).is_none());
+        // Bare line ends, and a header name in another case.
+        assert_eq!(without_subject_tags(b"subject: [SPAM]  Hi\n\nText", 1).unwrap(), b"subject: Hi\n\nText".to_vec());
+    }
+
+    /// A filter's mark, as your provider wrote it on arrival: SpamAssassin's,
+    /// rspamd's, its action; a sender's own header below where the message
+    /// came in is no provider's.
+    #[test]
+    fn a_filter_s_mark_is_your_provider_s() {
+        let came_in = "Received: from mail.sender.example (mail.sender.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\n";
+        let marked = |above: &str, below: &str| filter_marked(&headers(&format!("{above}{came_in}{below}From: a@sender.example\r\n\r\n")));
+        assert!(marked("X-Spam-Flag: YES\r\n", ""));
+        assert!(marked("X-Spam-Status: Yes, score=5.3 required=5.0\r\n", ""));
+        assert!(marked("X-Spam: Yes\r\n", ""));
+        assert!(marked("X-Rspamd-Action: rewrite subject\r\n", ""));
+        assert!(!marked("X-Rspamd-Action: no action\r\n", ""));
+        assert!(!marked("X-Spam-Status: No, score=4.4 required=5.0\r\n", ""));
+        assert!(!marked("", "X-Spam-Flag: YES\r\n"), "a sender's own header");
+    }
+
+    /// Sioul's own stamp says how many tags it restored, under this
+    /// installation's id alone; another id, or none of it said, nothing.
+    #[test]
+    fn the_stamp_says_the_tags_restored() {
+        let own = "sioul-0123456789ab.invalid";
+        let stamp = |id: &str, comment: &str| headers(&format!("Authentication-Results: {id};\r\n\tdkim=pass {comment} header.d=notif.post.example header.s=s1\r\nSubject: x\r\n\r\n"));
+        assert_eq!(restored_tags(&stamp(own, &after_tags_comment(1)), own), Some(1));
+        assert_eq!(restored_tags(&stamp(own, &after_tags_comment(2)), own), Some(2));
+        assert_eq!(after_tags_comment(1), "(after your provider's subject tag)");
+        assert_eq!(restored_tags(&stamp("sioul-ffffffffffff.invalid", &after_tags_comment(1)), own), None, "another installation's, or a sender's");
+        assert_eq!(restored_tags(&stamp(own, ""), own), None);
+        assert_eq!(restored_tags(&stamp(own, &after_tags_comment(1)), ""), None);
+        // The comment is no result: the stamp still reads as a pass.
+        let results = read_auth_results(&stamp(own, &after_tags_comment(1)), &[own.to_string()]).unwrap();
+        assert_eq!((results.dkim, results.dkim_passed.clone()), (Some(Outcome::Pass), vec!["notif.post.example".to_string()]));
     }
 }

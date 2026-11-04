@@ -143,7 +143,13 @@ CardFrame {
     }
 
     actions: [
-        // A letter: its scan, its task, its appointment, done.
+        // A letter: its page (the Letters page, main.qml's `openLetter`), its scan, its task, its appointment, done.
+        Button {
+            visible: card.there && (card.kind === "letter" || card.kind === "letter-appointment")
+            flat: true
+            text: card.sioul.text("letters-its-page")
+            onClicked: card.window.openLetter(card.key)
+        },
         Button {
             visible: card.there && (card.kind === "letter" || card.kind === "letter-appointment") && (card.shown.file || "") !== ""
             flat: true

@@ -195,6 +195,7 @@ pub mod bank;
 pub mod blocks;
 pub mod budget;
 pub mod build;
+pub mod callback;
 pub mod calls;
 pub mod capabilities;
 pub mod capacity;

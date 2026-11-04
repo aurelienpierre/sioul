@@ -113,6 +113,9 @@ pub struct Options {
     /// The configuration's Microsoft accounts: a folder of the corpus that
     /// recorded nothing is read only when it is not one of theirs (`corpus::read_all`).
     pub microsoft: MicrosoftIds,
+    /// The domains you deal with (`sioul_core::spam::vouched`): their proven
+    /// mail in a Junk folder is no spam by your provider's word alone (`labels`).
+    pub dealings: std::sync::Arc<sioul_core::spam::vouched::Dealings>,
 }
 
 /// Which model learns: fastText's classifier (the filter's), or the
@@ -171,17 +174,20 @@ impl Default for Options {
             model: Model::default(),
             lexicon: sioul_core::words::Words::builtin_ref().spam.clone(),
             microsoft: MicrosoftIds::default(),
+            dealings: std::sync::Arc::default(),
         }
     }
 }
 
 impl Options {
     /// The defaults, with your thresholds (`[spam]`, read as the Porch reads
-    /// them) and the tokenizer's words of your languages and changes (`[words]`).
+    /// them), the tokenizer's words of your languages and changes (`[words]`)
+    /// and the domains you deal with (`vouched::Dealings::gather`).
     pub fn of(config: &Config) -> Options {
         let (spam, unsure) = config.spam.thresholds();
         let lexicon = sioul_core::words::Words::of(config).spam.clone();
-        Options { threshold_spam: f64::from(spam), threshold_unsure: f64::from(unsure), lexicon, microsoft: MicrosoftIds::of(config), ..Options::default() }
+        let dealings = std::sync::Arc::new(sioul_core::spam::vouched::Dealings::gather(config));
+        Options { threshold_spam: f64::from(spam), threshold_unsure: f64::from(unsure), lexicon, microsoft: MicrosoftIds::of(config), dealings, ..Options::default() }
     }
 }
 
@@ -428,7 +434,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
     let mut texts = 0u64;
     corpus::read_all(dirs, &options.microsoft, |record| {
         texts += record.plain.as_ref().map_or(0, |t| t.text.len() as u64) + record.html.as_ref().map_or(0, |t| t.text.len() as u64) + record.header.len() as u64;
-        copies.push(Copy::of(&record));
+        copies.push(Copy::judged(&record, trusted, &options.dealings));
         if copies.len() % 1000 == 0 {
             progress(&Progress { stage: Stage::Labels, done: copies.len() as u64, total: 0, detail: String::new() });
         }
@@ -1365,7 +1371,7 @@ pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, optio
     // Every message read with the table's own words.
     let lexicon = table.lexicon();
     let mut copies = Vec::new();
-    corpus::read_all(dirs, &options.microsoft, |record| copies.push(Copy::of(&record)))?;
+    corpus::read_all(dirs, &options.microsoft, |record| copies.push(Copy::judged(&record, trusted, &options.dealings)))?;
     let (mut labeled, label_summary) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs), &labels::read_flagged(dirs));
     progress(&Progress { stage: Stage::Labels, done: label_summary.records, total: label_summary.records, detail: String::new() });
     if cancel.cancelled() {
@@ -1993,7 +1999,7 @@ mod tests {
         mail.raw = [b"DKIM-Signature: v=1; a=rsa-sha256; d=example.org; s=s1; bh=x; b=y\r\n".as_slice(), &mail.raw].concat();
         let mut record = synthetic::record_of(&mail, 1, 1);
         let stamp = "Authentication-Results: sioul-0123456789ab.invalid;\r\n\tdkim=pass header.d=example.org header.s=s1 header.b=AbCdEf;\r\n\tspf=fail (sioul-0123456789ab.invalid: domain of example.org does not designate 192.0.2.7 as permitted sender) smtp.mailfrom=example.org;\r\n\tdmarc=pass header.from=example.org policy.dmarc=reject\r\n";
-        record.checked = Some(corpus::Checked { at: record.date + 3600, results: stamp.into(), whole: true, gone: false });
+        record.checked = Some(corpus::Checked { at: record.date + 3600, results: stamp.into(), whole: true, gone: false, tags: true });
         let ids = vec!["sioul-0123456789ab.invalid".to_string(), "mx.example.net".to_string()];
         let trusted: BTreeMap<String, Vec<String>> = [(record.account.clone(), ids.clone())].into();
         let lexicon = Lexicon::builtin();

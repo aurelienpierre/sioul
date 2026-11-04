@@ -2,12 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Paper letters, for the window (docs/porch.md, "Paper letters"): the scans
-//! dropped in the inbox folder read in the background (no notification: they
-//! wait for the Porch's window, as mail does), then each a card there: who,
-//! what, how much, by when; a task for its date, its appointment in the agenda,
-//! its scan filed with its project. The place is there before any scan: the
-//! folder they go to, opened or added to from the Porch, and whether this
-//! computer reads them (`reader`).
+//! dropped in the inbox folder, and those linked where they are, read in the
+//! background (no notification: they wait for the window, as mail does), then
+//! each a card on the Letters page: who, what, how much, by when; a task for
+//! its date, its appointment in the agenda, its scan filed with its project;
+//! the letters filed after, by year. The place is there before any scan: the
+//! folder they go to, opened, added to or linked from the page, and whether
+//! this computer reads them (`reader`).
 
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use serde::Serialize;
@@ -34,6 +35,19 @@ pub(crate) fn inbox() -> Option<PathBuf> {
         Some(folder) => Some(sioul_core::config::expand_home(folder)),
         None => config.notes_root_path().map(|root| Letters::folder(&root).join("inbox")),
     }
+}
+
+/// What installs the programs that read scans, when this computer lacks them
+/// (as last asked, `tick`); "" when it reads them, on a phone, or not asked yet.
+pub(crate) fn reader_hint() -> String {
+    if cfg!(target_os = "android") {
+        return String::new();
+    }
+    let missing = MISSING.lock().map(|m| m.clone()).unwrap_or_default();
+    if !missing.is_empty() {
+        return missing;
+    }
+    READER.lock().ok().and_then(|r| r.as_ref().map(|(_, said)| said.clone())).unwrap_or_default()
 }
 
 fn source_of(path: &Path) -> String {
@@ -119,11 +133,118 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 }
             })
             .is_ok();
-        if taken {
+        // The scans linked where they are, read the same way.
+        let linked = read_linked(&root, &looked, &projects, &|path: &Path, id: &str| sioul_sync::ocr::text_of(path, &sioul_core::config::cache_dir().join("ocr").join(id), &looked.ocr.tesseract));
+        if taken || linked > 0 {
             let _ = qt.queue(|mut sioul| sioul.as_mut().letters_changed());
             let _ = shared;
         }
     });
+}
+
+/// The scans linked where they are (`link`) not read yet, read by `read`
+/// (a file and the letter's id: its text), as the inbox's are, each written
+/// over the letters as they are then; one still being written, or gone, waits.
+/// A missing program stops them all, said on the page (`MISSING`). How many were read.
+fn read_linked(root: &Path, looked: &sioul_core::words::Words, projects: &[sioul_core::projects::Project], read: &dyn Fn(&Path, &str) -> Result<String, sioul_sync::ocr::Unread>) -> usize {
+    let Ok(letters) = Letters::load(root) else { return 0 };
+    let mut done: Vec<Letter> = Vec::new();
+    for letter in letters.list.iter().filter(|l| l.linked && l.source.is_empty()) {
+        let path = letters.file_path(letter);
+        let young = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20);
+        if !path.is_file() || young {
+            continue;
+        }
+        let mut letter = letter.clone();
+        match read(&path, &letter.id) {
+            Ok(text) => {
+                let received = letter.received.unwrap_or_else(|| sioul_core::zone::now().date());
+                letter.reading = sioul_core::letters::read(looked, &text, received);
+                letter.project = sioul_core::letters::project_of(&text, &letter.reading.sender, projects).unwrap_or_default();
+                let _ = letters.save_text(&letter.id, &text);
+                if let Ok(mut missing) = MISSING.lock() {
+                    missing.clear();
+                }
+            }
+            Err(sioul_sync::ocr::Unread::Missing(hint)) => {
+                if let Ok(mut missing) = MISSING.lock() {
+                    *missing = hint;
+                }
+                break;
+            }
+            Err(sioul_sync::ocr::Unread::Failed(e)) => letter.problem = e,
+        }
+        letter.source = source_of(&path);
+        done.push(letter);
+    }
+    let n = done.len();
+    if n > 0 {
+        let written = Letters::change(root, |letters| {
+            for letter in done {
+                // Still linked and unread there (not filed or taken out meanwhile).
+                if letters.get(&letter.id).is_some_and(|l| l.linked && l.source.is_empty()) {
+                    letters.put(letter);
+                }
+            }
+        });
+        if written.is_err() {
+            return 0;
+        }
+    }
+    n
+}
+
+/// Scans chosen elsewhere on this computer (a JSON array of `file://`
+/// addresses, or of paths), linked where they are: each a letter of its own,
+/// read like the others at a coming minute (`read_linked`), never copied,
+/// never moved when filed (`Letter::linked`). What happened, in a sentence.
+pub(crate) fn link(files: &str) -> String {
+    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
+    let chosen: Vec<String> = serde_json::from_str(files).unwrap_or_default();
+    let paths: Vec<PathBuf> = chosen.iter().filter(|u| !u.trim().is_empty()).map(|u| crate::backend::local_path(u)).collect();
+    link_in(&root, &paths)
+}
+
+/// `link`, into the notes folder `root`.
+fn link_in(root: &Path, paths: &[PathBuf]) -> String {
+    let mut chosen: Vec<Letter> = Vec::new();
+    let mut problems: Vec<String> = Vec::new();
+    for path in paths {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        if !path.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str())) {
+            problems.push(say("letters-add-not-scan", &[("name", name)]));
+            continue;
+        }
+        if !path.is_file() {
+            problems.push(say("letters-link-missing", &[("name", name)]));
+            continue;
+        }
+        // Where it is, as the system names it: two ways to one file are one letter.
+        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+        let file = path.display().to_string();
+        let received = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| jiff::Timestamp::try_from(t).ok()).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|| sioul_core::zone::now().date());
+        let id = format!("{received}-{:08x}", file.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)));
+        chosen.push(Letter { id, file, received: Some(received), status: "new".into(), linked: true, ..Letter::default() });
+    }
+    let linked = Letters::change(root, |letters| {
+        let mut n = 0usize;
+        for letter in chosen {
+            if letters.list.iter().any(|l| l.file == letter.file || l.id == letter.id) {
+                continue;
+            }
+            letters.put(letter);
+            n += 1;
+        }
+        n
+    });
+    let mut said: Vec<String> = Vec::new();
+    match linked {
+        Ok(0) => {}
+        Ok(n) => said.push(tr().text("letters-linked", Some(&tr().counted(n)))),
+        Err(e) => said.push(e),
+    }
+    said.extend(problems);
+    said.join(" ")
 }
 
 #[derive(Serialize)]
@@ -142,6 +263,19 @@ struct LetterView {
     task: String,
     project: String,
     problem: String,
+    /// Linked where it is (`Letter::linked`): it stays there.
+    linked: bool,
+    /// Its scan is no longer where the letter says: moved or deleted, said calmly.
+    gone: bool,
+    /// Linked, not read yet: read at a coming minute.
+    waiting: bool,
+}
+
+/// The letters filed in one year, the newest first.
+#[derive(Serialize)]
+struct FiledYear {
+    year: String,
+    letters: Vec<LetterView>,
 }
 
 #[derive(Serialize)]
@@ -153,7 +287,9 @@ struct ProjectChoice {
 #[derive(Serialize, Default)]
 struct View {
     inbox: String,
+    /// The letters waiting, then those filed, by year, the newest first.
     letters: Vec<LetterView>,
+    filed: Vec<FiledYear>,
     projects: Vec<ProjectChoice>,
     /// No OCR program, and scans waiting: how to install one.
     missing: String,
@@ -241,8 +377,9 @@ pub(crate) fn untie_removed(root: &Path, text: &str) -> bool {
     sioul_core::tasks::task_of_text(text, &sioul_core::zone::current()).is_some_and(|task| untie_task(root, &task.uid).unwrap_or(false))
 }
 
-/// The letters not done with, as JSON; each letter's task as the tasks
-/// known here say it (`task_shown`, the plan's while current: nothing read here).
+/// The letters not done with, then those filed by year, as JSON; each
+/// letter's task as the tasks known here say it (`task_shown`, the plan's
+/// while current: nothing read here).
 pub(crate) fn view() -> String {
     let mut view = View {
         inbox: inbox().map(|p| p.display().to_string()).unwrap_or_default(),
@@ -250,13 +387,21 @@ pub(crate) fn view() -> String {
         reader: READER.lock().ok().and_then(|r| r.as_ref().map(|(_, said)| said.clone())).unwrap_or_default(),
         ..View::default()
     };
-    let Some(root) = load_config().notes_root_path() else { return json(&view) };
-    let Ok(letters) = Letters::load(&root) else { return json(&view) };
+    if let Some(root) = load_config().notes_root_path() {
+        fill(&mut view, &root, tasks_trusted(crate::work::plan_shown()));
+    }
+    json(&view)
+}
+
+/// The letters of the notes folder `root` into `view`: waiting, then filed by
+/// year; each one's task as `known` says it (`task_shown`).
+fn fill(view: &mut View, root: &Path, known: Option<Arc<sioul_core::links::Loaded>>) {
+    let Ok(letters) = Letters::load(root) else { return };
     let today = sioul_core::zone::now().date();
-    let known = tasks_trusted(crate::work::plan_shown());
-    let projects = sioul_core::projects::ProjectStore::load(&root).map(|s| s.projects).unwrap_or_default();
+    let projects = sioul_core::projects::ProjectStore::load(root).map(|s| s.projects).unwrap_or_default();
     view.projects = projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect();
-    for letter in letters.list.iter().filter(|l| l.status != "done") {
+    let mut filed: std::collections::BTreeMap<i16, Vec<(jiff::civil::Date, LetterView)>> = std::collections::BTreeMap::new();
+    for letter in letters.list.iter() {
         let r = &letter.reading;
         let day = |d: jiff::civil::Date| tr().day_in(d, today);
         let mut lines = Vec::new();
@@ -282,22 +427,39 @@ pub(crate) fn view() -> String {
         if !r.reference.is_empty() {
             lines.push(say("letter-reference", &[("reference", r.reference.clone())]));
         }
-        view.letters.push(LetterView {
+        let file = letters.file_path(letter);
+        let shown = LetterView {
             id: letter.id.clone(),
             sender: if r.sender.is_empty() { tr().text("letter-unknown-sender", None) } else { r.sender.clone() },
             kind: r.kind.id(),
             kind_label: tr().text(&format!("letter-kind-{}", r.kind.id()), None),
             received: letter.received.map(day).unwrap_or_default(),
             lines,
-            file: letters.file_path(letter).display().to_string(),
+            file: file.display().to_string(),
             deadline: r.deadline.map(|d| d.to_string()).unwrap_or_default(),
             appointment: r.appointment.is_some(),
             task: task_shown(letter, known.as_ref().map(|l| l.tasks.as_slice())),
             project: letter.project.clone(),
             problem: letter.problem.clone(),
-        });
+            linked: letter.linked,
+            gone: !file.is_file(),
+            waiting: letter.linked && letter.source.is_empty() && letter.problem.is_empty(),
+        };
+        if letter.status == "done" {
+            let date = r.dated.or(letter.received).unwrap_or(today);
+            filed.entry(date.year()).or_default().push((date, shown));
+        } else {
+            view.letters.push(shown);
+        }
     }
-    json(&view)
+    view.filed = filed
+        .into_iter()
+        .rev()
+        .map(|(year, mut letters)| {
+            letters.sort_by(|a, b| b.0.cmp(&a.0));
+            FiledYear { year: year.to_string(), letters: letters.into_iter().map(|(_, l)| l).collect() }
+        })
+        .collect();
 }
 
 fn with_letter(id: &str, change: impl FnOnce(&mut Letters, &mut Letter) -> Result<String, String>) -> String {
@@ -497,6 +659,71 @@ pub(crate) fn add(files: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::free_name;
+
+    /// Scans linked where they are (the Letters page's "Link scans…"): kept
+    /// there, never copied, one letter each, twice linked once; a file that
+    /// is no scan, or is not there, said; read at a coming minute like the
+    /// others; moved or deleted afterwards, said calmly on its card.
+    #[test]
+    fn scans_are_linked_where_they_are() {
+        use sioul_core::letters::Letters;
+        sioul_core::config::stand_ins_only();
+        let base = sioul_core::config::data_dir().join(format!("letters-linked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (root, elsewhere) = (base.join("Notes"), base.join("Documents"));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        let scan = elsewhere.join("courrier.pdf");
+        std::fs::write(&scan, b"%PDF stand-in").unwrap();
+        std::fs::File::options().write(true).open(&scan).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600)).unwrap();
+        std::fs::write(elsewhere.join("notes.txt"), "not a scan").unwrap();
+        let said = super::link_in(&root, &[scan.clone(), elsewhere.join("notes.txt"), elsewhere.join("gone.pdf")]);
+        assert!(said.contains("notes.txt") && said.contains("gone.pdf"), "{said}");
+        let letters = Letters::load(&root).unwrap();
+        assert_eq!(letters.list.len(), 1);
+        let letter = &letters.list[0];
+        let kept = std::fs::canonicalize(&scan).unwrap();
+        assert_eq!((letter.linked, letters.file_path(letter), letter.status.as_str(), letter.source.as_str()), (true, kept.clone(), "new", ""), "where it is, unread");
+        assert!(scan.is_file() && !Letters::folder(&root).join("inbox").exists(), "never copied");
+        // Linked again: still one letter.
+        assert_eq!(super::link_in(&root, std::slice::from_ref(&scan)), "");
+        assert_eq!(Letters::load(&root).unwrap().list.len(), 1);
+        // Read like the others, by the reading programs (stood in for here).
+        let words = sioul_core::words::Words::builtin_ref();
+        let read = |path: &std::path::Path, _: &str| -> Result<String, sioul_sync::ocr::Unread> {
+            assert_eq!(path, kept.as_path());
+            Ok("Caisse d'allocations familiales\nFacture\nMontant à payer : 86,40 €\nÀ payer avant le 30 novembre 2026".into())
+        };
+        let mut shown = super::View::default();
+        super::fill(&mut shown, &root, None);
+        assert_eq!((shown.letters.len(), shown.letters[0].linked, shown.letters[0].waiting, shown.letters[0].gone), (1, true, true, false), "waiting to be read");
+        assert_eq!(super::read_linked(&root, words, &[], &read), 1);
+        let read_back = Letters::load(&root).unwrap();
+        let letter = &read_back.list[0];
+        assert!(!letter.source.is_empty() && letter.linked && letter.problem.is_empty(), "{letter:?}");
+        assert_eq!(read_back.text(letter).lines().next(), Some("Caisse d'allocations familiales"));
+        assert_eq!(super::read_linked(&root, words, &[], &read), 0, "read once");
+        // Done: it stays where it is, among the letters filed, by its year.
+        Letters::change(&root, |letters| {
+            let mut done = letters.list[0].clone();
+            letters.file_away(&mut done).unwrap();
+            done.status = "done".into();
+            letters.put(done);
+        })
+        .unwrap();
+        assert_eq!(Letters::load(&root).unwrap().file_path(&Letters::load(&root).unwrap().list[0]), kept);
+        let mut shown = super::View::default();
+        super::fill(&mut shown, &root, None);
+        assert!(shown.letters.is_empty());
+        assert_eq!(shown.filed.iter().map(|y| (y.year.as_str(), y.letters.len())).collect::<Vec<_>>(), [(letter.received.unwrap().year().to_string().as_str(), 1)]);
+        assert!(!shown.filed[0].letters[0].gone && !shown.filed[0].letters[0].waiting);
+        // Moved away since: its card says so, calmly.
+        std::fs::rename(&scan, elsewhere.join("moved.pdf")).unwrap();
+        let mut shown = super::View::default();
+        super::fill(&mut shown, &root, None);
+        assert!(shown.filed[0].letters[0].gone);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn a_scan_added_twice_keeps_both() {

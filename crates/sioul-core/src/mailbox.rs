@@ -36,7 +36,14 @@
 //! - **Spam** (§5.2, 3): a copy in a Junk folder; one your own filter flagged
 //!   where it lies (its log); your provider's flag on a stranger's mail; what
 //!   you said is not spam (`$NotJunk`, the label log) wins. Spam rows show
-//!   under the Spam chip only (decision 7), with their quiet word.
+//!   under the Spam chip only (decision 7), with their quiet word. Proven
+//!   mail from someone you deal with (`spam::vouched`, part 2 of 4 November
+//!   2026) is never spam on your provider's word: flagged, it shows with
+//!   "Your provider marked it as spam."; in its Junk folder, unless the
+//!   matrix's row says to do nothing, you said anything of it or it was
+//!   brought back once (it lies there again by your doing), it shows among
+//!   your mail with "Your provider put it in Spam.". A Subject whose tag
+//!   Sioul's check took off (`trust::restored_tags`) says the first.
 //! - **Calm** (§4.7): the window's filter (`Filter`, docs/areas.md, "A
 //!   page's filter by area") shows the addresses whose area is ticked, as
 //!   the hours say unless you ticked others (`hours_say`, `areafilter`),
@@ -276,6 +283,12 @@ pub struct World {
     /// Spam, Not spam, Junk, Not junk), by its file: said already for its
     /// row, which changes kind at once; its file is where it was meanwhile.
     pub waiting: BTreeMap<PathBuf, labels::Label>,
+    /// The domains you deal with (`spam::vouched`), and what the matrix's row
+    /// does with proven mail your provider called spam.
+    pub dealings: std::sync::Arc<crate::spam::vouched::Dealings>,
+    pub proven: crate::spam::vouched::Proven,
+    /// What that row did with messages in a Junk folder, every device's.
+    pub backs: Vec<labels::Back>,
 }
 
 impl World {
@@ -295,6 +308,9 @@ impl World {
             words: crate::words::current(),
             own_domains: config.own_domains(),
             waiting: BTreeMap::new(),
+            dealings: crate::spam::vouched::current(),
+            proven: config.spam.proven(),
+            backs: labels::read_back_in(&root),
         }
     }
 }
@@ -336,8 +352,10 @@ pub struct Row {
     pub trust: String,
     /// Its quiet word when it is spam ("probably spam"), else "".
     pub spam: String,
-    /// Your filter's word on a message it flagged probably not spam where it
-    /// lies, which stays in All ("probably not spam"), else "".
+    /// The quiet word of a message that stays in All: your provider's on
+    /// proven mail ("Your provider marked it as spam.", "Your provider put
+    /// it in Spam."), else your filter's on one it flagged probably not spam
+    /// where it lies ("probably not spam"), else "".
     pub flag: String,
     /// A shielded address's hostile mail: its words kept to itself.
     pub hostile: bool,
@@ -617,8 +635,17 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             Some(label) => label == labels::Label::Ham,
             None => copies.iter().any(|c| c.flags.contains(maildir::NOT_JUNK)) || labels::said_ham_in(&world.said, &card),
         };
-        let received_copy = |c: &Copy| (matches!(c.role, Role::Inbox | Role::Other | Role::Archive | Role::All) || (c.role == Role::Junk && said_ham)) && !sent_copy(c);
         let stranger = !knows(world, &card);
+        // Proven mail from someone you deal with (`spam::vouched`): judged once, when it matters.
+        let vouched_once = std::cell::OnceCell::new();
+        let vouched = || *vouched_once.get_or_init(|| !world.dealings.is_empty() && crate::spam::vouched::vouched(&card, crate::spam::vouched::judged(&card, &address.trusted, &world.own_domains), &world.dealings));
+        // In its Junk folder where your provider put it: among your mail, unless the matrix's row
+        // does nothing, you said anything of it (here, `$Junk`, the label log), or the row brought
+        // it back once or left it at your Undo (it lies there by your doing).
+        let said_anything = waiting.is_some() || copies.iter().any(|c| c.flags.contains(maildir::JUNK)) || labels::said_in(&world.said, &card).is_some();
+        let handled = || card.message_id.as_deref().map(crate::mailindex::bare_id).is_some_and(|id| labels::handled(&world.backs, &address.account.id, &id));
+        let kept_proven = |c: &Copy| c.role == Role::Junk && world.proven != crate::spam::vouched::Proven::Nothing && !said_ham && !said_anything && !handled() && vouched();
+        let received_copy = |c: &Copy| (matches!(c.role, Role::Inbox | Role::Other | Role::Archive | Role::All) || (c.role == Role::Junk && (said_ham || kept_proven(c)))) && !sent_copy(c);
         let spam_word = |c: &Copy| -> Option<String> {
             if said_ham {
                 return None;
@@ -630,6 +657,9 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             let id = c.line.message_id.as_deref().map(crate::mailindex::bare_id);
             let account = &addresses[c.address].account.id;
             let class_word = |class: crate::spam::Class| tr.text(class.word_id(), None);
+            if kept_proven(c) {
+                return None;
+            }
             if c.role == Role::Junk {
                 let moved = world.moved.iter().rev().find(|m| m.account == *account && id.is_some() && m.message_id.as_deref() == id.as_deref());
                 return Some(moved.map_or_else(|| tr.text("mailbox-spam-junk", None), |m| class_word(m.class)));
@@ -642,8 +672,8 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             {
                 return Some(class_word(flagged.class));
             }
-            // Your provider's word counts for a stranger's mail only.
-            (c.line.spam && stranger && !from_own).then(|| tr.text("mailbox-spam-provider", None))
+            // Your provider's word counts for a stranger's mail only, never alone for proven mail you deal with.
+            (c.line.spam && stranger && !from_own && !vouched()).then(|| tr.text("mailbox-spam-provider", None))
         };
         let spam_words: Vec<Option<String>> = copies.iter().map(|c| spam_word(c)).collect();
         // Flagged probably not spam where it lies (the matrix's "Flag only" for ham): its word,
@@ -658,6 +688,21 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
                 })
             })
             .flatten();
+        // Your provider's word on proven mail, one quiet mark until you say: put in its Junk
+        // folder; flagged, or its Subject's tag taken off before a signature verified.
+        let brought = || card.message_id.as_deref().map(crate::mailindex::bare_id).is_some_and(|id| labels::brought(&world.backs, &address.account.id, &id));
+        let provider_mark = (!said_ham && !said_spam)
+            .then(|| {
+                if copies.iter().any(kept_proven) || (copies.iter().any(|c| c.role != Role::Junk) && brought() && vouched()) {
+                    Some(tr.text("mail-provider-junked", None))
+                } else if card.provider_tag_restored() || (copies.iter().any(|c| c.line.spam) && vouched()) {
+                    Some(tr.text("mail-provider-marked", None))
+                } else {
+                    None
+                }
+            })
+            .flatten();
+        let flag_word = provider_mark.or(flag_word);
         let sent_kind = copies.iter().any(sent_copy);
         let received_kind = copies.iter().zip(&spam_words).any(|(c, s)| received_copy(c) && s.is_none());
         let spam = (!sent_kind && !received_kind).then(|| spam_words.iter().flatten().next().cloned()).flatten();
@@ -919,6 +964,9 @@ mod tests {
             words: crate::words::current(),
             own_domains: Vec::new(),
             waiting: BTreeMap::new(),
+            dealings: std::sync::Arc::new(crate::spam::vouched::Dealings::default()),
+            proven: crate::spam::vouched::Proven::default(),
+            backs: Vec::new(),
         }
     }
 
@@ -1096,6 +1144,60 @@ mod tests {
         let words: BTreeMap<&str, &str> = spam.rows.iter().map(|r| (r.subject.as_str(), r.spam.as_str())).collect();
         assert_eq!(words, BTreeMap::from([("In the junk", "in the junk"), ("Moved by your filter", "maybe spam"), ("Flagged where it lies", "probably spam"), ("Your provider's word", "your provider: spam")]));
         assert!(spam.rows.iter().all(|r| !r.unread && r.kinds == ["spam"]));
+    }
+
+    /// Proven mail from someone you deal with (part 2 of 4 November 2026):
+    /// your provider's flag alone never makes it spam, it shows marked; in
+    /// the Junk folder it shows among your mail, marked, as the matrix's row
+    /// says, unless you said anything of it or the row left it there at your
+    /// Undo; an unproven sender's, or a domain you never dealt with, stays
+    /// spam; a Subject whose tag Sioul's check took off says so too.
+    #[test]
+    fn proven_mail_your_provider_called_spam() {
+        let stand = Stand::new("proven");
+        let at = NOW - 3600;
+        let provider = "X-Spam-Flag: YES\r\nReceived: from mail.bulk.example (mail.bulk.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\n";
+        let notice = "Notices <notification@example.org>";
+        stand.put(0, "INBOX", 1, "flagged@example.org", notice, "noa@work.example.org", "Flagged by your provider", at, at, "", provider, "Your parcel.");
+        stand.put(0, "Junk", 2, "junked@example.org", notice, "noa@work.example.org", "Put in Spam", at, at, "", "", "Your parcel.");
+        stand.put(0, "Junk", 3, "stranger@example.org", "Ads <ads@shop.example>", "noa@work.example.org", "Unproven in Spam", at, at, "", "", "Buy.");
+        stand.put(0, "Junk", 4, "said@example.org", notice, "noa@work.example.org", "Said spam", at, at, "", "", "Your parcel.");
+        stand.put(0, "Junk", 5, "left@example.org", notice, "noa@work.example.org", "Left at your Undo", at, at, "", "", "Your parcel.");
+        stand.put(0, "Junk", 6, "keyword@example.org", notice, "noa@work.example.org", "Junk elsewhere", at, at, &format!("S{}", maildir::JUNK), "", "Your parcel.");
+        stand.put(0, "INBOX", 8, "brought@example.org", notice, "noa@work.example.org", "Brought back", at, at, "", "", "Your parcel.");
+        // Its Subject's tag taken off by this installation's check, before a signature verified.
+        let own = crate::config::sioul_authserv_id();
+        let restored = format!("Authentication-Results: {own}; dkim=pass (after your provider's subject tag) header.d=example.org; dmarc=pass header.from=example.org\r\n");
+        stand.put(0, "INBOX", 7, "tagged@example.org", "Shop <news@example.org>", "noa@work.example.org", "***SPAM*** Your order", at, at, "", &restored, "Thanks.");
+        let account = stand.addresses[0].account.id.clone();
+        let mut world = world_at(crate::areas::Time::Work, "", "");
+        let mut dealings = crate::spam::vouched::Dealings::default();
+        dealings.with("commande@example.org", crate::spam::vouched::Dealing::Kept);
+        world.dealings = std::sync::Arc::new(dealings);
+        world.said.push(labels::Entry { at, account: account.clone(), folder: "Junk".into(), uidvalidity: 7, uid: 4, message_id: Some("said@example.org".into()), label: labels::Label::Spam, source: labels::Source::Junk });
+        world.backs.push(labels::Back { at, account: account.clone(), folder: "Junk".into(), uidvalidity: 7, uid: 5, message_id: Some("left@example.org".into()), back: labels::BackKind::Left });
+        world.backs.push(labels::Back { at, account: account.clone(), folder: "Junk".into(), uidvalidity: 7, uid: 18, message_id: Some("brought@example.org".into()), back: labels::BackKind::Brought });
+        let marks = |world: &World| -> (BTreeMap<String, String>, BTreeMap<String, String>) {
+            let all = stand.page(world, &Ask::default(), &BTreeSet::new());
+            let spam = stand.page(world, &Ask { chip: Chip::Spam, ..Ask::default() }, &BTreeSet::new());
+            (all.rows.iter().map(|r| (r.subject.clone(), r.flag.clone())).collect(), spam.rows.iter().map(|r| (r.subject.clone(), r.spam.clone())).collect())
+        };
+        let (all, spam) = marks(&world);
+        let pairs = |list: &[(&str, &str)]| list.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<BTreeMap<_, _>>();
+        assert_eq!(all, pairs(&[("Brought back", "Your provider put it in Spam."), ("Flagged by your provider", "Your provider marked it as spam."), ("Put in Spam", "Your provider put it in Spam."), ("Your order", "Your provider marked it as spam.")]));
+        assert_eq!(spam, pairs(&[("Junk elsewhere", "in the junk"), ("Left at your Undo", "in the junk"), ("Said spam", "in the junk"), ("Unproven in Spam", "in the junk")]));
+        // "Mark only": the same; "Do nothing": the Junk folder's proven mail is spam again, the flag still not.
+        world.proven = crate::spam::vouched::Proven::Mark;
+        assert_eq!(marks(&world).0["Put in Spam"], "Your provider put it in Spam.");
+        world.proven = crate::spam::vouched::Proven::Nothing;
+        let (all, spam) = marks(&world);
+        assert!(!all.contains_key("Put in Spam") && spam["Put in Spam"] == "in the junk", "{all:?}");
+        assert_eq!(all["Flagged by your provider"], "Your provider marked it as spam.");
+        // Nobody you deal with: your provider's word, as before.
+        world.dealings = std::sync::Arc::new(crate::spam::vouched::Dealings::default());
+        let (all, spam) = marks(&world);
+        assert_eq!(spam["Flagged by your provider"], "your provider: spam");
+        assert_eq!(all["Your order"], "Your provider marked it as spam.", "the tag taken off says so, whoever sent it");
     }
 
     /// Calm: a resting address's mail leaves the list, its line says so, and

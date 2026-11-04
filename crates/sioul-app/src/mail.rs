@@ -844,10 +844,252 @@ pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, 
             let title = mailbox::folders(&account.id).into_iter().find(|f| f.name == *name).map_or_else(|| name.clone(), |f| folder_title(&f));
             say("undo-moved", &[("folder", title)])
         }
-        // Your filter's own move is never asked from the window.
-        Action::Filtered(_) => return,
+        // Your filter's own move, and the row's bringing back, are never asked from the window.
+        Action::Filtered(_) | Action::BroughtBack => return,
     };
+    // Not spam on proven mail: the same sender's other mail in a Junk folder comes back too, under
+    // one Undo; looked for off the window's thread (`also_back` reads mail), then scheduled.
+    if matches!(action, Action::NotJunk | Action::NotSpam) {
+        let (qt, shared) = (qt.clone(), Arc::clone(shared));
+        std::thread::spawn(move || {
+            let (domain, others) = also_back(&[(account.clone(), file.clone())]);
+            if others.is_empty() {
+                return schedule(&qt, &shared, Work::Act { account, file, action }, line);
+            }
+            let line = say("undo-not-spam-and-others", &[("n", others.len().to_string()), ("domain", domain)]);
+            let mut works = vec![Work::Act { account, file, action }];
+            works.extend(others.into_iter().map(|(account, file)| Work::Act { account, file, action: Action::BroughtBack }));
+            schedule(&qt, &shared, Work::Many(works), line);
+        });
+        return;
+    }
     schedule(qt, shared, Work::Act { account, file, action }, line);
+}
+
+/// How long ago proven mail may have arrived in a Junk folder to be brought
+/// back by the matrix's row (`bring_back`, `also_back`): the mailbox's two
+/// weeks; older, it stays there, shown among your mail as the row says.
+const BRING_BACK_DAYS: i64 = sioul_core::mailbox::WINDOW_DAYS;
+
+/// What the row asks of a message in a Junk folder before it brings it back:
+/// that it lies there still, arrived in the last `BRING_BACK_DAYS`, has a
+/// Message-ID (every device's log names it so), that nobody said anything of
+/// it (`$Junk`, `$NotJunk`, the label log: `said`), that the row never did
+/// anything with it (`backs`, every device's), that the Porch would not set it
+/// aside before any spam verdict (a blocked sender, a borrowed name: the order
+/// of words), and that it is proven mail from someone you deal with
+/// (`spam::vouched`, with `account`'s trusted ids).
+struct Bringing {
+    said: Vec<sioul_core::spam::labels::Entry>,
+    backs: Vec<sioul_core::spam::labels::Back>,
+    sources: Vec<sioul_core::config::Source>,
+    own_domains: Vec<String>,
+    senders: sioul_core::porch::Senders,
+    words: Arc<sioul_core::words::Words>,
+    since: i64,
+}
+
+impl Bringing {
+    fn load(config: &Config) -> Bringing {
+        let root = sioul_core::spam::labels::state();
+        Bringing {
+            said: sioul_core::spam::labels::read_all_in(&root),
+            backs: sioul_core::spam::labels::read_back_in(&root),
+            sources: config.mail_sources(),
+            own_domains: config.own_domains(),
+            senders: sioul_core::porch::Senders::load(config),
+            words: sioul_core::words::Words::of(config),
+            since: jiff::Timestamp::now().as_second() - BRING_BACK_DAYS * 86_400,
+        }
+    }
+
+    fn trusted(&self, account: &Account) -> &[String] {
+        self.sources.iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map_or(&[][..], |s| s.trusted_ids.as_slice())
+    }
+
+    /// The message stored at `file`, when the row may bring it back but for
+    /// its proof (its card, read here), with how far its sender is proven.
+    fn may_take(&self, account: &Account, file: &Path) -> Option<(Card, sioul_core::trust::Trust)> {
+        if !in_junk(account, file) {
+            return None;
+        }
+        let arrived = std::fs::metadata(file).ok()?.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+        let keywords = maildir::keywords_of(file);
+        if arrived < self.since || keywords.junk || keywords.not_junk {
+            return None;
+        }
+        let mut card = maildir::read_one(file)?;
+        card.account = Some(account.id.clone());
+        let id = sioul_core::mailindex::bare_id(card.message_id.as_deref()?);
+        if id.is_empty() || sioul_core::spam::labels::said_in(&self.said, &card).is_some() || sioul_core::spam::labels::handled(&self.backs, &account.id, &id) {
+            return None;
+        }
+        // Blocked, or a stranger borrowing a name: set aside before any word on spam.
+        let who = self.senders.who_of(&card);
+        let borrowed = || sioul_core::lookalike::impersonation(&self.words.brands, card.from_name.as_deref(), card.sender_domain(), &self.own_domains).is_some();
+        if who == sioul_core::reach::Who::Blocked || (who == sioul_core::reach::Who::Stranger && borrowed()) {
+            return None;
+        }
+        let trust = sioul_core::spam::vouched::judged(&card, self.trusted(account), &self.own_domains);
+        Some((card, trust))
+    }
+
+    /// Whether the row brings back the message stored at `file`: proven mail
+    /// from someone you deal with (`dealings`).
+    fn takes(&self, account: &Account, file: &Path, dealings: &sioul_core::spam::vouched::Dealings) -> bool {
+        self.may_take(account, file).is_some_and(|(card, trust)| sioul_core::spam::vouched::vouched(&card, trust, dealings))
+    }
+}
+
+/// Proven mail your provider put in Spam, among `files` of `account` (just
+/// fetched into a Junk folder, or checked again for its Subject's tag),
+/// brought back into the inbox as the matrix's row "Proven mail your
+/// provider called spam" says when it says "Bring back" (`spam::vouched`,
+/// part 2 of 4 November 2026): those the row takes (`Bringing::takes`), with
+/// "Undo" for ten seconds, as your own moves; "Undo" leaves them where they
+/// are, for good, on every device (`mailbox::left_in_junk`). How many.
+pub(crate) fn bring_back(qt: &QtThread, shared: &Arc<Shared>, account: &Account, files: &[PathBuf]) -> usize {
+    if files.is_empty() {
+        return 0;
+    }
+    let works: Vec<Work> = brought_back(&load_config(), sioul_core::spam::vouched::current(), account, files).into_iter().map(|file| Work::Act { account: account.clone(), file, action: Action::BroughtBack }).collect();
+    let n = works.len();
+    if n == 0 {
+        return 0;
+    }
+    let line = say("undo-brought-back", &[("n", n.to_string())]);
+    // An act of yours waiting for its Undo keeps it: brought back at once, its line without
+    // Undo (Spam on it sends it back), never taking the Undo of what you did.
+    if yours_waiting(shared) {
+        let pending = Arc::new(Pending { work: Work::Many(works), line, taken: AtomicBool::new(true) });
+        done(qt, shared, &pending);
+    } else {
+        schedule(qt, shared, Work::Many(works), line);
+    }
+    n
+}
+
+/// Whether an act of yours waits for its Undo: any work waiting but the row's own bringing back.
+fn yours_waiting(shared: &Shared) -> bool {
+    shared.pending.lock().is_ok_and(|list| list.iter().any(|p| !p.taken.load(Ordering::Relaxed) && !brought_back_only(&p.work)))
+}
+
+/// Whether `work` is the row's bringing back alone, nobody's act (`bring_back`).
+fn brought_back_only(work: &Work) -> bool {
+    matches!(work, Work::Many(works) if !works.is_empty() && works.iter().all(|w| matches!(w, Work::Act { action: Action::BroughtBack, .. })))
+}
+
+/// The row's bringing back in `work` undone: each of its messages left where
+/// your provider put it, for good, on every device (`mailbox::left_in_junk`),
+/// whether it came by itself or with your Not spam; the first problem said.
+fn leave_brought_back(work: &Work) -> Option<String> {
+    let Work::Many(works) = work else { return None };
+    works
+        .iter()
+        .filter_map(|w| match w {
+            Work::Act { account, file, action: Action::BroughtBack } => mailbox::left_in_junk(account, file).err().map(|e| e.sentence(tr(), &account.id)),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .next()
+}
+
+/// Those of `files` of `account` that the row brings back, as `config` says
+/// it (`[spam] proven`) and with `dealings`: none unless it says "Bring back".
+fn brought_back(config: &Config, dealings: Arc<sioul_core::spam::vouched::Dealings>, account: &Account, files: &[PathBuf]) -> Vec<PathBuf> {
+    if config.spam.proven() != sioul_core::spam::vouched::Proven::BringBack {
+        return Vec::new();
+    }
+    let bringing = Bringing::load(config);
+    files.iter().filter(|file| bringing.takes(account, file, &dealings)).cloned().collect()
+}
+
+/// Mail stored before Sioul knew your provider's subject tags (part 2 of 4
+/// November 2026), checked again once on this device, in the background
+/// (`verify::recheck_tagged_once`): every folder of every address that
+/// syncs. The messages whose stamp was written again (a signature verified
+/// once the tag was taken off) have their index lines forgotten, so that
+/// their Subject reads as proven; those lying in a Junk folder are brought
+/// back as on arrival (`bring_back`). How many were written again.
+pub(crate) fn recheck_tagged(qt: &QtThread, shared: &Arc<Shared>, config: &Config) -> usize {
+    let accounts: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
+    let mut folders = Vec::new();
+    for account in &accounts {
+        let root = account.maildir_path();
+        for local in sioul_core::mailcache::folders(&root) {
+            folders.push((format!("{}/{local}", account.id), root.join(&local)));
+        }
+    }
+    let written = sioul_sync::verify::recheck_tagged_once(&folders);
+    // Each folder's index forgets them: their lines are read again, Subjects restored.
+    let mut by_folder: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (key, path) in &written {
+        let unique = path.file_name().map(|n| maildir::unique_part(&n.to_string_lossy()).to_string()).unwrap_or_default();
+        by_folder.entry(key.clone()).or_default().push(unique);
+    }
+    for (key, uniques) in &by_folder {
+        if let Some((account, local)) = key.split_once('/') {
+            sioul_core::mailcache::forget(account, local, uniques);
+        }
+    }
+    for account in accounts {
+        let files: Vec<PathBuf> = written.iter().filter(|(key, _)| key.split_once('/').is_some_and(|(id, _)| id == account.id)).map(|(_, path)| path.clone()).collect();
+        bring_back(qt, shared, account, &files);
+    }
+    written.len()
+}
+
+/// Not spam said of proven mail (`said`: each message's account and file):
+/// its domain is one you deal with now (`spam::vouched`), so the row brings
+/// back at once the other proven mail from there lying in a Junk folder of
+/// any address, as it would on arrival (`Bringing::may_take`), when it says
+/// "Bring back"; at a domain millions share, the same address's alone. Only what the
+/// folders' indexes hold is looked at (the mailbox fills them), nothing
+/// parsed but the messages taken. The domains, for the line
+/// ("post.example"), and those messages.
+fn also_back(said: &[(Account, PathBuf)]) -> (String, Vec<(Account, PathBuf)>) {
+    also_back_in(&load_config(), said)
+}
+
+/// `also_back`, as `config` says it.
+fn also_back_in(config: &Config, said: &[(Account, PathBuf)]) -> (String, Vec<(Account, PathBuf)>) {
+    if config.spam.proven() != sioul_core::spam::vouched::Proven::BringBack {
+        return (String::new(), Vec::new());
+    }
+    let bringing = Bringing::load(config);
+    // The proven messages said, by what their sender is dealt with by: its
+    // organisational domain, or at a domain millions share its address alone.
+    let key_of = |from: &str| sioul_core::spam::vouched::sender_key(&bringing.words, from);
+    let mut domains: Vec<String> = Vec::new();
+    for (account, file) in said {
+        let Some(mut card) = maildir::read_one(file) else { continue };
+        card.account = Some(account.id.clone());
+        let trust = sioul_core::spam::vouched::judged(&card, bringing.trusted(account), &bringing.own_domains);
+        if let Some(key) = card.from_address.as_deref().and_then(key_of).filter(|k| trust == sioul_core::trust::Trust::Verified && !domains.contains(k)) {
+            domains.push(key);
+        }
+    }
+    if domains.is_empty() {
+        return (String::new(), Vec::new());
+    }
+    let mut others = Vec::new();
+    for account in config.accounts.iter().filter(|a| a.syncs()) {
+        let root = account.maildir_path();
+        for folder in mailbox::folders(&account.id).into_iter().filter(|f| f.role == Role::Junk) {
+            let lines = sioul_core::mailcache::recent(&account.id, &root, &folder.local, bringing.since, 0).lines;
+            for (path, line) in lines.iter() {
+                if line.from_address.as_deref().and_then(key_of).is_none_or(|k| !domains.contains(&k)) || said.iter().any(|(_, f)| f == path) {
+                    continue;
+                }
+                // Its domain dealt with by your Not spam, which waits for its Undo: the row's own checks, and its proof.
+                if bringing.may_take(account, path).is_some_and(|(_, trust)| trust == sioul_core::trust::Trust::Verified) {
+                    others.push((account.clone(), path.clone()));
+                }
+            }
+        }
+    }
+    (domains.join(", "), others)
 }
 
 /// An act on a message seen on its server only (a search's): reading and
@@ -1001,14 +1243,30 @@ pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, rows: &[Vec<String>]
         _ => "undo-many-trashed",
     };
     let line = undo_line(id, n);
-    let works = found
-        .into_iter()
+    let said = matches!(first, Action::NotJunk | Action::NotSpam);
+    let works: Vec<Work> = found
+        .iter()
+        .cloned()
         .filter_map(|(account, file)| {
             let action = action_of(action, "", in_junk(&account, &file))?;
             Some(Work::Act { account, file, action })
         })
         .collect();
-    schedule(qt, shared, Work::Many(works), line);
+    if !said {
+        return schedule(qt, shared, Work::Many(works), line);
+    }
+    // Not spam on proven mail: the same senders' other mail in a Junk folder comes back too, under
+    // the same Undo; looked for off the window's thread (`also_back`), then scheduled.
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        let (domain, others) = also_back(&found);
+        let (mut works, mut line) = (works, line);
+        if !others.is_empty() {
+            line = format!("{line} {}", say("undo-many-others-back", &[("n", others.len().to_string()), ("domain", domain)]));
+            works.extend(others.into_iter().map(|(account, file)| Work::Act { account, file, action: Action::BroughtBack }));
+        }
+        schedule(&qt, &shared, Work::Many(works), line);
+    });
 }
 
 /// Messages of several accounts, kept here or seen on their server only, as
@@ -1315,6 +1573,10 @@ fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBu
             Ok(followed) => {
                 moved.extend(followed);
                 nudge(shared, &account.id);
+                // Your word changes whom you deal with (`spam::vouched`): gathered again at the next ask.
+                if said_by(action).is_some() {
+                    sioul_core::spam::vouched::forget();
+                }
                 None
             }
             Err(e) => Some(e.sentence(tr(), &account.id)),
@@ -1654,6 +1916,13 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             }
             crate::work::show_work(qt, shared);
             crate::pim::show_pim(qt, shared);
+            (problem.unwrap_or_else(|| tr().text("undo-done", None)), None)
+        }
+        // Proven mail the row was bringing back, by itself or with your Not spam: left where your
+        // provider put it, for good, on every device (none brings it back again).
+        Work::Many(works) if works.iter().any(|w| matches!(w, Work::Act { action: Action::BroughtBack, .. })) => {
+            let problem = leave_brought_back(&pending.work);
+            show(qt, shared);
             (problem.unwrap_or_else(|| tr().text("undo-done", None)), None)
         }
         Work::Act { .. } | Work::Across { .. } | Work::Batch { .. } | Work::AcrossRemote { .. } | Work::Many(_) | Work::Unsubscribe { .. } | Work::Filters { .. } => (tr().text("undo-done", None), None),
@@ -2146,6 +2415,121 @@ mod tests {
         let left = folder_waiting(&hidden, &waiting, &mut flags);
         assert_eq!(left, BTreeSet::from([junked, unjunked, archived]), "a folder: only Not spam where it lies stays");
         assert_eq!([Action::Junk, Action::NotJunk, Action::NotSpam, Action::Archive].map(|a| said_by(&a)), [Some(Label::Spam), Some(Label::Ham), Some(Label::Ham), None]);
+    }
+
+    /// Proven mail your provider put in Spam (part 2 of 4 November 2026): the
+    /// row brings back what came in the last two weeks from a domain you deal
+    /// with, proven, nobody's word on it, never handled on any device; nothing
+    /// when it says "Mark only"; Undo leaves it for good (`left_in_junk`); Not
+    /// spam on proven mail finds the same domain's other proven mail in a
+    /// Junk folder, never an unproven one.
+    #[test]
+    fn proven_mail_is_brought_back_as_the_row_says() {
+        sioul_core::config::stand_ins_only();
+        use sioul_core::folders::folder;
+        let id = format!("proven-{}", std::process::id());
+        let root = sioul_core::config::data_dir().join(&id);
+        let _ = std::fs::remove_dir_all(&root);
+        let mut config: Config = toml::from_str(&format!("[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"noa@home.example\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n", root.display())).unwrap();
+        let account = config.accounts[0].clone();
+        let folders = vec![folder("INBOX", Some("/"), Some(Role::Inbox)), folder("Junk", Some("/"), Some(Role::Junk))];
+        let saved: String = folders.iter().map(|f| format!("[[folder]]\nname = \"{}\"\ndisplay = \"{}\"\nrole = \"{}\"\nlocal = \"{}\"\n", f.name, f.display, serde_json::to_value(f.role).unwrap().as_str().unwrap(), f.local)).collect();
+        std::fs::create_dir_all(sioul_core::folders::saved_path(&id).parent().unwrap()).unwrap();
+        std::fs::write(sioul_core::folders::saved_path(&id), saved).unwrap();
+        for f in &folders {
+            for sub in ["tmp", "new", "cur"] {
+                std::fs::create_dir_all(root.join(&f.local).join(sub)).unwrap();
+            }
+        }
+        let junk = folders[1].local.clone();
+        let now = jiff::Timestamp::now().as_second();
+        let put = |local: &str, uid: u32, from: &str, proof: &str, flags: &str, arrived: i64| -> PathBuf {
+            let path = root.join(local).join("cur").join(format!("{arrived}.U7-{uid}.sioul{}2,{flags}", maildir::INFO));
+            let domain = from.rsplit_once('@').unwrap().1.trim_end_matches('>');
+            let raw = format!("Authentication-Results: mx.example.org; spf=pass smtp.mailfrom={domain}; dkim={proof} header.d={domain}; dmarc={proof} header.from={domain}\r\nMessage-ID: <m{uid}@{domain}>\r\nFrom: {from}\r\nTo: noa@home.example\r\nSubject: Notice {uid}\r\nDate: Wed, 04 Nov 2026 09:00:00 +0100\r\n\r\nText.\r\n");
+            std::fs::write(&path, raw).unwrap();
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(UNIX_EPOCH + Duration::from_secs(arrived as u64)).unwrap();
+            path
+        };
+        let (hour, notice) = (3600, "Notices <notification@notif.post.example>");
+        // Read in the inbox: post.example is a domain you deal with.
+        put("", 1, "Orders <commande@shop.post.example>", "pass", "S", now - 48 * hour);
+        let fresh = put(&junk, 2, notice, "pass", "S", now - hour);
+        let old = put(&junk, 3, notice, "pass", "S", now - 20 * 86_400);
+        let said_junk = put(&junk, 4, notice, "pass", &format!("S{}", maildir::JUNK), now - hour);
+        let unproven = put(&junk, 5, notice, "fail", "S", now - hour);
+        let stranger = put(&junk, 6, "Prize <prize@lottery.example>", "pass", "S", now - hour);
+        let handled = put(&junk, 7, notice, "pass", "S", now - hour);
+        let state = sioul_core::spam::labels::state();
+        let back = sioul_core::spam::labels::Back { at: now, account: id.clone(), folder: "Junk".into(), uidvalidity: 7, uid: 7, message_id: Some("m7@notif.post.example".into()), back: sioul_core::spam::labels::BackKind::Brought };
+        sioul_core::spam::labels::append_to(&sioul_core::spam::labels::own_moved_log(&state, "phone"), &back).unwrap();
+        let dealings = Arc::new(sioul_core::spam::vouched::Dealings::gather(&config));
+        assert!(dealings.of("notification@notif.post.example").is_some(), "read in the inbox: dealt with");
+        let all = [fresh.clone(), old, said_junk, unproven, stranger, handled];
+        assert_eq!(brought_back(&config, Arc::clone(&dealings), &account, &all), [fresh.clone()], "only the fresh proven one, unsaid, never handled");
+        config.spam.proven = Some("mark".into());
+        assert!(brought_back(&config, Arc::clone(&dealings), &account, &all).is_empty(), "Mark only: nothing moves");
+        config.spam.proven = None;
+        // Undo: left where it is, for good, on every device.
+        sioul_sync::mailbox::left_in_junk(&account, &fresh).unwrap();
+        assert!(brought_back(&config, Arc::clone(&dealings), &account, &all).is_empty());
+        // Not spam on proven mail from a domain not dealt with yet: its other proven mail in a Junk folder, under the same Undo.
+        let said = put(&junk, 8, "Club <news@club.example>", "pass", "S", now - hour);
+        let other = put(&junk, 9, "Club <events@mail.club.example>", "pass", "S", now - hour);
+        put(&junk, 10, "Club <x@club.example>", "fail", "S", now - hour);
+        // As the mailbox has them: the Junk folder's index filled.
+        sioul_core::mailcache::folder(&id, &root, &junk);
+        let (domain, others) = also_back_in(&config, &[(account.clone(), said.clone())]);
+        assert_eq!((domain.as_str(), others.into_iter().map(|(_, f)| f).collect::<Vec<_>>()), ("club.example", vec![other]));
+        // Not spam on an unproven message: nothing else comes back.
+        let (_, none) = also_back_in(&config, &[(account.clone(), all[3].clone())]);
+        assert!(none.is_empty());
+        drop(dealings);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_file(sioul_core::folders::saved_path(&id));
+        let _ = std::fs::remove_dir_all(state.join(sioul_core::spam::labels::MOVED));
+        if let Some(dir) = sioul_core::mailcache::account_dir(&id) {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// The row never takes the Undo of an act of yours still waiting (review of
+    /// part 2): yours waits, its own bringing back does not count; undone, its
+    /// messages are left for good, with your Not spam too, your act's alone
+    /// writing nothing.
+    #[test]
+    fn a_bring_back_leaves_your_undo_alone_and_its_undo_is_for_good() {
+        sioul_core::config::stand_ins_only();
+        let shared = Shared::default();
+        let account = Account::imap("home-undo", "noa@home.example", "imap.example.org", 993, sioul_core::config::Security::Tls, None);
+        let brought = |file: &str| Work::Act { account: account.clone(), file: PathBuf::from(file), action: Action::BroughtBack };
+        let waiting = |work: Work| Arc::new(Pending { work, line: String::new(), taken: AtomicBool::new(false) });
+        assert!(!yours_waiting(&shared), "nothing waits");
+        shared.pending.lock().unwrap().push(waiting(Work::Many(vec![brought("/x/.Junk/cur/1.U7-1.sioul:2,S")])));
+        assert!(!yours_waiting(&shared), "the row's own bringing back is nobody's act");
+        wait_to_remove(&shared, PathBuf::from("/lists/task.ics"));
+        assert!(yours_waiting(&shared), "your deletion waits for its Undo");
+        // Undone: left for good. A stand-in account's folders, its Junk message, Sioul's own file name.
+        let root = sioul_core::config::data_dir().join(format!("undo-left-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut account = account.clone();
+        account.maildir = Some(root.display().to_string());
+        let folders = [sioul_core::folders::folder("INBOX", Some("/"), Some(Role::Inbox)), sioul_core::folders::folder("Junk", Some("/"), Some(Role::Junk))];
+        let saved: String = folders.iter().map(|f| format!("[[folder]]\nname = \"{}\"\ndisplay = \"{}\"\nrole = \"{}\"\nlocal = \"{}\"\n", f.name, f.display, serde_json::to_value(f.role).unwrap().as_str().unwrap(), f.local)).collect();
+        std::fs::create_dir_all(sioul_core::folders::saved_path(&account.id).parent().unwrap()).unwrap();
+        std::fs::write(sioul_core::folders::saved_path(&account.id), saved).unwrap();
+        let junk = root.join(&folders[1].local).join("cur");
+        std::fs::create_dir_all(&junk).unwrap();
+        let file = junk.join(format!("1793700000.U7-5.sioul{}2,S", maildir::INFO));
+        std::fs::write(&file, "Message-ID: <undo-5@notif.post.example>\r\nFrom: Notices <notification@notif.post.example>\r\nSubject: Notice\r\n\r\nText.\r\n").unwrap();
+        let said = Work::Act { account: account.clone(), file: file.clone(), action: Action::NotJunk };
+        let cascade = Work::Many(vec![said, Work::Act { account: account.clone(), file: file.clone(), action: Action::BroughtBack }]);
+        assert_eq!(leave_brought_back(&cascade), None);
+        let backs = sioul_core::spam::labels::read_back_in(&sioul_core::spam::labels::state());
+        assert!(backs.iter().any(|b| b.back == sioul_core::spam::labels::BackKind::Left && b.message_id.as_deref() == Some("undo-5@notif.post.example")), "{backs:?}");
+        assert_eq!(leave_brought_back(&Work::Act { account: account.clone(), file, action: Action::NotJunk }), None, "your act alone writes nothing");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_file(sioul_core::folders::saved_path(&account.id));
     }
 
     /// A removal done now (a letter's task made again, `remove_now`): its

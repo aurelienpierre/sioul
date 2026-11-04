@@ -11,6 +11,10 @@
 //!   (`note`), and what it offers a reply from your computers to its live
 //!   lines (`replies::offered`); Java then asks the background service for a
 //!   step soon, which shares them. Rust writes the shared files; Java never does.
+//! - **On the phone, what was read there or elsewhere**: a notification it
+//!   opened, swiped away or its app withdrew reads its messages on every
+//!   device (`read_here`); the SMS app's notifications of conversations
+//!   read elsewhere are named for the listener to take away (`withdraw_read`).
 //! - **On every device**, before each exchange: its own lines taken out
 //!   after their week, another's three days later (`before_exchange`).
 //! - **On a computer's Porch**, "From your phone" (`view`), while the part
@@ -96,6 +100,54 @@ pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, l
             eprintln!("sioul: phone messages: {e}");
             offered
         }
+    }
+}
+
+/// On a phone: the messages one of its notifications brought (`notice`,
+/// the phone's name for it), Read on every device, those no word settled
+/// yet: its going read them (`replies::removed`, `phonemsgs::read_by_removal`:
+/// opened, swiped away, withdrawn by its app). Whether a word was written.
+pub(crate) fn read_here(notice: &str) -> bool {
+    let here = here_id();
+    let root = rules::folder();
+    if here.is_empty() || !root.join(rules::LOG).is_dir() {
+        return false;
+    }
+    let now = jiff::Timestamp::now().as_millisecond();
+    let own: Vec<Line> = rules::read_logs(&root, now).into_iter().filter(|l| l.device == here).collect();
+    let came = rules::of_notification(&own, notice);
+    if came.is_empty() {
+        return false;
+    }
+    let seen = crate::notices::seen_of(NoticeKind::Phone, &notices_of(&own));
+    let ids: Vec<String> = came.iter().filter(|l| !seen.seen.contains(&l.id)).map(|l| sioul_core::notices::phone_id(&l.device, &l.id)).collect();
+    crate::notices::say_quietly(NoticeKind::Phone, ids, sioul_core::notices::Mark::Read)
+}
+
+/// On a phone, at its step: the SMS app's notifications still on the phone
+/// whose texts were read elsewhere since, named for the listener to take
+/// away (`replies::Withdraw`; AppNotes.withdraw): this phone's own lines of
+/// the SMS app (its texts, one person's conversation) from a notification
+/// its live lines do not say gone, whose conversation Sioul's Texts read up
+/// to them on any device (`texts::Marks`, its arrival within `texts::FOLD_MS`
+/// of the line's time), or whose own notice is Read on any device (a
+/// computer's Mark read). The SMS app's own unread mark stays: only the
+/// default SMS app may change the SMS provider.
+pub(crate) fn withdraw_read(here: &str) {
+    let root = rules::folder();
+    if here.is_empty() || !root.join(rules::LOG).is_dir() {
+        return;
+    }
+    let now = jiff::Timestamp::now().as_millisecond();
+    let live = sioul_core::replies::read_live(&root, now);
+    let own: Vec<Line> = rules::read_logs(&root, now).into_iter().filter(|l| l.device == here && l.kind == "text").collect();
+    let marks = if own.is_empty() { None } else { crate::texts::read_marks() };
+    let states = crate::notices::states(&|_, _| None);
+    let read_upto = |conversation: &str| marks.as_ref().and_then(|m| m.read.get(conversation).copied());
+    let said_read = |l: &Line| states.of(&sioul_core::notices::phone_id(&l.device, &l.id), sioul_core::notices::State::default()).mark == sioul_core::notices::Mark::Read;
+    let names = rules::withdrawn(&own, here, &live, &read_upto, &said_read);
+    if let Err(e) = (sioul_core::replies::Withdraw { at: now, names }).save(&sioul_core::replies::private_folder()) {
+        eprintln!("sioul: phone messages: {e}");
     }
 }
 

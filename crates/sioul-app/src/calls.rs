@@ -24,7 +24,12 @@
 //! - **The log**: on a phone, Java's calls copied into this phone's own log,
 //!   which the sharing carries to your other devices (`before_exchange`); on
 //!   every device, its own lines taken out after their month.
-//! - **The list** of calls declined, on the Porch of every device (`view`):
+//! - **The call history**, once Settings ▸ This phone ▸ Calls let Sioul read
+//!   it: the phone's calls since the last kept copied into its own history,
+//!   carried as the log is (`carry_history`); each new one given once to the
+//!   call-back rules, which write their tasks (`call_back`).
+//! - **The list** of calls declined, and from the histories the calls missed
+//!   and those of yours that did not reach them, on the Porch of every device (`view`):
 //!   this phone's own, and every phone's while `[porch] calls` says so (the
 //!   default); with the voicemail Free mails linked to its call and played on
 //!   demand; Seen on any device, gone from all (`act`).
@@ -405,6 +410,7 @@ pub(crate) fn before_exchange() {
     if !phone() {
         return;
     }
+    carry_history(&root, &here, now);
     let java = path(rules::HELD);
     let Some(stamp) = std::fs::metadata(&java).ok().map(|m| (m.len(), m.modified().ok())) else { return };
     let mut copied = COPIED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -415,6 +421,94 @@ pub(crate) fn before_exchange() {
     match rules::carry_into(&rules::own_file(&root, rules::LOG, &here), &rules::read_held(&java), region, now) {
         Ok(_) => *copied = Some(stamp),
         Err(e) => eprintln!("sioul: calls: {e}"),
+    }
+}
+
+/// When this phone's call history was last read, in this process (ms).
+static HISTORY_READ: Mutex<i64> = Mutex::new(0);
+/// The call history is read again at most this often (ms).
+const HISTORY_EVERY_MS: i64 = 30_000;
+
+/// On a phone that may read its call history (Settings ▸ This phone ▸
+/// Calls): the calls since the last kept copied into its own history
+/// (`calls::carry_history`), at most every half minute; each new one, once,
+/// to the call-back rules (`call_back`). Two processes reading at once copy
+/// each call once, and only the one that copied it gives it to the rules.
+fn carry_history(root: &Path, here: &str, now: i64) {
+    let due = HISTORY_READ.lock().is_ok_and(|mut last| {
+        let due = now - *last >= HISTORY_EVERY_MS;
+        if due {
+            *last = now;
+        }
+        due
+    });
+    if !due {
+        return;
+    }
+    let own = rules::own_file(root, rules::HISTORY_FOLDER, here);
+    let answer = crate::steps::java("calls-history", &json!({ "since": rules::history_since(&own, now) }).to_string());
+    if answer["granted"] != true {
+        return;
+    }
+    let rows: Vec<rules::HistoryRow> = serde_json::from_value(answer["rows"].clone()).unwrap_or_default();
+    if rows.is_empty() {
+        return;
+    }
+    let config = load_config();
+    let senders = Senders::load(&config);
+    let blocked = |key: &str| senders.judge_number(key).who == Who::Blocked;
+    match rules::carry_history(&own, &rows, senders.region(), &blocked, now) {
+        Ok(fresh) if !fresh.is_empty() => call_back(&fresh, here, &config, &senders),
+        Ok(_) => {}
+        Err(e) => eprintln!("sioul: calls: {e}"),
+    }
+}
+
+/// Their card, when your address books have the number (`key`, as Sioul keys it).
+fn contact_of(senders: &Senders, key: &str, hidden: bool) -> Option<sioul_core::tasks::ContactRef> {
+    if hidden || key.is_empty() {
+        return None;
+    }
+    let number = sioul_core::porch::number_key(key, senders.region())?;
+    let card = senders.contacts.cards_of_number(&number).first().and_then(|&i| senders.contacts.card(i))?;
+    (!card.uid.trim().is_empty()).then(|| sioul_core::tasks::ContactRef { name: card.name.clone(), uri: sioul_core::links::contact_uri(card.uid.trim()) })
+}
+
+/// This phone's new calls (`fresh`, oldest first) given to the call-back
+/// rules (`sioul_core::callback`, Porch ⚙ ▸ Calls): the tasks they made
+/// before found in every list you can write by their own lines, a new one
+/// written in the usual list (Tasks ⚙), each change as the rules say it.
+/// Nothing when both rules are off, or no call is with someone of your
+/// address books. The sync takes them to their server at its next round.
+fn call_back(fresh: &[rules::Logged], here: &str, config: &Config, senders: &Senders) {
+    use sioul_core::callback::{self, Kept, Write};
+    let said = callback::Rules::of(config);
+    if !said.missed && !said.unreached {
+        return;
+    }
+    let calls: Vec<rules::Call> = fresh
+        .iter()
+        .map(|l| rules::Call::of(&rules::Logged { device: here.to_string(), ..l.clone() }, contact_of(senders, &l.key, l.hidden), sioul_core::notices::State::default()))
+        .filter(|c| c.contact.is_some())
+        .collect();
+    if calls.is_empty() {
+        return;
+    }
+    let zone = sioul_core::zone::current();
+    let kept: Vec<Kept> = sioul_core::tasks::lists()
+        .iter()
+        .filter(|list| !list.read_only)
+        .flat_map(|list| list.items())
+        .filter_map(|file| std::fs::read_to_string(&file).ok().and_then(|text| Kept::read(&file, &text, &zone)))
+        .collect();
+    for write in callback::apply(&calls, &kept, &said, tr(), &zone) {
+        let written = match write {
+            Write::New { uid, text } => crate::work::target_list("").and_then(|list| sioul_core::vdir::write_item(&list.dir.join(format!("{uid}.ics")), &text)),
+            Write::Changed { file, text } => sioul_core::vdir::write_item(&file, &text),
+        };
+        if let Err(e) = written {
+            eprintln!("sioul: calls: a call-back task: {e}");
+        }
     }
 }
 
@@ -512,11 +606,18 @@ pub(crate) fn view() -> String {
     let config = load_config();
     let here = here_id();
     let now = sioul_core::zone::now();
-    let held = listed(&root, &here, config.porch.calls, now.timestamp().as_millisecond());
-    if held.is_empty() {
+    let now_ms = now.timestamp().as_millisecond();
+    let held = listed(&root, &here, config.porch.calls, now_ms);
+    let senders = Senders::load(&config);
+    // The phones' call histories: what was missed, what did not reach them (`calls::history_lines`).
+    let blocked = |key: &str| senders.judge_number(key).who == Who::Blocked;
+    let mut history = rules::read_histories(&root, &blocked, now_ms);
+    if !config.porch.calls {
+        history.retain(|l| l.device == here);
+    }
+    if held.is_empty() && history.is_empty() {
         return empty();
     }
-    let senders = Senders::load(&config);
     let attention = Attention::of(&config);
     let moment = crate::hours::attention_now();
     let always = People::load(&People::default_path());
@@ -535,13 +636,20 @@ pub(crate) fn view() -> String {
         .collect();
     // Each call its notice (`notices::call_id`): a line goes once each of its
     // calls is dismissed on any device, an older Sioul's Seen as a dismiss.
-    let notice_of = notices_of(&held);
+    let mut notice_of = notices_of(&held);
+    notice_of.extend(history.iter().map(|l| (l.id(), sioul_core::notices::call_id(&l.device, &l.id()))));
     let seen = crate::notices::seen_of(Kind::Call, &notice_of);
     let phones = phone_names();
     let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
     let lister = rules::Lister { now: &now, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows, phone: &words };
     let (tel, sms) = link_apps();
-    let lines: Vec<serde_json::Value> = rules::lines(&held, &seen, &messages, &lister).into_iter().map(|line| row_of(line, &notice_of)).collect();
+    // Each call of a history an object: who it was with, its notice's state (a word said on any device).
+    let dismissed = sioul_core::notices::State { mark: sioul_core::notices::Mark::Dismissed, ..sioul_core::notices::State::default() };
+    let calls: Vec<rules::Call> = history.iter().map(|l| rules::Call::of(l, contact_of(&senders, &l.key, l.hidden), if seen.seen.contains(&l.id()) { dismissed.clone() } else { sioul_core::notices::State::default() })).collect();
+    let mut said = rules::lines(&held, &seen, &messages, &lister);
+    said.extend(rules::history_lines(&calls, sioul_core::callback::Rules::of(&config).threshold, &lister));
+    said.sort_by_key(|line| line.at);
+    let lines: Vec<serde_json::Value> = said.into_iter().map(|line| row_of(line, &notice_of)).collect();
     json!({ "lines": lines, "phone": cfg!(target_os = "android"), "links": { "tel": tel, "sms": sms } }).to_string()
 }
 
@@ -554,8 +662,9 @@ fn notices_of(held: &[Held]) -> BTreeMap<String, String> {
 fn row_of(line: rules::Line, notice_of: &BTreeMap<String, String>) -> serde_json::Value {
     use sioul_core::notices::Notice;
     let ids: Vec<String> = line.ids.iter().filter_map(|raw| notice_of.get(raw).cloned()).collect();
-    // A number nobody named: the number itself first, what the screening judged it after.
-    let (who, what) = if !line.known && !line.number.is_empty() { (line.number.clone(), format!("{} · {}", line.who, line.what)) } else { (line.who.clone(), line.what.clone()) };
+    // A number nobody named: the number itself first, what the screening judged it after
+    // (a call of a history names the number already).
+    let (who, what) = if line.kind == "declined" && !line.known && !line.number.is_empty() { (line.number.clone(), format!("{} · {}", line.who, line.what)) } else { (line.who.clone(), line.what.clone()) };
     let notice = Notice { address: line.dial.clone(), at: line.at, when: line.when.clone(), who, what, ..Notice::new(Kind::Call, ids.first().cloned().unwrap_or_default(), "phone") };
     let mut row = serde_json::to_value(&line).unwrap_or_default();
     row["notice"] = serde_json::to_value(&notice).unwrap_or_default();
@@ -849,7 +958,8 @@ fn screening_rows(config: &Config, now: &Zoned) -> serde_json::Value {
 }
 
 /// An action of Settings ▸ Calls: "ask-role" (Android's question), "open-roles"
-/// (its default apps, to change or stop), "allow-contacts", "open-blocked",
+/// (its default apps, to change or stop), "allow-contacts", "ask-history"
+/// (reading the call history), "open-blocked",
 /// "dial" {number} (the phone app with a code typed in, never called), "set"
 /// {key, value} (a setting of the call screening, `screening::set`; the table
 /// made again at once, off the window's thread). The tab again.
@@ -876,6 +986,10 @@ pub(crate) fn setup_change(verb: &str, json: &str) -> String {
             crate::steps::java("calls-open-roles", "{}");
         }
         "allow-contacts" => crate::steps::ask_contacts(),
+        // Android's question for reading the call history (CallsSetup.java).
+        "ask-history" => {
+            crate::steps::java("calls-ask-history", "{}");
+        }
         "open-blocked" => {
             crate::steps::java("calls-open-blocked", "{}");
         }

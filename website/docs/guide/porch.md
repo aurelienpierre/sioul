@@ -91,7 +91,7 @@ Forged mail is judged apart: a forged message is set aside whatever the lists sa
 
 Only a stranger's mail is ever judged. Whoever judges it, your provider or Sioul's own filter, it never touches mail from someone you know (in your address books, on a list, let in), the codes and links you asked for, a project's mail, what you send yourself, or a message you said is not spam, on any of your devices. Forged mail, borrowed names and blocked senders are set aside before, as always. A message whose two usual checks both failed, so that nothing proves it comes from the address it shows, counts as a stranger's, whatever address it shows.
 
-- **Your provider's word**: a stranger's message your provider marks as spam goes to Set aside.
+- **Your provider's word**: a stranger's message your provider marks as spam goes to Set aside, unless Sioul proved its sender and you deal with its domain (you wrote to it, it is in your address books, your Sites or your contracts, you kept its mail or said **Not spam** to it): that mail takes its own lane, marked "Your provider marked it as spam.", and when your provider put it in its junk folder, Sioul brings it back as it arrives, with **Undo** ([what it does with proven mail](mail.md#your-own-spam-filter)). Your own word comes first, then blocked senders and forged mail, then that proof, then your filter, then your provider.
 - **Your own filter**, once it has learned from your mail ([Mail, Your own spam filter](mail.md#your-own-spam-filter)), finds a stranger's message **probably spam** (from 95% unless you change it), **maybe spam** (from 50%), or **probably not spam**. What it does with each is yours to choose, in its settings:
     - **Move to spam**: as it arrives, the message goes into its address's Junk folder, on the server;
     - **Flag only**: it stays where it is, marked;
@@ -165,11 +165,12 @@ After those cards, the Porch shows what came in sections, each drawn the same wa
 2. **Each project**, then your protected public address.
 3. **From yourself**.
 4. **From people you know**.
-5. **From your phone**: the calls Sioul declined, on your phone and on your other devices, each at a time its caller may reach you, with **Text back**, and **Call back** in its menu ([Calls](calls.md#afterwards-on-the-porch)); on a computer, the texts and other apps' notifications your phone sends there, with **Reply** where it works ([What reaches you](notifications.md#messages-on-your-computers)).
-6. **Sites**: what the websites you keep in Sioul notified, a row per site. Opening the site reads its news ([Sites](sites.md)).
-7. **Money**: this week's payments, each with its day and its amount, as your bank's file says them; **Open in Budgets** ([Budgets](budgets.md#the-bank-watch)). Not while you sleep.
-8. **Paper letters**, only while one waits ([below](#paper-letters)). Not while you sleep.
-9. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded.
+5. **From your phone**: the calls Sioul declined, on your phone and on your other devices, each at a time its caller may reach you, with **Text back**, and **Call back** in its menu ([Calls](calls.md#afterwards-on-the-porch)); once Sioul may read the phone's call history, the calls you missed and those of yours that did not reach them too ([Calls](calls.md#calls-missed)); on a computer, the texts and other apps' notifications your phone sends there, with **Reply** where it works ([What reaches you](notifications.md#messages-on-your-computers)).
+6. **Agenda**: two events of yours at once, or too close for the time you keep between them, when someone else's change made it, each said once at a time its agenda may reach you: **Move mine** opens your own event, **Keep both** says it no more.
+7. **Sites**: what the websites you keep in Sioul notified, a row per site. Opening the site reads its news ([Sites](sites.md)).
+8. **Money**: what is due or expected in the next two weeks, money in as well as out, each with its day, whether it is planned, announced or not final yet, and its amount; what was expected and did not pass on its account is said once. **Open in Budgets** ([Budgets](budgets.md)). Work money only in your work hours, and nothing while you sleep. A payment your account would not hold comes first, whatever the hour, with what can cover it.
+9. **Paper letters**, only while one waits ([below](#paper-letters)). Not while you sleep.
+10. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded.
 
 Each row says who, what and when on one line (two on a phone), with its main action: **Open**, **Reply**, **Text back**, **See the scan**, **Open in Budgets**. Beside it, two quiet buttons:
 
@@ -221,6 +222,7 @@ The ⚙ at the top of the Porch holds what is the Porch's alone, and how a messa
 
 - **Projects shown here**: which projects have a section on the Porch, one per line. The others' mail stays on their page in Projects.
 - **Calls ▸ Calls your phones declined**: on unless you turn it off, the calls your phones declined wait on this device's Porch too; off, each phone lists only its own, and your computers none ([Calls](calls.md#on-your-computers)).
+- **Calls ▸ A task to call back**, **A task to call again**: on unless you turn them off, a missed call from someone in your address books makes a task "Call back …", a call of yours that did not reach them "Call … again"; **A call that reached their voicemail**: 90 seconds unless you choose 60 or 120 ([Calls](calls.md#calls-missed)).
 - **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
 - **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
 

@@ -57,6 +57,10 @@ shared = [
     "pm.me", "murena.io", "e.email", "gmx.com", "gmx.fr", "gmx.de", "gmx.net", "free.fr", "orange.fr", "wanadoo.fr",
     "sfr.fr", "laposte.net", "bbox.fr", "aol.com", "mail.com", "zoho.com", "tutanota.com", "tuta.io", "posteo.de",
     "mailbox.org", "fastmail.com", "fastmail.fm", "disroot.org", "riseup.net",
+    # Free and paid mailboxes anyone can open, and the ones Internet providers give their customers.
+    "web.de", "t-online.de", "yandex.com", "yandex.ru", "mail.ru", "neuf.fr", "numericable.fr", "aliceadsl.fr",
+    "club-internet.fr", "mailo.com", "hey.com", "libero.it", "virgilio.it", "seznam.cz", "qq.com", "163.com",
+    "skynet.be", "bluewin.ch", "btinternet.com", "comcast.net", "att.net", "verizon.net",
 ]
 
 # Brands and public services, and their domains: a sender naming one from elsewhere is set aside.
