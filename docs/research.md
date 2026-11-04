@@ -14,8 +14,9 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 - **Burnout and exhaustion**: autistic burnout (19), detachment from work (21), unfinished tasks (22), recovery (26).
 - **ME/CFS, long COVID and other illnesses that limit energy**: pacing within the energy envelope (25), the crash after exertion (33), the sides of what an activity costs (36).
 - **Eating disorders and irregular eating**: meals by the clock, set by the person (28).
-- **Everyone who knows admin anxiety**: administrative burden (3), avoidance (4), admin anxiety and its routes (30), worry as a cost of its own (36), the portal model (37).
-- **People who work for themselves**: the admin it adds (31).
+- **Everyone who knows admin anxiety**: administrative burden (3), avoidance (4), admin anxiety and its routes (30), worry as a cost of its own (36), the portal model (37), accounts looked away from (39), reminders that name the bill (40), red and accounting words (43).
+- **People who work for themselves**: the admin it adds (31), taxes set aside and weeks of cover (44).
+- **People with irregular or tight income** (paid by the week, by benefits or by clients): the pay cycle (38), forecasts that forget expenses (42), how long the money lasts (44).
 
 ## The findings
 
@@ -99,6 +100,47 @@ Sioul is designed for the people for whom admin costs most. Each group below has
    - The stores behind portals were breached from 2021 to 2026, often through compromised or usurped logins, or through providers (AP-HP's file-sharing service, the Assurance Maladie's professional portal, a provider of Pôle emploi, Viamedis and Almerys, France Travail and Cap emploi, FICOBA, France Titres, Vacaf); the CNIL counted twice as many breaches affecting over a million people in 2024 as the year before (CNIL 2025).
    - No study measures portal use, or missed portal messages, in people with these conditions: the link is inferred from the burden and executive-function findings, and stated as such.
    - **Rule**: carry the portals in one place meanwhile (Sites: each logged in once, its news held for the person's hours and said in one line on the Porch), and support what lets letters come back to mail end-to-end encrypted: OpenPGP with Autocrypt and the Web Key Directory, keys on an OpenPGP card (on computers; not yet on a phone), a password manager, FIDO2 keys. The person has one window; no organisation needs one store. Detail: [research/secure-mailboxes.md](research/secure-mailboxes.md).
+
+38. **Money runs by the pay cycle, not by the calendar month.**
+   - Spending rises when income arrives, even when it was expected, and bills are paid then: after the Social Security check (Stephens 2003; expenditure diaries); over the food-stamp month, as calories fell by 10–15 % (Shapiro 2005); for at least four days after payday, in the app data of about 75,000 people (Gelman et al. 2014). When pay came late, people delayed their mortgage and card payments (Gelman et al. 2020; a natural experiment).
+   - People who budget set its period by their pay: 52.7 % of those paid weekly budget by the week, against 24.6 % of all (Zhang et al. 2022; a representative survey of 3,826 adults).
+   - **Rule**: the budgets page counts from one income to the next: whether the account holds every payment until then, what is left for everyday spending, and the lowest point; a budget's period may start on its income's day. Detail: [research/budgets.md](research/budgets.md), §2.1 and §2.3.
+
+39. **People look away from their accounts when it goes badly, and facts that come unasked help.**
+   - Investors looked at their accounts less after markets fell (Karlsson, Loewenstein & Seppi 2009; Sicherman et al. 2016, 1.1 million savers), and people logged in less as their overdrafts grew (Olafsson & Pagel 2017; account data, a working paper); some look more instead (Gherzi et al. 2014).
+   - Enrolling customers in overdraft alerts automatically cut overdraft charges by 25 % across 1.5 million customers of six UK banks (Caflisch et al. 2018; bank data); inviting them to sign up reached about one in ten and lowered nothing (FCA 2018; a field trial).
+   - **Rule**: a shortfall on an account reaches the person unasked, once, in words, at the next admin window, whatever budgets the hour shows. Detail: [research/budgets.md](research/budgets.md), §2.2 and §2.4.
+
+40. **A reminder works when it names the bill and knows the balance; repetition harms.**
+   - Reminders that named what the money was for raised savings by about 16 %, and others had no effect (Karlan et al. 2016; field trials); a text three days before an instalment did as much as a cut in interest (Cadena & Schoar 2011; a field trial, a working paper); reminders that ignored the balance cut late fees by 14 % and raised overdraft fees by 9 % (Medina 2021; a field trial).
+   - When unwell, 74 % of people with mental health problems put off paying bills (Evans & Acton 2017, from a survey of about 5,500 people; grey literature); among people behind on payments, a quarter were contacted every day or two, and 49 % felt harassed (Murray & Bond 2023; a survey, grey literature).
+   - **Rule**: a payment the person makes by hand, or an invoice to send, has one reminder a few days ahead that names it and says whether the account will hold it; an automatic debit has none, unless the account will not hold it. Detail: [research/budgets.md](research/budgets.md), §2.4.
+
+41. **Budgets are the person's own labelled accounts, and what is atypical escapes them.**
+   - People keep money in mental accounts labelled by source and use (Thaler 1985, theory; Thaler 1999, review); over 90 % of those who budget use categories, from two to one per utility (Zhang et al. 2022); purchases atypical of a category are less often counted against it (Heath & Soll 1996; three studies), and ambiguous ones go to the account with room (Cheema & Soman 2006; experiments).
+   - Money earmarked and set apart is kept: savings sealed in two envelopes held better than in one over 14 weeks (Soman & Cheema 2011; a field trial with 146 households); a box earmarked for emergencies helped, one for a narrower use cost liquidity and lowered savings (Dupas & Robinson 2013; a field trial).
+   - **Rule**: budgets are the kinds the person makes; Sioul files every movement, the atypical ones too; moving one is the person's choice, its effect said and the payee's next movements asked about once; money set aside stays reachable. Detail: [research/budgets.md](research/budgets.md), §2.1.
+
+42. **People forecast their income and forget their expenses, the unusual ones most.**
+   - Forecasts of one's own spare money weighed changes in income 2.9 times more than changes in expenses (Berman et al. 2016; 27 studies); a savings goal lowered the forecast, not the spending (Peetz & Buehler 2009); people spent nearly twice what they expected on exceptional expenses (Sussman & Alter 2012), and predictions anchored on a typical week, about $100 short, until people were asked why this week might differ (Howard et al. 2022; ten experiments, 6,044 people).
+   - A forecast that shows its uncertainty improved lay people's decisions and kept their trust after it erred (Joslyn & LeClerc 2012; a lab trial; on displays, Kay et al. 2016 and Fernandes et al. 2018).
+   - **Rule**: Sioul makes the forecast from the data, never from the person's guess: "What is coming" lists every movement expected, income as plainly as bills; the past twelve months' unusual spending is a line of its own; an uncertain income is said with its condition; at most one chart, which the sentences never need. Detail: [research/budgets.md](research/budgets.md), §2.6.
+
+43. **Red darkens expectations, and accounting words are not learned.**
+   - Shown in red rather than black, the same financial data lowered risk-taking by 15–30 % and made losses seem lasting (Bazley, Cronqvist & Mormann 2021; eight experiments).
+   - Financial education explained about 0.1 % of financial behaviour and faded within 20 months (Fernandes, Lynch & Netemeyer 2014; a meta-analysis of 201 studies); in 45 budgeting apps, the words for accounts and transactions overlapped and confused (Alenazi & Sas 2023; a review of apps).
+   - **Rule**: each budget is said in plain words, what is paid, what is still to come, what is left, with no percentage, colour or bar; never debit, credit, cleared or pending. Detail: [research/budgets.md](research/budgets.md), §2.5 and §4.
+
+44. **With irregular income, what matters is how long the money lasts.**
+   - Monthly income varied by 39 % over a year of diaries kept by 235 US households, with two or three months a year more than 25 % below the household's average (Hannagan & Morduch 2015; a diary study); in bank data on about six million families, getting through an income dip and an expense spike together took about six weeks of take-home pay, which 65 % did not have (Farrell, Greig & Yu 2019; administrative data, grey literature).
+   - Gig workers preferred a plain tracker to finance apps and called taxes "a nightmare" (Hsieh et al. 2025; a qualitative field study).
+   - **Rule**: reserves are counted in weeks of the person's own spending; with no income expected, the page says how long the money lasts; a work budget may set aside a share of each payment received for taxes as it arrives, an earmark (finding 41). Detail: [research/budgets.md](research/budgets.md), §2.7.
+
+45. **A payment is told several times, and matching its records is an old method.**
+   - Record linkage compares two records field by field, weighs each agreement, and sorts pairs into matches, possible matches and non-matches (Fellegi & Sunter 1969; theory); for names, a token similarity built on Jaro–Winkler did best (Cohen, Ravikumar & Fienberg 2003; benchmarks).
+   - Budgeting apps match a bank line on its amount, then a window of days, then the payee: the same amount within 10 days (YNAB), within 7 days with the payee first (Actual Budget), a score with three zones (GnuCash) (vendor documentation and source code). A card hold can change its name and amount before it posts (Plaid; vendor documentation), and a SEPA direct debit carries its mandate's reference (Banque de France).
+   - That a link needs no one's approval, and is undone when wrong, is Sioul's own inference from finding 11.
+   - **Rule**: a movement keeps every source that tells of it: exact references first (the bank's id, the SEPA mandate, an invoice's reference), then a score of amount, days apart and name; one to one; sure, probable or apart, a probable link shown with "Not the same" beside it; no queue to review. Detail: [research/budgets.md](research/budgets.md), §5.
 
 ## Sources
 - Kushlev & Dunn (2015), Checking email less frequently reduces stress, *Computers in Human Behavior* 43.
@@ -219,3 +261,46 @@ Sioul is designed for the people for whom admin costs most. Each group below has
   - Willcutt, Doyle, Nigg, Faraone & Pennington (2005), Validity of the executive function theory of attention-deficit/hyperactivity disorder: a meta-analytic review, *Biological Psychiatry* 57(11). doi:10.1016/j.biopsych.2005.02.006 (abstract only)
   - World Health Organization (2024), Clinical descriptions and diagnostic requirements for ICD-11 mental, behavioural and neurodevelopmental disorders. https://iris.who.int/handle/10665/375767
   - World Health Organization, War Trauma Foundation & World Vision International (2011), *Psychological first aid: guide for field workers*, ISBN 978-92-4-154820-5. https://www.who.int/publications/i/item/9789241548205
+- Findings 38 to 45, with their DOIs; "(abstract only)" marks a source read at its abstract or in a summary of it; the apps' help pages, and what each source gave, are in [research/budgets.md](research/budgets.md), §3 and §7:
+  - Actual Budget, "Schedules" and "Importing transactions" (documentation), and `packages/loot-core/src/server/accounts/sync.ts`. https://actualbudget.org/docs/schedules, https://actualbudget.org/docs/transactions/importing, https://github.com/actualbudget/actual
+  - Alenazi & Sas (2023), Evaluating budgeting apps: limited support for budgeting compared to tracking, 36th International BCS Human-Computer Interaction Conference. https://eprints.lancs.ac.uk/id/eprint/200745/
+  - Banque de France, Qu'est-ce qu'un prélèvement SEPA ? Comment fonctionne-t-il ? https://www.banque-france.fr/en/node/2530 (abstract only)
+  - Bazley, Cronqvist & Mormann (2021), Visual finance: the pervasive effects of red on investor behavior, *Management Science* 67(9). doi:10.1287/mnsc.2020.3747 (abstract only)
+  - Berman, Tran, Lynch & Zauberman (2016), Expense neglect in forecasting personal finances, *Journal of Marketing Research* 53(4). doi:10.1509/jmr.15.0101 (abstract only)
+  - Cadena & Schoar (2011), Remembering to pay? Reminders vs. financial incentives for loan payments, NBER Working Paper 17020. https://www.nber.org/papers/w17020 (abstract only)
+  - Caflisch, Grubb, Kelly, Nieboer & Osborne (2018), Sending out an SMS: the impact of automatically enrolling consumers into overdraft alerts, Financial Conduct Authority, Occasional Paper 36. https://www.fca.org.uk/node/49441 (abstract only)
+  - Cheema & Soman (2006), Malleable mental accounting: the effect of flexibility on the justification of attractive spending and consumption decisions, *Journal of Consumer Psychology* 16(1). doi:10.1207/s15327663jcp1601_6 (abstract only)
+  - Cohen, Ravikumar & Fienberg (2003), A comparison of string distance metrics for name-matching tasks, IJCAI-03 Workshop on Information Integration on the Web. https://www.cs.cmu.edu/~wcohen/postscript/ijcai-ws-2003.pdf (abstract only)
+  - Dupas & Robinson (2013), Why don't the poor save more? Evidence from health savings experiments, *American Economic Review* 103(4). doi:10.1257/aer.103.4.1138 (abstract only)
+  - Evans & Acton (2017), *Fintech for good*, Money and Mental Health Policy Institute (report, not peer-reviewed), citing Holkar & Mackenzie (2016), *Money on your mind*. https://www.moneyandmentalhealth.org/wp-content/uploads/2017/07/Fintech-for-good-report.pdf
+  - Farrell, Greig & Yu (2019), Weathering volatility 2.0: a monthly stress test to guide savings, JPMorgan Chase Institute (report, not peer-reviewed). https://www.jpmorganchase.com/institute/all-topics/financial-health-wealth-creation/report-weathering-volatility-2-a-monthly-stress-test-to-guide-saving (abstract only)
+  - FCA (2018), Time to act: a field experiment on overdraft alerts, Financial Conduct Authority, Occasional Paper 40. https://www.fca.org.uk/publications/occasional-papers/occasional-paper-no-40-time-act-field-experiment-overdraft-alerts (abstract only)
+  - Fellegi & Sunter (1969), A theory for record linkage, *Journal of the American Statistical Association* 64(328). doi:10.1080/01621459.1969.10501049 (abstract only)
+  - Fernandes, Lynch & Netemeyer (2014), Financial literacy, financial education, and downstream financial behaviors, *Management Science* 60(8). doi:10.1287/mnsc.2013.1849 (abstract only)
+  - Fernandes, Walls, Munson, Hullman & Kay (2018), Uncertainty displays using quantile dotplots or CDFs improve transit decision-making, CHI 2018. doi:10.1145/3173574.3173718 (abstract only)
+  - Gelman, Kariv, Shapiro, Silverman & Tadelis (2014), Harnessing naturally occurring data to measure the response of spending to income, *Science* 345(6193). doi:10.1126/science.1247727 (abstract only)
+  - Gelman, Kariv, Shapiro, Silverman & Tadelis (2020), How individuals respond to a liquidity shock: evidence from the 2013 government shutdown, *Journal of Public Economics* 189. doi:10.1016/j.jpubeco.2018.06.007 (abstract only)
+  - Gherzi, Egan, Stewart, Haisley & Ayton (2014), The meerkat effect: personality and market returns affect investors' portfolio monitoring behaviour, *Journal of Economic Behavior & Organization* 107. doi:10.1016/j.jebo.2014.07.013 (abstract only)
+  - GnuCash, `gnucash/import-export/import-backend.cpp`, stable branch. https://github.com/Gnucash/gnucash
+  - Hannagan & Morduch (2015), Income gains and month-to-month income volatility: household evidence from the US Financial Diaries, NYU Wagner working paper. https://wagner.nyu.edu/impact/research/publications/income-gains-and-month-month-income-volatility-evidence-us-financial (abstract only)
+  - Heath & Soll (1996), Mental budgeting and consumer decisions, *Journal of Consumer Research* 23(1). doi:10.1086/209465 (abstract only)
+  - Howard, Hardisty, Sussman & Lukas (2022), Understanding and neutralizing the expense prediction bias: the role of accessibility, typicality, and skewness, *Journal of Marketing Research* 59(2). doi:10.1177/00222437211068025 (abstract only)
+  - Hsieh, Zhang, Surati et al. (2025), Gig2Gether: data-sharing to empower, unify and demystify gig work, CHI 2025. https://arxiv.org/abs/2502.04482
+  - Joslyn & LeClerc (2012), Uncertainty forecasts improve weather-related decisions and attenuate the effects of forecast error, *Journal of Experimental Psychology: Applied* 18(1). doi:10.1037/a0025185 (abstract only)
+  - Karlan, McConnell, Mullainathan & Zinman (2016), Getting to the top of mind: how reminders increase saving, *Management Science* 62(12). doi:10.1287/mnsc.2015.2296 (read in the authors' executive summary)
+  - Karlsson, Loewenstein & Seppi (2009), The ostrich effect: selective attention to information, *Journal of Risk and Uncertainty* 38(2). doi:10.1007/s11166-009-9060-6 (abstract only)
+  - Kay, Kola, Hullman & Munson (2016), When (ish) is my bus? User-centered visualizations of uncertainty in everyday, mobile predictive systems, CHI 2016. doi:10.1145/2858036.2858558 (abstract only)
+  - Medina (2021), Side effects of nudging: evidence from a randomized intervention in the credit card market, *Review of Financial Studies* 34(5). doi:10.1093/rfs/hhaa108 (abstract only)
+  - Murray & Bond (2023), *Debts and despair*, Money and Mental Health Policy Institute (report, not peer-reviewed). https://www.moneyandmentalhealth.org/publications/debts-and-despair/ (abstract only)
+  - Olafsson & Pagel (2017), The ostrich in us: selective attention to financial accounts, income, spending, and liquidity, NBER Working Paper 23945. https://www.nber.org/papers/w23945 (abstract only)
+  - Peetz & Buehler (2009), Is there a budget fallacy? The role of savings goals in the prediction of personal spending, *Personality and Social Psychology Bulletin* 35(12). doi:10.1177/0146167209345160 (abstract only)
+  - Plaid, Transaction states (documentation). https://plaid.com/docs/transactions/transactions-data/
+  - Shapiro (2005), Is there a daily discount rate? Evidence from the food stamp nutrition cycle, *Journal of Public Economics* 89(2–3). doi:10.1016/j.jpubeco.2004.05.003 (abstract only)
+  - Sicherman, Loewenstein, Seppi & Utkus (2016), Financial attention, *Review of Financial Studies* 29(4). doi:10.1093/rfs/hhv073 (abstract only)
+  - Soman & Cheema (2011), Earmarking and partitioning: increasing saving by low-income households, *Journal of Marketing Research* 48 (special issue). doi:10.1509/jmkr.48.SPL.S14
+  - Stephens (2003), "3rd of tha month": do Social Security recipients smooth consumption between checks?, *American Economic Review* 93(1). doi:10.1257/000282803321455386 (abstract only)
+  - Sussman & Alter (2012), The exception is the rule: underestimating and overspending on exceptional expenses, *Journal of Consumer Research* 39(4). doi:10.1086/665833 (abstract only)
+  - Thaler (1985), Mental accounting and consumer choice, *Marketing Science* 4(3). doi:10.1287/mksc.4.3.199 (abstract only)
+  - Thaler (1999), Mental accounting matters, *Journal of Behavioral Decision Making* 12(3). `doi:10.1002/(SICI)1099-0771(199909)12:3<183::AID-BDM318>3.0.CO;2-F` (abstract only)
+  - YNAB, Approving and matching transactions (help centre). https://support.ynab.com/en_us/approving-and-matching-transactions-a-guide-ByYNZaQ1i
+  - Zhang, Sussman, Wang-Ly & Lyu (2022), How consumers budget, *Journal of Economic Behavior & Organization* 204. doi:10.1016/j.jebo.2022.09.025
