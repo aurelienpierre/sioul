@@ -143,8 +143,9 @@ pub(crate) fn of_event(key: &str, start: i64) -> String {
     let Some(calendar) = crate::pim::collection_of(&path) else { return String::new() };
     let zone = sioul_core::zone::current();
     let found = sioul_core::agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
-    // A whole day is reminded the working day before only: nothing to say or choose here.
-    let Some(event) = found.iter().find(|o| o.start == start && !o.all_day) else { return String::new() };
+    // A whole day is reminded the working day before only: nothing to say or choose here. A
+    // child's event reminds nobody itself: whoever takes it is reminded by their stand-in (part 3).
+    let Some(event) = found.iter().find(|o| o.start == start && !o.all_day && !o.child) else { return String::new() };
     let config = load_config();
     let line = match reminders::before_at(event, config.reminders.before_event).and_then(|at| jiff::Timestamp::from_second(at).ok()) {
         Some(at) => {

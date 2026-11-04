@@ -39,6 +39,23 @@ Item {
             mock.hours++
             return ""
         }
+        // Sets (part 4): the set chosen, kept or forgotten, last.
+        property string used: ""
+        property var kept: null
+        function useAgendaSet(name) {
+            mock.used = name
+            return ""
+        }
+        function keepAgendaSet(name, agendas, times) {
+            mock.kept = { name: name, agendas: JSON.parse(agendas), times: JSON.parse(times) }
+            return ""
+        }
+        // Who does what (part 4): the week asked, last.
+        property var week: null
+        function whoDoesWhat(from, child, mine) {
+            mock.week = { from: from, child: child, mine: mine }
+            return JSON.stringify({ from: "2026-11-02", previous: "2026-10-26", next: "2026-11-09", week: "holder-week-of", children: [{ id: "a/lea", name: "Léa" }], days: [{ label: "Tue 3 Nov", items: [{ kind: "event", key: "/c/lea/dentist.ics", start: 1, title: "Dentist", time: "10:00", child: "Léa", who: "Sam", yours: false, nobody: false }] }] })
+        }
     }
 
     // Yours (home shown, work left out by the hours) and Léa's (school shown).
@@ -80,6 +97,9 @@ Item {
         function init() {
             mock.turned = []
             mock.hours = 0
+            mock.used = ""
+            mock.kept = null
+            mock.week = null
         }
 
         function make(shown, narrow) {
@@ -143,6 +163,33 @@ Item {
             verify(list.y + list.height <= root.height && list.y > root.height / 4, "from the bottom: " + list.y + " + " + list.height)
             const lines = root.all(list.contentItem, c => c.objectName === "agendaLine" && c.visible)
             verify(lines.every(l => l.mapToItem(root, 0, 0).x + l.width <= root.width + 1), "nothing past the right edge")
+        }
+
+        // Sets (part 4): each set a button, the one showing marked; a tap chooses it;
+        // "Keep these as a set…" names the agendas shown, with the times ticked; × forgets.
+        // Beside a child's agenda alone, "Who does what" opens its week.
+        function test_sets_and_who_does_what() {
+            const sets = [{ name: "Tom and Léa", agendas: ["a/lea"], times: ["leisure"], by_time: true, showing: true }, { name: "My week", agendas: ["a/work"], times: [], by_time: false, showing: false }]
+            const filter = make(Object.assign({}, root.shown, { sets: sets }), false)
+            const list = filter.open()
+            wait(50)
+            const buttons = root.all(list.contentItem, c => c.objectName === "agendaSet" && c.visible)
+            compare(buttons.map(b => b.text + (b.highlighted ? "*" : "")).join(" | "), "Tom and Léa · agendas-set-now* | My week")
+            mouseClick(buttons[1])
+            compare(mock.used, "My week")
+            const keep = root.all(list.contentItem, c => c.objectName === "agendasKeepSet")[0]
+            mouseClick(keep)
+            wait(30)
+            const name = root.all(list.contentItem, c => c.objectName === "agendasSetName")[0]
+            verify(name.visible)
+            name.text = "Evenings"
+            name.accepted()
+            compare(JSON.stringify(mock.kept), JSON.stringify({ name: "Evenings", agendas: ["a/home", "a/lea"], times: [] }), "the agendas shown, no time ticked")
+            const who = root.all(list.contentItem, c => c.objectName === "agendaWhoDoesWhat" && c.visible)
+            compare(who.length, 1, "beside Léa's agenda alone")
+            mouseClick(who[0])
+            wait(80)
+            compare(JSON.stringify(mock.week), JSON.stringify({ from: "", child: "a/lea", mine: false }))
         }
 
         // No agenda at all: no button.

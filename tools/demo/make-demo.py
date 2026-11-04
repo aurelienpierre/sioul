@@ -1388,7 +1388,7 @@ def offset_zone(clock: Clock) -> tuple[str, str] | None:
 
 
 def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *, location="", notes="", weekly=False,
-          organizer=None, attendees=(), project=None, leg=None) -> str:
+          organizer=None, attendees=(), project=None, leg=None, extra=()) -> str:
     # A repeating event on its zone's own clock, with its VTIMEZONE, as Sioul writes one
     # (`agenda::time_lines`): it keeps its wall time, and shows one time; a one-off at its
     # instant in UTC, as Sioul wrote them until 28 October 2026.
@@ -1421,6 +1421,8 @@ def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *
         appointment, side, gap, timetable, was = leg
         lines.append(f"RELATED-TO;RELTYPE=PARENT:demo-event-{appointment}")
         lines.append(f"X-SIOUL-ANCHOR;GAP=PT{gap}M{';TIMETABLE=TRUE' if timetable else ''};WAS={utc(clock.at(day, was))}:{side}")
+    # Lines of Sioul's own given as they are: a child's event's kind, who takes it (part 3).
+    lines.extend(extra)
     lines.append("END:VEVENT")
     return vcalendar(lines)
 
@@ -1532,9 +1534,13 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("work", event(c, "fernhill-pages", t("Fernhill: pages kick-off", "Fougères : lancement des pages"), c.weekday_after(8), "10:00", "11:00",
                        location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),
         ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Étienne")),
-        # Léa's agenda: a swimming lesson, a dentist; Sam's, busy times alone.
-        ("lea", event(c, "lea-swimming", t("Swimming lesson", "Cours de natation"), c.this_week(2), "17:00", "18:00", location=t("Riverside pool", "Piscine des Berges"))),
-        ("lea", event(c, "lea-dentist", t("Dentist", "Dentiste"), c.weekday_after(3), "10:00", "10:30", location=t("2 Rue Imaginaire, Lyon", "2 rue Imaginaire, Lyon"))),
+        # Léa's agenda: a swimming lesson Sam takes, a dentist nobody takes yet (asked under the
+        # Agenda's head line); Sam's, busy times alone.
+        ("lea", event(c, "lea-swimming", t("Swimming lesson", "Cours de natation"), c.this_week(2), "17:00", "18:00", location=t("Riverside pool", "Piscine des Berges"),
+                      extra=["X-SIOUL-CONCEPT;VALUE=URI:tag:aurelienpierre.com,2026:sioul/child-kind/activity",
+                             f"X-SIOUL-TAKEN-BY;CN=Sam;PARTSTAT=ACCEPTED;SINCE={utc(c.at(c.day(-3), '18:15'))}:mailto:sam@example.org"])),
+        ("lea", event(c, "lea-dentist", t("Dentist", "Dentiste"), c.weekday_after(3), "10:00", "10:30", location=t("2 Rue Imaginaire, Lyon", "2 rue Imaginaire, Lyon"),
+                      extra=["X-SIOUL-CONCEPT;VALUE=URI:tag:aurelienpierre.com,2026:sioul/child-kind/dentist"])),
         ("sam", event(c, "sam-busy-1", "Busy", c.this_week(1), "09:00", "12:00")),
         ("sam", event(c, "sam-busy-2", "Busy", c.this_week(3), "14:00", "18:00")),
     ]
@@ -1547,6 +1553,8 @@ def write_calendars(p: Profile, mails: list[Mail]):
     for calendar, text in events:
         uid = text.split("UID:")[1].split("\r\n")[0]
         p.write(p.data / "calendars" / DAV / calendar / f"{uid}.ics", text)
+    # Léa's dentist came in since this device's first look: asked once, under the Agenda's head line (part 3).
+    p.write(p.state / "holder-questions.toml", 'looked = true\nseen = ["demo-event-lea-dentist", "demo-event-lea-swimming"]\nask = ["demo-event-lea-dentist"]\n')
     if ONGOING == "quiet":
         set_aside_ongoing(p, [text for _, text in events])
 
@@ -2689,6 +2697,8 @@ day_start = 8
 [agenda.calendars."{DAV}/lea"]
 whose = "child"
 name = "Léa"
+parent = "Sam"
+parent_address = "sam@example.org"
 
 [agenda.calendars."{DAV}/sam"]
 whose = "partner"

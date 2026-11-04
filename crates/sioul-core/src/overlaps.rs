@@ -92,6 +92,10 @@ fn pairs(mut timed: Vec<&Occurrence>, between: u32) -> Vec<Overlap> {
             if one_outing(first, second) {
                 continue;
             }
+            // A child's event and your stand-in of it are one appointment (`holders`), never a clash.
+            if (!first.stands_for.is_empty() && first.stands_for == second.uid) || (!second.stands_for.is_empty() && second.stands_for == first.uid) {
+                continue;
+            }
             // Sorted by start: the second starts at or after the first.
             let key = format!("{}@{}|{}@{}", first.uid, first.start, second.uid, second.start);
             let gap = (second.start - first.end).div_euclid(60);

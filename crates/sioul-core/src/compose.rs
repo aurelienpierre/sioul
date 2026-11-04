@@ -82,6 +82,13 @@ pub struct Draft {
     /// it over wherever the draft goes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub copy_as_received: bool,
+    /// An invitation it carries (iMIP, RFC 6047): an iTIP object, a REQUEST
+    /// or a CANCEL (`holders::invitation`), sent beside its text as a
+    /// `text/calendar` part with its method (several agendas, part 3). A
+    /// Sioul before 4 November 2026 leaves it out and sends the text alone,
+    /// which says the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calendar: Option<String>,
 }
 
 /// The line above a signature (RFC 3676 §4.3): readers recognise and fold what follows.
@@ -624,7 +631,13 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
         true => MimePart::new(ContentType::new(kind).attribute("charset", "utf-8"), quoted_printable(&body)).transfer_encoding("quoted-printable"),
         false => MimePart::new(kind, body),
     };
-    let alternative = MimePart::new("multipart/alternative", vec![text_part("text/plain", text), text_part("text/html", html)]);
+    let mut parts = vec![text_part("text/plain", text), text_part("text/html", html)];
+    // An invitation, as calendars read it: its part beside the text, its method said (RFC 6047 §2.4).
+    if let Some(ics) = draft.calendar.as_deref().filter(|c| !c.trim().is_empty()) {
+        let method = crate::lines::unfold(ics).iter().find(|l| crate::lines::name(l) == "METHOD").map(|l| crate::lines::value(l).trim().to_ascii_uppercase()).unwrap_or_else(|| "REQUEST".into());
+        parts.push(MimePart::new(ContentType::new("text/calendar").attribute("method", method).attribute("charset", "utf-8"), ics.to_string()));
+    }
+    let alternative = MimePart::new("multipart/alternative", parts);
     let files = attachments(draft, original)?;
     let inner = if files.is_empty() {
         alternative
@@ -899,6 +912,24 @@ mod tests {
         assert_eq!(out.recipients, vec!["jane@example.org".to_string()]);
         assert!(parsed.message_id().unwrap().ends_with("@example.net"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A draft carrying an invitation (several agendas, part 3) goes out with
+    /// it as a `text/calendar` part of its method beside the text (iMIP,
+    /// RFC 6047 §2.4); one without carries none, as before.
+    #[test]
+    fn an_invitation_goes_out_as_its_calendar_part() {
+        let tr = Translator::new("en");
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:dentist-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let draft = Draft { to: vec!["Sam <sam@example.org>".into()], subject: "Tom’s dentist".into(), body: "Could you take it?".into(), calendar: Some(ics.into()), ..Draft::new("me") };
+        let out = build(&draft, ("Alex", "alex@example.org"), &tr, 1_790_000_000).unwrap();
+        let text = String::from_utf8_lossy(&out.raw).to_string();
+        assert!(text.contains("text/calendar; method=REQUEST") || text.contains("text/calendar; method=\"REQUEST\""), "{text}");
+        let parsed = MessageParser::default().parse(&out.raw).unwrap();
+        assert!(parsed.parts.iter().any(|p| p.text_contents().is_some_and(|t| t.contains("UID:dentist-1"))), "{text}");
+        assert!(parsed.body_text(0).unwrap().contains("Could you take it?"));
+        let plain = build(&Draft { calendar: None, ..draft }, ("Alex", "alex@example.org"), &tr, 1_790_000_000).unwrap();
+        assert!(!String::from_utf8_lossy(&plain.raw).contains("text/calendar"));
     }
 
     #[test]

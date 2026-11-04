@@ -9,7 +9,10 @@
 // "As the hours say" gives them back. One filter for every view: the
 // agenda's Day, Week, Month and What comes, and the Tasks page's lists, which
 // show the same list of their own agendas. On a computer under its button;
-// on a phone a sheet from the bottom, as wide as the screen.
+// on a phone a sheet from the bottom, as wide as the screen. Named sets of
+// agendas come first (part 4): chosen by hand, or brought by Sioul's own
+// times, never by a place; "Keep these as a set" names what shows. Beside
+// each child's agenda, "Who does what" opens its week (`WhoDoesWhat`).
 
 pragma ComponentBehavior: Bound
 
@@ -31,6 +34,10 @@ Button {
     property bool iconOnly: filter.narrow
     // The groups folded on this page, by key, while it lives.
     property var folded: ({})
+    // The window, for the who-does-what rows' cards; none on the Tasks page.
+    property var window: null
+    // "Keep these as a set" opened.
+    property bool naming: false
 
     readonly property var groups: filter.shown && filter.shown.groups ? filter.shown.groups : []
     // Some agenda the hours, or your word, leave out now: the button says so by its look alone.
@@ -66,6 +73,50 @@ Button {
         const problem = filter.sioul.turnAgendas(JSON.stringify(ids), on)
         if (problem !== "")
             filter.sioul.status = problem
+    }
+
+    // A set chosen, kept or forgotten (part 4).
+    function useSet(name) {
+        const problem = filter.sioul.useAgendaSet(name)
+        if (problem !== "")
+            filter.sioul.status = problem
+    }
+    function keepSet(name, times) {
+        const ids = []
+        for (const group of filter.groups) {
+            for (const agenda of group.agendas) {
+                if (agenda.on)
+                    ids.push(agenda.id)
+            }
+        }
+        const problem = filter.sioul.keepAgendaSet(name, JSON.stringify(ids), JSON.stringify(times))
+        if (problem !== "")
+            filter.sioul.status = problem
+        filter.naming = false
+    }
+    function forgetSet(name) {
+        const problem = filter.sioul.keepAgendaSet(name, "null", "[]")
+        if (problem !== "")
+            filter.sioul.status = problem
+    }
+    // A child's week, who does what.
+    function whoDoesWhat(child) {
+        const panel = week.now()
+        panel.openOn(child)
+        return panel
+    }
+
+    Later {
+        id: week
+
+        sourceComponent: Component {
+            WhoDoesWhat {
+                sioul: filter.sioul
+                theme: filter.theme
+                window: filter.window
+                narrow: filter.narrow
+            }
+        }
     }
 
     function asTheHoursSay() {
@@ -154,6 +205,95 @@ Button {
                             }
                         }
 
+                        // Named sets (part 4): each a button, the one showing marked, × forgets it.
+                        Flow {
+                            visible: (filter.shown.sets || []).length > 0
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Repeater {
+                                model: filter.shown.sets || []
+
+                                delegate: Row {
+                                    id: set
+
+                                    required property var modelData
+
+                                    spacing: 0
+
+                                    Button {
+                                        objectName: "agendaSet"
+                                        text: filter.theme.plain(set.modelData.name) + (set.modelData.by_time ? " · " + filter.sioul.text("agendas-set-now") : "")
+                                        highlighted: set.modelData.showing === true
+                                        onClicked: filter.useSet(set.modelData.name)
+                                    }
+                                    ToolButton {
+                                        text: "×"
+                                        Accessible.name: filter.sioul.textWith("agendas-set-forget", "name", set.modelData.name)
+                                        onClicked: filter.forgetSet(set.modelData.name)
+                                    }
+                                }
+                            }
+                        }
+                        Button {
+                            objectName: "agendasKeepSet"
+                            visible: !filter.naming
+                            flat: true
+                            text: filter.sioul.text("agendas-set-save")
+                            onClicked: filter.naming = true
+                        }
+                        ColumnLayout {
+                            visible: filter.naming
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            TextField {
+                                id: setName
+
+                                objectName: "agendasSetName"
+                                Layout.fillWidth: true
+                                placeholderText: filter.sioul.text("agendas-set-name")
+                                Accessible.name: placeholderText
+                                onAccepted: if (text.trim() !== "")
+                                    filter.keepSet(text.trim(), setTimes.chosen())
+                            }
+                            Label {
+                                text: filter.sioul.text("agendas-set-times")
+                                color: filter.theme.muted
+                            }
+                            Flow {
+                                id: setTimes
+
+                                function chosen() {
+                                    return [[setWork, "work"], [setAdmin, "admin"], [setLeisure, "leisure"]].filter(p => p[0].checked).map(p => p[1])
+                                }
+
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                CheckBox {
+                                    id: setWork
+
+                                    text: filter.sioul.text("area-work")
+                                }
+                                CheckBox {
+                                    id: setAdmin
+
+                                    text: filter.sioul.text("area-admin")
+                                }
+                                CheckBox {
+                                    id: setLeisure
+
+                                    text: filter.sioul.text("area-leisure")
+                                }
+                            }
+                            Button {
+                                enabled: setName.text.trim() !== ""
+                                text: filter.sioul.text("agendas-set-keep")
+                                onClicked: filter.keepSet(setName.text.trim(), setTimes.chosen())
+                            }
+                        }
+
                         Repeater {
                             model: filter.groups
 
@@ -213,11 +353,28 @@ Button {
                                             objectName: "agendaLine"
                                             Layout.fillWidth: true
                                             Layout.preferredWidth: 0
-                                            text: filter.theme.plain(line.modelData.name)
+                                            // Kept hidden on this device: unticked whatever the hours; ticked, shown until they change.
+                                            text: filter.theme.plain(line.modelData.name) + (line.modelData.kept === true ? " · " + filter.sioul.text("agendas-kept-hidden") : "")
                                             checked: line.modelData.on === true
                                             onToggled: {
                                                 filter.turn([line.modelData.id], checked)
                                                 checked = Qt.binding(() => line.modelData.on === true)
+                                            }
+                                        }
+                                        // A child's agenda: its week, who does what (part 4).
+                                        ToolButton {
+                                            objectName: "agendaWhoDoesWhat"
+                                            visible: String(group.modelData.key).startsWith("child:")
+                                            icon.name: "view-list-details"
+                                            icon.color: filter.theme.text
+                                            display: AbstractButton.IconOnly
+                                            Accessible.name: filter.sioul.text("holder-who-does-what")
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: filter.sioul.text("holder-who-does-what")
+                                            ToolTip.delay: 300
+                                            onClicked: {
+                                                filter.close()
+                                                filter.whoDoesWhat(line.modelData.id)
                                             }
                                         }
                                     }

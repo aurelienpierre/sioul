@@ -126,6 +126,25 @@ public final class AgendaCheck
         JSONObject nothing = card(3);
         nothing.getJSONObject("agenda").put("events", new JSONArray());
         expect("version 3, nothing", said(nothing, morning), "Agenda | Nothing in your calendars for the coming month.");
+        // The hours' default (review of the agendas' parts 1 and 2): a frame's "events_out" left
+        // out, a work agenda's review tomorrow out of this evening, back at work in the morning;
+        // nothing else to list, the hours' own line; a place out of reach changes nothing.
+        JSONObject hours = card(4);
+        hours.getJSONObject("agenda").put("dates", new JSONArray()).put("empty_hours", "The calendars these hours show have nothing for the coming month.")
+            .put("events", new JSONArray().put(event("Review", DAY + DAYS + 10 * HOUR, DAY + DAYS + 11 * HOUR)).put(event("Choir", DAY + DAYS + 19 * HOUR, DAY + DAYS + 20 * HOUR)));
+        JSONObject evening = new JSONObject().put("from", DAY + 17 * HOUR).put("until", DAY + DAYS + 9 * HOUR).put("kind", "leisure").put("status", "").put("events", true)
+            .put("events_out", new JSONArray().put(0).put(7));
+        hours.put("times", new JSONArray()
+            .put(new JSONObject().put("from", DAY).put("until", DAY + 17 * HOUR).put("kind", "work").put("status", "Work until 17:00.").put("events", true))
+            .put(evening)
+            .put(new JSONObject().put("from", DAY + DAYS + 9 * HOUR).put("until", DAY + 3 * DAYS).put("kind", "work").put("status", "Work until 17:00.").put("events", true)));
+        expect("hours: at work", said(hours, morning), "Agenda | day:Tomorrow, Fri 9 Oct | event:Review | event:Choir");
+        expect("hours: this evening", said(hours, DAY + 18 * HOUR), "Agenda | day:Tomorrow, Fri 9 Oct | event:Choir");
+        expect("hours: back at work", said(hours, DAY + DAYS + 9 * HOUR + 60_000), "Agenda | day:Today, Fri 9 Oct | event:Review | event:Choir");
+        hours.getJSONObject("agenda").getJSONArray("events").remove(1);
+        expect("hours: nothing else", said(hours, DAY + 18 * HOUR), "Agenda | The calendars these hours show have nothing for the coming month.");
+        hours.getJSONObject("agenda").remove("empty_hours");
+        expect("hours: an older card's line", said(hours, DAY + 18 * HOUR), "Agenda | Nothing in your calendars for the coming month.");
         // Drawn again at a date's next change, from version 4 only.
         JSONObject marked = card(4);
         marked.getJSONObject("agenda").getJSONArray("dates").getJSONObject(1).put("mark", labels(DAY + 15 * HOUR, "○", 0, "●"));

@@ -511,7 +511,7 @@ pub(crate) fn conflicts_known(key: &str, start: i64) -> Vec<String> {
 /// more; "move" says it no more and gives back your own event's file to
 /// open in its form, where Sioul may write it ("" when neither may be moved
 /// here). Returns {problem, open} as JSON.
-pub(crate) fn answer_conflict(key: &str, answer: &str) -> String {
+pub(crate) fn answer_conflict(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &str) -> String {
     let stamp = sioul_core::zone::now().timestamp().as_second();
     let path = sioul_core::overlaps::Notices::default_path();
     let mut notices = sioul_core::overlaps::Notices::load(&path);
@@ -525,7 +525,13 @@ pub(crate) fn answer_conflict(key: &str, answer: &str) -> String {
             open = conflict.iter().flat_map(|c| [&c.first, &c.second]).find(|e| !e.theirs && !e.read_only && !e.with_others).map(|e| e.key.clone()).unwrap_or_default();
             if open.is_empty() { tr().text("conflict-none-movable", None) } else { String::new() }
         }
-        _ => format!("{answer}: keep or move"),
+        // The child's event you take, of the two (several agendas, part 3): the other parent is
+        // asked to take it, by their Sioul or an invitation drafted for them.
+        "ask" => match conflict.iter().flat_map(|c| [&c.first, &c.second]).find_map(|e| if e.child { Some(e.key.clone()) } else { crate::children::child_key(&e.stands_for) }) {
+            Some(child) => crate::children::take(qt, shared, &child, 0, "other"),
+            None => tr().text("conflict-none-to-ask", None),
+        },
+        _ => format!("{answer}: keep, move or ask"),
     };
     if problem.is_empty() {
         notices.said_now(key, stamp);
@@ -556,9 +562,11 @@ fn warning_rows(overlaps: Vec<sioul_core::overlaps::Overlap>, aside: &sioul_core
         .into_iter()
         .map(|warning| match warning {
             Warning::Pair(o) => {
-                // What may be done of it (the conflict notice's answers): your own event moved, where Sioul may write it; both kept.
+                // What may be done of it (the conflict notice's answers): the other parent asked to take
+                // the child's event you take (part 3), your own event moved, where Sioul may write it; both kept.
                 let movable = [&o.first, &o.second].iter().any(|e| !e.theirs && !e.read_only && !e.with_others);
-                let answers: Vec<&str> = if movable { vec!["move", "keep"] } else { vec!["keep"] };
+                let askable = [&o.first, &o.second].iter().any(|e| !e.stands_for.is_empty());
+                let answers: Vec<&str> = [askable.then_some("ask"), movable.then_some("move"), Some("keep")].into_iter().flatten().collect();
                 serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": today(&o), "first": one(&o.first), "second": one(&o.second), "gap": o.gap, "needed": o.needed, "at_once": o.at_once(), "tentative": o.tentative, "notice": true, "answers": answers, "source": if o.source.is_empty() { String::new() } else { tr().text(&format!("overlap-source-{}", o.source), None) } })
             }
             Warning::During { event, overlaps } => {
@@ -1172,6 +1180,17 @@ pub(crate) fn invitation(key: &str) -> String {
     let Some(text) = reading::calendar(&path) else { return String::new() };
     let zone = sioul_core::zone::current();
     let Some(asked) = agenda::invitation(&text, &zone) else { return String::new() };
+    // An answer to the invitation to take a child's event (several agendas, part 3): its holder
+    // line set from it, said in the reader, nothing to press.
+    // Written only when the Porch would take it as coming from them (`children::replied`).
+    if asked.method == "REPLY" {
+        let Some(message) = std::fs::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)) else { return String::new() };
+        let config = load_config();
+        let account = config.account_of(&path).map(|a| a.id.clone()).unwrap_or_default();
+        let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
+        let Some(line) = crate::children::replied(&text, &message, &trusted, &config.own_domains()) else { return String::new() };
+        return json(&InvitationView { method: asked.method, summary: line, when: String::new(), location: String::new(), organizer: String::new(), known: true });
+    }
     let at = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone())).ok();
     let when = match (at(asked.start), at(asked.end)) {
         (Some(start), _) if asked.all_day => tr().day(start.date()),

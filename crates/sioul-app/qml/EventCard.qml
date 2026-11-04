@@ -94,6 +94,31 @@ CardFrame {
             card.sioul.status = problem
     }
 
+    // Who takes a child's event (several agendas, part 3): "me", "other", "accept", "decline".
+    function take(who) {
+        card.said(card.sioul.takeChild(card.event.key, card.event.recurring ? card.event.start : 0, who))
+        card.read()
+    }
+
+    // What you may answer of a child's event, by where its asking stands.
+    function childAnswers(info) {
+        if (!info)
+            return []
+        const other = info.other || ""
+        switch (info.state) {
+        case "nobody":
+        case "reopened":
+        case "declined":
+            return [{ who: "me", label: card.sioul.text("holder-me"), proposed: info.proposal === "me" }].concat(other !== "" ? [{ who: "other", label: other, proposed: info.proposal === "other" }] : [])
+        case "proposed":
+            return [{ who: "accept", label: card.sioul.text("holder-take-it"), proposed: false }, { who: "decline", label: card.sioul.text("holder-not-this-time"), proposed: false }]
+        case "yours":
+            return (other !== "" ? [{ who: "other", label: card.sioul.textWith("holder-ask-other", "who", other), proposed: false }] : []).concat([{ who: "decline", label: card.sioul.text("holder-not-this-time"), proposed: false }])
+        default:
+            return [{ who: "me", label: card.sioul.text("holder-i-take-it"), proposed: false }]
+        }
+    }
+
     // An event of your own that could be a task instead: not a task's time
     // already, not a meeting with others (others expect you there), not read only.
     readonly property bool canBeTask: card.there && !card.isTask && !card.event.read_only && !card.event.with_others
@@ -179,6 +204,97 @@ CardFrame {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: card.theme.text
+        }
+    }
+    // A child's event (part 3): who takes it and since when, who brings the child back,
+    // what Sioul proposes and why, your answers, its kind. Made only for a child's event.
+    Loader {
+        active: card.there && !!card.event.child
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ColumnLayout {
+                id: child
+
+                readonly property var info: card.there && card.event.child ? card.event.child : null
+                readonly property bool open: child.info !== null && ["nobody", "reopened", "declined"].indexOf(child.info.state) >= 0
+
+                spacing: 4
+
+                Label {
+                    objectName: "eventHolder"
+                    Layout.fillWidth: true
+                    text: child.info ? child.info.line : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: card.theme.text
+                }
+                Label {
+                    visible: child.info !== null && child.info.back !== ""
+                    Layout.fillWidth: true
+                    text: child.info ? child.info.back : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: card.theme.muted
+                }
+                Label {
+                    visible: child.open && (child.info.why !== "" || (child.info.busy || "") !== "")
+                    Layout.fillWidth: true
+                    text: child.info ? [child.info.why, child.info.busy || ""].filter(w => w !== "").join(" ") : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: card.theme.muted
+                }
+                Flow {
+                    visible: child.info !== null && child.info.writable === true
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Repeater {
+                        model: card.childAnswers(child.info)
+
+                        delegate: Button {
+                            id: answer
+
+                            required property var modelData
+
+                            objectName: "eventHolderAnswer"
+                            text: card.theme.plain(answer.modelData.label)
+                            highlighted: answer.modelData.proposed === true
+                            onClicked: card.take(answer.modelData.who)
+                        }
+                    }
+                }
+                // Who brings the child back, when another than who takes it (PART=BACK).
+                PlainComboBox {
+                    readonly property var choices: ["none", "me", "other"]
+
+                    objectName: "eventChildBack"
+                    visible: child.info !== null && child.info.writable === true && !child.open && (child.info.other || "") !== ""
+                    Layout.fillWidth: card.narrow
+                    Layout.preferredWidth: card.narrow ? -1 : 260
+                    model: child.info ? [card.sioul.text("holder-back-same"), card.sioul.text("holder-me"), card.theme.plain(child.info.other || "")] : []
+                    currentIndex: child.info ? Math.max(0, choices.indexOf(child.info.back_who || "none")) : 0
+                    Accessible.name: child.info ? card.sioul.textWith("holder-back", "child", child.info.child || "") : ""
+                    onActivated: index => card.take("back-" + choices[index])
+                }
+                PlainComboBox {
+                    readonly property var choices: child.info ? [""].concat(child.info.kinds.map(k => k.id)) : [""]
+
+                    objectName: "eventChildKind"
+                    visible: child.info !== null && child.info.writable === true
+                    Layout.fillWidth: card.narrow
+                    Layout.preferredWidth: card.narrow ? -1 : 260
+                    model: child.info ? [card.sioul.text("holder-kind-none")].concat(child.info.kinds.map(k => card.theme.plain(k.label))) : []
+                    currentIndex: child.info ? Math.max(0, choices.indexOf(child.info.kind)) : 0
+                    Accessible.name: card.sioul.text("holder-kind")
+                    onActivated: index => {
+                        card.said(card.sioul.setChildKind(card.event.key, choices[index]))
+                        card.read()
+                    }
+                }
+            }
         }
     }
     // When it is reminded; changed here for every time it comes.
