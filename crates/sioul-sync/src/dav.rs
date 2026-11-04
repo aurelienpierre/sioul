@@ -45,6 +45,8 @@ pub(crate) const CALDAV: &str = "urn:ietf:params:xml:ns:caldav";
 const CARDDAV: &str = "urn:ietf:params:xml:ns:carddav";
 pub(crate) const CALSERVER: &str = "http://calendarserver.org/ns/";
 pub(crate) const APPLE: &str = "http://apple.com/ns/ical/";
+/// Nextcloud's (ownCloud's) namespace: its sharing and a calendar's owner.
+pub(crate) const OWNCLOUD: &str = "http://owncloud.org/ns";
 
 /// Items asked for in one multiget, at most: the batch after quick answers.
 const BATCH: usize = 50;
@@ -229,7 +231,7 @@ impl Client {
 
     fn propfind(&self, url: &str, depth: &str, props: &str) -> Result<(u16, Vec<Response>), SyncError> {
         let body = format!(
-            r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="{CALDAV}" xmlns:a="{CARDDAV}" xmlns:cs="{CALSERVER}" xmlns:ic="{APPLE}"><d:prop>{props}</d:prop></d:propfind>"#
+            r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="{CALDAV}" xmlns:a="{CARDDAV}" xmlns:cs="{CALSERVER}" xmlns:ic="{APPLE}" xmlns:oc="{OWNCLOUD}"><d:prop>{props}</d:prop></d:propfind>"#
         );
         let answer = self.send("PROPFIND", url, &[("Depth", depth), ("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
         if answer.status != 207 {
@@ -608,11 +610,62 @@ pub struct Listed {
     /// For calendars: it takes none of your time as a whole (RFC 6638 §9.1,
     /// `schedule-calendar-transp` transparent); opaque when the server says nothing.
     pub transparent: bool,
+    /// Whose it is, as the server says (`owned_by_you`); none when it does not.
+    pub owned: Option<bool>,
+}
+
+/// Whether the server says a collection is yours: its owner (Nextcloud's
+/// `oc:owner-principal`, which its `DAV:owner` also gives for a calendar
+/// shared with you, `Calendar::getOwner`, apps/dav, read 4 November 2026;
+/// else `DAV:owner`, RFC 3744 §5.1) compared with your principal
+/// (`current-user-principal`, RFC 5397, on this response or another of the
+/// listing); else CalendarServer's resource types, `shared-owner` yours and
+/// `shared` someone else's (caldav-sharing). None when it says nothing.
+fn owned_by_you(response: &Response, me: Option<&str>) -> Option<bool> {
+    let owner = response.text(OWNCLOUD, "owner-principal").or_else(|| response.prop(DAV, "owner").and_then(|p| p.hrefs.first().cloned()));
+    let mine = response.prop(DAV, "current-user-principal").and_then(|p| p.hrefs.first().cloned()).or_else(|| me.map(str::to_string));
+    match (owner, mine) {
+        (Some(owner), Some(mine)) => Some(same_principal(&owner, &mine)),
+        _ if response.is(CALSERVER, "shared") => Some(false),
+        _ if response.is(CALSERVER, "shared-owner") => Some(true),
+        _ => None,
+    }
+}
+
+/// Two principals the same, whether written as an address, a path, or
+/// Nextcloud's "principals/users/<name>" without its base.
+fn same_principal(a: &str, b: &str) -> bool {
+    let path = |text: &str| {
+        let text = text.trim();
+        let rest = text.split_once("://").map_or(text, |(_, rest)| rest.find('/').map_or("", |at| &rest[at..]));
+        percent_decoded(rest.trim_matches('/'))
+    };
+    let (a, b) = (path(a), path(b));
+    !a.is_empty() && !b.is_empty() && (a == b || a.ends_with(&format!("/{b}")) || b.ends_with(&format!("/{a}")))
+}
+
+fn percent_decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 3 <= bytes.len()
+            && let Ok(byte) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+        {
+            out.push(byte);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_lowercase()
 }
 
 /// The collections in a home.
 pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed>, SyncError> {
-    let props = "<d:resourcetype/><d:displayname/><cs:getctag/><d:sync-token/><d:current-user-privilege-set/><ic:calendar-color/><c:supported-calendar-component-set/><c:schedule-calendar-transp/>";
+    let props = "<d:resourcetype/><d:displayname/><cs:getctag/><d:sync-token/><d:current-user-privilege-set/><ic:calendar-color/><c:supported-calendar-component-set/><c:schedule-calendar-transp/><d:owner/><d:current-user-principal/><oc:owner-principal/>";
     let (status, responses) = client.propfind(home, "1", props)?;
     if status != 207 {
         return Err(SyncError::Server(format!("PROPFIND {home}: {status}")));
@@ -622,6 +675,8 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
         Kind::Contacts => (CARDDAV, "addressbook"),
     };
     let mut found: Vec<Listed> = Vec::new();
+    // Your principal, as any response of the listing gives it (the home's own, first).
+    let me = responses.iter().find_map(|r| r.prop(DAV, "current-user-principal").and_then(|p| p.hrefs.first().cloned()));
     for response in responses.iter().filter(|r| r.is(ns, wanted)) {
         let url = absolute(home, &response.href);
         let privileges = response.prop(DAV, "current-user-privilege-set");
@@ -645,6 +700,7 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
             sync_token: response.text(DAV, "sync-token"),
             components: response.prop(CALDAV, "supported-calendar-component-set").map(|p| p.comps.clone()).unwrap_or_default(),
             transparent: response.prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")),
+            owned: owned_by_you(response, me.as_deref()),
             url,
             id,
         });
@@ -791,6 +847,12 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             Ok(made) => report.registered += made,
             Err(e) => report.problems.push(e),
         }
+        // Google's CalDAV says no owner: its calendar list does (`accessRole`), asked
+        // while one of its calendars is of an owner not known yet; refused (its
+        // Calendar API off), they stay unknown, hidden here only when left.
+        if client.is_google() && kind == Kind::Calendars && listed.iter().any(|l| State::load(&vdir::state_path(&account.id, l.kind, &l.id)).owned.is_none()) {
+            let _ = crate::calendars::GoogleApi::new(account.address.as_deref().unwrap_or(login)).and_then(|api| google_owners(&api, &account.id, &listed));
+        }
         report.listed += listed.len();
         let synced_before = report.collections;
         // In turns, a slice of time each, until each is whole or failed; one removed or left
@@ -860,6 +922,10 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
             state.read_only = collection.read_only;
             state.components = collection.components.clone();
             state.transparent = collection.transparent;
+            // Whose it is, when the server says; what it said before kept when it says nothing now.
+            if collection.owned.is_some() {
+                state.owned = collection.owned;
+            }
             state.save(&path).map_err(SyncError::Disk)
         });
         if let Err(e) = made {
@@ -947,6 +1013,16 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
         // Removed here with what it holds (part 5): deleted there whatever it holds, a copy
         // kept here first (`vdir::remove_collection`); shared with you, the share left (a
         // sharee's DELETE, as Nextcloud takes it). Refused, it stays hidden here, asked again.
+        // The second guard: a DELETE of a whole calendar only on its server's
+        // word of whose it is, yours to remove, someone else's to leave
+        // (`State::owned`); otherwise it is shown again, nothing sent.
+        if (state.removed || state.deleted) && !owner_lets(&state) {
+            state.removed = false;
+            state.leave = false;
+            state.deleted = false;
+            go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
+            continue;
+        }
         if state.removed {
             let answer = client.send("DELETE", &state.url, &[], None)?;
             if (200..300).contains(&answer.status) || answer.status == 404 {
@@ -1008,6 +1084,35 @@ fn keep_ids(account: &str, kind: Kind, listed: &mut [Listed]) {
 }
 
 /// Whether a Google account has calendars made, renamed, recoloured, removed or left here.
+/// Each Google calendar's owner, from the calendar list: yours where its
+/// `accessRole` is "owner" (Calendar API v3, calendarList).
+pub(crate) fn google_owners(api: &crate::calendars::GoogleApi, account: &str, listed: &[Listed]) -> Result<(), SyncError> {
+    let roles = api.roles()?;
+    for collection in listed {
+        let path = vdir::state_path(account, collection.kind, &collection.id);
+        let mut state = State::load(&path);
+        if let Some(role) = crate::calendars::google_id(&collection.url).and_then(|id| roles.get(&id)) {
+            state.owned = Some(role == "owner");
+            state.save(&path).map_err(SyncError::Disk)?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether a calendar's removal or leaving may go to its server: left,
+/// someone else's as its server says; removed with what it holds, yours as
+/// it says; deleted empty (Agenda ⚙ ▸ Calendars), not someone else's. A
+/// calendar's role in Sioul never says it (a child's agenda may be yours).
+fn owner_lets(state: &State) -> bool {
+    if state.leave {
+        state.owned == Some(false)
+    } else if state.removed {
+        state.owned == Some(true)
+    } else {
+        state.owned != Some(false)
+    }
+}
+
 fn google_changes_due(account: &str) -> bool {
     vdir::every_collection(Kind::Calendars).into_iter().filter(|c| c.account == account && c.components.iter().all(|k| k.eq_ignore_ascii_case("VEVENT"))).any(|c| {
         let state = State::load(&c.state_path());
@@ -1034,11 +1139,18 @@ pub(crate) fn google_changes(api: &crate::calendars::GoogleApi, account: &str) -
                 }
                 state.url = crate::calendars::google_caldav_url(&id);
                 state.pending = false;
+                state.owned = Some(true);
                 state.save(&path).map_err(SyncError::Disk)
             })
         } else if let Some(id) = crate::calendars::google_id(&state.url) {
-            // Removed (Your agendas), or deleted empty (Agenda ⚙ ▸ Calendars).
-            if state.removed || state.deleted {
+            // Removed (Your agendas), or deleted empty (Agenda ⚙ ▸ Calendars), on
+            // Google's word of whose it is alone (`owner_lets`); else shown again.
+            if (state.removed || state.deleted) && !owner_lets(&state) {
+                state.removed = false;
+                state.leave = false;
+                state.deleted = false;
+                state.save(&path).map_err(SyncError::Disk)
+            } else if state.removed || state.deleted {
                 let gone = if state.leave { api.leave(&id) } else { api.delete(&id) };
                 gone.map(|()| {
                     let _ = std::fs::remove_dir_all(&collection.dir);
@@ -1106,6 +1218,8 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
             200..=299 | 405 => {
                 state.pending = false;
                 state.url = url;
+                // Made by you: yours, until the listing says otherwise.
+                state.owned = Some(true);
                 go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
             }
             status => {
@@ -2463,6 +2577,7 @@ mod tests {
                 match (request.method.as_str(), request.path.as_str()) {
                     ("PROPPATCH", _) => super::stand_in::Reply::new(207, r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"/>"#),
                     ("DELETE", "/cal/theirs/") => super::stand_in::Reply::new(403, ""),
+                    ("DELETE", "/cal/sams/") => super::stand_in::Reply::new(204, ""),
                     ("DELETE", _) => super::stand_in::Reply::new(204, ""),
                     _ => super::stand_in::Reply::new(405, ""),
                 }
@@ -2471,23 +2586,39 @@ mod tests {
         home();
         let recorder = Arc::new(Recorder(std::sync::Mutex::new(Vec::new())));
         let base = super::stand_in::serve(recorder.clone());
-        let make = |name: &str, id: &str| {
+        // Whose each is, as its server said at the listing (`State::owned`).
+        let make = |name: &str, id: &str, owned: Option<bool>| {
             let made = vdir::create(Kind::Calendars, "p5-sync", name, None, &["VEVENT"]).unwrap();
             let mut state = State::load(&made.state_path());
             state.pending = false;
             state.url = format!("{base}/cal/{id}/");
+            state.owned = owned;
             state.save(&made.state_path()).unwrap();
             vdir::every_collection(Kind::Calendars).into_iter().find(|c| c.account == "p5-sync" && c.id == made.id).unwrap()
         };
-        let club = make("Swimming", "swimming");
-        let old = make("Old", "old");
-        let theirs = make("Theirs", "theirs");
+        let club = make("Swimming", "swimming", Some(true));
+        let old = make("Old", "old", Some(true));
+        let theirs = make("Theirs", "theirs", Some(false));
+        let sams = make("Sam's", "sams", Some(false));
+        // A child's agenda on your own server is yours: its role never makes it someone else's.
+        let tom = make("Tom", "tom", Some(true));
+        let unknown = make("Unknown", "unknown", None);
+        assert!(vdir::stop_showing(&tom).is_err() && vdir::stop_showing(&unknown).is_err(), "left only when its server says it is someone else's");
+        assert!(vdir::remove_collection(&unknown).is_err() && vdir::remove_collection(&theirs).is_err(), "removed only when its server says it is yours");
+        // The sync's second guard: flags left by an older Sioul on yours or an unknown one send nothing.
+        for c in [&tom, &unknown] {
+            let mut state = State::load(&c.state_path());
+            state.removed = true;
+            state.leave = true;
+            state.save(&c.state_path()).unwrap();
+        }
         vdir::rename_collection(&club, "Swimming club").unwrap();
         vdir::recolour_collection(&club, "#4C6B5C").unwrap();
         std::fs::write(old.dir.join("a.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:kept-in-the-copy\r\nDTSTART:20991110T090000Z\r\nSUMMARY:Lesson\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
         let copy = vdir::remove_collection(&old).unwrap();
         assert!(std::fs::read_to_string(&copy).unwrap().contains("UID:kept-in-the-copy"), "the copy first");
         vdir::stop_showing(&theirs).unwrap();
+        vdir::stop_showing(&sams).unwrap();
         let hidden = |id: &str| !vdir::collections(Kind::Calendars).iter().any(|c| c.account == "p5-sync" && c.id == id);
         assert!(hidden(&old.id) && hidden(&theirs.id) && !hidden(&club.id));
         send_changes(&client(), "p5-sync", Kind::Calendars).unwrap();
@@ -2495,15 +2626,29 @@ mod tests {
         let proppatch = seen.iter().find(|r| r.starts_with("PROPPATCH /cal/swimming/")).expect("one PROPPATCH");
         assert!(proppatch.contains("<d:displayname>Swimming club</d:displayname>") && proppatch.contains("<ic:calendar-color>#4c6b5c</ic:calendar-color>"), "{proppatch}");
         assert!(seen.iter().any(|r| r.starts_with("DELETE /cal/old/")) && seen.iter().any(|r| r.starts_with("DELETE /cal/theirs/")), "{seen:?}");
+        assert!(seen.iter().any(|r| r.starts_with("DELETE /cal/sams/")) && !sams.dir.exists(), "shared with you: left there, gone here");
+        assert!(!seen.iter().any(|r| r.starts_with("DELETE /cal/tom/") || r.starts_with("DELETE /cal/unknown/")), "yours or unknown: never a leave's DELETE: {seen:?}");
+        assert!(!hidden(&tom.id) && !hidden(&unknown.id) && tom.dir.exists(), "shown again, nothing lost");
         assert!(!old.dir.exists(), "gone here once gone there");
         assert!(hidden(&theirs.id) && theirs.dir.exists(), "refused: still hidden, nothing lost");
         let state = State::load(&club.state_path());
         assert!(!state.renamed && !state.recoloured);
         // A listing names it otherwise: it keeps its folder's id by its address.
-        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false }];
+        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true) }];
         keep_ids("p5-sync", Kind::Calendars, &mut listed);
         assert_eq!(listed[0].id, club.id);
-        for c in [club, theirs] {
+        // Whose it is, from the listing: its owner against your principal; else unknown.
+        let (responses, _) = super::multistatus(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:cs="http://calendarserver.org/ns/">
+            <d:response><d:href>/remote.php/dav/calendars/jane/</d:href><d:propstat><d:prop><d:current-user-principal><d:href>/remote.php/dav/principals/users/jane/</d:href></d:current-user-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/remote.php/dav/calendars/jane/tom/</d:href><d:propstat><d:prop><oc:owner-principal>principals/users/jane</oc:owner-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/remote.php/dav/calendars/jane/sams_shared_by_sam/</d:href><d:propstat><d:prop><d:owner><d:href>/remote.php/dav/principals/users/sam/</d:href></d:owner></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/remote.php/dav/calendars/jane/janet/</d:href><d:propstat><d:prop><oc:owner-principal>principals/users/janet</oc:owner-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/cal/plain/</d:href><d:propstat><d:prop><d:displayname>Plain</d:displayname></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            </d:multistatus>"#).unwrap();
+        let me = "/remote.php/dav/principals/users/jane/";
+        let owned: Vec<Option<bool>> = responses.iter().skip(1).map(|r| owned_by_you(r, Some(me))).collect();
+        assert_eq!(owned, [Some(true), Some(false), Some(false), None], "yours, Sam's, Janet's (not yours by a name's end), unknown");
+        for c in [club, theirs, tom, unknown] {
             let _ = std::fs::remove_dir_all(&c.dir);
             let _ = std::fs::remove_file(c.state_path());
         }

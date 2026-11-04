@@ -24,13 +24,12 @@
 //! server itself but sharing, which is asked and answered at once.
 
 use crate::SyncError;
-use crate::dav::{CALSERVER, Client, DAV, xml_escape};
+use crate::dav::{CALSERVER, Client, DAV, OWNCLOUD, xml_escape};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use std::time::Duration;
 
-const OWNCLOUD: &str = "http://owncloud.org/ns";
 const GOOGLE_CALENDAR: &str = "https://www.googleapis.com/calendar/v3";
 
 /// Google's CalDAV, where each calendar's events are (`caldav_url`).
@@ -159,6 +158,29 @@ impl GoogleApi {
         match self.call("DELETE", &format!("/users/me/calendarList/{}", crate::google::encode(id)), None)? {
             (200..=299 | 404 | 410, _) => Ok(()),
             (status, value) => Err(refusal(&format!("leave {id}"), status, &value)),
+        }
+    }
+
+    /// Your role in each calendar of your list (`calendarList.list`, every
+    /// page, hidden ones too): "owner", "writer", "reader", "freeBusyReader", by id.
+    pub fn roles(&self) -> Result<std::collections::BTreeMap<String, String>, SyncError> {
+        let mut out = std::collections::BTreeMap::new();
+        let mut page: Option<String> = None;
+        loop {
+            let path = match &page {
+                Some(token) => format!("/users/me/calendarList?showHidden=true&pageToken={}", crate::google::encode(token)),
+                None => "/users/me/calendarList?showHidden=true".to_string(),
+            };
+            let answer = self.ok("GET", &path, None)?;
+            for item in answer["items"].as_array().into_iter().flatten() {
+                if let (Some(id), Some(role)) = (item["id"].as_str(), item["accessRole"].as_str()) {
+                    out.insert(id.to_string(), role.to_string());
+                }
+            }
+            match answer["nextPageToken"].as_str() {
+                Some(token) if !token.is_empty() => page = Some(token.to_string()),
+                _ => return Ok(out),
+            }
         }
     }
 
@@ -534,6 +556,13 @@ mod tests {
                     self.colours.lock().unwrap().push((id.to_string(), body["backgroundColor"].as_str().unwrap_or_default().to_string()));
                     Reply::new(200, "{}")
                 }
+                // Your list: yours made here, owner; one shared with you, writer.
+                ("GET", ["users", "me", "calendarList"]) => {
+                    assert!(request.path.contains("showHidden=true"));
+                    let mut items: Vec<Value> = self.listed.lock().unwrap().iter().map(|id| json!({ "id": id, "accessRole": "owner" })).collect();
+                    items.push(json!({ "id": "sam@example.org", "accessRole": "writer" }));
+                    Reply::new(200, json!({ "items": items }).to_string())
+                }
                 ("DELETE", ["users", "me", "calendarList", id]) => {
                     self.listed.lock().unwrap().retain(|c| c != id);
                     Reply::new(204, "")
@@ -571,6 +600,9 @@ mod tests {
         api.colour(&id, "#4c6b5c").unwrap();
         assert_eq!(google.calendars.lock().unwrap().as_slice(), [(id.clone(), "Swimming club".to_string())]);
         assert_eq!(google.colours.lock().unwrap().as_slice(), [(id.clone(), "#4c6b5c".to_string())]);
+        // Whose each is, from your calendar list: yours owner, a calendar shared with you writer.
+        let roles = api.roles().unwrap();
+        assert_eq!((roles.get(&id).map(String::as_str), roles.get("sam@example.org").map(String::as_str)), (Some("owner"), Some("writer")));
         google.acl.lock().unwrap().push(json!({ "id": "user:you@example.org", "role": "owner", "scope": { "type": "user", "value": "you@example.org" } }));
         api.grant(&id, "user", "sam@example.org", google_role(Access::Busy)).unwrap();
         api.grant(&id, "default", "", "reader").unwrap();

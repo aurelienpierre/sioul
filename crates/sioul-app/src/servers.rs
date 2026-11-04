@@ -66,8 +66,21 @@ fn find(id: &str) -> Option<(Collection, Agenda, Config)> {
 }
 
 /// Whether an agenda is yours to remove: yours, and one its server lets you write.
+/// Whether an agenda is yours to rename, recolour, share and remove: its
+/// server says you own it (`State::owned`, read at each listing), or you made
+/// it here and it is not sent yet, or it is on this computer; and you may
+/// write it. Its role never says it: a child's agenda on your own server is
+/// yours, a calendar shared with you is not, whatever you call it.
 fn own(agenda: &Agenda, collection: &Collection) -> bool {
-    agenda.whose == Whose::Yours && !agenda.server_read_only && !collection.read_only
+    let state = State::load(&collection.state_path());
+    let yours = collection.account == vdir::LOCAL || state.pending || state.owned == Some(true);
+    yours && !agenda.server_read_only && !collection.read_only
+}
+
+/// Whether its server says the calendar is someone else's: the only one a
+/// Stop showing leaves on the server; any other is hidden on this device alone.
+fn someone_elses(collection: &Collection) -> bool {
+    State::load(&collection.state_path()).owned == Some(false)
 }
 
 /// What Agenda ⚙ shows of an agenda's server: where it lives, whether it is
@@ -218,7 +231,11 @@ pub(crate) fn removal(id: &str) -> String {
         if server == "local" {
             return json(&serde_json::json!({ "act": "none", "sentence": tr().text("agenda-not-yours-to-change", None) }));
         }
-        return json(&serde_json::json!({ "act": "leave", "sentence": say("agenda-leave-question", &[("name", collection.name.clone())]), "note": tr().text("agenda-leave-note", None) }));
+        if someone_elses(&collection) {
+            return json(&serde_json::json!({ "act": "leave", "sentence": say("agenda-leave-question", &[("name", collection.name.clone())]), "note": tr().text("agenda-leave-note", None) }));
+        }
+        // Yours but read only, or whose it is unknown: hidden on this device, nothing sent.
+        return json(&serde_json::json!({ "act": "hide", "sentence": say("agenda-hide-question", &[("name", collection.name.clone())]), "note": tr().text("agenda-hide-note", None) }));
     }
     if google_primary(&config, &collection) {
         return json(&serde_json::json!({ "act": "none", "sentence": tr().text("agenda-remove-google-primary", None) }));
@@ -257,11 +274,18 @@ pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
         }
     } else if server_of(&config, &collection) == "local" {
         return tr().text("agenda-not-yours-to-change", None);
-    } else {
+    } else if someone_elses(&collection) {
         match vdir::stop_showing(&collection) {
             Ok(()) => say("agenda-left", &[("name", collection.name.clone())]),
             Err(e) => return e,
         }
+    } else {
+        // Its server does not say it is someone else's: kept hidden here, as "Keep hidden" does.
+        let problem = crate::agenda::keep_hidden(&agendas::place(&collection), true);
+        if !problem.is_empty() {
+            return problem;
+        }
+        say("agenda-hidden-here", &[("name", collection.name.clone())])
     };
     crate::pim::nudge(shared, &collection.account);
     crate::agenda::show_agenda(qt, shared);
@@ -649,6 +673,45 @@ fn keep_blocks(collection: &Collection, availability: &Availability) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Whose an agenda is comes from its server, never its role: a child's
+    /// agenda you own offers Remove (its copy, its question), never a leave;
+    /// a calendar shared with you, whatever its role, Stop showing, which
+    /// leaves it on its server; one whose owner its server does not say is
+    /// hidden on this device alone.
+    #[test]
+    fn ownership_is_the_servers_word_never_the_role() {
+        sioul_core::config::stand_ins_only();
+        let config = crate::backend::config_path();
+        let make = |name: &str, owned: Option<bool>| {
+            let made = vdir::create(Kind::Calendars, "p5-own", name, None, &["VEVENT"]).unwrap();
+            let mut state = State::load(&made.state_path());
+            state.pending = false;
+            state.url = format!("https://cloud.example.invalid/remote.php/dav/calendars/jane/{}/", made.id);
+            state.owned = owned;
+            state.save(&made.state_path()).unwrap();
+            agendas::place(&made)
+        };
+        let tom = make("Tom, owned", Some(true));
+        agendas::set_field(&config, &tom, "whose", "child").unwrap();
+        let sams = make("Sam's, shared with you", Some(false));
+        let unknown = make("Somewhere", None);
+        let act = |id: &str| serde_json::from_str::<serde_json::Value>(&removal(id)).unwrap()["act"].as_str().unwrap_or_default().to_string();
+        assert_eq!(act(&tom), "remove", "a child's agenda you own");
+        assert_eq!(act(&sams), "leave", "shared with you: left on its server");
+        assert_eq!(act(&unknown), "hide", "whose it is unknown: hidden here only");
+        let (tom_c, tom_a, _) = find(&tom).unwrap();
+        assert!(own(&tom_a, &tom_c) && vdir::stop_showing(&tom_c).is_err(), "yours: never a leave");
+        let (unknown_c, unknown_a, _) = find(&unknown).unwrap();
+        assert!(!own(&unknown_a, &unknown_c) && vdir::stop_showing(&unknown_c).is_err() && vdir::remove_collection(&unknown_c).is_err(), "unknown: neither left nor removed on its server");
+        let (sams_c, _, _) = find(&sams).unwrap();
+        vdir::stop_showing(&sams_c).unwrap();
+        assert!(State::load(&sams_c.state_path()).leave, "someone else's: its leave goes to the server");
+        for c in vdir::every_collection(Kind::Calendars).into_iter().filter(|c| c.account == "p5-own") {
+            let _ = std::fs::remove_dir_all(&c.dir);
+            let _ = std::fs::remove_file(c.state_path());
+        }
+    }
 
     /// The line of an agenda's sharing: only you; each person by what they
     /// may do, the other parent named so on a child's agenda; the link; a

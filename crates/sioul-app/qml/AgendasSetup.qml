@@ -429,8 +429,8 @@ ColumnLayout {
 
                         Button {
                             objectName: "agendaRemoveConfirm"
-                            visible: setup.removal.act === "remove" || setup.removal.act === "leave"
-                            text: setup.sioul.text(setup.removal.act === "leave" ? "agenda-leave-confirm" : "agenda-remove-confirm")
+                            visible: setup.removal.act === "remove" || setup.removal.act === "leave" || setup.removal.act === "hide"
+                            text: setup.sioul.text(setup.removal.act === "remove" ? "agenda-remove-confirm" : "agenda-leave-confirm")
                             onClicked: setup.remove(one.modelData.id)
                         }
                         Button {

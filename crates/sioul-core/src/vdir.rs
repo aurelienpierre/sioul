@@ -649,11 +649,16 @@ pub fn collection_as_ics(collection: &Collection) -> String {
 /// A collection removed with everything it holds: a dated copy first
 /// (`removed_copies`, whose path is returned), then hidden here, and deleted
 /// on its server by the next sync, whatever it holds there; one never sent,
-/// or this computer's own, at once. Never one you only read: someone else's
-/// is left (`stop_showing`), never removed.
+/// or this computer's own, at once. Never one you only read, nor one its
+/// server does not say is yours (`State::owned`): someone else's is left
+/// (`stop_showing`), never removed.
 pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
     if collection.read_only {
         return Err(format!("{}: read only", collection.name));
+    }
+    let known = State::load(&collection.state_path());
+    if collection.account != LOCAL && !known.pending && known.owned != Some(true) {
+        return Err(format!("{}: its server does not say it is yours", collection.name));
     }
     let folder = removed_copies();
     std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
@@ -678,8 +683,10 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
 pub fn stop_showing(collection: &Collection) -> Result<(), String> {
     let path = collection.state_path();
     let mut state = State::load(&path);
-    if collection.account == LOCAL || state.url.is_empty() {
-        return Err(format!("{}: not shared with you from a server", collection.name));
+    // Only what its server says is someone else's: yours, or whose it is not
+    // known, is hidden on this device instead (the window's "Keep hidden").
+    if collection.account == LOCAL || state.url.is_empty() || state.owned != Some(false) {
+        return Err(format!("{}: its server does not say it is someone else's", collection.name));
     }
     state.removed = true;
     state.leave = true;
@@ -826,6 +833,16 @@ pub struct State {
     /// calendarList.delete), the calendar staying its owner's.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub leave: bool,
+    /// Whose it is, as its server says (never its role in Sioul: a child's
+    /// agenda may be yours): yours (true), someone else's (false), or unknown
+    /// (none) when the server does not say. Read at each listing: CalDAV's
+    /// `DAV:owner` (RFC 3744 §5.1) or Nextcloud's `oc:owner-principal`
+    /// compared with your `current-user-principal` (RFC 5397); Google's
+    /// calendar list's `accessRole` "owner"; made here, yours. Removing
+    /// needs it yours, leaving someone else's (`remove_collection`,
+    /// `stop_showing`), and the sync asks it again before a DELETE.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owned: Option<bool>,
     /// The form its tasks and events were rewritten in, once
     /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
     #[serde(default, skip_serializing_if = "is_zero")]
