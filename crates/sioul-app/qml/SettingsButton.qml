@@ -49,6 +49,22 @@ ToolButton {
             shown.scrollTo(key)
     }
 
+    // For the window's images: one of the panel's parts, by its objectName, or null.
+    function part(name) {
+        const within = item => {
+            for (let i = 0; i < item.children.length; i++) {
+                const child = item.children[i]
+                if (child.objectName === name)
+                    return child
+                const found = within(child)
+                if (found !== null)
+                    return found
+            }
+            return null
+        }
+        return panel.item === null ? null : within(panel.item.contentItem)
+    }
+
     // For the window's images: the panel floats over the page, out of its picture.
     function grab(path) {
         if (panel.item !== null)

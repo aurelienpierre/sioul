@@ -648,6 +648,50 @@ pub mod qobject {
         #[qinvokable]
         fn set_follow_ups(self: Pin<&mut Sioul>, on: bool) -> QString;
 
+        /// A new agenda (part 5, `servers::make`): JSON {account, name, colour, events, tasks,
+        /// whose, person, area, reaches}; JSON {place, problem}.
+        #[qinvokable]
+        fn new_agenda(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// An agenda renamed, or recoloured ("#rrggbb"), sent by the next sync; what went wrong, else "".
+        #[qinvokable]
+        fn rename_agenda(self: Pin<&mut Sioul>, id: &QString, name: &QString) -> QString;
+
+        #[qinvokable]
+        fn recolour_agenda(self: Pin<&mut Sioul>, id: &QString, colour: &QString) -> QString;
+
+        /// What removing an agenda would do, asked first: JSON {act, sentence, note}.
+        #[qinvokable]
+        fn agenda_removal(self: &Sioul, id: &QString) -> QString;
+
+        /// An agenda removed (yours, a dated copy first) or left (someone else's); the line said.
+        #[qinvokable]
+        fn remove_agenda(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// An agenda's sharing read, or changed ("read", "write", "busy" for `access`), the answer `agendaShared`.
+        #[qinvokable]
+        fn read_agenda_sharing(self: Pin<&mut Sioul>, id: &QString);
+
+        #[qinvokable]
+        fn share_agenda(self: Pin<&mut Sioul>, id: &QString, who: &QString, access: &QString);
+
+        #[qinvokable]
+        fn unshare_agenda(self: Pin<&mut Sioul>, id: &QString, sharee: &QString);
+
+        #[qinvokable]
+        fn agenda_link(self: Pin<&mut Sioul>, id: &QString, on: bool);
+
+        /// Your availability: what is shared, the accounts and agendas to pick (JSON).
+        #[qinvokable]
+        fn availability(self: &Sioul) -> QString;
+
+        /// Your availability shared (JSON {account, agendas, with, link, words}), or no longer; what went wrong, else "".
+        #[qinvokable]
+        fn share_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        #[qinvokable]
+        fn stop_availability(self: Pin<&mut Sioul>) -> QString;
+
         /// A named set of agendas chosen in the filter (part 4): its agendas
         /// shown, the others left out, until work's hours change.
         #[qinvokable]
@@ -2321,6 +2365,11 @@ pub mod qobject {
         /// The spam filter's training moved on, or ended: its state, as `spam_status` gives it.
         #[qsignal]
         fn spam_changed(self: Pin<&mut Sioul>, status: QString);
+
+        /// An agenda's sharing as its server answered (part 5, `servers::sharing`): its
+        /// place ("availability" for your availability's), JSON {line, people, link, links, note, said, problem}.
+        #[qsignal]
+        fn agenda_shared(self: Pin<&mut Sioul>, id: QString, answer: QString);
 
         /// What "Try it" or the mail filters' preview found, as JSON {kind, text, lines, count}.
         #[qsignal]
@@ -4837,6 +4886,63 @@ impl qobject::Sioul {
         crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
         work::show_work(&self.qt_thread(), &self.shared());
         QString::from(&problem)
+    }
+
+    fn new_agenda(self: Pin<&mut Self>, text: &QString) -> QString {
+        let answer = match crate::servers::make(&self.qt_thread(), &self.shared(), &text.to_string()) {
+            Ok(place) => serde_json::json!({ "place": place, "problem": "" }),
+            Err(problem) => serde_json::json!({ "place": "", "problem": problem }),
+        };
+        QString::from(&answer.to_string())
+    }
+
+    fn rename_agenda(self: Pin<&mut Self>, id: &QString, name: &QString) -> QString {
+        QString::from(&crate::servers::rename(&self.qt_thread(), &self.shared(), &id.to_string(), &name.to_string()))
+    }
+
+    fn recolour_agenda(self: Pin<&mut Self>, id: &QString, colour: &QString) -> QString {
+        QString::from(&crate::servers::recolour(&self.qt_thread(), &self.shared(), &id.to_string(), &colour.to_string()))
+    }
+
+    fn agenda_removal(&self, id: &QString) -> QString {
+        QString::from(&crate::servers::removal(&id.to_string()))
+    }
+
+    fn remove_agenda(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::servers::remove(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn read_agenda_sharing(self: Pin<&mut Self>, id: &QString) {
+        crate::servers::sharing(&self.qt_thread(), &self.shared(), &id.to_string(), crate::servers::Change::Read);
+    }
+
+    fn share_agenda(self: Pin<&mut Self>, id: &QString, who: &QString, access: &QString) {
+        let access = match access.to_string().as_str() {
+            "write" => sioul_sync::calendars::Access::Write,
+            "busy" => sioul_sync::calendars::Access::Busy,
+            _ => sioul_sync::calendars::Access::Read,
+        };
+        crate::servers::sharing(&self.qt_thread(), &self.shared(), &id.to_string(), crate::servers::Change::Share { who: who.to_string(), access });
+    }
+
+    fn unshare_agenda(self: Pin<&mut Self>, id: &QString, sharee: &QString) {
+        crate::servers::sharing(&self.qt_thread(), &self.shared(), &id.to_string(), crate::servers::Change::Unshare(sharee.to_string()));
+    }
+
+    fn agenda_link(self: Pin<&mut Self>, id: &QString, on: bool) {
+        crate::servers::sharing(&self.qt_thread(), &self.shared(), &id.to_string(), crate::servers::Change::Link(on));
+    }
+
+    fn availability(&self) -> QString {
+        QString::from(&crate::servers::availability_json())
+    }
+
+    fn share_availability(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::servers::share_availability(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn stop_availability(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::servers::stop_availability(&self.qt_thread(), &self.shared()))
     }
 
     fn who_does_what(&self, from: &QString, child: &QString, mine: bool) -> QString {

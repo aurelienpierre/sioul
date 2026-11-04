@@ -872,6 +872,8 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // What the children's holder lines ask of your agendas (several agendas, part 3): your
         // stand-ins made, following their child event or taken out, the follow-ups, each said once.
         crate::children::upkeep(&qt, &shared, &desk.loaded.events);
+        // Your availability's calendar of busy blocks, where Sioul keeps one (part 5).
+        crate::servers::availability_upkeep(&qt, &shared);
         // An appointment over: the steps before it drop quietly, its task closes once none is left (`pairs::closing`).
         let mut moved = moved;
         let closed = closing_from.map(|from| sioul_core::pairs::closing_with(&desk.loaded.tasks, &desk.loaded.events, from, &now, local)).unwrap_or_default();

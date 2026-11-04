@@ -41,10 +41,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 pub(crate) const DAV: &str = "DAV:";
-const CALDAV: &str = "urn:ietf:params:xml:ns:caldav";
+pub(crate) const CALDAV: &str = "urn:ietf:params:xml:ns:caldav";
 const CARDDAV: &str = "urn:ietf:params:xml:ns:carddav";
-const CALSERVER: &str = "http://calendarserver.org/ns/";
-const APPLE: &str = "http://apple.com/ns/ical/";
+pub(crate) const CALSERVER: &str = "http://calendarserver.org/ns/";
+pub(crate) const APPLE: &str = "http://apple.com/ns/ical/";
 
 /// Items asked for in one multiget, at most: the batch after quick answers.
 const BATCH: usize = 50;
@@ -98,11 +98,14 @@ pub struct Client {
 }
 
 /// What a server answered.
-struct Answer {
-    status: u16,
+pub(crate) struct Answer {
+    pub(crate) status: u16,
     etag: Option<String>,
     location: Option<String>,
-    body: String,
+    /// Its DAV header: the classes and extensions it offers (RFC 4918 §10.1),
+    /// "calendarserver-sharing" among them where calendars are shared (`calendars`).
+    pub(crate) dav: Option<String>,
+    pub(crate) body: String,
 }
 
 /// How long a request may wait: to connect; for each read or write, so a big
@@ -190,7 +193,7 @@ impl Client {
         }
     }
 
-    fn send(&self, method: &str, url: &str, headers: &[(&str, &str)], body: Option<&str>) -> Result<Answer, SyncError> {
+    pub(crate) fn send(&self, method: &str, url: &str, headers: &[(&str, &str)], body: Option<&str>) -> Result<Answer, SyncError> {
         match (self.send_once(method, url, headers, body), &self.google) {
             // The access token ended early: a new one, once.
             (Err(SyncError::Login(_)), Some(address)) => {
@@ -215,13 +218,13 @@ impl Client {
         let request = request.body(body.unwrap_or("").to_string()).map_err(|e| SyncError::Server(e.to_string()))?;
         let mut response = self.agent.run(request).map_err(|e| SyncError::Network(e.to_string()))?;
         let header = |name: &str| response.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
-        let (etag, location) = (header("ETag"), header("Location"));
+        let (etag, location, dav) = (header("ETag"), header("Location"), header("DAV"));
         let status = response.status().as_u16();
         let body = response.body_mut().with_config().limit(64 * 1024 * 1024).read_to_string().unwrap_or_default();
         if status == 401 {
             return Err(SyncError::Login(format!("{method} {url}: 401")));
         }
-        Ok(Answer { status, etag, location, body })
+        Ok(Answer { status, etag, location, dav, body })
     }
 
     fn propfind(&self, url: &str, depth: &str, props: &str) -> Result<(u16, Vec<Response>), SyncError> {
@@ -623,7 +626,12 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
         let url = absolute(home, &response.href);
         let privileges = response.prop(DAV, "current-user-privilege-set");
         let writable = privileges.is_none_or(|p| p.children.iter().any(|(n, k)| n == DAV && matches!(k.as_str(), "write" | "write-content" | "all" | "bind")));
-        let mut id = vdir::folder_id(&response.href);
+        // Google's calendars all end in "/events": named by the calendar's own id before it,
+        // so that one made or listed first never renames another (part 5).
+        let mut id = match response.href.trim_end_matches('/').rsplit_once('/') {
+            Some((before, "events")) if client.is_google() => vdir::folder_id(before),
+            _ => vdir::folder_id(&response.href),
+        };
         // Two collections may end alike on different paths.
         while found.iter().any(|l| l.id == id) {
             id.push('_');
@@ -747,7 +755,8 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
     // Calendars whole first, then contacts: an address book, however big or broken, never holds a calendar back.
     for (kind, home) in [(Kind::Calendars, &homes.calendars), (Kind::Contacts, &homes.contacts)] {
         let Some(home) = home else { continue };
-        // Google makes, renames and deletes no calendar or address book from here.
+        // Google's CalDAV makes, renames and deletes no calendar: its Calendar API does (part 5),
+        // its address books stay as they are.
         if !client.is_google() {
             if let Err(e) = send_changes(client, &account.id, kind) {
                 report.problems.push(e);
@@ -755,6 +764,11 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             if let Err(e) = create_pending(client, &account.id, kind, home) {
                 report.problems.push(e);
             }
+        } else if kind == Kind::Calendars
+            && google_changes_due(&account.id)
+            && let Err(e) = crate::calendars::GoogleApi::new(account.address.as_deref().unwrap_or(login)).and_then(|api| google_changes(&api, &account.id))
+        {
+            report.problems.push(e);
         }
         let mut listed = match collections(client, kind, home) {
             Ok(listed) => listed,
@@ -771,6 +785,7 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         if client.is_google() {
             listed.iter_mut().filter(|l| l.kind == Kind::Calendars && l.components.is_empty()).for_each(|l| l.components = vec!["VEVENT".into()]);
         }
+        keep_ids(&account.id, kind, &mut listed);
         forget_gone(&account.id, kind, &listed);
         match register(&account.id, &listed) {
             Ok(made) => report.registered += made,
@@ -778,8 +793,9 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
         }
         report.listed += listed.len();
         let synced_before = report.collections;
-        // In turns, a slice of time each, until each is whole or failed.
-        let mut pending: Vec<&Listed> = listed.iter().collect();
+        // In turns, a slice of time each, until each is whole or failed; one removed or left
+        // here, and not gone there yet, is not pulled.
+        let mut pending: Vec<&Listed> = listed.iter().filter(|l| !State::load(&vdir::state_path(&account.id, l.kind, &l.id)).removed).collect();
         let mut first = true;
         while !pending.is_empty() {
             let mut again = Vec::new();
@@ -833,8 +849,12 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
         if read("displayname").as_deref() != Some(collection.name.trim()) || read("color") != collection.color.as_ref().map(|c| c.trim().to_string()) {
             changed += 1;
         }
-        let made = vdir::prepare(collection.kind, account, &collection.id, &collection.name, collection.color.as_deref()).map_err(|e| SyncError::Disk(e.to_string())).and_then(|_| {
-            let path = vdir::state_path(account, collection.kind, &collection.id);
+        // A name or a colour changed here and not sent yet stays as it is here.
+        let path = vdir::state_path(account, collection.kind, &collection.id);
+        let before = State::load(&path);
+        let name = if before.renamed { read("displayname").unwrap_or_else(|| collection.name.clone()) } else { collection.name.clone() };
+        let color = if before.recoloured { read("color") } else { collection.color.clone() };
+        let made = vdir::prepare(collection.kind, account, &collection.id, &name, color.as_deref()).map_err(|e| SyncError::Disk(e.to_string())).and_then(|_| {
             let mut state = State::load(&path);
             state.url = collection.url.clone();
             state.read_only = collection.read_only;
@@ -924,14 +944,33 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
         if state.url.is_empty() {
             continue;
         }
-        if state.renamed {
-            let body = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propertyupdate xmlns:d="DAV:"><d:set><d:prop><d:displayname>{}</d:displayname></d:prop></d:set></d:propertyupdate>"#, xml_escape(&collection.name));
+        // Removed here with what it holds (part 5): deleted there whatever it holds, a copy
+        // kept here first (`vdir::remove_collection`); shared with you, the share left (a
+        // sharee's DELETE, as Nextcloud takes it). Refused, it stays hidden here, asked again.
+        if state.removed {
+            let answer = client.send("DELETE", &state.url, &[], None)?;
+            if (200..300).contains(&answer.status) || answer.status == 404 {
+                let _ = std::fs::remove_dir_all(&collection.dir);
+                let _ = std::fs::remove_file(&path);
+            } else if !state.leave {
+                refused.get_or_insert(SyncError::Server(format!("DELETE {}: {}", state.url, answer.status)));
+            }
+            continue;
+        }
+        if state.renamed || state.recoloured {
+            let name = if state.renamed { format!("<d:displayname>{}</d:displayname>", xml_escape(&collection.name)) } else { String::new() };
+            let colour = match collection.color.as_deref() {
+                Some(colour) if state.recoloured => format!("<ic:calendar-color>{}</ic:calendar-color>", xml_escape(colour)),
+                _ => String::new(),
+            };
+            let body = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propertyupdate xmlns:d="DAV:" xmlns:ic="{APPLE}"><d:set><d:prop>{name}{colour}</d:prop></d:set></d:propertyupdate>"#);
             let answer = client.send("PROPPATCH", &state.url, &[("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
             if !(200..300).contains(&answer.status) {
                 refused.get_or_insert(SyncError::Server(format!("PROPPATCH {}: {}", state.url, answer.status)));
                 continue;
             }
             state.renamed = false;
+            state.recoloured = false;
             go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
         }
         if state.deleted {
@@ -950,6 +989,83 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
                 continue;
             }
             go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
+        }
+    }
+    refused.map_or(Ok(()), Err)
+}
+
+/// Each listed collection known here by its address keeps its folder's id,
+/// whatever the listing would name it (a Google calendar made here, a
+/// listing's order): what you said of it stays with it.
+fn keep_ids(account: &str, kind: Kind, listed: &mut [Listed]) {
+    let here: Vec<(String, String)> = vdir::every_collection(kind).into_iter().filter(|c| c.account == account).map(|c| (c.id.clone(), path_key(&State::load(&c.state_path()).url))).filter(|(_, url)| !url.is_empty()).collect();
+    for item in listed.iter_mut() {
+        let key = path_key(&item.url);
+        if let Some((id, _)) = here.iter().find(|(id, url)| *url == key && *id != item.id) {
+            item.id = id.clone();
+        }
+    }
+}
+
+/// Whether a Google account has calendars made, renamed, recoloured, removed or left here.
+fn google_changes_due(account: &str) -> bool {
+    vdir::every_collection(Kind::Calendars).into_iter().filter(|c| c.account == account && c.components.iter().all(|k| k.eq_ignore_ascii_case("VEVENT"))).any(|c| {
+        let state = State::load(&c.state_path());
+        (state.pending && !crate::google_tasks::is_tasks_list(&state.url)) || state.renamed || state.recoloured || state.removed || state.deleted
+    })
+}
+
+/// A Google account's calendars made, changed, removed or left here, told
+/// through its Calendar API (`calendars`): made, its CalDAV address noted
+/// for the listing that follows; one refused, the others still told.
+pub(crate) fn google_changes(api: &crate::calendars::GoogleApi, account: &str) -> Result<(), SyncError> {
+    let mut refused = None;
+    for collection in vdir::every_collection(Kind::Calendars).into_iter().filter(|c| c.account == account) {
+        // Events only: a Google task list is Google Tasks' (`google_tasks`).
+        if !collection.components.iter().all(|k| k.eq_ignore_ascii_case("VEVENT")) {
+            continue;
+        }
+        let path = collection.state_path();
+        let mut state = State::load(&path);
+        let done = if state.pending {
+            api.insert(&collection.name).and_then(|id| {
+                if let Some(colour) = collection.color.as_deref() {
+                    api.colour(&id, colour)?;
+                }
+                state.url = crate::calendars::google_caldav_url(&id);
+                state.pending = false;
+                state.save(&path).map_err(SyncError::Disk)
+            })
+        } else if let Some(id) = crate::calendars::google_id(&state.url) {
+            // Removed (Your agendas), or deleted empty (Agenda ⚙ ▸ Calendars).
+            if state.removed || state.deleted {
+                let gone = if state.leave { api.leave(&id) } else { api.delete(&id) };
+                gone.map(|()| {
+                    let _ = std::fs::remove_dir_all(&collection.dir);
+                    let _ = std::fs::remove_file(&path);
+                })
+            } else if state.renamed || state.recoloured {
+                (|| {
+                    if state.renamed {
+                        api.rename(&id, &collection.name)?;
+                    }
+                    if state.recoloured
+                        && let Some(colour) = collection.color.as_deref()
+                    {
+                        api.colour(&id, colour)?;
+                    }
+                    state.renamed = false;
+                    state.recoloured = false;
+                    state.save(&path).map_err(SyncError::Disk)
+                })()
+            } else {
+                Ok(())
+            }
+        } else {
+            Ok(())
+        };
+        if let Err(e) = done {
+            refused.get_or_insert(e);
         }
     }
     refused.map_or(Ok(()), Err)
@@ -1747,7 +1863,7 @@ fn everything(client: &Client, url: &str, state: &State, known: &BTreeMap<String
 }
 
 /// Text made safe in XML, between tags and between quotes (a component's `name="…"`).
-fn xml_escape(text: &str) -> String {
+pub(crate) fn xml_escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
@@ -2327,6 +2443,70 @@ mod tests {
     fn account(id: &str) -> Account {
         home();
         toml::from_str(&format!("id = \"{id}\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"127.0.0.1\"\n")).unwrap()
+    }
+
+    /// Part 5: a calendar renamed and recoloured here gives the server both
+    /// in one PROPPATCH; one removed here is deleted there whatever it holds,
+    /// its dated copy kept here first; one shared with you and left is a
+    /// sharee's DELETE, and refused stays hidden here without an error; a
+    /// listing keeps each folder's id by its address; Google's calendars are
+    /// named by their own ids, never all "events".
+    #[test]
+    fn names_colours_removals_and_leaving_go_to_the_server() {
+        struct Recorder(std::sync::Mutex<Vec<String>>);
+        impl super::stand_in::Server for Recorder {
+            fn misbehaves(&self, _: &super::stand_in::Request) -> Option<Fault> {
+                None
+            }
+            fn answer(&self, request: &super::stand_in::Request) -> super::stand_in::Reply {
+                self.0.lock().unwrap().push(format!("{} {} {}", request.method, request.path, request.body));
+                match (request.method.as_str(), request.path.as_str()) {
+                    ("PROPPATCH", _) => super::stand_in::Reply::new(207, r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"/>"#),
+                    ("DELETE", "/cal/theirs/") => super::stand_in::Reply::new(403, ""),
+                    ("DELETE", _) => super::stand_in::Reply::new(204, ""),
+                    _ => super::stand_in::Reply::new(405, ""),
+                }
+            }
+        }
+        home();
+        let recorder = Arc::new(Recorder(std::sync::Mutex::new(Vec::new())));
+        let base = super::stand_in::serve(recorder.clone());
+        let make = |name: &str, id: &str| {
+            let made = vdir::create(Kind::Calendars, "p5-sync", name, None, &["VEVENT"]).unwrap();
+            let mut state = State::load(&made.state_path());
+            state.pending = false;
+            state.url = format!("{base}/cal/{id}/");
+            state.save(&made.state_path()).unwrap();
+            vdir::every_collection(Kind::Calendars).into_iter().find(|c| c.account == "p5-sync" && c.id == made.id).unwrap()
+        };
+        let club = make("Swimming", "swimming");
+        let old = make("Old", "old");
+        let theirs = make("Theirs", "theirs");
+        vdir::rename_collection(&club, "Swimming club").unwrap();
+        vdir::recolour_collection(&club, "#4C6B5C").unwrap();
+        std::fs::write(old.dir.join("a.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:kept-in-the-copy\r\nDTSTART:20991110T090000Z\r\nSUMMARY:Lesson\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let copy = vdir::remove_collection(&old).unwrap();
+        assert!(std::fs::read_to_string(&copy).unwrap().contains("UID:kept-in-the-copy"), "the copy first");
+        vdir::stop_showing(&theirs).unwrap();
+        let hidden = |id: &str| !vdir::collections(Kind::Calendars).iter().any(|c| c.account == "p5-sync" && c.id == id);
+        assert!(hidden(&old.id) && hidden(&theirs.id) && !hidden(&club.id));
+        send_changes(&client(), "p5-sync", Kind::Calendars).unwrap();
+        let seen = recorder.0.lock().unwrap().clone();
+        let proppatch = seen.iter().find(|r| r.starts_with("PROPPATCH /cal/swimming/")).expect("one PROPPATCH");
+        assert!(proppatch.contains("<d:displayname>Swimming club</d:displayname>") && proppatch.contains("<ic:calendar-color>#4c6b5c</ic:calendar-color>"), "{proppatch}");
+        assert!(seen.iter().any(|r| r.starts_with("DELETE /cal/old/")) && seen.iter().any(|r| r.starts_with("DELETE /cal/theirs/")), "{seen:?}");
+        assert!(!old.dir.exists(), "gone here once gone there");
+        assert!(hidden(&theirs.id) && theirs.dir.exists(), "refused: still hidden, nothing lost");
+        let state = State::load(&club.state_path());
+        assert!(!state.renamed && !state.recoloured);
+        // A listing names it otherwise: it keeps its folder's id by its address.
+        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false }];
+        keep_ids("p5-sync", Kind::Calendars, &mut listed);
+        assert_eq!(listed[0].id, club.id);
+        for c in [club, theirs] {
+            let _ = std::fs::remove_dir_all(&c.dir);
+            let _ = std::fs::remove_file(c.state_path());
+        }
     }
 
     fn client() -> Client {

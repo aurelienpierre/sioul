@@ -661,6 +661,36 @@ pub fn set_set(path: &Path, name: &str, set: Option<&Set>) -> Result<(), String>
     })
 }
 
+/// Your availability's share written (`[agenda.availability]`), or taken out (none).
+pub fn set_availability(path: &Path, availability: Option<&crate::availability::Availability>) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        if !doc.contains_key("agenda") {
+            if availability.is_none() {
+                return Ok(());
+            }
+            doc["agenda"] = toml_edit::table();
+        }
+        let agenda = doc["agenda"].as_table_mut().ok_or_else(|| format!("{}: agenda is not a table", path.display()))?;
+        match availability {
+            Some(availability) => {
+                let text = toml::to_string(availability).map_err(|e| e.to_string())?;
+                let table: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+                let mut table = table.as_table().clone();
+                table.set_implicit(false);
+                agenda.insert("availability", toml_edit::Item::Table(table));
+            }
+            None => {
+                agenda.remove("availability");
+            }
+        }
+        if agenda.is_empty() {
+            doc.remove("agenda");
+        }
+        crate::config::write_document(path, &doc)
+    })
+}
+
 /// Follow-up tasks on or off (`[agenda] follow_ups`): on, the default, takes your word out.
 pub fn set_follow_ups(path: &Path, on: bool) -> Result<(), String> {
     crate::filelock::with_lock(path, || {

@@ -133,7 +133,10 @@ pub fn state_path(account: &str, kind: Kind, id: &str) -> PathBuf {
 
 /// Every collection of a kind, from every account, by account then name.
 pub fn collections(kind: Kind) -> Vec<Collection> {
-    every_collection(kind).into_iter().filter(|c| !State::load(&c.state_path()).deleted).collect()
+    every_collection(kind).into_iter().filter(|c| {
+        let state = State::load(&c.state_path());
+        !state.deleted && !state.removed
+    }).collect()
 }
 
 /// The mark of an account switched off, in its folder of each kind.
@@ -563,6 +566,126 @@ pub fn rename_collection(collection: &Collection, name: &str) -> Result<(), Stri
     Ok(())
 }
 
+/// A collection's colour changed here ("#rrggbb"; "" none); the next sync tells the server.
+pub fn recolour_collection(collection: &Collection, colour: &str) -> Result<(), String> {
+    if collection.read_only {
+        return Err(format!("{}: read only", collection.name));
+    }
+    let colour = colour.trim();
+    if !colour.is_empty() && !(colour.len() == 7 && colour.starts_with('#') && colour[1..].chars().all(|c| c.is_ascii_hexdigit())) {
+        return Err(format!("{colour}: a colour as #rrggbb"));
+    }
+    if colour.is_empty() {
+        let _ = std::fs::remove_file(collection.dir.join("color"));
+    } else {
+        crate::filelock::replace(&collection.dir.join("color"), colour.to_ascii_lowercase().as_bytes()).map_err(|e| e.to_string())?;
+    }
+    let path = collection.state_path();
+    let mut state = State::load(&path);
+    if collection.account != LOCAL && !state.pending {
+        state.recoloured = true;
+        state.save(&path)?;
+    }
+    Ok(())
+}
+
+/// Where a collection removed here is copied first: one dated `.ics` file
+/// per removal, in the state folder (`removed-agendas/`), never shared.
+pub fn removed_copies() -> PathBuf {
+    crate::config::state_dir().join("removed-agendas")
+}
+
+/// Every item of a collection in one calendar file: its zones once each,
+/// then each event and task as its file holds it. What a removal keeps.
+pub fn collection_as_ics(collection: &Collection) -> String {
+    let mut zones: Vec<(String, Vec<String>)> = Vec::new();
+    let mut parts: Vec<String> = Vec::new();
+    for path in collection.items() {
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let mut block: Vec<String> = Vec::new();
+        let mut depth = 0usize;
+        let mut zone: Option<String> = None;
+        for line in crate::lines::unfold(&text) {
+            let (name, value) = (crate::lines::name(&line), crate::lines::value(&line).trim().to_ascii_uppercase());
+            if depth == 0 && name == "BEGIN" && matches!(value.as_str(), "VEVENT" | "VTODO" | "VTIMEZONE" | "VJOURNAL") {
+                block.clear();
+            }
+            if name == "BEGIN" && value != "VCALENDAR" {
+                depth += 1;
+            }
+            if depth > 0 {
+                block.push(line.clone());
+                if depth == 1 && name == "TZID" && zone.is_none() {
+                    zone = Some(crate::lines::value(&line).trim().to_string());
+                }
+            }
+            if name == "END" && value != "VCALENDAR" && depth > 0 {
+                depth -= 1;
+                if depth == 0 {
+                    match zone.take() {
+                        Some(tzid) if value == "VTIMEZONE" => {
+                            if !zones.iter().any(|(id, _)| *id == tzid) {
+                                zones.push((tzid, block.clone()));
+                            }
+                        }
+                        _ => parts.push(crate::lines::fold(&block)),
+                    }
+                }
+            }
+        }
+    }
+    let mut out = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\n");
+    out.push_str(&crate::lines::fold(&[format!("X-WR-CALNAME:{}", crate::lines::escape(&collection.name))]));
+    for (_, block) in &zones {
+        out.push_str(&crate::lines::fold(block));
+    }
+    for part in &parts {
+        out.push_str(part);
+    }
+    out.push_str("END:VCALENDAR\r\n");
+    out
+}
+
+/// A collection removed with everything it holds: a dated copy first
+/// (`removed_copies`, whose path is returned), then hidden here, and deleted
+/// on its server by the next sync, whatever it holds there; one never sent,
+/// or this computer's own, at once. Never one you only read: someone else's
+/// is left (`stop_showing`), never removed.
+pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
+    if collection.read_only {
+        return Err(format!("{}: read only", collection.name));
+    }
+    let folder = removed_copies();
+    std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    let stamp = crate::zone::now().strftime("%Y-%m-%d-%H%M%S").to_string();
+    let copy = folder.join(format!("{}-{}-{stamp}.ics", collection.account, collection.id));
+    crate::filelock::replace(&copy, collection_as_ics(collection).as_bytes()).map_err(|e| format!("{}: {e}", copy.display()))?;
+    let path = collection.state_path();
+    let mut state = State::load(&path);
+    if collection.account == LOCAL || state.pending {
+        let _ = std::fs::remove_dir_all(&collection.dir);
+        let _ = std::fs::remove_file(&path);
+        return Ok(copy);
+    }
+    state.removed = true;
+    state.save(&path)?;
+    Ok(copy)
+}
+
+/// A calendar shared with you no longer shown: hidden here, and the next
+/// sync leaves the share where the server lets a sharee leave it (Nextcloud,
+/// Google); its owner's calendar is never deleted.
+pub fn stop_showing(collection: &Collection) -> Result<(), String> {
+    let path = collection.state_path();
+    let mut state = State::load(&path);
+    if collection.account == LOCAL || state.url.is_empty() {
+        return Err(format!("{}: not shared with you from a server", collection.name));
+    }
+    state.removed = true;
+    state.leave = true;
+    state.save(&path)
+}
+
 /// The items a collection holds here: events, tasks or contacts.
 pub fn holds_items(collection: &Collection) -> bool {
     std::fs::read_dir(&collection.dir).into_iter().flatten().filter_map(Result::ok).any(|e| {
@@ -689,6 +812,20 @@ pub struct State {
     /// server, unless something was put in it there meanwhile.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deleted: bool,
+    /// Its colour changed here: the next sync gives it to the server
+    /// (`calendar-color`; Google's calendar list).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub recoloured: bool,
+    /// Removed here with what it holds, after a dated copy (`remove_collection`):
+    /// hidden, and the next sync deletes it on the server (DELETE; Google's
+    /// calendars.delete), whatever it holds there.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub removed: bool,
+    /// Shared with you, and no longer shown (`stop_showing`): the next sync
+    /// leaves the share (a sharee's DELETE on Nextcloud; Google's
+    /// calendarList.delete), the calendar staying its owner's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub leave: bool,
     /// The form its tasks and events were rewritten in, once
     /// (`interop::FORMAT`, `interop::migrate_folder`); 0 before.
     #[serde(default, skip_serializing_if = "is_zero")]

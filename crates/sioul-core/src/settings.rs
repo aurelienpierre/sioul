@@ -156,10 +156,13 @@ impl Builder<'_> {
             .filter(|c| holding.is_empty() || c.holds(holding))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
-                // Google's calendars and address books change on its own pages only.
+                // Google's calendars change through its Calendar API (part 5);
+                // its address books and task lists on its own pages only.
                 locked: if c.read_only {
                     self.tr.text("collection-read-only", None)
-                } else if provider_of_collection(config.account(&c.account), &c) == Provider::Google {
+                } else if provider_of_collection(config.account(&c.account), &c) == Provider::Google
+                    && !(kind == crate::vdir::Kind::Calendars && !c.components.is_empty() && c.components.iter().all(|k| k.eq_ignore_ascii_case("VEVENT")))
+                {
                     self.tr.text("google-fixed-collection", None)
                 } else {
                     String::new()

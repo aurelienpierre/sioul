@@ -569,6 +569,9 @@ pub struct AgendaSettings {
     /// Named sets of agendas for the filter (`[agenda.sets."<name>"]`, `agendas::Set`).
     #[serde(default)]
     pub sets: std::collections::BTreeMap<String, crate::agendas::Set>,
+    /// Your availability, shared with one person (`[agenda.availability]`, part 5).
+    #[serde(default)]
+    pub availability: Option<crate::availability::Availability>,
 }
 
 impl AgendaSettings {

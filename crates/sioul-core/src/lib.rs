@@ -189,6 +189,7 @@ pub mod appointments;
 pub mod appnotes;
 pub mod areafilter;
 pub mod areas;
+pub mod availability;
 pub mod attention;
 pub mod bank;
 pub mod blocks;

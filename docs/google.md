@@ -22,7 +22,7 @@ Thunderbird ships its own Google key: an OAuth client Mozilla registered with Go
 Sioul does the same once its maintainer has registered a key for it, and reads it at build time: `SIOUL_GOOGLE_CLIENT_ID` and `SIOUL_GOOGLE_CLIENT_SECRET` in the environment of `cargo build` (a release workflow's secrets, not the repository). A build without them asks for a key of your own, as before.
 
 **Registering Sioul's key, once, by its maintainer:**
-1. A Google Cloud project for Sioul; *APIs & Services → Library*: **CalDAV API**, **CardDAV API**, **Google Tasks API**.
+1. A Google Cloud project for Sioul; *APIs & Services → Library*: **CalDAV API**, **CardDAV API**, **Google Tasks API**, **Google Calendar API** (calendars made, coloured, removed and shared, since part 5 of the agendas).
 2. *Google Auth Platform*: *Branding* (Sioul's name, logo, a homepage and a privacy policy on a domain you own, verified in Google Search Console; authorised domains); *Audience*, External; *Data access*: the three scopes above. *Clients → Create client → Desktop app*.
 3. *Audience → Publish app*. From then on, sign-ins no longer end after seven days, even before verification: Google shows "Google hasn't verified this app" (*Advanced → Go to Sioul*) and lets at most 100 people sign in.
 4. *Verification Center*: calendar, contacts (CardDAV) and tasks are **sensitive** scopes, not restricted ones (Gmail's are): no paid security assessment, but a written reason for each scope, a demonstration video of the sign-in and of what each scope is used for, and the privacy policy saying how Google data is used (it stays on the person's device; Sioul has no server). Google answers in about three to five working days.
@@ -34,7 +34,7 @@ What the privacy policy must say, at least: which Google data Sioul reads and wr
 Without Sioul's key in the build, or if you prefer yours, you make one, free, in about fifteen minutes (the same steps are in the Accounts page):
 
 1. On [console.cloud.google.com](https://console.cloud.google.com), make a project named Sioul.
-2. *APIs & Services → Library*: turn on **CalDAV API**, **CardDAV API** and **Google Tasks API** (not "Google Calendar API" or "People API": those are other doors).
+2. *APIs & Services → Library*: turn on **CalDAV API**, **CardDAV API**, **Google Tasks API** and **Google Calendar API** (it makes, colours, removes and shares calendars; not "People API": another door). A key made before November 2026 without the Calendar API still syncs; making or sharing an agenda then says to turn it on.
 3. *Google Auth platform*: *Branding*, a name and your address; *Audience*, External, yourself as a test user; *Data access*, the scopes `https://www.googleapis.com/auth/calendar`, `https://www.googleapis.com/auth/carddav` (typed by hand) and `https://www.googleapis.com/auth/tasks`.
 4. *Clients → Create client → Desktop app*. Copy its ID and its secret at once: Google shows the secret only at creation.
 5. *Audience → Publish app*. Left in testing, Google ends every sign-in after seven days. No verification is needed for your own use (under 100 users). A sign-in made while the project was in testing still ends on its seventh day: sign in again once after publishing.
@@ -80,7 +80,15 @@ The steps for a key of your own are in the form (*How to make your Google key*):
 ## Calendars (CalDAV)
 - Found from the address: the principal `https://apidata.googleusercontent.com/caldav/v2/<address>/user`, then its calendar home.
 - Which calendars come is chosen on Google's page [calendar.google.com/calendar/syncselect](https://calendar.google.com/calendar/syncselect).
-- **Not from Sioul**: making, renaming or deleting a calendar (no MKCALENDAR, no PROPPATCH of names): greyed in the settings, with why. Google's calendars hold no task: greyed in a task's list.
+- **Made, renamed, recoloured, removed and shared from Sioul** (Agenda ⚙ ▸ Your agendas, part 5, 4 November 2026; `crates/sioul-sync/src/calendars.rs`): Google's CalDAV makes, renames and deletes no calendar (no MKCALENDAR, no PROPPATCH of names), so these go through the **Calendar API v3** (`https://www.googleapis.com/calendar/v3`), with the same access token and the scope Sioul already asks (`…/auth/calendar`):
+  - a new agenda: `calendars.insert` (`summary`; "creates a secondary calendar", the account its owner), then `calendarList.patch?colorRgbFormat=true` for its colour (`backgroundColor`, `foregroundColor`); its CalDAV address `…/caldav/v2/<id>/events/` is noted, and the next listing finds it;
+  - renamed: `calendars.patch` (`summary`); recoloured: `calendarList.patch`, the colour being your calendar list's, not the calendar's;
+  - removed: `calendars.delete`, said as final, after a dated `.ics` copy here; Google "deletes a secondary calendar" and points to `calendars.clear` for the primary one, so a Google account's main calendar (its id the address) is never offered for removal;
+  - someone else's, no longer shown: `calendarList.delete`, the calendar left in its owner's account;
+  - shared: its ACL, `acl.list` (every page), `acl.insert` with role `freeBusyReader`, `reader` or `writer` and scope `user` (an address) or `default` (anyone: the link `https://calendar.google.com/calendar/ical/<id>/public/basic.ics`), `acl.delete` by rule id (`user:<address>`, `default`); the owner's own rule is left out of what the line says; readers see a private event without its details;
+  - your availability: the calendars picked shared `freeBusyReader` with one address, nothing copied.
+  What is made, renamed, recoloured, removed or left waits for the next sync, which tells the API before listing (`dav::google_changes`); sharing is asked at once. A calendar's folder takes its name from the calendar's id, and an existing folder keeps its id by its address (`dav::keep_ids`). Sources: Calendar API v3 reference, `calendars`, `calendarList` (`patch`), `acl` (read 4 November 2026). Google's calendars hold no task: greyed in a task's list.
+- **Turn on the Google Calendar API** in the key's project: without it, Google answers 403 (`accessNotConfigured`, or `SERVICE_DISABLED` in its details: the shape not checked against Google itself), and the window says what to turn on (`calendars::api_off`, `agenda-google-api-off`). Sync, events and tasks go on without it.
 - New events go without `If-None-Match` (Google takes `If-Match` only); where Google files them (its `Location`) is where they are known, and Google's version comes back at the next pull.
 - Google adds your calendar's default reminders to every event it receives, and shifts floating times; both come back as Google keeps them.
 
@@ -102,8 +110,9 @@ Google's CalDAV refuses tasks; its task lists come over the Google Tasks API (`g
 ## What was tested
 - The sign-in's pieces: the page asked (PKCE challenge, state, scopes, login hint), the answer read on the loopback port (a favicon request first, Cancel), the ID token's address.
 - Google Tasks against a stand-in of its API (`tools/google-tasks-stand-in.py`, pages of two): first sync with a step under its task, edits both ways, a new step under its parent, deletions, a list made, renamed and deleted here, a list deleted there.
+- The Calendar API against a stand-in (`calendars::tests::google_makes_shares_and_deletes_a_calendar`): a calendar inserted and coloured, a person granted busy times only and revoked, the link on and off, the owner's own rule left out of what is read, the calendar left (calendar list) and deleted, its CalDAV address and id both ways. The ACL's pages are read in the code, not in the stand-in (one page).
 - Mail: the XOAUTH2 string against Google's own example (`sasl.rs`), IMAP `AUTHENTICATE XOAUTH2` and SMTP `AUTH XOAUTH2` against stand-ins that refuse a token as Google does (its JSON reason, the empty line awaited) then take a fresh one; the refresh token traded for an access token against a stand-in of Google's token endpoint, a refusal said as "sign in again", or as the seven-day end of a project in testing; the mail's scope asked apart from the calendars'; Google's mail recognised by its domains and by MX stand-ins (lookalike names refused); an answer waiting in the system's queue read after the time is up.
-- **Not tested against Google itself** (no Google account was used): the token exchange, Google's CalDAV and CardDAV answers (discovery, whether a PUT of a new contact is refused or relocated, its `Location`), Google Tasks' own answers, Gmail's IMAP and SMTP with a real token or a real app password, the sign-in on a phone. The first real sign-in is the test; what fails says so in the account's line.
+- **Not tested against Google itself** (no Google account was used): the token exchange, Google's CalDAV and CardDAV answers (discovery, whether a PUT of a new contact is refused or relocated, its `Location`), Google Tasks' own answers, the Calendar API's own answers (an insert's id and the CalDAV address it gives, `colorRgbFormat`, ACL rule ids, the refusal when the API is off), Gmail's IMAP and SMTP with a real token or a real app password, the sign-in on a phone. The first real sign-in is the test; what fails says so in the account's line.
 
 ## Files
 - `crates/sioul-sync/src/google.rs`: the sign-in, the tokens, the revocation; Sioul's own key, read at build time (`built_in`), and the seven-day end of a project in testing, told as such (`IN_TESTING`); calendars and mail as two purposes, each its grant (`Purpose`).
@@ -112,4 +121,5 @@ Google's CalDAV refuses tasks; its task lists come over the Google Tasks API (`g
 - `crates/sioul-app/src/gmail.rs`, `qml/GoogleMail.qml`: the mail's sign-in in the window, and its app password.
 - `crates/sioul-sync/src/dav.rs`: the bearer token, Google's discovery and its quirks.
 - `crates/sioul-sync/src/google_tasks.rs`: Google Tasks.
+- `crates/sioul-sync/src/calendars.rs`: the Calendar API v3 (`GoogleApi`: calendars, calendar list, ACL), and Nextcloud's DAV sharing; `crates/sioul-app/src/servers.rs`: Agenda ⚙ ▸ Your agendas' presses.
 - `crates/sioul-core/src/capabilities.rs`: what each kind of server keeps, for the greyed fields and the warnings before a move.

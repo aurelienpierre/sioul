@@ -2912,7 +2912,7 @@ ui-google-own-key = Use a Google key of my own
 ui-google-steps = How to make your Google key (once, about fifteen minutes)
 ui-google-steps-text =
     1. On [console.cloud.google.com](https://console.cloud.google.com), make a project named Sioul.
-    2. In *APIs & Services → Library*, turn on **CalDAV API**, **CardDAV API** and **Google Tasks API**.
+    2. In *APIs & Services → Library*, turn on **CalDAV API**, **CardDAV API**, **Google Tasks API** and **Google Calendar API** (which makes, colours and shares calendars).
     3. In *Google Auth platform*: *Branding*, a name and your address; *Audience*, External, and yourself as a test user; *Data access*, the scopes `…/auth/calendar`, `…/auth/carddav` and `…/auth/tasks`.
     4. *Clients → Create client → Desktop app*. Copy its ID and its secret now: Google shows the secret only once.
     5. *Audience → Publish app*. Left in testing, Google ends the access every seven days.
@@ -2950,8 +2950,8 @@ google-mail-no-key = No Google key of yours is kept on this device for { $addres
 google-mail-unticked = Google gave no access to your mail: on Google's page, leave Gmail's access ticked ("Read, compose, send, and permanently delete all your email from Gmail"). Nothing changed.
 sync-error-google-again = { $account }: Google asks you to sign in again.
 sync-error-google-testing = { $account }: Google ended the sign-in after seven days, as it does while your Google project is in testing. In Google Cloud: Google Auth Platform ▸ Audience ▸ Publish app; then sign in again: it lasts after that.
-google-no-collections = Google makes no calendar or address book from another program: make it on Google's pages.
-google-fixed-collection = Google renames and deletes its calendars and address books on its own pages only.
+google-no-collections = Google makes no address book from another program: make it on Google's pages. A calendar is made in Agenda ⚙ ▸ Your agendas.
+google-fixed-collection = Google renames and deletes its address books and task lists on its own pages only.
 google-tasks-greyed = Google Tasks does not keep this.
 task-limited = This list is on Google Tasks: what Google does not keep is greyed (a start day, a length, a project, a kind, office hours, categories, what it takes, repeating, waiting for another task, steps of steps).
 
@@ -3792,6 +3792,87 @@ agendas-group-shared = Shared with you
 agendas-kept-hidden = kept hidden
 agenda-keep-hidden = Keep hidden on this device
 agenda-show-again = Show again
+# Agendas on their servers (several agendas, part 5): made, renamed, recoloured, removed, shared.
+agenda-server-here = this computer
+agenda-new = New agenda…
+agenda-new-account = Account
+agenda-new-name = Its name
+agenda-new-events = Events
+agenda-new-tasks = Tasks
+agenda-new-make = Make it
+agenda-new-needs-name = A new agenda needs a name.
+agenda-new-no-account = That account holds no agendas: choose one for calendars, or this computer.
+agenda-colour = Colour
+agenda-not-yours-to-change = This agenda is not yours to change: it is someone else’s, or its server lets you read it only.
+agenda-renamed = Renamed “{ $name }”.
+agenda-recoloured = Colour changed.
+agenda-remove = Remove…
+agenda-stop-showing = Stop showing…
+agenda-remove-confirm = Remove
+agenda-leave-confirm = Stop showing
+agenda-keep = Keep it
+agenda-remove-question = Remove “{ $name }”, { $count ->
+        [one] one { $what ->
+            [tasks] task
+           *[events] event
+        }
+       *[other] { $count } { $what ->
+            [tasks] tasks
+           *[events] events
+        }
+    }, from { $server }?
+agenda-remove-google-final = Google keeps no copy of a removed calendar: it is final.
+agenda-remove-google-primary = Google keeps your main calendar: it cannot be removed, only renamed and recoloured.
+agenda-remove-nextcloud-trash = Nextcloud keeps it in its trash bin for 30 days, unless its administrator chose another time.
+agenda-remove-server-may-keep = Its server may keep it for a while, or not at all. Sioul keeps a copy first.
+agenda-removed = “{ $name }” removed. A copy of it is in { $copy }.
+agenda-leave-question = Stop showing “{ $name }”? It stays its owner’s, who may share it again.
+agenda-leave-note = Sioul leaves the share where its server lets you; elsewhere it is no longer shown here.
+agenda-left = “{ $name }” is no longer shown.
+agenda-sharing = Who sees it
+agenda-sharing-reading = Asking its server…
+agenda-sharing-here = This agenda is on this computer alone: Sioul’s own sharing carries it to your devices.
+agenda-sharing-not-yet = This agenda is not on its server yet: its next sync makes it.
+agenda-google-api-off = Google refused: the Google Calendar API is turned off in the Google project of your key. Turn it on in console.cloud.google.com, APIs & Services → Library, then try again.
+agenda-sharing-none = This server does not share from Sioul.
+agenda-sharing-only-you = Only you.
+agenda-sharing-the-other-parent = { $who }, the other parent,
+agenda-sharing-write = { $who } can change it.
+agenda-sharing-read = { $who } can read it.
+agenda-sharing-busy = { $who } sees when you are busy.
+agenda-sharing-link = Anyone with the link can read it.
+agenda-sharing-nextcloud-note = People and groups of this Nextcloud alone; someone elsewhere is reached by the link. Those you share it with, and the link, never see a private event, and those who only read it see a confidential one as “Busy”, its time alone.
+agenda-sharing-google-note = Those who read it see a private event without its details.
+agenda-share-with = A name on this server, or an address
+agenda-share-read = Can read
+agenda-share-write = Can change
+agenda-share-busy = Sees when busy
+agenda-share-group = A group
+agenda-share = Share
+agenda-unshare = Stop sharing with { $who }
+agenda-unshared = No longer shared with { $who }.
+agenda-share-google-address = Give an email address: Google shares with an account.
+agenda-share-elsewhere = Someone on another server: turn the link on, and send it to them.
+agenda-link-on = A read-only link
+agenda-link-copy = Copy the link
+agenda-link-google-sees = Anyone with the link sees every event of it, private ones without their details.
+agenda-link-nextcloud-sees = Anyone with the link sees its events, their titles, times and places; a confidential one as “Busy”, a private one not at all.
+availability-title = Share my availability…
+availability-from = From
+availability-with = With: a name on this server, or an address on Google
+availability-link = By a read-only link instead
+availability-word = A word for its blocks
+availability-share = Share
+availability-stop = Stop sharing
+availability-calendar = Busy times
+availability-busy = Busy
+availability-by-link = anyone with its link
+availability-shared = Your busy times are shared with { $who }.
+availability-pending = Your busy times will be shared with { $who } once their calendar is on its server.
+availability-already = Your availability is shared already: stop it first.
+availability-pick = Pick the agendas your busy times come from.
+availability-google-own = Pick calendars of this Google account: Google shares its own calendars’ busy times.
+availability-stopped = Your busy times are no longer shared.
 # Children's events (several agendas, part 3): who takes each, the stand-ins, the invitations.
 holder-title = Who takes it
 holder-kind = Kind

@@ -129,6 +129,19 @@ An agenda that is someone else's shows, and holds none of your time: your plan l
 
 **Agendas**, at the top of the page, chooses which agendas every view shows: the agendas grouped by whose they are, a box for each and one for each group, each group folded or open. At first it shows what your hours admit: no work agenda in the evening. What you tick holds until your working hours change, then your hours decide again; **As the hours say** gives them back at once. A calendar you hid with an older Sioul's **Show** stays hidden on this device: the list names it "kept hidden", unticked, and ticking it shows it until your hours change; **Show again**, on its line in **Agenda ⚙ ▸ Your agendas**, ends that, and **Keep hidden on this device** hides another for good. **Keep these as a set…** names the agendas shown ("Tom and Léa", "My week"), and may tie them to your times: in leisure, say, the set is what shows unless you say. A set's button shows it at once, until your hours change; × forgets it. The same choice follows you from **Day** to **Week**, to the Month and to What comes, and to the Tasks page, where **Agendas** lists your task lists: a list left out keeps its tasks out of every view there, your plan whole. On a phone the list opens from the bottom of the screen.
 
+## Your agendas on their servers {#agendas-on-their-servers}
+
+Agenda ⚙ ▸ **Your agendas** makes, renames, recolours, removes and shares your agendas on the server that holds them: Nextcloud and other CalDAV servers, Google, or this computer.
+
+- **New agenda…** asks for the account, a name, a colour, and whether it holds events, tasks or both; in the same form, whose it is, what it is for and when it reaches you, so the new agenda arrives with its role. A Google calendar holds events only. It is on its server after the next sync.
+- **Its name**, typed on its line, and **Colour**, on each agenda of yours, change it here at once and on its server at the next sync, with Undo.
+- **Remove…** says first what goes, in one sentence: "Remove “Swimming”, 42 events, from cloud.example.org?", and what the server keeps: Nextcloud keeps a removed calendar in its trash bin for 30 days by default; Google keeps nothing, so it is final. Before anything goes, Sioul keeps a copy of the whole agenda as a dated `.ics` file in its state folder, and says where. There is no Undo: that copy is the way back. A Google account's main calendar cannot be removed.
+- **Stop showing…** takes the place of Remove on an agenda that is someone else's, or that you can only read: it stays its owner's. On Nextcloud your share of it ends; on Google it leaves your calendar list.
+- **Who sees it**, on each line of an agenda on a server: "Only you", "Sam can read it", "Sam can change it", "Anyone with the link can read it"; on a child's or another parent's agenda, the other parent is named so. Add a person, or **A group** on Nextcloud, who **Can read** or **Can change**; × stops sharing with them, with Undo. **A read-only link** turns a link on or off, and **Copy the link** copies it; turned on, it says once what anyone with it sees. On Nextcloud, you share with people of the same server; someone elsewhere is reached by the link. Those you share with never see a private event, and those who only read it see a confidential one as "Busy", its time alone; on Google, readers see a private event without its details. A server that does not share says "This server does not share from Sioul." Nothing is shared unless you ask.
+- **Share my availability…** gives one person your busy times, never what fills them, from the agendas of yours you pick. On Google, those calendars are shared with one address for their busy times alone, and nothing is copied. On Nextcloud, Sioul makes a calendar of its own, "Busy times", fills it with plain blocks from the agendas you pick, keeps it up to date with your plan, and shares it, read only, with one person of the server or by its link. Each block says "Busy", or a word you give an agenda ("Work"). **Stop sharing** takes the share back, and removes the calendar Sioul made.
+
+An AI agent never makes, removes or shares an agenda: these are your own presses.
+
 ## Children's events {#childrens-events}
 
 A child's agenda says who may take its events: you, and the other parent, by name and address, in the Agenda settings, **Your agendas**, on its line. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist").
@@ -184,10 +197,10 @@ The ⚙ at the top of the page:
 
 - **Time zone**: **Follow this device** at first (its zone named): the agenda, the plan, the reminders, the home screen's card and today itself follow the zone the device is in, and follow it when it changes (a phone landing elsewhere, a computer's zone changed) within a minute, without restarting. Or **Another time zone…**, found by typing part of its name: for a computer whose clock stays at home while you travel, or to see your days where you are going. An event never moves: only how its time reads changes. This setting stays on this device. Health keeps the system's clock, as its dose alarms do.
 
-- **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays. One you can only read says so, and is never offered for a new event.
+- **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays (**Remove** in **Your agendas** removes it whole, a copy kept). One you can only read says so, and is never offered for a new event.
 - **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
 - **Time kept between two events**: 0 at first. Closer than this, two events are tight, never at the same time.
-- **Your agendas**: what each agenda is: whose, what for, when it reaches you, what you may do with it ([Several agendas](#several-agendas)).
+- **Your agendas**: what each agenda is: whose, what for, when it reaches you, what you may do with it ([Several agendas](#several-agendas)); new agendas, their names, colours, removal and who sees them ([Your agendas on their servers](#agendas-on-their-servers)).
 - **Conflicts**: which agendas are compared beyond the rule, a box for each pair ([Two events at once](#two-events-at-once)).
 - **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
 - **The day starts at**: the hour the day and week views start on when neither your nights (set in [Health](health.md)) nor your hours say otherwise.
@@ -198,7 +211,7 @@ The ⚙ at the top of the page:
 
 On your calendar server, as standard CalDAV events: your phone and other programs see them. Times keep their time zone and show in yours. An event on another clock than yours says both its times in the lists, in its card and on the home screen's card ("16:00 – 17:00 here · 15:00 – 16:00 UTC"); the Day and the Week draw it at its time here. Editing in Sioul changes only what you changed: a guest list, an alarm or another program's fields stay as they were. What you set in Sioul (Before and After, **Remind**, what the event asks of you) is written into the event itself, so it follows the event to your other devices; your server and your other apps can read it, as they read the event.
 
-Google calendars are made, renamed and deleted on Google's own pages; Sioul greys those settings, and says why.
+Google calendars are made, renamed, recoloured, removed and shared from Sioul through Google's Calendar API; a key of your own needs that API turned on ([Accounts](accounts.md)), and Sioul says so when it is not.
 
 **How far back mail and the agenda reach** is set at the top of [Accounts](accounts.md#your-accounts).
 
@@ -206,7 +219,7 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here, are planned. Not built either: inviting people from Sioul, except to offer a child's event to another parent; sharing your own busy times with someone (**Share my availability…**); exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
+Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: inviting people from Sioul, except to offer a child's event to another parent; sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
 
 ## Going further {#going-further}
 
@@ -232,6 +245,8 @@ Most separated parents run their days side by side rather than together (Maccoby
 The page of who does what shows no totals per parent. Co-parenting apps' records "may encourage petty account-keeping" (Relationships Australia Victoria 2024), and keeping a tally of each one's part is how people behave in an exchange, and what they avoid with those close to them (Clark 1984). Each item says who takes it, and since when: that is the tracking.
 
 An agenda shared with you to show when someone is busy stays yours to read. "A shared calendar may set the expectation that co-parents have the right to monitor each other's movements" (Relationships Australia Victoria 2024), and people keep separate calendars so as not to open their whole lives to scrutiny (Thayer et al. 2012). So its busy times show only to you, as plain bands without titles, and Sioul never shares them again, exports them or gives them to an agent.
+
+When you share your own, a bare "busy" can read as secrecy between partners: 26 of 30 people in one study found it suspect (Thayer et al. 2012). So your blocks say "Busy" at first, and you may add a word to them for a partner.
 
 More in [what the research says](../dev/research.md), findings 46 to 54.
 
@@ -329,7 +344,7 @@ As of November 2026, from each app's own documentation.
     | Puts the event taken in the taker's own calendar, tied to the child's | ✓⁷ | partly⁸ | partly⁹ | partly¹⁰ | ? | partly¹¹ | partly¹² |
     | Enters someone's calendar only once they accept | ✓ | ✗¹³ | ✓ | ✗ | ✗¹⁴ | ? | ? |
     | Warns when one person is needed in two places, across agendas | ✓¹⁵ | ✗ | ? | ✗ | ✗ | ? | partly¹⁶ |
-    | Shares your availability as busy times only | ✗¹⁷ | ✗ | ? | ✗ | ✗ | ✓¹⁸ | partly¹⁹ |
+    | Shares your availability as busy times only | ✓¹⁷ | ✗ | ? | ✗ | ✗ | ✓¹⁸ | partly¹⁹ |
     | A dated record of who took what | ✓²⁰ | ✓²¹ | partly²² | ✓²³ | ? | partly²⁴ | ✗ |
 
     1. One holder per event or task of a child's agenda, two when one parent takes the child there and the other brings them back; a kind of thing, such as the dentist, can keep its holder.
@@ -348,7 +363,7 @@ As of November 2026, from each app's own documentation.
     14. Each calendar's members see its events.
     15. Your agendas' events, the child events you take and the invitations you accepted; the pairs of agendas compared are in the Agenda settings.
     16. Mirroring blocks the time in another calendar, which prevents a double booking rather than warning of it.
-    17. Planned, not built yet: a calendar of busy blocks, made in one of your CalDAV accounts from the agendas you pick, for one person at a time.
+    17. On Google, your calendars shared with one address for their busy times alone; elsewhere a calendar of busy blocks, made in one of your CalDAV accounts from the agendas you pick, for one person at a time.
     18. "See only free/busy (hide details)", person by person.
     19. Mirrors as "Blocked Time".
     20. Who took what, and when; never when something was read.
@@ -440,7 +455,7 @@ As of November 2026, from each app's own documentation.
 - **Time zones**: the zone shown is this device's own (`TZ`, else `/etc/localtime`, else the zone Android said at its change for six minutes, else the system's), looked at again each second, or the one chosen in `agenda.time_zone`, kept on this device. An event's own clock is its `DTSTART`'s: on the zone shown, `TZID=<zone>` with its `VTIMEZONE`; on UTC or another zone, `TZID=<that zone>` with its `VTIMEZONE`. A one-off event at its instant in UTC (`…Z`, as many programs write an instant) names no clock and shows in your zone alone; a series in UTC repeats in UTC. Never a floating time. The dose path keeps the system's clock.
 - **Sioul's own properties** travel inside the event: `X-SIOUL-BEFORE` and `X-SIOUL-AFTER` (minutes, a day at most), `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-REMIND` and `X-SIOUL-TASK` for a task's time block. `X-SIOUL-REMIND` is deliberately not a `VALARM`, so that your other calendar apps do not ring it twice, and so that "not this one" can be said. Ties are RFC 9253's links and relations, written under Sioul's own names (`X-SIOUL-LINK`, `X-SIOUL-RELATED-TO` for a wait; a step's `RELATED-TO` as it is), which a phone's account manager can send back; the standard lines are read too. Apple's travel time (`X-APPLE-TRAVEL-DURATION`) is not read.
 - **CalDAV** (RFC 4791, over WebDAV): the same client as for contacts. Discovery by RFC 6764 and the current user's principal (RFC 5397), sync tokens (RFC 6578), `calendar-multiget`, writes with `If-Match` and the item's ETag; when both sides changed an event, the server's version wins and yours is kept among this device's earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back from the window, said in the status line. HTTPS only, TLS by rustls with the system's root certificates. Each account syncs every fifteen minutes and at once after a change here; the page reads its files again every five minutes, when it comes back into view, and at midnight.
-- **Google calendars** go through Google's CalDAV, with OAuth 2.0 for native apps (RFC 8252) and PKCE (RFC 7636); the refresh token in the keyring, the access token in memory only. Calendars cannot be made, renamed or deleted there from Sioul, and Google adds your default reminders to every event ([Works with](compatibility.md#google)).
+- **Google calendars** go through Google's CalDAV, with OAuth 2.0 for native apps (RFC 8252) and PKCE (RFC 7636); the refresh token in the keyring, the access token in memory only. Calendars are made, renamed, recoloured, deleted and shared through Google's Calendar API v3 (`calendars`, `calendarList`, `acl`), and Google adds your default reminders to every event ([Works with](compatibility.md#google)).
 - **Invitations**: the `text/calendar` part of a message (iMIP, RFC 6047) is read as iTIP (RFC 5546): `REQUEST`, `CANCEL`, `PUBLISH`, parsed by Sioul itself; no other program opens it. The answer is an iTIP `REPLY` with your `PARTSTAT` (`ACCEPTED`, `TENTATIVE`, `DECLINED`), sent as a two-part message from the account the invitation came to, through that account's own SMTP server. It carries `UID`, `SEQUENCE`, `DTSTART`, `DTEND` or `DURATION`, `SUMMARY`, `ORGANIZER`, `RECURRENCE-ID`, the time zones they name, `DTSTAMP` and your own `ATTENDEE` line: no other guest, no description, no place. The event is stored as the organiser sent it, without `METHOD` (RFC 4791, section 4.1). An invitation reaches a calendar only by **Accept**, **Maybe** or **Add to my calendar**.
 - **Forged mail**: a message whose DMARC fails under a `quarantine` or `reject` policy (outside mailing lists that a seal or their own signature answers for) is judged forged and set aside, never deleted; its invitation is not among your messages unless you open what was set aside.
 - **Overlaps**: timed events of positive length that are not cancelled, each widened by its Before and After; the same UID at the same start in two calendars is not a double booking. The pairs you set aside are kept in `$XDG_STATE_HOME/sioul/overlaps-set-aside.toml`, on this device.

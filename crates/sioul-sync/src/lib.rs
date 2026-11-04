@@ -109,6 +109,7 @@ pub mod bitwarden;
 pub mod blobs;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub mod bus;
+pub mod calendars;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub mod colord;
 pub mod dav;

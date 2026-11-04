@@ -2936,7 +2936,7 @@ ui-google-own-key = Utiliser une clé Google à moi
 ui-google-steps = Faire votre clé Google (une fois, un quart d’heure environ)
 ui-google-steps-text =
     1. Sur [console.cloud.google.com](https://console.cloud.google.com), créez un projet nommé Sioul.
-    2. Dans *API et services → Bibliothèque*, activez **CalDAV API**, **CardDAV API** et **Google Tasks API**.
+    2. Dans *API et services → Bibliothèque*, activez **CalDAV API**, **CardDAV API**, **Google Tasks API** et **Google Calendar API** (qui crée, colore et partage les agendas).
     3. Dans *Google Auth Platform* : *Branding*, un nom et votre adresse ; *Audience*, Externe, et vous-même comme utilisateur test ; *Accès aux données*, les champs d’application `…/auth/calendar`, `…/auth/carddav` et `…/auth/tasks`.
     4. *Clients → Créer un client → Application de bureau*. Copiez son identifiant et son secret tout de suite : Google ne montre le secret qu’une fois.
     5. *Audience → Publier l’application*. Si elle reste en test, Google coupe l’accès tous les sept jours.
@@ -2974,8 +2974,8 @@ google-mail-no-key = Aucune clé Google à vous n’est gardée sur cet appareil
 google-mail-unticked = Google n’a donné aucun accès à vos courriels : sur la page de Google, laissez cochée la case de l’accès à Gmail. Rien n’a changé.
 sync-error-google-again = { $account } : Google demande de vous reconnecter.
 sync-error-google-testing = { $account } : Google a mis fin à la connexion au bout de sept jours, comme il le fait tant que votre projet Google est en test. Dans Google Cloud : Google Auth Platform ▸ Audience ▸ Publier l’application ; puis reconnectez-vous : elle dure ensuite.
-google-no-collections = Google ne crée ni agenda ni carnet d’adresses depuis un autre programme : créez-le sur les pages de Google.
-google-fixed-collection = Google ne renomme et ne supprime ses agendas et carnets d’adresses que sur ses propres pages.
+google-no-collections = Google ne crée pas de carnet d’adresses depuis un autre programme : créez-le sur les pages de Google. Un agenda se crée dans Agenda ⚙ ▸ Vos agendas.
+google-fixed-collection = Google ne renomme et ne supprime ses carnets d’adresses et listes de tâches que sur ses propres pages.
 google-tasks-greyed = Google Tasks ne garde pas ceci.
 task-limited = Cette liste est sur Google Tasks : ce que Google ne garde pas est grisé (un jour de début, une durée, un projet, un type, les heures de bureau, des catégories, ce que ça coûte, la répétition, l’attente d’une autre tâche, les étapes d’étapes).
 
@@ -3816,6 +3816,87 @@ agendas-group-shared = Partagés avec vous
 agendas-kept-hidden = gardé caché
 agenda-keep-hidden = Garder caché sur cet appareil
 agenda-show-again = Montrer de nouveau
+# Agendas sur leurs serveurs (plusieurs agendas, partie 5) : créés, renommés, recolorés, supprimés, partagés.
+agenda-server-here = cet ordinateur
+agenda-new = Nouvel agenda…
+agenda-new-account = Compte
+agenda-new-name = Son nom
+agenda-new-events = Événements
+agenda-new-tasks = Tâches
+agenda-new-make = Le créer
+agenda-new-needs-name = Un nouvel agenda a besoin d’un nom.
+agenda-new-no-account = Ce compte ne tient pas d’agendas : choisissez-en un pour les agendas, ou cet ordinateur.
+agenda-colour = Couleur
+agenda-not-yours-to-change = Cet agenda n’est pas à vous de le changer : il est à quelqu’un d’autre, ou son serveur vous laisse seulement le lire.
+agenda-renamed = Renommé « { $name } ».
+agenda-recoloured = Couleur changée.
+agenda-remove = Supprimer…
+agenda-stop-showing = Ne plus l’afficher…
+agenda-remove-confirm = Supprimer
+agenda-leave-confirm = Ne plus l’afficher
+agenda-keep = Le garder
+agenda-remove-question = Supprimer « { $name } », { $count ->
+        [one] { $what ->
+            [tasks] une tâche
+           *[events] un événement
+        }
+       *[other] { $count } { $what ->
+            [tasks] tâches
+           *[events] événements
+        }
+    }, de { $server } ?
+agenda-remove-google-final = Google ne garde aucune copie d’un agenda supprimé : c’est définitif.
+agenda-remove-google-primary = Google garde votre agenda principal : il ne peut pas être supprimé, seulement renommé et recoloré.
+agenda-remove-nextcloud-trash = Nextcloud le garde dans sa corbeille 30 jours, sauf si son administrateur a choisi une autre durée.
+agenda-remove-server-may-keep = Son serveur peut le garder un temps, ou pas du tout. Sioul en garde d’abord une copie.
+agenda-removed = « { $name } » supprimé. Une copie est dans { $copy }.
+agenda-leave-question = Ne plus afficher « { $name } » ? Il reste à la personne à qui il est, qui peut le partager de nouveau.
+agenda-leave-note = Sioul quitte le partage là où son serveur le permet ; ailleurs, il n’est plus affiché ici.
+agenda-left = « { $name } » n’est plus affiché.
+agenda-sharing = Qui le voit
+agenda-sharing-reading = Question posée à son serveur…
+agenda-sharing-here = Cet agenda est sur cet ordinateur seulement : le partage de Sioul le porte à vos appareils.
+agenda-sharing-not-yet = Cet agenda n’est pas encore sur son serveur : sa prochaine synchronisation le crée.
+agenda-google-api-off = Google a refusé : l’API Google Calendar est désactivée dans le projet Google de votre clé. Activez-la sur console.cloud.google.com, API et services → Bibliothèque, puis réessayez.
+agenda-sharing-none = Ce serveur ne partage pas depuis Sioul.
+agenda-sharing-only-you = Vous seulement.
+agenda-sharing-the-other-parent = { $who }, l’autre parent,
+agenda-sharing-write = { $who } peut le modifier.
+agenda-sharing-read = { $who } peut le lire.
+agenda-sharing-busy = { $who } voit quand vous êtes pris·e.
+agenda-sharing-link = Toute personne qui a le lien peut le lire.
+agenda-sharing-nextcloud-note = Des personnes et des groupes de ce Nextcloud seulement ; une personne ailleurs passe par le lien. Les personnes avec qui vous le partagez, et le lien, ne voient jamais un événement privé, et celles qui le lisent seulement voient un confidentiel comme « Occupé », son heure seule.
+agenda-sharing-google-note = Qui le lit voit un événement privé sans ses détails.
+agenda-share-with = Un nom sur ce serveur, ou une adresse
+agenda-share-read = Peut lire
+agenda-share-write = Peut modifier
+agenda-share-busy = Voit quand c’est pris
+agenda-share-group = Un groupe
+agenda-share = Partager
+agenda-unshare = Ne plus partager avec { $who }
+agenda-unshared = Plus partagé avec { $who }.
+agenda-share-google-address = Donnez une adresse électronique : Google partage avec un compte.
+agenda-share-elsewhere = Une personne sur un autre serveur : activez le lien, et envoyez-le-lui.
+agenda-link-on = Un lien en lecture seule
+agenda-link-copy = Copier le lien
+agenda-link-google-sees = Toute personne qui a le lien en voit chaque événement, les privés sans leurs détails.
+agenda-link-nextcloud-sees = Toute personne qui a le lien en voit les événements, leurs titres, heures et lieux ; un confidentiel comme « Occupé », un privé pas du tout.
+availability-title = Partager mes disponibilités…
+availability-from = Depuis
+availability-with = Avec : un nom sur ce serveur, ou une adresse sur Google
+availability-link = Par un lien en lecture seule plutôt
+availability-word = Un mot pour ses plages
+availability-share = Partager
+availability-stop = Arrêter le partage
+availability-calendar = Heures prises
+availability-busy = Occupé
+availability-by-link = toute personne qui a son lien
+availability-shared = Vos heures prises sont partagées avec { $who }.
+availability-pending = Vos heures prises seront partagées avec { $who } dès que leur agenda sera sur son serveur.
+availability-already = Vos disponibilités sont déjà partagées : arrêtez d’abord ce partage.
+availability-pick = Choisissez les agendas d’où viennent vos heures prises.
+availability-google-own = Choisissez des agendas de ce compte Google : Google partage les heures prises de ses propres agendas.
+availability-stopped = Vos heures prises ne sont plus partagées.
 # Événements des enfants (plusieurs agendas, partie 3) : qui s’en charge, les doublures, les invitations.
 holder-title = Qui s’en charge
 holder-kind = Type

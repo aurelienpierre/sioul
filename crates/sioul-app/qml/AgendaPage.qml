@@ -435,6 +435,13 @@ Item {
             Qt.callLater(() => button.scrollTo(key))
     }
 
+    // For the window's images: one agenda's line opened in Agenda ⚙ ▸ Your agendas.
+    function openAgendaLine(id) {
+        const setup = (page.narrow ? agendaSettingsNarrow : agendaSettings).part("agendasSetup")
+        if (setup !== null)
+            setup.toggle(id)
+    }
+
     function grabSettings(path) {
         (page.narrow ? agendaSettingsNarrow : agendaSettings).grab(path)
     }
