@@ -123,6 +123,8 @@
 //! - [`matching`]: telling that two things tell of one payment: keys, a score, one to one.
 //! - [`einvoice`]: Factur-X and UBL invoices, which carry their own data.
 //! - [`due`]: what money is due or expected soon, for the Porch.
+//! - [`ahead`]: each bank account from one income to the next: whether it holds, what is left, its lowest point.
+//! - [`moneyview`]: the budgets page in words: each budget, what is coming, week by week.
 //! - [`money`]: exact amounts, and the amounts written in mail.
 //! - [`contracts`]: contracts and subscriptions: when each renews, how to stop it.
 //! - [`papers`]: the papers wallet: the papers asked again and again, and when each ends.
@@ -204,6 +206,7 @@ pub mod config;
 pub mod contracts;
 pub mod dated;
 pub mod due;
+pub mod ahead;
 pub mod dayview;
 pub mod demands;
 pub mod description;
@@ -242,6 +245,7 @@ pub mod mailto;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).
 pub mod mms;
 pub mod money;
+pub mod moneyview;
 pub mod moves;
 pub mod movements;
 pub mod needs;

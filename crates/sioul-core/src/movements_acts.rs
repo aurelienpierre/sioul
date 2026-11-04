@@ -131,7 +131,8 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
     }
     let days: Vec<Date> = mail.iter().filter(|l| open(l)).map(|l| l.date).collect();
     let (from, to) = (shifted(days.iter().min().copied().unwrap_or(today), -70), shifted(days.iter().max().copied().unwrap_or(today).max(today), 70));
-    let movements = load(root, words, from, to, today);
+    // The books' movements (`books`, made again only when a file changed), around the mail's days.
+    let movements = Movements { list: super::books(root, words, today).between(from, to).cloned().collect() };
     let store = Store::load(root).unwrap_or_default();
     let joined_state = |m: &Movement, probable: bool| MailState::Joined { address: m.address(), label: m.label.clone(), day: m.day, probable };
     // Joined before: said so at once.

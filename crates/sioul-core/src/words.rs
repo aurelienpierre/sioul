@@ -790,6 +790,14 @@ pub fn folded(text: &str) -> String {
     crate::text::fold(text.trim()).into_iter().collect()
 }
 
+/// Whether `raw`, folded as `folded` folds it, is `word` (already folded):
+/// compared character by character, nothing made. The bank's filler words
+/// are compared so with every word of every label, thousands of times for
+/// a year of exports.
+pub fn folds_to(raw: &str, word: &str) -> bool {
+    raw.trim().chars().map(crate::text::fold_char).eq(word.chars())
+}
+
 /// Whether a folded text holds one of a list's words as a whole word, as
 /// docs/words.md says words are matched: no letter or digit right before it,
 /// nor right after, where the word itself begins or ends with one ("du" in

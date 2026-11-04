@@ -655,13 +655,12 @@ impl Watch {
 /// "pour", and what every bank line says ("PRLV SEPA", "CARTE", "VIREMENT";
 /// `words::BankWords::filler`). "Choir, the year's fee" is not "CB BAKERY OF THE PORT".
 pub(crate) fn words(filler: &[String], text: &str) -> Vec<String> {
-    let filler: Vec<String> = filler.iter().map(|w| crate::words::folded(w)).collect();
     crate::text::fold(text)
         .into_iter()
         .map(|c| if c.is_alphanumeric() { c } else { ' ' })
         .collect::<String>()
         .split_whitespace()
-        .filter(|w| w.len() >= 3 && !w.chars().all(|c| c.is_ascii_digit()) && !filler.iter().any(|f| f == w))
+        .filter(|w| w.len() >= 3 && !w.chars().all(|c| c.is_ascii_digit()) && !filler.iter().any(|f| crate::words::folds_to(f, w)))
         .map(str::to_string)
         .collect()
 }
@@ -673,8 +672,16 @@ pub(crate) fn matches(filler: &[String], movement: &Movement, label: &[String], 
     if !near || movement.amount.is_negative() != amount.is_negative() {
         return false;
     }
-    let theirs = words(filler, &movement.label);
-    let named = label.iter().any(|w| theirs.contains(w));
+    matches_words(&words(filler, &movement.label), movement, label, amount, date)
+}
+
+/// `matches`, the movement's label's words already made (`words`).
+pub(crate) fn matches_words(theirs: &[String], movement: &Movement, label: &[String], amount: Money, date: Date) -> bool {
+    let near = movement.date >= date.checked_sub(3.days()).unwrap_or(date) && movement.date <= date.checked_add(7.days()).unwrap_or(date);
+    if !near || movement.amount.is_negative() != amount.is_negative() {
+        return false;
+    }
+    let named = label.iter().any(|w| theirs.iter().any(|t| t == w));
     let same = (movement.amount.cents() - amount.cents()).abs() <= amount.cents().abs() / 100 + 1;
     named || (same && (movement.date.since(date).map_or(99, |s| s.get_days().abs())) <= 3)
 }

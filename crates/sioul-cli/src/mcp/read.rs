@@ -1199,57 +1199,45 @@ pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
 
 pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     let root = s.config.notes_root_path().filter(|r| r.join(budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
-    let ledger = budget::Ledger::load(&root)?;
-    // Each money movement counted once: the bank accounts' lines read from the
-    // exports beside the file, joined to what was planned and announced (`movements::counted`).
-    let ledger = sioul_core::movements::counted_in(&root, &ledger, &sioul_core::words::Words::of(&s.config), sioul_core::zone::now().date());
-    let bank = bank::Bank::load(&root);
-    // Budgets kept from agents (a closed project's invoices go there, or it is
-    // tied to one; any not in a project while those are closed), and lines tied to a closed project.
-    let consent = access::of(s, &Loaded::read(&s.config));
-    let (ledger, closed, kept_labels) = open_ledger(ledger, &consent);
+    budget::Ledger::load(&root)?;
     let today = sioul_core::zone::now().date();
-    let shown = view::budgets(&ledger, &[], &s.tr, today);
-    let mut lines = vec![shown.title.clone()];
-    for card in &shown.budgets {
-        lines.push(format!("  {} ({}): {}", card.title, card.period, card.verdict));
-        lines.extend(std::iter::once(&card.pace).chain(&card.notes).filter(|l| !l.is_empty()).map(|l| format!("    {l}")));
-        lines.extend(card.figures.iter().map(|f| format!("    {}: {}", f.label, f.value)));
-    }
-    if !shown.reserves.is_empty() {
-        lines.push(String::new());
-        lines.push(shown.reserves_title.clone());
-    }
-    for reserve in &shown.reserves {
-        lines.push(format!("  {}", reserve.title));
-        lines.extend(reserve.figures.iter().map(|f| format!("    {}: {}", f.label, f.value)));
-    }
-    let mut accounts = Vec::new();
-    let mut findings = Vec::new();
+    // Each money movement counted once: the bank accounts' lines read from the
+    // exports beside the file, joined to what was planned and announced (`movements::books`).
+    let books = sioul_core::movements::books(&root, &sioul_core::words::Words::of(&s.config), today);
+    // Budgets kept from agents (a closed project's invoices go there, or it is
+    // tied to one; any not in a project while those are closed), and lines tied
+    // to a closed project; their movements too, and what names them.
+    let consent = access::of(s, &Loaded::read(&s.config));
+    let (ledger, closed, kept_labels) = open_ledger(books.counted.clone(), &consent);
+    let open: std::collections::BTreeSet<&str> = ledger.budgets.iter().map(|b| b.id.as_str()).collect();
+    let movements: Vec<sioul_core::movements::Movement> = books.movements.iter().filter(|m| m.place.budgets().iter().all(|b| open.contains(b)) && !kept_labels.contains(&m.label)).cloned().collect();
     // The bank accounts are in no project: as things outside projects are.
-    if let Ok(bank) = &bank
-        && consent.outside
-    {
-        for account in bank.accounts.iter().filter(|a| a.balance.is_some()) {
+    let empty = bank::Bank::default();
+    let bank = if consent.outside { &books.bank } else { &empty };
+    let page = view::MoneyPage { ledger: &ledger, bank, movements: &movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    let mut shown = view::budgets_page(&page, &s.tr, today);
+    for account in &mut shown.accounts {
+        account.title = mask::text(&account.title);
+    }
+    let mut lines = view::budgets_lines(&shown);
+    // Each export's account and its last balance, its name masked (an IBAN: "[IBAN …0189]").
+    let accounts: Vec<Value> = bank
+        .accounts
+        .iter()
+        .filter(|a| a.balance.is_some())
+        .map(|account| {
             let name = mask::text(if account.title.is_empty() { &account.id } else { &account.title });
             let balance = account.balance.map(|(date, amount)| s.say("bank-balance", &[("amount", s.tr.money(amount)), ("date", s.tr.day_in(date, today))])).unwrap_or_default();
-            accounts.push(json!({ "name": name, "balance": balance }));
-        }
-        findings = bank::watch(bank, &ledger, today, &sioul_core::words::Words::of(&s.config).bank.filler)
-            .findings
-            .iter()
-            .filter(|f| !kept_labels.contains(finding_label(f)))
-            .map(|f| finding_text(s, f, today))
-            .collect();
-    }
-    if !accounts.is_empty() || !findings.is_empty() {
+            json!({ "name": name, "balance": balance })
+        })
+        .collect();
+    if !accounts.is_empty() {
         lines.push(String::new());
         lines.push(s.tr.text("bank-accounts", None));
     }
     lines.extend(accounts.iter().map(|a| format!("  {}: {}", a["name"].as_str().unwrap_or_default(), a["balance"].as_str().unwrap_or_default())));
-    lines.extend(findings.iter().map(|f| format!("  {f}")));
     lines.extend(access::left_out(closed));
-    let data = json!({ "title": shown.title, "budgets": shown.budgets, "reserves": shown.reserves, "bank_accounts": accounts, "watch": findings, "kept_from_agents": closed });
+    let data = json!({ "title": shown.title, "accounts": shown.accounts, "budgets": shown.budgets, "coming": shown.coming, "unusual": shown.unusual, "reserves": shown.reserves, "bank_accounts": accounts, "kept_from_agents": closed });
     Ok(Answer { text: rows(&lines), data })
 }
 
@@ -1282,34 +1270,6 @@ fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger
         ledger.reserves.clear();
     }
     (ledger, closed, kept_labels)
-}
-
-/// The label a finding of the money watch names.
-fn finding_label(finding: &bank::Finding) -> &String {
-    match finding {
-        bank::Finding::Missed { label, .. } | bank::Finding::Changed { label, .. } | bank::Finding::Short { label, .. } => label,
-    }
-}
-
-/// What the money watch noticed, in a sentence, as the Budgets page says it.
-fn finding_text(s: &Session, finding: &bank::Finding, today: jiff::civil::Date) -> String {
-    let day = |d: jiff::civil::Date| s.tr.day_in(d, today);
-    let money = |m: sioul_core::money::Money| s.tr.money(m.abs());
-    match finding {
-        bank::Finding::Missed { label, amount, date } => {
-            let title = s.say(if amount.is_negative() { "money-missed-out" } else { "money-missed-in" }, &[("label", label.clone()), ("amount", money(*amount))]);
-            format!("{title}. {}", s.say("money-missed-why", &[("date", day(*date))]))
-        }
-        bank::Finding::Changed { label, expected, actual, date } => s.say("money-changed", &[("label", label.clone()), ("actual", money(*actual)), ("date", day(*date)), ("expected", money(*expected))]),
-        bank::Finding::Short { label, amount, date, short, reserve } => {
-            let title = s.say("money-short", &[("label", label.clone()), ("date", day(*date)), ("amount", money(*amount))]);
-            let body = match reserve {
-                Some(r) => s.say("money-short-reserve", &[("short", money(*short)), ("reserve", r.clone())]),
-                None => s.say("money-short-ask", &[("short", money(*short))]),
-            };
-            format!("{title}. {body}")
-        }
-    }
 }
 
 // Notes, projects, links.

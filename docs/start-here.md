@@ -145,6 +145,7 @@ Sioul has its own names for its parts. The design notes use them without explain
 | **leases** | One device at a time for some work (reminding medicines, numbering invoices), claimed through the sharing folder (`sioul_sync::lease`). | [database.md](database.md) |
 | **links**, **ties** | Links between everything: mail, tasks, events, contacts, notes, drafts, budget lines (`sioul_core::links`). | [tasks.md](tasks.md) |
 | **movements** | Each sum of money in or out, once, with every source that tells of it: the preset and its contract, the mail or letter, the bank's line; planned, announced, not final yet, done or not seen (`sioul_core::movements`). | [accounting.md](accounting.md#movements) |
+| **stretch** | An account from today to its next income: whether it holds every payment, what is left for everyday spending, its lowest point, what covers a shortfall (`sioul_core::ahead`). | [accounting.md](accounting.md#from-one-income-to-the-next) |
 | **the shield** | Reading the tone and topic of mail to a public address before you see it (`sioul_core::shield`). | [porch.md](porch.md) |
 | **papers**, **letters** | The papers wallet (documents with their dates of renewal), and paper letters read from scans. | [papers.md](papers.md) |
 | **the card on the home screen** | Sioul's Android widget, written by Rust, drawn by Java. | [android.md](android.md) |

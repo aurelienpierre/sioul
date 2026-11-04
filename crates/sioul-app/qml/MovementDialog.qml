@@ -57,6 +57,7 @@ SafeDialog {
         dayOfMonth.value = new Date().getDate()
         every.currentIndex = 0
         estimate.checked = false
+        byHand.checked = false
         dialog.open()
         label.forceActiveFocus()
     }
@@ -77,7 +78,8 @@ SafeDialog {
             day: dayOfMonth.value,
             month: every.currentIndex === 1 ? new Date(day.date + "T12:00:00").getMonth() + 1 : null,
             from: dialog.recurring ? day.date : "",
-            estimate: estimate.checked
+            estimate: estimate.checked,
+            by_hand: !estimate.checked && byHand.checked
         }
         const problem = dialog.sioul.addMovement(JSON.stringify(edit))
         if (problem !== "") {
@@ -206,6 +208,20 @@ SafeDialog {
 
             visible: dialog.recurring
             text: dialog.sioul.text("budget-add-estimate")
+        }
+        Item {
+            visible: dialog.recurring && !estimate.checked
+            Layout.preferredHeight: 1
+        }
+        // Paid by your hand (or its invoice sent): one reminder a few days before.
+        CheckBox {
+            id: byHand
+
+            visible: dialog.recurring && !estimate.checked
+            text: amount.text.trim().startsWith("-") || amount.text.trim().startsWith("−") ? dialog.sioul.text("movement-by-hand-out") : dialog.sioul.text("movement-by-hand-in")
+            ToolTip.visible: hovered
+            ToolTip.text: dialog.sioul.text("movement-by-hand-help")
+            ToolTip.delay: 300
         }
         Label {
             visible: dialog.problem !== ""

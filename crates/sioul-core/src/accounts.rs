@@ -45,7 +45,7 @@ pub enum Place {
 }
 
 /// Why it went there, for the window to say.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Why {
     Hand,
     Mail,
@@ -119,7 +119,9 @@ pub fn place_with(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words, ap
         span.1 = span.1.max(m.date);
     }
     let mut known_taken = vec![false; ledger.lines.len()];
-    let mut preset_taken: Vec<(usize, Date)> = Vec::new();
+    let mut preset_taken: std::collections::HashSet<(usize, Date)> = std::collections::HashSet::new();
+    // Each preset's words, made once: a year of exports compares every line with every preset.
+    let preset_words: Vec<Vec<String>> = ledger.presets.iter().map(|p| bank::words(&looked.bank.filler, &p.label)).collect();
     let mut out = Vec::new();
     for (account, m) in movements {
         let first = account.fills.first().cloned();
@@ -189,13 +191,13 @@ pub fn place_with(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words, ap
             continue;
         }
         // 5. The recurring payment it stands for, in a budget it fills.
+        let theirs = bank::words(&looked.bank.filler, &m.label);
         let preset = ledger.presets.iter().enumerate().filter(|(_, p)| !p.estimate && (account.fills.is_empty() || account.fills.contains(&p.budget))).find_map(|(i, p)| {
-            let words = bank::words(&looked.bank.filler, &p.label);
             let around = (m.date.checked_sub(10.days()).ok()?, m.date.checked_add(5.days()).ok()?);
-            p.occurrences(around.0, around.1).into_iter().find(|d| !preset_taken.contains(&(i, *d)) && bank::matches(&looked.bank.filler, m, &words, p.amount, *d) && !apart(&account.id, &m.id, Other::Preset(i, *d))).map(|d| (i, d))
+            p.occurrences(around.0, around.1).into_iter().find(|d| !apart(&account.id, &m.id, Other::Preset(i, *d)) && !preset_taken.contains(&(i, *d)) && bank::matches_words(&theirs, m, &preset_words[i], p.amount, *d)).map(|d| (i, d))
         });
         if let Some((i, date)) = preset {
-            preset_taken.push((i, date));
+            preset_taken.insert((i, date));
             out.push(Placed { account: account.id.clone(), movement: m.clone(), place: whole(ledger.presets[i].budget.clone(), Some(key(ledger, i))), why: Why::Preset, occurrence: Some(date) });
             continue;
         }
@@ -380,8 +382,9 @@ impl Ledger {
     /// matching's pairs, your placements. What every budget page, reminder
     /// and date counts.
     pub fn load_with_bank(root: &std::path::Path, looked: &crate::words::Words) -> Result<Ledger, String> {
-        let ledger = Ledger::load(root)?;
-        Ok(crate::movements::counted_in(root, &ledger, looked, crate::zone::now().date()))
+        // A file that cannot be read says so; else the books, read again only when a file changed (`movements::books`).
+        Ledger::load(root)?;
+        Ok(crate::movements::books(root, looked, crate::zone::now().date()).counted.clone())
     }
 }
 

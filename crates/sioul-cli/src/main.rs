@@ -104,7 +104,7 @@ enum Command {
     },
     /// When the next admin window opens.
     Window,
-    /// Budgets and reserves at a glance, and the lines mail proposes.
+    /// Each account until its next income, each budget in words, what is coming, the reserves, and the lines mail proposes.
     Budgets {
         /// The budget file (default: sioul-budgets.toml at the root of the notes folder).
         #[arg(long)]
@@ -612,35 +612,25 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
         .ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     let ledger = Ledger::load_file(&path)?;
     let today = sioul_core::zone::now().date();
+    let words = sioul_core::words::Words::of(&s.config);
     // Each money movement counted once: the bank accounts' lines read from the
-    // exports beside the file, joined to what was planned and announced (`movements::counted`).
-    let ledger = match path.parent() {
-        Some(root) => sioul_core::movements::counted_in(root, &ledger, &sioul_core::words::Words::of(&s.config), today),
-        None => ledger,
+    // exports beside the file, joined to what was planned and announced
+    // (`movements::books`); each account from one income to the next, each
+    // budget in words, what is coming (docs/accounting.md, "The budgets page").
+    let books = path.parent().map(|root| sioul_core::movements::books(root, &words, today));
+    let empty = sioul_core::bank::Bank::default();
+    let (counted, bank, movements) = match &books {
+        // Another file than its folder's own: its own lines and presets, nothing of the folder's.
+        Some(books) if books.ledger.budgets.len() == ledger.budgets.len() && books.ledger.lines.len() == ledger.lines.len() => (&books.counted, &books.bank, books.movements.as_slice()),
+        _ => (&ledger, &empty, &[][..]),
     };
-    let mut args = sioul_core::i18n::args();
-    args.set("month", s.tr.month_year(today));
-    println!("{}", s.tr.text("budgets-title", Some(&args)));
-    for b in &ledger.budgets {
-        let status = ledger.status(b, today);
-        let reserve = status.reserve_transfer.as_ref().map(|(id, _)| ledger.reserve_title(id));
-        print_indented(&s.tr.budget_lines(&b.title, b.period, &status, reserve));
+    let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    for line in view::budgets_lines(&view::budgets_page(&page, &s.tr, today)) {
+        let indent = line.len() - line.trim_start().len();
+        println!("{}{}", &line[..indent], one_line(line.trim_start()));
     }
-    if !ledger.reserves.is_empty() {
-        println!("\n{}", s.tr.text("reserves-title", None));
-    }
-    for r in &ledger.reserves {
-        print_indented(&s.tr.reserve_lines(&r.title, &ledger.reserve_status(r, today), today));
-    }
-    print_mail_lines(s, &ledger, maildirs);
+    print_mail_lines(s, counted, maildirs);
     Ok(())
-}
-
-/// The first line of a block at two spaces, its follow-ups at four.
-fn print_indented(lines: &[String]) {
-    for (i, line) in lines.iter().enumerate() {
-        println!("{}{}", if i == 0 { "  " } else { "    " }, one_line(line));
-    }
 }
 
 /// Mail about money, from every account (or the folders given), and what becomes of it.

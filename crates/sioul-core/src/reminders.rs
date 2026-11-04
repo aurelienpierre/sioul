@@ -14,8 +14,11 @@
 //! - a payment planned, a few working days before;
 //! - a paper to renew (a passport, an identity card, the health cover), when renewing starts;
 //! - a contract that renews each year, two weeks before the last day to stop it;
-//! - from the bank's movements: a payment that did not pass, once; the day the
-//!   account would not hold a payment, five working days before.
+//! - from the money movements: a payment to make by hand (a bill, a planned
+//!   line, a recurring payment you pay yourself) or an invoice to send, a few
+//!   working days before, naming it and saying whether the account holds it;
+//!   a payment that did not pass, once; the day the account would not hold a
+//!   payment, five working days before, whatever it is.
 //!
 //! What is created after its reminder's time is not reminded: you just saw it.
 //! A reminder still makes sense until what it is about begins; a computer
@@ -27,8 +30,16 @@
 //! made), and in a pause when it falls in the pause (docs/pauses.md). These
 //! are the usual values of the matrix of what reaches you (`attention`), which
 //! you may change kind by kind and time by time (`Holds`). Payments that leave by
-//! themselves (presets) are not reminded: the money watch tells when the
-//! account will not hold them, which a reminder alone cannot (Medina 2021).
+//! themselves (direct debits, standing orders) are not reminded: only the day
+//! the account will not hold them, which a reminder alone cannot tell
+//! (Medina 2021; research/budgets.md §2.4, recommendation 9).
+
+/// What the reminders read of money (`gather`): every movement, and each
+/// bank account's stretch to its next income (`ahead`).
+pub struct Money<'a> {
+    pub movements: &'a [crate::movements::Movement],
+    pub aheads: &'a [crate::ahead::Ahead],
+}
 
 use crate::agenda::Occurrence;
 use crate::attention::{self, Attention, Level};
@@ -567,7 +578,7 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
 
 /// Everything to remind, told or not, from the events of the coming days, the
 /// tasks, and the payments planned; `personal` says which tasks are yours (they do not wait for work).
-pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence], tasks: &[Task], ledger: Option<&Ledger>, papers: &[crate::papers::Paper], contracts: &[crate::contracts::Contract], money: Option<&crate::bank::Watch>, personal: impl Fn(&Task) -> bool) -> Vec<Reminder> {
+pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence], tasks: &[Task], ledger: Option<&Ledger>, papers: &[crate::papers::Paper], contracts: &[crate::contracts::Contract], money: Option<&Money>, personal: impl Fn(&Task) -> bool) -> Vec<Reminder> {
     let zone = now.time_zone().clone();
     let settings = &config.reminders;
     let hours = hours(config);
@@ -655,35 +666,38 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
         }
     }
 
-    // Payments planned (a bill to pay, a tax), a few working days before.
+    // Payments to make by hand (a bill, a tax, a planned line, a recurring
+    // payment you pay yourself) and invoices to send, a few working days
+    // before: one each, naming it, saying whether the account holds it
+    // (Karlan et al. 2016; Cadena & Schoar 2011; Medina 2021).
     if settings.payment_days > 0
         && let Some(ledger) = ledger
     {
         let today = now.date();
         let horizon = today.checked_add(Span::new().days(30)).unwrap_or(today);
-        // Each opens its own line (`budget_uri`, by its place in the file), never the page alone.
-        for (place, line) in ledger.lines.iter().enumerate().filter(|(_, l)| l.planned && l.amount.cents() < 0 && l.date >= today && l.date <= horizon) {
-            let Some(due) = working_days_before(&hours, &config.time_off, line.date, settings.payment_days, &zone) else { continue };
-            let Some(end) = line.date.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
+        for due in by_hand(ledger, money.map(|m| m.movements), today, horizon) {
+            let Some(at) = working_days_before(&hours, &config.time_off, due.day, settings.payment_days, &zone) else { continue };
+            let Some(end) = due.day.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
             let mut args = crate::i18n::args();
-            args.set("date", tr.day(line.date));
+            args.set("date", tr.day(due.day));
             // The balance read first: a reminder that ignores it can push an account into overdraft (Medina 2021).
-            let body = match money.and_then(|w| w.balance_on(line.date)) {
-                Some(after) if after.is_negative() => {
-                    args.set("short", tr.money(crate::money::Money(-after.cents())));
+            let stretch = money.and_then(|m| m.aheads.iter().find(|a| due.account.as_deref().is_none_or(|id| a.account == id)));
+            let body = match stretch.map(|a| (a.balance_on(due.day), a.floor)) {
+                Some((after, floor)) if after < floor => {
+                    args.set("short", tr.money(floor - after));
                     tr.text("reminder-payment-short", Some(&args))
                 }
-                Some(_) => tr.text("reminder-payment-held", Some(&args)),
-                None => tr.text("reminder-payment", Some(&args)),
+                Some(_) => tr.text(if due.amount.is_negative() { "reminder-payment-held" } else { "reminder-invoice-send" }, Some(&args)),
+                None => tr.text(if due.amount.is_negative() { "reminder-payment" } else { "reminder-invoice-send" }, Some(&args)),
             };
             out.push(Reminder {
-                key: format!("payment:{}:{}:{}", line.budget, line.label, line.date),
+                key: due.key,
                 kind: Kind::Payment,
-                at: due.timestamp().as_second(),
+                at: at.timestamp().as_second(),
                 until: end.timestamp().as_second(),
-                title: format!("{} · {}", line.label, tr.money(crate::money::Money(-line.amount.cents()))),
+                title: format!("{} · {}", due.label, tr.money(crate::money::Money(due.amount.cents().abs()))),
                 body,
-                target: crate::links::budget_uri(&line.budget, place),
+                target: due.target,
                 work: false,
                 starts: None,
                 names: None,
@@ -740,39 +754,91 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             event: None,
         });
     }
-    // The money watch: once each, calmly.
-    for finding in money.map(|w| w.findings.as_slice()).unwrap_or_default() {
-        let mut args = crate::i18n::args();
-        let (key, at, until, title, body) = match finding {
-            crate::bank::Finding::Missed { label, amount, date } => {
-                args.set("label", label.clone());
-                args.set("amount", tr.money(amount.abs()));
-                args.set("date", tr.day_in(*date, now.date()));
-                let Some(from) = date.checked_add(Span::new().days(7)).ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
-                let Some(due) = work_from(&hours, &config.time_off, &from) else { continue };
-                (format!("missed:{label}:{date}"), due, from.timestamp().as_second() + 30 * 86_400, tr.text(if amount.is_negative() { "money-missed-out" } else { "money-missed-in" }, Some(&args)), tr.text("money-missed-why", Some(&args)))
-            }
-            crate::bank::Finding::Short { label, amount, date, short, reserve } => {
-                args.set("label", label.clone());
-                args.set("amount", tr.money(amount.abs()));
-                args.set("date", tr.day_in(*date, now.date()));
-                args.set("short", tr.money(*short));
-                let body = match reserve {
-                    Some(reserve) => {
-                        args.set("reserve", reserve.clone());
-                        tr.text("money-short-reserve", Some(&args))
-                    }
-                    None => tr.text("money-short-ask", Some(&args)),
-                };
-                let Some(due) = working_days_before(&hours, &config.time_off, *date, 5, &zone) else { continue };
-                let Some(end) = date.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
-                (format!("short:{label}:{date}"), due, end.timestamp().as_second(), tr.text("money-short", Some(&args)), body)
-            }
-            crate::bank::Finding::Changed { .. } => continue,
-        };
-        out.push(Reminder { key, kind: Kind::Money, at: at.timestamp().as_second(), until, title, body, target: "sioul:budget/".into(), work: false, starts: None, names: None, event: None });
+    // From the movements: a payment that did not pass, once, a week after;
+    // the day the account would not hold a payment, five working days
+    // before, whatever it is, a debit too (research §6, recommendation 9).
+    if let Some(money) = money {
+        let today = now.date();
+        let month_ago = today.checked_sub(Span::new().days(31)).unwrap_or(today);
+        for m in money.movements.iter().filter(|m| m.state == crate::movements::State::NotSeen && m.day >= month_ago) {
+            let mut args = crate::i18n::args();
+            args.set("label", m.label.clone());
+            args.set("amount", tr.money(crate::money::Money(m.sum.amount().cents().abs())));
+            args.set("date", tr.day_in(m.day, today));
+            let Some(from) = m.day.checked_add(Span::new().days(7)).ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
+            let Some(due) = work_from(&hours, &config.time_off, &from) else { continue };
+            let title = tr.text(if m.way == crate::movements::Way::In { "money-missed-in" } else { "money-missed-out" }, Some(&args));
+            out.push(Reminder { key: format!("missed:{}:{}", m.label, m.day), kind: Kind::Money, at: due.timestamp().as_second(), until: from.timestamp().as_second() + 30 * 86_400, title, body: tr.text("money-missed-why", Some(&args)), target: "sioul:budget/".into(), work: false, starts: None, names: None, event: None });
+        }
+        for short in crate::ahead::shortfalls(money.aheads) {
+            let mut args = crate::i18n::args();
+            args.set("label", short.payment.clone());
+            args.set("date", tr.day_in(short.day, today));
+            let Some(due) = working_days_before(&hours, &config.time_off, short.day, 5, &zone) else { continue };
+            let Some(end) = short.day.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()) else { continue };
+            out.push(Reminder {
+                key: format!("short:{}:{}", short.payment, short.day),
+                kind: Kind::Money,
+                at: due.timestamp().as_second(),
+                until: end.timestamp().as_second(),
+                title: tr.text("money-short", Some(&args)),
+                body: short.sentence(tr, today),
+                target: "sioul:budget/".into(),
+                work: false,
+                starts: None,
+                names: None,
+                event: None,
+            });
+        }
     }
     out.sort_by(|a, b| (a.at, &a.key).cmp(&(b.at, &b.key)));
+    out
+}
+
+/// A payment to make by hand, or an invoice to send: its key (told once),
+/// its day, what it is, its amount (in its sign), its account, what it opens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ByHand {
+    key: String,
+    day: Date,
+    label: String,
+    amount: crate::money::Money,
+    account: Option<String>,
+    target: String,
+}
+
+/// What you act on yourself from `today` to `horizon`: a planned line of
+/// money out (a bill, a tax), a recurring payment you pay yourself, or one
+/// whose invoice you send (`Preset::by_hand`), a letter's bill that names no
+/// mandate. A direct debit is never one. Without the movements, the planned
+/// lines of the file alone.
+fn by_hand(ledger: &Ledger, movements: Option<&[crate::movements::Movement]>, today: Date, horizon: Date) -> Vec<ByHand> {
+    use crate::movements::{Kind as From, State};
+    let lines = crate::movements::line_keys(ledger);
+    let line_due = |place: usize| {
+        let line = &ledger.lines[place];
+        // The key an older Sioul told it by: told once, never again.
+        ByHand { key: format!("payment:{}:{}:{}", line.budget, line.label, line.date), day: line.date, label: line.label.clone(), amount: line.amount, account: None, target: crate::links::budget_uri(&line.budget, place) }
+    };
+    let Some(movements) = movements else {
+        return ledger.lines.iter().enumerate().filter(|(_, l)| l.planned && l.amount.cents() < 0 && l.date >= today && l.date <= horizon).map(|(place, _)| line_due(place)).collect();
+    };
+    let mut out = Vec::new();
+    for m in movements.iter().filter(|m| matches!(m.state, State::Planned | State::Announced) && m.day >= today && m.day <= horizon) {
+        let line = m.sources.iter().filter(|s| s.kind == From::Line).find_map(|s| lines.iter().position(|k| *k == s.key)).filter(|&p| ledger.lines[p].planned && ledger.lines[p].amount.is_negative());
+        let preset = m.sources.iter().find(|s| s.kind == From::Preset).and_then(|s| s.key.strip_prefix("preset:")).and_then(|k| k.rsplit_once('/')).and_then(|(p, _)| (0..ledger.presets.len()).find(|&i| crate::movements::preset_key(ledger, i) == p)).map(|i| &ledger.presets[i]);
+        // A letter's bill that no recurring payment stands for: yours to pay.
+        let letter = m.sources.iter().any(|s| s.kind == From::Letter) && preset.is_none();
+        if let Some(place) = line {
+            let mut due = line_due(place);
+            due.day = m.day;
+            due.account = m.account.clone();
+            out.push(due);
+        } else if preset.is_some_and(|p| p.by_hand) || (letter && m.way == crate::movements::Way::Out) {
+            let budget = m.place.budgets().first().map(|b| b.to_string()).unwrap_or_default();
+            out.push(ByHand { key: format!("payment:{}", m.steady_key()), day: m.day, label: m.label.clone(), amount: m.sum.amount(), account: m.account.clone(), target: if budget.is_empty() { "sioul:budget/".into() } else { format!("sioul:budget/{budget}") } });
+        }
+    }
     out
 }
 
@@ -784,7 +850,10 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let tasks = crate::tasks::all(now.time_zone());
     let store = config.notes_root_path();
     let looked = crate::words::Words::of(config);
-    let ledger = store.as_deref().and_then(|root| Ledger::load_with_bank(root, &looked).ok());
+    // The money once (`movements::books`, made again only when a file changed): the budget file counted, its movements, each account's stretch.
+    let books = store.as_deref().filter(|root| Ledger::load(root).is_ok()).map(|root| crate::movements::books(root, &looked, now.date()));
+    let ledger = books.as_ref().map(|b| b.counted.clone());
+    let aheads = books.as_ref().map(|b| crate::ahead::of(&b.counted, &b.bank, &b.movements, now.date())).unwrap_or_default();
     let projects = store.as_deref().and_then(|root| crate::projects::ProjectStore::load(root).ok()).map(|s| s.projects).unwrap_or_default();
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
     // Meals and sleep as Health keeps them: while you sleep, nothing is told.
@@ -792,7 +861,7 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let situation = crate::quiet::Situation::now(config, &overrides, &blocks, now, tr, &projects);
     let papers = store.as_deref().and_then(|root| crate::papers::Wallet::load(root).ok()).map(|w| w.papers).unwrap_or_default();
     let contracts = store.as_deref().and_then(|root| crate::contracts::Contracts::load(root).ok()).map(|c| c.list).unwrap_or_default();
-    let money = store.as_deref().and_then(|root| crate::bank::Bank::load(root).ok()).filter(|b| !b.movements.is_empty() || !b.accounts.is_empty()).zip(ledger.as_ref()).map(|(bank, ledger)| crate::bank::watch(&bank, ledger, now.date(), &looked.bank.filler));
+    let money = books.as_ref().map(|b| Money { movements: &b.movements, aheads: &aheads });
     let reminders = all(config, tr, now, &events, &tasks, ledger.as_ref(), &papers, &contracts, money.as_ref(), |t| situation.quiet_tasks.keeps(t));
     (reminders, Holds::of(config, &situation.mode, &blocks, stamp))
 }
@@ -1032,12 +1101,33 @@ mod tests {
         let passport = crate::papers::Paper { id: "passport".into(), kind: crate::papers::Kind::Passport, title: "Passport".into(), until: Some("2026-12-30".parse().unwrap()), ..Default::default() };
         // A phone plan renewing each year on 20 November, 10 days' notice: by 10 November, told from 27 October.
         let phone = crate::contracts::Contract { id: "phone".into(), title: "Phone".into(), renews: Some("2025-11-20".parse().unwrap()), every: "year".into(), notice_days: 10, ..Default::default() };
-        // The bank says the account will be short on 15 October, when the water bill leaves; the savings cover it.
-        let money = crate::bank::Watch {
-            findings: vec![crate::bank::Finding::Short { label: "Water bill".into(), amount: crate::money::Money(-12050), date: "2026-10-15".parse().unwrap(), short: crate::money::Money(4000), reserve: Some("Savings".into()) }],
-            forecast: vec![("2026-10-15".parse().unwrap(), crate::money::Money(-4000))],
-            ..Default::default()
+        // The movements say the account will be short on 15 October, when the water bill leaves; the savings cover it.
+        let day: Date = "2026-10-15".parse().unwrap();
+        let words = crate::words::Words::builtin();
+        let input = crate::movements::Input { ledger: &ledger, bank: &crate::bank::Bank::default(), contracts: &[], letters: &[], store: &crate::movements::Store::default(), words: &words };
+        let movements = crate::movements::derive(&input, now.date(), "2026-11-30".parse().unwrap(), now.date());
+        let money = crate::money::Money;
+        let ahead = crate::ahead::Ahead {
+            account: String::new(),
+            title: "Bank".into(),
+            area: crate::areas::Area::ADMIN,
+            floor: money(0),
+            now: money(8050),
+            income: None,
+            after: None,
+            low: None,
+            short: Some(crate::ahead::Low { day, balance: money(-4000), payment: "Water bill".into() }),
+            without: None,
+            left: money(0),
+            days: 0,
+            unusual: money(0),
+            lasts: None,
+            reserves: vec!["Savings".into()],
+            covers: vec![crate::ahead::Cover { reserve: "savings".into(), title: "Savings".into(), amount: money(4000), by: day, delay: 0, late: false }],
+            flows: vec![crate::ahead::Flow { day, amount: money(-12050), label: "Water bill".into(), income: false, uncertain: false }],
         };
+        let aheads = [ahead];
+        let money = Money { movements: &movements, aheads: &aheads };
         let all = all(&config, &tr, &now, &events, &tasks, Some(&ledger), &[passport], &[phone], Some(&money), |_| false);
         let find = |prefix: &str| all.iter().find(|r| r.key.starts_with(prefix)).unwrap_or_else(|| panic!("{prefix}: {all:#?}"));
         assert_eq!(find("event:").at, at("2026-10-09T15:30").timestamp().as_second());
@@ -1054,7 +1144,7 @@ mod tests {
         assert_eq!(find("contract:").body, "To stop it, the notice must leave by Tuesday 10 November.");
         assert_eq!(find("short:").at, at("2026-10-08T09:00").timestamp().as_second(), "five working days before");
         assert_eq!(find("short:").title, "The account may not hold Water bill on Thursday 15 October");
-        assert!(find("short:").body.contains("Savings covers it"), "{}", find("short:").body);
+        assert!(find("short:").body.contains("Savings can cover it"), "{}", find("short:").body);
         assert!(find("payment:").body.contains("short then"), "the payment reminder reads the balance: {}", find("payment:").body);
         // Each opens its own thing by its address (the unified agenda, part 4): a
         // payment its own line, by its place in the ledger; a contract, a paper.

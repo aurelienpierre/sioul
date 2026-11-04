@@ -538,7 +538,8 @@ fn every_budget_is_a_choice_at_any_hour() {
     let ledger = Ledger::load(&root).unwrap();
     let tr = crate::i18n::Translator::new("en");
     // In leisure's hours, work's budget is not shown, and still chosen.
-    let view = crate::view::budgets_at(&ledger, &[], &tr, day("2026-11-04"), &|b| crate::areas::in_view(b.area_of(), crate::areas::Time::Leisure, crate::areas::Week::default()));
+    let page = crate::view::MoneyPage { ledger: &ledger, bank: &crate::bank::Bank::default(), movements: &[], mail: &[], shown: crate::areas::Area::LEISURE, own: false };
+    let view = crate::view::budgets_page(&page, &tr, day("2026-11-04"));
     assert!(!view.budgets.iter().any(|c| c.id == "work") && view.choices.iter().any(|c| c.id == "work"));
     let words = crate::words::Words::builtin();
     let today = day("2026-11-04");

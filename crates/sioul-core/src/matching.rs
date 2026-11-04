@@ -32,7 +32,7 @@ use jiff::civil::{Date, Weekday};
 use std::collections::HashMap;
 
 /// What a planned or announced movement is, for its window and its tolerance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Evidence {
     /// A direct debit (a recurring payment, a debit notice): its amount
     /// exactly, around its day, moved off weekends and TARGET2's holidays.
@@ -193,15 +193,13 @@ pub fn jaro_winkler(a: &str, b: &str) -> f64 {
 /// `BankWords::filler`), a payment processor's name first taken off when
 /// more follows ("PAYPAL *SHOP" is the shop: `BankWords::processors`).
 pub fn tokens(words: &crate::words::BankWords, text: &str) -> Vec<String> {
-    let filler: Vec<String> = words.filler.iter().map(|w| crate::words::folded(w)).collect();
-    let processors: Vec<String> = words.processors.iter().map(|w| crate::words::folded(w)).collect();
     let folded: String = crate::text::fold(text).into_iter().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
     let mut out: Vec<String> = folded
         .split_whitespace()
-        .filter(|w| w.chars().count() >= 3 && !w.chars().any(|c| c.is_ascii_digit()) && !filler.iter().any(|f| f == w))
+        .filter(|w| w.chars().count() >= 3 && !w.chars().any(|c| c.is_ascii_digit()) && !words.filler.iter().any(|f| crate::words::folds_to(f, w)))
         .map(str::to_string)
         .collect();
-    if out.len() > 1 && processors.iter().any(|p| *p == out[0]) {
+    if out.len() > 1 && words.processors.iter().any(|p| crate::words::folds_to(p, &out[0])) {
         out.remove(0);
     }
     out
@@ -212,6 +210,9 @@ pub fn tokens(words: &crate::words::BankWords, text: &str) -> Vec<String> {
 pub struct Idf {
     seen: HashMap<String, usize>,
     names: usize,
+    /// The similarities already said, by the two names (`similarity`): a
+    /// recurring payment's name meets the same bank labels month after month.
+    said: std::cell::RefCell<HashMap<String, f64>>,
 }
 
 impl Idf {
@@ -250,6 +251,18 @@ impl Idf {
 /// first, then a card line's city or a debit's creditor's suffix
 /// ("EXEMPLEAI SAN FRANCISCO", "RENT AGENCY").
 pub fn similarity(a: &[String], b: &[String], idf: &Idf) -> f64 {
+    // The same either way: kept once for the pair.
+    let (x, y) = (a.join(" "), b.join(" "));
+    let key = if x <= y { format!("{x}\u{1f}{y}") } else { format!("{y}\u{1f}{x}") };
+    if let Some(said) = idf.said.borrow().get(&key) {
+        return *said;
+    }
+    let sim = similarity_of(a, b, idf);
+    idf.said.borrow_mut().insert(key, sim);
+    sim
+}
+
+fn similarity_of(a: &[String], b: &[String], idf: &Idf) -> f64 {
     let lead = |name: &[String], n: usize| name[..n.min(name.len())].to_vec();
     let whole = soft_tfidf(a, b, idf);
     let leading = if a.len() < b.len() { soft_tfidf(a, &lead(b, a.len()), idf) } else if b.len() < a.len() { soft_tfidf(&lead(a, b.len()), b, idf) } else { 0.0 };
@@ -442,15 +455,19 @@ pub fn score(e: &Side, f: &Side, idf: &Idf) -> Option<Scored> {
     let (lo, hi) = tolerance(e, foreign);
     let amount = f.sum.amount();
     let within = amount >= lo && amount <= hi;
-    let names = e.names.iter().flat_map(|a| f.names.iter().map(move |b| (a, b))).filter(|(a, b)| !a.is_empty() && !b.is_empty());
-    let named = names.clone().count() > 0;
-    let sim = names.map(|(a, b)| similarity(a, b, idf)).fold(0.0, f64::max);
     // A payment whose amount changed (the winter's energy bill, a client paying
     // part of an invoice, never more) is the same one, within half of it, by a
     // key, or by a plain name for what is not a card payment nor a refund (as
     // the watch says a debit "changed"): only probable then, the amount no help.
     let delta = (amount.cents() - e.sum.amount().cents()).abs();
     let half = e.sum.amount().cents().abs() / 2;
+    // Too far for any name to bridge: no name compared.
+    if !within && (delta > half || (key < 8.0 && matches!(e.evidence, Evidence::Card | Evidence::Refund))) {
+        return None;
+    }
+    let names = e.names.iter().flat_map(|a| f.names.iter().map(move |b| (a, b))).filter(|(a, b)| !a.is_empty() && !b.is_empty());
+    let named = names.clone().count() > 0;
+    let sim = names.map(|(a, b)| similarity(a, b, idf)).fold(0.0, f64::max);
     let changed = delta <= half
         && (key >= 8.0
             || (sim >= 0.5

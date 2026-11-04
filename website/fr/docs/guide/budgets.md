@@ -1,5 +1,5 @@
 ---
-description: Budgets, réserves et comptes bancaires dans Sioul – dans les temps ou non, dit en mots, jamais en rouge ; les paiements lus dans les courriels, les fichiers d’export de votre banque lus sur votre appareil, une veille discrète sur ce qui n’est pas sorti, et vos contrats avec leurs dates de préavis.
+description: Budgets, réserves et comptes bancaires dans Sioul – chaque compte jusqu’à sa prochaine entrée et chaque budget en mots, jamais en rouge ; les paiements lus dans les courriels, les fichiers d’export de votre banque lus sur votre appareil, ce qui arrive semaine par semaine, et vos contrats avec leurs dates de préavis.
 ---
 
 # Les budgets et les comptes bancaires {#budgets-and-bank-accounts}
@@ -12,11 +12,11 @@ L’argent va et vient par courriel : factures, reçus, avis de paiement, vers
 - les **réserves**, là où il est mis de côté : un Livret A, une assurance vie ;
 - les **budgets**, ce à quoi il sert : vos charges (loyer, énergie, courses), vos loisirs, votre travail, un projet.
 
-Sioul lit les fichiers d’export de votre banque et les courriels qui parlent de paiements, les compare aux paiements que vous attendez, et dit calmement quand l’un n’est pas sorti, ou quand un compte risque de ne pas tenir le suivant, assez tôt pour virer de l’argent. Il ne se connecte jamais à votre banque, ne montre jamais de rouge, et ne montre jamais d’offres.
+Sioul lit les fichiers d’export de votre banque et les courriels qui parlent de paiements, les compare aux paiements que vous attendez, et commence par chaque compte jusqu’à sa prochaine entrée : s’il couvre chaque paiement, ce qui reste à vivre, son point le plus bas. Il dit calmement quand un paiement n’est pas sorti, ou quand un compte risque de ne pas tenir le suivant, assez tôt pour virer de l’argent. Il ne se connecte jamais à votre banque, ne montre jamais de rouge, et ne montre jamais d’offres.
 
 <figure markdown="span">
-  [![La page Budgets, « Budgets, octobre 2026 », avec Nouveau budget : trois budgets (travail, charges du foyer, loisirs), chacun sur une carte avec son nom et sa période, « Dans les temps » sur sa propre ligne, une phrase comme « 16 % du mois écoulé ; 51 % de ce qu’il peut dépenser est dépensé. », puis Jusqu’ici, Attendu au 31 octobre et Objectif, un par ligne.](../assets/screens/fr/budgets.png){ loading=lazy }](../assets/screens/fr/budgets.png "Ouvrir l’image en grand")
-  <figcaption>Chaque budget, son verdict en mots, un chiffre par ligne.</figcaption>
+  [![La page Budgets, « Budgets, novembre 2026 », avec son filtre par domaine et Nouveau budget : le compte principal en phrases (jusqu’à la prochaine entrée, s’il couvre chaque paiement, le reste à vivre et par jour, le point le plus bas), son solde à venir en marches d’escalier, puis chaque budget en mots : ce qui est payé, ce qui est encore à venir, ce qui reste pour les courses, comment son mois devrait finir.](../assets/screens/fr/budgets.png){ loading=lazy }](../assets/screens/fr/budgets.png "Ouvrir l’image en grand")
+  <figcaption>Chaque compte jusqu’à sa prochaine entrée, chaque budget en mots.</figcaption>
 </figure>
 
 ## Protégé par défaut {#what-is-protected}
@@ -34,20 +34,30 @@ Sioul lit les fichiers d’export de votre banque et les courriels qui parlent d
 
 - **Nom**.
 - **Compté par** : le mois ou l’année.
+- **Sa période commence** : le 1er, ou avec une entrée, votre salaire ou une prestation mensuelle : d’une paie à la suivante, comme vous la vivez.
 - **Solde à atteindre** à la fin de chaque période : 0 pour l’équilibre ; au-dessus, c’est de l’épargne.
 - **Pour** : le travail, vos démarches, les loisirs. Cela décide des heures où le budget est en vue ([Les heures](hours.md)). Rien de coché : vos démarches.
+- **Mettre de côté pour les impôts**, pour le travail : une part de chaque entrée, en pour cent, mise de côté dès son arrivée pour la déclaration, **chaque mois** ou **chaque trimestre**. Rien tant que vous ne la fixez pas.
 
 Ce qu’un budget n’a pas dépensé est reporté, comme une enveloppe garde ce qui reste : l’argent mis de côté en octobre pour une facture de décembre est encore là en décembre.
 
 ### D’un regard {#at-a-glance}
 
-Chaque budget est une carte : son nom et sa période, le verdict sur sa propre ligne, avec l’écart (*Dans les temps*, *En avance sur son rythme de 40 €*, *25 € de retard sur son rythme*), puis un chiffre par ligne : ce qui est venu jusqu’ici, ce qui est attendu à la fin de la période, le solde à atteindre, ce qui a été reporté, et ce qui est mis de côté pour plus tard.
+La page commence par chaque compte, en quelques phrases, jusqu’à sa prochaine entrée : « Jusqu’à l’arrivée de Salaire le samedi 28 novembre, le compte couvre chaque paiement. Reste à vivre : 460 €, environ 25 € par jour. Le point le plus bas arrive le jeudi 26 novembre, après Loyer. » Le paiement d’un client qui peut venir plus tard est dit avec son doute (« Si Client A arrive d’ici le vendredi 20 novembre, … »), et ce que ferait le compte sans lui aussi, quand cela change la réponse. Sans entrée attendue : « À votre rythme habituel, le compte et Livret A tiennent environ 24 semaines. » Un seul graphique montre le solde à venir jusqu’à la prochaine entrée, le zéro en tirets ; les phrases n’en ont jamais besoin.
 
-Le verdict ne suppose pas que l’argent arrive de façon régulière. Ce qui est connu d’avance (un loyer, une facture prévue) compte en entier. Le reste est rapporté à la part de la période écoulée : « 40 % du mois écoulé ; 35 % de ce qu’il lui faut encore est arrivé. » Après trois périodes, la fin attendue vient avec une fourchette, *d’un mauvais mois à un bon*.
+Chaque budget dit ensuite ce qui reste, en mots : « Payé : Loyer, Énergie. » « Encore à venir : Téléphone, 19,99 €, jeudi 12 novembre. » « Courses : reste 180 € jusqu’au 27 novembre. » Puis une phrase sur la fin de sa période, avec l’épargne qui couvre un manque : « D’ici le 30 novembre, il devrait finir comme prévu. » Ni pourcentage, ni couleur, ni barre.
+
+**Par domaine**, comme dans le Courrier : le filtre en haut montre ce que disent vos heures (les budgets du travail pendant vos heures de travail, ceux des démarches pendant vos heures de démarches, ceux des loisirs pendant votre temps libre, aux repas et la nuit), et vous pouvez en cocher d’autres un moment ; **Selon vos heures** les remet. Ce qu’il laisse de côté est dit en une ligne : « Les budgets de travail attendent vos heures de travail. » Un compte qui ne tiendrait pas un paiement s’affiche toujours.
+
+### Ce qui arrive {#what-is-coming}
+
+Chaque paiement et chaque entrée attendus sur les six semaines qui viennent, ou jusqu’à l’entrée d’après, semaine par semaine : son jour, qui, le montant ou « environ », son budget, où il en est (« prévu le… », « annoncé pour le… », « pas encore définitif », « s’il arrive d’ici le… »), et ce qui le dit, ensemble : la facture du courriel, le courrier, le contrat, la ligne de la banque. **En mois** pose les mêmes sur un calendrier, à côté de la liste, sur un ordinateur. Les dépenses inhabituelles de l’année passée (une réparation, un voyage) sont comptées dans la prévision comme une ligne à part, environ tant par mois.
+
+Un appui long sur un téléphone, un clic droit ou **⋯** sur un ordinateur : **Où il va…**, **Répartir…** entre deux budgets, **Pas le même paiement** à côté de celui que Sioul croit sans doute le même, **Le même que…**, et ce qui le dit, ouvert.
 
 ### Un budget, ouvert {#a-budget-open}
 
-Un budget s’ouvre sur ses mouvements, du plus récent au plus ancien, et sur son solde par **Jours**, **Semaines**, **Mois** ou **Années**, ce qui est prévu en pointillés.
+Un budget s’ouvre sur ses mots et la fin de sa période, puis sur ses mouvements, du plus récent au plus ancien, et sur son solde par **Jours**, **Semaines**, **Mois** ou **Années**, ce qui est prévu en pointillés.
 
 **Ajouter un mouvement** : **Une fois**, ou **Régulier** (chaque mois ou chaque année, à un jour donné). Un montant est négatif pour une sortie (`-650`) et positif pour une entrée (`1200`). Pour ce qui se dépense petit à petit, comme les courses, voir [Les dépenses du quotidien](#daily-spending).
 
@@ -59,7 +69,7 @@ Un clic droit sur une ligne : **Modifier cette ligne…**, **Supprimer cette l
 
 **Nouvelle réserve** : son **Nom**, son **Solde** à une date, **Jamais sous** : le montant sous lequel elle ne doit jamais descendre, et **Jours pour arriver** : le temps que met l’argent demandé pour arriver sur votre compte (0 pour un Livret A, dont l’argent arrive tout de suite, une dizaine pour une assurance vie).
 
-Chaque réserve montre son solde aujourd’hui, ce qui a bougé ce mois-ci, son solde à la fin de l’année, et combien de temps elle tient à ce rythme, au-dessus de son plancher.
+Chaque réserve montre son solde aujourd’hui, ce qui a bougé ce mois-ci, son solde à la fin de l’année, combien de temps elle tient à ce rythme au-dessus de son plancher, et combien de semaines de vos propres dépenses elle couvre.
 
 Quelle réserve couvre quel budget s’écrit dans le fichier des budgets : à la fin de chaque période, ce qui manque à un budget est pris sur sa réserve.
 
@@ -76,19 +86,19 @@ Des règles dans le fichier des budgets peuvent envoyer d’elles-mêmes vers un
 ## Les comptes bancaires {#bank-accounts}
 
 <figure markdown="span">
-  [![Les comptes bancaires sur la page Budgets : deux comptes, chacun sur une carte avec son solde d’après le fichier de la banque, les budgets qu’il remplit, les réserves qui le renflouent, ses derniers mouvements repliés, et Prendre un export…, Règles… et Modifier ; dessous, un paiement qui a pris un autre montant que prévu, les paiements de la semaine, et le mois qui vient en une simple ligne.](../assets/screens/fr/bank-accounts.png){ loading=lazy }](../assets/screens/fr/bank-accounts.png "Ouvrir l’image en grand")
-  <figcaption>Chaque compte, les budgets qu’il remplit, les paiements de la semaine et le mois qui vient.</figcaption>
+  [![Les comptes bancaires sur la page Budgets : deux comptes, chacun sur une carte avec son solde d’après le fichier de la banque, les budgets qu’il remplit, les réserves qui le renflouent, ses derniers mouvements, chacun disant où il est allé et pourquoi, avec ⋯ à côté, et Prendre un export…, Règles… et Modifier ; dessous, un paiement qui a pris un autre montant que prévu.](../assets/screens/fr/bank-accounts.png){ loading=lazy }](../assets/screens/fr/bank-accounts.png "Ouvrir l’image en grand")
+  <figcaption>Chaque compte, les budgets qu’il remplit, et où est allé chaque mouvement.</figcaption>
 </figure>
 
 **Nouveau compte bancaire** : son **Nom**, son **Type** (une banque, PayPal, Stripe, autre chose), **Remplit** : les budgets qu’il remplit, **Gardé au-dessus de** : le montant sous lequel il ne doit pas descendre, et **Renfloué par** : les réserves qui le renflouent, dans votre ordre.
 
 **Prendre un export…**, sur sa carte : le fichier de relevé que donne votre banque (OFX ou QFX, CAMT.053, ou son CSV), le téléchargement d’activité de PayPal, ou l’historique du solde de Stripe. Lire deux fois le même fichier n’ajoute rien. Rien n’est demandé à la banque elle-même : vous téléchargez le fichier, Sioul le lit. Un paiement que le fichier dit pas encore définitif (une empreinte de carte) attend à part que la ligne de la banque arrive. Chaque mouvement va ensuite dans un budget selon votre choix, vos règles ou le paiement qu’il représente, et dit pourquoi ([Où va chaque mouvement](#where-each-movement-goes)).
 
-**Où il va**, sur la ligne d’un mouvement, propose tous les budgets, quelle que soit l’heure. Déplacé, le mouvement dit ce que cela change (« Maison a 12 € de plus pour octobre 2026. ») et demande une fois si les prochains paiements de ce bénéficiaire y vont aussi ; **Oui, désormais** écrit une règle, que vous retrouvez dans **Règles…**.
+**Où il va**, sur la ligne d’un mouvement, propose tous les budgets, quelle que soit l’heure. Déplacé, le mouvement dit ce que cela change (« Maison a 12 € de plus pour octobre 2026. ») et demande une fois si les prochains paiements de ce bénéficiaire y vont aussi ; **Oui, désormais** écrit une règle, que vous retrouvez dans **Règles…**. **⋯** à côté le répartit entre deux budgets, dit qu’il n’est **Pas le même paiement** que celui auquel Sioul l’a joint, ou qu’il est **Le même que…** un autre ; chaque ligne dit ce qui le dit aussi.
 
 ### Renfloué à temps {#topped-up-in-time}
 
-Le solde de chaque compte est projeté sur le mois qui vient. Au premier jour où il passerait sous son plancher, Sioul dit quoi verser, depuis quelle réserve, et d’ici quand, en comptant les jours que met cette réserve : « Assurance vie : demandez 590 € d’ici le jeudi 15 octobre ; il faut environ 10 jours, et le loyer part le 1er novembre. » Quand demander aujourd’hui est déjà trop tard, il le dit.
+Le solde de chaque compte est projeté jusqu’à sa prochaine entrée. Au premier paiement qu’il ne tiendrait pas au-dessus de son plancher, Sioul dit quoi verser, depuis quelle réserve, et d’ici quand, en comptant les jours que met cette réserve : « Assurance vie : demandez 590 € d’ici le jeudi 15 octobre ; il faut environ 10 jours, et le loyer part le 1er novembre. » Quand demander aujourd’hui est déjà trop tard, il le dit.
 
 ## La veille bancaire {#the-bank-watch}
 
@@ -96,11 +106,11 @@ Un prélèvement qui s’arrête ne le dit pas. Sioul compare les mouvements de 
 
 - **ce qui n’est pas sorti** : « Téléphone (19,99 €) n’est pas sorti du compte. Attendu vers le 12 septembre, absent des mouvements de votre banque. » ;
 - **ce qui a changé** : « Électricité a pris 71,40 € le 5 septembre, là où 62 € était attendu. » ;
-- **ce que le compte risque de ne pas tenir** : « Le compte risque de ne pas tenir le loyer le 1er novembre. Il manquera alors 579,99 €. », avec la réserve qui le couvre, s’il y en a une.
+- **ce que le compte risque de ne pas tenir** : un compte qui ne tiendrait pas un paiement avant sa prochaine entrée, avec ce qui le couvre ([Renfloué à temps](#topped-up-in-time)), dit quelle que soit l’heure.
 
-**Cette semaine** : les paiements des sept prochains jours, en une ligne, ici et en haut du Porche : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. » **Le mois qui vient** : le solde en une simple ligne, le zéro en tirets.
+**Cette semaine** : les paiements des sept prochains jours, en une ligne en haut du Porche : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. »
 
-**Des rappels**, une fois chacun, au début du travail : deux jours ouvrés avant un paiement prévu (une facture, un impôt), en disant si le compte le tiendra ; une semaine après un paiement qui n’est pas sorti ; cinq jours ouvrés avant un jour où le compte ne tiendrait pas un paiement. Ils ne viennent que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows). Un téléphone ne les dit pas.
+**Des rappels**, une fois chacun, au début du travail : deux jours ouvrés avant un paiement que vous faites vous-même (une facture prévue, un impôt, la facture d’un courrier, un paiement régulier coché **Vous le payez vous-même**) ou une facture que vous envoyez (**Vous envoyez sa facture**), en disant si le compte le tiendra ; une semaine après un paiement qui n’est pas sorti ; cinq jours ouvrés avant un jour où le compte ne tiendrait pas un paiement, un prélèvement aussi. Un prélèvement n’a pas de rappel sinon. Ils ne viennent que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows). Un téléphone ne les dit pas.
 
 ## Contrats et abonnements {#contracts-and-subscriptions}
 
@@ -121,7 +131,7 @@ Sioul ne montre jamais d’offres, de comparatifs ni de « meilleures affaires
 
 Dans des fichiers texte simples, à la racine de votre dossier de notes : `sioul-budgets.toml` (budgets, réserves, lignes, règles, comptes bancaires), `sioul-bank.toml` (les mouvements de la banque), `sioul-movements.toml` (ce que Sioul a appris de vos paiements : lesquels sont les mêmes, les empreintes pas encore définitives, vos réponses), `sioul-contracts.toml`. Lisibles, modifiables à la main, versionnés avec git si vous voulez. Ils voyagent avec votre dossier de notes, ou scellés par le partage de Sioul une fois **Projets et argent** activé dans le partage ([Le partage](sharing.md)) ; rien n’est envoyé nulle part ailleurs.
 
-Pendant les loisirs, un repas et le sommeil, seuls les budgets de loisirs sont en vue ; tous les budgets restent proposés pour un paiement, à toute heure. Voir [Les heures](hours.md).
+Les budgets s’affichent par domaine selon vos heures, comme dans le Courrier ([D’un regard](#at-a-glance)) ; tous les budgets restent proposés pour un paiement, à toute heure. Voir [Les heures](hours.md).
 
 ## Pour aller plus loin {#going-further}
 
@@ -150,11 +160,11 @@ Le site de votre banque peut être gardé dans [Sites](sites.md) : Sioul rempl
 
 ### Dans le terminal {#in-the-terminal}
 
-`sioul budgets` affiche les budgets, les réserves et les paiements que proposent les courriels, comme la page les dit.
+`sioul budgets` affiche ce que dit la page, tous domaines à la fois : chaque compte jusqu’à sa prochaine entrée, chaque budget en mots, ce qui arrive semaine par semaine, les réserves, et les paiements que proposent les courriels.
 
 ### Avec un agent d’IA {#with-an-ai-agent}
 
-Si vous connectez un agent d’IA ([Avec un agent d’IA](ai-agent.md)), il peut lire ce que dit cette page : les budgets, les réserves, le dernier solde des comptes bancaires et ce que la veille a remarqué. Il ne peut ni déplacer d’argent ni changer une ligne, et il voit les numéros de compte masqués.
+Si vous connectez un agent d’IA ([Avec un agent d’IA](ai-agent.md)), il peut lire ce que dit cette page : les phrases de chaque compte, chaque budget en mots, ce qui arrive et les réserves. Il ne peut ni déplacer d’argent ni changer une ligne, et il voit les numéros de compte masqués.
 
 ## Pourquoi cela marche ainsi {#why-it-works-this-way}
 
@@ -263,9 +273,9 @@ D’autres en font plus par endroits : YNAB, Actual, Firefly III et Bankin’ 
 
 **Les exports.** OFX 1.x (SGML) et 2.x (XML), par le `FITID` de chaque mouvement ; camt.053 de l’ISO 20022, des versions 001.02 à 001.08 (les écritures comptabilisées, le solde de clôture comptabilisé, les noms sous `Pty`) ; le CSV d’une banque, son en-tête trouvé par ses mots, avec `;` ou `,`, la virgule décimale, débit et crédit séparés ou non, et un solde écrit au-dessus du tableau ; l’activité de PayPal (nette de frais ; les lignes en attente, refusées et pour mémoire laissées de côté, ainsi que celles dans une autre monnaie que la plupart du fichier) ; l’historique du solde de Stripe. Un mouvement sans identifiant en reçoit un, fait de son jour, de son montant et de son libellé : un fichier lu deux fois n’ajoute rien.
 
-**Le rythme.** Ce qui est prévu (paiements réguliers, lignes planifiées) compte en entier. Pour le reste, Sioul compare ce qui est entré ou sorti jusqu’ici à la part de la période écoulée : à dix jours sur trente, un tiers de ce qu’il faut encore à la période devrait être arrivé, ou pas plus d’un tiers de ce qu’elle peut dépenser dépensé. À moins de 5 % de ce que la période fait bouger (et jamais plus près que 10), le budget est dans les temps : la même tolérance que `sioul budgets` en ligne de commande. La fourchette vient des douze dernières périodes qui ont eu des mouvements : du plus bas au plus haut à partir de trois, du 10e au 90e centile à partir de dix.
+**D’une entrée à la suivante.** Le solde d’un compte est le dernier de la banque, avec les lignes lues après lui, projeté avec chaque mouvement attendu (prévu, annoncé, une empreinte de carte) jusqu’à sa prochaine entrée : la première entrée qui n’est ni un virement entre vos comptes ni un remboursement, d’au moins un cinquième de la plus grosse à venir et de 50 € ; une entrée régulière ou annoncée est sûre, une ligne prévue ou une facture à vous est dite avec son doute. Le reste à vivre est le point le plus bas au-dessus de ce que le compte garde, moins la part des dépenses inhabituelles de l’année passée pour ces jours : les paiements qui ne représentent aucun paiement régulier, trois fois le paiement habituel et 50 € au moins, par mois. Sans entrée sous deux mois, le compte et son épargne sont comptés en semaines de vos paiements des treize dernières semaines. La fin d’un budget est jugée au rythme du milieu de ses périodes passées dès qu’il en a trois avec des mouvements non prévus ; avant cela, ce qui est entré ou sorti au-delà du prévu est rapporté à la part de la période écoulée, et l’avance ou le retard d’aujourd’hui est reporté jusqu’à la fin. À moins de 5 % de ce que la période fait bouger (et jamais plus près que 10), il finit comme prévu.
 
-**La veille.** Un paiement attendu est cherché de trois jours avant sa date à sept jours après, par un mot de son nom, ou par son montant (à 1 % près, à trois jours près). « A pris un autre montant » veut dire plus de 5 % et 2 € d’écart. Le solde est projeté 31 jours en avant, les dépenses du quotidien réparties sur leurs jours. Un renflouement est arrondi à la dizaine au-dessus et demandé autant de jours à l’avance que sa réserve en met.
+**La veille.** Un paiement n’est pas vu quand ses jours (de trois avant à sept après) sont passés dans ce que couvrent les exports de son compte, sans ligne pour lui. « A pris un autre montant » veut dire plus de 5 % et 2 € d’écart. Un renflouement est arrondi à la dizaine au-dessus et demandé autant de jours à l’avance que sa réserve en met. Le filtre des budgets est gardé sur chaque appareil, dans `~/.local/state/sioul/budgets-view.toml`, et une copie des mouvements d’argent faite à partir de vos fichiers dans `~/.cache/sioul/money-books.json`, refaite dès qu’un fichier change : ni l’un ni l’autre n’est partagé, et les supprimer ne fait rien perdre.
 
 **Les courriels.** Seuls les courriels qui ont passé les vérifications d’authentification sont lus pour y trouver des paiements ([Chaque courriel vérifié](privacy-security.md#every-message-checked)) : jamais les courriels mis de côté (falsifiés, indésirables, un nom emprunté, un expéditeur bloqué), ni la file à examiner. Les paiements sont lus par des règles, en français et en anglais, dans l’objet et le début du texte ; un capital social dans des mentions légales n’est jamais pris pour un montant.
 

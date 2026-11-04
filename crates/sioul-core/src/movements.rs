@@ -42,7 +42,7 @@ pub const STORE: &str = "sioul-movements.toml";
 pub const FORMAT: u32 = 1;
 
 /// Which way the money goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Way {
     /// Money that comes in.
@@ -54,7 +54,7 @@ pub enum Way {
 }
 
 /// Where a movement stands, in words (research §4.3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum State {
     /// From a contract or a preset, or written as planned: "expected on Friday 5 December".
@@ -85,7 +85,7 @@ impl State {
 }
 
 /// How much, as surely as it is known; signed: + in, − out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Sum {
     Exact(Money),
     /// About that much (an energy bill, a card hold): within a tenth (`ABOUT`).
@@ -126,7 +126,7 @@ impl Sum {
 
 /// What tells of a movement, in the order a movement takes its id from
 /// (`Movement::id`): the person's own line first, the mail last.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Kind {
     /// A line of the budget file.
@@ -145,6 +145,9 @@ pub enum Kind {
     Mail,
     /// The contract a recurring payment pays.
     Contract,
+    /// A work budget's share of its incomes set aside for the declaration
+    /// (`Budget::set_aside`): "setaside:<budget>/<the declaration's day>".
+    SetAside,
 }
 
 impl Kind {
@@ -159,6 +162,7 @@ impl Kind {
             k if k.starts_with("sioul:letter/") => Kind::Letter,
             k if k.starts_with("mid:") || k.starts_with(crate::mailfind::DIGEST_SCHEME) => Kind::Mail,
             k if k.starts_with("sioul:contract/") => Kind::Contract,
+            k if k.starts_with("setaside:") => Kind::SetAside,
             _ => return None,
         };
         Some(kind)
@@ -171,7 +175,7 @@ impl Kind {
 }
 
 /// One thing that tells of a movement.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Source {
     pub kind: Kind,
     /// Its key, by which corrections name it: "line:<id>", "preset:<id>/<day>",
@@ -198,7 +202,7 @@ impl Source {
 }
 
 /// Where a movement counts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Place {
     /// In one budget, by its id.
     Budget(String),
@@ -227,7 +231,7 @@ impl Place {
 }
 
 /// One sum of money in or out, from all its sources.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Movement {
     /// Its id: the key of its first source in `Kind`'s order (its line, else
     /// its occurrence, else the bank's line…). The same files give the same id
@@ -249,6 +253,7 @@ pub struct Movement {
     pub label: String,
     pub place: Place,
     /// What it is for (docs/areas.md): its budgets'; in none, its account's.
+    #[serde(deserialize_with = "area_or_none")]
     pub area: Area,
     /// Every source, its anchor first.
     pub sources: Vec<Source>,
@@ -262,18 +267,34 @@ pub struct Movement {
     /// It waits for a line of the bank: an occurrence, a planned line, a letter's bill.
     waits: bool,
     /// How `accounts::place` placed its bank line, when it is one's own.
-    why: Option<accounts::Why>,
+    pub(crate) why: Option<accounts::Why>,
     /// What the matching compares: its kind, its references, the names it goes by.
-    evidence: Option<crate::matching::Evidence>,
+    pub(crate) evidence: Option<crate::matching::Evidence>,
     refs: Vec<String>,
     names: Vec<String>,
     /// The preset its bank line stands for or is spent from, as `accounts::place` said (a rule naming it, an estimate).
-    stands: Option<String>,
+    pub(crate) stands: Option<String>,
     /// Its bank line's label, as the bank wrote it: the payee's name for its next movements.
     bank_label: Option<String>,
 }
 
+/// An area as a kept copy writes it ("work+admin"), none when it says none.
+fn area_or_none<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Area, D::Error> {
+    let text = String::deserialize(d)?;
+    Ok(Area::parse(&text).unwrap_or_default())
+}
+
 impl Movement {
+    /// The preset its bank line stands for or is spent from, by its key, as its placement said.
+    pub fn stands_for(&self) -> Option<&str> {
+        self.stands.as_deref()
+    }
+
+    /// How its own bank line was placed (`accounts::Why`), when it is one's own.
+    pub fn why_placed(&self) -> Option<accounts::Why> {
+        self.why
+    }
+
     /// Whether `key` names it: its id or one of its sources' keys.
     pub fn has(&self, key: &str) -> bool {
         self.id == key || self.sources.iter().any(|s| s.key == key)
@@ -323,11 +344,17 @@ impl Movement {
 /// The steadiest key among `sources` (`Movement::steady_key`'s order): a bank
 /// line's, a line's with an id, an occurrence's, a letter's, an invoice's, a
 /// mail's, a hold's, a digest's last; a contract's never.
+/// The steadiest key among `sources` (`steadiest`), for a window that
+/// names a movement by what is left of it once a source goes ("Not the same").
+pub fn steadiest_of<'a>(sources: impl Iterator<Item = &'a Source>) -> Option<&'a str> {
+    steadiest(sources)
+}
+
 pub(crate) fn steadiest<'a>(sources: impl Iterator<Item = &'a Source>) -> Option<&'a str> {
     let rank = |s: &Source| match s.kind {
         Kind::Bank => 0,
         Kind::Line if !s.key.starts_with("line:~") => 1,
-        Kind::Preset => 2,
+        Kind::Preset | Kind::SetAside => 2,
         Kind::Letter => 3,
         Kind::Invoice => 4,
         Kind::Mail => 5,
@@ -725,7 +752,7 @@ pub fn line_keys(ledger: &Ledger) -> Vec<String> {
 }
 
 /// A preset's name for lines and occurrences: its id, else its place (`#3`), as `accounts` names it.
-fn preset_key(ledger: &Ledger, index: usize) -> String {
+pub fn preset_key(ledger: &Ledger, index: usize) -> String {
     ledger.presets[index].id.clone().filter(|id| !id.trim().is_empty()).unwrap_or_else(|| format!("#{index}"))
 }
 
@@ -772,8 +799,17 @@ fn stood_for(ledger: &Ledger, line: &Line) -> Option<usize> {
     let id = line.preset.as_deref()?;
     let index = ledger.presets.iter().position(|p| p.id.as_deref() == Some(id) && p.budget == line.budget && !p.estimate)?;
     let preset = &ledger.presets[index];
-    let (start, end) = preset.every.bounds(line.date);
-    (!preset.occurrences(start, end).is_empty()).then_some(index)
+    let (start, end) = ledger.preset_bounds(preset, line.date);
+    (!ledger.occurrences_of(preset, start, end).is_empty()).then_some(index)
+}
+
+/// The day a work budget's share of an income on `day` is declared and
+/// paid: the last day of the next month, or of the month after its quarter
+/// (URSSAF's calendar for the self-employed, docs/accounting.md, "Work money").
+pub fn declaration_day(day: Date, quarterly: bool) -> Date {
+    let month = if quarterly { (i64::from(day.month()) - 1) / 3 * 3 + 3 } else { i64::from(day.month()) };
+    let first = Date::new(day.year(), 1, 1).ok().and_then(|jan| jan.checked_add(jiff::Span::new().months(month)).ok());
+    first.map_or(day, |f| f.last_of_month())
 }
 
 /// A reference as the matching compares it (`matching::references`): its kind, its letters and digits.
@@ -814,14 +850,36 @@ fn card_like(words: &crate::words::BankWords, label: &str) -> bool {
 /// planned or announced, lines of accounts not declared only confirming it,
 /// as the watch does; then what is probably together; the store's
 /// placements; what was not seen.
+/// Each name's words for the matching (`matching::tokens`), made once in a
+/// reading: a bank label comes back thousands of times in five years of exports.
+struct NameWords<'a> {
+    bank: &'a crate::words::BankWords,
+    made: std::cell::RefCell<HashMap<String, Vec<String>>>,
+}
+
+impl NameWords<'_> {
+    fn of(&self, text: &str) -> Vec<String> {
+        if let Some(made) = self.made.borrow().get(text) {
+            return made.clone();
+        }
+        let made = crate::matching::tokens(self.bank, text);
+        self.made.borrow_mut().insert(text.to_string(), made.clone());
+        made
+    }
+}
+
 pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement> {
     let ledger = input.ledger;
+    let tokens = NameWords { bank: &input.words.bank, made: std::cell::RefCell::new(HashMap::new()) };
     let store = input.store;
     let bank_words = &input.words.bank;
     let filler = &bank_words.filler;
     let leads = &input.words.payments.references;
     let apart_pairs: BTreeSet<(String, String)> = store.apart.iter().map(|a| ordered(&a.a, &a.b)).map(|(a, b)| (a.to_string(), b.to_string())).collect();
     let apart = |a: &str, b: &str| {
+        if apart_pairs.is_empty() {
+            return false;
+        }
         let (a, b) = ordered(a, b);
         apart_pairs.contains(&(a.to_string(), b.to_string()))
     };
@@ -889,7 +947,7 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         let source = Source::new(Kind::Line, key.clone(), crate::links::budget_uri(&line.budget, place));
         if let Some(index) = stood_for(ledger, line) {
             let prefix = format!("preset:{}/", preset_key(ledger, index));
-            let (start, end) = ledger.presets[index].every.bounds(line.date);
+            let (start, end) = ledger.preset_bounds(&ledger.presets[index], line.date);
             let occurrence = out.iter().position(|m| {
                 m.sources.first().is_some_and(|s| s.kind == Kind::Preset && s.key.starts_with(&prefix)) && m.day >= start && m.day <= end && !m.has_kind(Kind::Line) && !apart_from(&key, m)
             });
@@ -943,7 +1001,10 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
     let placed = accounts::place_with(ledger, &bank, input.words, &|_, _, _| true);
     // The name a correction taught for a payee's bank name (`[[name]]`).
     let taught = |label: &str| {
-        let payee = crate::matching::tokens(bank_words, label).join(" ");
+        if store.names.is_empty() {
+            return None;
+        }
+        let payee = tokens.of(label).join(" ");
         store.names.iter().find(|n| !payee.is_empty() && n.bank == payee).map(|n| n.known.clone())
     };
     for p in &placed {
@@ -1070,7 +1131,7 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
             day: m.day,
             evidence: m.evidence.unwrap_or(Evidence::Transfer),
             accounts: if expected { m.place.budgets().first().map(|b| payers(b)).unwrap_or_default() } else { m.account.clone().into_iter().collect() },
-            names: m.names.iter().map(|n| crate::matching::tokens(bank_words, n)).collect(),
+            names: m.names.iter().map(|n| tokens.of(n)).collect(),
             refs: m.refs.clone(),
         };
         let expected: Vec<crate::matching::Side> = waiting.iter().map(|&i| side_of(&out[i], true)).collect();
@@ -1084,7 +1145,7 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
                 day: b.date,
                 evidence: Evidence::Transfer,
                 accounts: Vec::new(),
-                names: vec![crate::matching::tokens(bank_words, &b.label)],
+                names: vec![tokens.of(&b.label)],
                 refs: crate::matching::label_references(leads, &b.label),
             }
         }));
@@ -1135,7 +1196,34 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
     // 7. What is probably together: two invoices paid by one transfer, an
     // order charged in parts, a deferred-debit card's sum and the card
     // payments it settles, a purchase's instalments.
-    together(&mut out, input, &apart_both);
+    together(&mut out, input, &apart_both, &tokens);
+
+    // 7b. Work money set aside (docs/accounting.md, "Work money"): a share of
+    // each income of a budget that sets one aside, one planned movement per
+    // declaration, on its day, while that day is to come; then the payment
+    // itself counts (Soman & Cheema 2011, research/budgets.md §2.1).
+    for budget in &ledger.budgets {
+        let Some(share) = budget.set_aside.filter(|s| s.is_finite() && *s > 0.0) else { continue };
+        let quarterly = budget.declare.as_deref() != Some("month");
+        let mut by_day: std::collections::BTreeMap<Date, i64> = std::collections::BTreeMap::new();
+        for m in out.iter().filter(|m| m.way == Way::In && m.state != State::NotSeen) {
+            let part: i64 = match &m.place {
+                Place::Budget(b) if *b == budget.id => m.sum.amount().cents(),
+                Place::Parts(parts) => parts.iter().filter(|(b, _)| *b == budget.id).map(|(_, a)| a.cents()).sum(),
+                _ => continue,
+            };
+            if part > 0 {
+                *by_day.entry(declaration_day(m.day, quarterly)).or_default() += (part as f64 * share.min(100.0) / 100.0).round() as i64;
+            }
+        }
+        for (day, cents) in by_day.into_iter().filter(|(day, cents)| *day >= today && *cents > 0) {
+            let key = format!("setaside:{}/{day}", budget.id);
+            let label = format!("{} %", (share * 100.0).round() / 100.0);
+            let mut m = bare(key.clone(), Sum::About(Money(-cents)), day, label, Place::Budget(budget.id.clone()), vec![Source::new(Kind::SetAside, key, String::new())], State::Planned);
+            m.account = carrier(&budget.id);
+            out.push(m);
+        }
+    }
 
     // 8. Placements by your hand, for what the files cannot place.
     for placed in &store.moves {
@@ -1165,6 +1253,8 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
             of_account.entry(card).or_default().push(b);
         }
     }
+    // What each account's exports cover, once.
+    let spans: HashMap<Option<String>, (Date, Date)> = of_account.iter().filter_map(|(k, v)| Some((k.clone(), (v.iter().map(|b| b.date).min()?, v.iter().map(|b| b.date).max()?)))).collect();
     for m in out.iter_mut().filter(|m| m.waits && matches!(m.state, State::Planned | State::Announced)) {
         let (start, end) = (shifted(m.day, -EARLIER_DAYS), shifted(m.day, LATER_DAYS));
         if end >= today {
@@ -1174,8 +1264,10 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         if whose.is_none() && !ledger.bank_accounts.is_empty() {
             continue;
         }
-        let Some(theirs) = of_account.get(&whose) else { continue };
-        let (Some(first), Some(last)) = (theirs.iter().map(|b| b.date).min(), theirs.iter().map(|b| b.date).max()) else { continue };
+        let (Some(theirs), Some(&(first, last))) = (of_account.get(&whose), spans.get(&whose)) else { continue };
+        if first > start || last < end {
+            continue;
+        }
         let label = bank::words(filler, &m.label);
         // A line plainly its own, placed elsewhere by a rule, is no doubt: it passed.
         let passed = theirs.iter().any(|b| bank::matches(filler, b, &label, m.sum.amount(), m.day));
@@ -1228,9 +1320,9 @@ fn learn_mandates(out: &mut [Movement]) {
 /// (one movement, its lines of the bank together); a deferred-debit card's
 /// sum, settling the month's card payments (in no budget, beside them); a
 /// purchase's instalments a message told (each in its own month).
-fn together(out: &mut Vec<Movement>, input: &Input, apart_both: &dyn Fn(&Movement, &Movement) -> bool) {
+fn together(out: &mut Vec<Movement>, input: &Input, apart_both: &dyn Fn(&Movement, &Movement) -> bool, tokens: &NameWords) {
     let words = &input.words.bank;
-    let names = |m: &Movement| m.names.iter().map(|n| crate::matching::tokens(words, n)).collect::<Vec<_>>();
+    let names = |m: &Movement| m.names.iter().map(|n| tokens.of(n)).collect::<Vec<_>>();
     let all: Vec<Vec<String>> = out.iter().flat_map(names).collect();
     let idf = crate::matching::Idf::of(all.iter());
     let alike = |a: &Movement, b: &Movement| {
@@ -1517,6 +1609,13 @@ pub fn counted(ledger: &Ledger, movements: &[Movement], today: Date) -> Ledger {
         preset,
     };
     for m in movements {
+        // A share set aside for the declaration: planned in its budget until its day.
+        if let Some(aside) = m.sources.iter().find(|s| s.kind == Kind::SetAside) {
+            for (budget, amount) in m.place.budgets().into_iter().map(|b| (b.to_string(), m.sum.amount())).take(1) {
+                out.lines.push(line(&budget, m.day, amount, &m.label, None, None, &aside.key, m.day > today));
+            }
+            continue;
+        }
         let bank = m.sources.iter().find(|s| matches!(s.kind, Kind::Bank | Kind::Hold) && declared(&s.key)).map(|s| s.key.clone());
         let file: Vec<usize> = m.sources.iter().filter(|s| s.kind == Kind::Line).filter_map(|s| keys.iter().position(|k| *k == s.key)).collect();
         let occurrence = m.sources.iter().find(|s| s.kind == Kind::Preset).and_then(|s| preset_of(&s.key));
@@ -1611,6 +1710,143 @@ pub fn counted_in(root: &Path, ledger: &Ledger, words: &crate::words::Words, tod
     let store = Store::load(root).unwrap_or_default();
     let input = Input { ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words };
     counted(ledger, &derive(&input, from, to, today), today)
+}
+
+/// A notes folder's money, read once (`books`): the budget file as
+/// written, the bank's file, every movement derived from the first day
+/// anything in them tells to a year ahead (as `counted_in`), and the budget
+/// file with each counted once.
+#[derive(Debug, Clone)]
+pub struct Books {
+    pub ledger: Ledger,
+    pub counted: Ledger,
+    pub bank: Bank,
+    pub movements: Vec<Movement>,
+    /// The days the movements were derived for.
+    pub from: Date,
+    pub to: Date,
+}
+
+impl Books {
+    /// The movements of the days from `from` to `to`, included.
+    pub fn between(&self, from: Date, to: Date) -> impl Iterator<Item = &Movement> {
+        self.movements.iter().filter(move |m| m.day >= from && m.day <= to)
+    }
+}
+
+/// What tells whether the books are still those of the files: their
+/// modification times and sizes, the day, the words.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Stamp {
+    root: PathBuf,
+    files: Vec<Option<(std::time::SystemTime, u64)>>,
+    today: Date,
+}
+
+fn stamp(root: &Path, today: Date) -> Stamp {
+    let paths = [root.join(crate::budget::LEDGER), root.join(bank::MANIFEST), root.join(crate::contracts::MANIFEST), crate::letters::Letters::folder(root).join(crate::letters::MANIFEST), Store::path(root)];
+    let files = paths.iter().map(|p| std::fs::metadata(p).ok().and_then(|m| Some((m.modified().ok()?, m.len())))).collect();
+    Stamp { root: root.to_path_buf(), files, today }
+}
+
+/// The last books made, by what they were made from.
+static BOOKS: std::sync::Mutex<Option<(Stamp, crate::words::Words, std::sync::Arc<Books>)>> = std::sync::Mutex::new(None);
+
+/// The kept copy's format: a copy of another is made anew.
+const KEPT: u32 = 1;
+
+/// The movements kept on this device (`$XDG_CACHE_HOME/sioul/money-books.json`),
+/// by what they were made from, for a process of its own (`sioul budgets`,
+/// the window's first look) to read rather than derive: never shared, made
+/// anew whenever a file, the day, the words or Sioul's version changed.
+#[derive(Serialize, Deserialize)]
+struct Kept {
+    format: u32,
+    version: String,
+    stamp: Stamp,
+    words: u64,
+    movements: Vec<Movement>,
+}
+
+fn kept_path() -> PathBuf {
+    crate::config::cache_dir().join("money-books.json")
+}
+
+/// The words as a digest: the kept movements were made with these.
+fn words_digest(words: &crate::words::Words) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(words).unwrap_or_default().hash(&mut hasher);
+    hasher.finish()
+}
+
+/// The kept movements, when they were made from what the files are now.
+fn kept(stamp: &Stamp, words: u64) -> Option<Vec<Movement>> {
+    let kept: Kept = serde_json::from_slice(&std::fs::read(kept_path()).ok()?).ok()?;
+    (kept.format == KEPT && kept.version == env!("CARGO_PKG_VERSION") && kept.stamp == *stamp && kept.words == words).then_some(kept.movements)
+}
+
+/// The movements kept for the next process; nothing said when it cannot be.
+fn keep(stamp: &Stamp, words: u64, movements: &[Movement]) {
+    let kept = Kept { format: KEPT, version: env!("CARGO_PKG_VERSION").to_string(), stamp: stamp.clone(), words, movements: movements.to_vec() };
+    let path = kept_path();
+    if let (Some(dir), Ok(text)) = (path.parent(), serde_json::to_vec(&kept)) {
+        let _ = std::fs::create_dir_all(dir);
+        let _ = crate::filelock::replace(&path, &text);
+    }
+}
+
+/// The books forgotten in this process (a test's way to read the kept copy).
+#[cfg(test)]
+pub(crate) fn forget_books() {
+    if let Ok(mut kept) = BOOKS.lock() {
+        *kept = None;
+    }
+}
+
+/// A notes folder's money (`Books`), made again only when one of its files
+/// changed (by their modification times and sizes), or the day, or the
+/// words: the budgets page, the reminders, the dates and the links read it
+/// each time, and five years of a busy account take longer than a page
+/// should wait to derive (docs/accounting.md, "Counted, not copied").
+pub fn books(root: &Path, words: &crate::words::Words, today: Date) -> std::sync::Arc<Books> {
+    let now = stamp(root, today);
+    if let Ok(kept) = BOOKS.lock()
+        && let Some((was, with, books)) = kept.as_ref()
+        && *was == now
+        && with == words
+    {
+        return books.clone();
+    }
+    let ledger = Ledger::load(root).unwrap_or_default();
+    let bank = Bank::load(root).unwrap_or_default();
+    let first = bank.movements.iter().map(|m| m.date).chain(ledger.lines.iter().map(|l| l.date)).chain(ledger.budgets.iter().filter_map(|b| b.since)).min().unwrap_or(today).min(today);
+    let (from, to) = (shifted(first.first_of_month(), -31), shifted(today, 400));
+    // Made by another process from the same files: read, not derived again.
+    let digest = words_digest(words);
+    let movements = match kept(&now, digest) {
+        Some(movements) => movements,
+        None => {
+            let contracts = crate::contracts::Contracts::load(root).map(|c| c.list).unwrap_or_default();
+            let letters = crate::letters::Letters::load(root).map(|l| l.list).unwrap_or_default();
+            let store = Store::load(root).unwrap_or_default();
+            let movements = derive(&Input { ledger: &ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words }, from, to, today);
+            if stamp(root, today) == now {
+                keep(&now, digest, &movements);
+            }
+            movements
+        }
+    };
+    let counted = counted(&ledger, &movements, today);
+    let books = std::sync::Arc::new(Books { ledger, counted, bank, movements, from, to });
+    // Read again before it is kept: a file changed while it was read makes
+    // books that are not quite its own, made anew next time.
+    if stamp(root, today) == now
+        && let Ok(mut kept) = BOOKS.lock()
+    {
+        *kept = Some((now, words.clone(), books.clone()));
+    }
+    books
 }
 
 #[path = "movements_acts.rs"]
