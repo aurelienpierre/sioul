@@ -307,6 +307,72 @@ pub fn mail(title: &str, body: &str, through: bool, action: Option<(String, Box<
     )
 }
 
+/// New mail (`mail`), taken away where it shows once `settled` says each
+/// message it told was dismissed, read or done on any device (Sioul's
+/// notices), looked at each `LOOK` while it shows; its press as `mail`'s.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+pub fn mail_until(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>, settled: Box<dyn FnMut() -> bool + Send>) -> Result<(), String> {
+    let mut notice = Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL });
+    let run = action.map(|(label, run)| {
+        notice.buttons.push((CLICKED.to_string(), label.clone()));
+        notice.buttons.push(("open".to_string(), label));
+        run
+    });
+    // The D-Bus connection cannot change threads, so it is made where it waits.
+    std::thread::spawn(move || {
+        let Ok(bus) = session() else { return };
+        let heard = Rc::default();
+        if listened(&bus, &heard).is_err() {
+            return;
+        }
+        let Ok(id) = send(&bus, &notice) else { return };
+        wait_or_settled(&Shown { bus, heard, replies: Rc::default(), id, capabilities: Vec::new() }, run, settled);
+    });
+    Ok(())
+}
+
+/// New mail's notice shown, waited for: its Open runs when pressed (the
+/// wait ends then, or when it closes, or the connection goes); taken away
+/// once `settled`, looked at each `LOOK`.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn wait_or_settled(shown: &Shown, mut run: Option<Box<dyn FnOnce() + Send>>, mut settled: Box<dyn FnMut() -> bool + Send>) {
+    let mut looked = Instant::now();
+    loop {
+        for item in std::mem::take(&mut *shown.heard.borrow_mut()) {
+            match item {
+                Heard::Pressed(at, key) if at == shown.id => {
+                    if opens_mail(&key)
+                        && let Some(run) = run.take()
+                    {
+                        run();
+                    }
+                    return;
+                }
+                Heard::Closed(at) if at == shown.id => return,
+                _ => {}
+            }
+        }
+        if looked.elapsed() >= LOOK {
+            looked = Instant::now();
+            if settled() {
+                if shown.id != 0 {
+                    let _: Result<(), _> = shown.bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (shown.id,));
+                }
+                return;
+            }
+        }
+        if shown.bus.process(Duration::from_secs(1)).is_err() {
+            return;
+        }
+    }
+}
+
+/// Elsewhere: as `mail`, nothing to take away (a phone's is taken away through Java).
+#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
+pub fn mail_until(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>, _settled: Box<dyn FnMut() -> bool + Send>) -> Result<(), String> {
+    mail(title, body, through, action)
+}
+
 /// A click on a notice itself, as the desktop says it (the Desktop
 /// Notifications' "default" action: no button of its own).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
@@ -1824,6 +1890,38 @@ mod tests {
     /// - sent after the tick stopped waiting: the doubt first at once, one
     ///   notice, recorded shown, "Taken" counts; marked before it went: never
     ///   sent, nor tried again.
+    /// New mail's notification follows its notices (`mail_until`): shown,
+    /// then each message it told settled on some device (`settled` true):
+    /// taken away by its number within a look (`LOOK`), never before.
+    /// Sets this process's session bus address: run alone, by name:
+    /// `cargo test --release -p sioul-sync notify::tests::new_mail_is_taken_away_once_its_notices_are_settled -- --ignored --exact --nocapture`.
+    #[test]
+    #[ignore = "starts a stand-in dbus-daemon and sets the session bus address: run alone, by name"]
+    fn new_mail_is_taken_away_once_its_notices_are_settled() {
+        use crate::bus::StandIns;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::mpsc::channel;
+        use std::sync::Arc;
+        let mut stand_ins = StandIns::new("stand-in-mail-settled");
+        let (_, address) = stand_ins.start("session");
+        // SAFETY: run alone, by name; nothing else in this process reads it meanwhile.
+        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &address) };
+        let (told, notices) = channel::<(std::time::Instant, String, u32)>();
+        let stop = Arc::new(AtomicBool::new(false));
+        assert!(notice_server(&address, "shows", told.clone(), Arc::clone(&stop)));
+        let settled = Arc::new(AtomicBool::new(false));
+        let looked = Arc::clone(&settled);
+        mail_until("Two e-mails", "Noa, The lease · Ana, Lunch", false, None, Box::new(move || looked.load(Ordering::SeqCst))).unwrap();
+        let shown = sent_within(&notices, Duration::from_secs(2));
+        assert_eq!(shown, vec![("Two e-mails".to_string(), 0)], "shown once");
+        assert!(sent_within(&notices, LOOK * 2).is_empty(), "nothing settled: left alone");
+        settled.store(true, Ordering::SeqCst);
+        let closed = sent_within(&notices, LOOK * 3);
+        assert!(closed.iter().any(|(title, id)| title == CLOSED && *id != 0), "taken away by its number: {closed:?}");
+        stop.store(true, Ordering::Relaxed);
+        std::thread::sleep(Duration::from_millis(500));
+    }
+
     /// Sets this process's session bus address: run alone, by name:
     /// `cargo test --release -p sioul-sync notify::tests::reminders_whose_fate_was_not_known_say_the_doubt_once_known_shown -- --ignored --exact --nocapture`.
     #[test]

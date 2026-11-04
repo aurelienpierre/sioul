@@ -662,6 +662,52 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// The notices' words wait for every device to have their store, as your
+/// own time does: a phone still on a Sioul without it (705576a) would keep
+/// their records waiting at every exchange. The desk's log stays on the desk
+/// and the phone's steps place everything they read; once the phone says it
+/// has the store, the desk's next exchange sends the log, and the phone
+/// reads the desk's word.
+#[test]
+fn the_notices_words_wait_for_a_device_that_has_their_store() {
+    let base = scratch("notices-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.notices = NOTICES_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let said = "{\"at\":1793000000000,\"ids\":[\"mail:home:0000000000000001\"],\"state\":\"dismissed\"}\n";
+    desk.write("state/notices/desk.jsonl", said);
+    for _ in 0..2 {
+        assert_eq!(background(&desk, &folder, &key, now).sent, 0, "kept to itself");
+        now += MINUTE;
+    }
+    // The phone as 705576a: no such store, none known.
+    let older = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != NOTICES).collect::<Vec<_>>();
+    super::tests::OLDER.with(|o| *o.borrow_mut() = vec![NOTICES.to_string()]);
+    for _ in 0..3 {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let outcome = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None }, &older, now).unwrap();
+        assert_eq!(outcome.pending, 0, "nothing it cannot place: {outcome:?}");
+    }
+    assert!(!phone.path("state/notices/desk.jsonl").exists(), "nothing written there");
+    // The phone updated: the desk's next exchange sends the log.
+    super::tests::OLDER.with(|o| o.borrow_mut().clear());
+    entry(&phone, &folder, &key, |e| e.notices = NOTICES_SHARED);
+    now += MINUTE;
+    background(&desk, &folder, &key, now);
+    now += MINUTE;
+    let came = background(&phone, &folder, &key, now);
+    assert!(came.written.contains(NOTICES), "{came:?}");
+    assert_eq!(phone.read("state/notices/desk.jsonl"), said);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// A device with no own time of its own (the phone, just updated), while a
 /// device on an older Sioul still counts: another device says it reads own
 /// time, so may hold some to send; Settings there names the device that keeps
@@ -741,5 +787,55 @@ fn your_own_time_keeps_travelling_once_it_has() {
         }
     }
     assert_eq!((before(&desk), before(&phone)), (Some(25), Some(25)), "the change kept on both");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The money movements' store (`notes/sioul-movements.toml`, beside the
+/// budget file) beside a phone whose entry does not say it has the store, as
+/// 705576a's never does: never sent while it does not, so that an older
+/// Sioul holds no record it would keep waiting; the desk's file kept to
+/// itself. Once the phone's entry says so, the desk's next exchange sends
+/// it; a correction made on the phone comes back, entry by entry.
+#[test]
+fn the_money_movements_store_waits_for_a_device_that_has_it() {
+    let base = scratch("movements-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    for notes in [&desk_notes, &phone_notes] {
+        std::fs::create_dir_all(notes).unwrap();
+    }
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.movements = MOVEMENTS_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let store = |notes: &Path| std::fs::read_to_string(notes.join(sioul_core::movements::STORE)).unwrap_or_default();
+    std::fs::write(desk_notes.join(sioul_core::movements::STORE), "format = 1\n\n[[apart]]\na = \"bank:main/A1\"\nb = \"line:l1\"\n").unwrap();
+    for _ in 0..2 {
+        desk.exchange_notes(&folder, &key, now, &desk_notes);
+        now += MINUTE;
+        phone.exchange_notes(&folder, &key, now, &phone_notes);
+        now += MINUTE;
+    }
+    assert!(store(&phone_notes).is_empty(), "kept on the desk: {}", store(&phone_notes));
+    // The phone updated: its entry says it has the store; the desk's next exchange sends it.
+    entry(&phone, &folder, &key, |e| e.movements = MOVEMENTS_SHARED);
+    desk.exchange_notes(&folder, &key, now, &desk_notes);
+    now += MINUTE;
+    let came = phone.exchange_notes(&folder, &key, now, &phone_notes);
+    assert!(came.written.contains(MOVEMENTS), "{came:?}");
+    let read = |notes: &Path| sioul_core::movements::Store::load(notes).unwrap();
+    assert_eq!(read(&phone_notes), read(&desk_notes), "the same store on both");
+    // A source joined on the phone travels back, beside what was there.
+    sioul_core::movements::Store::edit(&phone_notes, |edit| edit.link("preset:rent/2026-11-01", "sioul:letter/2026-10-28-1a2b", "hand", None)).unwrap();
+    now += MINUTE;
+    phone.exchange_notes(&folder, &key, now, &phone_notes);
+    now += MINUTE;
+    desk.exchange_notes(&folder, &key, now, &desk_notes);
+    let desk_store = read(&desk_notes);
+    assert_eq!((desk_store.apart.len(), desk_store.links.len(), desk_store.format), (1, 1, 1), "{}", store(&desk_notes));
     let _ = std::fs::remove_dir_all(&base);
 }

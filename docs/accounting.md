@@ -135,6 +135,52 @@ Arrears that build up in silence are how it goes wrong: a debit stops, nothing s
 - **Short, with bank accounts**: once accounts say which reserves top them up, the topping-up sentences on each card replace the watch's own "short" sentence.
 - **Not built**: fetching from the bank itself (Woob has modules for many banks; Sioul installs nothing): exports are taken by hand for now. Without bank accounts declared, bank lines do not become budget lines: the watch confirms, it does not keep the books.
 
+## Movements
+A **movement** is one sum of money in or out, once, with everything that tells of it. The rent is planned by its preset and its contract, announced by the landlord's notice, then done when the bank's line comes: one movement with four sources, never four lines ([the research](research/budgets.md), section 6). Movements are made again each time from your files and Sioul's own store beside them, never kept whole: a file changed by hand or on another device is read as it is, and what you wrote stays the record. Code: `crates/sioul-core/src/movements.rs`.
+- **What one holds**:
+  - an id, the same on every device;
+  - its bank account when known: the bank's line's, else the account that fills its budget first;
+  - its way: in, out, or between your own accounts;
+  - its amount, signed: exact, "about" (within a tenth), or between two amounts, the middle said;
+  - its currency, and its day: the bank's, else the day announced or planned, which stays beside it as the day expected;
+  - its budget, its parts across budgets, or none;
+  - what it is for: its budgets' areas; in no budget, its account's, the areas of the budgets the account fills;
+  - its sources and documents, its other links (tasks, events, projects, notes), and its state.
+- **Its sources**, each with a key that corrections name it by:
+  - a line of the budget file, `line:<id>`; one written by hand without an id, `line:~<a digest of what it holds>`;
+  - a recurring payment's occurrence, `preset:<preset>/<day>`, and the contract its preset pays, `sioul:contract/<id>`;
+  - the bank's line, `bank:<account>/<the bank's id>`, and a card hold, `hold:<account>/<id>`;
+  - an invoice you issued, `sioul:invoice/<number>`; a paper letter, `sioul:letter/<id>`; a message, `mid:<Message-ID>`.
+
+  A movement's id is the key of its first source in that order, so the same files give the same id on every device. Its address is `sioul:movement/<id>`, and an address naming any of its sources finds it too, so a link made before the bank's line came still leads to it.
+- **Five states**, in words, never "late", "overdue" or a count:
+  - *planned*: from a contract or a preset, or a line written as planned;
+  - *announced*: a mail, a letter, an invoice or a debit notice gave its amount and day; a receipt that arrives before its bank line waits as announced;
+  - *not final yet*: a card hold, which the shop may still change;
+  - *done*: the bank's line, or a line you wrote as done with nothing else to tell of it (cash);
+  - *not seen*: its day passed inside what its account's exports cover, from three days before to seven after, as the watch has always looked, with no line for it. Said once.
+
+  A planned movement whose day passed while no export of its account can tell stays planned: the budgets count it as done, as they always did, and nothing claims it happened.
+- **How they are made**, in this order:
+  1. each fixed preset's occurrences, with the contract that names the preset; an estimate (food, cash) is an envelope, not a movement;
+  2. the lines of the budget file; a line standing for a preset joins its occurrence, with the real amount;
+  3. the bank's lines and holds of the declared accounts, placed as "Bank accounts" says, each joining the line or the occurrence it is the same payment as;
+  4. money moved between two of your accounts, read on both accounts' exports, as one movement with two sides, in no budget; a line with `reserve` stays in its budget, since reserves cover budgets;
+  5. lines of accounts not declared, which keep no books: they only confirm occurrences, as the watch does;
+  6. letters with an amount and a date (a bill, a tax notice, a reminder, a formal notice), joined to the planned movement they announce (the same amount within a hundredth, ten days apart at most), else proposed in no budget;
+  7. the store's corrections; then what was not seen.
+- **A card hold** stays not final until the bank's line for it comes (its id, or on its account within two weeks with a word of its label or nearly its amount: a tip changes it, a petrol station holds more than it takes), or for two weeks at most, since some are never posted.
+- **The store**, `sioul-movements.toml`, beside the budget file in the notes folder, says what your files cannot:
+  - `[[link]]`: a source joined to a movement, by the matching or by your hand, one per source;
+  - `[[apart]]`: "Not the same", two sources that are never one movement;
+  - `[[move]]`: a movement placed by your hand where the files cannot say it, an occurrence moved or a line in parts;
+  - `[[hold]]`: the card holds an account's last export listed;
+  - `[[name]]`: a payee's name as the bank writes it, taught by a correction.
+
+  Its first line says its format (`format = 1`); a store written by a later Sioul is read for what this one knows of it, and never written over. It is written under the file's lock, which the sharing takes too, and keeps what this Sioul does not know. A bank line's own placement stays in the budget file's `[[assign]]`, and a payee's next movements in a `[[split]]` rule, which every version reads. Between your devices it travels with projects and money ([database.md](database.md), "Parts").
+- **Older files read as before**: the budget file keeps its format. Its new fields are optional, and older versions pass over them: a line's `id` (written since the sharing's format 2), a preset's `about` and its range, `low` and `high`, in euros, their sign taken from `amount`. Nothing reads the budget files with `deny_unknown_fields`, so a field a later Sioul adds is passed over too.
+- **What is due soon**, for the Porch's Money section: `sioul_core::due::coming(today, days)` lists each movement planned or announced from today to `days` ahead, each card hold, and what was not seen in the past month, in day order, one plain row each (`due::Coming`: its day, who, the signed amount in cents, its currency, whether it is "about", its budget's title, its state, its address). Done movements and transfers are not listed, since nothing is due of them. `due::coming_in` does the same for a notes folder given.
+
 ## Contracts and subscriptions
 What you are bound to (rent, energy, phone and internet, insurances, health cover, subscriptions, hosting, the bank), each with when it renews, the notice it needs, how to stop it and what it covers. Forgotten subscriptions are part of what people with ADHD call the "ADHD tax"; knowing what an insurance covers matters before a legal step. Code: `crates/sioul-core/src/contracts.rs`, `crates/sioul-app/src/contracts.rs`, `qml/ContractsSection.qml`, `qml/ContractDialog.qml`.
 - **Where**: `sioul-contracts.toml` at the root of the notes folder, beside the budgets; shown on the Budgets page under "Contracts and subscriptions".
@@ -151,6 +197,7 @@ Invoice numbers must never repeat. With sharing on, one device numbers them (`si
 ## Storage
 - **The budget file**, `sioul-budgets.toml`, sits at the root of the notes folder: readable, written by hand or by Sioul, versioned with git. It holds the budgets, presets, lines, reserves, covers and mail rules, and the bank accounts, their rules (`[[split]]`) and your choices for single movements (`[[assign]]`).
 - **The bank's movements**, `sioul-bank.toml`, beside it: every account's, by the bank's own id, and the newest balance of each.
+- **Sioul's own record of movements**, `sioul-movements.toml`, beside them: what the files cannot say (above, "Movements").
 - **Lines accepted from mail** go into it, at the end, each with a comment saying which message it came from and when it was added, and the message's `mid:` in its `links`, so it is never proposed twice.
 - **Messages you said are not payments** are remembered in `~/.local/state/sioul/money.toml`.
 

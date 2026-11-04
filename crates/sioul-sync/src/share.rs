@@ -356,6 +356,28 @@ pub fn legs_as_steps(folder: &Path, key: &[u8; 32], memory: &Path, computer: &st
     present(folder, key, computer, &state, now_ms).iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.legs >= LEGS_AS_STEPS))
 }
 
+/// The notices' words (`sioul_core::notices`, docs/porch.md, "Notices"):
+/// each device's own log, `<device>.jsonl`, a line per press (Dismiss, Read,
+/// Done), every device's read, so that a notice dismissed on one device is
+/// gone from the Porch of all. A store an older Sioul does not know: it
+/// travels once every device says it has it (`notices_shared`).
+pub const NOTICES: &str = "state/notices/";
+
+/// What a device's entry says once its Sioul has the notices' store (`devices::Entry::notices`).
+pub const NOTICES_SHARED: u32 = 1;
+
+/// Whether the notices' words travel: at least one other device counts, and
+/// every one of them says in its sealed entry that its Sioul has the store
+/// (`devices::Entry::notices`), as your own time around meetings waits
+/// (`own_time_shared`): an older Sioul (705576a) would keep its records
+/// waiting at every exchange, never quiet again. Until then each device
+/// keeps its words to itself; the calls' and the phone messages' travel
+/// meanwhile in their Seen logs, which every version reads.
+fn notices_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.notices >= NOTICES_SHARED))
+}
+
 /// Do-not-disturb's switch (docs/do-not-disturb.md): a table per device, each
 /// written by its own device alone, shared whole.
 static DND_RULES: Rules = Rules { keyed: &[], whole: &["device.*"], local: &[], next: None };
@@ -414,6 +436,37 @@ static LEDGER_RULES_2: Rules = Rules {
     next: None,
 };
 static CONTRACTS_RULES: Rules = Rules { keyed: &[keyed("contract", &["id"])], whole: &[], local: &[], next: None };
+/// Sioul's own record of money movements (`sioul_core::movements::Store`):
+/// each entry named by what it is about, so that one changed on two devices
+/// keeps the newer word, and two devices adding some keep both: a source
+/// joined by the source, "Not the same" by both keys, a placement by its
+/// movement, a card hold by its account and id, a name taught by the
+/// bank's name. Its format, a setting of its own.
+static MOVEMENTS_RULES: Rules = Rules {
+    keyed: &[keyed("link", &["source"]), keyed("apart", &["a", "b"]), keyed("move", &["movement"]), keyed("hold", &["account", "id"]), keyed("name", &["bank"])],
+    whole: &[],
+    local: &[],
+    next: None,
+};
+
+/// The store of money movements, beside the budget file.
+pub const MOVEMENTS: &str = "notes/sioul-movements.toml";
+
+/// What a device's entry says once its Sioul has the money movements' store (`devices::Entry::movements`).
+pub const MOVEMENTS_SHARED: u32 = 1;
+
+/// Whether the money movements' store travels by the log: at least one
+/// other device counts (`present`), and every one of them says in its
+/// sealed entry that its Sioul has the store (`devices::Entry::movements`),
+/// as your own time around meetings travels (`own_time_shared`): until
+/// then it is left out of the exchange, neither sent nor read, and an older
+/// Sioul (705576a), which has no such store, never holds a record it would
+/// keep waiting. A sync app carrying the notes folder carries the file
+/// itself, whatever this says.
+fn movements_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.movements >= MOVEMENTS_SHARED))
+}
 static PAPERS_RULES: Rules = Rules { keyed: &[keyed("paper", &["id"])], whole: &[], local: &[], next: None };
 /// In the notes folder, what the other parts carry: projects, budgets, the
 /// bank, contracts (projects), the papers' wallet and its folder (papers).
@@ -424,6 +477,7 @@ const NOT_NOTES: &[&str] = &[
     sioul_core::budget::LEDGER,
     sioul_core::bank::MANIFEST,
     sioul_core::contracts::MANIFEST,
+    sioul_core::movements::STORE,
     sioul_core::papers::MANIFEST,
     sioul_core::papers::FOLDER,
 ];
@@ -511,15 +565,15 @@ const TEXTS: &str = "data/texts/";
 /// messages, by its name in the records: logs of lines that leave every
 /// device after their time.
 fn calls_store(name: &str) -> bool {
-    // texts: their stores too.
-    name.starts_with(CALLS) || name.starts_with(PHONE_MESSAGES) || name.starts_with(TEXTS)
+    // texts: their stores too; the notices' words, which leave after their week.
+    name.starts_with(CALLS) || name.starts_with(PHONE_MESSAGES) || name.starts_with(TEXTS) || name.starts_with(NOTICES)
 }
 
 /// Whether an entry is a line of a log every device ages out by itself
 /// (`AGED_TOMBSTONE_DAYS`): the calls' logs, the phone's messages' logs, the
 /// texts' requests and outcomes; never the texts themselves, whose log only grows.
 fn ages_out(key: &str) -> bool {
-    key.starts_with(CALLS) || key.starts_with(PHONE_MESSAGES) || key.starts_with(TEXTS_SEND) || key.starts_with(TEXTS_OUTCOME)
+    key.starts_with(CALLS) || key.starts_with(PHONE_MESSAGES) || key.starts_with(TEXTS_SEND) || key.starts_with(TEXTS_OUTCOME) || key.starts_with(NOTICES)
 }
 
 /// The spam filter's table (`sioul_core::spam::table`), made by a training
@@ -659,6 +713,9 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder("lists", "data/calendars/local/", d.join("calendars").join(local), Shape::Whole, &[]),
         folder("lists", "data/contacts/local/", d.join("contacts").join(local), Shape::Whole, &[]),
         file("settings", "state/porch.toml", s.join("porch.toml"), Shape::Toml(&PORCH_RULES)),
+        // The notices' words, each device's own log, a line each, every device's read
+        // (`notices_shared`: once every device has the store).
+        folder("settings", NOTICES, s.join(sioul_core::notices::FOLDER), Shape::Lines, &[]),
         file("settings", "state/money.toml", s.join("money.toml"), Shape::Toml(&MONEY_RULES)),
         // Do-not-disturb's switch, pressed on any device (docs/do-not-disturb.md).
         file("settings", "state/do-not-disturb.toml", s.join(sioul_core::everywhere::SWITCH_FILE), Shape::Toml(&DND_RULES)),
@@ -713,6 +770,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         stores.push(file("projects", "notes/sioul-budgets.toml", notes.join(sioul_core::budget::LEDGER), Shape::Toml(&LEDGER_RULES)));
         stores.push(file("projects", "notes/sioul-bank.toml", notes.join(sioul_core::bank::MANIFEST), Shape::Toml(&BANK_RULES)));
         stores.push(file("projects", "notes/sioul-contracts.toml", notes.join(sioul_core::contracts::MANIFEST), Shape::Toml(&CONTRACTS_RULES)));
+        // The money movements' store: travels once every other device says it has it (`movements_shared`).
+        stores.push(file("projects", MOVEMENTS, notes.join(sioul_core::movements::STORE), Shape::Toml(&MOVEMENTS_RULES)));
         stores.push(file("papers", "notes/sioul-papers.toml", notes.join(sioul_core::papers::MANIFEST), Shape::Toml(&PAPERS_RULES)));
         stores.push(folder("papers", "files/papers/", notes.join(sioul_core::papers::FOLDER), Shape::Files, &[]));
         stores.push(folder("notes", "files/notes/", notes, Shape::Files, NOT_NOTES));
@@ -2435,6 +2494,19 @@ struct Memory {
     /// unknown field passed over) and write it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     own_time_open: bool,
+    /// The money movements' store (`MOVEMENTS`) travelled from here once
+    /// every device said it has it (`movements_shared`): from then on it
+    /// stays in this device's exchanges, as `own_time_open` keeps your own
+    /// time. Missing (a memory from before): not yet. 705576a reads a memory
+    /// with it (an unknown field passed over) and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    movements_open: bool,
+    /// The notices' words (`NOTICES`) travelled from here once every device
+    /// said it has their store (`notices_shared`): from then on they stay in
+    /// this device's exchanges, as your own time does. Missing: not yet. An
+    /// older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    notices_open: bool,
     /// How far each other computer's records were read: its round and the bytes read in it.
     #[serde(default)]
     read: BTreeMap<String, (u32, u64)>,
@@ -5320,15 +5392,25 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if sealed == Some(true) {
         memory.seal_salt = salt;
     }
-    // Your own time around meetings: left out until every device has its store (`own_time_shared`),
-    // then kept in for good (`Memory::own_time_open`).
+    // Your own time around meetings, the money movements' store and the notices' words: each left
+    // out until every device has its store (`own_time_shared`, `movements_shared`, `notices_shared`),
+    // then kept in for good (`Memory::own_time_open`, `Memory::movements_open`, `Memory::notices_open`).
     let gated: Vec<Store>;
     let own_time = stores.iter().any(|s| s.name == OWN_TIME);
     if own_time && !memory.own_time_open && own_time_shared(sharing, &memory, now_ms) {
         memory.own_time_open = true;
     }
-    let stores: &[Store] = if own_time && !memory.own_time_open {
-        gated = stores.iter().filter(|s| s.name != OWN_TIME).cloned().collect();
+    let movements = stores.iter().any(|s| s.name == MOVEMENTS);
+    if movements && !memory.movements_open && movements_shared(sharing, &memory, now_ms) {
+        memory.movements_open = true;
+    }
+    let notices = stores.iter().any(|s| s.name == NOTICES);
+    if notices && !memory.notices_open && notices_shared(sharing, &memory, now_ms) {
+        memory.notices_open = true;
+    }
+    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open);
+    let stores: &[Store] = if stores.iter().any(left_out) {
+        gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
         &gated
     } else {
         stores

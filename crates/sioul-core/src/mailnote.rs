@@ -47,11 +47,23 @@ pub struct Letter {
     /// (the ledger keeps the hashed `key` alone): what the notification of
     /// one message opens (the unified mailbox's part 2).
     pub address: String,
+    /// Its notice (`notices::mail_id_of`) and its file here, in memory: the
+    /// notification is taken away once each of its notices is settled.
+    pub notice: String,
+    pub file: String,
 }
 
 impl Letter {
     pub fn of(t: &Triaged) -> Letter {
-        Letter { key: key(t), sender: one_line(t.card.sender()), subject: one_line(&t.card.subject), through: false, address: crate::mailfind::address_of_card(&t.card) }
+        Letter {
+            key: key(t),
+            sender: one_line(t.card.sender()),
+            subject: one_line(&t.card.subject),
+            through: false,
+            address: crate::mailfind::address_of_card(&t.card),
+            notice: crate::notices::mail_id_of(&t.card),
+            file: t.card.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
+        }
     }
 }
 
@@ -337,7 +349,7 @@ mod tests {
         assert_eq!(batch(&fr, &sorted.now[..1]).0, "Un courriel");
         assert_eq!(batch(&en, &sorted.now[..1]).0, "One e-mail");
         // Past twelve, digits; three named at most; a message without a subject says so.
-        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false, address: format!("mid:letter-{i}@example.org") }).collect();
+        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: String::new() }).collect();
         // One message opens it; several, the Porch (the unified mailbox's part 2).
         assert_eq!(one_address(&many[..1]), Some("mid:letter-0@example.org"));
         assert_eq!(one_address(&many[..2]), None);

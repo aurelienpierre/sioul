@@ -203,11 +203,33 @@ Changer le titre ou le lieu d’une seule occurrence (son heure se déplace à l
 - **Un fichier d’agenda dans un courriel** : un `.ics` que porte un courriel va dans votre agenda avec **Ajouter à mon agenda**.
 - **Deux agendas, un seul événement** : le même événement dans deux de vos agendas (le même UID au même début) n’est pas pris pour deux événements en même temps.
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+On tient plusieurs agendas, un pour chaque part de sa vie ou chaque personne avec qui on la partage, pour montrer à chacune ce qui la concerne (Thayer et al. 2012). Aussi chaque agenda dit à qui il est et à quoi il sert, et un seul choix, **Agendas**, décide de ce que montre chaque vue.
+
+Ce qui compte, dans deux événements en même temps, c’est vous, à deux endroits à la fois. Des couples se disputaient pour des chevauchements que ni l’un ni l’autre n’avait vus venir (« Tu n’as pas regardé mon agenda », Thayer et al. 2012), et les plans d’une famille cassent quand quelque chose change (Davidoff, Zimmerman & Dey 2010). Aussi Sioul compare ce qui a besoin de vous, montre un conflit là où vous regardez, et le dit une fois quand c’est le changement de quelqu’un d’autre qui l’a fait.
+
+Le plus lourd, dans la vie d’une famille, c’est de remarquer, de prévoir et de rappeler, plus que de faire. Dans les études, les mères faisaient l’essentiel de l’anticipation et des vérifications, quand les décisions étaient plus partagées (Daminger 2019) ; elles comptaient le fait d’expliquer les choses aux autres comme un travail en soi (Robertson et al. 2019) ; et dans 41 familles sur 44, la mère tenait l’agenda familial et faisait les rappels aux autres (Neustaedter, Brush & Greenberg 2009). Porter tout cela en tête coûte (Offer 2014), et se sentir l’unique responsable aussi (Ciciolla & Luthar 2019). Aussi, quand un parent prend l’événement d’un enfant, ses rappels, son temps pour y aller et sa suite vont avec, et les détails restent à un seul endroit, l’agenda de l’enfant.
+
+*Fair Play*, d’Eve Rodsky (2019), confie chaque tâche qui revient à une seule personne, du moment où l’on remarque qu’elle est due jusqu’à ce qu’elle soit faite, car ne confier que le faire laisse l’autre tout organiser. Aussi un parent peut garder un type de choses, comme le dentiste d’un enfant, et le prochain rendez-vous à prendre lui revient.
+
+La plupart des parents séparés mènent leurs journées côte à côte plutôt qu’ensemble (Maccoby & Mnookin 1992 ; Amato, Kane & James 2011), et dans le conflit les messages peuvent servir à retenir et à contrôler (Ganong et al. 2012). Aussi rien n’entre dans l’agenda d’un autre parent avant qu’il l’accepte ; Sioul garde qui a pris quoi et quand, jamais quand quelque chose a été lu ; et un parent qui utilise un autre agenda reçoit une invitation ordinaire, que vous envoyez vous-même.
+
+La page de qui fait quoi ne montre aucun total par parent. Les relevés des applications de coparentalité « peuvent encourager une comptabilité mesquine » (Relationships Australia Victoria 2024), et tenir le compte de la part de chacun est ce qu’on fait dans un échange, et ce qu’on évite avec ses proches (Clark 1984). Chaque ligne dit qui la prend, et depuis quand : c’est cela, le suivi.
+
+Un agenda partagé avec vous pour savoir quand quelqu’un est pris ne se lit que chez vous. « Un agenda partagé peut laisser croire que les coparents ont le droit de surveiller les allées et venues l’un de l’autre » (Relationships Australia Victoria 2024), et l’on tient des agendas séparés pour ne pas ouvrir toute sa vie aux regards (Thayer et al. 2012). Aussi ses heures occupées ne se montrent qu’à vous, en simples bandes sans titres, et Sioul ne les partage jamais à nouveau, ne les exporte pas et ne les donne à aucun agent.
+
+Quand vous partagez les vôtres, un simple « occupé » peut passer pour un secret entre partenaires : 26 personnes sur 30, dans une étude, le trouvaient suspect (Thayer et al. 2012). Aussi vos créneaux disent « Occupé » au début, et vous pouvez y ajouter un mot pour un ou une partenaire.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Du temps autour des événements, et un plan autour d’eux.** Sioul garde du temps avant et après chaque événement, réglé par vous, et le compte partout à la fois : dans votre plan, dans l’avertissement pour deux événements en même temps, et dans son rappel. Calendrier d’Apple et Fantastical gardent un temps de trajet avant un événement seulement, et disent quand partir d’après la circulation du moment, ce que Sioul ne fait pas. Morgen calcule le temps de trajet dans les deux sens avec Google Maps, et Reclaim ajoute un temps de trajet fixe dans les deux sens, chacun pour les agendas Google et Outlook (Morgen aussi pour iCloud et Fastmail), avec un compte chez eux. Le planificateur IA de Morgen et les habitudes de Reclaim placent aussi le travail et les routines, comme le déjeuner, autour de vos événements ; Sioul le fait sur votre appareil, d’après vos propres heures, vos repas et vos nuits, avec n’importe quel serveur CalDAV et sans compte ailleurs. Sioul ne sait pas envoyer d’invitations, exporter des fichiers `.ics` ni s’abonner à un agenda par son adresse, ni montrer de lui-même les anniversaires, là où la plupart des autres le savent ; et parmi ces applications, seul Proton chiffre de bout en bout ce que dit un événement, ses heures mises à part.
+**Du temps autour des événements, et un plan autour d’eux.** Sioul garde du temps avant et après chaque événement, réglé par vous, et le compte partout à la fois : dans votre plan, dans l’avertissement pour deux événements en même temps, et dans son rappel. Calendrier d’Apple et Fantastical gardent un temps de trajet avant un événement seulement, et disent quand partir d’après la circulation du moment, ce que Sioul ne fait pas. Morgen calcule le temps de trajet dans les deux sens avec Google Maps, et Reclaim ajoute un temps de trajet fixe dans les deux sens, chacun pour les agendas Google et Outlook (Morgen aussi pour iCloud et Fastmail), avec un compte chez eux. Le planificateur IA de Morgen et les habitudes de Reclaim placent aussi le travail et les routines, comme le déjeuner, autour de vos événements ; Sioul le fait sur votre appareil, d’après vos propres heures, vos repas et vos nuits, avec n’importe quel serveur CalDAV et sans compte ailleurs. Sioul n’envoie d’invitation que pour proposer l’événement d’un enfant à un autre parent, et ne sait pas exporter des fichiers `.ics` ni s’abonner à un agenda par son adresse, ni montrer de lui-même les anniversaires, là où la plupart des autres le savent ; et parmi ces applications, seul Proton chiffre de bout en bout ce que dit un événement, ses heures mises à part.
 
-En octobre 2026, d’après la documentation de chaque application.
+**Les événements d’un enfant, pris chacun par un parent.** Sioul donne à chaque enfant un agenda, et chacun de ses événements et de ses tâches à un parent, qui en reçoit les rappels, le temps d’y aller et le prochain rendez-vous à prendre, tandis que les détails restent dans l’agenda de l’enfant ; rien n’entre dans l’agenda d’un autre parent avant qu’il l’accepte. OurFamilyWizard marque qui conduit, dans un agenda à lui à côté de celui de chaque parent ; AppClose ajoute un événement partagé à un agenda une fois accepté. Aucune des applications lues n’avertit quand une personne est attendue à deux endroits d’un agenda à l’autre, ni n’envoie les rappels à qui prend un événement.
+
+En novembre 2026, d’après la documentation de chaque application.
 
 ✓ documenté ; **en partie**, avec une note ; ✗ introuvable dans la documentation de l’application (pour Sioul : pas fait) ; ? pas confirmé ; — sans objet. La colonne de Sioul a été vérifiée dans son code.
 
@@ -222,10 +244,10 @@ En octobre 2026, d’après la documentation de chaque application.
     | Plusieurs rappels pour un événement | en partie¹⁹ | ✓ | ✓ | ?²⁰ | ✓²¹ | ✓ |
     | Se répète selon des règles comme « le premier lundi » | en partie²² | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Répond aux invitations qui arrivent par courriel | ✓ | ✓ | ✓ | ✓ | ✓ | en partie²³ |
-    | Envoie des invitations | ✗ | ✓ | ✓²⁴ | ✓ | ✓ | ✓ |
-    | Déplace un événement en le faisant glisser, avec annulation | ✓ | ✓ | en partie²⁵ | ?²⁶ | ✓ | en partie²⁷ |
+    | Envoie des invitations | en partie²⁴ | ✓ | ✓²⁵ | ✓ | ✓ | ✓ |
+    | Déplace un événement en le faisant glisser, avec annulation | ✓ | ✓ | en partie²⁶ | ?²⁷ | ✓ | en partie²⁸ |
     | Déplace un événement vers un autre agenda | ✓ | ✓ | ✓ | ✓ | ✓ | ? |
-    | Montre les anniversaires de vos contacts | ✗²⁸ | ✓ | ✓ | ✓ | ✗ | ? |
+    | Montre les anniversaires de vos contacts | ✗²⁹ | ✓ | ✓ | ✓ | ✗ | ? |
 
     1. **Avant** et **Après**, de 5 minutes à 2 heures chacun, gardés libres par votre plan et comptés par la recherche de chevauchements et par le rappel.
     2. Ni le formulaire d’un événement ni l’ensemble des réglages sous Android n’ont de temps de trajet ou de préparation.
@@ -238,7 +260,7 @@ En octobre 2026, d’après la documentation de chaque application.
     9. D’après le lieu de l’événement, l’endroit où vous êtes probablement et la circulation ou les transports, pour des trajets de moins de trois heures.
     10. Pas sur un ordinateur ni sur le web ; le « Time to Leave » de l’application pour téléphone venait de Cortana, arrêtée en 2023.
     11. Le créneau de trajet montre quand partir ; une alerte pour cela n’est pas décrite.
-    12. Sur le Porche pour aujourd’hui, et au-dessus de l’agenda pour deux semaines, avec le temps d’y aller et d’en revenir de chaque événement.
+    12. Deux événements qui ont besoin de vous en même temps, côte à côte avec un mince crochet, le temps d’y aller et d’en revenir de chacun compté ; dit une fois sur le Porche quand c’est le changement de quelqu’un d’autre qui l’a fait.
     13. Pour les invitations : un avis de conflit, une vue de l’endroit où tombe l’invitation, et un choix pour décliner les invitations en conflit.
     14. Le planificateur IA avertit quand une réunion tombe sur une tâche prévue ; deux événements qui se chevauchent ne sont pas décrits.
     15. Votre plan place vos tâches dans vos heures autour de vos événements, de leur Avant et de leur Après et de cinq minutes autour de chacun ; un repas qui tombe pendant un événement passe après lui ; les jours autour d’un événement lourd en tiennent moins.
@@ -250,11 +272,12 @@ En octobre 2026, d’après la documentation de chaque application.
     21. Plusieurs par événement ; une seule valeur par défaut pour tous les agendas ; les rappels ne viennent que pendant que Thunderbird tourne.
     22. Sioul garde toute règle faite ailleurs, et fait tous les n jours, toutes les n semaines, tous les n mois ou tous les n ans.
     23. Morgen répond sur les événements qui ont des personnes invitées, par le fournisseur de l’agenda ; il ne lit aucun courriel.
-    24. Avec iCloud, Exchange et certains serveurs CalDAV.
-    25. Glisser pour déplacer sur le Mac et l’iPhone ; une annulation n’est pas décrite dans les guides d’Apple.
-    26. Faire glisser un événement vers un autre agenda est décrit ; le déplacer dans la grille, et l’annuler, ne le sont pas dans les pages lues.
-    27. Le glisser-déposer est décrit ; une annulation ne l’est pas.
-    28. Sioul ne fait pas d’agenda des anniversaires ; celui que garde votre serveur (Nextcloud en garde un) s’affiche comme tout agenda que vous ne pouvez que lire.
+    24. Seulement pour proposer l’événement d’un enfant à un autre parent dont Sioul ne peut pas écrire l’agenda : un brouillon, qui part quand vous appuyez sur Envoyer. Pas encore essayé avec Google, Outlook ni Nextcloud.
+    25. Avec iCloud, Exchange et certains serveurs CalDAV.
+    26. Glisser pour déplacer sur le Mac et l’iPhone ; une annulation n’est pas décrite dans les guides d’Apple.
+    27. Faire glisser un événement vers un autre agenda est décrit ; le déplacer dans la grille, et l’annuler, ne le sont pas dans les pages lues.
+    28. Le glisser-déposer est décrit ; une annulation ne l’est pas.
+    29. Sioul ne fait pas d’agenda des anniversaires ; celui que garde votre serveur (Nextcloud en garde un) s’affiche comme tout agenda que vous ne pouvez que lire.
 
 === "Technique"
 
@@ -285,7 +308,46 @@ En octobre 2026, d’après la documentation de chaque application.
     14. Le titre, la description, le lieu et les personnes invitées sont chiffrés sur votre appareil ; le début et la fin, le fuseau horaire, la répétition et les alarmes sont seulement signés, et les serveurs de Proton les lisent.
     15. Le code du client web est sous GPL-3.0 ; Proton dit que toutes ses applications sont libres.
 
+=== "Agendas partagés"
+
+    | | Sioul | OurFamilyWizard | AppClose | TalkingParents | TimeTree | Google | Fantastical |
+    |---|---|---|---|---|---|---|---|
+    | Dit qui prend l’événement d’un enfant | ✓¹ | en partie² | ? | ✗ | en partie³ | en partie⁴ | ✗ |
+    | Envoie ses rappels, et le prochain rendez-vous à prendre, à qui le prend | ✓⁵ | ✗⁶ | ? | ✗ | ? | ? | ✗ |
+    | Met l’événement pris dans l’agenda de qui le prend, lié à celui de l’enfant | ✓⁷ | en partie⁸ | en partie⁹ | en partie¹⁰ | ? | en partie¹¹ | en partie¹² |
+    | N’entre dans l’agenda de quelqu’un qu’une fois accepté | ✓ | ✗¹³ | ✓ | ✗ | ✗¹⁴ | ? | ? |
+    | Avertit quand une personne est attendue à deux endroits, d’un agenda à l’autre | ✓¹⁵ | ✗ | ? | ✗ | ✗ | ? | en partie¹⁶ |
+    | Partage vos disponibilités en heures occupées seulement | ✓¹⁷ | ✗ | ? | ✗ | ✗ | ✓¹⁸ | en partie¹⁹ |
+    | Une trace datée de qui a pris quoi | ✓²⁰ | ✓²¹ | en partie²² | ✓²³ | ? | en partie²⁴ | ✗ |
+
+    1. Une personne qui prend chaque événement ou tâche de l’agenda d’un enfant, deux quand un parent y emmène l’enfant et que l’autre le ramène ; un type de choses, comme le dentiste, peut garder la sienne.
+    2. Un « Pick-Up and Drop-Off Parent », un seul pour l’aller et le retour, montré par la couleur du début et de la fin de l’événement.
+    3. Des participants, des enfants parmi eux, sans compte à eux.
+    4. Les personnes invitées seulement.
+    5. Ses rappels, son temps pour y aller et en revenir, et, après un rendez-vous qui revient (le dentiste), une tâche pour prendre le suivant.
+    6. Un rappel « pour vous-même ».
+    7. Une copie dans l’agenda de qui le prend, qui suit l’événement de l’enfant, ou une invitation là où Sioul ne peut pas écrire cet agenda.
+    8. Un export `.ics`.
+    9. Un événement partagé, une fois accepté, va dans l’un des agendas de qui le reçoit.
+    10. Les événements partagés peuvent être copiés dans un agenda Google personnel.
+    11. Une invitation met une copie de l’événement dans l’agenda de chaque personne invitée.
+    12. La copie en miroir recopie les événements d’un agenda dans un autre, en « Blocked Time » ou avec leur titre.
+    13. Les événements sont partagés par défaut ; une case « Private » en garde un pour son auteur.
+    14. Les membres de chaque agenda en voient les événements.
+    15. Les événements de vos agendas, ceux des enfants que vous prenez et les invitations que vous avez acceptées ; les paires d’agendas comparées sont dans les réglages de l’agenda.
+    16. La copie en miroir prend le temps dans un autre agenda, ce qui évite le double rendez-vous plutôt que d’en avertir.
+    17. Un agenda de créneaux occupés, fait dans l’un de vos comptes CalDAV d’après les agendas que vous choisissez, pour une personne à la fois.
+    18. « See only free/busy (hide details) », personne par personne.
+    19. En miroir, en « Blocked Time ».
+    20. Qui a pris quoi, et quand ; jamais quand quelque chose a été lu.
+    21. Un événement passé ne peut plus être changé, même par son auteur ; les changements du calendrier de garde gardent une trace.
+    22. Les demandes restent en attente jusqu’à être acceptées ou refusées.
+    23. Quand chaque événement a été créé, modifié et vu.
+    24. La réponse de chaque personne invitée.
+
 **Les autres agendas.** Fantastical (Mac, iPhone, iPad, Apple Watch, Vision Pro, Windows) ajoute, avec sa formule Premium, un temps de trajet avant un événement, depuis le domicile, le travail ou l’événement précédent, et des alertes « temps de partir » d’après l’endroit où vous êtes et la circulation ; il lit tout compte CalDAV, ne place aucune tâche de lui-même, et ne décrit pas d’avertissement pour les événements qui se chevauchent. Reclaim.ai, une application web au-dessus de Google Agenda ou d’Outlook seulement, ajoute un temps de trajet avant et après les événements qui ont une adresse, et du temps pour se préparer ou décompresser autour des réunions ; il place des habitudes comme le déjeuner dans une plage et les déplace quand une réunion tombe dessus, et garde les événements de votre agenda principal dans ses propres bases de données. Sous Android, Fossify Calendar ajoute les anniversaires de vos contacts et déplace les événements en les faisant glisser, par heures entières ; Etar ne fait ni l’un ni l’autre.
+
+**Familles et agendas partagés.** Cozi et FamCal donnent une couleur à chaque membre de la famille, et Cozi envoie les rappels d’un événement aux membres que vous choisissez ; 2houses garde les jours de garde et les demandes pour les changer. Les listes de rappels partagées d’Apple confient un rappel à une personne. Outlook (« Can view when I’m busy ») et Proton (« Limited view », par lien) partagent aussi un agenda en heures occupées seulement, Nextcloud événement par événement, et iCloud pas du tout.
 
 ??? info "Sources (en anglais)"
     - Google Agenda : les réglages sous Android, <https://support.google.com/calendar/answer/6084644?co=GENIE.Platform%3DAndroid>, lu le 8 octobre 2026.
@@ -341,6 +403,24 @@ En octobre 2026, d’après la documentation de chaque application.
     - Reclaim.ai : les habitudes, <https://help.reclaim.ai/en/articles/17124978-habits-agents-overview-automate-your-recurring-routines>, lu le 8 octobre 2026.
     - Reclaim.ai : la sécurité, <https://reclaim.ai/security>, lu le 8 octobre 2026.
     - Reclaim.ai : les prix, <https://reclaim.ai/pricing>, lu le 8 octobre 2026.
+    - OurFamilyWizard : ajouter un événement à l’agenda, <https://support.ourfamilywizard.com/hc/en-us/articles/42667018503437-How-do-I-add-an-event-to-the-calendar>, lu le 4 novembre 2026.
+    - OurFamilyWizard : ce que voit l’autre parent, <https://www.ourfamilywizard.com/blog/sharing-calendars-what-can-my-co-parent-see>, lu le 4 novembre 2026.
+    - AppClose : créer un événement, par un résumé de recherche, <https://support.appclose.com/hc/en-us/articles/30836914343451-How-do-I-create-an-event>, lu le 4 novembre 2026.
+    - AppClose : une demande d’échange de jours, par un résumé de recherche, <https://support.appclose.com/hc/en-us/articles/27579820894491-How-do-I-create-a-swap-days-request>, lu le 4 novembre 2026.
+    - TalkingParents : l’agenda partagé, <https://talkingparents.com/features/shared-calendar>, lu le 4 novembre 2026.
+    - TimeTree : qui voit les événements d’un agenda, <https://support.timetreeapp.com/hc/en-us/articles/900002172746-Can-other-calendar-members-see-my-events>, lu le 4 novembre 2026.
+    - TimeTree : les membres virtuels, <https://timetreeapp.com/intl/en/newsroom/2024-07-16/veirtual-member-released>, lu le 4 novembre 2026.
+    - Google Agenda : partager un agenda, <https://support.google.com/calendar/answer/37082>, lu le 4 novembre 2026.
+    - Google for Developers : la ressource Events, <https://developers.google.com/workspace/calendar/api/v3/reference/events>, lu le 4 novembre 2026.
+    - Fantastical : la copie en miroir, <https://flexibits.com/fantastical/help/calendar-mirroring>, lu le 4 novembre 2026.
+    - Cozi : premiers pas avec l’agenda, <https://www.cozi.com/?p=4725>, lu le 4 novembre 2026.
+    - FamCal : sa description dans l’App Store d’Apple, <https://apps.apple.com/us/app/id1098999871>, lu le 4 novembre 2026.
+    - 2houses : premiers pas, <https://www.2houses.com/en/blog/first-steps-on-2houses>, lu le 4 novembre 2026.
+    - Apple : partager et confier des rappels, <https://support.apple.com/en-us/105124>, lu le 4 novembre 2026.
+    - Calendrier pour Mac : partager des agendas iCloud, <https://support.apple.com/guide/calendar/icl32362>, lu le 4 novembre 2026.
+    - Outlook : partager son agenda sur le web, <https://support.microsoft.com/en-us/outlook/share-your-calendar-in-outlook-on-the-web>, lu le 4 novembre 2026.
+    - Proton : partager un agenda par lien, <https://proton.me/support/share-calendar-via-link>, lu le 4 novembre 2026.
+    - Nextcloud : ce que son serveur montre d’un événement confidentiel aux lecteurs d’un agenda, <https://github.com/nextcloud/server/blob/master/apps/dav/lib/CalDAV/CalendarObject.php>, lu le 4 novembre 2026.
 
 ## Côté technique {#for-technical-readers}
 

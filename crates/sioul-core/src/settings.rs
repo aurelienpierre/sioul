@@ -281,10 +281,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 let s = b.push("porch.projects", "porch-projects", Kind::Picks, SettingValue::Texts(shown));
                 s.choices = store.projects.iter().map(|c| Choice { value: SettingValue::Text(c.id.clone()), label: c.title.clone() }).collect();
             }
-            // Paper letters: the folder their scans arrive in.
-            b.group = tr.text("set-letters-group", None);
-            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.notes_root_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
-            b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
+            // The paper letters' settings are on the Letters page, with the letters (docs/porch.md, "Paper letters").
             // The calls your phones declined, on the Porch of every device (docs/porch.md, "Calls declined").
             b.group = tr.text("set-calls-group", None);
             b.push("porch.calls", "porch-calls", Kind::Bool, SettingValue::Bool(config.porch.calls));
@@ -1439,9 +1436,10 @@ mod tests {
         // The Porch: its letters and its own sorting; every lane said once, none with another page's settings.
         let porch = for_view("porch", &config, &tr, &[], None);
         let notes = porch.iter().filter(|s| s.kind == Kind::Note).count();
-        // Where the hours went, the order, then public, people, screener, filed, less important, the review queue, set aside, hostile.
-        assert_eq!(notes, 1 + 1 + 8, "{porch:?}");
-        assert_eq!(keys("porch"), vec!["letters.inbox", "porch.calls", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
+        // Where the hours went, the order, then public, what you sent yourself, people, filed, screener, less important, the review queue, set aside, hostile.
+        assert_eq!(notes, 1 + 1 + 9, "{porch:?}");
+        // The letters' folder is on the Letters page, with the letters.
+        assert_eq!(keys("porch"), vec!["porch.calls", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).

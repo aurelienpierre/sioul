@@ -119,6 +119,8 @@
 //! - [`budget`]: budgets, reserves, and the lines between them.
 //! - [`accounts`]: bank accounts, and the budgets each movement goes to.
 //! - [`bank`]: the money watch: the bank's exports held against the recurring payments.
+//! - [`movements`]: money movements: each sum in or out once, with every source that tells of it.
+//! - [`due`]: what money is due or expected soon, for the Porch.
 //! - [`money`]: exact amounts, and the amounts written in mail.
 //! - [`contracts`]: contracts and subscriptions: when each renews, how to stop it.
 //! - [`papers`]: the papers wallet: the papers asked again and again, and when each ends.
@@ -126,6 +128,7 @@
 //! ## Hours, pauses and reminders
 //!
 //! - [`areas`]: what things are for (work, your admin, leisure), and which time is for what.
+//! - [`areafilter`]: a page's filter by area (Mail's All addresses): ticked as the hours say, or as you ticked until they change.
 //! - [`window`]: working hours: the days and hours work can reach you.
 //! - [`quiet`]: the time now (work, admin, a meal, sleep, leisure), and what comes then.
 //! - [`needs`]: the day's needs, set first: meals, naps and night sleep.
@@ -180,6 +183,7 @@ pub mod anchors;
 pub mod agentwrites;
 pub mod appointments;
 pub mod appnotes;
+pub mod areafilter;
 pub mod areas;
 pub mod attention;
 pub mod bank;
@@ -199,6 +203,7 @@ pub mod composed;
 pub mod config;
 pub mod contracts;
 pub mod dated;
+pub mod due;
 pub mod dayview;
 pub mod demands;
 pub mod description;
@@ -236,12 +241,14 @@ pub mod mailto;
 pub mod mms;
 pub mod money;
 pub mod moves;
+pub mod movements;
 pub mod needs;
 pub mod ongoing;
 pub mod overlaps;
 pub mod own_time;
 pub mod pairs;
 pub mod notes;
+pub mod notices;
 pub mod payments;
 pub mod pgp;
 pub mod phonemsgs;

@@ -248,6 +248,12 @@ impl Translator {
         args
     }
 
+    /// A code's kind as a row of Right now begins with it: "Code", "Confirmation link".
+    pub fn code_kind(&self, kind: CodeKind) -> String {
+        let id = kind_id(kind);
+        self.attribute(id, "cap").unwrap_or_else(|| self.text(id, None))
+    }
+
     /// "Code from La Banque Exemple (verified): 482913, valid about 10 minutes".
     pub fn right_now(&self, kind: CodeKind, sender: &str, trust: Trust, code: Option<&str>, minutes: Option<u32>) -> String {
         let mut args = self.kind_args(kind);

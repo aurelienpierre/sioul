@@ -12,6 +12,10 @@
 // column, "All addresses": every address's mail in time order (the unified
 // mailbox's parts 4 and 5, `mailbox::page`), chosen when Mail opens: one line
 // a message on a computer, two on a phone, its rows coming by pages of sixty.
+// Its filter (docs/areas.md, "A page's filter by area"): the areas ticked
+// (AreaFilter.qml) and each address switched on or off, beside the chips on
+// a computer, in the folders' sheet on a phone. Spam and Not spam on every
+// message your filter flagged or that lies in a junk folder.
 
 pragma ComponentBehavior: Bound
 
@@ -86,10 +90,9 @@ Item {
             page.bringFolders()
     }
     Component.onCompleted: {
-        // The chip and the address chosen last, on this device.
+        // The chip chosen last, on this device; the filter is Rust's to keep.
         const kept = JSON.parse(page.sioul.mailboxView() || "{}")
         page.boxChip = kept.chip || "all"
-        page.boxAccount = kept.account || ""
         page.takeShown()
     }
     property string mailFolderText: ""
@@ -101,11 +104,11 @@ Item {
     // Sioul's own drafts, instead of a folder.
     property bool draftsShown: false
     // "All addresses": every address's mail in time order, instead of a folder
-    // (`mailbox::page`): its chip (all, unread, sent, spam), one address or
-    // all, its two-week windows, the resting addresses you chose to see.
+    // (`mailbox::page`): its chip (all, unread, sent, spam), its two-week
+    // windows; its filter is kept by Rust (`mail::mailbox_filter`).
     property bool boxShown: false
     // Its head as its last page said it (`mail::page_texts`): earlier mail
-    // kept, its sentence, the resting lines, the marks; its rows in `boxModel`
+    // kept, its sentence, the filter, the marks switched on or off; its rows in `boxModel`
     // (one ListView reusing its rows, the day as its section) and, as plain
     // rows for the menu, the selection and the opener, `boxRows`. `boxMore`:
     // the window holds more than the rows come, asked for when the list's end
@@ -116,9 +119,7 @@ Item {
     property int boxWanted: page.boxPage
     readonly property int boxPage: 60
     property string boxChip: "all"
-    property string boxAccount: ""
     property int boxWindows: 1
-    property var boxShownResting: []
     // The mailbox's own list, not a search's.
     readonly property bool boxListed: page.boxShown && !page.searchOpen && !page.draftsShown
     property bool all: false
@@ -257,11 +258,10 @@ Item {
     // The mailbox as chosen, asked of Rust (`open_mailbox`): `fresh` when the
     // list holds nothing, every page then new to it.
     function boxAsk(fresh) {
-        return JSON.stringify({ chip: page.boxChip, account: page.boxAccount, windows: page.boxWindows, query: page.query, shown_resting: page.boxShownResting, rows: page.boxWanted, fresh: fresh === true })
+        return JSON.stringify({ chip: page.boxChip, windows: page.boxWindows, query: page.query, rows: page.boxWanted, fresh: fresh === true })
     }
 
-    // Asked anew (another chip, address, search or resting address): the list
-    // emptied, its first page asked for.
+    // Asked anew (another chip, search or filter): the list emptied, its first page asked for.
     function askBoxAgain() {
         boxModel.clear()
         page.boxRows = []
@@ -289,7 +289,7 @@ Item {
     // place, so that the list keeps where it was.
     function applyBoxPage(text) {
         const got = JSON.parse(text)
-        page.box = { earlier: got.earlier, sentence: got.sentence, resting: got.resting, addresses: got.addresses, chip: got.chip, account: got.account, windows: got.windows }
+        page.box = { earlier: got.earlier, sentence: got.sentence, addresses: got.addresses, filter: got.filter || null, chip: got.chip, windows: got.windows }
         const rows = got.rows.map(r => page.boxRowOf(r, got.prefix || ""))
         const start = Math.min(got.start, page.boxRows.length)
         const end = start + rows.length
@@ -338,7 +338,6 @@ Item {
         page.all = false
         page.query = ""
         page.boxWindows = 1
-        page.boxShownResting = []
         page.foldersShown = false
         page.boxShown = true
         page.askBoxAgain()
@@ -359,19 +358,32 @@ Item {
         page.askBoxAgain()
     }
 
-    // An address's mark at the chips' end: that address alone; again, all of them.
-    function chooseAddress(id) {
-        page.boxAccount = page.boxAccount === id ? "" : id
+    // The filter (docs/areas.md, "A page's filter by area"), kept by Rust: the
+    // areas ticked ("work+leisure", "" for none), held until the hours change;
+    // "As the hours say"; an address switched on or off. The list asked anew.
+    function tickAreas(areas) {
+        page.sioul.tickMailAreas(areas)
+        page.filterAgain()
+    }
+    function areasAsHours() {
+        page.sioul.mailAreasAsHours()
+        page.filterAgain()
+    }
+    function switchAddress(id, on) {
+        page.sioul.switchMailAddress(id, on)
+        page.filterAgain()
+    }
+    function filterAgain() {
         page.boxWindows = 1
         page.clearSelection()
         page.askBoxAgain()
     }
 
-    // "Show its mail": a resting address's mail all the same, this time ("" for every one).
-    function showResting(id) {
-        const ids = id === "" ? page.accounts.filter(a => a.resting).map(a => a.id) : [id]
-        page.boxShownResting = page.boxShownResting.concat(ids)
-        page.askBoxAgain()
+    // Whether a row's message is one to settle, Spam or Not spam: your filter
+    // flagged it (probably spam, maybe spam, probably not spam), your
+    // provider's word on it, or it lies in a junk folder.
+    function settles(item) {
+        return !!item && !item.server && (!!item.spam || !!item.flag || (item.role || page.listRole) === "junk")
     }
 
     // "Earlier messages": two more weeks, their first page after the rows held.
@@ -512,6 +524,37 @@ Item {
                 return found
         }
         return null
+    }
+
+    // For the window's pictures: the filter unfolded where it is (the chips'
+    // end; on a phone, the folders' sheet), then folded again.
+    function unfoldAreas() {
+        if (page.window.compact)
+            page.foldersShown = true
+        Qt.callLater(() => {
+            const filter = page.findNamed(page, page.window.compact ? "sheetAreas" : "mailboxAreas")
+            if (filter)
+                filter.unfold()
+        })
+    }
+    function foldAreas() {
+        for (const name of ["sheetAreas", "mailboxAreas"]) {
+            const filter = page.findNamed(page, name)
+            if (filter)
+                filter.fold()
+        }
+        if (page.window.compact)
+            page.foldersShown = false
+    }
+
+    // For the window's pictures: a row's menu, as a right click or a long press opens it, then closed.
+    function openRowMenu(index) {
+        if (index < page.listItems.length)
+            rowMenu.now().show(page.listItems[index], index)
+    }
+    function closeRowMenu() {
+        if (rowMenu.item)
+            rowMenu.item.close()
     }
 
     // For the window's tests: messages chosen by words of their subjects, as Ctrl+click would.
@@ -813,6 +856,61 @@ Item {
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
                             color: page.theme.text
+                        }
+                    }
+                }
+
+                // On a phone, the mailbox's filter in the folders' sheet, made only
+                // while it shows (§6): the areas ticked, then each address switched
+                // on or off, within 412 points.
+                Loader {
+                    active: page.window.compact && folderColumn.visible && page.boxShown && page.box !== null && page.box.filter !== null
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 22
+                    Layout.bottomMargin: 8
+
+                    sourceComponent: ColumnLayout {
+                        objectName: "mailboxFilterSheet"
+                        spacing: 0
+
+                        AreaFilter {
+                            objectName: "sheetAreas"
+                            sioul: page.sioul
+                            theme: page.theme
+                            shown: page.box ? page.box.filter : null
+                            help: page.sioul.text("mailbox-filter-help")
+                            onTicked: areas => page.tickAreas(areas)
+                            onAsHours: page.areasAsHours()
+                        }
+                        Repeater {
+                            model: page.box && page.box.addresses ? page.box.addresses : []
+
+                            delegate: RowLayout {
+                                id: addressLine
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                AddressMark {
+                                    mark: addressLine.modelData
+                                    hollow: addressLine.modelData.on === false
+                                }
+                                CheckBox {
+                                    id: addressBox
+
+                                    objectName: "addressBox:" + addressLine.modelData.account
+                                    Layout.fillWidth: true
+                                    text: page.theme.plain(addressLine.modelData.title)
+                                    checked: addressLine.modelData.on !== false
+                                    onToggled: {
+                                        page.switchAddress(addressLine.modelData.account, addressBox.checked)
+                                        addressBox.checked = Qt.binding(() => addressLine.modelData.on !== false)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1162,8 +1260,9 @@ Item {
                 }
                 MoreButton {}
             }
-            // The mailbox's chips, one at a time, and the addresses' marks at
-            // their end: one address alone, then all again. Nothing counted.
+            // The mailbox's chips, one at a time; on a computer its filter at
+            // their end: the areas ticked, then each address's mark, switched
+            // on or off (on a phone, both in the folders' sheet). Nothing counted.
             Flow {
                 objectName: "mailboxChips"
                 visible: page.boxListed
@@ -1185,55 +1284,25 @@ Item {
                         onClicked: page.chooseChip(modelData)
                     }
                 }
-                Repeater {
-                    model: page.box && page.boxListed ? page.box.addresses : []
+                // Made on a computer only: a phone's is in the folders' sheet.
+                Loader {
+                    active: !page.window.compact && page.box !== null && page.box.filter !== null
+                    visible: active
 
-                    delegate: ToolButton {
-                        id: addressChip
-
-                        required property var modelData
-
-                        objectName: "address:" + addressChip.modelData.account
-                        checkable: false
-                        flat: page.boxAccount !== addressChip.modelData.account
-                        Accessible.name: page.sioul.textWith("mailbox-only", "address", addressChip.modelData.title)
-                        ToolTip.visible: hovered
-                        ToolTip.text: page.theme.plain(page.sioul.textWith("mailbox-only", "address", addressChip.modelData.title))
-                        ToolTip.delay: 400
-                        onClicked: page.chooseAddress(addressChip.modelData.account)
-                        contentItem: AddressMark {
-                            mark: addressChip.modelData
-                        }
+                    sourceComponent: AreaFilter {
+                        objectName: "mailboxAreas"
+                        sioul: page.sioul
+                        theme: page.theme
+                        shown: page.box ? page.box.filter : null
+                        help: page.sioul.text("mailbox-filter-help")
+                        onTicked: areas => page.tickAreas(areas)
+                        onAsHours: page.areasAsHours()
                     }
                 }
-            }
-            // A resting address's line: its mail out of the list, until you ask for it.
-            Repeater {
-                model: page.box && page.boxListed ? page.box.resting : []
+                Repeater {
+                    model: page.box && page.boxListed && !page.window.compact ? page.box.addresses : []
 
-                delegate: RowLayout {
-                    id: restingLine
-
-                    required property var modelData
-
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Label {
-                        objectName: "mailboxResting"
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 0
-                        text: restingLine.modelData.line
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: page.theme.muted
-                    }
-                    Button {
-                        objectName: "mailboxShowResting"
-                        flat: true
-                        text: page.sioul.text("mailbox-show-resting")
-                        onClicked: page.showResting(restingLine.modelData.account)
-                    }
+                    delegate: AddressSwitch {}
                 }
             }
             Label {
@@ -1484,6 +1553,17 @@ Item {
                                 elide: Text.ElideMiddle
                                 font.pixelSize: 12
                                 color: page.theme.muted
+                            }
+                            // Flagged, or in the junk: your word, Spam or Not spam (on a phone, its
+                            // menu); made only for such a row.
+                            Loader {
+                                active: !page.window.compact && page.settles(row.modelData)
+                                visible: active
+                                sourceComponent: Component {
+                                    SettleButtons {
+                                        item: row.modelData
+                                    }
+                                }
                             }
                         }
                         // On a phone, where it is and the flag go under the subject, whole.
@@ -1913,6 +1993,8 @@ Item {
                 readonly property string role: rowMenuForm.target && rowMenuForm.target.role ? rowMenuForm.target.role : page.listRole
                 // Not read yet: a mailbox's row says it apart from its dot (`read`), which waits for its time.
                 readonly property bool unread: rowMenuForm.target !== null && (rowMenuForm.target.read !== undefined ? !rowMenuForm.target.read : rowMenuForm.target.unread === true)
+                // Flagged by your filter, or in the junk: Spam and Not spam.
+                readonly property bool settles: page.settles(rowMenuForm.target)
 
                 function show(item, index) {
                     rowMenuForm.target = item
@@ -1961,10 +2043,25 @@ Item {
                     onTriggered: page.actOnRow(rowMenuForm.target, "trash")
                 }
                 MenuItem {
-                    visible: !rowMenuForm.remote
+                    visible: !rowMenuForm.remote && !rowMenuForm.settles
                     height: visible ? implicitHeight : 0
                     text: rowMenuForm.role === "junk" ? page.sioul.text("ui-not-junk") : page.sioul.text("ui-junk")
                     onTriggered: page.actOnRow(rowMenuForm.target, rowMenuForm.role === "junk" ? "not-junk" : "junk")
+                }
+                // Flagged by your filter, or in the junk: your word on it.
+                MenuItem {
+                    objectName: "menuSpam"
+                    visible: rowMenuForm.settles
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("ui-spam")
+                    onTriggered: page.actOnRow(rowMenuForm.target, "spam")
+                }
+                MenuItem {
+                    objectName: "menuNotSpam"
+                    visible: rowMenuForm.settles
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("ui-not-spam")
+                    onTriggered: page.actOnRow(rowMenuForm.target, "not-spam")
                 }
                 MenuItem {
                     text: page.sioul.text("ui-move-to")
@@ -2161,6 +2258,17 @@ Item {
                     font.pixelSize: 12
                     color: boxRow.model.trust_level === "forged" ? page.theme.forged : page.theme.muted
                 }
+                // Flagged, or in the junk: your word, Spam or Not spam, the row changing
+                // at once; made only for such a row.
+                Loader {
+                    active: page.settles(boxRow.model)
+                    visible: active
+                    sourceComponent: Component {
+                        SettleButtons {
+                            item: page.boxRows[boxRow.index]
+                        }
+                    }
+                }
                 Label {
                     text: boxRow.model.time
                     textFormat: Text.PlainText
@@ -2327,11 +2435,15 @@ Item {
         id: markBox
 
         property var mark: null
+        // Switched off in the filter: its outline alone.
+        property bool hollow: false
 
         implicitWidth: 16
         implicitHeight: 16
         radius: 4
-        color: markBox.mark ? page.theme.tints[markBox.mark.tint % page.theme.tints.length] : "transparent"
+        color: markBox.mark && !markBox.hollow ? page.theme.tints[markBox.mark.tint % page.theme.tints.length] : "transparent"
+        border.width: markBox.hollow ? 1 : 0
+        border.color: markBox.mark ? page.theme.tints[markBox.mark.tint % page.theme.tints.length] : "transparent"
         Accessible.name: markBox.mark ? markBox.mark.title : ""
         ToolTip.visible: markHover.hovered
         ToolTip.text: markBox.mark ? page.theme.plain(markBox.mark.title) : ""
@@ -2347,6 +2459,58 @@ Item {
             font.pixelSize: 10
             font.weight: Font.DemiBold
             color: page.theme.text
+        }
+    }
+
+    // An address's mark at the chips' end (a computer), switched on or off in
+    // the filter: its outline alone when off; its whole address in the
+    // tooltip and to screen readers.
+    component AddressSwitch: ToolButton {
+        id: addressSwitch
+
+        required property var modelData
+
+        objectName: "address:" + addressSwitch.modelData.account
+        checkable: true
+        checked: addressSwitch.modelData.on !== false
+        Accessible.name: addressSwitch.modelData.title
+        ToolTip.visible: hovered
+        ToolTip.text: page.theme.plain(addressSwitch.modelData.title)
+        ToolTip.delay: 400
+        onToggled: {
+            page.switchAddress(addressSwitch.modelData.account, addressSwitch.checked)
+            addressSwitch.checked = Qt.binding(() => addressSwitch.modelData.on !== false)
+        }
+        contentItem: AddressMark {
+            mark: addressSwitch.modelData
+            hollow: !addressSwitch.checked
+        }
+    }
+
+    // Spam and Not spam on a row to settle (a computer's): the act of the
+    // Porch's review queue and the Reader, on each address's copy (`actOnRow`).
+    component SettleButtons: Row {
+        id: settle
+
+        property var item: null
+
+        spacing: 2
+
+        ToolButton {
+            objectName: "rowSpam"
+            height: 22
+            padding: 2
+            font.pixelSize: 12
+            text: page.sioul.text("ui-spam")
+            onClicked: page.actOnRow(settle.item, "spam")
+        }
+        ToolButton {
+            objectName: "rowNotSpam"
+            height: 22
+            padding: 2
+            font.pixelSize: 12
+            text: page.sioul.text("ui-not-spam")
+            onClicked: page.actOnRow(settle.item, "not-spam")
         }
     }
 
