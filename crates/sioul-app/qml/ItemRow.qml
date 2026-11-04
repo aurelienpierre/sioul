@@ -123,7 +123,8 @@ ItemDelegate {
                 elide: Text.ElideRight
                 font.strikeout: row.cancelled
                 font.pixelSize: row.compact ? 13 : 15
-                color: row.tentative || row.ending ? row.theme.muted : row.theme.text
+                // Tentative, an end mark, or an event in a quiet tone (a busy time of an agenda for its availability only): muted.
+                color: row.tentative || row.ending || (row.kind === "event" && row.tone === "quiet") ? row.theme.muted : row.theme.text
             }
             Label {
                 visible: row.line !== ""

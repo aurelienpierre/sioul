@@ -518,7 +518,8 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
                 title,
                 body,
                 target: event.key.clone(),
-                work: false,
+                // A work agenda's event follows the work hours: its reminders wait while work rests (`agendas`).
+                work: event.work,
                 starts: Some(event.start),
                 names: None,
                 event: Some(crate::links::event_uri(&event.uid)),
@@ -533,7 +534,8 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
                 title: event.summary.clone(),
                 body: place(when.clone()),
                 target: event.key.clone(),
-                work: false,
+                // A work agenda's event follows the work hours: its reminders wait while work rests (`agendas`).
+                work: event.work,
                 starts: Some(event.start),
                 names: None,
                 event: Some(crate::links::event_uri(&event.uid)),
@@ -555,7 +557,8 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
                 title: tr.text("reminder-event", Some(&args)),
                 body: event.location.clone(),
                 target: event.key.clone(),
-                work: false,
+                // A work agenda's event follows the work hours: its reminders wait while work rests (`agendas`).
+                work: event.work,
                 starts: None,
                 names: None,
                 event: Some(crate::links::event_uri(&event.uid)),

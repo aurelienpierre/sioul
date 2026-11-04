@@ -164,6 +164,23 @@ CardFrame {
         wrapMode: Text.Wrap
         color: card.theme.text
     }
+    // You in two places (several agendas): one sentence each, said here and nowhere else.
+    Repeater {
+        model: card.there ? card.event.conflicts || [] : []
+
+        delegate: Label {
+            id: conflictLine
+
+            required property string modelData
+
+            objectName: "eventConflict"
+            Layout.fillWidth: true
+            text: conflictLine.modelData
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: card.theme.text
+        }
+    }
     // When it is reminded; changed here for every time it comes.
     Label {
         visible: (card.reminder.line || "") !== ""

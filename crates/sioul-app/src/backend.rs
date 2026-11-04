@@ -62,7 +62,8 @@ pub mod qobject {
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
-        // Two events at once in the next two weeks (`pim::overlaps_of`), made with the agenda, off the window's thread.
+        // The conflict notices to say now (`pim::overlaps_of`): those someone else's change made,
+        // once, at an admin window, for the Porch; made with the agenda, off the window's thread.
         #[qproperty(QString, overlaps)]
         // A re-plan due after a write (`work::replan_asked`), until its publish or the end of its
         // run: the timeline keeps what was let go drawn there meanwhile (review of 590eb18, later 2).
@@ -602,6 +603,38 @@ pub mod qobject {
         /// Show changed, on this device alone; returns what went wrong, else "".
         #[qinvokable]
         fn set_agenda_view(self: Pin<&mut Sioul>, view: &QString) -> QString;
+
+        /// The agenda filter: the agendas `ids` (a JSON list of places) turned
+        /// on or off by hand, until work's hours change (`agenda::turn`);
+        /// returns what went wrong, else "".
+        #[qinvokable]
+        fn turn_agendas(self: Pin<&mut Sioul>, ids: &QString, on: bool) -> QString;
+
+        /// "As the hours say": the filter's word taken back.
+        #[qinvokable]
+        fn agendas_as_hours(self: Pin<&mut Sioul>) -> QString;
+
+        /// Agenda ⚙'s blocks (`agenda::setup`): each agenda with what it is,
+        /// and the matrix of conflicts, as JSON.
+        #[qinvokable]
+        fn agendas_setup(self: &Sioul) -> QString;
+
+        /// One field of an agenda's settings ("whose", "name", "area",
+        /// "reaches", "access"; "" back to the default); returns what went
+        /// wrong, else "".
+        #[qinvokable]
+        fn set_agenda_field(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
+
+        /// A pair of the matrix of conflicts ticked or not; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_agendas_compared(self: Pin<&mut Sioul>, a: &QString, b: &QString, ticked: bool) -> QString;
+
+        /// A conflict notice answered, "keep" (both, set aside) or "move" (your
+        /// own event's file to open in its form): JSON {problem, open}
+        /// (`pim::answer_conflict`). The notices themselves are the `overlaps`
+        /// property, for the Porch.
+        #[qinvokable]
+        fn answer_conflict(self: Pin<&mut Sioul>, key: &QString, answer: &QString) -> QString;
 
         /// The choices of an event's reminder before it, JSON [{value, label}];
         /// `current` among them when it is another time.
@@ -4638,6 +4671,49 @@ impl qobject::Sioul {
         QString::from(&crate::agenda::set_view(&view.to_string()))
     }
 
+    fn turn_agendas(self: Pin<&mut Self>, ids: &QString, on: bool) -> QString {
+        let ids: Vec<String> = serde_json::from_str(&ids.to_string()).unwrap_or_default();
+        let problem = crate::agenda::turn(&ids, on);
+        // Every view follows the one filter: the agenda's days and the task views.
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn agendas_as_hours(self: Pin<&mut Self>) -> QString {
+        let problem = crate::agenda::as_the_hours_say();
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn agendas_setup(&self) -> QString {
+        QString::from(&crate::agenda::setup())
+    }
+
+    fn set_agenda_field(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        let problem = crate::agenda::set_field(&id.to_string(), &field.to_string(), &value.to_string());
+        if problem.is_empty() {
+            // What an agenda is changes what reaches you, what may be written and what holds your time: everything again.
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            pim::show_pim(&qt, &shared);
+            work::show_work(&qt, &shared);
+        }
+        QString::from(&problem)
+    }
+
+    fn set_agendas_compared(self: Pin<&mut Self>, a: &QString, b: &QString, ticked: bool) -> QString {
+        let problem = crate::agenda::set_compared(&a.to_string(), &b.to_string(), ticked);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn answer_conflict(self: Pin<&mut Self>, key: &QString, answer: &QString) -> QString {
+        let answered = crate::pim::answer_conflict(&key.to_string(), &answer.to_string());
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        QString::from(&answered)
+    }
+
     fn reminder_choices(&self, current: &QString) -> QString {
         QString::from(&crate::remind::choices(&current.to_string()))
     }
@@ -6705,7 +6781,8 @@ impl qobject::Sioul {
         // "notes-shared" a note changed on another device while shown, read then typed in
         // (docs/database.md, "Notes"), "reach" the status line's button of what reaches you and
         // its card, each state pressed and back to As usual (docs/do-not-disturb.md), "agenda" the
-        // agenda's Day and Week, its Show menu, a phone's Week list and landscape (pictures alone), "cards" every
+        // agenda's Day and Week, its Show menu, its filter's list, Agenda ⚙'s agendas and conflicts,
+        // a phone's Week list and landscape (pictures alone), "cards" every
         // object's card opened from the agenda and Tasks, then Back (pictures alone), "taskviews" Now, the List
         // folded and a task opened, the Board, the Gantt and a composed task's details, on a phone the List
         // and Now sideways too (pictures alone), "mail-open" a

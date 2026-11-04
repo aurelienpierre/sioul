@@ -560,6 +560,18 @@ pub struct AgendaSettings {
     /// device's own, never shared (sioul-sync's `CONFIG_LOCAL`).
     #[serde(default)]
     pub time_zone: Option<String>,
+    /// What each agenda is, as you said it (Agenda ⚙, 4 November 2026):
+    /// `[agenda.calendars."<account>/<id>"]`, whose it is, what it is for,
+    /// when it reaches you, what you may do with it; only what you said,
+    /// the rest by default (`agendas`). It travels with the settings, one
+    /// entry per field; a Sioul before skips it.
+    #[serde(default)]
+    pub calendars: std::collections::BTreeMap<String, crate::agendas::Said>,
+    /// Which agendas warn when their events overlap, as you ticked them:
+    /// `"<a>|<b>" = true`, the two places sorted, an agenda with itself
+    /// `"<a>|<a>"`; unsaid, the defaults (`agendas::Matrix`).
+    #[serde(default)]
+    pub overlaps: std::collections::BTreeMap<String, bool>,
 }
 
 impl AgendaSettings {

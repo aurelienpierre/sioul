@@ -1,12 +1,12 @@
 ---
-description: The Agenda in Sioul - what comes from today, the day, the week and the month; time to get there and back around each event, kept free by your plan; two events at once said; one quiet reminder; invitations answered, nothing added before you answer; compared with other calendars.
+description: The Agenda in Sioul - what comes from today, the day, the week and the month; several agendas, yours, your children's and others', filtered by your hours; time to get there and back around each event, kept free by your plan; you in two places shown where you look; one quiet reminder; invitations answered, nothing added before you answer; compared with other calendars.
 ---
 
 # Agenda
 
 ## In short {#in-short}
 
-The agenda shows what comes, from today, as a calm list of days, with the day, the week and the month one switch away. Each event can keep time before it, to get ready and get there, and after it, to come back: your plan keeps that time free, lays your tasks around your events, and moves a meal that falls in one. Sioul tells you when two events overlap, and reminds you once, quietly, before you need to leave. Your events stay on your own calendar server, at Google or on this device, and nothing from an invitation enters your calendar until you answer it.
+The agenda shows what comes, from today, as a calm list of days, with the day, the week and the month one switch away. Each event can keep time before it, to get ready and get there, and after it, to come back: your plan keeps that time free, lays your tasks around your events, and moves a meal that falls in one. Your agendas, your children's and those others share with you show together, filtered by your hours; Sioul shows where you would be in two places, and reminds you once, quietly, before you need to leave. Your events stay on your own calendar server, at Google or on this device, and nothing from an invitation enters your calendar until you answer it.
 
 <figure markdown="span">
   [![The Agenda on "Week": at the top, Today, two arrows and "Week of 5 October", the choice of view, and New event; below, seven columns of days from Monday, events placed at their hours, and a thin line marking the current hour.](../assets/screens/agenda-week.png){ loading=lazy }](../assets/screens/agenda-week.png "Open the picture at full size")
@@ -104,7 +104,7 @@ Let go, and it is saved and sent to your calendar server; **Undo** waits ten sec
 - **A calendar you can only read**, a meeting with others (its organiser's server would tell every guest), whole-day events and doses do not move.
 - **With a mouse**: press and drag; the wheel scrolls. **On a touch screen**: hold the event until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu.
 - Only within the hours shown; further, use **Edit**.
-- If it now overlaps another event, Sioul says so above the agenda, as for any two events at once. Your plan goes around its new time at once.
+- If you would now be in two places, it stands beside the other, a thin bracket joining them, and its card says so ([Two events at once](#two-events-at-once)). Your plan goes around its new time at once.
 
 ## Tasks pinned to a time
 
@@ -115,11 +115,29 @@ In the agenda it shows as the task it is, never as an event: the task mark where
 - **Make it an appointment**, in a task's details or its menu: the event form opens with the task's title, place and notes, at its time, in the calendar for new events (or another you choose). Saved, the event replaces the task and its time: never both, never neither, even when Sioul stops in between. A task with steps of its own stays a task.
 - **Make it a task**, on an event of your own: a task in your usual list, on its day, its length as its estimate, its time kept as the task's time when it is still to come. An invitation stays an event: others expect you there.
 
+## Several agendas {#several-agendas}
+
+Your agendas show together: yours for work and for yourself, one for each child, and those others share with you, another parent's or a partner's when they are busy. Each says what it is, on its line in the Agenda settings, **Your agendas**: open one to change it.
+
+- **Whose it is**: yours, a child's, another parent's, a partner's, or shared with you; and whose name ("Léa"), which names its group in the filter.
+- **For**: work, your admin, leisure. A work agenda follows your working hours: outside them, its events are not shown unless you say, and their reminders do not come. A personal one reaches you all day, or only outside work hours if you say so.
+- **You may**: read and write; read only; or see only when it is busy, without its titles, places or notes, whatever its server sends. Read and write is never offered where the server lets you read only. An agenda you only read, or only see busy, is never written by Sioul, its tasks neither.
+
+Sioul says each until you do: an agenda of an account for work alone is for work; one shared with you that you can only read is someone else's, for when they are busy only if its events carry nothing more; every other one is yours, for your admin and leisure, all day. What you say travels with your settings to your other devices.
+
+An agenda that is someone else's shows, and holds none of your time: your plan lays your tasks around your own events only. In **Day** and **Week**, what overlaps stands side by side, each agenda in its own lane and colour, yours first; an agenda you only see busy draws quiet blocks named after it.
+
+**Agendas**, at the top of the page, chooses which agendas every view shows: the agendas grouped by whose they are, a box for each and one for each group, each group folded or open. At first it shows what your hours admit: no work agenda in the evening. What you tick holds until your working hours change, then your hours decide again; **As the hours say** gives them back at once. The same choice follows you from **Day** to **Week**, to the Month and to What comes, and to the Tasks page, where **Agendas** lists your task lists: a list left out keeps its tasks out of every view there, your plan whole. On a phone the list opens from the bottom of the screen.
+
 ## Two events at once
 
-When two events overlap, Sioul says so, and when they follow each other closer than a time you set, it says they are too close: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said. Two events overlap only when their times do. No time is ever put between them unless you set it: an event's own **Before** and **After** (in its form, and said in its details), or **Time kept between two events** in the Agenda settings, 0 at first; the longest counts, never added. Too close, the line says the minutes between them, the time you set and where you set it.
+What matters is you in two places. Your agendas' events need you, the work agenda's too at any hour, as do the invitations you accepted, wherever they are, and the children's events you take. Two of them at the same time are a conflict; one closer to the other than the time you keep around them is tight, never at the same time. A child's event nobody takes yet is nobody's conflict, and an agenda you only see busy conflicts with nothing.
 
-An event of 24 hours or more is said once, whatever it overlaps: "During Studio residency (Mon 2 Nov 10:00 → Mon 30 Nov 10:15): 34 other events"; its **Don't mention it again** sets that event aside whole, its overlaps to come too. An event over several days is named by its span, not its clock times alone ("Concert (22:00 → 02:00 (Wed))"). Above the agenda, three warnings at most, then "+2 more", which shows the others ("Fewer" folds them again).
+- **Where you look**: in **Day** and **Week** the two stand side by side, a thin bracket joining them; their cards say it in a sentence, "At the same time as Léa’s “Swimming”.", or "Tight with “Dentist”: 10 min between them, less than the 30 min kept after the first (its After)." No list, no count, no colour.
+- **Said once**, when someone else's change made it (another parent moved an event you take, an organiser moved an invitation you accepted): as a notice on the [Porch](porch.md), at your next admin time, and never in the evening for a work matter, with **Keep both** (never said again) or a button to move yours. A conflict you come upon, or make yourself, is never notified.
+- **The exceptions**, in the Agenda settings, **Conflicts**: a box for each pair of agendas, each with itself, the rule said once above them. Ticked at first: your own agendas among themselves. Tick two children's agendas whose events share one car, and their events are compared before anyone takes them; untick two of yours, and they never are.
+
+No time is ever put between two events unless you set it: an event's own **Before** and **After** (in its form, and said in its details), or **Time kept between two events** in the Agenda settings, 0 at first; the longest counts, never added. A whole day takes no time unless its event says busy; one marked free never does, nor a calendar its server marks as taking none. Two calendars holding the same event (the same UID at the same start) are not two events. An event of 24 hours or more makes one notice, whatever it overlaps, named by its span; **Keep both** sets it aside whole, its conflicts to come too.
 
 ## Your day around your events {#your-day-around-your-events}
 
@@ -137,7 +155,7 @@ A calendar file (`.ics`: a booking, a ticket, an event a site lets you download)
 
 ## Reminders
 
-A quiet reminder before each event, a quarter of an hour before it and its time to get ready and get there: "14:00 · Town hall, in 45 minutes", then "Getting ready, getting there: from 13:30." and where, with **Open**. How long before is yours (Settings ▸ Reminders ▸ **Before an event**), and each event can say its own: **Remind**, in its form and in its details, which also say when it reminds; for every time a repeating event comes. An outing, an appointment with a ride before it or a task preparing it with things to bring, is reminded once, in that reminder's place, as **leaving**: "Leave in 15 minutes for Doctor (14:00)", then "Bus 24 at 13:10." and "Bring: Health card, Glasses, Keys, and 1 more.", the unticked things to bring of its list (its Bring list, or a list with no group; never what is to check), three at most; it opens the appointment's card. On a phone whose lock screen hides private content, it says only "Sioul has a reminder for you." Not for whole days, nor for an event cancelled or declined. Calendars you can only read (holidays, subscriptions) get no reminder from Sioul, unless an event in them asks for one; their own alarms still come.
+A quiet reminder before each event, a quarter of an hour before it and its time to get ready and get there: "14:00 · Town hall, in 45 minutes", then "Getting ready, getting there: from 13:30." and where, with **Open**. How long before is yours (Settings ▸ Reminders ▸ **Before an event**), and each event can say its own: **Remind**, in its form and in its details, which also say when it reminds; for every time a repeating event comes. An outing, an appointment with a ride before it or a task preparing it with things to bring, is reminded once, in that reminder's place, as **leaving**: "Leave in 15 minutes for Doctor (14:00)", then "Bus 24 at 13:10." and "Bring: Health card, Glasses, Keys, and 1 more.", the unticked things to bring of its list (its Bring list, or a list with no group; never what is to check), three at most; it opens the appointment's card. On a phone whose lock screen hides private content, it says only "Sioul has a reminder for you." Not for whole days, nor for an event cancelled or declined. Calendars you can only read (holidays, subscriptions) get no reminder from Sioul, unless an event in them asks for one; their own alarms still come. A work agenda's reminders wait for your working hours, and one too late by then is not told; an agenda you only see busy reminds of nothing.
 
 Another, half an hour before work ends, on the last working day before an event: "Mon 12 Oct 09:00 · Town hall", and where. The alarms an event carries (set by you, your phone, or whoever invited you) come at their time too; one within five minutes of Sioul's reminder is told once. While you sleep, a reminder waits for your waking, unless the event itself is in the night: you chose it. No sound, never repeated; on a phone too, Sioul open or not. See [Settings](settings.md#reminders).
 
@@ -155,7 +173,9 @@ The ⚙ at the top of the page:
 
 - **Calendars**: renamed here and on the server at the next sync. An empty calendar can be deleted; one holding events stays. One you can only read says so, and is never offered for a new event.
 - **New events go into**: the calendar a new event is put in; until you choose, the first one that takes events.
-- **Time kept between two events**: 0 at first. Closer than this, two events are said to be too close, never to overlap.
+- **Time kept between two events**: 0 at first. Closer than this, two events are tight, never at the same time.
+- **Your agendas**: what each agenda is: whose, what for, when it reaches you, what you may do with it ([Several agendas](#several-agendas)).
+- **Conflicts**: which agendas are compared beyond the rule, a box for each pair ([Two events at once](#two-events-at-once)).
 - **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
 - **The day starts at**: the hour the day and week views start on when neither your nights (set in [Health](health.md)) nor your hours say otherwise.
 

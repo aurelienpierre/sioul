@@ -154,6 +154,8 @@ One switch away from Now:
 
 Three choices at the top of the page, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices.
 
+**Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)): a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out of every view, Now included, the plan whole. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
+
 ## A task, open {#a-task-open}
 
 A task opens in its card on the right, beside the list (on a phone, it takes the page), from any view and from the [agenda](agenda.md): a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.

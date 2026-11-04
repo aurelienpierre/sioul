@@ -602,11 +602,14 @@ pub struct Listed {
     pub sync_token: Option<String>,
     /// For calendars: what it holds ("VEVENT", "VTODO"); empty when the server does not say.
     pub components: Vec<String>,
+    /// For calendars: it takes none of your time as a whole (RFC 6638 §9.1,
+    /// `schedule-calendar-transp` transparent); opaque when the server says nothing.
+    pub transparent: bool,
 }
 
 /// The collections in a home.
 pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed>, SyncError> {
-    let props = "<d:resourcetype/><d:displayname/><cs:getctag/><d:sync-token/><d:current-user-privilege-set/><ic:calendar-color/><c:supported-calendar-component-set/>";
+    let props = "<d:resourcetype/><d:displayname/><cs:getctag/><d:sync-token/><d:current-user-privilege-set/><ic:calendar-color/><c:supported-calendar-component-set/><c:schedule-calendar-transp/>";
     let (status, responses) = client.propfind(home, "1", props)?;
     if status != 207 {
         return Err(SyncError::Server(format!("PROPFIND {home}: {status}")));
@@ -633,6 +636,7 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
             ctag: response.text(CALSERVER, "getctag"),
             sync_token: response.text(DAV, "sync-token"),
             components: response.prop(CALDAV, "supported-calendar-component-set").map(|p| p.comps.clone()).unwrap_or_default(),
+            transparent: response.prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")),
             url,
             id,
         });
@@ -835,6 +839,7 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
             state.url = collection.url.clone();
             state.read_only = collection.read_only;
             state.components = collection.components.clone();
+            state.transparent = collection.transparent;
             state.save(&path).map_err(SyncError::Disk)
         });
         if let Err(e) = made {
@@ -1055,6 +1060,7 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
     state.url = listed.url.clone();
     state.read_only = listed.read_only;
     state.components = listed.components.clone();
+    state.transparent = listed.transparent;
     // Its tasks and events in the form a phone's account manager can send
     // back (`sioul_core::interop`), never in a calendar you only read: every
     // item sent in that form (`own_form_of`, at the push: one moved in from a
@@ -3219,7 +3225,8 @@ mod tests {
  <d:response><d:href>/dav/calendars/jane/personal/</d:href>
   <d:propstat><d:prop><d:resourcetype><d:collection/><cal:calendar/></d:resourcetype><d:displayname>Personal</d:displayname>
    <x:calendar-color>#4C6B5CFF</x:calendar-color><cal:supported-calendar-component-set><cal:comp name="VEVENT"/></cal:supported-calendar-component-set>
-   <d:current-user-privilege-set><d:privilege><d:read/></d:privilege></d:current-user-privilege-set></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+   <d:current-user-privilege-set><d:privilege><d:read/></d:privilege></d:current-user-privilege-set>
+   <cal:schedule-calendar-transp><cal:transparent/></cal:schedule-calendar-transp></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
   <d:propstat><d:prop><d:getctag/></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response>
  <d:response><d:href>/dav/calendars/jane/personal/gone.ics</d:href><d:status>HTTP/1.1 404 Not Found</d:status></d:response>
  <d:sync-token>http://example.org/sync/42</d:sync-token>
@@ -3229,6 +3236,8 @@ mod tests {
         assert!(responses[0].is(CALDAV, "calendar"));
         assert_eq!(responses[0].text(DAV, "displayname").as_deref(), Some("Personal"));
         assert_eq!(responses[0].prop(CALDAV, "supported-calendar-component-set").unwrap().comps, vec!["VEVENT"]);
+        // A calendar that takes none of your time as a whole (RFC 6638 §9.1), as `collections` reads it.
+        assert!(responses[0].prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")));
         assert!(responses[0].prop(CALSERVER, "getctag").is_none());
         assert_eq!(responses[1].status, Some(404));
     }
