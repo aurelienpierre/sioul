@@ -325,8 +325,8 @@ struct PageOut<'a> {
 }
 
 /// One thing the mailbox does not show now, said at the head of its list,
-/// with what brings it back: `act` "tick:<area>" (that area ticked too),
-/// "on:<account>" (that address switched on), "earlier" (two more weeks).
+/// with what brings it back: `act` `"tick:<area>"` (that area ticked too),
+/// `"on:<account>"` (that address switched on), `"earlier"` (two more weeks).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct Hidden {
     pub text: String,
