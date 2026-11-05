@@ -7206,6 +7206,10 @@ topics-groups-proposed = proposed name: { $name } ({ $how })
 topics-groups-words = words: { $words }
 topics-groups-subjects = for example: { $subjects }
 topics-groups-quoted = "{ $subject }"
+topics-noticed = Groups Sioul noticed, as the window shows them: { $shown } shown; left out: { $weak } under coherence { $floor }, { $persons } of one person, { $started } mostly a topic preset already started, { $more } beyond the five.
+topics-noticed-group = { $size } messages, { $senders } senders, coherence { $coherence }: { $names }
+topics-noticed-senders = Offered as "Always … for this sender", one sender each:
+topics-noticed-sender = { $size } messages: { $names }
 
 ## Mail's topics in the window (crates/sioul-app/src/topics.rs, TopicMenu.qml, TopicFilter.qml, TopicsSettings.qml, docs/topics.md)
 topics-not-written = Your word could not be kept: { $detail }
@@ -7272,10 +7276,14 @@ topics-groups-size = { $n ->
    *[other] { $n } messages
 }
 topics-name-it = Name it
+topics-offers = Senders with much mail of their own: all of it under one topic.
+topics-offer-always = Always a topic…
 topics-day-one = { $n ->
     [one] Sioul sorted your mail into one topic, from the senders it knows: { $topics }. Rename or remove it in Mail ▸ ⚙ ▸ Topics.
    *[other] Sioul sorted your mail into { $n } topics, from the senders it knows: { $topics }. Rename or remove them in Mail ▸ ⚙ ▸ Topics.
 }
 topics-offered = Topics Sioul knows:
 topics-named-sites = Named from your senders' sites.
-topics-named-sender = Named after its most common sender.
+topics-named-sender = Named after the organisation most of its mail comes from.
+topics-named-preset = Named after the topic preset most of its mail matches.
+topics-named-none = No name proposed: its senders are persons, or no organisation holds most of it. "Name it" asks for one.

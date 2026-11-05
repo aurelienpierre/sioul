@@ -7246,6 +7246,10 @@ topics-groups-proposed = nom proposé : { $name } ({ $how })
 topics-groups-words = mots : { $words }
 topics-groups-subjects = par exemple : { $subjects }
 topics-groups-quoted = « { $subject } »
+topics-noticed = Les groupes remarqués par Sioul, comme la fenêtre les montre : { $shown } montrés ; laissés de côté : { $weak } sous la cohérence { $floor }, { $persons } d’une seule personne, { $started } surtout d’un thème proposé déjà commencé, { $more } au-delà des cinq.
+topics-noticed-group = { $size } courriels, { $senders } expéditeurs, cohérence { $coherence } : { $names }
+topics-noticed-senders = Proposés en « Toujours … pour cet expéditeur », un expéditeur chacun :
+topics-noticed-sender = { $size } courriels : { $names }
 
 ## Les thèmes du courrier dans la fenêtre (crates/sioul-app/src/topics.rs, TopicMenu.qml, TopicFilter.qml, TopicsSettings.qml, docs/topics.md)
 topics-not-written = Votre mot n’a pas pu être gardé : { $detail }
@@ -7312,10 +7316,14 @@ topics-groups-size = { $n ->
    *[other] { $n } courriels
 }
 topics-name-it = Le nommer
+topics-offers = Les expéditeurs qui vous écrivent beaucoup : tout leur courrier sous un thème.
+topics-offer-always = Toujours un thème…
 topics-day-one = { $n ->
     [one] Sioul a rangé votre courrier dans un thème, d’après les expéditeurs qu’il connaît : { $topics }. Renommez-le ou retirez-le dans Courriels ▸ ⚙ ▸ Thèmes.
    *[other] Sioul a rangé votre courrier dans { $n } thèmes, d’après les expéditeurs qu’il connaît : { $topics }. Renommez-les ou retirez-les dans Courriels ▸ ⚙ ▸ Thèmes.
 }
 topics-offered = Les thèmes que Sioul connaît :
 topics-named-sites = Nommé d’après les sites de vos expéditeurs.
-topics-named-sender = Nommé d’après son expéditeur le plus fréquent.
+topics-named-sender = Nommé d’après l’organisation dont viennent la plupart de ses courriels.
+topics-named-preset = Nommé d’après le thème proposé que suivent la plupart de ses courriels.
+topics-named-none = Aucun nom proposé : ses expéditeurs sont des personnes, ou aucune organisation n’en tient la plupart. « Le nommer » en demande un.

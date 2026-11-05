@@ -243,6 +243,8 @@ fn seeds_words(seeds: &Seeds) -> String {
 
 /// The groups found last, each with its messages' ids, for "Name it".
 static GROUPS: Mutex<Vec<sioul_learn_groups::Found>> = Mutex::new(Vec::new());
+/// The senders offered last ("Always a topic…"), by address, in their order.
+static SENDERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 #[cfg(not(target_os = "android"))]
 mod sioul_learn_groups {
@@ -289,25 +291,29 @@ pub(crate) fn find_groups(qt: &QtThread) {
             let said = Said::load();
             let language = config.language.clone().unwrap_or_else(sioul_core::i18n::system_language);
             let grouping = sioul_learn::groups::Options {
-                nmf_only: true,
+                window: true,
                 leave_out: said.messages.keys().cloned().collect(),
                 presets: Some(sioul_core::presets::load()),
                 language: language.split(['-', '_']).next().unwrap_or("en").to_string(),
+                topic_presets: Some(topics::presets::Matcher::current()),
+                started: sioul_learn::groups::started(&config.topics, config.topics_day_one.is_some(), &read),
                 ..sioul_learn::groups::Options::default()
             };
-            sioul_learn::groups::groups(&read, &labels, &ids, None, &grouping, &mut |_| {}, &cancel)
+            let found = sioul_learn::groups::groups(&read, &labels, &ids, None, &grouping, &mut |_| {}, &cancel)?;
+            Ok((sioul_learn::groups::noticed(&found, &grouping), said))
         });
         let text = match found {
-            Ok(groups) => {
-                let shown: Vec<sioul_learn_groups::Found> = groups
-                    .ways
-                    .into_iter()
-                    .flat_map(|w| w.groups)
-                    .map(|g| sioul_learn_groups::Found { size: g.size, senders: g.senders, names: g.names, subjects: g.subjects, proposed: g.proposed, proposed_by: g.proposed_by, ids: g.ids })
-                    .collect();
-                let text = serde_json::json!({ "state": "done", "groups": shown }).to_string();
+            Ok((noticed, said)) => {
+                let found = |g: sioul_learn::groups::Group| sioul_learn_groups::Found { size: g.size, senders: g.senders, names: g.names, subjects: g.subjects, proposed: g.proposed, proposed_by: g.proposed_by, ids: g.ids };
+                let shown: Vec<sioul_learn_groups::Found> = noticed.groups.into_iter().map(found).collect();
+                // A sender with a rule of yours already is offered no more.
+                let offered: Vec<(String, sioul_learn_groups::Found)> = noticed.senders.into_iter().filter_map(|g| Some((g.sole.clone()?, g))).filter(|(address, _)| said.senders.get(address).is_none_or(|rules| rules.iter().all(|(_, rule)| matches!(rule, Rule::Off)))).map(|(address, g)| (address, found(g))).collect();
+                let text = serde_json::json!({ "state": "done", "groups": shown, "senders": offered.iter().map(|(_, g)| g).collect::<Vec<_>>() }).to_string();
                 if let Ok(mut kept) = GROUPS.lock() {
                     *kept = shown;
+                }
+                if let Ok(mut kept) = SENDERS.lock() {
+                    *kept = offered.into_iter().map(|(address, _)| address).collect();
                 }
                 text
             }
@@ -319,7 +325,7 @@ pub(crate) fn find_groups(qt: &QtThread) {
 
 #[cfg(target_os = "android")]
 pub(crate) fn find_groups(qt: &QtThread) {
-    let _ = qt.queue(|mut sioul| sioul.as_mut().set_topic_groups(cxx_qt_lib::QString::from("{\"state\":\"done\",\"groups\":[]}")));
+    let _ = qt.queue(|mut sioul| sioul.as_mut().set_topic_groups(cxx_qt_lib::QString::from("{\"state\":\"done\",\"groups\":[],\"senders\":[]}")));
 }
 
 /// "Name it": the group at `index` of those found last becomes a topic named
@@ -327,6 +333,32 @@ pub(crate) fn find_groups(qt: &QtThread) {
 pub(crate) fn name_group(qt: &QtThread, shared: &Arc<Shared>, index: usize, name: &str) -> String {
     let Some(ids) = GROUPS.lock().ok().and_then(|g| g.get(index).map(|g| g.ids.clone())) else { return tr().text("topics-group-gone", None) };
     give_new(qt, shared, &ids, name, Seeds::default())
+}
+
+/// "Always a topic…": the sender offered at `index` of those found last
+/// gets "Always <topic>" for the topic named `name` (made when no topic of
+/// yours has that name), in one act, with Undo. Returns what went wrong, else "".
+pub(crate) fn name_sender(qt: &QtThread, shared: &Arc<Shared>, index: usize, name: &str) -> String {
+    let Some(address) = SENDERS.lock().ok().and_then(|s| s.get(index).cloned()) else { return tr().text("topics-group-gone", None) };
+    let path = config_path();
+    let (topic, made) = match load_config().topics.iter().find(|t| t.name.trim().to_lowercase() == name.trim().to_lowercase()) {
+        Some(topic) => (topic.clone(), false),
+        None => match topics::add(&path, name, &Seeds::default()) {
+            Ok(topic) => (topic, true),
+            Err(e) => return e,
+        },
+    };
+    let undo = vec![Said::load().restoring_rule(&address, &topic.id, now())];
+    if !write(qt, &[Act::Sender { at: now(), address: address.clone(), topic: topic.id.clone(), rule: Rule::Always }]) {
+        if made {
+            let _ = topics::remove(&path, &topic.id);
+        }
+        return String::new();
+    }
+    let line = say("topics-rule-always", &[("topic", topic.name.clone()), ("address", address)]);
+    let id = topic.id.clone();
+    offer(qt, shared, line, undo, move || if made { topics::remove(&config_path(), &id).err().unwrap_or_default() } else { String::new() });
+    String::new()
 }
 
 // Topic presets: day one, and those offered under "Add a topic".

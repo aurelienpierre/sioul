@@ -183,6 +183,7 @@ impl Options {
 }
 
 /// One message kept here, as topics read it.
+#[derive(Default)]
 pub(crate) struct Mail {
     pub(crate) date: i64,
     /// Its correspondent, lowercase: its sender's address; for yours, its first recipient's.
@@ -207,6 +208,10 @@ pub(crate) struct Mail {
     pub(crate) id: Option<String>,
     pub(crate) refs: Vec<String>,
     pub(crate) to: Vec<String>,
+    /// Its correspondent is a person (`is_person`): a group is never named after one.
+    pub(crate) person: bool,
+    /// The topic preset its proven sender matches (`topics::presets::Matcher::find`), by id.
+    pub(crate) preset: Option<String>,
 }
 
 impl Mail {
@@ -317,6 +322,63 @@ fn folded(text: &str) -> String {
 }
 
 /// Each address's categories (key, name as written), from the contacts' cards.
+/// Each address on a card, and whether the card is a person's: one with a
+/// name that is not only its organisation's (a card holding an
+/// organisation's name alone, or none, is the organisation's).
+fn persons_of(contacts: &[Contact]) -> HashMap<String, bool> {
+    let mut out: HashMap<String, bool> = HashMap::new();
+    for contact in contacts {
+        let (name, org) = (contact.name.trim(), contact.org.trim());
+        let person = !name.is_empty() && !name.eq_ignore_ascii_case(org);
+        for email in &contact.emails {
+            let address = email.value.trim().to_lowercase();
+            if !address.is_empty() {
+                *out.entry(address).or_default() |= person;
+            }
+        }
+    }
+    out
+}
+
+/// A name's particles, written small within a personal name ("Anne de Lune").
+const PARTICLES: &[&str] = &["de", "du", "des", "d’", "d'", "la", "le", "van", "von", "der", "den", "da", "di", "del", "dos", "y"];
+
+/// A personal name as a sender gives it: two to five words of letters, each
+/// begun by a capital but a name's particles ("Jane Doe", "Anne de Lune"),
+/// at least two of them capitals; or, without a name, an address's own part
+/// of two words of letters ("jane.doe", "jane_doe42"). On a shared provider
+/// alone: an organisation's name there may read as a person's, and is then
+/// left unnamed, never the other way round.
+pub(crate) fn personal_name(name: Option<&str>, address: &str) -> bool {
+    let letters = |w: &str| !w.is_empty() && w.chars().all(|c| c.is_alphabetic() || matches!(c, '-' | '\'' | '’' | '.'));
+    match name.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(name) => {
+            let words: Vec<&str> = name.split_whitespace().collect();
+            let capital = |w: &&str| w.chars().next().is_some_and(char::is_uppercase);
+            (2..=5).contains(&words.len())
+                && words.iter().all(|w| letters(w) && (capital(w) || PARTICLES.contains(&w.to_lowercase().as_str())))
+                && words.first().is_some_and(capital)
+                && words.iter().filter(|w| capital(w)).count() >= 2
+        }
+        None => {
+            let local = address.split('@').next().unwrap_or("").trim_end_matches(|c: char| c.is_ascii_digit());
+            let parts: Vec<&str> = local.split(['.', '_', '-']).collect();
+            parts.len() == 2 && parts.iter().all(|p| p.len() >= 2 && p.chars().all(char::is_alphabetic))
+        }
+    }
+}
+
+/// Whether a correspondent is a person: their card is a person's, or they
+/// write from a mail provider millions share (`words::BrandWords::shared`)
+/// under a personal name. Topics are categories; persons are their own dimension.
+pub(crate) fn is_person(address: &str, name: Option<&str>, cards: &HashMap<String, bool>, shared: &[String]) -> bool {
+    if let Some(&person) = cards.get(address) {
+        return person;
+    }
+    let domain = address.rsplit_once('@').map_or("", |(_, d)| d);
+    shared.iter().any(|s| s.eq_ignore_ascii_case(domain)) && personal_name(name, address)
+}
+
 fn categories_of(contacts: &[Contact]) -> HashMap<String, Vec<(String, String)>> {
     let mut out: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for contact in contacts {
@@ -493,6 +555,8 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
     let lexicon = Lexicon::cached(&options.spam.lexicon);
     let noise = noise_words(&lexicon);
     let categories = categories_of(&sources.contacts);
+    let cards = persons_of(&sources.contacts);
+    let shared = sioul_core::words::current().brands.shared.clone();
     let own: HashSet<String> = sources.own.iter().map(|a| a.trim().to_lowercase()).collect();
 
     let mut mail: Vec<Mail> = Vec::new();
@@ -529,6 +593,7 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
             None => Vec::new(),
         };
         let i = mail.len();
+        let mut preset_of = None;
         // A topic preset's mail, for a verified sender only: counted, and a seed in your language.
         if let Some(matcher) = &sources.presets
             && !yours
@@ -538,6 +603,7 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
             if let Some((p, by)) = matcher.find(verified, list.as_deref(), card.is_list || first.line.is_list) {
                 let preset = &matcher.presets[p];
                 reading.presets.entry(preset.id.clone()).or_default().add(by);
+                preset_of = Some(preset.id.clone());
                 by_seed.entry((Kind::Preset, preset.id.clone())).or_insert_with(|| (sioul_core::topics::presets::name_in(preset, &options.language), Vec::new())).1.push(i);
             }
         }
@@ -567,7 +633,8 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
         let (subject, refs) = (first.line.subject.clone(), first.line.refs());
         let id = first.line.message_id.as_deref().map(sioul_core::mailindex::bare_id).filter(|id| !id.is_empty());
         let from_name = if yours { None } else { first.line.from_name.clone().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) };
-        mail.push(Mail { date, sender, yours, words: message_words, grouping, senders, tokens, subject, from_name, id, refs, to });
+        let person = sender.as_deref().is_some_and(|a| is_person(a, from_name.as_deref(), &cards, &shared));
+        mail.push(Mail { date, sender, yours, words: message_words, grouping, senders, tokens, subject, from_name, id, refs, to, person, preset: preset_of });
     }
     reading.messages = mail.len() as u64;
     progress(&Progress { stage: Stage::Tokens, done: total, total, detail: String::new() });

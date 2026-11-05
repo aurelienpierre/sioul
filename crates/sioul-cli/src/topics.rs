@@ -116,7 +116,7 @@ pub(crate) fn run(s: &Session, command: TopicsCommand) -> Result<(), String> {
         }
         TopicsCommand::Groups { model2vec, k, least, iterations, json } => {
             let language = s.config.language.clone().unwrap_or_else(|| s.tr.language().to_string());
-            let mut options = groups::Options { k, presets: Some(sioul_core::presets::load()), language, ..groups::Options::default() };
+            let mut options = groups::Options { k, presets: Some(sioul_core::presets::load()), language, topic_presets: Some(sioul_core::topics::presets::Matcher::current()), ..groups::Options::default() };
             options.least = least.unwrap_or(options.least).max(1);
             options.lda_iterations = iterations.unwrap_or(options.lda_iterations).max(1);
             long(s, json, None, |progress, cancel| groups_report(s, &dirs, model2vec.as_deref(), &options, progress, cancel))
@@ -378,6 +378,8 @@ fn groups_report(s: &Session, dirs: &Dirs, folder: Option<&std::path::Path>, opt
     let read = read(s, dirs, &topic_options, true, model.as_mut(), progress, cancel)?;
     let (seeded, labels) = topics::seeded(&read, &topic_options);
     let ids: Vec<String> = seeded.proposal.topics.iter().map(|t| t.id.clone()).collect();
+    let options = groups::Options { started: groups::started(&s.config.topics, s.config.topics_day_one.is_some(), &read), ..options.clone() };
+    let options = &options;
     let mut found = groups::groups(&read, &labels, &ids, model.as_ref(), options, progress, cancel).map_err(|e| failure(s, &e))?;
     // Subjects as an agent would see them: codes, sign-in links and account numbers hidden.
     let words = sioul_core::words::Words::of(&s.config);
@@ -421,10 +423,7 @@ fn groups_report(s: &Session, dirs: &Dirs, folder: Option<&std::path::Path>, opt
                 s.say("topics-groups-group", &[("n", n(i as u64 + 1)), ("size", n(group.size)), ("senders", n(group.senders)), ("yours", n(group.yours)), ("coherence", number(s, group.coherence, 3)), ("seed", seed)])
             ));
             lines.push(format!("    {}", s.say("topics-groups-names", &[("names", group.names.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", "))])));
-            if !group.proposed.is_empty() {
-                let how = s.tr.text(if group.proposed_by == "sites" { "topics-named-sites" } else { "topics-named-sender" }, None);
-                lines.push(format!("    {}", s.say("topics-groups-proposed", &[("name", crate::one_line(&group.proposed)), ("how", how)])));
-            }
+            lines.push(format!("    {}", proposed_line(s, group)));
             lines.push(format!("    {}", s.say("topics-groups-words", &[("words", group.words.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", "))])));
             if !group.subjects.is_empty() {
                 let quoted: Vec<String> = group.subjects.iter().map(|subject| s.say("topics-groups-quoted", &[("subject", subject.clone())])).collect();
@@ -432,6 +431,36 @@ fn groups_report(s: &Session, dirs: &Dirs, folder: Option<&std::path::Path>, opt
             }
         }
     }
+    // What the window shows of them ("Groups Sioul noticed").
+    let shown = groups::noticed(&found, options);
+    lines.push(String::new());
+    lines.push(s.say("topics-noticed", &[("shown", n(shown.groups.len() as u64)), ("weak", n(shown.weak)), ("floor", decimal(s, groups::COHERENCE_FLOOR, 1)), ("persons", n(shown.persons)), ("started", n(shown.started)), ("more", n(shown.more))]));
+    for group in &shown.groups {
+        let names = group.names.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", ");
+        lines.push(format!("  {}", s.say("topics-noticed-group", &[("size", n(group.size)), ("senders", n(group.senders)), ("coherence", number(s, group.coherence, 3)), ("names", names)])));
+        lines.push(format!("    {}", proposed_line(s, group)));
+    }
+    if !shown.senders.is_empty() {
+        lines.push(s.tr.text("topics-noticed-senders", None));
+        for group in &shown.senders {
+            let names = group.names.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", ");
+            lines.push(format!("  {}", s.say("topics-noticed-sender", &[("size", n(group.size)), ("names", names)])));
+            lines.push(format!("    {}", proposed_line(s, group)));
+        }
+    }
     lines.push(s.say("topics-seconds", &[("seconds", format!("{:.0}", found.seconds))]));
-    Ok(Report { lines, data: serde_json::to_value(&found).map_err(|e| e.to_string())? })
+    let mut data = serde_json::to_value(&found).map_err(|e| e.to_string())?;
+    data["noticed"] = serde_json::to_value(&shown).map_err(|e| e.to_string())?;
+    Ok(Report { lines, data })
+}
+
+/// A group's proposed name and how it was found, or that none is proposed ("Name it" asks).
+fn proposed_line(s: &Session, group: &groups::Group) -> String {
+    let how = match group.proposed_by {
+        "preset" => "topics-named-preset",
+        "sites" => "topics-named-sites",
+        "sender" => "topics-named-sender",
+        _ => return s.tr.text("topics-named-none", None),
+    };
+    s.say("topics-groups-proposed", &[("name", crate::one_line(&group.proposed)), ("how", s.tr.text(how, None))])
 }

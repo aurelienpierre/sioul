@@ -5,9 +5,11 @@
 // words and its senders' rules (× takes one off), Rename and Remove; "Add a
 // topic"; and on a computer the groups Sioul noticed in the mail no word of
 // yours names yet (NMF on their words: crates/sioul-learn/src/groups.rs),
-// each with its words, its size and two subjects, and "Name it", which makes
-// a topic and gives it to the whole group in one act. Every act is said with
-// Undo; nothing here is counted, nothing asks.
+// each with its senders' names, its size and two subjects, and "Name it",
+// which makes a topic and gives it to the whole group in one act; senders
+// with much mail of their own, each with "Always a topic…", which gives
+// them the rule "Always <topic>". Every act is said with Undo; nothing here
+// is counted, nothing asks.
 
 pragma ComponentBehavior: Bound
 
@@ -24,13 +26,20 @@ ColumnLayout {
     property string about: ""
     // The topics (`topics::view`): [{id, name, seeds, senders: [[address, "always" | "never"]]}].
     property var topics: []
-    // The groups found (`topicGroups`): {state, groups: [{size, senders, names, subjects, proposed, proposed_by}], detail}.
+    // The groups found (`topicGroups`): {state, groups: [{size, senders, names, subjects, proposed, proposed_by}], senders: [the same, one sender each], detail}.
     readonly property var groups: page.sioul.topicGroups ? JSON.parse(page.sioul.topicGroups) : null
     property string problem: ""
     // The topic being renamed, by id; "" for none.
     property string renaming: ""
     // The group being named, by its place; -1 for none.
     property int naming: -1
+    // The sender being given a topic, by its place; -1 for none.
+    property int namingSender: -1
+
+    // How a name offered was found, in one sentence; that none is, else.
+    function how(by) {
+        return page.sioul.text(by === "preset" ? "topics-named-preset" : by === "sites" ? "topics-named-sites" : by === "sender" ? "topics-named-sender" : "topics-named-none")
+    }
     // The groups are looked for on a computer: a phone never reads all the mail for them.
     readonly property bool computer: Qt.platform.os !== "android"
 
@@ -320,12 +329,13 @@ ColumnLayout {
                 font.pixelSize: 13
                 color: page.theme.muted
             }
-            // How the name offered was found, in one sentence.
+            // How the name offered was found, in one sentence; that none is (its senders are persons).
             Label {
-                visible: page.naming === group.index && group.modelData.proposed_by !== ""
+                objectName: "topicGroupHow:" + group.index
+                visible: page.naming === group.index
                 Layout.fillWidth: true
                 Layout.preferredWidth: 0
-                text: group.modelData.proposed_by === "sites" ? page.sioul.text("topics-named-sites") : page.sioul.text("topics-named-sender")
+                text: page.how(group.modelData.proposed_by)
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 font.pixelSize: 13
@@ -354,6 +364,99 @@ ColumnLayout {
                         page.problem = page.sioul.nameTopicGroup(group.index, groupName.text)
                         if (page.problem === "")
                             page.naming = -1
+                    }
+                }
+            }
+        }
+    }
+
+    // Senders with much mail of their own: "Always a topic…" for each.
+    Label {
+        visible: page.groups !== null && page.groups.state === "done" && (page.groups.senders || []).length > 0
+        Layout.fillWidth: true
+        Layout.preferredWidth: 0
+        Layout.topMargin: 4
+        text: page.sioul.text("topics-offers")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: page.theme.muted
+    }
+    Repeater {
+        model: page.groups !== null && page.groups.state === "done" ? page.groups.senders || [] : []
+
+        delegate: ColumnLayout {
+            id: offered
+
+            required property var modelData
+            required property int index
+
+            objectName: "topicSender:" + offered.index
+            Layout.fillWidth: true
+            spacing: 2
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Label {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    text: offered.modelData.names.join(", ")
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: page.theme.text
+                }
+                Label {
+                    text: page.sioul.textCounted("topics-groups-size", offered.modelData.size)
+                    textFormat: Text.PlainText
+                    font.pixelSize: 13
+                    color: page.theme.muted
+                }
+                Button {
+                    objectName: "topicSenderAlways:" + offered.index
+                    visible: page.namingSender !== offered.index
+                    text: page.sioul.text("topics-offer-always")
+                    onClicked: {
+                        page.namingSender = offered.index
+                        senderTopic.text = offered.modelData.proposed || ""
+                        senderTopic.forceActiveFocus()
+                        senderTopic.selectAll()
+                    }
+                }
+            }
+            Label {
+                visible: page.namingSender === offered.index
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                text: page.how(offered.modelData.proposed_by)
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: page.theme.muted
+            }
+            RowLayout {
+                visible: page.namingSender === offered.index
+                Layout.fillWidth: true
+                spacing: 6
+
+                TextField {
+                    id: senderTopic
+
+                    objectName: "topicSenderField:" + offered.index
+                    Layout.fillWidth: true
+                    placeholderText: page.sioul.text("topic-new-name")
+                    onAccepted: giveIt.clicked()
+                }
+                Button {
+                    id: giveIt
+
+                    objectName: "topicSenderMake:" + offered.index
+                    enabled: senderTopic.text.trim() !== ""
+                    text: page.sioul.text("topic-make")
+                    onClicked: {
+                        page.problem = page.sioul.nameTopicSender(offered.index, senderTopic.text)
+                        if (page.problem === "")
+                            page.namingSender = -1
                     }
                 }
             }

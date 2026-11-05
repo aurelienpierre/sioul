@@ -270,8 +270,8 @@ fn read_embeddings(path: &Path) -> Result<(usize, usize, Vec<f32>), String> {
 
 /// A stand-in model in a folder, for tests: these pieces (with their log
 /// probabilities) and their rows, F32.
-#[doc(hidden)]
-pub fn write_stand_in(folder: &Path, pieces: &[(&str, f64)], rows: &[Vec<f32>], unk_id: u32) -> std::io::Result<()> {
+#[cfg(test)]
+pub(crate) fn write_stand_in(folder: &Path, pieces: &[(&str, f64)], rows: &[Vec<f32>], unk_id: u32) -> std::io::Result<()> {
     std::fs::create_dir_all(folder)?;
     let tokenizer = serde_json::json!({
         "version": "1.0",

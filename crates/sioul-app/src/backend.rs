@@ -1805,6 +1805,12 @@ pub mod qobject {
         #[qinvokable]
         fn name_topic_group(self: Pin<&mut Sioul>, index: i32, name: &QString) -> QString;
 
+        /// "Always a topic…": the sender at `index` of `topicGroups`' senders
+        /// given "Always <topic>" for the topic named `name` (made when none
+        /// has that name), with Undo. Returns what went wrong, else "".
+        #[qinvokable]
+        fn name_topic_sender(self: Pin<&mut Sioul>, index: i32, name: &QString) -> QString;
+
         /// The topic presets not started yet, for "Add a topic" (JSON [{id, name}]).
         #[qinvokable]
         fn topic_presets(self: &Sioul) -> QString;
@@ -7583,6 +7589,10 @@ impl qobject::Sioul {
 
     fn name_topic_group(self: Pin<&mut Self>, index: i32, name: &QString) -> QString {
         QString::from(&crate::topics::name_group(&self.qt_thread(), &self.shared(), usize::try_from(index).unwrap_or(usize::MAX), &name.to_string()))
+    }
+
+    fn name_topic_sender(self: Pin<&mut Self>, index: i32, name: &QString) -> QString {
+        QString::from(&crate::topics::name_sender(&self.qt_thread(), &self.shared(), usize::try_from(index).unwrap_or(usize::MAX), &name.to_string()))
     }
 
     fn topic_presets(&self) -> QString {

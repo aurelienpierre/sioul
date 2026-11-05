@@ -70,13 +70,20 @@ Item {
             mock.asked = mock.asked.concat([["forget", address, topic]])
         }
         function findTopicGroups() {
-            mock.topicGroups = JSON.stringify({ state: "done", groups: [{ size: 42, senders: 3, names: ["Opérateur Exemple", "Service client"], subjects: ["Votre facture de novembre"], proposed: "Téléphone et internet", proposed_by: "sites" }] })
+            mock.topicGroups = JSON.stringify({ state: "done",
+                groups: [{ size: 42, senders: 3, names: ["Opérateur Exemple", "Service client"], subjects: ["Votre facture de novembre"], proposed: "Téléphone et internet", proposed_by: "sites" },
+                         { size: 20, senders: 2, names: ["Jeanne Martin", "Paul Durand"], subjects: ["Dimanche"], proposed: "", proposed_by: "" }],
+                senders: [{ size: 30, senders: 1, names: ["Club Exemple"], subjects: ["Programme"], proposed: "Club Exemple", proposed_by: "sender" }] })
         }
         function topicPresets() {
             return JSON.stringify([{ id: "bank", name: "Banque" }, { id: "phone-internet", name: "Téléphone et internet" }])
         }
         function startTopicPreset(id) {
             mock.asked = mock.asked.concat([["preset", id]])
+            return ""
+        }
+        function nameTopicSender(index, name) {
+            mock.asked = mock.asked.concat([["always", index, name]])
             return ""
         }
         function nameTopicGroup(index, name) {
@@ -241,6 +248,17 @@ Item {
             waitForItemPolished(page)
             mouseClick(named(page, "topicGroupMake:0"))
             compare(mock.asked[1], ["name", 0, "Téléphone"])
+            // A group of persons: no name proposed, and the page says so.
+            mouseClick(named(page, "topicGroupName:1"))
+            compare(named(page, "topicGroupField:1").text, "")
+            compare(named(page, "topicGroupHow:1").text, "topics-named-none")
+            // One sender with much mail: "Always a topic…", its name proposed, given in one act.
+            waitForItemPolished(page)
+            mouseClick(named(page, "topicSenderAlways:0"))
+            compare(named(page, "topicSenderField:0").text, "Club Exemple")
+            waitForItemPolished(page)
+            mouseClick(named(page, "topicSenderMake:0"))
+            compare(mock.asked[2], ["always", 0, "Club Exemple"])
             for (const row of all(page, i => i.objectName.indexOf("topicRow:") === 0))
                 inside(row)
         }
