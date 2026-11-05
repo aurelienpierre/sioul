@@ -29,6 +29,7 @@ added = 2026-10-03
 | Health cover (complémentaire santé solidaire, mutual) | 3 months before: the CSS does not renew by itself (2 to 4 months before, ameli) | |
 | Insurance certificate | 1 month before | |
 | Warranty, proof of purchase | 1 month before; an end proposed 2 years after the purchase (the legal guarantee of conformity) | |
+| Procuration, legal protection measure (a mandat de protection future, an habilitation familiale, a curatelle, a tutelle) | 4 months before its end: a review must be asked of the judge before the end, or the measure lapses (service-public.gouv.fr, F2120) | |
 | Rent receipt, payslip, attestation | | less than three months old |
 | Tax notice | | the last one (about a year) |
 | Bank details, health card, other | | |
@@ -36,6 +37,8 @@ added = 2026-10-03
 - **Where it stands**, in words, never in red: "valid until 20 December", "valid until 20 December: time to renew it", "ended on …", "from 30 June, older than what is usually asked". A date in another year carries its year.
 - **The reminder** ([reminders.md](reminders.md)): once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper added after renewing began (you just saw it), nor once its renewal is planned.
 - **Plan the renewal**: a task in your usual list (your phone has it), from when renewing starts (or today) to the day it ends, tied to the paper, with the steps known for its kind (France: the pre-request on ants.gouv.fr and a town hall that takes them; the ANEF site for a residence permit; ameli for the CSS).
+
+Procurations and measures are shown apart, for the person they concern ([persons.md](persons.md)). An older Sioul (0.0.7 and before) knows neither kind: the wallet writes them `kind = "other"` with `measure = "procuration"` or `"protection"` beside, so that it reads every paper still; rewriting the wallet, it drops `measure`, and the paper reads as "other" from then on.
 
 ## Whom each is for
 A paper is yours, or for persons of your household, several at once (a joint tax notice, a lease of two): the form's "For" chooses them, the Papers page's chips show one person's, and a person's page lists theirs ([persons.md](persons.md)). Each person chosen is a tie in `links.toml`, how `holder`, and `holder` keeps their names for older versions; a paper with neither is yours. A text with no tie is matched to persons by name at each read.

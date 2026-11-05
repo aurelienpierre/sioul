@@ -7105,3 +7105,32 @@ papers-everyone = Everyone
 person-agendas = Agendas
 person-gone = This person is no longer in your household.
 agenda-person-none = Not said
+person-letters = Letters
+person-handover-16 = From 16, { $name } can have a carte Vitale and a reimbursement account in { $name }’s own name.
+person-handover-18 = { $name } is 18: the papers are { $name }’s own, and what Sioul keeps can be handed over.
+person-keeps = What Sioul keeps about { $name }…
+person-keeps-papers = Papers
+person-keeps-file = What Sioul keeps
+person-keeps-made = Made by Sioul on { $date }, on this device. Nothing was sent.
+person-keeps-saved = Saved in { $path }, with the papers’ files.
+person-ends = Ends…
+person-ends-title = { $name }: the end
+person-ends-on = Ended on (today when unsaid)
+person-ends-hand-back = Their own papers can go back with them, saved in a folder you choose. Papers of two stay, as the household’s past.
+person-ends-take-out = Then take them out of the wallet
+person-ends-saved = { $n ->
+    [one] One paper saved in { $path }.
+   *[other] { $n } papers saved in { $path }.
+}
+person-ended = Ended on { $date }.
+person-same-as = Same as…
+person-not-a-person = This is not a person
+person-make = Make a person of “{ $name }”
+letter-for = For { $names }
+letters-for = For…
+paper-kind-procuration = Procuration
+paper-kind-protection = Legal protection measure
+paper-family-legal = Procurations and measures
+paper-renew-legal = A review or a new one must be asked before it ends, or it lapses.
+paper-steps-procuration = Ask the person who gave it whether it goes on, and for a new one if so.
+paper-steps-protection = Ask the judge (the juge des contentieux de la protection) for a review before it ends: without one, the measure lapses.

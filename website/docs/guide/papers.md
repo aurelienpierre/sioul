@@ -39,7 +39,7 @@ In words, never in red:
 
 **Add a paper** (or **New ▾ ▸ A paper**), then:
 
-- **What**: an identity card, a passport, a residence permit, a driving licence, a health insurance card or attestation, a health cover, an insurance certificate, a tax notice, a rent receipt, bank details, a payslip, an attestation or certificate, a warranty, or another paper;
+- **What**: an identity card, a passport, a residence permit, a driving licence, a health insurance card or attestation, a health cover, an insurance certificate, a tax notice, a rent receipt, bank details, a payslip, an attestation or certificate, a warranty, a procuration, a legal protection measure (a mandat de protection future, an habilitation familiale, a curatelle, a tutelle), or another paper;
 - **Name**: "Passport", "Rent receipt September";
 - **File**: a scan or a photo, copied into your papers;
 - **Issued on** and **Valid until**. For a passport, an identity card or a warranty, an end is proposed from the issue when you give none;
@@ -62,6 +62,7 @@ To send one, the writing window has **A paper**, beside **Attach**. One that has
 | Health cover | 3 months before: some covers do not renew by themselves |
 | Insurance certificate | 1 month before |
 | Warranty, proof of purchase | 1 month before |
+| Procuration, legal protection measure | 4 months before: a review must be asked of the judge before its end, or the measure lapses |
 
 Rent receipts, payslips and attestations have no end: they are said older than three months. A tax notice is usually asked as the last one.
 
@@ -102,6 +103,7 @@ Then:
 - **See the scan**;
 - **A task for that date**: a task in your usual list, due that day, tied to the scan, such as "Pay the water bill €86.40";
 - **Into the agenda**, for an appointment;
+- **For…**: whom it is for, when it is someone of your household: its address block's name is read ("For Léa"), and you can tick others;
 - the project it belongs to;
 - **Done, filed**: the scan moves to `letters/<year>/`, named by its day, its sender and its kind; its text is kept. A linked scan stays where it is. The letter then shows among those filed, under its year, its scan one click away.
 

@@ -119,7 +119,7 @@ pub(crate) fn view() -> String {
     let holders: std::collections::BTreeMap<String, sioul_core::persons::Holders> = wallet.papers.iter().map(|p| (p.id.clone(), of.store.holders_of(p, &of.local, &of.own))).collect();
     let label = |p: &Paper| holders.get(&p.id).map(|h| crate::persons::label(&of.store, h)).unwrap_or_default();
     let mut families: Vec<Family> = Vec::new();
-    for family in ["identity", "health", "home", "money", "warranty", "other"] {
+    for family in ["identity", "health", "home", "money", "legal", "warranty", "other"] {
         let mut papers: Vec<&Paper> = wallet.papers.iter().filter(|p| p.kind.family() == family).collect();
         papers.sort_by(|a, b| (a.kind.id(), label(a), &a.title).cmp(&(b.kind.id(), label(b), &b.title)));
         if !papers.is_empty() {
@@ -230,6 +230,8 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
             // A new end: a new renewal to plan.
             renewal: if old.until == until { old.renewal.clone() } else { String::new() },
             added: old.added.or_else(|| Some(sioul_core::zone::now().date())),
+            // Written by the wallet from the kind (`Kind::newer`).
+            measure: String::new(),
         };
         wallet.put(paper)
     });

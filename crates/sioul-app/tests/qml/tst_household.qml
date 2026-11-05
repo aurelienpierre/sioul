@@ -58,7 +58,11 @@ Item {
                 papers: [{ id: "lea-id", title: "Identity card with a long name to wrap on a phone", kind_label: "Identity card", line: "valid until Monday 3 May 2027", standing: "valid", persons: ["p-lea"] },
                          { id: "lea-school", title: "School insurance", kind_label: "Insurance", line: "valid until Wednesday 30 June 2027: time to renew it", standing: "renew", persons: ["p-lea"] }],
                 cards: [{ uid: "c-lea", key: "/stand-in/lea.vcf", name: "Léa Martin", detail: "lea@example.org" }],
-                agendas: [{ id: "home/lea-school", name: "Léa, school and activities", child: true, whose: "" }]
+                agendas: [{ id: "home/lea-school", name: "Léa, school and activities", child: true, whose: "" }],
+                letters: [{ id: "l-1", sender: "Collège de l’Exemple", kind_label: "A request for documents", received: "Monday 2 November" }],
+                handover: "From 16, Léa can have a carte Vitale and a reimbursement account in Léa’s own name.", handover_age: 16,
+                can_end: false, partner: false, ended: "",
+                same_as: [{ id: "p-lea-m", name: "Léa M." }]
             })
         }
         function whoDoesWhat(from, child, mine) {
@@ -68,6 +72,17 @@ Item {
         property string week: ""
         function papers() {
             return JSON.stringify({ store: true, problem: "", kinds: [], families: [], choices: [], chips: [] })
+        }
+        property var handed: []
+        function personHandoverSaid(id, age) {
+            mock.handed.push(id + "@" + age)
+            return ""
+        }
+        function notAPerson(id) {
+            return ""
+        }
+        function samePerson(keep, other) {
+            return ""
         }
         function setPersonAgents(id, on) {
             mock.agents.push(id + "=" + on)
@@ -205,7 +220,8 @@ Item {
             verify(shown.indexOf("lea@example.org") >= 0, "the linked card")
             const agents = find(person, "personAgents")
             verify(agents.visible && !agents.checked, "closed to agents until opened")
-            mouseClick(agents)
+            // Pressed as a finger does, wherever the page's scroll has it.
+            agents.click()
             compare(mock.agents[mock.agents.length - 1], "p-lea=true")
             compare(past(person, []).join("; "), "", "nothing past 412 points")
         }
@@ -238,6 +254,19 @@ Item {
             chooser.personId = ""
             chooser.fallback = "Lea (an older text)"
             compare(chooser.model[0], "Lea (an older text)", "a name naming nobody, as written")
+        }
+
+        // Said once, at 16: shown, and said for good; the foot's quiet buttons, a child's without Ends.
+        function test_a_child_s_hand_over_line_and_the_foot() {
+            person.personId = ""
+            person.personId = "p-lea"
+            waitForRendering(person)
+            verify(find(person, "personHandover").visible)
+            verify(mock.handed.indexOf("p-lea@16") >= 0, mock.handed.join(","))
+            verify(labels(person, []).indexOf("Collège de l’Exemple · A request for documents · Monday 2 November") >= 0, "its letters")
+            verify(find(person, "personKeeps").visible && find(person, "personSameAs").visible && find(person, "personNotAPerson").visible)
+            verify(!find(person, "personEnds").visible, "a child's relation has no end to say")
+            compare(past(person, []).join("; "), "", "nothing past 412 points")
         }
 
         function test_your_own_page_has_no_switch_and_no_cards() {

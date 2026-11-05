@@ -169,6 +169,17 @@ ColumnLayout {
                         text: section.sioul.text("payment-from")
                         onClicked: section.window.askPayment("letter", card.modelData.id, "")
                     }
+                    // Whom it is for (docs/persons.md): its address block read, or chosen here.
+                    Button {
+                        objectName: "letterFor"
+                        visible: (section.shown.choices || []).length > 1
+                        flat: true
+                        text: section.sioul.text("letters-for")
+                        onClicked: {
+                            forMenu.letter = card.modelData
+                            forMenu.popup()
+                        }
+                    }
                     PlainComboBox {
                         id: projectChoice
 
@@ -187,6 +198,32 @@ ColumnLayout {
                     }
                 }
             }
+        }
+    }
+
+    // A letter's persons: each ticked or not, saved at once.
+    SioulMenu {
+        id: forMenu
+
+        property var letter: null
+
+        Instantiator {
+            model: section.shown.choices || []
+
+            delegate: MenuItem {
+                required property var modelData
+
+                checkable: true
+                checked: forMenu.letter !== null && (forMenu.letter.persons || []).indexOf(modelData.id) >= 0
+                text: section.theme.plain(modelData.name)
+                onTriggered: {
+                    const now = (forMenu.letter.persons || []).filter(id => id !== modelData.id).concat(checked ? [modelData.id] : [])
+                    section.problem = section.sioul.setLetterFor(forMenu.letter.id, JSON.stringify(now))
+                    section.reload()
+                }
+            }
+            onObjectAdded: (index, object) => forMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => forMenu.removeItem(object)
         }
     }
 

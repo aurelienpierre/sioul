@@ -3568,6 +3568,10 @@ SioulWindow {
                 () => contactsPage.openPerson((JSON.parse(sioul.household()).persons.find(p => p.relation === "child") || { id: "me" }).id),
                 () => {},
                 () => grabber.save("person-page"),
+                // The parent you help: a procuration among their papers, Ends… at the foot.
+                () => contactsPage.openPerson((JSON.parse(sioul.household()).persons.find(p => p.relation === "parent") || { id: "me" }).id),
+                () => {},
+                () => grabber.save("person-parent"),
                 () => {
                     contactsPage.openPerson("")
                     window.page = 13

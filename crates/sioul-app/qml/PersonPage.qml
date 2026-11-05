@@ -29,10 +29,16 @@ Panel {
     signal editAsked(var person)
     signal openContact(string key)
     signal changed
+    // "What Sioul keeps about…" and "Ends…": the page holding this one asks where (ContactsPage.qml).
+    signal keepsAsked(var person)
+    signal endAsked(var person)
 
     function reload() {
         page.shown = page.personId !== "" ? JSON.parse(page.sioul.personPage(page.personId) || "null") : null
         page.problem = ""
+        // A hand-over line shown is said for good: never again, on any device.
+        if (page.shown && (page.shown.handover || "") !== "")
+            page.sioul.personHandoverSaid(page.personId, page.shown.handover_age)
     }
 
     onPersonIdChanged: page.reload()
@@ -84,6 +90,22 @@ Panel {
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: page.theme.muted
+                }
+                // Once, at 16 and at 18, in an admin window: what passes to them; at 18, what Sioul keeps can be handed over.
+                Label {
+                    objectName: "personHandover"
+                    visible: page.shown !== null && (page.shown.handover || "") !== ""
+                    Layout.fillWidth: true
+                    text: page.shown ? (page.shown.handover || "") : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.text
+                }
+                Button {
+                    visible: page.shown !== null && page.shown.handover_age === 18
+                    flat: true
+                    text: page.shown ? page.theme.plain(page.sioul.textWith("person-keeps", "name", page.shown.name)) : ""
+                    onClicked: page.keepsAsked(page.shown)
                 }
                 Label {
                     visible: page.helpShown
@@ -193,6 +215,35 @@ Panel {
                     }
                 }
 
+                // Letters addressed to them (their address block's name, or a card's "For").
+                Label {
+                    visible: page.shown !== null && (page.shown.letters || []).length > 0
+                    Layout.topMargin: 8
+                    text: page.sioul.text("person-letters")
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                    color: page.theme.accent
+                }
+                Repeater {
+                    model: page.shown ? (page.shown.letters || []) : []
+
+                    delegate: ItemDelegate {
+                        id: letterRow
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        padding: 6
+                        onClicked: page.window.openLetter(letterRow.modelData.id)
+                        contentItem: Label {
+                            text: [letterRow.modelData.sender, letterRow.modelData.kind_label, letterRow.modelData.received].filter(t => t !== "").join(" · ")
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                    }
+                }
+
                 // The cards that are them, and one to link.
                 Label {
                     visible: page.shown !== null && !page.shown.me && page.shown.cards.length > 0
@@ -268,6 +319,53 @@ Panel {
                     color: page.theme.warm
                 }
 
+                // At the foot, quiet: what Sioul keeps about them, the relation's end, and what agents may read.
+                Flow {
+                    visible: page.shown !== null && !page.shown.me
+                    Layout.topMargin: 12
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Button {
+                        objectName: "personKeeps"
+                        flat: true
+                        text: page.shown ? page.theme.plain(page.sioul.textWith("person-keeps", "name", page.shown.name)) : ""
+                        onClicked: page.keepsAsked(page.shown)
+                    }
+                    Button {
+                        objectName: "personEnds"
+                        visible: page.shown !== null && page.shown.can_end === true
+                        flat: true
+                        text: page.sioul.text("person-ends")
+                        onClicked: page.endAsked(page.shown)
+                    }
+                    Button {
+                        objectName: "personSameAs"
+                        visible: page.shown !== null && (page.shown.same_as || []).length > 0
+                        flat: true
+                        text: page.sioul.text("person-same-as")
+                        onClicked: sameMenu.popup()
+                    }
+                    Button {
+                        objectName: "personNotAPerson"
+                        flat: true
+                        text: page.sioul.text("person-not-a-person")
+                        onClicked: {
+                            page.problem = page.sioul.notAPerson(page.personId)
+                            if (page.problem === "") {
+                                page.changed()
+                                page.closeAsked()
+                            }
+                        }
+                    }
+                }
+                Label {
+                    visible: page.shown !== null && (page.shown.ended || "") !== ""
+                    Layout.fillWidth: true
+                    text: page.shown ? page.sioul.textWith("person-ended", "date", page.shown.ended || "") : ""
+                    textFormat: Text.PlainText
+                    color: page.theme.muted
+                }
                 // At the foot, quiet: what agents may read. You are always open, as before.
                 Switch {
                     objectName: "personAgents"
@@ -319,6 +417,28 @@ Panel {
                     page.changed()
                 }
             }
+        }
+    }
+
+    // "Same as…": the person chosen joined into this one (Léa and "Léa M.").
+    SioulMenu {
+        id: sameMenu
+
+        Instantiator {
+            model: page.shown ? (page.shown.same_as || []) : []
+
+            delegate: MenuItem {
+                required property var modelData
+
+                text: page.theme.plain(modelData.name)
+                onTriggered: {
+                    page.problem = page.sioul.samePerson(page.personId, modelData.id)
+                    page.reload()
+                    page.changed()
+                }
+            }
+            onObjectAdded: (index, object) => sameMenu.insertItem(index, object)
+            onObjectRemoved: (index, object) => sameMenu.removeItem(object)
         }
     }
 

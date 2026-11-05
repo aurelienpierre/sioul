@@ -214,6 +214,34 @@ pub mod qobject {
         #[qinvokable]
         fn set_agenda_person(self: Pin<&mut Sioul>, id: &QString, field: &QString, person: &QString) -> QString;
 
+        /// A letter's persons chosen (a JSON list of ids); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_letter_for(self: Pin<&mut Sioul>, id: &QString, persons: &QString) -> QString;
+
+        /// "Make a person of “…”": a person of that name; returns what went wrong, else "".
+        #[qinvokable]
+        fn make_person_of(self: Pin<&mut Sioul>, name: &QString) -> QString;
+
+        /// "This is not a person"; returns what went wrong, else "".
+        #[qinvokable]
+        fn not_a_person(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// "Same as…": `other` joined into `keep`; returns what went wrong, else "".
+        #[qinvokable]
+        fn same_person(self: Pin<&mut Sioul>, keep: &QString, other: &QString) -> QString;
+
+        /// "Ends…" (`persons::end`): {"saved", "taken_out"} or {"error"}.
+        #[qinvokable]
+        fn end_person(self: Pin<&mut Sioul>, id: &QString, ending: &QString) -> QString;
+
+        /// "What Sioul keeps about…" (`persons::keeps`): {"html", "pdf", "files", "folder"} or {"error"}.
+        #[qinvokable]
+        fn person_keeps(self: Pin<&mut Sioul>, id: &QString, folder: &QString) -> QString;
+
+        /// A hand-over line shown, said for good (16, 18); returns what went wrong, else "".
+        #[qinvokable]
+        fn person_handover_said(self: Pin<&mut Sioul>, id: &QString, age: i32) -> QString;
+
         /// Lets a sender in: they leave the screener.
         #[qinvokable]
         fn let_in(self: Pin<&mut Sioul>, address: &QString);
@@ -2720,7 +2748,19 @@ const REPLAN_EVERY: i64 = 12 * 3600;
 const SAID_FOR: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub(crate) fn config_path() -> PathBuf {
+    #[cfg(test)]
+    if let Some(own) = TEST_CONFIG.with(|own| own.borrow().clone()) {
+        return own;
+    }
     config::default_path()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A test's own configuration, on its thread alone (`config_path`): what
+    /// it writes there leaves the stand-in configuration the other tests of
+    /// the process share as it was.
+    pub(crate) static TEST_CONFIG: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
 pub(crate) fn load_config() -> Config {
@@ -4196,6 +4236,34 @@ impl qobject::Sioul {
 
     fn person_card_choices(&self, query: &QString) -> QString {
         QString::from(&crate::persons::card_choices(&query.to_string()))
+    }
+
+    fn set_letter_for(self: Pin<&mut Self>, id: &QString, persons: &QString) -> QString {
+        QString::from(&crate::persons::set_letter_for(&id.to_string(), &persons.to_string()))
+    }
+
+    fn make_person_of(self: Pin<&mut Self>, name: &QString) -> QString {
+        QString::from(&crate::persons::make_person_of(&name.to_string()))
+    }
+
+    fn not_a_person(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::persons::not_a_person(&id.to_string()))
+    }
+
+    fn same_person(self: Pin<&mut Self>, keep: &QString, other: &QString) -> QString {
+        QString::from(&crate::persons::same_as(&keep.to_string(), &other.to_string()))
+    }
+
+    fn end_person(self: Pin<&mut Self>, id: &QString, ending: &QString) -> QString {
+        QString::from(&crate::persons::end(&id.to_string(), &ending.to_string()))
+    }
+
+    fn person_keeps(self: Pin<&mut Self>, id: &QString, folder: &QString) -> QString {
+        QString::from(&crate::persons::keeps(&id.to_string(), &folder.to_string()))
+    }
+
+    fn person_handover_said(self: Pin<&mut Self>, id: &QString, age: i32) -> QString {
+        QString::from(&crate::persons::handover_said(&id.to_string(), u8::try_from(age).unwrap_or(0)))
     }
 
     fn set_agenda_person(self: Pin<&mut Self>, id: &QString, field: &QString, person: &QString) -> QString {

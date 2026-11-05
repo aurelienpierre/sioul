@@ -102,6 +102,11 @@ pub struct Reading {
     pub registered: bool,
     /// Your number with them: "Numéro allocataire : 1234567".
     pub reference: String,
+    /// Whom it is addressed to, as its address block writes them, without
+    /// "Madame", "M." and the like: "Léa MARTIN" (`addressee_of`); "" when
+    /// no block was found. Matched to persons by their full name
+    /// (`persons::Persons::addressed`).
+    pub addressee: String,
 }
 
 /// A list's words as `plain` writes them, without empty ones.
@@ -274,6 +279,7 @@ pub fn read(looked: &Words, text: &str, received: Date) -> Reading {
     if !reading.why.is_empty() {
         reading.why = as_written(text, &reading.why);
     }
+    reading.addressee = addressee_of(text);
     // Your number with them, as written on its line: "Référence : 2026-ASAP-01234".
     let labels = normal(&lw.references);
     'lines: for line in text.lines() {
@@ -291,6 +297,44 @@ pub fn read(looked: &Words, text: &str, received: Date) -> Reading {
         }
     }
     reading
+}
+
+/// Whom a letter is addressed to, from its address block in its head (its
+/// first 30 lines): the name line of a block ending with a postcode and a
+/// town ("69006 LYON"), a civility taken off ("Madame", "M. et Mme", "Mr");
+/// of several blocks (the sender's letterhead has one too), the first whose
+/// name begins with a civility, else the last. "" when none is found.
+pub fn addressee_of(text: &str) -> String {
+    const CIVILITIES: &[&str] = &["monsieur et madame", "m. et mme", "m et mme", "mr and mrs", "madame", "monsieur", "mademoiselle", "mme", "mlle", "m.", "mr", "mrs", "ms", "miss"];
+    let lines: Vec<&str> = text.lines().map(str::trim).take(30).collect();
+    let postcode = |line: &str| {
+        let mut words = line.split_whitespace();
+        words.next().is_some_and(|code| code.len() == 5 && code.chars().all(|c| c.is_ascii_digit())) && words.next().is_some_and(|town| town.chars().any(char::is_alphabetic))
+    };
+    let civility = |line: &str| -> Option<String> {
+        let lower = line.to_lowercase();
+        CIVILITIES.iter().find(|c| lower.starts_with(*c) && lower[c.len()..].starts_with([' ', '\u{a0}'])).map(|c| line[c.len()..].trim().to_string())
+    };
+    let mut blocks: Vec<(bool, String)> = Vec::new();
+    for (at, line) in lines.iter().enumerate() {
+        if !postcode(line) {
+            continue;
+        }
+        // The block's first line: up to three lines above, to a blank line.
+        let mut top = at;
+        while top > 0 && at - top < 3 && !lines[top - 1].is_empty() {
+            top -= 1;
+        }
+        if top == at {
+            continue;
+        }
+        let name = lines[top];
+        match civility(name) {
+            Some(rest) if !rest.is_empty() => blocks.push((true, rest)),
+            _ => blocks.push((false, name.to_string())),
+        }
+    }
+    blocks.iter().find(|(said, _)| *said).or_else(|| blocks.last()).map(|(_, name)| name.clone()).unwrap_or_default()
 }
 
 /// The words of a folded phrase as `text` writes them: "delai de deux mois" → "délai de deux mois".
@@ -446,6 +490,7 @@ impl Letters {
                         appointment: date_of(t, "appointment").map(|d| (d, time)),
                         registered: t.get("registered").and_then(toml::Value::as_bool).unwrap_or(false),
                         reference: text_of(t, "reference"),
+                        addressee: text_of(t, "addressee"),
                     },
                     project: Some(text_of(t, "project")).filter(|p| !p.is_empty()).unwrap_or_else(|| text_of(t, "case")),
                     status: text_of(t, "status"),
@@ -526,7 +571,7 @@ impl Letters {
             t["file"] = toml_edit::value(&l.file);
             // The project under `case`, its key from the first version: an older
             // Sioul writing the file again would drop a key it does not know.
-            for (k, v) in [("source", &l.source), ("sender", &l.reading.sender), ("why", &l.reading.why), ("reference", &l.reading.reference), ("case", &l.project), ("status", &l.status), ("task", &l.task), ("task_elsewhere", &l.task_elsewhere), ("problem", &l.problem)] {
+            for (k, v) in [("source", &l.source), ("sender", &l.reading.sender), ("why", &l.reading.why), ("reference", &l.reading.reference), ("addressee", &l.reading.addressee), ("case", &l.project), ("status", &l.status), ("task", &l.task), ("task_elsewhere", &l.task_elsewhere), ("problem", &l.problem)] {
                 if !v.is_empty() {
                     t[k] = toml_edit::value(v);
                 }
@@ -576,6 +621,15 @@ pub fn project_of(text: &str, sender: &str, projects: &[crate::projects::Project
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_addressee_is_the_address_block_s_name() {
+        let letter = "Caisse d'allocations familiales\n12 rue de l'Exemple\n69003 LYON\n\n\nMadame Léa MARTIN\n4 allée des Tilleuls\n69006 LYON\n\nLyon, le 3 octobre 2026\nObjet : votre dossier";
+        assert_eq!(addressee_of(letter), "Léa MARTIN", "the block whose name has a civility, not the letterhead's");
+        assert_eq!(addressee_of("Water board\n1 Main Street\n\nAlex Durand\n3 Rue Fictive\n75011 PARIS\nDear customer"), "Alex Durand", "the last block, no civility");
+        assert_eq!(addressee_of("M. et Mme Alex et Sam Martin\n4 allée des Tilleuls\n69006 Lyon"), "Alex et Sam Martin");
+        assert_eq!(addressee_of("Dear Alex,\nYour bill is attached."), "");
+    }
 
     /// A letter read with the packs built in (French and English, France).
     fn read(text: &str, received: Date) -> Reading {

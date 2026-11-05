@@ -89,6 +89,10 @@ sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)
 # sioul-app/src/payments.rs: what the budgets show on this device (state): no item.
 sioul-app/src/payments.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
 
+# sioul-app/src/persons.rs: a person's papers' files copied into a folder you chose, to hand to them or back (What Sioul keeps about…, Ends…): no item.
+sioul-app/src/persons.rs	end	1	std::fs::copy(&file, folder.join(&name))
+sioul-app/src/persons.rs	keeps	1	std::fs::copy(&file, papers_dir.join(&name))
+
 # sioul-app/src/projects.rs: a time sheet exported where you choose: no item.
 sioul-app/src/projects.rs	export_time_csv	1	std::fs::write(&path, csv)
 

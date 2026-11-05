@@ -7145,3 +7145,32 @@ papers-everyone = Tout le monde
 person-agendas = Agendas
 person-gone = Cette personne n’est plus parmi vos proches.
 agenda-person-none = Non dit
+person-letters = Lettres
+person-handover-16 = Dès 16 ans, { $name } peut avoir une carte Vitale et un compte de remboursement à son nom.
+person-handover-18 = { $name } a 18 ans : ses papiers lui reviennent, et ce que Sioul garde peut lui être remis.
+person-keeps = Ce que Sioul garde sur { $name }…
+person-keeps-papers = Papiers
+person-keeps-file = Ce que garde Sioul
+person-keeps-made = Fait par Sioul le { $date }, sur cet appareil. Rien n’a été envoyé.
+person-keeps-saved = Enregistré dans { $path }, avec les fichiers des papiers.
+person-ends = Fin…
+person-ends-title = { $name } : la fin
+person-ends-on = Fini le (aujourd’hui sans date)
+person-ends-hand-back = Ses propres papiers peuvent lui être rendus, enregistrés dans un dossier de votre choix. Les papiers à deux restent, passé du foyer.
+person-ends-take-out = Puis les retirer du portefeuille
+person-ends-saved = { $n ->
+    [one] Un papier enregistré dans { $path }.
+   *[other] { $n } papiers enregistrés dans { $path }.
+}
+person-ended = Fini le { $date }.
+person-same-as = Même personne que…
+person-not-a-person = Ce n’est pas une personne
+person-make = Faire une personne de « { $name } »
+letter-for = Pour { $names }
+letters-for = Pour…
+paper-kind-procuration = Procuration
+paper-kind-protection = Mesure de protection
+paper-family-legal = Procurations et mesures
+paper-renew-legal = Un réexamen ou une nouvelle demande doit être fait avant la fin, sans quoi elle tombe.
+paper-steps-procuration = Demander à la personne qui l’a donnée si elle se poursuit, et une nouvelle si oui.
+paper-steps-protection = Demander au juge des contentieux de la protection un réexamen avant la fin : sans lui, la mesure tombe.

@@ -264,7 +264,7 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
 /// lease of two, one of them that child; a paper tied to the child in
 /// `links.toml` with no holder text; the health card of a parent opened to
 /// agents; a holder text that names nobody. None may be in any answer.
-const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderhollow", "Vellichor", "Gorsebeck", "Mirrowvale", "Brightmere"];
+const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderhollow", "Vellichor", "Gorsebeck", "Mirrowvale", "Brightmere", "Pemberlune"];
 
 /// The household: a child closed to agents, a parent opened; their papers
 /// in the wallet beside the identity card in no project, a passport ending
@@ -291,6 +291,16 @@ fn persons_fixture(store: &Path) {
     }
     wallet.save().unwrap();
     sioul_core::links::LocalLinks::add_all(&sioul_core::links::LocalLinks::default_path(), &[sioul_core::links::Edge { from: "sioul:paper/p-school".into(), to: "sioul:person/p-quorvelle".into(), how: "holder".into() }]).unwrap();
+    // A letter its address block names to the closed child, with a date asked tomorrow.
+    let mut letters = sioul_core::letters::Letters::load(store).unwrap();
+    letters.put(sioul_core::letters::Letter {
+        id: "quorvelle-letter".into(),
+        file: "letters/2026/quorvelle-letter.pdf".into(),
+        received: Some(Zoned::now().date()),
+        reading: sioul_core::letters::Reading { sender: "Pemberlune Office".into(), addressee: "Quorvelle FENWRIGHT".into(), deadline: Zoned::now().date().tomorrow().ok(), ..Default::default() },
+        ..Default::default()
+    });
+    letters.save().unwrap();
 }
 
 /// The children's agendas, on a server's account of their own, read only
@@ -947,11 +957,11 @@ fn a_closed_person_is_never_shown() {
     let agenda = call(&mut server, "agenda", json!({ "days": 3 }));
     assert!(text(&agenda).contains("Tilda school fair"), "the opened child's event comes: {}", text(&agenda));
     assert!(agenda["structuredContent"]["kept_from_agents"].as_u64().unwrap_or(0) >= 3, "{agenda}");
-    for (tool, arguments) in [("find", json!({ "query": "dentist" })), ("find", json!({ "query": "recital" })), ("reminders", json!({ "days": 3 })), ("list_tasks", json!({ "view": "today" }))] {
+    for (tool, arguments) in [("find", json!({ "query": "dentist" })), ("find", json!({ "query": "recital" })), ("reminders", json!({ "days": 3 })), ("list_tasks", json!({ "view": "today" })), ("letters", json!({})), ("agenda", json!({ "days": 3 }))] {
         let answer = call(&mut server, tool, arguments.clone());
         never(&answer, tool);
     }
-    for uri in ["sioul:event/quorvelle-recital", "sioul:event/tilda-dentist", "sioul:event/stand-in-dentist"] {
+    for uri in ["sioul:event/quorvelle-recital", "sioul:event/tilda-dentist", "sioul:event/stand-in-dentist", "sioul:letter/quorvelle-letter"] {
         let refused = call(&mut server, "links", json!({ "uri": uri }));
         assert!(refused["isError"] == true && text(&refused).contains("kept from agents"), "{uri}: {}", text(&refused));
     }

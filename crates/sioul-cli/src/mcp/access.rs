@@ -71,7 +71,10 @@ fn kept_for_persons(s: &Session, loaded: &Loaded) -> std::collections::BTreeSet<
     let papers = s.config.notes_root_path().and_then(|root| sioul_core::papers::Wallet::load(&root).ok()).map(|w| w.papers).unwrap_or_default();
     let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
     let persons = Persons::as_read(&Persons::default_path(), &s.config.agenda.calendars, &papers, &own);
-    persons.kept_from_agents(&papers, &loaded.local, &own)
+    let letters: Vec<(String, String)> = s.config.notes_root_path().and_then(|root| sioul_core::letters::Letters::load(&root).ok()).map(|l| l.list.into_iter().map(|l| (l.id, l.reading.addressee)).collect()).unwrap_or_default();
+    let mut kept = persons.kept_from_agents(&papers, &loaded.local, &own);
+    kept.extend(persons.kept_letters(&letters, &loaded.local, &own));
+    kept
 }
 
 /// What an answer listing tasks, events or time says when the errands'

@@ -142,7 +142,7 @@ pub(crate) fn page(id: &str) -> String {
         Some(Ok(wallet)) => {
             let mut theirs: Vec<&Paper> = wallet.papers.iter().filter(|p| store.holders_of(p, &local, &own).has(id)).collect();
             // In the Papers page's order: identity, health, home, money, warranties, others.
-            let family = |p: &Paper| ["identity", "health", "home", "money", "warranty", "other"].iter().position(|f| *f == p.kind.family()).unwrap_or(6);
+            let family = |p: &Paper| ["identity", "health", "home", "money", "legal", "warranty", "other"].iter().position(|f| *f == p.kind.family()).unwrap_or(7);
             theirs.sort_by(|a, b| (family(a), a.kind.id(), &a.title).cmp(&(family(b), b.kind.id(), &b.title)));
             theirs.into_iter().map(|p| crate::papers::view_json(&wallet, p, &store, &local, &own, today)).collect()
         }
@@ -181,7 +181,63 @@ pub(crate) fn page(id: &str) -> String {
         "papers": papers,
         "cards": cards,
         "agendas": agendas,
+        "letters": letters_for(&store, &config, &local, &own, &person.id),
+        // The hand-over line due on a child's page, once, in an admin window (16, 18): "" none.
+        "handover": handover_line(&store, &person, today),
+        "handover_age": if handover_line(&store, &person, today).is_empty() { 0 } else { store.handover(&person.id, today).unwrap_or(0) },
+        // "Ends…" for anyone but you and a child; a partner's papers handed back.
+        "can_end": !me && person.relation() != Relation::Child && person.until.is_none(),
+        "partner": person.relation() == Relation::Partner,
+        "ended": person.until.map(|d| d.to_string()).unwrap_or_default(),
+        // "Same as…": the others of the same side, to join into this one.
+        "same_as": store.persons.iter().filter(|p| p.id != person.id && p.relation().holds_papers() == person.relation().holds_papers()).map(|p| serde_json::json!({ "id": p.id, "name": p.name })).collect::<Vec<_>>(),
     }))
+}
+
+/// The letters for a person (`Persons::letter_for`): their sender, kind and day, by id.
+fn letters_for(store: &Persons, config: &Config, local: &LocalLinks, own: &[String], id: &str) -> Vec<serde_json::Value> {
+    let Some(letters) = config.notes_root_path().and_then(|root| sioul_core::letters::Letters::load(&root).ok()) else { return Vec::new() };
+    let today = sioul_core::zone::now().date();
+    let mut theirs: Vec<&sioul_core::letters::Letter> = letters.list.iter().filter(|l| store.letter_for(&l.id, &l.reading.addressee, local, own).iter().any(|p| p == id)).collect();
+    theirs.sort_by_key(|l| std::cmp::Reverse(l.received));
+    theirs
+        .into_iter()
+        .map(|l| serde_json::json!({ "id": l.id, "sender": if l.reading.sender.is_empty() { tr().text("letter-unknown-sender", None) } else { l.reading.sender.clone() }, "kind_label": tr().text(&format!("letter-kind-{}", l.reading.kind.id()), None), "received": l.received.map(|d| tr().day_in(d, today)).unwrap_or_default() }))
+        .collect()
+}
+
+/// Whether now is an admin window: admin's hours open (docs/areas.md).
+fn admin_now(config: &Config) -> bool {
+    use sioul_core::areas::Time;
+    let now = sioul_core::zone::now();
+    let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
+    let blocks = sioul_core::quiet::Blocks::read_now(&now);
+    match sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now).time {
+        Time::Admin | Time::Any => true,
+        Time::Several(open) => open.admin,
+        _ => false,
+    }
+}
+
+/// The hand-over line due on a child's page (`Persons::handover`), said in
+/// an admin window only; "" otherwise.
+fn handover_line(store: &Persons, person: &Person, today: jiff::civil::Date) -> String {
+    let Some(age) = store.handover(&person.id, today) else { return String::new() };
+    if !admin_now(&load_config()) {
+        return String::new();
+    }
+    say(if age >= 18 { "person-handover-18" } else { "person-handover-16" }, &[("name", person.name.clone())])
+}
+
+/// A hand-over line shown: said, on every device, never again (`Person::handed`).
+pub(crate) fn handover_said(id: &str, age: u8) -> String {
+    persons::change(&Persons::default_path(), |store| {
+        if let Some(person) = store.get_mut(id) {
+            person.handed = person.handed.max(age);
+        }
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// What the person's form gives back.
@@ -415,6 +471,211 @@ pub(crate) fn chips(store: &Persons, holders: &BTreeMap<String, persons::Holders
     paper_choices(store).into_iter().filter(|c| c["id"].as_str().is_some_and(|id| holders.values().any(|h| h.has(id)))).collect()
 }
 
+/// A letter's persons chosen (its card's "For"), by id; none: its addressee decides again. Returns what went wrong, else "".
+pub(crate) fn set_letter_for(letter: &str, chosen: &str) -> String {
+    let chosen: Vec<String> = serde_json::from_str(chosen).unwrap_or_default();
+    let store = store();
+    let chosen: Vec<String> = chosen.into_iter().filter(|id| id == ME || store.get(id).is_some_and(|p| p.relation().holds_papers())).collect();
+    LocalLinks::change(&LocalLinks::default_path(), |local| persons::tie_letter(local, letter, &chosen)).err().unwrap_or_default()
+}
+
+/// The persons a letter is for, by id, and in words ("For Léa"; "" yours alone or nobody read).
+pub(crate) fn letter_persons(store: &Persons, local: &LocalLinks, own: &[String], letter: &sioul_core::letters::Letter) -> (Vec<String>, String) {
+    let ids = store.letter_for(&letter.id, &letter.reading.addressee, local, own);
+    let names: Vec<String> = ids.iter().filter(|id| *id != ME).map(|id| store.name_of(id, &you())).filter(|n| !n.is_empty()).collect();
+    let said = if names.is_empty() { String::new() } else { say("letter-for", &[("names", names.join(", "))]) };
+    (ids, said)
+}
+
+/// "Make a person of “…”" on a paper's card: a person of that name, in your household, nothing more said.
+pub(crate) fn make_person_of(name: &str) -> String {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return tr().text("person-no-name", None);
+    }
+    let _ = store();
+    persons::change(&Persons::default_path(), |store| {
+        if store.holder_named(&name, &[]).is_none() {
+            let id = store.put(Person { name: name.clone(), ..Person::default() });
+            // Said to be no person before: a person now.
+            store.not_persons.retain(|n| persons::key(n) != persons::key(&name));
+            let _ = id;
+        }
+    })
+    .err()
+    .unwrap_or_default()
+}
+
+/// "This is not a person": taken out, their name among those that are no
+/// person; their ties taken out and the agendas' keys naming them with them;
+/// their papers keep their texts. Returns what went wrong, else "".
+pub(crate) fn not_a_person(id: &str) -> String {
+    if id == ME {
+        return String::new();
+    }
+    if let Err(e) = persons::change(&Persons::default_path(), |store| store.not_a_person_now(id)) {
+        return e;
+    }
+    let _ = LocalLinks::change(&LocalLinks::default_path(), |local| persons::retie(local, id, ""));
+    move_agenda_keys(id, "");
+    String::new()
+}
+
+/// The agendas' person keys naming `from` made `to` ("" takes them out).
+fn move_agenda_keys(from: &str, to: &str) {
+    let config = load_config();
+    let path = crate::backend::config_path();
+    for (place, said) in &config.agenda.calendars {
+        for (field, value) in [("person", &said.person), ("parent_person", &said.parent_person)] {
+            if value.as_deref() == Some(from) {
+                let _ = sioul_core::agendas::set_field(&path, place, field, to);
+            }
+        }
+    }
+}
+
+/// "Same as…": `other` joined into `keep` (Léa and "Léa M."): what it held
+/// and `keep` lacked, its ties, its agendas' keys, and the texts that named it
+/// by its name, which now say `keep`'s. Returns what went wrong, else "".
+pub(crate) fn same_as(keep: &str, other: &str) -> String {
+    let before = store();
+    let (Some(kept), Some(_)) = (before.get(keep).cloned(), before.get(other)) else { return tr().text("person-gone", None) };
+    let config = load_config();
+    let own = own_names(&config);
+    let local = LocalLinks::load(&LocalLinks::default_path());
+    // The texts first, read with the store as it was: the papers' holders and the agendas' names.
+    if let Some(root) = config.notes_root_path() {
+        let _ = Wallet::change(&root, |wallet| persons::rename_holders(&mut wallet.papers, &before, &local, &own, other, &kept.name));
+    }
+    let path = crate::backend::config_path();
+    for (place, field, value) in persons::renamed_agendas(&config.agenda.calendars, &before, other, &kept.name) {
+        let _ = sioul_core::agendas::set_field(&path, &place, field, &value);
+    }
+    move_agenda_keys(other, keep);
+    let _ = LocalLinks::change(&LocalLinks::default_path(), |local| persons::retie(local, other, keep));
+    persons::change(&Persons::default_path(), |store| store.join(keep, other)).err().unwrap_or_default()
+}
+
+/// What "Ends…" asks: the day the relation ended, and for a partner, a
+/// folder to save their own papers in (to hand back) and whether to take
+/// them out of the wallet then.
+#[derive(Deserialize)]
+struct Ending {
+    #[serde(default)]
+    until: String,
+    #[serde(default)]
+    folder: String,
+    #[serde(default)]
+    take_out: bool,
+}
+
+/// "Ends…": the relation's end said (`until`); a partner's own papers (for
+/// them alone: those of two stay, the household's past) saved in a folder
+/// to hand back, and taken out of the wallet when asked, their files with
+/// them only once saved. Returns {"saved", "taken_out"} or {"error"}.
+pub(crate) fn end(id: &str, ending: &str) -> String {
+    let fail = |e: String| serde_json::json!({ "error": e }).to_string();
+    let ending: Ending = match serde_json::from_str(ending) {
+        Ok(e) => e,
+        Err(e) => return fail(e.to_string()),
+    };
+    let until = match ending.until.trim() {
+        "" => sioul_core::zone::now().date(),
+        text => match text.parse::<jiff::civil::Date>() {
+            Ok(d) => d,
+            Err(_) => return fail(say("papers-bad-date", &[("date", text.to_string())])),
+        },
+    };
+    let store = store();
+    let Some(person) = store.get(id).cloned() else { return fail(tr().text("person-gone", None)) };
+    let config = load_config();
+    let own = own_names(&config);
+    let local = LocalLinks::load(&LocalLinks::default_path());
+    let (mut saved, mut taken_out) = (0usize, 0usize);
+    if person.relation() == Relation::Partner && !ending.folder.trim().is_empty()
+        && let Some(root) = config.notes_root_path()
+        && let Ok(wallet) = Wallet::load(&root)
+    {
+        let theirs: Vec<Paper> = wallet.papers.iter().filter(|p| store.holders_of(p, &local, &own).persons == [id.to_string()]).cloned().collect();
+        let folder = crate::backend::local_path(ending.folder.trim()).join(&person.name);
+        if let Err(e) = std::fs::create_dir_all(&folder) {
+            return fail(format!("{}: {e}", folder.display()));
+        }
+        let mut copied: Vec<String> = Vec::new();
+        for paper in &theirs {
+            if let Some(file) = wallet.file_path(paper).filter(|f| f.is_file()) {
+                let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if let Err(e) = std::fs::copy(&file, folder.join(&name)) {
+                    return fail(format!("{}: {e}", file.display()));
+                }
+                saved += 1;
+            }
+            copied.push(paper.id.clone());
+        }
+        if ending.take_out {
+            let _ = Wallet::change(&root, |wallet| {
+                for id in &copied {
+                    if wallet.remove(id) {
+                        taken_out += 1;
+                    }
+                }
+            });
+            let _ = LocalLinks::change(&LocalLinks::default_path(), |local| copied.iter().fold(false, |changed, paper| persons::tie_paper(local, paper, &[ME.to_string()]) || changed));
+        }
+    }
+    if let Err(e) = persons::change(&Persons::default_path(), |store| {
+        if let Some(p) = store.get_mut(id) {
+            p.until = Some(until);
+        }
+    }) {
+        return fail(e);
+    }
+    serde_json::json!({ "saved": saved, "taken_out": taken_out }).to_string()
+}
+
+/// "What Sioul keeps about…": the person's papers' files copied into
+/// `<folder>/<name>/`, and the page of what Sioul keeps about them, as HTML,
+/// with where its PDF goes (written by the window, `PdfWriter`): their
+/// papers (kind, dates, where each stands), agendas and letters. Nothing is
+/// sent. Returns {"html", "pdf", "files"} or {"error"}.
+pub(crate) fn keeps(id: &str, folder: &str) -> String {
+    let fail = |e: String| serde_json::json!({ "error": e }).to_string();
+    let shown: serde_json::Value = serde_json::from_str(&page(id)).unwrap_or_default();
+    if shown.is_null() {
+        return fail(tr().text("person-gone", None));
+    }
+    let name = shown["name"].as_str().unwrap_or_default().to_string();
+    let target = crate::backend::local_path(folder.trim()).join(sioul_core::papers::portable_name_of(&name));
+    let papers_dir = target.join(sioul_core::papers::portable_name_of(&tr().text("person-keeps-papers", None)));
+    if let Err(e) = std::fs::create_dir_all(&papers_dir) {
+        return fail(format!("{}: {e}", papers_dir.display()));
+    }
+    let mut files = 0usize;
+    for paper in shown["papers"].as_array().into_iter().flatten() {
+        let file = std::path::PathBuf::from(paper["file"].as_str().unwrap_or_default());
+        if file.is_file() {
+            let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            if let Err(e) = std::fs::copy(&file, papers_dir.join(&name)) {
+                return fail(format!("{}: {e}", file.display()));
+            }
+            files += 1;
+        }
+    }
+    let esc = |t: &str| t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let mut html = format!("<h1>{}</h1>", esc(&name));
+    if let Some(line) = shown["line"].as_str().filter(|l| !l.is_empty()) {
+        html.push_str(&format!("<p>{}</p>", esc(line)));
+    }
+    let section = |title: &str, rows: Vec<String>| if rows.is_empty() { String::new() } else { format!("<h2>{}</h2><ul>{}</ul>", esc(title), rows.into_iter().map(|r| format!("<li>{}</li>", esc(&r))).collect::<String>()) };
+    let rows = |key: &str, parts: &[&str]| -> Vec<String> { shown[key].as_array().into_iter().flatten().map(|item| parts.iter().filter_map(|p| item[*p].as_str()).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" · ")).collect() };
+    html.push_str(&section(&tr().text("person-papers", None), rows("papers", &["title", "kind_label", "line", "file_name"])));
+    html.push_str(&section(&tr().text("person-agendas", None), rows("agendas", &["name"])));
+    html.push_str(&section(&tr().text("person-letters", None), rows("letters", &["sender", "kind_label", "received"])));
+    html.push_str(&format!("<p><small>{}</small></p>", esc(&say("person-keeps-made", &[("date", tr().day(sioul_core::zone::now().date()))]))));
+    let pdf = target.join(format!("{}.pdf", sioul_core::papers::portable_name_of(&tr().text("person-keeps-file", None))));
+    serde_json::json!({ "html": html, "pdf": pdf.display().to_string(), "files": files, "folder": target.display().to_string() }).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,17 +686,62 @@ mod tests {
     /// text the parent's name; the parent renamed, the paper's text and a
     /// child's agenda's words following; a card linked, found again and
     /// offered as theirs; a name taken refused.
+    /// A test's own configuration and notes folder, on its thread (`backend::TEST_CONFIG`),
+    /// and the persons it made taken out of the shared store when it ends, whatever happened.
+    struct OwnSetup {
+        root: std::path::PathBuf,
+        made: std::cell::RefCell<Vec<String>>,
+    }
+
+    impl OwnSetup {
+        fn new(name: &str) -> OwnSetup {
+            sioul_core::config::stand_ins_only();
+            let root = sioul_core::config::data_dir().join(format!("{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("notes")).unwrap();
+            let config = root.join("config.toml");
+            std::fs::write(&config, format!("case_store = {:?}\n", root.join("notes").display().to_string())).unwrap();
+            crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config));
+            OwnSetup { root, made: std::cell::RefCell::new(Vec::new()) }
+        }
+
+        fn notes(&self) -> std::path::PathBuf {
+            self.root.join("notes")
+        }
+
+        fn made(&self, id: &str) -> String {
+            self.made.borrow_mut().push(id.to_string());
+            id.to_string()
+        }
+    }
+
+    impl Drop for OwnSetup {
+        fn drop(&mut self) {
+            let made = self.made.borrow().clone();
+            let _ = persons::change(&Persons::default_path(), |store| {
+                for id in &made {
+                    store.remove(id);
+                }
+            });
+            let _ = LocalLinks::change(&LocalLinks::default_path(), |local| {
+                let before = local.links.len();
+                local.links.retain(|e| !made.iter().any(|id| e.to == persons::uri(id) || e.from == persons::uri(id)));
+                local.links.len() != before
+            });
+            crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
     #[test]
     fn a_person_saved_renamed_given_a_paper_and_a_card() {
-        sioul_core::config::stand_ins_only();
+        let own = OwnSetup::new("persons-window");
         let config = crate::backend::config_path();
-        let notes = sioul_core::config::data_dir().join("persons-test-notes");
-        std::fs::create_dir_all(&notes).unwrap();
-        sioul_core::config::set_value(&config, "case_store", &sioul_core::config::SettingValue::Text(notes.display().to_string())).unwrap();
+        let notes = own.notes();
         let saved = |id: &str, edit: serde_json::Value| -> serde_json::Value { serde_json::from_str(&save(id, &edit.to_string())).unwrap() };
         let wren = saved("", serde_json::json!({ "name": "Wren", "relation": "child", "born": "2015-03-04", "lives_with": true }));
-        let wren = wren["id"].as_str().unwrap_or_else(|| panic!("{wren}")).to_string();
-        let ivo = saved("", serde_json::json!({ "name": "Ivo", "relation": "parent" }))["id"].as_str().unwrap().to_string();
+        let wren = own.made(wren["id"].as_str().unwrap_or_else(|| panic!("{wren}")));
+        let ivo = own.made(saved("", serde_json::json!({ "name": "Ivo", "relation": "parent" }))["id"].as_str().unwrap());
         assert!(saved("", serde_json::json!({ "name": "WREN", "relation": "kin" }))["error"].is_string(), "a name taken within the household");
         let page_of = |id: &str| serde_json::from_str::<serde_json::Value>(&page(id)).unwrap();
         assert_eq!(page_of(&wren)["lives_with"], true);
@@ -461,6 +767,13 @@ mod tests {
         assert_eq!((said.person.as_deref(), said.name.as_deref()), (Some(wren.as_str()), Some("Wren B.")));
         // A card linked: found again, on the page, offered as theirs.
         let book = sioul_core::vdir::create(sioul_core::vdir::Kind::Contacts, sioul_core::vdir::LOCAL, "Persons test", None, &[]).unwrap();
+        struct Gone(std::path::PathBuf);
+        impl Drop for Gone {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _book = Gone(book.dir.clone());
         std::fs::write(book.dir.join("wren.vcf"), "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:card-wren\r\nFN:Wren Blackwood\r\nEMAIL:wren@example.org\r\nEND:VCARD\r\n").unwrap();
         assert_eq!(link_card(&wren, "card-wren", true), "");
         assert_eq!(serde_json::from_str::<serde_json::Value>(&of_card("card-wren")).unwrap()["id"], wren.as_str());
@@ -469,5 +782,62 @@ mod tests {
         assert_eq!((offered[0]["uid"].as_str(), offered[0]["of"].as_str()), (Some("card-wren"), Some("Wren B.")));
         assert_eq!(link_card(&wren, "card-wren", false), "");
         assert_eq!(of_card("card-wren"), "null");
+    }
+
+    /// Phase 2's paths, on a test's own folders: a letter for whom its block
+    /// names, then chosen; what Sioul keeps about someone, their papers'
+    /// files copied and the page's words; a partner's end, their own papers
+    /// saved to hand back and taken out, one of two kept; "Same as…" moving a
+    /// paper's tie and text; "This is not a person" keeping the text, which
+    /// "Make a person of" makes a person again.
+    #[test]
+    fn letters_ends_and_persons_joined_or_gone() {
+        let own = OwnSetup::new("persons-phase-2");
+        let notes = own.notes();
+        let saved = |edit: serde_json::Value| -> String { own.made(serde_json::from_str::<serde_json::Value>(&save("", &edit.to_string())).unwrap()["id"].as_str().unwrap()) };
+        let robin = saved(serde_json::json!({ "name": "Robin", "full_name": "Robin Quillfeather", "relation": "partner" }));
+        let nell = saved(serde_json::json!({ "name": "Nell", "relation": "child" }));
+        let nell_b = saved(serde_json::json!({ "name": "Nell B.", "relation": "kin" }));
+        // A letter its block names to Robin; then chosen for Nell.
+        let mut letters = sioul_core::letters::Letters { root: notes.clone(), ..Default::default() };
+        letters.put(sioul_core::letters::Letter { id: "l-robin".into(), reading: sioul_core::letters::Reading { sender: "Water board".into(), addressee: "QUILLFEATHER Robin".into(), ..Default::default() }, ..Default::default() });
+        letters.save().unwrap();
+        let page_of = |id: &str| serde_json::from_str::<serde_json::Value>(&page(id)).unwrap();
+        assert_eq!(page_of(&robin)["letters"][0]["id"], "l-robin");
+        assert_eq!(set_letter_for("l-robin", &serde_json::json!([nell]).to_string()), "");
+        assert!(page_of(&robin)["letters"].as_array().unwrap().is_empty() && page_of(&nell)["letters"][0]["id"] == "l-robin");
+        // Robin's own papers, with files, and one of two.
+        let scan = notes.join("scan.pdf");
+        std::fs::write(&scan, b"%PDF stand-in").unwrap();
+        for (title, holders) in [("Robin's passport", vec![robin.clone()]), ("Lease", vec![ME.to_string(), robin.clone()])] {
+            assert_eq!(crate::papers::save("", &serde_json::json!({ "kind": "passport", "title": title, "file": scan.display().to_string(), "for": holders }).to_string()), "");
+        }
+        let out = own.root.join("out");
+        let kept: serde_json::Value = serde_json::from_str(&keeps(&robin, &out.display().to_string())).unwrap();
+        assert_eq!(kept["files"], 2, "{kept}");
+        assert!(kept["html"].as_str().unwrap().contains("Robin&#39;s passport") || kept["html"].as_str().unwrap().contains("Robin's passport"), "{kept}");
+        assert!(kept["pdf"].as_str().unwrap().ends_with(".pdf"));
+        let ended: serde_json::Value = serde_json::from_str(&end(&robin, &serde_json::json!({ "until": "2026-11-01", "folder": out.display().to_string(), "take_out": true }).to_string())).unwrap();
+        assert_eq!((ended["saved"].as_u64(), ended["taken_out"].as_u64()), (Some(1), Some(1)), "their own one; the lease of two stays: {ended}");
+        let wallet = Wallet::load(&notes).unwrap();
+        assert!(wallet.papers.iter().all(|p| p.title != "Robin's passport") && wallet.papers.iter().any(|p| p.title == "Lease"));
+        assert_eq!(page_of(&robin)["ended"], "2026-11-01");
+        // Same as…: Nell B. into Nell, its paper's tie and text with it.
+        assert_eq!(crate::papers::save("", &serde_json::json!({ "kind": "identity", "title": "Nell's card", "for": [nell_b] }).to_string()), "");
+        assert_eq!(same_as(&nell, &nell_b), "");
+        let card = Wallet::load(&notes).unwrap().papers.into_iter().find(|p| p.title == "Nell's card").unwrap();
+        assert_eq!((card.holder.as_str(), persons::tied_persons(&LocalLinks::load(&LocalLinks::default_path()), &card.id)), ("Nell", vec![nell.clone()]));
+        assert_eq!(page_of(&nell_b), serde_json::Value::Null);
+        // This is not a person, then made one again from the paper's card.
+        let bank = saved(serde_json::json!({ "name": "Banque Pellucid" }));
+        assert_eq!(crate::papers::save("", &serde_json::json!({ "kind": "bank-details", "title": "RIB", "for": [bank] }).to_string()), "");
+        assert_eq!(not_a_person(&bank), "");
+        let rib = Wallet::load(&notes).unwrap().papers.into_iter().find(|p| p.title == "RIB").unwrap();
+        assert_eq!(rib.holder, "Banque Pellucid", "its text kept");
+        assert!(store().not_a_person("banque pellucid"));
+        assert_eq!(make_person_of("Banque Pellucid"), "");
+        let again = store().holder_named("Banque Pellucid", &[]).unwrap();
+        own.made(&again);
+        assert!(!store().not_a_person("banque pellucid"));
     }
 }

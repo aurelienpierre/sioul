@@ -154,6 +154,10 @@ pub struct Person {
     /// Open to AI agents; closed until opened on the person's page.
     #[serde(default)]
     pub agents: bool,
+    /// The last hand-over line said on a child's page (16, then 18): each
+    /// said once, on every device (`handover`).
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub handed: u8,
     /// What a later version writes here, kept as it is: written back
     /// unchanged, so that this device never sends another version's person as changed.
     #[serde(flatten)]
@@ -246,6 +250,13 @@ impl From<Persons> for File {
 fn is_zero(n: &u32) -> bool {
     *n == 0
 }
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
+}
+
+/// How a letter's tie to the person it is addressed to reads in `links.toml`.
+pub const ADDRESSED: &str = "to";
 
 /// A name as compared: case and accents aside, spaces made one.
 pub fn key(text: &str) -> String {
@@ -534,6 +545,14 @@ impl Persons {
         Some(id)
     }
 
+    /// The letters kept from AI agents for a person's sake, by address: a
+    /// letter for a person not opened to agents (by its ties, else its
+    /// addressee). `letters`: each letter's id and addressee.
+    pub fn kept_letters(&self, letters: &[(String, String)], local: &LocalLinks, own: &[String]) -> BTreeSet<String> {
+        let open = |id: &str| id == ME || self.get(id).is_some_and(|p| p.agents);
+        letters.iter().filter(|(id, addressee)| self.letter_for(id, addressee, local, own).iter().any(|p| !open(p))).map(|(id, _)| links::letter_uri(id)).collect()
+    }
+
     /// What never reaches an AI agent, by address (docs/mcp.md): the papers
     /// for a person not opened to agents, or for a name that is nobody's (a
     /// paper of two, when either is); health papers (a health card, a health
@@ -551,6 +570,115 @@ impl Persons {
             }
         }
         kept
+    }
+
+    /// The hand-over line due on a child's page today (docs/persons.md):
+    /// 16 from their sixteenth birthday, 18 from their eighteenth, each once
+    /// (`handed` says the last said); none for anyone else or without a date
+    /// of birth.
+    pub fn handover(&self, id: &str, today: Date) -> Option<u8> {
+        let person = self.get(id).filter(|p| p.relation() == Relation::Child)?;
+        let age = person.age(today)?;
+        if age >= 18 && person.handed < 18 {
+            Some(18)
+        } else if (16..18).contains(&age) && person.handed < 16 {
+            Some(16)
+        } else {
+            None
+        }
+    }
+
+    /// The persons a letter is addressed to, by its address block's name
+    /// (`letters::Reading::addressee`): you by your names, and each person of
+    /// the household whose full name (or name, when none is said) is in it,
+    /// its words in any order ("Léa MARTIN", "MARTIN Léa"), case and accents
+    /// aside. A block naming nobody here gives nobody.
+    pub fn addressed(&self, addressee: &str, own: &[String]) -> Vec<String> {
+        let words: BTreeSet<String> = key(addressee).split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect();
+        if words.is_empty() {
+            return Vec::new();
+        }
+        let within = |name: &str| {
+            let wanted: Vec<String> = key(name).split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect();
+            !wanted.is_empty() && wanted.iter().all(|w| words.contains(w))
+        };
+        let mut out: Vec<String> = Vec::new();
+        if own.iter().any(|name| within(name)) {
+            out.push(ME.to_string());
+        }
+        for person in self.persons.iter().filter(|p| p.relation().holds_papers()) {
+            let name = if person.full_name.trim().is_empty() { &person.name } else { &person.full_name };
+            if within(name) {
+                out.push(person.id.clone());
+            }
+        }
+        out
+    }
+
+    /// Whom a letter is for: its ties (`links.toml`, how `to`) to persons
+    /// still here, else its addressee as `addressed` reads it.
+    pub fn letter_for(&self, letter: &str, addressee: &str, local: &LocalLinks, own: &[String]) -> Vec<String> {
+        let tied: Vec<String> = tied_to(local, Kind::Letter, letter, ADDRESSED).into_iter().filter(|id| id == ME || self.get(id).is_some()).collect();
+        if !tied.is_empty() {
+            return tied;
+        }
+        self.addressed(addressee, own)
+    }
+
+    /// Two persons made one ("Same as…": Léa and "Léa M."): `keep` takes
+    /// what `other` holds and it lacks (a full name, a date of birth, cards,
+    /// children), and `other` goes. The ties and texts naming `other` are the
+    /// caller's to move (`retie`, `rename_holders`, `renamed_agendas`).
+    /// Whether both were here.
+    pub fn join(&mut self, keep: &str, other: &str) -> bool {
+        if keep == other {
+            return false;
+        }
+        let (Some(gone), true) = (self.get(other).cloned(), self.get(keep).is_some()) else { return false };
+        let person = self.get_mut(keep).expect("checked above");
+        if person.full_name.trim().is_empty() {
+            person.full_name = gone.full_name.clone();
+        }
+        person.born = person.born.or(gone.born);
+        person.lives_with = person.lives_with.or(gone.lives_with);
+        person.since = person.since.or(gone.since);
+        person.agents = person.agents && gone.agents;
+        for card in gone.cards {
+            if !person.cards.contains(&card) {
+                person.cards.push(card);
+            }
+        }
+        for child in gone.of {
+            if !person.of.contains(&child) {
+                person.of.push(child);
+            }
+        }
+        self.remove(other);
+        // Another parent naming `other` as their child names `keep` now.
+        for parent in self.persons.iter_mut() {
+            if parent.of.iter().any(|c| c == other) {
+                parent.of.retain(|c| c != other);
+                if !parent.of.iter().any(|c| c == keep) {
+                    parent.of.push(keep.to_string());
+                }
+            }
+        }
+        true
+    }
+
+    /// "This is not a person" ("Banque"): taken out, their name kept among
+    /// the names that are no person, so that no later read makes them again.
+    /// Their papers keep their texts. Whether they were here.
+    pub fn not_a_person_now(&mut self, id: &str) -> bool {
+        let Some(gone) = self.get(id).cloned() else { return false };
+        self.remove(id);
+        if !self.not_a_person(&gone.name) {
+            self.not_persons.push(gone.name.clone());
+        }
+        for parent in self.persons.iter_mut() {
+            parent.of.retain(|c| c != id);
+        }
+        true
     }
 
     /// The store as the file holds it now, read again only when the file
@@ -622,10 +750,16 @@ impl Persons {
 
 /// The persons a paper is tied to in `links.toml` (how `holder`), by id, in the order written.
 pub fn tied_persons(local: &LocalLinks, paper: &str) -> Vec<String> {
+    tied_to(local, Kind::Paper, paper, HOLDER)
+}
+
+/// The persons a thing of this kind and id is tied to in `links.toml` with
+/// this how, by id, in the order written.
+pub fn tied_to(local: &LocalLinks, kind: Kind, thing: &str, how: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for edge in local.links.iter().filter(|e| e.how == HOLDER) {
+    for edge in local.links.iter().filter(|e| e.how == how) {
         for (from, to) in [(&edge.from, &edge.to), (&edge.to, &edge.from)] {
-            if links::kind_of(from) == Kind::Paper && links::id_of(from) == paper && links::kind_of(to) == Kind::Person {
+            if links::kind_of(from) == kind && links::id_of(from) == thing && links::kind_of(to) == Kind::Person {
                 let id = links::id_of(to);
                 if !out.contains(&id) {
                     out.push(id);
@@ -634,6 +768,38 @@ pub fn tied_persons(local: &LocalLinks, paper: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// A letter's ties to the persons it is for set to `persons` (none: its
+/// addressee read again decides); whether anything changed.
+pub fn tie_letter(local: &mut LocalLinks, letter: &str, persons: &[String]) -> bool {
+    let before = local.links.clone();
+    let mine = |e: &links::Edge| e.how == ADDRESSED && [(&e.from, &e.to), (&e.to, &e.from)].into_iter().any(|(a, b)| links::kind_of(a) == Kind::Letter && links::id_of(a) == letter && links::kind_of(b) == Kind::Person);
+    local.links.retain(|e| !mine(e));
+    for id in persons {
+        local.add(&links::letter_uri(letter), &uri(id), ADDRESSED);
+    }
+    local.links != before
+}
+
+/// Every tie to `from` (a paper's, a letter's) moved to `to` ("Same as…"),
+/// or taken out when `to` is "" ("This is not a person"); whether anything changed.
+pub fn retie(local: &mut LocalLinks, from: &str, to: &str) -> bool {
+    let before = local.links.clone();
+    let is_gone = |end: &str| links::kind_of(end) == Kind::Person && links::id_of(end) == from;
+    let mut moved: Vec<links::Edge> = Vec::new();
+    local.links.retain(|e| {
+        let touches = is_gone(&e.from) || is_gone(&e.to);
+        if touches && !to.is_empty() {
+            let swap = |end: &str| if is_gone(end) { uri(to) } else { end.to_string() };
+            moved.push(links::Edge { from: swap(&e.from), to: swap(&e.to), how: e.how.clone() });
+        }
+        !touches
+    });
+    for edge in moved {
+        local.add(&edge.from, &edge.to, &edge.how);
+    }
+    local.links != before
 }
 
 /// A paper's ties to persons set to `persons` (`ME` alone: none, yours as a
@@ -960,6 +1126,45 @@ mod tests {
         renamed.sort();
         assert_eq!(renamed, [("a/school".to_string(), "name", "Léa M.".to_string()), ("a/sport".to_string(), "name", "Léa M.".to_string())]);
         assert_eq!(renamed_agendas(&calendars, &persons, &sam, "Samuel"), [("a/school".to_string(), "parent", "Samuel".to_string())], "the agenda saying Samuel already keeps it");
+    }
+
+    #[test]
+    fn letters_go_to_whom_their_block_names_and_persons_join_or_go() {
+        let mut persons = Persons::default();
+        let lea = persons.put(Person { name: "Léa".into(), full_name: "Léa Martin".into(), relation: "child".into(), born: Some(day("2010-01-15")), ..Person::default() });
+        let lea_m = persons.put(Person { name: "Léa M.".into(), relation: "child".into(), cards: vec!["c-lea".into()], ..Person::default() });
+        let odile = persons.put(Person { name: "Odile".into(), relation: "parent".into(), agents: true, ..Person::default() });
+        let own = vec!["Alex Durand".to_string()];
+        assert_eq!(persons.addressed("MARTIN Léa", &own), [lea.clone()], "the full name's words in any order");
+        assert_eq!(persons.addressed("Alex et Odile Durand", &own), [ME.to_string(), odile.clone()]);
+        assert!(persons.addressed("Banque des Berges", &own).is_empty());
+        let mut local = LocalLinks::default();
+        assert_eq!(persons.letter_for("l1", "Léa MARTIN", &local, &own), [lea.clone()]);
+        assert!(tie_letter(&mut local, "l1", &[odile.clone()]));
+        assert_eq!(persons.letter_for("l1", "Léa MARTIN", &local, &own), [odile.clone()], "its ties win");
+        let kept = persons.kept_letters(&[("l1".into(), "Léa MARTIN".into()), ("l2".into(), "Léa MARTIN".into())], &local, &own);
+        assert_eq!(kept.into_iter().collect::<Vec<_>>(), ["sioul:letter/l2"], "Odile opened; Léa closed");
+        // Hand-over lines: 16 then 18, each once.
+        assert_eq!(persons.handover(&lea, day("2026-01-14")), None);
+        assert_eq!(persons.handover(&lea, day("2026-01-15")), Some(16));
+        persons.get_mut(&lea).unwrap().handed = 16;
+        assert_eq!(persons.handover(&lea, day("2027-06-01")), None);
+        assert_eq!(persons.handover(&lea, day("2028-01-15")), Some(18));
+        assert_eq!(persons.handover(&odile, day("2028-01-15")), None, "a child's alone");
+        // Same as…: Léa M. into Léa, its card and its ties moved.
+        tie_paper(&mut local, "card", &[lea_m.clone()]);
+        assert!(persons.join(&lea, &lea_m) && retie(&mut local, &lea_m, &lea));
+        assert!(persons.get(&lea_m).is_none() && persons.get(&lea).unwrap().cards == ["c-lea"]);
+        assert_eq!(tied_persons(&local, "card"), [lea.clone()]);
+        // This is not a person: gone, its name kept as no person's, its ties taken out.
+        let bank = persons.put(Person { name: "Banque".into(), ..Person::default() });
+        tie_paper(&mut local, "rib", &[bank.clone()]);
+        assert!(persons.not_a_person_now(&bank) && retie(&mut local, &bank, ""));
+        assert!(persons.not_a_person("banque") && tied_persons(&local, "rib").is_empty());
+        let mut again = persons.clone();
+        again.names_read = 0;
+        again.read_names(&BTreeMap::new(), &[paper("rib", "Banque")], &own);
+        assert!(!again.persons.iter().any(|p| p.named("Banque")), "never made again from its text");
     }
 
     #[test]

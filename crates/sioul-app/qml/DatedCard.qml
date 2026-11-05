@@ -202,6 +202,14 @@ CardFrame {
             text: card.sioul.text("ui-open")
             onClicked: Qt.openUrlExternally(card.theme.fileUrl(card.shown.file))
         },
+        // A holder text that names nobody of your household: made a person, once, in place (docs/persons.md).
+        Button {
+            objectName: "datedMakePerson"
+            visible: card.there && card.kind === "paper" && (card.shown.texts || []).length > 0
+            flat: true
+            text: card.there && (card.shown.texts || []).length > 0 ? card.theme.plain(card.sioul.textWith("person-make", "name", card.shown.texts[0])) : ""
+            onClicked: card.written(card.sioul.makePersonOf(card.shown.texts[0]))
+        },
         // An invoice: paid, with Undo in the status line.
         Button {
             visible: card.there && card.kind === "invoice" && card.shown.paid !== true

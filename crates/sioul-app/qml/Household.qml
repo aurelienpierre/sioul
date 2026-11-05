@@ -28,6 +28,8 @@ ColumnLayout {
     signal openPerson(string id)
     signal addPerson
     signal renamePerson(string id)
+    // "This is not a person" said from a chip's menu: their page, if open, closes.
+    signal notAPerson(string id)
 
     // Sioul's window, with its own properties (not only a window's): where a long press opens a menu.
     function sioulWindow(): var {
@@ -156,6 +158,15 @@ ColumnLayout {
             enabled: menu.target !== null && menu.target.id !== "me"
             text: household.sioul.text("person-rename")
             onTriggered: household.renamePerson(menu.target.id)
+        }
+        MenuItem {
+            enabled: menu.target !== null && menu.target.id !== "me"
+            text: household.sioul.text("person-not-a-person")
+            onTriggered: {
+                household.sioul.notAPerson(menu.target.id)
+                household.reload()
+                household.notAPerson(menu.target.id)
+            }
         }
     }
 }

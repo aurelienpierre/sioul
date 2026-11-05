@@ -114,7 +114,7 @@ pub(crate) fn card(shared: &Shared, kind: &str, key: &str) -> String {
             let d = root.as_deref().and_then(|r| sioul_core::papers::Wallet::load(r).ok()).and_then(|w| dated::of_papers(&w.papers, &[], today).into_iter().find(|d| d.key == key));
             let lines: Vec<String> = [item["kind_label"].as_str(), item["holder"].as_str(), item["line"].as_str()].into_iter().flatten().filter(|l| !l.trim().is_empty()).map(str::to_string).collect();
             let head = d.as_ref().map_or_else(|| undated(item["title"].as_str().unwrap_or_default()), head);
-            with(head, serde_json::json!({ "lines": lines, "edit": "paper", "item": item, "kinds": view["kinds"], "can_renew": item["can_renew"], "renewal": item["renewal"], "file": item["file"], "file_there": item["file_there"] }))
+            with(head, serde_json::json!({ "lines": lines, "edit": "paper", "item": item, "kinds": view["kinds"], "can_renew": item["can_renew"], "renewal": item["renewal"], "file": item["file"], "file_there": item["file_there"], "texts": item["texts"] }))
         }
         Kind::Payment => {
             let ledger = root.as_deref().and_then(|r| sioul_core::budget::Ledger::load_with_bank(r, &sioul_core::words::Words::of(&config)).ok());

@@ -269,6 +269,8 @@ struct LetterView {
     gone: bool,
     /// Linked, not read yet: read at a coming minute.
     waiting: bool,
+    /// Whom it is for, by person id ("me" for you): its ties, else its addressee (docs/persons.md).
+    persons: Vec<String>,
 }
 
 /// The letters filed in one year, the newest first.
@@ -295,6 +297,8 @@ struct View {
     missing: String,
     /// No OCR program, before any scan: how to install one ("" when this computer reads scans, or not known yet).
     reader: String,
+    /// Whom a letter may be for, {id, name}, you first (its card's "For").
+    choices: Vec<serde_json::Value>,
 }
 
 /// A letter's task as its row and its card say it (`task`), by the id this
@@ -398,6 +402,10 @@ pub(crate) fn view() -> String {
 fn fill(view: &mut View, root: &Path, known: Option<Arc<sioul_core::links::Loaded>>) {
     let Ok(letters) = Letters::load(root) else { return };
     let today = sioul_core::zone::now().date();
+    // Whom each is for (docs/persons.md): its ties, else its address block's name.
+    let config = load_config();
+    let (store, local, own) = (crate::persons::store(), sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path()), crate::persons::own_names(&config));
+    view.choices = crate::persons::paper_choices(&store);
     let projects = sioul_core::projects::ProjectStore::load(root).map(|s| s.projects).unwrap_or_default();
     view.projects = projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect();
     let mut filed: std::collections::BTreeMap<i16, Vec<(jiff::civil::Date, LetterView)>> = std::collections::BTreeMap::new();
@@ -405,6 +413,10 @@ fn fill(view: &mut View, root: &Path, known: Option<Arc<sioul_core::links::Loade
         let r = &letter.reading;
         let day = |d: jiff::civil::Date| tr().day_in(d, today);
         let mut lines = Vec::new();
+        let (persons, for_line) = crate::persons::letter_persons(&store, &local, &own, letter);
+        if !for_line.is_empty() {
+            lines.push(for_line);
+        }
         if let Some(amount) = r.amount {
             lines.push(say("letter-amount", &[("amount", tr().money(amount))]));
         }
@@ -444,6 +456,7 @@ fn fill(view: &mut View, root: &Path, known: Option<Arc<sioul_core::links::Loade
             linked: letter.linked,
             gone: !file.is_file(),
             waiting: letter.linked && letter.source.is_empty() && letter.problem.is_empty(),
+            persons,
         };
         if letter.status == "done" {
             let date = r.dated.or(letter.received).unwrap_or(today);

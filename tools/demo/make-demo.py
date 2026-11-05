@@ -2405,13 +2405,19 @@ def write_papers(p: Profile):
          [t("School insurance", "Assurance scolaire"), "Léa Ferrand"]),
         ("maud-id", "identity", t("Identity card", "Carte d'identité"), t("Maud identity card.pdf", "Carte d'identité Maud.pdf"), date(2017, 2, 3), c.day(60),
          [t("Identity card", "Carte d'identité"), "Maud Ferrand", t(f"Valid until: {long_date(c.day(60), year=True)}", f"Valable jusqu'au {long_date(c.day(60), year=True)}")]),
+        # A procuration on Maud's bank account (docs/persons.md): written as an older Sioul reads it, "other" with its measure beside.
+        ("maud-procuration", "procuration", t("Procuration, Maud's account", "Procuration, compte de Maud"), t("Procuration Maud.pdf", "Procuration Maud.pdf"), date(2025, 3, 1), date(c.today.year + 1, 3, 1),
+         [t("Procuration", "Procuration"), "Maud Ferrand", W.bank_name]),
     ]
-    holders = {"lea-id": "Léa", "lea-school": "Léa", "maud-id": "Maud Ferrand"}
+    holders = {"lea-id": "Léa", "lea-school": "Léa", "maud-id": "Maud Ferrand", "maud-procuration": "Maud Ferrand"}
     out = ["# The papers wallet (docs/papers.md).", ""]
     for pid, kind, title, file, issued, until, text in papers:
         p.write(p.notes / "papers" / file, pdf(text + ["", t("Specimen: invented for Sioul's demo.", "Spécimen : inventé pour la démo de Sioul.")]),
                 c.at(issued if issued <= c.today else c.today, "12:00"))
-        out += ["[[paper]]", f'id = "{pid}"', f'kind = "{kind}"', f"title = {toml_string(title)}", f"file = {toml_string('papers/' + file)}", f"issued = {issued}"]
+        written = "other" if kind in ("procuration", "protection") else kind
+        out += ["[[paper]]", f'id = "{pid}"', f'kind = "{written}"', f"title = {toml_string(title)}", f"file = {toml_string('papers/' + file)}", f"issued = {issued}"]
+        if written != kind:
+            out.append(f'measure = "{kind}"')
         if until:
             out.append(f"until = {until}")
         if pid in holders:

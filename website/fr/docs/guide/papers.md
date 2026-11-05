@@ -39,7 +39,7 @@ En mots, jamais en rouge :
 
 **Ajouter un papier** (ou **Nouveau ▾ ▸ Un papier**), puis :
 
-- **Quoi** : une carte d’identité, un passeport, un titre de séjour, un permis de conduire, une carte Vitale ou une attestation de droits, une complémentaire santé, une attestation d’assurance, un avis d’impôt, une quittance de loyer, un RIB, un bulletin de paie, une attestation ou un certificat, une garantie, ou un autre papier ;
+- **Quoi** : une carte d’identité, un passeport, un titre de séjour, un permis de conduire, une carte Vitale ou une attestation de droits, une complémentaire santé, une attestation d’assurance, un avis d’impôt, une quittance de loyer, un RIB, un bulletin de paie, une attestation ou un certificat, une garantie, une procuration, une mesure de protection (un mandat de protection future, une habilitation familiale, une curatelle, une tutelle), ou un autre papier ;
 - **Nom** : « Passeport », « Quittance septembre » ;
 - **Fichier** : un scan ou une photo, copié dans vos papiers ;
 - **Délivré le** et **Valable jusqu’au**. Pour un passeport, une carte d’identité ou une garantie, une fin est proposée d’après la date de délivrance quand vous n’en donnez pas ;
@@ -62,6 +62,7 @@ Pour en envoyer un, la fenêtre d’écriture a **Un papier**, à côté de **Jo
 | Complémentaire santé | 3 mois avant : certaines ne se renouvellent pas d’elles-mêmes |
 | Attestation d’assurance | 1 mois avant |
 | Garantie, preuve d’achat | 1 mois avant |
+| Procuration, mesure de protection | 4 mois avant : un réexamen doit être demandé au juge avant la fin, sans quoi la mesure tombe |
 
 Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : passé trois mois, ils sont dits plus vieux que ce qui est demandé d’habitude. Pour un avis d’impôt, c’est d’habitude le dernier qui est demandé.
 
@@ -102,6 +103,7 @@ Puis :
 - **Voir le scan** ;
 - **Une tâche pour cette date** : une tâche dans votre liste habituelle, à faire pour ce jour-là, liée au scan, comme « Payer la facture d’eau 86,40 € » ;
 - **Dans l’agenda**, pour un rendez-vous ;
+- **Pour…** : pour qui elle est, quand c’est une personne de vos proches : le nom de son bloc d’adresse est lu (« Pour Léa »), et vous pouvez en cocher d’autres ;
 - le projet auquel elle appartient ;
 - **Fini, classé** : le scan va dans `letters/<année>/`, nommé d’après son jour, son expéditeur et son type ; son texte est gardé. Un scan lié reste où il est. La lettre se montre ensuite parmi celles classées, sous son année, son scan à un clic.
 

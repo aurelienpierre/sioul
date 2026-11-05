@@ -149,7 +149,8 @@ pub fn letters(s: &Session, args: &Args) -> Result<Answer, String> {
     let all = letters::Letters::load(&store(s)?)?;
     let (consent, _) = consent(s);
     // A letter is in its project; in none, as things outside projects are.
-    let mut shown: Vec<&letters::Letter> = all.list.iter().filter(|l| consent.allows_projects([l.project.as_str()])).collect();
+    // A letter for someone of the household kept from agents is kept too (`access::of`, docs/persons.md).
+    let mut shown: Vec<&letters::Letter> = all.list.iter().filter(|l| consent.allows_projects([l.project.as_str()]) && !consent.keeps_for_persons(&links::letter_uri(&l.id))).collect();
     let closed = all.list.len() - shown.len();
     shown.sort_by_key(|l| std::cmp::Reverse(l.received));
     let mut lines = Vec::new();

@@ -35,12 +35,20 @@ pub enum Kind {
     Payslip,
     Certificate,
     Warranty,
+    /// A procuration: someone you act for gave you a mandate (a bank's
+    /// procuration, a civil-law mandate), revocable at any time.
+    Procuration,
+    /// A legal protection measure (a mandat de protection future, an
+    /// habilitation familiale, a curatelle, a tutelle: one kind, its words
+    /// in the title), a judge's or a notary's paper with its end: never a
+    /// mark on the person it concerns (docs/persons.md).
+    Protection,
     #[default]
     Other,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 14] = [
+    pub const ALL: [Kind; 16] = [
         Kind::Identity,
         Kind::Passport,
         Kind::Residence,
@@ -54,8 +62,17 @@ impl Kind {
         Kind::Payslip,
         Kind::Certificate,
         Kind::Warranty,
+        Kind::Procuration,
+        Kind::Protection,
         Kind::Other,
     ];
+
+    /// The kinds an older Sioul (705576a) does not know: written `kind =
+    /// "other"` with `measure` naming them, so that it still reads the
+    /// wallet (an unknown kind would stop it reading every paper).
+    pub fn newer(self) -> bool {
+        matches!(self, Kind::Procuration | Kind::Protection)
+    }
 
     /// "identity", "health-cover": its name in the file and in the strings (`paper-kind-<id>`).
     pub fn id(self) -> &'static str {
@@ -73,6 +90,8 @@ impl Kind {
             Kind::Payslip => "payslip",
             Kind::Certificate => "certificate",
             Kind::Warranty => "warranty",
+            Kind::Procuration => "procuration",
+            Kind::Protection => "protection",
             Kind::Other => "other",
         }
     }
@@ -81,9 +100,10 @@ impl Kind {
         Kind::ALL.into_iter().find(|k| k.id() == id).unwrap_or_default()
     }
 
-    /// Where it is shown: identity, health, home, money, warranties, others (`paper-family-<id>`).
+    /// Where it is shown: identity, health, home, money, procurations and measures, warranties, others (`paper-family-<id>`).
     pub fn family(self) -> &'static str {
         match self {
+            Kind::Procuration | Kind::Protection => "legal",
             Kind::Identity | Kind::Passport | Kind::Residence | Kind::Driving => "identity",
             Kind::HealthCard | Kind::HealthCover => "health",
             Kind::Insurance | Kind::RentReceipt => "home",
@@ -100,7 +120,9 @@ impl Kind {
     pub fn lead_days(self) -> Option<i64> {
         match self {
             Kind::Identity | Kind::Passport | Kind::HealthCover => Some(90),
-            Kind::Residence => Some(120),
+            // A residence permit is asked from four months before; a protection measure's
+            // review must be asked of the judge before its end, or it lapses (service-public.gouv.fr F2120).
+            Kind::Residence | Kind::Procuration | Kind::Protection => Some(120),
             Kind::Driving => Some(60),
             Kind::Insurance | Kind::Warranty => Some(30),
             _ => None,
@@ -196,6 +218,11 @@ pub struct Paper {
     /// When it entered the wallet: one added after its renewal began is not reminded, you just saw it.
     #[serde(default, deserialize_with = "crate::budget::dates::optional")]
     pub added: Option<Date>,
+    /// A kind an older Sioul does not know (`Kind::newer`), as the file
+    /// writes it beside `kind = "other"`: read back into `kind`. An older
+    /// Sioul rewriting the wallet drops it, the paper then "other".
+    #[serde(default)]
+    pub measure: String,
 }
 
 /// Where a paper stands, today.
@@ -256,6 +283,12 @@ fn portable_name(name: &str) -> String {
     if device { format!("_{clean}") } else { clean }
 }
 
+/// A name made a file's or a folder's name every system takes (`portable_name`):
+/// a person's, for what Sioul keeps about them.
+pub fn portable_name_of(name: &str) -> String {
+    portable_name(name)
+}
+
 /// An end proposed from the issue, when the kind's usual length is known.
 pub fn usual_end(kind: Kind, issued: Date) -> Option<Date> {
     issued.checked_add(Span::new().years(kind.years()?)).ok()?.yesterday().ok()
@@ -291,7 +324,16 @@ impl Wallet {
     pub fn load(root: &Path) -> Result<Wallet, String> {
         let path = root.join(MANIFEST);
         let papers = match std::fs::read_to_string(&path) {
-            Ok(text) => toml::from_str::<File>(&text).map_err(|e| format!("{}: {e}", path.display()))?.papers,
+            Ok(text) => {
+                let mut papers = toml::from_str::<File>(&text).map_err(|e| format!("{}: {e}", path.display()))?.papers;
+                for paper in papers.iter_mut().filter(|p| p.kind == Kind::Other) {
+                    let measure = Kind::of(&paper.measure);
+                    if measure.newer() {
+                        paper.kind = measure;
+                    }
+                }
+                papers
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(format!("{}: {e}", path.display())),
         };
@@ -362,7 +404,11 @@ impl Wallet {
         for paper in &self.papers {
             let mut table = toml_edit::Table::new();
             table["id"] = toml_edit::value(&paper.id);
-            table["kind"] = toml_edit::value(paper.kind.id());
+            // A kind an older Sioul does not know: "other" for it, the kind itself beside.
+            table["kind"] = toml_edit::value(if paper.kind.newer() { Kind::Other.id() } else { paper.kind.id() });
+            if paper.kind.newer() {
+                table["measure"] = toml_edit::value(paper.kind.id());
+            }
             table["title"] = toml_edit::value(&paper.title);
             for (name, text) in [("file", &paper.file), ("holder", &paper.holder), ("notes", &paper.notes), ("renewal", &paper.renewal)] {
                 if !text.is_empty() {
@@ -412,6 +458,40 @@ mod tests {
         assert_eq!(Paper { kind: Kind::BankDetails, ..Paper::default() }.standing(today), Standing::Undated);
         assert_eq!(usual_end(Kind::Passport, day("2017-03-12")), Some(day("2027-03-11")));
         assert_eq!(usual_end(Kind::Warranty, day("2026-10-03")), Some(day("2028-10-02")));
+    }
+
+    #[test]
+    fn a_measure_is_written_so_that_an_older_sioul_still_reads_the_wallet() {
+        let root = std::env::temp_dir().join(format!("sioul-papers-measure-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let mut wallet = Wallet::load(&root).unwrap();
+        wallet.put(Paper { id: "tutelle".into(), kind: Kind::Protection, title: "Tutelle".into(), until: Some(day("2027-03-01")), ..Paper::default() });
+        wallet.save().unwrap();
+        let text = std::fs::read_to_string(root.join(MANIFEST)).unwrap();
+        assert!(text.contains("kind = \"other\"") && text.contains("measure = \"protection\""), "{text}");
+        // As 705576a reads it: kinds it knows only, unknown fields passed over.
+        #[derive(Deserialize)]
+        #[serde(rename_all = "kebab-case")]
+        #[allow(dead_code)]
+        enum Older {
+            Identity, Passport, Residence, Driving, HealthCard, HealthCover, Insurance, TaxNotice, RentReceipt, BankDetails, Payslip, Certificate, Warranty, Other,
+        }
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct OlderPaper {
+            kind: Older,
+        }
+        #[derive(Deserialize)]
+        struct OlderFile {
+            paper: Vec<OlderPaper>,
+        }
+        assert!(toml::from_str::<OlderFile>(&text).is_ok_and(|f| f.paper.len() == 1));
+        let again = Wallet::load(&root).unwrap();
+        let paper = again.get("tutelle").unwrap();
+        assert_eq!(paper.kind, Kind::Protection);
+        assert_eq!((paper.kind.family(), paper.renew_from()), ("legal", Some(day("2026-11-01"))), "renewing from four months before its end");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

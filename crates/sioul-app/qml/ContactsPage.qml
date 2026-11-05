@@ -14,7 +14,9 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
+import com.aurelienpierre.sioul
 
 Item {
     id: page
@@ -293,6 +295,10 @@ Item {
                 chosen: page.personId
                 onOpenPerson: id => page.openPerson(id)
                 onAddPerson: page.personFormNow().begin("", "", "")
+                onNotAPerson: id => {
+                    if (page.personId === id)
+                        page.openPerson("")
+                }
                 onRenamePerson: id => {
                     const person = JSON.parse(page.sioul.personPage(id) || "null")
                     if (person)
@@ -1053,6 +1059,11 @@ Item {
                     onEditAsked: person => page.personFormNow().edit(person)
                     onOpenContact: key => page.open(key)
                     onChanged: household.reload()
+                    onKeepsAsked: person => {
+                        keepsFolder.person = person
+                        keepsFolder.open()
+                    }
+                    onEndAsked: person => endForm.now().ask(person)
                 }
             }
         }
@@ -1116,6 +1127,156 @@ Item {
                         page.openPerson(id)
                     else if (personLoader.item)
                         (personLoader.item as PersonPage).reload()
+                }
+            }
+        }
+    }
+
+    // "What Sioul keeps about…": where to save it; its papers' files copied there, its page written as a PDF.
+    PdfWriter {
+        id: pdf
+    }
+    FolderDialog {
+        id: keepsFolder
+
+        property var person: null
+
+        onAccepted: {
+            // On Windows the address is file:///C:/…, on Android a folder of the phone's storage (Theme.localPath).
+            const folder = page.theme.localPath(keepsFolder.selectedFolder)
+            if (folder === "") {
+                page.sioul.status = page.sioul.text("folder-not-on-device")
+                return
+            }
+            const made = JSON.parse(page.sioul.personKeeps(keepsFolder.person.id, folder) || "{}")
+            if (made.error) {
+                page.sioul.status = made.error
+                return
+            }
+            const failed = pdf.write(made.html, made.pdf)
+            page.sioul.status = failed !== "" ? page.sioul.textWith("invoice-not-written", "path", failed) : page.sioul.textWith("person-keeps-saved", "path", made.folder)
+        }
+    }
+
+    // "Ends…": the day it ended; for a partner, their own papers saved to hand back, then taken out if you say so.
+    Later {
+        id: endForm
+
+        sourceComponent: Component {
+            SafeDialog {
+                id: ending
+
+                property var person: null
+                property string folder: ""
+                property string problem: ""
+
+                function ask(person) {
+                    ending.person = person
+                    ending.folder = ""
+                    ending.problem = ""
+                    endDay.date = ""
+                    takeOut.checked = false
+                    ending.open()
+                }
+
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(460, ending.roomWidth - 2 * page.theme.gap)
+                title: ending.person ? page.theme.plain(page.sioul.textWith("person-ends-title", "name", ending.person.name)) : ""
+
+                contentItem: ColumnLayout {
+                    spacing: 8
+
+                    Label {
+                        text: page.sioul.text("person-ends-on")
+                        color: page.theme.muted
+                    }
+                    DateField {
+                        id: endDay
+
+                        theme: page.theme
+                        sioul: page.sioul
+                        locale: page.window.sioulLocale
+                        pickLabel: page.sioul.text("event-pick-day")
+                    }
+                    // A partner's own papers go back with them; those of two stay, the household's past.
+                    Label {
+                        visible: ending.person !== null && ending.person.partner === true
+                        Layout.fillWidth: true
+                        text: page.sioul.text("person-ends-hand-back")
+                        wrapMode: Text.Wrap
+                        color: page.theme.text
+                    }
+                    RowLayout {
+                        visible: ending.person !== null && ending.person.partner === true
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: ending.folder === "" ? "—" : ending.folder
+                            textFormat: Text.PlainText
+                            elide: Text.ElideMiddle
+                            color: page.theme.text
+                        }
+                        Button {
+                            text: page.sioul.text("papers-choose")
+                            onClicked: handBack.open()
+                        }
+                    }
+                    CheckBox {
+                        id: takeOut
+
+                        visible: ending.person !== null && ending.person.partner === true
+                        enabled: ending.folder !== ""
+                        Layout.fillWidth: true
+                        text: page.sioul.text("person-ends-take-out")
+                    }
+                    Label {
+                        visible: ending.problem !== ""
+                        Layout.fillWidth: true
+                        text: ending.problem
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: page.theme.warm
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                        Button {
+                            text: page.sioul.text("ui-cancel")
+                            onClicked: ending.close()
+                        }
+                        Button {
+                            objectName: "personEndSave"
+                            highlighted: true
+                            text: page.sioul.text("person-ends")
+                            onClicked: {
+                                const answer = JSON.parse(page.sioul.endPerson(ending.person.id, JSON.stringify({ until: endDay.date, folder: ending.folder, take_out: takeOut.checked })) || "{}")
+                                if (answer.error) {
+                                    ending.problem = answer.error
+                                    return
+                                }
+                                if (answer.saved > 0)
+                                    page.sioul.status = page.sioul.textArgs("person-ends-saved", JSON.stringify({ n: answer.saved, path: ending.folder }))
+                                ending.close()
+                                household.reload()
+                                if (personLoader.item)
+                                    (personLoader.item as PersonPage).reload()
+                            }
+                        }
+                    }
+                }
+
+                FolderDialog {
+                    id: handBack
+
+                    onAccepted: ending.folder = page.theme.localPath(handBack.selectedFolder)
                 }
             }
         }

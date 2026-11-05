@@ -39,7 +39,11 @@ A person is not a contact. A contact is a card for reaching someone; a person is
 - **Papers**: the papers that are theirs, each with where it stands, as on the [Papers](papers.md#papers) page, and **Add a paper for Léa**;
 - **Agendas**: their agendas, a child's with **Who does what**; for a child's other parent, the children's agendas they share;
 - **Contacts**: the cards that are them, each opening its card, with **Unlink**, and **Link a card…**;
-- at the foot, **Open to AI agents**, off until you turn it on. Your own page has no such switch: you are open as before.
+- **Letters**: the letters addressed to them;
+- at the foot, quiet: **What Sioul keeps about Léa…**, one PDF of their papers, agendas and letters and a folder with the papers' files, saved where you choose, for you to hand to them; **Ends…**, for anyone but a child: the day it ended, and for a partner, their own papers saved in a folder to hand back, then taken out of your papers if you say so; **Same as…**, to make two persons one ("Léa" and "Léa M."); **This is not a person**, for a name read from a paper that is nobody ("Banque"), never made again;
+- **Open to AI agents**, off until you turn it on. Your own page has no such switch: you are open as before.
+
+On a child's page, once each and in your admin hours, a line says what passes to them: at 16, that they can have a carte Vitale and a reimbursement account in their own name; at 18, that their papers are their own, with **What Sioul keeps about Léa…** beside. A paper whose name for someone names nobody here offers **Make a person of "…"** on its card.
 
 **Edit** changes their name, how papers write it ("Léa Martin"), who they are to you, their date of birth, whether they live with you, and for a child's other parent, whose. A new name is also written into the papers that named the old one, so that a device on an older Sioul shows it too.
 

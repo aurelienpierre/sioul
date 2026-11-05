@@ -103,6 +103,11 @@ impl Consent {
         self.persons.extend(kept);
     }
 
+    /// Whether a thing is kept for a person's sake (`keep_persons`, `keep_agendas`), by its address.
+    pub fn keeps_for_persons(&self, uri: &str) -> bool {
+        self.persons.contains(uri.trim())
+    }
+
     /// Keeps the agendas of persons kept from agents (`closed`, by place:
     /// `persons::Persons::closed_agendas`): their events and tasks; and in a
     /// child's agenda (`children`, by place), open or not, the events and

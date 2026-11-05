@@ -39,7 +39,11 @@ Une personne n’est pas un contact. Un contact est une fiche pour joindre quelq
 - **Papiers** : les papiers qui sont les siens, chacun avec où il en est, comme sur la page des [Papiers](papers.md#papers), et **Ajouter un papier pour Léa** ;
 - **Agendas** : ses agendas, celui d’un enfant avec **Qui fait quoi** ; pour l’autre parent d’un enfant, les agendas des enfants qu’il ou elle partage ;
 - **Contacts** : les fiches qui sont elle, chacune ouvrant sa fiche, avec **Délier**, et **Lier un contact…** ;
-- en bas, **Ouvert aux agents d’IA**, éteint tant que vous ne l’allumez pas. Votre propre page n’a pas cet interrupteur : vous êtes ouvert comme avant.
+- **Lettres** : les lettres qui lui sont adressées ;
+- en bas, discrets : **Ce que Sioul garde sur Léa…**, un PDF de ses papiers, agendas et lettres et un dossier des fichiers de ses papiers, enregistrés où vous voulez, pour les lui remettre ; **Fin…**, pour toute personne sauf un enfant : le jour où cela a pris fin, et pour un ou une partenaire, ses propres papiers enregistrés dans un dossier pour les lui rendre, puis retirés de vos papiers si vous le dites ; **Même personne que…**, pour ne faire qu’une de deux personnes (« Léa » et « Léa M. ») ; **Ce n’est pas une personne**, pour un nom lu sur un papier qui n’est personne (« Banque »), plus jamais refait ;
+- **Ouvert aux agents d’IA**, éteint tant que vous ne l’allumez pas. Votre propre page n’a pas cet interrupteur : vous êtes ouvert comme avant.
+
+Sur la page d’un enfant, une fois chacune et pendant vos heures de démarches, une ligne dit ce qui lui revient : à 16 ans, une carte Vitale et un compte de remboursement possibles à son nom ; à 18 ans, ses papiers qui lui reviennent, avec **Ce que Sioul garde sur Léa…** à côté. Un papier dont le nom pour quelqu’un ne nomme personne ici propose **Faire une personne de « … »** sur sa fiche.
 
 **Modifier** change son nom, la façon dont les papiers l’écrivent (« Léa Martin »), son type, sa date de naissance, si elle vit avec vous, et pour l’autre parent d’un enfant, de quel enfant. Un nouveau nom s’écrit aussi dans les papiers qui portaient l’ancien, pour qu’un appareil resté sur un Sioul plus ancien le montre aussi.
 
