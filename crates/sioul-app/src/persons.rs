@@ -390,6 +390,60 @@ pub(crate) fn set_agenda_person(place: &str, field: &str, id: &str) -> String {
     sioul_core::agendas::set_field(&path, place, field, id.trim()).and_then(|()| sioul_core::agendas::set_field(&path, place, name_field, &name)).err().unwrap_or_default()
 }
 
+/// An agenda's role given its person (docs/persons.md, "Agendas"): a
+/// child's, a partner's or another parent's agenda whose name names no
+/// person by its key finds that person or makes them (`Persons::for_role`),
+/// and keeps their key (`person`); a child's agenda's other parent alike
+/// (`parent`, `parent_person`). A key that names someone stays. Returns what
+/// went wrong, else "".
+pub(crate) fn tie_role(place: &str) -> String {
+    use sioul_core::agendas::Whose;
+    let config = load_config();
+    let Some(said) = config.agenda.calendars.get(place) else { return String::new() };
+    let relation = match said.whose.as_deref().and_then(Whose::parse) {
+        Some(Whose::Child) => Relation::Child,
+        Some(Whose::Partner) => Relation::Partner,
+        Some(Whose::Parent) => Relation::OtherParent,
+        _ => return String::new(),
+    };
+    let text = |field: &Option<String>| field.as_deref().map(str::trim).unwrap_or_default().to_string();
+    let mut wanted = vec![("person", relation, text(&said.name), text(&said.person))];
+    if relation == Relation::Child {
+        wanted.push(("parent_person", Relation::OtherParent, text(&said.parent), text(&said.parent_person)));
+    }
+    // The store as old texts read it first, as a new person from the form.
+    let known = store();
+    let path = crate::backend::config_path();
+    for (field, relation, name, key) in wanted {
+        if name.is_empty() || (!key.is_empty() && known.get(&key).is_some()) {
+            continue;
+        }
+        match persons::change(&Persons::default_path(), |store| store.for_role(relation, &name)) {
+            Ok(Some(id)) => {
+                if let Err(e) = sioul_core::agendas::set_field(&path, place, field, &id) {
+                    return e;
+                }
+            }
+            Ok(None) => {}
+            Err(e) => return e,
+        }
+    }
+    String::new()
+}
+
+/// Every agenda's role given its person (`tie_role`), as the window starts:
+/// those whose name was typed before Sioul did so, or came from another
+/// device's older version. Nothing is written for an agenda already tied.
+pub(crate) fn tie_roles() {
+    let config = load_config();
+    for place in config.agenda.calendars.keys() {
+        let problem = tie_role(place);
+        if !problem.is_empty() {
+            eprintln!("{place}: {problem}");
+        }
+    }
+}
+
 /// A person's new name written into the agendas that named them by the old
 /// one or hold their key (`persons::renamed_agendas`), so that older versions show it.
 fn rename_agendas(before: &Persons, id: &str, new: &str) {
@@ -778,6 +832,38 @@ mod tests {
             crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    /// An agenda's role finds its person, or makes them (5 November 2026): a
+    /// child's agenda naming a child and an other parent nobody knows makes
+    /// both, their keys written; a partner's agenda, its name typed, links the
+    /// partner already here; tied, nothing more is written or said.
+    #[test]
+    fn an_agenda_s_role_finds_or_makes_its_person() {
+        let own = OwnSetup::new("role");
+        let config = crate::backend::config_path();
+        for (field, value) in [("whose", "child"), ("name", "Ysolde"), ("parent", "Corentin")] {
+            sioul_core::agendas::set_field(&config, "cloud/ysolde", field, value).unwrap();
+        }
+        let (problem, said) = sioul_core::changes::heard(|| tie_role("cloud/ysolde"));
+        assert_eq!(problem, "");
+        assert!(said.contains(&sioul_core::changes::Kind::Persons) && said.contains(&sioul_core::changes::Kind::Agendas), "{said:?}");
+        let agenda = load_config().agenda.calendars["cloud/ysolde"].clone();
+        let store = Persons::load(&Persons::default_path());
+        let child = store.get(agenda.person.as_deref().unwrap_or_default()).cloned().unwrap();
+        let parent = store.get(agenda.parent_person.as_deref().unwrap_or_default()).cloned().unwrap();
+        own.made(&child.id);
+        own.made(&parent.id);
+        assert_eq!((child.name.as_str(), child.relation()), ("Ysolde", Relation::Child));
+        assert_eq!((parent.name.as_str(), parent.relation()), ("Corentin", Relation::OtherParent));
+        let (_, again) = sioul_core::changes::heard(|| tie_role("cloud/ysolde"));
+        assert!(again.is_empty(), "tied: nothing written: {again:?}");
+
+        let partner = own.made(&persons::change(&Persons::default_path(), |s| s.put(Person { name: "Maëlis".into(), relation: "partner".into(), ..Person::default() })).unwrap());
+        assert_eq!(crate::agenda::set_field("cloud/maelis", "whose", "partner"), "");
+        assert_eq!(crate::agenda::set_field("cloud/maelis", "name", "maelis"), "", "typed, accents aside");
+        assert_eq!(load_config().agenda.calendars["cloud/maelis"].person.as_deref(), Some(partner.as_str()), "the partner here, linked");
+        assert_eq!(Persons::load(&Persons::default_path()).persons.iter().filter(|p| p.named("Maëlis")).count(), 1, "never a second");
     }
 
     #[test]

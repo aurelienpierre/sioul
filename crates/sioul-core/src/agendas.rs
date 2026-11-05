@@ -732,7 +732,9 @@ pub fn set_availability(path: &Path, availability: Option<&crate::availability::
         if agenda.is_empty() {
             doc.remove("agenda");
         }
-        crate::config::write_document(path, &doc)
+        crate::config::write_document(path, &doc)?;
+        crate::changes::said(crate::changes::Kind::Agendas);
+        Ok(())
     })
 }
 
@@ -795,7 +797,10 @@ fn edit_agenda_table(path: &Path, name: &str, change: impl FnOnce(&mut toml_edit
         if table.is_empty() {
             agenda.remove(name);
         }
-        crate::config::write_document(path, &doc)
+        crate::config::write_document(path, &doc)?;
+        // What an agenda is, said to every view of it (Agenda ⚙, a person's page, the agenda).
+        crate::changes::said(crate::changes::Kind::Agendas);
+        Ok(())
     })
 }
 

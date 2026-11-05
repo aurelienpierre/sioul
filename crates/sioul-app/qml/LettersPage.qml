@@ -94,6 +94,12 @@ Item {
             if (page.visible)
                 page.reload()
         }
+
+        // Whom each letter is for, and the persons to choose.
+        function onPersonsChanged() {
+            if (page.visible)
+                page.reload()
+        }
     }
 
     ScrollView {

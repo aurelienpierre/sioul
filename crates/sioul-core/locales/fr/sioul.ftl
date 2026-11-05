@@ -3912,7 +3912,6 @@ agenda-unshared = Plus partagé avec { $who }.
 agenda-share-google-address = Donnez une adresse électronique : Google partage avec un compte.
 agenda-share-elsewhere = Une personne sur un autre serveur : activez le lien, et envoyez-le-lui.
 agenda-link-on = Un lien en lecture seule
-agenda-link-copy = Copier le lien
 agenda-link-google-sees = Toute personne qui a le lien en voit chaque événement, les privés sans leurs détails.
 agenda-link-nextcloud-sees = Toute personne qui a le lien en voit les événements, leurs titres, heures et lieux ; un confidentiel comme « Occupé », un privé pas du tout.
 availability-title = Partager mes disponibilités…

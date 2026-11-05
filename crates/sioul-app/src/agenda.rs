@@ -744,9 +744,14 @@ pub(crate) fn setup() -> String {
 }
 
 /// One field of an agenda's settings written (`agendas::set_field`); "" takes
-/// it back to the default. Returns what went wrong, else "".
+/// it back to the default. Whose it is and the name it gives find its person,
+/// or make them (`persons::tie_role`). Returns what went wrong, else "".
 pub(crate) fn set_field(id: &str, field: &str, value: &str) -> String {
-    sioul_core::agendas::set_field(&crate::backend::config_path(), id, field, value).err().unwrap_or_default()
+    if let Err(e) = sioul_core::agendas::set_field(&crate::backend::config_path(), id, field, value) {
+        return e;
+    }
+    // Whose it is, or the name it gives: its person found, or made (docs/persons.md).
+    if matches!(field, "whose" | "name" | "parent") { crate::persons::tie_role(id) } else { String::new() }
 }
 
 /// A pair of the matrix ticked or not: your word, or none when the box is
