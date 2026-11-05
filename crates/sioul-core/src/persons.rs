@@ -770,6 +770,39 @@ pub fn tied_to(local: &LocalLinks, kind: Kind, thing: &str, how: &str) -> Vec<St
     out
 }
 
+/// How a site's tie to the person it is opened for reads in `links.toml`:
+/// "Odile's ameli account, which you open for Odile".
+pub const FOR: &str = "for";
+
+/// A site's person set (`person`; "" none): one person at a time; whether anything changed.
+pub fn tie_site(local: &mut LocalLinks, site: &str, person: &str) -> bool {
+    let before = local.links.clone();
+    let mine = |e: &links::Edge| e.how == FOR && [(&e.from, &e.to), (&e.to, &e.from)].into_iter().any(|(a, b)| links::kind_of(a) == Kind::Site && links::id_of(a) == site && links::kind_of(b) == Kind::Person);
+    local.links.retain(|e| !mine(e));
+    if !person.is_empty() {
+        local.add(&links::site_uri(site), &uri(person), FOR);
+    }
+    local.links != before
+}
+
+/// The person a site is opened for, by id.
+pub fn site_for(local: &LocalLinks, site: &str) -> Option<String> {
+    tied_to(local, Kind::Site, site, FOR).into_iter().next()
+}
+
+/// The sites opened for a person, by id.
+pub fn sites_for(local: &LocalLinks, person: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for edge in local.links.iter().filter(|e| e.how == FOR) {
+        for (from, to) in [(&edge.from, &edge.to), (&edge.to, &edge.from)] {
+            if links::kind_of(from) == Kind::Site && links::kind_of(to) == Kind::Person && links::id_of(to) == person && !out.contains(&links::id_of(from)) {
+                out.push(links::id_of(from));
+            }
+        }
+    }
+    out
+}
+
 /// A letter's ties to the persons it is for set to `persons` (none: its
 /// addressee read again decides); whether anything changed.
 pub fn tie_letter(local: &mut LocalLinks, letter: &str, persons: &[String]) -> bool {
@@ -1165,6 +1198,18 @@ mod tests {
         again.names_read = 0;
         again.read_names(&BTreeMap::new(), &[paper("rib", "Banque")], &own);
         assert!(!again.persons.iter().any(|p| p.named("Banque")), "never made again from its text");
+    }
+
+    #[test]
+    fn a_site_is_opened_for_one_person() {
+        let mut local = LocalLinks::default();
+        assert!(tie_site(&mut local, "ameli-odile", "p-odile"));
+        assert!(tie_site(&mut local, "caf", "p-odile"));
+        assert_eq!(site_for(&local, "ameli-odile").as_deref(), Some("p-odile"));
+        assert!(tie_site(&mut local, "ameli-odile", "p-sam"), "one person at a time");
+        assert_eq!((site_for(&local, "ameli-odile").as_deref(), sites_for(&local, "p-odile")), (Some("p-sam"), vec!["caf".to_string()]));
+        assert!(tie_site(&mut local, "caf", "") && sites_for(&local, "p-odile").is_empty());
+        assert!(!tie_site(&mut local, "caf", ""), "nothing to take out");
     }
 
     #[test]

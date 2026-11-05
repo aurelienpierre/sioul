@@ -996,6 +996,16 @@ pub struct BudgetEdit {
     /// "month" or "quarter" (`Budget::declare`).
     #[serde(default)]
     pub declare: Option<String>,
+    /// Whom it is for (docs/persons.md): a person's id, written as
+    /// `sioul:person/<id>` among its `links`, which every version keeps; ""
+    /// takes it out; None leaves the file's as it is.
+    #[serde(default)]
+    pub person: Option<String>,
+}
+
+/// The person a budget is for: the first `sioul:person/<id>` among its links (docs/persons.md).
+pub fn person_of(budget: &Budget) -> Option<String> {
+    budget.links.iter().find(|l| crate::links::kind_of(l) == crate::links::Kind::Person).map(|l| crate::links::id_of(l))
 }
 
 fn write_ledger(path: &Path, doc: &DocumentMut) -> Result<(), String> {
@@ -1064,6 +1074,23 @@ pub fn save_budget(path: &Path, id: &str, edit: &BudgetEdit) -> Result<String, S
                 table.remove("declare");
             }
             None => {}
+        }
+        // Whom it is for: one person's address among its links, the others kept as they are.
+        if let Some(person) = edit.person.as_deref().map(str::trim) {
+            let mut links: Vec<String> = table.get("links").and_then(Item::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            links.retain(|l| crate::links::kind_of(l) != crate::links::Kind::Person);
+            if !person.is_empty() {
+                links.push(crate::links::person_uri(person));
+            }
+            if links.is_empty() {
+                table.remove("links");
+            } else {
+                let mut list = Array::new();
+                for link in links {
+                    list.push(link);
+                }
+                table["links"] = value(list);
+            }
         }
         write_ledger(path, &doc)?;
         Ok(id)
@@ -1699,6 +1726,19 @@ mod tests {
         assert_eq!((holidays.period, holidays.target.cents(), holidays.area.as_deref()), (Period::Year, 30_000, Some("personal")));
         save_budget(&path, "food", &BudgetEdit { title: "Groceries".into(), period: "month".into(), target: 0.0, personal: false, ..BudgetEdit::default() }).unwrap();
         assert_eq!(Ledger::load_file(&path).unwrap().budget_title("food"), "Groceries");
+        // For a person (docs/persons.md): their address among its links, other links kept, one person at a time.
+        let text = std::fs::read_to_string(&path).unwrap().replace("title = \"Groceries\"", "title = \"Groceries\"\nlinks = [\"sioul:project/home\"]");
+        std::fs::write(&path, text).unwrap();
+        let for_whom = |person: Option<&str>| save_budget(&path, "food", &BudgetEdit { title: "Groceries".into(), period: "month".into(), person: person.map(str::to_string), ..BudgetEdit::default() }).unwrap();
+        let links = || Ledger::load_file(&path).unwrap().budgets.iter().find(|b| b.id == "food").unwrap().links.clone();
+        for_whom(Some("p-lea"));
+        for_whom(Some("p-tom"));
+        assert_eq!(links(), ["sioul:project/home", "sioul:person/p-tom"]);
+        assert_eq!(person_of(Ledger::load_file(&path).unwrap().budgets.iter().find(|b| b.id == "food").unwrap()).as_deref(), Some("p-tom"));
+        for_whom(None);
+        assert_eq!(links().len(), 2, "unsaid leaves it as it is");
+        for_whom(Some(""));
+        assert_eq!(links(), ["sioul:project/home"]);
         let market = SeenLine { budget: "food".into(), date: date("2026-10-01"), amount: Money(-1250), label: "Market".into() };
         assert!(remove_line(&path, 0, &market).unwrap());
         remove_budget(&path, "holidays").unwrap();

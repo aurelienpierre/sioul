@@ -33,6 +33,9 @@ SafeDialog {
     property string area: ""
     // The incomes a period may start with: [{id, title}] (`view::incomes`), for a new budget the page's.
     property var incomes: []
+    // Whom it is for (docs/persons.md): the household's persons, and the one chosen ("" nobody said).
+    property var persons: []
+    property string personId: ""
     // The first choice is the calendar month.
     readonly property var startChoices: [{ id: "", title: dialog.sioul.text("budget-starts-first") }].concat(dialog.incomes)
 
@@ -55,6 +58,8 @@ SafeDialog {
         starts.currentIndex = Math.max(0, dialog.startChoices.findIndex(c => c.id === (shown ? shown.starts_with : "")))
         aside.text = shown && shown.set_aside > 0 ? String(shown.set_aside).replace(".", Qt.locale(dialog.sioul.text("qt-locale")).decimalPoint) : ""
         declare.currentIndex = shown && shown.declare === "month" ? 0 : 1
+        dialog.persons = (JSON.parse(dialog.sioul.household() || "{}").persons || []).filter(p => p.id !== "me")
+        dialog.personId = shown ? (shown.person || "") : ""
         dialog.open()
         title.forceActiveFocus()
     }
@@ -87,7 +92,8 @@ SafeDialog {
             area: dialog.area,
             starts_with: monthly && starts.currentIndex > 0 ? dialog.startChoices[starts.currentIndex].id : "",
             set_aside: dialog.area.split("+").indexOf("work") >= 0 ? share : 0,
-            declare: declare.currentIndex === 0 ? "month" : "quarter"
+            declare: declare.currentIndex === 0 ? "month" : "quarter",
+            person: dialog.personId
         }
         const answer = JSON.parse(dialog.sioul.saveBudget(dialog.budgetId, JSON.stringify(edit)))
         if (answer.error) {
@@ -152,6 +158,23 @@ SafeDialog {
             Layout.fillWidth: true
             placeholderText: dialog.sioul.text("budget-field-target-hint")
             inputMethodHints: Qt.ImhFormattedNumbersOnly
+        }
+        // For someone of your household: a child's pocket money, a parent's account you keep (docs/persons.md).
+        Label {
+            visible: dialog.persons.length > 0
+            text: dialog.sioul.text("budget-field-for")
+            color: dialog.theme.muted
+        }
+        PlainComboBox {
+            readonly property var choices: [{ id: "", name: dialog.sioul.text("budget-for-nobody") }].concat(dialog.persons)
+
+            objectName: "budgetFor"
+            visible: dialog.persons.length > 0
+            Layout.fillWidth: true
+            model: choices.map(c => dialog.theme.plain(c.name))
+            currentIndex: Math.max(0, choices.findIndex(c => c.id === dialog.personId))
+            Accessible.name: dialog.sioul.text("budget-field-for")
+            onActivated: index => dialog.personId = choices[index].id
         }
         Label {
             Layout.alignment: Qt.AlignTop

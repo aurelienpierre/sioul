@@ -232,6 +232,9 @@ unsafe extern "C" {
     /// CXX-Qt's registration of the window's QML module, resources and types
     /// (cxx-qt-build); runs once however often it is called.
     fn cxx_qt_init_crate_sioul_app() -> bool;
+    /// `PdfWriter::write` without QML (cpp/pdfwriter.cpp): `html` written as a
+    /// PDF into `path`, both C strings; 0 when it was.
+    fn sioul_pdf_write(html: *const std::ffi::c_char, path: *const std::ffi::c_char) -> i32;
 }
 
 /// When Sioul started, for `timing`.
@@ -467,6 +470,22 @@ pub fn icons_lacking(names: &[String], dark: bool) -> Vec<String> {
     desktop::icons();
     desktop::follow(dark, true);
     names.iter().filter(|name| !desktop::has_icon(name)).cloned().collect()
+}
+
+/// For the test of "What Sioul keeps about…" (tests/pdf.rs): a person's page
+/// as `persons::page` gives it (JSON) written as the window writes it, a PDF
+/// at `path` (`PdfWriter`). The application must be made first. Returns
+/// what went wrong, else "".
+#[doc(hidden)]
+pub fn keeps_pdf(shown: &str, path: &std::path::Path) -> String {
+    let shown: serde_json::Value = match serde_json::from_str(shown) {
+        Ok(shown) => shown,
+        Err(e) => return e.to_string(),
+    };
+    let html = persons::keeps_html(&shown);
+    let (Ok(html), Ok(path)) = (std::ffi::CString::new(html), std::ffi::CString::new(path.display().to_string())) else { return "a nul byte".into() };
+    // SAFETY: two C strings that live through the call; the C++ side copies them.
+    if unsafe { sioul_pdf_write(html.as_ptr(), path.as_ptr()) } == 0 { String::new() } else { "not written".into() }
 }
 
 /// For the test of the bundled icons: the icon theme in use, as Qt names it

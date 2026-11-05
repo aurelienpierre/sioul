@@ -63,6 +63,8 @@ Un budget s’ouvre sur ses mots et la fin de sa période, puis sur ses mouvemen
 
 Un clic droit sur une ligne : **Modifier cette ligne…**, **Supprimer cette ligne** (avec une confirmation). Si la ligne a changé dans le fichier entre-temps (sur un autre appareil, ou à la main), rien n’est changé, et Sioul le dit : regardez-la de nouveau.
 
+Un budget peut être **Pour** une personne de vos proches (l’argent de poche d’un enfant, un compte que vous tenez pour un parent que vous aidez) : choisi dans son formulaire, il se montre sur sa page ([Vos proches](contacts.md#household)).
+
 **Retirer ce budget** garde ses lignes dans le fichier, telles qu’elles ont été écrites ; elles ne comptent plus.
 
 ## Les réserves {#reserves}

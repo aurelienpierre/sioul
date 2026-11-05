@@ -264,7 +264,7 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
 /// lease of two, one of them that child; a paper tied to the child in
 /// `links.toml` with no holder text; the health card of a parent opened to
 /// agents; a holder text that names nobody. None may be in any answer.
-const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderhollow", "Vellichor", "Gorsebeck", "Mirrowvale", "Brightmere", "Pemberlune"];
+const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderhollow", "Vellichor", "Gorsebeck", "Mirrowvale", "Brightmere", "Pemberlune", "Mossgrave"];
 
 /// The household: a child closed to agents, a parent opened; their papers
 /// in the wallet beside the identity card in no project, a passport ending
@@ -272,7 +272,7 @@ const PERSON_WORDS: &[&str] = &["Quorvelle", "Fenwright", "Saltmarrow", "Tinderh
 /// Old texts read already (`names_read`), so that "Gorsebeck" stays text.
 fn persons_fixture(store: &Path) {
     use sioul_core::papers::{Kind as PaperKind, Paper, Wallet};
-    let persons = "format = 1\nnames_read = 1\n\n[person.p-quorvelle]\nname = \"Quorvelle\"\nfull_name = \"Quorvelle Fenwright\"\nrelation = \"child\"\nborn = 2014-05-12\nagents = false\n\n[person.p-odile]\nname = \"Odile\"\nrelation = \"parent\"\nagents = true\n\n[person.p-tilda]\nname = \"Tilda\"\nrelation = \"child\"\nagents = true\n";
+    let persons = "format = 1\nnames_read = 1\n\n[person.p-quorvelle]\nname = \"Quorvelle\"\nfull_name = \"Quorvelle Fenwright\"\nrelation = \"child\"\nborn = 2014-05-12\nagents = false\n\n[person.p-odile]\nname = \"Odile\"\nrelation = \"parent\"\nborn = 1941-02-03\nlives_with = true\ncards = [\"c-mossgrave\"]\nagents = true\n\n[person.p-tilda]\nname = \"Tilda\"\nrelation = \"child\"\nagents = true\n";
     let path = sioul_core::persons::Persons::default_path();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, persons).unwrap();
@@ -290,7 +290,19 @@ fn persons_fixture(store: &Path) {
         wallet.put(Paper { id: id.into(), kind, title: title.into(), holder: holder.into(), until, ..Default::default() });
     }
     wallet.save().unwrap();
-    sioul_core::links::LocalLinks::add_all(&sioul_core::links::LocalLinks::default_path(), &[sioul_core::links::Edge { from: "sioul:paper/p-school".into(), to: "sioul:person/p-quorvelle".into(), how: "holder".into() }]).unwrap();
+    sioul_core::links::LocalLinks::add_all(
+        &sioul_core::links::LocalLinks::default_path(),
+        &[
+            sioul_core::links::Edge { from: "sioul:paper/p-school".into(), to: "sioul:person/p-quorvelle".into(), how: "holder".into() },
+            // "Odile's ameli account, which you open for Odile".
+            sioul_core::links::Edge { from: "sioul:site/ameli-odile".into(), to: "sioul:person/p-odile".into(), how: "for".into() },
+        ],
+    )
+    .unwrap();
+    // The home budget is Odile's (its links, docs/persons.md).
+    let budgets = store.join("sioul-budgets.toml");
+    let text = std::fs::read_to_string(&budgets).unwrap().replacen("title = \"Home\"", "title = \"Home\"\nlinks = [\"sioul:person/p-odile\"]", 1);
+    std::fs::write(&budgets, text).unwrap();
     // A letter its address block names to the closed child, with a date asked tomorrow.
     let mut letters = sioul_core::letters::Letters::load(store).unwrap();
     letters.put(sioul_core::letters::Letter {
@@ -639,7 +651,7 @@ fn unreadable_lines_are_said() {
 }
 
 const READING: &[&str] = &[
-    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
+    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
 /// The command line and the agents run on a computer only: what they say
@@ -965,6 +977,17 @@ fn a_closed_person_is_never_shown() {
         let refused = call(&mut server, "links", json!({ "uri": uri }));
         assert!(refused["isError"] == true && text(&refused).contains("kept from agents"), "{uri}: {}", text(&refused));
     }
+    // The persons tool: opened persons alone, what links to them, never a date of birth, a household or a card.
+    let listed = call(&mut server, "persons", json!({}));
+    never(&listed, "persons");
+    let found = listed["structuredContent"]["persons"].as_array().unwrap().clone();
+    let odile = found.iter().find(|p| p["uri"] == "sioul:person/p-odile").unwrap_or_else(|| panic!("{listed}"));
+    assert_eq!((odile["relation"].as_str(), odile["sites"].clone(), odile["budgets"].clone()), (Some("parent"), json!(["sioul:site/ameli-odile"]), json!(["home"])), "{odile}");
+    assert!(odile["papers"].as_array().unwrap().contains(&json!("sioul:paper/p-odile-id")) && !odile["papers"].as_array().unwrap().contains(&json!("sioul:paper/p-odile-health")), "{odile}");
+    assert!(found.iter().any(|p| p["uri"] == "sioul:person/p-tilda" && p["agendas"] == json!(["household/tilda"])), "{listed}");
+    let said = listed.to_string();
+    assert!(!said.contains("1941") && !said.contains("born") && !said.contains("lives_with") && !said.contains("cards"), "{listed}");
+    assert_eq!(listed["structuredContent"]["kept_from_agents"], 1, "the closed child, counted");
     let papers = call(&mut server, "papers", json!({}));
     let shown = &papers["structuredContent"]["papers"];
     let odile = shown.as_array().unwrap().iter().find(|p| p["uri"] == "sioul:paper/p-odile-id").unwrap_or_else(|| panic!("the opened parent's paper comes: {papers}"));
@@ -1362,6 +1385,7 @@ fn health_never_reaches_an_agent() {
         ("search_texts", json!({ "query": "Ferngale" }), Answers),
         ("draft_text", json!({ "to": "not a number", "body": "Hello." }), Refused),
         ("papers", json!({}), Answers),
+        ("persons", json!({}), Answers),
         ("contracts", json!({}), Answers),
         ("letters", json!({}), Answers),
         ("time", json!({}), Answers),

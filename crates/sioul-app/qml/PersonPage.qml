@@ -244,6 +244,56 @@ Panel {
                     }
                 }
 
+                // Money: the budgets for them; the sites you open for them.
+                Label {
+                    visible: page.shown !== null && ((page.shown.budgets || []).length > 0 || (page.shown.sites || []).length > 0)
+                    Layout.topMargin: 8
+                    text: page.sioul.text("person-money")
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                    color: page.theme.accent
+                }
+                Repeater {
+                    model: page.shown ? (page.shown.budgets || []) : []
+
+                    delegate: ItemDelegate {
+                        id: budgetRow
+
+                        required property var modelData
+
+                        objectName: "personBudget"
+                        Layout.fillWidth: true
+                        padding: 6
+                        onClicked: page.window.openPage("budget", budgetRow.modelData.id)
+                        contentItem: Label {
+                            text: budgetRow.modelData.title
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: page.theme.text
+                        }
+                    }
+                }
+                Repeater {
+                    model: page.shown ? (page.shown.sites || []) : []
+
+                    delegate: ItemDelegate {
+                        id: siteRow
+
+                        required property var modelData
+
+                        objectName: "personSite"
+                        Layout.fillWidth: true
+                        padding: 6
+                        onClicked: page.window.openThing({ kind: "site", uri: "sioul:site/" + encodeURIComponent(siteRow.modelData.id), key: siteRow.modelData.id, title: siteRow.modelData.name })
+                        contentItem: Label {
+                            text: page.theme.plain(page.sioul.textWith("person-site", "name", siteRow.modelData.name))
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: page.theme.text
+                        }
+                    }
+                }
+
                 // The cards that are them, and one to link.
                 Label {
                     visible: page.shown !== null && !page.shown.me && page.shown.cards.length > 0

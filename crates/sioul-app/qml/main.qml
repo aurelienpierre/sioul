@@ -724,6 +724,9 @@ SioulWindow {
         window.page = 9
         if (kind === "contract")
             budgetsPage.openContract(key)
+        // A budget (a person's page's Money: docs/persons.md), opened on the Budgets page.
+        else if (kind === "budget")
+            budgetsPage.openId = key
     }
 
     // The agenda's days read again (a date asked changed in its card: its mark follows).

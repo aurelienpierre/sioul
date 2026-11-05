@@ -100,6 +100,46 @@ pub fn papers(s: &Session, _args: &Args) -> Result<Answer, String> {
     Ok(Answer { text: rows(&lines), data: json!({ "papers": out, "kept_from_agents": closed }) })
 }
 
+/// The persons opened to agents (docs/persons.md), each with what links to
+/// them by address, as the consent lets each thing through; never a date of
+/// birth, whether they live with the person, nor their cards. Those not
+/// opened are counted, never named.
+pub fn persons(s: &Session, _args: &Args) -> Result<Answer, String> {
+    use sioul_core::persons::{self, Persons, Relation};
+    let (consent, loaded) = consent(s);
+    let own: Vec<String> = s.config.every_account().filter_map(|a| a.name.clone()).collect();
+    let root = s.config.notes_root_path();
+    let wallet = root.as_deref().and_then(|r| papers::Wallet::load(r).ok()).map(|w| w.papers).unwrap_or_default();
+    let store = Persons::as_read(&Persons::default_path(), &s.config.agenda.calendars, &wallet, &own);
+    let letters = root.as_deref().and_then(|r| letters::Letters::load(r).ok()).map(|l| l.list).unwrap_or_default();
+    let ledger = root.as_deref().and_then(|r| sioul_core::budget::Ledger::load_file(&r.join(sioul_core::budget::LEDGER)).ok());
+    let agendas: Vec<sioul_core::agendas::Agenda> = sioul_core::agendas::all(&s.config).into_iter().map(|a| a.with_persons(&store)).collect();
+    let opened: Vec<&persons::Person> = store.persons.iter().filter(|p| p.agents).collect();
+    let closed = store.persons.len() - opened.len();
+    let mut lines = Vec::new();
+    let mut out = Vec::new();
+    for person in opened {
+        let relation = match person.relation() {
+            Relation::Unsaid => "in-household",
+            other => other.id(),
+        };
+        let papers: Vec<String> = wallet.iter().filter(|p| store.holders_of(p, &loaded.local, &own).has(&person.id)).map(|p| links::paper_uri(&p.id)).filter(|u| consent.allows(u)).collect();
+        let letters_for: Vec<String> = letters.iter().filter(|l| store.letter_for(&l.id, &l.reading.addressee, &loaded.local, &own).iter().any(|p| *p == person.id)).map(|l| links::letter_uri(&l.id)).filter(|u| consent.allows(u)).collect();
+        let places: Vec<String> = agendas.iter().filter(|a| a.person_id == person.id || a.parent_person == person.id).map(|a| a.id.clone()).collect();
+        let budgets: Vec<String> = ledger.iter().flat_map(|l| l.budgets.iter()).filter(|b| sioul_core::budget::person_of(b).as_deref() == Some(person.id.as_str()) && consent.allows_projects(consent.budget_projects(&b.id).iter().map(String::as_str))).map(|b| b.id.clone()).collect();
+        let sites: Vec<String> = persons::sites_for(&loaded.local, &person.id).iter().map(|id| links::site_uri(id)).collect();
+        lines.push(format!("{} ({relation})  <{}>", person.name, persons::uri(&person.id)));
+        out.push(json!({ "uri": persons::uri(&person.id), "name": person.name, "relation": relation, "papers": papers, "letters": letters_for, "agendas": places, "budgets": budgets, "sites": sites }));
+    }
+    if out.is_empty() && closed == 0 {
+        lines.push("No one of the person's household is kept in Sioul yet.".into());
+    }
+    if closed > 0 {
+        lines.push(format!("({closed} {} of the household the person has not opened to agents: left out on purpose. Do not guess who; ask the person if it matters.)", if closed == 1 { "person" } else { "persons" }));
+    }
+    Ok(Answer { text: rows(&lines), data: json!({ "persons": out, "kept_from_agents": closed }) })
+}
+
 pub fn contracts(s: &Session, _args: &Args) -> Result<Answer, String> {
     let list = contracts::Contracts::load(&store(s)?)?;
     let (consent, _) = consent(s);

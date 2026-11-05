@@ -55,7 +55,7 @@ Le ⋮ du site ouvert, ou un clic droit sur n’importe quel site de la liste 
 - **Micro, pour les appels**, **Caméra, pour les appels**, **Partage de l’écran, pour les appels** : activés pour les discussions, les appels vidéo et les sites de rencontre, coupés pour les autres jusqu’à ce que vous les activiez ;
 - **Périphériques d’appel…** : la caméra, le micro et le haut-parleur des appels, pris dans la liste de votre système ;
 - **Monter**, **Descendre**, **Lier à…** une tâche, une note, un contact ou un projet ;
-- **Nom et adresse…** : son nom, son adresse et vos propres catégories (« Banque », « Santé ») ;
+- **Nom et adresse…** : son nom, son adresse, vos propres catégories (« Banque », « Santé »), et **Ouvert pour** une personne de vos proches, pour un compte que vous ouvrez pour elle (« le compte ameli d’Odile ») : il se montre sur sa page ([Vos proches](contacts.md#household)) ;
 - **Retirer ce site** : il quitte Sioul ; rien ne change sur le site lui-même.
 
 <figure markdown="span">

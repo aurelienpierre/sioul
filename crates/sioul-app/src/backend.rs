@@ -242,6 +242,14 @@ pub mod qobject {
         #[qinvokable]
         fn person_handover_said(self: Pin<&mut Sioul>, id: &QString, age: i32) -> QString;
 
+        /// A site's person, by id ("" nobody): the one you open it for; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_site_for(self: Pin<&mut Sioul>, site: &QString, person: &QString) -> QString;
+
+        /// The person a site is opened for, as JSON {id, name}, or "null".
+        #[qinvokable]
+        fn site_person(self: &Sioul, site: &QString) -> QString;
+
         /// Lets a sender in: they leave the screener.
         #[qinvokable]
         fn let_in(self: Pin<&mut Sioul>, address: &QString);
@@ -4260,6 +4268,14 @@ impl qobject::Sioul {
 
     fn person_keeps(self: Pin<&mut Self>, id: &QString, folder: &QString) -> QString {
         QString::from(&crate::persons::keeps(&id.to_string(), &folder.to_string()))
+    }
+
+    fn set_site_for(self: Pin<&mut Self>, site: &QString, person: &QString) -> QString {
+        QString::from(&crate::persons::set_site_for(&site.to_string(), &person.to_string()))
+    }
+
+    fn site_person(&self, site: &QString) -> QString {
+        QString::from(&crate::persons::site_person(&site.to_string()))
     }
 
     fn person_handover_said(self: Pin<&mut Self>, id: &QString, age: i32) -> QString {

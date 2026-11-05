@@ -34,3 +34,10 @@ QString PdfWriter::write(const QString &html, const QString &path) const
     }
     return QFileInfo::exists(path) && QFileInfo(path).size() > 0 ? QString() : path;
 }
+
+// The same writing for a test of the program's own (tests/pdf.rs), without
+// QML: `html` and `path` in UTF-8; 0 when the file was written.
+extern "C" int sioul_pdf_write(const char *html, const char *path)
+{
+    return PdfWriter().write(QString::fromUtf8(html), QString::fromUtf8(path)).isEmpty() ? 0 : 1;
+}

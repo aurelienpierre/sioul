@@ -1727,12 +1727,17 @@ Item {
 
         // What was refused (an address without https…): said here, the dialog kept open.
         property string problem: ""
+        property var persons: []
+        property string personId: ""
 
         function begin() {
             editName.text = page.menuSite ? page.menuSite.name : ""
             editUrl.text = page.menuSite ? page.menuSite.url : ""
             editKind.currentIndex = page.menuSite ? Math.max(0, page.kinds.indexOf(page.menuSite.kind)) : 0
             editCategories.text = page.menuSite ? (page.menuSite.categories || []).join(", ") : ""
+            // Whom you open it for ("Odile's ameli account"): a person of the household, or nobody said.
+            editing.persons = (JSON.parse(page.sioul.household() || "{}").persons || []).filter(p => p.id !== "me")
+            editing.personId = ((page.menuSite ? JSON.parse(page.sioul.sitePerson(page.menuId) || "null") : null) || { id: "" }).id
             editing.problem = ""
             editing.open()
         }
@@ -1740,7 +1745,7 @@ Item {
         // Saved, it closes; refused, it stays open with why, what you typed kept.
         function save() {
             const categories = editCategories.text.split(",").map(c => c.trim()).filter(c => c !== "")
-            const problems = [page.sioul.setSite(page.menuId, "name", editName.text), page.sioul.setSite(page.menuId, "url", editUrl.text), page.sioul.setSite(page.menuId, "site", page.kinds[editKind.currentIndex]), page.sioul.setSite(page.menuId, "categories", JSON.stringify(categories))].filter(p => p !== "")
+            const problems = [page.sioul.setSite(page.menuId, "name", editName.text), page.sioul.setSite(page.menuId, "url", editUrl.text), page.sioul.setSite(page.menuId, "site", page.kinds[editKind.currentIndex]), page.sioul.setSite(page.menuId, "categories", JSON.stringify(categories)), page.sioul.setSiteFor(page.menuId, editing.personId)].filter(p => p !== "")
             page.reload()
             editing.problem = problems.join(" ")
             if (editing.problem === "")
@@ -1797,6 +1802,21 @@ Item {
                 Layout.fillWidth: true
                 placeholderText: page.sioul.text("site-categories-help")
                 onAccepted: editing.save()
+            }
+            Label {
+                visible: editing.persons.length > 0
+                text: page.sioul.text("site-field-for")
+                color: page.theme.muted
+            }
+            PlainComboBox {
+                readonly property var choices: [{ id: "", name: page.sioul.text("site-for-you") }].concat(editing.persons)
+
+                visible: editing.persons.length > 0
+                Layout.fillWidth: true
+                model: choices.map(c => page.theme.plain(c.name))
+                currentIndex: Math.max(0, choices.findIndex(c => c.id === editing.personId))
+                Accessible.name: page.sioul.text("site-field-for")
+                onActivated: index => editing.personId = choices[index].id
             }
             Label {
                 visible: editing.problem !== ""

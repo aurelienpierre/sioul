@@ -182,6 +182,10 @@ pub(crate) fn page(id: &str) -> String {
         "cards": cards,
         "agendas": agendas,
         "letters": letters_for(&store, &config, &local, &own, &person.id),
+        // Money: the budgets for them (`sioul:person/<id>` among a budget's links).
+        "budgets": budgets_for(&config, &person.id),
+        // The sites you open for them (`sioul:site/<id>` → `sioul:person/<id>`, how `for`).
+        "sites": sites_for(&config, &local, &person.id),
         // The hand-over line due on a child's page, once, in an admin window (16, 18): "" none.
         "handover": handover_line(&store, &person, today),
         "handover_age": if handover_line(&store, &person, today).is_empty() { 0 } else { store.handover(&person.id, today).unwrap_or(0) },
@@ -204,6 +208,39 @@ fn letters_for(store: &Persons, config: &Config, local: &LocalLinks, own: &[Stri
         .into_iter()
         .map(|l| serde_json::json!({ "id": l.id, "sender": if l.reading.sender.is_empty() { tr().text("letter-unknown-sender", None) } else { l.reading.sender.clone() }, "kind_label": tr().text(&format!("letter-kind-{}", l.reading.kind.id()), None), "received": l.received.map(|d| tr().day_in(d, today)).unwrap_or_default() }))
         .collect()
+}
+
+/// The budgets for a person, by id and title (`budget::person_of`).
+fn budgets_for(config: &Config, id: &str) -> Vec<serde_json::Value> {
+    let Some(ledger) = config.notes_root_path().and_then(|root| sioul_core::budget::Ledger::load_file(&root.join(sioul_core::budget::LEDGER)).ok()) else { return Vec::new() };
+    ledger.budgets.iter().filter(|b| sioul_core::budget::person_of(b).as_deref() == Some(id)).map(|b| serde_json::json!({ "id": b.id, "title": b.title })).collect()
+}
+
+/// The sites opened for a person (`persons::sites_for`), by id and name.
+fn sites_for(config: &Config, local: &LocalLinks, id: &str) -> Vec<serde_json::Value> {
+    let ids = persons::sites_for(local, id);
+    sioul_core::sites::sites(config).into_iter().filter(|s| ids.contains(&s.id)).map(|s| serde_json::json!({ "id": s.id, "name": s.name, "url": s.url })).collect()
+}
+
+/// A site's person chosen ("Odile's ameli account, which you open for
+/// Odile"), by id; "" nobody. Returns what went wrong, else "".
+pub(crate) fn set_site_for(site: &str, person: &str) -> String {
+    let store = store();
+    let person = person.trim();
+    if !person.is_empty() && store.get(person).is_none() {
+        return tr().text("person-gone", None);
+    }
+    LocalLinks::change(&LocalLinks::default_path(), |local| persons::tie_site(local, site, person)).err().unwrap_or_default()
+}
+
+/// The person a site is opened for, as JSON {id, name}, or "null".
+pub(crate) fn site_person(site: &str) -> String {
+    let store = store();
+    let local = LocalLinks::load(&LocalLinks::default_path());
+    match persons::site_for(&local, site).and_then(|id| store.get(&id).cloned()) {
+        Some(p) => json(&serde_json::json!({ "id": p.id, "name": p.name })),
+        None => "null".into(),
+    }
 }
 
 /// Whether now is an admin window: admin's hours open (docs/areas.md).
@@ -661,6 +698,17 @@ pub(crate) fn keeps(id: &str, folder: &str) -> String {
             files += 1;
         }
     }
+    let html = keeps_html(&shown);
+    let pdf = target.join(format!("{}.pdf", sioul_core::papers::portable_name_of(&tr().text("person-keeps-file", None))));
+    serde_json::json!({ "html": html, "pdf": pdf.display().to_string(), "files": files, "folder": target.display().to_string() }).to_string()
+}
+
+/// What Sioul keeps about someone, as the PDF says it (`keeps`): their name
+/// and line, then their papers (title, kind, where each stands, its file's
+/// name), agendas and letters, from their page (`page`); every word
+/// escaped, never read as markup.
+pub(crate) fn keeps_html(shown: &serde_json::Value) -> String {
+    let name = shown["name"].as_str().unwrap_or_default().to_string();
     let esc = |t: &str| t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     let mut html = format!("<h1>{}</h1>", esc(&name));
     if let Some(line) = shown["line"].as_str().filter(|l| !l.is_empty()) {
@@ -672,8 +720,7 @@ pub(crate) fn keeps(id: &str, folder: &str) -> String {
     html.push_str(&section(&tr().text("person-agendas", None), rows("agendas", &["name"])));
     html.push_str(&section(&tr().text("person-letters", None), rows("letters", &["sender", "kind_label", "received"])));
     html.push_str(&format!("<p><small>{}</small></p>", esc(&say("person-keeps-made", &[("date", tr().day(sioul_core::zone::now().date()))]))));
-    let pdf = target.join(format!("{}.pdf", sioul_core::papers::portable_name_of(&tr().text("person-keeps-file", None))));
-    serde_json::json!({ "html": html, "pdf": pdf.display().to_string(), "files": files, "folder": target.display().to_string() }).to_string()
+    html
 }
 
 #[cfg(test)]
@@ -806,6 +853,17 @@ mod tests {
         assert_eq!(page_of(&robin)["letters"][0]["id"], "l-robin");
         assert_eq!(set_letter_for("l-robin", &serde_json::json!([nell]).to_string()), "");
         assert!(page_of(&robin)["letters"].as_array().unwrap().is_empty() && page_of(&nell)["letters"][0]["id"] == "l-robin");
+        // A site opened for Robin, and a budget for Robin (phase 3): on Robin's page.
+        let config = crate::backend::config_path();
+        let text = std::fs::read_to_string(&config).unwrap();
+        std::fs::write(&config, format!("{text}\n[[site]]\nid = \"ameli-robin\"\nname = \"ameli\"\nurl = \"https://ameli.example\"\n")).unwrap();
+        assert_eq!(set_site_for("ameli-robin", &robin), "");
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&site_person("ameli-robin")).unwrap()["id"], robin.as_str());
+        assert_eq!(page_of(&robin)["sites"][0]["id"], "ameli-robin");
+        std::fs::write(notes.join(sioul_core::budget::LEDGER), format!("[[budget]]\nid = \"robin-share\"\ntitle = \"Robin's share\"\nperiod = \"month\"\nlinks = [\"sioul:person/{robin}\"]\n")).unwrap();
+        assert_eq!(page_of(&robin)["budgets"][0]["id"], "robin-share");
+        assert_eq!(set_site_for("ameli-robin", ""), "");
+        assert!(page_of(&robin)["sites"].as_array().unwrap().is_empty());
         // Robin's own papers, with files, and one of two.
         let scan = notes.join("scan.pdf");
         std::fs::write(&scan, b"%PDF stand-in").unwrap();

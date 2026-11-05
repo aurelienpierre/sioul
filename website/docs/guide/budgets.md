@@ -63,6 +63,8 @@ A budget opens on its words and the end of its period, then its movements, newes
 
 A right click on a line: **Change this line…**, **Delete this line** (asked once). If the line changed in the file meanwhile (on another device, or by hand), nothing is changed, and Sioul says so: look at it again.
 
+A budget can be **For** someone of your household (a child's pocket money, an account you keep for a parent you help): chosen in its form, it shows on their page ([People in your household](contacts.md#household)).
+
 **Take this budget out** keeps its lines in the file, as they were written; they no longer count.
 
 ## Reserves {#reserves}

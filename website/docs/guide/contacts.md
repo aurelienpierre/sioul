@@ -40,6 +40,7 @@ A person is not a contact. A contact is a card for reaching someone; a person is
 - **Agendas**: their agendas, a child's with **Who does what**; for a child's other parent, the children's agendas they share;
 - **Contacts**: the cards that are them, each opening its card, with **Unlink**, and **Link a card…**;
 - **Letters**: the letters addressed to them;
+- **Money**: the budgets for them and the sites you open for them;
 - at the foot, quiet: **What Sioul keeps about Léa…**, one PDF of their papers, agendas and letters and a folder with the papers' files, saved where you choose, for you to hand to them; **Ends…**, for anyone but a child: the day it ended, and for a partner, their own papers saved in a folder to hand back, then taken out of your papers if you say so; **Same as…**, to make two persons one ("Léa" and "Léa M."); **This is not a person**, for a name read from a paper that is nobody ("Banque"), never made again;
 - **Open to AI agents**, off until you turn it on. Your own page has no such switch: you are open as before.
 

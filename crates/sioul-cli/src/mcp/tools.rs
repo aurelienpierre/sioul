@@ -650,6 +650,16 @@ pub const TOOLS: &[Tool] = &[
         run: records::papers,
     },
     Tool {
+        name: "persons",
+        title: "Persons of the household",
+        description: "The people the person's admin is done for that the person opened to AI agents (a child, a parent they help, a partner, a child's other parent): each one's name, who they are to the person, their address (sioul:person/<id>), and what links to them by address: their papers, letters, agendas (by place), budgets and the sites the person opens for them. Never a date of birth, a household or a contact card. Those not opened are left out and counted. Read-only.",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || object(json!({}), &[]),
+        run: records::persons,
+    },
+    Tool {
         name: "contracts",
         title: "Contracts",
         description: "Contracts and subscriptions the person is bound to (rent, energy, phone, insurances, hosting…): with whom, when each renews, the notice it needs and the last day to send it to stop it, what it covers, when it ended. Facts about their contracts, read-only; nothing is cancelled or sent.",

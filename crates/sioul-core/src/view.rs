@@ -816,6 +816,8 @@ pub struct BudgetDetail {
     pub set_aside: f64,
     /// "month" or "quarter".
     pub declare: String,
+    /// Whom it is for, a person's id (docs/persons.md); "" nobody said.
+    pub person: String,
 }
 
 /// A budget's ledger for the period around `anchor`, and its balance by `step`.
@@ -906,6 +908,7 @@ pub fn budget_detail(ledger: &Ledger, budget: &Budget, movements: &[crate::movem
         incomes: incomes(ledger, tr),
         set_aside: budget.set_aside.filter(|s| s.is_finite() && *s > 0.0).unwrap_or(0.0),
         declare: if budget.declare.as_deref() == Some("month") { "month".into() } else { "quarter".into() },
+        person: crate::budget::person_of(budget).unwrap_or_default(),
         points,
     }
 }

@@ -35,6 +35,11 @@ name = "attach"
 path = "tests/attach.rs"
 harness = false
 
+[[test]]
+name = "pdf"
+path = "tests/pdf.rs"
+harness = false
+
 [dependencies]
 sioul-core = { path = "../sioul-core" }
 sioul-sync = { path = "../sioul-sync" }

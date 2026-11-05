@@ -40,6 +40,7 @@ Une personne n’est pas un contact. Un contact est une fiche pour joindre quelq
 - **Agendas** : ses agendas, celui d’un enfant avec **Qui fait quoi** ; pour l’autre parent d’un enfant, les agendas des enfants qu’il ou elle partage ;
 - **Contacts** : les fiches qui sont elle, chacune ouvrant sa fiche, avec **Délier**, et **Lier un contact…** ;
 - **Lettres** : les lettres qui lui sont adressées ;
+- **Argent** : les budgets pour cette personne et les sites que vous ouvrez pour elle ;
 - en bas, discrets : **Ce que Sioul garde sur Léa…**, un PDF de ses papiers, agendas et lettres et un dossier des fichiers de ses papiers, enregistrés où vous voulez, pour les lui remettre ; **Fin…**, pour toute personne sauf un enfant : le jour où cela a pris fin, et pour un ou une partenaire, ses propres papiers enregistrés dans un dossier pour les lui rendre, puis retirés de vos papiers si vous le dites ; **Même personne que…**, pour ne faire qu’une de deux personnes (« Léa » et « Léa M. ») ; **Ce n’est pas une personne**, pour un nom lu sur un papier qui n’est personne (« Banque »), plus jamais refait ;
 - **Ouvert aux agents d’IA**, éteint tant que vous ne l’allumez pas. Votre propre page n’a pas cet interrupteur : vous êtes ouvert comme avant.
 
