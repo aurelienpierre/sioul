@@ -192,6 +192,16 @@ pub mod qobject {
         #[qinvokable]
         fn person_page(self: &Sioul, id: &QString) -> QString;
 
+        /// The persons made from older texts on this device, each with what
+        /// named them, for the Porch's card said once in an admin window
+        /// (`persons::made_card`): JSON `[{id, name, from}]`, `[]` none.
+        #[qinvokable]
+        fn persons_made(self: &Sioul) -> QString;
+
+        /// That card said: never shown again here.
+        #[qinvokable]
+        fn persons_made_said(self: &Sioul);
+
         /// A person saved from their form (new when `id` is empty): {"id"} or {"error"}.
         #[qinvokable]
         fn save_person(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
@@ -752,16 +762,29 @@ pub mod qobject {
         #[qinvokable]
         fn agenda_link(self: Pin<&mut Sioul>, id: &QString, on: bool);
 
-        /// Your availability: what is shared, the accounts and agendas to pick (JSON).
+        /// Your availabilities, Agenda ⚙ ▸ Your availability (JSON {head, items, agendas, accounts}).
         #[qinvokable]
         fn availability(self: &Sioul) -> QString;
 
-        /// Your availability shared (JSON {account, agendas, with, link, words}), or no longer; what went wrong, else "".
+        /// An availability shared once more (JSON {id | name, agendas, words; audience, who, way, account, link}); what went wrong, else "".
         #[qinvokable]
         fn share_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
 
+        /// One share stopped (JSON {id, way, account, who}), with Undo; what went wrong, else "".
         #[qinvokable]
-        fn stop_availability(self: Pin<&mut Sioul>) -> QString;
+        fn stop_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// The ways Sioul would share with an audience, best first (JSON {id | agendas, words; audience, who} → {choices, problem}).
+        #[qinvokable]
+        fn availability_ways(self: &Sioul, text: &QString) -> QString;
+
+        /// An availability's name, agendas and words written (JSON {id?, name, agendas, words} → {id, problem}).
+        #[qinvokable]
+        fn save_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// Your working hours told to an account's server, or no longer; what went wrong, else "".
+        #[qinvokable]
+        fn availability_hours(self: Pin<&mut Sioul>, account: &QString, on: bool) -> QString;
 
         /// A named set of agendas chosen in the filter (part 4): its agendas
         /// shown, the others left out, until work's hours change.
@@ -2477,9 +2500,23 @@ pub mod qobject {
         fn persons_changed(self: Pin<&mut Sioul>);
 
         /// What an agenda is changed (its role, its person, its area; your
-        /// availability's share): Agenda ⚙ and a person's page read it again.
+        /// availability's share; a calendar made, renamed or removed): Agenda ⚙
+        /// and a person's page read it again.
         #[qsignal]
         fn agendas_changed(self: Pin<&mut Sioul>);
+
+        /// The papers changed (`changes`): the Papers page and a person's page read them again.
+        #[qsignal]
+        fn papers_changed(self: Pin<&mut Sioul>);
+
+        /// Money changed (budgets, bank accounts and movements, contracts):
+        /// the bank's and the contracts' sections and a person's page read it again.
+        #[qsignal]
+        fn money_changed(self: Pin<&mut Sioul>);
+
+        /// The projects changed: the Projects and Time pages read them again.
+        #[qsignal]
+        fn projects_changed(self: Pin<&mut Sioul>);
 
         /// A task just done, whichever way (a list, its panel, the focus window):
         /// the status line offers "How was it?", quietly.
@@ -4124,7 +4161,9 @@ impl qobject::Sioul {
 
     fn start(mut self: Pin<&mut Self>) {
         // Each kind of object said changed by the one place that writes it: the views hear it (changes.rs).
-        crate::changes::listen(&self.qt_thread());
+        crate::changes::listen(&self.qt_thread(), &self.shared());
+        // What another program changes (the command line, the agents' tools), by its stamps.
+        crate::changes::watch(&self.qt_thread(), &self.shared());
         // Each agenda's role given its person, those typed before Sioul did (docs/persons.md).
         std::thread::spawn(crate::persons::tie_roles);
         // Nothing ends when a window starts or closes (decision 10): each state has its own end.
@@ -4132,6 +4171,8 @@ impl qobject::Sioul {
         if let Err(e) = config::migrate_sites_at_start(&config_path()) {
             eprintln!("{e}");
         }
+        // The single share of your availability of before, read once as an availability of the list.
+        crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
         self.as_mut().set_mode(QString::from(&mode_json()));
         // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
@@ -4304,6 +4345,14 @@ impl qobject::Sioul {
 
     fn person_page(&self, id: &QString) -> QString {
         QString::from(&crate::persons::page(&id.to_string()))
+    }
+
+    fn persons_made(&self) -> QString {
+        QString::from(&crate::persons::made_card())
+    }
+
+    fn persons_made_said(&self) {
+        crate::persons::made_said();
     }
 
     fn save_person(self: Pin<&mut Self>, id: &QString, edit: &QString) -> QString {
@@ -5197,8 +5246,20 @@ impl qobject::Sioul {
         QString::from(&crate::servers::share_availability(&self.qt_thread(), &self.shared(), &text.to_string()))
     }
 
-    fn stop_availability(self: Pin<&mut Self>) -> QString {
-        QString::from(&crate::servers::stop_availability(&self.qt_thread(), &self.shared()))
+    fn stop_availability(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::servers::stop_availability(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn availability_ways(&self, text: &QString) -> QString {
+        QString::from(&crate::servers::availability_ways(&text.to_string()))
+    }
+
+    fn save_availability(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::servers::save_availability(&text.to_string()))
+    }
+
+    fn availability_hours(self: Pin<&mut Self>, account: &QString, on: bool) -> QString {
+        QString::from(&crate::servers::availability_hours(&self.qt_thread(), &self.shared(), &account.to_string(), on))
     }
 
     fn who_does_what(&self, from: &QString, child: &QString, mine: bool) -> QString {
@@ -7400,8 +7461,9 @@ impl qobject::Sioul {
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
         // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
-        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud"].contains(&steps.as_str()) && offline()) {
+        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "availability"
+        // Agenda ⚙ ▸ Your availability and its "Share with…" (pictures alone; docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "availability"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -7457,6 +7519,10 @@ impl qobject::Sioul {
                 (problem, said)
             };
             let store = crate::share::store_of(&file);
+            if !said.is_empty() {
+                // Put back as if it came: each kind it holds said to its views (changes.rs).
+                crate::changes::arrived_stores(&qt, &shared, &std::iter::once(store.clone()).collect());
+            }
             let done = problem.clone();
             let _ = qt.queue(move |mut sioul| {
                 if !said.is_empty() {

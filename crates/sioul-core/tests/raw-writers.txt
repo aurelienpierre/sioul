@@ -82,12 +82,19 @@ sioul-app/src/mail.rs	perform_moving	1	std::fs::remove_file(file)
 # sioul-app/src/mail.rs: the mailbox's chip and address chosen on this device (state): no item.
 sioul-app/src/mail.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
 
+# sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities (state): no item.
+sioul-app/src/mirrors.rs	save	1	sioul_sync::share::write_atomically(&memo_path(), text.as_bytes())
+
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
 sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)
 
 # sioul-app/src/payments.rs: what the budgets show on this device (state): no item.
 sioul-app/src/payments.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
+
+# sioul-app/src/persons.rs: the people made from older names, kept for the Porch's card and forgotten once it was said (state): no item.
+sioul-app/src/persons.rs	keep_made	1	sioul_core::filelock::replace(&path, text.as_bytes())
+sioul-app/src/persons.rs	made_said	1	std::fs::remove_file(&path)
 
 # sioul-app/src/persons.rs: a person's papers' files copied into a folder you chose, to hand to them or back (What Sioul keeps about…, Ends…): no item.
 sioul-app/src/persons.rs	end	1	std::fs::copy(&file, folder.join(&name))
@@ -815,3 +822,6 @@ sioul-sync/src/verify.rs	recheck_tagged_once	1	sioul_core::filelock::replace(&pa
 sioul-sync/src/verify.rs	write_in_place	1	std::fs::rename(&temporary, path)
 sioul-sync/src/verify.rs	write_in_place	1	std::fs::File::options()
 sioul-sync/src/verify.rs	write_in_place	1	std::fs::remove_file(&temporary)
+
+# sioul-core/src/changes.rs: the time another program changed a kind of thing, for the window to read (state): no item.
+sioul-core/src/changes.rs	stamp_in	1	std::fs::write(dir.join(kind.id()), jiff::Timestamp::now().as_millisecond().to_string())

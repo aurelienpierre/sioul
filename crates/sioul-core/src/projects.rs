@@ -197,7 +197,9 @@ fn write_doc(file: &Path, doc: &DocumentMut) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", file.display());
     let temporary = file.with_extension("toml.new");
     std::fs::write(&temporary, doc.to_string()).map_err(fail)?;
-    std::fs::rename(&temporary, file).map_err(fail)
+    std::fs::rename(&temporary, file).map_err(fail)?;
+    crate::changes::said(crate::changes::Kind::Projects);
+    Ok(())
 }
 
 /// The table a file's new projects go in: the one it has, `[[project]]` or
@@ -342,6 +344,7 @@ pub fn rename_file(root: &Path) -> Result<PathBuf, String> {
     }
     std::fs::write(new.with_extension("toml.new"), &renamed).map_err(|e| fail(e.to_string()))?;
     std::fs::rename(new.with_extension("toml.new"), &new).map_err(|e| format!("{}: {e}", new.display()))?;
+    crate::changes::said(crate::changes::Kind::Projects);
     let kept = (1..)
         .map(|n| if n == 1 { root.join(BEFORE_RENAME) } else { root.join(format!("{BEFORE_RENAME}-{n}")) })
         .find(|path| !path.exists())

@@ -119,7 +119,7 @@ In the agenda it shows as the task it is, never as an event: the task mark where
 
 Your agendas show together: yours for work and for yourself, one for each child, and those others share with you, another parent's or a partner's when they are busy. Each says what it is, on its line in the Agenda settings, **Your agendas**: open one to change it.
 
-- **Whose it is**: yours, a child's, another parent's, a partner's, or shared with you; and whose: a person of your household, chosen in the list or made there with **New person…** ([People in your household](contacts.md#household)), whose name names its group in the filter. Two agendas of one child are one group.
+- **Whose it is**: yours, a child's, another parent's, a partner's, or shared with you; and whose: one of your people, chosen in the list or made there with **New person…** ([Your people](contacts.md#household)), whose name names its group in the filter. Two agendas of one child are one group.
 - **For**: work, your admin, leisure. A work agenda follows your working hours: outside them, its events are not shown unless you say, and their reminders do not come. A personal one reaches you all day, or only outside work hours if you say so.
 - **You may**: read and write; read only; or see only when it is busy, without its titles, places or notes, whatever its server sends; **Show what its events say** shows their titles, if you wish. What another shares of their time stays with you: never written, never shared again, never given to an AI agent; it only says "Sam is busy then" when you choose who takes a child's event. Read and write is never offered where the server lets you read only. An agenda you only read, or only see busy, is never written by Sioul, its tasks neither.
 
@@ -131,20 +131,34 @@ An agenda that is someone else's shows, and holds none of your time: your plan l
 
 ## Your agendas on their servers {#agendas-on-their-servers}
 
-Agenda ⚙ ▸ **Your agendas** makes, renames, recolours, removes and shares your agendas on the server that holds them: Nextcloud and other CalDAV servers, Google, or this computer.
+Agenda ⚙ ▸ **Your agendas** makes, renames, recolours, removes and shares your agendas on the server that holds them: Nextcloud and other CalDAV servers, Google, or this computer. So far, making and sharing were tested against stand-ins of these servers only, never against the real ones.
 
-- **New agenda…** asks for the account, a name, a colour, and whether it holds events, tasks or both; in the same form, whose it is, what it is for and when it reaches you, so the new agenda arrives with its role. A child, a partner or another parent named there who is not among your people yet becomes one of them, with that relation; one already there is linked ([People in your household](contacts.md#household)). A Google calendar holds events only. It is on its server after the next sync.
+- **New agenda…** asks for the account, a name, a colour, and whether it holds events, tasks or both; in the same form, whose it is, what it is for and when it reaches you, so the new agenda arrives with its role. A child, a partner or another parent named there who is not among your people yet becomes one of them, with that relation; one already there is linked ([Your people](contacts.md#household)). A Google calendar holds events only. It is on its server after the next sync.
 - **Its name**, typed on its line, and **Colour**, on each agenda of yours, change it here at once and on its server at the next sync, with Undo.
 - **Remove…** says first what goes, in one sentence: "Remove “Swimming”, 42 events, from cloud.example.org?", and what the server keeps: Nextcloud keeps a removed calendar in its trash bin for 30 days by default; Google keeps nothing, so it is final. Before anything goes, Sioul keeps a copy of the whole agenda as a dated `.ics` file in its state folder, and says where. There is no Undo: that copy is the way back. A Google account's main calendar cannot be removed.
 - **Stop showing…** takes the place of Remove on an agenda that is someone else's, or that you can only read: it stays its owner's. Whose an agenda is comes from its server, never from what you call it: a child's agenda on your own server is yours to remove. When the server says it is someone else's, on Nextcloud your share of it ends, and on Google it leaves your calendar list; when it does not say, the agenda is only hidden on this device, and **Show again** brings it back.
 - **Who sees it**, on each line of an agenda on a server: "Only you", "Sam can read it", "Sam can change it", "Anyone with the link can read it"; on a child's or another parent's agenda, the other parent is named so. Add a person, or **A group** on Nextcloud, who **Can read** or **Can change**; × stops sharing with them, with Undo. **A read-only link** turns a link on or off; on, the link shows under it, to select, with **Copy**, which says "Copied." once it is on the clipboard. It is the address an agenda app subscribes to. Turned on, it says once what anyone with it sees. On Nextcloud, you share with people of the same server; someone elsewhere is reached by the link. Those you share with never see a private event, and those who only read it see a confidential one as "Busy", its time alone; on Google, readers see a private event without its details. A server that does not share says "This server does not share from Sioul." Nothing is shared unless you ask.
-- **Share my availability…** gives one person your busy times, never what fills them, from the agendas of yours you pick. On Google, those calendars are shared with one address for their busy times alone, and nothing is copied. On Nextcloud, Sioul makes a calendar of its own, "Busy times", fills it with plain blocks from the agendas you pick, keeps it up to date with your plan, and shares it, read only, with one person of the server or by its link, once the calendar is on the server (the next sync); by a link, the link then shows under the line, with **Copy**. Each block says "Busy", or a word you give an agenda ("Work"). **Stop sharing** takes the share back, and removes the calendar Sioul made.
+- **Your availability** has its own place below Your agendas: [Your availability](#your-availability).
 
 An AI agent never makes, removes or shares an agenda: these are your own presses.
 
+## Your availability {#your-availability}
+
+Agenda ⚙ ▸ **Your availability** holds what you give of your time, and to whom: your busy times, never what fills them. Nothing is shared until you press **Share**.
+
+- **An availability** is the agendas of yours that count as busy, and a name for you alone ("For Sam"). **New availability…** starts with no agenda ticked. Each agenda may say a word instead of "Busy" ("Work"). Its blocks include the time you keep before and after your events, since getting there is your time too. Anything about health always says "Busy".
+- **Share with…** asks only who: **A person** (a user name, `user@server` or an address), **A group**, **Anyone with a link**, or **A booking tool**. Sioul then says which way it will use and why, in one sentence; **Another way** shows the next one. **Share** makes it.
+- **Your server's own way comes first**, because it needs no Sioul running and never goes out of date: on Google, your calendars shared busy only, or their public free/busy for a link; Fastmail's own link of busy times; a booking page on your own server, Nextcloud's Appointments or Google's appointment schedules, which Sioul opens for you and whose link you paste back. Google then shows the events' exact times, without the time you keep around them, and the line says so.
+- **Elsewhere, a calendar of busy blocks**, kept by Sioul in one of your accounts and named after you ("Alex, busy times"): shared with someone on your Nextcloud, with a group, with someone on another Nextcloud, or by its link. It says only the day it was last brought up to date, never the time. In Your agendas it shows as kept for its availability, and pressing it opens Your availability.
+- **The wider the audience, the coarser the view**: a person or a group sees your exact busy times for the next two months; a link sees them rounded to the quarter hour, for the next two weeks; a booking tool sees two months, and then nothing it could offer.
+- **Each share's line** says who sees what, its link with **Copy**, **Open** for a booking page, and who keeps it up to date: your server, or your devices, the phone in the background and a computer while Sioul runs. When a calendar of blocks has not been brought up to date for a day, Sioul says so once, at your next admin time. **Stop** takes that share back, with Undo.
+- **Each Nextcloud** you use shows your busy times to its users when they invite you; Agenda ⚙ says so, with **Send my working hours to cloud.example.org**, off at first, so that they also see when you work.
+
+An AI agent never shares your availability: these are your own presses.
+
 ## Children's events {#childrens-events}
 
-A child's agenda says who may take its events: you, and the other parent, a person chosen in the list, with the address their invitations go to, in the Agenda settings, **Your agendas**, on its line. A custody day titled with either of their names counts. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist").
+A child's agenda says who may take its events: you, and the other parent, a person chosen in the list, with the address their invitations go to, in the Agenda settings, **Your agendas**, on its line. A custody day titled with either of their names counts. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist"). So far, invitations to the other parent were tested against stand-ins only.
 
 - **Who takes it**: a child's event's card says it, "Sam takes it, since 3 November.", or "Nobody takes it yet.", with what you may answer: **Me**, the other parent, **Not this time**, **Ask Sam to take it**. Its **Kind** (health, dentist, school, activity, clothes, other) is chosen there too, and, when one parent drops the child off and the other picks them up, **Who brings Tom back**.
 - **Asked once**: an event or a task that comes into a child's agenda without anyone to take it is asked about once, under the Agenda's head line: "Tom: “Dentist”, Tuesday 10 November at 10:00. Who takes it?" Sioul proposes who usually takes that kind, else who has the child that day (whole days titled "With Sam" in the child's agenda), the proposal shown first. **Later** asks once more at your next admin time, then never.
@@ -248,7 +262,11 @@ An agenda shared with you to show when someone is busy stays yours to read. "A s
 
 When you share your own, a bare "busy" can read as secrecy between partners: 26 of 30 people in one study found it suspect (Thayer et al. 2012). So your blocks say "Busy" at first, and you may add a word to them for a partner.
 
-More in [what the research says](../dev/research.md), findings 46 to 54.
+Servers already know when you are busy, and keep it up to date without anyone's app running: Google, Nextcloud, Fastmail and booking pages each show it to one kind of audience. A copy kept by an app is only as fresh as the last device that ran it. So Sioul uses your server's own way first, keeps a copy only where none fits, and lets each of your devices keep it only from the freshest view, so that a phone back after a day away never writes older blocks over newer ones.
+
+Busy times say more than they seem to. A block every week at the same hour can say therapy without a title, and data that reveal health by deduction count as health data in EU law (CJEU, C-184/20, 2022); a week away on a public link says the home is empty (Cohen & Felson 1979). So the wider the audience, the coarser the view, anything about health says "Busy", and the reader sees a day at most, never when your devices last ran.
+
+More in [what the research says](../dev/research.md), findings 46 to 54 and 66.
 
 ## Compared with other apps {#compared-with-other-apps}
 
@@ -345,6 +363,7 @@ As of November 2026, from each app's own documentation.
     | Enters someone's calendar only once they accept | ✓ | ✗¹³ | ✓ | ✗ | ✗¹⁴ | ? | ? |
     | Warns when one person is needed in two places, across agendas | ✓¹⁵ | ✗ | ? | ✗ | ✗ | ? | partly¹⁶ |
     | Shares your availability as busy times only | ✓¹⁷ | ✗ | ? | ✗ | ✗ | ✓¹⁸ | partly¹⁹ |
+    | Several shares, each to its own audience, in one place | ✓²⁵ | ✗ | ✗ | ✗ | ✗ | partly²⁶ | ✗ |
     | A dated record of who took what | ✓²⁰ | ✓²¹ | partly²² | ✓²³ | ? | partly²⁴ | ✗ |
 
     1. One holder per event or task of a child's agenda, two when one parent takes the child there and the other brings them back; a kind of thing, such as the dentist, can keep its holder.
@@ -363,7 +382,7 @@ As of November 2026, from each app's own documentation.
     14. Each calendar's members see its events.
     15. Your agendas' events, the child events you take and the invitations you accepted; the pairs of agendas compared are in the Agenda settings.
     16. Mirroring blocks the time in another calendar, which prevents a double booking rather than warning of it.
-    17. On Google, your calendars shared with one address for their busy times alone; elsewhere a calendar of busy blocks, made in one of your CalDAV accounts from the agendas you pick, for one person at a time.
+    17. Your server's own way first (Google's busy-only share and public free/busy, Fastmail's link, a booking page on your own server); elsewhere a calendar of busy blocks, kept by your devices from the freshest view.
     18. "See only free/busy (hide details)", person by person.
     19. Mirrors as "Blocked Time".
     20. Who took what, and when; never when something was read.
@@ -371,6 +390,8 @@ As of November 2026, from each app's own documentation.
     22. Requests stay pending until approved or declined.
     23. When each event was created, edited and viewed.
     24. Each guest's answer.
+    25. Agenda ⚙ ▸ Your availability: each availability with its shares (a person, a group, a link, a booking tool), who keeps each one up to date, Stop on each.
+    26. Shared calendar by calendar, in each calendar's settings; appointment schedules elsewhere.
 
 **Other calendars.** Fantastical (Mac, iPhone, iPad, Apple Watch, Vision Pro, Windows) adds, with its Premium plan, a travel time before an event, from home, work or the previous event, and "time to leave" alerts from your location and the traffic; it reads any CalDAV account, places no tasks by itself, and does not describe a warning for overlapping events. Reclaim.ai, a web app over Google Calendar or Outlook only, adds travel time before and after events with an address, and time to prepare or unwind around meetings; it places habits such as lunch in a window and moves them when a meeting lands on them, and keeps your primary calendar's events in its own databases. On Android, Fossify Calendar adds your contacts' birthdays and moves events by dragging, by whole hours; Etar does neither.
 

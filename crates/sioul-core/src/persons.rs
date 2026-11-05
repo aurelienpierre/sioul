@@ -534,13 +534,13 @@ impl Persons {
     }
 
     /// The person an agenda's role names (docs/persons.md, "Agendas"): one of
-    /// that relation by name or full name; else, for a role that holds
-    /// papers, one of the household so named, whose relation stays theirs
-    /// unless it was unsaid (read from a paper), when it becomes the role's:
-    /// two of the household never share a name; else one made, of that
-    /// relation, their id name-based (`name_id`) as `read_names` makes them,
-    /// so that two devices making the same agenda make the same person. None
-    /// for an empty name, or one said to be no person. Their id.
+    /// that relation by name or full name; else anyone so named, linked as
+    /// they are (a child's other parent who is also your partner is one
+    /// person), whose relation stays theirs unless it was unsaid (read from a
+    /// paper) and the role holds papers, when it becomes the role's; else one
+    /// made, of that relation, their id name-based (`name_id`) as `read_names`
+    /// makes them, so that two devices making the same agenda make the same
+    /// person. None for an empty name, or one said to be no person. Their id.
     pub fn for_role(&mut self, relation: Relation, name: &str) -> Option<String> {
         let name = name.trim();
         if name.is_empty() || self.not_a_person(name) {
@@ -549,10 +549,8 @@ impl Persons {
         if let Some(known) = self.persons.iter().find(|p| p.relation() == relation && p.named(name)) {
             return Some(known.id.clone());
         }
-        if relation.holds_papers()
-            && let Some(known) = self.persons.iter_mut().find(|p| p.relation().holds_papers() && p.named(name))
-        {
-            if known.relation() == Relation::Unsaid {
+        if let Some(known) = self.persons.iter_mut().find(|p| p.named(name)) {
+            if known.relation() == Relation::Unsaid && relation.holds_papers() {
                 known.relation = relation.id().to_string();
             }
             return Some(known.id.clone());
@@ -1309,9 +1307,12 @@ mod tests {
         let sam = persons.for_role(Relation::Partner, "Sam").unwrap();
         assert_eq!(sam, name_id(Relation::Partner, "Sam"), "made, its id the same on every device");
         assert_eq!((persons.get(&sam).unwrap().name.as_str(), persons.get(&sam).unwrap().relation()), ("Sam", Relation::Partner));
-        assert_eq!(persons.for_role(Relation::Partner, "SAM"), Some(sam), "made once");
-        let tom = persons.for_role(Relation::OtherParent, "Noé").unwrap();
-        assert_ne!(tom, unsaid, "another parent is never a household's person");
+        assert_eq!(persons.for_role(Relation::Partner, "SAM"), Some(sam.clone()), "made once");
+        let other = persons.for_role(Relation::OtherParent, "Sam").unwrap();
+        assert_eq!(other, sam, "anyone so named is linked as they are: never a second Sam");
+        assert_eq!(persons.get(&sam).unwrap().relation(), Relation::Partner);
+        let tom = persons.for_role(Relation::OtherParent, "Tom").unwrap();
+        assert_eq!(persons.get(&tom).unwrap().relation(), Relation::OtherParent, "made with the role's relation");
         assert_eq!(persons.for_role(Relation::Child, "  "), None);
         assert_eq!(persons.for_role(Relation::Child, "banque"), None, "said to be no person");
         let dir = scratch("role");

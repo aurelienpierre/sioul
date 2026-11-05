@@ -178,7 +178,17 @@ pub struct Config {
     /// The camera, microphone and speaker calls in sites use (docs/sites.md).
     #[serde(default)]
     pub calls: CallSettings,
+    /// The settings' format (`FORMAT`): 2 once your availability is a list
+    /// (`[[agenda.availabilities]]`, `migrate_availability`); unset, 1. An
+    /// older Sioul passes over it.
+    #[serde(default)]
+    pub format: Option<u32>,
 }
+
+/// The settings' format: 2 from 5 November 2026, when the single share of
+/// your availability (`[agenda.availability]`) became a list of
+/// availabilities, each with its shares and mirrors.
+pub const FORMAT: u32 = 2;
 
 /// The devices of calls in sites, by the names the system gives them; unsaid, the system's own.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
@@ -603,9 +613,20 @@ pub struct AgendaSettings {
     /// Named sets of agendas for the filter (`[agenda.sets."<name>"]`, `agendas::Set`).
     #[serde(default)]
     pub sets: std::collections::BTreeMap<String, crate::agendas::Set>,
-    /// Your availability, shared with one person (`[agenda.availability]`, part 5).
+    /// Your availability as one share, as Sioul wrote it until 5 November
+    /// 2026 (`[agenda.availability]`): read once and made an availability
+    /// (`migrate_availability`), then taken out.
     #[serde(default)]
-    pub availability: Option<crate::availability::Availability>,
+    pub availability: Option<crate::availability::Single>,
+    /// What you give of your time, and to whom (`[[agenda.availabilities]]`,
+    /// `availability`): each with its agendas, words, shares and mirrors.
+    #[serde(default)]
+    pub availabilities: Vec<crate::availability::Availability>,
+    /// The accounts whose server Sioul tells your working hours (Settings ▸
+    /// Hours), for its free/busy (`availability::working_hours`, written as
+    /// Nextcloud's own settings page does): off at first, by account id.
+    #[serde(default)]
+    pub send_hours: Vec<String>,
 }
 
 impl AgendaSettings {
@@ -1461,6 +1482,74 @@ pub fn migrate_sites_at_start(path: &Path) -> Result<bool, String> {
     migrate_sites(path)
 }
 
+/// Your availability as the one share of before (`[agenda.availability]`)
+/// made one availability of the list (`[[agenda.availabilities]]`,
+/// `availability::Single::migrated`): named "For Sam", or "By link", in
+/// `tr`'s language; its calendar the mirror as it is (same folder, same
+/// name, its share not made again); its share as it was made. The old key
+/// then goes, and the settings' format is marked (`FORMAT`). An availability
+/// of the same id already there (another device migrated it first, and the
+/// sync brought it) is kept as it is. Returns the id of the availability it
+/// became, if one did; an old key that does not read stays as it is.
+pub fn migrate_availability(path: &Path, tr: &crate::i18n::Translator, today: jiff::civil::Date) -> Result<Option<String>, String> {
+    if !std::fs::read_to_string(path).is_ok_and(|text| text.contains("availability")) {
+        return Ok(None);
+    }
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let made = migrated_availability(&mut doc, tr, today)?;
+        if made.is_some() {
+            write_document(path, &doc)?;
+            crate::changes::said(crate::changes::Kind::Agendas);
+        }
+        Ok(made)
+    })
+}
+
+/// `migrate_availability` on a document: the id of the availability made, if any.
+pub fn migrated_availability(doc: &mut DocumentMut, tr: &crate::i18n::Translator, today: jiff::civil::Date) -> Result<Option<String>, String> {
+    #[derive(Deserialize)]
+    struct Old {
+        #[serde(default)]
+        agenda: OldAgenda,
+    }
+    #[derive(Deserialize, Default)]
+    struct OldAgenda {
+        #[serde(default)]
+        availability: Option<crate::availability::Single>,
+    }
+    if !doc.get("agenda").and_then(Item::as_table_like).is_some_and(|agenda| agenda.contains_key("availability")) {
+        return Ok(None);
+    }
+    let Ok(Old { agenda: OldAgenda { availability: Some(single) } }) = toml::from_str::<Old>(&doc.to_string()) else { return Ok(None) };
+    let with = single.with.trim();
+    let name = if with.is_empty() && !single.calendar.is_empty() {
+        tr.text("availability-name-link", None)
+    } else {
+        let mut args = crate::i18n::args();
+        args.set("who", with.to_string());
+        tr.text("availability-name-for", Some(&args))
+    };
+    let availability = single.migrated(&name, &today.to_string());
+    let list = crate::agendas::availabilities_in(doc, true)?.ok_or("agenda: no list of availabilities")?;
+    if !list.iter().any(|t| t.get("id").and_then(Item::as_str) == Some(availability.id.as_str())) {
+        list.push(crate::agendas::availability_table(&availability));
+    }
+    if let Some(agenda) = doc.get_mut("agenda").and_then(Item::as_table_like_mut) {
+        agenda.remove("availability");
+    }
+    mark_format(doc);
+    Ok(Some(availability.id))
+}
+
+/// The settings' format marked (`FORMAT`) where it is unset or lower.
+pub(crate) fn mark_format(doc: &mut DocumentMut) {
+    if doc.get("format").and_then(Item::as_integer).is_none_or(|f| f < i64::from(FORMAT)) {
+        doc.insert("format", value(i64::from(FORMAT)));
+    }
+}
+
 fn append_site(path: &Path, mut table: Table) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
@@ -2186,9 +2275,20 @@ pub(crate) fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), Strin
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(fail)?;
     }
+    // Which lists change, said to the window once written (`changes`): the accounts, the sites.
+    let before: Option<DocumentMut> = std::fs::read_to_string(path).ok().and_then(|old| old.parse().ok());
+    let differs = |key: &str| before.as_ref().and_then(|b| b.get(key)).map(|i| i.to_string()) != doc.get(key).map(|i| i.to_string());
+    let (accounts, sites) = (differs("account"), differs("site"));
     let temporary = path.with_extension("toml.new");
     std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    std::fs::rename(&temporary, path).map_err(fail)?;
+    if accounts {
+        crate::changes::said(crate::changes::Kind::Accounts);
+    }
+    if sites {
+        crate::changes::said(crate::changes::Kind::Sites);
+    }
+    Ok(())
 }
 
 /// The name under which Sioul writes its own checks of a message (RFC 8601
@@ -2827,5 +2927,84 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(read(&path).is_empty() && !text.contains("[[mail.filter]]") && text.contains("threads = true"), "{text}");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The one share of before becomes one availability, whatever its shape:
+    /// Google's busy-only share, a Nextcloud calendar shared with one
+    /// person, the same by link. Its agendas and words kept, exact and sixty
+    /// days, its calendar the mirror as it is, its share as it was made; the
+    /// old key gone, the format marked, the rest of the file as it was. Two
+    /// devices migrating the same file write the same bytes; a list another
+    /// device migrated first is kept; an older Sioul reads the file, finding
+    /// no single share any more.
+    #[test]
+    fn the_single_share_of_before_becomes_one_availability() {
+        use crate::availability::{Mirror, Share};
+        let en = crate::i18n::Translator::new("en");
+        let today = jiff::civil::date(2026, 11, 5);
+        let migrate = |text: &str, tr: &crate::i18n::Translator| {
+            let mut doc: DocumentMut = text.parse().unwrap();
+            let id = migrated_availability(&mut doc, tr, today).unwrap();
+            (doc.to_string(), id)
+        };
+        let read = |text: &str| -> Config {
+            let mut config: Config = toml::from_str(text).unwrap();
+            config.settle();
+            config
+        };
+        let google = "# mine\nlanguage = \"en\"\n\n[agenda]\nbetween = 10\n\n[agenda.availability]\naccount = \"g\"\nagendas = [\"g/primary\", \"g/work\"]\nwith = \"sam@example.org\"\nshared = true\n";
+        let (text, id) = migrate(google, &en);
+        let config = read(&text);
+        let a = &config.agenda.availabilities;
+        assert!(id.is_some() && config.agenda.availability.is_none() && config.format == Some(FORMAT) && config.agenda.between == Some(10) && text.contains("# mine"), "{text}");
+        assert_eq!((a.len(), a[0].name.as_str(), a[0].agendas.clone(), a[0].rounding, a[0].horizon, a[0].closing), (1, "For sam@example.org", vec!["g/primary".to_string(), "g/work".to_string()], 0, 60, false));
+        assert_eq!(a[0].shares, [Share { audience: "person".into(), who: "sam@example.org".into(), way: "google-freebusy".into(), account: "g".into(), link: String::new(), made: "2026-11-05".into() }]);
+        assert!(a[0].mirrors.is_empty(), "Google: nothing copied");
+        let person = "[agenda.availability]\naccount = \"cloud\"\nagendas = [\"cloud/personal\", \"work/main\"]\nwith = \"sam\"\nwords = { \"work/main\" = \"Work\" }\ncalendar = \"busy-1\"\nshared = true\n";
+        let (text, _) = migrate(person, &en);
+        let a = read(&text).agenda.availabilities;
+        assert_eq!((a[0].name.as_str(), a[0].words.get("work/main").map(String::as_str)), ("For sam", Some("Work")));
+        assert_eq!(a[0].mirrors, [Mirror { account: "cloud".into(), calendar: "busy-1".into(), transparent: false }], "the calendar of before, as it is");
+        assert_eq!((a[0].shares[0].way.as_str(), a[0].shares[0].who.as_str(), a[0].shares[0].audience.as_str()), ("mirror-share", "sam", "person"));
+        let link = "[agenda.availability]\naccount = \"cloud\"\nagendas = [\"cloud/personal\"]\nlink = true\ncalendar = \"busy-2\"\n";
+        let (text, _) = migrate(link, &en);
+        let a = read(&text).agenda.availabilities;
+        assert_eq!((a[0].name.as_str(), a[0].shares[0].way.as_str(), a[0].shares[0].audience.as_str(), a[0].shares[0].made.as_str()), ("By link", "mirror-link", "link", ""), "not shared yet: no day");
+        let fr = crate::i18n::Translator::new("fr");
+        assert_eq!(read(&migrate(link, &fr).0).agenda.availabilities[0].name, "Par lien");
+        assert_eq!(read(&migrate(person, &fr).0).agenda.availabilities[0].name, "Pour sam");
+        // Two devices, the same file: the same bytes; once migrated, nothing more.
+        let (once, _) = migrate(person, &en);
+        assert_eq!(once, migrate(person, &en).0);
+        assert_eq!(migrate(&once, &en), (once.clone(), None));
+        // The list from another device that migrated first, beside the old key not taken out here yet: kept, one.
+        let both = format!("{person}{}", once.split("[[agenda.availabilities]]").nth(1).map(|rest| format!("\n[[agenda.availabilities]]{rest}")).unwrap());
+        let (text, _) = migrate(&both, &en);
+        assert_eq!(read(&text).agenda.availabilities.len(), 1, "{text}");
+        // An older Sioul reads the file: no single share any more, nothing it cannot read.
+        #[derive(Deserialize)]
+        struct OlderAgenda {
+            #[serde(default)]
+            availability: Option<crate::availability::Single>,
+            between: Option<u32>,
+        }
+        #[derive(Deserialize)]
+        struct Older {
+            agenda: OlderAgenda,
+        }
+        let older: Older = toml::from_str(&migrate(google, &en).0).unwrap();
+        assert_eq!((older.agenda.availability, older.agenda.between), (None, Some(10)));
+        // A file without one: nothing.
+        assert_eq!(migrate("language = \"en\"\n", &en).1, None);
+        // On the disk: written, and said to every view of the agendas; once only.
+        let dir = std::env::temp_dir().join(format!("sioul-migrate-availability-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, person).unwrap();
+        let (made, said) = crate::changes::heard(|| migrate_availability(&path, &en, today).unwrap());
+        assert!(made.is_some() && said == [crate::changes::Kind::Agendas], "{said:?}");
+        assert_eq!(Config::load(&path).unwrap().agenda.availabilities.len(), 1);
+        assert_eq!(crate::changes::heard(|| migrate_availability(&path, &en, today).unwrap()), (None, Vec::new()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

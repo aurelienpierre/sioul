@@ -89,6 +89,11 @@ pub enum Kind {
     /// (`agendas`). The window reads and writes them itself (`agendas_setup`,
     /// `set_agenda_field`). Nothing in `value`.
     Agendas,
+    /// Your availabilities, the window's own block (`AvailabilitySetup.qml`):
+    /// what you give of your time, and to whom (`availability`). The window
+    /// reads and writes them itself (`availability`, `share_availability`).
+    /// Nothing in `value`.
+    Availability,
     /// The matrix of conflicts, the window's own block (`ConflictMatrix.qml`):
     /// a box per pair of agendas, the exceptions to the rule its sentence
     /// says (`agendas::Matrix`). Nothing in `value`.
@@ -157,7 +162,8 @@ impl Builder<'_> {
         use crate::capabilities::{Provider, provider_of_collection};
         let named: Vec<crate::config::NamedValue> = crate::vdir::collections(kind)
             .into_iter()
-            .filter(|c| holding.is_empty() || c.holds(holding))
+            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does).
+            .filter(|c| (holding.is_empty() || c.holds(holding)) && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
                 // Google's calendars change through its Calendar API (part 5);
@@ -476,13 +482,17 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // What each agenda is, then which of them are compared for conflicts (several agendas, 4 November 2026).
             if !crate::vdir::collections(crate::vdir::Kind::Calendars).is_empty() {
                 b.push("agendas", "agendas", Kind::Agendas, SettingValue::Text(String::new()));
+                // Below your agendas, what you give of your time and to whom (design-availability-sharing §4).
+                if config.accounts.iter().any(crate::config::Account::is_dav) {
+                    b.push("availability", "availability", Kind::Availability, SettingValue::Text(String::new()));
+                }
                 b.push("conflicts", "conflicts", Kind::Conflicts, SettingValue::Text(String::new()));
             }
             b.collections(config, "calendars", crate::vdir::Kind::Calendars, "VEVENT");
             // Where a new event goes, chosen here (until then the first that takes events).
             let writable: Vec<Choice> = crate::vdir::collections(crate::vdir::Kind::Calendars)
                 .into_iter()
-                .filter(|c| !c.read_only && c.holds("VEVENT"))
+                .filter(|c| !c.read_only && c.holds("VEVENT") && !crate::agendas::is_mirror(config, &c.account, &c.id))
                 .map(|c| Choice { value: SettingValue::Text(format!("{}/{}", c.account, c.id)), label: c.label(config, tr) })
                 .collect();
             let s = b.push("agenda.calendar", "agenda-calendar", Kind::Choice, SettingValue::Text(config.agenda.calendar.clone().unwrap_or_default()));
@@ -514,7 +524,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // Where a task pinned to a time goes, as an event (docs/tasks.md, "Pinned to a time").
             let calendars: Vec<Choice> = crate::vdir::collections(crate::vdir::Kind::Calendars)
                 .into_iter()
-                .filter(|c| !c.read_only && c.holds("VEVENT"))
+                .filter(|c| !c.read_only && c.holds("VEVENT") && !crate::agendas::is_mirror(config, &c.account, &c.id))
                 .map(|c| Choice { value: SettingValue::Text(format!("{}/{}", c.account, c.id)), label: c.label(config, tr) })
                 .collect();
             let s = b.push("tasks.blocks", "task-blocks", Kind::Choice, SettingValue::Text(config.tasks.blocks.clone().unwrap_or_default()));
@@ -1705,7 +1715,7 @@ mod tests {
         apply(&path, &config, "letters.inbox", &SettingValue::Text("/stand-in/Post".into())).unwrap();
         assert_eq!(Config::load(&path).unwrap().letters.inbox.as_deref(), Some("/stand-in/Post"));
         // Unset: the notes folder's own.
-        std::fs::write(&path, format!("case_store = \"{}\"\n", dir.join("Notes").display())).unwrap();
+        std::fs::write(&path, format!("case_store = '{}'\n", dir.join("Notes").display())).unwrap();
         let unset = Config::load(&path).unwrap();
         assert_eq!(inbox_of(&unset).map(|(_, v)| v), Some(SettingValue::Text(dir.join("Notes").join("letters").join("inbox").display().to_string())));
         let _ = std::fs::remove_dir_all(&dir);

@@ -13,7 +13,7 @@
 use crate::backend::{QtThread, Shared, json, load_config, say, tell, tr};
 use serde::Deserialize;
 use sioul_core::agendas::{self, Agenda, Whose};
-use sioul_core::availability::Availability;
+use sioul_core::availability::{Audience, Availability, Mirror, ServerKind, Share, Way};
 use sioul_core::config::{Account, Config};
 use sioul_core::vdir::{self, Collection, Kind, State};
 use sioul_sync::calendars::{self, Access, GoogleApi, Sharer, Sharing};
@@ -325,7 +325,7 @@ fn reach(id: &str) -> Result<(Collection, Agenda, Account, String), String> {
 
 /// A server's refusal, said; Google's Calendar API off in the key's project
 /// said with what to turn on.
-fn server_said(error: &sioul_sync::SyncError, account: &str) -> String {
+pub(crate) fn server_said(error: &sioul_sync::SyncError, account: &str) -> String {
     if calendars::api_off(error) { tr().text("agenda-google-api-off", None) } else { error.sentence(tr(), account) }
 }
 
@@ -415,7 +415,7 @@ fn demo_sharing(id: &str) -> Option<(Agenda, Sharing)> {
     } else {
         Vec::new()
     };
-    let busy = config.agenda.availability.as_ref().is_some_and(|a| a.link && a.account == collection.account && a.calendar == collection.id);
+    let busy = config.agenda.availabilities.iter().any(|a| a.mirror(&collection.account).is_some_and(|m| m.calendar == collection.id) && a.shares.iter().any(|s| s.account == collection.account && s.way() == Some(Way::MirrorLink)));
     let link = busy.then(|| calendars::subscription(&format!("https://cloud.example.org/remote.php/dav/public-calendars/{}", collection.id)));
     Some((agenda, Sharing { sharer: Sharer::Nextcloud, people, link, links: true }))
 }
@@ -470,222 +470,305 @@ pub(crate) fn sharing(qt: &QtThread, shared: &Arc<Shared>, id: &str, change: Cha
     });
 }
 
-// ---------------------------------------------------------------- your availability
+// ---------------------------------------------------------------- your availabilities
 
-#[derive(Deserialize)]
-struct Asked {
-    account: String,
-    agendas: Vec<String>,
-    #[serde(default)]
-    with: String,
-    #[serde(default)]
-    link: bool,
-    #[serde(default)]
-    words: BTreeMap<String, String>,
+/// Whether now is an admin window: admin's hours open (docs/areas.md).
+fn admin_now() -> bool {
+    use sioul_core::areas::Time;
+    match crate::hours::mode_now().time {
+        Time::Admin | Time::Any => true,
+        Time::Several(open) => open.admin,
+        _ => false,
+    }
 }
 
-/// What Agenda ⚙ shows of your availability, as JSON: what is shared and
-/// with whom, the accounts it can be shared from, your agendas to pick;
-/// `place`, the calendar of busy blocks Sioul keeps, whose sharing (its
-/// link) the window asks of its server as for any agenda.
+/// One share's line in Agenda ⚙ ▸ Your availability (design §4): to whom,
+/// where, what they see; its server's yes awaited, said so.
+fn share_line(config: &Config, availability: &Availability, share: &Share) -> String {
+    let server = crate::mirrors::server_name(config, &share.account);
+    let who = share.who.trim_start_matches("group:").to_string();
+    if share.made.is_empty() && share.way().is_some_and(Way::mirrored) {
+        return say("availability-share-waiting", &[("who", if who.is_empty() { tr().text("availability-by-link", None) } else { who }), ("server", server)]);
+    }
+    match share.way() {
+        Some(Way::GoogleFreeBusy) => say("availability-share-google", &[("who", who)]),
+        Some(Way::GooglePublic) => tr().text("availability-share-google-public", None),
+        Some(Way::MirrorShare | Way::MirrorFederated) if share.who.starts_with("group:") => say("availability-share-group", &[("who", who), ("server", server)]),
+        Some(Way::MirrorShare | Way::MirrorFederated) => say("availability-share-person", &[("who", who), ("server", server)]),
+        Some(Way::MirrorLink) if share.audience() == Some(Audience::Booking) => tr().text("availability-share-booking-tool", None),
+        Some(Way::MirrorLink) => say("availability-share-link", &[("days", availability.days_ahead().to_string())]),
+        Some(Way::FastmailLink) => tr().text("availability-share-fastmail", None),
+        Some(Way::Appointments) => say("availability-share-appointments", &[("server", server)]),
+        Some(Way::GoogleSchedule) => tr().text("availability-share-google-schedule", None),
+        None => tr().text("availability-share-newer", None),
+    }
+}
+
+/// What Agenda ⚙ ▸ Your availability shows, as JSON:
+/// - `head`, one line per Nextcloud account (what its users see without
+///   being asked) with its working hours' switch (`hours`), proposed on
+///   (`propose`) for an account whose agendas are for work;
+/// - `items`, each availability: its id, name, agendas (with their names),
+///   words, and shares, each with its line, who keeps it (`keeper`), its link;
+/// - `agendas`, your own to pick; `accounts`, those it can be shared from.
 pub(crate) fn availability_json() -> String {
     let config = load_config();
-    let current = config.agenda.availability.clone();
-    let line = current.as_ref().map(|a| availability_line(a)).unwrap_or_default();
-    let blocks = current.as_ref().filter(|a| !a.calendar.is_empty()).map(|a| format!("{}/{}", a.account, a.calendar)).unwrap_or_default();
-    let agendas: Vec<serde_json::Value> = agendas::all(&config).iter().filter(|a| a.whose == Whose::Yours && a.events && !a.busy() && a.id != blocks).map(|a| serde_json::json!({ "id": a.id, "name": a.name, "account": a.account })).collect();
+    let now = sioul_core::zone::now().timestamp().as_second();
+    let all = agendas::all(&config);
+    let entries = crate::devices::entries();
+    let name_of = |place: &str| all.iter().find(|a| a.id == place).map_or_else(|| place.to_string(), |a| a.name.clone());
+    let head: Vec<serde_json::Value> = crate::mirrors::servers(&config)
+        .into_iter()
+        .filter(|s| s.kind == ServerKind::Nextcloud)
+        .map(|s| {
+            let work = all.iter().any(|a| a.account == s.account && a.whose == Whose::Yours && a.for_work());
+            serde_json::json!({ "account": s.account, "server": s.host, "line": say("availability-server-sees", &[("server", s.host.clone())]), "hours": config.agenda.send_hours.contains(&s.account), "propose": work })
+        })
+        .collect();
+    let items: Vec<serde_json::Value> = config
+        .agenda
+        .availabilities
+        .iter()
+        .map(|a| {
+            let shares: Vec<serde_json::Value> = a
+                .shares
+                .iter()
+                .map(|s| serde_json::json!({ "audience": s.audience, "who": s.who, "way": s.way, "account": s.account, "link": s.link, "made": s.made, "line": share_line(&config, a, s), "keeper": crate::mirrors::keeper_line(a, s, entries.as_ref(), now) }))
+                .collect();
+            let agendas: Vec<serde_json::Value> = a.agendas.iter().map(|p| serde_json::json!({ "id": p, "name": name_of(p) })).collect();
+            let mirrors: Vec<String> = a.mirrors.iter().map(|m| format!("{}/{}", m.account, m.calendar)).collect();
+            serde_json::json!({ "id": a.id, "name": a.name, "agendas": agendas, "words": a.words, "rounding": a.rounding, "horizon": a.days_ahead(), "closing": a.closing, "shares": shares, "mirrors": mirrors })
+        })
+        .collect();
+    let agendas: Vec<serde_json::Value> = all.iter().filter(|a| a.whose == Whose::Yours && a.events && !a.busy() && !a.mirror).map(|a| serde_json::json!({ "id": a.id, "name": a.name, "account": a.account })).collect();
     let accounts: Vec<serde_json::Value> = config.accounts.iter().filter(|a| a.is_dav()).map(|a| serde_json::json!({ "id": a.id, "name": a.address.clone().unwrap_or_else(|| a.id.clone()), "google": a.auth.as_deref() == Some("google") })).collect();
-    json(&serde_json::json!({ "current": current, "line": line, "place": blocks, "agendas": agendas, "accounts": accounts }))
+    json(&serde_json::json!({ "head": head, "items": items, "agendas": agendas, "accounts": accounts }))
 }
 
-/// "Your busy times are shared with Sam.", "…by a link.", "…will be shared with Sam once its calendar is on the server."
-fn availability_line(availability: &Availability) -> String {
-    let who = if availability.link && availability.with.is_empty() { tr().text("availability-by-link", None) } else { availability.with.clone() };
-    say(if availability.shared { "availability-shared" } else { "availability-pending" }, &[("who", who)])
+#[derive(Deserialize, Default)]
+struct Asked {
+    /// The availability's id; "" for a new one.
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    agendas: Vec<String>,
+    #[serde(default)]
+    words: BTreeMap<String, String>,
+    #[serde(default)]
+    audience: String,
+    #[serde(default)]
+    who: String,
+    #[serde(default)]
+    way: String,
+    #[serde(default)]
+    account: String,
+    #[serde(default)]
+    link: String,
 }
 
-/// Your availability shared (`text`, JSON: account, agendas, with, link,
-/// words). On Google, the agendas picked (its calendars) shared busy only
-/// with the address, nothing copied; elsewhere a calendar of busy blocks made
-/// in the account, filled with the plan's upkeep and shared once its server
-/// holds it. Returns what went wrong, else "".
-pub(crate) fn share_availability(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> String {
-    let result = (|| -> Result<(), String> {
+/// The availability asked: the one of its id, its agendas and words as
+/// asked when given; a new one (`Availability::new`) when no id.
+fn asked_availability(config: &Config, asked: &Asked, audience: Audience) -> Result<Availability, String> {
+    let words: BTreeMap<String, String> = asked.words.iter().filter(|(_, w)| !w.trim().is_empty()).map(|(p, w)| (p.clone(), w.trim().to_string())).collect();
+    let mut availability = if asked.id.is_empty() {
+        let name = if asked.name.trim().is_empty() { say("availability-name-for", &[("who", asked.who.trim().trim_start_matches("group:").to_string())]) } else { asked.name.trim().to_string() };
+        Availability::new(&name, asked.agendas.clone(), audience)
+    } else {
+        config.agenda.availabilities.iter().find(|a| a.id == asked.id).cloned().ok_or_else(|| tr().text("agenda-gone", None))?
+    };
+    if !asked.agendas.is_empty() {
+        availability.agendas = asked.agendas.clone();
+        availability.words = words;
+    }
+    if availability.agendas.is_empty() {
+        return Err(tr().text("availability-pick", None));
+    }
+    Ok(availability)
+}
+
+/// The ways Sioul would use for an audience (`text`, JSON: id or agendas and
+/// words, audience, who), best first, each in one sentence: what the window
+/// offers before Share (`availability::choose`). JSON {choices, problem}.
+pub(crate) fn availability_ways(text: &str) -> String {
+    let config = load_config();
+    let result = (|| -> Result<Vec<serde_json::Value>, String> {
         let asked: Asked = serde_json::from_str(text).map_err(|e| e.to_string())?;
-        let config = load_config();
-        if config.agenda.availability.is_some() {
-            return Err(tr().text("availability-already", None));
-        }
-        let account = config.accounts.iter().find(|a| a.id == asked.account && a.is_dav()).cloned().ok_or_else(|| tr().text("agenda-new-no-account", None))?;
-        if asked.agendas.is_empty() {
-            return Err(tr().text("availability-pick", None));
-        }
-        let google = account.auth.as_deref() == Some("google");
-        let with = asked.with.trim().to_string();
-        if google && !with.contains('@') {
-            return Err(tr().text("agenda-share-google-address", None));
-        }
-        if !google && !asked.link && calendars::principal(&with, false).is_none() {
-            return Err(tr().text("agenda-share-elsewhere", None));
-        }
-        let mut availability = Availability { account: account.id.clone(), agendas: asked.agendas.clone(), with, link: asked.link && !google, words: asked.words.into_iter().filter(|(_, w)| !w.trim().is_empty()).collect(), ..Availability::default() };
-        if google {
-            // Its own calendars, shared busy only: nothing copied.
-            availability.agendas.retain(|place| place.starts_with(&format!("{}/", account.id)));
-            if availability.agendas.is_empty() {
-                return Err(tr().text("availability-google-own", None));
-            }
-            agendas::set_availability(&crate::backend::config_path(), Some(&availability))?;
-            google_availability(qt, shared, true);
-            return Ok(());
-        }
-        let calendar = vdir::create(Kind::Calendars, &account.id, &tr().text("availability-calendar", None), None, &["VEVENT"])?;
-        availability.calendar = calendar.id.clone();
-        // The demo profile asks no server: shared at once, its link stood in (`demo_sharing`).
-        availability.shared = crate::backend::offline();
-        agendas::set_availability(&crate::backend::config_path(), Some(&availability))?;
-        // Kept to yourself in Sioul: the calendar of blocks is no agenda of yours to show.
-        let _ = crate::agenda::keep_hidden(&agendas::place(&calendar), true);
-        crate::pim::nudge(shared, &account.id);
-        Ok(())
+        let audience = Audience::parse(&asked.audience).ok_or_else(|| tr().text("availability-way-none", None))?;
+        let availability = asked_availability(&config, &asked, audience)?;
+        let choices = sioul_core::availability::choose(&availability, audience, &asked.who, &crate::mirrors::servers(&config)).map_err(|id| tr().text(id, None))?;
+        Ok(choices
+            .into_iter()
+            .map(|c| {
+                let sentence = say(c.why, &[("who", c.who.trim_start_matches("group:").to_string()), ("server", crate::mirrors::server_name(&config, &c.account))]);
+                serde_json::json!({ "way": c.way.id(), "account": c.account, "who": c.who, "sentence": sentence })
+            })
+            .collect())
     })();
     match result {
-        Ok(()) => {
-            crate::agenda::show_agenda(qt, shared);
+        Ok(choices) => json(&serde_json::json!({ "choices": choices, "problem": "" })),
+        Err(problem) => json(&serde_json::json!({ "choices": [], "problem": problem })),
+    }
+}
+
+/// What waits on the servers asked in a thread, one at a time
+/// (`mirrors::marks`); what it made said, and Agenda ⚙ told again.
+fn ask_servers(qt: &QtThread, shared: &Arc<Shared>) {
+    static ASKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if ASKING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        let lines = crate::mirrors::marks(&load_config());
+        ASKING.store(false, std::sync::atomic::Ordering::SeqCst);
+        for line in lines {
+            tell(&qt, &shared, line);
+        }
+        let answer = availability_json();
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from("availability"), cxx_qt_lib::QString::from(&answer)));
+    });
+}
+
+/// An availability shared once more (`text`, JSON: id, or for a new one its
+/// name, agendas and words; audience, who, the way chosen and its account; a
+/// link you pasted for a way of your server's page). Its mirror made where
+/// its way needs one (`mirrors::add_share`), sent by the next sync; the share
+/// asked of its server once it can be. Returns what went wrong, else "".
+pub(crate) fn share_availability(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> String {
+    let config = load_config();
+    let result = (|| -> Result<Availability, String> {
+        let asked: Asked = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let audience = Audience::parse(&asked.audience).ok_or_else(|| tr().text("availability-way-none", None))?;
+        let way = Way::parse(&asked.way).ok_or_else(|| tr().text("availability-way-none", None))?;
+        let availability = asked_availability(&config, &asked, audience)?;
+        // An audience that needs another view (a link's quarter hours, a booking tool's closing
+        // block) than the one this availability already gives: an availability of its own, the
+        // same agendas and words (design §2: one mirror per view keeps its bytes the same everywhere).
+        let d = sioul_core::availability::defaults(audience);
+        let availability = if !availability.shares.is_empty() && (availability.rounding, availability.days_ahead(), availability.closing) != (d.rounding, d.horizon, d.closing) {
+            let name = format!("{} · {}", availability.name, tr().text(&format!("availability-audience-{}", audience.id()), None));
+            Availability { words: availability.words.clone(), ..Availability::new(&name, availability.agendas.clone(), audience) }
+        } else {
+            availability
+        };
+        let who = if audience == Audience::Group && !asked.who.trim().starts_with("group:") { format!("group:{}", asked.who.trim()) } else { asked.who.trim().to_string() };
+        let choice = sioul_core::availability::Choice { way, account: asked.account.clone(), who, why: "" };
+        crate::mirrors::add_share(&config, &availability, &choice, audience, &asked.link)
+    })();
+    match result {
+        Ok(availability) => {
+            for mirror in &availability.mirrors {
+                crate::pim::nudge(shared, &mirror.account);
+            }
+            ask_servers(qt, shared);
             String::new()
         }
         Err(e) => e,
     }
 }
 
-/// Google's busy-only shares made (`on`) or taken back, in a thread; the
-/// configuration then says so, and `agenda_shared("availability", …)` answers.
-fn google_availability(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
+/// An availability's name, agendas and words written (`text`, JSON: id, or
+/// none for a new one; name, agendas, words). JSON {id, problem}.
+pub(crate) fn save_availability(text: &str) -> String {
+    let config = load_config();
+    let result = (|| -> Result<String, String> {
+        let asked: Asked = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let mut availability = asked_availability(&config, &asked, Audience::Person)?;
+        if !asked.name.trim().is_empty() {
+            availability.name = asked.name.trim().to_string();
+        }
+        if availability.name.is_empty() {
+            return Err(tr().text("availability-needs-name", None));
+        }
+        agendas::put_availability(&crate::backend::config_path(), &availability)?;
+        Ok(availability.id)
+    })();
+    match result {
+        Ok(id) => json(&serde_json::json!({ "id": id, "problem": "" })),
+        Err(problem) => json(&serde_json::json!({ "id": "", "problem": problem })),
+    }
+}
+
+#[derive(Deserialize)]
+struct Stopped {
+    id: String,
+    way: String,
+    account: String,
+    #[serde(default)]
+    who: String,
+}
+
+/// One share stopped (`text`, JSON: id, way, account, who), in a thread:
+/// taken back on its server, then here; the last one takes its availability
+/// and mirrors with it (dated copies kept). With Undo, which shares again.
+pub(crate) fn stop_availability(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> String {
+    let Ok(asked) = serde_json::from_str::<Stopped>(text) else { return tr().text("agenda-gone", None) };
+    let config = load_config();
+    let Some(availability) = config.agenda.availabilities.iter().find(|a| a.id == asked.id).cloned() else { return tr().text("agenda-gone", None) };
+    let probe = Share { way: asked.way.clone(), account: asked.account.clone(), who: asked.who.clone(), ..Share::default() };
+    let Some(share) = availability.shares.iter().find(|s| s.same(&probe)).cloned() else { return tr().text("agenda-gone", None) };
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         let config = load_config();
-        let Some(mut availability) = config.agenda.availability.clone() else { return };
-        let result = (|| -> Result<(), String> {
-            if crate::backend::offline() {
-                // The demo profile asks no server.
-                return Ok(());
-            }
-            let account = config.every_account().find(|a| a.id == availability.account).cloned().ok_or_else(|| tr().text("agenda-gone", None))?;
-            let api = GoogleApi::new(account.address.as_deref().unwrap_or_default()).map_err(|e| server_said(&e, &account.id))?;
-            for place in &availability.agendas {
-                let Some(collection) = vdir::collections(Kind::Calendars).into_iter().find(|c| agendas::place(c) == *place) else { continue };
-                let Some(calendar) = calendars::google_id(&State::load(&collection.state_path()).url) else { continue };
-                if on {
-                    api.grant(&calendar, "user", &availability.with, "freeBusyReader").map_err(|e| server_said(&e, &account.id))?;
-                } else {
-                    api.revoke(&calendar, &format!("user:{}", availability.with)).map_err(|e| server_said(&e, &account.id))?;
+        let result = crate::mirrors::stop_share(&config, &availability, &share).and_then(|()| crate::mirrors::drop_share(&availability, &share));
+        match result {
+            Ok(before) => {
+                for mirror in &before.mirrors {
+                    crate::pim::nudge(&shared, &mirror.account);
                 }
+                let line = say("availability-stopped-for", &[("who", if share.who.is_empty() { tr().text("availability-by-link", None) } else { share.who.trim_start_matches("group:").to_string() })]);
+                crate::mail::offer_back(&qt, &shared, line, move |qt, shared| {
+                    let config = load_config();
+                    // As it was, but for the mirrors gone with it: made again by the share.
+                    let kept: Vec<Mirror> = before.mirrors.iter().filter(|m| vdir::collections(Kind::Calendars).iter().any(|c| c.account == m.account && c.id == m.calendar)).cloned().collect();
+                    let again = Availability { mirrors: kept, shares: before.shares.iter().filter(|s| !s.same(&share)).cloned().collect(), ..before.clone() };
+                    let choice = sioul_core::availability::Choice { way: share.way().unwrap_or(Way::MirrorLink), account: share.account.clone(), who: share.who.clone(), why: "" };
+                    match crate::mirrors::add_share(&config, &again, &choice, share.audience().unwrap_or(Audience::Person), &share.link) {
+                        Ok(_) => {
+                            crate::pim::nudge(shared, &share.account);
+                            ask_servers(qt, shared);
+                            String::new()
+                        }
+                        Err(e) => e,
+                    }
+                });
             }
-            Ok(())
-        })();
-        let path = crate::backend::config_path();
-        let said = match result {
-            Ok(()) if on => {
-                availability.shared = true;
-                let _ = agendas::set_availability(&path, Some(&availability));
-                availability_line(&availability)
-            }
-            Ok(()) => {
-                let _ = agendas::set_availability(&path, None);
-                tr().text("availability-stopped", None)
-            }
-            Err(e) => e,
-        };
-        tell(&qt, &shared, said);
-        let answer = availability_json();
-        let _ = qt.queue(move |mut sioul| sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from("availability"), cxx_qt_lib::QString::from(&answer)));
-    });
-}
-
-/// Your availability no longer shared: the share taken back (Google's rules;
-/// Nextcloud's share or link), and the calendar Sioul made removed. Returns what went wrong, else "".
-pub(crate) fn stop_availability(qt: &QtThread, shared: &Arc<Shared>) -> String {
-    let config = load_config();
-    let Some(availability) = config.agenda.availability.clone() else { return String::new() };
-    if config.every_account().find(|a| a.id == availability.account).is_some_and(|a| a.auth.as_deref() == Some("google")) {
-        google_availability(qt, shared, false);
-        return String::new();
-    }
-    let (qt, shared) = (qt.clone(), Arc::clone(shared));
-    std::thread::spawn(move || {
-        let place = format!("{}/{}", availability.account, availability.calendar);
-        // The share first, where it was made; the calendar then goes, its share with it.
-        if availability.shared {
-            let change = if availability.with.is_empty() { Change::Link(false) } else { Change::Unshare(calendars::principal(&availability.with, false).unwrap_or_default()) };
-            let _ = ask(&place, &change);
+            Err(problem) => tell(&qt, &shared, problem),
         }
-        if let Some(collection) = vdir::collections(Kind::Calendars).into_iter().chain(vdir::every_collection(Kind::Calendars)).find(|c| agendas::place(c) == place) {
-            let _ = vdir::remove_collection(&collection);
-            crate::pim::nudge(&shared, &collection.account);
-        }
-        let _ = agendas::set_availability(&crate::backend::config_path(), None);
-        let _ = crate::agenda::keep_hidden(&place, false);
-        tell(&qt, &shared, tr().text("availability-stopped", None));
         let answer = availability_json();
         let _ = qt.queue(move |mut sioul| sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from("availability"), cxx_qt_lib::QString::from(&answer)));
     });
     String::new()
 }
 
-/// The calendar of busy blocks kept up to date, from the plan's run (the
-/// children's upkeep's moment): the blocks of the coming two months written,
-/// those no longer wanted taken out; once its server holds it, shared once.
-pub(crate) fn availability_upkeep(qt: &QtThread, shared: &Arc<Shared>) {
-    let config = load_config();
-    let Some(availability) = config.agenda.availability.clone().filter(|a| !a.calendar.is_empty()) else { return };
-    let Some(collection) = vdir::collections(Kind::Calendars).into_iter().find(|c| c.account == availability.account && c.id == availability.calendar) else { return };
-    let changed = keep_blocks(&collection, &availability);
-    if changed {
-        crate::pim::nudge(shared, &collection.account);
+/// Your working hours told to an account's server, or no longer (`[agenda] send_hours`).
+pub(crate) fn availability_hours(qt: &QtThread, shared: &Arc<Shared>, account: &str, on: bool) -> String {
+    if let Err(e) = agendas::set_send_hours(&crate::backend::config_path(), account, on) {
+        return e;
     }
-    let state = State::load(&collection.state_path());
-    if !availability.shared && !state.url.is_empty() && !state.pending {
-        let (qt, shared, place) = (qt.clone(), Arc::clone(shared), agendas::place(&collection));
-        std::thread::spawn(move || {
-            let change = if availability.with.is_empty() { Change::Link(true) } else { Change::Share { who: availability.with.clone(), access: Access::Read } };
-            match ask(&place, &change) {
-                Ok((agenda, now)) => {
-                    let done = Availability { shared: true, ..availability };
-                    let _ = agendas::set_availability(&crate::backend::config_path(), Some(&done));
-                    tell(&qt, &shared, availability_line(&done));
-                    // Agenda ⚙ open says so at once: the line, and the link the server gave.
-                    let (sharing, answer) = (sharing_json(&agenda, &now, ""), availability_json());
-                    let _ = qt.queue(move |mut sioul| {
-                        sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from(&place), cxx_qt_lib::QString::from(&sharing));
-                        sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from("availability"), cxx_qt_lib::QString::from(&answer));
-                    });
-                }
-                Err(e) => tell(&qt, &shared, e),
-            }
-        });
-    }
+    ask_servers(qt, shared);
+    String::new()
 }
 
-/// The calendar's files made what the blocks say (`availability::wanted`):
-/// whether anything was written.
-fn keep_blocks(collection: &Collection, availability: &Availability) -> bool {
+/// Your availabilities kept, from the plan's run and after each calendar
+/// sync that brought a change (design §3): the mirrors from the freshest
+/// view (`mirrors::keep`), their accounts' syncs nudged to send them; what is
+/// said once at an admin window; what waits on the servers asked.
+pub(crate) fn availability_upkeep(qt: &QtThread, shared: &Arc<Shared>) {
+    let config = load_config();
+    if config.agenda.availabilities.is_empty() && config.agenda.send_hours.is_empty() {
+        return;
+    }
     let now = sioul_core::zone::now().timestamp().as_second();
-    let events = sioul_core::agenda::occurrences(now - 86_400, now + 61 * 86_400);
-    let wanted = sioul_core::availability::wanted(&events, availability, &tr().text("availability-busy", None));
-    let mut changed = false;
-    for (name, text) in &wanted {
-        let path = collection.dir.join(name);
-        if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) && vdir::write_item(&path, text).is_ok() {
-            changed = true;
-        }
+    for account in crate::mirrors::keep(&config, now) {
+        crate::pim::nudge(shared, &account);
     }
-    for path in collection.items() {
-        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        if !wanted.contains_key(&name) && vdir::remove_item(&path).is_ok() {
-            changed = true;
-        }
+    for line in crate::mirrors::notices(&config, admin_now()) {
+        tell(qt, shared, line);
     }
-    changed
+    ask_servers(qt, shared);
 }
 
 #[cfg(test)]
@@ -731,11 +814,12 @@ mod tests {
         }
     }
 
-    /// Your availability by a link: Agenda ⚙ gets its calendar's place, whose
-    /// sharing it asks as any agenda's (its link); the demo profile's stand-in
-    /// gives that calendar alone a link, the feed an agenda app subscribes to.
+    /// An availability shared by a link names its mirror (Agenda ⚙ opens
+    /// its line, the demo stands in for its link, the feed), every view of it
+    /// told; a share's line and who keeps it said; the way chosen for a link
+    /// in one sentence.
     #[test]
-    fn availability_by_link_names_its_calendar() {
+    fn availability_by_link_names_its_mirror() {
         sioul_core::config::stand_ins_only();
         let dir = sioul_core::config::data_dir().join(format!("p5-busy-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -744,11 +828,15 @@ mod tests {
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
         let busy = vdir::create(Kind::Calendars, "p5-busy", "Busy times", None, &["VEVENT"]).unwrap();
         let home = vdir::create(Kind::Calendars, "p5-busy", "Home", None, &["VEVENT"]).unwrap();
-        let shared = Availability { account: "p5-busy".into(), agendas: vec![agendas::place(&home)], link: true, calendar: busy.id.clone(), shared: true, ..Availability::default() };
-        let ((), said) = sioul_core::changes::heard(|| agendas::set_availability(&config, Some(&shared)).unwrap());
+        let share = Share { audience: "link".into(), way: "mirror-link".into(), account: "p5-busy".into(), made: "2026-11-05".into(), ..Share::default() };
+        let shared = Availability { mirrors: vec![Mirror { account: "p5-busy".into(), calendar: busy.id.clone(), transparent: true }], shares: vec![share], ..Availability::new("By link", vec![agendas::place(&home)], Audience::Link) };
+        let ((), said) = sioul_core::changes::heard(|| agendas::put_availability(&config, &shared).unwrap());
         assert_eq!(said, [sioul_core::changes::Kind::Agendas], "Agenda ⚙ hears it");
         let shown: serde_json::Value = serde_json::from_str(&availability_json()).unwrap();
-        assert_eq!(shown["place"].as_str(), Some(agendas::place(&busy).as_str()));
+        let item = &shown["items"][0];
+        assert_eq!(item["mirrors"][0].as_str(), Some(agendas::place(&busy).as_str()));
+        assert_eq!(item["shares"][0]["line"].as_str().map(str::to_string), Some(say("availability-share-link", &[("days", "14".into())])));
+        assert!(!item["shares"][0]["keeper"].as_str().unwrap_or_default().is_empty());
         let link = demo_sharing(&agendas::place(&busy)).unwrap().1.link.unwrap_or_default();
         assert!(link.starts_with("https://cloud.example.org/") && link.ends_with("?export"), "{link}");
         assert_eq!(demo_sharing(&agendas::place(&home)).unwrap().1.link, None, "no other calendar's");

@@ -897,6 +897,110 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
     account_error.map_or(Ok(report), Err)
 }
 
+/// What a check of named calendars found (`check_named`), by folder id.
+#[derive(Debug, Default)]
+pub struct Checked {
+    /// Nothing changed there since the last pull: their copies here said
+    /// current now (`State::pulled`), no item read.
+    pub unchanged: Vec<String>,
+    /// Synced, as the account's sync does it: what changed here sent, what changed there brought.
+    pub synced: Vec<String>,
+    /// Not known here yet (never listed, or removed), or not synced: their problems.
+    pub problems: Vec<SyncError>,
+    /// The account's sync held its lock: nothing was asked, the sync brings it all.
+    pub busy: bool,
+}
+
+/// A calendar as this device knows it, without listing its home: what its
+/// state and its folder say. None when it was never listed here, or is removed.
+fn listed_here(account: &str, id: &str) -> Option<Listed> {
+    let state = State::load(&vdir::state_path(account, Kind::Calendars, id));
+    if state.url.is_empty() || state.removed || state.deleted || state.pending {
+        return None;
+    }
+    let collection = vdir::every_collection(Kind::Calendars).into_iter().find(|c| c.account == account && c.id == id)?;
+    Some(Listed {
+        kind: Kind::Calendars,
+        url: state.url.clone(),
+        id: id.to_string(),
+        name: collection.name.clone(),
+        color: collection.color.clone(),
+        read_only: state.read_only,
+        // Its ctag unknown, never the one kept: the check found a change, so the pull goes on (`both_ways`).
+        ctag: None,
+        sync_token: state.sync_token.clone(),
+        components: state.components.clone(),
+        transparent: state.transparent,
+        owned: state.owned,
+    })
+}
+
+/// Only the calendars of `account` named by `ids` (folder ids) brought up to
+/// date, inside a burst of network that runs anyway (a phone's background
+/// step: design-availability-sharing §3): for each, one sync-collection
+/// REPORT with its token (RFC 6578, a few hundred bytes when nothing
+/// changed). Nothing changed there and nothing here: its copy is said current
+/// now (`State::pulled`, when the check began), and no item is read or
+/// written. Else it is synced as the account's sync does it (`sync_part`).
+/// Its home is not listed, nor its other calendars or address books. The
+/// account's sync holding its lock, nothing is asked (`Checked::busy`): that
+/// sync brings it all.
+pub fn check_named(account: &Account, ids: &[String]) -> Result<Checked, SyncError> {
+    let homes = Homes::load(&account.id);
+    if homes.is_empty() {
+        return Err(SyncError::NoServer);
+    }
+    let client = client_for(account)?;
+    client.keep_to(&homes);
+    let Some(_lock) = crate::fetch::lock_within(&state_dir().join("dav").join(format!("{}.lock", account.id)), Duration::from_secs(5)) else { return Ok(Checked { busy: true, ..Checked::default() }) };
+    Ok(check_named_with(&client, &account.id, ids))
+}
+
+/// `check_named` with a client, under the account's lock.
+pub(crate) fn check_named_with(client: &Client, account: &str, ids: &[String]) -> Checked {
+    let mut checked = Checked::default();
+    for id in ids {
+        let Some(listed) = listed_here(account, id) else {
+            checked.problems.push(SyncError::Server(format!("{account}/{id}: not on its server yet")));
+            continue;
+        };
+        let state_path = vdir::state_path(account, Kind::Calendars, id);
+        let mut state = State::load(&state_path);
+        let dir = Kind::Calendars.root().join(account).join(id);
+        if !has_local_changes(&dir, Kind::Calendars, &state)
+            && let Some(token) = state.sync_token.clone()
+        {
+            let began = jiff::Timestamp::now().as_second();
+            match changes_since(client, &listed.url, &token) {
+                Ok(Some((changed, gone, new))) if changed.is_empty() && gone.is_empty() => {
+                    if let Some(new) = new {
+                        state.sync_token = Some(new);
+                    }
+                    state.pulled = Some(began);
+                    match state.save(&state_path) {
+                        Ok(()) => checked.unchanged.push(id.clone()),
+                        Err(e) => checked.problems.push(SyncError::Disk(e)),
+                    }
+                    continue;
+                }
+                // Cut: nothing pulled, said; its copy stays as old as it was.
+                Err(e) => {
+                    checked.problems.push(e);
+                    continue;
+                }
+                // Changed there, or the token forgotten: synced below.
+                Ok(_) => {}
+            }
+        }
+        let mut report = Report::default();
+        match sync_part(client, account, &listed, &mut report, true, None) {
+            Ok(_) => checked.synced.push(id.clone()),
+            Err(e) => checked.problems.push(e),
+        }
+    }
+    checked
+}
+
 /// Every listed collection made here, at once and in one pass: its folder,
 /// its name and colour (`vdir::prepare`), its state (address, read-only,
 /// components), empty until pulled. The first one that cannot be written is
@@ -2687,6 +2791,42 @@ mod tests {
 
     fn puts(dav: &Dav) -> Vec<String> {
         dav.seen().into_iter().filter(|s| s.starts_with("PUT")).collect()
+    }
+
+    /// The availability's check of its sources (design-availability-sharing
+    /// §3): only the calendars named, one REPORT each and nothing more while
+    /// nothing changed there or here, their copies said current; a change
+    /// there brought, one here sent; a calendar never listed here said, not asked.
+    #[test]
+    fn a_check_of_named_calendars_reads_nothing_while_nothing_changed() {
+        home();
+        let (dav, home) = Dav::start(&["personal", "work", "other"]);
+        dav.put("personal", "a.ics", &event("a", "A"));
+        let client = client();
+        for name in ["personal", "work", "other"] {
+            sync_one(&client, "named", &home, name).unwrap();
+        }
+        let file = folder("named", "personal").join("a.ics");
+        let (text, modified) = (std::fs::read(&file).unwrap(), std::fs::metadata(&file).unwrap().modified().unwrap());
+        let began = jiff::Timestamp::now().as_second();
+        let seen = dav.seen().len();
+        let checked = check_named_with(&client, "named", &["personal".into(), "work".into()]);
+        assert_eq!((checked.unchanged.clone(), checked.synced.len(), checked.problems.len()), (vec!["personal".to_string(), "work".to_string()], 0, 0), "{checked:?}");
+        let asked: Vec<String> = dav.seen()[seen..].to_vec();
+        assert_eq!(asked.len(), 2, "one REPORT each, no item read: {asked:?}");
+        assert!(asked.iter().all(|r| r.starts_with("REPORT /cal/personal") || r.starts_with("REPORT /cal/work")), "{asked:?}");
+        assert!(state_of("named", "personal").pulled.is_some_and(|at| at >= began) && state_of("named", "work").pulled.is_some_and(|at| at >= began));
+        assert_eq!((std::fs::read(&file).unwrap(), std::fs::metadata(&file).unwrap().modified().unwrap()), (text, modified), "nothing written");
+        // Changed there: brought; changed here: sent.
+        dav.put("work", "b.ics", &event("b", "B"));
+        std::fs::write(folder("named", "personal").join("mine.ics"), event("mine", "Mine")).unwrap();
+        let checked = check_named_with(&client, "named", &["personal".into(), "work".into()]);
+        assert_eq!((checked.unchanged.len(), checked.synced.clone()), (0, vec!["personal".to_string(), "work".to_string()]), "{checked:?}");
+        let brought = local_files(&folder("named", "work"), Kind::Calendars).iter().any(|f| std::fs::read_to_string(folder("named", "work").join(f)).is_ok_and(|t| t.contains("UID:b\r\n")));
+        assert!(brought && dav.items("personal").values().any(|t| t.contains("UID:mine\r\n")), "{:?} {:?}", local_files(&folder("named", "work"), Kind::Calendars), dav.items("personal").keys().collect::<Vec<_>>());
+        assert!(dav.seen()[seen..].iter().all(|r| !r.contains("/cal/other") && !r.starts_with("PROPFIND /cal/ ")), "neither the others nor the home asked: {:?}", dav.seen());
+        let checked = check_named_with(&client, "named", &["nowhere".into()]);
+        assert_eq!((checked.unchanged.len(), checked.synced.len(), checked.problems.len()), (0, 0, 1));
     }
 
     /// F1: the first pull of a big calendar, cut at its second batch (Android
