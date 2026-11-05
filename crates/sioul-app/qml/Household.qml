@@ -43,6 +43,15 @@ ColumnLayout {
     spacing: 4
     Component.onCompleted: household.reload()
 
+    // A person made, changed or gone, here or on another device: shown at once.
+    Connections {
+        target: household.sioul
+
+        function onPersonsChanged() {
+            household.reload()
+        }
+    }
+
     RowLayout {
         Layout.fillWidth: true
         spacing: 6

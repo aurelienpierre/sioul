@@ -2188,6 +2188,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
                         *cache = None;
                     }
                     crate::work::show_work(&qt, &shared);
+                    // Each kind it brought said to the views that show it (changes.rs).
+                    crate::changes::arrived(&outcome.written);
                     let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
                     let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(&names)));
                 }

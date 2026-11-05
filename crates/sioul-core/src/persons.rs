@@ -360,7 +360,10 @@ impl Persons {
         std::fs::rename(&fresh, path).map_err(|e| {
             let _ = std::fs::remove_file(&fresh);
             fail(e)
-        })
+        })?;
+        // Every view of a person reads them again (the household, a person's page, the choosers).
+        crate::changes::said(crate::changes::Kind::Persons);
+        Ok(())
     }
 
     pub fn get(&self, id: &str) -> Option<&Person> {
@@ -528,6 +531,33 @@ impl Persons {
         }
         self.names_read = NAMES_READ;
         *self != before
+    }
+
+    /// The person an agenda's role names (docs/persons.md, "Agendas"): one of
+    /// that relation by name or full name; else, for a role that holds
+    /// papers, one of the household so named, whose relation stays theirs
+    /// unless it was unsaid (read from a paper), when it becomes the role's:
+    /// two of the household never share a name; else one made, of that
+    /// relation, their id name-based (`name_id`) as `read_names` makes them,
+    /// so that two devices making the same agenda make the same person. None
+    /// for an empty name, or one said to be no person. Their id.
+    pub fn for_role(&mut self, relation: Relation, name: &str) -> Option<String> {
+        let name = name.trim();
+        if name.is_empty() || self.not_a_person(name) {
+            return None;
+        }
+        if let Some(known) = self.persons.iter().find(|p| p.relation() == relation && p.named(name)) {
+            return Some(known.id.clone());
+        }
+        if relation.holds_papers()
+            && let Some(known) = self.persons.iter_mut().find(|p| p.relation().holds_papers() && p.named(name))
+        {
+            if known.relation() == Relation::Unsaid {
+                known.relation = relation.id().to_string();
+            }
+            return Some(known.id.clone());
+        }
+        self.found(relation, name)
     }
 
     /// The person of this relation and name, made when there is none (and
@@ -1258,5 +1288,38 @@ mod tests {
         assert_eq!(inside[0].age(today), Some(12));
         assert_eq!(inside[0].age(day("2026-05-12")), Some(12));
         assert_eq!(inside[0].age(day("2026-05-11")), Some(11));
+    }
+
+    /// An agenda's role names its person: one of the relation linked, an
+    /// unsaid one so named given the role, else one made, the same id on
+    /// every device; nobody for an empty name or one said to be no person.
+    /// Saved, the store says so to the window (`changes`).
+    #[test]
+    fn an_agenda_s_role_finds_or_makes_its_person() {
+        let mut persons = Persons::default();
+        let lea = persons.put(Person { name: "Léa".into(), full_name: "Léa Martin".into(), relation: "child".into(), ..Person::default() });
+        let unsaid = persons.put(Person { name: "Noé".into(), ..Person::default() });
+        let kin = persons.put(Person { name: "Alix".into(), relation: "kin".into(), ..Person::default() });
+        persons.not_persons.push("Banque".into());
+        assert_eq!(persons.for_role(Relation::Partner, "Alix"), Some(kin.clone()), "one of the household so named, never a second");
+        assert_eq!(persons.get(&kin).unwrap().relation(), Relation::Kin, "their relation stays theirs");
+        assert_eq!(persons.for_role(Relation::Child, " lea martin "), Some(lea.clone()), "by full name, case and accents aside");
+        assert_eq!(persons.for_role(Relation::Child, "Noé"), Some(unsaid.clone()), "a paper's unsaid person takes the role");
+        assert_eq!(persons.get(&unsaid).unwrap().relation(), Relation::Child);
+        let sam = persons.for_role(Relation::Partner, "Sam").unwrap();
+        assert_eq!(sam, name_id(Relation::Partner, "Sam"), "made, its id the same on every device");
+        assert_eq!((persons.get(&sam).unwrap().name.as_str(), persons.get(&sam).unwrap().relation()), ("Sam", Relation::Partner));
+        assert_eq!(persons.for_role(Relation::Partner, "SAM"), Some(sam), "made once");
+        let tom = persons.for_role(Relation::OtherParent, "Noé").unwrap();
+        assert_ne!(tom, unsaid, "another parent is never a household's person");
+        assert_eq!(persons.for_role(Relation::Child, "  "), None);
+        assert_eq!(persons.for_role(Relation::Child, "banque"), None, "said to be no person");
+        let dir = scratch("role");
+        let path = dir.join(FILE);
+        let (made, said) = crate::changes::heard(|| change(&path, |p| p.for_role(Relation::Child, "Léa")).unwrap());
+        assert!(made.is_some() && said == [crate::changes::Kind::Persons], "{said:?}");
+        let (_, again) = crate::changes::heard(|| change(&path, |p| p.for_role(Relation::Child, "Léa")).unwrap());
+        assert!(again.is_empty(), "nothing written, nothing said");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
