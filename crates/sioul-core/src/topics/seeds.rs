@@ -2,18 +2,21 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! The first topics, proposed from what the person already sorted
-//! (docs/topics.md, "How topics start"): their folders, their projects and
-//! their contacts' categories, each a seed that names past messages. Nothing
-//! is asked: the seeds are rules written before, which the model then learns
-//! beyond (docs/research/mail-topics.md, §3).
+//! (docs/topics.md, "How topics start"): their folders and their contacts'
+//! categories, each a seed that names past messages. Projects are no seed:
+//! a project is something to complete, a topic a standing part of life, and
+//! one says nothing of the other. Nothing is asked: the seeds are rules
+//! written before, which the model then learns beyond
+//! (docs/research/mail-topics.md, §3).
 //!
-//! - **Seeds that share senders join** into one topic: a folder and a
-//!   category, a folder and a project, projects of the same kind
-//!   ("Taxes 2024", "Taxes 2025"). Two folders never join, nor two
-//!   categories: the person kept them apart. A topic holds at most one
-//!   folder and one category.
-//! - **Its name** is the folder's, else the category's, as written; else its
-//!   largest project's title, its years left out.
+//! - **A folder and a category join** into one topic when they share
+//!   senders, or have one name (`topics::slug`: the folder "Chorale" and the
+//!   category "chorale"). Two folders never join, nor two categories: the
+//!   person kept them apart.
+//! - **A preset's mail** (`topics::presets`) is a seed too, named in your
+//!   language; it joins a folder or a category of its name or its senders.
+//!   Two presets never join.
+//! - **Its name** is the folder's, else the category's, as written; else the preset's.
 //! - **One topic per message**: a message two topics name goes to the more
 //!   specific one, the one whose seeds name fewer messages; the topic says
 //!   how many it gave (`Topic::given`).
@@ -33,8 +36,8 @@ pub enum Kind {
     Folder,
     /// A category of their contacts' cards (vCard CATEGORIES: Nextcloud's groups).
     Category,
-    /// A project of the notes folder: its routes, its ties, its conversations.
-    Project,
+    /// A topic preset's rules (`topics::presets`), for senders Sioul's checks verify.
+    Preset,
 }
 
 /// One seed: what it comes from, its name as the person wrote it, and the
@@ -220,8 +223,8 @@ fn senders_of(mail: &[Mail], messages: &[usize]) -> usize {
     messages.iter().filter_map(|&m| mail[m].sender.as_deref()).collect::<HashSet<&str>>().len()
 }
 
-/// The seeds joined into groups: by shared senders, the closest pairs first,
-/// never two folders nor two categories in one group.
+/// The seeds joined into groups: by one name, then by shared senders, the
+/// closest pairs first, never two folders nor two categories in one group.
 fn joined(mail: &[Mail], seeds: &[Seed], overlap: f64) -> Vec<Group> {
     let senders: Vec<HashSet<&str>> = seeds.iter().map(|s| s.messages.iter().filter_map(|&m| mail[m].sender.as_deref()).collect()).collect();
     let shared = |small: usize, large: usize| -> f64 {
@@ -232,8 +235,12 @@ fn joined(mail: &[Mail], seeds: &[Seed], overlap: f64) -> Vec<Group> {
     let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
     for a in 0..seeds.len() {
         for b in a + 1..seeds.len() {
-            let (ka, kb) = (seeds[a].kind, seeds[b].kind);
-            if ka == kb && ka != Kind::Project {
+            if seeds[a].kind == seeds[b].kind {
+                continue;
+            }
+            // One name: joined before any share of senders.
+            if super::slug(&seeds[a].name, &[]) == super::slug(&seeds[b].name, &[]) {
+                pairs.push((2.0, a, b));
                 continue;
             }
             let (small, large) = if seeds[a].messages.len() <= seeds[b].messages.len() { (a, b) } else { (b, a) };
@@ -297,17 +304,10 @@ fn assign(groups: &[Group], active: &[bool]) -> Vec<Vec<usize>> {
     owned
 }
 
-/// A group's name: its folder's, else its category's, as written; else its
-/// largest project's title without its years ("Taxes 2025" → "Taxes").
+/// A group's name: its folder's, else its category's, as written; else its preset's.
 fn name_of(seeds: &[Seed], group: &Group) -> String {
     let first = |kind: Kind| group.seeds.iter().map(|&s| &seeds[s]).filter(|s| s.kind == kind).max_by(|a, b| a.messages.len().cmp(&b.messages.len()).then_with(|| b.name.cmp(&a.name)));
-    if let Some(seed) = first(Kind::Folder).or_else(|| first(Kind::Category)) {
-        return seed.name.clone();
-    }
-    let title = first(Kind::Project).map_or("", |s| s.name.as_str());
-    let years = |word: &str| !word.is_empty() && word.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | '/' | '–' | '.'));
-    let kept: Vec<&str> = title.split_whitespace().filter(|w| !years(w)).collect();
-    if kept.is_empty() { title.to_string() } else { kept.join(" ").trim_end_matches(['-', '–', ',', ':']).trim().to_string() }
+    first(Kind::Folder).or_else(|| first(Kind::Category)).or_else(|| first(Kind::Preset)).map_or_else(String::new, |s| s.name.clone())
 }
 
 #[cfg(test)]
@@ -328,7 +328,7 @@ mod tests {
     }
 
     /// A folder and a category of the same senders join, named after the
-    /// folder; two folders never join; a project's years leave its name.
+    /// folder; a folder and a category of one name join; two folders never join.
     #[test]
     fn seeds_that_share_senders_join() {
         let mut mail = Vec::new();
@@ -338,8 +338,9 @@ mod tests {
         let seeds = vec![
             seed(Kind::Folder, "Chorale", &choir[..30]),
             seed(Kind::Category, "Choir friends", &choir[10..]),
-            seed(Kind::Project, "Taxes 2024", &tax),
-            seed(Kind::Project, "Taxes 2025", &tax_more),
+            // A folder "Taxes" holding few of the office's messages, a category "taxes" all of them: one name, one topic.
+            seed(Kind::Category, "taxes", &[tax.clone(), tax_more.clone()].concat()),
+            seed(Kind::Folder, "Taxes", &tax[..5]),
             // Another folder of the same senders as the first: kept apart.
             seed(Kind::Folder, "Concerts", &choir[20..]),
         ];
@@ -348,6 +349,7 @@ mod tests {
         assert_eq!(names, vec!["Taxes", "Chorale", "Concerts"], "{proposal:#?}");
         let taxes = &proposal.topics[0];
         assert_eq!((taxes.count, taxes.senders, taxes.id.as_str()), (60, 2, "taxes"));
+        assert_eq!(taxes.seeds.iter().map(|s| s.kind).collect::<Vec<_>>(), vec![Kind::Category, Kind::Folder]);
         // The folder and the category joined; "Concerts", a folder, stood apart and,
         // more specific, kept the 20 messages both name.
         let chorale = &proposal.topics[1];

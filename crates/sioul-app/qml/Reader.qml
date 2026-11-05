@@ -33,6 +33,14 @@ Panel {
     // The message asked for does not read here (moved, deleted, not on this
     // device yet): the pane says so in its place, never a blank page.
     property bool missing: false
+    // Its topic in words: "Chorale · given by you"; "" for none (`mailbox::Row::topic`).
+    readonly property string topicWords: {
+        if (!reader.item || !reader.item.topic)
+            return ""
+        const why = reader.item.topic_why
+        const said = why === "folder" || why === "category" ? reader.sioul.textWith("topic-why-" + why, "name", reader.item.topic_from || "") : why ? reader.sioul.text("topic-why-" + why) : ""
+        return said ? reader.item.topic + "  ·  " + said : reader.item.topic
+    }
     // What the window's one opener found (`window.openMail`, openmail.rs), when
     // the message was asked for from elsewhere: {state, place, reused}; null
     // for one opened from its list. Until a copy is found, the reader's place
@@ -676,6 +684,39 @@ Panel {
                             textFormat: Text.PlainText
                             color: reader.item ? reader.trustColor(reader.item.trust_level) : reader.theme.muted
                             elide: Text.ElideRight
+                        }
+                        // Its topic, quietly, and why; "Topic…" to give one, change it or take it off.
+                        RowLayout {
+                            objectName: "readerTopic"
+                            visible: reader.key !== "" && !reader.missing
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Label {
+                                visible: text !== ""
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 0
+                                text: reader.topicWords
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                font.pixelSize: 13
+                                color: reader.theme.muted
+                            }
+                            Button {
+                                id: topicButton
+
+                                objectName: "readerTopicButton"
+                                flat: true
+                                font.pixelSize: 13
+                                text: reader.sioul.text("topic-menu")
+                                onClicked: readerTopics.openAt(topicButton, JSON.stringify([reader.item && reader.item.keys ? reader.item.keys.split("\n") : [reader.key]]), reader.key, reader.item ? (reader.item.topic_id || "") : "")
+                            }
+                            TopicMenu {
+                                id: readerTopics
+
+                                sioul: reader.sioul
+                                theme: reader.theme
+                            }
                         }
                         // Encrypted or signed with OpenPGP, and what came of it.
                         RowLayout {

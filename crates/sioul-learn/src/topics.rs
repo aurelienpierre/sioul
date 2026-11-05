@@ -41,7 +41,7 @@
 //!    that static embedding ([`crate::model2vec`]), tested the same way,
 //!    and how it folds.
 
-use crate::corpus::{self, Place};
+use crate::corpus;
 use crate::labels::{self, Copy, Label};
 use crate::model2vec::StaticModel;
 use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now, spamcore, train};
@@ -49,7 +49,7 @@ use fasttext::matrix::Matrix;
 use serde::Serialize;
 use sioul_core::contacts::Contact;
 use sioul_core::folders::{Folder, Role};
-use sioul_core::projects::ProjectStore;
+use sioul_core::mailcache::Line;
 use sioul_core::spam::tokenize::Lexicon;
 use sioul_core::topics::seeds::{self, Kind, Proposal, Seed};
 use sioul_core::topics::table::{self, Band, Judged, Precision, Table};
@@ -71,22 +71,45 @@ const SMALL: u64 = 50;
 /// Folders' names that are a server's own, never a topic: Gmail's.
 const SYSTEM_PREFIXES: [&str; 2] = ["[Gmail]", "[Google Mail]"];
 
-/// What topics read besides the corpus: the projects (with their ties), the
-/// contacts (their categories), each account's folders as last listed (their names as read).
+/// One account's Maildir as topics read it: its id, its folder, its folders
+/// as its server last listed them (`folders::saved`: their names as read,
+/// their purpose), the authserv-ids it trusts (`Config::mail_sources`).
+#[derive(Debug, Clone, Default)]
+pub struct Maildir {
+    pub account: String,
+    pub root: PathBuf,
+    pub folders: Vec<Folder>,
+    pub trusted: Vec<String>,
+}
+
+/// What topics read besides the mail: each account's Maildir, the contacts
+/// (their categories), your own addresses. Projects are not read: a
+/// project is something to complete, and says nothing of a message's topic.
 #[derive(Debug, Clone, Default)]
 pub struct Sources {
-    pub projects: Option<ProjectStore>,
+    pub maildirs: Vec<Maildir>,
     pub contacts: Vec<Contact>,
-    pub folders: BTreeMap<String, Vec<Folder>>,
+    pub own: Vec<String>,
+    /// The topic presets' rules (`topics::presets`): their mail counted, and seeds.
+    pub presets: Option<std::sync::Arc<sioul_core::topics::presets::Matcher>>,
 }
 
 impl Sources {
-    /// The configuration's: the notes folder's projects, every address book, every account's folders.
+    /// The configuration's: every mail account's Maildir, every address book.
     pub fn of(config: &sioul_core::config::Config) -> Sources {
-        use sioul_core::links::LocalLinks;
-        let projects = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&LocalLinks::load(&LocalLinks::default_path())));
-        let folders = config.every_account().map(|a| (a.id.clone(), sioul_core::folders::saved(&a.id))).collect();
-        Sources { projects, contacts: sioul_core::contacts::all(), folders }
+        let sources = config.mail_sources();
+        let maildirs = config
+            .accounts
+            .iter()
+            .filter(|a| a.kind == sioul_core::config::AccountKind::Imap)
+            .map(|a| Maildir {
+                account: a.id.clone(),
+                root: a.maildir_path(),
+                folders: sioul_core::folders::saved(&a.id),
+                trusted: sources.iter().find(|s| s.account.as_deref() == Some(a.id.as_str())).map(|s| s.trusted_ids.clone()).unwrap_or_default(),
+            })
+            .collect();
+        Sources { maildirs, contacts: sioul_core::contacts::all(), own: sioul_core::porch::own_addresses(&sources), presets: Some(sioul_core::topics::presets::Matcher::current()) }
     }
 }
 
@@ -122,6 +145,8 @@ pub struct Options {
     pub compare: bool,
     /// A Model2Vec folder: its centroid measured too.
     pub model2vec: Option<PathBuf>,
+    /// The language seeds from presets are named in ("fr": "Banque").
+    pub language: String,
 }
 
 impl Default for Options {
@@ -144,6 +169,7 @@ impl Default for Options {
             unused: 365 * 86_400,
             compare: true,
             model2vec: None,
+            language: "en".into(),
         }
     }
 }
@@ -151,20 +177,36 @@ impl Default for Options {
 impl Options {
     /// The defaults, with the spam filter's rules and words from the configuration.
     pub fn of(config: &sioul_core::config::Config) -> Options {
-        Options { spam: train::Options::of(config), ..Options::default() }
+        let language = config.language.clone().unwrap_or_else(sioul_core::i18n::system_language);
+        Options { spam: train::Options::of(config), language, ..Options::default() }
     }
 }
 
-/// One message of the corpus's ham, as topics read it.
+/// One message kept here, as topics read it.
 pub(crate) struct Mail {
     pub(crate) date: i64,
-    /// Its From address, lowercase.
+    /// Its correspondent, lowercase: its sender's address; for yours, its first recipient's.
     pub(crate) sender: Option<String>,
+    /// Yours: in Sent, or from one of your addresses.
+    pub(crate) yours: bool,
     pub(crate) words: Vec<String>,
+    /// The words groups are made of (`groups`): its subject's and its own
+    /// text's, what it quotes, its attributions and its signature left out
+    /// (`reading::parts`), and neither the tokenizer's placeholders nor HTML's
+    /// and CSS's words (`grouping_words`). The spam model keeps them all.
+    pub(crate) grouping: Vec<String>,
     /// Its sender's words (`topics::sender_words`), when proven.
     pub(crate) senders: Vec<String>,
     /// Its tokens in the Model2Vec model, when one is read.
     pub(crate) tokens: Vec<u32>,
+    /// Its subject (300 characters at most), its bare Message-ID, the ids it
+    /// answers or cites, the addresses it went to (with `words` only, yours always).
+    pub(crate) subject: String,
+    /// Its sender's name as the message gives it (none for yours).
+    pub(crate) from_name: Option<String>,
+    pub(crate) id: Option<String>,
+    pub(crate) refs: Vec<String>,
+    pub(crate) to: Vec<String>,
 }
 
 impl Mail {
@@ -177,7 +219,7 @@ impl Mail {
 /// Folders that seed nothing, by why.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct LeftOut {
-    /// The server's own: archive, junk, all mail, Gmail's.
+    /// The server's own: the inbox aside, Sent, the archive, all mail, Gmail's.
     pub system: usize,
     /// Fewer messages than a topic needs.
     pub small: usize,
@@ -185,34 +227,84 @@ pub struct LeftOut {
     pub unused: usize,
 }
 
-/// What was read: every ham message once, its seeds, the folders left out.
+/// What reading found, source by source.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Reading {
+    /// Messages kept to learn from, each once, and of them yours.
+    pub messages: u64,
+    pub yours: u64,
+    /// Folders read, and the files in them (copies included).
+    pub folders: u64,
+    pub files: u64,
+    /// Junk, trash and draft folders, never read.
+    pub folders_left_out: u64,
+    /// Messages left out: spam (the spam filter's labels, a $Junk keyword), forged.
+    pub spam: u64,
+    pub forged: u64,
+    /// Messages each kind of seed names (the seeds kept), and of them yours.
+    pub folder_named: u64,
+    pub folder_yours: u64,
+    pub category_named: u64,
+    pub category_yours: u64,
+    /// Each topic preset's messages, by its id, by how it took them; a
+    /// preset of `presets::DAY_ONE` messages or more would start as a topic.
+    pub presets: BTreeMap<String, sioul_core::topics::presets::Counted>,
+    pub preset_named: u64,
+}
+
+/// What was read: every message kept here once, its seeds, what was left out.
 pub struct Read {
     pub(crate) mail: Vec<Mail>,
     pub seeds: Vec<Seed>,
     pub left_out: LeftOut,
-    pub spam: u64,
+    pub reading: Reading,
 }
 
 impl Read {
-    /// Ham messages read.
+    /// Messages read.
     pub fn messages(&self) -> usize {
         self.mail.len()
     }
 }
 
-/// A folder's name as the person reads it: as its server last listed it,
-/// else decoded, without "INBOX." before it.
-fn display_of(sources: &Sources, account: &str, name: &str) -> String {
-    if let Some(folder) = sources.folders.get(account).and_then(|f| f.iter().find(|f| f.name == name)) {
-        return folder.display.clone();
+/// A local folder's purpose and its name as the person reads it: as its
+/// server last listed it; else its Maildir++ directory's levels (".Loisirs.Chorale"
+/// → "Loisirs/Chorale"), or a folder held in another ("Archive/2024").
+fn folder_of(maildir: &Maildir, local: &str) -> (Role, String) {
+    if local.is_empty() {
+        return (Role::Inbox, "INBOX".to_string());
     }
-    let decoded = sioul_core::folders::decode_utf7(name);
-    for prefix in ["INBOX.", "INBOX/"] {
-        if decoded.len() > prefix.len() && decoded[..prefix.len()].eq_ignore_ascii_case(prefix) {
-            return decoded[prefix.len()..].to_string();
+    if let Some(folder) = maildir.folders.iter().find(|f| f.local == local) {
+        return (folder.role, folder.display.clone());
+    }
+    let display = match local.strip_prefix('.') {
+        Some(levels) => levels.split('.').map(percent_decoded).collect::<Vec<_>>().join("/"),
+        None => local.to_string(),
+    };
+    (sioul_core::folders::role_of(&display, None), display)
+}
+
+/// A level of a Maildir++ directory, its `%XX` read back ("%2E" → ".").
+fn percent_decoded(level: &str) -> String {
+    let mut out = String::new();
+    let mut rest = level;
+    while let Some(at) = rest.find('%') {
+        out.push_str(&rest[..at]);
+        let code = rest.get(at + 1..at + 3).and_then(|h| u32::from_str_radix(h, 16).ok()).and_then(char::from_u32);
+        match code {
+            Some('\0') => rest = &rest[at + 3..],
+            Some(c) => {
+                out.push(c);
+                rest = &rest[at + 3..];
+            }
+            None => {
+                out.push('%');
+                rest = &rest[at + 1..];
+            }
         }
     }
-    decoded
+    out.push_str(rest);
+    out
 }
 
 /// The last level of a folder's name: "Loisirs/Chorale" → "Chorale".
@@ -248,127 +340,277 @@ fn categories_of(contacts: &[Contact]) -> HashMap<String, Vec<(String, String)>>
     out
 }
 
-/// Reads the corpus's ham once (labels decided as the spam filter decides
-/// them), each message with its words, its sender's, and the seeds that
-/// name it: its copies' folders, the projects it belongs to (`ProjectStore::route`),
-/// its sender's categories. Forged mail seeds no project; a category needs
-/// an authenticated sender (`trust::authenticated`), as the Porch does.
-/// With `model`, each message's tokens in it too.
-#[allow(clippy::too_many_arguments)]
-pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sources, options: &Options, mut model: Option<&mut StaticModel>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Read, LearnError> {
-    let check = || if cancel.cancelled() { Err(LearnError::Cancelled) } else { Ok(()) };
+/// What the spam filter's labels call spam: the corpus's messages labelled
+/// spam (`labels::decide`, the label log included), by their key (the bare
+/// Message-ID); then the label log alone, its newest word on each message,
+/// for those the corpus no longer holds.
+fn spam_keys(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Options) -> Result<HashSet<String>, LearnError> {
     let mut copies = Vec::new();
-    let mut folders_of: HashMap<String, Vec<(String, String, Role)>> = HashMap::new();
-    corpus::read_all(dirs, &options.spam.microsoft, |record| {
-        let copy = Copy::judged(&record, trusted, &options.spam.dealings);
-        folders_of.entry(copy.key.clone()).or_default().push((record.account.clone(), record.folder.clone(), record.role));
-        copies.push(copy);
-        if copies.len() % 1000 == 0 {
-            progress(&Progress { stage: Stage::Labels, done: copies.len() as u64, total: 0, detail: String::new() });
-        }
-    })?;
-    check()?;
-    let (labeled, summary) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs), &labels::read_flagged(dirs));
-    let ham: Vec<&labels::Labeled> = labeled.iter().filter(|l| l.label == Label::Ham).collect();
-    let chosen: HashMap<Place, usize> = ham.iter().enumerate().map(|(i, l)| (l.place.clone(), i)).collect();
-    let lexicon = Lexicon::cached(&options.spam.lexicon);
-    let categories = categories_of(&sources.contacts);
-    let mut mail: Vec<Option<Mail>> = (0..ham.len()).map(|_| None).collect();
-    let mut by_seed: BTreeMap<(Kind, String), (String, Vec<usize>)> = BTreeMap::new();
-    let mut done = 0u64;
-    corpus::read_all(dirs, &options.spam.microsoft, |record| {
-        let Some(&i) = chosen.get(&record.place()) else { return };
-        if mail[i].is_some() {
-            return;
-        }
-        done += 1;
-        if done % 500 == 0 {
-            progress(&Progress { stage: Stage::Tokens, done, total: ham.len() as u64, detail: String::new() });
-        }
-        let Some(card) = spamcore::card_of(&record) else {
-            mail[i] = Some(Mail { date: ham[i].date, sender: None, words: Vec::new(), senders: Vec::new(), tokens: Vec::new() });
-            return;
-        };
-        let ids = trusted.get(&record.account).map_or(&[][..], Vec::as_slice);
-        let own = record.checked.as_ref().and_then(|c| c.reading(record.date, sioul_core::spam::features::signed(&card.headers)));
-        let results = own.clone().or_else(|| trust::read_auth_results(&card.headers, ids));
-        let (words, _) = train::features_of(&card, ids, (record.date > 0).then_some(record.date), own, &lexicon);
-        let sealers = trust::sealers(ids, &[]);
-        let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &sealers)).flatten();
-        let (judged, _) = trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain());
-        let forged = judged == Trust::Forged;
-        let authenticated = !forged && trust::authenticated(results.as_ref(), &card.headers, &sealers);
-        // What seeds it: its copies' folders, its projects, its sender's categories.
-        for (account, name, role) in folders_of.get(&ham[i].key).into_iter().flatten() {
-            if *role != Role::Other {
-                continue;
-            }
-            let display = display_of(sources, account, name);
-            if SYSTEM_PREFIXES.iter().any(|p| display.starts_with(p)) {
-                continue;
-            }
-            by_seed.entry((Kind::Folder, folded(&display))).or_insert_with(|| (leaf(&display).to_string(), Vec::new())).1.push(i);
-        }
-        if !forged && let Some(store) = &sources.projects {
-            for routing in store.route(&card) {
-                by_seed.entry((Kind::Project, routing.project.id.clone())).or_insert_with(|| (routing.project.title.clone(), Vec::new())).1.push(i);
-            }
-        }
-        if authenticated && let Some(address) = card.from_address.as_deref() {
-            for (key, name) in categories.get(address).into_iter().flatten() {
-                by_seed.entry((Kind::Category, key.clone())).or_insert_with(|| (name.clone(), Vec::new())).1.push(i);
-            }
-        }
-        let tokens = model.as_deref_mut().map(|m| m.tokens(&format!("{}\n{}", card.subject, card.excerpt))).unwrap_or_default();
-        let senders = sioul_core::topics::sender_words(&card, judged == Trust::Verified);
-        mail[i] = Some(Mail { date: ham[i].date, sender: card.from_address.clone(), words, senders, tokens });
-    })?;
-    check()?;
-    // A copy that could not be read again (the corpus changed meanwhile): a message without words.
-    let mail: Vec<Mail> = mail.into_iter().enumerate().map(|(i, m)| m.unwrap_or(Mail { date: ham[i].date, sender: None, words: Vec::new(), senders: Vec::new(), tokens: Vec::new() })).collect();
-    progress(&Progress { stage: Stage::Tokens, done: mail.len() as u64, total: mail.len() as u64, detail: String::new() });
-
-    // Folders with too few messages, or unused for a year, seed nothing; the server's own neither.
-    let mut left_out = LeftOut::default();
-    let mut system: BTreeSet<String> = BTreeSet::new();
-    for copies in folders_of.values() {
-        for (account, name, role) in copies {
-            let display = display_of(sources, account, name);
-            if !matches!(role, Role::Other | Role::Inbox) || SYSTEM_PREFIXES.iter().any(|p| display.starts_with(p)) {
-                system.insert(folded(&display));
+    corpus::read_all(dirs, &options.spam.microsoft, |record| copies.push(Copy::judged(&record, trusted, &options.spam.dealings)))?;
+    let log = labels::read_log(dirs);
+    let (labeled, _) = labels::decide(copies, &log, &labels::read_moved(dirs), &labels::read_flagged(dirs));
+    let mut spam: HashSet<String> = labeled.into_iter().filter(|l| l.label == Label::Spam).map(|l| l.key).collect();
+    let mut said: BTreeMap<String, (i64, Label)> = BTreeMap::new();
+    for entry in &log {
+        if let Some(id) = entry.message_id.as_deref().map(sioul_core::mailindex::bare_id).filter(|id| !id.is_empty()) {
+            let newest = said.entry(id).or_insert((entry.at, entry.label));
+            if entry.at >= newest.0 {
+                *newest = (entry.at, entry.label);
             }
         }
     }
-    left_out.system = system.len();
+    for (id, (_, label)) in said {
+        match label {
+            Label::Spam => spam.insert(id),
+            Label::Ham => spam.remove(&id),
+        };
+    }
+    Ok(spam)
+}
+
+/// A message's key: its bare Message-ID; without one, its digest in its account.
+fn key_of(account: &str, line: &Line) -> Option<String> {
+    match line.message_id.as_deref().map(sioul_core::mailindex::bare_id).filter(|id| !id.is_empty()) {
+        Some(id) => Some(id),
+        None => line.digest.as_ref().map(|d| format!("digest:{account}/{d}")),
+    }
+}
+
+/// The addresses a message went to (To, Cc), lowercase, from its bytes (its header block is enough).
+fn recipients_in(bytes: &[u8]) -> Vec<String> {
+    let Some(headers) = mail_parser::MessageParser::default().parse_headers(bytes) else { return Vec::new() };
+    let mut out: Vec<String> = headers.to().into_iter().chain(headers.cc()).flat_map(|a| a.iter()).filter_map(|a| a.address()).map(|a| a.trim().to_lowercase()).filter(|a| a.contains('@')).collect();
+    out.dedup();
+    out
+}
+
+/// The addresses a message went to, from its file's header block.
+fn recipients(path: &std::path::Path) -> Vec<String> {
+    let Some(header) = sioul_core::mailcache::headers_of(path) else { return Vec::new() };
+    recipients_in(&[header.as_slice(), b"\r\n\r\n"].concat())
+}
+
+/// A message's start, as much as the card reads: a megabyte at most.
+fn start_of(path: &std::path::Path) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path).ok()?.take(1 << 20).read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+/// HTML's and CSS's words that a message's text keeps when its HTML is read
+/// as text (its styles), which say nothing of what the message is about.
+const MARKUP: &str = "style styles width height align valign center important table tables tbody thead td tr th class classes nbsp font fonts color colour border borders padding margin margins px pt em rem div span img src href html htm css background bgcolor display none block inline solid dotted dashed family size weight bold italic decoration underline cellpadding cellspacing collapse max min auto media screen webkit moz rgba rgb hex spacing float clear overflow hidden visible position relative absolute vertical middle baseline serif sans arial helvetica verdana tahoma georgia mso msonormal outlook doctype xmlns meta charset viewport utf body head title rel stylesheet role presentation responsive wrapper container column columns spacer gmail yahoo apple detectors format telephone preheader";
+
+/// What a grouping leaves out, as the tokenizer writes it: the markup's words above.
+fn noise_words(lexicon: &Lexicon) -> HashSet<String> {
+    spamcore::tokens_with(lexicon, "", MARKUP).words.into_iter().chain(MARKUP.split_whitespace().map(str::to_string)).collect()
+}
+
+/// A message's words for its groups (`Mail::grouping`): its subject's and
+/// its own text's, as the tokenizer writes them, without the placeholders
+/// it puts for links, prices, dates and the like (`_URL_`), nor `noise`.
+fn grouping_words(lexicon: &Lexicon, noise: &HashSet<String>, subject: &str, excerpt: &str) -> Vec<String> {
+    let own: Vec<String> = sioul_core::reading::parts(excerpt)
+        .into_iter()
+        .filter_map(|part| match part {
+            sioul_core::reading::Part::Text { text } => Some(text),
+            _ => None,
+        })
+        .collect();
+    spamcore::tokens_with(lexicon, subject, &own.join("\n"))
+        .words
+        .into_iter()
+        .filter(|w| !w.is_empty() && !w.contains(char::is_whitespace) && !w.starts_with('_') && !w.ends_with('_') && !noise.contains(w) && !noise.contains(&w.to_lowercase()))
+        .collect()
+}
+
+/// One copy of a message in a local folder.
+struct Local {
+    maildir: usize,
+    path: PathBuf,
+    role: Role,
+    display: String,
+    line: Line,
+    junk: bool,
+}
+
+/// Every copy of every message kept on this device, by key (Message-ID, or
+/// the account's digest): each folder of each account's Maildir through its
+/// index (`mailcache::folder`), Junk, Trash and Drafts counted and left
+/// out. The one place that walks the Maildirs, so that the shared reader
+/// (`mailpass`) can take its place alone.
+fn kept_copies(sources: &Sources, reading: &mut Reading, system: &mut BTreeSet<String>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<BTreeMap<String, Vec<Local>>, LearnError> {
+    let mut copies: BTreeMap<String, Vec<Local>> = BTreeMap::new();
+    for (d, maildir) in sources.maildirs.iter().enumerate() {
+        for local in sioul_core::mailcache::folders(&maildir.root) {
+            let (role, display) = folder_of(maildir, &local);
+            if matches!(role, Role::Junk | Role::Trash | Role::Drafts) {
+                reading.folders_left_out += 1;
+                system.insert(format!("{}/{}", maildir.account, folded(&display)));
+                continue;
+            }
+            if role != Role::Other && role != Role::Inbox || SYSTEM_PREFIXES.iter().any(|p| display.starts_with(p)) {
+                system.insert(format!("{}/{}", maildir.account, folded(&display)));
+            }
+            reading.folders += 1;
+            progress(&Progress { stage: Stage::Tokens, done: reading.folders, total: 0, detail: format!("{} · {display}", maildir.account) });
+            for (path, line) in sioul_core::mailcache::folder(&maildir.account, &maildir.root, &local) {
+                reading.files += 1;
+                let Some(key) = key_of(&maildir.account, &line) else { continue };
+                let keywords = sioul_core::maildir::keywords_of(&path);
+                copies.entry(key).or_default().push(Local { maildir: d, path, role, display: display.clone(), line, junk: keywords.junk && !keywords.not_junk });
+            }
+            if cancel.cancelled() {
+                return Err(LearnError::Cancelled);
+            }
+        }
+    }
+    Ok(copies)
+}
+
+/// Reads every message kept on this device, once (the copies in several
+/// folders or accounts, by Message-ID, are one): every folder of every
+/// account's Maildir but Junk, Trash and Drafts, Sent and the archives
+/// included, through each folder's index (`mailcache::folder`), so that no
+/// message is read again for what its headers say. Left out: what the spam
+/// filter's labels call spam (the corpus serves only for them: `spam_keys`)
+/// or a `$Junk` keyword marks; forged mail (`trust::judge_sender`; a list's
+/// failing DMARC, which lists break, aside). A project's mail is read like
+/// any other. Each message with its seeds: its copies' folders (the
+/// server's own aside), its correspondent's categories (the sender's when
+/// authenticated, `trust::authenticated`; for yours, its recipients'). With `words`, each message's file is read once
+/// for its words, its sender's words (when verified) and, with `model`, its tokens.
+#[allow(clippy::too_many_arguments)]
+pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sources, options: &Options, words: bool, mut model: Option<&mut StaticModel>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Read, LearnError> {
+    let check = || if cancel.cancelled() { Err(LearnError::Cancelled) } else { Ok(()) };
+    progress(&Progress { stage: Stage::Labels, done: 0, total: 0, detail: String::new() });
+    let spam = spam_keys(dirs, trusted, options)?;
+    check()?;
+    let mut reading = Reading::default();
+    let mut system: BTreeSet<String> = BTreeSet::new();
+    let copies = kept_copies(sources, &mut reading, &mut system, progress, cancel)?;
+    let lexicon = Lexicon::cached(&options.spam.lexicon);
+    let noise = noise_words(&lexicon);
+    let categories = categories_of(&sources.contacts);
+    let own: HashSet<String> = sources.own.iter().map(|a| a.trim().to_lowercase()).collect();
+
+    let mut mail: Vec<Mail> = Vec::new();
+    let mut by_seed: BTreeMap<(Kind, String), (String, Vec<usize>)> = BTreeMap::new();
+    let total = copies.len() as u64;
+    for (n, (key, mut found)) in copies.into_iter().enumerate() {
+        if n % 500 == 0 {
+            check()?;
+            progress(&Progress { stage: Stage::Tokens, done: n as u64, total, detail: String::new() });
+        }
+        if spam.contains(&key) || found.iter().any(|c| c.junk) {
+            reading.spam += 1;
+            continue;
+        }
+        found.sort_by_key(|c| c.role.rank());
+        let first = &found[0];
+        let maildir = &sources.maildirs[first.maildir];
+        let card = first.line.card(&first.path);
+        let results = trust::read_auth_results(&card.headers, &maildir.trusted);
+        let sealers = trust::sealers(&maildir.trusted, &[]);
+        let (judged, _) = trust::judge_sender(results.as_ref(), None, card.sender_domain());
+        // A list's message that fails DMARC is the list's doing (the index keeps no list headers to excuse it by).
+        if judged == Trust::Forged && !first.line.is_list {
+            reading.forged += 1;
+            continue;
+        }
+        let from = first.line.from_address.as_deref().map(|a| a.trim().to_lowercase());
+        let yours = found.iter().any(|c| c.role == Role::Sent) || from.as_ref().is_some_and(|f| own.contains(f));
+        let authenticated = judged != Trust::Forged && trust::authenticated(results.as_ref(), &card.headers, &sealers);
+        let whole_bytes = if words { start_of(&first.path) } else { None };
+        let to = match &whole_bytes {
+            Some(bytes) => recipients_in(bytes),
+            None if yours => recipients(&first.path),
+            None => Vec::new(),
+        };
+        let i = mail.len();
+        // A topic preset's mail, for a verified sender only: counted, and a seed in your language.
+        if let Some(matcher) = &sources.presets
+            && !yours
+        {
+            let verified = (judged == Trust::Verified).then(|| card.sender_domain()).flatten();
+            let list = whole_bytes.as_deref().and_then(sioul_core::card::Card::from_bytes).and_then(|c| c.headers.first("List-Id").map(|v| v.rsplit_once('<').map_or(v, |(_, r)| r.split('>').next().unwrap_or(r)).trim().to_lowercase()));
+            if let Some((p, by)) = matcher.find(verified, list.as_deref(), card.is_list || first.line.is_list) {
+                let preset = &matcher.presets[p];
+                reading.presets.entry(preset.id.clone()).or_default().add(by);
+                by_seed.entry((Kind::Preset, preset.id.clone())).or_insert_with(|| (sioul_core::topics::presets::name_in(preset, &options.language), Vec::new())).1.push(i);
+            }
+        }
+        for copy in found.iter().filter(|c| c.role == Role::Other && !SYSTEM_PREFIXES.iter().any(|p| c.display.starts_with(p))) {
+            by_seed.entry((Kind::Folder, folded(&copy.display))).or_insert_with(|| (leaf(&copy.display).to_string(), Vec::new())).1.push(i);
+        }
+        let correspondents: Vec<&str> = if yours { to.iter().map(String::as_str).collect() } else if authenticated { from.as_deref().into_iter().collect() } else { Vec::new() };
+        for address in correspondents {
+            for (category, name) in categories.get(address).into_iter().flatten() {
+                by_seed.entry((Kind::Category, category.clone())).or_insert_with(|| (name.clone(), Vec::new())).1.push(i);
+            }
+        }
+        let (mut message_words, mut grouping, mut senders, mut tokens) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        if let Some(whole) = whole_bytes.as_deref().and_then(sioul_core::card::Card::from_bytes) {
+            message_words = spamcore::tokens_with(&lexicon, &whole.subject, &whole.excerpt).words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect();
+            grouping = grouping_words(&lexicon, &noise, &whole.subject, &whole.excerpt);
+            if judged == Trust::Verified && !yours {
+                senders = sioul_core::topics::sender_words(&whole, true);
+            }
+            if let Some(m) = model.as_deref_mut() {
+                tokens = m.tokens(&format!("{}\n{}", whole.subject, whole.excerpt));
+            }
+        }
+        let date = found.iter().map(|c| sioul_core::mailcache::sent_at(&c.line)).filter(|&d| d > 0).min().unwrap_or(0);
+        let sender = if yours { to.iter().find(|a| !own.contains(*a)).cloned() } else { from };
+        reading.yours += u64::from(yours);
+        let (subject, refs) = (first.line.subject.clone(), first.line.refs());
+        let id = first.line.message_id.as_deref().map(sioul_core::mailindex::bare_id).filter(|id| !id.is_empty());
+        let from_name = if yours { None } else { first.line.from_name.clone().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) };
+        mail.push(Mail { date, sender, yours, words: message_words, grouping, senders, tokens, subject, from_name, id, refs, to });
+    }
+    reading.messages = mail.len() as u64;
+    progress(&Progress { stage: Stage::Tokens, done: total, total, detail: String::new() });
+
+    // Folders with too few messages, or unused for a year, seed nothing.
+    let mut left_out = LeftOut { system: system.len(), ..LeftOut::default() };
     let since = now() - options.unused;
     let mut seeds = Vec::new();
-    for ((kind, _), (name, messages)) in by_seed {
+    for ((kind, _), (name, mut messages)) in by_seed {
+        messages.sort_unstable();
+        messages.dedup();
         if kind == Kind::Folder {
-            let mut unique = messages.clone();
-            unique.sort_unstable();
-            unique.dedup();
-            if unique.len() < options.rules.least {
+            if messages.len() < options.rules.least {
                 left_out.small += 1;
                 continue;
             }
-            if unique.iter().map(|&m| mail[m].date).max().unwrap_or(0) < since {
+            if messages.iter().map(|&m| mail[m].date).max().unwrap_or(0) < since {
                 left_out.unused += 1;
                 continue;
             }
         }
+        let yours = messages.iter().filter(|&&m| mail[m].yours).count() as u64;
+        let n = messages.len() as u64;
+        match kind {
+            Kind::Folder => (reading.folder_named += n, reading.folder_yours += yours),
+            Kind::Category => (reading.category_named += n, reading.category_yours += yours),
+            Kind::Preset => (reading.preset_named += n, ()),
+        };
         seeds.push(Seed { kind, name, messages });
     }
-    Ok(Read { mail, seeds, left_out, spam: summary.spam })
+    Ok(Read { mail, seeds, left_out, reading })
 }
 
 /// The topics the seeds propose, with the counts said beside them.
 #[derive(Debug, Clone, Serialize)]
 pub struct Seeded {
-    /// Ham messages read.
+    /// Messages read.
     pub messages: u64,
-    /// Messages a proposed topic holds.
+    /// Messages a proposed topic holds, and of them yours.
     pub named: u64,
+    pub named_yours: u64,
     pub left_out: LeftOut,
+    pub reading: Reading,
     pub proposal: Proposal,
 }
 
@@ -378,7 +620,8 @@ pub fn seeded(read: &Read, options: &Options) -> (Seeded, Vec<Option<usize>>) {
     let proposal = seeds::propose(&mail, read.seeds.clone(), &options.rules);
     let labels = proposal.labels(mail.len());
     let named = labels.iter().filter(|l| l.is_some()).count() as u64;
-    (Seeded { messages: mail.len() as u64, named, left_out: read.left_out.clone(), proposal }, labels)
+    let named_yours = labels.iter().zip(&read.mail).filter(|(l, m)| l.is_some() && m.yours).count() as u64;
+    (Seeded { messages: mail.len() as u64, named, named_yours, left_out: read.left_out.clone(), reading: read.reading.clone(), proposal }, labels)
 }
 
 /// How a way says "no topic", or the centroid.
@@ -1293,42 +1536,81 @@ fn centroid(data: &Data, model: &StaticModel, options: &Options) -> (Measured, C
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::synthetic;
 
-    fn options() -> Options {
+    pub(crate) fn options() -> Options {
         let spam = train::Options { threads: 1, seed: 3, ..train::Options::default() };
         Options { spam, dim: 16, epochs: 20, min_count: 2, buckets: vec![2_000, 4_000], none_weights: vec![0.2, 0.5], ..Options::default() }
     }
 
     /// The stand-in corpus's trusted server.
-    fn trusted() -> BTreeMap<String, Vec<String>> {
+    pub(crate) fn trusted() -> BTreeMap<String, Vec<String>> {
         BTreeMap::from([("home".to_string(), vec!["mx.example.org".to_string()])])
     }
 
-    /// A stand-in corpus of topical mail, kept under `root`.
-    fn corpus(root: &std::path::Path) -> Dirs {
-        let dirs = Dirs::under(root);
+    /// A stand-in home under `root`: topical mail kept in a Maildir of the
+    /// account `account` (its own mail index: tests run side by side), ten of
+    /// its spam in the inbox here though the spam filter's corpus keeps them
+    /// in Junk, twelve replies of yours in Sent to the choir, whose address is
+    /// a contact of the category "Chorale".
+    pub(crate) fn home(root: &std::path::Path, account: &str) -> (Dirs, Sources) {
+        let dirs = Dirs::under(&root.join("spam"));
         let mail = synthetic::topical(11, 900);
         let records: Vec<_> = mail.iter().enumerate().map(|(i, m)| synthetic::record_of(m, 1, i as u32 + 1)).collect();
         corpus::store(&dirs, &records).unwrap();
-        dirs
+        let mut here = mail.clone();
+        for m in here.iter_mut().filter(|m| m.role == Role::Junk).take(10) {
+            m.folder = "INBOX";
+            m.role = Role::Inbox;
+        }
+        here.extend(synthetic::replies(&mail, 12));
+        let maildir = root.join("maildir");
+        synthetic::store_maildir(&maildir, &here).unwrap();
+        let contact = Contact {
+            name: "Choir office".into(),
+            emails: vec![sioul_core::contacts::Labeled { label: String::new(), value: "contact@chorale.example".into() }],
+            categories: vec!["Chorale".into()],
+            ..Contact::default()
+        };
+        let maildirs = vec![Maildir { account: account.into(), root: maildir, folders: Vec::new(), trusted: vec!["mx.example.org".into()] }];
+        (dirs, Sources { maildirs, contacts: vec![contact], own: vec!["owner@example.org".into()], presets: None })
     }
 
-    /// The folders seed their topics; the inbox, Junk and the small folder do not.
+    /// Every message kept here, once: the folders and the category seed
+    /// their topics, Sent counts (the category by its recipients), what the
+    /// spam filter's labels call spam stays out though it is in the inbox,
+    /// Junk is never read; the small folder seeds nothing.
     #[test]
-    fn folders_seed_topics() {
+    fn mail_kept_here_seeds_topics() {
         let root = std::env::temp_dir().join(format!("sioul-topics-seeds-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let dirs = corpus(&root);
-        let read = read(&dirs, &trusted(), &Sources::default(), &options(), None, &mut |_| {}, &Cancel::new()).unwrap();
+        let (dirs, sources) = home(&root, "seeds");
+        let read = read(&dirs, &trusted(), &sources, &options(), false, None, &mut |_| {}, &Cancel::new()).unwrap();
         let (seeded, labels) = seeded(&read, &options());
         let names: BTreeSet<&str> = seeded.proposal.topics.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, BTreeSet::from(["Chorale", "Impôts", "Santé"]), "{seeded:#?}");
+        let chorale = seeded.proposal.topics.iter().find(|t| t.name == "Chorale").unwrap();
+        assert_eq!(chorale.seeds.iter().map(|s| s.kind).collect::<Vec<_>>(), vec![Kind::Folder, Kind::Category]);
+        let r = &seeded.reading;
+        assert_eq!((r.yours, r.category_yours, r.folders_left_out), (12, 12, 1), "{r:?}");
+        assert!(r.spam >= 10 && r.messages > 600 && r.folder_named > 300 && r.category_named > 12, "{r:?}");
+        assert!(seeded.named_yours >= 12);
         assert_eq!(seeded.left_out.small, 1, "the small folder");
-        assert!(seeded.left_out.system >= 2, "Junk and Archive: {:?}", seeded.left_out);
+        assert!(seeded.left_out.system >= 3, "Junk, Archive and Sent: {:?}", seeded.left_out);
         assert_eq!(labels.iter().filter(|l| l.is_some()).count() as u64, seeded.named);
+        assert!(read.mail.iter().all(|m| m.words.is_empty()), "headers alone");
+        // A stand-in topic preset of the tax office's domain: its mail counted, its seed joined with the folder of its name.
+        let presets: sioul_core::topics::presets::TopicPresets = serde_json::from_str(r#"{"checked": "2026-11-05", "topics": [{"id": "taxes", "name": {"en": "Taxes", "fr": "Impôts"}, "area": "admin", "rules": {"domains": [{"domain": "impots.example", "source": "https://impots.example/"}]}}]}"#).unwrap();
+        let sources = Sources { presets: Some(std::sync::Arc::new(sioul_core::topics::presets::Matcher::new(&presets, &sioul_core::presets::Presets::default()))), ..sources };
+        let options = Options { language: "fr".into(), ..options() };
+        let read = super::read(&dirs, &trusted(), &sources, &options, false, None, &mut |_| {}, &Cancel::new()).unwrap();
+        let counted = &read.reading.presets["taxes"];
+        assert!(counted.by_domain >= 90 && counted.by_site == 0, "{counted:?}");
+        let (seeded, _) = super::seeded(&read, &options);
+        let impots = seeded.proposal.topics.iter().find(|t| t.name == "Impôts").unwrap();
+        assert_eq!(impots.seeds.iter().map(|s| s.kind).collect::<Vec<_>>(), vec![Kind::Preset, Kind::Folder], "{impots:#?}");
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -1339,9 +1621,9 @@ mod tests {
     fn topics_are_measured_in_time_order() {
         let root = std::env::temp_dir().join(format!("sioul-topics-eval-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let dirs = corpus(&root);
+        let (dirs, sources) = home(&root, "eval");
         let options = options();
-        let read = read(&dirs, &trusted(), &Sources::default(), &options, None, &mut |_| {}, &Cancel::new()).unwrap();
+        let read = read(&dirs, &trusted(), &sources, &options, true, None, &mut |_| {}, &Cancel::new()).unwrap();
         let evaluation = evaluate(&dirs, &read, &options, None, &mut |_| {}, &Cancel::new()).unwrap();
         assert_eq!(evaluation.seeded.proposal.topics.len(), 3);
         // Threshold, the best none share, without senders, the other bucket count.
@@ -1366,7 +1648,7 @@ mod tests {
     fn the_centroid_is_measured_with_a_model() {
         let root = std::env::temp_dir().join(format!("sioul-topics-centroid-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let dirs = corpus(&root);
+        let (dirs, sources) = home(&root, "centroid");
         let folder = root.join("model");
         let mut pieces: Vec<(String, f64)> = vec![("<unk>".into(), 0.0)];
         let mut rows: Vec<Vec<f32>> = vec![vec![0.0; 4]];
@@ -1382,7 +1664,7 @@ mod tests {
         crate::model2vec::write_stand_in(&folder, &pieces_ref, &rows, 0).unwrap();
         let mut model = StaticModel::load(&folder).unwrap();
         let options = Options { compare: false, ..options() };
-        let read = read(&dirs, &trusted(), &Sources::default(), &options, Some(&mut model), &mut |_| {}, &Cancel::new()).unwrap();
+        let read = read(&dirs, &trusted(), &sources, &options, true, Some(&mut model), &mut |_| {}, &Cancel::new()).unwrap();
         let evaluation = evaluate(&dirs, &read, &options, Some(&model), &mut |_| {}, &Cancel::new()).unwrap();
         assert_eq!(evaluation.ways.len(), 1, "the threshold alone");
         let centroid = evaluation.centroid.as_ref().unwrap();
@@ -1390,6 +1672,25 @@ mod tests {
         let fold = evaluation.centroid_fold.as_ref().unwrap();
         assert!(fold.error_f16 < 1e-2 && fold.bytes_f16 == (rows.len() * 3 * 2) as u64, "{fold:?}");
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A grouping's words: no placeholder, no style, nothing quoted, no attribution.
+    #[test]
+    fn grouping_words_leave_the_noise_out() {
+        let lexicon = Lexicon::cached(&train::Options::default().lexicon);
+        let noise = noise_words(&lexicon);
+        let text = "Votre facture de téléphone est disponible sur https://www.operateur.example/compte pour 12,50 €.\ntable width center important nbsp\n\nLe 3 nov. 2026, Anne Martin a écrit :\n> merveilleux souvenirs de vacances\n";
+        let all = spamcore::tokens_with(&lexicon, "Facture", text).words;
+        assert!(all.iter().any(|w| w.starts_with('_')), "the spam model's placeholders are there: {all:?}");
+        let words = grouping_words(&lexicon, &noise, "Facture", text);
+        assert!(!words.is_empty() && words.iter().all(|w| !w.starts_with('_') && !noise.contains(w)), "{words:?}");
+        let stems = |text: &str| spamcore::tokens_with(&lexicon, "", text).words;
+        for gone in ["width", "center", "important", "nbsp", "merveilleux", "vacances", "ecrit", "anne"] {
+            for stem in stems(gone) {
+                assert!(!words.contains(&stem), "{gone} ({stem}) in {words:?}");
+            }
+        }
+        assert!(stems("facture").iter().all(|s| words.contains(s)), "{words:?}");
     }
 
     /// The temperature fits: scores that are too sure are cooled, and thresholds need precision.

@@ -3,9 +3,11 @@
 
 //! `sioul topics seeds` and `sioul topics eval`, run by the real program on
 //! a home made in the system's temporary folder (its XDG folders and HOME
-//! there): a corpus of invented topical mail on reserved domains (RFC 2606),
-//! a project routed by its sender's domain, a contact's card with a
-//! category. The person's own files are never read, no server is reached.
+//! there): invented topical mail on reserved domains (RFC 2606) kept in the
+//! account's Maildir, Sent included, and in the spam filter's corpus for its
+//! labels; a project routed by the tax office's domain, which seeds nothing;
+//! a contact's card with a category. The person's own files are never read,
+//! no server is reached.
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -42,6 +44,9 @@ fn home() -> PathBuf {
     let mail = sioul_learn::synthetic::topical(11, 900);
     let records: Vec<_> = mail.iter().enumerate().map(|(i, m)| sioul_learn::synthetic::record_of(m, 1, i as u32 + 1)).collect();
     sioul_learn::corpus::store(&dirs, &records).unwrap();
+    let mut kept = mail.clone();
+    kept.extend(sioul_learn::synthetic::replies(&mail, 12));
+    sioul_learn::synthetic::store_maildir(&maildir, &kept).unwrap();
     root
 }
 
@@ -73,15 +78,28 @@ fn seeds_and_eval_on_stand_in_mail() {
         assert!(names.contains(&name), "{names:?}");
     }
     let kinds = |name: &str| -> Vec<String> { topics.iter().find(|t| t["name"] == name).unwrap()["seeds"].as_array().unwrap().iter().map(|s| s["kind"].as_str().unwrap().to_string()).collect() };
-    // The project names the mail the folder misses too: the larger seed first.
-    assert_eq!(kinds("Impôts"), vec!["project", "folder"]);
+    // The project seeds nothing: a project says nothing of a topic.
+    assert_eq!(kinds("Impôts"), vec!["folder"]);
     assert_eq!(kinds("Chorale"), vec!["folder", "category"]);
     assert_eq!(kinds("Santé"), vec!["folder"]);
     assert_eq!(data["left_out"]["small"], 1);
+    assert_eq!(data["reading"]["yours"], 12);
+    assert_eq!(data["reading"]["category_yours"], 12);
+    assert_eq!(data["reading"]["folders_left_out"], 1, "Junk");
     let lines = run(&root, "en", &["topics", "seeds"]);
-    assert!(lines.contains("Topics proposed (3):") && lines.contains("the project Impôts 2025"), "{lines}");
+    assert!(lines.contains("Topics proposed (3):") && lines.contains("12 of them yours (in Sent"), "{lines}");
     let lignes = run(&root, "fr", &["topics", "seeds"]);
     assert!(lignes.contains("Thèmes proposés (3)\u{202f}:") && lignes.contains("le dossier Santé"), "{lignes}");
+
+    // The groups, four ways; without a Model2Vec folder, no k-means.
+    let groups: Value = serde_json::from_str(&run(&root, "en", &["topics", "groups", "--json", "--k", "4", "--iterations", "60"])).unwrap();
+    let ways = groups["ways"].as_array().unwrap();
+    assert_eq!(ways.iter().map(|w| w["name"].as_str().unwrap()).collect::<Vec<_>>(), vec!["senders", "model2vec", "lda", "nmf"], "{groups:#}");
+    assert_eq!(ways[1]["skipped"], "no-model");
+    assert!(ways[2]["groups"].as_array().unwrap().len() >= 3);
+    let lines = run(&root, "fr", &["topics", "groups", "--k", "4", "--iterations", "60"]);
+    assert!(lines.contains("lda\u{202f}: ") && lines.contains("par exemple\u{202f}: «\u{202f}"), "{lines}");
+    println!("{lines}");
 
     // The measures, small and quick: every way, the decision, the fold, churn.
     let args = ["topics", "eval", "--json", "--threads", "2", "--dim", "16", "--epochs", "20", "--buckets", "2000,4000", "--none-weights", "0.2,0.5"];

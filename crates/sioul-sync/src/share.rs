@@ -494,6 +494,27 @@ fn persons_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.persons >= PERSONS_SHARED))
 }
+/// Your word on mail's topics (`sioul_core::topics::labels`): each device
+/// writes its own log, a line per act (a message's topic, a sender's rule),
+/// never rewritten; every device reads them all, so that a topic given on
+/// the phone shows on the computer. With the settings, where the topics
+/// themselves are (`[[topic]]`). Small, read in every exchange.
+pub const TOPICS: &str = "state/topics/labels/";
+
+/// What a device's entry says once its Sioul has the topics' store (`devices::Entry::topics`).
+pub const TOPICS_SHARED: u32 = 1;
+
+/// Whether your word on topics travels: at least one other device counts
+/// (`present`), and every one of them says in its sealed entry that its
+/// Sioul has the store (`devices::Entry::topics`), as the persons' store
+/// waits (`persons_shared`): until then each device keeps its word to
+/// itself, and an older Sioul, which has no such store, never holds a
+/// record it would keep waiting.
+fn topics_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.topics >= TOPICS_SHARED))
+}
+
 /// In the notes folder, what the other parts carry: projects, budgets, the
 /// bank, contracts (projects), the papers' wallet and its folder (papers).
 const NOT_NOTES: &[&str] = &[
@@ -718,6 +739,9 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         file("settings", "data/links.toml", d.join("links.toml"), Shape::Toml(&LINKS_RULES)),
         // The persons your admin is done for: travels once every other device says it has the store (`persons_shared`).
         file("settings", PERSONS, d.join(sioul_core::persons::FILE), Shape::Toml(&PERSONS_RULES)),
+        // Your word on mail's topics, each device's own log, a line each, every device's read:
+        // travels once every other device says it has the store (`topics_shared`).
+        folder("settings", TOPICS, s.join("topics").join(sioul_core::topics::labels::FOLDER), Shape::Lines, &[]),
         file("health", "data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
         // Each day's own meals, naps and nights: one entry per field of a block of a day.
         file("health", "data/health-days.toml", d.join("health-days.toml"), Shape::Toml(&PLAIN_RULES)),
@@ -2541,6 +2565,12 @@ struct Memory {
     /// Missing: not yet. An older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     persons_open: bool,
+    /// Your word on topics (`TOPICS`) travelled from here once every device
+    /// said it has the store (`topics_shared`): from then on it stays in
+    /// this device's exchanges, as `persons_open` keeps the persons. Missing:
+    /// not yet. An older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    topics_open: bool,
     /// How far each other computer's records were read: its round and the bytes read in it.
     #[serde(default)]
     read: BTreeMap<String, (u32, u64)>,
@@ -5447,7 +5477,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if persons && !memory.persons_open && persons_shared(sharing, &memory, now_ms) {
         memory.persons_open = true;
     }
-    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open);
+    let topics = stores.iter().any(|s| s.name == TOPICS);
+    if topics && !memory.topics_open && topics_shared(sharing, &memory, now_ms) {
+        memory.topics_open = true;
+    }
+    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open) || (s.name == TOPICS && !memory.topics_open);
     let stores: &[Store] = if stores.iter().any(left_out) {
         gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
         &gated

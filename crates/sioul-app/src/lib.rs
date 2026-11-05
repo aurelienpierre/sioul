@@ -61,6 +61,7 @@
 //! - [`outside`](outside/index.html): writing from other applications: shared files and text, `mailto:` links.
 //! - [`sites`](sites/index.html): sites kept in Sioul: the list, their notifications, logins filled from Bitwarden.
 //! - [`spam`](spam/index.html): Sioul's own spam filter in the mail settings, and on a computer "Train now" (docs/spam-filter.md).
+//! - [`topics`](topics/index.html): mail's topics: a message's topic, several at once, a sender's rule, each with Undo; Mail ▸ ⚙ ▸ Topics and, on a computer, the groups Sioul noticed (docs/topics.md).
 //!
 //! ## Tasks, projects and time
 //!
@@ -190,6 +191,7 @@ mod sites;
 mod spam;
 mod steps;
 mod timenote;
+mod topics;
 mod wake;
 mod work;
 

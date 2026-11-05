@@ -93,6 +93,10 @@ pub enum Kind {
     /// a box per pair of agendas, the exceptions to the rule its sentence
     /// says (`agendas::Matrix`). Nothing in `value`.
     Conflicts,
+    /// Mail's topics, the window's own block (`TopicsSettings.qml`): the
+    /// list, each topic's seeds and senders' rules, Rename and Remove, the
+    /// groups Sioul noticed with "Name it" (docs/topics.md). Nothing in `value`.
+    Topics,
 }
 
 /// One of a setting's choices.
@@ -367,6 +371,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 0.05, (hundredths(spam) - 0.01).min(0.95), 0.01, "%");
             // Its training on a computer, where its table comes from on a phone.
             b.push("spam.filter", if cfg!(target_os = "android") { "spam-filter-phone" } else { "spam-filter" }, Kind::Spam, SettingValue::Text(String::new()));
+            // Mail's topics: the list, their seeds and rules, the groups Sioul noticed (docs/topics.md).
+            b.group = tr.text("topics-settings", None);
+            b.push("topics.list", "topics", Kind::Topics, SettingValue::Text(String::new()));
             // How a message reads: the reading panel's own ("Aa" in Notes), shown where messages are read.
             b.group = tr.text("ui-reading", None);
             reading(&mut b, config);
@@ -1471,7 +1478,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "topics.list", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);

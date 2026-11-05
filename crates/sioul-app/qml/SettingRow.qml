@@ -281,6 +281,21 @@ ColumnLayout {
         }
     }
 
+    // Mail's topics (TopicsSettings.qml): the list, their seeds and rules, the groups Sioul noticed.
+    Loader {
+        active: field.setting.kind === "topics"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            TopicsSettings {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+
     // The agendas (AgendasSetup.qml) and the matrix of conflicts (ConflictMatrix.qml), Agenda ⚙'s
     // own blocks (several agendas); their sentence said first there, once.
     Loader {
@@ -1248,7 +1263,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "conflicts"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

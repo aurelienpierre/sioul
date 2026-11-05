@@ -19,6 +19,12 @@ use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 pub struct Config {
     /// The language of what Sioul says ("fr", "en"); the session's language if unset.
     pub language: Option<String>,
+    /// Mail's topics (`[[topic]]`, docs/topics.md): standing parts of life, a quiet word on a message.
+    #[serde(default, rename = "topic")]
+    pub topics: Vec<crate::topics::Topic>,
+    /// When the topic presets matching your mail started (`topics::presets::day_one`): never again after.
+    #[serde(default)]
+    pub topics_day_one: Option<String>,
     /// "light" or "dark"; the system's colours if unset.
     #[serde(default)]
     pub theme: Option<String>,

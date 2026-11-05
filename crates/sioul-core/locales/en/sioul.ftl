@@ -7143,7 +7143,10 @@ paper-steps-protection = Ask the judge (the juge des contentieux de la protectio
 ## sioul topics: mail topics measured on this computer (crates/sioul-cli/src/topics.rs, docs/topics.md)
 topics-eval-start = Each way is learned, then tested, in turn: it takes a while.
 topics-error = Topics could not be measured: { $detail }
-topics-read = { $n } messages read, spam aside; { $named } of them in a proposed topic.
+topics-reading = { $messages } messages kept here, each once, from { $folders } folders ({ $files } files); { $yours } of them yours (in Sent, or from your addresses).
+topics-reading-left = Left out: { $folders } junk, trash and draft folders, { $spam } messages the spam filter calls spam, { $forged } forged.
+topics-reading-seeds = Seeds name: folders { $folders } messages ({ $folders_yours } yours), contacts' categories { $categories } ({ $categories_yours } yours).
+topics-read = { $named } of these messages are in a proposed topic, { $yours } of them yours.
 topics-none = No topic to propose yet: no folder, project or category holds enough mail.
 topics-proposed = Topics proposed ({ $n }):
 topics-beyond = Beyond the twelve ({ $n }):
@@ -7158,10 +7161,14 @@ topics-topic = { $name } ({ $id }): { $count ->
 topics-from = from { $seeds }
 topics-seed-folder = the folder { $name } ({ $n })
 topics-seed-category = your contacts' category { $name } ({ $n })
-topics-seed-project = the project { $name } ({ $n })
 topics-kept = { $n } of its messages, also named by another topic, stay here, the more specific.
 topics-given = { $n } went to { $topic }, the more specific.
 topics-left-out = Folders that seed nothing: { $system } of the server's own, { $small } with fewer than { $least } messages, { $unused } unused for a year.
+topics-seed-preset = Sioul's preset { $name } ({ $n })
+topics-presets = Topic presets that match your mail, their senders proven ({ $least } messages or more start one on day one):
+topics-preset = { $name } ({ $id }): { $total } messages, { $domain } by its own senders, { $site } by their sites, { $list } as lists.
+topics-preset-starts = It would start.
+topics-presets-none = No topic preset matches your mail yet.
 topics-nothing = Nothing to measure: no topic is proposed, or a part of the time order holds none of its mail.
 topics-split = Learned from { $learned } messages, tested on the newest { $tested } (the first: { $date }); the newest { $validation } learned set the bands.
 topics-none-shares = The class "none", learned from a share of the mail no seed names (macro F1 and coverage on the newest learned):
@@ -7182,3 +7189,93 @@ topics-churn-none = No churn measured: too little mail a week before the test.
 topics-centroid = The centroid: { $f1 }; { $coverage }; { $precision }, { $recall }; { $fresh }; { $small }
 topics-centroid-fold = Folded: { $vocabulary } pieces, { $kb } KB in f16 beside a tokenizer of { $tokenizer } KB; off by { $e16 } in f16, which changes { $flips } of { $judged } messages.
 topics-seconds = { $seconds } seconds.
+topics-groups-read = { $messages } messages read, { $words } of them with words to group by; { $vocabulary } words kept.
+topics-groups-way = { $way }: { $found } groups found, { $shown } shown ({ $grouped } messages); coherence { $coherence }; agreement with the seeds { $agreement }.
+topics-groups-k = k = { $k }, silhouette { $silhouette }
+topics-groups-skipped-no-model = { $way }: no Model2Vec folder given (--model2vec).
+topics-groups-skipped-too-few = { $way }: too few messages to group.
+topics-groups-skipped-no-senders = { $way }: no sender proven.
+topics-groups-group = #{ $n }: { $size } messages, { $senders ->
+    [one] one sender
+   *[other] { $senders } senders
+} ({ $yours } yours); coherence { $coherence }; { $seed }
+topics-groups-seed = mostly { $topic } ({ $share })
+topics-groups-no-seed = in no seed
+topics-groups-names = senders: { $names }
+topics-groups-proposed = proposed name: { $name } ({ $how })
+topics-groups-words = words: { $words }
+topics-groups-subjects = for example: { $subjects }
+topics-groups-quoted = "{ $subject }"
+
+## Mail's topics in the window (crates/sioul-app/src/topics.rs, TopicMenu.qml, TopicFilter.qml, TopicsSettings.qml, docs/topics.md)
+topics-not-written = Your word could not be kept: { $detail }
+topics-gone = That topic is no longer there.
+topics-no-id = This message has no Message-ID: no topic can be kept for it.
+topics-given = { $n ->
+    [one] { $topic } given to this message.
+   *[other] { $topic } given to { $n } messages.
+}
+topics-taken-off = { $n ->
+    [one] Topic taken off this message.
+   *[other] Topic taken off { $n } messages.
+}
+topics-made = Topic { $topic } made.
+topics-made-given = { $n ->
+    [one] Topic { $topic } made and given to this message.
+   *[other] Topic { $topic } made and given to { $n } messages.
+}
+topics-rule-always = Always { $topic } for mail from { $address }.
+topics-rule-never = Never { $topic } for mail from { $address }.
+topics-rule-off = The rule for { $address } taken off.
+topics-renamed = { $old } renamed { $topic }.
+topics-removed = { $topic } removed: its word is off every message.
+topics-seed-folder-of = the folder { $name }
+topics-seed-category-of = your contacts' category { $name }
+topics-and = and
+topics-seeds-line = From { $seeds }.
+topics-group-gone = That group is no longer there: look again.
+topic-word = Topic
+topic-menu = Topic…
+topic-none = No topic
+topic-new = New topic…
+topic-new-name = The new topic's name
+topic-make = Make it
+topic-always = Always { $topic } for this sender
+topic-never = Never { $topic } for this sender
+topic-why-yours = given by you
+topic-why-sender = by its sender
+topic-why-conversation = by its conversation
+topic-why-folder = from the folder { $name }
+topic-why-category = from your contacts' category { $name }
+topic-why-preset = by its sender, one Sioul knows
+topic-why-site = by its sender's site
+topic-why-list = as a newsletter or a list
+topic-filter-all = All topics
+topic-filter-name = Topic: { $topic }
+topics-settings = Topics
+set-topics = Your topics
+set-topics-help = A topic is a quiet word on a message: a filter, never a folder. Give one from a message, or from several selected at once; a reply follows its conversation's first message you gave one. Sorted by your tags and senders until a topic has more mail.
+topics-settings-none = No topic yet. Give one from a message: Topic…
+topics-rename = Rename
+topics-remove = Remove
+topics-add = Add a topic
+topics-sender-always = Always: { $address }
+topics-sender-never = Never: { $address }
+topics-sender-off = Take this rule off
+topics-groups = Groups Sioul noticed
+topics-groups-look = Look for groups
+topics-groups-looking = Looking at your mail…
+topics-groups-failed = The groups could not be found: { $detail }
+topics-groups-none = No group stands out yet.
+topics-groups-size = { $n ->
+    [one] one message
+   *[other] { $n } messages
+}
+topics-name-it = Name it
+topics-day-one = { $n ->
+    [one] Sioul sorted your mail into one topic, from the senders it knows: { $topics }. Rename or remove it in Mail ▸ ⚙ ▸ Topics.
+   *[other] Sioul sorted your mail into { $n } topics, from the senders it knows: { $topics }. Rename or remove them in Mail ▸ ⚙ ▸ Topics.
+}
+topics-offered = Topics Sioul knows:
+topics-named-sites = Named from your senders' sites.
+topics-named-sender = Named after its most common sender.

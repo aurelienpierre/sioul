@@ -54,6 +54,10 @@
 //! - **Your word at once**: what you said of a message (Spam, Not spam)
 //!   while it waits for its Undo counts as said already (`World::waiting`):
 //!   its row changes kind at once.
+//! - **Topics** (docs/topics.md): each row's topic, one at most, and why
+//!   (`topics::rules`: your word, your rule for its sender, its
+//!   conversation, the topic's seeds), its sender counting only when Sioul's
+//!   checks authenticate it; `Ask::topic` keeps a topic's mail alone.
 
 use crate::areas::Area;
 use crate::card::Card;
@@ -142,11 +146,14 @@ pub struct Ask {
     /// rests and `shown_resting` is not read. None: an agent's, as before.
     #[serde(default)]
     pub filter: Option<Filter>,
+    /// One topic's mail alone, by its id; empty: every message.
+    #[serde(default)]
+    pub topic: String,
 }
 
 impl Default for Ask {
     fn default() -> Ask {
-        Ask { chip: Chip::All, account: String::new(), windows: 1, query: String::new(), shown_resting: Vec::new(), rows: PAGE, fresh: false, filter: None }
+        Ask { chip: Chip::All, account: String::new(), windows: 1, query: String::new(), shown_resting: Vec::new(), rows: PAGE, fresh: false, filter: None, topic: String::new() }
     }
 }
 
@@ -289,6 +296,11 @@ pub struct World {
     pub proven: crate::spam::vouched::Proven,
     /// What that row did with messages in a Junk folder, every device's.
     pub backs: Vec<labels::Back>,
+    /// Mail's topics (`[[topic]]`) and your word on them, every device's;
+    /// the topic presets' rules, for the topics started from one.
+    pub topics: Vec<crate::topics::Topic>,
+    pub topics_said: crate::topics::labels::Said,
+    pub topic_presets: std::sync::Arc<crate::topics::presets::Matcher>,
 }
 
 impl World {
@@ -311,6 +323,9 @@ impl World {
             dealings: crate::spam::vouched::current(),
             proven: config.spam.proven(),
             backs: labels::read_back_in(&root),
+            topics: config.topics.clone(),
+            topics_said: crate::topics::labels::Said::load(),
+            topic_presets: crate::topics::presets::Matcher::current(),
         }
     }
 }
@@ -365,6 +380,13 @@ pub struct Row {
     pub kinds: Vec<&'static str>,
     /// Never a message seen on its server only: the folders' menu reads it.
     pub server: bool,
+    /// Its topic's name and id, empty for none; why it has it ("yours",
+    /// "sender", "conversation", "folder", "category") and, for the last two,
+    /// the folder's or the category's name.
+    pub topic: String,
+    pub topic_id: String,
+    pub topic_why: &'static str,
+    pub topic_from: String,
     /// When it was sent (Unix seconds): the order.
     #[serde(skip)]
     pub sent: i64,
@@ -433,6 +455,8 @@ struct Listed<'a> {
     from_own: bool,
     stranger: bool,
     sent: i64,
+    /// Its topic (`topics::rules`).
+    topic: Option<crate::topics::rules::Tagged>,
     /// Ranked: the first opens.
     copies: Vec<Copy<'a>>,
 }
@@ -485,6 +509,40 @@ fn hostile(account: &str, path: &Path, world: &World) -> bool {
         kept.get_or_insert_with(HashMap::new).insert(key, found);
     }
     found
+}
+
+/// A message's topic (`topics::rules::topic_of`): its sender counts when
+/// Sioul's checks authenticate it and it is not yours; its folders as read,
+/// its sender's cards' categories.
+fn topic_of(world: &World, card: &Card, copies: &[Copy], address: &Address, from_own: bool, addresses: &[Address]) -> Option<crate::topics::rules::Tagged> {
+    let results = trust::read_auth_results(&card.headers, &address.trusted);
+    let sealers = trust::sealers(&address.trusted, &world.own_domains);
+    let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &sealers)).flatten();
+    let (judged, _) = trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain());
+    let sender = (!from_own && judged != Trust::Forged && trust::authenticated(results.as_ref(), &card.headers, &sealers)).then(|| card.from_address.as_deref().map(|a| a.trim().to_lowercase())).flatten();
+    let id = card.message_id.as_deref().map(crate::mailindex::bare_id);
+    let first = copies.first()?;
+    let conversation = crate::topics::rules::conversation(&first.line.references, &first.line.in_reply_to);
+    let folders: Vec<String> = copies.iter().filter_map(|c| addresses[c.address].folders.iter().find(|f| f.name == c.folder).map(|f| f.display.clone())).collect();
+    let categories = sender.as_deref().map(|a| world.senders.contacts.of_address(a)).unwrap_or_default();
+    let verified = (!from_own && judged == Trust::Verified).then(|| card.sender_domain()).flatten();
+    let facts = crate::topics::rules::Facts { id: id.as_deref(), sender: sender.as_deref(), conversation: &conversation, folders: &folders, categories: &categories, verified_domain: verified, list_id: None, is_list: card.is_list };
+    crate::topics::rules::topic_of(&world.topics, &world.topics_said, &facts, Some(&world.topic_presets))
+}
+
+/// Why a row has its topic, as a word the window reads.
+fn why_word(why: &crate::topics::rules::Why) -> &'static str {
+    use crate::topics::rules::Why;
+    match why {
+        Why::Yours => "yours",
+        Why::Sender => "sender",
+        Why::Conversation => "conversation",
+        Why::Folder(_) => "folder",
+        Why::Category(_) => "category",
+        Why::Preset(crate::topics::presets::By::Domain) => "preset",
+        Why::Preset(crate::topics::presets::By::Site) => "site",
+        Why::Preset(crate::topics::presets::By::List) => "list",
+    }
 }
 
 /// Whether a sender is someone you know, as the Porch counts them: let in,
@@ -753,15 +811,20 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         if !shown {
             continue;
         }
+        // Its topic: spam has none.
+        let topic = if world.topics.is_empty() || spam.is_some() { None } else { topic_of(world, &card, &copies, &addresses[first.address], from_own, addresses) };
+        if !ask.topic.is_empty() && topic.as_ref().map(|t| world.topics[t.topic].id.as_str()) != Some(ask.topic.as_str()) {
+            continue;
+        }
         let sent = copies.iter().map(|c| c.sent).min().unwrap_or(first.sent);
-        listed.push(Listed { uri, card, held, kinds, spam, flag: flag_word, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies });
+        listed.push(Listed { uri, card, held, kinds, spam, flag: flag_word, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, topic, copies });
     }
     // Newest first; a page of rows a window at most, "Earlier messages" showing more.
     listed.sort_by(|a, b| b.sent.cmp(&a.sent).then_with(|| a.copies[0].path.as_os_str().cmp(b.copies[0].path.as_os_str())));
     let more = listed.len() > ask.rows.max(1);
     listed.truncate(ask.rows.max(1));
     let mut rows = Vec::with_capacity(listed.len());
-    for Listed { uri, card, held, kinds, spam, flag, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, copies } in listed {
+    for Listed { uri, card, held, kinds, spam, flag, sent_kind, received_kind, unread_here, read, acting, from_own, stranger, sent, topic, copies } in listed {
         let first = &copies[0];
         let address = &addresses[first.address];
         let outgoing = !received_kind && sent_kind;
@@ -824,6 +887,13 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
             marks: if several { held.iter().map(|i| mark(*i)).collect() } else { Vec::new() },
             kinds,
             server: false,
+            topic: topic.as_ref().map(|t| world.topics[t.topic].name.clone()).unwrap_or_default(),
+            topic_id: topic.as_ref().map(|t| world.topics[t.topic].id.clone()).unwrap_or_default(),
+            topic_why: topic.as_ref().map_or("", |t| why_word(&t.why)),
+            topic_from: match topic.as_ref().map(|t| &t.why) {
+                Some(crate::topics::rules::Why::Folder(name) | crate::topics::rules::Why::Category(name)) => name.clone(),
+                _ => String::new(),
+            },
             sent,
         });
     }
@@ -967,6 +1037,9 @@ mod tests {
             dealings: std::sync::Arc::new(crate::spam::vouched::Dealings::default()),
             proven: crate::spam::vouched::Proven::default(),
             backs: Vec::new(),
+            topics: Vec::new(),
+            topics_said: crate::topics::labels::Said::default(),
+            topic_presets: std::sync::Arc::default(),
         }
     }
 
@@ -1018,6 +1091,41 @@ mod tests {
         // One address alone: what it holds, the list to both included.
         let work = stand.page(&world_at(crate::areas::Time::Work, "", ""), &Ask { account: stand.addresses[0].account.id.clone(), ..Ask::default() }, &BTreeSet::new());
         assert_eq!(subjects(&work), ["A note to myself", "Dated ahead", "On both lists", "From yesterday"]);
+    }
+
+    /// Each row's topic and why: a folder's seed, your word, its
+    /// conversation, your rule for its sender; a topic's mail alone under its filter.
+    #[test]
+    fn rows_carry_their_topic() {
+        let stand = Stand::new("topics");
+        let hour = 3600;
+        stand.put(0, "Archive", 1, "kept@example.org", "Ana <ana@example.org>", "noa@work.example.org", "A paper kept", NOW - 5 * hour, NOW - 5 * hour, "S", "", "…");
+        stand.put(0, "INBOX", 2, "tagged@example.org", "Ben <ben@example.org>", "noa@work.example.org", "Rehearsal", NOW - 4 * hour, NOW - 4 * hour, "S", "", "…");
+        stand.put(0, "INBOX", 3, "reply@example.org", "Eve <eve@example.org>", "noa@work.example.org", "Re: Rehearsal", NOW - 3 * hour, NOW - 3 * hour, "S", "In-Reply-To: <tagged@example.org>\r\n", "…");
+        stand.put(0, "INBOX", 4, "always@example.org", "Cat <cat@example.org>", "noa@work.example.org", "Concert", NOW - 2 * hour, NOW - 2 * hour, "S", "", "…");
+        stand.put(0, "INBOX", 5, "plain@example.org", "Dan <dan@example.org>", "noa@work.example.org", "Nothing of it", NOW - hour, NOW - hour, "S", "", "…");
+        use crate::topics::labels::{Act, Rule, Said};
+        let mut world = world_at(crate::areas::Time::Work, "", "");
+        world.topics = vec![
+            crate::topics::Topic { id: "choir".into(), name: "Chorale".into(), ..crate::topics::Topic::default() },
+            crate::topics::Topic { id: "papers".into(), name: "Papiers".into(), seeds: crate::topics::Seeds { folders: vec!["Archive".into()], categories: Vec::new() }, ..crate::topics::Topic::default() },
+        ];
+        world.topics_said = Said::of(&[
+            Act::Message { at: 1, message_id: "tagged@example.org".into(), topic: Some("choir".into()), forget: false },
+            Act::Sender { at: 2, address: "cat@example.org".into(), topic: "choir".into(), rule: Rule::Always },
+        ]);
+        let page = stand.page(&world, &Ask::default(), &BTreeSet::new());
+        let topic = |subject: &str| {
+            let r = row(&page, subject);
+            (r.topic.as_str(), r.topic_id.as_str(), r.topic_why, r.topic_from.as_str())
+        };
+        assert_eq!(topic("A paper kept"), ("Papiers", "papers", "folder", "Archive"));
+        assert_eq!(topic("Rehearsal"), ("Chorale", "choir", "yours", ""));
+        assert_eq!(topic("Re: Rehearsal"), ("Chorale", "choir", "conversation", ""));
+        assert_eq!(topic("Concert"), ("Chorale", "choir", "sender", ""));
+        assert_eq!(topic("Nothing of it"), ("", "", "", ""));
+        let choir = stand.page(&world, &Ask { topic: "choir".into(), ..Ask::default() }, &BTreeSet::new());
+        assert_eq!(subjects(&choir), ["Concert", "Re: Rehearsal", "Rehearsal"]);
     }
 
     /// A row acts on each address's first-ranked copy, and reads as those

@@ -93,6 +93,9 @@ Item {
         // The chip chosen last, on this device; the filter is Rust's to keep.
         const kept = JSON.parse(page.sioul.mailboxView() || "{}")
         page.boxChip = kept.chip || "all"
+        page.topicsCount = JSON.parse(page.sioul.topics() || "[]").length
+        // The topic chosen last, on this device, while it is still a topic.
+        page.boxTopic = kept.topic && JSON.parse(page.sioul.topics() || "[]").some(t => t.id === kept.topic) ? kept.topic : ""
         page.takeShown()
     }
     property string mailFolderText: ""
@@ -119,6 +122,10 @@ Item {
     property int boxWanted: page.boxPage
     readonly property int boxPage: 60
     property string boxChip: "all"
+    // The topic shown (TopicFilter.qml), by id; "" for all: a way to look, never a place.
+    property string boxTopic: ""
+    // How many topics there are: the filter shows once there is one, read again after each act.
+    property int topicsCount: 0
     property int boxWindows: 1
     // The mailbox's own list, not a search's.
     readonly property bool boxListed: page.boxShown && !page.searchOpen && !page.draftsShown
@@ -258,7 +265,7 @@ Item {
     // The mailbox as chosen, asked of Rust (`open_mailbox`): `fresh` when the
     // list holds nothing, every page then new to it.
     function boxAsk(fresh) {
-        return JSON.stringify({ chip: page.boxChip, windows: page.boxWindows, query: page.query, rows: page.boxWanted, fresh: fresh === true })
+        return JSON.stringify({ chip: page.boxChip, windows: page.boxWindows, query: page.query, rows: page.boxWanted, fresh: fresh === true, topic: page.boxTopic })
     }
 
     // Asked anew (another chip, search or filter): the list emptied, its first page asked for.
@@ -280,7 +287,8 @@ Item {
             who: row.who || "", address: row.address || "", subject: row.subject || "", day: row.day || "", time: row.time || "",
             unread: row.unread === true, read: row.read === true, flagged: row.flagged === true, answered: row.answered === true,
             attachments: row.attachments === true, hostile: row.hostile === true, trust_level: row.trust_level || "",
-            trust: row.trust || "", spam: row.spam || "", flag: row.flag || "", marks: row.marks || "", server: false
+            trust: row.trust || "", spam: row.spam || "", flag: row.flag || "", marks: row.marks || "", server: false,
+            topic: row.topic || "", topic_id: row.topic_id || "", topic_why: row.topic_why || "", topic_from: row.topic_from || ""
         }
     }
 
@@ -356,6 +364,37 @@ Item {
         page.boxWindows = 1
         page.clearSelection()
         page.askBoxAgain()
+    }
+
+    // A topic's mail alone, or every message ("").
+    function chooseTopic(topic) {
+        page.boxTopic = topic
+        page.boxWindows = 1
+        page.clearSelection()
+        page.askBoxAgain()
+    }
+
+    // "Topic…" on rows (their keys) under `item` (null: in the middle, from a menu): one
+    // row's current topic and sender's rules, or several's.
+    function askTopic(item, keys, row) {
+        topicMenu.openAt(item, JSON.stringify(page.rowsOf(keys)), keys.length === 1 ? keys[0] : "", row && keys.length === 1 ? (row.topic_id || "") : "")
+    }
+
+    TopicMenu {
+        id: topicMenu
+
+        objectName: "topicMenu"
+        sioul: page.sioul
+        theme: page.theme
+    }
+
+    // A topic made or removed is said with Undo: the topics counted again.
+    Connections {
+        target: page.sioul
+
+        function onUndoLineChanged() {
+            page.topicsCount = JSON.parse(page.sioul.topics() || "[]").length
+        }
     }
 
     // The filter (docs/areas.md, "A page's filter by area"), kept by Rust: the
@@ -883,6 +922,16 @@ Item {
                             onTicked: areas => page.tickAreas(areas)
                             onAsHours: page.areasAsHours()
                         }
+                        TopicFilter {
+                            id: sheetTopics
+
+                            objectName: "sheetTopics"
+                            visible: page.boxTopic !== "" || sheetTopics.topics.length > 0
+                            sioul: page.sioul
+                            theme: page.theme
+                            chosen: page.boxTopic
+                            onPicked: topic => page.chooseTopic(topic)
+                        }
                         Repeater {
                             model: page.box && page.box.addresses ? page.box.addresses : []
 
@@ -1304,6 +1353,19 @@ Item {
 
                     delegate: AddressSwitch {}
                 }
+                // The topics' filter, once there are topics (a phone's in the folders' sheet).
+                Loader {
+                    active: !page.window.compact && page.boxListed && (page.boxTopic !== "" || page.topicsCount > 0)
+                    visible: active
+
+                    sourceComponent: TopicFilter {
+                        objectName: "mailboxTopics"
+                        sioul: page.sioul
+                        theme: page.theme
+                        chosen: page.boxTopic
+                        onPicked: topic => page.chooseTopic(topic)
+                    }
+                }
             }
             Label {
                 visible: !page.draftsShown && (page.searchOpen ? page.found !== null && page.found.sentence !== "" : page.boxShown ? page.box !== null && page.box.sentence !== "" : page.shown !== null && page.shown.sentence !== "")
@@ -1354,6 +1416,13 @@ Item {
                 Button {
                     text: page.sioul.text("ui-move-to")
                     onClicked: page.askMove(page.selectedKeys)
+                }
+                Button {
+                    id: topicChosen
+
+                    objectName: "selectionTopic"
+                    text: page.sioul.text("topic-menu")
+                    onClicked: page.askTopic(topicChosen, page.selectedKeys, null)
                 }
                 ToolButton {
                     text: "×"
@@ -2031,6 +2100,13 @@ Item {
                     text: rowMenuForm.target && rowMenuForm.target.flagged ? page.sioul.text("ui-unflag") : page.sioul.text("ui-flag")
                     onTriggered: page.actOnRow(rowMenuForm.target, rowMenuForm.target.flagged ? "unflag" : "flag")
                 }
+                MenuItem {
+                    objectName: "menuTopic"
+                    visible: !rowMenuForm.remote
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("topic-menu")
+                    onTriggered: page.askTopic(null, [rowMenuForm.target.key], rowMenuForm.target)
+                }
                 MenuSeparator {}
                 MenuItem {
                     visible: rowMenuForm.role !== "archive"
@@ -2126,7 +2202,8 @@ Item {
     // Its quiet word: spam's, else "forged", else your filter's flag where it lies
     // ("probably not spam", "maybe spam"; decided 3 November 2026).
     function quietWord(row) {
-        return row.spam ? row.spam : row.trust_level === "forged" ? row.trust : row.flag || ""
+        const loud = row.spam ? row.spam : row.trust_level === "forged" ? row.trust : row.flag || ""
+        return loud !== "" ? loud : row.topic || ""
     }
 
     // A computer's row: one line, its marks, the dot, who, the subject, its quiet marks, the time.

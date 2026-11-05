@@ -240,3 +240,47 @@ pub fn topical(seed: u64, total: usize) -> Vec<Mail> {
         })
         .collect()
 }
+
+/// Your replies to the first `n` of the choir's messages, in Sent: from
+/// owner@example.org to the choir's office, its words, answering each.
+pub fn replies(mail: &[Mail], n: usize) -> Vec<Mail> {
+    mail.iter()
+        .filter(|m| m.folder == TOPIC_FOLDERS[0])
+        .take(n)
+        .enumerate()
+        .map(|(i, m)| {
+            let answered = message_id(&m.raw).unwrap_or_default();
+            let words = TOPIC_WORDS[0].iter().cycle().skip(i).take(40).copied().collect::<Vec<_>>().join(" ");
+            let date = m.date + 3600;
+            let raw = format!(
+                "From: Owner <owner@example.org>\r\nTo: Choir <contact@chorale.example>\r\nSubject: Re: {}\r\nDate: {}\r\nMessage-ID: <reply-{i}.{date}@example.org>\r\nIn-Reply-To: <{answered}>\r\nReferences: <{answered}>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{words}\r\n",
+                TOPIC_WORDS[0][i % 8],
+                date_header(date)
+            )
+            .into_bytes();
+            Mail { account: m.account, folder: "Sent", role: Role::Sent, flags: vec!["\\Seen".into()], date, raw }
+        })
+        .collect()
+}
+
+/// A raw message's Message-ID, bare.
+pub fn message_id(raw: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(raw);
+    let line = text.lines().find(|l| l.to_ascii_lowercase().starts_with("message-id:"))?;
+    Some(line[11..].trim().trim_start_matches('<').trim_end_matches('>').to_string())
+}
+
+/// Keeps invented mail in a Maildir as the sync keeps it: each message in
+/// its folder's directory (Maildir++, its server name read as the sync
+/// reads it), seen, the file's date its arrival.
+pub fn store_maildir(root: &std::path::Path, mail: &[Mail]) -> std::io::Result<()> {
+    for (i, m) in mail.iter().enumerate() {
+        let delimiter = if m.folder.contains('/') { "/" } else { "." };
+        let special = (m.role != Role::Other).then_some(m.role);
+        let folder = sioul_core::folders::folder(m.folder, Some(delimiter), special);
+        let dir = if folder.local.is_empty() { root.to_path_buf() } else { root.join(&folder.local) };
+        let origin = sioul_core::card::ImapOrigin { validity: 1, uid: i as u32 + 1 };
+        sioul_core::maildir::store(&dir, &sioul_core::maildir::Fetched { origin, flags: "S".into(), received: Some(m.date), raw: &m.raw })?;
+    }
+    Ok(())
+}

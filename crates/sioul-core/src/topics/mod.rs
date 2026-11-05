@@ -8,20 +8,179 @@
 //!
 //! What every device runs is here:
 //!
+//! - [`Topic`]: a topic as the configuration keeps it (`[[topic]]`), and
+//!   the functions that add, rename and remove one (`add`, `rename`, `remove`);
+//! - [`labels`]: your word on topics, one line per act, each device its own log;
+//! - [`presets`]: topics Sioul offers to start with (Bank, Taxes, Health…), by the senders it proves;
+//! - [`rules`]: a message's topic and why, your word first;
 //! - [`sender_words`] and [`line`]: what a message's sender adds to the line
 //!   the model reads, when Sioul's own checks proved who sent it, and the line itself;
 //! - [`seeds`]: the first topics, proposed from what the person already
-//!   sorted (folders, projects, contacts' categories);
+//!   sorted (folders, contacts' categories);
 //! - [`table`]: the model folded into a table that judges a message without
 //!   it, on the phone too.
 //!
 //! The training and its measures are sioul-learn's (`sioul_learn::topics`,
 //! `sioul topics seeds` and `sioul topics eval`), on a computer only.
 
+pub mod labels;
+pub mod presets;
+pub mod rules;
 pub mod seeds;
 pub mod table;
 
 use crate::card::Card;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+use toml_edit::{ArrayOfTables, Item, Table, value};
+
+/// A topic, as the configuration keeps it (`[[topic]]`): a standing part of
+/// life, never a folder. Its id is stable, ASCII (`slug`); its name as you
+/// wrote it, in any language.
+///
+/// ```toml
+/// [[topic]]
+/// id = "choir"
+/// name = "Chorale"
+/// seeds = { folders = ["Chorale"], categories = ["Chorale"] }
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Topic {
+    pub id: String,
+    pub name: String,
+    /// What it is for ("work", "admin", "leisure"): Mail's area filter only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area: Option<String>,
+    /// Open to AI agents; every topic is closed until you open it.
+    #[serde(default)]
+    pub agents: bool,
+    /// The preset it started from (`presets`), whose rules it follows; none for your own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+    /// The folders and contacts' categories whose mail it takes.
+    #[serde(default)]
+    pub seeds: Seeds,
+}
+
+/// A topic's seeds: folders by their name as read, categories as written on the cards.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Seeds {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
+}
+
+/// Adds a topic to the configuration at `path`, named `name`, with these
+/// seeds; its id made from its name, unique. Returns it.
+pub fn add(path: &Path, name: &str, seeds: &Seeds) -> Result<Topic, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("a topic needs a name".into());
+    }
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        let taken: Vec<String> = doc.get("topic").and_then(Item::as_array_of_tables).map(|t| t.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect()).unwrap_or_default();
+        let topic = Topic { id: slug(name, &taken), name: name.to_string(), seeds: seeds.clone(), ..Topic::default() };
+        let mut table = Table::new();
+        table["id"] = value(&topic.id);
+        table["name"] = value(&topic.name);
+        set_seeds(&mut table, seeds);
+        let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
+        table.decor_mut().set_prefix(if trailing.trim().is_empty() { "\n".to_string() } else { format!("{trailing}\n\n") });
+        doc.set_trailing("");
+        let list = doc.entry("topic").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+        list.as_array_of_tables_mut().ok_or_else(|| format!("{}: `topic` is not a list of tables", path.display()))?.push(table);
+        crate::config::write_document(path, &doc)?;
+        Ok(topic)
+    })
+}
+
+fn set_seeds(table: &mut Table, seeds: &Seeds) {
+    let list = |items: &[String]| {
+        let mut array = toml_edit::Array::new();
+        for item in items.iter().map(|i| i.trim()).filter(|i| !i.is_empty()) {
+            array.push(item);
+        }
+        array
+    };
+    table.remove("seeds");
+    if !seeds.folders.is_empty() || !seeds.categories.is_empty() {
+        let mut inline = toml_edit::InlineTable::new();
+        if !seeds.folders.is_empty() {
+            inline.insert("folders", list(&seeds.folders).into());
+        }
+        if !seeds.categories.is_empty() {
+            inline.insert("categories", list(&seeds.categories).into());
+        }
+        table["seeds"] = value(inline);
+    }
+}
+
+/// Changes one topic in the configuration at `path`, found by its id.
+fn change(path: &Path, id: &str, edit: impl FnOnce(&mut Table)) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        let table = doc
+            .get_mut("topic")
+            .and_then(Item::as_array_of_tables_mut)
+            .and_then(|list| list.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+            .ok_or_else(|| format!("{}: no topic {id}", path.display()))?;
+        edit(table);
+        crate::config::write_document(path, &doc)
+    })
+}
+
+/// A topic's name changed; its id stays, and with it every word you gave.
+pub fn rename(path: &Path, id: &str, name: &str) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("a topic needs a name".into());
+    }
+    change(path, id, |t| t["name"] = value(name))
+}
+
+/// A topic's seeds replaced.
+pub fn reseed(path: &Path, id: &str, seeds: &Seeds) -> Result<(), String> {
+    change(path, id, |t| set_seeds(t, seeds))
+}
+
+/// A topic put back as it was (a removal's Undo): its id, name, area,
+/// agents' switch and seeds, at the end of the list.
+pub fn put(path: &Path, topic: &Topic) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        let mut table = Table::new();
+        table["id"] = value(&topic.id);
+        table["name"] = value(&topic.name);
+        if let Some(area) = &topic.area {
+            table["area"] = value(area);
+        }
+        if topic.agents {
+            table["agents"] = value(true);
+        }
+        if let Some(preset) = &topic.preset {
+            table["preset"] = value(preset);
+        }
+        set_seeds(&mut table, &topic.seeds);
+        let list = doc.entry("topic").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+        let list = list.as_array_of_tables_mut().ok_or_else(|| format!("{}: `topic` is not a list of tables", path.display()))?;
+        list.retain(|t| t.get("id").and_then(Item::as_str) != Some(topic.id.as_str()));
+        list.push(table);
+        crate::config::write_document(path, &doc)
+    })
+}
+
+/// A topic taken out of the configuration. Your words stay in the logs, so
+/// that its Undo, or a topic of the same id added again, finds them.
+pub fn remove(path: &Path, id: &str) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        let Some(list) = doc.get_mut("topic").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
+        list.retain(|t| t.get("id").and_then(Item::as_str) != Some(id));
+        crate::config::write_document(path, &doc)
+    })
+}
 
 /// The sender words' version ([`sender_words`]): a table made with other
 /// words reads its senders otherwise, and is refused.
@@ -100,6 +259,35 @@ pub fn slug(name: &str, taken: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Added, renamed, reseeded, removed: the other tables stay where they were.
+    #[test]
+    fn topics_in_the_configuration() {
+        let root = std::env::temp_dir().join(format!("sioul-topics-config-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("config.toml");
+        std::fs::write(&path, "# Mine.\nlanguage = \"fr\"\n\n[[account]]\nid = \"home\"\nkind = \"imap\"\n").unwrap();
+        let choir = add(&path, " Chorale ", &Seeds { folders: vec!["Chorale".into()], categories: Vec::new() }).unwrap();
+        let again = add(&path, "chorale", &Seeds::default()).unwrap();
+        assert_eq!((choir.id.as_str(), again.id.as_str()), ("chorale", "chorale-2"));
+        rename(&path, "chorale", "Chœur").unwrap();
+        reseed(&path, "chorale-2", &Seeds { folders: Vec::new(), categories: vec!["Amis".into()] }).unwrap();
+        let config: crate::config::Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(config.topics.len(), 2);
+        assert_eq!((config.topics[0].name.as_str(), config.topics[0].seeds.folders.as_slice()), ("Chœur", &["Chorale".to_string()][..]));
+        assert_eq!(config.topics[1].seeds.categories, vec!["Amis"]);
+        assert_eq!(config.accounts.len(), 1);
+        remove(&path, "chorale").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("# Mine.") && !text.contains("Chœur") && text.contains("chorale-2"), "{text}");
+        // Put back as it was (Undo).
+        put(&path, &config.topics[0]).unwrap();
+        let back: crate::config::Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(back.topics.iter().find(|t| t.id == "chorale"), Some(&config.topics[0]));
+        assert!(rename(&path, "gone", "x").is_err() && add(&path, "  ", &Seeds::default()).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     fn card(raw: &str) -> Card {
         Card::from_bytes(raw.as_bytes()).unwrap()

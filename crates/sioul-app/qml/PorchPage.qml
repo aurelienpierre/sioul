@@ -771,6 +771,40 @@ Item {
                     }
                 }
 
+                // Day one of mail's topics: the topics Sioul started from the senders it
+                // knows, said once, until you put it away (docs/topics.md, "Topic presets").
+                Panel {
+                    id: topicsCard
+
+                    property string text: page.sioul.viewFlag("topics-day-one-left") ? "" : page.sioul.topicsCard()
+
+                    objectName: "topicsDayOne"
+                    visible: topicsCard.text !== ""
+                    Layout.fillWidth: true
+                    theme: page.theme
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: topicsCard.text
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                        Button {
+                            flat: true
+                            text: page.sioul.text("porch-hours-leave")
+                            onClicked: {
+                                page.sioul.setViewFlag("topics-day-one-left", true)
+                                topicsCard.text = ""
+                            }
+                        }
+                    }
+                }
+
                 // On a phone: what Android has not allowed Sioul yet that it needs
                 // here, said once, until you put it away (docs/android.md, "What Android withholds").
                 AccessCard {

@@ -107,6 +107,19 @@ Opening a message marks it read, as any mail program does. Sioul never sends a r
   <figcaption>Sorting from a search: the messages chosen, dragged onto a folder.</figcaption>
 </figure>
 
+### Topics {#topics}
+
+A topic is a quiet word on a message, such as Health, Tax or Choir: a way to look at your mail, never a folder. Nothing moves, and nothing asks you to tag anything.
+
+- **Topic…**, under the sender's line in the reader, in a message's menu, or in the bar above a selection, gives a topic to one message or to several at once, changes it or takes it off. **New topic…** makes it and gives it in one act.
+- **Always <topic> for this sender**, or **Never…**, in the same menu: the sender's mail takes it, or never does. A reply takes the topic you gave its conversation.
+- **The Topic filter**, beside the filter by area, shows one topic's mail alone. The topic shows quietly after the subject, and in the reader with why it has it.
+- Each act says what it did, with **Undo**. In the Mail page's ⚙, **Topics** lists them, renames and removes them, and on a computer **Groups Sioul noticed** gathers mail no topic names yet, by its words: **Name it** gives the whole group a topic.
+
+**To start**, Sioul knows some topics (Bank, Taxes, Health, Phone and internet…) by their senders, those it can prove: once enough mail is here, those that find five messages or more start by themselves, said once on the Porch; the others wait in **Topics**, one tap each. Started, a topic is yours: renamed or removed like any other.
+
+Topics and projects are independent: a project is something to complete, a topic a standing part of life.
+
 ### Unsubscribing {#unsubscribing}
 
 A newsletter or a list's message that says how to leave it has **Unsubscribe** above it. One click, and ten seconds later Sioul does what the list asks:

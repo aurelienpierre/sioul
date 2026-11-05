@@ -2,9 +2,10 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! `sioul topics`: mail topics, measured on this computer (sioul-learn's
-//! `topics`, docs/topics.md). `seeds` lists the topics your folders,
-//! projects and contacts' categories would propose, read from the spam
-//! filter's corpus; `eval` trains fastText's classifier over them and tests
+//! `topics`, docs/topics.md), on every message kept here (Sent and the
+//! archives included; junk, trash, drafts and spam out). `seeds` lists the
+//! topics your folders and contacts' categories would propose, by their
+//! headers alone; `eval` trains fastText's classifier over them and tests
 //! it in time order, then says what to build with: how to say "no topic",
 //! whether the sender's words stay, how many buckets, each topic's sure
 //! threshold, the table's size, its churn. Names and numbers only, never a
@@ -16,6 +17,7 @@ use crate::spam::{long, say};
 use clap::Subcommand;
 use serde_json::json;
 use sioul_core::topics::seeds::{Kind, Topic};
+use sioul_learn::groups;
 use sioul_learn::model2vec::StaticModel;
 use sioul_learn::topics::{self, Counts, Evaluation, Measured, Options, Scores, Seeded, Sources};
 use sioul_learn::{Cancel, Dirs, LearnError, Progress, train};
@@ -23,8 +25,10 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub(crate) enum TopicsCommand {
-    /// The topics Sioul would propose from your folders, projects and
-    /// contacts' categories, read from the spam filter's corpus (`sioul spam fetch`).
+    /// The topics Sioul would propose from your folders, contacts'
+    /// categories and the topic presets' senders (presets/topics.json), from
+    /// every message kept here (Sent and archives included); each preset's
+    /// matches by count.
     Seeds {
         #[arg(long)]
         json: bool,
@@ -61,6 +65,27 @@ pub(crate) enum TopicsCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Groups of the mail kept here (spam out), four ways side by side, for
+    /// you to name later: the proven senders' communities, Model2Vec with
+    /// k-means (with --model2vec), LDA and NMF. Each group's size, senders,
+    /// its senders' names, words and two subjects (masked), the name Sioul
+    /// proposes and how, its coherence and the seed most of it is in.
+    Groups {
+        /// A Model2Vec folder (model.safetensors, tokenizer.json): its k-means too.
+        #[arg(long)]
+        model2vec: Option<PathBuf>,
+        /// LDA's and NMF's topics (else k-means' k, else 10).
+        #[arg(long)]
+        k: Option<usize>,
+        /// Groups smaller than this are not shown (10).
+        #[arg(long)]
+        least: Option<usize>,
+        /// LDA's sweeps over the mail (200).
+        #[arg(long)]
+        iterations: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub(crate) fn run(s: &Session, command: TopicsCommand) -> Result<(), String> {
@@ -89,6 +114,13 @@ pub(crate) fn run(s: &Session, command: TopicsCommand) -> Result<(), String> {
             say(Report { lines: vec![s.tr.text("topics-eval-start", None)], data: json!({}) }, false)?;
             long(s, json, None, |progress, cancel| eval(s, &dirs, &options, progress, cancel))
         }
+        TopicsCommand::Groups { model2vec, k, least, iterations, json } => {
+            let language = s.config.language.clone().unwrap_or_else(|| s.tr.language().to_string());
+            let mut options = groups::Options { k, presets: Some(sioul_core::presets::load()), language, ..groups::Options::default() };
+            options.least = least.unwrap_or(options.least).max(1);
+            options.lda_iterations = iterations.unwrap_or(options.lda_iterations).max(1);
+            long(s, json, None, |progress, cancel| groups_report(s, &dirs, model2vec.as_deref(), &options, progress, cancel))
+        }
     }
 }
 
@@ -101,8 +133,8 @@ fn failure(s: &Session, e: &LearnError) -> String {
     }
 }
 
-fn read(s: &Session, dirs: &Dirs, options: &Options, model: Option<&mut StaticModel>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<topics::Read, String> {
-    topics::read(dirs, &train::trusted_ids(&s.config), &Sources::of(&s.config), options, model, progress, cancel).map_err(|e| failure(s, &e))
+fn read(s: &Session, dirs: &Dirs, options: &Options, words: bool, model: Option<&mut StaticModel>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<topics::Read, String> {
+    topics::read(dirs, &train::trusted_ids(&s.config), &Sources::of(&s.config), options, words, model, progress, cancel).map_err(|e| failure(s, &e))
 }
 
 // Numbers in words.
@@ -130,7 +162,7 @@ fn seed_words(s: &Session, kind: Kind, name: &str, n: usize) -> String {
     let id = match kind {
         Kind::Folder => "topics-seed-folder",
         Kind::Category => "topics-seed-category",
-        Kind::Project => "topics-seed-project",
+        Kind::Preset => "topics-seed-preset",
     };
     s.say(id, &[("name", crate::one_line(name)), ("n", n.to_string())])
 }
@@ -154,7 +186,14 @@ fn topic_lines(s: &Session, topic: &Topic, given_names: &dyn Fn(&str) -> String)
 fn seeded_lines(s: &Session, seeded: &Seeded, least: usize) -> Vec<String> {
     let proposal = &seeded.proposal;
     let name_of = |id: &str| proposal.topics.iter().chain(&proposal.beyond).find(|t| t.id == id).map_or_else(|| id.to_string(), |t| crate::one_line(&t.name));
-    let mut lines = vec![s.say("topics-read", &[("n", seeded.messages.to_string()), ("named", seeded.named.to_string())])];
+    let r = &seeded.reading;
+    let n = |x: u64| x.to_string();
+    let mut lines = vec![
+        s.say("topics-reading", &[("messages", n(r.messages)), ("folders", n(r.folders)), ("files", n(r.files)), ("yours", n(r.yours))]),
+        s.say("topics-reading-left", &[("folders", n(r.folders_left_out)), ("spam", n(r.spam)), ("forged", n(r.forged))]),
+        s.say("topics-reading-seeds", &[("folders", n(r.folder_named)), ("folders_yours", n(r.folder_yours)), ("categories", n(r.category_named)), ("categories_yours", n(r.category_yours))]),
+        s.say("topics-read", &[("named", n(seeded.named)), ("yours", n(seeded.named_yours))]),
+    ];
     if proposal.topics.is_empty() {
         lines.push(s.tr.text("topics-none", None));
     } else {
@@ -177,12 +216,30 @@ fn seeded_lines(s: &Session, seeded: &Seeded, least: usize) -> Vec<String> {
     }
     let left = &seeded.left_out;
     lines.push(s.say("topics-left-out", &[("system", left.system.to_string()), ("small", left.small.to_string()), ("least", least.to_string()), ("unused", left.unused.to_string())]));
+    // The topic presets' matches, the most first: those of five or more would start on day one.
+    let presets = sioul_core::topics::presets::Matcher::current();
+    let language = s.config.language.clone().unwrap_or_else(|| s.tr.language().to_string());
+    let mut matched: Vec<(&String, &sioul_core::topics::presets::Counted)> = r.presets.iter().collect();
+    matched.sort_by(|a, b| b.1.total().cmp(&a.1.total()).then_with(|| a.0.cmp(b.0)));
+    if matched.is_empty() {
+        lines.push(s.tr.text("topics-presets-none", None));
+    } else {
+        lines.push(s.say("topics-presets", &[("least", sioul_core::topics::presets::DAY_ONE.to_string())]));
+        for (id, counted) in matched {
+            let name = presets.get(id).map_or_else(|| id.clone(), |p| sioul_core::topics::presets::name_in(p, &language));
+            let mut line = s.say("topics-preset", &[("name", name), ("id", id.clone()), ("total", n(counted.total())), ("domain", n(counted.by_domain)), ("site", n(counted.by_site)), ("list", n(counted.by_list))]);
+            if counted.total() >= sioul_core::topics::presets::DAY_ONE {
+                line = format!("{line} {}", s.tr.text("topics-preset-starts", None));
+            }
+            lines.push(format!("  {line}"));
+        }
+    }
     lines
 }
 
 fn seeds(s: &Session, dirs: &Dirs, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
     let options = Options::of(&s.config);
-    let read = read(s, dirs, &options, None, progress, cancel)?;
+    let read = read(s, dirs, &options, false, None, progress, cancel)?;
     let (seeded, _) = topics::seeded(&read, &options);
     let lines = seeded_lines(s, &seeded, options.rules.least);
     Ok(Report { lines, data: serde_json::to_value(&seeded).map_err(|e| e.to_string())? })
@@ -241,7 +298,7 @@ fn eval(s: &Session, dirs: &Dirs, options: &Options, progress: &mut dyn FnMut(&P
         Some(folder) => Some(StaticModel::load(folder).map_err(|e| s.say("topics-error", &[("detail", e)]))?),
         None => None,
     };
-    let read = read(s, dirs, options, model.as_mut(), progress, cancel)?;
+    let read = read(s, dirs, options, true, model.as_mut(), progress, cancel)?;
     let evaluation = topics::evaluate(dirs, &read, options, model.as_ref(), progress, cancel).map_err(|e| failure(s, &e))?;
     let lines = eval_lines(s, &evaluation, options);
     Ok(Report { lines, data: serde_json::to_value(&evaluation).map_err(|e| e.to_string())? })
@@ -308,4 +365,73 @@ fn eval_lines(s: &Session, evaluation: &Evaluation, options: &Options) -> Vec<St
     }
     lines.push(s.say("topics-seconds", &[("seconds", format!("{:.0}", evaluation.seconds))]));
     lines
+}
+
+// `sioul topics groups`.
+
+fn groups_report(s: &Session, dirs: &Dirs, folder: Option<&std::path::Path>, options: &groups::Options, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
+    let topic_options = Options::of(&s.config);
+    let mut model = match folder {
+        Some(folder) => Some(StaticModel::load(folder).map_err(|e| s.say("topics-error", &[("detail", e)]))?),
+        None => None,
+    };
+    let read = read(s, dirs, &topic_options, true, model.as_mut(), progress, cancel)?;
+    let (seeded, labels) = topics::seeded(&read, &topic_options);
+    let ids: Vec<String> = seeded.proposal.topics.iter().map(|t| t.id.clone()).collect();
+    let mut found = groups::groups(&read, &labels, &ids, model.as_ref(), options, progress, cancel).map_err(|e| failure(s, &e))?;
+    // Subjects as an agent would see them: codes, sign-in links and account numbers hidden.
+    let words = sioul_core::words::Words::of(&s.config);
+    for way in &mut found.ways {
+        for group in &mut way.groups {
+            for subject in &mut group.subjects {
+                *subject = crate::one_line(&crate::mcp::mask::message(&words, subject, "").0);
+            }
+        }
+    }
+    let name_of = |id: &str| seeded.proposal.topics.iter().find(|t| t.id == id).map_or_else(|| id.to_string(), |t| crate::one_line(&t.name));
+    let n = |x: u64| x.to_string();
+    let mut lines = vec![s.say("topics-groups-read", &[("messages", n(found.messages)), ("words", n(found.with_words)), ("vocabulary", n(found.vocabulary))])];
+    for way in &found.ways {
+        lines.push(String::new());
+        if let Some(why) = &way.skipped {
+            lines.push(s.say(&format!("topics-groups-skipped-{why}"), &[("way", way.name.clone())]));
+            continue;
+        }
+        lines.push(s.say(
+            "topics-groups-way",
+            &[
+                ("way", way.name.clone()),
+                ("found", n(way.found)),
+                ("shown", n(way.groups.len() as u64)),
+                ("grouped", n(way.grouped)),
+                ("coherence", number(s, way.coherence, 3)),
+                ("agreement", share(s, way.agreement)),
+            ],
+        ));
+        if let Some(silhouette) = way.silhouette {
+            lines.push(format!("  {}", s.say("topics-groups-k", &[("k", n(way.k)), ("silhouette", decimal(s, silhouette, 3))])));
+        }
+        for (i, group) in way.groups.iter().enumerate() {
+            let seed = match &group.seed {
+                Some((id, part)) => s.say("topics-groups-seed", &[("topic", name_of(id)), ("share", share(s, Some(*part)))]),
+                None => s.tr.text("topics-groups-no-seed", None),
+            };
+            lines.push(format!(
+                "  {}",
+                s.say("topics-groups-group", &[("n", n(i as u64 + 1)), ("size", n(group.size)), ("senders", n(group.senders)), ("yours", n(group.yours)), ("coherence", number(s, group.coherence, 3)), ("seed", seed)])
+            ));
+            lines.push(format!("    {}", s.say("topics-groups-names", &[("names", group.names.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", "))])));
+            if !group.proposed.is_empty() {
+                let how = s.tr.text(if group.proposed_by == "sites" { "topics-named-sites" } else { "topics-named-sender" }, None);
+                lines.push(format!("    {}", s.say("topics-groups-proposed", &[("name", crate::one_line(&group.proposed)), ("how", how)])));
+            }
+            lines.push(format!("    {}", s.say("topics-groups-words", &[("words", group.words.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", "))])));
+            if !group.subjects.is_empty() {
+                let quoted: Vec<String> = group.subjects.iter().map(|subject| s.say("topics-groups-quoted", &[("subject", subject.clone())])).collect();
+                lines.push(format!("    {}", s.say("topics-groups-subjects", &[("subjects", quoted.join(" · "))])));
+            }
+        }
+    }
+    lines.push(s.say("topics-seconds", &[("seconds", format!("{:.0}", found.seconds))]));
+    Ok(Report { lines, data: serde_json::to_value(&found).map_err(|e| e.to_string())? })
 }

@@ -107,6 +107,19 @@ Ouvrir un courriel le marque comme lu, comme le fait tout logiciel de courriel. 
   <figcaption>Trier depuis une recherche : les courriels choisis, glissés sur un dossier.</figcaption>
 </figure>
 
+### Les thèmes {#topics}
+
+Un thème est un mot discret sur un courriel, comme Santé, Impôts ou Chorale : une façon de regarder votre courrier, jamais un dossier. Rien ne bouge, et rien ne vous demande de ranger quoi que ce soit.
+
+- **Thème…**, sous la ligne de l’expéditeur dans la lecture, dans le menu d’un courriel, ou dans la barre au-dessus d’une sélection, donne un thème à un courriel ou à plusieurs à la fois, le change ou le retire. **Nouveau thème…** le crée et le donne d’un seul geste.
+- **Toujours <thème> pour cet expéditeur**, ou **Jamais…**, dans le même menu : le courrier de l’expéditeur le prend, ou ne le prend jamais. Une réponse prend le thème que vous avez donné à sa conversation.
+- **Le filtre par thème**, à côté du filtre par usage, montre le courrier d’un seul thème. Le thème s’affiche discrètement après l’objet, et dans la lecture avec ce qui le lui donne.
+- Chaque geste dit ce qu’il a fait, avec **Annuler**. Dans le ⚙ de la page Courrier, **Thèmes** les liste, les renomme et les retire, et sur un ordinateur **Groupes remarqués par Sioul** rassemble par leurs mots les courriels qu’aucun thème ne nomme encore : **Le nommer** donne un thème à tout le groupe.
+
+**Pour commencer**, Sioul connaît quelques thèmes (Banque, Impôts, Santé, Téléphone et internet…) par leurs expéditeurs, ceux qu’il peut prouver : une fois assez de courrier ici, ceux qui trouvent cinq courriels ou plus commencent d’eux-mêmes, dit une fois sur le Porche ; les autres attendent dans **Thèmes**, un toucher chacun. Commencé, un thème est le vôtre : il se renomme ou se retire comme les autres.
+
+Les thèmes et les projets sont indépendants : un projet est une chose à mener à bien, un thème une part durable de la vie.
+
 ### Se désabonner {#unsubscribing}
 
 Une infolettre ou le courriel d’une liste qui dit comment la quitter a **Se désabonner** au-dessus. Un clic, et dix secondes plus tard Sioul fait ce que la liste demande :

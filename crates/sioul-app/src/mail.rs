@@ -115,6 +115,9 @@ struct MailboxView {
     /// The areas you ticked, while they hold (`areafilter::AreaFilter`).
     #[serde(default, skip_serializing_if = "is_as_the_hours_say")]
     areas: sioul_core::areafilter::AreaFilter,
+    /// The topic shown (TopicFilter.qml), by id; empty for all.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    topic: String,
 }
 
 fn is_as_the_hours_say(filter: &sioul_core::areafilter::AreaFilter) -> bool {
@@ -158,7 +161,7 @@ pub(crate) fn keep_mailbox_view(ask: &sioul_core::mailbox::Ask) {
 }
 
 fn keep_mailbox_view_in(path: &Path, ask: &sioul_core::mailbox::Ask) {
-    let view = MailboxView { chip: ask.chip, account: ask.account.clone(), ..kept_view(path) };
+    let view = MailboxView { chip: ask.chip, account: ask.account.clone(), topic: ask.topic.clone(), ..kept_view(path) };
     write_view(path, &view);
 }
 
@@ -298,6 +301,15 @@ struct RowOut<'a> {
     /// Its addresses, by their place in the page's `addresses`: "0,1".
     #[serde(skip_serializing_if = "String::is_empty")]
     marks: String,
+    /// Its topic, its id, why, from what (`mailbox::Row::topic`): none for most rows.
+    #[serde(skip_serializing_if = "str::is_empty")]
+    topic: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    topic_id: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    topic_why: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    topic_from: &'a str,
 }
 
 /// One page of the mailbox as it crosses: its rows from `start`, whether
@@ -380,6 +392,10 @@ fn page_texts(page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, 
                     spam: &r.spam,
                     flag: &r.flag,
                     marks: r.marks.iter().map(|m| place(&m.account)).collect::<Vec<_>>().join(","),
+                    topic: &r.topic,
+                    topic_id: &r.topic_id,
+                    topic_why: r.topic_why,
+                    topic_from: &r.topic_from,
                 })
                 .collect();
             json(&PageOut {
@@ -2276,6 +2292,10 @@ mod tests {
             marks: accounts.iter().map(|a| Mark { account: a.to_string(), letter: "N".into(), tint: 0, title: format!("noa@{a}.example.org") }).collect(),
             kinds: vec!["received"],
             server: false,
+            topic: String::new(),
+            topic_id: String::new(),
+            topic_why: "",
+            topic_from: String::new(),
             sent: 0,
         };
         let marks = vec![Mark { account: "work".into(), letter: "N".into(), tint: 0, title: "noa@work.example.org".into() }, Mark { account: "home".into(), letter: "H".into(), tint: 1, title: "noa@home.example.org".into() }];

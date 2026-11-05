@@ -7183,14 +7183,17 @@ paper-steps-protection = Demander au juge des contentieux de la protection un r�
 ## sioul topics : les thèmes du courrier mesurés sur cet ordinateur (crates/sioul-cli/src/topics.rs, docs/topics.md)
 topics-eval-start = Chaque façon est apprise puis testée, tour à tour : cela prend un moment.
 topics-error = Les thèmes n’ont pas pu être mesurés : { $detail }
-topics-read = { $n } messages lus, indésirables à part ; { $named } d’entre eux dans un thème proposé.
+topics-reading = { $messages } courriels gardés ici, chacun une fois, de { $folders } dossiers ({ $files } fichiers) ; { $yours } d’entre eux à vous (dans Envoyés, ou de vos adresses).
+topics-reading-left = Laissés de côté : { $folders } dossiers d’indésirables, de corbeille et de brouillons, { $spam } courriels que le filtre dit indésirables, { $forged } falsifiés.
+topics-reading-seeds = Les amorces nomment : dossiers { $folders } courriels ({ $folders_yours } à vous), catégories de vos contacts { $categories } ({ $categories_yours } à vous).
+topics-read = { $named } de ces courriels sont dans un thème proposé, { $yours } d’entre eux à vous.
 topics-none = Aucun thème à proposer pour l’instant : aucun dossier, projet ou catégorie ne tient assez de courrier.
 topics-proposed = Thèmes proposés ({ $n }) :
 topics-beyond = Au-delà des douze ({ $n }) :
 topics-waiting = En attente de plus de courrier ({ $n }) :
 topics-topic = { $name } ({ $id }) : { $count ->
-    [one] un message
-   *[other] { $count } messages
+    [one] un courriel
+   *[other] { $count } courriels
 } de { $senders ->
     [one] un expéditeur
    *[other] { $senders } expéditeurs
@@ -7198,12 +7201,16 @@ topics-topic = { $name } ({ $id }) : { $count ->
 topics-from = d’après { $seeds }
 topics-seed-folder = le dossier { $name } ({ $n })
 topics-seed-category = la catégorie de vos contacts { $name } ({ $n })
-topics-seed-project = le projet { $name } ({ $n })
-topics-kept = { $n } de ses messages, que nomme aussi un autre thème, restent ici, le plus précis.
+topics-kept = { $n } de ses courriels, que nomme aussi un autre thème, restent ici, le plus précis.
 topics-given = { $n } sont allés à { $topic }, plus précis.
-topics-left-out = Dossiers qui n’amorcent rien : { $system } du serveur, { $small } de moins de { $least } messages, { $unused } inutilisés depuis un an.
-topics-nothing = Rien à mesurer : aucun thème n’est proposé, ou une partie de l’ordre du temps n’en tient aucun message.
-topics-split = Appris sur { $learned } messages, testé sur les { $tested } plus récents (le premier : { $date }) ; les { $validation } plus récents des appris ont fixé les bandes.
+topics-left-out = Dossiers qui n’amorcent rien : { $system } du serveur, { $small } de moins de { $least } courriels, { $unused } inutilisés depuis un an.
+topics-seed-preset = le thème proposé par Sioul { $name } ({ $n })
+topics-presets = Les thèmes proposés par Sioul qui trouvent votre courrier, leurs expéditeurs prouvés ({ $least } courriels ou plus en font un thème le premier jour) :
+topics-preset = { $name } ({ $id }) : { $total } courriels, { $domain } par ses propres expéditeurs, { $site } par leurs sites, { $list } comme listes.
+topics-preset-starts = Il deviendrait un thème.
+topics-presets-none = Aucun thème proposé par Sioul ne trouve encore votre courrier.
+topics-nothing = Rien à mesurer : aucun thème n’est proposé, ou une partie de l’ordre du temps n’en tient aucun courriel.
+topics-split = Appris sur { $learned } courriels, testé sur les { $tested } plus récents (le premier : { $date }) ; les { $validation } plus récents des appris ont fixé les bandes.
 topics-none-shares = La classe « aucun », apprise d’une part du courrier qu’aucune amorce ne nomme (F1 macro et couverture sur les plus récents des appris) :
 topics-none-share = { $share } : { $f1 }, { $coverage }
 topics-ways = Chaque façon sur le test (F1 macro ; couverture ; précision et rappel d’après les amorces ; rappel des nouveaux expéditeurs ; F1 des petits thèmes) :
@@ -7214,11 +7221,101 @@ topics-decided = Gardé : { $way } ; les mots de l’expéditeur { $senders 
 topics-topic-numbers = { $name } : { $learned } appris, sûr à partir de { $sure } ; précision { $precision } ({ $seeded } sur le courrier amorcé), rappel { $recall } ({ $counts }) ; rappel des nouveaux expéditeurs { $fresh } sur { $fresh_n }
 topics-counts = { $right } justes sur { $seeded }, { $other } d’un autre thème, { $unseeded } sur du courrier sans amorce, { $maybe } peut-être
 topics-never = jamais
-topics-new-senders = Expéditeurs jamais vus ({ $n } messages) : précision { $precision }, rappel { $recall }.
-topics-fold = La table : { $words } mots, { $bucket } seaux, { $f16 } Ko en f16 ({ $f32 } Ko en f32) ; écart aux prédictions de fastText { $e32 } en f32, { $e16 } en f16 ; le f16 change le thème ou la bande de { $flips } messages sur { $judged }.
+topics-new-senders = Expéditeurs jamais vus ({ $n } courriels) : précision { $precision }, rappel { $recall }.
+topics-fold = La table : { $words } mots, { $bucket } seaux, { $f16 } Ko en f16 ({ $f32 } Ko en f32) ; écart aux prédictions de fastText { $e32 } en f32, { $e16 } en f16 ; le f16 change le thème ou la bande de { $flips } courriels sur { $judged }.
 topics-fold-broken = La table f32 s’écarte des prédictions de fastText de plus de { $tolerance } : elle ne serait pas écrite.
 topics-churn = Appris une semaine plus tôt, le modèle montrait { $shown } thèmes sûrs sur le courrier testé ; le plus récent en change { $changed } ({ $share }) et en ajoute { $added }.
 topics-churn-none = Pas de changement mesuré : trop peu de courrier une semaine avant le test.
 topics-centroid = Le centroïde : { $f1 } ; { $coverage } ; { $precision }, { $recall } ; { $fresh } ; { $small }
-topics-centroid-fold = Replié : { $vocabulary } pièces, { $kb } Ko en f16 à côté d’un découpeur de { $tokenizer } Ko ; écart { $e16 } en f16, qui change { $flips } messages sur { $judged }.
+topics-centroid-fold = Replié : { $vocabulary } pièces, { $kb } Ko en f16 à côté d’un découpeur de { $tokenizer } Ko ; écart { $e16 } en f16, qui change { $flips } courriels sur { $judged }.
 topics-seconds = { $seconds } secondes.
+topics-groups-read = { $messages } courriels lus, dont { $words } avec des mots à grouper ; { $vocabulary } mots gardés.
+topics-groups-way = { $way } : { $found } groupes trouvés, { $shown } montrés ({ $grouped } courriels) ; cohérence { $coherence } ; accord avec les amorces { $agreement }.
+topics-groups-k = k = { $k }, silhouette { $silhouette }
+topics-groups-skipped-no-model = { $way } : aucun dossier Model2Vec donné (--model2vec).
+topics-groups-skipped-too-few = { $way } : trop peu de courriels à grouper.
+topics-groups-skipped-no-senders = { $way } : aucun expéditeur prouvé.
+topics-groups-group = n° { $n } : { $size } courriels, { $senders ->
+    [one] un expéditeur
+   *[other] { $senders } expéditeurs
+} ({ $yours } à vous) ; cohérence { $coherence } ; { $seed }
+topics-groups-seed = surtout { $topic } ({ $share })
+topics-groups-no-seed = dans aucune amorce
+topics-groups-names = expéditeurs : { $names }
+topics-groups-proposed = nom proposé : { $name } ({ $how })
+topics-groups-words = mots : { $words }
+topics-groups-subjects = par exemple : { $subjects }
+topics-groups-quoted = « { $subject } »
+
+## Les thèmes du courrier dans la fenêtre (crates/sioul-app/src/topics.rs, TopicMenu.qml, TopicFilter.qml, TopicsSettings.qml, docs/topics.md)
+topics-not-written = Votre mot n’a pas pu être gardé : { $detail }
+topics-gone = Ce thème n’est plus là.
+topics-no-id = Ce courriel n’a pas de Message-ID : aucun thème ne peut être gardé pour lui.
+topics-given = { $n ->
+    [one] { $topic } donné à ce courriel.
+   *[other] { $topic } donné à { $n } courriels.
+}
+topics-taken-off = { $n ->
+    [one] Thème retiré de ce courriel.
+   *[other] Thème retiré de { $n } courriels.
+}
+topics-made = Thème { $topic } créé.
+topics-made-given = { $n ->
+    [one] Thème { $topic } créé et donné à ce courriel.
+   *[other] Thème { $topic } créé et donné à { $n } courriels.
+}
+topics-rule-always = Toujours { $topic } pour le courrier de { $address }.
+topics-rule-never = Jamais { $topic } pour le courrier de { $address }.
+topics-rule-off = La règle pour { $address } est retirée.
+topics-renamed = { $old } renommé { $topic }.
+topics-removed = { $topic } retiré : son mot n’est plus sur aucun courriel.
+topics-seed-folder-of = le dossier { $name }
+topics-seed-category-of = la catégorie de vos contacts { $name }
+topics-and = et
+topics-seeds-line = D’après { $seeds }.
+topics-group-gone = Ce groupe n’est plus là : cherchez à nouveau.
+topic-word = Thème
+topic-menu = Thème…
+topic-none = Aucun thème
+topic-new = Nouveau thème…
+topic-new-name = Le nom du nouveau thème
+topic-make = Le créer
+topic-always = Toujours { $topic } pour cet expéditeur
+topic-never = Jamais { $topic } pour cet expéditeur
+topic-why-yours = donné par vous
+topic-why-sender = par son expéditeur
+topic-why-conversation = par sa conversation
+topic-why-folder = d’après le dossier { $name }
+topic-why-category = d’après la catégorie de vos contacts { $name }
+topic-why-preset = par son expéditeur, que Sioul connaît
+topic-why-site = par le site de son expéditeur
+topic-why-list = comme lettre d’information ou liste
+topic-filter-all = Tous les thèmes
+topic-filter-name = Thème : { $topic }
+topics-settings = Thèmes
+set-topics = Vos thèmes
+set-topics-help = Un thème est un mot discret sur un courriel : un filtre, jamais un dossier. Donnez-en un depuis un courriel, ou depuis plusieurs choisis à la fois ; une réponse suit le premier courriel de sa conversation auquel vous en avez donné un. Rangé d’après vos mots et vos expéditeurs tant qu’un thème a peu de courrier.
+topics-settings-none = Aucun thème pour l’instant. Donnez-en un depuis un courriel : Thème…
+topics-rename = Renommer
+topics-remove = Retirer
+topics-add = Ajouter un thème
+topics-sender-always = Toujours : { $address }
+topics-sender-never = Jamais : { $address }
+topics-sender-off = Retirer cette règle
+topics-groups = Groupes remarqués par Sioul
+topics-groups-look = Chercher des groupes
+topics-groups-looking = Sioul regarde votre courrier…
+topics-groups-failed = Les groupes n’ont pas pu être trouvés : { $detail }
+topics-groups-none = Aucun groupe ne se dégage pour l’instant.
+topics-groups-size = { $n ->
+    [one] un courriel
+   *[other] { $n } courriels
+}
+topics-name-it = Le nommer
+topics-day-one = { $n ->
+    [one] Sioul a rangé votre courrier dans un thème, d’après les expéditeurs qu’il connaît : { $topics }. Renommez-le ou retirez-le dans Courriels ▸ ⚙ ▸ Thèmes.
+   *[other] Sioul a rangé votre courrier dans { $n } thèmes, d’après les expéditeurs qu’il connaît : { $topics }. Renommez-les ou retirez-les dans Courriels ▸ ⚙ ▸ Thèmes.
+}
+topics-offered = Les thèmes que Sioul connaît :
+topics-named-sites = Nommé d’après les sites de vos expéditeurs.
+topics-named-sender = Nommé d’après son expéditeur le plus fréquent.
