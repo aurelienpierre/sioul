@@ -445,6 +445,14 @@ Item {
                     text: tab.sioul.text("movement-put-back-button")
                     onClicked: actions.done(tab.sioul.putBackMovement(tab.detail.address))
                 }
+                // Its ties as a chain (ChainPage.qml).
+                Button {
+                    objectName: "movementChain"
+                    visible: tab.detail !== null && (tab.detail.address || "") !== ""
+                    flat: true
+                    text: tab.sioul.text("ui-ties")
+                    onClicked: tab.window.openChain(tab.detail.address)
+                }
                 ToolButton {
                     visible: tab.detail !== null
                     text: "⋯"

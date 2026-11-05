@@ -147,6 +147,14 @@ Item {
                     text: actions.sioul.text("movement-tie")
                     onTriggered: tie.now().show({ uri: rowMenu.row.address }, "")
                 }
+                // Its ties as a chain (ChainPage.qml): what tells of it, its budget, what it is tied to.
+                MenuItem {
+                    objectName: "movementTies"
+                    visible: rowMenu.row !== null && (rowMenu.row.address || "") !== ""
+                    height: visible ? implicitHeight : 0
+                    text: actions.sioul.text("chain-its-ties")
+                    onTriggered: actions.window.openChain(rowMenu.row.address)
+                }
                 MenuItem {
                     objectName: "movementRemove"
                     visible: rowMenu.allowed !== null && !!rowMenu.allowed.removal && rowMenu.row.gone !== true

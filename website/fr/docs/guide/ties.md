@@ -69,7 +69,7 @@ Ce qui est proche d’une chose n’est pas tout ce qui lui est lié : l’int
 
 La couleur seule ne distingue jamais un type (WCAG 2.2) : chaque famille a sa forme, chaque type son icône et son mot, et les couleurs forment un ensemble sûr pour les daltoniens (Tol 2021).
 
-Plus de détails dans [ce que dit la recherche](../dev/research.md), constats 67 à 69.
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 67 à 69.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 

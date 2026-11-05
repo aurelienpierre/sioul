@@ -869,9 +869,10 @@ impl World<'_> {
                 out.found = true;
             }
             // A money movement, by its address (`movements::Movement::address`): its card reads it.
-            // No key: the window opens it by its address, never hands `sioul:` to the system.
+            // Its key its address: the window opens it there (the Budgets page's Movements tab).
             Kind::Movement => {
                 out.title = id.clone();
+                out.key = uri.clone();
                 out.found = true;
             }
             Kind::Web | Kind::File | Kind::Other => {
