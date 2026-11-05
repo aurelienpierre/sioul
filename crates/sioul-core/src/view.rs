@@ -514,11 +514,20 @@ pub struct BudgetsView {
     pub accounts: Vec<crate::moneyview::AccountSay>,
     /// The page's one chart: the balance ahead of the first account shown.
     pub chart: Option<crate::moneyview::ChartView>,
+    /// Every account's chart, each named after its account: the page draws
+    /// one, and the account's name above it chooses another.
+    pub charts: Vec<crate::moneyview::ChartView>,
+    /// What "left for everyday spending" means, said once in its own
+    /// sentence; "" when no account says what is left.
+    pub left_meaning: String,
     /// What the hour or your ticks leave out, in words: "Work budgets are kept for your work hours."
     pub left_out: Vec<String>,
     /// The area filter's state, as the window keeps it (`areafilter::Shown`); none outside the window.
     pub filter: Option<crate::areafilter::Shown>,
     pub budgets: Vec<BudgetCard>,
+    /// Every budget, whatever the hour, under its area's heading, the
+    /// hour's areas first (the Budgets tab).
+    pub groups: Vec<BudgetGroup>,
     pub coming_title: String,
     /// What is coming, week by week (`moneyview::coming`).
     pub coming: Vec<crate::moneyview::WeekView>,
@@ -553,16 +562,30 @@ pub fn incomes(ledger: &Ledger, tr: &Translator) -> Vec<Choice> {
 }
 
 /// One figure of a card: a label and a value, on their own line.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Figure {
     pub label: String,
     pub value: String,
 }
 
-#[derive(Debug, Serialize)]
+/// The budgets of one area, under its heading.
+#[derive(Debug, Clone, Serialize)]
+pub struct BudgetGroup {
+    /// "work", "admin", "leisure".
+    pub area: &'static str,
+    pub title: String,
+    pub budgets: Vec<BudgetCard>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct BudgetCard {
     pub id: String,
     pub title: String,
+    /// What it is for: "work", "admin", "leisure".
+    pub area: &'static str,
+    /// A work budget that declares: "Turnover received this quarter: €6,940,
+    /// to declare by 31 January." (`receipts::period_line`); "" otherwise.
+    pub declare: String,
     /// "monthly", "mensuel".
     pub period: String,
     /// "better", "as-planned", "short": what the verdict says, for an icon; never a colour.
@@ -621,7 +644,7 @@ pub struct Choice {
 /// Budgets, reserves and the mail about money, every budget, from the
 /// budget file alone (no movement: no account, nothing coming).
 pub fn budgets(ledger: &Ledger, mail: &[MailLine], tr: &Translator, today: jiff::civil::Date) -> BudgetsView {
-    budgets_page(&MoneyPage { ledger, bank: &crate::bank::Bank::default(), movements: &[], mail, shown: crate::areas::Area::ALL, own: false }, tr, today)
+    budgets_page(&MoneyPage { ledger, bank: &crate::bank::Bank::default(), movements: &[], mail, shown: crate::areas::Area::ALL, own: false, books: None, imports: &[] }, tr, today)
 }
 
 /// What the budgets page is made from: the books' counted budget file and
@@ -635,6 +658,10 @@ pub struct MoneyPage<'a> {
     pub mail: &'a [MailLine],
     pub shown: crate::areas::Area,
     pub own: bool,
+    /// The books, for a declaring budget's turnover (`receipts::period_line`); none: not said.
+    pub books: Option<&'a crate::movements::Books>,
+    /// The exports taken in (the store's `[[import]]`), for each account's freshness.
+    pub imports: &'a [crate::movements::Import],
 }
 
 /// The budgets page (docs/accounting.md, "The budgets page"): each account
@@ -653,13 +680,36 @@ pub fn budgets_page(page: &MoneyPage, tr: &Translator, today: jiff::civil::Date)
     let exported = |account: Option<&str>| exported.contains(account.unwrap_or(""));
     let shown = page.shown;
     let pace = crate::moneyview::own_pace(page.movements, today);
+    let fresh = |account: &str| {
+        let card = ledger.bank_accounts.iter().find(|a| a.id == account);
+        let balance_day = match card {
+            Some(card) => crate::accounts::balance_of(page.bank, card).map(|(day, _)| day),
+            None => page.bank.balance_in(ledger).map(|(day, _)| day),
+        };
+        crate::moneyview::freshness(account, page.imports, balance_day, tr, today)
+    };
+    let accounts = crate::moneyview::accounts(&aheads, shown, &fresh, tr, today);
+    let left_meaning = if aheads.iter().any(|a| a.income.is_some() && a.left.cents() > 0) { tr.text("ahead-left-meaning", None) } else { String::new() };
+    let charts = crate::moneyview::charts(&aheads, shown, tr, today);
+    // Every budget's card made once: the hour's ones on Overview, all of them under their areas.
+    let cards: Vec<BudgetCard> = ledger.budgets.iter().map(|b| {
+        let mut card = budget_card(ledger, b, page.movements, &exported, tr, today);
+        if let Some(books) = page.books {
+            card.declare = crate::receipts::period_line(books, tr, b, today).unwrap_or_default();
+        }
+        card
+    }).collect();
+    let budgets: Vec<BudgetCard> = ledger.budgets.iter().zip(&cards).filter(|(b, _)| b.area_of().meets(shown)).map(|(_, c)| c.clone()).collect();
     BudgetsView {
         title: tr.text("budgets-title", Some(&args)),
-        accounts: crate::moneyview::accounts(&aheads, shown, tr, today),
-        chart: crate::moneyview::chart(&aheads, shown, tr, today),
+        accounts,
+        chart: charts.first().cloned(),
+        charts,
+        left_meaning,
         left_out: crate::moneyview::left_out(ledger, shown, page.own, tr),
         filter: None,
-        budgets: ledger.budgets.iter().filter(|b| b.area_of().meets(shown)).map(|b| budget_card(ledger, b, page.movements, &exported, tr, today)).collect(),
+        budgets,
+        groups: budget_groups(ledger, cards, shown, tr),
         coming_title: tr.text("coming-title", None),
         coming: crate::moneyview::coming(ledger, page.movements, &aheads, tr, today, &|m| m.area.meets(shown), &exported),
         unusual: crate::moneyview::unusual_line(&aheads, tr),
@@ -679,12 +729,15 @@ pub fn budgets_lines(view: &BudgetsView) -> Vec<String> {
     let mut lines = vec![view.title.clone()];
     for a in &view.accounts {
         lines.push(format!("  {}", a.title));
-        lines.extend(a.sentences.iter().map(|s| format!("    {s}")));
+        lines.extend(a.sentences.iter().chain(&a.fresh).map(|s| format!("    {s}")));
+    }
+    if !view.left_meaning.is_empty() {
+        lines.push(format!("  {}", view.left_meaning));
     }
     lines.extend(view.left_out.iter().map(|l| format!("  {l}")));
     for card in &view.budgets {
         lines.push(format!("  {} ({})", card.title, card.period));
-        lines.extend(card.words.iter().chain(std::iter::once(&card.verdict)).filter(|l| !l.is_empty()).map(|l| format!("    {l}")));
+        lines.extend(card.words.iter().chain([&card.declare, &card.verdict]).filter(|l| !l.is_empty()).map(|l| format!("    {l}")));
     }
     if !view.coming.is_empty() {
         lines.push(String::new());
@@ -710,6 +763,33 @@ pub fn budgets_lines(view: &BudgetsView) -> Vec<String> {
         lines.extend(reserve.figures.iter().map(|f| format!("    {}: {}", f.label, f.value)));
     }
     lines
+}
+
+/// The area a budget is listed under: the first of work, admin and leisure it is for.
+fn area_id(area: crate::areas::Area) -> &'static str {
+    if area.work {
+        "work"
+    } else if area.admin || area.is_empty() {
+        "admin"
+    } else {
+        "leisure"
+    }
+}
+
+/// Every budget under its area's heading (design §6, the Budgets tab): the
+/// hour's areas first, then the others, each in the file's order.
+fn budget_groups(ledger: &Ledger, cards: Vec<BudgetCard>, shown: crate::areas::Area, tr: &Translator) -> Vec<BudgetGroup> {
+    let mut groups: Vec<BudgetGroup> = ["work", "admin", "leisure"].iter().map(|id| BudgetGroup { area: id, title: tr.text(&format!("area-{id}"), None), budgets: Vec::new() }).collect();
+    for (budget, card) in ledger.budgets.iter().zip(cards) {
+        let id = area_id(budget.area_of());
+        if let Some(group) = groups.iter_mut().find(|g| g.area == id) {
+            group.budgets.push(card);
+        }
+    }
+    let of = |id: &str| crate::areas::Area::parse(id).unwrap_or_default();
+    groups.retain(|g| !g.budgets.is_empty());
+    groups.sort_by_key(|g| !of(g.area).meets(shown));
+    groups
 }
 
 fn budget_card(ledger: &Ledger, budget: &Budget, movements: &[crate::movements::Movement], exported: &dyn Fn(Option<&str>) -> bool, tr: &Translator, today: jiff::civil::Date) -> BudgetCard {
@@ -757,7 +837,7 @@ fn budget_card(ledger: &Ledger, budget: &Budget, movements: &[crate::movements::
     } else {
         tr.text(if budget.period == Period::Month { "period-month" } else { "period-year" }, None)
     };
-    BudgetCard { id: budget.id.clone(), title: budget.title.clone(), period, mood, verdict, words, figures, notes: Vec::new() }
+    BudgetCard { id: budget.id.clone(), title: budget.title.clone(), area: area_id(budget.area_of()), declare: String::new(), period, mood, verdict, words, figures, notes: Vec::new() }
 }
 
 /// One movement of a budget, as its ledger lists it.

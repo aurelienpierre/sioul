@@ -236,6 +236,28 @@ ColumnLayout {
                     wrapMode: Text.Wrap
                     color: card.modelData.balance !== "" ? section.theme.text : section.theme.muted
                 }
+                // When its bank's file was last read; once, that movements since may be missing.
+                Label {
+                    objectName: "bankFresh"
+                    visible: (card.modelData.fresh || []).length > 0
+                    Layout.fillWidth: true
+                    text: (card.modelData.fresh || []).join(" ")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: section.theme.muted
+                }
+                // A processor's account: how what it receives reaches your bank.
+                Label {
+                    objectName: "bankPayout"
+                    visible: !!card.modelData.payout
+                    Layout.fillWidth: true
+                    text: card.modelData.payout || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: section.theme.muted
+                }
                 // Two real accounts under one: said, calmly.
                 Label {
                     visible: card.modelData.two_accounts === true

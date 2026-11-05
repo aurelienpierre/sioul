@@ -1,2 +1,3 @@
 module com.aurelienpierre.sioul
 TextSpacing 1.0 TextSpacing.qml
+PdfWriter 1.0 PdfWriter.qml

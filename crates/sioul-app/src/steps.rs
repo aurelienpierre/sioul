@@ -394,6 +394,8 @@ fn step(reason: &str) -> serde_json::Value {
         std::thread::spawn(|| {
             fetch_mail(&load_config());
             crate::mailnote::tick();
+            // Then a few hundred messages more read for money, so that From mail opens on what is found.
+            crate::ledger::background_step(&load_config());
         })
     });
     // 6, begun now beside the mail: your availabilities' calendars, a token

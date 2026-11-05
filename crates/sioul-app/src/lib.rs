@@ -84,6 +84,7 @@
 //! ## Money and papers
 //!
 //! - [`bank`](bank/index.html): the money watch: bank accounts, where each movement went, what passed and what did not.
+//! - [`ledger`](ledger/index.html): the Budgets page's Movements and From mail tabs and the declaration: the ledger by its filters, each act with Undo, every money mail and what became of it, the receipts register.
 //! - [`contracts`](contracts/index.html): contracts and subscriptions.
 //! - [`papers`](papers/index.html): the papers wallet.
 //!
@@ -165,6 +166,7 @@ mod openmail;
 #[cfg(target_os = "android")]
 mod nfc;
 mod notices;
+mod ledger;
 mod letters;
 mod map;
 // Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).

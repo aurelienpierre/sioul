@@ -647,12 +647,13 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
     // budget in words, what is coming (docs/accounting.md, "The budgets page").
     let books = path.parent().map(|root| sioul_core::movements::books(root, &words, today));
     let empty = sioul_core::bank::Bank::default();
-    let (counted, bank, movements) = match &books {
+    let (counted, bank, movements, own) = match &books {
         // Another file than its folder's own: its own lines and presets, nothing of the folder's.
-        Some(books) if books.ledger.budgets.len() == ledger.budgets.len() && books.ledger.lines.len() == ledger.lines.len() => (&books.counted, &books.bank, books.movements.as_slice()),
-        _ => (&ledger, &empty, &[][..]),
+        Some(books) if books.ledger.budgets.len() == ledger.budgets.len() && books.ledger.lines.len() == ledger.lines.len() => (&books.counted, &books.bank, books.movements.as_slice(), Some(books.as_ref())),
+        _ => (&ledger, &empty, &[][..], None),
     };
-    let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    let store = path.parent().and_then(|root| sioul_core::movements::Store::load(root).ok()).unwrap_or_default();
+    let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false, books: own, imports: &store.imports };
     for line in view::budgets_lines(&view::budgets_page(&page, &s.tr, today)) {
         let indent = line.len() - line.trim_start().len();
         println!("{}{}", &line[..indent], one_line(line.trim_start()));

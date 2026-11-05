@@ -1342,6 +1342,53 @@ pub fn remove(root: &Path, words: &crate::words::Words, tr: &crate::i18n::Transl
     Ok(Act { address: m.address(), said: if said.is_empty() { plainly(tr, "movement-removed", &m) } else { said } })
 }
 
+/// What can be done to a movement, by what it is made from (design §3.1),
+/// as `change` and `remove` decide it: the window's form shows these
+/// fields only, and its menu this removal.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Allowed {
+    /// "line", "joined" (your line and the bank's), "occurrence", "bank",
+    /// "told" (a mail or a letter alone), "invoice", "set-aside".
+    pub made: &'static str,
+    /// The fields `change` takes: label, gross, fees, net, day, paid_on,
+    /// note, budget, planned, account.
+    pub fields: Vec<&'static str>,
+    /// "delete", "not-this-time", "leave-out", "not-a-payout"; none: it is
+    /// removed where it is made (the invoice, the budget's form, "Not a
+    /// payment", "Not the same" first).
+    pub removal: Option<&'static str>,
+}
+
+/// What `m` allows (`Allowed`), from the budget file and the store.
+pub fn allowed(ledger: &Ledger, store: &Store, m: &Movement) -> Allowed {
+    let line = own_line(ledger, m).is_some();
+    let bank = m.has_kind(Kind::Bank) || m.has_kind(Kind::Hold);
+    let payout = store.carried.iter().any(|c| m.has(&c.payout));
+    let (made, fields): (&'static str, &[&'static str]) = if m.has_kind(Kind::SetAside) {
+        ("set-aside", &[])
+    } else if line && !bank {
+        ("line", &["label", "gross", "fees", "net", "day", "paid_on", "note", "budget", "planned", "account"])
+    } else if bank {
+        (if line { "joined" } else { "bank" }, &["label", "gross", "fees", "paid_on", "note", "budget"])
+    } else if m.has_kind(Kind::Invoice) {
+        ("invoice", &[])
+    } else if m.has_kind(Kind::Preset) {
+        ("occurrence", &["label", "gross", "fees", "net", "day", "paid_on", "note", "budget"])
+    } else {
+        ("told", &["label", "paid_on", "note", "budget"])
+    };
+    let removal = match made {
+        _ if payout => Some("not-a-payout"),
+        "line" => Some("delete"),
+        "bank" => Some("leave-out"),
+        "occurrence" => Some("not-this-time"),
+        // A recurring payment's occurrence an invoice stands for: "not this time" too, as `remove` does.
+        "invoice" if m.has_kind(Kind::Preset) => Some("not-this-time"),
+        _ => None,
+    };
+    Allowed { made, fields: fields.to_vec(), removal }
+}
+
 /// What you removed back where its files put it (Undo of "Not this time",
 /// "Leave out").
 pub fn put_back(root: &Path, address: &str) -> Result<bool, String> {

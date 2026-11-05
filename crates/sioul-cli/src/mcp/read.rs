@@ -1217,7 +1217,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     // The bank accounts are in no project: as things outside projects are.
     let empty = bank::Bank::default();
     let bank = if consent.outside { &books.bank } else { &empty };
-    let page = view::MoneyPage { ledger: &ledger, bank, movements: &movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    let page = view::MoneyPage { ledger: &ledger, bank, movements: &movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false, books: None, imports: &[] };
     let mut shown = view::budgets_page(&page, &s.tr, today);
     for account in &mut shown.accounts {
         account.title = mask::text(&account.title);

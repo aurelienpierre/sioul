@@ -538,7 +538,7 @@ fn every_budget_is_a_choice_at_any_hour() {
     let ledger = Ledger::load(&root).unwrap();
     let tr = crate::i18n::Translator::new("en");
     // In leisure's hours, work's budget is not shown, and still chosen.
-    let page = crate::view::MoneyPage { ledger: &ledger, bank: &crate::bank::Bank::default(), movements: &[], mail: &[], shown: crate::areas::Area::LEISURE, own: false };
+    let page = crate::view::MoneyPage { ledger: &ledger, bank: &crate::bank::Bank::default(), movements: &[], mail: &[], shown: crate::areas::Area::LEISURE, own: false, books: None, imports: &[] };
     let view = crate::view::budgets_page(&page, &tr, day("2026-11-04"));
     assert!(!view.budgets.iter().any(|c| c.id == "work") && view.choices.iter().any(|c| c.id == "work"));
     let words = crate::words::Words::builtin();
@@ -952,6 +952,16 @@ fn movements_are_made_changed_and_removed_by_what_they_are() {
     assert!(m.made.is_some());
     let wrong = acts::New { net: Some(Money(50000)), ..new.clone() };
     assert_eq!(acts::make(&root, &tr, &wrong, "", today), Err(tr.text("movement-figures", None)));
+    // What each allows, as the window's form and menu show it.
+    let store = Store::load(&root).unwrap_or_default();
+    let allowed = |address: &str| {
+        let (m, _) = crate::moneylist::get(&books, address).unwrap();
+        let a = acts::allowed(&books.ledger, &store, m);
+        (a.made, a.fields.contains(&"net"), a.fields.contains(&"budget"), a.removal)
+    };
+    assert_eq!(allowed(&made.address), ("line", true, true, Some("delete")));
+    assert_eq!(allowed(&crate::links::movement_uri("bank:main/X1")), ("bank", false, true, Some("leave-out")));
+    assert_eq!(allowed(&crate::links::movement_uri("preset:rent/2026-11-01")), ("occurrence", true, true, Some("not-this-time")));
     // Your line: every field.
     let change = acts::Change { net: Some(Money(49000)), fees: Some(Vec::new()), gross: Some(None), note: Some("Paid less".into()), budget: Some("home".into()), ..acts::Change::default() };
     let act = acts::change(&root, &words, &tr, &made.address, &change, "", today).unwrap();

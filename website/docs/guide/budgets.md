@@ -81,9 +81,9 @@ Which reserve covers which budget is written in the budget file: at the end of e
 
 ## Movements {#movements}
 
-**Movements** lists every movement, newest first, grouped by day: the search on top (who, your note, the budget, the amount), then each row with its day, who, what moved with its sign, its budget and where it stands in words. **Filters**, folded away, narrow it by account, budget, days, money in or out, amount, what it is for, and what told of it (the bank, a mail, a recurring payment, your own line); those in use show as words under the search, each with its ×. Like Mail, it starts with the areas your hours say, and a search finds anything, at any hour. There is no running total and no count; a sum shows only when the filters ask a question that has one: "Money in: €2,340 paid, €2,281 arrived."
+**Movements** lists every movement up to today, newest first, grouped by day (what is still to come is Overview's **What is coming**, or a later day under **Filters**): the search on top (who, your note, the budget, the amount), then each row with its day, who, what moved with its sign, its budget and where it stands in words. **Filters**, folded away, narrow it by account, budget, days, money in or out, amount, what it is for, and what told of it (the bank, a mail, a recurring payment, your own line); those in use show as words under the search, each with its ×. Like Mail, it starts with the areas your hours say, and a search finds anything, at any hour. There is no running total and no count; a sum shows only when the filters ask a question that has one: "Money in: €2,340 paid, €2,281 arrived."
 
-A row opened shows everything: what was paid, each fee and where it was read, the day it was paid, what told of it (each opens), what it is tied to, and "Told on 5 November; changed on 7 November". Its menu (a long press, a right click, **⋯**): **Change…**, **Where it goes…**, **Split…**, **The same as…**, **Not the same**, **Tie to…**, and its removal. **New movement** sits at the top: who, what was paid or what arrived, its fees, the account, the budget, the day, the day it was paid, planned or done, a note, what it is tied to.
+A row opened shows everything: what was paid, each fee and where it was read, the day it was paid, what told of it (each opens), what it is tied to, and "Told on 5 November; changed on 7 November". Its menu (a long press, a right click, **⋯**): **Change…**, **Where it goes…**, **Split…**, **The same as…**, **Not the same**, **Tie to…**, and its removal. **New movement** sits at the top: who, what arrived or left, the budget, the day, and whether it is still to come; under **What was paid, the fees, a note…**, what the payer paid or the price, its fees, the account, the day it was paid when it reached the account later, and a note. **Tie to…**, on its row, then ties it to a contact, a task or a project.
 
 What can change depends on what the movement is made from, and the form says it:
 
@@ -122,6 +122,8 @@ A work budget that sets money aside for taxes, or says how often it declares, ha
   [![Bank accounts on the Budgets page: two cards, each with its balance from the bank's file, the budgets it fills, the reserves that top it up, its last movements, each saying where it went and why, with ⋯ beside it, and Take in an export…, Rules… and Edit; below, a payment that took another amount than expected.](../assets/screens/bank-accounts.png){ loading=lazy }](../assets/screens/bank-accounts.png "Open the picture at full size")
   <figcaption>Each account, the budgets it fills, and where each movement went.</figcaption>
 </figure>
+
+A processor's card says how what it receives reaches your bank: "What you receive waits on PayPal until you move it to My bank."
 
 **New bank account**: its **Name**, its **Kind** (a bank, PayPal, Stripe, SumUp, Wise, Revolut, another processor or platform Sioul knows, something else), the budgets it **Fills**, the amount it is **Kept above**, and the reserves it is **Topped up by**, in your order.
 

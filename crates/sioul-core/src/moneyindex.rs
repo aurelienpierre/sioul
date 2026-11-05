@@ -286,6 +286,8 @@ pub struct MailRow {
     pub kind: String,
     pub who: String,
     pub sender: String,
+    /// Its sender's domain, by which "Not a payment" learns its shape.
+    pub domain: Option<String>,
     pub subject: String,
     /// Signed: + money in, − money out; none when it says no amount.
     pub amount: Option<Money>,
@@ -411,6 +413,7 @@ fn row(config: &crate::config::Config, books: &Books, store: &Store, ignored_key
         kind: line.payment.kind.message_id().trim_start_matches("kind-").to_string(),
         who: line.label.clone(),
         sender: line.sender.clone(),
+        domain: line.sender_domain.clone(),
         subject: line.subject.clone(),
         amount: line.signed(),
         currency: line.payment.amount.as_ref().map_or("EUR", |a| a.currency).to_string(),

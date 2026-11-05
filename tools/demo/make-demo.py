@@ -2135,6 +2135,9 @@ title = {toml_string(t("Work", "Travail"))}
 period = "month"
 target = 1250
 area = "work"
+# A micro-entrepreneur's: a share set aside as each income arrives, declared each quarter.
+set_aside = 22
+declare = "quarter"
 
 # What keeps the flat and its people going: about this much a month.
 [[budget]]
@@ -2292,6 +2295,9 @@ def write_bank(p: Profile):
                                   (-4, -48.00, t("Foundry North", "Fonderie du Nord")), (-11, -12.00, W.paper_name),
                                   (-33, 40.00, t("Payment from Lise Moreau (print)", "Paiement de Lise Moreau (tirage)"))]:
         add("paypal", c.weekday_before(offset), amount, label)
+    # What PayPal received moved to the bank: one payout, on both accounts.
+    add("paypal", c.weekday_before(-17), -65.00, t("Withdrawal to bank", "Retrait vers la banque"))
+    add("bank", c.weekday_before(-15), 65.00, "VIR PAYPAL EUROPE SARL")
     rows.sort()
     bank_balance = 1846.27
     paypal_balance = sum(r[2] for r in rows if r[1] == "paypal") + 61.50
@@ -2301,6 +2307,26 @@ def write_bank(p: Profile):
     for n, (day, account, amount, label) in enumerate(rows):
         out += ["[[movement]]", f'account = "{account}"', f"date = {day}", f"amount = {amount:.2f}", f"label = {toml_string(label)}", f'id = "demo-{n:03d}"', ""]
     p.write(p.notes / "sioul-bank.toml", "\n".join(out))
+    write_movements_store(p, rows, end)
+
+
+def write_movements_store(p: Profile, rows: list, end: date):
+    """Sioul's own record beside the exports (docs/accounting.md, "Movements"):
+    what PayPal's export said each payment's client paid and the fee it kept
+    (PayPal France: 2.90 % plus €0.35), and each export taken in, by account,
+    for "Last bank update": the bank's every month, PayPal's each day until
+    two days ago, so that its card says movements since may be missing."""
+    c = p.clock
+    out = ["# Sioul's own record of money movements (docs/accounting.md). Kept beside the budgets.", "format = 1", ""]
+    for n, (day, account, amount, label) in enumerate(rows):
+        if account != "paypal" or amount <= 0:
+            continue
+        gross = round((amount + 0.35) / (1 - 0.029), 2)
+        fee = round(gross - amount, 2)
+        out += ["[[fee]]", f'source = "bank:paypal/demo-{n:03d}"', f"gross = {gross:.2f}", f'fees = [{{ kind = "processor", amount = {fee:.2f}, from = "export" }}]', 'processor = "paypal"', f"at = {c.day(-12)}T09:00:00Z", ""]
+    for account, taken, first, last in [("bank", -33, -62, -32), ("bank", -2, -31, -2), ("paypal", -4, -62, -4), ("paypal", -3, -3, -2)]:
+        out += ["[[import]]", f'account = "{account}"', f"at = {c.day(taken)}T08:30:00Z", f"first = {max(c.day(first), c.day(-62))}", f"last = {min(c.day(last), end)}", ""]
+    p.write(p.notes / "sioul-movements.toml", "\n".join(out))
 
 
 def write_contracts(p: Profile):

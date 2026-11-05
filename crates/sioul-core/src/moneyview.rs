@@ -27,13 +27,16 @@ pub struct AccountSay {
     pub sentences: Vec<String>,
     /// It would not hold a payment: said whatever the filter shows.
     pub short: bool,
+    /// When its bank's file was last read, and, once, that movements since
+    /// may be missing when that is older than its usual rhythm (`freshness`).
+    pub fresh: Vec<String>,
 }
 
 /// The page's one chart, for the first account shown.
 #[derive(Debug, Clone, Serialize)]
 pub struct ChartView {
     pub account: String,
-    /// What it shows, for a screen reader: "The balance ahead, until Friday 28 November".
+    /// Its account and how far it goes, shown above it: "My bank, until Friday 28 November".
     pub name: String,
     pub floor_label: String,
     pub chart: ahead::Chart,
@@ -178,6 +181,14 @@ pub fn budget_words(ledger: &Ledger, budget: &Budget, end_of: &crate::budget::Pe
         let out = amount.is_negative();
         let waiting = matches!(m.state, State::Planned | State::Announced | State::NotFinal);
         match m.state {
+            // Money in with its fees: inside its row, never a line of its own (finding 65).
+            State::Done if !out && m.gross.is_some() && m.fee_total() != Money::ZERO => {
+                let mut args = i18n::args();
+                args.set("label", label.clone());
+                args.set("gross", tr.money(m.gross.unwrap_or_default().abs()));
+                args.set("fees", tr.money(m.fee_total().abs()));
+                came_in.push(tr.text(if m.fees.iter().all(|f| f.about) { "bw-in-fees-about" } else { "bw-in-fees" }, Some(&args)));
+            }
             State::Done => (if out { &mut paid } else { &mut came_in }).push(label.clone()),
             State::NotSeen => not_seen.push(label.clone()),
             _ if waiting && m.day < today && !exported(m.account.as_deref()) => (if out { &mut paid } else { &mut came_in }).push(label.clone()),
@@ -408,21 +419,63 @@ pub fn unusual_line(aheads: &[Ahead], tr: &Translator) -> String {
 
 /// Each account shown, in sentences; one hidden by the hour or your ticks
 /// shows all the same when it would not hold a payment.
-pub fn accounts(aheads: &[Ahead], shown: Area, tr: &Translator, today: Date) -> Vec<AccountSay> {
+pub fn accounts(aheads: &[Ahead], shown: Area, fresh: &dyn Fn(&str) -> Vec<String>, tr: &Translator, today: Date) -> Vec<AccountSay> {
     aheads
         .iter()
         .filter(|a| a.area.meets(shown) || a.short.is_some())
-        .map(|a| AccountSay { id: a.account.clone(), title: if a.title.is_empty() { tr.text("ahead-your-account", None) } else { a.title.clone() }, sentences: ahead::sentences(a, tr, today), short: a.short.is_some() })
+        .map(|a| AccountSay { id: a.account.clone(), title: account_title(a, tr), sentences: ahead::sentences(a, tr, today), short: a.short.is_some(), fresh: fresh(&a.account) })
         .collect()
+}
+
+fn account_title(a: &Ahead, tr: &Translator) -> String {
+    if a.title.is_empty() { tr.text("ahead-your-account", None) } else { a.title.clone() }
 }
 
 /// The page's one chart: the first account shown that has something coming.
 pub fn chart(aheads: &[Ahead], shown: Area, tr: &Translator, today: Date) -> Option<ChartView> {
-    let a = aheads.iter().find(|a| (a.area.meets(shown) || a.short.is_some()) && !a.flows.is_empty())?;
-    let chart = ahead::chart(a, today);
+    charts(aheads, shown, tr, today).into_iter().next()
+}
+
+/// Each account shown that has something coming, its chart named after it
+/// ("My bank, until Friday 28 November"): the page draws one, the first,
+/// and the account's name above it chooses another.
+pub fn charts(aheads: &[Ahead], shown: Area, tr: &Translator, today: Date) -> Vec<ChartView> {
+    aheads
+        .iter()
+        .filter(|a| (a.area.meets(shown) || a.short.is_some()) && !a.flows.is_empty())
+        .map(|a| {
+            let chart = ahead::chart(a, today);
+            let mut args = i18n::args();
+            args.set("account", account_title(a, tr));
+            args.set("day", tr.day_in(chart.to.parse().unwrap_or(today), today));
+            ChartView { account: a.account.clone(), name: tr.text("ahead-chart-name", Some(&args)), floor_label: tr.text("ahead-chart-floor", None), chart }
+        })
+        .collect()
+}
+
+/// When an account's bank file was last read, in words (the coordinator's
+/// first window addition, 5 November 2026): "Last bank update: 3 November.",
+/// the last day its exports cover (else the day of its balance); and once,
+/// when that is older than the account's usual rhythm (the middle gap
+/// between the exports you took in, a week until there are two), "Movements
+/// since then may be missing." Calm: no colour, no alert. `account`: its
+/// id ("" for the one account of exports when none is declared).
+pub fn freshness(account: &str, imports: &[crate::movements::Import], balance_day: Option<Date>, tr: &Translator, today: Date) -> Vec<String> {
+    let mut mine: Vec<&crate::movements::Import> = imports.iter().filter(|i| account.is_empty() || i.account == account).collect();
+    let last = mine.iter().map(|i| i.last).max().into_iter().chain(balance_day).max();
+    let Some(last) = last else { return Vec::new() };
+    mine.sort_by_key(|i| i.at.map(|t| t.as_second()).unwrap_or(0));
+    let days: Vec<i64> = mine.iter().filter_map(|i| i.at).map(|t| t.as_second() / 86_400).collect();
+    let mut gaps: Vec<i64> = days.windows(2).map(|w| w[1] - w[0]).filter(|g| *g > 0).collect();
+    gaps.sort_unstable();
+    let rhythm = gaps.get(gaps.len() / 2).copied().filter(|_| !gaps.is_empty()).unwrap_or(7).max(1);
     let mut args = i18n::args();
-    args.set("day", tr.day_in(chart.to.parse().unwrap_or(today), today));
-    Some(ChartView { account: a.account.clone(), name: tr.text("ahead-chart-name", Some(&args)), floor_label: tr.text("ahead-chart-floor", None), chart })
+    args.set("day", tr.day_month(last));
+    let mut said = vec![tr.text("ahead-fresh", Some(&args))];
+    if (today - last).get_days() > rhythm as i32 {
+        said.push(tr.text("ahead-stale", None));
+    }
+    said
 }
 
 /// What the person spends a week, all accounts together (their payments
