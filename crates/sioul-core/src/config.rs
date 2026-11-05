@@ -600,6 +600,10 @@ pub struct AgendaSettings {
     /// Your availability, shared with one person (`[agenda.availability]`, part 5).
     #[serde(default)]
     pub availability: Option<crate::availability::Availability>,
+    /// Minutes a new event lasts when made from the agenda's timeline or its
+    /// form, Settings ▸ Agenda (5 November 2026); unset, 30.
+    #[serde(default)]
+    pub new_event: Option<u32>,
 }
 
 impl AgendaSettings {
@@ -616,6 +620,11 @@ impl AgendaSettings {
     /// The time kept between two events: yours, else none.
     pub fn between(&self) -> u32 {
         self.between.unwrap_or(0).min(24 * 60)
+    }
+
+    /// How long a new event lasts: yours, else 30 minutes; 5 minutes to a day.
+    pub fn new_event_minutes(&self) -> u32 {
+        self.new_event.unwrap_or(30).clamp(5, 24 * 60)
     }
 }
 

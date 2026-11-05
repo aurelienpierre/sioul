@@ -11,8 +11,7 @@
 // lane of cards, side by side where things overlap: appointments solid with
 // their calendar's colour, a pinned task with its pin, the plan's steps
 // outlined (the next one filled, the one under way marked), tasks done
-// dimmed, meals and naps tinted (named in the Day, bands without words in
-// the Week), what is kept around each thing (getting there and back,
+// dimmed, meals, naps and the night tinted and named, what is kept around each thing (getting there and back,
 // getting ready, coming back, winding down) lighter, time for you and the
 // time kept free as quiet words; in quiet time, a coming day's steps hidden
 // now as one band per stretch, "Show anyway" drawing them. A dose's mark
@@ -22,13 +21,22 @@
 //
 // Each day's things live in one model keyed by their id, changed in place
 // at each publish (`apply`): only what changed is made again, and nothing
-// scrolls under you. A tap opens the thing (the page says where, by its
-// kind); a right click or a long press asks for its menu; a drag moves it
-// when its item says it may (`can.drag`), by its own writer (Paths.qml):
-// an appointment or a block by its file, a step pinned there, a meal, a nap
-// or the night that day. With a mouse, press and drag; with a finger, a long
-// press picks it up (a plain swipe scrolls). One set of handlers for the
-// whole timeline (TimeDrag.qml): the cards carry none.
+// scrolls under you. A card says its title, and its place when it fits,
+// never its times: a click (a tap) shows them over it and chooses it, with
+// its two grips when its edges move; a double click opens the thing (the
+// page says where, by its kind); a right click or a long press asks for its
+// menu. A drag moves it when its item says it may (`can.drag`), by its own
+// writer (Paths.qml): an appointment or a block by its file, a step pinned
+// there, a meal, a nap or the night that day; its edges change its start or
+// its end, by five minutes, fifteen at least. With a mouse, press and drag;
+// with a finger, a long press picks it up (a plain swipe scrolls), or a
+// chosen block's grip at once. A click on an empty stretch shows a "+" as
+// long as a new event, from its quarter; a second click there makes the
+// event (`newRange`). The keyboard does each: the arrows from thing to
+// thing, or the "+" by quarters; Alt+↑ and Alt+↓ move the thing by five
+// minutes, with Shift its end. What moved is watched until the plan
+// answers: how many tasks moved around it (`moveSaid`). One set of handlers
+// for the whole timeline (TimeDrag.qml): the cards carry none.
 
 pragma ComponentBehavior: Bound
 
@@ -107,8 +115,22 @@ ColumnLayout {
     signal menu(var row)
     // Ctrl+E on the thing the keyboard is on: its own form.
     signal edit(var row)
-    signal newAt(string day, int hour)
+    // A new event asked on `day`, from `from` to `to`, minutes from its midnight (the "+").
+    signal newRange(string day, int from, int to)
     signal openDay(string date)
+    // A move written, and the plan's answer once it came: the status line's `line` (its
+    // Undo's), what it says more ("2 tasks moved around it."), and for a meal, a nap
+    // or the night {date, key}, which "Every day" makes the usual time; else null.
+    signal moveSaid(string line, string more, var everyDay)
+
+    // The thing whose times show over it, chosen by a click, a tap or the keyboard: its row's key.
+    property string timesKey: ""
+    // The "+" of an empty stretch: {column, minute, length}, its start on the quarter; null without.
+    property var plus: null
+    // A move by the keyboard, drawn where it goes until the keys rest: {row, part, shift}.
+    property var nudge: null
+    // A move written, watched for the plan's answer (`watchMove`).
+    property var watch: null
     // Page Up and Page Down: the day or the week before, the next.
     signal turn(int steps)
 
@@ -470,6 +492,11 @@ ColumnLayout {
         planning.diff(marksModel, marks)
         planning.revision++
         planning.follow()
+        // Other days shown: the "+" goes with the day it was on.
+        if (planning.plus !== null && (planning.listed || planning.plus.column >= daysModel.count || daysModel.get(planning.plus.column).date !== planning.plus.date))
+            planning.plus = null
+        // The plan's answer to a move: how many tasks moved around it.
+        planning.checkWatch()
         // Other days shown: opened on their first hour (today's, on now), the list on today; the same days, never moved.
         Qt.callLater(planning.scrollToStart, false)
         Qt.callLater(planning.listToToday)
@@ -691,6 +718,64 @@ ColumnLayout {
         return row.tail <= 1440
     }
 
+    // Its start is on this day (not begun the day before): its top edge is its start.
+    function startsHere(row) {
+        return row.lead >= 0
+    }
+
+    // The thing chosen (its times shown, `timesKey`), as a copy of its row (a binding that
+    // holds the model's own element would hold it past a publish); null without.
+    function chosenRow() {
+        if (planning.timesKey === "")
+            return null
+        for (let i = 0; i < things.count; i++)
+            if (things.get(i).key === planning.timesKey)
+                return planning.copyOf(things.get(i))
+        return null
+    }
+
+    // Where a thing's edges that move are, in the hours' content: a meal's or a nap's
+    // its whole time's (getting ready, coming back), as its writer takes them; an
+    // event's and a step's the thing itself, its margins moving with it.
+    function edgesOf(row, box) {
+        if (row.kind === "meal" || row.kind === "nap")
+            return { top: box.y, bottom: box.y + box.height }
+        return { top: planning.yOf(Math.max(planning.frame.from, row.from)), bottom: planning.yOf(Math.min(planning.frame.to, row.to)) }
+    }
+
+    // The chosen thing's grips (its edges that move): where each is, in the hours' content.
+    function gripsOf(row) {
+        if (!row || !row.ends || !planning.movable(row) || row.kind === "night")
+            return []
+        const box = planning.boxOf(row)
+        const edges = planning.edgesOf(row, box)
+        const out = []
+        if (planning.startsHere(row))
+            out.push({ part: "top", x: box.x + box.width / 2, y: edges.top })
+        if (planning.endsHere(row))
+            out.push({ part: "bottom", x: box.x + box.width / 2, y: edges.bottom })
+        return out
+    }
+
+    // A chosen thing's grip at `p`, the card's width: twelve points beyond its edge, and
+    // within it a quarter of its height at most, so that its body still moves it. {row, part}; else null.
+    function gripAt(p) {
+        const row = planning.chosenRow()
+        if (!row)
+            return null
+        const box = planning.boxOf(row)
+        if (p.x < box.x || p.x > box.x + box.width)
+            return null
+        const edges = planning.edgesOf(row, box)
+        const inner = Math.max(3, Math.min(12, (edges.bottom - edges.top) / 4))
+        for (const grip of planning.gripsOf(row)) {
+            const beyond = grip.part === "top" ? grip.y - p.y : p.y - grip.y
+            if (beyond >= -inner && beyond <= 12)
+                return { row: row, index: -1, part: grip.part }
+        }
+        return null
+    }
+
     // What the hand may move: what its item says, never over, never a thing at the edge.
     function movable(row) {
         return row.mover !== "none" && row.edge === "" && row.fold !== "band"
@@ -700,6 +785,10 @@ ColumnLayout {
     // (the night's bedtime) or "bottom" (an end: an event's, a meal's, the
     // night's waking)}; cards over the night's shading; else null.
     function thingAt(p) {
+        // The chosen thing's grips first: a finger finds them where they show.
+        const grip = planning.gripAt(p)
+        if (grip !== null)
+            return grip
         let found = null
         let behind = null
         let leg = null
@@ -728,15 +817,21 @@ ColumnLayout {
                 behind = { row: row, index: i, part: part }
                 continue
             }
-            if (row.ends && planning.endsHere(row) && p.y >= box.y + box.height - inside)
+            // Its edges where the thing itself starts and ends (`edgesOf`): pressed
+            // in what is kept around it, it moves whole.
+            const edges = planning.edgesOf(row, box)
+            const near = Math.max(4, Math.min(8, (edges.bottom - edges.top) / 3))
+            if (row.ends && planning.endsHere(row) && p.y >= edges.bottom - near && p.y <= edges.bottom + 4)
                 part = "bottom"
-            if (p.y < box.y || p.y > box.y + box.height + (part === "bottom" ? 4 : 0))
+            else if (row.ends && planning.startsHere(row) && p.y >= edges.top - 4 && p.y <= edges.top + near)
+                part = "top"
+            if (p.y < box.y - (part === "top" ? 4 : 0) || p.y > box.y + box.height + (part === "bottom" ? 4 : 0))
                 continue
             found = { row: row, index: i, part: part }
         }
         if (leg !== null && planning.single)
             return leg
-        if (leg !== null && found !== null && found.part === "bottom")
+        if (leg !== null && found !== null && found.part !== "body")
             found = { row: found.row, index: found.index, part: "body" }
         return found || leg || behind
     }
@@ -756,20 +851,28 @@ ColumnLayout {
 
     // Where the thing taken would go, by whole five minutes: {start, end, column}
     // of the thing itself, Unix seconds (a meal, a nap or the night: with what is
-    // kept around it, as its writer moves it; a step and an event: proper).
+    // kept around it, as its writer moves it; a step and an event: proper, their
+    // margins moving with them). An edge keeps it fifteen minutes long at least.
     function target(grab, p) {
-        const row = grab.row
-        const shift = Math.round((planning.minuteAt(p.y) - grab.pressMinute) / 5) * 5 * 60
+        return planning.shifted(grab.row, grab.part, Math.round((planning.minuteAt(p.y) - grab.pressMinute) / 5) * 5 * 60, p.x)
+    }
+
+    // `row` moved by `shift` seconds, `part` "body", "top" or "bottom"; to the day at `x` when it may go there.
+    function shifted(row, part, shift, x) {
         const snap = s => Math.round(s / 300) * 300
+        const least = 15 * 60
         const whole = row.kind === "meal" || row.kind === "nap" || row.kind === "night"
         const from = whole ? row.start : row.at
         const to = whole ? row.end : row.until
-        if (grab.part === "bottom")
-            return { start: from, end: Math.max(from + 300, snap(to + shift)), column: row.day }
-        if (grab.part === "top")
+        if (part === "bottom")
+            return { start: from, end: Math.max(from + least, snap(to + shift)), column: row.day }
+        // The night's top is its bedtime, its winding down moving with it.
+        if (part === "top" && row.kind === "night")
             return { start: snap(from + shift), end: to, column: row.day }
+        if (part === "top")
+            return { start: Math.min(to - least, snap(from + shift)), end: to, column: row.day }
         // A meal, a nap and the night stay on their day; an event or a step goes to another day of the week.
-        const column = !whole && daysModel.count > 1 ? Math.max(0, Math.min(daysModel.count - 1, planning.columnAt(p.x))) : row.day
+        const column = !whole && daysModel.count > 1 && x !== undefined ? Math.max(0, Math.min(daysModel.count - 1, planning.columnAt(x))) : row.day
         const moved = planning.dayStart(column) - planning.dayStart(row.day)
         let start = snap(from + moved + shift)
         // A step is given a time from now on (its writer's rule, `blocks::pin`).
@@ -806,6 +909,7 @@ ColumnLayout {
     }
 
     function take(thing, p) {
+        planning.plus = null
         planning.grab = { row: planning.copyOf(thing.row), part: thing.part, pressMinute: planning.minuteAt(p.y) }
         planning.pointer = p
         planning.landed = null
@@ -841,6 +945,239 @@ ColumnLayout {
         if (problem !== "") {
             planning.landed = null
             planning.sioul.status = problem
+        } else {
+            planning.watchMove(landed.row)
+        }
+    }
+
+    // ---- Chosen, its times shown; the "+" of an empty stretch.
+
+    // Time for you and the time kept free: empty stretches, for the "+" and a double click.
+    function empty(row) {
+        return row.kind === "gain" || row.kind === "slack"
+    }
+
+    // A thing chosen: its times over it, the keyboard on it, its grips; the "+" gone.
+    function choose(row) {
+        planning.plus = null
+        planning.focusKey = row.key
+        planning.timesKey = row.key
+    }
+
+    // Its times, as the card never says them: "14:00 – 15:30", and on a second line
+    // what is kept around it ("leave 13:35 · back 16:00"; a meal's getting ready, the night's winding down).
+    function timesOf(row) {
+        if (!row)
+            return ""
+        const proper = planning.clock(row.at) + " – " + planning.clock(row.until)
+        const around = []
+        const need = row.kind === "meal" || row.kind === "nap"
+        if (row.start < row.at)
+            around.push(planning.sioul.textWith(row.kind === "night" ? "agenda-times-wind" : need ? "agenda-times-ready" : "agenda-times-leave", "time", planning.clock(row.start)))
+        if (row.end > row.until)
+            around.push(planning.sioul.textWith("agenda-times-back", "time", planning.clock(row.end)))
+        return proper + (around.length > 0 ? "\n" + around.join(" · ") : "")
+    }
+
+    // How long a new event lasts (Settings ▸ Agenda), in minutes.
+    function newLength() {
+        const minutes = typeof planning.sioul.newEventMinutes === "function" ? planning.sioul.newEventMinutes() : 30
+        return minutes > 0 ? minutes : 30
+    }
+
+    // The "+" at `p`, its start the quarter there, within the hours shown: whether there is one.
+    function showPlus(p) {
+        const column = planning.columnAt(p.x)
+        if (column < 0 || column >= daysModel.count)
+            return false
+        planning.placePlus(column, Math.floor(planning.minuteAt(p.y) / 15) * 15)
+        return true
+    }
+
+    function placePlus(column, minute) {
+        if (daysModel.count === 0)
+            return
+        const length = planning.newLength()
+        const from = Math.max(planning.frame.from, Math.min(planning.frame.to - 15, minute))
+        planning.timesKey = ""
+        const at = Math.max(0, Math.min(daysModel.count - 1, column))
+        planning.plus = { column: at, date: daysModel.get(at).date, minute: from, length: length }
+        planning.revealSpan(planning.yOf(from), planning.yOf(from + length))
+    }
+
+    function inPlus(p) {
+        const plus = planning.plus
+        const left = planning.gutter + plus.column * planning.dayWidth
+        return p.x >= left && p.x <= left + planning.dayWidth && p.y >= planning.yOf(plus.minute) && p.y <= planning.yOf(plus.minute + Math.max(15, plus.length))
+    }
+
+    // The "+" made an event: its day, its range; the form opens for its title.
+    function makePlus() {
+        const plus = planning.plus
+        planning.plus = null
+        if (plus && plus.column < daysModel.count)
+            planning.newRange(daysModel.get(plus.column).date, plus.minute, plus.minute + plus.length)
+    }
+
+    // Today's first thing of `kind` (one to come only, `ahead`), as a row of its own (a copy,
+    // never the model's); null without.
+    function firstOf(kind, ahead) {
+        const days = planning.days || []
+        const index = days.findIndex(d => d.date === planning.today)
+        if (index < 0)
+            return null
+        let first = null
+        for (const placed of days[index].timed || []) {
+            const row = planning.rowOf(placed, days[index], index, "")
+            if (row.kind === kind && (!ahead || row.at > planning.now) && (first === null || row.at < first.at))
+                first = row
+        }
+        return first
+    }
+
+    // Esc: the "+" and the times shown, gone; whether anything was.
+    function dismiss() {
+        const shown = planning.plus !== null || planning.timesKey !== ""
+        planning.plus = null
+        planning.timesKey = ""
+        return shown
+    }
+
+    // A stretch of the hours brought into view.
+    function revealSpan(top, bottom) {
+        if (top < hours.contentY)
+            hours.contentY = Math.max(0, top - 8)
+        else if (bottom > hours.contentY + hours.height)
+            hours.contentY = Math.max(0, Math.min(hours.contentHeight - hours.height, bottom - hours.height + 8))
+    }
+
+    // What screen readers are told, as a status line would be.
+    function announce(text) {
+        if (text !== "" && typeof planning.Accessible.announce === "function")
+            planning.Accessible.announce(text)
+    }
+
+    // ---- The keyboard's moves: Alt+↑ and Alt+↓ by five minutes, with Shift its end;
+    // drawn where it goes, written once the keys rest (one write, one Undo).
+
+    function nudgeBy(steps, end) {
+        const row = planning.chosenRow() || planning.focused()
+        if (!row || !planning.movable(row) || (end && !(row.ends && planning.endsHere(row))))
+            return
+        const part = end ? "bottom" : "body"
+        const same = planning.nudge !== null && planning.nudge.row.key === row.key && planning.nudge.part === part
+        planning.nudge = { row: same ? planning.nudge.row : planning.copyOf(row), part: part, shift: (same ? planning.nudge.shift : 0) + steps * 300 }
+        nudgeRest.restart()
+        const shown = planning.nudged()
+        planning.announce(row.title + ", " + shown.text)
+    }
+
+    // Where the keyboard's move goes: as `landed` says it.
+    function nudged() {
+        const nudge = planning.nudge
+        const to = planning.shifted(nudge.row, nudge.part, nudge.shift)
+        if (nudge.row.mover === "pin" && nudge.part === "body") {
+            const from = Math.max(to.start, Math.ceil(planning.now / 300) * 300)
+            to.end += from - to.start
+            to.start = from
+        }
+        return { row: nudge.row, part: nudge.part, column: to.column, start: to.start, end: to.end, text: planning.said({ row: nudge.row }, to) }
+    }
+
+    Timer {
+        id: nudgeRest
+
+        interval: 900
+        onTriggered: {
+            if (planning.nudge === null)
+                return
+            const landed = planning.nudged()
+            planning.nudge = null
+            const row = landed.row
+            const whole = row.kind === "meal" || row.kind === "nap" || row.kind === "night"
+            if (landed.start === (whole ? row.start : row.at) && landed.end === (whole ? row.end : row.until))
+                return
+            planning.landed = landed
+            if (row.mover === "event" && row.recurring) {
+                which.now().ask(row.title, planning.sioul.textWith("agenda-move-which", "time", landed.text))
+                return
+            }
+            planning.save(false)
+        }
+    }
+
+    // ---- What moved, watched until the plan answers: the tasks of its day whose
+    // steps moved, told with the status line's line (`moveSaid`), for fifteen seconds.
+
+    // A day's steps, by task: their times, those of `except` (what was moved) left out.
+    function stepsOn(date, except) {
+        const out = {}
+        for (const day of planning.days || []) {
+            if (day.date !== date)
+                continue
+            for (const placed of (day.timed || []).concat(day.hidden || [])) {
+                const item = placed.item || {}
+                if (item.kind !== "step" || !item.owner || item.owner === except)
+                    continue
+                const time = item.time || {}
+                out[item.owner] = (out[item.owner] ? out[item.owner] + "," : "") + (time.at || 0) + "-" + (time.until || 0)
+            }
+        }
+        return out
+    }
+
+    // `row` moved by your hand (a drag, an edge, the keyboard, "Had it"): watched.
+    function watchMove(row) {
+        const date = row.date || row.srcDate || ""
+        const need = row.mover === "need" || row.kind === "meal" || row.kind === "nap" || row.kind === "night"
+        const key = row.srcKey || ""
+        planning.watch = { date: date, except: row.owner || "", before: planning.stepsOn(date, row.owner || ""), line: "", said: "", everyDay: need && key !== "" && key.indexOf("added-") !== 0 ? { date: row.srcDate || date, key: key } : null }
+        watchEnd.restart()
+        Qt.callLater(planning.checkWatch)
+    }
+
+    function checkWatch() {
+        const watch = planning.watch
+        if (!watch)
+            return
+        const line = planning.sioul.undoLine || ""
+        if (watch.line === "" && line !== "")
+            watch.line = line
+        if (watch.line === "")
+            return
+        // Another act since, or Undo: no longer this move's line.
+        if (line !== watch.line) {
+            planning.watch = null
+            return
+        }
+        const now = planning.stepsOn(watch.date, watch.except)
+        let moved = 0
+        for (const owner of Object.keys(Object.assign({}, watch.before, now)))
+            if (watch.before[owner] !== now[owner])
+                moved++
+        const more = moved > 0 ? planning.sioul.textArgs("agenda-tasks-moved", JSON.stringify({ count: moved })) : ""
+        if (more === watch.said && watch.told)
+            return
+        watch.said = more
+        watch.told = true
+        planning.moveSaid(watch.line, more, watch.everyDay)
+        if (more !== "")
+            planning.announce(more)
+    }
+
+    Timer {
+        id: watchEnd
+
+        interval: 15000
+        onTriggered: planning.watch = null
+    }
+
+    Connections {
+        target: planning.sioul
+        ignoreUnknownSignals: true
+
+        function onUndoLineChanged() {
+            planning.checkWatch()
         }
     }
 
@@ -952,12 +1289,18 @@ ColumnLayout {
     Accessible.name: planning.sioul.text(planning.single ? "agenda-mode-day" : "agenda-mode-week")
 
     // The keyboard, while the timeline has it: Up and Down from thing to thing
-    // in time order, Enter opens it, Ctrl+E its form, Page Up and Page Down
-    // the day or the week before and after.
-    Keys.onUpPressed: planning.stepFocus(-1)
-    Keys.onDownPressed: planning.stepFocus(1)
-    Keys.onReturnPressed: planning.openFocused()
-    Keys.onEnterPressed: planning.openFocused()
+    // in time order, its times shown; Left and Right show the "+" there, which
+    // the arrows then move by quarters and days; Enter opens the thing, or
+    // makes the "+"'s event; Alt+↑ and Alt+↓ move the thing by five minutes,
+    // Alt+Shift its end; Esc lets go of the "+" and the times; Ctrl+E its
+    // form, Page Up and Page Down the day or the week before and after.
+    Keys.onUpPressed: event => planning.arrow(event, 0, -1)
+    Keys.onDownPressed: event => planning.arrow(event, 0, 1)
+    Keys.onLeftPressed: event => planning.arrow(event, -1, 0)
+    Keys.onRightPressed: event => planning.arrow(event, 1, 0)
+    Keys.onReturnPressed: planning.enter()
+    Keys.onEnterPressed: planning.enter()
+    Keys.onEscapePressed: event => event.accepted = planning.dismiss()
     Keys.onPressed: event => {
         if (event.key === Qt.Key_E && (event.modifiers & Qt.ControlModifier)) {
             const row = planning.focused()
@@ -974,6 +1317,40 @@ ColumnLayout {
         const row = planning.focused()
         if (row)
             planning.open(row)
+    }
+
+    function enter() {
+        if (planning.plus !== null)
+            planning.makePlus()
+        else
+            planning.openFocused()
+    }
+
+    // An arrow: with Alt, the thing moved (with Shift, its end); the "+" by a quarter or a
+    // day; Left and Right show it where the keyboard is; else Up and Down from thing to thing.
+    function arrow(event, dx, dy) {
+        event.accepted = true
+        if (event.modifiers & Qt.AltModifier) {
+            if (dy !== 0)
+                planning.nudgeBy(dy, (event.modifiers & Qt.ShiftModifier) !== 0)
+            return
+        }
+        if (planning.plus !== null) {
+            planning.placePlus(planning.plus.column + dx, planning.plus.minute + 15 * dy)
+            planning.announce(plusMark.Accessible.name)
+            return
+        }
+        if (dx !== 0) {
+            const row = planning.focused()
+            const today = planning.todayIndex >= 0 && (!row || row.day === planning.todayIndex)
+            const minute = row ? row.from : today ? Math.ceil(planning.minuteNow / 15) * 15 : planning.frame.from
+            planning.placePlus(row ? row.day : Math.max(0, planning.todayIndex), Math.floor(minute / 15) * 15)
+            planning.announce(plusMark.Accessible.name)
+            return
+        }
+        const row = planning.stepFocus(dy)
+        if (row)
+            planning.timesKey = row.key
     }
 
     // The cards' type, for measuring their titles and times. Never shown.
@@ -1538,7 +1915,8 @@ ColumnLayout {
                     z: card.isNight ? 0 : card.isQuiet ? 1 : card.isLeg ? 3 : 2
                     opacity: card.away ? 0.3 : card.tentative || card.done ? 0.6 : 1
                     Accessible.role: Accessible.Button
-                    Accessible.name: card.title + ", " + card.when
+                    // Its name and its times, which the card itself never writes.
+                    Accessible.name: card.title + ", " + card.when + (card.location !== "" ? ", " + card.location : "")
 
                     // Two layers for every kind, so that a week of cards stays light: the
                     // whole, lighter (what is kept around the thing: getting there and back,
@@ -1608,10 +1986,11 @@ ColumnLayout {
                         }
                     }
                     ColumnLayout {
-                        // Meals and naps in the Week are bands without words; time for you, quiet words.
-                        visible: !card.isNight && !(card.isNeed && !planning.single)
+                        // Every card says its title: meals, naps and the night by their names (the night
+                        // right of the doses' lane, which runs through it); time for you, quiet words.
+                        // Never its times, which a click shows over it (`timesKey`).
                         anchors.fill: parent
-                        anchors.leftMargin: 6
+                        anchors.leftMargin: card.isNight ? planning.lane + 4 : 6
                         anchors.rightMargin: 2 + (card.pinned || card.kind === "block" ? 14 : 0)
                         anchors.topMargin: Math.max(planning.cardPadding / 2, Math.min(card.properTop, card.height - planning.cardLeast))
                         spacing: 0
@@ -1627,16 +2006,15 @@ ColumnLayout {
                             font.italic: card.isQuiet || card.isBand || (card.isLeg && card.certainty === "unconfirmed")
                             font.strikeout: card.cancelled
                             font.weight: card.underWay ? Font.DemiBold : Font.Normal
-                            color: card.isQuiet || card.isBand || card.done || card.isLeg || card.busy ? planning.theme.muted : planning.theme.text
+                            color: card.isQuiet || card.isBand || card.done || card.isLeg || card.busy ? planning.theme.muted : card.isNight ? planning.theme.muted : planning.theme.text
                         }
+                        // Its place, or its task's list, when it fits whole; never its times.
                         Label {
                             readonly property string beside: card.location !== "" ? card.location : card.list !== "" ? planning.sioul.textWith("agenda-task-of", "list", card.list) : ""
-                            readonly property string line: card.when + (beside !== "" ? " · " + beside : "")
 
-                            // A band's title says its time already.
-                            visible: card.edge === "" && !card.isQuiet && !card.isBand && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine
+                            visible: beside !== "" && card.edge === "" && !card.isQuiet && !card.isBand && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine && timeFont.advanceWidth(beside) <= card.width - 8
                             Layout.fillWidth: true
-                            text: timeFont.advanceWidth(line) <= card.width - 8 ? line : card.when
+                            text: beside
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
                             font.pixelSize: 11
@@ -1756,7 +2134,8 @@ ColumnLayout {
                 id: ghost
 
                 readonly property var going: planning.grab !== null && drag.dragging ? planning.target(planning.grab, planning.pointer) : null
-                readonly property var shownAt: ghost.going ? { row: planning.grab.row, column: ghost.going.column, start: ghost.going.start, end: ghost.going.end, text: planning.said(planning.grab, ghost.going) } : planning.landed
+                // A drag under way, a move by the keyboard, or what was let go.
+                readonly property var shownAt: ghost.going ? { row: planning.grab.row, column: ghost.going.column, start: ghost.going.start, end: ghost.going.end, text: planning.said(planning.grab, ghost.going) } : planning.nudge !== null ? planning.nudged() : planning.landed
                 readonly property real dayStart: ghost.shownAt ? planning.dayStart(ghost.shownAt.column) : 0
                 readonly property real from: ghost.shownAt ? Math.max(planning.frame.from, (ghost.shownAt.start - ghost.dayStart) / 60) : 0
                 readonly property real until: ghost.shownAt ? Math.min(planning.frame.to, (ghost.shownAt.end - ghost.dayStart) / 60) : 0
@@ -1772,14 +2151,24 @@ ColumnLayout {
                 border.width: 2
                 z: 5
             }
+            // The times of what moves, above where it goes; else of the thing chosen
+            // (a click, a tap, the keyboard), over its card: the cards never write them.
             Rectangle {
                 id: tag
 
+                readonly property bool moving: ghost.visible
+                readonly property var chosen: {
+                    planning.revision
+                    return tag.moving ? null : planning.chosenRow()
+                }
+                readonly property var chosenBox: tag.chosen ? planning.boxOf(tag.chosen) : null
                 readonly property bool above: ghost.y - tag.height - 4 >= hours.contentY + 2
 
-                visible: ghost.visible
-                x: Math.max(planning.gutter, Math.min(canvas.width - tag.width - 2, ghost.x))
-                y: tag.above ? ghost.y - tag.height - 4 : ghost.y + ghost.height + 4
+                objectName: "timelineTimes"
+                visible: tag.moving || (tag.chosen !== null && tag.chosen.fold !== "band")
+                // Over the chosen card's top right corner: its title stays to read.
+                x: Math.max(planning.gutter, Math.min(canvas.width - tag.width - 2, tag.moving ? ghost.x : tag.chosenBox ? Math.max(tag.chosenBox.x + 3, tag.chosenBox.x + tag.chosenBox.width - tag.width - 3) : 0))
+                y: tag.moving ? (tag.above ? ghost.y - tag.height - 4 : ghost.y + ghost.height + 4) : tag.chosenBox ? Math.max(0, tag.chosenBox.y + 2) : 0
                 width: tagText.implicitWidth + 12
                 height: tagText.implicitHeight + 8
                 radius: 4
@@ -1792,12 +2181,63 @@ ColumnLayout {
 
                     x: 6
                     y: 4
-                    text: ghost.shownAt ? ghost.shownAt.text : ""
+                    text: tag.moving ? (ghost.shownAt ? ghost.shownAt.text : "") : planning.timesOf(tag.chosen)
                     textFormat: Text.PlainText
                     font.features: { "tnum": 1 }
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                     color: planning.theme.text
+                }
+            }
+
+            // The chosen thing's grips, at the edges that move: a finger takes one at once.
+            Repeater {
+                model: tag.moving || !tag.chosen ? [] : planning.gripsOf(tag.chosen)
+
+                delegate: Rectangle {
+                    required property var modelData
+
+                    objectName: "timelineGrip"
+                    x: modelData.x - 14
+                    y: modelData.y - 3
+                    width: 28
+                    height: 6
+                    radius: 3
+                    color: planning.theme.accent
+                    z: 6
+                }
+            }
+
+            // The "+" of an empty stretch, as long as a new event from its quarter: a second click makes it.
+            Rectangle {
+                id: plusMark
+
+                objectName: "timelinePlus"
+                visible: planning.plus !== null && !planning.listed
+                x: planning.plus ? planning.gutter + planning.plus.column * planning.dayWidth + planning.lane + 2 : 0
+                y: planning.plus ? planning.yOf(planning.plus.minute) : 0
+                width: planning.slotWidth - 2
+                height: planning.plus ? Math.max(planning.cardLeast, planning.plus.length / 60 * planning.hourHeight - 1) : 0
+                radius: 4
+                color: planning.tint(planning.theme.accent, 0.08)
+                border.color: planning.theme.accent
+                z: 5
+                Accessible.role: Accessible.Button
+                Accessible.name: planning.plus ? planning.sioul.textWith("agenda-plus", "time", planning.clockOf(planning.plus.minute) + " – " + planning.clockOf(planning.plus.minute + planning.plus.length)) : ""
+
+                Label {
+                    anchors.centerIn: parent
+                    text: "+"
+                    textFormat: Text.PlainText
+                    font.pixelSize: Math.min(22, Math.max(12, plusMark.height - 4))
+                    color: planning.theme.accent
+                }
+                ToolTip.visible: plusHover.hovered
+                ToolTip.delay: 600
+                ToolTip.text: planning.sioul.text("agenda-plus-tip")
+
+                HoverHandler {
+                    id: plusHover
                 }
             }
 
@@ -1807,10 +2247,13 @@ ColumnLayout {
                 anchors.fill: parent
                 z: 7
                 flick: hours
+                gripAt: position => planning.gripAt(position) !== null
                 onHovered: position => {
                     const thing = position.x < 0 ? null : planning.thingAt(position)
-                    drag.cursorShape = !thing ? Qt.ArrowCursor : !planning.movable(thing.row) ? Qt.PointingHandCursor : thing.part !== "body" ? Qt.SizeVerCursor : Qt.OpenHandCursor
+                    drag.cursorShape = !thing || planning.empty(thing.row) ? Qt.ArrowCursor : !planning.movable(thing.row) ? Qt.PointingHandCursor : thing.part !== "body" ? Qt.SizeVerCursor : Qt.OpenHandCursor
                 }
+                // A click: a thing chosen, its times shown over it; on an empty stretch,
+                // the "+", which a second click makes; a dose's mark, its dose.
                 onTapped: position => {
                     planning.forceActiveFocus()
                     const thing = planning.thingAt(position)
@@ -1818,17 +2261,25 @@ ColumnLayout {
                     const dose = !thing || thing.row.kind === "night" ? planning.markAt(position) : null
                     if (dose) {
                         planning.open(dose)
-                    } else if (thing) {
-                        planning.focusKey = thing.row.key
+                    } else if (planning.plus !== null && planning.inPlus(position)) {
+                        planning.makePlus()
+                    } else if (thing && thing.row.fold === "band") {
                         planning.open(thing.row)
+                    } else if (thing && !planning.empty(thing.row)) {
+                        planning.choose(thing.row)
+                    } else {
+                        planning.showPlus(position)
                     }
                 }
+                // A double click: the thing's card; on an empty stretch, a new event there at once.
                 onDoubleTapped: position => {
-                    const column = planning.columnAt(position.x)
                     const thing = planning.thingAt(position)
-                    // Never over a fixed thing: an appointment, a pinned task, a meal, a nap.
-                    if (column >= 0 && column < daysModel.count && (!thing || thing.row.kind === "night" || (thing.row.kind === "step" && thing.row.certainty !== "held") || thing.row.kind === "gain" || thing.row.kind === "slack"))
-                        planning.newAt(daysModel.get(column).date, Math.floor(planning.minuteAt(position.y) / 60))
+                    if (thing && !planning.empty(thing.row)) {
+                        planning.open(thing.row)
+                        return
+                    }
+                    if (planning.showPlus(position))
+                        planning.makePlus()
                 }
                 onMenuAsked: (position, scenePosition) => {
                     planning.grab = null
@@ -1838,10 +2289,13 @@ ColumnLayout {
                     planning.Window.window.menuAt = scenePosition
                     planning.menu(thing.row)
                 }
+                // A finger held: the thing chosen, its grips shown; picked up when it moves, else its menu.
                 onHeld: (position, scenePosition) => {
                     const thing = planning.thingAt(position)
                     if (!thing)
                         return
+                    if (!planning.empty(thing.row) && thing.row.fold !== "band")
+                        planning.choose(thing.row)
                     if (planning.movable(thing.row)) {
                         planning.take(thing, position)
                         drag.pickUp(true)
@@ -1850,15 +2304,27 @@ ColumnLayout {
                         planning.menu(thing.row)
                     }
                 }
+                // A finger on a chosen thing's grip: its edge taken at once.
+                onGripped: position => {
+                    const grip = planning.gripAt(position)
+                    if (grip === null)
+                        return
+                    planning.take(grip, position)
+                    drag.pickUp(false)
+                }
                 onStarted: position => {
                     // A finger took it when held; a mouse takes what it pressed on.
                     if (drag.holding)
                         return
                     const thing = planning.thingAt(position)
-                    if (thing && planning.movable(thing.row))
+                    if (thing && planning.movable(thing.row)) {
                         planning.take(thing, position)
-                    else
+                    } else {
                         planning.grab = null
+                        // What may not move says why, once: a calendar you only read, a meeting with others.
+                        if (thing && thing.row.why !== "")
+                            planning.sioul.status = thing.row.why
+                    }
                 }
                 onMoved: position => planning.pointer = position
                 onReleased: position => planning.drop(position)

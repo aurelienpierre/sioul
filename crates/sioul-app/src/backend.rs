@@ -1385,6 +1385,20 @@ pub mod qobject {
         #[qinvokable]
         fn drag_need(self: Pin<&mut Sioul>, edit: &QString) -> QString;
 
+        /// A meal or a nap had already, today, before its time (JSON: date, key,
+        /// from, "" for ending now): "Undo" offered (`health::had_need`).
+        #[qinvokable]
+        fn had_need(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// A day's block made the usual one, every day (JSON: date, key): "Undo"
+        /// offered (`health::every_day`).
+        #[qinvokable]
+        fn need_every_day(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// How long a new event lasts, in minutes (Settings ▸ Agenda; 30 unset).
+        #[qinvokable]
+        fn new_event_minutes(self: &Sioul) -> i32;
+
         /// The Health page's settings (⚙): the pauses, where the errands go, the watch, as JSON.
         #[qinvokable]
         fn health_settings(self: &Sioul) -> QString;
@@ -6194,6 +6208,27 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn had_need(self: Pin<&mut Self>, edit: &QString) -> QString {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let problem = crate::health::had_need(&qt, &shared, &edit.to_string());
+        // The plan goes around it as that day has it now; the page shows it.
+        work::show_work(&qt, &shared);
+        crate::health::show_health(&qt, &shared);
+        QString::from(&problem)
+    }
+
+    fn need_every_day(self: Pin<&mut Self>, edit: &QString) -> QString {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let problem = crate::health::every_day(&qt, &shared, &edit.to_string());
+        work::show_work(&qt, &shared);
+        crate::health::show_health(&qt, &shared);
+        QString::from(&problem)
+    }
+
+    fn new_event_minutes(&self) -> i32 {
+        i32::try_from(load_config().agenda.new_event_minutes()).unwrap_or(30)
+    }
+
     fn change_need(self: Pin<&mut Self>, edit: &QString) -> QString {
         let problem = crate::health::change_need(&edit.to_string());
         // The plan goes around it as that day has it now; the page shows it.
@@ -7372,8 +7407,10 @@ impl qobject::Sioul {
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
         // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
-        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud"].contains(&steps.as_str()) && offline()) {
+        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "timeline" the
+        // Day's times shown over a block, its handles, the "+" of an empty quarter, a meal's menu with "Had it", the
+        // Week's named meals and nights (pictures alone; docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "timeline"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

@@ -3818,6 +3818,33 @@ day-now = now
 # Moving by dragging: the Health page's timeline, the agenda's day and week, the Tasks page's day.
 drag-done = { $what }: { $time }.
 drag-done-plain = Moved.
+drag-need-today = { $what } moved to { $time } today.
+drag-need-day = { $what } moved to { $time }, { $day }.
+drag-bed-moved = Bedtime moved to { $time }.
+drag-wake-moved = Waking moved to { $time }.
+agenda-tasks-moved = { $count ->
+    [one] One task moved around it.
+   *[other] { $count } tasks moved around it.
+}
+agenda-every-day = Every day
+agenda-every-day-tip = Make this time the usual one, in Settings ▸ Hours
+need-every-day = { $what } at { $time } every day.
+need-every-day-night = Bedtime { $bed } and waking { $wake }, every day.
+need-had-now = Had it, just now
+need-had-at = Had it at…
+need-had-when = When?
+need-had-card = Had it…
+need-had-just-now = Just now
+need-had = { $what }: had at { $time }.
+agenda-night = Night
+agenda-times-leave = leave { $time }
+agenda-times-back = back { $time }
+agenda-times-ready = getting ready { $time }
+agenda-times-wind = winding down { $time }
+agenda-plus = New event, { $time }
+agenda-plus-tip = Click again to make it
+set-agenda-new-event = A new event lasts
+set-agenda-new-event-help = When you make one with the timeline's + or with New event.
 day-let-plan = Let the plan place it
 day-let-plan-done = The plan places “{ $title }” again.
 agenda-read-only = This calendar can only be read.

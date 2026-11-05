@@ -45,7 +45,12 @@ Item {
     // What it says: what just happened (Undo's line while it waits). Narrow,
     // when nothing did, the day to close at its time, else what now is, whose
     // button is then its icon.
-    readonly property string sentence: line.sioul.undoLine !== "" ? line.sioul.undoLine : line.sioul.status !== "" ? line.sioul.status : !line.compact ? "" : line.offer.kind !== "" ? line.offer.line : line.moment.line
+    readonly property string sentence: line.sioul.undoLine !== "" ? line.sioul.undoLine + line.undoMore : line.sioul.status !== "" ? line.sioul.status : !line.compact ? "" : line.offer.kind !== "" ? line.offer.line : line.moment.line
+    // After a move on the agenda's timeline, what the plan moved around it ("2 tasks
+    // moved around it."), said while its Undo is (main.qml's `undoMore`).
+    readonly property string undoMore: line.window.undoMore && line.window.undoMore.line === line.sioul.undoLine ? " " + line.window.undoMore.more : ""
+    // A meal, a nap or the night moved that day: "Every day" makes it the usual time.
+    readonly property bool everyDayShown: line.sioul.undoLine !== "" && line.window.everyDay !== null && line.window.everyDay !== undefined && line.window.everyDay.line === line.sioul.undoLine
     // For the documentation's pictures (main.qml's grabber).
     readonly property alias weatherApplet: weatherApplet
     readonly property alias reachButton: reachButton
@@ -194,6 +199,23 @@ Item {
             // Narrow, its name first: its icon alone says little.
             tip: line.compact ? line.offer.button + "\n" + line.offer.line : line.offer.line
             onChosen: line.window.reviewDay(line.offer.kind)
+        }
+        // A meal, a nap or the night moved that day: that time every day (Settings ▸ Hours).
+        LineButton {
+            objectName: "lineEveryDay"
+            visible: line.everyDayShown
+            theme: line.theme
+            compact: line.compact
+            icon.name: "view-calendar-day"
+            text: line.sioul.text("agenda-every-day")
+            tip: line.sioul.text("agenda-every-day-tip")
+            onChosen: {
+                const asked = line.window.everyDay
+                line.window.everyDay = null
+                const problem = line.sioul.needEveryDay(JSON.stringify({ date: asked.date, key: asked.key }))
+                if (problem !== "")
+                    line.sioul.status = problem
+            }
         }
         // Ten seconds to change your mind.
         LineButton {

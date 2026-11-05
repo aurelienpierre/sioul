@@ -80,7 +80,9 @@ A tap on a date opens its card where you are, in its page's own words, with its 
 
 ## Day and Week: everything at its time {#day-and-week}
 
-**Day** and **Week** show everything that has a time, on one timeline: your appointments, with their calendar's colour; your tasks' times; the steps your plan lays, outlined, the next one filled; what you finished, ticked and dimmed; your meals, naps and night as [Health](health.md#meals-rest-and-sleep) has them (named in the day, as bands in the week); and your doses. The time kept around a thing (getting ready, getting there, coming back, winding down) shows lighter around it. On days to come, during your quiet hours, the steps the Tasks page keeps out of view show as one band per stretch of hours; a tap on a band, or **Show ▸ Steps kept out of view for now**, draws them.
+**Day** and **Week** show everything that has a time, on one timeline: your appointments, with their calendar's colour; your tasks' times; the steps your plan lays, outlined, the next one filled; what you finished, ticked and dimmed; your meals, naps and night as [Health](health.md#meals-rest-and-sleep) has them, each by the name you gave it in [Settings ▸ Hours](settings.md#hours), else "Breakfast", "Lunch", "Nap", "Night"; and your doses. The time kept around a thing (getting ready, getting there, coming back, winding down) shows lighter around it.
+
+A card says what it is, and its place when it fits; never its times, which the timeline itself shows. Click it (tap it on a phone) and its times show over it, "14:00 – 15:30", with the time kept around it under them ("leave 13:35 · back 16:00"); a click elsewhere or Escape hides them. Double-click it (double-tap) to open it. While you drag something, its times show the same way. On days to come, during your quiet hours, the steps the Tasks page keeps out of view show as one band per stretch of hours; a tap on a band, or **Show ▸ Steps kept out of view for now**, draws them.
 
 The hours shown start half an hour before you wake and end half an hour after you go to bed, the same for every day, so that the hour lines stay in place. An appointment outside them widens them. Anything else that falls in the night, a dose at 05:00 say, sits at the top or the bottom edge with its time.
 
@@ -88,23 +90,32 @@ While today shows, a line under the header says what now is for and what comes n
 
 **Doses** show as small marks beside each day, never with the medicine's name: an empty ring before its time, a ring once it is due, filled once you took it, dotted while Sioul reads what your devices know, a warm ring when you should check before taking it. Sioul never shows a dose as "not taken": what a device cannot know, it shows as a doubt. Days to come show small ticks, and days gone by show none. Tap a mark to open that day in [Health](health.md), where the medicine is named.
 
-A tap opens what you tapped in its card, where you are: an appointment's; a step, a task's time or a task done, its task's, with where the plan puts it or the time it is pinned to; a meal's, a nap's or the night's, with what changes it that day, as in [Health](health.md). A dose opens its day in Health, where its medicine is named. From a card, an appointment or a task tied to it opens in its own card, and **Back** (or Escape) goes to the card you came from, then closes it; a message, a note or a contact opens where it lives (on a phone, the card closes first). A form you close without saving keeps what you typed until you open it again, and says so; what you did not type follows the appointment as it is then (a time moved since stays moved). **Cancel** forgets it. **Show**, at the top, chooses what every view shows on this device (the day, the week, What comes and the month): the plan's steps, meals, naps and the night, doses, each calendar (two calendars with the same name are kept apart).
+A double click opens what you clicked in its card, where you are: an appointment's; a step, a task's time or a task done, its task's, with where the plan puts it or the time it is pinned to; a meal's, a nap's or the night's, with what changes it that day, as in [Health](health.md). A dose opens its day in Health, where its medicine is named. From a card, an appointment or a task tied to it opens in its own card, and **Back** (or Escape) goes to the card you came from, then closes it; a message, a note or a contact opens where it lives (on a phone, the card closes first). A form you close without saving keeps what you typed until you open it again, and says so; what you did not type follows the appointment as it is then (a time moved since stays moved). **Cancel** forgets it. **Show**, at the top, chooses what every view shows on this device (the day, the week, What comes and the month): the plan's steps, meals, naps and the night, doses, each calendar (two calendars with the same name are kept apart).
 
-With a keyboard, once you clicked the timeline: Up and Down go from thing to thing, Enter opens it, Ctrl+E opens its form, and Page Up and Page Down go to the day or the week before and after.
+With a keyboard, once you clicked the timeline: Up and Down go from thing to thing and show its times, Enter opens it, Ctrl+E opens its form, and Page Up and Page Down go to the day or the week before and after. Left and Right show the **+** of a new event there; the arrows then move it by a quarter of an hour or a day, Enter makes it, and Escape hides it.
 
-## Moving an event by hand
+### A new event from the timeline {#new-from-the-timeline}
 
-In **Day** and **Week**, drag an event to another time: it keeps its length. In **Week**, drag it to another day too. Drag its bottom edge to change when it ends. While you drag, its new place shows with its times ("Tue 6, 11:15–12:15"), by five minutes.
+Click an empty stretch of the day (tap it on a phone): a **+** shows there, from the quarter of an hour you clicked, as long as a new event lasts (30 minutes until you change it in the [Agenda settings](#the-agenda-settings)). Click it again, and the form of a new event opens on that time, in the calendar for new events, ready for its title. A double click on an empty stretch does both at once. A click elsewhere, or Escape, hides the **+**.
 
-Let go, and it is saved and sent to your calendar server; **Undo** waits ten seconds in the status line. Let go where it was, and nothing changes.
+## Moving things by hand {#moving-an-event-by-hand}
 
+In **Day** and **Week**, drag an event, a meal, a nap or the night to another time: it keeps its length. In **Week**, drag an event to another day too. Drag its top edge to change when it starts, its bottom edge to change when it ends: by five minutes, and fifteen minutes long at least. The time kept around an event (Before and After) moves with it; you change those in its card. While you drag, its new place shows with its times ("Tue 6, 11:15 – 12:15").
+
+Let go, and it is saved; an event is sent to your calendar server. Your plan lays your tasks around the new time at once, and the status line says what moved: "Lunch moved to 13:30 today. 2 tasks moved around it." **Undo** waits ten seconds there, and puts back both the thing and your plan. Let go where it was, and nothing changes.
+
+- **A meal, a nap or the night** moves for that day only, as on the [Health](health.md#meals-rest-and-sleep) page; your usual hours stay as they are. **Every day**, beside **Undo**, makes that time the usual one in [Settings ▸ Hours](settings.md#hours). The night's top edge is tonight's bedtime (its winding down with it), its bottom edge this morning's waking.
 - **A repeating event** asks first: **Only this time**, or **Every time**. Every time moves all its days by as much; a weekly event moved to another day comes on that day each week. An event that repeats on set days of the month ("the first Monday") moves only this time: change how it repeats in its form.
-- **A step of your plan**, dragged, is pinned to its new time, as [Tasks](tasks.md#pinned-to-a-time) pins it; never before now.
-- **A meal, a nap or the night**, dragged, changes for that day only, as on the [Health](health.md#meals-rest-and-sleep) page: the night by its top edge (your bedtime, its winding down with it) or its bottom edge (your waking).
-- **A calendar you can only read**, a meeting with others (its organiser's server would tell every guest), whole-day events and doses do not move.
-- **With a mouse**: press and drag; the wheel scrolls. **On a touch screen**: hold the event until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu.
+- **A step of your plan**, dragged, is pinned to its new time, as [Tasks](tasks.md#pinned-to-a-time) pins it; never before now. The steps the plan lays move only that way.
+- **A calendar you can only read**, a meeting with others (its organiser's server would tell every guest), whole-day events and doses do not move. Dragged, they say why in the status line.
+- **With a mouse**: press and drag; the wheel scrolls. **On a touch screen**: hold the thing until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu, and its two grips show at its edges: slide a grip to change its start or its end.
+- **With a keyboard**: choose it (Up and Down, or a click), then Alt+Up and Alt+Down move it by five minutes, Alt+Shift+Up and Alt+Shift+Down its end; it is saved once you stop pressing, and each step is said to your screen reader. Its card's times do the same.
 - Only within the hours shown; further, use **Edit**.
-- If you would now be in two places, it stands beside the other, a thin bracket joining them, and its card says so ([Two events at once](#two-events-at-once)). Your plan goes around its new time at once.
+- If you would now be in two places, it stands beside the other, a thin bracket joining them, and its card says so ([Two events at once](#two-events-at-once)).
+
+### Had it already {#had-it}
+
+A meal or a nap of today that has not begun yet has **Had it, just now** and **Had it at…** in its menu (a right click, or a long press on a phone), and **Had it…** in its card. Its block moves to when it was: ending now, or from the time you pick, its hour then its minute. No notice comes for it any more, and your plan has the time it kept free. Nothing is counted, and nothing is said of the meals you did not mark: Sioul keeps only its time that day, as a move does.
 
 ## Tasks pinned to a time
 
@@ -204,6 +215,7 @@ The ⚙ at the top of the page:
 - **Conflicts**: which agendas are compared beyond the rule, a box for each pair ([Two events at once](#two-events-at-once)).
 - **What a calendar takes**: events, tasks or both, as your server says. The agenda shows the calendars that take events, the Tasks page the lists that take tasks; one that takes both shows in both, and says "events and tasks" wherever it is offered.
 - **The day starts at**: the hour the day and week views start on when neither your nights (set in [Health](health.md)) nor your hours say otherwise.
+- **A new event lasts**: 30 minutes at first; how long a new event is, made from the timeline's **+** or with **New event**.
 
 **An event's calendar**: its editor says which calendar it is in, and **Calendar** moves it to another you can write to, of any account, on a phone too: written there first, then taken out of the first, never twice and never lost, even when Sioul stops in between; your server gets both at the next sync. An event filed by mistake in a calendar of this device's own reaches your other devices once moved to your server's. A calendar of this device's own that your sharing does not carry stays here: its events' editor says "Only on this computer" (or phone), which is why such an event shows on one device and not the other. A server's calendar is on every device that has its account.
 
@@ -247,6 +259,8 @@ The page of who does what shows no totals per parent. Co-parenting apps' records
 An agenda shared with you to show when someone is busy stays yours to read. "A shared calendar may set the expectation that co-parents have the right to monitor each other's movements" (Relationships Australia Victoria 2024), and people keep separate calendars so as not to open their whole lives to scrutiny (Thayer et al. 2012). So its busy times show only to you, as plain bands without titles, and Sioul never shares them again, exports them or gives them to an agent.
 
 When you share your own, a bare "busy" can read as secrecy between partners: 26 of 30 people in one study found it suspect (Thayer et al. 2012). So your blocks say "Busy" at first, and you may add a word to them for a partner.
+
+A meal or a nap had early moves, and that is all Sioul keeps of it. Recording whether a meal was eaten helps within a treatment that a clinician guides, but is linked to harm as general tracking, and counts or "missed" messages feed the shame and the all-or-nothing thinking that keep eating difficulties going (the [meal and sleep prompts research](../dev/research/meal-prompts.md), criteria 17, 18 and 20). So **Had it** keeps a time, never a tick, and no day says what it lacked.
 
 More in [what the research says](../dev/research.md), findings 46 to 54.
 

@@ -97,10 +97,16 @@ Item {
         function needItem(date, key) {
             if (key !== "meal:1")
                 return "{}"
-            return JSON.stringify({ date: date, title: "Monday 5 October", today: !mock.past, past: mock.past, later: 15, item: { key: "meal:1", kind: "meal", name: "Lunch", from: mock.mealFrom, to: mock.mealTo, at: "12:30", detail: "eating from 12:30", note: "", changed: false, added: false, quiet: false, off: false, past: mock.past, minutes: 30, before: 20, after: 0, alarm: "", alarm_skipped: false, alarm_open: false } })
+            return JSON.stringify({ date: date, title: "Monday 5 October", today: !mock.past, past: mock.past, later: 15, ahead: mock.ahead, item: { key: "meal:1", kind: "meal", name: "Lunch", from: mock.mealFrom, to: mock.mealTo, at: "12:30", detail: "eating from 12:30", note: "", changed: false, added: false, quiet: false, off: false, past: mock.past, minutes: 30, before: 20, after: 0, alarm: "", alarm_skipped: false, alarm_open: false } })
         }
         function changeNeed(edit) {
             mock.calls.push({ what: "changeNeed", edit: JSON.parse(edit) })
+            return ""
+        }
+        // A meal of today not begun yet ("Had it" offered), and had.
+        property bool ahead: false
+        function hadNeed(edit) {
+            mock.calls.push({ what: "hadNeed", edit: JSON.parse(edit) })
             return ""
         }
         function taskCardChoices() { return "{}" }
@@ -335,6 +341,7 @@ Item {
             mock.calls = []
             mock.status = ""
             mock.past = false
+            mock.ahead = false
             shell.opened = []
             keeper.forms = {}
         }
@@ -497,6 +504,48 @@ Item {
             verify(root.find(card, "cardWhy").visible)
             compare(root.find(card, "cardWhy").text, "need-past")
             verify(!root.find(card, "needCardLater").visible)
+        }
+
+        // "Had it" (the agenda's timeline, decision 4): a meal of today not begun offers it
+        // in its card and its menu; just now, or at a time picked in two taps (HadAt.qml),
+        // by its writer (`hadNeed`); one begun or over offers nothing of it.
+        function test_a_meal_had_before_its_time() {
+            mock.ahead = true
+            const host = makeHost()
+            host.show({ kind: "meal", srcDate: "2096-10-01", srcKey: "meal:1" })
+            wait(20)
+            const had = root.find(host.needCard, "needCardHad")
+            verify(had.visible)
+            had.clicked()
+            wait(20)
+            const popup = host.hadAt
+            verify(popup !== null && popup.opened, "the time asked")
+            const hours = root.all(popup.contentItem, c => c.objectName === "hadHour")
+            verify(hours.length > 0)
+            const hour = hours[0].modelData
+            hours[0].clicked()
+            wait(20)
+            const minutes = root.all(popup.contentItem, c => c.objectName === "hadMinute")
+            verify(minutes.length > 0)
+            minutes[0].clicked()
+            verify(!popup.opened, "two taps, then closed")
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare([mock.calls[0].what, mock.calls[0].edit.date, mock.calls[0].edit.key, mock.calls[0].edit.from].join(" "), "hadNeed 2096-10-01 meal:1 " + (hour < 10 ? "0" : "") + hour + ":00")
+            // Just now, from its menu.
+            mock.calls = []
+            host.needMenu({ kind: "meal", srcDate: "2096-10-01", srcKey: "meal:1" })
+            wait(20)
+            const menu = host.needMenuNow()
+            const now = root.all(menu.contentItem, c => c.objectName === "needHadNow")
+            verify(now.length === 1 && now[0].visible)
+            now[0].triggered()
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare([mock.calls[0].what, mock.calls[0].edit.from].join(" "), "hadNeed ")
+            menu.close()
+            // Begun, or over: not offered.
+            mock.ahead = false
+            host.needCard.read()
+            verify(!had.visible)
         }
 
         // What you typed in a form closed without Save: given back at its next

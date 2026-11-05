@@ -259,7 +259,9 @@ SafeDialog {
             startDay.date = day
             endDay.date = day
             startTime.text = dialog.pad(hour) + ":00"
-            endTime.text = dialog.pad(Math.min(hour + 1, 23)) + ":" + (hour === 23 ? "59" : "00")
+            // As long as a new event lasts (Settings ▸ Agenda), within its day.
+            const end = Math.min(hour * 60 + dialog.newLength(), 23 * 60 + 59)
+            endTime.text = dialog.pad(Math.floor(end / 60)) + ":" + dialog.pad(end % 60)
             repeat.currentIndex = 0
             every.value = 1
             calendar.currentIndex = 0
@@ -278,6 +280,30 @@ SafeDialog {
         dialog.cancelled = false
         dialog.open()
         title.forceActiveFocus()
+    }
+
+    // How long a new event lasts, in minutes (Settings ▸ Agenda; 30 unset).
+    function newLength() {
+        const minutes = typeof dialog.sioul.newEventMinutes === "function" ? dialog.sioul.newEventMinutes() : 30
+        return minutes > 0 ? minutes : 30
+    }
+
+    // A new event on `day` ("2026-10-05"), from `from` to `to`, minutes from its
+    // midnight (the timeline's "+"); past midnight, the next day's times.
+    function editRange(day, from, to) {
+        dialog.edit("", day, Math.floor(from / 60) % 24)
+        const at = (base, minutes) => {
+            const d = new Date(base + "T12:00:00")
+            d.setDate(d.getDate() + Math.floor(minutes / 1440))
+            const pad = n => n < 10 ? "0" + n : String(n)
+            return { day: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()), time: pad(Math.floor(minutes % 1440 / 60)) + ":" + pad(minutes % 60) }
+        }
+        const start = at(day, from)
+        const end = at(day, to)
+        startDay.date = start.day
+        startTime.text = start.time
+        endDay.date = end.day
+        endTime.text = end.time
     }
 
     // A new event made from something: its title and notes given, the link kept.

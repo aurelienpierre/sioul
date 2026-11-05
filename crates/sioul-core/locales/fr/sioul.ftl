@@ -3845,6 +3845,33 @@ day-now = maintenant
 # Déplacer en faisant glisser : la frise de la page Santé, le jour et la semaine de l’agenda, la journée des Tâches.
 drag-done = { $what } : { $time }.
 drag-done-plain = C’est fait.
+drag-need-today = { $what } passe à { $time } aujourd’hui.
+drag-need-day = { $what } passe à { $time }, { $day }.
+drag-bed-moved = Coucher à { $time }.
+drag-wake-moved = Réveil à { $time }.
+agenda-tasks-moved = { $count ->
+    [one] Une tâche s’est déplacée autour.
+   *[other] { $count } tâches se sont déplacées autour.
+}
+agenda-every-day = Tous les jours
+agenda-every-day-tip = Faire de cette heure l’heure habituelle, dans Paramètres ▸ Heures
+need-every-day = { $what } à { $time } tous les jours.
+need-every-day-night = Coucher à { $bed } et réveil à { $wake }, tous les jours.
+need-had-now = Déjà fait, à l’instant
+need-had-at = Déjà fait à…
+need-had-when = Quand ?
+need-had-card = Déjà fait…
+need-had-just-now = À l’instant
+need-had = { $what } : déjà fait, à { $time }.
+agenda-night = Nuit
+agenda-times-leave = départ { $time }
+agenda-times-back = retour { $time }
+agenda-times-ready = préparation dès { $time }
+agenda-times-wind = se préparer à dormir dès { $time }
+agenda-plus = Nouvel événement, { $time }
+agenda-plus-tip = Cliquez encore pour le créer
+set-agenda-new-event = Un nouvel événement dure
+set-agenda-new-event-help = Quand vous en créez un avec le + de la frise ou avec Nouvel événement.
 day-let-plan = Laisser le plan la placer
 day-let-plan-done = Le plan place de nouveau « { $title } ».
 agenda-read-only = Ce calendrier ne peut qu’être lu.

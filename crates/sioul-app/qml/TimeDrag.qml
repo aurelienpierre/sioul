@@ -13,9 +13,12 @@
 // `held`, and the timeline says whether it picks something up (`pickUp`):
 // then the finger drags it, the timeline holding still, and lifting the
 // finger without moving asks for the menu, as a long press always did.
-// Dragging near the top or the bottom of the view scrolls it. Nothing moves
-// but under the hand: the timeline draws where the thing would go, and
-// changes it only when it is let go.
+// Dragging near the top or the bottom of the view scrolls it. A finger
+// pressed on a grip the timeline shows (`gripAt`: a chosen block's edges)
+// takes it at once, without a long press. A tap is said once: the second tap
+// of a double one is `doubleTapped` alone. Nothing moves but under the hand:
+// the timeline draws where the thing would go, and changes it only when it
+// is let go.
 
 pragma ComponentBehavior: Bound
 
@@ -38,6 +41,8 @@ Item {
     readonly property bool dragging: area.going
     // A finger held: the timeline picked something up and the finger has it.
     readonly property bool holding: area.armed
+    // Whether a finger pressed at `position` takes a grip at once (the timeline says); null: none.
+    property var gripAt: null
 
     // The pointer over the timeline, in this item's coordinates; off it: (-1, -1).
     signal hovered(point position)
@@ -49,6 +54,8 @@ Item {
     signal menuAsked(point position, point scenePosition)
     // A finger held still: call `pickUp` to take what is under it.
     signal held(point position, point scenePosition)
+    // A finger pressed on a grip (`gripAt`): call `pickUp` to take it.
+    signal gripped(point position)
     // A drag begins at `position` (where it was pressed), goes on, ends.
     signal started(point position)
     // Where a drag is now, in the timeline.
@@ -58,6 +65,27 @@ Item {
     // Picked up or dragged, then not dropped (a long press let go in place, the
     // grab taken away): nothing changes.
     signal canceled
+
+    // A tap, or the second of two within the system's double-click time and a
+    // few points of each other: `tapped` for the first, `doubleTapped` alone
+    // for the second (the window's clock, never the events' counts).
+    property real lastTap: 0
+    property point lastTapAt: Qt.point(-100, -100)
+    // The system's double-click time (`QStyleHints`), as the person set it.
+    readonly property var hints: Qt.styleHints
+
+    function tap(position, scenePosition) {
+        const now = Date.now()
+        const near = Math.abs(position.x - area.lastTapAt.x) <= 12 && Math.abs(position.y - area.lastTapAt.y) <= 12
+        if (near && now - area.lastTap <= (area.hints.mouseDoubleClickInterval || 400)) {
+            area.lastTap = 0
+            area.doubleTapped(position)
+            return
+        }
+        area.lastTap = now
+        area.lastTapAt = position
+        area.tapped(position, scenePosition)
+    }
 
     // A finger's long press took something: the finger drags it now. With
     // `menuOnRelease`, let go without moving it asks for the menu.
@@ -148,8 +176,7 @@ Item {
     // A click, a double click; a finger's taps are the long press's handler's.
     TapHandler {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus
-        onTapped: eventPoint => area.tapped(eventPoint.position, eventPoint.scenePosition)
-        onDoubleTapped: eventPoint => area.doubleTapped(eventPoint.position)
+        onTapped: eventPoint => area.tap(eventPoint.position, eventPoint.scenePosition)
     }
 
     TapHandler {
@@ -191,8 +218,7 @@ Item {
 
         acceptedDevices: PointerDevice.TouchScreen
         longPressThreshold: area.holdSeconds
-        onTapped: eventPoint => area.tapped(eventPoint.position, eventPoint.scenePosition)
-        onDoubleTapped: eventPoint => area.doubleTapped(eventPoint.position)
+        onTapped: eventPoint => area.tap(eventPoint.position, eventPoint.scenePosition)
         onLongPressed: {
             area.pressed = hold.point.position
             area.pressedScene = hold.point.scenePosition
@@ -219,6 +245,14 @@ Item {
             area.follow(scene)
         }
         onActiveChanged: {
+            // Pressed on a grip: taken at once, the view held still.
+            if (finger.active && !area.armed && area.gripAt && area.gripAt(finger.point.position)) {
+                area.pressed = finger.point.position
+                area.pressedScene = finger.point.scenePosition
+                area.lastScene = finger.point.scenePosition
+                area.gripped(finger.point.position)
+                return
+            }
             if (finger.active || !area.armed)
                 return
             if (area.going) {

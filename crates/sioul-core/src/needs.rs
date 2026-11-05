@@ -470,7 +470,9 @@ pub struct DayEdit {
     /// "meal:1", "nap:0", "sleep", "added-…"; none for "add".
     pub key: String,
     /// "later", "move", "times", "quiet", "loud", "off", "on", "usual", "add";
-    /// the night's "no-alarm" and "alarm" (no alarm the morning it ends, or back).
+    /// "had" (a meal or a nap had before its time, today: from `from`, or
+    /// ending now); the night's "no-alarm" and "alarm" (no alarm the morning
+    /// it ends, or back).
     pub action: String,
     /// "12:10", "13:00": from getting it ready (winding down), to its end (waking).
     pub from: String,
@@ -861,7 +863,7 @@ impl Needs {
         // from now (below): not had, it is still needed.
         let stamp = now.timestamp().as_second();
         let over = current.is_some_and(|k| k.end <= stamp);
-        if over && matches!(edit.action.as_str(), "move" | "times") {
+        if over && matches!(edit.action.as_str(), "move" | "times" | "had") {
             return Err(DayProblem::Over);
         }
         let key = edit.key.as_str();
@@ -929,6 +931,27 @@ impl Needs {
                     });
                 }
             }
+            // Had already, today, before its time (the agenda's "Had it"): moved to
+            // when it was, `from` its own start ("11:40"), or ending now (to the five
+            // minutes) when none is given; its lengths kept, on its day. That it was
+            // had is not kept: only its time, as a move keeps it (docs/research/meal-prompts.md, criterion 18).
+            "had" => {
+                let Some(k) = current else { return Ok(()) };
+                if night || date != now.date() {
+                    return Err(DayProblem::Unknown);
+                }
+                let minutes = self.lengths(date, key, days).map_or(0, |(minutes, _, _)| minutes);
+                let at = if edit.from.trim().is_empty() { stamp.div_euclid(300) * 300 - i64::from(minutes) * 60 } else { time(&edit.from, false)? };
+                if at > stamp {
+                    return Err(DayProblem::Times);
+                }
+                if jiff::Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).ok() != Some(date) {
+                    return Err(DayProblem::OtherDay);
+                }
+                if at != k.at {
+                    days.change(date, key, |b| b.at = clock(at, &zone));
+                }
+            }
             "quiet" | "loud" => days.change(date, key, |b| b.quiet = edit.action == "quiet"),
             "off" if added => days.forget(date, key),
             "off" => days.change(date, key, |b| b.off = true),
@@ -963,6 +986,49 @@ impl Needs {
             _ => return Err(DayProblem::Unknown),
         }
         Ok(())
+    }
+
+    /// `key`'s usual block (Settings ▸ Hours) given the times one day keeps
+    /// (`change`, the status line's "Every day" after a drag, 5 November
+    /// 2026): a meal's or a nap's start and lengths, the night's bedtime,
+    /// waking and winding down; what `change` does not say stays. One added
+    /// that day has no usual block. Whether anything changed.
+    pub fn make_usual(&mut self, key: &str, change: &DayBlock) -> bool {
+        if key == "sleep" {
+            let before = self.sleep.clone();
+            if !change.at.is_empty() {
+                self.sleep.bed = change.at.clone();
+            }
+            if !change.wake.is_empty() {
+                self.sleep.wake = change.wake.clone();
+            }
+            if let Some(minutes) = change.before {
+                self.sleep.wind_down = minutes;
+            }
+            return self.sleep != before;
+        }
+        let Some((kind, index)) = key.split_once(':') else { return false };
+        let Ok(index) = index.parse::<usize>() else { return false };
+        let block = match kind {
+            "meal" => self.meals.get_mut(index),
+            "nap" => self.naps.get_mut(index),
+            _ => None,
+        };
+        let Some(block) = block else { return false };
+        let before = block.clone();
+        if !change.at.is_empty() {
+            block.at = change.at.clone();
+        }
+        if let Some(minutes) = change.minutes {
+            block.minutes = minutes;
+        }
+        if let Some(minutes) = change.before {
+            block.before = minutes;
+        }
+        if let Some(minutes) = change.after {
+            block.after = minutes;
+        }
+        *block != before
     }
 
     /// Meals planned more than four hours apart, as (end of one, start of the
@@ -1097,6 +1163,49 @@ mod tests {
     /// 07:00 after all" chosen, then Undo: the alarm stays on, waking as
     /// before the drag. A meal dragged, then "Not that day": Undo keeps it;
     /// a block the drag made, all put back, leaves no change of that day.
+    /// "Had it": a meal ahead of now, had already, moved to when it was (ending
+    /// now, or from the time given), its length kept; never to after now, never
+    /// on another day nor for the night; one over stays where it was.
+    #[test]
+    fn a_meal_had_before_its_time_moves_to_when_it_was() {
+        let monday: Date = "2026-10-05".parse().unwrap();
+        let now = monday.at(11, 3, 0, 0).to_zoned(zone()).unwrap();
+        let needs = Needs { meals_on: true, sleep_on: true, ..Needs::default() };
+        let had = |from: &str| DayEdit { key: "meal:1".into(), action: "had".into(), from: from.into(), ..DayEdit::default() };
+        let lunch = |days: &Days| days.get(monday, "meal:1").map(|b| b.at.clone()).unwrap_or_default();
+        // Lunch lasts 30 minutes: had now (11:00 to the five minutes), from 10:30.
+        let mut days = Days::default();
+        needs.change_day(&mut days, monday, &had(""), &now, &[]).unwrap();
+        assert_eq!(lunch(&days), "10:30");
+        let mut days = Days::default();
+        needs.change_day(&mut days, monday, &had("10:45"), &now, &[]).unwrap();
+        assert_eq!(lunch(&days), "10:45");
+        assert_eq!(needs.lengths(monday, "meal:1", &days).map(|l| l.0), Some(30), "its length kept");
+        let mut days = Days::default();
+        assert_eq!(needs.change_day(&mut days, monday, &had("11:30"), &now, &[]), Err(DayProblem::Times), "never after now");
+        assert_eq!(needs.change_day(&mut days, monday, &DayEdit { key: "sleep".into(), ..had("") }, &now, &[]), Err(DayProblem::Unknown), "the night is never had");
+        let tuesday = monday.tomorrow().unwrap();
+        assert_eq!(needs.change_day(&mut days, tuesday, &had(""), &now, &[]), Err(DayProblem::Unknown), "today only");
+        // Breakfast, over at 08:20: it stays.
+        assert_eq!(needs.change_day(&mut days, monday, &DayEdit { key: "meal:0".into(), ..had("07:30") }, &now, &[]), Err(DayProblem::Over));
+        assert!(days.get(monday, "meal:0").is_none() && days.get(monday, "meal:1").is_none());
+    }
+
+    /// "Every day": a day's times made the usual ones, what the day does not
+    /// say kept; the night's bedtime and waking; nothing for one added that day.
+    #[test]
+    fn a_day_s_times_become_the_usual_ones() {
+        let mut needs = Needs { meals_on: true, sleep_on: true, ..Needs::default() };
+        let lunch = DayBlock { at: "13:30".into(), minutes: Some(45), ..DayBlock::default() };
+        assert!(needs.make_usual("meal:1", &lunch));
+        assert_eq!((needs.meals[1].at.as_str(), needs.meals[1].minutes, needs.meals[1].before), ("13:30", 45, 20));
+        assert!(!needs.make_usual("meal:1", &lunch), "as it is already");
+        let night = DayBlock { at: "23:30".into(), wake: "07:30".into(), ..DayBlock::default() };
+        assert!(needs.make_usual("sleep", &night));
+        assert_eq!((needs.sleep.bed.as_str(), needs.sleep.wake.as_str(), needs.sleep.wind_down), ("23:30", "07:30", 60));
+        assert!(!needs.make_usual("added-1", &lunch) && !needs.make_usual("meal:9", &lunch));
+    }
+
     #[test]
     fn a_drag_s_undo_puts_back_only_what_it_wrote() {
         let monday: Date = "2026-10-05".parse().unwrap();

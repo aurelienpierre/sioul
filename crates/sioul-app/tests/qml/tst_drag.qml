@@ -34,6 +34,8 @@ Item {
         property var calls: []
         // A re-plan due after a write (`work::replan_asked`): the days wait for it.
         property bool replanDue: false
+        // The status line's Undo line, as a write sets it.
+        property string undoLine: ""
         function text(key) { return key }
         function textWith(key, name, value) { return key + "(" + value + ")" }
         function textArgs(key, args) { return key }
@@ -122,6 +124,7 @@ Item {
             mock.calls = []
             mock.replanDue = false
             mock.status = ""
+            mock.undoLine = ""
         }
 
         function drag(item, from, to) {
@@ -312,10 +315,10 @@ Item {
             drag(planning, planningPoint(planning, 0, 750), planningPoint(planning, 0, 800))
             drag(planning, planningPoint(planning, 0, 990), planningPoint(planning, 0, 1050))
             compare(mock.calls.length, 0, JSON.stringify(mock.calls))
-            // ... and open on a click, as they are.
+            // ... and open on a double click, as they are.
             let opened = ""
             planning.open.connect(row => opened = row.srcKey)
-            mouseClick(planning, planningPoint(planning, 0, 750).x, planningPoint(planning, 0, 750).y)
+            mouseDoubleClickSequence(planning, planningPoint(planning, 0, 750).x, planningPoint(planning, 0, 750).y)
             compare(opened, "ro.ics")
             // A repeating one asks first; "Only this time" moves that time alone.
             drag(planning, planningPoint(planning, 0, 870), planningPoint(planning, 0, 900))
@@ -644,9 +647,10 @@ Item {
             compare(opened, "step letter")
         }
 
-        // Health's timeline's ways, on the agenda before it goes (the unified
-        // agenda, part 5): a meal let go where it was changes nothing; a tap
-        // opens it, a right click asks for its menu, neither changes anything.
+            // Health's timeline's ways, on the agenda before it goes (the unified
+        // agenda, part 5): a meal let go where it was changes nothing; a click
+        // chooses it, a double click opens it, a right click asks for its
+        // menu, none changes anything.
         function test_agenda_a_meal_let_go_in_place_tapped_or_asked() {
             const planning = makeWeek()
             drag(planning, planningPoint(planning, 1, 760), planningPoint(planning, 1, 761))
@@ -655,7 +659,12 @@ Item {
             planning.open.connect(row => opened = row.kind + " " + row.srcKey)
             planning.menu.connect(row => menu = row.kind + " " + row.srcKey)
             const lunch = planningPoint(planning, 1, 760)
+            // Past the double-click time since the press let go just before.
+            wait(600)
             mouseClick(planning, lunch.x, lunch.y)
+            compare(planning.timesKey, "need:2099-01-06/meal:1|2099-01-06", "a click chooses it")
+            compare(opened, "", "a click opens nothing")
+            mouseDoubleClickSequence(planning, lunch.x, lunch.y)
             mouseClick(planning, lunch.x, lunch.y, Qt.RightButton)
             compare([opened, menu].join(" | "), "meal meal:1 | meal meal:1")
             compare(mock.calls.length, 0)
@@ -755,6 +764,205 @@ Item {
             swipe(10, -200)
             compare(turned, 0, "a scroll turns no day")
             compare(mock.calls.length, 0)
+        }
+
+        // Every block says its name (decision 10): meals, naps and the night in the
+        // Week as in the Day; never its times, which its accessible name keeps.
+        function test_timeline_every_block_is_named_never_timed() {
+            const days = week()
+            days[1].timed[1].when = "12:30 – 13:00"
+            days[0].timed[0].when = "10:00 – 11:00"
+            const planning = makeWeek({ days: days })
+            const shown = () => root.all(planning, c => typeof c.text === "string" && c.visible && c.text !== "").map(c => c.text)
+            verify(shown().indexOf("Lunch") >= 0, "the Week names lunch: " + JSON.stringify(shown()))
+            verify(shown().filter(t => t === "Night").length >= 2, "both parts of the night named: " + JSON.stringify(shown()))
+            verify(!shown().some(t => t.indexOf("10:00 – 11:00") >= 0 || t.indexOf("12:30 – 13:00") >= 0), "no times on the cards: " + JSON.stringify(shown()))
+            const repeater = root.find(planning, "planningThings")
+            let named = ""
+            for (let i = 0; i < repeater.count; i++)
+                if (repeater.itemAt(i).key === "event:a.ics|2099-01-05")
+                    named = repeater.itemAt(i).Accessible.name
+            compare(named, "a.ics, 10:00 – 11:00", "its times said to screen readers")
+            const day = makeWeek({ days: [days[1]] })
+            verify(root.all(day, c => c.text === "Lunch" && c.visible).length === 1, "and in the Day")
+        }
+
+        // A click shows a block's times over it (with what is kept around it) and
+        // chooses it; a double click opens it; Esc lets go (decision 9).
+        function test_timeline_a_click_shows_the_times_a_double_click_opens() {
+            const days = week()
+            const time = span(days[2], 600, 660, 575, 690)
+            days[2].timed = [placed({ id: "event:far.ics", kind: "event", time: time, source: { type: "calendar", key: "far.ics", uid: "far", start: time.at, recurring: false, calendar: "c", collection: "local/c" }, can: { edit: "event", drag: "event", ends: true }, title: "Far" }, days[2], 600, 660, { detail: { end: time.until } })]
+            const planning = makeWeek({ days: days })
+            let opened = ""
+            planning.open.connect(row => opened = row.srcKey)
+            const times = root.find(planning, "timelineTimes")
+            verify(!times.visible)
+            const at = planningPoint(planning, 0, 630)
+            mouseClick(planning, at.x, at.y)
+            compare(planning.timesKey, "event:a.ics|2099-01-05")
+            verify(times.visible)
+            compare(times.children[0].text, "10:00 – 11:00")
+            compare(root.all(planning, c => c.objectName === "timelineGrip").length, 2, "its two grips")
+            wait(600)
+            compare(opened, "", "a click opens nothing")
+            mouseDoubleClickSequence(planning, at.x, at.y)
+            compare(opened, "a.ics")
+            // What is kept around it, on a second line.
+            const far = planningPoint(planning, 2, 630)
+            mouseClick(planning, far.x, far.y)
+            compare(times.children[0].text, "10:00 – 11:00\nagenda-times-leave(09:35) · agenda-times-back(11:30)")
+            planning.forceActiveFocus()
+            keyClick(Qt.Key_Escape)
+            compare(planning.timesKey, "")
+            verify(!times.visible)
+        }
+
+        // An edge by its top or its bottom, by five minutes, fifteen at least
+        // (decision 3): an event's start, a meal's getting ready.
+        function test_timeline_edges_top_and_bottom_fifteen_minutes_at_least() {
+            const planning = makeWeek()
+            const days = planning.days
+            drag(planning, planningPoint(planning, 0, 600, 3), planningPoint(planning, 0, 570, 3))
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare([mock.calls[0].newStart - days[0].start, mock.calls[0].newEnd - days[0].start].join(" "), [570 * 60, 660 * 60].join(" "))
+            mock.calls = []
+            planning.days = week()
+            wait(20)
+            // Its end dragged above its start: fifteen minutes long.
+            drag(planning, planningPoint(planning, 0, 660, -3), planningPoint(planning, 0, 560, -3))
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare(mock.calls[0].newEnd - mock.calls[0].newStart, 900)
+            mock.calls = []
+            planning.days = week()
+            wait(20)
+            // Lunch's top: its getting ready from 11:40, its end kept.
+            drag(planning, planningPoint(planning, 1, 730, 3), planningPoint(planning, 1, 700, 3))
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare([mock.calls[0].what, mock.calls[0].edit.action, mock.calls[0].edit.from, mock.calls[0].edit.to].join(" "), "dragNeed times 11:40 13:00")
+        }
+
+        // What may not move says why when dragged (a calendar only read, a meeting with others).
+        function test_timeline_a_fixed_thing_says_why() {
+            const days = week()
+            days[0].timed[1].item.can.why = "agenda-read-only"
+            const planning = makeWeek({ days: days })
+            drag(planning, planningPoint(planning, 0, 750), planningPoint(planning, 0, 800))
+            compare(mock.calls.length, 0)
+            compare(mock.status, "agenda-read-only")
+        }
+
+        // An empty stretch: a click shows the "+" from its quarter, as long as a new
+        // event; a second click makes it; a double click makes it at once (decision 5).
+        function test_timeline_the_plus_of_an_empty_stretch() {
+            const planning = makeWeek()
+            let asked = []
+            planning.newRange.connect((day, from, to) => asked.push([day, from, to].join(" ")))
+            const plus = root.find(planning, "timelinePlus")
+            const at = planningPoint(planning, 0, 487)
+            mouseClick(planning, at.x, at.y)
+            verify(plus.visible)
+            compare([planning.plus.column, planning.plus.minute, planning.plus.length].join(" "), "0 480 30")
+            compare(asked.length, 0)
+            wait(600)
+            mouseClick(planning, at.x, at.y)
+            compare(asked, ["2099-01-05 480 510"])
+            verify(!plus.visible, "gone once made")
+            // A click on a thing lets go of it.
+            wait(600)
+            mouseClick(planning, at.x, at.y)
+            verify(plus.visible)
+            const thing = planningPoint(planning, 0, 630)
+            mouseClick(planning, thing.x, thing.y)
+            verify(!plus.visible)
+            wait(600)
+            // A double click on an empty stretch: at once.
+            const later = planningPoint(planning, 1, 1100)
+            mouseDoubleClickSequence(planning, later.x, later.y)
+            compare(asked[1], "2099-01-06 1095 1125")
+        }
+
+        // Without a mouse (decision 8): Down chooses the first thing; Alt+Down moves it by
+        // five minutes, written once the keys rest; Alt+Shift+Down its end; Right shows the
+        // "+", which the arrows move by quarters, and Enter makes its event.
+        function test_timeline_the_keyboard_moves_and_makes() {
+            const planning = makeWeek()
+            const days = planning.days
+            planning.forceActiveFocus()
+            keyClick(Qt.Key_Down)
+            compare(planning.timesKey, "event:a.ics|2099-01-05")
+            keyClick(Qt.Key_Down, Qt.AltModifier)
+            keyClick(Qt.Key_Down, Qt.AltModifier)
+            compare(mock.calls.length, 0, "not while the keys go")
+            verify(planning.nudge !== null)
+            tryVerify(() => mock.calls.length === 1, 3000)
+            compare([mock.calls[0].what, mock.calls[0].newStart - days[0].start, mock.calls[0].newEnd - days[0].start].join(" "), ["moveEvent", 610 * 60, 670 * 60].join(" "))
+            mock.calls = []
+            planning.days = week()
+            wait(20)
+            keyClick(Qt.Key_Down, Qt.AltModifier | Qt.ShiftModifier)
+            tryVerify(() => mock.calls.length === 1, 3000)
+            compare([mock.calls[0].newStart - days[0].start, mock.calls[0].newEnd - days[0].start].join(" "), [600 * 60, 665 * 60].join(" "))
+            let asked = ""
+            planning.newRange.connect((day, from, to) => asked = [day, from, to].join(" "))
+            keyClick(Qt.Key_Right)
+            verify(planning.plus !== null)
+            compare(planning.plus.minute, 600)
+            keyClick(Qt.Key_Down)
+            keyClick(Qt.Key_Right)
+            keyClick(Qt.Key_Return)
+            compare(asked, "2099-01-06 615 645")
+        }
+
+        // A move watched until the plan answers (decision 7): the tasks of its day whose
+        // steps moved, said with its line, with "Every day" for a meal.
+        function test_timeline_tasks_moved_around_it_are_said() {
+            const planning = makeWeek()
+            let said = []
+            planning.moveSaid.connect((line, more, everyDay) => said.push([line, more, everyDay ? everyDay.date + " " + everyDay.key : ""].join(" | ")))
+            drag(planning, planningPoint(planning, 1, 755), planningPoint(planning, 1, 790))
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            mock.undoLine = "Lunch moved"
+            compare(said[said.length - 1], "Lunch moved |  | 2099-01-06 meal:1", "its line, Every day")
+            // The plan answers: the step of that day moved.
+            const again = week()
+            again[1].timed[0] = step("letter", again[1], 600, 630, false)
+            planning.days = again
+            wait(20)
+            compare(said[said.length - 1], "Lunch moved | agenda-tasks-moved | 2099-01-06 meal:1")
+            // Undo, or another act: no longer this move's.
+            mock.undoLine = ""
+            planning.days = week()
+            wait(20)
+            verify(planning.watch === null)
+        }
+
+        // A phone (decision 6): a long press shows a block's grips; a finger on one
+        // takes that edge at once, the view holding still.
+        function test_timeline_a_phone_s_grips() {
+            const days = [week()[1]]
+            const planning = makeWeek({ width: 412, height: 400, days: days })
+            const flick = root.flickIn(planning)
+            flick.contentY = planning.yOf(700) - 40
+            const held = planningPoint(planning, 0, 760)
+            touchEvent(planning).press(0, planning, held.x, held.y).commit()
+            wait(700)
+            touchEvent(planning).release(0, planning, held.x, held.y).commit()
+            wait(50)
+            compare(planning.timesKey, "need:2099-01-06/meal:1|2099-01-06")
+            compare(root.all(planning, c => c.objectName === "timelineGrip" && c.visible).length, 2)
+            mock.calls = []
+            const scroll = flick.contentY
+            const bottom = planningPoint(planning, 0, 780)
+            const down = planning.yOf(810) - planning.yOf(780)
+            touchEvent(planning).press(0, planning, bottom.x, bottom.y).commit()
+            for (let i = 1; i <= 6; i++)
+                touchEvent(planning).move(0, planning, bottom.x, bottom.y + down * i / 6).commit()
+            touchEvent(planning).release(0, planning, bottom.x, bottom.y + down).commit()
+            wait(50)
+            compare(flick.contentY, scroll, "the view held still")
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare([mock.calls[0].what, mock.calls[0].edit.action, mock.calls[0].edit.from, mock.calls[0].edit.to].join(" "), "dragNeed times 12:10 13:30")
         }
 
         // A busy week far ahead, as the stand-in profile's: each day three

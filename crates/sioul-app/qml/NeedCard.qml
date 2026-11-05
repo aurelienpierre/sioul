@@ -6,8 +6,9 @@
 // read from the health file and the days' changes alone, never a dose
 // record. Its name, its times ("12:10 – 13:00, eating from 12:30"), how that
 // day has it; Edit opens its form for that day (NeedDayForm); its own actions
-// are the menu's (NeedMenu): later, moved, no notice that day, the alarm,
-// back to usual. A day gone by, or one over: as it was, said so. Health
+// are the menu's (NeedMenu): had already (today, not begun), later, moved,
+// no notice that day, the alarm, back to usual. A day gone by, or one over:
+// as it was, said so. Health
 // things have no address: no "Tied to it", no Add, no Link.
 
 pragma ComponentBehavior: Bound
@@ -95,6 +96,14 @@ CardFrame {
     }
 
     actions: [
+        // A meal or a nap of today not begun yet: had already, just now or at a time picked (HadAt.qml).
+        Button {
+            objectName: "needCardHad"
+            visible: card.changeable && card.need.ahead === true && !card.item.off
+            flat: true
+            text: card.sioul.text("need-had-card")
+            onClicked: card.host.askHadAt(card.date, card.key, card.kind, card.item.name)
+        },
         Button {
             objectName: "needCardLater"
             visible: card.changeable && !card.item.off && card.item.kind !== "sleep"

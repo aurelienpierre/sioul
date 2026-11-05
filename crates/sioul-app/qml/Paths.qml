@@ -49,8 +49,8 @@ QtObject {
     }
 
     // What the day is asked (`health::drag_need`): a meal or a nap moved
-    // from its getting ready, or its times; the night's bedtime (its winding
-    // down kept as long) or its waking. `to` holds the new start and end of
+    // from its getting ready, or its times (either edge); the night's bedtime
+    // (its winding down kept as long) or its waking. `to` holds the new start and end of
     // what was taken: for a meal or a nap its whole time, getting ready and
     // coming back included; for the night its winding down and waking.
     function needEdit(thing, part, to) {
@@ -61,7 +61,7 @@ QtObject {
                 return Object.assign(asked, { action: "times", from: paths.clock(to.start), bed: paths.clock(bed), to: paths.clock(thing.until) })
             return Object.assign(asked, { action: "times", from: paths.clock(thing.start), bed: paths.clock(thing.at), to: paths.clock(to.end) })
         }
-        if (part === "bottom")
+        if (part === "bottom" || part === "top")
             return Object.assign(asked, { action: "times", from: paths.clock(to.start), to: paths.clock(to.end) })
         return Object.assign(asked, { action: "move", from: paths.clock(to.start) })
     }

@@ -485,6 +485,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // The only time ever kept between two events besides each event's own Before and After (22 October 2026).
             let s = b.push("agenda.between", "agenda-between", Kind::Int, int(config.agenda.between, 0));
             Builder::range(s, 0.0, 120.0, 5.0, "min");
+            // How long a new event lasts, made from the timeline's "+" or the form (5 November 2026).
+            let s = b.push("agenda.new_event", "agenda-new-event", Kind::Int, int(config.agenda.new_event, 30));
+            Builder::range(s, 5.0, 240.0, 5.0, "min");
             // The time zone this device shows (`zone::current`): its own, followed, or one chosen.
             let s = b.push("agenda.time_zone", "agenda-time-zone", Kind::Zone, SettingValue::Text(config.agenda.time_zone.clone().unwrap_or_default()));
             let device = crate::zone::device();
@@ -1387,6 +1390,21 @@ mod tests {
         let file = std::env::temp_dir().join(format!("sioul-agenda-between-{}.toml", std::process::id()));
         apply(&file, &config, "agenda.between", &SettingValue::Int(30)).unwrap();
         assert_eq!(Config::load(&file).unwrap().agenda.between(), 30);
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// How long a new event lasts (5 November 2026): 30 minutes until you
+    /// say, shown in Settings ▸ Agenda, written as you set it.
+    #[test]
+    fn a_new_event_s_length_is_yours_and_shown() {
+        let config = Config::default();
+        assert_eq!(config.agenda.new_event_minutes(), 30);
+        let rows = for_view("agenda", &config, &Translator::new("en"), &[], None);
+        let row = rows.iter().find(|s| s.key == "agenda.new_event").expect("shown in Settings ▸ Agenda");
+        assert_eq!(row.value, SettingValue::Int(30));
+        let file = std::env::temp_dir().join(format!("sioul-agenda-new-event-{}.toml", std::process::id()));
+        apply(&file, &config, "agenda.new_event", &SettingValue::Int(45)).unwrap();
+        assert_eq!(Config::load(&file).unwrap().agenda.new_event_minutes(), 45);
         let _ = std::fs::remove_file(&file);
     }
 

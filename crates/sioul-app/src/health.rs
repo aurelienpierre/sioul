@@ -877,7 +877,13 @@ fn need_item_held(date: &str, key: &str, held: &dyn Fn() -> Vec<(i64, i64)>) -> 
     let knowledge = Knowledge { record_lost: None, peers: Vec::new() };
     let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held }, date, &now);
     let Some(item) = view.items.iter().find(|i| i.key == key && i.kind != "dose") else { return "{}".into() };
-    json(&serde_json::json!({ "date": view.date, "title": view.title, "today": view.today, "past": view.past, "later": health.needs.later, "item": item }))
+    // A meal or a nap of today not begun yet: "Had it" offered (the agenda's timeline, 5 November 2026).
+    let ahead = view.today && matches!(item.kind, "meal" | "nap") && !item.off && {
+        let pushed = pushed_on(&health.needs, &days, date, &now, held);
+        let stamp = now.timestamp().as_second();
+        health.needs.blocks_of(date, now.time_zone(), &days, &|k: &str| pushed.get(k).copied().unwrap_or(0)).iter().any(|k| k.key == key && k.at > stamp)
+    };
+    json(&serde_json::json!({ "date": view.date, "title": view.title, "today": view.today, "past": view.past, "later": health.needs.later, "item": item, "ahead": ahead }))
 }
 
 /// One day: its list (blocks, those taken out that day, its doses) and what its column draws.
@@ -4471,18 +4477,172 @@ pub(crate) fn drag_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
         return String::new();
     }
     let after = days();
-    // Said as the day has it now: its name, its time kept.
-    let zone = now.time_zone().clone();
-    let line = blocks_now(&load().needs, &after, date, &now)
-        .iter()
-        .find(|k| k.key == key)
-        .map(|k| say("drag-done", &[("what", name_of(k)), ("time", format!("{}–{}", clock(k.start, &zone), clock(k.end, &zone)))]))
-        .unwrap_or_else(|| tr().text("drag-done-plain", None));
+    // Said as the day has it now: its name, where it went ("Lunch moved to 13:30 today.").
+    let line = blocks_now(&load().needs, &after, date, &now).iter().find(|k| k.key == key).map(|k| moved_line(k, date, was.as_ref(), wrote.as_ref(), &now)).unwrap_or_else(|| tr().text("drag-done-plain", None));
     crate::mail::offer_back(qt, shared, line, move |qt, shared| {
         let problem = undo_drag(date, &key, was.as_ref(), wrote.as_ref());
         crate::work::show_work(qt, shared);
         show_health(qt, shared);
         problem
+    });
+    String::new()
+}
+
+/// What a drag says of the block it moved (`k`, as the day has it now): "Lunch
+/// moved to 13:30 today.", another day's with its day; the night by the edge
+/// it moved, its bedtime or its waking (`was` and `wrote`, that day's change
+/// before and after it).
+fn moved_line(k: &Kept, date: Date, was: Option<&sioul_core::needs::DayBlock>, wrote: Option<&sioul_core::needs::DayBlock>, now: &Zoned) -> String {
+    let zone = now.time_zone();
+    if k.kind == "sleep" {
+        let bed = |b: Option<&sioul_core::needs::DayBlock>| b.map(|b| b.at.clone()).unwrap_or_default();
+        return if bed(was) != bed(wrote) { say("drag-bed-moved", &[("time", clock(k.at, zone))]) } else { say("drag-wake-moved", &[("time", clock(k.end, zone))]) };
+    }
+    if date == now.date() {
+        say("drag-need-today", &[("what", name_of(k)), ("time", clock(k.at, zone))])
+    } else {
+        say("drag-need-day", &[("what", name_of(k)), ("time", clock(k.at, zone)), ("day", tr().day(date))])
+    }
+}
+
+/// A meal or a nap had already, today, before its time (the agenda's "Had
+/// it", 5 November 2026): moved that day to when it was (`from`, "11:40";
+/// none: ending now), as a move is (`Needs::change_day`'s "had"), and its two
+/// notices marked given on this device, so that none comes for it. Nothing
+/// else is kept, never that it was had (docs/research/meal-prompts.md,
+/// criterion 18): the day's later notices come at their own times, as they
+/// always do. "Undo" puts back its time and its notices. Returns what went
+/// wrong, else "".
+pub(crate) fn had_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> String {
+    #[derive(Deserialize)]
+    struct Asked {
+        #[serde(default)]
+        date: String,
+        #[serde(default)]
+        key: String,
+        #[serde(default)]
+        from: String,
+    }
+    let asked = match serde_json::from_str::<Asked>(edit) {
+        Ok(asked) => asked,
+        Err(e) => return e.to_string(),
+    };
+    let had = DayEdit { key: asked.key.clone(), action: "had".to_string(), from: asked.from.trim().to_string(), ..DayEdit::default() };
+    let now = Zoned::now();
+    let (date, was, wrote) = match change_day_seen(&asked.date, &had) {
+        Ok(seen) => seen,
+        Err(problem) => return problem,
+    };
+    let given = mark_given(&asked.key, &now);
+    let after = days();
+    let zone = now.time_zone().clone();
+    let line = blocks_now(&load().needs, &after, date, &now).iter().find(|k| k.key == asked.key).map(|k| say("need-had", &[("what", name_of(k)), ("time", clock(k.at, &zone))])).unwrap_or_else(|| tr().text("drag-done-plain", None));
+    let key = asked.key;
+    crate::mail::offer_back(qt, shared, line, move |qt, shared| {
+        let problem = if wrote == was { String::new() } else { undo_drag(date, &key, was.as_ref(), wrote.as_ref()) };
+        unmark_given(&key, &given);
+        crate::work::show_work(qt, shared);
+        show_health(qt, shared);
+        problem
+    });
+    String::new()
+}
+
+/// `key`'s two notices of today marked given on this device (`Today::sent`,
+/// what the notices already keep): those it had not yet, for an Undo.
+fn mark_given(key: &str, now: &Zoned) -> Vec<String> {
+    let path = sioul_core::needs::Today::default_path();
+    let mut today = sioul_core::needs::Today::load(&path, now.date());
+    let marked: Vec<String> = [format!("{key}:heads-up"), format!("{key}:start")].into_iter().filter(|sent| today.sent.insert(sent.clone())).collect();
+    if !marked.is_empty() {
+        let _ = today.save(&path);
+    }
+    marked
+}
+
+/// What `mark_given` marked, given no more: its notices may come again.
+fn unmark_given(key: &str, marked: &[String]) {
+    if marked.is_empty() {
+        return;
+    }
+    let path = sioul_core::needs::Today::default_path();
+    let mut today = sioul_core::needs::Today::load(&path, Zoned::now().date());
+    for sent in marked.iter().filter(|s| s.starts_with(&format!("{key}:"))) {
+        today.sent.remove(sent);
+    }
+    let _ = today.save(&path);
+}
+
+/// A day's block made the usual one (the status line's "Every day" after a
+/// drag, 5 November 2026; JSON: its `date` and `key`): its times as that day
+/// has them become Settings ▸ Hours' (a meal's or a nap's start and lengths,
+/// the night's bedtime, waking and winding down) for every day it comes, and
+/// that day's own times are taken back, as usual now; its other choices that
+/// day stay ("Not that day", taken out). One added that day has no usual
+/// block: nothing changes. "Undo" puts both back, unless changed since.
+/// Returns what went wrong, else "".
+pub(crate) fn every_day(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> String {
+    #[derive(Deserialize)]
+    struct Asked {
+        #[serde(default)]
+        date: String,
+        #[serde(default)]
+        key: String,
+    }
+    let asked = match serde_json::from_str::<Asked>(edit) {
+        Ok(asked) => asked,
+        Err(e) => return e.to_string(),
+    };
+    let Ok(date) = asked.date.trim().parse::<Date>() else { return tr().text("need-times-wrong", None) };
+    let key = asked.key;
+    if sioul_core::needs::is_added(&key) {
+        return String::new();
+    }
+    // The days as the file holds them now, today's older moves carried in first.
+    let Some(change) = days().get(date, &key).cloned() else { return String::new() };
+    let made = change_health(|health| {
+        let before = health.needs.clone();
+        let changed = health.needs.make_usual(&key, &change);
+        Ok(changed.then(|| (before, health.needs.clone())))
+    });
+    let (before, after) = match made {
+        Ok(Some(both)) => both,
+        Ok(None) => return String::new(),
+        Err(e) => return e,
+    };
+    let cleared = Days::change_file(&Days::default_path(), Zoned::now().date(), |days| {
+        let was = days.get(date, &key).cloned();
+        days.change(date, &key, |b| {
+            b.at.clear();
+            b.wake.clear();
+            b.minutes = None;
+            b.before = None;
+            b.after = None;
+        });
+        (was, days.get(date, &key).cloned())
+    });
+    let (was, wrote) = match cleared {
+        Ok(both) => both,
+        Err(e) => return e,
+    };
+    let line = if key == "sleep" {
+        say("need-every-day-night", &[("bed", after.sleep.bed.clone()), ("wake", after.sleep.wake.clone())])
+    } else {
+        let now = Zoned::now();
+        blocks_now(&after, &days(), date, &now).iter().find(|k| k.key == key).map_or_else(|| tr().text("drag-done-plain", None), |k| say("need-every-day", &[("what", name_of(k)), ("time", clock(k.at, now.time_zone()))]))
+    };
+    crate::mail::offer_back(qt, shared, line, move |qt, shared| {
+        // The usual blocks back, unless changed since (another device, Settings ▸ Hours).
+        let usual = change_health(|health| {
+            if health.needs == after {
+                health.needs = before.clone();
+            }
+            Ok(())
+        });
+        let day = undo_drag(date, &key, was.as_ref(), wrote.as_ref());
+        crate::work::show_work(qt, shared);
+        show_health(qt, shared);
+        usual.err().unwrap_or(day)
     });
     String::new()
 }
@@ -8012,6 +8172,56 @@ mod tests {
         assert_eq!(need_item(&date, "meal:9"), "{}", "none that day");
         let _ = std::fs::remove_file(Days::default_path());
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The agenda's timeline (5 November 2026): a move says where the block
+    /// went, the night by the edge that moved; "Had it" marks its two notices
+    /// given on this device, its Undo gives back only those it marked; a
+    /// meal of today not begun offers "Had it" (`need_item`'s `ahead`), one
+    /// of another day never.
+    #[test]
+    fn a_block_moved_or_had_is_said_and_its_notices_kept() {
+        let _files = health_files_held();
+        sioul_core::config::stand_ins_only();
+        let now = Zoned::now();
+        let zone = now.time_zone().clone();
+        let at = |h: i8, m: i8| now.date().at(h, m, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let lunch = Kept { key: "meal:1".into(), kind: "meal", index: 1, name: String::new(), start: at(13, 10), at: at(13, 30), end: at(14, 0), notices: true };
+        assert!(moved_line(&lunch, now.date(), None, None, &now).contains("13:30"));
+        let night = Kept { key: "sleep".into(), kind: "sleep", index: 0, name: String::new(), start: at(22, 30), at: at(23, 30), end: at(23, 59), notices: true };
+        let bed = sioul_core::needs::DayBlock { at: "23:30".into(), ..Default::default() };
+        let wake = sioul_core::needs::DayBlock { wake: "07:30".into(), ..Default::default() };
+        assert!(moved_line(&night, now.date(), None, Some(&bed), &now).contains("23:30"), "its bedtime");
+        assert!(moved_line(&night, now.date(), None, Some(&wake), &now).contains("23:59"), "its waking");
+        // Its notices given, once; the Undo takes back only what it marked.
+        let path = sioul_core::needs::Today::default_path();
+        let _ = std::fs::remove_file(&path);
+        let mut today = sioul_core::needs::Today::load(&path, now.date());
+        today.sent.insert("meal:1:heads-up".into());
+        today.save(&path).unwrap();
+        let marked = mark_given("meal:1", &now);
+        assert_eq!(marked, vec!["meal:1:start".to_string()]);
+        let sent = |key: &str| sioul_core::needs::Today::load(&path, now.date()).sent.contains(key);
+        assert!(sent("meal:1:heads-up") && sent("meal:1:start"));
+        unmark_given("meal:1", &marked);
+        assert!(sent("meal:1:heads-up") && !sent("meal:1:start"), "the heads-up given before stays given");
+        let _ = std::fs::remove_file(&path);
+        // "Had it" offered for a meal of today to come, never another day's.
+        let health = Health::default_path();
+        std::fs::create_dir_all(health.parent().unwrap()).unwrap();
+        std::fs::write(&health, "[needs]\nmeals_on = true\n").unwrap();
+        let _ = std::fs::remove_file(Days::default_path());
+        let late = now.date().at(23, 50, 0, 0).to_zoned(zone.clone()).unwrap();
+        let day = now.date().to_string();
+        assert_eq!(change_need(&serde_json::json!({ "date": day, "action": "add", "kind": "meal", "name": "Late", "from": "23:50", "to": "23:55" }).to_string()), "");
+        let added = Days::load(&Days::default_path()).0.get(&now.date()).and_then(|blocks| blocks.keys().find(|k| sioul_core::needs::is_added(k)).cloned()).unwrap();
+        let card: serde_json::Value = serde_json::from_str(&need_item(&day, &added)).unwrap();
+        assert_eq!(card["ahead"].as_bool(), Some(now < late), "{card}");
+        let tomorrow = now.date().tomorrow().unwrap().to_string();
+        let other: serde_json::Value = serde_json::from_str(&need_item(&tomorrow, "meal:1")).unwrap();
+        assert_eq!(other["ahead"].as_bool(), Some(false));
+        let _ = std::fs::remove_file(Days::default_path());
+        let _ = std::fs::remove_file(&health);
     }
 
     /// A row's states follow the window's clock, given ahead: before its

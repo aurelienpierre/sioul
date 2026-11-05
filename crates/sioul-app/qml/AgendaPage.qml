@@ -7,9 +7,10 @@
 // steps, meals, naps, the night, doses. Nothing is late or overdue: the past
 // is not shown unless you go back to it. Anything tapped opens its card where
 // you are (`window.openCard`, CardHost.qml), beside the page; the open thing
-// is outlined. A new event comes from New, at the top of the places, or a
-// double tap on a day or an hour; where the places fold into ☰ (a phone, a
-// narrow window), a New event button stays on the page.
+// is outlined. A new event comes from New, at the top of the places, the
+// timeline's "+" (a click on an empty stretch, then a second one), or a
+// double tap on a day or an empty stretch; where the places fold into ☰ (a
+// phone, a narrow window), a New event button stays on the page.
 
 pragma ComponentBehavior: Bound
 
@@ -529,6 +530,30 @@ Item {
             page.mode = "day"
     }
 
+    // For the window's pictures: today's first thing of `kind` chosen, its times shown;
+    // the "+" at `minute` of today; the menu of today's first `kind` to come.
+    function timelineChoose(kind) {
+        const row = timeline.firstOf(kind, true)
+        if (row)
+            timeline.choose(row)
+    }
+
+    function timelinePlus(minute) {
+        timeline.placePlus(Math.max(0, timeline.todayIndex), minute)
+    }
+
+    function timelineMenu(kind) {
+        const row = timeline.firstOf(kind, true)
+        if (row)
+            page.menuRow(row)
+    }
+
+    // A meal or a nap had already ("Had it", from its menu or its card): watched as a move is,
+    // the tasks moved around it said with its line.
+    function watchMove(ref) {
+        timeline.watchMove({ date: ref.srcDate || ref.date || "", srcDate: ref.srcDate || ref.date || "", srcKey: ref.srcKey || "", kind: ref.kind || "meal", mover: "need", owner: "" })
+    }
+
     // An event by its file, from a link: its card, where you are (the next time it comes).
     function openEvent(key) {
         page.window.openCard({ kind: "event", srcKey: key, srcStart: 0 })
@@ -951,7 +976,14 @@ Item {
                 onEdit: row => page.editRow(row)
                 onTurn: steps => page.move(steps)
                 onOpenDay: date => page.showDay(date)
-                onNewAt: (day, hour) => eventDialog.now().edit("", day, hour)
+                // The "+" of an empty stretch, clicked again (or a double click there): the new
+                // event's form on that range, in the agenda for new events, its title first.
+                onNewRange: (day, from, to) => eventDialog.now().editRange(day, from, to)
+                // A move written: the status line says what moved around it, and offers "Every day".
+                onMoveSaid: (line, more, everyDay) => {
+                    page.window.undoMore = more !== "" ? { line: line, more: more } : null
+                    page.window.everyDay = everyDay ? Object.assign({ line: line }, everyDay) : null
+                }
             }
 
             // The Month (§4.5): six weeks of seven cells. On a computer each cell its

@@ -2,11 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 // What can change a meal, a nap or the night that day, one menu for Health's
-// list, the agenda and its card (the unified agenda, part 3): later by Health's
-// minutes, moved, its times, no notice that day or back, the alarm the morning
-// the night ends, back to usual, taken out that day or put back. It changes
-// nothing itself: `acted(action)` and `formAsked(mode)` say what was chosen,
-// and the one who opened it writes that day's change (`changeNeed`).
+// list, the agenda and its card (the unified agenda, part 3): had already,
+// just now or at a time, for a meal or a nap of today not begun; later by
+// Health's minutes, moved, its times, no notice that day or back, the alarm
+// the morning the night ends, back to usual, taken out that day or put back.
+// It changes nothing itself: `acted(action)`, `formAsked(mode)` and
+// `hadAsked(at)` say what was chosen, and the one who opened it writes that
+// day's change (`changeNeed`, `hadNeed`).
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -21,6 +23,8 @@ SioulMenu {
 
     signal acted(string action)
     signal formAsked(string mode)
+    // "Had it": `at` "now", or "pick" for a time picked (HadAt.qml).
+    signal hadAsked(string at)
 
     property var day: null
     property var item: null
@@ -44,6 +48,25 @@ SioulMenu {
         menu.acted(action)
     }
 
+    // A meal or a nap of today not begun yet (`needItem`'s `ahead`): had already.
+    MenuItem {
+        objectName: "needHadNow"
+        visible: menu.day !== null && menu.day.ahead === true && !menu.off && !menu.alarmOnly
+        height: visible ? implicitHeight : 0
+        text: menu.sioul.text("need-had-now")
+        onTriggered: menu.hadAsked("now")
+    }
+    MenuItem {
+        objectName: "needHadAt"
+        visible: menu.day !== null && menu.day.ahead === true && !menu.off && !menu.alarmOnly
+        height: visible ? implicitHeight : 0
+        text: menu.sioul.text("need-had-at")
+        onTriggered: menu.hadAsked("pick")
+    }
+    MenuSeparator {
+        visible: menu.day !== null && menu.day.ahead === true && !menu.off && !menu.alarmOnly
+        height: visible ? implicitHeight : 0
+    }
     MenuItem {
         visible: !menu.off && !menu.alarmOnly
         height: visible ? implicitHeight : 0

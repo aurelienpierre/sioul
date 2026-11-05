@@ -239,6 +239,36 @@ Item {
         menu.show(read, read.item, null, alarmOnly)
     }
 
+    // A meal or a nap had already, today, before its time (its menu's or its card's "Had it"):
+    // at `from` ("11:40"), or ending now when "" (`hadNeed`); watched on the agenda's timeline
+    // as a move is, the tasks moved around it said.
+    function hadNeed(date, key, kind, from) {
+        const problem = host.sioul.hadNeed(JSON.stringify({ date: date, key: key, from: from }))
+        if (problem !== "") {
+            host.sioul.status = problem
+            return
+        }
+        if (typeof host.window.watchMoved === "function")
+            host.window.watchMoved({ srcDate: date, srcKey: key, kind: kind })
+    }
+
+    // "Had it at…": its time picked in two taps (HadAt.qml), then had then.
+    function askHadAt(date, key, kind, name) {
+        const ms = Date.now()
+        const wall = new Date(ms + (typeof host.sioul.zoneOffset === "function" ? host.sioul.zoneOffset(ms / 1000) + new Date(ms).getTimezoneOffset() * 60000 : 0))
+        // Made the first time only: a component, not an object more in every host.
+        if (host.hadAt === null)
+            host.hadAt = hadAtMade.createObject(host)
+        const popup = host.hadAt
+        popup.asked = { date: date, key: key, kind: kind }
+        popup.ask(name, wall.getHours() * 60 + wall.getMinutes())
+    }
+
+    // For the window's pictures: the meal's menu, once asked.
+    function needMenuNow() {
+        return needMenuLater.item
+    }
+
     function readChoices() {
         const read = JSON.parse(host.sioul.taskCardChoices() || "{}")
         host.choices = { projects: read.projects || [], kinds: read.kinds || [], categories: read.categories || [] }
@@ -372,7 +402,29 @@ Item {
                     if (host.needCard)
                         host.needCard.edit(mode)
                 }
+                onHadAsked: at => {
+                    const kind = needMenuForm.item.kind === "sleep" ? "night" : needMenuForm.item.kind
+                    if (at === "pick")
+                        host.askHadAt(needMenuForm.day.date, needMenuForm.item.key, kind, needMenuForm.item.name)
+                    else
+                        host.hadNeed(needMenuForm.day.date, needMenuForm.item.key, kind, "")
+                }
             }
+        }
+    }
+
+    // "Had it at…": made the first time it is asked (`askHadAt`).
+    property var hadAt: null
+
+    Component {
+        id: hadAtMade
+
+        HadAt {
+            property var asked: null
+
+            sioul: host.sioul
+            theme: host.theme
+            onPicked: time => host.hadNeed(asked.date, asked.key, asked.kind, time)
         }
     }
 
