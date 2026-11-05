@@ -36,7 +36,7 @@ use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
 /// The kind of change every writer of money movements says (`changes`), so
 /// that the windows read the money again: one place for all of them.
-pub const KIND: crate::changes::Kind = crate::changes::Kind::Movements;
+pub const KIND: crate::changes::Kind = crate::changes::Kind::Money;
 
 /// A money movement made, changed or removed, its fees, what a payout
 /// carried: said to the windows (`changes::said`), from the one helper every
@@ -844,6 +844,7 @@ impl Store {
                 let temporary = path.with_extension("toml.new");
                 std::fs::write(&temporary, written).map_err(|e| fail(e.to_string()))?;
                 std::fs::rename(&temporary, &path).map_err(|e| fail(e.to_string()))?;
+                crate::changes::said(crate::changes::Kind::Money);
             }
             Ok(out)
         })

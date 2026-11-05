@@ -55,7 +55,7 @@ The ⋮ of the site open, or a right click on any site of the list:
 - **Microphone, for calls**, **Camera, for calls**, **Sharing the screen, for calls**: on for chats, video calls and dating sites, off for the others until you turn them on;
 - **Devices for calls…**: the camera, microphone and speaker that calls use, from your system's list;
 - **Move up**, **Move down**, **Link to…** a task, a note, a contact or a project;
-- **Name and address…**: its name, its address, your own categories ("Bank", "Health"), and **Opened for** someone of your household, for an account you open for them ("Odile's ameli account"): it shows on their page ([People in your household](contacts.md#household));
+- **Name and address…**: its name, its address, your own categories ("Bank", "Health"), and **Opened for** one of your people, for an account you open for them ("Odile's ameli account"): it shows on their page ([Your people](contacts.md#household));
 - **Remove this site**: it leaves Sioul; nothing changes on the site itself.
 
 <figure markdown="span">

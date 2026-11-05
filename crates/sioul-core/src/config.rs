@@ -2180,9 +2180,20 @@ pub(crate) fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), Strin
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(fail)?;
     }
+    // Which lists change, said to the window once written (`changes`): the accounts, the sites.
+    let before: Option<DocumentMut> = std::fs::read_to_string(path).ok().and_then(|old| old.parse().ok());
+    let differs = |key: &str| before.as_ref().and_then(|b| b.get(key)).map(|i| i.to_string()) != doc.get(key).map(|i| i.to_string());
+    let (accounts, sites) = (differs("account"), differs("site"));
     let temporary = path.with_extension("toml.new");
     std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    std::fs::rename(&temporary, path).map_err(fail)?;
+    if accounts {
+        crate::changes::said(crate::changes::Kind::Accounts);
+    }
+    if sites {
+        crate::changes::said(crate::changes::Kind::Sites);
+    }
+    Ok(())
 }
 
 /// The name under which Sioul writes its own checks of a message (RFC 8601

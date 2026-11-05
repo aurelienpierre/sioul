@@ -35,11 +35,113 @@ pub(crate) fn store() -> Persons {
     }
     let papers = papers_of(&config);
     let own = own_names(&config);
-    persons::change(&path, |p| {
+    match persons::change(&path, |p| {
         p.read_names(&config.agenda.calendars, &papers, &own);
         p.clone()
-    })
-    .unwrap_or_else(|_| Persons::as_read(&path, &config.agenda.calendars, &papers, &own))
+    }) {
+        Ok(after) => {
+            note_made(&persons, &after, &config, &papers);
+            after
+        }
+        Err(_) => Persons::as_read(&path, &config.agenda.calendars, &papers, &own),
+    }
+}
+
+// ---------------------------------------------------------------- made from older texts
+
+/// The persons Sioul made from older texts on this device (the first read of
+/// agendas' and papers' names, `read_names`; an agenda's role typed before,
+/// `tie_roles`), each with what named them, until said once on the Porch in
+/// an admin window (docs/persons.md, "Made from older texts"). This
+/// device's own: `$XDG_STATE_HOME/sioul/persons-made.toml`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+struct Made {
+    #[serde(default, rename = "made")]
+    persons: Vec<MadeOne>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct MadeOne {
+    id: String,
+    name: String,
+    /// What named them: "the agenda “Léa”", "the paper “Lease”".
+    #[serde(default)]
+    from: Vec<String>,
+}
+
+fn made_path() -> std::path::PathBuf {
+    sioul_core::config::state_dir().join("persons-made.toml")
+}
+
+/// Those made, added to what waits to be said (each once, by id).
+fn keep_made(made: Vec<MadeOne>) {
+    if made.is_empty() {
+        return;
+    }
+    let path = made_path();
+    let _ = sioul_core::filelock::with_lock(&path, || {
+        let mut kept: Made = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        for one in made {
+            if !kept.persons.iter().any(|p| p.id == one.id) {
+                kept.persons.push(one);
+            }
+        }
+        let text = toml::to_string(&kept).map_err(|e| e.to_string())?;
+        sioul_core::filelock::replace(&path, text.as_bytes()).map_err(|e| e.to_string())
+    });
+}
+
+/// The persons in `after` and not in `before`, each with the agendas and the
+/// papers that name them, kept to be said.
+fn note_made(before: &Persons, after: &Persons, config: &Config, papers: &[Paper]) {
+    let local = LocalLinks::load(&LocalLinks::default_path());
+    let own = own_names(config);
+    let agendas = sioul_core::agendas::all(config);
+    let made: Vec<MadeOne> = after
+        .persons
+        .iter()
+        .filter(|p| before.get(&p.id).is_none())
+        .map(|person| {
+            let mut from: Vec<String> = config
+                .agenda
+                .calendars
+                .iter()
+                .filter(|(_, said)| {
+                    let relation = match said.whose.as_deref().and_then(sioul_core::agendas::Whose::parse) {
+                        Some(sioul_core::agendas::Whose::Child) => Relation::Child,
+                        Some(sioul_core::agendas::Whose::Partner) => Relation::Partner,
+                        Some(sioul_core::agendas::Whose::Parent) => Relation::OtherParent,
+                        _ => return after.parent_of_agenda(said).is_some_and(|p| p.id == person.id),
+                    };
+                    after.of_agenda(said, relation).is_some_and(|p| p.id == person.id) || after.parent_of_agenda(said).is_some_and(|p| p.id == person.id)
+                })
+                .map(|(place, _)| say("persons-made-agenda", &[("name", agendas.iter().find(|a| a.id == *place).map_or_else(|| place.clone(), |a| a.name.clone()))]))
+                .collect();
+            from.extend(papers.iter().filter(|p| after.holders_of(p, &local, &own).has(&person.id)).map(|p| say("persons-made-paper", &[("name", p.title.clone())])));
+            MadeOne { id: person.id.clone(), name: person.name.clone(), from }
+        })
+        .collect();
+    keep_made(made);
+}
+
+/// The card the Porch shows once, in an admin window, as JSON: the persons
+/// made and what named each, `[{"id", "name", "from"}]`; `[]` when there is
+/// none, outside admin hours, or once said.
+pub(crate) fn made_card() -> String {
+    let kept: Made = std::fs::read_to_string(made_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    if kept.persons.is_empty() || !admin_now(&load_config()) {
+        return "[]".into();
+    }
+    let store = Persons::load(&Persons::default_path());
+    // Those since joined into another or said to be no person are not said.
+    let rows: Vec<serde_json::Value> = kept.persons.iter().filter(|p| store.get(&p.id).is_some()).map(|p| serde_json::json!({ "id": p.id, "name": p.name, "from": p.from.join(", ") })).collect();
+    json(&rows)
+}
+
+/// The card said: not shown again, on this device.
+pub(crate) fn made_said() {
+    let path = made_path();
+    let _ = sioul_core::filelock::with_lock(&path, || std::fs::remove_file(&path).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }));
 }
 
 /// "You" (« Vous »).
@@ -293,7 +395,7 @@ struct PersonEdit {
     /// A child's other parent: which children, by id.
     #[serde(default)]
     of: Vec<String>,
-    /// A card to link at once (a contact's "This is a person in your household…").
+    /// A card to link at once (a contact's "This is one of your people…").
     #[serde(default)]
     card: String,
 }
@@ -397,6 +499,11 @@ pub(crate) fn set_agenda_person(place: &str, field: &str, id: &str) -> String {
 /// (`parent`, `parent_person`). A key that names someone stays. Returns what
 /// went wrong, else "".
 pub(crate) fn tie_role(place: &str) -> String {
+    tie_role_noting(place, false)
+}
+
+/// `tie_role`; `noting`, the persons it made kept for the Porch's card (made from older texts).
+fn tie_role_noting(place: &str, noting: bool) -> String {
     use sioul_core::agendas::Whose;
     let config = load_config();
     let Some(said) = config.agenda.calendars.get(place) else { return String::new() };
@@ -420,6 +527,10 @@ pub(crate) fn tie_role(place: &str) -> String {
         }
         match persons::change(&Persons::default_path(), |store| store.for_role(relation, &name)) {
             Ok(Some(id)) => {
+                if noting && known.get(&id).is_none() {
+                    let agenda = sioul_core::agendas::all(&config).into_iter().find(|a| a.id == place).map_or_else(|| place.to_string(), |a| a.name);
+                    keep_made(vec![MadeOne { id: id.clone(), name: name.clone(), from: vec![say("persons-made-agenda", &[("name", agenda)])] }]);
+                }
                 if let Err(e) = sioul_core::agendas::set_field(&path, place, field, &id) {
                     return e;
                 }
@@ -437,7 +548,7 @@ pub(crate) fn tie_role(place: &str) -> String {
 pub(crate) fn tie_roles() {
     let config = load_config();
     for place in config.agenda.calendars.keys() {
-        let problem = tie_role(place);
+        let problem = tie_role_noting(place, true);
         if !problem.is_empty() {
             eprintln!("{place}: {problem}");
         }
@@ -578,7 +689,7 @@ pub(crate) fn letter_persons(store: &Persons, local: &LocalLinks, own: &[String]
     (ids, said)
 }
 
-/// "Make a person of “…”" on a paper's card: a person of that name, in your household, nothing more said.
+/// "Make a person of “…”" on a paper's card: a person of that name, among your people, nothing more said.
 pub(crate) fn make_person_of(name: &str) -> String {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -773,6 +884,8 @@ pub(crate) fn keeps_html(shown: &serde_json::Value) -> String {
     html.push_str(&section(&tr().text("person-papers", None), rows("papers", &["title", "kind_label", "line", "file_name"])));
     html.push_str(&section(&tr().text("person-agendas", None), rows("agendas", &["name"])));
     html.push_str(&section(&tr().text("person-letters", None), rows("letters", &["sender", "kind_label", "received"])));
+    // What is not in it, said: their budgets and their sites stay in Sioul.
+    html.push_str(&format!("<p>{}</p>", esc(&tr().text("person-keeps-not", None))));
     html.push_str(&format!("<p><small>{}</small></p>", esc(&say("person-keeps-made", &[("date", tr().day(sioul_core::zone::now().date()))]))));
     html
 }
@@ -864,6 +977,35 @@ mod tests {
         assert_eq!(crate::agenda::set_field("cloud/maelis", "name", "maelis"), "", "typed, accents aside");
         assert_eq!(load_config().agenda.calendars["cloud/maelis"].person.as_deref(), Some(partner.as_str()), "the partner here, linked");
         assert_eq!(Persons::load(&Persons::default_path()).persons.iter().filter(|p| p.named("Maëlis")).count(), 1, "never a second");
+    }
+
+    /// Persons made from older texts are said once: each with the agenda and
+    /// the paper that named them; once said, nothing more; made by nobody, nothing.
+    #[test]
+    fn persons_made_from_older_texts_are_said_once() {
+        let own = OwnSetup::new("made");
+        let config = crate::backend::config_path();
+        for (field, value) in [("whose", "child"), ("name", "Ondine")] {
+            sioul_core::agendas::set_field(&config, "cloud/ondine", field, value).unwrap();
+        }
+        let config = load_config();
+        let before = Persons::default();
+        let mut after = Persons::default();
+        let ondine = own.made(&after.put(Person { id: persons::name_id(Relation::Child, "Ondine"), name: "Ondine".into(), relation: "child".into(), ..Person::default() }));
+        let papers = vec![Paper { id: "made-id".into(), title: "Identity card".into(), holder: "Ondine".into(), ..Paper::default() }];
+        note_made(&before, &before, &config, &papers);
+        let none: Vec<serde_json::Value> = serde_json::from_str(&made_card()).unwrap();
+        assert!(none.iter().all(|p| p["id"] != ondine.as_str()), "made by nobody: nothing");
+        note_made(&before, &after, &config, &papers);
+        persons::change(&Persons::default_path(), |s| s.put(after.get(&ondine).cloned().unwrap())).unwrap();
+        let card: Vec<serde_json::Value> = serde_json::from_str(&made_card()).unwrap();
+        let row = card.iter().find(|p| p["id"] == ondine.as_str()).unwrap_or_else(|| panic!("{card:?}"));
+        let from = row["from"].as_str().unwrap();
+        assert!(from.contains(&say("persons-made-agenda", &[("name", "cloud/ondine".into())])) || from.contains("ondine"), "{from}");
+        assert!(from.contains(&say("persons-made-paper", &[("name", "Identity card".into())])), "{from}");
+        made_said();
+        let after_said: Vec<serde_json::Value> = serde_json::from_str(&made_card()).unwrap();
+        assert!(after_said.iter().all(|p| p["id"] != ondine.as_str()), "said once");
     }
 
     #[test]

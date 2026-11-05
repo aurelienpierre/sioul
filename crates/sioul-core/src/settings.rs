@@ -1698,7 +1698,7 @@ mod tests {
         apply(&path, &config, "letters.inbox", &SettingValue::Text("/stand-in/Post".into())).unwrap();
         assert_eq!(Config::load(&path).unwrap().letters.inbox.as_deref(), Some("/stand-in/Post"));
         // Unset: the notes folder's own.
-        std::fs::write(&path, format!("case_store = \"{}\"\n", dir.join("Notes").display())).unwrap();
+        std::fs::write(&path, format!("case_store = '{}'\n", dir.join("Notes").display())).unwrap();
         let unset = Config::load(&path).unwrap();
         assert_eq!(inbox_of(&unset).map(|(_, v)| v), Some(SettingValue::Text(dir.join("Notes").join("letters").join("inbox").display().to_string())));
         let _ = std::fs::remove_dir_all(&dir);

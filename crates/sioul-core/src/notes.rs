@@ -136,6 +136,7 @@ pub fn trash(root: &Path, path: &str) -> Result<String, String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     std::fs::rename(root.join(&path), &to).map_err(|e| format!("{path}: {e}"))?;
+    crate::changes::said(crate::changes::Kind::Notes);
     Ok(target)
 }
 
@@ -147,7 +148,9 @@ pub fn untrash(root: &Path, trashed: &str, path: &str) -> Result<(), String> {
     if to.exists() {
         return Err(format!("{path}: taken again"));
     }
-    std::fs::rename(root.join(from), &to).map_err(|e| format!("{path}: {e}"))
+    std::fs::rename(root.join(from), &to).map_err(|e| format!("{path}: {e}"))?;
+    crate::changes::said(crate::changes::Kind::Notes);
+    Ok(())
 }
 
 /// A note renamed: its file gets `name` (its extension kept), in the same
@@ -174,6 +177,7 @@ pub fn rename(vault: &Vault, path: &str, name: &str) -> Result<(String, Vec<Stri
         return Err(format!("{new_path}: taken"));
     }
     std::fs::rename(vault.root.join(path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
+    crate::changes::said(crate::changes::Kind::Notes);
     // The ways other notes name it, and what they say now.
     let old_name = path.rsplit('/').next().unwrap_or(path);
     let old_stem = if note.kind == NoteKind::Text { text_stem(old_name) } else { old_name };
@@ -228,6 +232,7 @@ pub fn make_folder(root: &Path, parent: &str, name: &str) -> Result<String, Stri
         return Err(format!("{path}: taken"));
     }
     std::fs::create_dir_all(root.join(&path)).map_err(|e| format!("{path}: {e}"))?;
+    crate::changes::said(crate::changes::Kind::Notes);
     Ok(path)
 }
 
@@ -248,6 +253,7 @@ pub fn rename_folder(vault: &Vault, path: &str, name: &str) -> Result<(String, V
         return Err(format!("{new_path}: taken"));
     }
     std::fs::rename(vault.root.join(&path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
+    crate::changes::said(crate::changes::Kind::Notes);
     let prefix = format!("{path}/");
     let moved: Vec<(String, String)> = vault.notes.iter().filter_map(|n| n.path.strip_prefix(&prefix).map(|rest| (n.path.clone(), format!("{new_path}/{rest}")))).collect();
     for other in vault.notes.iter().filter(|n| n.kind == NoteKind::Text) {
@@ -279,7 +285,9 @@ pub fn remove_folder(root: &Path, path: &str) -> Result<(), String> {
     if !empty {
         return Err(format!("{path}: not empty"));
     }
-    std::fs::remove_dir(&full).map_err(|e| format!("{path}: {e}"))
+    std::fs::remove_dir(&full).map_err(|e| format!("{path}: {e}"))?;
+    crate::changes::said(crate::changes::Kind::Notes);
+    Ok(())
 }
 
 /// The path from a note's folder to another note: "../admin/lease.md".
@@ -835,6 +843,8 @@ pub fn write(root: &Path, path: &str, text: &str) -> Result<PathBuf, String> {
     let temporary = target.with_extension(format!("{extension}.new"));
     std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
     std::fs::rename(&temporary, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+    // A note's writes, its links among them: every view of notes and ties reads them again.
+    crate::changes::said(crate::changes::Kind::Notes);
     Ok(target)
 }
 

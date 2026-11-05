@@ -241,6 +241,7 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     crate::backend::want_password(shared, &account.id, result.as_ref().err());
     // The pages again only when something came, went or clashed: a sync that
     // changed nothing every quarter of an hour costs nothing (a phone's battery).
+    let registered = result.as_ref().is_ok_and(|report| report.registered > 0);
     let changed = match result {
         Ok(report) => {
             // A sync of an account switched on: its calendars show here, whatever an old mark says.
@@ -275,6 +276,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         show(qt, shared);
         crate::work::show_work(qt, shared);
         show_pim(qt, shared);
+    }
+    // Calendars and address books its server listed for the first time: Agenda ⚙ lists them.
+    if registered {
+        sioul_core::changes::said(sioul_core::changes::Kind::Agendas);
     }
 }
 

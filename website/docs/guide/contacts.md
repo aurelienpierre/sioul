@@ -6,7 +6,7 @@ description: Contacts in Sioul - names first, details folded; duplicates found a
 
 ## In short {#in-short}
 
-Contacts holds the people you deal with: their names first, their details folded until you open them. Sioul finds the same person written twice and merges the cards when you say so, with thirty days to undo each merge. It shows everyone with a postal address on one map, once you allow it. Each person is on a list, safe, neutral, restricted or blocked, or is a stranger, and that list decides when their mail, their calls and their messages reach you; a forged message cannot take their place. Your contacts stay on your own server, at Google or on this device, and Sioul reaches them only over an encrypted connection. At the head of the page, your household: the people your admin is done for, each with their papers.
+Contacts holds the people you deal with: their names first, their details folded until you open them. Sioul finds the same person written twice and merges the cards when you say so, with thirty days to undo each merge. It shows everyone with a postal address on one map, once you allow it. Each person is on a list, safe, neutral, restricted or blocked, or is a stranger, and that list decides when their mail, their calls and their messages reach you; a forged message cannot take their place. Your contacts stay on your own server, at Google or on this device, and Sioul reaches them only over an encrypted connection. At the head of the page, your people: those your admin is done for, each with their papers.
 
 <figure markdown="span">
   [![The Contacts page: a search field, a button for a new contact and one for the map above a list of names, each with an address or a number under it; one contact open on the right, with their role and organisation, an e-mail address with Write, a phone number with Call, "Your contacts: in your address book, on no list." and How Iris Calloway reaches you, a small map with a pin at their address, and what is tied to them: two tasks and two events.](../assets/screens/contacts.png){ loading=lazy }](../assets/screens/contacts.png "Open the picture at full size")
@@ -20,7 +20,7 @@ Contacts holds the people you deal with: their names first, their details folded
 - The map sends nothing until you allow it. Then it sends postal addresses alone, one at a time, to OpenStreetMap: never a name, a number or an e-mail address.
 - Nobody can borrow a place on your lists. Mail that shows a safe contact's address but fails that address's checks counts as a stranger's, and mail forged outright is set aside. Someone you blocked stays blocked, whatever their message proves.
 - Who is on which list, and the calls your phones screened, travel between your devices sealed with your passphrase: the server of the shared folder never reads them.
-- The people of your household stay on your own devices, sealed when they travel: never written into a contact card, never sent to a server, each closed to AI agents until you open them ([People in your household](#household)).
+- Your people stay on your own devices, sealed when they travel: never written into a contact card, never sent to a server, each closed to AI agents until you open them ([Your people](#household)).
 
 ## The list
 
@@ -28,9 +28,11 @@ Names come first, with one line under each, and a search field sits on top: a fe
 
 When your cards have categories, a choice under the search field shows the contacts of one category only, or **All categories**.
 
-## People in your household {#household}
+## Your people {#household}
 
-At the head of the page, **Household** is a row of names: you first, then the people your admin is done for, a child, a parent you help, a partner, family, someone you help, and after a small gap a child's other parent. A name opens that person's page, in the place of a card; on a phone it takes the page. Right click, or a long press on a phone, gives **Open** and **Rename**. **Add a person** at the end of the row adds one.
+At the head of the page, **Your people** is a row of names: you first, then the people your admin is done for, a child, a parent you help, a partner, family, someone you help, and after a small gap a child's other parent. A name opens that person's page, in the place of a card; on a phone it takes the page. Right click, or a long press on a phone, gives **Open** and **Rename**. **Add a person** at the end of the row adds one.
+
+When Sioul makes people from what your agendas and papers already named (a child's agenda, a paper's holder), the Porch says once who it made, and from what, in your admin hours; there is nothing to answer.
 
 A person is not a contact. A contact is a card for reaching someone; a person is who your papers are for. A baby is a person with no card; someone with a home card and a work card is one person with two.
 
@@ -41,14 +43,14 @@ A person is not a contact. A contact is a card for reaching someone; a person is
 - **Contacts**: the cards that are them, each opening its card, with **Unlink**, and **Link a card…**;
 - **Letters**: the letters addressed to them;
 - **Money**: the budgets for them and the sites you open for them;
-- at the foot, quiet: **What Sioul keeps about Léa…**, one PDF of their papers, agendas and letters and a folder with the papers' files, saved where you choose, for you to hand to them; **Ends…**, for anyone but a child: the day it ended, and for a partner, their own papers saved in a folder to hand back, then taken out of your papers if you say so; **Same as…**, to make two persons one ("Léa" and "Léa M."); **This is not a person**, for a name read from a paper that is nobody ("Banque"), never made again;
+- at the foot, quiet: **What Sioul keeps about Léa…**, one PDF of their papers, agendas and letters and a folder with the papers' files, saved where you choose, for you to hand to them (their budgets and the sites you open for them are not in it); **Ends…**, for anyone but a child: the day it ended, and for a partner, their own papers saved in a folder to hand back, then taken out of your papers if you say so; **Same as…**, to make two persons one ("Léa" and "Léa M."); **This is not a person**, for a name read from a paper that is nobody ("Banque"), never made again;
 - **Open to AI agents**, off until you turn it on. Your own page has no such switch: you are open as before.
 
 On a child's page, once each and in your admin hours, a line says what passes to them: at 16, that they can have a carte Vitale and a reimbursement account in their own name; at 18, that their papers are their own, with **What Sioul keeps about Léa…** beside. A paper whose name for someone names nobody here offers **Make a person of "…"** on its card.
 
 **Edit** changes their name, how papers write it ("Léa Martin"), who they are to you, their date of birth, whether they live with you, and for a child's other parent, whose. A new name is also written into the papers that named the old one, so that a device on an older Sioul shows it too.
 
-**On a contact's card**, **This is a person in your household…** links the card to one of them, or makes a new person of it. Once linked, the button opens their page instead.
+**On a contact's card**, **This is one of your people…** links the card to one of them, or makes a new person of it. Once linked, the button opens their page instead.
 
 **Where they come from.** The first time, Sioul reads the names your agendas and papers already gave: a child's agenda gives that child, and its other parent; a paper "for Odile" gives Odile. A paper with no name, or with yours, is yours. These persons count from then on; a wrong one is changed on its page. Nothing else is written.
 
@@ -221,7 +223,7 @@ As of October 2026, from each app's own documentation.
     33. Classic Outlook opens and saves single vCards; new Outlook and the web import and export CSV only.
     34. Sioul makes no birthday calendar; one your server keeps (Nextcloud keeps one) shows as any other calendar you can only read.
     35. In Fossify Calendar; Etar has none.
-    36. Persons kept by you, on your devices, linked to their papers and their cards, each closed to AI agents until opened ([People in your household](#household)).
+    36. Persons kept by you, on your devices, linked to their papers and their cards, each closed to AI agents until opened ([Your people](#household)).
     37. A contact's "Relation" keeps another person's name and a type, as text; Family Link makes a child's account part of a family group, whose parent sees its location.
     38. "Related names" are labelled names that link to no card; Family Sharing's organizer sees members' Screen Time, and members share their location unless they turn it off.
 

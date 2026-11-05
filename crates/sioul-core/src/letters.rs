@@ -555,7 +555,9 @@ impl Letters {
 
     /// Written whole, under the file's lock.
     pub fn save(&self) -> Result<(), String> {
-        crate::filelock::with_lock(&Letters::folder(&self.root).join(MANIFEST), || self.write())
+        crate::filelock::with_lock(&Letters::folder(&self.root).join(MANIFEST), || self.write())?;
+        crate::changes::said(crate::changes::Kind::Letters);
+        Ok(())
     }
 
     fn write(&self) -> Result<(), String> {

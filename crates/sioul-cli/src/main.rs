@@ -332,6 +332,9 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     // Mail, keys, drafts and caches are kept in folders that are yours alone.
     config::make_private_dirs();
+    // What it changes (a task, a contact, a note for an agent) the window shows at once:
+    // it watches a stamp per kind (`changes`), this program having no window of its own.
+    sioul_core::changes::stamp_for_the_window();
     let config_path = cli.config.clone().unwrap_or_else(config::default_path);
     // No file yet: Sioul's defaults. A file that cannot be read is said, not taken for none.
     let config = Config::load(&config_path).unwrap_or_else(|e| {
