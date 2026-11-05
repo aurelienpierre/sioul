@@ -1145,6 +1145,12 @@ mod tests {
         "2026-10-25T10:00:00+01:00[Europe/Paris]".parse().unwrap()
     }
 
+    /// The zone of `now()`, the tests' only one: tasks written and read in the
+    /// computer's own would move by its offset from Paris (CI runs in UTC).
+    fn zone() -> TimeZone {
+        now().time_zone().clone()
+    }
+
     struct Desk {
         list: Collection,
         calendar: Collection,
@@ -1160,7 +1166,7 @@ mod tests {
         }
 
         fn task(&self, uid: &str, edit: TaskEdit) {
-            vdir::write_item(&self.list.dir.join(format!("{uid}.ics")), &tasks::new_task(&TaskEdit { title: uid.into(), ..edit }, uid, &TimeZone::system(), &now()).unwrap()).unwrap();
+            vdir::write_item(&self.list.dir.join(format!("{uid}.ics")), &tasks::new_task(&TaskEdit { title: uid.into(), ..edit }, uid, &zone(), &now()).unwrap()).unwrap();
         }
 
         fn event(&self, uid: &str, lines: &str) -> PathBuf {
@@ -1170,11 +1176,11 @@ mod tests {
         }
 
         fn tasks(&self) -> Vec<Task> {
-            self.list.items().into_iter().filter_map(|p| tasks::read(&p, &self.list, &TimeZone::system())).collect()
+            self.list.items().into_iter().filter_map(|p| tasks::read(&p, &self.list, &zone())).collect()
         }
 
         fn refs(&self) -> Vec<EventRef> {
-            let zone = TimeZone::system();
+            let zone = zone();
             self.calendar.items().into_iter().filter_map(|p| agenda::event_ref(&std::fs::read_to_string(&p).unwrap(), &p.display().to_string(), &zone)).collect()
         }
     }
@@ -1268,22 +1274,22 @@ mod tests {
         attach(&desk.tasks(), "later", &file(&visit, &read(&visit), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
         let task = task_of(&desk, "later");
         let moved = followed(&task, &read(Path::new(&task.key)), &at("2026-12-05"), &now()).unwrap();
-        assert_eq!(tasks::task_of_text(&moved, &TimeZone::system()).unwrap().due, "2026-11-30");
+        assert_eq!(tasks::task_of_text(&moved, &zone()).unwrap().due, "2026-11-30");
         // Check of 96b3cd8, item 6: that date kept on the link, a later move before it is followed,
         // and one past it gives it back again: always the earlier.
         std::fs::write(&task.key, &moved).unwrap();
         let task = task_of(&desk, "later");
         let earlier = followed(&task, &moved, &at("2026-11-20"), &now()).unwrap();
-        assert_eq!(tasks::task_of_text(&earlier, &TimeZone::system()).unwrap().due, "2026-11-20");
+        assert_eq!(tasks::task_of_text(&earlier, &zone()).unwrap().due, "2026-11-20");
         std::fs::write(&task.key, &earlier).unwrap();
         let task = task_of(&desk, "later");
         let again = followed(&task, &earlier, &at("2026-12-10"), &now()).unwrap();
-        assert_eq!(tasks::task_of_text(&again, &TimeZone::system()).unwrap().due, "2026-11-30");
-        assert!(followed(&Task { key: task.key.clone(), ..tasks::task_of_text(&again, &TimeZone::system()).unwrap() }, &again, &at("2026-12-12"), &now()).is_none(), "the same, nothing written");
+        assert_eq!(tasks::task_of_text(&again, &zone()).unwrap().due, "2026-11-30");
+        assert!(followed(&Task { key: task.key.clone(), ..tasks::task_of_text(&again, &zone()).unwrap() }, &again, &at("2026-12-12"), &now()).is_none(), "the same, nothing written");
         // A time given to the date: yours, never moved.
         let task = task_of(&desk, "prep");
-        let timed = tasks::apply(&read(Path::new(&task.key)), &TaskEdit { due: "2026-11-03T09:00".into(), ..TaskEdit::of(&task) }, &TimeZone::system(), &now()).unwrap();
-        let task = Task { key: task.key.clone(), ..tasks::task_of_text(&timed, &TimeZone::system()).unwrap() };
+        let timed = tasks::apply(&read(Path::new(&task.key)), &TaskEdit { due: "2026-11-03T09:00".into(), ..TaskEdit::of(&task) }, &zone(), &now()).unwrap();
+        let task = Task { key: task.key.clone(), ..tasks::task_of_text(&timed, &zone()).unwrap() };
         assert!(followed(&task, &timed, &at("2026-11-07"), &now()).is_none());
     }
 
@@ -1307,7 +1313,7 @@ mod tests {
     }
 
     fn refs_in(dir: &Path) -> Vec<EventRef> {
-        let zone = TimeZone::system();
+        let zone = zone();
         std::fs::read_dir(dir).unwrap().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).filter_map(|p| agenda::event_ref(&read(&p), &p.display().to_string(), &zone)).collect()
     }
 
@@ -1383,13 +1389,13 @@ mod tests {
         let path = desk.event("visit", "");
         attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
         let stale = task_of(&desk, "prep");
-        let renamed = tasks::apply(&read(Path::new(&stale.key)), &TaskEdit { title: "Renamed".into(), ..TaskEdit::of(&stale) }, &TimeZone::system(), &now()).unwrap();
+        let renamed = tasks::apply(&read(Path::new(&stale.key)), &TaskEdit { title: "Renamed".into(), ..TaskEdit::of(&stale) }, &zone(), &now()).unwrap();
         std::fs::write(&stale.key, &renamed).unwrap();
         let moved = followed(&stale, &renamed, &at("2026-11-03"), &now()).unwrap();
-        assert_eq!(tasks::task_of_text(&moved, &TimeZone::system()).unwrap().title, "Renamed", "the title changed meanwhile stays");
+        assert_eq!(tasks::task_of_text(&moved, &zone()).unwrap().title, "Renamed", "the title changed meanwhile stays");
         // A copy of the event behind (5 November here, as this device reads it): tied again, nothing written.
         let behind = read(&path).replace("20261029T13", "20261105T13");
-        let behind_refs = vec![agenda::event_ref(&behind, &path.display().to_string(), &TimeZone::system()).unwrap()];
+        let behind_refs = vec![agenda::event_ref(&behind, &path.display().to_string(), &zone()).unwrap()];
         assert!(attach(&desk.tasks(), "prep", &file(&path, &behind, true), &behind_refs, &any, &now()).unwrap().written.iter().all(|(p, _)| *p != PathBuf::from(&stale.key)), "neither its date nor its instant");
         // Tied to another event: the old one's line goes with it.
         let other = desk.event("other", "");
@@ -1484,7 +1490,7 @@ mod tests {
         let undone = loaded.untie(&links::task_uri("prep"), &links::event_uri("meet"), &now());
         assert_eq!(undone.len(), 1, "the task alone, never the meeting: {undone:?}");
         assert_ne!(undone[0].path, path);
-        let task = tasks::task_of_text(&undone[0].text, &TimeZone::system()).unwrap();
+        let task = tasks::task_of_text(&undone[0].text, &zone()).unwrap();
         assert_eq!((task.due.as_str(), appointment_of(&task), task.untied.clone()), ("2026-11-30", None, vec!["meet".to_string()]));
         std::fs::write(&undone[0].path, &undone[0].text).unwrap();
         let loaded = links::Loaded { tasks: desk.tasks(), events: desk.refs(), ..links::Loaded::default() };
@@ -1510,7 +1516,7 @@ mod tests {
         assert_eq!((task.start.as_str(), task.due.as_str()), ("2026-10-27", "2026-10-27"));
         // Moved after its start again: it follows.
         let back = followed(&task, &moved, &at("2026-10-30"), &now()).unwrap();
-        assert_eq!(tasks::task_of_text(&back, &TimeZone::system()).unwrap().due, "2026-10-30");
+        assert_eq!(tasks::task_of_text(&back, &zone()).unwrap().due, "2026-10-30");
         // Tied when it starts after the appointment: due on its start day.
         desk.task("late", TaskEdit { start: "2026-10-31".into(), ..TaskEdit::default() });
         let other = desk.event("visit-late", "");
@@ -1532,7 +1538,7 @@ mod tests {
     /// back as a day beside the start's day, never `DUE:…Z` beside `DTSTART;VALUE=DATE`.
     #[test]
     fn a_date_put_back_takes_the_start_s_form() {
-        let zone = TimeZone::system();
+        let zone = zone();
         let desk = Desk::new("put-back");
         desk.task("prep", TaskEdit { due: "2026-11-30T17:00".into(), ..TaskEdit::default() });
         let path = desk.event("visit", "");
@@ -1635,7 +1641,7 @@ mod tests {
         std::fs::write(&holiday, read_event("holiday", "20261111T000000Z")).unwrap();
         let before = [read(&meeting), read(&holiday)];
         let mut events = desk.refs();
-        events.push(agenda::event_ref(&read(&holiday), &holiday.display().to_string(), &TimeZone::system()).unwrap());
+        events.push(agenda::event_ref(&read(&holiday), &holiday.display().to_string(), &zone()).unwrap());
         let loaded = links::Loaded { events, ..links::Loaded::default() };
         assert!(loaded.tie_into_event("meeting", "sioul:note/notes/meeting.md", &now()).is_none());
         assert!(loaded.tie_into_event("holiday", "sioul:note/notes/holiday.md", &now()).is_none());
@@ -1656,7 +1662,7 @@ mod tests {
     fn appointments_of_accounts_switched_off_are_here() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         crate::config::stand_ins_only();
-        let zone = TimeZone::system();
+        let zone = zone();
         let off = Kind::Calendars.root().join("pairs-off-test");
         std::fs::create_dir_all(off.join("agenda")).unwrap();
         std::fs::write(off.join("agenda/away.ics"), read_event("away", "20261103T130000Z")).unwrap();
@@ -1704,7 +1710,7 @@ mod tests {
         assert_eq!(task_of(&desk, "early").set_aside, "visit");
         assert!(closing(&desk.tasks(), &desk.refs(), from, &later).is_empty(), "twice: nothing");
         // The step after done: no step left, the task closes, set aside (one was not done).
-        let done = tasks::set_status(&read(&desk.list.dir.join("follow-up.ics")), Status::Completed, &TimeZone::system(), &later).unwrap();
+        let done = tasks::set_status(&read(&desk.list.dir.join("follow-up.ics")), Status::Completed, &zone(), &later).unwrap();
         std::fs::write(desk.list.dir.join("follow-up.ics"), done).unwrap();
         closing(&desk.tasks(), &desk.refs(), from, &later).write().unwrap();
         assert_eq!(status("prep"), Status::Cancelled);
@@ -1816,7 +1822,7 @@ mod tests {
     #[test]
     fn a_step_made_once_the_appointment_was_over_stays() {
         let made: Zoned = "2026-10-29T15:00:00+01:00[Europe/Paris]".parse().unwrap();
-        let new_step = |_: &str| tasks::new_task(&TaskEdit { title: "Book the follow-up visit".into(), parent: "prep".into(), sort_order: Some(1), ..TaskEdit::default() }, "step", &TimeZone::system(), &made).unwrap();
+        let new_step = |_: &str| tasks::new_task(&TaskEdit { title: "Book the follow-up visit".into(), parent: "prep".into(), sort_order: Some(1), ..TaskEdit::default() }, "step", &zone(), &made).unwrap();
         assert!(!sets_aside("aside-made-after", Ok(""), TaskEdit::default(), Some(&new_step), closing_from()));
     }
 
@@ -1856,7 +1862,7 @@ mod tests {
     #[test]
     fn a_step_opened_again_once_the_appointment_was_over_stays() {
         let opened: Zoned = "2026-10-29T15:00:00+01:00[Europe/Paris]".parse().unwrap();
-        let open_again = |text: &str| tasks::set_status(text, Status::NeedsAction, &TimeZone::system(), &opened).unwrap();
+        let open_again = |text: &str| tasks::set_status(text, Status::NeedsAction, &zone(), &opened).unwrap();
         assert!(!sets_aside("aside-opened-again", Ok(""), TaskEdit { status: Status::Completed, ..TaskEdit::default() }, Some(&open_again), closing_from()));
     }
 
@@ -1938,12 +1944,12 @@ mod tests {
         std::fs::write(&key, crate::anchors::step_side(&read(&key), true, &now()).unwrap()).unwrap();
         closing(&other.tasks(), &other.refs(), closing_from(), &later).write().unwrap();
         let early = other.list.dir.join("early.ics");
-        std::fs::write(&early, tasks::set_status(&read(&early), Status::Completed, &TimeZone::system(), &later).unwrap()).unwrap();
+        std::fs::write(&early, tasks::set_status(&read(&early), Status::Completed, &zone(), &later).unwrap()).unwrap();
         assert_eq!(task_of(&other, "early").set_aside, "visit", "its mark kept by the tick");
         assert!(brought_back(&read(&early), &later).is_none(), "done: nothing to bring back");
         let o = agenda::Occurrence { key: visit.display().to_string(), uid: "visit".into(), summary: "Doctor".into(), start: 1_793_278_800, end: 1_793_280_600, ..agenda::Occurrence::default() };
         let tr = crate::i18n::Translator::new("en");
-        assert!(appointment_view(&o, &[], &other.tasks(), &[], None, &tr, &TimeZone::system()).set_aside.is_empty());
+        assert!(appointment_view(&o, &[], &other.tasks(), &[], None, &tr, &zone()).set_aside.is_empty());
     }
 
     /// Reopened by any other way than Bring back (an agent, another
@@ -1960,7 +1966,7 @@ mod tests {
         closing(&desk.tasks(), &desk.refs(), closing_from(), &later).write().unwrap();
         let reopen = |uid: &str| {
             let key = desk.list.dir.join(format!("{uid}.ics"));
-            std::fs::write(&key, tasks::set_status(&read(&key), Status::NeedsAction, &TimeZone::system(), &later).unwrap()).unwrap();
+            std::fs::write(&key, tasks::set_status(&read(&key), Status::NeedsAction, &zone(), &later).unwrap()).unwrap();
         };
         reopen("prep");
         assert!(closing(&desk.tasks(), &desk.refs(), closing_from(), &later).is_empty(), "the task reopened, its mark on it");
@@ -1978,7 +1984,7 @@ mod tests {
         std::fs::write(&after, crate::anchors::step_side(&read(&after), true, &now()).unwrap()).unwrap();
         closing(&open.tasks(), &open.refs(), closing_from(), &later).write().unwrap();
         let early = open.list.dir.join("early.ics");
-        std::fs::write(&early, tasks::set_status(&read(&early), Status::NeedsAction, &TimeZone::system(), &later).unwrap()).unwrap();
+        std::fs::write(&early, tasks::set_status(&read(&early), Status::NeedsAction, &zone(), &later).unwrap()).unwrap();
         assert_eq!((task_of(&open, "early").status, task_of(&open, "prep").status), (Status::NeedsAction, Status::NeedsAction));
         assert!(closing(&open.tasks(), &open.refs(), closing_from(), &later).is_empty(), "the step reopened elsewhere, never set aside again");
     }
@@ -2022,7 +2028,7 @@ mod tests {
         assert_eq!(tie_of(&read(&desk.list.dir.join("prep.ics"))).and_then(|t| t.at), Some(1_793_883_600), "set for the appointment's start"); 
         let o = agenda::Occurrence { key: path.display().to_string(), uid: "visit".into(), summary: "Doctor".into(), start: 1_793_883_600, end: 1_793_885_400, ..agenda::Occurrence::default() };
         let tr = crate::i18n::Translator::new("en");
-        assert!(appointment_view(&o, &[], &desk.tasks(), &[], None, &tr, &TimeZone::system()).set_aside.is_empty(), "off its card");
+        assert!(appointment_view(&o, &[], &desk.tasks(), &[], None, &tr, &zone()).set_aside.is_empty(), "off its card");
         assert!(closing(&desk.tasks(), &desk.refs(), closing_from(), &evening).is_empty(), "given back once");
         // Over again: set aside again, with its new end, once.
         let after: Zoned = "2026-11-05T16:00:00+01:00[Europe/Paris]".parse().unwrap();
@@ -2050,7 +2056,7 @@ mod tests {
         // The step after it ticked, the task done with it.
         for uid in ["later-on", "prep"] {
             let key = desk.list.dir.join(format!("{uid}.ics"));
-            std::fs::write(&key, tasks::set_status(&read(&key), Status::Completed, &TimeZone::system(), &later).unwrap()).unwrap();
+            std::fs::write(&key, tasks::set_status(&read(&key), Status::Completed, &zone(), &later).unwrap()).unwrap();
         }
         let evening: Zoned = "2026-10-29T18:00:00+01:00[Europe/Paris]".parse().unwrap();
         std::fs::write(&path, read(&path).replace("DTSTART:20261029T130000Z", "DTSTART:20261105T130000Z").replace("DTEND:20261029T133000Z", "DTEND:20261105T133000Z")).unwrap();
@@ -2190,7 +2196,7 @@ mod tests {
         known.pulled = Some(1_793_280_000);
         known.save(&state).unwrap();
         let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.dir == dir).unwrap();
-        let zone = TimeZone::system();
+        let zone = zone();
         for (uid, parent) in [("prep", ""), ("early", "prep")] {
             vdir::write_item(&dir.join(format!("{uid}.ics")), &tasks::new_task(&TaskEdit { title: uid.into(), parent: parent.into(), ..TaskEdit::default() }, uid, &zone, &now()).unwrap()).unwrap();
         }
@@ -2220,7 +2226,7 @@ mod tests {
         attach(&desk.tasks(), "prep", &file(&path, &read(&path), true), &desk.refs(), &any, &now()).unwrap().write().unwrap();
         let later: Zoned = "2026-10-29T16:00:00+01:00[Europe/Paris]".parse().unwrap();
         closing(&desk.tasks(), &desk.refs(), from, &later).write().unwrap();
-        let zone = TimeZone::system();
+        let zone = zone();
         let o = agenda::Occurrence { key: path.display().to_string(), uid: "visit".into(), summary: "Doctor".into(), start: 1_793_278_800, end: 1_793_280_600, ..agenda::Occurrence::default() };
         let tr = crate::i18n::Translator::new("en");
         let shown = appointment_view(&o, &[], &desk.tasks(), &[], None, &tr, &zone);
@@ -2306,7 +2312,7 @@ mod tests {
         // An open task of an account switched off, tied to the event: another task's tie is refused.
         let off = crate::vdir::Kind::Calendars.root().join("pairs-off-tasks");
         std::fs::create_dir_all(off.join("tasks")).unwrap();
-        let theirs = tasks::new_task(&TaskEdit { title: "Theirs".into(), ..TaskEdit::default() }, "theirs", &TimeZone::system(), &now()).unwrap();
+        let theirs = tasks::new_task(&TaskEdit { title: "Theirs".into(), ..TaskEdit::default() }, "theirs", &zone(), &now()).unwrap();
         // Its own event's UID, which no other test ties to (the account switched off is seen by all of them).
         let theirs = tasks::replace_lines(&theirs, |_| false, vec![appointment_line("visit-e010", None, None, None)], &now()).unwrap();
         std::fs::write(off.join("tasks/theirs.ics"), theirs).unwrap();
@@ -2339,7 +2345,7 @@ mod tests {
         assert!(cut.is_err());
         assert_eq!((read(&desk.list.dir.join("prep.ics")), read(&path)), (task_before, event_before), "nothing untied");
         moved_into(&[&task], &target.dir, &desk.refs(), true, &now()).unwrap().write().unwrap();
-        let moved: Vec<Task> = target.items().into_iter().filter_map(|p| tasks::read(&p, &target, &TimeZone::system())).collect();
+        let moved: Vec<Task> = target.items().into_iter().filter_map(|p| tasks::read(&p, &target, &zone())).collect();
         assert_eq!(moved.iter().map(|t| (t.uid.as_str(), appointment_of(t))).collect::<Vec<_>>(), [("prep", None)], "moved, untied");
         assert!(!read(&path).contains("sioul:task/prep"), "the event's line out with it");
         let _ = std::fs::remove_dir_all(&target.dir);
@@ -2374,8 +2380,8 @@ mod tests {
         let task = desk.tasks().into_iter().find(|t| t.uid == "doctor").unwrap();
         assert_eq!(task.due, "2026-11-03");
         assert!(followed(&task, &followed_text, &moved, &now()).is_none(), "the same twice");
-        let mine = tasks::apply(&followed_text, &TaskEdit { due: "2026-11-01".into(), ..TaskEdit::of(&task) }, &TimeZone::system(), &now()).unwrap();
-        let task_mine = tasks::task_of_text(&mine, &TimeZone::system()).map(|t| Task { key: task.key.clone(), ..t }).unwrap();
+        let mine = tasks::apply(&followed_text, &TaskEdit { due: "2026-11-01".into(), ..TaskEdit::of(&task) }, &zone(), &now()).unwrap();
+        let task_mine = tasks::task_of_text(&mine, &zone()).map(|t| Task { key: task.key.clone(), ..t }).unwrap();
         assert!(followed(&task_mine, &mine, &Appointment { day: Some("2026-11-10".parse().unwrap()), ..moved }, &now()).is_none(), "your date stays");
         // Detached: both links out, the date the pairing wrote with them.
         let event_text = std::fs::read_to_string(&path).unwrap();

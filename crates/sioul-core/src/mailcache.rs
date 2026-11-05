@@ -1074,8 +1074,13 @@ mod tests {
         use std::time::{Duration, SystemTime};
         let stand = Stand::new("steps");
         let now = SystemTime::now();
+        // Their Date five and a half days ago, inside the window whatever the day:
+        // older than 5 arrived, newer than 4.
+        let date = (jiff::Timestamp::now() - jiff::SignedDuration::from_hours(132)).to_zoned(jiff::tz::TimeZone::UTC).strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
         for uid in 1..=5u32 {
             let path = stand.put(uid, &format!("m{uid}@example.org"), &format!("Note {uid}"));
+            let text = std::fs::read_to_string(&path).unwrap().replace("Date: Fri, 30 Oct 2026 09:00:00 +0100", &format!("Date: {date}"));
+            std::fs::write(&path, text).unwrap();
             std::fs::File::options().write(true).open(&path).unwrap().set_modified(now - Duration::from_secs(u64::from(10 - uid) * 86_400)).unwrap();
         }
         let since = (now - Duration::from_secs(6 * 86_400)).duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;

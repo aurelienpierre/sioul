@@ -43,6 +43,15 @@ pub(crate) fn home() -> &'static Home {
         forget_old_homes();
         let root = std::env::temp_dir().join(format!("sioul-mcp-tests-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
+        // Reached through a link, as macOS's temporary folder is (/var is
+        // /private/var): paths as written and as resolved differ here too.
+        #[cfg(unix)]
+        {
+            let real = root.with_file_name(format!("sioul-mcp-tests-{}-real", std::process::id()));
+            let _ = std::fs::remove_dir_all(&real);
+            std::fs::create_dir_all(&real).unwrap();
+            std::os::unix::fs::symlink(&real, &root).unwrap();
+        }
         for (variable, folder) in [("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache"), ("HOME", "home")] {
             let dir = root.join(folder);
             // Marked as made for tests: the guard accepts no other (review of 1b6795e, M10).

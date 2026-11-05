@@ -490,6 +490,9 @@ pub(super) fn judged(s: &Session, path: &Path) -> Result<(Triaged, Option<Projec
     if senders.who_of(&card) == sioul_core::reach::Who::Blocked {
         return Err(s.say("ui-blocked", &[("entry", card.from_address.clone().unwrap_or_default())]));
     }
+    // The file resolved as its folders are below: one written through a link
+    // (macOS's /var, Windows' \\?\ form) would otherwise be in none of them.
+    let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let sources: Vec<config::Source> = s
         .config
         .mail_sources()
@@ -501,7 +504,7 @@ pub(super) fn judged(s: &Session, path: &Path) -> Result<(Triaged, Option<Projec
         .collect();
     let store = crate::load_store(&s.config);
     let known = KnownSenders::load(&s.config.known_senders_path());
-    let judged = porch::judge(std::slice::from_ref(&path.to_path_buf()), &sources, store.as_ref(), &known, &senders, Timestamp::now().as_second());
+    let judged = porch::judge(std::slice::from_ref(&resolved), &sources, store.as_ref(), &known, &senders, Timestamp::now().as_second());
     let mut t = judged.into_iter().next().ok_or_else(gone)?;
     if t.lane != Lane::Hostile && Shield::of(&s.config).is_some_and(|sh| sh.hides(path)) {
         t.lane = Lane::Hostile;
