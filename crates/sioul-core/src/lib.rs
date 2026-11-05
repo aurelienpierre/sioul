@@ -81,6 +81,7 @@
 //! - [`mailsearch`]: searching the mail by conditions, here and on the servers.
 //! - [`folders`]: mail folders: what each is for, its name as you read it, where it is kept.
 //! - [`threads`]: conversations, tied by Message-ID, never by subject alone.
+//! - [`topics`]: mail topics, one quiet word per message at most: the sender's words, the first topics from folders, projects and contacts' categories, the folded table every device judges with (docs/topics.md).
 //! - [`reading`]: a message laid out for reading: its text, what it quotes, what it forwards.
 //! - [`compose`]: writing: Markdown in, mail out.
 //! - [`mailto`]: `mailto:` addresses: the message a link asks to write.
@@ -305,6 +306,7 @@ pub mod tasks;
 pub mod text;
 pub mod textdraft;
 pub mod threads;
+pub mod topics;
 pub mod timeline;
 pub mod timelog;
 pub mod timereport;

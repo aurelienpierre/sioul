@@ -24,7 +24,7 @@
 //! server itself but sharing, which is asked and answered at once.
 
 use crate::SyncError;
-use crate::dav::{CALSERVER, Client, DAV, OWNCLOUD, xml_escape};
+use crate::dav::{CALDAV, CALSERVER, Client, DAV, OWNCLOUD, xml_escape};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Mutex;
@@ -423,6 +423,136 @@ pub fn google_role(access: Access) -> &'static str {
     }
 }
 
+// ---------------------------------------------------------------- your availability on its servers
+
+/// A user of another Nextcloud (32 and later), as its federated calendar
+/// sharing names them in `oc:share`: `principal:principals/remote-users/`
+/// and their cloud id ("sam@cloud.example.org") in base64, as Nextcloud's
+/// own calendar app writes it (`btoa(shareWith)`, SharingSearch.vue) and its
+/// server reads it back (`RemoteUserPrincipalBackend::principalUriToPrincipal`,
+/// `FederationSharingService::decodeRemoteUserPrincipal`; nextcloud/server
+/// and nextcloud/calendar, read 5 November 2026). None for what is no cloud
+/// id: a name and a server, no space, no slash.
+pub fn federated_principal(cloud_id: &str) -> Option<String> {
+    let cloud_id = cloud_id.trim();
+    let (user, server) = cloud_id.rsplit_once('@')?;
+    let fits = !user.is_empty() && !server.is_empty() && cloud_id.len() <= 255 && !cloud_id.chars().any(|c| c.is_whitespace() || c.is_control() || c == '/') && server.contains(['.', ':']);
+    fits.then(|| format!("principal:principals/remote-users/{}", sioul_core::lines::base64_encode(cloud_id.as_bytes())))
+}
+
+/// Google: a calendar's public free/busy (its ACL's `default` rule, role
+/// `freeBusyReader`: "See only free/busy (hide details)", Google Calendar
+/// help 37083) on or off; its public iCal address while on. A calendar
+/// already public with its details is never narrowed nor taken down here
+/// (`public_with_details`): that share is yours, made in Google.
+pub fn google_public_busy(api: &GoogleApi, id: &str, on: bool) -> Result<Option<String>, SyncError> {
+    let public = api.acl(id)?.into_iter().find(|rule| rule["scope"]["type"].as_str() == Some("default"));
+    let role = public.as_ref().and_then(|rule| rule["role"].as_str().map(str::to_string));
+    let link = format!("https://calendar.google.com/calendar/ical/{}/public/basic.ics", crate::google::encode(id));
+    match (on, role.as_deref()) {
+        (true, Some("freeBusyReader")) => Ok(Some(link)),
+        (true, Some(_)) => Err(SyncError::Server(format!("Google Calendar, public {id}:{PUBLIC_DETAILS}"))),
+        (true, None) => {
+            api.grant(id, "default", "", "freeBusyReader")?;
+            Ok(Some(link))
+        }
+        (false, Some("freeBusyReader")) => {
+            let rule = public.as_ref().and_then(|r| r["id"].as_str()).unwrap_or("default").to_string();
+            api.revoke(id, &rule)?;
+            Ok(None)
+        }
+        (false, _) => Ok(None),
+    }
+}
+
+const PUBLIC_DETAILS: &str = " public with its details already";
+
+/// A Google calendar's public iCal address, which a public calendar, or one
+/// public for its free/busy, serves (`google_public_busy`, `google_sharing`).
+pub fn google_public_ical(id: &str) -> String {
+    format!("https://calendar.google.com/calendar/ical/{}/public/basic.ics", crate::google::encode(id))
+}
+
+/// Refused because the calendar is public with its details already (`google_public_busy`).
+pub fn public_with_details(error: &SyncError) -> bool {
+    matches!(error, SyncError::Server(m) if m.starts_with("Google Calendar, public ") && m.ends_with(PUBLIC_DETAILS))
+}
+
+/// A server's answer to a PROPPATCH: every property set or removed
+/// (RFC 4918 §9.2: one 207, a propstat per status), else what it refused.
+fn proppatch(client: &Client, url: &str, update: &str) -> Result<(), SyncError> {
+    let body = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propertyupdate xmlns:d="{DAV}" xmlns:c="{CALDAV}">{update}</d:propertyupdate>"#);
+    let answer = client.send("PROPPATCH", url, &[("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
+    match answer.status {
+        200 | 204 => Ok(()),
+        207 => {
+            let doc = roxmltree::Document::parse(&answer.body).map_err(|e| SyncError::Server(format!("XML: {e}")))?;
+            let refused: Vec<String> = doc
+                .descendants()
+                .filter(|n| n.has_tag_name((DAV, "propstat")))
+                .filter_map(|propstat| propstat.children().find(|c| c.has_tag_name((DAV, "status"))).and_then(|s| s.text()))
+                .filter(|status| status.split_whitespace().nth(1).and_then(|c| c.parse::<u16>().ok()).is_none_or(|c| c / 100 != 2))
+                .map(|status| status.trim().to_string())
+                .collect();
+            if refused.is_empty() { Ok(()) } else { Err(SyncError::Server(format!("PROPPATCH {url}: {}", refused.join(", ")))) }
+        }
+        status => Err(SyncError::Server(format!("PROPPATCH {url}: {status}"))),
+    }
+}
+
+/// A calendar marked transparent, or opaque again (`schedule-calendar-transp`,
+/// RFC 6638 §9.1): transparent, none of its events counts as your busy time
+/// in the server's free/busy (sabre's `getFreeBusyForEmail` skips it), which
+/// is what a mirror of blocks and an agenda of someone else's availability
+/// should be (research/availability-sharing.md §5.3). Its events stay opaque
+/// for whoever reads them.
+pub fn set_transparent(client: &Client, url: &str, transparent: bool) -> Result<(), SyncError> {
+    let mark = if transparent { "<c:transparent/>" } else { "<c:opaque/>" };
+    proppatch(client, url, &format!("<d:set><d:prop><c:schedule-calendar-transp>{mark}</c:schedule-calendar-transp></d:prop></d:set>"))
+}
+
+/// A calendar's description (`calendar-description`, RFC 4791 §5.2.1): a
+/// mirror's "From Sioul. As of 5 November."; empty, taken out.
+pub fn set_description(client: &Client, url: &str, text: &str) -> Result<(), SyncError> {
+    let update = if text.trim().is_empty() { "<d:remove><d:prop><c:calendar-description/></d:prop></d:remove>".to_string() } else { format!("<d:set><d:prop><c:calendar-description>{}</c:calendar-description></d:prop></d:set>", xml_escape(text.trim())) };
+    proppatch(client, url, &update)
+}
+
+/// Your scheduling inbox (RFC 6638 §2.2): `schedule-inbox-URL` of your
+/// principal (`current-user-principal`, asked of `home`); else `inbox/`
+/// in your calendar home, where Nextcloud keeps it and its settings page
+/// writes your working hours (apps/dav, CalendarService.ts).
+pub fn schedule_inbox(client: &Client, home: &str) -> Result<String, SyncError> {
+    let ask = |url: &str, prop: &str| -> Result<Option<String>, SyncError> {
+        let body = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="{DAV}" xmlns:c="{CALDAV}"><d:prop>{prop}</d:prop></d:propfind>"#);
+        let answer = client.send("PROPFIND", url, &[("Depth", "0"), ("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
+        if answer.status != 207 {
+            return Ok(None);
+        }
+        let doc = roxmltree::Document::parse(&answer.body).map_err(|e| SyncError::Server(format!("XML: {e}")))?;
+        let name = if prop.contains("schedule-inbox-URL") { (CALDAV, "schedule-inbox-URL") } else { (DAV, "current-user-principal") };
+        Ok(doc.descendants().find(|n| n.has_tag_name(name)).and_then(|p| p.descendants().find(|c| c.has_tag_name((DAV, "href"))).and_then(|h| h.text())).map(|h| crate::dav::absolute(url, h.trim())))
+    };
+    if let Some(principal) = ask(home, "<d:current-user-principal/>")?
+        && let Some(inbox) = ask(&principal, "<c:schedule-inbox-URL/>")?
+    {
+        return Ok(inbox);
+    }
+    Ok(format!("{}/inbox/", home.trim_end_matches('/')))
+}
+
+/// Your working hours written on your inbox for the server's free/busy
+/// (`calendar-availability`, RFC 7953 §7.2.4; `availability::working_hours`),
+/// as Nextcloud's own settings page writes them; none taken out, never
+/// written empty, which RFC 7953 would read as never available.
+pub fn set_working_hours(client: &Client, inbox: &str, calendar: Option<&str>) -> Result<(), SyncError> {
+    let update = match calendar {
+        Some(text) if !text.trim().is_empty() => format!("<d:set><d:prop><c:calendar-availability>{}</c:calendar-availability></d:prop></d:set>", xml_escape(text)),
+        _ => "<d:remove><d:prop><c:calendar-availability/></d:prop></d:remove>".to_string(),
+    };
+    proppatch(client, inbox, &update)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -631,5 +761,90 @@ mod tests {
         let url = google_caldav_url("abc@group.calendar.google.com");
         assert_eq!(url, "https://apidata.googleusercontent.com/caldav/v2/abc%40group.calendar.google.com/events/");
         assert_eq!(google_id(&url).as_deref(), Some("abc@group.calendar.google.com"));
+    }
+
+    /// A Nextcloud's scheduling side, as RFC 6638 and Nextcloud's apps/dav
+    /// answer it: your principal, its inbox, and each PROPPATCH kept; one
+    /// calendar refuses its property (403 in its propstat).
+    #[derive(Default)]
+    struct Scheduling {
+        patches: Mutex<Vec<(String, String)>>,
+    }
+
+    impl Server for Scheduling {
+        fn misbehaves(&self, _: &Request) -> Option<crate::dav::stand_in::Fault> {
+            None
+        }
+
+        fn answer(&self, request: &Request) -> Reply {
+            let multistatus = |href: &str, prop: &str, status: &str| Reply::new(207, format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav"><d:response><d:href>{href}</d:href><d:propstat><d:prop>{prop}</d:prop><d:status>HTTP/1.1 {status}</d:status></d:propstat></d:response></d:multistatus>"#));
+            match (request.method.as_str(), request.path.as_str()) {
+                ("PROPFIND", "/remote.php/dav/calendars/alex/") if request.body.contains("current-user-principal") => multistatus(&request.path, "<d:current-user-principal><d:href>/remote.php/dav/principals/users/alex/</d:href></d:current-user-principal>", "200 OK"),
+                ("PROPFIND", "/remote.php/dav/principals/users/alex/") if request.body.contains("schedule-inbox-URL") => multistatus(&request.path, "<cal:schedule-inbox-URL><d:href>/remote.php/dav/calendars/alex/inbox/</d:href></cal:schedule-inbox-URL>", "200 OK"),
+                ("PROPPATCH", path) => {
+                    self.patches.lock().unwrap().push((path.to_string(), request.body.clone()));
+                    multistatus(path, "<cal:schedule-calendar-transp/>", if path.contains("refuses") { "403 Forbidden" } else { "200 OK" })
+                }
+                _ => Reply::new(405, ""),
+            }
+        }
+    }
+
+    /// Your availability's marks on a Nextcloud (design §1): the inbox found
+    /// through your principal, else beside your calendars; your working hours
+    /// written there and taken out, never written empty; a mirror marked
+    /// transparent and described, its text escaped; a refusal said. Someone on
+    /// another Nextcloud named as its federated sharing names them.
+    #[test]
+    fn availability_marks_calendars_and_writes_working_hours_on_a_nextcloud() {
+        let server = Arc::new(Scheduling::default());
+        let base = serve(server.clone());
+        let client = Client::new("alex", "secret");
+        let inbox = schedule_inbox(&client, &format!("{base}/remote.php/dav/calendars/alex/")).unwrap();
+        assert_eq!(inbox, format!("{base}/remote.php/dav/calendars/alex/inbox/"));
+        let plain = serve(Arc::new(Plain));
+        assert_eq!(schedule_inbox(&client, &format!("{plain}/cal/alex")).unwrap(), format!("{plain}/cal/alex/inbox/"), "no principal said: beside the calendars");
+        set_working_hours(&client, &inbox, Some("BEGIN:VCALENDAR\r\nX-NOTE:a&b<c\r\nEND:VCALENDAR\r\n")).unwrap();
+        set_working_hours(&client, &inbox, None).unwrap();
+        set_working_hours(&client, &inbox, Some("  ")).unwrap();
+        let mirror = format!("{base}/remote.php/dav/calendars/alex/busy-7f3c/");
+        set_transparent(&client, &mirror, true).unwrap();
+        set_description(&client, &mirror, "From Sioul. As of 5 November & after.").unwrap();
+        assert!(set_transparent(&client, &format!("{base}/remote.php/dav/calendars/alex/refuses/"), true).is_err(), "a refused property is said");
+        let patches = server.patches.lock().unwrap().clone();
+        assert_eq!(patches.len(), 6);
+        assert!(patches[0].1.contains("<d:set><d:prop><c:calendar-availability>BEGIN:VCALENDAR") && patches[0].1.contains("a&amp;b&lt;c"), "{}", patches[0].1);
+        for empty in [&patches[1].1, &patches[2].1] {
+            assert!(empty.contains("<d:remove><d:prop><c:calendar-availability/></d:prop></d:remove>"), "{empty}");
+        }
+        assert!(patches[3].1.contains("<c:schedule-calendar-transp><c:transparent/></c:schedule-calendar-transp>") && patches[3].1.contains("xmlns:c=\"urn:ietf:params:xml:ns:caldav\""));
+        assert!(patches[4].1.contains("<c:calendar-description>From Sioul. As of 5 November &amp; after.</c:calendar-description>"));
+        assert_eq!(federated_principal("sam@cloud.example.org").as_deref(), Some("principal:principals/remote-users/c2FtQGNsb3VkLmV4YW1wbGUub3Jn"));
+        for no in ["sam", "sam@", "@cloud.example.org", "sam @cloud.example.org", "sam@cloud/x.org", "sam@localhost"] {
+            assert_eq!(federated_principal(no), None, "{no}");
+        }
+    }
+
+    /// Google's public free/busy (design §1): on, the `default` rule
+    /// `freeBusyReader` and its iCal address, once however often asked; off,
+    /// taken out; a calendar already public with its details neither narrowed
+    /// nor taken down.
+    #[test]
+    fn google_s_public_free_busy_goes_on_and_off_and_never_touches_a_public_calendar() {
+        let google = Arc::new(Google::default());
+        let api = GoogleApi::at(&serve(google.clone()));
+        let id = api.insert("Personal").unwrap();
+        let link = google_public_busy(&api, &id, true).unwrap().unwrap();
+        assert!(link.ends_with("/public/basic.ics") && link.contains("c1%40group.calendar.google.com"), "{link}");
+        assert_eq!(google_public_busy(&api, &id, true).unwrap().as_deref(), Some(link.as_str()));
+        let rules = google.acl.lock().unwrap().clone();
+        assert_eq!((rules.len(), rules[0]["role"].as_str(), rules[0]["scope"]["type"].as_str()), (1, Some("freeBusyReader"), Some("default")), "once");
+        assert_eq!(google_public_busy(&api, &id, false).unwrap(), None);
+        assert!(google.acl.lock().unwrap().is_empty());
+        api.grant(&id, "default", "", "reader").unwrap();
+        let refused = google_public_busy(&api, &id, true).unwrap_err();
+        assert!(public_with_details(&refused), "{refused:?}");
+        assert_eq!(google_public_busy(&api, &id, false).unwrap(), None);
+        assert_eq!(google.acl.lock().unwrap()[0]["role"].as_str(), Some("reader"), "the public share made in Google stays");
     }
 }

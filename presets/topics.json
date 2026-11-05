@@ -1,0 +1,433 @@
+{
+  "version": 1,
+  "checked": "2026-11-05",
+  "about": "Topics Sioul offers to start sorting mail by (docs/topics.md, \"Topic presets\"): each by the site presets' categories and types (presets/sites.json), the sender domains beyond them, and mailing lists. Its rules hold only for a sender Sioul's checks prove. Edit freely: it needs no building. Check it with tools/check-topic-presets.py. A copy in ~/.local/share/sioul/presets/topics.json is used when its 'checked' date is newer than the one built in. A domain of the site presets is matched through its site's category, never listed again here; each domain here has a source; no domain is in two topics. The earlier a topic in this list, the surer it is taken when a site has several categories.",
+  "topics": [
+    {
+      "id": "bank",
+      "name": {
+        "en": "Bank",
+        "fr": "Banque",
+        "de": "Bank",
+        "es": "Banco",
+        "it": "Banca"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "site_tags": [
+          "bank"
+        ],
+        "domains": [
+          {
+            "domain": "paypal.com",
+            "source": "https://www.paypal.com/"
+          },
+          {
+            "domain": "paypal.fr",
+            "source": "https://www.paypal.fr/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "taxes",
+      "name": {
+        "en": "Taxes",
+        "fr": "Impôts",
+        "de": "Steuern",
+        "es": "Impuestos",
+        "it": "Tasse"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "site_tags": [
+          "tax"
+        ]
+      }
+    },
+    {
+      "id": "health",
+      "name": {
+        "en": "Health",
+        "fr": "Santé",
+        "de": "Gesundheit",
+        "es": "Salud",
+        "it": "Salute"
+      },
+      "area": "admin",
+      "agents": false,
+      "rules": {
+        "site_tags": [
+          "health"
+        ],
+        "domains": [
+          {
+            "domain": "doctolib.fr",
+            "source": "https://www.doctolib.fr/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "insurance",
+      "name": {
+        "en": "Insurance",
+        "fr": "Assurances",
+        "de": "Versicherungen",
+        "es": "Seguros",
+        "it": "Assicurazioni"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "domains": [
+          {
+            "domain": "maif.fr",
+            "source": "https://www.maif.fr/"
+          },
+          {
+            "domain": "macif.fr",
+            "source": "https://www.macif.fr/"
+          },
+          {
+            "domain": "matmut.fr",
+            "source": "https://www.matmut.fr/"
+          },
+          {
+            "domain": "maaf.fr",
+            "source": "https://www.maaf.fr/"
+          },
+          {
+            "domain": "gmf.fr",
+            "source": "https://www.gmf.fr/"
+          },
+          {
+            "domain": "axa.fr",
+            "source": "https://www.axa.fr/"
+          },
+          {
+            "domain": "allianz.fr",
+            "source": "https://www.allianz.fr/"
+          },
+          {
+            "domain": "groupama.fr",
+            "source": "https://www.groupama.fr/"
+          },
+          {
+            "domain": "generali.fr",
+            "source": "https://www.generali.fr/"
+          },
+          {
+            "domain": "mma.fr",
+            "source": "https://www.mma.fr/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "housing",
+      "name": {
+        "en": "Housing",
+        "fr": "Logement",
+        "de": "Wohnen",
+        "es": "Vivienda",
+        "it": "Casa"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "site_tags": [
+          "energy"
+        ],
+        "domains": [
+          {
+            "domain": "veolia.fr",
+            "source": "https://www.veolia.fr/"
+          },
+          {
+            "domain": "saur.fr",
+            "source": "https://www.saur.fr/"
+          },
+          {
+            "domain": "toutsurmoneau.fr",
+            "source": "https://www.toutsurmoneau.fr/"
+          },
+          {
+            "domain": "foncia.com",
+            "source": "https://www.foncia.com/"
+          },
+          {
+            "domain": "nexity.fr",
+            "source": "https://www.nexity.fr/"
+          },
+          {
+            "domain": "citya.com",
+            "source": "https://www.citya.com/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "phone-internet",
+      "name": {
+        "en": "Phone and internet",
+        "fr": "Téléphone et internet",
+        "de": "Telefon und Internet",
+        "es": "Teléfono e internet",
+        "it": "Telefono e internet"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "site_tags": [
+          "telecom"
+        ]
+      }
+    },
+    {
+      "id": "school",
+      "name": {
+        "en": "School and childcare",
+        "fr": "École et garde d’enfants",
+        "de": "Schule und Kinderbetreuung",
+        "es": "Escuela y guardería",
+        "it": "Scuola e infanzia"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "site_tags": [
+          "studies"
+        ],
+        "domains": [
+          {
+            "domain": "ecoledirecte.com",
+            "source": "https://www.ecoledirecte.com/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "administration",
+      "name": {
+        "en": "Administration",
+        "fr": "Démarches",
+        "de": "Behörden",
+        "es": "Trámites",
+        "it": "Pratiche"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "site_tags": [
+          "family",
+          "jobs",
+          "retirement",
+          "identity",
+          "admin"
+        ]
+      }
+    },
+    {
+      "id": "orders",
+      "name": {
+        "en": "Orders and deliveries",
+        "fr": "Commandes et livraisons",
+        "de": "Bestellungen und Lieferungen",
+        "es": "Pedidos y envíos",
+        "it": "Ordini e consegne"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "domains": [
+          {
+            "domain": "amazon.fr",
+            "source": "https://www.amazon.fr/"
+          },
+          {
+            "domain": "amazon.com",
+            "source": "https://www.amazon.com/"
+          },
+          {
+            "domain": "cdiscount.com",
+            "source": "https://www.cdiscount.com/"
+          },
+          {
+            "domain": "fnac.com",
+            "source": "https://www.fnac.com/"
+          },
+          {
+            "domain": "darty.com",
+            "source": "https://www.darty.com/"
+          },
+          {
+            "domain": "leboncoin.fr",
+            "source": "https://www.leboncoin.fr/"
+          },
+          {
+            "domain": "vinted.fr",
+            "source": "https://www.vinted.fr/"
+          },
+          {
+            "domain": "laposte.fr",
+            "source": "https://www.laposte.fr/"
+          },
+          {
+            "domain": "colissimo.fr",
+            "source": "https://www.colissimo.fr/"
+          },
+          {
+            "domain": "chronopost.fr",
+            "source": "https://www.chronopost.fr/"
+          },
+          {
+            "domain": "mondialrelay.fr",
+            "source": "https://www.mondialrelay.fr/"
+          },
+          {
+            "domain": "dpd.fr",
+            "source": "https://www.dpd.fr/"
+          },
+          {
+            "domain": "ups.com",
+            "source": "https://www.ups.com/"
+          },
+          {
+            "domain": "dhl.com",
+            "source": "https://www.dhl.com/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "travel",
+      "name": {
+        "en": "Travel and transport",
+        "fr": "Voyages et transports",
+        "de": "Reisen und Verkehr",
+        "es": "Viajes y transporte",
+        "it": "Viaggi e trasporti"
+      },
+      "area": "leisure",
+      "agents": true,
+      "rules": {
+        "domains": [
+          {
+            "domain": "sncf-connect.com",
+            "source": "https://www.sncf-connect.com/"
+          },
+          {
+            "domain": "ouigo.com",
+            "source": "https://www.ouigo.com/"
+          },
+          {
+            "domain": "airfrance.fr",
+            "source": "https://www.airfrance.fr/"
+          },
+          {
+            "domain": "ratp.fr",
+            "source": "https://www.ratp.fr/"
+          },
+          {
+            "domain": "blablacar.fr",
+            "source": "https://www.blablacar.fr/"
+          },
+          {
+            "domain": "booking.com",
+            "source": "https://www.booking.com/"
+          },
+          {
+            "domain": "airbnb.fr",
+            "source": "https://www.airbnb.fr/"
+          },
+          {
+            "domain": "easyjet.com",
+            "source": "https://www.easyjet.com/"
+          },
+          {
+            "domain": "ryanair.com",
+            "source": "https://www.ryanair.com/"
+          },
+          {
+            "domain": "flixbus.fr",
+            "source": "https://www.flixbus.fr/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "online",
+      "name": {
+        "en": "Online services",
+        "fr": "Services en ligne",
+        "de": "Online-Dienste",
+        "es": "Servicios en línea",
+        "it": "Servizi online"
+      },
+      "area": "admin",
+      "agents": true,
+      "rules": {
+        "site_types": [
+          "chat",
+          "video"
+        ],
+        "domains": [
+          {
+            "domain": "dropbox.com",
+            "source": "https://www.dropbox.com/"
+          },
+          {
+            "domain": "github.com",
+            "source": "https://github.com/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "social",
+      "name": {
+        "en": "Social networks",
+        "fr": "Réseaux sociaux",
+        "de": "Soziale Netzwerke",
+        "es": "Redes sociales",
+        "it": "Social network"
+      },
+      "area": "leisure",
+      "agents": true,
+      "rules": {
+        "site_types": [
+          "social"
+        ],
+        "domains": [
+          {
+            "domain": "twitter.com",
+            "source": "https://twitter.com/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "newsletters",
+      "name": {
+        "en": "Newsletters",
+        "fr": "Lettres d’information",
+        "de": "Newsletter",
+        "es": "Boletines",
+        "it": "Newsletter"
+      },
+      "area": "leisure",
+      "agents": true,
+      "rules": {
+        "lists": [
+          {
+            "pattern": "*",
+            "source": "https://www.rfc-editor.org/rfc/rfc2919"
+          }
+        ]
+      }
+    }
+  ]
+}

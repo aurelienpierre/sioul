@@ -265,6 +265,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for summary in &report.moved_out {
                 tell(qt, shared, say("dav-moved-out", &[("summary", summary.clone())]));
             }
+            // Events came or went: your availabilities' mirrors kept from this fresher view (design-availability-sharing §3).
+            if report.received + report.removed > 0 {
+                crate::servers::availability_upkeep(qt, shared);
+            }
             changed || report.rewritten > 0 || !report.moved_out.is_empty()
         }
         Err(_) => {

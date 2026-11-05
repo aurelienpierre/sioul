@@ -18,7 +18,8 @@
 // agenda…" makes one with its role; yours are renamed, recoloured and
 // removed (asked in one sentence, a dated copy first), someone else's
 // stopped showing; each says who sees it, shared with a person or by a link
-// where its server shares; then "Share my availability…".
+// where its server shares. Your availability is its own block, below
+// (AvailabilitySetup.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -37,7 +38,6 @@ ColumnLayout {
     // area, reaches, access, server_read_only, for_work, said}], pairs}.
     property var view: ({ agendas: [], pairs: [], children: { kinds: [], yours: [], follow_ups: true, any: false } })
     property string viewText: ""
-    property string availabilityText: ""
     property string problem: ""
     // The agendas opened, by place, while the panel lives.
     property var opened: ({})
@@ -46,11 +46,12 @@ ColumnLayout {
     // The removal asked of an agenda: its place, and what it would do (`agendaRemoval`).
     property string removing: ""
     property var removal: ({})
-    // "New agenda…" open; "Share my availability…" open, and what it is now.
+    // "New agenda…" open.
     property bool making: false
-    property bool sharingAvailability: false
-    property var availability: ({ current: null, line: "", agendas: [], accounts: [] })
     readonly property var colours: ["#4c6b5c", "#3f6f8f", "#7a5c99", "#b07d3f", "#a3504f", "#5f7f3a", "#5b6470", "#c06c8d"]
+
+    // A calendar of busy blocks pressed: Agenda ⚙ ▸ Your availability, where it is kept, shown.
+    signal availabilityAsked
 
     readonly property var whoseChoices: ["yours", "child", "parent", "partner", "shared"]
     readonly property var areas: ["work", "admin", "leisure"]
@@ -107,24 +108,6 @@ ColumnLayout {
             setup.sioul.readAgendaSharing(id)
     }
 
-    // `kept` as for `read`.
-    function readAvailability(kept) {
-        const text = setup.sioul.availability() || "{}"
-        if (kept === true && text === setup.availabilityText)
-            return
-        setup.availabilityText = text
-        try {
-            setup.availability = JSON.parse(text)
-        } catch (e) {
-            setup.availability = { current: null, line: "", agendas: [], accounts: [] }
-        }
-        // Shared by a link: the link, as its server gives it (`agendaShared` of its calendar).
-        const current = setup.availability.current || null
-        const place = setup.availability.place || ""
-        if (current !== null && current.link === true && current.shared === true && place !== "" && !setup.sharing[place])
-            setup.sioul.readAgendaSharing(place)
-    }
-
     // The removal asked first, in one sentence; done on the second press.
     function askRemoval(id) {
         setup.removal = JSON.parse(setup.sioul.agendaRemoval(id) || "{}")
@@ -143,7 +126,6 @@ ColumnLayout {
         // the agendas and their choosers read again.
         function onAgendasChanged() {
             setup.read(true)
-            setup.readAvailability(true)
         }
 
         function onPersonsChanged() {
@@ -151,10 +133,8 @@ ColumnLayout {
         }
 
         function onAgendaShared(id, answer) {
-            if (id === "availability") {
-                setup.readAvailability()
+            if (id === "availability")
                 return
-            }
             const next = Object.assign({}, setup.sharing)
             next[id] = JSON.parse(answer || "{}")
             setup.sharing = next
@@ -168,10 +148,7 @@ ColumnLayout {
 
     objectName: "agendasSetup"
     spacing: 4
-    Component.onCompleted: {
-        setup.read()
-        setup.readAvailability()
-    }
+    Component.onCompleted: setup.read()
 
     Label {
         visible: setup.about !== ""
@@ -368,9 +345,13 @@ ColumnLayout {
                 spacing: 6
 
                 ToolButton {
-                    text: one.open ? "▾" : "▸"
-                    Accessible.name: setup.sioul.textWith(one.open ? "agendas-fold" : "agendas-unfold", "group", one.modelData.name)
-                    onClicked: setup.toggle(one.modelData.id)
+                    // A calendar of busy blocks Sioul keeps: nothing of its own to choose; it opens Your availability.
+                    readonly property bool mirror: one.modelData.mirror === true
+
+                    objectName: "agendaFold"
+                    text: mirror ? "→" : one.open ? "▾" : "▸"
+                    Accessible.name: mirror ? setup.sioul.text("agenda-mirror-open") : setup.sioul.textWith(one.open ? "agendas-fold" : "agendas-unfold", "group", one.modelData.name)
+                    onClicked: mirror ? setup.availabilityAsked() : setup.toggle(one.modelData.id)
                 }
                 Rectangle {
                     Layout.preferredWidth: 10
@@ -381,13 +362,16 @@ ColumnLayout {
                 Label {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 0
-                    text: one.modelData.name + " · " + setup.sioul.text("agenda-whose-" + one.modelData.whose) + (one.modelData.person !== "" ? " (" + one.modelData.person + ")" : "") + (one.modelData.kept_hidden === true ? " · " + setup.sioul.text("agendas-kept-hidden") : "")
+                    objectName: "agendaLineLabel"
+                    text: one.modelData.mirror === true
+                        ? one.modelData.name + " · " + (one.modelData.kept_for ? setup.sioul.textWith("agenda-mirror-kept-for", "name", one.modelData.kept_for) : setup.sioul.text("agenda-mirror-kept"))
+                        : one.modelData.name + " · " + setup.sioul.text("agenda-whose-" + one.modelData.whose) + (one.modelData.person !== "" ? " (" + one.modelData.person + ")" : "") + (one.modelData.kept_hidden === true ? " · " + setup.sioul.text("agendas-kept-hidden") : "")
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: setup.theme.text
 
                     TapHandler {
-                        onTapped: setup.toggle(one.modelData.id)
+                        onTapped: one.modelData.mirror === true ? setup.availabilityAsked() : setup.toggle(one.modelData.id)
                     }
                 }
             }
@@ -885,148 +869,6 @@ ColumnLayout {
             onToggled: {
                 setup.problem = setup.sioul.setFollowUps(checked)
                 setup.read()
-            }
-        }
-    }
-
-    // Your availability (part 5): your busy times shared with one person, never what fills them.
-    ColumnLayout {
-        id: busy
-
-        readonly property var current: setup.availability.current || null
-        readonly property var account: (setup.availability.accounts || [])[busyAccount.currentIndex] || null
-        // Shared by a link: the link its server gave, once read.
-        readonly property string link: {
-            const place = setup.availability.place || ""
-            const read = place !== "" ? setup.sharing[place] || null : null
-            return busy.current !== null && busy.current.link === true && read !== null ? read.link || "" : ""
-        }
-        property var picked: ({})
-        property var words: ({})
-
-        visible: (setup.availability.accounts || []).length > 0
-        Layout.fillWidth: true
-        Layout.topMargin: 8
-        spacing: 4
-
-        Label {
-            text: setup.sioul.text("availability-title")
-            font.bold: true
-            color: setup.theme.text
-        }
-        Label {
-            objectName: "availabilityLine"
-            visible: busy.current !== null
-            Layout.fillWidth: true
-            text: setup.availability.line || ""
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            color: setup.theme.text
-        }
-        LinkLine {
-            objectName: "availabilityLink"
-            visible: busy.link !== ""
-            Layout.fillWidth: true
-            sioul: setup.sioul
-            theme: setup.theme
-            link: busy.link
-        }
-        Button {
-            objectName: "availabilityStop"
-            visible: busy.current !== null
-            text: setup.sioul.text("availability-stop")
-            onClicked: {
-                setup.problem = setup.sioul.stopAvailability()
-                setup.readAvailability()
-            }
-        }
-        Button {
-            objectName: "availabilityOpen"
-            visible: busy.current === null && !setup.sharingAvailability
-            text: setup.sioul.text("availability-title")
-            onClicked: setup.sharingAvailability = true
-        }
-        ColumnLayout {
-            visible: busy.current === null && setup.sharingAvailability
-            Layout.fillWidth: true
-            spacing: 4
-
-            PlainComboBox {
-                id: busyAccount
-
-                Layout.fillWidth: true
-                model: (setup.availability.accounts || []).map(a => setup.theme.plain(a.name))
-                Accessible.name: setup.sioul.text("availability-from")
-            }
-            Repeater {
-                model: (setup.availability.agendas || []).filter(a => !busy.account || !busy.account.google || a.account === busy.account.id)
-
-                delegate: RowLayout {
-                    id: source
-
-                    required property var modelData
-
-                    Layout.fillWidth: true
-                    spacing: 6
-
-                    CheckBox {
-                        objectName: "availabilityAgenda"
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 0
-                        text: setup.theme.plain(source.modelData.name)
-                        onToggled: {
-                            const next = Object.assign({}, busy.picked)
-                            next[source.modelData.id] = checked
-                            busy.picked = next
-                        }
-                    }
-                    TextField {
-                        visible: busy.picked[source.modelData.id] === true && !(busy.account && busy.account.google)
-                        Layout.preferredWidth: 140
-                        placeholderText: setup.sioul.text("availability-word")
-                        Accessible.name: placeholderText
-                        onTextEdited: {
-                            const next = Object.assign({}, busy.words)
-                            next[source.modelData.id] = text
-                            busy.words = next
-                        }
-                    }
-                }
-            }
-            TextField {
-                id: busyWith
-
-                objectName: "availabilityWith"
-                Layout.fillWidth: true
-                placeholderText: setup.sioul.text("availability-with")
-                Accessible.name: placeholderText
-            }
-            CheckBox {
-                id: busyLink
-
-                visible: !(busy.account && busy.account.google)
-                text: setup.sioul.text("availability-link")
-            }
-            RowLayout {
-                spacing: 8
-
-                Button {
-                    objectName: "availabilityShare"
-                    text: setup.sioul.text("availability-share")
-                    onClicked: {
-                        const agendas = Object.keys(busy.picked).filter(k => busy.picked[k])
-                        setup.problem = setup.sioul.shareAvailability(JSON.stringify({ account: busy.account ? busy.account.id : "", agendas: agendas, with: busyWith.text.trim(), link: busyLink.visible && busyLink.checked, words: busy.words }))
-                        if (setup.problem === "") {
-                            setup.sharingAvailability = false
-                            setup.readAvailability()
-                        }
-                    }
-                }
-                Button {
-                    flat: true
-                    text: setup.sioul.text("agenda-keep")
-                    onClicked: setup.sharingAvailability = false
-                }
             }
         }
     }

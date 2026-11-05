@@ -39,9 +39,6 @@ Item {
         property bool clipboard: true
         // How often each view was read.
         property int setupReads: 0
-        property int availabilityReads: 0
-        // Your availability as Agenda ⚙ reads it.
-        property var shownAvailability: ({ current: null, line: "", place: "", agendas: [], accounts: [] })
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
@@ -54,7 +51,6 @@ Item {
                 view.agendas[0].person = mock.firstPerson
             return JSON.stringify(view)
         }
-        function availability() { mock.availabilityReads++; return JSON.stringify(mock.shownAvailability) }
         function copyText(text) { mock.copied = mock.copied.concat([text]); return mock.clipboard }
         function setAgendaField(id, field, value) { return "" }
         function readAgendaSharing(id) { mock.asked = mock.asked.concat([id]) }
@@ -78,7 +74,8 @@ Item {
         agendas: [
             Object.assign({}, root.row, { id: "cloud/swimming", name: "Swimming", place: "cloud.example.org", server: { server: "caldav", server_name: "cloud.example.org", own: true } }),
             Object.assign({}, root.row, { id: "cloud/sam", name: "Sam’s week", place: "cloud.example.org", whose: "shared", person: "Sam", access: "read", server_read_only: true, server: { server: "caldav", server_name: "cloud.example.org", own: false } }),
-            Object.assign({}, root.row, { id: "local/notes", name: "Here", place: "", server: { server: "local", server_name: "this computer", own: true } })
+            Object.assign({}, root.row, { id: "local/notes", name: "Here", place: "", server: { server: "local", server_name: "this computer", own: true } }),
+            Object.assign({}, root.row, { id: "cloud/busy-sam", name: "Alex, busy times", place: "cloud.example.org", mirror: true, kept_for: "For Sam", server: { server: "caldav", server_name: "cloud.example.org", own: true } })
         ],
         pairs: [],
         children: { kinds: [], yours: [], follow_ups: true, any: false },
@@ -122,7 +119,6 @@ Item {
             mock.copied = []
             mock.clipboard = true
             mock.firstPerson = ""
-            mock.shownAvailability = { current: null, line: "", place: "", agendas: [], accounts: [] }
         }
 
         function make() {
@@ -259,24 +255,18 @@ Item {
             compare(field.selectedText, link, "selected, to copy by hand")
         }
 
-        // Your availability by a link: the link its server gave, read when
-        // Agenda ⚙ shows it shared, then copied as any link.
-        function test_your_availability_s_link_shown_and_copied() {
-            mock.shownAvailability = { current: { account: "cloud", agendas: ["cloud/swimming"], with: "", link: true, calendar: "busy", shared: true }, line: "availability-shared:availability-by-link", place: "cloud/busy", agendas: [], accounts: [{ id: "cloud", name: "you@cloud.example.org", google: false }] }
+        // A calendar of busy blocks Sioul keeps: said kept for its
+        // availability, nothing of its own to choose; pressed, Your availability.
+        function test_a_mirror_says_what_it_is_kept_for_and_opens_your_availability() {
             const setup = make()
-            compare(mock.asked, ["cloud/busy"], "its link asked of its server")
-            const shown = root.named(setup, "availabilityLink")[0]
-            verify(!shown.visible, "nothing before the server answers")
-            const link = "https://cloud.example.org/remote.php/dav/public-calendars/busy?export"
-            mock.agendaShared("cloud/busy", JSON.stringify({ line: "agenda-sharing-link", sharer: "nextcloud", people: [], link: link, links: true, note: "", said: "", problem: "" }))
-            wait(30)
-            verify(shown.visible)
-            compare(root.named(shown, "linkField")[0].text, link)
-            mouseClick(root.named(shown, "linkCopy")[0])
-            compare(mock.copied, [link])
-            // Read again when the agendas change: the server not asked twice.
-            mock.agendasChanged()
-            compare(mock.asked, ["cloud/busy"])
+            const mirror = line(setup, 3)
+            compare(root.named(mirror, "agendaLineLabel")[0].text, "Alex, busy times · agenda-mirror-kept-for:For Sam")
+            let asked = 0
+            setup.availabilityAsked.connect(() => asked++)
+            mouseClick(root.named(mirror, "agendaFold")[0])
+            compare(asked, 1)
+            verify(!setup.opened["cloud/busy-sam"], "never opened: no role to choose")
+            compare(mock.asked, [], "no server asked")
         }
 
         // An agenda or a person changed elsewhere (its role's person made, a

@@ -30,6 +30,8 @@ ColumnLayout {
     // `shown`: the value the row showed, what its change is set over the files
     // from (`changeSetting`), so that what another device added meanwhile stays.
     signal save(string key, var value, var shown)
+    // Another row of the panel asked for (a calendar of busy blocks opens Your availability).
+    signal goTo(string key)
 
     // Whether two values are the same, compared as JSON.
     function same(a, b) {
@@ -281,6 +283,21 @@ ColumnLayout {
         }
     }
 
+    // Mail's topics (TopicsSettings.qml): the list, their seeds and rules, the groups Sioul noticed.
+    Loader {
+        active: field.setting.kind === "topics"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            TopicsSettings {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+
     // The agendas (AgendasSetup.qml) and the matrix of conflicts (ConflictMatrix.qml), Agenda ⚙'s
     // own blocks (several agendas); their sentence said first there, once.
     Loader {
@@ -290,6 +307,21 @@ ColumnLayout {
 
         sourceComponent: Component {
             AgendasSetup {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+                onAvailabilityAsked: field.goTo("availability")
+            }
+        }
+    }
+    // Your availability (AvailabilitySetup.qml), below your agendas: its sentence said first there, once.
+    Loader {
+        active: field.setting.kind === "availability"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            AvailabilitySetup {
                 sioul: field.sioul
                 theme: field.theme
                 about: field.setting.help
@@ -1248,7 +1280,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "conflicts"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

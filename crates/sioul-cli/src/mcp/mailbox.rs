@@ -126,6 +126,8 @@ pub fn mailbox(s: &Session, args: &Args) -> Result<Answer, String> {
         fresh: false,
         // The window's filter is the window's: agents keep their own consent rules.
         filter: None,
+        // Topics reach agents with their consent, per topic (docs/topics.md): not yet.
+        topic: String::new(),
     };
     let mut page = mailbox::page_with(&addresses, &world, &ask, &BTreeSet::new(), &s.tr, stamp, &sioul_core::zone::current(), mailbox::STEP_FILL, &|uri| !consent.allows(uri));
     let mut rows = std::mem::take(&mut page.rows);
@@ -225,7 +227,7 @@ pub(super) fn spam_addresses(s: &Session) -> BTreeSet<String> {
     let (_, _, mode, _, _, _) = super::records::moment_read(s);
     let addresses = mailbox::addresses(&s.config, &mode, &now, &s.tr, sioul_sync::mailbox::folders);
     let world = mailbox::World::load(&s.config, sioul_core::attention::Now::of(&mode));
-    let ask = Ask { chip: Chip::Spam, account: String::new(), windows: u32::MAX, query: String::new(), shown_resting: addresses.iter().map(|a| a.account.id.clone()).collect(), rows: usize::MAX, fresh: false, filter: None };
+    let ask = Ask { chip: Chip::Spam, account: String::new(), windows: u32::MAX, query: String::new(), shown_resting: addresses.iter().map(|a| a.account.id.clone()).collect(), rows: usize::MAX, fresh: false, filter: None, topic: String::new() };
     mailbox::page(&addresses, &world, &ask, &BTreeSet::new(), &s.tr, now.timestamp().as_second(), &sioul_core::zone::current(), mailbox::STEP_FILL).rows.into_iter().map(|r| r.uri).collect()
 }
 

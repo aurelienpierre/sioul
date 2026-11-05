@@ -4026,6 +4026,72 @@ availability-already = Vos disponibilités sont déjà partagées : arrêtez d
 availability-pick = Choisissez les agendas d’où viennent vos heures prises.
 availability-google-own = Choisissez des agendas de ce compte Google : Google partage les heures prises de ses propres agendas.
 availability-stopped = Vos heures prises ne sont plus partagées.
+availability-name-for = Pour { $who }
+availability-name-link = Par lien
+availability-not-known = Pas encore connu
+availability-mirror-description = De Sioul. Au { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month }.
+availability-way-mirror-share = { $who } est aussi sur { $server } : un agenda de vos heures prises, partagé avec { $who } seulement.
+availability-way-google-freebusy = { $who } voit vos heures prises dans Google Agenda, tirées de vos agendas mêmes : Google les tient à jour, sans vos marges.
+availability-way-google-mirror = Un agenda de vos heures prises dans votre compte Google, partagé avec { $who } seulement, pour ses heures prises.
+availability-way-mirror-federated = { $who } est sur un autre Nextcloud : un agenda de vos heures prises sur { $server }, partagé avec { $who } seulement.
+availability-way-mirror-link-person = Un agenda de vos heures prises sur { $server }, avec un lien à donner à { $who }.
+availability-way-mirror-group = Un agenda de vos heures prises sur { $server }, partagé avec le groupe { $who }.
+availability-way-google-public = Les heures prises de votre agenda, publiques sur Google : qui a le lien voit leurs heures exactes, sans vos marges.
+availability-way-fastmail-link = Le lien d’heures prises de Fastmail même : activez-le dans Fastmail pour cet agenda, puis collez son lien ici.
+availability-way-mirror-link = Un agenda de vos heures prises sur { $server }, que lit toute personne qui a son lien.
+availability-way-google-schedule = Le planning de rendez-vous de Google : il ne propose que les heures que vos agendas laissent libres.
+availability-way-appointments = Votre page de rendez-vous sur { $server } : elle ne propose que les heures que vos agendas laissent libres.
+availability-way-mirror-link-booking = Un agenda de vos heures prises sur { $server }, que l’outil de réservation lit par son lien ; rien n’est proposé au-delà.
+availability-way-none = Ce serveur ne sait pas partager des heures prises.
+availability-way-no-group = Seul un Nextcloud partage avec un groupe.
+availability-mirror-name = { $name }, heures prises
+availability-mirror-missing = Cette disponibilité n’a pas encore d’agenda d’heures prises dans ce compte.
+availability-mirror-not-yet = Son agenda d’heures prises n’est pas encore sur son serveur : il sera partagé dès qu’il y sera.
+availability-google-public-already = Cet agenda est déjà public sur Google avec ses détails : Sioul le laisse tel quel.
+availability-moved = Vos disponibilités pour { $who } sont maintenant dans Agenda ⚙ ▸ Vos disponibilités. Vous pouvez les partager autrement depuis là.
+availability-stale = Vos heures prises pour { $who } ont été mises à jour pour la dernière fois { $when }. Ouvrez Sioul sur un appareil pour les mettre à jour.
+availability-device-phone = le téléphone
+availability-device-computer = l’ordinateur
+availability-today-at = à { $time }
+availability-yesterday-at = hier à { $time }
+availability-kept-by-server = Votre serveur le tient à jour.
+availability-kept-by-devices = Vos appareils le tiennent à jour : le téléphone en arrière-plan, un ordinateur tant que Sioul tourne.
+availability-kept-while-open = Tenu à jour tant que Sioul est ouvert sur l’un de vos appareils.
+availability-kept-last = Mis à jour pour la dernière fois { $when }, sur { $device }.
+availability-share-waiting = Partagé avec { $who } dès que son agenda sera sur { $server }.
+availability-share-google = { $who } voit ces heures prises sur Google, sans vos marges.
+availability-share-google-public = Qui a le lien voit ces heures prises sur Google, sans vos marges.
+availability-share-group = Le groupe { $who }, sur { $server }, voit ces heures prises.
+availability-share-person = { $who }, sur { $server }, voit ces heures prises.
+availability-share-booking-tool = Un outil de réservation lit ces heures prises par leur lien.
+availability-share-link = Qui a le lien voit les { $days } prochains jours.
+availability-share-fastmail = Le lien d’heures prises de Fastmail même.
+availability-share-appointments = Votre page de rendez-vous sur { $server }.
+availability-share-google-schedule = Votre planning de rendez-vous sur Google.
+availability-share-newer = Partagé par un Sioul plus récent, d’une façon que celui-ci ne connaît pas.
+availability-server-sees = Les personnes qui ont un compte sur { $server } voient vos heures prises quand elles vous invitent.
+availability-stopped-for = Vos heures prises ne sont plus partagées avec { $who }.
+availability-needs-name = Une disponibilité a besoin d’un nom.
+availability-hours = Envoyer mes heures de travail à { $server }
+availability-hours-proposed = Ses agendas sont pour le travail : ses utilisateurs voient quand vous travaillez.
+availability-share-with = Partager avec…
+availability-audience-person = Une personne
+availability-audience-group = Un groupe
+availability-audience-link = Toute personne qui a un lien
+availability-audience-booking = Un outil de réservation
+availability-who-person = Un nom d’utilisateur, utilisateur@serveur ou une adresse
+availability-who-group = Le nom du groupe sur son serveur
+availability-another-way = Une autre façon
+availability-booking-direct = Un outil de réservation peut aussi lire vos agendas sur leur serveur lui-même (cal.com par CalDAV, Calendly par Google) : rien à partager d’ici.
+agenda-mirror-kept-for = tenu pour « { $name } »
+agenda-mirror-kept = tenu pour vos disponibilités
+agenda-mirror-open = Ouvrir Vos disponibilités
+availability-paste-link = Collez son lien ici
+availability-new = Nouvelles disponibilités…
+availability-name = Son nom, visible de vous uniquement
 # Événements des enfants (plusieurs agendas, partie 3) : qui s’en charge, les doublures, les invitations.
 holder-title = Qui s’en charge
 holder-kind = Type
@@ -6911,6 +6977,8 @@ set-agenda-calendar-help = L’agenda où va un nouvel événement ; l’édit
 set-agenda-calendar-first = Le premier agenda qui prend des événements
 set-agendas = Vos agendas
 set-agendas-help = Ce qu’est chacun : à qui, pour quoi, quand il vous atteint, ce que vous pouvez en faire. Sioul l’a deviné de ce qu’il voyait ; ouvrez-en un pour dire autrement.
+set-availability = Vos disponibilités
+set-availability-help = Ce que vous donnez de votre temps, et à qui.
 set-conflicts = Conflits
 set-conflicts-help = Un conflit, c’est vous à deux endroits : les événements de vos agendas, les invitations acceptées, les événements des enfants que vous prenez. Une paire cochée compare tous ses événements, quel que soit qui ils demandent ; une des vôtres décochée, aucun.
 event-calendar-in = Dans { $name }
@@ -7286,3 +7354,152 @@ paper-family-legal = Procurations et mesures
 paper-renew-legal = Un réexamen ou une nouvelle demande doit être fait avant la fin, sans quoi elle tombe.
 paper-steps-procuration = Demander à la personne qui l’a donnée si elle se poursuit, et une nouvelle si oui.
 paper-steps-protection = Demander au juge des contentieux de la protection un réexamen avant la fin : sans lui, la mesure tombe.
+
+## sioul topics : les thèmes du courrier mesurés sur cet ordinateur (crates/sioul-cli/src/topics.rs, docs/topics.md)
+topics-eval-start = Chaque façon est apprise puis testée, tour à tour : cela prend un moment.
+topics-error = Les thèmes n’ont pas pu être mesurés : { $detail }
+topics-reading = { $messages } courriels gardés ici, chacun une fois, de { $folders } dossiers ({ $files } fichiers) ; { $yours } d’entre eux à vous (dans Envoyés, ou de vos adresses).
+topics-reading-left = Laissés de côté : { $folders } dossiers d’indésirables, de corbeille et de brouillons, { $spam } courriels que le filtre dit indésirables, { $forged } falsifiés.
+topics-reading-seeds = Les amorces nomment : dossiers { $folders } courriels ({ $folders_yours } à vous), catégories de vos contacts { $categories } ({ $categories_yours } à vous).
+topics-read = { $named } de ces courriels sont dans un thème proposé, { $yours } d’entre eux à vous.
+topics-none = Aucun thème à proposer pour l’instant : aucun dossier, projet ou catégorie ne tient assez de courrier.
+topics-proposed = Thèmes proposés ({ $n }) :
+topics-beyond = Au-delà des douze ({ $n }) :
+topics-waiting = En attente de plus de courrier ({ $n }) :
+topics-topic = { $name } ({ $id }) : { $count ->
+    [one] un courriel
+   *[other] { $count } courriels
+} de { $senders ->
+    [one] un expéditeur
+   *[other] { $senders } expéditeurs
+}
+topics-from = d’après { $seeds }
+topics-seed-folder = le dossier { $name } ({ $n })
+topics-seed-category = la catégorie de vos contacts { $name } ({ $n })
+topics-kept = { $n } de ses courriels, que nomme aussi un autre thème, restent ici, le plus précis.
+topics-given = { $n } sont allés à { $topic }, plus précis.
+topics-left-out = Dossiers qui n’amorcent rien : { $system } du serveur, { $small } de moins de { $least } courriels, { $unused } inutilisés depuis un an.
+topics-seed-preset = le thème proposé par Sioul { $name } ({ $n })
+topics-presets = Les thèmes proposés par Sioul qui trouvent votre courrier, leurs expéditeurs prouvés ({ $least } courriels ou plus en font un thème le premier jour) :
+topics-preset = { $name } ({ $id }) : { $total } courriels, { $domain } par ses propres expéditeurs, { $site } par leurs sites, { $list } comme listes.
+topics-preset-starts = Il deviendrait un thème.
+topics-presets-none = Aucun thème proposé par Sioul ne trouve encore votre courrier.
+topics-nothing = Rien à mesurer : aucun thème n’est proposé, ou une partie de l’ordre du temps n’en tient aucun courriel.
+topics-split = Appris sur { $learned } courriels, testé sur les { $tested } plus récents (le premier : { $date }) ; les { $validation } plus récents des appris ont fixé les bandes.
+topics-none-shares = La classe « aucun », apprise d’une part du courrier qu’aucune amorce ne nomme (F1 macro et couverture sur les plus récents des appris) :
+topics-none-share = { $share } : { $f1 }, { $coverage }
+topics-ways = Chaque façon sur le test (F1 macro ; couverture ; précision et rappel d’après les amorces ; rappel des nouveaux expéditeurs ; F1 des petits thèmes) :
+topics-way = { $name } : { $f1 } ; { $coverage } ; { $precision }, { $recall } ; { $fresh } ; { $small }
+topics-senders-kept = gardés
+topics-senders-left = laissés de côté
+topics-decided = Gardé : { $way } ; les mots de l’expéditeur { $senders } ; { $bucket } seaux ; température { $t }.
+topics-topic-numbers = { $name } : { $learned } appris, sûr à partir de { $sure } ; précision { $precision } ({ $seeded } sur le courrier amorcé), rappel { $recall } ({ $counts }) ; rappel des nouveaux expéditeurs { $fresh } sur { $fresh_n }
+topics-counts = { $right } justes sur { $seeded }, { $other } d’un autre thème, { $unseeded } sur du courrier sans amorce, { $maybe } peut-être
+topics-never = jamais
+topics-new-senders = Expéditeurs jamais vus ({ $n } courriels) : précision { $precision }, rappel { $recall }.
+topics-fold = La table : { $words } mots, { $bucket } seaux, { $f16 } Ko en f16 ({ $f32 } Ko en f32) ; écart aux prédictions de fastText { $e32 } en f32, { $e16 } en f16 ; le f16 change le thème ou la bande de { $flips } courriels sur { $judged }.
+topics-fold-broken = La table f32 s’écarte des prédictions de fastText de plus de { $tolerance } : elle ne serait pas écrite.
+topics-churn = Appris une semaine plus tôt, le modèle montrait { $shown } thèmes sûrs sur le courrier testé ; le plus récent en change { $changed } ({ $share }) et en ajoute { $added }.
+topics-churn-none = Pas de changement mesuré : trop peu de courrier une semaine avant le test.
+topics-centroid = Le centroïde : { $f1 } ; { $coverage } ; { $precision }, { $recall } ; { $fresh } ; { $small }
+topics-centroid-fold = Replié : { $vocabulary } pièces, { $kb } Ko en f16 à côté d’un découpeur de { $tokenizer } Ko ; écart { $e16 } en f16, qui change { $flips } courriels sur { $judged }.
+topics-seconds = { $seconds } secondes.
+topics-groups-read = { $messages } courriels lus, dont { $words } avec des mots à grouper ; { $vocabulary } mots gardés.
+topics-groups-way = { $way } : { $found } groupes trouvés, { $shown } montrés ({ $grouped } courriels) ; cohérence { $coherence } ; accord avec les amorces { $agreement }.
+topics-groups-k = k = { $k }, silhouette { $silhouette }
+topics-groups-skipped-no-model = { $way } : aucun dossier Model2Vec donné (--model2vec).
+topics-groups-skipped-too-few = { $way } : trop peu de courriels à grouper.
+topics-groups-skipped-no-senders = { $way } : aucun expéditeur prouvé.
+topics-groups-group = n° { $n } : { $size } courriels, { $senders ->
+    [one] un expéditeur
+   *[other] { $senders } expéditeurs
+} ({ $yours } à vous) ; cohérence { $coherence } ; { $seed }
+topics-groups-seed = surtout { $topic } ({ $share })
+topics-groups-no-seed = dans aucune amorce
+topics-groups-names = expéditeurs : { $names }
+topics-groups-proposed = nom proposé : { $name } ({ $how })
+topics-groups-words = mots : { $words }
+topics-groups-subjects = par exemple : { $subjects }
+topics-groups-quoted = « { $subject } »
+topics-noticed = Les groupes remarqués par Sioul, comme la fenêtre les montre : { $shown } montrés ; laissés de côté : { $weak } sous la cohérence { $floor }, { $started } à moitié rangés par les thèmes proposés déjà commencés, { $more } au-delà des cinq.
+topics-noticed-waiting = Les groupes remarqués par Sioul, comme la fenêtre les montre : aucun encore, { $messages } courriels gardés ici sur les { $least } qu’ils attendent.
+topics-noticed-group = { $size } courriels, { $senders } expéditeurs, cohérence { $coherence } : { $names }
+topics-noticed-senders = Proposés en « Toujours … pour cet expéditeur », un expéditeur chacun :
+topics-noticed-sender = { $size } courriels : { $names }
+
+## Les thèmes du courrier dans la fenêtre (crates/sioul-app/src/topics.rs, TopicMenu.qml, TopicFilter.qml, TopicsSettings.qml, docs/topics.md)
+topics-not-written = Votre mot n’a pas pu être gardé : { $detail }
+topics-gone = Ce thème n’est plus là.
+topics-no-id = Ce courriel n’a pas de Message-ID : aucun thème ne peut être gardé pour lui.
+topics-given = { $n ->
+    [one] { $topic } donné à ce courriel.
+   *[other] { $topic } donné à { $n } courriels.
+}
+topics-taken-off = { $n ->
+    [one] Thème retiré de ce courriel.
+   *[other] Thème retiré de { $n } courriels.
+}
+topics-made = Thème { $topic } créé.
+topics-made-given = { $n ->
+    [one] Thème { $topic } créé et donné à ce courriel.
+   *[other] Thème { $topic } créé et donné à { $n } courriels.
+}
+topics-rule-always = Toujours { $topic } pour le courrier de { $address }.
+topics-rule-never = Jamais { $topic } pour le courrier de { $address }.
+topics-rule-off = La règle pour { $address } est retirée.
+topics-renamed = { $old } renommé { $topic }.
+topics-removed = { $topic } retiré : son mot n’est plus sur aucun courriel.
+topics-seed-folder-of = le dossier { $name }
+topics-seed-category-of = la catégorie de vos contacts { $name }
+topics-and = et
+topics-seeds-line = D’après { $seeds }.
+topics-group-gone = Ce groupe n’est plus là : cherchez à nouveau.
+topic-word = Thème
+topic-menu = Thème…
+topic-none = Aucun thème
+topic-new = Nouveau thème…
+topic-new-name = Le nom du nouveau thème
+topic-make = Le créer
+topic-always = Toujours { $topic } pour cet expéditeur
+topic-never = Jamais { $topic } pour cet expéditeur
+topic-why-yours = donné par vous
+topic-why-sender = par son expéditeur
+topic-why-conversation = par sa conversation
+topic-why-folder = d’après le dossier { $name }
+topic-why-category = d’après la catégorie de vos contacts { $name }
+topic-why-preset = par son expéditeur, que Sioul connaît
+topic-why-site = par le site de son expéditeur
+topic-why-list = comme lettre d’information ou liste
+topic-filter-all = Tous les thèmes
+topic-filter-name = Thème : { $topic }
+topics-settings = Thèmes
+set-topics = Vos thèmes
+set-topics-help = Un thème est un mot discret sur un courriel : un filtre, jamais un dossier. Donnez-en un depuis un courriel, ou depuis plusieurs choisis à la fois ; une réponse suit le premier courriel de sa conversation auquel vous en avez donné un. Rangé d’après vos mots et vos expéditeurs tant qu’un thème a peu de courrier.
+topics-settings-none = Aucun thème pour l’instant. Donnez-en un depuis un courriel : Thème…
+topics-rename = Renommer
+topics-remove = Retirer
+topics-add = Ajouter un thème
+topics-sender-always = Toujours : { $address }
+topics-sender-never = Jamais : { $address }
+topics-sender-off = Retirer cette règle
+topics-groups = Groupes remarqués par Sioul
+topics-groups-look = Chercher des groupes
+topics-groups-looking = Sioul regarde votre courrier…
+topics-groups-failed = Les groupes n’ont pas pu être trouvés : { $detail }
+topics-groups-none = Aucun groupe ne se dégage pour l’instant.
+topics-groups-size = { $n ->
+    [one] un courriel
+   *[other] { $n } courriels
+}
+topics-name-it = Le nommer
+topics-offers = Les expéditeurs qui vous écrivent beaucoup : tout leur courrier sous un thème.
+topics-offer-always = Toujours un thème…
+topics-day-one = { $n ->
+    [one] Sioul a rangé votre courrier dans un thème, d’après les expéditeurs qu’il connaît : { $topics }. Renommez-le ou retirez-le dans Courriels ▸ ⚙ ▸ Thèmes.
+   *[other] Sioul a rangé votre courrier dans { $n } thèmes, d’après les expéditeurs qu’il connaît : { $topics }. Renommez-les ou retirez-les dans Courriels ▸ ⚙ ▸ Thèmes.
+}
+topics-offered = Les thèmes que Sioul connaît :
+topics-named-sites = Nommé d’après les sites de vos expéditeurs.
+topics-named-preset = Nommé d’après le thème proposé que suivent la plupart de ses courriels.
+topics-named-none = Aucun nom proposé : aucun thème proposé ni aucun type de site n’en tient la plupart.
+topics-groups-waiting = Les groupes viendront quand plus de courrier sera gardé ici.

@@ -3999,6 +3999,69 @@ availability-already = Your availability is shared already: stop it first.
 availability-pick = Pick the agendas your busy times come from.
 availability-google-own = Pick calendars of this Google account: Google shares its own calendars’ busy times.
 availability-stopped = Your busy times are no longer shared.
+availability-name-for = For { $who }
+availability-name-link = By link
+availability-not-known = Not known yet
+availability-mirror-description = From Sioul. As of { $day } { $month }.
+availability-way-mirror-share = { $who } is on { $server } too: a calendar of your busy times, shared with { $who } alone.
+availability-way-google-freebusy = { $who } sees your busy times in Google Calendar, straight from your calendars: Google keeps them up to date, without your margins.
+availability-way-google-mirror = A calendar of your busy times in your Google account, shared with { $who } alone for its busy times.
+availability-way-mirror-federated = { $who } is on another Nextcloud: a calendar of your busy times on { $server }, shared with { $who } alone.
+availability-way-mirror-link-person = A calendar of your busy times on { $server }, with a link to give { $who }.
+availability-way-mirror-group = A calendar of your busy times on { $server }, shared with the group { $who }.
+availability-way-google-public = Your calendar's busy times, public on Google: anyone with the link sees their exact times, without your margins.
+availability-way-fastmail-link = Fastmail's own link of busy times: switch it on in Fastmail for this calendar, then paste its link here.
+availability-way-mirror-link = A calendar of your busy times on { $server }, which anyone with its link can read.
+availability-way-google-schedule = Google's appointment schedule: it offers only the times your calendars leave free.
+availability-way-appointments = Your appointment page on { $server }: it offers only the times your calendars leave free.
+availability-way-mirror-link-booking = A calendar of your busy times on { $server }, which the booking tool reads by its link; nothing past it is offered.
+availability-way-none = This server cannot share busy times.
+availability-way-no-group = Only a Nextcloud shares with a group.
+availability-mirror-name = { $name }, busy times
+availability-mirror-missing = This availability has no calendar of busy times in this account yet.
+availability-mirror-not-yet = Its calendar of busy times is not on its server yet: it will be shared once it is.
+availability-google-public-already = This calendar is public on Google with its details already: Sioul leaves it as it is.
+availability-moved = Your availability for { $who } is now in Agenda ⚙ ▸ Your availability. You can share it in other ways from there.
+availability-stale = Your busy times for { $who } were last brought up to date { $when }. Open Sioul on a device to bring them up to date.
+availability-device-phone = the phone
+availability-device-computer = the computer
+availability-today-at = at { $time }
+availability-yesterday-at = yesterday at { $time }
+availability-kept-by-server = Your server keeps it up to date.
+availability-kept-by-devices = Your devices keep it up to date: the phone in the background, a computer while Sioul runs.
+availability-kept-while-open = Kept up to date while Sioul is open on one of your devices.
+availability-kept-last = Last brought up to date { $when }, on { $device }.
+availability-share-waiting = Shared with { $who } once its calendar is on { $server }.
+availability-share-google = { $who } sees these busy times on Google, without your margins.
+availability-share-google-public = Anyone with the link sees these busy times on Google, without your margins.
+availability-share-group = The group { $who }, on { $server }, sees these busy times.
+availability-share-person = { $who }, on { $server }, sees these busy times.
+availability-share-booking-tool = A booking tool reads these busy times by their link.
+availability-share-link = Anyone with the link sees the next { $days } days.
+availability-share-fastmail = Fastmail's own link of these busy times.
+availability-share-appointments = Your appointment page on { $server }.
+availability-share-google-schedule = Your appointment schedule on Google.
+availability-share-newer = Shared by a newer Sioul, in a way this one does not know.
+availability-server-sees = People with an account on { $server } see your busy times when they invite you.
+availability-stopped-for = Your busy times are no longer shared with { $who }.
+availability-needs-name = An availability needs a name.
+availability-hours = Send my working hours to { $server }
+availability-hours-proposed = Its agendas are for work: its users see when you work.
+availability-share-with = Share with…
+availability-audience-person = A person
+availability-audience-group = A group
+availability-audience-link = Anyone with a link
+availability-audience-booking = A booking tool
+availability-who-person = A user name, user@server or an address
+availability-who-group = The group’s name on its server
+availability-another-way = Another way
+availability-booking-direct = A booking tool can also read your calendars on their server itself (cal.com over CalDAV, Calendly over Google): nothing to share from here.
+agenda-mirror-kept-for = kept for “{ $name }”
+agenda-mirror-kept = kept for your availability
+agenda-mirror-open = Open Your availability
+availability-paste-link = Paste its link here
+availability-new = New availability…
+availability-name = Its name, for you alone
 # Children's events (several agendas, part 3): who takes each, the stand-ins, the invitations.
 holder-title = Who takes it
 holder-kind = Kind
@@ -6877,6 +6940,8 @@ set-agenda-calendar-help = The calendar a new event is put in; the event's edito
 set-agenda-calendar-first = The first calendar that takes events
 set-agendas = Your agendas
 set-agendas-help = What each one is: whose, what for, when it reaches you, what you may do with it. Sioul guessed from what it saw; open one to say otherwise.
+set-availability = Your availability
+set-availability-help = What you give of your time, and to whom.
 set-conflicts = Conflicts
 set-conflicts-help = A conflict is you in two places: your agendas’ events, the invitations you accepted, the child events you take. A ticked pair compares all its events, whoever they need; one of yours unticked, none.
 event-calendar-in = In { $name }
@@ -7246,3 +7311,152 @@ paper-family-legal = Procurations and measures
 paper-renew-legal = A review or a new one must be asked before it ends, or it lapses.
 paper-steps-procuration = Ask the person who gave it whether it goes on, and for a new one if so.
 paper-steps-protection = Ask the judge (the juge des contentieux de la protection) for a review before it ends: without one, the measure lapses.
+
+## sioul topics: mail topics measured on this computer (crates/sioul-cli/src/topics.rs, docs/topics.md)
+topics-eval-start = Each way is learned, then tested, in turn: it takes a while.
+topics-error = Topics could not be measured: { $detail }
+topics-reading = { $messages } messages kept here, each once, from { $folders } folders ({ $files } files); { $yours } of them yours (in Sent, or from your addresses).
+topics-reading-left = Left out: { $folders } junk, trash and draft folders, { $spam } messages the spam filter calls spam, { $forged } forged.
+topics-reading-seeds = Seeds name: folders { $folders } messages ({ $folders_yours } yours), contacts' categories { $categories } ({ $categories_yours } yours).
+topics-read = { $named } of these messages are in a proposed topic, { $yours } of them yours.
+topics-none = No topic to propose yet: no folder, project or category holds enough mail.
+topics-proposed = Topics proposed ({ $n }):
+topics-beyond = Beyond the twelve ({ $n }):
+topics-waiting = Waiting for more mail ({ $n }):
+topics-topic = { $name } ({ $id }): { $count ->
+    [one] one message
+   *[other] { $count } messages
+} from { $senders ->
+    [one] one sender
+   *[other] { $senders } senders
+}
+topics-from = from { $seeds }
+topics-seed-folder = the folder { $name } ({ $n })
+topics-seed-category = your contacts' category { $name } ({ $n })
+topics-kept = { $n } of its messages, also named by another topic, stay here, the more specific.
+topics-given = { $n } went to { $topic }, the more specific.
+topics-left-out = Folders that seed nothing: { $system } of the server's own, { $small } with fewer than { $least } messages, { $unused } unused for a year.
+topics-seed-preset = Sioul's preset { $name } ({ $n })
+topics-presets = Topic presets that match your mail, their senders proven ({ $least } messages or more start one on day one):
+topics-preset = { $name } ({ $id }): { $total } messages, { $domain } by its own senders, { $site } by their sites, { $list } as lists.
+topics-preset-starts = It would start.
+topics-presets-none = No topic preset matches your mail yet.
+topics-nothing = Nothing to measure: no topic is proposed, or a part of the time order holds none of its mail.
+topics-split = Learned from { $learned } messages, tested on the newest { $tested } (the first: { $date }); the newest { $validation } learned set the bands.
+topics-none-shares = The class "none", learned from a share of the mail no seed names (macro F1 and coverage on the newest learned):
+topics-none-share = { $share }: { $f1 }, { $coverage }
+topics-ways = Each way on the test (macro F1; coverage; precision and recall against the seeds; new senders' recall; small topics' F1):
+topics-way = { $name }: { $f1 }; { $coverage }; { $precision }, { $recall }; { $fresh }; { $small }
+topics-senders-kept = kept
+topics-senders-left = left out
+topics-decided = Kept: { $way }; the sender's words { $senders }; { $bucket } buckets; temperature { $t }.
+topics-topic-numbers = { $name }: { $learned } learned, sure from { $sure }; precision { $precision } ({ $seeded } among seeded mail), recall { $recall } ({ $counts }); new senders' recall { $fresh } of { $fresh_n }
+topics-counts = { $right } of { $seeded } right, { $other } of another topic, { $unseeded } on mail no seed names, { $maybe } maybe
+topics-never = never
+topics-new-senders = Senders never seen before ({ $n } messages): precision { $precision }, recall { $recall }.
+topics-fold = The table: { $words } words, { $bucket } buckets, { $f16 } KB in f16 ({ $f32 } KB in f32); off fastText's predictions by { $e32 } in f32, { $e16 } in f16; f16 changes the topic or band of { $flips } of { $judged } messages.
+topics-fold-broken = The f32 table is off fastText's predictions by more than { $tolerance }: it would not be written.
+topics-churn = Learned a week earlier, the model showed { $shown } sure topics on the tested mail; the newer one changes { $changed } of them ({ $share }) and adds { $added }.
+topics-churn-none = No churn measured: too little mail a week before the test.
+topics-centroid = The centroid: { $f1 }; { $coverage }; { $precision }, { $recall }; { $fresh }; { $small }
+topics-centroid-fold = Folded: { $vocabulary } pieces, { $kb } KB in f16 beside a tokenizer of { $tokenizer } KB; off by { $e16 } in f16, which changes { $flips } of { $judged } messages.
+topics-seconds = { $seconds } seconds.
+topics-groups-read = { $messages } messages read, { $words } of them with words to group by; { $vocabulary } words kept.
+topics-groups-way = { $way }: { $found } groups found, { $shown } shown ({ $grouped } messages); coherence { $coherence }; agreement with the seeds { $agreement }.
+topics-groups-k = k = { $k }, silhouette { $silhouette }
+topics-groups-skipped-no-model = { $way }: no Model2Vec folder given (--model2vec).
+topics-groups-skipped-too-few = { $way }: too few messages to group.
+topics-groups-skipped-no-senders = { $way }: no sender proven.
+topics-groups-group = #{ $n }: { $size } messages, { $senders ->
+    [one] one sender
+   *[other] { $senders } senders
+} ({ $yours } yours); coherence { $coherence }; { $seed }
+topics-groups-seed = mostly { $topic } ({ $share })
+topics-groups-no-seed = in no seed
+topics-groups-names = senders: { $names }
+topics-groups-proposed = proposed name: { $name } ({ $how })
+topics-groups-words = words: { $words }
+topics-groups-subjects = for example: { $subjects }
+topics-groups-quoted = "{ $subject }"
+topics-noticed = Groups Sioul noticed, as the window shows them: { $shown } shown; left out: { $weak } under coherence { $floor }, { $started } half tagged by the topic presets started already, { $more } beyond the five.
+topics-noticed-waiting = Groups Sioul noticed, as the window shows them: none yet, { $messages } messages kept here of the { $least } they wait for.
+topics-noticed-group = { $size } messages, { $senders } senders, coherence { $coherence }: { $names }
+topics-noticed-senders = Offered as "Always … for this sender", one sender each:
+topics-noticed-sender = { $size } messages: { $names }
+
+## Mail's topics in the window (crates/sioul-app/src/topics.rs, TopicMenu.qml, TopicFilter.qml, TopicsSettings.qml, docs/topics.md)
+topics-not-written = Your word could not be kept: { $detail }
+topics-gone = That topic is no longer there.
+topics-no-id = This message has no Message-ID: no topic can be kept for it.
+topics-given = { $n ->
+    [one] { $topic } given to this message.
+   *[other] { $topic } given to { $n } messages.
+}
+topics-taken-off = { $n ->
+    [one] Topic taken off this message.
+   *[other] Topic taken off { $n } messages.
+}
+topics-made = Topic { $topic } made.
+topics-made-given = { $n ->
+    [one] Topic { $topic } made and given to this message.
+   *[other] Topic { $topic } made and given to { $n } messages.
+}
+topics-rule-always = Always { $topic } for mail from { $address }.
+topics-rule-never = Never { $topic } for mail from { $address }.
+topics-rule-off = The rule for { $address } taken off.
+topics-renamed = { $old } renamed { $topic }.
+topics-removed = { $topic } removed: its word is off every message.
+topics-seed-folder-of = the folder { $name }
+topics-seed-category-of = your contacts' category { $name }
+topics-and = and
+topics-seeds-line = From { $seeds }.
+topics-group-gone = That group is no longer there: look again.
+topic-word = Topic
+topic-menu = Topic…
+topic-none = No topic
+topic-new = New topic…
+topic-new-name = The new topic's name
+topic-make = Make it
+topic-always = Always { $topic } for this sender
+topic-never = Never { $topic } for this sender
+topic-why-yours = given by you
+topic-why-sender = by its sender
+topic-why-conversation = by its conversation
+topic-why-folder = from the folder { $name }
+topic-why-category = from your contacts' category { $name }
+topic-why-preset = by its sender, one Sioul knows
+topic-why-site = by its sender's site
+topic-why-list = as a newsletter or a list
+topic-filter-all = All topics
+topic-filter-name = Topic: { $topic }
+topics-settings = Topics
+set-topics = Your topics
+set-topics-help = A topic is a quiet word on a message: a filter, never a folder. Give one from a message, or from several selected at once; a reply follows its conversation's first message you gave one. Sorted by your tags and senders until a topic has more mail.
+topics-settings-none = No topic yet. Give one from a message: Topic…
+topics-rename = Rename
+topics-remove = Remove
+topics-add = Add a topic
+topics-sender-always = Always: { $address }
+topics-sender-never = Never: { $address }
+topics-sender-off = Take this rule off
+topics-groups = Groups Sioul noticed
+topics-groups-look = Look for groups
+topics-groups-looking = Looking at your mail…
+topics-groups-failed = The groups could not be found: { $detail }
+topics-groups-none = No group stands out yet.
+topics-groups-size = { $n ->
+    [one] one message
+   *[other] { $n } messages
+}
+topics-name-it = Name it
+topics-offers = Senders with much mail of their own: all of it under one topic.
+topics-offer-always = Always a topic…
+topics-day-one = { $n ->
+    [one] Sioul sorted your mail into one topic, from the senders it knows: { $topics }. Rename or remove it in Mail ▸ ⚙ ▸ Topics.
+   *[other] Sioul sorted your mail into { $n } topics, from the senders it knows: { $topics }. Rename or remove them in Mail ▸ ⚙ ▸ Topics.
+}
+topics-offered = Topics Sioul knows:
+topics-named-sites = Named from your senders' sites.
+topics-named-preset = Named after the topic preset most of its mail matches.
+topics-named-none = No name proposed: no topic preset and no kind of site holds most of it.
+topics-groups-waiting = Groups come once more mail is kept here.

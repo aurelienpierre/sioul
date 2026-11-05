@@ -318,7 +318,7 @@ pub(crate) fn run(s: &Session, command: SpamCommand) -> Result<(), String> {
 }
 
 /// A report printed: its lines, or its data as JSON.
-fn say(report: Report, json: bool) -> Result<(), String> {
+pub(crate) fn say(report: Report, json: bool) -> Result<(), String> {
     if json {
         println!("{}", serde_json::to_string_pretty(&report.data).map_err(|e| e.to_string())?);
     } else {
@@ -332,7 +332,7 @@ fn say(report: Report, json: bool) -> Result<(), String> {
 /// A long command: its progress on standard error (one line per step or
 /// folder when piped), its report at the end; or, as a job (`--job`), its
 /// progress and its end written into the job's file, stopping when asked.
-fn long(s: &Session, json: bool, job: Option<&str>, work: impl FnOnce(&mut dyn FnMut(&Progress), &Cancel) -> Result<Report, String>) -> Result<(), String> {
+pub(crate) fn long(s: &Session, json: bool, job: Option<&str>, work: impl FnOnce(&mut dyn FnMut(&Progress), &Cancel) -> Result<Report, String>) -> Result<(), String> {
     match job {
         Some(id) => {
             let mut running = jobs::Running::open(id)?;
