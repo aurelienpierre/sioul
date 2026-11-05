@@ -29,15 +29,33 @@ Item {
         id: mock
 
         signal agendaShared(string id, string answer)
-        signal copyRequested(string text)
+        signal agendasChanged
+        signal personsChanged
 
         property var asked: []
         property var calls: []
+        // What Copy put on the clipboard; whether the clipboard takes it.
+        property var copied: []
+        property bool clipboard: true
+        // How often each view was read.
+        property int setupReads: 0
+        property int availabilityReads: 0
+        // Your availability as Agenda ⚙ reads it.
+        property var shownAvailability: ({ current: null, line: "", place: "", agendas: [], accounts: [] })
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
-        function agendasSetup() { return JSON.stringify(root.view) }
-        function availability() { return JSON.stringify({ current: null, line: "", agendas: [], accounts: [] }) }
+        // The first agenda's person, when a test changes it.
+        property string firstPerson: ""
+        function agendasSetup() {
+            mock.setupReads++
+            const view = JSON.parse(JSON.stringify(root.view))
+            if (mock.firstPerson !== "")
+                view.agendas[0].person = mock.firstPerson
+            return JSON.stringify(view)
+        }
+        function availability() { mock.availabilityReads++; return JSON.stringify(mock.shownAvailability) }
+        function copyText(text) { mock.copied = mock.copied.concat([text]); return mock.clipboard }
         function setAgendaField(id, field, value) { return "" }
         function readAgendaSharing(id) { mock.asked = mock.asked.concat([id]) }
         function renameAgenda(id, name) { mock.calls = mock.calls.concat([["rename", id, name]]); return "" }
@@ -101,6 +119,10 @@ Item {
         function init() {
             mock.asked = []
             mock.calls = []
+            mock.copied = []
+            mock.clipboard = true
+            mock.firstPerson = ""
+            mock.shownAvailability = { current: null, line: "", place: "", agendas: [], accounts: [] }
         }
 
         function make() {
@@ -208,6 +230,69 @@ Item {
             compare(made[0], "new")
             compare(JSON.stringify([made[1].account, made[1].name, made[1].events, made[1].tasks, made[1].whose, made[1].area, made[1].reaches]), JSON.stringify(["google", "Swimming", true, false, "yours", "admin+leisure", "outside-work"]))
             verify(!setup.making, "the form closed once made")
+        }
+
+        // A read-only link turned on: the link itself, selectable, and Copy,
+        // which says "Copied." once the clipboard holds it; one the clipboard
+        // refused is selected, to copy by hand (5 November 2026).
+        function test_an_agenda_s_link_shown_and_copied() {
+            const setup = make()
+            const swimming = line(setup, 0)
+            setup.toggle("cloud/swimming")
+            const link = "https://cloud.example.org/remote.php/dav/public-calendars/AbC123?export"
+            mock.agendaShared("cloud/swimming", JSON.stringify({ line: "agenda-sharing-link", sharer: "nextcloud", people: [], link: link, links: true, note: "", said: "", problem: "" }))
+            wait(30)
+            const shown = root.named(swimming, "agendaLinkLine")[0]
+            verify(shown.visible, "the link under its switch")
+            const field = root.named(shown, "linkField")[0]
+            compare(field.text, link)
+            verify(field.readOnly && field.selectByMouse, "read only, and it selects")
+            const copy = root.named(shown, "linkCopy")[0]
+            compare(copy.text, "ui-copy")
+            mouseClick(copy)
+            compare(mock.copied, [link])
+            compare(copy.text, "ui-copied", "said once it is on the clipboard")
+            tryCompare(copy, "text", "ui-copy", 3000)
+            mock.clipboard = false
+            mouseClick(copy)
+            compare(copy.text, "ui-copy", "nothing said when the clipboard refused it")
+            compare(field.selectedText, link, "selected, to copy by hand")
+        }
+
+        // Your availability by a link: the link its server gave, read when
+        // Agenda ⚙ shows it shared, then copied as any link.
+        function test_your_availability_s_link_shown_and_copied() {
+            mock.shownAvailability = { current: { account: "cloud", agendas: ["cloud/swimming"], with: "", link: true, calendar: "busy", shared: true }, line: "availability-shared:availability-by-link", place: "cloud/busy", agendas: [], accounts: [{ id: "cloud", name: "you@cloud.example.org", google: false }] }
+            const setup = make()
+            compare(mock.asked, ["cloud/busy"], "its link asked of its server")
+            const shown = root.named(setup, "availabilityLink")[0]
+            verify(!shown.visible, "nothing before the server answers")
+            const link = "https://cloud.example.org/remote.php/dav/public-calendars/busy?export"
+            mock.agendaShared("cloud/busy", JSON.stringify({ line: "agenda-sharing-link", sharer: "nextcloud", people: [], link: link, links: true, note: "", said: "", problem: "" }))
+            wait(30)
+            verify(shown.visible)
+            compare(root.named(shown, "linkField")[0].text, link)
+            mouseClick(root.named(shown, "linkCopy")[0])
+            compare(mock.copied, [link])
+            // Read again when the agendas change: the server not asked twice.
+            mock.agendasChanged()
+            compare(mock.asked, ["cloud/busy"])
+        }
+
+        // An agenda or a person changed elsewhere (its role's person made, a
+        // sync): read again at once; the same answer rebuilds nothing.
+        function test_a_change_elsewhere_is_read_at_once() {
+            const setup = make()
+            const before = mock.setupReads
+            const first = line(setup, 0)
+            mock.personsChanged()
+            compare(mock.setupReads, before + 1, "read again")
+            compare(line(setup, 0), first, "the same answer: the same rows")
+            mock.agendasChanged()
+            compare(mock.setupReads, before + 2)
+            mock.firstPerson = "Léa"
+            mock.personsChanged()
+            verify(line(setup, 0) !== first, "a new answer: shown")
         }
     }
 }

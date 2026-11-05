@@ -7,7 +7,9 @@
 // steps, meals, naps, the night, doses. Nothing is late or overdue: the past
 // is not shown unless you go back to it. Anything tapped opens its card where
 // you are (`window.openCard`, CardHost.qml), beside the page; the open thing
-// is outlined. New events are made here.
+// is outlined. A new event comes from New, at the top of the places, or a
+// double tap on a day or an hour; where the places fold into ☰ (a phone, a
+// narrow window), a New event button stays on the page.
 
 pragma ComponentBehavior: Bound
 
@@ -442,6 +444,11 @@ Item {
             setup.toggle(id)
     }
 
+    // For the window's images: Agenda ⚙ scrolled to the first part of that objectName shown.
+    function revealSetting(name) {
+        (page.narrow ? agendaSettingsNarrow : agendaSettings).reveal(name)
+    }
+
     function grabSettings(path) {
         (page.narrow ? agendaSettingsNarrow : agendaSettings).grab(path)
     }
@@ -618,8 +625,10 @@ Item {
                     Accessible.name: page.sioul.text("agenda-show")
                     onClicked: page.openShow()
                 }
+                // Where New is out of sight (the places folded into ☰): a new event from here.
                 Button {
-                    visible: page.shown.can_add !== false
+                    objectName: "agendaNewEvent"
+                    visible: page.shown.can_add !== false && page.window.railShown !== true
                     Layout.preferredWidth: page.narrow ? 40 : -1
                     text: page.sioul.text("ui-new-event")
                     icon.name: "appointment-new"

@@ -28,6 +28,7 @@ Item {
         id: mock
 
         signal lettersChanged
+        signal personsChanged
 
         // Made up: no real sender, no real person.
         function letters() {

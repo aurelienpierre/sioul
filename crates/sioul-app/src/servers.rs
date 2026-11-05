@@ -162,6 +162,11 @@ pub(crate) fn make(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> Result<St
             agendas::set_field(&path, &place, field, value)?;
         }
     }
+    // A child's, a partner's, another parent's: their person found, or made (docs/persons.md).
+    let problem = crate::persons::tie_role(&place);
+    if !problem.is_empty() {
+        tell(qt, shared, problem);
+    }
     crate::pim::nudge(shared, &asked.account);
     crate::agenda::show_agenda(qt, shared);
     crate::work::show_work(qt, shared);
@@ -401,15 +406,18 @@ pub(crate) fn sharing_line(agenda: &Agenda, sharing: &Sharing) -> String {
 }
 
 /// The demo profile (`SIOUL_DEMO`) asks no server: a Nextcloud's answer stood
-/// in, nothing shared but a child's agenda, with its other parent.
+/// in, nothing shared but a child's agenda, with its other parent, and your
+/// busy times' calendar by its link when they are shared so.
 fn demo_sharing(id: &str) -> Option<(Agenda, Sharing)> {
-    let (_, agenda, _) = find(id)?;
+    let (collection, agenda, config) = find(id)?;
     let people = if agenda.whose == Whose::Child && !agenda.parent.is_empty() {
         vec![calendars::Sharee { id: format!("principal:principals/users/{}", agenda.parent.to_lowercase()), name: agenda.parent.clone(), access: Access::Write, group: false }]
     } else {
         Vec::new()
     };
-    Some((agenda, Sharing { sharer: Sharer::Nextcloud, people, link: None, links: true }))
+    let busy = config.agenda.availability.as_ref().is_some_and(|a| a.link && a.account == collection.account && a.calendar == collection.id);
+    let link = busy.then(|| calendars::subscription(&format!("https://cloud.example.org/remote.php/dav/public-calendars/{}", collection.id)));
+    Some((agenda, Sharing { sharer: Sharer::Nextcloud, people, link, links: true }))
 }
 
 /// An agenda's sharing as JSON for its line: the sentence, the people, the
@@ -477,15 +485,17 @@ struct Asked {
 }
 
 /// What Agenda ⚙ shows of your availability, as JSON: what is shared and
-/// with whom, the accounts it can be shared from, your agendas to pick.
+/// with whom, the accounts it can be shared from, your agendas to pick;
+/// `place`, the calendar of busy blocks Sioul keeps, whose sharing (its
+/// link) the window asks of its server as for any agenda.
 pub(crate) fn availability_json() -> String {
     let config = load_config();
     let current = config.agenda.availability.clone();
     let line = current.as_ref().map(|a| availability_line(a)).unwrap_or_default();
-    let blocks = current.as_ref().map(|a| format!("{}/{}", a.account, a.calendar)).unwrap_or_default();
+    let blocks = current.as_ref().filter(|a| !a.calendar.is_empty()).map(|a| format!("{}/{}", a.account, a.calendar)).unwrap_or_default();
     let agendas: Vec<serde_json::Value> = agendas::all(&config).iter().filter(|a| a.whose == Whose::Yours && a.events && !a.busy() && a.id != blocks).map(|a| serde_json::json!({ "id": a.id, "name": a.name, "account": a.account })).collect();
     let accounts: Vec<serde_json::Value> = config.accounts.iter().filter(|a| a.is_dav()).map(|a| serde_json::json!({ "id": a.id, "name": a.address.clone().unwrap_or_else(|| a.id.clone()), "google": a.auth.as_deref() == Some("google") })).collect();
-    json(&serde_json::json!({ "current": current, "line": line, "agendas": agendas, "accounts": accounts }))
+    json(&serde_json::json!({ "current": current, "line": line, "place": blocks, "agendas": agendas, "accounts": accounts }))
 }
 
 /// "Your busy times are shared with Sam.", "…by a link.", "…will be shared with Sam once its calendar is on the server."
@@ -531,6 +541,8 @@ pub(crate) fn share_availability(qt: &QtThread, shared: &Arc<Shared>, text: &str
         }
         let calendar = vdir::create(Kind::Calendars, &account.id, &tr().text("availability-calendar", None), None, &["VEVENT"])?;
         availability.calendar = calendar.id.clone();
+        // The demo profile asks no server: shared at once, its link stood in (`demo_sharing`).
+        availability.shared = crate::backend::offline();
         agendas::set_availability(&crate::backend::config_path(), Some(&availability))?;
         // Kept to yourself in Sioul: the calendar of blocks is no agenda of yours to show.
         let _ = crate::agenda::keep_hidden(&agendas::place(&calendar), true);
@@ -637,10 +649,16 @@ pub(crate) fn availability_upkeep(qt: &QtThread, shared: &Arc<Shared>) {
         std::thread::spawn(move || {
             let change = if availability.with.is_empty() { Change::Link(true) } else { Change::Share { who: availability.with.clone(), access: Access::Read } };
             match ask(&place, &change) {
-                Ok(_) => {
+                Ok((agenda, now)) => {
                     let done = Availability { shared: true, ..availability };
                     let _ = agendas::set_availability(&crate::backend::config_path(), Some(&done));
                     tell(&qt, &shared, availability_line(&done));
+                    // Agenda ⚙ open says so at once: the line, and the link the server gave.
+                    let (sharing, answer) = (sharing_json(&agenda, &now, ""), availability_json());
+                    let _ = qt.queue(move |mut sioul| {
+                        sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from(&place), cxx_qt_lib::QString::from(&sharing));
+                        sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from("availability"), cxx_qt_lib::QString::from(&answer));
+                    });
                 }
                 Err(e) => tell(&qt, &shared, e),
             }
@@ -711,6 +729,35 @@ mod tests {
             let _ = std::fs::remove_dir_all(&c.dir);
             let _ = std::fs::remove_file(c.state_path());
         }
+    }
+
+    /// Your availability by a link: Agenda ⚙ gets its calendar's place, whose
+    /// sharing it asks as any agenda's (its link); the demo profile's stand-in
+    /// gives that calendar alone a link, the feed an agenda app subscribes to.
+    #[test]
+    fn availability_by_link_names_its_calendar() {
+        sioul_core::config::stand_ins_only();
+        let dir = sioul_core::config::data_dir().join(format!("p5-busy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        let busy = vdir::create(Kind::Calendars, "p5-busy", "Busy times", None, &["VEVENT"]).unwrap();
+        let home = vdir::create(Kind::Calendars, "p5-busy", "Home", None, &["VEVENT"]).unwrap();
+        let shared = Availability { account: "p5-busy".into(), agendas: vec![agendas::place(&home)], link: true, calendar: busy.id.clone(), shared: true, ..Availability::default() };
+        let ((), said) = sioul_core::changes::heard(|| agendas::set_availability(&config, Some(&shared)).unwrap());
+        assert_eq!(said, [sioul_core::changes::Kind::Agendas], "Agenda ⚙ hears it");
+        let shown: serde_json::Value = serde_json::from_str(&availability_json()).unwrap();
+        assert_eq!(shown["place"].as_str(), Some(agendas::place(&busy).as_str()));
+        let link = demo_sharing(&agendas::place(&busy)).unwrap().1.link.unwrap_or_default();
+        assert!(link.starts_with("https://cloud.example.org/") && link.ends_with("?export"), "{link}");
+        assert_eq!(demo_sharing(&agendas::place(&home)).unwrap().1.link, None, "no other calendar's");
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        for c in vdir::every_collection(Kind::Calendars).into_iter().filter(|c| c.account == "p5-busy") {
+            let _ = std::fs::remove_dir_all(&c.dir);
+            let _ = std::fs::remove_file(c.state_path());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The line of an agenda's sharing: only you; each person by what they

@@ -74,6 +74,12 @@ Item {
             if (page.visible && (stores.indexOf("files/papers/") >= 0 || stores.indexOf("notes/sioul-papers.toml") >= 0))
                 page.reload()
         }
+
+        // Whom each paper is for, and the persons to choose.
+        function onPersonsChanged() {
+            if (page.visible)
+                page.reload()
+        }
     }
 
     ScrollView {

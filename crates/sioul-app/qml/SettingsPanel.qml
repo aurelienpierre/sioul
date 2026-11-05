@@ -39,6 +39,15 @@ SafePopup {
         flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
     }
 
+    // An item of the panel (a part's own line) at the top of the panel (the window's images).
+    function scrollToItem(item) {
+        const flick = scroll.contentItem as Flickable
+        if (item === null || flick === null)
+            return
+        const top = item.mapToItem(flick.contentItem, 0, 0).y
+        flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
+    }
+
     // `shown`: the value the row showed: a list's change is set over the files as they are now.
     function save(key, value, shown) {
         panel.problem = shown === undefined ? panel.sioul.setSetting(key, JSON.stringify(value)) : panel.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))

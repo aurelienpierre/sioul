@@ -36,6 +36,8 @@ ColumnLayout {
     // `agenda::setup`: {agendas: [{id, name, colour, place, events, tasks, whose, person,
     // area, reaches, access, server_read_only, for_work, said}], pairs}.
     property var view: ({ agendas: [], pairs: [], children: { kinds: [], yours: [], follow_ups: true, any: false } })
+    property string viewText: ""
+    property string availabilityText: ""
     property string problem: ""
     // The agendas opened, by place, while the panel lives.
     property var opened: ({})
@@ -53,9 +55,14 @@ ColumnLayout {
     readonly property var whoseChoices: ["yours", "child", "parent", "partner", "shared"]
     readonly property var areas: ["work", "admin", "leisure"]
 
-    function read() {
+    // Read again; `kept`, the same answer changes nothing (its rows, their open menus, stay).
+    function read(kept) {
+        const text = setup.sioul.agendasSetup()
+        if (kept === true && text === setup.viewText)
+            return
+        setup.viewText = text
         try {
-            setup.view = JSON.parse(setup.sioul.agendasSetup())
+            setup.view = JSON.parse(text)
         } catch (e) {
             setup.view = { agendas: [], pairs: [], children: { kinds: [], yours: [], follow_ups: true, any: false } }
         }
@@ -100,12 +107,22 @@ ColumnLayout {
             setup.sioul.readAgendaSharing(id)
     }
 
-    function readAvailability() {
+    // `kept` as for `read`.
+    function readAvailability(kept) {
+        const text = setup.sioul.availability() || "{}"
+        if (kept === true && text === setup.availabilityText)
+            return
+        setup.availabilityText = text
         try {
-            setup.availability = JSON.parse(setup.sioul.availability() || "{}")
+            setup.availability = JSON.parse(text)
         } catch (e) {
             setup.availability = { current: null, line: "", agendas: [], accounts: [] }
         }
+        // Shared by a link: the link, as its server gives it (`agendaShared` of its calendar).
+        const current = setup.availability.current || null
+        const place = setup.availability.place || ""
+        if (current !== null && current.link === true && current.shared === true && place !== "" && !setup.sharing[place])
+            setup.sioul.readAgendaSharing(place)
     }
 
     // The removal asked first, in one sentence; done on the second press.
@@ -121,6 +138,17 @@ ColumnLayout {
 
     Connections {
         target: setup.sioul
+
+        // An agenda's role or person, or a person, changed here or on another device:
+        // the agendas and their choosers read again.
+        function onAgendasChanged() {
+            setup.read(true)
+            setup.readAvailability(true)
+        }
+
+        function onPersonsChanged() {
+            setup.read(true)
+        }
 
         function onAgendaShared(id, answer) {
             if (id === "availability") {
@@ -567,12 +595,15 @@ ColumnLayout {
                             checked: share.now !== null && !!share.now.link
                             onToggled: setup.sioul.agendaLink(one.modelData.id, checked)
                         }
-                        Button {
-                            visible: share.now !== null && !!share.now.link
-                            flat: true
-                            text: setup.sioul.text("agenda-link-copy")
-                            onClicked: setup.sioul.copyRequested(share.now.link)
-                        }
+                    }
+                    // The link itself, to select or copy.
+                    LinkLine {
+                        objectName: "agendaLinkLine"
+                        visible: share.can && share.now.links === true && !!share.now.link
+                        Layout.fillWidth: true
+                        sioul: setup.sioul
+                        theme: setup.theme
+                        link: share.now !== null ? share.now.link || "" : ""
                     }
                     Label {
                         visible: share.now !== null && ((share.now.said || "") !== "" || (share.now.note || "") !== "")
@@ -864,6 +895,12 @@ ColumnLayout {
 
         readonly property var current: setup.availability.current || null
         readonly property var account: (setup.availability.accounts || [])[busyAccount.currentIndex] || null
+        // Shared by a link: the link its server gave, once read.
+        readonly property string link: {
+            const place = setup.availability.place || ""
+            const read = place !== "" ? setup.sharing[place] || null : null
+            return busy.current !== null && busy.current.link === true && read !== null ? read.link || "" : ""
+        }
         property var picked: ({})
         property var words: ({})
 
@@ -885,6 +922,14 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: setup.theme.text
+        }
+        LinkLine {
+            objectName: "availabilityLink"
+            visible: busy.link !== ""
+            Layout.fillWidth: true
+            sioul: setup.sioul
+            theme: setup.theme
+            link: busy.link
         }
         Button {
             objectName: "availabilityStop"
