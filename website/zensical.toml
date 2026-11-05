@@ -50,6 +50,7 @@ nav = [
       { "Calls: who may ring, and when" = "guide/calls.md" },
       # texts: SMS phase (b).
       { "Texts: read and sent from your computer" = "guide/texts.md" },
+      { "Ties: the chain from any thing" = "guide/ties.md" },
       { "Sharing between your devices" = "guide/sharing.md" },
       { "Using an AI agent" = "guide/ai-agent.md" },
       { "Privacy and security" = "guide/privacy-security.md" },

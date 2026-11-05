@@ -40,7 +40,7 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 - **Ses tâches**, en **Tableau**, en **Liste** ou en **Gantt** : chacun ouvre la page [Tâches](tasks.md), limitée à ce projet. Le **Gantt** est celui de la page Tâches ([Liste, Tableau, Gantt](tasks.md#list-board-timeline)) : chaque tâche sur ses jours, la date demandée en petit losange.
 - **Noter du temps** : une réunion, un appel, un travail fait loin du minuteur.
 - **Faire la facture**, quand du temps facturable attend d’être facturé. Voir [Le temps et les factures](time.md).
-- **Ajouter ▾** et **Lier à…**, au bas : quelque chose de nouveau lié au projet, ou un lien vers ce qui existe, comme le contact du client.
+- **Ajouter ▾** et **Lier à…**, au bas : quelque chose de nouveau lié au projet, ou un lien vers ce qui existe, comme le contact du client ; **Liens**, tout ce que le projet tient et ce à quoi c’est lié ([Les liens](ties.md)).
 
 ## Les courriels qui arrivent ici tout seuls {#mail-that-comes-here-by-itself}
 

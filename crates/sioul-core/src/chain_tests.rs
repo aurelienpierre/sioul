@@ -96,7 +96,8 @@ fn a_project_of_500_messages_stops_and_counts() {
 }
 
 /// A correspondent of 300 messages: a place to stop. Opened as the entry
-/// point, it is walked: its messages nearest to today first, five.
+/// point, it is walked as a collection: one of each kind first, two of its
+/// messages, then the rest of them.
 #[test]
 fn a_contact_hub() {
     let mut fixture = Fixture::new();
@@ -110,10 +111,7 @@ fn a_contact_hub() {
     let entry = view(&fixture, &Open, "sioul:contact/mina", &[]);
     let under: Vec<&str> = entry.things.iter().filter(|t| t.parent == Some(0)).map(|t| t.title.as_str()).collect();
     assert_eq!(under.len(), 5);
-    assert_eq!(under[..3], ["Rent for November", "Building note 0", "Building note 1"], "nearest to today first: {under:?}");
-    // Its task, whose own place under the card is taken, comes by the message it was made from.
-    let task = find(&entry, TASK).unwrap();
-    assert_eq!(entry.things[task.parent.unwrap()].uri, RENT);
+    assert_eq!(under, ["Pay the rent", "Rent for November", "Building note 0", "Building note 1", "Re: Re: Rent for November"], "{under:?}");
     assert!(entry.things.len() <= Weights::computer().total);
 }
 
@@ -239,12 +237,13 @@ fn rows_columns_and_cross_ties() {
         let (a, b) = (&v.things[tie.from], &v.things[tie.to]);
         assert!(b.parent != Some(tie.from) && a.parent != Some(tie.to));
     }
-    // The task is in the project the rent's routes take too: a cross-tie, not a second place.
-    let task = v.things.iter().position(|t| t.uri == TASK).unwrap();
-    let flat = v.things.iter().position(|t| t.uri == FLAT).unwrap();
+    // The second reply cites the first message too: a cross-tie, not a second place.
     let rent = v.things.iter().position(|t| t.uri == RENT).unwrap();
-    assert_eq!(v.things[flat].parent, Some(task));
-    assert!(v.cross.iter().any(|c| (c.from, c.to) == (rent, flat) && c.words == "Project"), "{:?}", v.cross);
+    let second = v.things.iter().position(|t| t.uri == "mid:rent-11-re2@landlord.example").unwrap();
+    assert_ne!(v.things[second].parent, Some(rent));
+    assert!(v.cross.iter().any(|c| (c.from, c.to) == (rent, second) && c.words == "Same conversation"), "{:?}", v.cross);
+    // None to a collection, whose count says what it holds.
+    assert!(v.cross.iter().all(|c| !v.things[c.from].collection && !v.things[c.to].collection), "{:?}", v.cross);
 }
 
 /// Every kind and every sentence of the chain in each language's own file.
@@ -263,4 +262,73 @@ fn the_chain_s_words() {
     let fr = Translator::new("fr");
     assert_eq!(more_sentence(&fr, 3, &[(Kind::Mail, 2), (Kind::Task, 1)]), "3 de plus\u{202f}: 2 messages, 1 tâche");
     let _ = links::kind_of;
+}
+
+/// Inside one collection, one of each kind first (a letter, a task, a note,
+/// a message, a payment), at most two messages from one sender, then by
+/// date: a weekly notification never crowds out the office's own mail.
+#[test]
+fn a_collection_shows_each_kind_and_two_per_sender() {
+    let mut fixture = Fixture::new();
+    fixture.projects.push(Project {
+        id: "office".into(),
+        title: "Town office".into(),
+        files: vec!["office".into()],
+        routes: vec![Route { from_domains: vec!["office.example".into()], ..Route::default() }, Route { from_addresses: vec!["news@platform.example".into()], ..Route::default() }],
+        ..Project::default()
+    });
+    let message = |id: String, subject: String, address: &str, days: i64| MailRef { path: PathBuf::from(format!("/stand-in/mail/cur/{id}")), subject, from: address.into(), address: address.into(), date: NOV_2 - days * 86_400, refs: Vec::new() };
+    for week in 0..12 {
+        fixture.mail.insert(&format!("digest-{week}@platform.example"), message(format!("digest-{week}"), format!("Your weekly digest {week}"), "news@platform.example", week * 7));
+    }
+    for (n, days) in [(1, 10), (2, 20), (3, 30)] {
+        fixture.mail.insert(&format!("clerk-{n}@office.example"), message(format!("clerk-{n}"), format!("Your permit, step {n}"), "clerk@office.example", days));
+    }
+    fixture.tasks.push(Task { uid: "permit".into(), title: "Send the permit form".into(), projects: vec!["office".into()], ..Task::default() });
+    fixture.vault.notes.push(crate::notes::read("office/permit.md", "# Permit\n"));
+    if let Some(letters) = fixture.sources.letters.as_mut() {
+        letters.list.push(crate::letters::Letter { id: "office-1".into(), project: "office".into(), status: "new".into(), reading: crate::letters::Reading { sender: "Town office".into(), ..Default::default() }, ..Default::default() });
+    }
+    fixture.sources.movements.push(crate::ties::tests::movement("bank:acct/9", "Town office", "2026-10-20", -3_500, serde_json::json!([{"kind": "bank", "key": "bank:acct/9", "address": "", "probable": false}]), &["sioul:project/office"], "home"));
+    let office = "sioul:project/office";
+    let kinds = |v: &ChainView| v.things.iter().filter(|t| t.parent == Some(0)).map(|t| t.kind).collect::<Vec<_>>();
+    let before = view(&fixture, &Open, office, &[]);
+    assert_eq!(kinds(&before), [Kind::Letter, Kind::Task, Kind::Note, Kind::Mail, Kind::Movement], "{:?}", uris(&before));
+    assert_eq!(find(&before, "mid:digest-0@platform.example").map(|t| t.parent), Some(Some(0)), "the newest message stands for them");
+    // "+": the rest by date, two from each sender at most before the others: the office's
+    // first two before the digests' third, its own third after, by date with the rest.
+    let after = view(&fixture, &Open, office, &[office]);
+    let titles: Vec<&str> = after.things.iter().filter(|t| t.parent == Some(0) && t.kind == Kind::Mail).map(|t| t.title.as_str()).collect();
+    assert_eq!(titles, ["Your weekly digest 0", "Your weekly digest 1", "Your permit, step 1", "Your permit, step 2", "Your weekly digest 2", "Your weekly digest 3", "Your weekly digest 4", "Your permit, step 3", "Your weekly digest 5"]);
+    // Nothing shown before moved.
+    for thing in &before.things {
+        assert!(find(&after, &thing.uri).is_some_and(|t| t.column == thing.column && t.score == thing.score), "{}", thing.uri);
+    }
+}
+
+/// An agent's rule: a message kept from it.
+struct Agent;
+
+impl Rule for Agent {
+    fn admission(&self, _uri: &str, _path: &Path) -> Option<Admission> {
+        Some(Admission::Admitted)
+    }
+    fn shows(&self, uri: &str) -> bool {
+        uri != "mid:studio@north.example"
+    }
+}
+
+/// Consent at every step: an open task tied to an open note only through a
+/// message kept from the agent: the agent sees neither the message nor the
+/// note through it, and "+N" counts neither; the window sees both.
+#[test]
+fn a_thing_kept_is_neither_shown_nor_gone_through() {
+    let mut fixture = Fixture::new();
+    fixture.vault.notes.push(crate::notes::read("studio.md", "# Studio\n"));
+    fixture.local.add("sioul:note/studio.md", "mid:studio@north.example", "link");
+    let open = view(&fixture, &Open, "sioul:task/answer-caf", &[]);
+    assert!(find(&open, "mid:studio@north.example").is_some() && find(&open, "sioul:note/studio.md").is_some(), "{:?}", uris(&open));
+    let agent = view(&fixture, &Agent, "sioul:task/answer-caf", &["sioul:task/answer-caf"]);
+    assert!(find(&agent, "mid:studio@north.example").is_none() && find(&agent, "sioul:note/studio.md").is_none(), "{:?}", uris(&agent));
+    assert!(!agent.things.iter().any(|t| t.more_words.contains("message") && t.uri == "sioul:task/answer-caf"), "{:?}", agent.things[0]);
 }

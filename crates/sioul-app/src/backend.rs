@@ -1160,6 +1160,13 @@ pub mod qobject {
         #[qinvokable]
         fn link_things(self: Pin<&mut Sioul>, from: &QString, to: &QString) -> QString;
 
+        /// The chain of ties from a thing (`chain::walk`), with the things
+        /// whose "+" was pressed (`opened`, a JSON list, once per press), at a
+        /// phone's bounds or a computer's: made on a worker thread, brought
+        /// by `chain_ready`.
+        #[qinvokable]
+        fn ask_chain(self: &Sioul, uri: &QString, opened: &QString, phone: bool);
+
         /// Undoes a tie wherever it is written; returns what the line says.
         #[qinvokable]
         fn unlink_things(self: Pin<&mut Sioul>, from: &QString, to: &QString) -> QString;
@@ -2486,6 +2493,10 @@ pub mod qobject {
         #[qsignal]
         fn account_added(self: Pin<&mut Sioul>);
 
+        /// The chain asked of `uri` with `opened` as asked (`ask_chain`), as JSON (`chain::ChainView`).
+        #[qsignal]
+        fn chain_ready(self: Pin<&mut Sioul>, uri: QString, opened: QString, json: QString);
+
         /// An account's password given here: kept (`problem` empty), else why not.
         #[qsignal]
         fn account_password_done(self: Pin<&mut Sioul>, id: QString, problem: QString);
@@ -2819,6 +2830,11 @@ pub(crate) struct Shared {
     pub(crate) work_shown_generation: AtomicU64,
     /// Everything links reach, read after the last change.
     pub(crate) loaded: Mutex<Option<Arc<sioul_core::links::Loaded>>>,
+    /// The tie index of that reading (`ties::Built`), made on a worker thread
+    /// the first time a page asks (`work::ties_made`); dropped when what it
+    /// reads beyond it changes (persons, papers, letters, money, agendas,
+    /// sites: `changes::listen`). Never written anywhere.
+    pub(crate) ties: Mutex<Option<(std::sync::Weak<sioul_core::links::Loaded>, Arc<sioul_core::ties::Built>)>>,
     /// Real time: every folder each minute, the Porch open.
     pub(crate) realtime: AtomicBool,
     /// Addresses are being placed on the map.
@@ -5671,6 +5687,10 @@ impl qobject::Sioul {
         QString::from(&work::link_target(&self.shared(), &source.to_string(), &href.to_string()))
     }
 
+    fn ask_chain(&self, uri: &QString, opened: &QString, phone: bool) {
+        work::ask_chain(&self.qt_thread(), &self.shared(), uri.to_string(), opened.to_string(), phone);
+    }
+
     fn link_things(mut self: Pin<&mut Self>, from: &QString, to: &QString) -> QString {
         let line = work::link(&self.qt_thread(), &self.shared(), &from.to_string(), &to.to_string());
         self.as_mut().set_status(QString::from(&line));
@@ -7474,9 +7494,11 @@ impl qobject::Sioul {
         // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
         // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "availability"
+        // "chain" the chain of ties from a project, drawn and as an outline, "+" pressed, a card
+        // beside it and Back (pictures alone; docs/tasks.md),
         // Agenda ⚙ ▸ Your availability and its "Share with…" (pictures alone; docs/client.md), "topics" day one's
         // card, the mailbox with its rows' topics, one topic's mail, "Topic…" and Mail ▸ ⚙ ▸ Topics (pictures alone; docs/topics.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "availability", "topics"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "availability", "topics", "chain"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

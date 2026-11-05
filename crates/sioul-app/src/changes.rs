@@ -37,6 +37,8 @@ pub(crate) struct Heard {
     pub agenda: bool,
     /// What the pages read their links, notes and projects from (`Shared::loaded`) read again.
     pub loaded: bool,
+    /// The tie index (`Shared::ties`) made again: it reads this kind's store beside `loaded`.
+    pub ties: bool,
 }
 
 /// What a kind's own word does in the window (`said` here).
@@ -50,7 +52,9 @@ pub(crate) fn heard(kind: Kind) -> Heard {
         // Made in Rust by their writers as they write.
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => (false, false, false),
     };
-    Heard { signal, agenda, loaded }
+    // The tie index reads the persons, papers, letters, money, agendas and sites beside `loaded`.
+    let ties = loaded || matches!(kind, Kind::Persons | Kind::Papers | Kind::Letters | Kind::Money | Kind::Agendas | Kind::Sites);
+    Heard { signal, agenda, loaded, ties }
 }
 
 /// The window listens, from its start: each kind said becomes what its views need.
@@ -62,6 +66,11 @@ pub(crate) fn listen(qt: &QtThread, shared: &Arc<Shared>) {
             && let Ok(mut cache) = shared.loaded.lock()
         {
             *cache = None;
+        }
+        if heard.ties
+            && let Ok(mut kept) = shared.ties.lock()
+        {
+            *kept = None;
         }
         if !heard.signal && !heard.agenda {
             return;
@@ -239,6 +248,10 @@ mod tests {
             assert!(h.signal || r.pim || r.views || r.work, "{kind:?} reaches no view when it comes from elsewhere");
         }
         assert!(heard(Kind::Papers).agenda && heard(Kind::Money).agenda && heard(Kind::Persons).agenda, "dates and names in the agenda");
+        // The tie index reads these beside what the pages read: made again when they change.
+        for kind in [Kind::Persons, Kind::Papers, Kind::Letters, Kind::Money, Kind::Agendas, Kind::Sites, Kind::Links, Kind::Projects] {
+            assert!(heard(kind).ties, "{kind:?}");
+        }
         let calendars: BTreeSet<Kind> = [Kind::Calendars].into_iter().collect();
         assert_eq!(remade(&calendars), Remade { pim: true, views: false, work: true });
     }

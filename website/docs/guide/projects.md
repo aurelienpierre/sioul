@@ -40,7 +40,7 @@ On the left, every project, with its open tasks and the time left to bill. On th
 - **Its tasks**, as a **Board**, a **List** or a **Gantt**: each opens the [Tasks](tasks.md) page, kept to this project. The **Gantt** is the Tasks page's own ([List, Board, Gantt](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
 - **Note time**: a meeting, a call, work done away from the timer.
 - **Make the invoice**, when billable time waits to be billed. See [Time and invoices](time.md).
-- **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact.
+- **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact; **Ties**, everything the project holds and what that is tied to ([Ties](ties.md)).
 
 ## Mail that comes here by itself {#mail-that-comes-here-by-itself}
 

@@ -948,6 +948,34 @@ fn a_closed_project_is_never_shown() {
 /// parent's identity card comes, with the parent's address. A closed
 /// child's agenda is kept, an opened child's comes but for its dentist's
 /// appointment, kept as health whatever the switch, with your stand-in of it.
+/// The agents' `links` walks the chain of ties as the window does, with
+/// consent at every step (the chain of ties, phase 5): `depth` and `limit`
+/// bound it; a closed project's things never come, nor what they alone tie;
+/// what was left out is counted, never named; a code stays masked.
+#[test]
+fn links_walk_the_chain_with_consent_at_every_step() {
+    let _home = home();
+    let mut server = server();
+    for depth in [1, 2, 3] {
+        let tied = call(&mut server, "links", json!({ "uri": "sioul:project/housing", "depth": depth }));
+        assert!(tied["isError"] != true, "{tied}");
+        never_zeugma(&tied, "links");
+        let chain = tied["structuredContent"]["chain"].as_array().unwrap().clone();
+        assert!(chain.iter().all(|t| t["step"].as_u64().unwrap() <= depth), "{tied}");
+        assert!(chain.iter().any(|t| t["title"] == "Find the rent receipt"), "{tied}");
+        assert!(chain.iter().all(|t| t.get("name").is_none() && t.get("chain").is_none()), "no sentence holding raw titles: {tied}");
+        let said = tied.to_string();
+        assert!(!said.contains("482 913") && !said.contains("482913"), "{said}");
+    }
+    let few = call(&mut server, "links", json!({ "uri": "sioul:project/housing", "limit": 2 }));
+    assert!(few["structuredContent"]["chain"].as_array().unwrap().len() <= 2, "{few}");
+    let receipt = call(&mut server, "links", json!({ "uri": "sioul:task/receipt", "depth": 3 }));
+    never_zeugma(&receipt, "links");
+    assert!(receipt["structuredContent"]["kept_from_agents"].as_u64().is_some(), "{receipt}");
+    let deep = call(&mut server, "links", json!({ "uri": "sioul:project/housing", "depth": 9 }));
+    assert_eq!(deep["isError"], true, "{deep}");
+}
+
 #[test]
 fn a_closed_person_is_never_shown() {
     let _ = home();

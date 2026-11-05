@@ -22,6 +22,10 @@
 //! **Bounds**: four steps, a score of 0.1 at least, five things under each
 //! thing, 24 in all on a computer and 12 on a phone. Equal scores come
 //! nearest to the entry point's date first, then by kind, title and address.
+//! Inside one collection (the entry point, or one whose "+" is pressed), one
+//! of each kind comes first (a letter, a task, a note, a message, a payment,
+//! then the others), then the rest by date, and no more than two messages
+//! from one sender before the others.
 //!
 //! **"+N"** on each thing counts its ties not shown, apart from the one it
 //! hangs from and things shown elsewhere. "+" reveals the next eight of them
@@ -73,12 +77,16 @@ pub struct Weights {
     pub more: usize,
     /// The fan-out's reference: leaving a thing with `d` ties, each is weighed `min(1, √(fan / d))`.
     pub fan: f64,
+    /// Inside one collection, messages from one sender at most, before the
+    /// others come (a weekly notification crowded out the office's letters
+    /// in the first trial on real data).
+    pub per_sender: usize,
 }
 
 impl Weights {
     /// On a computer: 24 things at most.
     pub fn computer() -> Weights {
-        Weights { sure: 1.0, close: 0.8, member: 0.6, loose: 0.4, decay: 0.75, floor: 0.1, depth: 4, under: 5, total: 24, more: 8, fan: 4.0 }
+        Weights { sure: 1.0, close: 0.8, member: 0.6, loose: 0.4, decay: 0.75, floor: 0.1, depth: 4, under: 5, total: 24, more: 8, fan: 4.0, per_sender: 2 }
     }
 
     /// On a phone: 12 things at most, about a quarter of a laptop window's area.
@@ -134,6 +142,11 @@ pub fn kind_id(kind: Kind) -> &'static str {
         Kind::Other => "other",
     }
 }
+
+/// The kinds a collection shows one of first, in this order; then one of
+/// each other kind, in `Kind`'s order (the first trial on real data: from a
+/// project, its five newest messages hid its letters, tasks and notes).
+pub const FIRST_KINDS: [Kind; 5] = [Kind::Letter, Kind::Task, Kind::Note, Kind::Mail, Kind::Movement];
 
 /// Every kind, for the words' check.
 pub const KINDS: [Kind; 18] = [Kind::Task, Kind::Event, Kind::Mail, Kind::Draft, Kind::Note, Kind::Contact, Kind::Person, Kind::Budget, Kind::Project, Kind::Paper, Kind::Contract, Kind::Letter, Kind::Invoice, Kind::Movement, Kind::Site, Kind::Web, Kind::File, Kind::Other];
@@ -359,6 +372,53 @@ impl Walk<'_> {
         let distance = found.when.map_or(u64::MAX, |w| w.abs_diff(reference));
         (Reverse(quantized(score)), distance, found.kind, crate::text::fold(&found.title).into_iter().collect(), self.address(node).to_string())
     }
+
+    /// A message's sender, as compared; none for anything else.
+    fn sender(&self, node: u32) -> Option<String> {
+        let address = self.address(node);
+        (crate::links::kind_of(address) == Kind::Mail).then(|| self.world.mail.get(address).map(|m| m.address.trim().to_ascii_lowercase())).flatten().filter(|s| !s.is_empty())
+    }
+
+    /// A collection's members in the order it shows them: one of each kind
+    /// first (`FIRST_KINDS`, then the others in `Kind`'s order), then the rest
+    /// by date, nearest the entry point's first; past `per_sender` messages
+    /// from one sender (those already shown under it counted), the others
+    /// before them. The same members, the same order.
+    fn members(&self, mut members: Vec<u32>, reference: i64, shown: &[u32]) -> Vec<u32> {
+        members.sort_by_cached_key(|n| {
+            let (_, distance, kind, title, address) = self.key(*n, 0.0, reference);
+            (distance, kind, title, address)
+        });
+        let kind = |n: &u32| crate::links::kind_of(self.address(*n));
+        let mut first: Vec<u32> = Vec::new();
+        for wanted in FIRST_KINDS.iter().chain(KINDS.iter().filter(|k| !FIRST_KINDS.contains(k))) {
+            if let Some(&n) = members.iter().find(|n| kind(n) == *wanted) {
+                first.push(n);
+            }
+        }
+        let rest: Vec<u32> = members.iter().copied().filter(|n| !first.contains(n)).collect();
+        let mut from: HashMap<String, usize> = HashMap::new();
+        for sender in shown.iter().filter_map(|n| self.sender(*n)) {
+            *from.entry(sender).or_default() += 1;
+        }
+        let (mut kept, mut later) = (Vec::new(), Vec::new());
+        for n in first.into_iter().chain(rest) {
+            match self.sender(n) {
+                Some(sender) => {
+                    let count = from.entry(sender).or_default();
+                    if *count >= self.weights.per_sender {
+                        later.push(n);
+                    } else {
+                        *count += 1;
+                        kept.push(n);
+                    }
+                }
+                None => kept.push(n),
+            }
+        }
+        kept.extend(later);
+        kept
+    }
 }
 
 /// The chain from `entry`, with the things whose "+" was pressed (`opened`,
@@ -393,12 +453,19 @@ pub fn walk(world: &World, index: &TieIndex, rule: &dyn Rule, entry: &str, opene
         if r.depth >= weights.depth || !walk.walkable(node) {
             return;
         }
-        for seen in walk.follow(node).iter().filter(|s| !shown.contains_key(&s.other)) {
+        let ties = walk.follow(node);
+        let candidates: Vec<&Seen> = ties.iter().filter(|s| !shown.contains_key(&s.other) && walk.through(node, r, s) >= weights.floor).collect();
+        // The entry point a collection: its members in a collection's order, before anything further.
+        let ranked: Option<HashMap<u32, usize>> = (node == start && is_collection(index.address(node))).then(|| walk.members(candidates.iter().map(|s| s.other).collect(), reference, &[]).into_iter().enumerate().map(|(rank, n)| (n, rank)).collect());
+        let top = candidates.iter().map(|s| walk.through(node, r, s)).fold(0.0, f64::max);
+        for seen in candidates {
             let score = walk.through(node, r, seen);
-            if score >= weights.floor {
-                found.push(Reached { score, parent: Some(node), depth: r.depth + 1, how: seen.words(), back: back_words(seen) });
-                heap.push(Reverse((walk.key(seen.other, score, reference), index.address(node).to_string(), found.len() - 1, seen.other)));
-            }
+            found.push(Reached { score, parent: Some(node), depth: r.depth + 1, how: seen.words(), back: back_words(seen) });
+            let key = match ranked.as_ref().and_then(|ranks| ranks.get(&seen.other)) {
+                Some(&rank) => (Reverse(quantized(top)), rank as u64, Kind::Task, String::new(), index.address(seen.other).to_string()),
+                None => walk.key(seen.other, score, reference),
+            };
+            heap.push(Reverse((key, index.address(node).to_string(), found.len() - 1, seen.other)));
         }
     };
     expand(start, &shown[&start], &shown, &mut found, &mut heap);
@@ -436,7 +503,13 @@ pub fn walk(world: &World, index: &TieIndex, rule: &dyn Rule, entry: &str, opene
             }
             let r = shown[&node];
             let mut hidden: Vec<(u32, f64, &'static str, &'static str)> = walk.follow(node).iter().filter(|s| !shown.contains_key(&s.other)).map(|s| (s.other, walk.through(node, &r, s), s.words(), back_words(s))).collect();
-            hidden.sort_by_cached_key(|(n, score, ..)| walk.key(*n, *score, reference));
+            if is_collection(index.address(node)) {
+                // A collection opened: in a collection's order, those already under it counted.
+                let order = walk.members(hidden.iter().map(|h| h.0).collect(), reference, under.get(&node).map_or(&[][..], |c| &c[..]));
+                hidden.sort_by_key(|h| order.iter().position(|n| *n == h.0));
+            } else {
+                hidden.sort_by_cached_key(|(n, score, ..)| walk.key(*n, *score, reference));
+            }
             for (other, score, how, back) in hidden.into_iter().take(count * weights.more) {
                 under.entry(node).or_default().push(other);
                 shown.insert(other, Reached { score, parent: Some(node), depth: r.depth + 1, how, back });
@@ -512,10 +585,14 @@ pub fn walk(world: &World, index: &TieIndex, rule: &dyn Rule, entry: &str, opene
         things.push(node_of(tr, &found, rule, &at, walk.refused(node), amount, (more, more_words), opened, counted, index.sessions(node), chain));
     }
 
-    // Ties between things shown that are not the tree's.
+    // Ties between things shown that are not the tree's; none to a collection, whose
+    // count already says what it holds (from a project, a curve to each of its things).
     let mut cross: Vec<CrossTie> = Vec::new();
     for (i, &node) in outline.iter().enumerate() {
-        for seen in walk.follow(node).iter() {
+        if is_collection(index.address(node)) {
+            continue;
+        }
+        for seen in walk.follow(node).iter().filter(|s| !is_collection(index.address(s.other))) {
             let Some(&j) = position.get(&seen.other) else { continue };
             let tree = shown[&node].parent == Some(seen.other) || shown[&seen.other].parent == Some(node);
             if j > i && !tree {

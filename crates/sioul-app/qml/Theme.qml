@@ -88,7 +88,14 @@ QtObject {
             "draft": "document-edit",
             "note": "view-pim-notes",
             "contact": "contact-new",
+            "person": "user-identity",
             "budget": "view-filter",
+            "movement": "view-financial-account",
+            "invoice": "view-financial-account-cash",
+            "contract": "document-sign",
+            "paper": "view-certificate",
+            "letter": "mail-mark-unread",
+            "site": "sioul-web",
             "project": "folder-documents",
             "web": "insert-link",
             "file": "document-new",
@@ -99,6 +106,13 @@ QtObject {
             "day-off": "view-calendar",
             "other": "insert-link"
         })
+
+    // The chain of ties' families (ChainBadge.qml), each told by its shape
+    // first and its colour after, never by colour alone: Paul Tol's "muted"
+    // scheme (teal, indigo, rose, olive, cyan, purple), darker on light
+    // pages and lighter on dark ones, each at 4:1 or more against the page and the cards.
+    readonly property var familyColours: dark ? ({ "time": "#6cc5b5", "messages": "#a59be6", "people": "#e08a9a", "money": "#c9c46e", "records": "#8fc6e6", "projects": "#d48bc5" })
+                                               : ({ "time": "#2f7d70", "messages": "#4a3f99", "people": "#a8485a", "money": "#76762a", "records": "#3a7799", "projects": "#8e3a80" })
 
     // The projects in the Time page's bars: calm, and apart from each other.
     readonly property var chartColors: dark ? ["#93b5a2", "#d4a56c", "#8fa9c9", "#c99393", "#b3a1cf", "#a8b86c", "#7fb8b8"] : ["#4c6b5c", "#b07d3f", "#4f6d8f", "#9a5a5a", "#6f5f93", "#6e7d32", "#3f7f7f"]

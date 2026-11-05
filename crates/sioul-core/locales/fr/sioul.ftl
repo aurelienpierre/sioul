@@ -1754,6 +1754,16 @@ chain-sessions = { $n } { $n ->
        *[other] séances notées
     }
 chain-cross = Liés aussi
+ui-ties = Liens
+chain-title = Liens de { $title }
+chain-drawing = Chaîne
+chain-outline = Liste
+chain-fit = Ajuster
+chain-its-ties = Ses liens
+chain-see-all = Les voir tous
+chain-minus = Les replier
+chain-folded = replié
+chain-unfolded = déplié
 task-now-title = L’étape suivante
 task-then = Ensuite
 task-not-found = Aucune tâche ne correspond à « { $what } ».

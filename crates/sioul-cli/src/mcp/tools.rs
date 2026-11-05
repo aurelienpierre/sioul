@@ -519,11 +519,20 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "links",
         title: "What it is tied to",
-        description: "What a thing is tied to, both ways, as `sioul links` shows it: tasks, events, mail, drafts, notes, contacts, budget lines, projects. Give its address: mid:<Message-ID> (sioul:mail/<account>/<digest> for a message without one), sioul:task/<UID>, sioul:event/<UID>, sioul:note/<path>, sioul:contact/<UID>, sioul:case/<id>, sioul:draft/<id>.",
+        description: "The chain of ties from a thing, both ways: what it is tied to, what those are tied to, `depth` steps at most, the strongest chains first (as Sioul's window shows them, \"Ties of …\"): tasks, events, mail, drafts, notes, contacts, persons, papers, letters, contracts, invoices, payments, budget lines, projects. A collection (a project, a contact, a person, a budget, a site) is shown with what it holds and not gone through; each thing says how many of its ties are not shown. Give its address: mid:<Message-ID> (sioul:mail/<account>/<digest> for a message without one), sioul:task/<UID>, sioul:event/<UID>, sioul:note/<path>, sioul:contact/<UID>, sioul:project/<id>, sioul:draft/<id>, sioul:movement/<key>.",
         writes: false,
         idempotent: true,
         open_world: false,
-        schema: || object(json!({ "uri": { "type": "string", "description": "The thing's address." } }), &["uri"]),
+        schema: || {
+            object(
+                json!({
+                    "uri": { "type": "string", "description": "The thing's address." },
+                    "depth": { "type": "integer", "minimum": 1, "maximum": 3, "description": "Steps from it, at most: 2 when unsaid." },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Things shown in all, at most: 30 when unsaid." },
+                }),
+                &["uri"],
+            )
+        },
         run: read::links,
     },
     Tool {

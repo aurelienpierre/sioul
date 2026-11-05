@@ -1186,6 +1186,11 @@ Item {
             }
         }
         MenuSeparator {}
+        // Its ties as a chain (ChainPage.qml): the person it is opened for, its mail.
+        MenuItem {
+            text: page.sioul.text("chain-its-ties")
+            onTriggered: page.window.openChain("sioul:site/" + encodeURIComponent(page.menuId))
+        }
         MenuItem {
             text: page.sioul.text("site-background")
             checkable: true

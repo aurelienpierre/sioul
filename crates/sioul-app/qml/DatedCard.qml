@@ -230,8 +230,24 @@ CardFrame {
             flat: true
             text: card.sioul.text("dated-open-page")
             onClicked: card.window.openPage(card.kind === "notice" ? "contract" : "budget", card.key)
+        },
+        // Its ties as a chain (ChainPage.qml): a paper, a contract, a letter, an invoice, a budget's line.
+        Button {
+            objectName: "datedTies"
+            visible: card.there && card.thing !== ""
+            flat: true
+            text: card.sioul.text("ui-ties")
+            onClicked: card.window.openChain(card.thing)
         }
     ]
+
+    // What it is, by its address, for its ties: "" for a date that is no thing of its own.
+    readonly property string thing: {
+        const of = { "paper": "sioul:paper/", "notice": "sioul:contract/", "letter": "sioul:letter/", "letter-appointment": "sioul:letter/", "invoice": "sioul:invoice/" }
+        if (card.kind === "payment")
+            return card.key
+        return of[card.kind] !== undefined && card.key !== "" ? of[card.kind] + encodeURIComponent(card.key) : ""
+    }
 
     Later {
         id: letterForm

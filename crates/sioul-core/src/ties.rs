@@ -246,8 +246,14 @@ pub trait Rule {
         false
     }
     /// Whether a thing may be shown and walked through at all: always in the
-    /// window; for an agent, as its consent says (phase 5).
+    /// window; for an agent, as its consent says.
     fn shows(&self, _uri: &str) -> bool {
+        true
+    }
+    /// Whether ties of this kind may be followed: all in the window; an agent
+    /// never learns which cards are a person, nor a child's other parent
+    /// (docs/persons.md, "What agents see").
+    fn follows_how(&self, _how: How) -> bool {
         true
     }
 }
@@ -312,6 +318,31 @@ impl Gates {
         health.keep_errands(loaded, recorded.as_ref());
         health.keep_agendas(loaded, &BTreeSet::new(), &sources.children);
         Gates { gate: Some(gate), busy, health, said: Default::default() }
+    }
+}
+
+/// The index of one reading (`Loaded`) with the window's rule: the window
+/// keeps it beside that reading until a change asks for another.
+pub struct Built {
+    pub index: TieIndex,
+    pub gates: Gates,
+    /// How long its stores took to read (`Sources::read`, `Gates::read`), for the `sioul-perf` line.
+    pub read_in: std::time::Duration,
+}
+
+impl Built {
+    /// Read as `config` says, beside `loaded`.
+    pub fn of(config: &Config, loaded: &Loaded) -> Built {
+        let began = std::time::Instant::now();
+        let sources = Sources::read(config, loaded);
+        let gates = Gates::read(config, loaded, &sources);
+        let read_in = began.elapsed();
+        Built { index: TieIndex::build(&loaded.world(), &sources), gates, read_in }
+    }
+
+    /// `loaded`'s world, reading this index by this rule.
+    pub fn world<'a>(&'a self, loaded: &'a Loaded) -> World<'a> {
+        loaded.world_with(&self.index, &self.gates)
     }
 }
 
@@ -869,7 +900,7 @@ impl TieIndex {
     /// the thing at its other end.
     pub fn follows(&self, world: &World, rule: &dyn Rule, from: u32, seen: &Seen) -> bool {
         let other = self.address(seen.other);
-        if !rule.shows(other) {
+        if !rule.follows_how(seen.how) || !rule.shows(other) {
             return false;
         }
         if seen.need == Need::Nothing {

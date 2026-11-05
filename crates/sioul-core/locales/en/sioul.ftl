@@ -1727,6 +1727,16 @@ chain-sessions = { $n } { $n ->
        *[other] sessions
     } noted
 chain-cross = Also tied
+ui-ties = Ties
+chain-title = Ties of { $title }
+chain-drawing = Chain
+chain-outline = Outline
+chain-fit = Fit
+chain-its-ties = Its ties
+chain-see-all = See them all
+chain-minus = Fold them back
+chain-folded = folded
+chain-unfolded = unfolded
 task-now-title = The next step
 task-then = After that
 task-not-found = No task matches “{ $what }”.
