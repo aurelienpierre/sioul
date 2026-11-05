@@ -85,6 +85,16 @@ ColumnLayout {
     Component.onCompleted: section.reload()
     onVisibleChanged: if (visible) section.reload()
 
+    // Money changed, here or elsewhere (a movement placed, another device): read again while shown.
+    Connections {
+        target: section.sioul
+
+        function onMoneyChanged() {
+            if (section.visible)
+                section.reload()
+        }
+    }
+
     RowLayout {
         Layout.fillWidth: true
         Layout.topMargin: section.theme.gap

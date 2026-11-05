@@ -1012,7 +1012,10 @@ fn write_ledger(path: &Path, doc: &DocumentMut) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let temporary = path.with_extension("toml.new");
     std::fs::write(&temporary, doc.to_string()).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    std::fs::rename(&temporary, path).map_err(fail)?;
+    // Every view of money reads it again (Budgets, a person's page, the dates asked).
+    crate::changes::said(crate::changes::Kind::Money);
+    Ok(())
 }
 
 /// Makes a budget (`id` empty) or changes one, in place, its comments and
@@ -1256,7 +1259,9 @@ pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String>
         lines.as_array_of_tables_mut().ok_or_else(|| fail("`line` is not a list of tables".into()))?.push(table);
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))
+        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+        crate::changes::said(crate::changes::Kind::Money);
+        Ok(())
     })
 }
 
@@ -1577,7 +1582,9 @@ pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(
         presets.as_array_of_tables_mut().ok_or_else(|| fail("`preset` is not a list of tables".into()))?.push(table);
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))
+        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+        crate::changes::said(crate::changes::Kind::Money);
+        Ok(())
     })
 }
 
@@ -1663,6 +1670,7 @@ fn change_linked<T>(path: &Path, link: &str, change: impl FnOnce(&mut Table) -> 
             let temporary = path.with_extension("toml.new");
             std::fs::write(&temporary, changed).map_err(|e| fail(e.to_string()))?;
             std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+            crate::changes::said(crate::changes::Kind::Money);
         }
         Ok(Some(out))
     })

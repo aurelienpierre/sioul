@@ -243,7 +243,9 @@ impl Contracts {
 
     /// Written whole, next to its place then moved, under the file's lock.
     pub fn save(&self) -> Result<(), String> {
-        crate::filelock::with_lock(&self.root.join(MANIFEST), || self.write())
+        crate::filelock::with_lock(&self.root.join(MANIFEST), || self.write())?;
+        crate::changes::said(crate::changes::Kind::Money);
+        Ok(())
     }
 
     fn write(&self) -> Result<(), String> {

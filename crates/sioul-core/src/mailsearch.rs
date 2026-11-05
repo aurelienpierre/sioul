@@ -69,6 +69,11 @@ impl Search {
         self.effective().is_empty()
     }
 
+    /// Whether a condition asks a message's topic (`Field::Topic`).
+    pub fn needs_topics(&self) -> bool {
+        self.effective().iter().any(|c| c.field == Field::Topic)
+    }
+
     /// Whether a condition asks who the sender is to you (`Facts::who`).
     pub fn needs_senders(&self) -> bool {
         self.effective().iter().any(|c| c.field == Field::Sender)
@@ -182,12 +187,20 @@ pub struct Stored {
     flags: String,
     header: OnceCell<Option<Card>>,
     whole: OnceCell<Option<Card>>,
+    /// Mail's topics, when the search asks one (`with_topics`).
+    topics: Option<std::sync::Arc<crate::topics::rules::Lookup>>,
 }
 
 impl Stored {
     pub fn new(path: PathBuf, account: &str, folder: &Folder) -> Stored {
         let flags = crate::maildir::flags_of(&path);
-        Stored { path, account: account.to_string(), folder: folder.clone(), flags, header: OnceCell::new(), whole: OnceCell::new() }
+        Stored { path, account: account.to_string(), folder: folder.clone(), flags, header: OnceCell::new(), whole: OnceCell::new(), topics: None }
+    }
+
+    /// Its topic read for a search's "Topic is" (`Field::Topic`).
+    pub fn with_topics(mut self, topics: std::sync::Arc<crate::topics::rules::Lookup>) -> Stored {
+        self.topics = Some(topics);
+        self
     }
 
     fn header_card(&self) -> Option<&Card> {
@@ -215,7 +228,8 @@ impl Stored {
     }
 
     fn place(&self) -> Place {
-        Place { account: self.account.clone(), folder: self.folder.name.clone(), role: self.folder.role, flags: self.flags.clone() }
+        let topic = self.topics.as_ref().zip(self.header_card()).and_then(|(lookup, card)| lookup.name_of(card, &self.account, &self.folder.display));
+        Place { account: self.account.clone(), folder: self.folder.name.clone(), role: self.folder.role, flags: self.flags.clone(), topic }
     }
 
     /// Whether it holds for `search`; `senders` judge who its sender is to
@@ -294,7 +308,7 @@ impl Found {
             (date, received) => date.or(received),
         };
         facts.who = senders.map(|s| s.who_of(&self.card));
-        let place = Place { account: self.account.clone(), folder: self.folder.name.clone(), role: self.folder.role, flags: self.flags.clone() };
+        let place = Place { account: self.account.clone(), folder: self.folder.name.clone(), role: self.folder.role, flags: self.flags.clone(), topic: None };
         let message = Message::new(&self.card, facts).placed(place);
         search.decide(&mut |condition, read_whole| match condition.field {
             Field::Body | Field::Anywhere if read_whole => None,
@@ -571,7 +585,7 @@ fn imap_of(condition: &Condition, gmail: bool) -> Option<ImapKey> {
         Field::AttachmentType if gmail && value == "pdf" => ImapKey::GmailRaw("filename:pdf".into()),
         Field::AttachmentType if gmail => ImapKey::GmailRaw("has:attachment".into()),
         Field::AttachmentType => attached(),
-        Field::Sender | Field::Weekday | Field::Hour | Field::Account | Field::Folder | Field::Unknown => return None,
+        Field::Sender | Field::Weekday | Field::Hour | Field::Account | Field::Folder | Field::Topic | Field::Unknown => return None,
     })
 }
 
@@ -683,6 +697,10 @@ fn phrase(condition: &Condition, tr: &Translator, names: &Names, today: Date) ->
             format!("search-phrase-folder-{test}")
         }
         Field::Mark => format!("search-phrase-mark-{test}-{value}"),
+        Field::Topic => {
+            args.set("topic", value);
+            format!("search-phrase-topic-{test}")
+        }
         Field::AttachmentType => {
             args.set("kind", tr.text(&format!("filter-kind-{value}"), None));
             format!("search-phrase-attachment-type-{test}")

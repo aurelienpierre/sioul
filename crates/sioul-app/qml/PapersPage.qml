@@ -80,6 +80,12 @@ Item {
             if (page.visible)
                 page.reload()
         }
+
+        // A paper saved, renewed or taken out, here or elsewhere.
+        function onPapersChanged() {
+            if (page.visible)
+                page.reload()
+        }
     }
 
     ScrollView {

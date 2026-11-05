@@ -52,8 +52,16 @@ pub(crate) fn run(s: &Session, dirs: &Dirs, id: &str, ask: &report::TrainAsk, js
     };
     let mut replaced = None;
     let result = long(s, json, Some(id), |progress, cancel| {
-        let report = report::train(s, dirs, ask, progress, cancel)?;
+        let mut report = report::train(s, dirs, ask, progress, cancel)?;
         replaced = report.data["summary"]["replaced"].as_bool();
+        // Mail's topics in the same run (docs/topics.md, "The model"): what goes wrong there leaves the spam filter's training as it is.
+        match crate::topics::train(s, dirs, true, progress, cancel) {
+            Ok(topics) => {
+                report.lines.extend(topics.lines);
+                report.data["topics"] = topics.data;
+            }
+            Err(e) => report.data["topics"] = serde_json::json!({ "error": e }),
+        }
         Ok(report)
     });
     done.store(true, Ordering::Relaxed);

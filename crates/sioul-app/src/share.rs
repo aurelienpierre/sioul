@@ -1877,6 +1877,11 @@ static NUDGED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(
 static ALONE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 static SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
+/// Whether the window is on the screen (always on a computer but while hidden in the tray, or a phone's in the back).
+pub(crate) fn window_shown() -> bool {
+    SHOWN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Sioul on the phone's screen, or put away: the sync app is asked to look only while it is shown.
 pub(crate) fn set_shown(shown: bool) {
     SHOWN.store(shown, std::sync::atomic::Ordering::Relaxed);
@@ -2189,7 +2194,7 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
                     }
                     crate::work::show_work(&qt, &shared);
                     // Each kind it brought said to the views that show it (changes.rs).
-                    crate::changes::arrived(&outcome.written);
+                    crate::changes::arrived_stores(&qt, &shared, &outcome.written);
                     let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
                     let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(&names)));
                 }

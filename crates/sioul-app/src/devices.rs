@@ -140,6 +140,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.movements = sioul_sync::share::MOVEMENTS_SHARED;
         // It has the persons' store: it travels once every device says so.
         entry.persons = sioul_sync::share::PERSONS_SHARED;
+        // It has the store of your word on topics: it travels once every device says so.
+        entry.topics = sioul_sync::share::TOPICS_SHARED;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

@@ -36,7 +36,8 @@ Once you set them up:
 - **Chips above the list**: **All**, **Unread**, **Sent**, **Spam**, one at a time. What you chose stays on this device. Spam waits under its own chip, with its quiet word ("probably spam", "your provider: spam"); what you said is not spam stays in the list.
 - **What shows, by area and by address**: beside the chips, a button says what the list shows, "Admin · Leisure". It opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say: work's addresses in working hours, your admin's in admin hours, leisure's the rest of the time, and none while you sleep ([Hours](hours.md)). Tick another, and it shows at once; your ticks hold until the hours change (a day at most), and **As the hours say** sets them back. After them, each address's square switches it off or on; switched off, only its outline shows. The list holds the mail of the addresses switched on whose area is ticked (an address whose use you did not say counts as work: Accounts, "What this address is for"). On a phone, the filter is in the folders button's sheet, each address there by its whole name. The **?** in the filter says the same in short.
 - **Calm**: mail whose time has not come yet (your lists say later) shows without its dot. Mail from blocked senders never shows; a shielded address's hostile mail shows as "Someone at example.org", its words hidden.
-- **Two weeks**, then **Earlier messages**, at the end of the list, adds two more each time; a crowded fortnight comes as you scroll. The search above it looks through every address; **More…** opens the search by conditions.
+- **What is not shown now** is said at the head of the list, each with what brings it back: an area whose mail rests as your hours say, or that you left unticked (**Show it**); an address switched off in this list, which only hides it here, its mail staying in its inbox (**Switch it on**); mail older than two weeks (**Show older…**).
+- **Two weeks**, then, at the end of the list, "Mail older than two weeks:" **Show older…** adds two more each time, until "Nothing older is kept here."; a crowded fortnight comes as you scroll. The search above it looks through every address; **More…** opens the search by conditions.
 - **A click opens a message** beside the list; Back closes it, the list where it was. Ctrl and Shift choose several, across addresses, to mark them read, archive, delete or move them at once, or drag them onto a folder. A right click offers what a folder's row offers. A message that reached two of your addresses is one row: marking it read or deleting it does so in both.
 - **Each address has its own letter** on its colour, never the same letter twice, so two addresses that start alike still read apart.
 - **On a phone**, a tap opens a message over the list, and Back brings the list back where it was. A long press on a row opens its menu; **Select** there begins a selection, a tap then adds the next. The folders button shows your addresses and their folders. When the list shows, Sioul brings the other folders at once, as **Fetch mail now** would, so that what you sent from your computer is there too.
@@ -106,6 +107,19 @@ Opening a message marks it read, as any mail program does. Sioul never sends a r
   [![The results of a search, all chosen, held over the folders: the folders are back on the left in the search's place, Archive outlined under the label "7 messages"; above the list, "7 selected" with Mark as read, Archive, Delete, Move to… and ×.](../assets/screens/mail-search-drag.png){ loading=lazy }](../assets/screens/mail-search-drag.png "Open the picture at full size")
   <figcaption>Sorting from a search: the messages chosen, dragged onto a folder.</figcaption>
 </figure>
+
+### Topics {#topics}
+
+A topic is a quiet word on a message, such as Health, Tax or Choir: a way to look at your mail, never a folder. Nothing moves, and nothing asks you to tag anything.
+
+- **Topic…**, under the sender's line in the reader, in a message's menu, or in the bar above a selection, gives a topic to one message or to several at once, changes it or takes it off. **New topic…** makes it and gives it in one act.
+- **Always <topic> for this sender**, or **Never…**, in the same menu: the sender's mail takes it, or never does. A reply takes the topic you gave its conversation.
+- **The Topic filter**, beside the filter by area, shows one topic's mail alone. The topic shows quietly after the subject, and in the reader with why it has it.
+- Each act says what it did, with **Undo**. In the Mail page's ⚙, **Topics** lists them, renames and removes them, and on a computer **Groups Sioul noticed** gathers mail no topic names yet, by its words: **Name it** gives the whole group a topic, once a thousand messages are kept here, named when a topic preset or a kind of site holds most of it, and **Always a topic…** files all the mail of a sender who writes to you a lot under the topic you name.
+
+**To start**, Sioul knows some topics (Bank, Taxes, Health, Phone and internet…) by their senders, those it can prove: once enough mail is here, those that find five messages or more start by themselves, said once on the Porch; the others wait in **Topics**, one tap each. Started, a topic is yours: renamed or removed like any other.
+
+Topics and projects are independent: a project is something to complete, a topic a standing part of life.
 
 ### Unsubscribing {#unsubscribing}
 
@@ -292,6 +306,16 @@ Under **Your own spam filter**, in the Mail page's ⚙. It judges strangers' mai
 
 What it does with each verdict, the thresholds and whether it trains by itself travel to your other devices with your settings. What training reads, and what it keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
 
+## Why it works this way {#why-it-works-this-way}
+
+**Topics are words on your mail, never places it goes.** Filing by hand costs and fails: in personal Gmail accounts, about half the labels people make end with fewer than three conversations (Grevet et al. 2014), and finding a message through folders took longer than searching for it, without heavy filers finding more (Whittaker et al. 2011). So a topic is a filter over the one mailbox, a word on the row and a search condition: a wrong word costs nothing while the message stays where it was, and a conversation stays whole.
+
+**They start from what you already have.** Your folders and your contacts' categories are the best record of the topics you keep, and the senders Sioul can prove carry most of a topic: a sorter of web mail placed most messages by their sender alone (Grbovic et al. 2014). So the first topics come from your folders, your categories and the senders of a bank, a tax office or a health insurer that Sioul knows; your word on a message or a sender comes first, and nothing asks you to review anything.
+
+**The model waits for mail, and never moves what you see.** A topic is learned once it has 20 messages from 3 senders, or 50 from one office; below that, your words and its rules sort it. Each week a new table replaces the one in use only when it does no worse on the newest mail, topic by topic, and changes fewer than 2 % of the topics already shown, so that nothing moves under your eyes. A doubt is shown only under its topic's filter, as "Perhaps", and never counts as a label; Sioul's own sure guesses count at half weight, never more than a topic's other examples, as its spam filter's own verdicts count until you correct them.
+
+More in [what the research says](../dev/research.md), finding 61.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 As of October 2026, from each app's own documentation.
@@ -316,6 +340,8 @@ Thunderbird is the free-software mail program for computers, with an Android app
     | Send later, snooze | ✗³⁹ | partly⁴⁰ | ✓ | ✓⁴¹ | ✓ | ✓⁴² |
     | Signed and encrypted mail | ✓⁴³ | ✓⁴⁴ | partly⁴⁵ | partly⁴⁶ | partly⁴⁷ | ✓⁴⁸ |
     | Outlook.com, Hotmail and Microsoft 365 addresses | partly⁴⁹ | ✓ | partly⁵⁰ | ✓ | ✓ | ✗⁵¹ |
+    | Topics you name, as quiet words on your mail, never a folder | ✓⁵² | partly⁵³ | partly⁵⁴ | partly⁵⁵ | partly⁵⁶ | ? |
+    | Learns them from your mail, on your devices | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | partly⁵⁶ | ? |
 
     1. Thunderbird: only through an add-on (DKIM Verifier); nothing on Android.
     2. Gmail: a question mark on a message that is not authenticated, and "Mailed by" and "Signed by" in its details, on a computer and on Android; not on an iPhone or iPad.
@@ -368,6 +394,12 @@ Thunderbird is the free-software mail program for computers, with an Android app
     49. Sioul: signed in on Microsoft's own page; not yet tried with a real Microsoft account. A work or school address may need its organisation's approval.
     50. Gmail: in its phone apps; Gmail on the web stops reading other accounts in January 2027.
     51. Proton Mail: Proton addresses; a Gmail account can be connected.
+    52. Sioul: one topic per message, from your folders, your contacts' categories, the senders of a bank, a tax office or a health insurer it knows, and your own word on a message or a sender; a filter, a word on the row and a search condition.
+    53. Thunderbird: tags you give by hand, on a computer; they reach your other devices as IMAP keywords only where the server keeps them; none on Android.
+    54. Gmail: five fixed tabs (Primary, Promotions, Social, Updates, Forums), sorted on Google's servers ("You can't create custom categories"); labels by hand or by filter.
+    55. Outlook: Focused and Other, sorted on Microsoft's servers; categories by hand, for Exchange accounts.
+    56. Apple Mail: four fixed categories since iOS 18.2 (Primary, Transactions, Updates, Promotions), sorted on the device and corrected per sender; none you name.
+    57. Sioul: learned once a week on the computer that trains, for each topic with 20 messages from 3 senders or more; every device, the phone included, then judges new mail with the same table.
 
 === "Technical"
 

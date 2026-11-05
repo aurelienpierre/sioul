@@ -444,6 +444,20 @@ Item {
             setup.toggle(id)
     }
 
+    // For the window's images: "Share with…" opened on the first availability of Agenda ⚙ ▸ Your availability.
+    function openAvailabilityChooser() {
+        const setup = (page.narrow ? agendaSettingsNarrow : agendaSettings).part("availabilitySetup")
+        if (setup !== null && (setup.view.items || []).length > 0)
+            setup.asking = setup.view.items[0].id
+    }
+
+    // For the window's images: a person's name given in the open "Share with…", and its way asked.
+    function askAvailability(who) {
+        const chooser = (page.narrow ? agendaSettingsNarrow : agendaSettings).part("availabilityChooser")
+        if (chooser !== null)
+            chooser.askWho(who)
+    }
+
     // For the window's images: Agenda ⚙ scrolled to the first part of that objectName shown.
     function revealSetting(name) {
         (page.narrow ? agendaSettingsNarrow : agendaSettings).reveal(name)

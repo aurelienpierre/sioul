@@ -1258,7 +1258,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1292,16 +1292,16 @@ SioulWindow {
             readonly property var crudSteps: [
                 () => window.page = 4,
                 () => agendaPage.showDay(window.today),
-                () => sioul.shareAvailability(JSON.stringify({ account: "cloud", agendas: ["cloud/personal"], with: "", link: true, words: {} })),
+                () => sioul.shareAvailability(JSON.stringify({ name: "Public", agendas: ["cloud/personal"], audience: "link", who: "", way: "mirror-link", account: "cloud" })),
                 () => agendaPage.openSettings(true, "agendas"),
                 () => {},
                 () => {},
-                () => agendaPage.revealSetting("availabilityLine"),
+                () => agendaPage.revealSetting("availabilityLink"),
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-availability-link.png"),
                 // The clipboard takes a link and holds it (`copyText`, read back), said in the log.
                 () => console.warn("sioul-copied: " + window.copy("https://cloud.example.org/remote.php/dav/public-calendars/busy-times?export")),
-                () => agendaPage.openAgendaLine(JSON.parse(sioul.availability()).place),
+                () => agendaPage.openAgendaLine(JSON.parse(sioul.availability()).items.slice(-1)[0].mirrors[0]),
                 () => {},
                 () => {},
                 () => agendaPage.revealSetting("agendaLink"),
@@ -1310,6 +1310,60 @@ SioulWindow {
                 () => agendaPage.openSettings(false),
                 () => {},
                 () => grabber.saveCounted("agenda-day", agendaPage),
+                () => window.close()
+            ]
+            // Agenda ⚙ ▸ Your availability (SIOUL_GRAB_STEPS=availability; SIOUL_GRAB_PHONE for a
+            // phone's): the demo's availability for Sam, then one more shared by a link (the demo
+            // profile asks no server: made at once, its link stood in); the section, then
+            // "Share with…" opened on the first card, the way it names for a person.
+            // Mail's topics (docs/topics.md): day one's card on the Porch, the
+            // mailbox with its rows' topics, one topic's mail, a row's "Topic…",
+            // and Mail ▸ ⚙ ▸ Topics (pictures alone).
+            readonly property var topicSteps: [
+                () => window.page = 0,
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-porch"),
+                () => window.page = 2,
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-mail"),
+                () => mailPage.chooseTopic("bank"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-mail-bank"),
+                () => mailPage.chooseTopic(""),
+                () => {},
+                () => mailPage.askTopicOfFirst(),
+                () => {},
+                () => grabber.savePopup(mailPage.topicMenu, "topics-menu"),
+                () => mailPage.topicMenu.close(),
+                () => mailPage.openSettings(true),
+                () => mailPage.scrollSettings("topics.list"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-settings"),
+                () => mailPage.openSettings(false),
+                () => window.close()
+            ]
+            readonly property var availabilitySteps: [
+                () => window.page = 4,
+                () => agendaPage.showDay(window.today),
+                () => sioul.shareAvailability(JSON.stringify({ name: "Public", agendas: ["cloud/personal"], audience: "link", who: "", way: "mirror-link", account: "cloud" })),
+                () => agendaPage.openSettings(true, "availability"),
+                () => {},
+                () => {},
+                // A phone's panel scrolled to the section's own top (its row's title above it on a computer).
+                () => { if (agendaPage.narrow) agendaPage.revealSetting("availabilitySetup") },
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-availability.png"),
+                () => agendaPage.openAvailabilityChooser(),
+                () => {},
+                () => agendaPage.askAvailability("sam"),
+                () => {},
+                () => agendaPage.revealSetting("availabilityChooser"),
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-availability-chooser.png"),
                 () => window.close()
             ]
             readonly property var agendaSteps: [

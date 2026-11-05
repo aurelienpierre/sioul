@@ -89,10 +89,19 @@ pub enum Kind {
     /// (`agendas`). The window reads and writes them itself (`agendas_setup`,
     /// `set_agenda_field`). Nothing in `value`.
     Agendas,
+    /// Your availabilities, the window's own block (`AvailabilitySetup.qml`):
+    /// what you give of your time, and to whom (`availability`). The window
+    /// reads and writes them itself (`availability`, `share_availability`).
+    /// Nothing in `value`.
+    Availability,
     /// The matrix of conflicts, the window's own block (`ConflictMatrix.qml`):
     /// a box per pair of agendas, the exceptions to the rule its sentence
     /// says (`agendas::Matrix`). Nothing in `value`.
     Conflicts,
+    /// Mail's topics, the window's own block (`TopicsSettings.qml`): the
+    /// list, each topic's seeds and senders' rules, Rename and Remove, the
+    /// groups Sioul noticed with "Name it" (docs/topics.md). Nothing in `value`.
+    Topics,
 }
 
 /// One of a setting's choices.
@@ -153,7 +162,8 @@ impl Builder<'_> {
         use crate::capabilities::{Provider, provider_of_collection};
         let named: Vec<crate::config::NamedValue> = crate::vdir::collections(kind)
             .into_iter()
-            .filter(|c| holding.is_empty() || c.holds(holding))
+            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does).
+            .filter(|c| (holding.is_empty() || c.holds(holding)) && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
             .map(|c| crate::config::NamedValue {
                 id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
                 // Google's calendars change through its Calendar API (part 5);
@@ -367,6 +377,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 0.05, (hundredths(spam) - 0.01).min(0.95), 0.01, "%");
             // Its training on a computer, where its table comes from on a phone.
             b.push("spam.filter", if cfg!(target_os = "android") { "spam-filter-phone" } else { "spam-filter" }, Kind::Spam, SettingValue::Text(String::new()));
+            // Mail's topics: the list, their seeds and rules, the groups Sioul noticed (docs/topics.md).
+            b.group = tr.text("topics-settings", None);
+            b.push("topics.list", "topics", Kind::Topics, SettingValue::Text(String::new()));
             // How a message reads: the reading panel's own ("Aa" in Notes), shown where messages are read.
             b.group = tr.text("ui-reading", None);
             reading(&mut b, config);
@@ -469,13 +482,17 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // What each agenda is, then which of them are compared for conflicts (several agendas, 4 November 2026).
             if !crate::vdir::collections(crate::vdir::Kind::Calendars).is_empty() {
                 b.push("agendas", "agendas", Kind::Agendas, SettingValue::Text(String::new()));
+                // Below your agendas, what you give of your time and to whom (design-availability-sharing §4).
+                if config.accounts.iter().any(crate::config::Account::is_dav) {
+                    b.push("availability", "availability", Kind::Availability, SettingValue::Text(String::new()));
+                }
                 b.push("conflicts", "conflicts", Kind::Conflicts, SettingValue::Text(String::new()));
             }
             b.collections(config, "calendars", crate::vdir::Kind::Calendars, "VEVENT");
             // Where a new event goes, chosen here (until then the first that takes events).
             let writable: Vec<Choice> = crate::vdir::collections(crate::vdir::Kind::Calendars)
                 .into_iter()
-                .filter(|c| !c.read_only && c.holds("VEVENT"))
+                .filter(|c| !c.read_only && c.holds("VEVENT") && !crate::agendas::is_mirror(config, &c.account, &c.id))
                 .map(|c| Choice { value: SettingValue::Text(format!("{}/{}", c.account, c.id)), label: c.label(config, tr) })
                 .collect();
             let s = b.push("agenda.calendar", "agenda-calendar", Kind::Choice, SettingValue::Text(config.agenda.calendar.clone().unwrap_or_default()));
@@ -507,7 +524,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // Where a task pinned to a time goes, as an event (docs/tasks.md, "Pinned to a time").
             let calendars: Vec<Choice> = crate::vdir::collections(crate::vdir::Kind::Calendars)
                 .into_iter()
-                .filter(|c| !c.read_only && c.holds("VEVENT"))
+                .filter(|c| !c.read_only && c.holds("VEVENT") && !crate::agendas::is_mirror(config, &c.account, &c.id))
                 .map(|c| Choice { value: SettingValue::Text(format!("{}/{}", c.account, c.id)), label: c.label(config, tr) })
                 .collect();
             let s = b.push("tasks.blocks", "task-blocks", Kind::Choice, SettingValue::Text(config.tasks.blocks.clone().unwrap_or_default()));
@@ -1471,7 +1488,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "topics.list", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
@@ -1698,7 +1715,7 @@ mod tests {
         apply(&path, &config, "letters.inbox", &SettingValue::Text("/stand-in/Post".into())).unwrap();
         assert_eq!(Config::load(&path).unwrap().letters.inbox.as_deref(), Some("/stand-in/Post"));
         // Unset: the notes folder's own.
-        std::fs::write(&path, format!("case_store = \"{}\"\n", dir.join("Notes").display())).unwrap();
+        std::fs::write(&path, format!("case_store = '{}'\n", dir.join("Notes").display())).unwrap();
         let unset = Config::load(&path).unwrap();
         assert_eq!(inbox_of(&unset).map(|(_, v)| v), Some(SettingValue::Text(dir.join("Notes").join("letters").join("inbox").display().to_string())));
         let _ = std::fs::remove_dir_all(&dir);

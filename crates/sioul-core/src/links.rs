@@ -310,7 +310,10 @@ impl LocalLinks {
         }
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        std::fs::rename(&temporary, path).map_err(fail)?;
+        // Every view of a tie reads it again (what is related, a project, a site's person).
+        crate::changes::said(crate::changes::Kind::Links);
+        Ok(())
     }
 
     /// The ties kept at `path` changed by `f`, under the file's lock

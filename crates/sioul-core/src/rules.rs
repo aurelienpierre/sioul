@@ -74,6 +74,9 @@ pub enum Field {
     Folder,
     /// The search only: read, flagged or answered (`MARKS`). Needs `Message::placed`.
     Mark,
+    /// The search only: its topic, by its name (docs/topics.md), as Mail's
+    /// rows show it, sure; needs `Message::placed` with its topic.
+    Topic,
     /// A field this Sioul does not know (a newer one wrote it, or a hand): never holds.
     #[default]
     #[serde(other)]
@@ -103,7 +106,7 @@ impl Field {
     /// The fields the Mail page's search offers, in its order: the filters'
     /// that say something of mail already here, Anywhere first, and its own
     /// three (address, folder, marks), which no filter reads.
-    pub const SEARCH: [Field; 15] = [
+    pub const SEARCH: [Field; 16] = [
         Field::Anywhere,
         Field::From,
         Field::To,
@@ -119,6 +122,7 @@ impl Field {
         Field::Account,
         Field::Folder,
         Field::Mark,
+        Field::Topic,
     ];
 
     /// As the configuration writes it: "from", "reply-to".
@@ -142,6 +146,7 @@ impl Field {
             Field::Account => "account",
             Field::Folder => "folder",
             Field::Mark => "mark",
+            Field::Topic => "topic",
             Field::Unknown => "unknown",
         }
     }
@@ -161,7 +166,7 @@ impl Field {
             Field::Size => &[Test::Above, Test::Below],
             Field::Anywhere => &[Test::Contains, Test::NotContains],
             // A search's place and marks: an address's id, a folder, one of `MARKS`, all as text.
-            Field::Account | Field::Folder | Field::Mark => &[Test::Is, Test::IsNot],
+            Field::Account | Field::Folder | Field::Mark | Field::Topic => &[Test::Is, Test::IsNot],
             Field::Unknown => &[],
         }
     }
@@ -313,6 +318,8 @@ pub struct Place {
     pub role: Role,
     /// Its Maildir letters: S read, F flagged, R answered.
     pub flags: String,
+    /// Its topic's name, sure (`topics::rules::Lookup`), when the search asks it; none for no topic.
+    pub topic: Option<String>,
 }
 
 /// One condition: a field, a test, a value.
@@ -435,6 +442,7 @@ impl Condition {
                 "answered" => p.flags.contains('R'),
                 _ => false,
             }),
+            Field::Topic => m.place.as_ref().map(|p| p.topic.as_deref().is_some_and(|t| crate::porch::category_key(t) == crate::porch::category_key(&self.value))),
             Field::Unknown => None,
         }
     }

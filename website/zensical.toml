@@ -101,6 +101,7 @@ nav = [
       { "Colours on the screen" = "dev/research/colour.md" },
       { "Devices of calls in sites" = "dev/research/calls.md" },
       { "Secure mailboxes and their record" = "dev/research/secure-mailboxes.md" },
+      { "Sorting mail by topic" = "dev/research/mail-topics.md" },
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },
@@ -118,6 +119,7 @@ nav = [
     { "Mail" = [
       { "The Porch" = "dev/porch.md" },
       { "Your own spam filter" = "dev/spam-filter.md" },
+      { "Mail topics" = "dev/topics.md" },
       { "Mail, contacts, calendars" = "dev/client.md" },
       { "The notes folder" = "dev/notes-folder.md" },
       { "Virtual Secretary" = "dev/virtual-secretary.md" },

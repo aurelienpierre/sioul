@@ -537,6 +537,7 @@ impl Store {
                 let temporary = path.with_extension("toml.new");
                 std::fs::write(&temporary, written).map_err(|e| fail(e.to_string()))?;
                 std::fs::rename(&temporary, &path).map_err(|e| fail(e.to_string()))?;
+                crate::changes::said(crate::changes::Kind::Money);
             }
             Ok(out)
         })

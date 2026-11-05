@@ -36,7 +36,8 @@ Une fois que vous les avez mis en place :
 - **Des pastilles au-dessus de la liste** : **Tout**, **Non lus**, **Envoyés**, **Indésirables**, une à la fois. Ce que vous avez choisi reste sur cet appareil. Les indésirables attendent sous leur propre pastille, avec leur mot discret (« probablement indésirable », « votre fournisseur : indésirable ») ; ce que vous avez dit ne pas être indésirable reste dans la liste.
 - **Ce qui s’affiche, par domaine et par adresse** : à côté des pastilles, un bouton dit ce que montre la liste, « Démarches · Loisirs ». Il ouvre trois cases, **Travail**, **Démarches** et **Loisirs**, cochées selon vos heures : les adresses du travail pendant les heures de travail, celles de vos démarches pendant leurs heures, celles des loisirs le reste du temps, et aucune pendant le sommeil ([Heures](hours.md)). Cochez-en une autre, elle s’affiche tout de suite ; vos cases tiennent jusqu’au changement d’heures (un jour au plus), et **Selon vos heures** les remet. Après elles, le carré de chaque adresse l’éteint ou la rallume ; éteinte, seul son contour reste. La liste montre les courriels des adresses allumées dont le domaine est coché (une adresse dont vous n’avez pas dit l’usage compte comme travail : Comptes, « À quoi sert cette adresse »). Sur un téléphone, le filtre est dans la feuille du bouton des dossiers, chaque adresse en toutes lettres. Le **?** du filtre le dit en bref.
 - **Le calme** : un courriel dont le moment n’est pas encore venu (vos listes disent plus tard) s’affiche sans son point. Les courriels des expéditeurs bloqués ne s’affichent jamais ; le courrier hostile d’une adresse protégée s’affiche comme « Quelqu’un chez example.org », ses mots cachés.
-- **Deux semaines**, puis **Courriels plus anciens**, au bout de la liste, en ajoute deux à chaque fois ; une quinzaine chargée arrive à mesure que vous faites défiler. La recherche au-dessus cherche dans toutes les adresses ; **Plus de critères…** ouvre la recherche par conditions.
+- **Ce qui n’est pas affiché pour l’instant** est dit en tête de la liste, avec ce qui le ramène : un domaine dont les courriels attendent comme vos heures le disent, ou que vous avez décoché (**Les afficher**) ; une adresse éteinte dans cette liste, qui ne la cache qu’ici, ses courriels restant dans sa boîte de réception (**La rallumer**) ; les courriels de plus de deux semaines (**Afficher les plus anciens…**).
+- **Deux semaines**, puis, au bout de la liste, « Les courriels de plus de deux semaines : » **Afficher les plus anciens…** en ajoute deux à chaque fois, jusqu’à « Rien de plus ancien n’est gardé ici. » ; une quinzaine chargée arrive à mesure que vous faites défiler. La recherche au-dessus cherche dans toutes les adresses ; **Plus de critères…** ouvre la recherche par conditions.
 - **Un clic ouvre un courriel** à côté de la liste ; Retour le ferme, la liste là où elle était. Ctrl et Maj en choisissent plusieurs, d’une adresse à l’autre, pour les marquer comme lus, les archiver, les supprimer ou les déplacer d’un coup, ou les glisser sur un dossier. Un clic droit propose ce que propose la ligne d’un dossier. Un courriel arrivé sur deux de vos adresses ne fait qu’une ligne : le marquer comme lu ou le supprimer le fait sur les deux.
 - **Chaque adresse a sa lettre** sur sa couleur, jamais deux fois la même, pour que deux adresses qui commencent pareil se lisent quand même.
 - **Sur un téléphone**, un appui ouvre un courriel par-dessus la liste, et Retour ramène la liste là où elle était. Un appui long sur une ligne ouvre son menu ; **Sélectionner** y commence une sélection, un appui ajoute ensuite le suivant. Le bouton des dossiers montre vos adresses et leurs dossiers. Quand la liste s’affiche, Sioul ramène aussitôt les autres dossiers, comme le ferait **Relever les courriels**, pour que ce que vous avez envoyé depuis votre ordinateur y soit aussi.
@@ -106,6 +107,19 @@ Ouvrir un courriel le marque comme lu, comme le fait tout logiciel de courriel. 
   [![Les résultats d’une recherche, tous choisis, tenus au-dessus des dossiers : les dossiers sont revenus à gauche à la place de la recherche, Archives entouré sous l’étiquette « 7 courriels » ; au-dessus de la liste, « 7 sélectionnés » avec Marquer comme lu, Archiver, Supprimer, Déplacer vers… et ×.](../assets/screens/fr/mail-search-drag.png){ loading=lazy }](../assets/screens/fr/mail-search-drag.png "Ouvrir l’image en grand")
   <figcaption>Trier depuis une recherche : les courriels choisis, glissés sur un dossier.</figcaption>
 </figure>
+
+### Les thèmes {#topics}
+
+Un thème est un mot discret sur un courriel, comme Santé, Impôts ou Chorale : une façon de regarder votre courrier, jamais un dossier. Rien ne bouge, et rien ne vous demande de ranger quoi que ce soit.
+
+- **Thème…**, sous la ligne de l’expéditeur dans la lecture, dans le menu d’un courriel, ou dans la barre au-dessus d’une sélection, donne un thème à un courriel ou à plusieurs à la fois, le change ou le retire. **Nouveau thème…** le crée et le donne d’un seul geste.
+- **Toujours <thème> pour cet expéditeur**, ou **Jamais…**, dans le même menu : le courrier de l’expéditeur le prend, ou ne le prend jamais. Une réponse prend le thème que vous avez donné à sa conversation.
+- **Le filtre par thème**, à côté du filtre par usage, montre le courrier d’un seul thème. Le thème s’affiche discrètement après l’objet, et dans la lecture avec ce qui le lui donne.
+- Chaque geste dit ce qu’il a fait, avec **Annuler**. Dans le ⚙ de la page Courriels, **Thèmes** les liste, les renomme et les retire, et sur un ordinateur **Groupes remarqués par Sioul** rassemble par leurs mots les courriels qu’aucun thème ne nomme encore : **Le nommer** donne un thème à tout le groupe, une fois mille courriels gardés ici, nommé quand un thème proposé ou un type de site en tient la plupart, et **Toujours un thème…** range tout le courrier d’un expéditeur qui vous écrit beaucoup sous le thème que vous nommez.
+
+**Pour commencer**, Sioul connaît quelques thèmes (Banque, Impôts, Santé, Téléphone et internet…) par leurs expéditeurs, ceux qu’il peut prouver : une fois assez de courrier ici, ceux qui trouvent cinq courriels ou plus commencent d’eux-mêmes, dit une fois sur le Porche ; les autres attendent dans **Thèmes**, un toucher chacun. Commencé, un thème est le vôtre : il se renomme ou se retire comme les autres.
+
+Les thèmes et les projets sont indépendants : un projet est une chose à mener à bien, un thème une part durable de la vie.
 
 ### Se désabonner {#unsubscribing}
 
@@ -292,6 +306,16 @@ Sous **Votre filtre à indésirables**, dans le ⚙ de la page Courriels. Il ne 
 
 Ce qu’il fait de chaque avis, les seuils et s’il se réentraîne de lui-même voyagent vers vos autres appareils avec vos réglages. Ce que l’apprentissage lit, et ce qu’il garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+**Les thèmes sont des mots sur votre courrier, jamais des endroits où il va.** Classer à la main coûte et échoue : dans les comptes Gmail personnels, environ la moitié des libellés créés finissent avec moins de trois conversations (Grevet et al. 2014), et retrouver un courriel par les dossiers prenait plus de temps que le chercher, sans que les grands classeurs en retrouvent davantage (Whittaker et al. 2011). Un thème est donc un filtre sur la même boîte, un mot sur la ligne et une condition de recherche : un mot erroné ne coûte rien tant que le courriel reste où il était, et une conversation reste entière.
+
+**Ils partent de ce que vous avez déjà.** Vos dossiers et les catégories de vos contacts disent le mieux quels thèmes vous tenez, et les expéditeurs que Sioul peut prouver portent l’essentiel d’un thème : un tri du courrier en ligne plaçait la plupart des messages d’après leur seul expéditeur (Grbovic et al. 2014). Les premiers thèmes viennent donc de vos dossiers, de vos catégories et des expéditeurs d’une banque, des impôts ou d’une mutuelle que Sioul connaît ; votre mot sur un courriel ou un expéditeur passe d’abord, et rien ne vous demande de vérifier quoi que ce soit.
+
+**Le modèle attend le courrier, et ne bouge jamais ce que vous voyez.** Un thème est appris une fois qu’il a 20 courriels de 3 expéditeurs, ou 50 d’un seul organisme ; en deçà, vos mots et ses règles le rangent. Chaque semaine, une nouvelle table ne remplace celle en service que si elle ne fait pas moins bien sur le courrier le plus récent, thème par thème, et change moins de 2 % des thèmes déjà affichés : rien ne bouge sous vos yeux. Un doute ne s’affiche que sous le filtre de son thème, en « Peut-être », et ne compte jamais comme étiquette ; les avis sûrs de Sioul comptent pour moitié, jamais plus que les autres exemples d’un thème, comme les verdicts de son filtre anti-spam comptent tant que vous ne les corrigez pas.
+
+Plus dans [ce que dit la recherche](../dev/research.md), constat 61.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
 En octobre 2026, d’après la documentation de chaque application.
@@ -316,6 +340,8 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     | Envoi programmé, rappel plus tard | ✗³⁹ | en partie⁴⁰ | ✓ | ✓⁴¹ | ✓ | ✓⁴² |
     | Courriels signés et chiffrés | ✓⁴³ | ✓⁴⁴ | en partie⁴⁵ | en partie⁴⁶ | en partie⁴⁷ | ✓⁴⁸ |
     | Adresses Outlook.com, Hotmail et Microsoft 365 | en partie⁴⁹ | ✓ | en partie⁵⁰ | ✓ | ✓ | ✗⁵¹ |
+    | Des thèmes que vous nommez, mots discrets sur votre courrier, jamais un dossier | ✓⁵² | en partie⁵³ | en partie⁵⁴ | en partie⁵⁵ | en partie⁵⁶ | ? |
+    | Les apprend de votre courrier, sur vos appareils | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | en partie⁵⁶ | ? |
 
     1. Thunderbird : seulement par une extension (DKIM Verifier) ; rien sur Android.
     2. Gmail : un point d’interrogation sur un courriel qui n’est pas authentifié, et « Envoyé par » et « Signé par » dans ses détails, sur un ordinateur et sur Android ; pas sur un iPhone ni un iPad.
@@ -368,6 +394,12 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     49. Sioul : connecté sur la page de Microsoft elle-même ; pas encore essayé avec un vrai compte Microsoft. Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation.
     50. Gmail : dans ses applications pour téléphone ; Gmail sur le web cesse de relever les autres comptes en janvier 2027.
     51. Proton Mail : les adresses Proton ; un compte Gmail peut s’y relier.
+    52. Sioul : un thème par courriel, d’après vos dossiers, les catégories de vos contacts, les expéditeurs d’une banque, des impôts ou d’une mutuelle qu’il connaît, et votre propre mot sur un courriel ou un expéditeur ; un filtre, un mot sur la ligne et une condition de recherche.
+    53. Thunderbird : des étiquettes données à la main, sur un ordinateur ; elles n’atteignent vos autres appareils, en mots-clés IMAP, que si le serveur les garde ; aucune sur Android.
+    54. Gmail : cinq onglets fixes (Principale, Promotions, Réseaux sociaux, Notifications, Forums), triés sur les serveurs de Google (« You can't create custom categories ») ; des libellés à la main ou par filtre.
+    55. Outlook : Prioritaire et Autres, triés sur les serveurs de Microsoft ; des catégories à la main, pour les comptes Exchange.
+    56. Apple Mail : quatre catégories fixes depuis iOS 18.2 (Principal, Transactions, Mises à jour, Promotions), triées sur l’appareil et corrigées par expéditeur ; aucune que vous nommez.
+    57. Sioul : appris une fois par semaine sur l’ordinateur qui entraîne, pour chaque thème de 20 courriels de 3 expéditeurs ou plus ; chaque appareil, le téléphone compris, range ensuite le courrier nouveau avec la même table.
 
 === "Technique"
 

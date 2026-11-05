@@ -32,6 +32,8 @@ Quand vos fiches ont des catégories, un choix sous le champ de recherche montre
 
 En tête de la page, **Proches** est une rangée de noms : vous d’abord, puis les personnes pour qui vous faites des démarches, un enfant, un parent que vous aidez, un ou une partenaire, de la famille, une personne que vous aidez, et après un petit espace l’autre parent d’un enfant. Un nom ouvre la page de cette personne, à la place d’une fiche ; sur un téléphone, elle prend la page. Un clic droit, ou un appui long sur un téléphone, propose **Ouvrir** et **Renommer**. **Ajouter une personne**, au bout de la rangée, en ajoute une.
 
+Quand Sioul ajoute des proches d’après ce que nommaient déjà vos agendas et vos papiers (l’agenda d’un enfant, le titulaire d’un papier), le Porche dit une fois qui, et d’après quoi, pendant vos heures de démarches ; il n’y a rien à répondre.
+
 Une personne n’est pas un contact. Un contact est une fiche pour joindre quelqu’un ; une personne est celle pour qui sont vos papiers. Un bébé est une personne sans fiche ; quelqu’un qui a une fiche personnelle et une fiche professionnelle est une seule personne avec deux fiches.
 
 **La page d’une personne** montre son nom et une ligne, par exemple « Enfant · 12 ans · vit avec vous », puis :
@@ -41,7 +43,7 @@ Une personne n’est pas un contact. Un contact est une fiche pour joindre quelq
 - **Contacts** : les fiches qui sont elle, chacune ouvrant sa fiche, avec **Délier**, et **Lier un contact…** ;
 - **Lettres** : les lettres qui lui sont adressées ;
 - **Argent** : les budgets pour cette personne et les sites que vous ouvrez pour elle ;
-- en bas, discrets : **Ce que Sioul garde sur Léa…**, un PDF de ses papiers, agendas et lettres et un dossier des fichiers de ses papiers, enregistrés où vous voulez, pour les lui remettre ; **Fin…**, pour toute personne sauf un enfant : le jour où cela a pris fin, et pour un ou une partenaire, ses propres papiers enregistrés dans un dossier pour les lui rendre, puis retirés de vos papiers si vous le dites ; **Même personne que…**, pour ne faire qu’une de deux personnes (« Léa » et « Léa M. ») ; **Ce n’est pas une personne**, pour un nom lu sur un papier qui n’est personne (« Banque »), plus jamais refait ;
+- en bas, discrets : **Ce que Sioul garde sur Léa…**, un PDF de ses papiers, agendas et lettres et un dossier des fichiers de ses papiers, enregistrés où vous voulez, pour les lui remettre (ses budgets et les sites que vous ouvrez pour cette personne n’y sont pas) ; **Fin…**, pour toute personne sauf un enfant : le jour où cela a pris fin, et pour un ou une partenaire, ses propres papiers enregistrés dans un dossier pour les lui rendre, puis retirés de vos papiers si vous le dites ; **Même personne que…**, pour ne faire qu’une de deux personnes (« Léa » et « Léa M. ») ; **Ce n’est pas une personne**, pour un nom lu sur un papier qui n’est personne (« Banque »), plus jamais refait ;
 - **Ouvert aux agents d’IA**, éteint tant que vous ne l’allumez pas. Votre propre page n’a pas cet interrupteur : vous êtes ouvert comme avant.
 
 Sur la page d’un enfant, une fois chacune et pendant vos heures de démarches, une ligne dit ce qui lui revient : à 16 ans, une carte Vitale et un compte de remboursement possibles à son nom ; à 18 ans, ses papiers qui lui reviennent, avec **Ce que Sioul garde sur Léa…** à côté. Un papier dont le nom pour quelqu’un ne nomme personne ici propose **Faire une personne de « … »** sur sa fiche.

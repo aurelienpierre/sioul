@@ -61,6 +61,12 @@ Item {
         function textWith(key, name, value) {
             return key + ":" + value
         }
+        // Mail's topics (docs/topics.md): none here; the status line's Undo and the topics' word, as the window has them.
+        property string undoLine: ""
+        signal topicsChanged()
+        function topics() {
+            return "[]"
+        }
         // The mailbox (part 4): what it was asked, as Rust takes it.
         signal mailboxPage(string text)
         function bringFolders() {
