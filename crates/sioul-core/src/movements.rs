@@ -1408,6 +1408,9 @@ pub fn derive_with_gone(input: &Input, from: Date, to: Date, today: Date) -> (Ve
                 m.sources.extend(docs);
                 m.links.extend(links);
                 m.names.push(line.label.clone());
+                if !line.note.trim().is_empty() {
+                    m.note = line.note.trim().to_string();
+                }
                 m.refs.extend(refs);
                 // A receipt says it was paid, and is matched as one; only what
                 // is still planned waits for the bank's line.
@@ -1424,8 +1427,10 @@ pub fn derive_with_gone(input: &Input, from: Date, to: Date, today: Date) -> (Ve
             None => Place::Budget(line.budget.clone()),
         };
         let mut m = bare(key, Sum::Exact(line.amount), line.date, line.label.clone(), place, std::iter::once(source).chain(docs).collect(), state);
-        m.account = carrier(&line.budget);
+        // The account it said, when you named one; else the one that fills its budget first.
+        m.account = line.account.clone().filter(|a| ledger.bank_accounts.iter().any(|b| b.id == *a)).or_else(|| carrier(&line.budget));
         m.links = links;
+        m.note = line.note.trim().to_string();
         // Planned, or announced for a day to come (a bill): the bank's line is awaited.
         m.waits = line.planned;
         m.evidence = Some(evidence);

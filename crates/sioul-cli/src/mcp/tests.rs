@@ -660,7 +660,7 @@ fn unreadable_lines_are_said() {
 }
 
 const READING: &[&str] = &[
-    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
+    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
 /// The command line and the agents run on a computer only: what they say
@@ -685,7 +685,7 @@ fn the_agents_texts_say_this_computer() {
     }
 }
 
-const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
+const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link", "add_movement", "update_movement", "delete_movement", "same_movement"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -722,7 +722,7 @@ fn the_tools_listed() {
     for word in ["send", "remove", "pay", "password", "secret", "key"] {
         assert!(names.iter().all(|n| !n.contains(word)), "{word}");
     }
-    assert_eq!(names.iter().filter(|n| n.contains("delete")).copied().collect::<Vec<_>>(), ["delete_event", "delete_task"]);
+    assert_eq!(names.iter().filter(|n| n.contains("delete")).copied().collect::<Vec<_>>(), ["delete_event", "delete_task", "delete_movement"]);
 }
 
 /// A message without a Message-ID is read by its address
@@ -859,6 +859,8 @@ fn a_closed_project_is_never_shown() {
         ("agenda", json!({ "days": 5 })),
         ("search_contacts", json!({})),
         ("budgets", json!({})),
+        ("movements", json!({})),
+        ("movements", json!({ "search": "Zeugma" })),
         ("search_notes", json!({})),
         ("search_notes", json!({ "query": "Zeugma", "in_text": true })),
         ("list_projects", json!({})),
@@ -931,6 +933,7 @@ fn a_closed_project_is_never_shown() {
         ("draft_message", json!({ "to": ["office@example.org"], "subject": "Taxes", "body": "Hello.", "links": ["sioul:project/taxes"] })),
         ("complete_task", json!({ "task": "zeugma-pay" })),
         ("spam_label", json!({ "message": "mid:zeugma-1@finances.example", "label": "spam" })),
+        ("add_movement", json!({ "who": "Tax office", "net": -100, "budget": "zeugma", "on": "2026-11-05" })),
     ] {
         let refused = call(&mut server, tool, arguments.clone());
         assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
@@ -3578,4 +3581,35 @@ fn list_tasks_gives_the_tasks_as_data_by_default() {
         let shown = call(&mut server, "list_tasks", json!({ "view": view }));
         assert!(shown["isError"] != true && shown["structuredContent"].get("groups").is_none(), "{view}: {shown}");
     }
+}
+
+/// Money movements for agents (design §3.3): one written in a budget
+/// opened to agents, with what the payer paid and its fee, listed, read in
+/// full, changed, said the same as another or not, removed; each said in the
+/// window with Undo; nothing in a budget kept from agents.
+#[test]
+fn money_movements_are_written_as_the_window_writes_them() {
+    home();
+    let mut server = server();
+    let made = call(&mut server, "add_movement", json!({ "who": "Quillwort lessons", "gross": 52, "fees": [{ "kind": "processor", "amount": 1.86 }], "budget": "home", "on": "2026-10-03", "note": "The October lesson" }));
+    assert_eq!(made["isError"], false, "{made}");
+    let address = made["structuredContent"]["movement"].as_str().unwrap().to_string();
+    assert!(text(&made).contains("Home holds €50.14 more for October 2026."), "{}", text(&made));
+    assert!(said_about("Quillwort lessons").line.contains("An AI agent wrote the movement"));
+    let listed = call(&mut server, "movements", json!({ "search": "quillwort" }));
+    assert!(text(&listed).contains("paid €52 · fees €1.86") && text(&listed).contains(&address), "{}", text(&listed));
+    let one = call(&mut server, "get_movement", json!({ "movement": address }));
+    assert_eq!((one["structuredContent"]["gross"].as_f64(), one["structuredContent"]["amount"].as_f64()), (Some(52.0), Some(50.14)), "{one}");
+    assert!(text(&one).contains("The processor's fee: €1.86, said by you"), "{}", text(&one));
+    let changed = call(&mut server, "update_movement", json!({ "movement": address, "note": "Paid by card", "paid_on": "2026-10-02" }));
+    assert_eq!(changed["isError"], false, "{changed}");
+    assert_eq!(call(&mut server, "get_movement", json!({ "movement": address }))["structuredContent"]["paid_on"], "2026-10-02");
+    // Into a budget kept from agents: refused, the budget not named.
+    let refused = call(&mut server, "update_movement", json!({ "movement": address, "budget": "zeugma" }));
+    assert_eq!(refused["isError"], true, "{refused}");
+    never_zeugma(&refused, "update_movement");
+    let removed = call(&mut server, "delete_movement", json!({ "movement": address }));
+    assert_eq!(removed["isError"], false, "{removed}");
+    assert!(said_about("Quillwort lessons").line.contains("An AI agent removed the movement"));
+    assert!(text(&call(&mut server, "movements", json!({ "search": "quillwort" }))).contains("No movement says this."));
 }

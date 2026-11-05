@@ -251,6 +251,7 @@ pub mod mailto;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).
 pub mod mms;
 pub mod money;
+pub mod moneylist;
 pub mod moneyview;
 pub mod moves;
 pub mod movements;

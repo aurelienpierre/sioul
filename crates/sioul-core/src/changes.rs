@@ -22,10 +22,14 @@ pub enum Kind {
     /// What each agenda is (`[agenda.calendars]`: its role, its person, its
     /// area), and your availability's share (`[agenda.availability]`).
     Agendas,
+    /// Money movements (docs/accounting.md, "Movements"): one made, changed
+    /// or removed by hand, by an agent or from the command line
+    /// (`movements::acts`), its fees, what a payout carried.
+    Movements,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 2] = [Kind::Persons, Kind::Agendas];
+    pub const ALL: [Kind; 3] = [Kind::Persons, Kind::Agendas, Kind::Movements];
 
     /// Its place among the kinds, for a set of them as bits.
     pub fn bit(self) -> u32 {

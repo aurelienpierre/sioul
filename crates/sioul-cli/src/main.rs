@@ -44,6 +44,7 @@ mod accounts;
 mod dav;
 mod mail;
 mod mcp;
+mod money;
 mod pgp;
 mod remind;
 // The spam filter learned on this computer (sioul-learn): desktops only.
@@ -113,6 +114,11 @@ enum Command {
         #[arg(long)]
         maildir: Vec<PathBuf>,
     },
+    /// Every money movement, newest first: the full ledger, with its filters.
+    Movements(money::MovementsArgs),
+    /// One money movement: shown, made, changed, removed, put back.
+    #[command(subcommand)]
+    Movement(money::MovementCommand),
     /// Mail accounts: add, list, test, change a password, remove.
     #[command(subcommand)]
     Account(accounts::AccountCommand),
@@ -343,6 +349,8 @@ fn main() -> ExitCode {
         Command::Projects { store } => projects_command(&session, store),
         Command::Window => window_command(&session),
         Command::Budgets { file, maildir } => budgets_command(&session, file, &maildir),
+        Command::Movements(args) => money::list(&session, args),
+        Command::Movement(command) => money::run(&session, command),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),

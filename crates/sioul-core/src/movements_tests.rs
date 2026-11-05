@@ -920,3 +920,68 @@ fn a_recorded_payment_waits_on_paypal_then_arrives() {
     assert_eq!((r.state, r.gross, r.sum.amount(), r.fees.clone()), (State::Done, Some(Money(30000)), Money(29095), vec![Fee { kind: FeeKind::Processor, amount: Money(905), from: FeeFrom::Payout, about: false }]));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ---------------------------------------------------------------- part 4: make, change, remove
+
+/// The acts of design §3.1, by what a movement is made from, each said in
+/// one line and heard by the windows (`changes`): a movement made by hand
+/// with what was paid and its fee; figures that do not add up refused; your
+/// line changed in every field; the bank's line in its budget and what was
+/// paid, never its amount nor its day; this time of a recurring payment as
+/// a line standing for it; removals by kind, and put back.
+#[test]
+fn movements_are_made_changed_and_removed_by_what_they_are() {
+    let root = folder("acts");
+    std::fs::write(
+        root.join(crate::budget::LEDGER),
+        format!("{BUDGETS}[[preset]]\nid = 'rent'\nbudget = 'home'\nlabel = 'Rent'\namount = -600\nevery = 'month'\nday = 1\n[[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['home', 'work']\nexports = ['0123456A']\n"),
+    )
+    .unwrap();
+    std::fs::write(root.join(crate::bank::MANIFEST), "[[movement]]\naccount = '0123456A'\ndate = 2026-10-08\namount = -45.0\nlabel = 'CB SHOP EXEMPLE'\nid = 'X1'\n").unwrap();
+    let words = crate::words::Words::builtin();
+    let tr = crate::i18n::Translator::new("en");
+    let today = day("2026-10-20");
+    let new = acts::New { label: "Client C".into(), gross: Some(Money(52000)), fees: vec![Fee { kind: FeeKind::Processor, amount: Money(1543), from: FeeFrom::Hand, about: false }], budget: "work".into(), day: day("2026-10-03"), note: "The October lesson".into(), ties: vec!["sioul:project/teaching".into()], ..acts::New::default() };
+    let (made, heard) = crate::changes::heard(|| acts::make(&root, &tr, &new, "Written in Sioul on 2026-10-20.", today).unwrap());
+    assert_eq!(heard, [crate::changes::Kind::Movements]);
+    assert_eq!(made.said, "Work holds €504.57 more for October 2026.");
+    let books = super::books(&root, &words, today);
+    let (m, _) = crate::moneylist::get(&books, &made.address).unwrap();
+    assert_eq!((m.sum.amount(), m.gross, m.fee_total(), m.note.as_str(), m.links.clone()), (Money(50457), Some(Money(52000)), Money(1543), "The October lesson", vec!["sioul:project/teaching".to_string()]));
+    assert!(m.made.is_some());
+    let wrong = acts::New { net: Some(Money(50000)), ..new.clone() };
+    assert_eq!(acts::make(&root, &tr, &wrong, "", today), Err(tr.text("movement-figures", None)));
+    // Your line: every field.
+    let change = acts::Change { net: Some(Money(49000)), fees: Some(Vec::new()), gross: Some(None), note: Some("Paid less".into()), budget: Some("home".into()), ..acts::Change::default() };
+    let act = acts::change(&root, &words, &tr, &made.address, &change, "", today).unwrap();
+    assert_eq!(act.said, "Home holds €490 more for October 2026.");
+    let books = super::books(&root, &words, today);
+    let (m, _) = crate::moneylist::get(&books, &made.address).unwrap();
+    assert_eq!((m.sum.amount(), m.gross, m.fees.len(), m.note.as_str(), m.place.clone()), (Money(49000), None, 0, "Paid less", Place::Budget("home".into())));
+    assert!(m.changed.is_some());
+    // The bank's line: never its amount nor its day; its budget and what was paid, yes.
+    let bank = crate::links::movement_uri("bank:main/X1");
+    assert_eq!(acts::change(&root, &words, &tr, &bank, &acts::Change { net: Some(Money(-4000)), ..acts::Change::default() }, "", today), Err(tr.text("movement-refused-bank", None)));
+    let act = acts::change(&root, &words, &tr, &bank, &acts::Change { budget: Some("work".into()), gross: Some(Some(Money(-4300))), note: Some("Gloves".into()), ..acts::Change::default() }, "", today).unwrap();
+    assert_eq!(act.said, "Home holds €45 more for October 2026.");
+    let books = super::books(&root, &words, today);
+    let (shop, _) = crate::moneylist::get(&books, &bank).unwrap();
+    assert_eq!((shop.place.clone(), shop.gross, shop.fees.clone(), shop.note.as_str()), (Place::Budget("work".into()), Some(Money(-4300)), vec![Fee { kind: FeeKind::Processor, amount: Money(200), from: FeeFrom::Hand, about: false }], "Gloves"));
+    // This time of the rent: a line standing for it.
+    let rent = crate::links::movement_uri("preset:rent/2026-11-01");
+    let act = acts::change(&root, &words, &tr, &rent, &acts::Change { net: Some(Money(-62000)), ..acts::Change::default() }, "", today).unwrap();
+    assert_eq!(act.said, "Home holds €20 less for November 2026.");
+    assert_eq!(super::books(&root, &words, today).movements.iter().filter(|m| m.has("preset:rent/2026-11-01")).map(|m| m.sum.amount()).collect::<Vec<_>>(), vec![Money(-62000)]);
+    // Removed, by kind: December's rent not this time, the shop left out, your line deleted; a share set aside refused.
+    let december = crate::links::movement_uri("preset:rent/2026-12-01");
+    assert_eq!(acts::remove(&root, &words, &tr, &december, today).unwrap().said, "Home holds €600 more for December 2026.");
+    assert!(super::books(&root, &words, today).gone.iter().any(|m| m.has("preset:rent/2026-12-01")));
+    assert!(acts::put_back(&root, &december).unwrap());
+    assert!(super::books(&root, &words, today).movements.iter().any(|m| m.has("preset:rent/2026-12-01")), "back");
+    assert_eq!(acts::remove(&root, &words, &tr, &bank, today).unwrap().said, "Work holds €45 more for October 2026.");
+    assert!(acts::remove(&root, &words, &tr, &made.address, today).is_ok());
+    let books = super::books(&root, &words, today);
+    assert!(crate::moneylist::get(&books, &made.address).is_none(), "deleted from the file");
+    assert!(crate::moneylist::get(&books, &bank).is_some_and(|(_, gone)| gone), "left out, kept for its Undo");
+    let _ = std::fs::remove_dir_all(&root);
+}

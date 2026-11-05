@@ -34,10 +34,16 @@ pub(crate) fn listen(qt: &QtThread) {
     });
 }
 
-fn emit(sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kind) {
+fn emit(mut sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kind) {
     match kind {
         Kind::Persons => sioul.persons_changed(),
         Kind::Agendas => sioul.agendas_changed(),
+        // The budgets page and the Porch's money read again with the views;
+        // a project's invoices and the reminders hear the signal.
+        Kind::Movements => {
+            sioul.as_mut().movements_changed();
+            sioul.refresh();
+        }
     }
 }
 
@@ -45,6 +51,8 @@ fn emit(sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kind) {
 pub(crate) fn kinds_of(store: &str) -> Vec<Kind> {
     match store {
         sioul_sync::share::PERSONS => vec![Kind::Persons],
+        // The money: the budget file, the bank's lines, the movements' own store.
+        sioul_sync::share::MOVEMENTS | "notes/sioul-budgets.toml" | "notes/sioul-bank.toml" => vec![Kind::Movements],
         // The settings: what each agenda is, among them.
         "config/config.toml" => vec![Kind::Agendas],
         _ => Vec::new(),

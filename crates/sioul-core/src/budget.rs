@@ -287,6 +287,9 @@ pub struct Line {
     pub made: Option<jiff::Timestamp>,
     #[serde(default, deserialize_with = "dates::moment")]
     pub changed: Option<jiff::Timestamp>,
+    /// The bank account it is paid from or into, by its id, when not the one that fills its budget first.
+    #[serde(default)]
+    pub account: Option<String>,
 }
 
 /// A fee of a line of the budget file.
@@ -1284,6 +1287,44 @@ pub fn change_line(path: &Path, place: usize, seen: &SeenLine, label: &str, amou
     })
 }
 
+/// One line of the file, named by its key as the money movements name it
+/// (`movements::line_keys`: `line:<id>`, else a digest of what it holds),
+/// changed in place by `change`, its other fields, its comment and the rest
+/// of the file kept, and said changed now (`changed`). Ok(false) when no
+/// line has that key any more: nothing is written.
+pub fn edit_line(path: &Path, key: &str, change: impl FnOnce(&mut Table) -> Result<(), String>) -> Result<bool, String> {
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let ledger: Ledger = toml::from_str(&text).map_err(|e| fail(e.to_string()))?;
+        let Some(at) = crate::movements::line_keys(&ledger).iter().position(|k| k == key) else { return Ok(false) };
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(line) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut).and_then(|lines| lines.get_mut(at)) else { return Ok(false) };
+        change(line).map_err(fail)?;
+        line["changed"] = dates::moment_item(jiff::Timestamp::now());
+        write_ledger(path, &doc)?;
+        Ok(true)
+    })
+}
+
+/// The line `key` names (`edit_line`) taken out of the file; Ok(false) when it is not there.
+pub fn remove_line_by_key(path: &Path, key: &str) -> Result<bool, String> {
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let ledger: Ledger = toml::from_str(&text).map_err(|e| fail(e.to_string()))?;
+        let Some(at) = crate::movements::line_keys(&ledger).iter().position(|k| k == key) else { return Ok(false) };
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+        if at >= lines.len() {
+            return Ok(false);
+        }
+        lines.remove(at);
+        write_ledger(path, &doc)?;
+        Ok(true)
+    })
+}
+
 /// Writes a line at the end of the budget file, keeping its comments, with a
 /// comment saying where it came from.
 pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String> {
@@ -1332,6 +1373,9 @@ pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String>
         }
         if !line.note.trim().is_empty() {
             table["note"] = value(line.note.trim());
+        }
+        if let Some(account) = line.account.as_deref().filter(|a| !a.trim().is_empty()) {
+            table["account"] = value(account.trim());
         }
         table["made"] = dates::moment_item(line.made.unwrap_or_else(jiff::Timestamp::now));
         let origin: String = origin.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();

@@ -2421,6 +2421,12 @@ pub mod qobject {
         #[qsignal]
         fn agendas_changed(self: Pin<&mut Sioul>);
 
+        /// A money movement made, changed or removed (`changes`), its fees,
+        /// what a payout carried: the budgets, a project's invoices and the
+        /// reminders read them again.
+        #[qsignal]
+        fn movements_changed(self: Pin<&mut Sioul>);
+
         /// A task just done, whichever way (a list, its panel, the focus window):
         /// the status line offers "How was it?", quietly.
         #[qsignal]
