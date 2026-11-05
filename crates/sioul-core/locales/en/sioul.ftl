@@ -7140,3 +7140,46 @@ paper-family-legal = Procurations and measures
 paper-renew-legal = A review or a new one must be asked before it ends, or it lapses.
 paper-steps-procuration = Ask the person who gave it whether it goes on, and for a new one if so.
 paper-steps-protection = Ask the judge (the juge des contentieux de la protection) for a review before it ends: without one, the measure lapses.
+
+## sioul topics: mail topics measured on this computer (crates/sioul-cli/src/topics.rs, docs/topics.md)
+topics-eval-start = Each way is learned, then tested, in turn: it takes a while.
+topics-error = Topics could not be measured: { $detail }
+topics-read = { $n } messages read, spam aside; { $named } of them in a proposed topic.
+topics-none = No topic to propose yet: no folder, project or category holds enough mail.
+topics-proposed = Topics proposed ({ $n }):
+topics-beyond = Beyond the twelve ({ $n }):
+topics-waiting = Waiting for more mail ({ $n }):
+topics-topic = { $name } ({ $id }): { $count ->
+    [one] one message
+   *[other] { $count } messages
+} from { $senders ->
+    [one] one sender
+   *[other] { $senders } senders
+}
+topics-from = from { $seeds }
+topics-seed-folder = the folder { $name } ({ $n })
+topics-seed-category = your contacts' category { $name } ({ $n })
+topics-seed-project = the project { $name } ({ $n })
+topics-kept = { $n } of its messages, also named by another topic, stay here, the more specific.
+topics-given = { $n } went to { $topic }, the more specific.
+topics-left-out = Folders that seed nothing: { $system } of the server's own, { $small } with fewer than { $least } messages, { $unused } unused for a year.
+topics-nothing = Nothing to measure: no topic is proposed, or a part of the time order holds none of its mail.
+topics-split = Learned from { $learned } messages, tested on the newest { $tested } (the first: { $date }); the newest { $validation } learned set the bands.
+topics-none-shares = The class "none", learned from a share of the mail no seed names (macro F1 and coverage on the newest learned):
+topics-none-share = { $share }: { $f1 }, { $coverage }
+topics-ways = Each way on the test (macro F1; coverage; precision and recall against the seeds; new senders' recall; small topics' F1):
+topics-way = { $name }: { $f1 }; { $coverage }; { $precision }, { $recall }; { $fresh }; { $small }
+topics-senders-kept = kept
+topics-senders-left = left out
+topics-decided = Kept: { $way }; the sender's words { $senders }; { $bucket } buckets; temperature { $t }.
+topics-topic-numbers = { $name }: { $learned } learned, sure from { $sure }; precision { $precision } ({ $seeded } among seeded mail), recall { $recall } ({ $counts }); new senders' recall { $fresh } of { $fresh_n }
+topics-counts = { $right } of { $seeded } right, { $other } of another topic, { $unseeded } on mail no seed names, { $maybe } maybe
+topics-never = never
+topics-new-senders = Senders never seen before ({ $n } messages): precision { $precision }, recall { $recall }.
+topics-fold = The table: { $words } words, { $bucket } buckets, { $f16 } KB in f16 ({ $f32 } KB in f32); off fastText's predictions by { $e32 } in f32, { $e16 } in f16; f16 changes the topic or band of { $flips } of { $judged } messages.
+topics-fold-broken = The f32 table is off fastText's predictions by more than { $tolerance }: it would not be written.
+topics-churn = Learned a week earlier, the model showed { $shown } sure topics on the tested mail; the newer one changes { $changed } of them ({ $share }) and adds { $added }.
+topics-churn-none = No churn measured: too little mail a week before the test.
+topics-centroid = The centroid: { $f1 }; { $coverage }; { $precision }, { $recall }; { $fresh }; { $small }
+topics-centroid-fold = Folded: { $vocabulary } pieces, { $kb } KB in f16 beside a tokenizer of { $tokenizer } KB; off by { $e16 } in f16, which changes { $flips } of { $judged } messages.
+topics-seconds = { $seconds } seconds.

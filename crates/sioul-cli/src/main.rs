@@ -39,6 +39,7 @@
 //! - [`remind`]: reminders before dates: `sioul remind`, and `--watch` with the window closed.
 //! - [`mcp`]: `sioul mcp`, what Sioul keeps served to AI agents over the Model Context Protocol.
 //! - [`spam`]: `sioul spam`, the spam filter learned on this computer (docs/spam-filter.md); computers only.
+//! - [`topics`]: `sioul topics`, mail topics measured on this computer (docs/topics.md); computers only.
 
 mod accounts;
 mod dav;
@@ -50,6 +51,9 @@ mod remind;
 #[cfg(not(target_os = "android"))]
 mod spam;
 mod tasks;
+// Mail topics measured on this computer (sioul-learn): desktops only.
+#[cfg(not(target_os = "android"))]
+mod topics;
 
 use clap::{Parser, Subcommand};
 use jiff::{Timestamp, Zoned};
@@ -215,6 +219,11 @@ enum Command {
     #[cfg(not(target_os = "android"))]
     #[command(subcommand)]
     Spam(spam::SpamCommand),
+    /// Mail topics measured on this computer: the topics your folders, projects and
+    /// contacts' categories would propose, and how well a model of them sorts your mail.
+    #[cfg(not(target_os = "android"))]
+    #[command(subcommand)]
+    Topics(topics::TopicsCommand),
 }
 
 /// What every command needs: the configuration, where it lives, and the language.
@@ -378,6 +387,8 @@ fn main() -> ExitCode {
         Command::Mcp => mcp::run(&session),
         #[cfg(not(target_os = "android"))]
         Command::Spam(command) => spam::run(&session, command),
+        #[cfg(not(target_os = "android"))]
+        Command::Topics(command) => topics::run(&session, command),
     };
     result.map_or_else(
         |message| {

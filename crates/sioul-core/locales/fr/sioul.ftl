@@ -7180,3 +7180,46 @@ paper-family-legal = Procurations et mesures
 paper-renew-legal = Un réexamen ou une nouvelle demande doit être fait avant la fin, sans quoi elle tombe.
 paper-steps-procuration = Demander à la personne qui l’a donnée si elle se poursuit, et une nouvelle si oui.
 paper-steps-protection = Demander au juge des contentieux de la protection un réexamen avant la fin : sans lui, la mesure tombe.
+
+## sioul topics : les thèmes du courrier mesurés sur cet ordinateur (crates/sioul-cli/src/topics.rs, docs/topics.md)
+topics-eval-start = Chaque façon est apprise puis testée, tour à tour : cela prend un moment.
+topics-error = Les thèmes n’ont pas pu être mesurés : { $detail }
+topics-read = { $n } messages lus, indésirables à part ; { $named } d’entre eux dans un thème proposé.
+topics-none = Aucun thème à proposer pour l’instant : aucun dossier, projet ou catégorie ne tient assez de courrier.
+topics-proposed = Thèmes proposés ({ $n }) :
+topics-beyond = Au-delà des douze ({ $n }) :
+topics-waiting = En attente de plus de courrier ({ $n }) :
+topics-topic = { $name } ({ $id }) : { $count ->
+    [one] un message
+   *[other] { $count } messages
+} de { $senders ->
+    [one] un expéditeur
+   *[other] { $senders } expéditeurs
+}
+topics-from = d’après { $seeds }
+topics-seed-folder = le dossier { $name } ({ $n })
+topics-seed-category = la catégorie de vos contacts { $name } ({ $n })
+topics-seed-project = le projet { $name } ({ $n })
+topics-kept = { $n } de ses messages, que nomme aussi un autre thème, restent ici, le plus précis.
+topics-given = { $n } sont allés à { $topic }, plus précis.
+topics-left-out = Dossiers qui n’amorcent rien : { $system } du serveur, { $small } de moins de { $least } messages, { $unused } inutilisés depuis un an.
+topics-nothing = Rien à mesurer : aucun thème n’est proposé, ou une partie de l’ordre du temps n’en tient aucun message.
+topics-split = Appris sur { $learned } messages, testé sur les { $tested } plus récents (le premier : { $date }) ; les { $validation } plus récents des appris ont fixé les bandes.
+topics-none-shares = La classe « aucun », apprise d’une part du courrier qu’aucune amorce ne nomme (F1 macro et couverture sur les plus récents des appris) :
+topics-none-share = { $share } : { $f1 }, { $coverage }
+topics-ways = Chaque façon sur le test (F1 macro ; couverture ; précision et rappel d’après les amorces ; rappel des nouveaux expéditeurs ; F1 des petits thèmes) :
+topics-way = { $name } : { $f1 } ; { $coverage } ; { $precision }, { $recall } ; { $fresh } ; { $small }
+topics-senders-kept = gardés
+topics-senders-left = laissés de côté
+topics-decided = Gardé : { $way } ; les mots de l’expéditeur { $senders } ; { $bucket } seaux ; température { $t }.
+topics-topic-numbers = { $name } : { $learned } appris, sûr à partir de { $sure } ; précision { $precision } ({ $seeded } sur le courrier amorcé), rappel { $recall } ({ $counts }) ; rappel des nouveaux expéditeurs { $fresh } sur { $fresh_n }
+topics-counts = { $right } justes sur { $seeded }, { $other } d’un autre thème, { $unseeded } sur du courrier sans amorce, { $maybe } peut-être
+topics-never = jamais
+topics-new-senders = Expéditeurs jamais vus ({ $n } messages) : précision { $precision }, rappel { $recall }.
+topics-fold = La table : { $words } mots, { $bucket } seaux, { $f16 } Ko en f16 ({ $f32 } Ko en f32) ; écart aux prédictions de fastText { $e32 } en f32, { $e16 } en f16 ; le f16 change le thème ou la bande de { $flips } messages sur { $judged }.
+topics-fold-broken = La table f32 s’écarte des prédictions de fastText de plus de { $tolerance } : elle ne serait pas écrite.
+topics-churn = Appris une semaine plus tôt, le modèle montrait { $shown } thèmes sûrs sur le courrier testé ; le plus récent en change { $changed } ({ $share }) et en ajoute { $added }.
+topics-churn-none = Pas de changement mesuré : trop peu de courrier une semaine avant le test.
+topics-centroid = Le centroïde : { $f1 } ; { $coverage } ; { $precision }, { $recall } ; { $fresh } ; { $small }
+topics-centroid-fold = Replié : { $vocabulary } pièces, { $kb } Ko en f16 à côté d’un découpeur de { $tokenizer } Ko ; écart { $e16 } en f16, qui change { $flips } messages sur { $judged }.
+topics-seconds = { $seconds } secondes.

@@ -167,3 +167,76 @@ pub fn record_of(mail: &Mail, uidvalidity: u32, uid: u32) -> Record {
         fetched: mail.date + 60,
     }
 }
+
+/// The topics' words, for the topics' tests: a choir's, a tax office's, a doctor's.
+pub const TOPIC_WORDS: [&[&str]; 3] = [
+    &["chorale", "repetition", "partition", "soprano", "concert", "pupitre", "alto", "tenor"],
+    &["impots", "declaration", "revenus", "avis", "prelevement", "taxe", "fiscal", "echeance"],
+    &["ordonnance", "medecin", "consultation", "mutuelle", "remboursement", "analyse", "cabinet", "vaccin"],
+];
+/// Their folders, as servers name them (modified UTF-7, a delimiter or none).
+const TOPIC_FOLDERS: [&str; 3] = ["INBOX.Chorale", "Imp&APQ-ts", "INBOX/Sant&AOk-"];
+const TOPIC_DOMAINS: [&str; 3] = ["chorale.example", "impots.example", "sante.example"];
+const TOPIC_SENDERS: [&str; 4] = ["contact", "secretariat", "info", "accueil"];
+
+/// A mailbox of topics over two years, in the account "home": a choir's, a
+/// tax office's and a doctor's mail, each filed in its folder but one
+/// message in twenty left in the inbox, each sender proven by an
+/// Authentication-Results header from `mx.example.org`; other mail in the
+/// inbox and the archive, ten messages of it in a small folder ("Club");
+/// spam, a fifth, in Junk. Its two years end yesterday, so that its
+/// folders are always in use.
+pub fn topical(seed: u64, total: usize) -> Vec<Mail> {
+    let mut rng = Rng::new(seed);
+    let mut small = 0;
+    let start = crate::now() - 2 * 365 * 86_400 - 86_400;
+    (0..total)
+        .map(|i| {
+            let date = start + (i as i64) * (2 * 365 * 86_400 / total.max(1) as i64);
+            let serial = i as u32 + 1;
+            if rng.unit() < 0.2 {
+                return Mail { account: "home", folder: "Junk", role: Role::Junk, flags: vec![], date, raw: message(&mut rng, true, serial, date) };
+            }
+            if rng.unit() < 0.5 {
+                let t = rng.below(3);
+                let domain = TOPIC_DOMAINS[t];
+                let local = TOPIC_SENDERS[rng.below(TOPIC_SENDERS.len())];
+                let pick_words = |rng: &mut Rng, count: usize| {
+                    (0..count)
+                        .map(|_| {
+                            let roll = rng.unit();
+                            if roll < 0.7 {
+                                pick(rng, TOPIC_WORDS[t])
+                            } else if roll < 0.95 {
+                                pick(rng, COMMON)
+                            } else {
+                                pick(rng, HAM)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                };
+                let subject = pick_words(&mut rng, 4);
+                let length = 30 + rng.below(60);
+                let body = pick_words(&mut rng, length);
+                let raw = format!(
+                    "From: {local} <{local}@{domain}>\r\nTo: owner@example.org\r\nSubject: {subject}\r\nDate: {}\r\nMessage-ID: <{serial}.{date}@{domain}>\r\nAuthentication-Results: mx.example.org; dkim=pass header.d={domain}; spf=pass smtp.mailfrom={domain}; dmarc=pass header.from={domain}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{body}\r\n",
+                    date_header(date)
+                )
+                .into_bytes();
+                let (folder, role) = if rng.unit() < 0.95 { (TOPIC_FOLDERS[t], Role::Other) } else { ("INBOX", Role::Inbox) };
+                return Mail { account: "home", folder, role, flags: vec!["\\Seen".into()], date, raw };
+            }
+            let raw = message(&mut rng, false, serial, date);
+            let (folder, role) = if small < 10 && i > total / 2 {
+                small += 1;
+                ("Club", Role::Other)
+            } else if rng.unit() < 0.4 {
+                ("Archive", Role::Archive)
+            } else {
+                ("INBOX", Role::Inbox)
+            };
+            Mail { account: "home", folder, role, flags: vec!["\\Seen".into()], date, raw }
+        })
+        .collect()
+}

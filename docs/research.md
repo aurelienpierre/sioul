@@ -215,6 +215,11 @@ Sioul is designed for the people for whom admin costs most. Each group below has
    - vCard's `RELATED` is a typed address or text written on one card (RFC 6350), JSContact's `relatedTo` a map of UIDs (RFC 9553) (standards). Google keeps a related person's name and a type, Apple a labelled name, Nextcloud a typed text; Google's CardDAV speaks vCard 3.0, which has no `RELATED` (vendor documentation; Nextcloud's code). FHIR gives a relation a period, apart from the person's own record (HL7 FHIR R5, RelatedPerson; standard).
    - **Rule**: a person is Sioul's own record, linked to cards by UID, its relation in RFC 6350's words where they exist, with a period; nothing is written into the cards. Detail: [research/persons.md](research/persons.md), §5.
 
+61. **Filing by hand costs and fails; sorting by machine works by sender, with few categories.**
+   - In 345 people's mail, folders made 12 % of the ways back to a message and tags 1 %; finding by a folder took 59 s, by search 17 s, and those who filed most found no more (Whittaker et al. 2011; field log study). 44 % to 50 % of Gmail labels hold fewer than three conversations (Grevet et al. 2014; interviews), and 70 % of web-mail users never make a folder (Grbovic et al. 2014; log study).
+   - A person's own folders are hard to learn: under 70 % accuracy for nine of fourteen users once tested in time order, a random split overstating it (Bekkerman et al. 2004; corpus study). A handful of categories, sorted by sender first, covered most of a web mail's traffic near 90 % precision (Grbovic et al. 2014; production system). Rules written once train a model better than hours of labels by hand (Ratner et al. 2017; user study).
+   - **Rule**: topics are words Sioul keeps, one at most per message, shown as a filter, never a place mail is moved to; they start from the folders, projects and contacts' categories you have; your word on a message or a sender wins; nothing to review. Detail: [research/mail-topics.md](research/mail-topics.md), §2 and §3.
+
 ## Sources
 - Kushlev & Dunn (2015), Checking email less frequently reduces stress, *Computers in Human Behavior* 43.
 - Fitz, Kushlev, Jagannathan, Lewis, Paliwal & Ariely (2019), Batching smartphone notifications can improve well-being, *Computers in Human Behavior* 101.

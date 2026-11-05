@@ -1,0 +1,99 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+//! `sioul topics seeds` and `sioul topics eval`, run by the real program on
+//! a home made in the system's temporary folder (its XDG folders and HOME
+//! there): a corpus of invented topical mail on reserved domains (RFC 2606),
+//! a project routed by its sender's domain, a contact's card with a
+//! category. The person's own files are never read, no server is reached.
+
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+const FOLDERS: [(&str, &str); 5] = [("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache"), ("HOME", "home")];
+
+fn home() -> PathBuf {
+    let root = std::env::temp_dir().join(format!("sioul-topics-cli-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for (_, folder) in FOLDERS {
+        std::fs::create_dir_all(root.join(folder)).unwrap();
+    }
+    let notes = root.join("notes");
+    std::fs::create_dir_all(&notes).unwrap();
+    std::fs::write(notes.join("sioul-projects.toml"), "[[project]]\nid = \"impots-2025\"\ntitle = \"Impôts 2025\"\n\n[[project.route]]\nfrom_domains = [\"impots.example\"]\n").unwrap();
+    let config = root.join("config/sioul/config.toml");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    let maildir = root.join("mail/home");
+    for sub in ["cur", "new", "tmp"] {
+        std::fs::create_dir_all(maildir.join(sub)).unwrap();
+    }
+    let text = format!(
+        "language = \"en\"\ncase_store = \"{}\"\n\n[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"owner@example.org\"\nmaildir = \"{}\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n",
+        notes.display().to_string().replace('\\', "\\\\"),
+        maildir.display().to_string().replace('\\', "\\\\")
+    );
+    std::fs::write(&config, text).unwrap();
+    // One card of the choir's, in the category "Chorale".
+    let book = root.join("data/sioul/contacts/local/friends");
+    std::fs::create_dir_all(&book).unwrap();
+    std::fs::write(book.join("choir.vcf"), "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:choir-1\r\nFN:Choir office\r\nEMAIL:contact@chorale.example\r\nCATEGORIES:Chorale\r\nEND:VCARD\r\n").unwrap();
+    let dirs = sioul_learn::Dirs { data: root.join("data/sioul/spam"), state: root.join("state/sioul/spam"), cache: root.join("cache/sioul/spam") };
+    let mail = sioul_learn::synthetic::topical(11, 900);
+    let records: Vec<_> = mail.iter().enumerate().map(|(i, m)| sioul_learn::synthetic::record_of(m, 1, i as u32 + 1)).collect();
+    sioul_learn::corpus::store(&dirs, &records).unwrap();
+    root
+}
+
+fn sioul(root: &Path, language: &str) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_sioul"));
+    command.arg("--config").arg(root.join("config/sioul/config.toml")).args(["--language", language]);
+    for (variable, folder) in FOLDERS {
+        command.env(variable, root.join(folder));
+    }
+    command
+}
+
+fn run(root: &Path, language: &str, args: &[&str]) -> String {
+    let out = sioul(root, language).args(args).output().unwrap();
+    assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8(out.stdout).unwrap()
+}
+
+/// The seeds: the folders, the project joined with its folder, the category
+/// with its own, in lines and as JSON, in English and in French.
+#[test]
+fn seeds_and_eval_on_stand_in_mail() {
+    let root = home();
+    let data: Value = serde_json::from_str(&run(&root, "en", &["topics", "seeds", "--json"])).unwrap();
+    let topics = data["proposal"]["topics"].as_array().unwrap();
+    let names: Vec<&str> = topics.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(names.len(), 3, "{data:#}");
+    for name in ["Chorale", "Impôts", "Santé"] {
+        assert!(names.contains(&name), "{names:?}");
+    }
+    let kinds = |name: &str| -> Vec<String> { topics.iter().find(|t| t["name"] == name).unwrap()["seeds"].as_array().unwrap().iter().map(|s| s["kind"].as_str().unwrap().to_string()).collect() };
+    // The project names the mail the folder misses too: the larger seed first.
+    assert_eq!(kinds("Impôts"), vec!["project", "folder"]);
+    assert_eq!(kinds("Chorale"), vec!["folder", "category"]);
+    assert_eq!(kinds("Santé"), vec!["folder"]);
+    assert_eq!(data["left_out"]["small"], 1);
+    let lines = run(&root, "en", &["topics", "seeds"]);
+    assert!(lines.contains("Topics proposed (3):") && lines.contains("the project Impôts 2025"), "{lines}");
+    let lignes = run(&root, "fr", &["topics", "seeds"]);
+    assert!(lignes.contains("Thèmes proposés (3)\u{202f}:") && lignes.contains("le dossier Santé"), "{lignes}");
+
+    // The measures, small and quick: every way, the decision, the fold, churn.
+    let args = ["topics", "eval", "--json", "--threads", "2", "--dim", "16", "--epochs", "20", "--buckets", "2000,4000", "--none-weights", "0.2,0.5"];
+    let eval: Value = serde_json::from_str(&run(&root, "en", &args)).unwrap();
+    assert_eq!(eval["ways"].as_array().unwrap().len(), 4, "{eval:#}");
+    assert!(eval["decided"]["sure"].as_object().unwrap().len() == 3);
+    assert_eq!(eval["fold"]["broken"], false);
+    assert!(eval["fold"]["bytes_f16"].as_u64().unwrap() < eval["fold"]["bytes_f32"].as_u64().unwrap());
+    let lines = run(&root, "en", &["topics", "eval", "--quick", "--threads", "2", "--dim", "16", "--epochs", "20", "--buckets", "2000"]);
+    assert!(lines.contains("Kept: threshold-2000") && lines.contains("The table:"), "{lines}");
+    // Shown with --nocapture: what a person reads.
+    println!("{lines}");
+    println!("{}", run(&root, "fr", &["topics", "eval", "--quick", "--threads", "2", "--dim", "16", "--epochs", "20", "--buckets", "2000"]));
+    let _ = std::fs::remove_dir_all(root);
+}

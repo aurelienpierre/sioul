@@ -39,6 +39,8 @@
 //! - [`eval`]: the filter's numbers, aggregates only, each with its interval.
 //! - [`detail`]: what a test said message by message: counts by account and folder, a grid of thresholds, the worst errors (`sioul spam eval --errors`).
 //! - [`diagnose`]: each header feature's mean by account and label (`sioul spam features`): which ones tell accounts apart rather than spam from ham.
+//! - [`topics`]: mail topics measured here (`sioul topics seeds`, `sioul topics eval`): the first topics from folders, projects and contacts' categories; fastText's classifier over every topic at once, tested in time order, folded (docs/topics.md).
+//! - [`model2vec`]: a static embedding read from a Model2Vec folder, the alternative `sioul topics eval --model2vec` measures.
 //! - [`spamcore`](spamcore/index.html): the seam to sioul-core's spam module: a corpus record read as the Porch reads the message.
 //! - `synthetic`, for tests only, this crate's and the command line's (so not shown here): invented mail on reserved domains.
 
@@ -50,6 +52,7 @@ pub mod diagnose;
 pub mod eval;
 pub mod external;
 pub mod labels;
+pub mod model2vec;
 pub mod platt;
 pub(crate) mod spamcore;
 pub(crate) mod supervised;
@@ -57,6 +60,7 @@ pub mod svm;
 /// Invented mail on reserved domains, for the tests of this crate and of the command line.
 #[doc(hidden)]
 pub mod synthetic;
+pub mod topics;
 pub mod train;
 
 use std::path::PathBuf;
