@@ -633,7 +633,7 @@ fn owned_by_you(response: &Response, me: Option<&str>) -> Option<bool> {
 }
 
 /// Two principals the same, whether written as an address, a path, or
-/// Nextcloud's "principals/users/<name>" without its base.
+/// Nextcloud's `principals/users/<name>` without its base.
 fn same_principal(a: &str, b: &str) -> bool {
     let path = |text: &str| {
         let text = text.trim();

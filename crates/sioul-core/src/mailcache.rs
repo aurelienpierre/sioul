@@ -1049,6 +1049,10 @@ mod tests {
         let now = SystemTime::now();
         for (uid, days) in [(1u32, 10u64), (2, 9), (3, 1)] {
             let path = stand.put(uid, &format!("w{uid}@example.org"), &format!("Note {uid}"));
+            // Its Date as old as its file, so that the windows hold the same messages whatever the day.
+            let date = (jiff::Timestamp::now() - jiff::SignedDuration::from_hours(days as i64 * 24)).to_zoned(jiff::tz::TimeZone::UTC).strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
+            let text = std::fs::read_to_string(&path).unwrap().replace("Date: Fri, 30 Oct 2026 09:00:00 +0100", &format!("Date: {date}"));
+            std::fs::write(&path, text).unwrap();
             std::fs::File::options().write(true).open(&path).unwrap().set_modified(now - Duration::from_secs(days * 86_400)).unwrap();
         }
         for sub in ["cur", "new"] {

@@ -686,8 +686,10 @@ mod tests {
     /// 6820489, before events over several days were drawn once
     /// (tests/ongoing-unchanged.txt; `SIOUL_RECORD_ONGOING=1` writes it). The
     /// leftovers round added one field to the reminders' lines (15 to 17): each
-    /// event's reminder names its event's address (`event`); every value
-    /// recorded is as it was.
+    /// event's reminder names its event's address (`event`); the agendas of
+    /// 4 November added their fields to each occurrence (`agenda` to `opaque`)
+    /// and `tentative` to each overlap (lines 13 and 14), all at their
+    /// defaults here; every value recorded is as it was.
     #[test]
     fn the_plan_the_warning_and_the_reminders_read_the_events_as_they_are() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ongoing-unchanged.txt");

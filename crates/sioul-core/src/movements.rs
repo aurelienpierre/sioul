@@ -146,7 +146,7 @@ pub enum Kind {
     /// The contract a recurring payment pays.
     Contract,
     /// A work budget's share of its incomes set aside for the declaration
-    /// (`Budget::set_aside`): "setaside:<budget>/<the declaration's day>".
+    /// (`Budget::set_aside`): `setaside:<budget>/<the declaration's day>`.
     SetAside,
 }
 
@@ -178,9 +178,9 @@ impl Kind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Source {
     pub kind: Kind,
-    /// Its key, by which corrections name it: "line:<id>", "preset:<id>/<day>",
-    /// "bank:<account>/<the bank's id>", "hold:<account>/<id>", "mid:<Message-ID>",
-    /// "sioul:letter/<id>", "sioul:invoice/<number>", "sioul:contract/<id>".
+    /// Its key, by which corrections name it: `line:<id>`, `preset:<id>/<day>`,
+    /// `bank:<account>/<the bank's id>`, `hold:<account>/<id>`, `mid:<Message-ID>`,
+    /// `sioul:letter/<id>`, `sioul:invoice/<number>`, `sioul:contract/<id>`.
     pub key: String,
     /// Where it opens (a message, a letter, a contract, a budget line); empty when nowhere.
     pub address: String,
@@ -756,17 +756,17 @@ pub fn preset_key(ledger: &Ledger, index: usize) -> String {
     ledger.presets[index].id.clone().filter(|id| !id.trim().is_empty()).unwrap_or_else(|| format!("#{index}"))
 }
 
-/// An occurrence's key: "preset:<preset>/<day>".
+/// An occurrence's key: `preset:<preset>/<day>`.
 pub fn occurrence_key(preset: &str, day: Date) -> String {
     format!("preset:{preset}/{day}")
 }
 
-/// A bank line's key: "bank:<account>/<the bank's id>".
+/// A bank line's key: `bank:<account>/<the bank's id>`.
 pub fn bank_key(account: &str, id: &str) -> String {
     format!("bank:{account}/{id}")
 }
 
-/// A hold's key: "hold:<account>/<id>".
+/// A hold's key: `hold:<account>/<id>`.
 pub fn hold_key(account: &str, id: &str) -> String {
     format!("hold:{account}/{id}")
 }

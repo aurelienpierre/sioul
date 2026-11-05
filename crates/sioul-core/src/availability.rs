@@ -106,7 +106,7 @@ pub fn block_text(block: &Block) -> String {
     ])
 }
 
-/// The files a calendar of blocks holds, by name ("<uid>.ics"): what it should hold now.
+/// The files a calendar of blocks holds, by name (`<uid>.ics`): what it should hold now.
 pub fn wanted(events: &[Occurrence], availability: &Availability, busy: &str) -> BTreeMap<String, String> {
     blocks(events, availability, busy).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
 }

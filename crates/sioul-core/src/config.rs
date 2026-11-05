@@ -583,7 +583,7 @@ pub struct AgendaSettings {
     #[serde(default)]
     pub overlaps: std::collections::BTreeMap<String, bool>,
     /// Where your stand-ins of a child's events go, by kind ("dentist" =
-    /// "<account>/<id>"); unsaid, your personal agenda (`holders`).
+    /// `<account>/<id>`); unsaid, your personal agenda (`holders`).
     #[serde(default)]
     pub stand_ins: std::collections::BTreeMap<String, String>,
     /// A follow-up task after a held event of a kind with a rhythm
