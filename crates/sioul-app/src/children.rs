@@ -93,7 +93,7 @@ fn follow_up_of(config: &Config, here: &[(Agenda, Collection)], agenda: &Agenda,
 }
 
 /// A child item's title and day, as the lines name it: "“Dentist”, Tuesday 10 November at 10:00".
-fn named(text: &str) -> (String, String) {
+pub(crate) fn named(text: &str) -> (String, String) {
     let zone = sioul_core::zone::current();
     let lines = sioul_core::lines::unfold(text);
     let title = lines.iter().find(|l| sioul_core::lines::name(l) == "SUMMARY").map(|l| sioul_core::lines::unescape(sioul_core::lines::value(l).trim())).filter(|t| !t.is_empty()).unwrap_or_else(|| tr().text("agenda-untitled", None));
@@ -795,7 +795,7 @@ fn busy_then(here: &[(Agenda, Collection)], parent: &str, start: i64, end: i64) 
 /// a list excused as the Porch excuses it) and authenticated
 /// (`trust::authenticated`, with the account's sealers): its results read
 /// by the account's trusted ids (`trusted_ids`), your domains its own.
-fn proven_sender(card: &sioul_core::card::Card, trusted_ids: &[String], own_domains: &[String]) -> bool {
+pub(crate) fn proven_sender(card: &sioul_core::card::Card, trusted_ids: &[String], own_domains: &[String]) -> bool {
     use sioul_core::trust;
     let auth = trust::read_auth_results(&card.headers, trusted_ids);
     let sealers = trust::sealers(trusted_ids, own_domains);

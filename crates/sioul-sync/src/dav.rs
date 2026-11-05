@@ -872,6 +872,9 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             first = false;
         }
         if kind == Kind::Calendars {
+            // Whether its server sends your meetings' invitations itself (RFC 6638), once a day:
+            // never both a server's and a draft (`scheduling`, `organizer::Sender`).
+            crate::scheduling::keep_fresh(client, &account.id, home);
             report.calendars_listed = listed.len();
             report.calendars_synced = report.collections - synced_before;
             report.calendars_read_only = listed.iter().filter(|l| l.read_only).count();
@@ -2802,6 +2805,40 @@ mod tests {
         let report = sync_one(&client, "ticks", &home, "errands").unwrap();
         assert_eq!(report.conflicts.len(), 1, "{report:?}");
         assert!(std::fs::read_to_string(&report.conflicts[0]).unwrap().contains("Doctor at two"));
+    }
+
+    /// A meeting you organize (decision 7 of the event card, 5 November
+    /// 2026), ticked on two devices: the sync's put-back of a merge goes
+    /// through `agenda::may_change`, which refuses every meeting with
+    /// others, yours too (the organizer's door is the window's alone): the
+    /// server's copy is kept, yours set aside, no merge sent back; and the
+    /// meeting is never rewritten in another form (`own_form_of`, `upgrade`).
+    #[test]
+    fn a_meeting_you_organize_is_never_put_back_by_the_sync() {
+        home();
+        let (dav, home) = Dav::start(&["work"]);
+        let meeting = |marks: [char; 2], stamp: &str| {
+            format!(
+                "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//tests//EN\r\nBEGIN:VEVENT\r\nUID:planning\r\nDTSTAMP:{stamp}\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:jane@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:anne@example.net\r\nDESCRIPTION:Bring:\\n- [{}] Plans\\n- [{}] Budget\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+                marks[0], marks[1]
+            )
+        };
+        dav.put("work", "planning.ics", &meeting([' ', ' '], "20261105T090000Z"));
+        let client = client();
+        sync_one(&client, "organized", &home, "work").unwrap();
+        let file = folder("organized", "work").join("planning.ics");
+        std::fs::write(&file, meeting(['x', ' '], "20261105T100000Z")).unwrap();
+        let theirs = meeting([' ', 'x'], "20261105T100500Z");
+        dav.put("work", "planning.ics", &theirs);
+        let before = puts(&dav).len();
+        let report = sync_one(&client, "organized", &home, "work").unwrap();
+        assert_eq!(report.conflicts.len(), 1, "yours set aside, never merged: {report:?}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), theirs, "the server's copy as it came");
+        let report = sync_one(&client, "organized", &home, "work").unwrap();
+        assert_eq!((report.sent, report.conflicts.len()), (0, 0), "nothing put back: {report:?}");
+        // Yours was tried once over its old copy, and refused (412): no merge went there.
+        assert!(puts(&dav).iter().skip(before).all(|p| p.ends_with(" 412")), "no PUT of a merge: {:?}", dav.seen());
+        assert_eq!(dav.items("work")["planning.ics"], theirs);
     }
 
     /// A server that only notes what it is asked, and with what login.

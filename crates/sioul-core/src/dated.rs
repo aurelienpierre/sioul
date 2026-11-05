@@ -337,7 +337,7 @@ pub fn item(dated: &Dated, today: Date, tr: &Translator) -> Item {
         // Read from a scan: it counts until you correct it.
         certainty: if matches!(dated.kind, Kind::Letter | Kind::LetterAppointment) { Certainty::Read } else { Certainty::Fixed },
         source: Source::Dated { kind: dated.kind, key: dated.key.clone() },
-        can: Can { edit: dated.kind.form(), drag: Move::None, ends: false, delete: false, tick: false, why: String::new() },
+        can: Can { edit: dated.kind.form(), drag: Move::None, ends: false, delete: false, tick: false, why: String::new(), tells: false },
         privacy: if health { Privacy::Health } else { Privacy::Admin },
         // Health's by its kind alone: its card names it.
         title: if health { word.clone() } else { dated.title.clone() },

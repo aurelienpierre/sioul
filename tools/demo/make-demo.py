@@ -1563,6 +1563,11 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
                            location=t("Bloc & Boulder gym", "Salle Bloc et Prise"), extra=["STATUS:TENTATIVE"])),
         ("personal", event(c, "lunch-mum", t("Lunch at Mum's", "Déjeuner chez Maman"), c.this_week(6), "12:30", "15:00", location="Villeurbanne")),
+        # A meeting you organize (the event card's step 3): its guests in it, moved and changed
+        # through the organizer's door; its invitation drafted, since this calendar's server says nothing of scheduling.
+        ("personal", event(c, "garden", t("Garden work party", "Chantier au jardin partagé"), c.this_week(5), "15:00", "16:30",
+                           location=t("Shared garden, Rue des Exemples", "Jardin partagé, rue des Exemples"), organizer=(ME, HOME),
+                           attendees=[(W.jonas[0], W.jonas[1], "ACCEPTED"), (W.tom[0], W.tom[1], "NEEDS-ACTION")])),
         ("work", event(c, "fernhill-pages", t("Fernhill: pages kick-off", "Fougères : lancement des pages"), c.weekday_after(8), "10:00", "11:00",
                        location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),
         ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Étienne")),

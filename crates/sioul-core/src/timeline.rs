@@ -243,6 +243,10 @@ pub struct Can {
     /// Why it cannot be changed here, in words; "" when it can.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub why: String,
+    /// A meeting you organize: moving, resizing or deleting it tells every
+    /// guest, which the window says first (decision 8 of the event card).
+    #[serde(skip_serializing_if = "is_false")]
+    pub tells: bool,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -252,7 +256,7 @@ fn is_false(value: &bool) -> bool {
 impl Can {
     /// Nothing to change here, and no word for it.
     pub fn nothing() -> Can {
-        Can { edit: Form::None, drag: Move::None, ends: false, delete: false, tick: false, why: String::new() }
+        Can { edit: Form::None, drag: Move::None, ends: false, delete: false, tick: false, why: String::new(), tells: false }
     }
 }
 
@@ -478,7 +482,7 @@ pub fn from_day(day: &DayView, date: Date, tasks: &[crate::tasks::Task]) -> Vec<
                 time: Time::span(block.start, block.end),
                 certainty: Certainty::Fixed,
                 source: Source::Task { uid: block.key.clone(), list: task_of(&block.key).map(|t| t.list.clone()).unwrap_or_default() },
-                can: Can { edit: Form::Task, drag: Move::None, ends: false, delete: false, tick: false, why: String::new() },
+                can: Can { edit: Form::Task, drag: Move::None, ends: false, delete: false, tick: false, why: String::new(), tells: false },
                 privacy: Privacy::Admin,
                 title: block.title.clone(),
                 line: String::new(),
@@ -544,7 +548,7 @@ pub fn from_day(day: &DayView, date: Date, tasks: &[crate::tasks::Task]) -> Vec<
 /// (`blocks::pin`), never in a list you only read (its writer's rule).
 fn step_can(task: Option<&crate::tasks::Task>) -> Can {
     let read_only = task.is_some_and(|t| t.read_only);
-    Can { edit: Form::Task, drag: if read_only { Move::None } else { Move::Pin }, ends: false, delete: false, tick: !read_only, why: String::new() }
+    Can { edit: Form::Task, drag: if read_only { Move::None } else { Move::Pin }, ends: false, delete: false, tick: !read_only, why: String::new(), tells: false }
 }
 
 /// A task once a day (the unified agenda, §3.4): a time block that holds
@@ -588,7 +592,7 @@ pub fn days_off(time_off: &[crate::config::TimeOff]) -> Vec<Item> {
                 time: Time::Day { date: off.from, until: off.until },
                 certainty: Certainty::Fixed,
                 source: Source::DayOff { id: off.id.clone() },
-                can: Can { edit: Form::DayOff, drag: Move::None, ends: false, delete: false, tick: false, why: String::new() },
+                can: Can { edit: Form::DayOff, drag: Move::None, ends: false, delete: false, tick: false, why: String::new(), tells: false },
                 privacy: Privacy::Admin,
                 title: off.label.clone(),
                 line: String::new(),

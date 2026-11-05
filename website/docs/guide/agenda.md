@@ -58,7 +58,8 @@ An event opens in its card: beside the page on a computer (over its right part w
 
 - **To change it**: **Edit**.
 - **To delete it**: **Delete**. It waits ten seconds, with **Undo**. A repeating event asks first: **Only this time**, or **Every time**.
-- **A meeting with others**, an event with guests (you invited them, or they invited you): its time, title, place, notes and calendar are its organiser's, since its server tells every guest of a change. Sioul neither drags nor deletes it, and its form changes only what is yours: the time kept before and after it, its costs and what it gives back, your reminder. An event that names only an organiser, as Google writes into your own events, stays yours to change.
+- **A meeting someone else organises**, an event with guests that another person invited you to: its time, title, place, notes and calendar are its organiser's, since its server tells every guest of a change. Sioul neither drags nor deletes it, and its form changes only what is yours: the time kept before and after it, its costs and what it gives back, your reminder. An event that names only an organiser, as Google writes into your own events, stays yours to change.
+- **A meeting you organise**, one you invited people to: every field is yours, and its guests too ([Inviting people](#inviting-people)).
 
 ### Its status, its map and the way there {#status-map-directions}
 
@@ -70,6 +71,15 @@ An event opens in its card: beside the page on a computer (over its right part w
 
 In the event form, a place you type suggests addresses after a short pause: first the places you used before (your events' and your contacts'), from this device alone; then, from three characters, addresses from the Base Adresse Nationale when your region is France, else from Photon, five at most. Only what you type in the place is sent, never the event's title, and nothing is sent without the network. The first time, a line under the field says where it goes. Choose one, and its point is kept, so that its map needs no search; on an event of your own, the point is also written into the event, which your other apps can read. Type the place again, and the point goes. **Suggest addresses as you type**, in the [Agenda settings](#the-agenda-settings), turns the service off: the places used before stay.
 
+### Inviting people {#inviting-people}
+
+In the form of an event of your own, **Invite…** takes your guests' addresses. Type part of a name or an address, and Sioul suggests from your address books and from Your people, on this device alone; Enter, or a comma, adds the one typed or chosen, and the button beside a guest takes them off. Before it saves, Sioul says who hears of it, and how, and saves on **Save**:
+
+- **Your calendar's server sends it**, when it says it schedules meetings itself, as Nextcloud does, and knows you by the address you invite from: "Saving sends an invitation from your server to Anne, Bob."
+- **Otherwise you send it**: on another server, or a calendar kept on this device alone, Sioul puts the invitation in your drafts, its calendar file with it, and it leaves when you send it from Mail.
+
+Never both. Your guests' answers come back into the event, through your server, or when you open an answer in Mail and Sioul can prove it comes from them; the card's people say them. Change the meeting later, take a guest off, drag it on the timeline or delete it: Sioul says first that it tells every guest ("Moving it tells every guest"), then your server or a draft tells them, and **Undo** puts it back, with the draft not sent yet. One time of a repeating meeting you organise is not left out here: change it in its calendar's own app.
+
 An event can also be made from a message, from a task, or from a paper letter's appointment, and stays tied to it. From an event, you can make a note (dated, with its guests listed, and **Send to the guests** once written) or a task to prepare it.
 
 ## Time to get ready, get there and come back {#time-around-an-event}
@@ -80,7 +90,7 @@ With a time kept before it, an appointment says when to leave, under its title i
 
 **A ride or a walk** around it (a bus, the walk from the stop): **Add a ride or a walk…** in its card opens the event form for it, before or after the appointment, with **From a timetable** when its time comes from one. It is an event of its own, in the appointment's calendar, and it moves with the appointment: drag the appointment, or change its time, and its legs move by as much, under the same **Undo**; a bus moved that way is said "timetable not checked" until you set its time yourself. Drag the leg itself and it stays where you put it. Deleting the appointment deletes its legs to come, under the same **Undo**. "Leave at" is then the first leg's start, the reminder before it comes once for the whole outing, counted from it, and the card says **Getting there** (the legs before it) and **Coming back** (the legs after it, then the steps that come after it). In the day and the week a leg is a quiet line in the appointment's lead; **Show ▸ Each ride or walk as an event of its own** draws each as an event. Your other calendar apps show it as the ordinary event it is; moved there, it is set right the next time Sioul reads it. × in a leg's card unties it from its appointment. A ride can also be a step's time (**Its step** in its form: "Take the bus", a step of the task preparing the appointment), once every device of yours runs a Sioul that keeps such a ride; until then the form says so. An appointment that repeats, or lasts the whole day, takes no leg. A leg more than three hours from its appointment (a train the evening before) still moves with it, but counts as an event of its own for the rest: the hours between stay free for meals and pauses, and it has its own reminder.
 
-**A meeting with others** (someone else organises it, or someone else is invited) keeps its own lines as its organizer set them: Sioul never changes its time, title, place, notes or guests, since its server would tell every guest of any change. Its card's **Edit** opens **Your time around it**: the time kept before and after, what it costs and gives back, your reminder. These are kept in a file of your own, beside your other data, and travel to your other devices with your time, once each of them runs this version of Sioul (Settings ▸ Your folder and sharing names a device that keeps them here; one you no longer use can be forgotten there); your plan, your reminders and "Leave at" read them there. While its invitation is still in your mail, its card offers **Answer…**: yes, maybe or no, sent to its organizer from the account the invitation came to.
+**A meeting someone else organises** keeps its own lines as its organizer set them: Sioul never changes its time, title, place, notes or guests, since its server would tell every guest of any change. Its card's **Edit** opens **Your time around it**: the time kept before and after, what it costs and gives back, your reminder. These are kept in a file of your own, beside your other data, and travel to your other devices with your time, once each of them runs this version of Sioul (Settings ▸ Your folder and sharing names a device that keeps them here; one you no longer use can be forgotten there); your plan, your reminders and "Leave at" read them there. While its invitation is still in your mail, its card offers **Answer…**: yes, maybe or no, sent to its organizer from the account the invitation came to.
 
 ## Dates asked of you {#dates}
 
@@ -117,7 +127,8 @@ Let go, and it is saved; an event is sent to your calendar server. Your plan lay
 - **A meal, a nap or the night** moves for that day only, as on the [Health](health.md#meals-rest-and-sleep) page; your usual hours stay as they are. **Every day**, beside **Undo**, makes that time the usual one in [Settings ▸ Hours](settings.md#hours). The night's top edge is tonight's bedtime (its winding down with it), its bottom edge this morning's waking.
 - **A repeating event** asks first: **Only this time**, or **Every time**. Every time moves all its days by as much; a weekly event moved to another day comes on that day each week. An event that repeats on set days of the month ("the first Monday") moves only this time: change how it repeats in its form.
 - **A step of your plan**, dragged, is pinned to its new time, as [Tasks](tasks.md#pinned-to-a-time) pins it; never before now. The steps the plan lays move only that way.
-- **A calendar you can only read**, a meeting with others (its organiser's server would tell every guest), whole-day events and doses do not move. Dragged, they say why in the status line.
+- **A meeting you organise** moves too, once you answer **Move** to "Moving it tells every guest"; your server or a draft tells them ([Inviting people](#inviting-people)).
+- **A calendar you can only read**, a meeting someone else organises (its organiser's server would tell every guest), whole-day events and doses do not move. Dragged, they say why in the status line.
 - **With a mouse**: press and drag; the wheel scrolls. **On a touch screen**: hold the thing until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu, and its two grips show at its edges: slide a grip to change its start or its end.
 - **With a keyboard**: choose it (Up and Down, or a click), then Alt+Up and Alt+Down move it by five minutes, Alt+Shift+Up and Alt+Shift+Down its end; it is saved once you stop pressing, and each step is said to your screen reader. Its card's times do the same.
 - Only within the hours shown; further, use **Edit**.
@@ -194,7 +205,7 @@ What an event asks of you counts too: a day's events take their share of what th
 
 ## Invitations
 
-An invitation that comes by mail shows in the message: **Accept**, **Maybe**, **Decline**. Accepted, or maybe, the event goes into your calendar, and your answer goes to the organiser from the address the invitation came to; declined, only your answer goes. Nothing enters your calendar before you answer. An event sent for information shows **Add to my calendar**; a cancelled one, **Take it out of my calendar**. Inviting people from Sioul is not built yet, except to offer a child's event to its other parent ([Children's events](#childrens-events)). See [Mail](mail.md#invitations).
+An invitation that comes by mail shows in the message: **Accept**, **Maybe**, **Decline**. Accepted, or maybe, the event goes into your calendar, and your answer goes to the organiser from the address the invitation came to; declined, only your answer goes. Nothing enters your calendar before you answer. An event sent for information shows **Add to my calendar**; a cancelled one, **Take it out of my calendar**. To invite people yourself, see [Inviting people](#inviting-people); to offer a child's event to its other parent, [Children's events](#childrens-events). See [Mail](mail.md#invitations).
 
 ## A calendar file {#a-calendar-file}
 
@@ -242,7 +253,7 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: inviting people from Sioul, except to offer a child's event to another parent; sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
+Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: leaving out one time of a repeating meeting you organise; sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
 
 ## Going further {#going-further}
 
@@ -272,6 +283,8 @@ An agenda shared with you to show when someone is busy stays yours to read. "A s
 When you share your own, a bare "busy" can read as secrecy between partners: 26 of 30 people in one study found it suspect (Thayer et al. 2012). So your blocks say "Busy" at first, and you may add a word to them for a partner.
 
 An address leaves your device only when you ask for something only a server can give. A map's place is looked up once you press **Map**, and kept, because OpenStreetMap's geocoder asks applications to send only what a person asked for, one request a second at most, and forbids searching as you type (its [usage policy](https://operations.osmfoundation.org/policies/nominatim/)); the map's tiles are those in view only, never fetched ahead, as its [tile policy](https://operations.osmfoundation.org/policies/tiles/) asks. Suggestions as you type go to services made for it, the Base Adresse Nationale and Photon, with what you typed alone, and can be turned off. The way there opens in the app you chose for maps: Sioul hands it the place, and keeps nothing of the trip.
+
+An invitation is sent by your calendar's server or by you, never by both. A server that schedules meetings itself (RFC 6638) emails your guests when it receives the meeting, but only for the address it knows you by, and not in a calendar someone shared with you; another server sends nothing. So Sioul asks your server once a day what it does, puts the invitation in your drafts whenever the server would not send it, and marks each guest as yours to tell, so that a server never sends it too. Only your own act in Sioul's window writes a meeting you organise: AI agents, the command line and the sync never can, since every change to it reaches your guests.
 
 A meal or a nap had early moves, and that is all Sioul keeps of it. Recording whether a meal was eaten helps within a treatment that a clinician guides, but is linked to harm as general tracking, and counts or "missed" messages feed the shame and the all-or-nothing thinking that keep eating difficulties going (the [meal and sleep prompts research](../dev/research/meal-prompts.md), criteria 17, 18 and 20). So **Had it** keeps a time, never a tick, and no day says what it lacked.
 

@@ -683,6 +683,38 @@ Item {
             compare([mock.calls[0].what, mock.calls[0].key, mock.calls[0].newStart - days[2].start, mock.calls[0].newEnd - mock.calls[0].newStart].join(" "), ["moveEvent", "m.ics", 630 * 60, 3600].join(" "))
         }
 
+        // A meeting you organize (decision 8 of the event card) moves, once "Moving it
+        // tells every guest" is answered Move; Cancel leaves it where it was.
+        function test_agenda_a_meeting_you_organize_says_first_it_tells_every_guest() {
+            const days = week()
+            const time = span(days[2], 600, 660)
+            days[2].timed = [placed({ id: "event:o.ics", kind: "event", time: time, source: { type: "calendar", key: "o.ics", uid: "o", start: time.at, recurring: false, calendar: "c", collection: "local/c" }, can: { edit: "event", drag: "event", ends: true, tells: true }, title: "Planning" }, days[2], 600, 660, { detail: { end: time.until, with_others: true } })]
+            const planning = makeWeek({ days: days })
+            const asked = () => {
+                for (let i = 0; i < planning.children.length; i++)
+                    if (planning.children[i].item && planning.children[i].item.objectName === "agendaMoveTells")
+                        return planning.children[i].item
+                return null
+            }
+            drag(planning, planningPoint(planning, 2, 610), planningPoint(planning, 2, 640))
+            compare(mock.calls.length, 0, "asked first")
+            verify(asked() !== null && asked().opened)
+            compare(asked().sentence, "invite-move-tells")
+            asked().accept()
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare([mock.calls[0].what, mock.calls[0].key, mock.calls[0].newStart - days[2].start].join(" "), ["moveEvent", "o.ics", 630 * 60].join(" "))
+            mock.calls = []
+            planning.days = week()
+            wait(20)
+            planning.days = days
+            wait(20)
+            drag(planning, planningPoint(planning, 2, 610), planningPoint(planning, 2, 660))
+            verify(asked().opened)
+            asked().reject()
+            compare(mock.calls.length, 0, "Cancel: nothing moved")
+            verify(planning.landed === null)
+        }
+
         // Nothing moves to before now, nor on a day gone by: a step dragged to
         // before now is given a time from now on (`blocks::pin`'s rule); a meal
         // its writer says cannot move (a day past, or over: `can.drag` none) stays.

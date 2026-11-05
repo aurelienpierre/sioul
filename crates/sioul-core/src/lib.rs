@@ -256,6 +256,7 @@ pub mod moves;
 pub mod movements;
 pub mod needs;
 pub mod ongoing;
+pub mod organizer;
 pub mod overlaps;
 pub mod own_time;
 pub mod pairs;

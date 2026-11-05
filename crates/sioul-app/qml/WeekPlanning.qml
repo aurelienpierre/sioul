@@ -258,6 +258,8 @@ ColumnLayout {
             ends: can.ends === true,
             edit: can.edit || "none",
             why: can.why || "",
+            // A meeting you organize: moving it tells every guest, said first (decision 8 of the event card).
+            tells: can.tells === true,
             owner: item.owner || "",
             srcKey: src.key || "",
             srcStart: src.start || 0,
@@ -956,11 +958,20 @@ ColumnLayout {
         planning.save(false)
     }
 
-    // The thing let go written, by its own writer (Paths.qml): that time alone, or every time.
-    function save(onlyThis) {
+    // That time alone (or every time), kept while "Moving it tells every guest" is asked.
+    property bool tellsOnlyThis: false
+
+    // The thing let go written, by its own writer (Paths.qml): that time alone, or every
+    // time. A meeting you organize: said first that it tells every guest (`told` once answered).
+    function save(onlyThis, told) {
         const landed = planning.landed
         if (!landed)
             return
+        if (landed.row.tells && told !== true) {
+            planning.tellsOnlyThis = onlyThis === true
+            tellsAsk.now().ask(landed.row.title, planning.sioul.text("invite-move-tells"), planning.sioul.text("invite-move"))
+            return
+        }
         landedLate.restart()
         const problem = paths.drop(landed.row, landed.part, { start: landed.start, end: landed.end }, onlyThis)
         if (problem !== "") {
@@ -2704,6 +2715,21 @@ ColumnLayout {
                 return { kind: "dose", date: mark.date, srcKey: JSON.parse(mark.keys)[0] || "", srcDate: mark.date, key: mark.key, json: "{}" }
         }
         return null
+    }
+
+    // A meeting you organize let go: "Moving it tells every guest", Move or Cancel. Made the first time.
+    Later {
+        id: tellsAsk
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                objectName: "agendaMoveTells"
+                sioul: planning.sioul
+                theme: planning.theme
+                onConfirmed: planning.save(planning.tellsOnlyThis, true)
+                onRejected: planning.landed = null
+            }
+        }
     }
 
     // A repeating event let go: this time alone, or every time. Made the first time.

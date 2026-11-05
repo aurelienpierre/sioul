@@ -48,3 +48,10 @@ flate2 = "1"
 
 [dev-dependencies]
 fluent-syntax.workspace = true
+
+[features]
+# The tests of the crates built on this one (sioul-app's [dev-dependencies]
+# turn it on): your addresses and the organizer's door set for one test's
+# thread (`agenda::own_addresses_here`, `open_organizer_door_here`). Never
+# enabled in Sioul's builds: `cargo tree -e features` shows it in test builds alone.
+test-hooks = []

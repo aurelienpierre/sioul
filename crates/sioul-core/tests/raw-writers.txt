@@ -540,7 +540,9 @@ sioul-core/src/vdir.rs	prepare	1	std::fs::remove_file(dir.join("color"))
 sioul-core/src/vdir.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 #   remove_item: the door itself, guarded where it begins.
 sioul-core/src/vdir.rs	remove_item	1	std::fs::remove_file(path)
-#   store_item: the door's own writing: what a server sent, an invitation's answer, and `write_item` once the rule let it through.
+#   remove_organized: the organizer's door, guarded where it begins (`agenda::guard_organized`).
+sioul-core/src/vdir.rs	remove_organized	1	std::fs::remove_file(path)
+#   store_item: the door's own writing: what a server sent, an invitation's answer, and `write_item` or `write_organized` once its rule let it through.
 sioul-core/src/vdir.rs	store_item	1	std::fs::write(&temporary, text)
 sioul-core/src/vdir.rs	store_item	1	std::fs::rename(&temporary, path)
 
@@ -723,6 +725,9 @@ sioul-sync/src/renumbered.rs	remove	1	std::fs::remove_file(&removal.path)
 sioul-sync/src/renumbered.rs	append	1	std::fs::OpenOptions::new()
 sioul-sync/src/renumbered.rs	save	1	std::fs::write(&temporary, text)
 sioul-sync/src/renumbered.rs	save	1	std::fs::rename(&temporary, path)
+
+# sioul-sync/src/scheduling.rs: what a calendar server says of its scheduling (state, no item).
+sioul-sync/src/scheduling.rs	save	1	sioul_core::filelock::replace(&path, text.as_bytes())
 
 # sioul-sync/src/share.rs:
 #   remove_if_old: the sharing's leftovers.

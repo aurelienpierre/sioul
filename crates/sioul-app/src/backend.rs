@@ -839,6 +839,16 @@ pub mod qobject {
         #[qinvokable]
         fn completions(self: &Sioul, typed: &QString) -> QString;
 
+        /// The guests the event form's "Invite…" field suggests for what is
+        /// typed: the address books', then Your people's, as JSON; on this device.
+        #[qinvokable]
+        fn guest_completions(self: &Sioul, typed: &QString) -> QString;
+
+        /// What saving the event form would tell its guests, said before it
+        /// is asked (`{"ask": …}`, "" for nobody); nothing written.
+        #[qinvokable]
+        fn invite_said(self: &Sioul, key: &QString, edit: &QString, calendar: &QString) -> QString;
+
         /// The contact with this address, by file; empty when none.
         #[qinvokable]
         fn contact_for(self: &Sioul, address: &QString) -> QString;
@@ -5293,6 +5303,14 @@ impl qobject::Sioul {
         QString::from(&pim::completions(&typed.to_string()))
     }
 
+    fn guest_completions(&self, typed: &QString) -> QString {
+        QString::from(&pim::guest_completions(&typed.to_string()))
+    }
+
+    fn invite_said(&self, key: &QString, edit: &QString, calendar: &QString) -> QString {
+        QString::from(&pim::invite_said(&key.to_string(), &edit.to_string(), &calendar.to_string()))
+    }
+
     fn contact_for(&self, address: &QString) -> QString {
         QString::from(&pim::contact_for(&address.to_string()))
     }
@@ -7500,8 +7518,9 @@ impl qobject::Sioul {
         // Day's times shown over a block, its handles, the "+" of an empty quarter, a meal's menu with "Had it", the
         // Week's named meals and nights (pictures alone; docs/client.md), "eventcard" an appointment's card with its
         // status, its place's buttons and its map, a tentative one, the event form's place suggested (pictures
-        // alone; docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "timeline", "eventcard"].contains(&steps.as_str()) && offline()) {
+        // alone; docs/client.md), "invite" a meeting you organize, its form's guests and what Save says first
+        // (pictures alone, nothing saved; docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "timeline", "eventcard", "invite"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

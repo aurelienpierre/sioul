@@ -419,6 +419,11 @@ struct EventView {
     /// What stays as it is, said in the editor: a meeting with others' time,
     /// title, place, notes and calendar (`with_others`); else "".
     stays: String,
+    /// A meeting you organize (`agenda::organized_meeting`): the editor
+    /// offers all its fields and its guests, written through the organizer's door.
+    organized: bool,
+    /// Its guests, as the form's "Invite…" field lists them (`organizer::guests_of`).
+    guests: Vec<sioul_core::organizer::Guest>,
 }
 
 /// The conflicts among `events` (the next two weeks', those whose deletion
@@ -611,10 +616,13 @@ pub(crate) fn event(key: &str) -> String {
     let Some(calendar) = collection_of(&path) else { return String::new() };
     let config = load_config();
     let place = if here_only(&calendar) { tr().text(if cfg!(target_os = "android") { "event-calendar-here-phone" } else { "event-calendar-here-computer" }, None) } else { String::new() };
-    let others = std::fs::read_to_string(&path).is_ok_and(|t| with_others(&t));
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let organized = agenda::organized_meeting(&text, &agenda::own_addresses());
+    let others = with_others(&text) && !organized;
     let stays = if others { tr().text("event-change-with-others", None) } else { String::new() };
+    let guests = if others { Vec::new() } else { sioul_core::organizer::guests_of(&text) };
     edit_with_own(&path)
-        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays }))
+        .map(|edit| json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays, organized, guests }))
         .unwrap_or_default()
 }
 
@@ -696,7 +704,8 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     }
     // Its legs moved with it (part E2), said as a drag says them.
     let legs = if saved.legs.is_empty() { String::new() } else { format!(" {}", say("legs-moved-with", &[("legs", saved.legs.join(", "))])) };
-    tell(qt, shared, format!("{}{legs}", tr().text("event-saved", None)));
+    let told = if saved.told.is_empty() { String::new() } else { format!(" {}", saved.told) };
+    tell(qt, shared, format!("{}{legs}{told}", tr().text("event-saved", None)));
     // The re-plan due before the agenda's job starts (`work::replan_asked`).
     crate::work::show_work(qt, shared);
     show_pim(qt, shared);
@@ -714,6 +723,8 @@ struct SavedEvent {
     title: String,
     /// The legs moved with it, as the line says them (part E2).
     legs: Vec<String>,
+    /// Who was told of a meeting you organize, and how ("" for none).
+    told: String,
 }
 
 /// `write_event_with`, no leg known (the tests').
@@ -747,15 +758,20 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
             })
         })
         .unwrap_or_default();
+    // Its guests, as the form's "Invite…" field lists them (decision 7 of the event card):
+    // absent from a form that shows no such field (an older window, the tests).
+    let guests: Option<Vec<sioul_core::organizer::Guest>> = given.as_ref().and_then(|v| v.get("guests")).and_then(|g| serde_json::from_value(g.clone()).ok());
     let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
     let zone = sioul_core::zone::current();
+    let own = agenda::own_addresses();
     // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
     let mut renamed: Option<String> = None;
     let mut before: Option<String> = None;
     let (path, text) = match ours(key) {
         Some(path) => {
             let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-            let meeting = with_others(&current);
+            // A meeting you organize takes the whole form, through its own door (below).
+            let meeting = with_others(&current) && !agenda::organized_meeting(&current, &own);
             // Another calendar chosen for a meeting with others: nothing written (F2).
             let elsewhere = vdir::collections(Kind::Calendars).into_iter().find(|c| format!("{}/{}", c.account, c.id) == calendar).is_some_and(|c| path.parent() != Some(c.dir.as_path()));
             if elsewhere && meeting {
@@ -772,7 +788,7 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
                 let own = sioul_core::own_time::Own { before: edit.margins.before, after: edit.margins.after, demands: edit.demands, remind: edit.remind.clone() };
                 sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, Some(own))?;
                 let title = agenda::edit_of_text(&current, &zone).map(|e| e.title).unwrap_or_default();
-                return Ok(SavedEvent { path, accounts: Vec::new(), renamed: None, title, legs: Vec::new() });
+                return Ok(SavedEvent { path, accounts: Vec::new(), renamed: None, title, legs: Vec::new(), told: String::new() });
             }
             if edit.title.trim().is_empty() {
                 return Err(tr().text("event-no-title", None));
@@ -808,6 +824,20 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
             (agenda::new_path(&target), agenda::add_lines(&text, &lines).unwrap_or(text))
         }
     };
+    // A meeting you organize, or an event given guests: through the organizer's door,
+    // its guests told by its server or by a draft (decision 7 of the event card).
+    let organizing = before.as_deref().is_some_and(|b| agenda::organized_meeting(b, &own)) || guests.as_ref().is_some_and(|g| !crate::organized::cleaned(g).is_empty());
+    if organizing {
+        // Moved to another calendar with guests: the old one's server would cancel it for them (F2).
+        let elsewhere = vdir::collections(Kind::Calendars).into_iter().find(|c| format!("{}/{}", c.account, c.id) == calendar).is_some_and(|c| path.parent() != Some(c.dir.as_path()));
+        if before.is_some() && elsewhere {
+            return Err(tr().text("event-move-with-others", None));
+        }
+        let collection = path.parent().and_then(|dir| vdir::collections(Kind::Calendars).into_iter().find(|c| c.dir == dir)).ok_or_else(|| tr().text("dav-no-calendar", None))?;
+        let plan = crate::organized::plan(&path, before.as_deref(), &text, guests.as_deref(), &collection)?;
+        crate::organized::write(&plan)?;
+        return Ok(SavedEvent { accounts: account_of(&plan.path).into_iter().collect(), path, renamed, title: edit.title.trim().to_string(), legs: Vec::new(), told: plan.done() });
+    }
     let mut accounts: Vec<String> = account_of(&path).into_iter().collect();
     let mut legs = Vec::new();
     match &before {
@@ -833,7 +863,7 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
         at = move_event_file(&path, &target)?;
         accounts.push(target.account.clone());
     }
-    Ok(SavedEvent { path: at, accounts, renamed, title: edit.title.trim().to_string(), legs })
+    Ok(SavedEvent { path: at, accounts, renamed, title: edit.title.trim().to_string(), legs, told: String::new() })
 }
 
 /// An event moved by a drag in the agenda: its occurrence starting at `start`
@@ -842,7 +872,7 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
 /// "Undo" offered for ten seconds, which writes back what the file held, unless
 /// it changed since (a sync, another device). Returns what went wrong, else "".
 pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: i64, new_start: i64, new_end: i64, only_this: bool) -> String {
-    let Moved { text, accounts, files, legs } = match move_written(shared, key, start, new_start, new_end, only_this) {
+    let Moved { text, accounts, files, legs, organized, told } = match move_written(shared, key, start, new_start, new_end, only_this) {
         Ok(Some(moved)) => moved,
         Ok(None) => return String::new(),
         Err(problem) => return problem,
@@ -860,10 +890,19 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
     if !legs.is_empty() {
         line = format!("{line} {}", say("legs-moved-with", &[("legs", legs.join(", "))]));
     }
+    // A meeting you organize: how its guests were told.
+    if !told.is_empty() {
+        line = format!("{line} {told}");
+    }
     let said = sioul_core::agentwrites::Said { at: 0, line: String::new(), files };
     mail::offer_back(qt, shared, line, move |qt, shared| {
         // Only what this drag wrote is put back, every file or none: a change since stays.
-        if !said.put_back() {
+        // A meeting you organize, through its own door, its unsent draft discarded.
+        let back = match &organized {
+            Some(written) => crate::organized::put_back(written),
+            None => said.put_back(),
+        };
+        if !back {
             return tr().text("undo-too-late", None);
         }
         for account in &accounts {
@@ -935,6 +974,9 @@ pub(crate) struct Moved {
     accounts: Vec<String>,
     files: Vec<sioul_core::agentwrites::FileChange>,
     legs: Vec<String>,
+    /// A meeting you organize, moved through its own door: what Undo puts back, and how its guests were told.
+    organized: Option<crate::organized::Written>,
+    told: String,
 }
 
 /// What a gesture on an event's file writes beside it (`anchors::gesture`):
@@ -965,8 +1007,10 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
         return Err(tr().text("agenda-read-only", None));
     }
     let Ok(before) = std::fs::read_to_string(&path) else { return Err(tr().text("agenda-gone", None)) };
-    // Its organizer's time: never moved here (`agenda::may_change`; the window offers no drag of it).
-    if with_others(&before) {
+    // Its organizer's time: never moved here (`agenda::may_change`; the window offers no drag of it),
+    // but for a meeting you organize, through its own door (decision 8 of the event card).
+    let organized = agenda::organized_meeting(&before, &agenda::own_addresses());
+    if with_others(&before) && !organized {
         return Err(tr().text("event-change-with-others", None));
     }
     let zone = sioul_core::zone::current();
@@ -979,13 +1023,24 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
     if text == before {
         return Ok(None);
     }
+    if organized {
+        let calendar = collection_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
+        let plan = crate::organized::plan(&path, Some(&before), &text, None, &calendar)?;
+        let written = crate::organized::write(&plan)?;
+        crate::work::replan_asked(shared);
+        let accounts: Vec<String> = account_of(&path).into_iter().collect();
+        for account in &accounts {
+            nudge(shared, account);
+        }
+        return Ok(Some(Moved { text: plan.text.clone(), accounts, files: Vec::new(), legs: Vec::new(), organized: Some(written), told: plan.done() }));
+    }
     let (files, legs) = written_with_legs(shared, &path, &before, &text, &zone)?;
     crate::work::replan_asked(shared);
     let accounts: Vec<String> = files.iter().filter_map(|f| account_of(&f.path)).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
     for account in &accounts {
         nudge(shared, account);
     }
-    Ok(Some(Moved { text, accounts, files, legs }))
+    Ok(Some(Moved { text, accounts, files, legs, organized: None, told: String::new() }))
 }
 
 /// Deletes an event, or only this occurrence of a repeating one, after ten
@@ -994,6 +1049,32 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
 /// Returns what went wrong, else "".
 pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: i64, only_this: bool) -> String {
     let Some((path, account)) = ours(key).and_then(|p| Some((p.clone(), account_of(&p)?))) else { return tr().text("agenda-gone", None) };
+    // A meeting you organize: deleted whole through its own door, its guests told
+    // (decision 7 of the event card), after the window said so; Undo puts it back.
+    if std::fs::read_to_string(&path).is_ok_and(|t| agenda::organized_meeting(&t, &agenda::own_addresses())) {
+        if only_this {
+            return tr().text("invite-delete-one-time", None);
+        }
+        let written = match crate::organized::delete(&path) {
+            Ok(written) => written,
+            Err(e) => return e,
+        };
+        nudge(shared, &account);
+        crate::work::replan_asked(shared);
+        let told = tr().text(if written.drafts.is_empty() { "invite-cancelled-server" } else { "invite-cancelled-draft" }, None);
+        mail::offer_back(qt, shared, format!("{} {told}", tr().text("undo-event-deleted", None)), move |qt, shared| {
+            if !crate::organized::undelete(&written) {
+                return tr().text("undo-too-late", None);
+            }
+            nudge(shared, &account);
+            crate::work::show_work(qt, shared);
+            show_pim(qt, shared);
+            String::new()
+        });
+        crate::work::show_work(qt, shared);
+        show_pim(qt, shared);
+        return String::new();
+    }
     let change = agenda::Change::Delete;
     if let Err(refusal) = agenda::guard(&path, change) {
         return tr().text(refusal.word(&change), None);
@@ -1200,6 +1281,73 @@ pub(crate) fn completions(typed: &str) -> String {
     json(&contacts::completions(&contacts::all(), current, 6))
 }
 
+/// The guests the event form's "Invite…" field suggests for what is typed
+/// (decision 7 of the event card): your address books' names and addresses,
+/// then the people of Your people by their name, with their cards'
+/// addresses; on this device, nothing asked of any network. At most 6.
+pub(crate) fn guest_completions(typed: &str) -> String {
+    let current = typed.rsplit([',', ';']).next().unwrap_or(typed).trim();
+    let all = contacts::all();
+    let mut found = contacts::completions(&all, current, 6);
+    let folded = |t: &str| t.to_lowercase();
+    if current.chars().count() >= 2 {
+        let persons = sioul_core::persons::Persons::load(&sioul_core::persons::Persons::default_path());
+        for person in persons.persons.iter().filter(|p| folded(&p.name).split_whitespace().any(|w| w.starts_with(&folded(current))) || folded(&p.full_name).starts_with(&folded(current))) {
+            for email in all.iter().filter(|c| person.cards.contains(&c.uid)).flat_map(|c| c.emails.iter()) {
+                let line = format!("{} <{}>", person.name, email.value);
+                if !found.iter().any(|f| f.to_lowercase().contains(&email.value.to_lowercase())) {
+                    found.push(line);
+                }
+            }
+        }
+    }
+    found.truncate(6);
+    json(&found)
+}
+
+/// What saving the event form would tell anyone, said before it is asked
+/// (decision 7 of the event card): `{"ask": "Saving sends an invitation
+/// from your server to Anne, Bob."}`, its `ask` "" when nobody hears of it
+/// (an event of no guest, a meeting with others you do not organize).
+/// Nothing is written.
+pub(crate) fn invite_said(key: &str, edit: &str, calendar: &str) -> String {
+    let asked = || -> Result<String, String> {
+        let given = serde_json::from_str::<serde_json::Value>(edit).map_err(|e| e.to_string())?;
+        let guests: Option<Vec<sioul_core::organizer::Guest>> = given.get("guests").and_then(|g| serde_json::from_value(g.clone()).ok());
+        let edit: EventEdit = serde_json::from_value(given).map_err(|e| e.to_string())?;
+        let zone = sioul_core::zone::current();
+        let own = agenda::own_addresses();
+        let (path, before, applied, collection) = match ours(key) {
+            Some(path) => {
+                let current = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+                if with_others(&current) && !agenda::organized_meeting(&current, &own) {
+                    return Ok(String::new());
+                }
+                let applied = agenda::apply(&current, &edit, &zone)?;
+                let collection = collection_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
+                (path, Some(current), applied, collection)
+            }
+            None => {
+                let target = vdir::collections(Kind::Calendars)
+                    .into_iter()
+                    .find(|c| !c.read_only && c.holds("VEVENT") && format!("{}/{}", c.account, c.id) == calendar)
+                    .or_else(agenda::default_calendar)
+                    .ok_or_else(|| tr().text("dav-no-calendar", None))?;
+                (agenda::new_path(&target), None, agenda::new_event(&edit, &zone)?, target)
+            }
+        };
+        let organizing = before.as_deref().is_some_and(|b| agenda::organized_meeting(b, &own)) || guests.as_ref().is_some_and(|g| !crate::organized::cleaned(g).is_empty());
+        if !organizing {
+            return Ok(String::new());
+        }
+        Ok(crate::organized::plan(&path, before.as_deref(), &applied, guests.as_deref(), &collection)?.asked())
+    };
+    match asked() {
+        Ok(ask) => json(&serde_json::json!({ "ask": ask })),
+        Err(error) => json(&serde_json::json!({ "ask": "", "error": error })),
+    }
+}
+
 /// The contact with this address, by file; empty when there is none.
 pub(crate) fn contact_for(address: &str) -> String {
     contacts::by_address(&contacts::all(), address).map(|c| c.key.clone()).unwrap_or_default()
@@ -1242,7 +1390,8 @@ pub(crate) fn invitation(key: &str) -> String {
         let config = load_config();
         let account = config.account_of(&path).map(|a| a.id.clone()).unwrap_or_default();
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
-        let Some(line) = crate::children::replied(&text, &message, &trusted, &config.own_domains()) else { return String::new() };
+        // Else a guest's answer to a meeting you organize (decision 7 of the event card).
+        let Some(line) = crate::children::replied(&text, &message, &trusted, &config.own_domains()).or_else(|| crate::organized::replied(&text, &message, &trusted, &config.own_domains())) else { return String::new() };
         return json(&InvitationView { method: asked.method, summary: line, when: String::new(), location: String::new(), organizer: String::new(), known: true });
     }
     let at = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone())).ok();

@@ -161,6 +161,7 @@ mod mail;
 mod mailsearch;
 mod mailnote;
 mod openmail;
+mod organized;
 #[cfg(target_os = "android")]
 mod nfc;
 mod notices;
@@ -335,6 +336,9 @@ pub fn run() -> i32 {
     unsafe { cxx_qt_init_crate_sioul_app() };
     // Mail, keys, drafts and caches are kept in folders that are yours alone.
     sioul_core::config::make_private_dirs();
+    // The window's acts are yours: the meetings you organize are written
+    // through their own door here alone (`sioul` and `sioul mcp` never open it).
+    sioul_core::agenda::open_organizer_door();
     // A configuration from before the words Sioul looks for keeps reading
     // French, English and France's names, said once in it; one made later is
     // left to its interface's language (docs/words.md).

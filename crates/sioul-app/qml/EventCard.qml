@@ -223,8 +223,13 @@ CardFrame {
             card.sioul.status = problem
     }
 
-    // Deleted: a repeating one asks this time or every time; a single one goes at once.
+    // Deleted: a repeating one asks this time or every time; a single one goes at once;
+    // a meeting you organize says first that every guest is told, and goes whole.
     function askDelete() {
+        if (card.event.organized === true) {
+            tellsDelete.now().ask(card.event.summary, card.sioul.text("invite-delete-tells"), card.sioul.text("ui-delete"))
+            return
+        }
         if (!card.event.recurring) {
             card.deleteNow(false)
             return
@@ -1024,10 +1029,10 @@ CardFrame {
     }
 
     actions: [
-        // Never a meeting with others: its server would cancel or decline it for them.
+        // Never a meeting someone else organizes: its server would cancel or decline it for them.
         Button {
             objectName: "eventCardDelete"
-            visible: card.there && !card.event.read_only && card.event.with_others !== true
+            visible: card.there && !card.event.read_only && (card.event.with_others !== true || card.event.organized === true)
             flat: true
             text: card.sioul.text("ui-delete")
             onClicked: card.askDelete()
@@ -1098,6 +1103,20 @@ CardFrame {
 
     // The message that brought its invitation, while it is in your mail (`invitationOf`); "" for none.
     readonly property string invitation: card.there && card.event.with_others === true ? card.sioul.invitationOf(card.event.key) : ""
+
+    // A meeting you organize deleted: "Deleting it tells every guest that it is cancelled." Made the first time.
+    Later {
+        id: tellsDelete
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                objectName: "eventCardDeleteTells"
+                sioul: card.sioul
+                theme: card.theme
+                onConfirmed: card.deleteNow(false)
+            }
+        }
+    }
 
     // A repeating event deleted: this time, or every time.
     Later {

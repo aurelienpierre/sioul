@@ -77,6 +77,10 @@ pub struct Occurrence {
     /// never moved, deleted, nor changed but for Sioul's own lines
     /// (`may_change`); what every view offers follows it.
     pub with_others: bool,
+    /// A meeting with others that you organize (`organized_meeting`): moved,
+    /// changed and taken out through the organizer's door alone, by your own
+    /// act in the window, which says first that it tells every guest.
+    pub organized: bool,
     /// That task's list, by name, once it is known here (`mark_tasks`): what
     /// every agenda says of it, the window's, the phone's and the home card.
     pub list: String,
@@ -543,6 +547,7 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
     let marks = crate::agendas::marks_of(calendar);
     let busy = marks.busy;
     let with_others = !busy && meeting_with_others(&text, own);
+    let organized = with_others && organized_by_you(&text, own);
     let anchor = if busy { None } else { crate::anchors::parse(&text) };
     let stands_for = if text.contains("latest-version") { crate::holders::stands_for(&text).unwrap_or_default() } else { String::new() };
     // Its own clock, said beside its time when it is another than the one
@@ -625,6 +630,7 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
                 turn: text_of(component, &ICalendarProperty::Other(crate::blocks::TURN.to_string())),
                 remind: remind_of(&ical, component),
                 with_others,
+                organized,
                 list: String::new(),
                 anchor: anchor.clone(),
                 leg_of: String::new(),
@@ -764,7 +770,23 @@ fn own() -> (Vec<String>, String) {
 
 /// Your addresses, in lower case (`own`): an organizer or a guest that is one of them is you.
 pub fn own_addresses() -> Vec<String> {
+    #[cfg(any(test, feature = "test-hooks"))]
+    if let Some(own) = OWN_HERE.with(|here| here.borrow().clone()) {
+        return own;
+    }
     own().0
+}
+
+#[cfg(any(test, feature = "test-hooks"))]
+thread_local! {
+    /// Your addresses for one test's thread, its configuration aside.
+    static OWN_HERE: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Your addresses for this test's thread alone (none: as the configuration says).
+#[cfg(any(test, feature = "test-hooks"))]
+pub fn own_addresses_here(own: Option<&[&str]>) {
+    OWN_HERE.with(|here| *here.borrow_mut() = own.map(|o| o.iter().map(|a| a.to_lowercase()).collect()));
 }
 
 /// What an event's writer does to its file (`may_change`).
@@ -817,23 +839,153 @@ impl Refusal {
 /// Sioul's own lines included, which an older Sioul wrote there. What is
 /// yours about it (the time kept around it, its costs and gain, your
 /// reminder) is kept in your own file (`own_time`, decision 18, part 4).
-/// Answering its invitation is no such writer (`vdir::store_item`).
-pub fn may_change(text: &str, read_only: bool, own: &[String], _change: Change) -> Result<(), Refusal> {
+/// Answering its invitation is no such writer (`vdir::store_item`). Nor is
+/// an event made a meeting with others by a write (`change` writing guests
+/// in): its server would invite them, which your own act alone may ask,
+/// through the organizer's door (`may_organize`, 5 November 2026).
+pub fn may_change(text: &str, read_only: bool, own: &[String], change: Change) -> Result<(), Refusal> {
     if read_only {
         return Err(Refusal::ReadOnly);
     }
     if meeting_with_others(text, own) {
         return Err(Refusal::WithOthers);
     }
+    if let Change::Write(new) = change
+        && meeting_with_others(new, own)
+    {
+        return Err(Refusal::WithOthers);
+    }
     Ok(())
+}
+
+/// Whether every event of a text that names a guest names you as its
+/// organizer (`own`: your addresses, in lower case): a meeting you organize,
+/// or an event of no guest; false for a text that holds no event. An event
+/// with a guest and no organizer is no one's you can tell, as
+/// `meeting_with_others` reads it.
+pub fn organized_by_you(text: &str, own: &[String]) -> bool {
+    let yours = |value: &str| {
+        let at = address(value).trim().to_lowercase();
+        !at.is_empty() && own.contains(&at)
+    };
+    let (mut inside, mut nested, mut seen) = (false, 0usize, false);
+    let (mut organizer, mut guests): (bool, usize) = (false, 0);
+    for line in lines::unfold(text) {
+        let name = lines::name(&line);
+        let value = lines::value(&line);
+        match name.as_str() {
+            "BEGIN" if !inside => {
+                if value.trim().eq_ignore_ascii_case("VEVENT") {
+                    (inside, nested, organizer, guests, seen) = (true, 0, false, 0, true);
+                }
+            }
+            "BEGIN" => nested += 1,
+            "END" if inside && nested > 0 => nested -= 1,
+            "END" if inside => {
+                inside = false;
+                if guests > 0 && !organizer {
+                    return false;
+                }
+            }
+            "ORGANIZER" if inside && nested == 0 => organizer = yours(value),
+            "ATTENDEE" if inside && nested == 0 => guests += 1,
+            _ => {}
+        }
+    }
+    seen
+}
+
+/// Whether an event is a meeting you organize: a meeting with others
+/// (`meeting_with_others`) whose every event with a guest names you as its
+/// organizer (`organized_by_you`). Through the organizer's door alone.
+pub fn organized_meeting(text: &str, own: &[String]) -> bool {
+    meeting_with_others(text, own) && organized_by_you(text, own)
+}
+
+/// The organizer's door's rule (decision 7 of the event card, 5 November
+/// 2026): an event you organize may be written, its guests added or taken
+/// out, its times, place or title changed, or it may be taken out (`new`
+/// none), when it is yours to organize before and after (`organized_by_you`),
+/// in a calendar you may write. Every other writer keeps `may_change`, which
+/// refuses any meeting with others; this rule serves your own acts alone
+/// (`guard_organized`). With none of your addresses known, nothing is yours.
+pub fn may_organize(old: Option<&str>, new: Option<&str>, read_only: bool, own: &[String]) -> Result<(), Refusal> {
+    if read_only {
+        return Err(Refusal::ReadOnly);
+    }
+    if own.is_empty() {
+        return Err(Refusal::WithOthers);
+    }
+    match (old, new) {
+        // The door changes an event or takes it out: nothing out of nothing.
+        (None, None) => Err(Refusal::WithOthers),
+        (Some(old), _) if !organized_by_you(old, own) => Err(Refusal::WithOthers),
+        (_, Some(new)) if !organized_by_you(new, own) => Err(Refusal::WithOthers),
+        _ => Ok(()),
+    }
+}
+
+/// Whether this program opened the organizer's door (`open_organizer_door`).
+static ORGANIZER_DOOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(any(test, feature = "test-hooks"))]
+thread_local! {
+    /// The door opened for one test's thread alone: the tests of a closed
+    /// door run beside it.
+    static ORGANIZER_DOOR_HERE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Opens the organizer's door for this program (`guard_organized`): Sioul's
+/// window alone, where each write through it is your own act. `sioul`,
+/// `sioul mcp` (agents) and every other program leave it closed, and the
+/// door refuses them whatever they ask; the sync never calls it (`agenda`
+/// tests, `the_organizers_door_is_the_persons_alone`).
+pub fn open_organizer_door() {
+    ORGANIZER_DOOR.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// The organizer's door opened or shut for this test's thread alone.
+#[cfg(any(test, feature = "test-hooks"))]
+pub fn open_organizer_door_here(open: bool) {
+    ORGANIZER_DOOR_HERE.with(|here| here.set(open));
+}
+
+fn organizer_door_open() -> bool {
+    #[cfg(any(test, feature = "test-hooks"))]
+    if ORGANIZER_DOOR_HERE.with(std::cell::Cell::get) {
+        return true;
+    }
+    ORGANIZER_DOOR.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// `may_organize` for the file at `path` as it is now, `new` what it becomes
+/// (none: taken out): the organizer's door's last word (`vdir::write_organized`,
+/// `vdir::remove_organized`). Refused in a program that did not open the door
+/// (`open_organizer_door`), for a file of no calendar, and for an event where
+/// tasks only go, as `guard` refuses it.
+pub fn guard_organized(path: &Path, new: Option<&str>) -> Result<(), Refusal> {
+    if !organizer_door_open() {
+        return Err(Refusal::WithOthers);
+    }
+    let Some(read_only) = vdir::calendar_read_only(path) else { return Err(Refusal::WithOthers) };
+    if new.is_some()
+        && let Some(components) = vdir::calendar_components(path)
+        && !components.is_empty()
+        && !components.iter().any(|c| c.eq_ignore_ascii_case("VEVENT"))
+    {
+        return Err(Refusal::TasksOnly);
+    }
+    let old = std::fs::read_to_string(path).ok();
+    may_organize(old.as_deref(), new, read_only, &own_addresses())
 }
 
 /// `may_change` for the file at `path` as it is now, its calendar's
 /// read-only mark and your addresses read here: every writer's last word
 /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`). A file
 /// of no calendar (a contact) passes; a task passes but in a calendar or a
-/// list you only read; a new event is refused only in a calendar you only
-/// read. What holds no event, before and after, is asked nothing more than
+/// list you only read; a new event is refused in a calendar you only read,
+/// and when it names guests (an event you organize goes through the
+/// organizer's door, `guard_organized`). What holds no event, before and after, is asked nothing more than
 /// its read: no sync state parsed, no address asked (review of 36002ea,
 /// can-wait 13). A calendar you only read is one its server keeps so, or one
 /// whose agenda you keep read only or for its availability (`agendas`).
@@ -864,6 +1016,8 @@ pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
     match (old, change) {
         (Some(text), change) => may_change(&text, read_only, &own_addresses(), change),
         (None, Change::Write(_)) if read_only => Err(Refusal::ReadOnly),
+        // A new event that names guests: its server would invite them (`may_change`).
+        (None, Change::Write(new)) if meeting_with_others(new, &own_addresses()) => Err(Refusal::WithOthers),
         _ => Ok(()),
     }
 }
@@ -923,12 +1077,14 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
                 availability.clone()
             } else if o.read_only {
                 read_only.clone()
-            } else if o.with_others {
+            } else if o.with_others && !o.organized {
                 with_others.clone()
             } else {
                 String::new()
             };
             let free = why.is_empty();
+            // A meeting you organize moves through its own door, said first; its checklist stays as its guests read it.
+            let tells = free && o.organized;
             let movable = free && !o.all_day;
             let time = if o.all_day {
                 Time::Day { date: day(o.start), until: day((o.end - 1).max(o.start)) }
@@ -953,7 +1109,7 @@ pub fn items(occurrences: &[Occurrence], zone: &TimeZone, errand: &dyn Fn(&str) 
                     Certainty::Fixed
                 },
                 source: Source::Calendar { key: o.key.clone(), uid: o.uid.clone(), start: o.start, recurring: o.recurring, calendar: o.calendar.clone(), collection: crate::timeline::collection_of(&o.key), clock: o.clock.clone() },
-                can: Can { edit: if block { Form::Task } else { Form::Event }, drag: if movable { Move::Event } else { Move::None }, ends: movable, delete: free && !block, tick: free, why },
+                can: Can { edit: if block { Form::Task } else { Form::Event }, drag: if movable { Move::Event } else { Move::None }, ends: movable, delete: free && !block, tick: free && !tells, why, tells },
                 privacy: if block && errand(&o.task) { Privacy::Health } else { Privacy::Admin },
                 title: o.summary.clone(),
                 line: String::new(),
@@ -3544,7 +3700,10 @@ mod tests {
         assert!(retitled.contains("SEQUENCE:4"), "its organizer's kind of change takes the SEQUENCE up");
         assert_eq!(may_change(&meeting, false, &own, Change::Write(&retitled)), Err(Refusal::WithOthers));
         let mine = review("ORGANIZER:mailto:me@example.org\r\n");
-        for change in [Change::Move, Change::Delete, Change::Write(&retitled)] {
+        let mine_retitled = mine.replace("SUMMARY:Review", "SUMMARY:Review, moved");
+        // The meeting's text written into your own event would make you invite its guests: refused (`may_organize`).
+        assert_eq!(may_change(&mine, false, &own, Change::Write(&retitled)), Err(Refusal::WithOthers));
+        for change in [Change::Move, Change::Delete, Change::Write(&mine_retitled)] {
             assert_eq!(may_change(&mine, false, &own, change), Ok(()), "{change:?}");
             assert_eq!(may_change(&mine, true, &own, change), Err(Refusal::ReadOnly), "{change:?}");
         }
@@ -3590,6 +3749,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
     }
 
+    // Each line of a source outside its tests (each `#[cfg(test)]` item
+    // left out wherever it stands, the rest read on): the function it is
+    // in (by its first line, and its name) and its code (a function's
+    // first line by what follows its `{`: a one-line function's body).
+    fn lines_of(text: &str) -> Vec<(usize, String, String)> {
+        let (mut out, mut start, mut function) = (Vec::new(), 0usize, String::new());
+        let all: Vec<&str> = text.lines().collect();
+        let mut n = 0;
+        while n < all.len() {
+            let code = all[n].trim_start();
+            if code.starts_with("#[cfg(test)]") {
+                // The item it marks, past its other attributes: to the line closing it at its indent.
+                let mut item = n + 1;
+                while all.get(item).is_some_and(|l| l.trim_start().starts_with("#[")) {
+                    item += 1;
+                }
+                let Some(head) = all.get(item) else { break };
+                let closing = format!("{}}}", &head[..head.len() - head.trim_start().len()]);
+                n = if head.trim_end().ends_with('{') { all.iter().skip(item + 1).position(|l| l.trim_end() == closing).map_or(all.len(), |p| item + 2 + p) } else { item + 1 };
+                continue;
+            }
+            let head = ["pub(crate) ", "pub(super) ", "pub ", "const ", "async ", "unsafe ", "extern \"C\" "].iter().fold(code, |c, p| c.strip_prefix(p).unwrap_or(c));
+            let mut text = code;
+            if let Some(name) = head.strip_prefix("fn ") {
+                function = name.split(['(', '<']).next().unwrap_or("").to_string();
+                start = n;
+                text = code.split_once('{').map_or("", |(_, body)| body);
+            }
+            if !code.starts_with("//") {
+                out.push((start, function.clone(), text.to_string()));
+            }
+            n += 1;
+        }
+        out
+    }
+
     /// Over the programs' sources, tests aside: every writer of an event goes
     /// through the one rule, since the doors of a calendar's files call it
     /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`), each
@@ -3609,9 +3804,13 @@ mod tests {
         let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let vdir_source = std::fs::read_to_string(crates.join("sioul-core/src/vdir.rs")).unwrap();
         // Each door: its guard calls, with the change each makes and the `?` that stops it, before what it lets through.
-        let doors: [(&str, &[&str], &str); 5] = [
+        let doors: [(&str, &[&str], &str); 8] = [
             ("pub fn write_item(", &["guarded(path, crate::agenda::Change::Write(text))?;"], "store_item(path, text)"),
             ("pub fn remove_item(", &["guarded(path, crate::agenda::Change::Delete)?;"], "std::fs::remove_file(path)"),
+            // The organizer's door, its own rule first (`guard_organized`).
+            ("pub fn write_organized(", &["organized(path, Some(text))?;"], "store_item(path, text)"),
+            ("pub fn remove_organized(", &["organized(path, None)?;"], "std::fs::remove_file(path)"),
+            ("fn organized(", &["crate::agenda::guard_organized(path, text).map_err(|refusal| crate::agenda::said(refusal, &change))\n"], ""),
             ("pub fn move_item(", &["guarded(from, crate::agenda::Change::Move)?;", "guarded(to, crate::agenda::Change::Write(&text))?;"], "replace_locked(from, &[], &[], to, &text)"),
             (
                 "pub fn replace_items(",
@@ -3627,41 +3826,6 @@ mod tests {
             for guard in guards {
                 assert!(body.find(guard).is_some_and(|g| g < at), "{door}: {guard} comes before {write}:\n{body}");
             }
-        }
-        // Each line of a source outside its tests (each `#[cfg(test)]` item
-        // left out wherever it stands, the rest read on): the function it is
-        // in (by its first line, and its name) and its code (a function's
-        // first line by what follows its `{`: a one-line function's body).
-        fn lines_of(text: &str) -> Vec<(usize, String, String)> {
-            let (mut out, mut start, mut function) = (Vec::new(), 0usize, String::new());
-            let all: Vec<&str> = text.lines().collect();
-            let mut n = 0;
-            while n < all.len() {
-                let code = all[n].trim_start();
-                if code.starts_with("#[cfg(test)]") {
-                    // The item it marks, past its other attributes: to the line closing it at its indent.
-                    let mut item = n + 1;
-                    while all.get(item).is_some_and(|l| l.trim_start().starts_with("#[")) {
-                        item += 1;
-                    }
-                    let Some(head) = all.get(item) else { break };
-                    let closing = format!("{}}}", &head[..head.len() - head.trim_start().len()]);
-                    n = if head.trim_end().ends_with('{') { all.iter().skip(item + 1).position(|l| l.trim_end() == closing).map_or(all.len(), |p| item + 2 + p) } else { item + 1 };
-                    continue;
-                }
-                let head = ["pub(crate) ", "pub(super) ", "pub ", "const ", "async ", "unsafe ", "extern \"C\" "].iter().fold(code, |c, p| c.strip_prefix(p).unwrap_or(c));
-                let mut text = code;
-                if let Some(name) = head.strip_prefix("fn ") {
-                    function = name.split(['(', '<']).next().unwrap_or("").to_string();
-                    start = n;
-                    text = code.split_once('{').map_or("", |(_, body)| body);
-                }
-                if !code.starts_with("//") {
-                    out.push((start, function.clone(), text.to_string()));
-                }
-                n += 1;
-            }
-            out
         }
         // A raw write's words: its call, from its path's first name to its closing parenthesis (or the line's end).
         fn words_of(line: &str, raw: &[&str]) -> String {
@@ -3686,7 +3850,7 @@ mod tests {
         // What goes in as it came: the door itself, the sync's copy of the server, your answer to an invitation.
         // Google Tasks' pull keeps what Google sent as it came, as CalDAV's does: a list kept
         // read only in Sioul still follows its server (several agendas, 4 November 2026).
-        let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-sync/src/dav.rs", "upgrade"), ("sioul-app/src/pim.rs", "answer"), ("sioul-sync/src/google_tasks.rs", "pull")];
+        let stored = [("sioul-core/src/vdir.rs", "write_item"), ("sioul-core/src/vdir.rs", "write_organized"), ("sioul-sync/src/dav.rs", "adopt"), ("sioul-sync/src/dav.rs", "store"), ("sioul-sync/src/dav.rs", "upgrade"), ("sioul-app/src/pim.rs", "answer"), ("sioul-sync/src/google_tasks.rs", "pull")];
         // The raw writers: the standard library's (a file written, renamed, copied, linked,
         // opened to write or taken out), and Sioul's own byte writers.
         let raw = [
@@ -3766,6 +3930,153 @@ mod tests {
         assert!(astray.is_empty(), "around the one rule of events' writers (agenda::guard): through a door, or named in tests/raw-writers.txt with why:\n{}", astray.join("\n"));
         let wrong: Vec<String> = named.iter().zip(&covered).filter(|((_, _, count, _, _), found)| count != *found).map(|((f, n, count, words, at), found)| format!("raw-writers.txt:{at}: {f} {n} {words}: {count} named, {found} found")).collect();
         assert!(wrong.is_empty(), "each name covers the lines it says, no more, no fewer:\n{}", wrong.join("\n"));
+    }
+
+    /// Over the programs' sources, tests aside: the organizer's door
+    /// (`vdir::write_organized`, `remove_organized`, their rule
+    /// `guard_organized` and `may_organize`) is called by its own definitions
+    /// and by the window's acts alone (sioul-app's organized.rs), and opened
+    /// (`open_organizer_door`) by the window's `run` alone: never by `sioul`
+    /// or `sioul mcp` (sioul-cli: the command line, agents), never by the sync
+    /// (sioul-sync), never elsewhere in the core; and organized.rs's acts are
+    /// called by the agenda's own writers (pim.rs) alone, never by the
+    /// window's agents' Undo or its sync. A new caller fails here, named with
+    /// its file and function.
+    #[test]
+    fn the_organizers_door_is_the_persons_alone() {
+        let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let calls = ["write_organized(", "remove_organized(", "guard_organized(", "may_organize(", "open_organizer_door("];
+        // (file, function, what it may call): the door's own chain, then the window's acts, then its start.
+        let door = ["write_organized(", "remove_organized(", "guard_organized(", "may_organize("];
+        let allowed: [(&str, &str, &[&str]); 4] = [
+            ("sioul-core/src/vdir.rs", "organized", &["guard_organized("]),
+            ("sioul-core/src/agenda.rs", "guard_organized", &["may_organize("]),
+            ("sioul-app/src/organized.rs", "*", &door),
+            ("sioul-app/src/lib.rs", "run", &["open_organizer_door("]),
+        ];
+        let mut sources = Vec::new();
+        let mut stack = vec![crates.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                if path.is_dir() && name != "target" && name != "tests" {
+                    stack.push(path);
+                } else if name.ends_with(".rs") && !name.contains("tests") && path.components().any(|c| c.as_os_str() == "src") {
+                    sources.push(path);
+                }
+            }
+        }
+        sources.sort();
+        // The window's acts that write through the door (organized.rs), called from the agenda's own writers alone (pim.rs).
+        let acts = ["organized::write(", "organized::put_back(", "organized::delete(", "organized::undelete(", "organized::replied("];
+        let (mut astray, mut opened) = (Vec::new(), false);
+        for path in sources {
+            let file = path.strip_prefix(&crates).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            for (_, function, line) in lines_of(&std::fs::read_to_string(&path).unwrap_or_default()) {
+                let line = line.split("//").next().unwrap_or_default();
+                for act in acts.iter().filter(|a| line.contains(*a)) {
+                    if file != "sioul-app/src/pim.rs" {
+                        astray.push(format!("{file}: {function}: {act}"));
+                    }
+                }
+                for call in calls.iter().filter(|c| line.contains(*c)) {
+                    // Its own definition, never a call.
+                    if line.contains(&format!("fn {call}")) {
+                        continue;
+                    }
+                    let ok = allowed.iter().any(|(f, n, may)| *f == file && (*n == "*" || *n == function) && may.contains(call));
+                    if !ok {
+                        astray.push(format!("{file}: {function}: {call}"));
+                    }
+                    opened |= *call == "open_organizer_door(" && file == "sioul-app/src/lib.rs";
+                }
+            }
+        }
+        assert!(astray.is_empty(), "the organizer's door is the window's own acts alone, never an agent's, the command line's nor the sync's:\n{}", astray.join("\n"));
+        assert!(opened, "the window opens the door (sioul-app's `run`)");
+    }
+
+    /// The organizer's door (decision 7 of the event card, 5 November 2026):
+    /// shut in a program that did not open it; open, it writes and takes
+    /// out a meeting you organize, its guests added and taken out, and refuses
+    /// a meeting someone else organizes, a change of its organizer to someone
+    /// else, and a calendar you only read. Every other door still refuses any
+    /// meeting with others, yours too, and now refuses guests written into an
+    /// event, or a new event with guests; the sync's put-back (`may_change`
+    /// on the server's copy) and an agent's Undo (`Said::put_back`) refuse it too.
+    #[test]
+    fn the_organizers_door_lets_your_own_meetings_alone() {
+        crate::config::stand_ins_only();
+        own_addresses_here(Some(&["me@example.org"]));
+        let own = vec!["me@example.org".to_string()];
+        let alone = review("ORGANIZER:mailto:me@example.org\r\n");
+        let invited = review("ORGANIZER;CN=Me:mailto:me@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:anne@example.net\r\n");
+        let theirs = review("ORGANIZER:mailto:boss@example.org\r\nATTENDEE:mailto:me@example.org\r\nATTENDEE:mailto:anne@example.net\r\n");
+        let handed = invited.replace("ORGANIZER;CN=Me:mailto:me@example.org", "ORGANIZER:mailto:boss@example.org");
+        let no_organizer = review("ATTENDEE:mailto:anne@example.net\r\n");
+        // The rule alone.
+        assert!(organized_by_you(&invited, &own) && organized_by_you(&alone, &own) && organized_meeting(&invited, &own));
+        assert!(!organized_by_you(&theirs, &own) && !organized_by_you(&no_organizer, &own) && !organized_by_you("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n", &own));
+        assert_eq!(may_organize(Some(&alone), Some(&invited), false, &own), Ok(()), "guests added to your own event");
+        assert_eq!(may_organize(Some(&invited), Some(&alone), false, &own), Ok(()), "every guest taken out");
+        assert_eq!(may_organize(None, Some(&invited), false, &own), Ok(()), "a new meeting you organize");
+        assert_eq!(may_organize(Some(&invited), None, false, &own), Ok(()), "your meeting taken out");
+        assert_eq!(may_organize(Some(&theirs), Some(&theirs.replace("Review", "Mine now")), false, &own), Err(Refusal::WithOthers), "someone else's meeting");
+        assert_eq!(may_organize(Some(&theirs), None, false, &own), Err(Refusal::WithOthers));
+        assert_eq!(may_organize(Some(&invited), Some(&handed), false, &own), Err(Refusal::WithOthers), "never handed to another organizer");
+        assert_eq!(may_organize(Some(&alone), Some(&no_organizer), false, &own), Err(Refusal::WithOthers), "guests with no organizer");
+        assert_eq!(may_organize(Some(&invited), Some(&invited), true, &own), Err(Refusal::ReadOnly));
+        assert_eq!(may_organize(Some(&invited), Some(&invited), false, &[]), Err(Refusal::WithOthers), "none of your addresses known");
+        assert_eq!(may_organize(None, None, false, &own), Err(Refusal::WithOthers));
+        // The sync's put-back of a merge asks `may_change` of the server's copy: refused for yours too.
+        assert_eq!(may_change(&invited, false, &own, Change::Write(&invited.replace("Review", "Review, ticked"))), Err(Refusal::WithOthers));
+        assert_eq!(may_change(&alone, false, &own, Change::Write(&invited)), Err(Refusal::WithOthers), "guests written by another writer");
+        // The doors.
+        let account = "guard-organizer";
+        for (id, name) in [("mine", "Mine"), ("read", "Read only")] {
+            vdir::prepare(Kind::Calendars, account, id, name, None).unwrap();
+        }
+        let state = vdir::state_path(account, Kind::Calendars, "read");
+        let mut read_only = vdir::State::load(&state);
+        read_only.read_only = true;
+        read_only.save(&state).unwrap();
+        let dir = |id: &str| Kind::Calendars.root().join(account).join(id);
+        let at = dir("mine").join("review.ics");
+        vdir::write_item(&at, &alone).unwrap();
+        // Closed (as in `sioul`, `sioul mcp` and every program but the window): refused, whatever it asks.
+        open_organizer_door_here(false);
+        assert!(vdir::write_organized(&at, &invited).is_err(), "the door closed");
+        assert!(vdir::remove_organized(&at).is_err());
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), alone);
+        // The other doors: no guests written in, no new event with guests.
+        assert!(vdir::write_item(&at, &invited).is_err(), "guests written by the ordinary door");
+        assert!(vdir::write_item(&dir("mine").join("new.ics"), &invited.replace("UID:review-1", "UID:new-1")).is_err(), "a new event with guests");
+        assert!(crate::composed::Change { written: vec![(at.clone(), invited.clone())], ..Default::default() }.write().is_err());
+        // Open (the window): yours alone.
+        open_organizer_door_here(true);
+        assert!(vdir::write_organized(&at, &invited).is_ok(), "guests added");
+        assert_eq!(std::fs::read_to_string(&at).unwrap(), invited);
+        let moved = invited.replace("DTSTART:20261028T090000Z", "DTSTART:20261028T100000Z");
+        assert!(vdir::write_item(&at, &moved).is_err(), "your meeting: never through the ordinary door");
+        assert!(vdir::remove_item(&at).is_err() && vdir::move_item(&at, &dir("read").join("review.ics")).is_err());
+        let undo = crate::agentwrites::Said { at: 0, line: String::new(), files: vec![crate::agentwrites::FileChange { path: at.clone(), before: Some(alone.clone()), after: Some(invited.clone()) }] };
+        assert!(!undo.put_back(), "an agent's Undo: refused for a meeting");
+        assert!(vdir::write_organized(&at, &moved).is_ok(), "moved through the door");
+        assert!(vdir::write_organized(&at, &handed).is_err(), "never to another organizer");
+        assert!(vdir::write_organized(&dir("read").join("new.ics"), &invited).is_err(), "never into a calendar you only read");
+        let other = dir("mine").join("theirs.ics");
+        vdir::store_item(&other, &theirs).unwrap();
+        assert!(vdir::write_organized(&other, &theirs.replace("SUMMARY:Review", "SUMMARY:Mine")).is_err(), "someone else's meeting");
+        assert!(vdir::remove_organized(&other).is_err());
+        assert!(vdir::write_organized(&Kind::Contacts.root().join(account).join("x.vcf"), &invited).is_err(), "no file of a calendar");
+        assert!(vdir::write_organized(&at, &alone).is_ok(), "every guest taken out");
+        assert!(vdir::write_item(&at, &alone.replace("Review", "Review, alone")).is_ok(), "no meeting now: the ordinary door again");
+        vdir::write_organized(&at, &invited).unwrap();
+        assert!(vdir::remove_organized(&at).is_ok() && !at.exists(), "your meeting taken out");
+        open_organizer_door_here(false);
+        own_addresses_here(None);
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
     }
 
     /// Your weekly meeting, as your calendar holds it: the series, your own

@@ -934,6 +934,35 @@ pub fn remove_item(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The organizer's door (decision 7 of the event card, 5 November 2026): an
+/// event you organize written as `text`, its guests added or taken out, its
+/// times, place or title changed, through its own rule first
+/// (`agenda::guard_organized`): only in a program that opened it (Sioul's
+/// window), never into a calendar you only read, never a meeting someone
+/// else organizes, before or after. Its callers are your own acts in the
+/// window alone (`agenda` tests, `the_organizers_door_is_the_persons_alone`);
+/// every other writer goes through `write_item`, which refuses any meeting with others.
+pub fn write_organized(path: &Path, text: &str) -> Result<(), String> {
+    organized(path, Some(text))?;
+    store_item(path, text)
+}
+
+/// An event you organize taken out, through the organizer's door
+/// (`write_organized`): its server tells its guests it is cancelled, or a
+/// cancellation is drafted for them.
+pub fn remove_organized(path: &Path) -> Result<(), String> {
+    organized(path, None)?;
+    std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    counted(path);
+    Ok(())
+}
+
+/// `agenda::guard_organized` for a file of a calendar, its refusal said.
+fn organized(path: &Path, text: Option<&str>) -> Result<(), String> {
+    let change = text.map_or(crate::agenda::Change::Delete, crate::agenda::Change::Write);
+    crate::agenda::guard_organized(path, text).map_err(|refusal| crate::agenda::said(refusal, &change))
+}
+
 /// A write of a task's or an event's file counted (`timeline::written`):
 /// the agenda's layouts made before it are older. Every item's write and
 /// removal comes here, and says its kind to the window (`changes`).

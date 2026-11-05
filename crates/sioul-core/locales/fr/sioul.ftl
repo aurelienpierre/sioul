@@ -3893,6 +3893,41 @@ map-attribution = © les contributeurs d’OpenStreetMap
 suggest-said = Ce que vous tapez dans un lieu est envoyé à { $service } pour suggérer des adresses.
 set-agenda-suggest-addresses = Suggérer des adresses pendant la saisie
 set-agenda-suggest-addresses-help = Les lieux déjà utilisés sont suggérés depuis cet appareil seul. Activé, ce que vous tapez dans un lieu est aussi envoyé à la Base Adresse Nationale quand votre région est la France, sinon à Photon, pour suggérer des adresses.
+# Réunions que vous organisez (5 novembre 2026) : inviter, déplacer, annuler.
+invite-field = Inviter…
+invite-guests = Invités
+invite-take-off = Retirer { $who } des invités
+invite-ask-server = Enregistrer envoie une invitation depuis votre serveur à { $who }.
+invite-ask-update-server = Enregistrer prévient { $who } du changement, depuis votre serveur.
+invite-ask-draft = Enregistrer met une invitation pour { $who } dans vos brouillons. Elle part quand vous l’envoyez depuis Courrier.
+invite-ask-update-draft = Enregistrer met un message pour { $who } dans vos brouillons, qui dit le changement. Il part quand vous l’envoyez depuis Courrier.
+invite-ask-removed-server = Votre serveur dit à { $who } que c’est annulé pour eux.
+invite-ask-removed-draft = Une annulation pour { $who } va aussi dans vos brouillons.
+invite-save = Enregistrer
+invite-done-server = Votre serveur prévient les invités.
+invite-done-draft = Le message aux invités attend dans les brouillons : il part quand vous l’envoyez.
+invite-no-address = Donnez d’abord une adresse à l’un de vos comptes : les invités voient qui les invite.
+invite-subject = Invitation : « { $title } », { $when }
+invite-body = Bonjour,
+
+    voici une invitation à « { $title } », { $when }. Votre agenda peut y répondre.
+invite-body-place = Bonjour,
+
+    voici une invitation à « { $title } », { $when }, à { $place }. Votre agenda peut y répondre.
+invite-cancel-subject = Annulé : « { $title } », { $when }
+invite-cancel-body = Bonjour,
+
+    « { $title } », { $when }, est annulé pour vous.
+invite-replied-yes = { $who } a accepté « { $title } ».
+invite-replied-no = { $who } a décliné « { $title } ».
+invite-replied-maybe = { $who } viendra peut-être à « { $title } ».
+invite-replied-unproven = Sioul n’a pas pu prouver que cette réponse vient de { $who } : rien n’a changé dans « { $title } ».
+invite-move-tells = Le déplacer prévient chaque invité.
+invite-move = Déplacer
+invite-delete-tells = Le supprimer dit à chaque invité qu’il est annulé.
+invite-delete-one-time = Une seule fois d’une réunion que vous organisez ne se retire pas ici : supprimez toute la réunion, ce qui prévient chaque invité, ou retirez cette fois dans l’application de son agenda.
+invite-cancelled-server = Votre serveur prévient chaque invité.
+invite-cancelled-draft = L’annulation pour les invités attend dans les brouillons : elle part quand vous l’envoyez.
 day-let-plan = Laisser le plan la placer
 day-let-plan-done = Le plan place de nouveau « { $title } ».
 agenda-read-only = Ce calendrier ne peut qu’être lu.

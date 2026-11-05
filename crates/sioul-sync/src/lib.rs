@@ -148,6 +148,7 @@ pub mod remote;
 pub mod renumbered;
 // Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail, Microsoft's.
 pub mod sasl;
+pub mod scheduling;
 pub mod scout;
 pub mod search;
 pub mod secret;

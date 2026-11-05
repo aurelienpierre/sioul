@@ -142,8 +142,19 @@ Item {
         }
         function taskCardChoices() { return "{}" }
         function calendars() { return JSON.stringify([{ id: "local/personal", name: "Personal", color: null }]) }
+        // The form's guests (decision 7 of the event card): suggested from this device, said before saving.
+        function guestCompletions(typed) { return JSON.stringify(typed.toLowerCase().indexOf("an") === 0 ? ["Anne Exemple <anne@example.org>"] : []) }
+        function inviteSaid(key, edit, calendar) {
+            const e = JSON.parse(edit)
+            mock.calls.push({ what: "inviteSaid", key: key, guests: e.guests })
+            return JSON.stringify({ ask: (e.guests || []).length > 0 ? "invite-ask-server" : "" })
+        }
         function eventForm(key) {
             mock.calls.push({ what: "eventForm", key: key })
+            if (key === "/c/board.ics")
+                return JSON.stringify({ edit: { title: "Board", location: "", notes: "", start: "2096-10-02T09:00", end: "2096-10-02T10:00", all_day: false, repeat: "", margins: { before: 0, after: 0 }, demands: {}, remind: "" }, calendar: "local/personal", calendar_name: "Personal", here_only: "", stays: "event-change-with-others", read_only: false, with_others: true, organized: false, guests: [] })
+            if (key === "/c/planning.ics")
+                return JSON.stringify({ edit: { title: "Planning", location: "", notes: "", start: "2096-10-03T09:00", end: "2096-10-03T10:00", all_day: false, repeat: "", margins: { before: 0, after: 0 }, demands: {}, remind: "" }, calendar: "local/personal", calendar_name: "Personal", here_only: "", stays: "", read_only: false, with_others: false, organized: true, guests: [{ address: "anne@example.org", name: "Anne Exemple" }] })
             return JSON.stringify({ edit: { title: "Dentist", location: "Rue Blanche", notes: "", start: mock.formStart, end: mock.formEnd, all_day: false, repeat: "", margins: { before: 15, after: 0 }, demands: {}, remind: "" }, calendar: "local/personal", calendar_name: "Personal", here_only: "", stays: "", read_only: false })
         }
         function saveEvent(key, edit, calendar) {
@@ -527,6 +538,48 @@ Item {
             compare(rows().length, 0, "the list gone once chosen")
             dialog.typePlace("Rue B")
             compare(dialog.form().geo, "", "typed again: the point no longer holds")
+            dialog.close()
+        }
+
+        // Guests invited from the form (decision 7 of the event card): suggested from this
+        // device, added by Enter or a comma, only what reads as an address, taken off by
+        // their button; Save says first who hears of it, and saves on its Save, the guests
+        // with it. A meeting someone else organizes offers no guests; one you organize lists its own.
+        function test_guests_invited_from_the_form() {
+            const dialog = createTemporaryObject(dialogComponent, root, { keeper: keeper })
+            dialog.edit("", "2096-10-01")
+            dialog.fill("Planning", "09:00", "10:00", "")
+            const invite = root.find(dialog.contentItem, "eventInvite")
+            verify(invite.visible)
+            dialog.typeGuest("An")
+            const offered = () => root.all(dialog.contentItem, c => c.objectName === "eventGuestSuggestion")
+            invite.forceActiveFocus()
+            tryVerify(() => offered().length === 1, 2000)
+            offered()[0].clicked()
+            compare(JSON.stringify(dialog.guests), JSON.stringify([{ address: "anne@example.org", name: "Anne Exemple" }]))
+            dialog.typeGuest("bob@example.net,")
+            dialog.typeGuest("not an address,")
+            compare(dialog.guests.map(g => g.address).join(" "), "anne@example.org bob@example.net", "only addresses, each once")
+            compare(invite.text, "not an address,", "what is no address stays typed")
+            root.all(dialog.contentItem, c => c.objectName === "eventGuestOff")[1].clicked()
+            compare(dialog.guests.length, 1, "taken off")
+            mock.calls = []
+            dialog.save()
+            compare(mock.calls.filter(c => c.what === "saveEvent").length, 0, "asked first")
+            verify(dialog.inviteQuestion.opened)
+            compare(dialog.inviteQuestion.sentence, "invite-ask-server")
+            dialog.inviteQuestion.accept()
+            const saved = mock.calls.filter(c => c.what === "saveEvent")
+            compare(saved.length, 1, JSON.stringify(mock.calls))
+            compare(JSON.stringify(saved[0].edit.guests), JSON.stringify([{ address: "anne@example.org", name: "Anne Exemple" }]))
+            // A meeting someone else organizes: no guests offered.
+            dialog.edit("/c/board.ics", "")
+            verify(!root.find(dialog.contentItem, "eventInvite").visible)
+            compare(dialog.form().guests.length, 0)
+            // One you organize: its guests listed, every field yours.
+            dialog.edit("/c/planning.ics", "")
+            verify(root.find(dialog.contentItem, "eventInvite").visible && dialog.organized && !dialog.withOthers)
+            compare(root.all(dialog.contentItem, c => c.objectName === "eventGuest").length, 1)
             dialog.close()
         }
 

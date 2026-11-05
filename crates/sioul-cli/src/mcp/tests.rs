@@ -3210,6 +3210,57 @@ fn events_and_tasks_are_changed_one_by_one() {
     let _ = std::fs::remove_file(&meeting);
 }
 
+/// A meeting you organize (decision 7 of the event card, 5 November 2026):
+/// you are its organizer (jane@example.org, this home's account), it has a
+/// guest. An agent never writes, moves, deletes nor ties anything to it:
+/// the organizer's door is the window's alone, and `sioul mcp` never opens
+/// it (its process refuses the door itself); every ordinary door refuses a
+/// meeting with others; a task tied to it keeps the tie on its own side;
+/// and an agent cannot make one by writing guests in.
+#[test]
+fn a_meeting_you_organize_is_never_written_by_an_agent() {
+    home();
+    let mut server = server();
+    let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
+    let meeting = agenda.dir.join("organized.ics");
+    let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:organized-1\r\nDTSTAMP:20261105T090000Z\r\nDTSTART:20261123T090000Z\r\nDTEND:20261123T100000Z\r\nSUMMARY:Planning\r\nDESCRIPTION:Bring:\\n- [ ] Plans\r\nORGANIZER;CN=Jane:mailto:jane@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    std::fs::write(&meeting, text).unwrap();
+    let own = sioul_core::agenda::own_addresses();
+    assert!(sioul_core::agenda::organized_meeting(text, &own), "yours to organize: {own:?}");
+    let other = vdir::create(Kind::Calendars, vdir::LOCAL, "Organized elsewhere", None, &["VEVENT"]).unwrap();
+    let task = call(&mut server, "add_task", json!({ "title": "Print the plans" }));
+    let task = task["structuredContent"]["uid"].as_str().unwrap().to_string();
+    for (tool, arguments) in [
+        ("update_event", json!({ "event": "sioul:event/organized-1", "title": "Planning, moved" })),
+        ("update_event", json!({ "event": "organized-1", "start": "2026-11-23T14:00", "end": "2026-11-23T15:00" })),
+        ("update_event", json!({ "event": "organized-1", "calendar": format!("local/{}", other.id) })),
+        ("delete_event", json!({ "event": "organized-1" })),
+        ("event_to_task", json!({ "event": "organized-1" })),
+        ("check_item", json!({ "of": "sioul:event/organized-1", "item": "Plans", "state": "done" })),
+    ] {
+        let refused = call(&mut server, tool, arguments.clone());
+        assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
+    }
+    // A task tied to it keeps the tie on its own side: the meeting keeps no line.
+    let tied = call(&mut server, "attach_to_event", json!({ "event": "sioul:event/organized-1", "task": task }));
+    assert_eq!(tied["isError"], false, "{tied}");
+    assert_eq!(std::fs::read_to_string(&meeting).unwrap(), text, "the meeting byte for byte");
+    assert!(other.items().is_empty());
+    // The door itself, shut in this program: refused whatever it is asked.
+    assert!(vdir::write_organized(&meeting, &text.replace("SUMMARY:Planning", "SUMMARY:Mine")).is_err());
+    assert!(vdir::remove_organized(&meeting).is_err() && meeting.exists());
+    // Guests written into an event of your own by an agent's writer: refused, nothing sent to them.
+    let added = call(&mut server, "add_event", json!({ "title": "Lunch alone", "start": "2026-11-24T12:00", "end": "2026-11-24T13:00" }));
+    let file = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
+    let alone = std::fs::read_to_string(&file).unwrap();
+    let invited = alone.replace("END:VEVENT", "ORGANIZER:mailto:jane@example.org\r\nATTENDEE:mailto:anne@example.net\r\nEND:VEVENT");
+    assert!(vdir::write_item(&file, &invited).is_err(), "no guest written in by an ordinary door");
+    assert!(vdir::write_item(&agenda.dir.join("invited.ics"), &invited.replace("UID:", "UID:x-")).is_err(), "nor a new event with guests");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), alone);
+    let _ = std::fs::remove_file(&meeting);
+    let _ = std::fs::remove_file(&file);
+}
+
 /// Steps added in the order given, after the others, and moved in their
 /// sequence (25 October 2026): each change said for the window with Undo;
 /// a step of another task, a task that is no step, one kept from agents,

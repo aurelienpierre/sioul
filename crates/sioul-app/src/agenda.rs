@@ -325,6 +325,8 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         "tentative": o.tentative,
         "read_only": o.read_only,
         "with_others": o.with_others,
+        // A meeting you organize: changed, moved and deleted through its own door, said first (decision 7).
+        "organized": o.organized,
         "task": o.task,
         "list": o.list,
         "notes": o.notes,
@@ -1234,7 +1236,7 @@ fn needs_items(needs: &sioul_core::needs::Needs, days: &sioul_core::needs::Days,
                 time: Time::Span { start: kept.start, at: kept.at, until, end: kept.end },
                 certainty: if change.is_some() { Certainty::ThatDay } else { Certainty::Usual },
                 source: Source::Needs { date, key: kept.key.clone() },
-                can: Can { edit: if past { Form::None } else { Form::Need }, drag: if past || over { Move::None } else { Move::Need }, ends: !past && !over, delete: false, tick: false, why },
+                can: Can { edit: if past { Form::None } else { Form::Need }, drag: if past || over { Move::None } else { Move::Need }, ends: !past && !over, delete: false, tick: false, why, tells: false },
                 privacy: Privacy::Health,
                 // Named as you named it in Settings ▸ Hours, else by Sioul's word for it: "Lunch", "Nap", "Night".
                 title: if kind == Kind::Night && kept.name.trim().is_empty() { tr().text("agenda-night", None) } else { crate::health::block_name(kept.kind, &kept.key, &kept.name) },

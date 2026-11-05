@@ -1248,6 +1248,31 @@ mod tests {
         assert!(parent(&s, "steps-doctor", "steps-books", false, true).unwrap_err().contains("its own steps"));
     }
 
+    /// A meeting you organize (decision 7 of the event card, 5 November
+    /// 2026) named by a plan file: `sioul tasks import` leaves it as it is
+    /// and says so, as for any meeting with others; the organizer's door is
+    /// shut in `sioul`, whatever is asked of it.
+    #[test]
+    fn the_command_line_never_writes_a_meeting_you_organize() {
+        crate::mcp::tests::home();
+        sioul_core::config::stand_ins_only();
+        let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Organized plan", None, &["VEVENT"]).unwrap();
+        let meeting = calendar.dir.join("planning.ics");
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:org-planning\r\nDTSTAMP:20261105T090000Z\r\nDTSTART:20991123T090000Z\r\nDTEND:20991123T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:jane@example.org\r\nATTENDEE:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        std::fs::write(&meeting, text).unwrap();
+        assert!(sioul_core::agenda::organized_meeting(text, &sioul_core::agenda::own_addresses()), "yours to organize");
+        let file = sioul_core::config::state_dir().join("organized-import.toml");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Organized list", None, &["VTODO"]).unwrap();
+        std::fs::write(&file, format!("list = \"local/{}\"\ncalendar = \"local/{}\"\nprefix = \"org-\"\n\n[[event]]\nkey = \"planning\"\ntitle = \"Planning, moved\"\nstart = \"2099-11-23T14:00\"\nend = \"2099-11-23T15:00\"\n", list.id, calendar.id)).unwrap();
+        import(&s, &file, true, false).unwrap();
+        assert_eq!(std::fs::read_to_string(&meeting).unwrap(), text, "left as it is");
+        assert!(vdir::write_organized(&meeting, &text.replace("Planning", "Mine")).is_err(), "the door shut in `sioul`");
+        assert!(vdir::remove_organized(&meeting).is_err() && meeting.exists());
+        let _ = std::fs::remove_file(&meeting);
+    }
+
     #[test]
     fn a_plan_file_names_projects_either_way() {
         // `projects`, and `cases` as files written before the one name say it.

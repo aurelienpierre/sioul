@@ -32,6 +32,33 @@ SafeDialog {
     // "What you type in a place is sent to … to suggest addresses.", the first time only.
     property string suggestSaid: ""
 
+    // A guest added from what is typed or a suggestion ("Anne <anne@example.org>",
+    // or an address): once each; what does not read as an address stays typed.
+    function addGuest(typed) {
+        const text = String(typed || "").trim()
+        const angled = text.match(/^(.*)<([^<>\s]+@[^<>\s]+)>$/)
+        const address = angled ? angled[2].trim() : text.replace(/^mailto:/i, "")
+        const name = angled ? angled[1].trim().replace(/^"|"$/g, "") : ""
+        if (!/^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$/.test(address))
+            return false
+        if (!dialog.guests.some(g => g.address.toLowerCase() === address.toLowerCase()))
+            dialog.guests = dialog.guests.concat([{ address: address, name: name }])
+        dialog.guestSuggestions = []
+        dialog.guestAt = -1
+        return true
+    }
+
+    function removeGuest(index) {
+        dialog.guests = dialog.guests.filter((g, i) => i !== index)
+    }
+
+    // For the window's tests: as if typed in "Invite…".
+    function typeGuest(text) {
+        invite.forceActiveFocus()
+        invite.text = text
+        invite.textEdited()
+    }
+
     // A suggestion chosen: its words in the place, its point kept on this device, and
     // written into the event (its GEO) when the event is yours to write.
     function choosePlace(suggestion) {
@@ -95,6 +122,17 @@ SafeDialog {
     // title, place, notes and repeat are its organizer's and are not offered;
     // your time around it, its costs and your reminder are.
     property bool withOthers: false
+    // A meeting you organize (decision 7 of the event card): every field is
+    // yours, and its guests, written through its own door.
+    property bool organized: false
+    // Its guests, as "Invite…" lists them: [{address, name}].
+    property var guests: []
+    // The guests suggested for what is typed (`guestCompletions`, this
+    // device's address books and Your people), and the one Up and Down are on.
+    property var guestSuggestions: []
+    property int guestAt: -1
+    // Saving tells someone (`inviteSaid`): asked once, then saved.
+    property bool inviteConfirmed: false
     property bool moreShown: false
     property string problem: ""
     // The clock its times are on (`EventEdit::clock`): "" the time zone shown
@@ -190,6 +228,7 @@ SafeDialog {
         dialog.demands = f.demands
         dialog.remind = f.remind
         dialog.links = f.links || []
+        dialog.guests = f.guests || dialog.guests
         dialog.moreShown = true
     }
 
@@ -232,6 +271,10 @@ SafeDialog {
         dialog.links = []
         dialog.suggestions = []
         dialog.geo = ""
+        dialog.guests = []
+        dialog.guestSuggestions = []
+        dialog.organized = false
+        dialog.inviteConfirmed = false
         dialog.calendars = JSON.parse(dialog.sioul.calendars() || "[]")
         dialog.zoneName = dialog.sioul.zoneName()
         dialog.clock = ""
@@ -259,6 +302,8 @@ SafeDialog {
             dialog.hereOnly = found.here_only || ""
             dialog.stays = found.stays || ""
             dialog.withOthers = found.with_others === true
+            dialog.organized = found.organized === true
+            dialog.guests = found.guests || []
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
             dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, e.demands)
             dialog.geo = e.geo || ""
@@ -413,6 +458,15 @@ SafeDialog {
         // An event of a calendar not offered (read only) stays where it is.
         const offered = dialog.calendars.length > 0 ? dialog.calendars[Math.max(0, calendar.currentIndex)].id : ""
         const where = dialog.key !== "" && dialog.calendars.findIndex(c => c.id === dialog.currentCalendar) < 0 ? dialog.currentCalendar : offered
+        // Guests invited, taken off, or told of a change: said first, saved on Save.
+        if (dialog.legOf === "" && dialog.taskUid === "" && !dialog.inviteConfirmed && typeof dialog.sioul.inviteSaid === "function") {
+            const said = JSON.parse(dialog.sioul.inviteSaid(dialog.key, JSON.stringify(dialog.form()), where) || "{}")
+            if (said.ask) {
+                inviteAsk.ask(dialog.sioul.text("invite-guests"), said.ask, dialog.sioul.text("invite-save"))
+                return
+            }
+        }
+        dialog.inviteConfirmed = false
         const problem = dialog.legOf !== "" ? dialog.sioul.saveLeg(dialog.legOf, JSON.stringify(dialog.form()), dialog.legSide, dialog.legTimetable, dialog.legStep) : dialog.taskUid !== "" ? dialog.sioul.taskToEvent(dialog.taskUid, dialog.taskBlock, JSON.stringify(dialog.form()), offered) : dialog.sioul.saveEvent(dialog.key, JSON.stringify(dialog.form()), where)
         if (problem) {
             dialog.problem = problem
@@ -441,7 +495,8 @@ SafeDialog {
             demands: dialog.demands,
             remind: dialog.remind,
             geo: dialog.geo,
-            links: dialog.links
+            links: dialog.links,
+            guests: dialog.guests
         }
     }
 
@@ -458,6 +513,22 @@ SafeDialog {
     height: Math.min(implicitHeight, dialog.roomHeight - 32)
     // A meeting with others: your own time around it alone, kept in your own file (decision 18).
     title: dialog.legOf !== "" ? dialog.sioul.text("appointment-add-leg") : dialog.taskUid !== "" ? dialog.sioul.text("agenda-make-appointment") : dialog.key && dialog.withOthers ? dialog.sioul.text("event-own-time") : dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
+
+    // For the window's tests: the question asked before saving.
+    readonly property alias inviteQuestion: inviteAsk
+
+    // Who hears of it, said before it is saved (`inviteSaid`): Save, or Cancel.
+    ConfirmDialog {
+        id: inviteAsk
+
+        objectName: "eventInviteAsk"
+        sioul: dialog.sioul
+        theme: dialog.theme
+        onConfirmed: {
+            dialog.inviteConfirmed = true
+            dialog.save()
+        }
+    }
 
     FontMetrics {
         id: body
@@ -746,6 +817,106 @@ SafeDialog {
                 wrapMode: Text.Wrap
                 color: dialog.theme.muted
                 font.pixelSize: 13
+            }
+
+            // Its guests (decision 7 of the event card): an event of yours, or a meeting
+            // you organize; suggested from this device's address books and Your
+            // people, nothing asked of a network. Saving says first who hears of it.
+            Label {
+                visible: invite.shown && dialog.guests.length > 0
+                text: dialog.sioul.text("invite-guests")
+                color: dialog.theme.muted
+            }
+            Repeater {
+                model: invite.shown ? dialog.guests : []
+
+                delegate: RowLayout {
+                    id: guestRow
+
+                    required property var modelData
+                    required property int index
+
+                    objectName: "eventGuest"
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: guestRow.modelData.name ? dialog.theme.plain(guestRow.modelData.name) + " · " + dialog.theme.plain(guestRow.modelData.address) : dialog.theme.plain(guestRow.modelData.address)
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                    }
+                    ToolButton {
+                        objectName: "eventGuestOff"
+                        icon.name: "edit-clear"
+                        display: AbstractButton.IconOnly
+                        text: dialog.theme.plain(dialog.sioul.textWith("invite-take-off", "who", guestRow.modelData.name || guestRow.modelData.address))
+                        Accessible.name: text
+                        ToolTip.visible: hovered
+                        ToolTip.text: dialog.theme.plain(text)
+                        onClicked: dialog.removeGuest(guestRow.index)
+                    }
+                }
+            }
+            TextField {
+                id: invite
+
+                objectName: "eventInvite"
+                // Not a meeting someone else organizes, a leg or a task being made an appointment.
+                readonly property bool shown: !dialog.withOthers && dialog.legOf === "" && dialog.taskUid === ""
+                visible: invite.shown
+                Layout.fillWidth: true
+                placeholderText: dialog.sioul.text("invite-field")
+                inputMethodHints: Qt.ImhEmailCharactersOnly | Qt.ImhNoAutoUppercase
+                onTextEdited: {
+                    // A comma or a semicolon ends an address.
+                    if (/[,;]$/.test(invite.text) && dialog.addGuest(invite.text.slice(0, -1))) {
+                        invite.text = ""
+                        return
+                    }
+                    dialog.guestSuggestions = invite.text.trim().length >= 2 && typeof dialog.sioul.guestCompletions === "function" ? JSON.parse(dialog.sioul.guestCompletions(invite.text) || "[]") : []
+                    dialog.guestAt = -1
+                }
+                Keys.onEscapePressed: event => {
+                    event.accepted = dialog.guestSuggestions.length > 0
+                    dialog.guestSuggestions = []
+                }
+                Keys.onDownPressed: event => {
+                    event.accepted = dialog.guestSuggestions.length > 0
+                    dialog.guestAt = Math.min(dialog.guestSuggestions.length - 1, dialog.guestAt + 1)
+                }
+                Keys.onUpPressed: event => {
+                    event.accepted = dialog.guestSuggestions.length > 0
+                    dialog.guestAt = Math.max(-1, dialog.guestAt - 1)
+                }
+                // Enter adds the suggestion chosen, else what is typed; the form is saved only from an empty field.
+                Keys.onReturnPressed: event => {
+                    const typed = dialog.guestAt >= 0 && dialog.guestAt < dialog.guestSuggestions.length ? dialog.guestSuggestions[dialog.guestAt] : invite.text
+                    event.accepted = invite.text.trim() !== ""
+                    if (event.accepted && dialog.addGuest(typed))
+                        invite.text = ""
+                }
+            }
+            Repeater {
+                model: invite.activeFocus ? dialog.guestSuggestions : []
+
+                delegate: ItemDelegate {
+                    id: guestSuggestion
+
+                    required property var modelData
+                    required property int index
+
+                    objectName: "eventGuestSuggestion"
+                    focusPolicy: Qt.NoFocus
+                    highlighted: guestSuggestion.index === dialog.guestAt
+                    Layout.fillWidth: true
+                    text: dialog.theme.plain(guestSuggestion.modelData)
+                    icon.name: "contact-new"
+                    onClicked: {
+                        if (dialog.addGuest(guestSuggestion.modelData))
+                            invite.text = ""
+                    }
+                }
             }
 
             // Its calendar, said, and another chosen: a new event's, or an event

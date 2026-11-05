@@ -3866,6 +3866,41 @@ map-attribution = © OpenStreetMap contributors
 suggest-said = What you type in a place is sent to { $service } to suggest addresses.
 set-agenda-suggest-addresses = Suggest addresses as you type
 set-agenda-suggest-addresses-help = Places you used before are suggested from this device alone. On, what you type in a place is also sent to the Base Adresse Nationale when your region is France, else to Photon, to suggest addresses.
+# Meetings you organize (5 November 2026): inviting, moving, cancelling.
+invite-field = Invite…
+invite-guests = Guests
+invite-take-off = Take { $who } off the guests
+invite-ask-server = Saving sends an invitation from your server to { $who }.
+invite-ask-update-server = Saving tells { $who } of the change, from your server.
+invite-ask-draft = Saving puts an invitation to { $who } in your drafts. It leaves when you send it from Mail.
+invite-ask-update-draft = Saving puts a message to { $who } in your drafts, saying the change. It leaves when you send it from Mail.
+invite-ask-removed-server = Your server tells { $who } it is cancelled for them.
+invite-ask-removed-draft = A cancellation for { $who } goes into your drafts too.
+invite-save = Save
+invite-done-server = Your server tells the guests.
+invite-done-draft = The message to the guests waits in Drafts: it leaves when you send it.
+invite-no-address = Give one of your accounts an address first: the guests see who invites them.
+invite-subject = Invitation: “{ $title }”, { $when }
+invite-body = Hello,
+
+    here is an invitation to “{ $title }”, { $when }. Your calendar can answer it.
+invite-body-place = Hello,
+
+    here is an invitation to “{ $title }”, { $when }, at { $place }. Your calendar can answer it.
+invite-cancel-subject = Cancelled: “{ $title }”, { $when }
+invite-cancel-body = Hello,
+
+    “{ $title }”, { $when }, is cancelled for you.
+invite-replied-yes = { $who } accepted “{ $title }”.
+invite-replied-no = { $who } declined “{ $title }”.
+invite-replied-maybe = { $who } may come to “{ $title }”.
+invite-replied-unproven = Sioul could not prove that this answer comes from { $who }: nothing changed in “{ $title }”.
+invite-move-tells = Moving it tells every guest.
+invite-move = Move
+invite-delete-tells = Deleting it tells every guest that it is cancelled.
+invite-delete-one-time = One time of a meeting you organize is not left out here: delete the whole meeting, which tells every guest, or leave that time out in its calendar’s own app.
+invite-cancelled-server = Your server tells every guest.
+invite-cancelled-draft = The cancellation for the guests waits in Drafts: it leaves when you send it.
 day-let-plan = Let the plan place it
 day-let-plan-done = The plan places “{ $title }” again.
 agenda-read-only = This calendar can only be read.
