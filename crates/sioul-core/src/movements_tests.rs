@@ -943,7 +943,7 @@ fn movements_are_made_changed_and_removed_by_what_they_are() {
     let today = day("2026-10-20");
     let new = acts::New { label: "Client C".into(), gross: Some(Money(52000)), fees: vec![Fee { kind: FeeKind::Processor, amount: Money(1543), from: FeeFrom::Hand, about: false }], budget: "work".into(), day: day("2026-10-03"), note: "The October lesson".into(), ties: vec!["sioul:project/teaching".into()], ..acts::New::default() };
     let (made, heard) = crate::changes::heard(|| acts::make(&root, &tr, &new, "Written in Sioul on 2026-10-20.", today).unwrap());
-    assert_eq!(heard, [crate::changes::Kind::Movements]);
+    assert_eq!(heard, [super::KIND]);
     assert_eq!(made.said, "Work holds €504.57 more for October 2026.");
     let books = super::books(&root, &words, today);
     let (m, _) = crate::moneylist::get(&books, &made.address).unwrap();
@@ -984,4 +984,26 @@ fn movements_are_made_changed_and_removed_by_what_they_are() {
     assert!(crate::moneylist::get(&books, &made.address).is_none(), "deleted from the file");
     assert!(crate::moneylist::get(&books, &bank).is_some_and(|(_, gone)| gone), "left out, kept for its Undo");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The payer's card (design §1.1): by the mail's address, else by the name
+/// it gives, when exactly one card has it; a processor's mail names the
+/// payer it carries, never the processor; two cards alike name nobody.
+#[test]
+fn the_payers_card_is_the_one_its_mail_names() {
+    use crate::contacts::{Contact, Labeled};
+    let card = |uid: &str, name: &str, email: &str| Contact { uid: uid.into(), name: name.into(), emails: vec![Labeled { label: String::new(), value: email.into() }], ..Contact::default() };
+    let cards = vec![card("c-lou", "Lou Exemple", "lou@example.org"), card("c-ana", "Ana Exemple", "ana@example.net"), card("c-ana2", "Ana Exemple", "ana@work.example")];
+    let by = |address: Option<&str>, name: &str| acts::card_of(&cards, &acts::Payer { address: address.map(str::to_string), name: name.into() }).map(|c| c.uid.as_str());
+    assert_eq!(by(Some("LOU@example.org"), ""), Some("c-lou"));
+    assert_eq!(by(None, "lou exemple"), Some("c-lou"), "capitals aside");
+    assert_eq!(by(None, "Ana Exemple"), None, "two cards of that name: nobody");
+    assert_eq!(by(Some("ana@work.example"), "Ana Exemple"), Some("c-ana2"), "the address tells them apart");
+    assert_eq!(by(None, "Al"), None, "too short to name anyone");
+    let mut paypal = mail("mid:t1@paypal.example", "2026-10-01", PaymentKind::Received, 52000, "EUR", "Lou Exemple");
+    paypal.sender_domain = Some("paypal.fr".into());
+    paypal.sender = "PayPal".into();
+    assert_eq!(acts::payer_of(&paypal, Some("service@paypal.fr")), acts::Payer { address: None, name: "Lou Exemple".into() }, "the payer, not PayPal");
+    let client = mail("mid:c1@example.org", "2026-10-01", PaymentKind::Received, 30000, "EUR", "Lou Exemple");
+    assert_eq!(acts::payer_of(&client, Some("lou@example.org")).address.as_deref(), Some("lou@example.org"));
 }

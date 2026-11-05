@@ -879,7 +879,8 @@ impl MailLine {
 /// the preset; `ignored` holds the keys you said are not payments.
 pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>, words: &crate::words::Words) -> Vec<MailLine> {
     let recorded: BTreeSet<&str> = ledger.lines.iter().flat_map(|l| l.links.iter().map(String::as_str)).collect();
-    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t, words)).collect();
+    let index = crate::moneyindex::Reader::new(&ledger.mail_rules, words);
+    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t, words, &index)).collect();
     lines.sort_by_key(|l| l.date);
     // A message without a Message-ID that an older Sioul keyed by its file
     // ("file:<path>"): the same message while its name's unique part is.
@@ -891,7 +892,7 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
         let old = |known: &BTreeSet<String>| !line.key.starts_with("mid:") && file.as_ref().is_some_and(|f| known.contains(f));
         line.state = if recorded.contains(line.key.as_str()) || old(&older) {
             MailState::Recorded
-        } else if ignored.contains(&line.key) || old(&older_ignored) {
+        } else if crate::moneyindex::ignored(ignored, line).is_some() || old(&older_ignored) {
             MailState::Ignored
         } else {
             MailState::Proposed
@@ -902,9 +903,26 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
     lines
 }
 
-fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Option<MailLine> {
-    let card = &t.card;
-    let rule = ledger.mail_rules.iter().find(|r| r.route.explain(card).is_some());
+fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words, index: &crate::moneyindex::Reader) -> Option<MailLine> {
+    let doubtful = t.lane == Lane::Screener && t.trust != Trust::Verified;
+    // What the money index found in it, when it was looked at already: never read twice.
+    if let (Some(account), Some(path)) = (t.card.account.as_deref(), t.card.path.as_deref())
+        && let Some(kept) = crate::mailpass::kept_for(index, account, path)
+    {
+        return kept.and_then(|columns| crate::moneyindex::mail_line(&columns, &t.card, doubtful));
+    }
+    let mut line = mail_line_of(&ledger.mail_rules, &t.card, words)?;
+    line.doubtful = doubtful;
+    Some(line)
+}
+
+/// What a message says of money, from its card (`payments::detect`, else a
+/// mail rule that names it), as the budgets page and the money index read
+/// it: its amount, who, its kind, its references, its day due, its
+/// instalments, the budget its rule gives. Never doubtful: whoever asks says
+/// whether its sender was verified.
+pub fn mail_line_of(rules: &[MailRule], card: &crate::card::Card, words: &crate::words::Words) -> Option<MailLine> {
+    let rule = rules.iter().find(|r| r.route.explain(card).is_some());
     let detected = payments::detect(words, card);
     let mut payment = match (detected, rule) {
         (Some(payment), _) => payment,
@@ -964,7 +982,7 @@ fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Optio
         sender_domain: card.sender_domain().map(str::to_ascii_lowercase),
         budget: rule.map(|r| r.budget.clone()),
         preset: rule.and_then(|r| r.preset.clone()),
-        doubtful: t.lane == Lane::Screener && t.trust != Trust::Verified,
+        doubtful: false,
         payment,
         state: MailState::Proposed,
     })

@@ -119,6 +119,8 @@ enum Command {
     /// One money movement: shown, made, changed, removed, put back.
     #[command(subcommand)]
     Movement(money::MovementCommand),
+    /// Every mail about money kept on this computer, newest first, and what became of each.
+    MoneyMail(money::MoneyMailArgs),
     /// Mail accounts: add, list, test, change a password, remove.
     #[command(subcommand)]
     Account(accounts::AccountCommand),
@@ -351,6 +353,7 @@ fn main() -> ExitCode {
         Command::Budgets { file, maildir } => budgets_command(&session, file, &maildir),
         Command::Movements(args) => money::list(&session, args),
         Command::Movement(command) => money::run(&session, command),
+        Command::MoneyMail(args) => money::money_mail(&session, args),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),

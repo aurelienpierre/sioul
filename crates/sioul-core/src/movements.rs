@@ -34,6 +34,17 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
+/// The kind of change every writer of money movements says (`changes`), so
+/// that the windows read the money again: one place for all of them.
+pub const KIND: crate::changes::Kind = crate::changes::Kind::Movements;
+
+/// A money movement made, changed or removed, its fees, what a payout
+/// carried: said to the windows (`changes::said`), from the one helper every
+/// writer here calls.
+pub fn said() {
+    crate::changes::said(KIND);
+}
+
 /// The store's name, at the root of the notes folder, beside the budget file.
 pub const STORE: &str = "sioul-movements.toml";
 

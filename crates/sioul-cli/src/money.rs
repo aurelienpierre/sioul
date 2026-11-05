@@ -291,3 +291,98 @@ mod tests {
         assert_eq!(fees_of(&[]).unwrap(), None);
     }
 }
+
+/// The history of money mail's filters (`sioul money-mail`).
+#[derive(clap::Args)]
+pub(crate) struct MoneyMailArgs {
+    #[arg(long)]
+    from: Option<String>,
+    #[arg(long)]
+    to: Option<String>,
+    /// The address it came to, by its account's id.
+    #[arg(long)]
+    address: Option<String>,
+    /// The bank account of the movement it tells of.
+    #[arg(long)]
+    account: Option<String>,
+    #[arg(long)]
+    budget: Option<String>,
+    /// Only mail tied to a movement.
+    #[arg(long, conflicts_with = "untied")]
+    tied: bool,
+    /// Only mail tied to none.
+    #[arg(long)]
+    untied: bool,
+    #[arg(long = "in", conflicts_with = "out")]
+    money_in: bool,
+    #[arg(long)]
+    out: bool,
+    #[arg(long)]
+    min: Option<String>,
+    #[arg(long)]
+    max: Option<String>,
+    /// What it is for: work, admin, leisure, joined by commas.
+    #[arg(long)]
+    area: Option<String>,
+    /// received, paid, order, bill or refund.
+    #[arg(long)]
+    kind: Option<String>,
+    #[arg(long)]
+    search: Option<String>,
+    #[arg(long, default_value_t = 1)]
+    page: usize,
+    #[arg(long)]
+    json: bool,
+}
+
+/// A kind of money mail by its word.
+pub(crate) fn kind_of(word: &str) -> Result<sioul_core::payments::PaymentKind, String> {
+    use sioul_core::payments::PaymentKind;
+    [PaymentKind::Received, PaymentKind::Paid, PaymentKind::Order, PaymentKind::Bill, PaymentKind::Refund]
+        .into_iter()
+        .find(|k| k.message_id().trim_start_matches("kind-") == word.trim())
+        .ok_or_else(|| format!("{}: received, paid, order, bill or refund.", crate::one_line(word)))
+}
+
+/// `sioul money-mail`: every money mail kept on this computer, newest first, and what became of each.
+pub(crate) fn money_mail(s: &Session, args: MoneyMailArgs) -> Result<(), String> {
+    let root = root(s)?;
+    let today = sioul_core::zone::now().date();
+    let words = sioul_core::words::Words::of(&s.config);
+    let books = movements::books(&root, &words, today);
+    let store = movements::Store::load(&root).unwrap_or_default();
+    let ignored = sioul_core::state::MoneyState::load(&sioul_core::state::MoneyState::default_path()).ignored;
+    let query = sioul_core::moneyindex::MailQuery {
+        from: args.from.as_deref().map(day).transpose()?,
+        to: args.to.as_deref().map(day).transpose()?,
+        address: args.address,
+        account: args.account,
+        budget: args.budget,
+        tied: if args.tied { Some(true) } else if args.untied { Some(false) } else { None },
+        way: if args.money_in { Some(Way::In) } else if args.out { Some(Way::Out) } else { None },
+        at_least: args.min.as_deref().map(amount).transpose()?,
+        at_most: args.max.as_deref().map(amount).transpose()?,
+        areas: args.area.as_deref().and_then(sioul_core::areas::Area::parse),
+        kind: args.kind.as_deref().map(kind_of).transpose()?,
+        text: args.search.unwrap_or_default(),
+        page: args.page.saturating_sub(1),
+    };
+    let page = sioul_core::moneyindex::history(&s.config, &books, &store, &ignored, &query, usize::MAX);
+    if args.json {
+        println!("{}", serde_json::json!({ "mail": page.rows, "page": page.page + 1, "more": page.more }));
+        return Ok(());
+    }
+    if page.rows.is_empty() {
+        println!("{}", s.tr.text("money-mail-none", None));
+    }
+    for row in &page.rows {
+        let lines = sioul_core::moneyindex::row_words(&s.tr, &books.ledger, row);
+        print(&lines[..1]);
+        print(&lines[1..].iter().map(|l| format!("  {l}")).collect::<Vec<_>>());
+        println!("  {}", row.key);
+    }
+    if page.more {
+        println!("{}", s.say("movements-more", &[("page", (page.page + 2).to_string())]));
+    }
+    Ok(())
+}

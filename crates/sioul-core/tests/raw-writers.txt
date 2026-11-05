@@ -332,6 +332,13 @@ sioul-core/src/maildir.rs	move_into	1	std::fs::File::options()
 sioul-core/src/maildir.rs	move_into	1	std::fs::rename(&temporary, &target)
 sioul-core/src/maildir.rs	move_into	1	std::fs::remove_file(file)
 
+# sioul-core/src/mailpass.rs: what each reader of every message found in it (the money index), a cache in the cache folder (written beside then renamed, or added to under its lock), removed with its address: no item.
+sioul-core/src/mailpass.rs	write_whole	1	std::fs::OpenOptions::new()
+sioul-core/src/mailpass.rs	write_whole	1	std::fs::rename(&beside, path)
+sioul-core/src/mailpass.rs	append	1	std::fs::OpenOptions::new()
+sioul-core/src/mailpass.rs	folder	1	write_whole(&path, &header, &all)
+sioul-core/src/mailpass.rs	forget_account	1	std::fs::remove_dir_all(&dir)
+
 # sioul-core/src/mailmoved.rs: the messages Sioul moved whose copy has not come yet, in the state folder (written beside then renamed under its lock, removed with its last note): no item.
 sioul-core/src/mailmoved.rs	save	1	std::fs::remove_file(path)
 sioul-core/src/mailmoved.rs	save	1	std::fs::OpenOptions::new()

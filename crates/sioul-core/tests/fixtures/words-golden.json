@@ -3020,6 +3020,19 @@
    "commission",
    "frais",
    "frais totaux"
+  ],
+  "payments.attachments": [
+   "invoice",
+   "receipt",
+   "bill",
+   "statement",
+   "credit note",
+   "facture",
+   "recu",
+   "quittance",
+   "avoir",
+   "releve",
+   "echeancier"
   ]
  }
 }

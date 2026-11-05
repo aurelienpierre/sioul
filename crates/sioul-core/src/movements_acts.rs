@@ -123,6 +123,18 @@ pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)
             edit.link(movement, source, if *probable { "probable" } else { "sure" }, None);
         }
     })?;
+    // An invoice you issued, paid: its client's card tied to the payment (design §1.1).
+    let invoices = crate::invoice::all_in(&crate::invoice::folder());
+    let ties: Vec<(String, Payer)> = keep
+        .iter()
+        .filter_map(|(movement, _, _)| {
+            let number = movement.strip_prefix("sioul:invoice/").map(crate::notes::decode).or_else(|| all.iter().find(|m| m.has(movement)).and_then(|m| m.sources.iter().find(|s| s.kind == Kind::Invoice)).map(|s| crate::links::id_of(&s.key)))?;
+            let invoice = invoices.iter().find(|i| i.number == number)?;
+            let address = all.iter().find(|m| m.has(movement)).map(|m| m.address())?;
+            Some((address, Payer { address: None, name: invoice.client.lines().next().unwrap_or("").to_string() }))
+        })
+        .collect();
+    let _ = tie_payers(root, &ties);
     Ok(keep.len())
 }
 
@@ -302,6 +314,25 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
             }
         }
     }
+    // The payer's or the payee's card, tied to the movement each mail joined (design §1.1).
+    let mut ties: Vec<(String, Payer)> = Vec::new();
+    let mut tie = |movement: &str, key: &str| {
+        if let Some(line) = mail.iter().find(|l| l.key == key) {
+            let address = line.path.as_deref().and_then(sender_address);
+            ties.push((crate::links::movement_uri(movement), payer_of(line, address.as_deref())));
+        }
+    };
+    for (movement, source, ..) in &links {
+        if !source.starts_with(FEE_INVOICE) {
+            tie(movement, source);
+        }
+    }
+    for (payout, payments) in &carried {
+        for p in payments {
+            tie(payout, &p.source);
+        }
+    }
+    let _ = tie_payers(root, &ties);
     Ok(links.len() + carried.iter().map(|(_, p)| p.len()).sum::<usize>())
 }
 
@@ -1077,7 +1108,7 @@ pub fn make(root: &Path, tr: &crate::i18n::Translator, new: &New, origin: &str, 
         ..Line::default()
     };
     crate::budget::record_line(&path, &line, origin)?;
-    crate::changes::said(crate::changes::Kind::Movements);
+    super::said();
     Ok(Act { address: crate::links::movement_uri(&format!("line:{id}")), said: effect(tr, &ledger, &[], &[(new.budget.clone(), net)], new.day) })
 }
 
@@ -1255,7 +1286,7 @@ pub fn change(root: &Path, words: &crate::words::Words, tr: &crate::i18n::Transl
         said = effect(tr, &ledger, &budget_shares(&now), &shares(&Place::Budget(budget.to_string()), now.sum.amount()), now.day);
         let _ = moved;
     }
-    crate::changes::said(crate::changes::Kind::Movements);
+    super::said();
     if said.is_empty() {
         let after = found(root, words, address, today).map(|(books, at)| books.movements[at].clone());
         said = after.as_ref().map(|a| effect(tr, &ledger, &before, &budget_shares(a), a.day)).unwrap_or_default();
@@ -1291,7 +1322,7 @@ pub fn remove(root: &Path, words: &crate::words::Words, tr: &crate::i18n::Transl
             }
             edit.uncarry(&entry.payout);
         })?;
-        crate::changes::said(crate::changes::Kind::Movements);
+        super::said();
         return Ok(Act { address: m.address(), said: plainly(tr, "movement-not-a-payout", &m) });
     }
     match (&line, bank) {
@@ -1306,7 +1337,7 @@ pub fn remove(root: &Path, words: &crate::words::Words, tr: &crate::i18n::Transl
         (None, false) if m.has_kind(Kind::Invoice) => return Err(tr.text("movement-refused-invoice", None)),
         (None, false) => return Err(tr.text("movement-refused-told", None)),
     }
-    crate::changes::said(crate::changes::Kind::Movements);
+    super::said();
     let said = effect(tr, &ledger, &before, &[], m.day);
     Ok(Act { address: m.address(), said: if said.is_empty() { plainly(tr, "movement-removed", &m) } else { said } })
 }
@@ -1316,6 +1347,88 @@ pub fn remove(root: &Path, words: &crate::words::Words, tr: &crate::i18n::Transl
 pub fn put_back(root: &Path, address: &str) -> Result<bool, String> {
     let key = address.strip_prefix("sioul:movement/").map_or_else(|| address.to_string(), crate::notes::decode);
     let done = Store::edit(root, |edit| edit.back(&key))?;
-    crate::changes::said(crate::changes::Kind::Movements);
+    super::said();
     Ok(done)
+}
+
+// ---------------------------------------------------------------- the payer's card
+
+/// Who paid or was paid, as a mail or an invoice names them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Payer {
+    /// Their address, when the mail is theirs (not a processor's) or names it.
+    pub address: Option<String>,
+    /// Their name, as the mail or the invoice writes it.
+    pub name: String,
+}
+
+/// The one card these words name: by its address, else by its name, each
+/// compared folded; none when no card or several do.
+pub fn card_of<'a>(contacts: &'a [crate::contacts::Contact], payer: &Payer) -> Option<&'a crate::contacts::Contact> {
+    let one = |found: Vec<&'a crate::contacts::Contact>| (found.len() == 1).then(|| found[0]);
+    if let Some(address) = payer.address.as_deref().map(str::trim).filter(|a| a.contains('@')) {
+        let by_address = one(contacts.iter().filter(|c| c.emails.iter().any(|e| e.value.trim().eq_ignore_ascii_case(address))).collect());
+        if by_address.is_some() {
+            return by_address;
+        }
+    }
+    let name = crate::words::folded(payer.name.trim());
+    if name.chars().filter(|c| c.is_alphabetic()).count() < 3 {
+        return None;
+    }
+    one(contacts.iter().filter(|c| crate::words::folded(c.name.trim()) == name).collect())
+}
+
+/// The payer's or the payee's card tied to each movement automatically
+/// (design §1.1, "links"): when the mail's address, or the name it or the
+/// invoice gives, names exactly one card; the person whose card it is too.
+/// Written in Sioul's own ties (`links.toml`, how "payer"), each once; a tie
+/// you took apart (`[[apart]]` with the card) is never made again. The tie
+/// counts until it is corrected. Returns how many were made.
+pub fn tie_payers(root: &Path, ties: &[(String, Payer)]) -> Result<usize, String> {
+    if ties.is_empty() {
+        return Ok(0);
+    }
+    let contacts = crate::contacts::all();
+    if contacts.is_empty() {
+        return Ok(0);
+    }
+    let persons = crate::persons::Persons::load(&crate::persons::Persons::default_path());
+    let store = Store::load(root).unwrap_or_default();
+    let apart = |a: &str, b: &str| store.apart.iter().any(|p| (p.a == a && p.b == b) || (p.a == b && p.b == a));
+    let mut edges: Vec<crate::links::Edge> = Vec::new();
+    for (movement, payer) in ties {
+        let Some(card) = card_of(&contacts, payer) else { continue };
+        let card_uri = crate::links::contact_uri(&card.uid);
+        let key = movement.strip_prefix("sioul:movement/").map_or_else(|| movement.clone(), crate::notes::decode);
+        if apart(&key, &card_uri) || apart(movement, &card_uri) {
+            continue;
+        }
+        edges.push(crate::links::Edge { from: movement.clone(), to: card_uri, how: "payer".into() });
+        for person in persons.persons.iter().filter(|p| p.cards.iter().any(|c| *c == card.uid)) {
+            edges.push(crate::links::Edge { from: movement.clone(), to: crate::links::person_uri(&person.id), how: "payer".into() });
+        }
+    }
+    let count = edges.len();
+    crate::links::LocalLinks::add_all(&crate::links::LocalLinks::default_path(), &edges)?;
+    Ok(count)
+}
+
+/// A message file's sender's address, from its headers alone.
+pub fn sender_address(path: &Path) -> Option<String> {
+    let mut headers = crate::mailcache::headers_of(path)?;
+    headers.extend_from_slice(b"\r\n\r\nx\r\n");
+    crate::card::Card::from_bytes(&headers)?.from_address
+}
+
+/// Who a mail line names: its sender, unless a processor sent it for
+/// someone (then the payer it names, by address when it gives one).
+pub fn payer_of(line: &MailLine, sender_address: Option<&str>) -> Payer {
+    let processor = line.sender_domain.as_deref().is_some_and(|d| crate::processors::known().by_domain(d).is_some());
+    let party = line.payment.party.trim();
+    if processor {
+        let address = party.contains('@').then(|| party.trim_matches(|c| c == '(' || c == ')' || c == '<' || c == '>').to_string());
+        return Payer { address, name: if party.contains('@') { String::new() } else { party.to_string() } };
+    }
+    Payer { address: sender_address.map(str::to_string), name: if party.is_empty() { line.sender.clone() } else { party.to_string() } }
 }

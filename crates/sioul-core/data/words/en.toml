@@ -168,6 +168,8 @@ instalments = ["in # instalments", "in # installments", "in # payments", "pay in
 fee = ["fee", "fees", "transaction fee", "processing fee", "service fee", "commission"]
 # The label of what arrives after the fees.
 net = ["net amount", "net", "you'll receive", "you will receive", "amount deposited"]
+# Words in an attachment's name that make it look like an invoice (moneyindex.rs).
+attachments = ["invoice", "receipt", "bill", "statement", "credit note"]
 
 # Bank and payment-processor exports (bank.rs).
 [bank]

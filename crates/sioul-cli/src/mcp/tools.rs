@@ -499,6 +499,35 @@ pub const TOOLS: &[Tool] = &[
         schema: || object(json!({ "movement": { "type": "string", "description": "Its address, sioul:movement/… (movements and budgets give them)." } }), &["movement"]),
         run: money::get_movement,
     },
+    Tool {
+        name: "money_mail",
+        title: "Mail about money",
+        description: "Every mail about money kept on this computer, newest first, 60 a page: invoices received and sent, receipts, payment and payout notices, bills, tax notices, fee invoices; never what is set aside as spam or forged. Each says its kind, who, its amount (and the fee when the mail states one), its subject masked, and what became of it in words: the same payment as a movement, part of a payout, counted in a budget, not counted as the person said, or not tied to any movement. Filters: days, the address it came to, its movement's account and budget, tied or not, way, amount, area, kind, words. Reading only; mail kept from agents is counted. A first reading of a large mailbox goes on over several calls (still_reading).",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "from": { "type": "string", "description": "From this day, as 2026-10-01." },
+                    "to": { "type": "string" },
+                    "address": { "type": "string", "description": "The address it came to, by its account's id." },
+                    "account": { "type": "string", "description": "The bank account of the movement it tells of." },
+                    "budget": { "type": "string" },
+                    "tied": { "type": "boolean", "description": "True: tied to a movement; false: tied to none." },
+                    "way": { "type": "string", "enum": ["in", "out"] },
+                    "at_least": { "type": "number" },
+                    "at_most": { "type": "number" },
+                    "area": { "type": "string", "description": "work, admin, leisure, joined by commas." },
+                    "kind": { "type": "string", "enum": ["received", "paid", "order", "bill", "refund"] },
+                    "search": { "type": "string", "description": "Words of who, the sender, the subject, the budget or the amount." },
+                    "page": { "type": "integer", "minimum": 1, "maximum": 10000 },
+                }),
+                &[],
+            )
+        },
+        run: money::money_mail,
+    },
     // Notes, projects, links.
     Tool {
         name: "search_notes",

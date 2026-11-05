@@ -247,10 +247,13 @@ pub mod mailsearch;
 pub mod maildir;
 pub mod matching;
 pub mod mailnote;
+// mailpass: readers of every message kept on this device, each read once (money, topics).
+pub mod mailpass;
 pub mod mailto;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).
 pub mod mms;
 pub mod money;
+pub mod moneyindex;
 pub mod moneylist;
 pub mod moneyview;
 pub mod moves;

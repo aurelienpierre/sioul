@@ -540,6 +540,16 @@ movements-none = Aucun mouvement ne dit cela.
 movements-more = La suite à la page { $page }.
 movements-sum-in = Entrées : { $gross } payés, { $net } arrivés.
 movements-sum-out = Sorties : { $gross } demandés, { $net } sortis des comptes.
+money-mail-joined = le même paiement que { $who }, { $day }
+money-mail-carried = fait partie du versement « { $who } » du { $day }
+money-mail-fees = les frais de { $who }, { $day }
+money-mail-recorded = compté dans { $budget }
+money-mail-ignored = pas compté : vous avez dit que ce n’est pas un paiement
+money-mail-ignored-shape = pas compté : les courriels de ce type venant de { $sender } ne sont plus comptés
+money-mail-untied = lié à aucun mouvement
+money-mail-fee = frais { $fees }
+money-mail-none = Aucun courriel sur l’argent ne dit cela.
+money-mail-waiting = Les courriels plus anciens sont encore lus pour l’argent ; ils viennent à mesure.
 # La page des budgets, d’une entrée à la suivante (docs/accounting.md, « The budgets page »).
 ahead-holds = Jusqu’à l’arrivée de { $income } le { $day }, le compte couvre chaque paiement.
 ahead-holds-if = Si { $income } arrive d’ici le { $day }, le compte couvre chaque paiement jusque-là.

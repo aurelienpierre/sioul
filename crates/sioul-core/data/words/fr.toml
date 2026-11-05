@@ -185,6 +185,8 @@ instalments = ["en # fois", "# fois sans frais", "#x sans frais", "# echeances"]
 fee = ["frais", "commission", "frais de transaction", "frais de service", "frais paypal"]
 # The label of what arrives after the fees.
 net = ["montant net", "net", "vous recevrez", "montant verse", "somme versee"]
+# Words in an attachment's name that make it look like an invoice (moneyindex.rs).
+attachments = ["facture", "recu", "quittance", "avoir", "releve", "echeancier"]
 
 # Bank and payment-processor exports (bank.rs).
 [bank]

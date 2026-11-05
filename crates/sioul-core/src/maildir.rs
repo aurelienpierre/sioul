@@ -313,6 +313,8 @@ pub fn forget_account(account: &crate::config::Account) -> Result<Vec<PathBuf>, 
         std::fs::remove_dir_all(&index).map_err(|e| format!("{}: {e}", index.display()))?;
         gone.push(index);
     }
+    // What each reader of every message found in it (`mailpass`): a cache of that mail too.
+    gone.extend(crate::mailpass::forget_account(&account.id));
     // Its messages on their way to a folder (`mailmoved`): none will come.
     let _ = crate::mailmoved::forget_account(&account.id, None);
     Ok(gone)

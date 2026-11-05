@@ -660,7 +660,7 @@ fn unreadable_lines_are_said() {
 }
 
 const READING: &[&str] = &[
-    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
+    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "money_mail", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
 /// The command line and the agents run on a computer only: what they say
@@ -861,6 +861,8 @@ fn a_closed_project_is_never_shown() {
         ("budgets", json!({})),
         ("movements", json!({})),
         ("movements", json!({ "search": "Zeugma" })),
+        ("money_mail", json!({})),
+        ("money_mail", json!({ "search": "Zeugma" })),
         ("search_notes", json!({})),
         ("search_notes", json!({ "query": "Zeugma", "in_text": true })),
         ("list_projects", json!({})),
@@ -1372,6 +1374,11 @@ fn health_never_reaches_an_agent() {
         ("agenda", json!({ "from": last_week.to_string(), "days": 8 }), Answers),
         ("search_contacts", json!({ "query": "Thistlewick" }), Answers),
         ("budgets", json!({}), Answers),
+        ("movements", json!({}), Answers),
+        ("movements", json!({ "search": "Ferngale" }), Answers),
+        ("get_movement", json!({ "movement": "sioul:movement/line:none-such" }), Refused),
+        ("money_mail", json!({}), Answers),
+        ("money_mail", json!({ "search": "brackenwort" }), Answers),
         ("search_notes", json!({}), Answers),
         ("search_notes", json!({ "query": "Quillaine", "in_text": true }), Answers),
         ("search_notes", json!({ "query": "Ferngale", "in_text": true }), Answers),
@@ -1440,6 +1447,10 @@ fn health_never_reaches_an_agent() {
         ("draft_reply", json!({ "message": "mid:letter-1@housing.example", "body": "Thanks.", "links": ["sioul:task/errand-category"] }), Kept),
         ("draft_message", json!({ "to": ["office@example.org"], "subject": "Hello", "body": "Hello.", "links": ["sioul:task/errand-category"] }), Kept),
         ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:task/errand-recorded" }), Kept),
+        ("add_movement", json!({ "who": "Pharmacy", "net": -12, "budget": "home", "on": today.to_string(), "ties": ["sioul:task/errand-category"] }), Kept),
+        ("update_movement", json!({ "movement": "sioul:movement/line:none-such", "note": "x" }), Refused),
+        ("delete_movement", json!({ "movement": "sioul:movement/line:none-such" }), Refused),
+        ("same_movement", json!({ "movement": "sioul:movement/line:none-such", "other": "sioul:movement/line:none-either" }), Refused),
     ];
     let listed = ask(&mut server, "tools/list", json!({}));
     let names: Vec<String> = listed["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();

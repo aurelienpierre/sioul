@@ -20,7 +20,7 @@ use super::{access, mask, read};
 use crate::Session;
 use serde_json::{Value, json};
 use sioul_core::agentwrites::FileChange;
-use sioul_core::links::Loaded;
+use sioul_core::links::{self, Loaded};
 use sioul_core::money::Money;
 use sioul_core::moneylist::{self, Query, ToldBy};
 use sioul_core::movements::{self, Books, Fee, FeeFrom, FeeKind, Movement, Way, acts};
@@ -177,7 +177,8 @@ pub fn add_movement(s: &Session, args: &Args) -> Result<Answer, String> {
         return Err(if o.books.ledger.budgets.iter().any(|b| b.id == budget) { access::kept("This budget") } else { s.tr.text("movement-no-budget", None) });
     }
     let ties = args.list("ties")?;
-    if ties.iter().any(|t| !o.consent.allows(t)) {
+    // Never tied to what is kept from agents, health above all (`items::may_change`).
+    if ties.iter().any(|t| !o.consent.allows(t) || o.consent.is_health(t)) {
         return Err(access::kept("What it would be tied to"));
     }
     let today = sioul_core::zone::now().date();
@@ -266,9 +267,78 @@ pub fn same_movement(s: &Session, args: &Args) -> Result<Answer, String> {
     } else {
         acts::not_same(&o.root, a.steady_key(), b.steady_key())?;
     }
-    sioul_core::changes::said(sioul_core::changes::Kind::Movements);
+    movements::said();
     let pairs = [("who", mask::text(&a.label)), ("other", mask::text(&b.label))];
     let line = s.say(if same { "agent-movement-same" } else { "agent-movement-apart" }, &pairs);
     say_in_window(line.clone(), changed(files));
     Ok(Answer { text: line, data: json!({ "movement": a.address(), "other": b.address(), "same": same }) })
+}
+
+/// Messages read for money in one call at most: a first index goes on at the next.
+const MAIL_FILL: usize = 2000;
+
+pub fn money_mail(s: &Session, args: &Args) -> Result<Answer, String> {
+    let o = opened(s)?;
+    let store = movements::Store::load(&o.root).unwrap_or_default();
+    let ignored = sioul_core::state::MoneyState::load(&sioul_core::state::MoneyState::default_path()).ignored;
+    let kind = args.text("kind")?.as_deref().map(crate::money::kind_of).transpose()?;
+    let query = sioul_core::moneyindex::MailQuery {
+        from: args.date("from")?,
+        to: args.date("to")?,
+        address: args.text("address")?,
+        account: args.text("account")?,
+        budget: args.text("budget")?,
+        tied: if args.has("tied") { Some(args.flag("tied")?) } else { None },
+        way: way_of(args)?,
+        at_least: amount_of(args, "at_least")?,
+        at_most: amount_of(args, "at_most")?,
+        areas: args.text("area")?.as_deref().and_then(sioul_core::areas::Area::parse),
+        kind,
+        text: args.text("search")?.unwrap_or_default(),
+        page: args.number("page", 1, 1, 10_000)? as usize - 1,
+    };
+    let page = sioul_core::moneyindex::history(&s.config, &o.books, &store, &ignored, &query, MAIL_FILL);
+    // A message reaches the agent as mail does (its account, its projects), and its movement's budgets as money does.
+    let allowed = |row: &sioul_core::moneyindex::MailRow| {
+        let id = links::id_of(&row.key);
+        let card = sioul_core::maildir::read_one(&row.path);
+        o.consent.allows_mail(Some(&id), card.as_ref()) && row.budgets.iter().all(|b| o.open.contains(b))
+    };
+    let (rows, kept): (Vec<_>, Vec<_>) = page.rows.into_iter().partition(|r| allowed(r));
+    let mut lines: Vec<String> = Vec::new();
+    for row in &rows {
+        let words = shown(sioul_core::moneyindex::row_words(&s.tr, &o.books.ledger, row));
+        lines.push(format!("{} ({})", words[0], row.key));
+        lines.extend(words[1..].iter().map(|l| format!("  {l}")));
+    }
+    if rows.is_empty() {
+        lines.push(s.tr.text("money-mail-none", None));
+    }
+    if page.more {
+        lines.push(s.say("movements-more", &[("page", (page.page + 2).to_string())]));
+    }
+    if page.waiting > 0 {
+        lines.push(s.tr.text("money-mail-waiting", None));
+    }
+    lines.extend(access::left_out(kept.len()));
+    let data: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            mask::json(json!({
+                "message": r.key,
+                "address": r.address,
+                "date": r.date.to_string(),
+                "kind": r.kind,
+                "who": r.who,
+                "sender": r.sender,
+                "subject": r.subject,
+                "amount": r.amount.map(|a| a.cents() as f64 / 100.0),
+                "currency": r.currency,
+                "fee": r.fee.map(|a| a.cents() as f64 / 100.0),
+                "became": r.became,
+                "words": sioul_core::moneyindex::became_words(&s.tr, &o.books.ledger, r, &r.sender),
+            }))
+        })
+        .collect();
+    Ok(Answer { text: lines.join("\n"), data: json!({ "mail": data, "page": page.page + 1, "more": page.more, "still_reading": page.waiting > 0, "kept_from_agents": kept.len() }) })
 }

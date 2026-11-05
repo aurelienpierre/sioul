@@ -516,6 +516,16 @@ movements-none = No movement says this.
 movements-more = More on page { $page }.
 movements-sum-in = Money in: { $gross } paid, { $net } arrived.
 movements-sum-out = Money out: { $gross } asked, { $net } left the accounts.
+money-mail-joined = the same payment as { $who }, { $day }
+money-mail-carried = part of the payout “{ $who }” of { $day }
+money-mail-fees = the fees of { $who }, { $day }
+money-mail-recorded = counted in { $budget }
+money-mail-ignored = not counted: you said it is no payment
+money-mail-ignored-shape = not counted: mail like this from { $sender } is no longer counted
+money-mail-untied = not tied to any movement
+money-mail-fee = fees { $fees }
+money-mail-none = No mail about money says this.
+money-mail-waiting = Older mail is still being read for money; it comes as it is read.
 # The budgets page from one income to the next (docs/accounting.md, "The budgets page").
 ahead-holds = Until { $income } comes in on { $day }, the account holds every payment.
 ahead-holds-if = If { $income } comes in by { $day }, the account holds every payment until then.

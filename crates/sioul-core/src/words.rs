@@ -179,6 +179,9 @@ pub struct Payments {
     pub fee: Vec<String>,
     /// The label of what arrives after the fees ("Montant net", "You'll receive").
     pub net: Vec<String>,
+    /// Words in an attachment's name that make it look like an invoice: the
+    /// money index opens such a message (`moneyindex`).
+    pub attachments: Vec<String>,
 }
 
 /// A CSV export's columns, by their names (`bank`).
