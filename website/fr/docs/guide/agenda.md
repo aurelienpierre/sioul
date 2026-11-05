@@ -138,9 +138,23 @@ Agenda ⚙ ▸ **Vos agendas** crée, renomme, recolore, supprime et partage vos
 - **Supprimer…** dit d’abord ce qui part, en une phrase : « Supprimer « Natation », 42 événements, de cloud.example.org ? », et ce que garde le serveur : Nextcloud garde un agenda supprimé dans sa corbeille, 30 jours par défaut ; Google ne garde rien, c’est donc définitif. Avant que rien ne parte, Sioul garde une copie de tout l’agenda, un fichier `.ics` daté dans son dossier d’état, et dit où. Il n’y a pas d’Annuler : cette copie est le chemin du retour. L’agenda principal d’un compte Google ne peut pas être supprimé.
 - **Ne plus l’afficher…** prend la place de Supprimer sur un agenda qui est celui de quelqu’un d’autre, ou que vous pouvez seulement lire : il reste à son propriétaire. À qui est un agenda, c’est son serveur qui le dit, jamais le nom que vous lui donnez : l’agenda d’un enfant sur votre propre serveur est à vous, et se supprime. Quand le serveur dit qu’il est à quelqu’un d’autre, sur Nextcloud votre partage prend fin, et sur Google il quitte votre liste d’agendas ; quand il ne le dit pas, l’agenda est seulement caché sur cet appareil, et **Montrer de nouveau** le ramène.
 - **Qui le voit**, sur la ligne de chaque agenda d’un serveur : « Vous seulement », « Sam peut le lire », « Sam peut le modifier », « Toute personne qui a le lien peut le lire » ; sur l’agenda d’un enfant ou d’un autre parent, l’autre parent est nommé comme tel. Ajoutez une personne, ou **Un groupe** sur Nextcloud, qui **Peut lire** ou **Peut modifier** ; × arrête de le partager avec elle, avec Annuler. **Un lien en lecture seule** active ou coupe un lien ; activé, le lien s’affiche dessous, à sélectionner, avec **Copier**, qui dit « Copié. » une fois qu’il est dans le presse-papiers. C’est l’adresse à laquelle une application d’agenda s’abonne. Activé, il dit une fois ce que voit toute personne qui l’a. Sur Nextcloud, vous partagez avec des personnes du même serveur ; une personne ailleurs passe par le lien. Les personnes avec qui vous le partagez ne voient jamais un événement privé, et celles qui le lisent seulement voient un confidentiel comme « Occupé », son heure seule ; sur Google, qui le lit voit un événement privé sans ses détails. Un serveur qui ne partage pas dit « Ce serveur ne partage pas depuis Sioul. » Rien n’est partagé sans que vous le demandiez.
-- **Partager mes disponibilités…** donne à une personne vos heures occupées, jamais ce qui les remplit, d’après les agendas à vous que vous choisissez. Sur Google, ces agendas sont partagés avec une adresse pour leurs heures occupées seulement, et rien n’est copié. Sur Nextcloud, Sioul crée un agenda à lui, « Heures prises », le remplit de simples créneaux tirés des agendas choisis, le tient à jour avec votre plan, et le partage, en lecture seule, avec une personne du serveur ou par son lien, une fois l’agenda sur le serveur (la prochaine synchronisation) ; par un lien, le lien s’affiche alors sous la ligne, avec **Copier**. Chaque créneau dit « Occupé », ou un mot que vous donnez à un agenda (« Travail »). **Arrêter le partage** reprend le partage, et supprime l’agenda que Sioul a créé.
+- **Vos disponibilités** ont leur propre place sous Vos agendas : [Vos disponibilités](#your-availability).
 
 Un agent d’IA ne crée, ne supprime ni ne partage jamais un agenda : ce sont vos propres gestes.
+
+## Vos disponibilités {#your-availability}
+
+Agenda ⚙ ▸ **Vos disponibilités** rassemble ce que vous donnez de votre temps, et à qui : vos heures prises, jamais ce qui les remplit. Rien n’est partagé avant que vous appuyiez sur **Partager**.
+
+- **Des disponibilités**, ce sont les agendas à vous qui comptent comme occupés, et un nom visible de vous uniquement (« Pour Sam »). **Nouvelles disponibilités…** commence sans aucun agenda coché. Chaque agenda peut dire un mot au lieu de « Occupé » (« Travail »). Ses créneaux comprennent le temps que vous gardez avant et après vos événements, car s’y rendre prend aussi votre temps. Ce qui touche à la santé dit toujours « Occupé ».
+- **Partager avec…** ne demande que qui : **Une personne** (un nom d’utilisateur, `utilisateur@serveur` ou une adresse), **Un groupe**, **Toute personne qui a un lien** ou **Un outil de réservation**. Sioul dit alors quelle façon il prendra et pourquoi, en une phrase ; **Une autre façon** montre la suivante. **Partager** le fait.
+- **La façon de votre serveur passe d’abord**, parce qu’elle n’a besoin d’aucun Sioul ouvert et n’est jamais en retard : sur Google, vos agendas partagés pour leurs heures prises seulement, ou leurs heures prises publiques pour un lien ; le lien d’heures prises de Fastmail ; une page de rendez-vous sur votre propre serveur, les Rendez-vous de Nextcloud ou les plannings de rendez-vous de Google, que Sioul vous ouvre et dont vous collez le lien en retour. Google montre alors les heures exactes des événements, sans le temps que vous gardez autour, et la ligne le dit.
+- **Ailleurs, un agenda d’heures prises**, tenu par Sioul dans l’un de vos comptes et nommé d’après vous (« Alex, heures prises ») : partagé avec quelqu’un de votre Nextcloud, avec un groupe, avec quelqu’un d’un autre Nextcloud, ou par son lien. Il ne dit que le jour de sa dernière mise à jour, jamais l’heure. Dans Vos agendas, il apparaît comme tenu pour ses disponibilités, et l’appuyer ouvre Vos disponibilités.
+- **Plus le public est large, plus la vue est grossière** : une personne ou un groupe voit vos heures prises exactes pour les deux mois à venir ; un lien les voit arrondies au quart d’heure, pour les deux semaines à venir ; un outil de réservation voit deux mois, puis rien qu’il puisse proposer.
+- **La ligne de chaque partage** dit qui voit quoi, son lien avec **Copier**, **Ouvrir** pour une page de rendez-vous, et qui le tient à jour : votre serveur, ou vos appareils, le téléphone en arrière-plan et un ordinateur tant que Sioul tourne. Quand un agenda d’heures prises n’a pas été mis à jour depuis un jour, Sioul le dit une fois, à votre prochain moment pour l’administratif. **Arrêter le partage** reprend ce partage, avec Annuler.
+- **Chaque Nextcloud** que vous utilisez montre vos heures prises à ses utilisateurs quand ils vous invitent ; Agenda ⚙ le dit, avec **Envoyer mes heures de travail à cloud.example.org**, désactivé au début, pour qu’ils voient aussi quand vous travaillez.
+
+Un agent d’IA ne partage jamais vos disponibilités : ce sont vos propres gestes.
 
 ## Les événements des enfants {#childrens-events}
 
@@ -247,7 +261,11 @@ Un agenda partagé avec vous pour savoir quand quelqu’un est pris ne se lit qu
 
 Quand vous partagez les vôtres, un simple « occupé » peut passer pour un secret entre partenaires : 26 personnes sur 30, dans une étude, le trouvaient suspect (Thayer et al. 2012). Aussi vos créneaux disent « Occupé » au début, et vous pouvez y ajouter un mot pour un ou une partenaire.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54.
+Les serveurs connaissent déjà vos heures prises, et les tiennent à jour sans qu’aucune application tourne : Google, Nextcloud, Fastmail et les pages de rendez-vous les montrent chacun à un public. Une copie tenue par une application n’est à jour que du dernier appareil qui l’a fait tourner. Aussi Sioul prend d’abord la façon de votre serveur, ne garde une copie que là où aucune ne convient, et ne laisse chacun de vos appareils la tenir que d’après la vue la plus fraîche : un téléphone revenu après un jour d’absence n’écrit jamais de vieux créneaux sur de plus récents.
+
+Les heures prises en disent plus qu’il n’y paraît. Un créneau chaque semaine à la même heure peut dire une thérapie sans titre, et les données qui révèlent la santé par déduction comptent comme des données de santé en droit européen (CJUE, C-184/20, 2022) ; une semaine d’absence sur un lien public dit que la maison est vide (Cohen & Felson 1979). Aussi plus le public est large, plus la vue est grossière, ce qui touche à la santé dit « Occupé », et le lecteur voit au plus un jour, jamais l’heure à laquelle vos appareils ont tourné.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54 et 66.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
@@ -344,6 +362,7 @@ En novembre 2026, d’après la documentation de chaque application.
     | N’entre dans l’agenda de quelqu’un qu’une fois accepté | ✓ | ✗¹³ | ✓ | ✗ | ✗¹⁴ | ? | ? |
     | Avertit quand une personne est attendue à deux endroits, d’un agenda à l’autre | ✓¹⁵ | ✗ | ? | ✗ | ✗ | ? | en partie¹⁶ |
     | Partage vos disponibilités en heures occupées seulement | ✓¹⁷ | ✗ | ? | ✗ | ✗ | ✓¹⁸ | en partie¹⁹ |
+    | Plusieurs partages, chacun à son public, en un seul endroit | ✓²⁵ | ✗ | ✗ | ✗ | ✗ | en partie²⁶ | ✗ |
     | Une trace datée de qui a pris quoi | ✓²⁰ | ✓²¹ | en partie²² | ✓²³ | ? | en partie²⁴ | ✗ |
 
     1. Une personne qui prend chaque événement ou tâche de l’agenda d’un enfant, deux quand un parent y emmène l’enfant et que l’autre le ramène ; un type de choses, comme le dentiste, peut garder la sienne.
@@ -362,7 +381,7 @@ En novembre 2026, d’après la documentation de chaque application.
     14. Les membres de chaque agenda en voient les événements.
     15. Les événements de vos agendas, ceux des enfants que vous prenez et les invitations que vous avez acceptées ; les paires d’agendas comparées sont dans les réglages de l’agenda.
     16. La copie en miroir prend le temps dans un autre agenda, ce qui évite le double rendez-vous plutôt que d’en avertir.
-    17. Sur Google, vos agendas partagés avec une adresse pour leurs heures occupées seulement ; ailleurs un agenda de créneaux occupés, fait dans l’un de vos comptes CalDAV d’après les agendas que vous choisissez, pour une personne à la fois.
+    17. La façon de votre serveur d’abord (le partage en heures prises seulement de Google et ses heures prises publiques, le lien de Fastmail, une page de rendez-vous sur votre propre serveur) ; ailleurs un agenda de créneaux occupés, tenu par vos appareils d’après la vue la plus fraîche.
     18. « See only free/busy (hide details) », personne par personne.
     19. En miroir, en « Blocked Time ».
     20. Qui a pris quoi, et quand ; jamais quand quelque chose a été lu.
@@ -370,6 +389,8 @@ En novembre 2026, d’après la documentation de chaque application.
     22. Les demandes restent en attente jusqu’à être acceptées ou refusées.
     23. Quand chaque événement a été créé, modifié et vu.
     24. La réponse de chaque personne invitée.
+    25. Agenda ⚙ ▸ Vos disponibilités : chaque ensemble de disponibilités avec ses partages (une personne, un groupe, un lien, un outil de réservation), qui tient chacun à jour, Arrêter sur chacun.
+    26. Partagé agenda par agenda, dans les réglages de chacun ; les plannings de rendez-vous ailleurs.
 
 **Les autres agendas.** Fantastical (Mac, iPhone, iPad, Apple Watch, Vision Pro, Windows) ajoute, avec sa formule Premium, un temps de trajet avant un événement, depuis le domicile, le travail ou l’événement précédent, et des alertes « temps de partir » d’après l’endroit où vous êtes et la circulation ; il lit tout compte CalDAV, ne place aucune tâche de lui-même, et ne décrit pas d’avertissement pour les événements qui se chevauchent. Reclaim.ai, une application web au-dessus de Google Agenda ou d’Outlook seulement, ajoute un temps de trajet avant et après les événements qui ont une adresse, et du temps pour se préparer ou décompresser autour des réunions ; il place des habitudes comme le déjeuner dans une plage et les déplace quand une réunion tombe dessus, et garde les événements de votre agenda principal dans ses propres bases de données. Sous Android, Fossify Calendar ajoute les anniversaires de vos contacts et déplace les événements en les faisant glisser, par heures entières ; Etar ne fait ni l’un ni l’autre.
 

@@ -37,6 +37,8 @@ fn main() {
         "qml/AgendaFilter.qml",
         "qml/AgendasSetup.qml",
         "qml/LinkLine.qml",
+        "qml/AvailabilitySetup.qml",
+        "qml/AvailabilityChooser.qml",
         "qml/WhoDoesWhat.qml",
         "qml/ConflictMatrix.qml",
         "qml/ContactsPage.qml",

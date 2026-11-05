@@ -28,7 +28,8 @@ ColumnLayout {
     // A phone, or a narrow panel: the list of pairs.
     readonly property bool listed: matrix.width < 480
 
-    readonly property var agendas: (matrix.view.agendas || []).filter(a => a.events)
+    // A calendar of busy blocks Sioul keeps for your availability is compared with nothing.
+    readonly property var agendas: (matrix.view.agendas || []).filter(a => a.events && a.mirror !== true)
     // The names' column of the triangle: what the boxes leave of the width, 200 at most.
     readonly property real nameWidth: Math.max(80, Math.min(200, matrix.width - matrix.agendas.length * 30 - 8))
 

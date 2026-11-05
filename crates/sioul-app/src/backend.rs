@@ -750,16 +750,29 @@ pub mod qobject {
         #[qinvokable]
         fn agenda_link(self: Pin<&mut Sioul>, id: &QString, on: bool);
 
-        /// Your availability: what is shared, the accounts and agendas to pick (JSON).
+        /// Your availabilities, Agenda ⚙ ▸ Your availability (JSON {head, items, agendas, accounts}).
         #[qinvokable]
         fn availability(self: &Sioul) -> QString;
 
-        /// Your availability shared (JSON {account, agendas, with, link, words}), or no longer; what went wrong, else "".
+        /// An availability shared once more (JSON {id | name, agendas, words; audience, who, way, account, link}); what went wrong, else "".
         #[qinvokable]
         fn share_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
 
+        /// One share stopped (JSON {id, way, account, who}), with Undo; what went wrong, else "".
         #[qinvokable]
-        fn stop_availability(self: Pin<&mut Sioul>) -> QString;
+        fn stop_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// The ways Sioul would share with an audience, best first (JSON {id | agendas, words; audience, who} → {choices, problem}).
+        #[qinvokable]
+        fn availability_ways(self: &Sioul, text: &QString) -> QString;
+
+        /// An availability's name, agendas and words written (JSON {id?, name, agendas, words} → {id, problem}).
+        #[qinvokable]
+        fn save_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// Your working hours told to an account's server, or no longer; what went wrong, else "".
+        #[qinvokable]
+        fn availability_hours(self: Pin<&mut Sioul>, account: &QString, on: bool) -> QString;
 
         /// A named set of agendas chosen in the filter (part 4): its agendas
         /// shown, the others left out, until work's hours change.
@@ -4072,6 +4085,8 @@ impl qobject::Sioul {
         if let Err(e) = config::migrate_sites_at_start(&config_path()) {
             eprintln!("{e}");
         }
+        // The single share of your availability of before, read once as an availability of the list.
+        crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
         self.as_mut().set_mode(QString::from(&mode_json()));
         // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
@@ -5137,8 +5152,20 @@ impl qobject::Sioul {
         QString::from(&crate::servers::share_availability(&self.qt_thread(), &self.shared(), &text.to_string()))
     }
 
-    fn stop_availability(self: Pin<&mut Self>) -> QString {
-        QString::from(&crate::servers::stop_availability(&self.qt_thread(), &self.shared()))
+    fn stop_availability(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::servers::stop_availability(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn availability_ways(&self, text: &QString) -> QString {
+        QString::from(&crate::servers::availability_ways(&text.to_string()))
+    }
+
+    fn save_availability(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::servers::save_availability(&text.to_string()))
+    }
+
+    fn availability_hours(self: Pin<&mut Self>, account: &QString, on: bool) -> QString {
+        QString::from(&crate::servers::availability_hours(&self.qt_thread(), &self.shared(), &account.to_string(), on))
     }
 
     fn who_does_what(&self, from: &QString, child: &QString, mine: bool) -> QString {
@@ -7338,8 +7365,9 @@ impl qobject::Sioul {
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
         // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
-        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud"].contains(&steps.as_str()) && offline()) {
+        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "availability"
+        // Agenda ⚙ ▸ Your availability and its "Share with…" (pictures alone; docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "availability"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

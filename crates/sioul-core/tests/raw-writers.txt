@@ -82,6 +82,9 @@ sioul-app/src/mail.rs	perform_moving	1	std::fs::remove_file(file)
 # sioul-app/src/mail.rs: the mailbox's chip and address chosen on this device (state): no item.
 sioul-app/src/mail.rs	write_view	1	sioul_core::filelock::replace(path, text.as_bytes())
 
+# sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities (state): no item.
+sioul-app/src/mirrors.rs	save	1	sioul_sync::share::write_atomically(&memo_path(), text.as_bytes())
+
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
 sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)

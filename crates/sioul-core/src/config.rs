@@ -616,6 +616,11 @@ pub struct AgendaSettings {
     /// `availability`): each with its agendas, words, shares and mirrors.
     #[serde(default)]
     pub availabilities: Vec<crate::availability::Availability>,
+    /// The accounts whose server Sioul tells your working hours (Settings ▸
+    /// Hours), for its free/busy (`availability::working_hours`, written as
+    /// Nextcloud's own settings page does): off at first, by account id.
+    #[serde(default)]
+    pub send_hours: Vec<String>,
 }
 
 impl AgendaSettings {

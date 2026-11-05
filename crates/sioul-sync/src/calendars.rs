@@ -467,6 +467,12 @@ pub fn google_public_busy(api: &GoogleApi, id: &str, on: bool) -> Result<Option<
 
 const PUBLIC_DETAILS: &str = " public with its details already";
 
+/// A Google calendar's public iCal address, which a public calendar, or one
+/// public for its free/busy, serves (`google_public_busy`, `google_sharing`).
+pub fn google_public_ical(id: &str) -> String {
+    format!("https://calendar.google.com/calendar/ical/{}/public/basic.ics", crate::google::encode(id))
+}
+
 /// Refused because the calendar is public with its details already (`google_public_busy`).
 pub fn public_with_details(error: &SyncError) -> bool {
     matches!(error, SyncError::Server(m) if m.starts_with("Google Calendar, public ") && m.ends_with(PUBLIC_DETAILS))

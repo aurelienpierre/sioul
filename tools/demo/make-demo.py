@@ -1523,6 +1523,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         # partner's, shared for when they are busy alone (read only, one word for every title).
         ("calendars", "lea", "Léa", "#b07d3f", ["VEVENT"]),
         ("calendars", "sam", "Sam", "#4f6d8f", ["VEVENT"]),
+        # Your availability for Sam (5 November 2026): the calendar of busy blocks Sioul keeps,
+        # shared with Sam on the server (Agenda ⚙ ▸ Your availability); its blocks come from the upkeep.
+        ("calendars", "busy-sam", t("Noa, busy times", "Noa, heures prises"), "#5b6470", ["VEVENT"]),
         ("contacts", "contacts", "Contacts", None, []),
     ]
     for kind, cid, name, colour, components in collections:
@@ -1534,6 +1537,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         state = [f"url = {toml_string(DAV_URL + kind + '/noa/' + cid + '/')}", f"ctag = \"demo-{cid}-1\"", f"read_only = {read_only}",
                  "components = " + toml_list(components)]
         p.write(p.state / "dav" / DAV / kind / f"{cid}.toml", "\n".join(state) + "\n")
+    # Where the account's calendars live, as a Nextcloud says it (`/remote.php/dav/`): what
+    # Agenda ⚙ ▸ Your availability reads the server's kind and name from.
+    p.write(p.state / "dav" / DAV / "homes.toml", f'calendars = "{DAV_URL}remote.php/dav/calendars/noa/"\n')
 
     me_w = (ME, WORK, "ACCEPTED")
     events = [
@@ -2786,6 +2792,30 @@ parent_address = "sam@example.org"
 whose = "partner"
 name = "Sam"
 {work_agenda}
+# Your availability (Agenda ⚙ ▸ Your availability): your busy times for Sam,
+# "Work" for the work agenda, kept in a calendar of blocks shared with Sam.
+[[agenda.availabilities]]
+id = "5a0c9e1e-6f1b-4c1e-9c43-7b2d5e8a1f00"
+name = {toml_string(t("For Sam", "Pour Sam"))}
+agendas = ["{DAV}/personal", "{DAV}/work"]
+words = {{ "{DAV}/work" = {toml_string(t("Work", "Travail"))} }}
+rounding = 0
+horizon = 60
+closing = false
+
+[[agenda.availabilities.mirrors]]
+account = "{DAV}"
+calendar = "busy-sam"
+transparent = true
+
+[[agenda.availabilities.shares]]
+audience = "person"
+who = "sam"
+way = "mirror-share"
+account = "{DAV}"
+link = ""
+made = "{p.clock.today}"
+
 [map]
 geocode = false
 

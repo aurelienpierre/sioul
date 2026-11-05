@@ -2142,7 +2142,9 @@ pub fn default_calendar() -> Option<Collection> {
 
 /// `default_calendar`, the choice given.
 pub fn default_calendar_of(chosen: Option<&str>) -> Option<Collection> {
-    let writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT")).collect();
+    // Never a calendar of busy blocks Sioul keeps for your availability.
+    let mirrors = crate::availability::mirror_places();
+    let writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT") && !mirrors.iter().any(|(a, id)| *a == c.account && *id == c.id)).collect();
     if let Some(found) = chosen.and_then(|id| writable.iter().find(|c| format!("{}/{}", c.account, c.id) == id)) {
         return Some(found.clone());
     }

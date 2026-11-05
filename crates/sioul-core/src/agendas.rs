@@ -959,6 +959,37 @@ pub fn put_availability(path: &Path, availability: &crate::availability::Availab
     })
 }
 
+/// Your working hours told to an account's server, or no longer
+/// (`[agenda] send_hours`, by account id).
+pub fn set_send_hours(path: &Path, account: &str, on: bool) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        if !doc.contains_key("agenda") {
+            if !on {
+                return Ok(());
+            }
+            doc["agenda"] = toml_edit::table();
+        }
+        let agenda = doc["agenda"].as_table_mut().ok_or_else(|| format!("{}: agenda is not a table", path.display()))?;
+        let mut accounts: Vec<String> = agenda.get("send_hours").and_then(toml_edit::Item::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        accounts.retain(|a| a != account);
+        if on {
+            accounts.push(account.to_string());
+        }
+        if accounts.is_empty() {
+            agenda.remove("send_hours");
+        } else {
+            agenda.insert("send_hours", toml_edit::value(words_array(&accounts)));
+        }
+        if agenda.is_empty() {
+            doc.remove("agenda");
+        }
+        crate::config::write_document(path, &doc)?;
+        crate::changes::said(crate::changes::Kind::Agendas);
+        Ok(())
+    })
+}
+
 /// An availability as its table says it; none when it does not read.
 fn availability_of(table: &toml_edit::Table) -> Option<crate::availability::Availability> {
     toml::from_str(&toml_edit::DocumentMut::from(table.clone()).to_string()).ok()
