@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn a_file_another_program_wrote_is_read_once() {
         let stand = Stand::new("other");
-        std::fs::write(stand.root.join("cur").join("1777000000.M1P2.host:2,S"), "Message-ID: <x@example.org>\r\nSubject: From mutt\r\n\r\nHi\r\n").unwrap();
+        std::fs::write(stand.root.join("cur").join(format!("1777000000.M1P2.host{}2,S", maildir::INFO)), "Message-ID: <x@example.org>\r\nSubject: From mutt\r\n\r\nHi\r\n").unwrap();
         maildir::parses_reset();
         assert_eq!(stand.read()[0].1.subject, "From mutt");
         stand.read();
@@ -952,7 +952,15 @@ mod tests {
 
     /// Sets a directory's time, as a change at `at` would have left it.
     fn set_dir_time(dir: &Path, at: std::time::SystemTime) {
-        std::fs::File::open(dir).unwrap().set_modified(at).unwrap();
+        #[cfg(not(windows))]
+        let handle = std::fs::File::open(dir).unwrap();
+        // Windows opens a directory only with FILE_FLAG_BACKUP_SEMANTICS, and sets its time with write access.
+        #[cfg(windows)]
+        let handle = {
+            use std::os::windows::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new().write(true).custom_flags(0x0200_0000).open(dir).unwrap()
+        };
+        handle.set_modified(at).unwrap();
     }
 
     fn kept_subjects(recent: &Recent) -> Vec<String> {

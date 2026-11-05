@@ -160,9 +160,28 @@ pub fn confirmed(unmatched: Vec<Removal>, server: impl IntoIterator<Item = u32>,
 /// address's Maildir): the same directory, or one inside the other,
 /// compared as the system resolves them (links, `..`).
 pub fn shared(own: &Path, others: &[PathBuf]) -> bool {
-    let resolved = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let own = resolved(own);
     others.iter().map(|other| resolved(other)).any(|other| other == own || other.starts_with(&own) || own.starts_with(&other))
+}
+
+/// A path as the system resolves it: its longest part that exists, links
+/// followed, then the rest as written. A folder not made yet beside one reached
+/// through a link (macOS's /var) still compares with it.
+fn resolved(path: &Path) -> PathBuf {
+    let mut rest = Vec::new();
+    let mut head = path;
+    loop {
+        if let Ok(real) = std::fs::canonicalize(head) {
+            return rest.iter().rev().fold(real, |path, part| path.join(part));
+        }
+        match (head.file_name(), head.parent()) {
+            (Some(name), Some(parent)) => {
+                rest.push(name.to_os_string());
+                head = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
 }
 
 /// Whether another address of the configuration shares `account`'s Maildir
@@ -375,6 +394,21 @@ mod tests {
         let here = left(&[9]);
         assert!(confirmed(plan.unmatched.clone(), [9, 10], &here).is_empty(), "UID 10 is not here");
         assert_eq!(confirmed(plan.unmatched, [9], &here), [Removal { path: old, old: origin(1, 6), new: None }]);
+    }
+
+    /// A folder not made yet inside one reached through a link is still inside
+    /// it: macOS's temporary folder is /var, a link to /private/var.
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_not_made_yet_behind_a_link_is_still_inside() {
+        let folder = Folder::new("linked");
+        let link = folder.root.with_file_name(format!("{}-link", folder.root.file_name().unwrap().to_string_lossy()));
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&folder.root, &link).unwrap();
+        assert!(shared(&folder.root, &[link.join(".Sub")]), "inside, through the link");
+        assert!(shared(&link, &[folder.root.join(".Later")]), "inside, the link on this side");
+        assert!(!shared(&link, &[folder.root.with_file_name("sioul-renumbered-elsewhere").join(".Sub")]), "beside it: not shared");
+        std::fs::remove_file(&link).unwrap();
     }
 
     /// Two addresses on one directory, or one inside another's: nothing goes

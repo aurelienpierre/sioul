@@ -14,7 +14,7 @@
 //! **Nextcloud** (sabre/dav), by its DAV sharing: a calendar's shares are its
 //! `oc:invite` property, changed by a POST of `oc:share` (`set`, `remove`);
 //! its public link by `cs:publish-calendar` and `cs:unpublish-calendar`, read
-//! back as `cs:publish-url`. A server says it shares by its DAV header:
+//! back as `cs:publish-url` and given as its feed (`subscription`). A server says it shares by its DAV header:
 //! Nextcloud's `oc-resource-sharing`, CalendarServer's `calendarserver-sharing`
 //! (caldav-sharing §5.1), its links by `oc-calendar-publishing`; one that says
 //! neither does not share from Sioul.
@@ -289,7 +289,8 @@ pub enum Sharer {
 pub struct Sharing {
     pub sharer: Sharer,
     pub people: Vec<Sharee>,
-    /// Its public link, read only, when one is on.
+    /// Its public link, read only, when one is on: an address any agenda
+    /// app subscribes to (an ICS feed; Nextcloud's `subscription`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link: Option<String>,
     /// The server publishes a link at all.
@@ -333,7 +334,17 @@ pub fn dav_sharing(client: &Client, url: &str) -> Result<Sharing, SyncError> {
     Ok(Sharing { sharer: Sharer::Nextcloud, people, link, links })
 }
 
-/// Who `oc:invite` names, and the link `cs:publish-url` gives.
+/// The address to give for a Nextcloud calendar's `cs:publish-url`: its
+/// feed, `?export`, which any agenda app subscribes to, as Nextcloud
+/// Calendar's own "Copy subscription link" gives it (`PublishCalendar.vue`,
+/// read 5 November 2026). The bare address is a CalDAV collection, which a
+/// browser and most agenda apps cannot open.
+pub fn subscription(publish_url: &str) -> String {
+    let url = publish_url.trim();
+    if url.contains('?') { url.to_string() } else { format!("{url}?export") }
+}
+
+/// Who `oc:invite` names, and the link `cs:publish-url` gives (its feed, `subscription`).
 fn read_invite(xml: &str) -> Result<(Vec<Sharee>, Option<String>), SyncError> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| SyncError::Server(format!("XML: {e}")))?;
     let mut people = Vec::new();
@@ -344,7 +355,7 @@ fn read_invite(xml: &str) -> Result<(Vec<Sharee>, Option<String>), SyncError> {
         let name = child("common-name").and_then(|n| n.text()).map(|t| t.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| href.rsplit('/').next().unwrap_or(&href).to_string());
         people.push(Sharee { group: href.contains("/groups/"), id: href, name, access: if write { Access::Write } else { Access::Read } });
     }
-    let link = doc.descendants().find(|n| n.has_tag_name((CALSERVER, "publish-url"))).and_then(|p| p.descendants().find(|c| c.has_tag_name((DAV, "href"))).and_then(|h| h.text()).or(p.text())).map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    let link = doc.descendants().find(|n| n.has_tag_name((CALSERVER, "publish-url"))).and_then(|p| p.descendants().find(|c| c.has_tag_name((DAV, "href"))).and_then(|h| h.text()).or(p.text())).map(str::trim).filter(|t| !t.is_empty()).map(subscription);
     Ok((people, link))
 }
 
@@ -505,7 +516,7 @@ mod tests {
         dav_unshare(&client, &url, "principal:principals/users/sam").unwrap();
         assert_eq!(read().people.len(), 1);
         dav_publish(&client, &url, true).unwrap();
-        assert_eq!(read().link.as_deref(), Some("https://cloud.example.org/remote.php/dav/public-calendars/AbC123"));
+        assert_eq!(read().link.as_deref(), Some("https://cloud.example.org/remote.php/dav/public-calendars/AbC123?export"), "its feed, which any agenda app reads");
         dav_publish(&client, &url, false).unwrap();
         assert_eq!(read().link, None);
         let plain = serve(Arc::new(Plain));

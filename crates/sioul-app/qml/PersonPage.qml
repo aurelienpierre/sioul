@@ -33,15 +33,38 @@ Panel {
     signal keepsAsked(var person)
     signal endAsked(var person)
 
-    function reload() {
+    // Read again; `kept`, for a change heard from elsewhere: what went wrong stays
+    // said, and so does the hand-over line while the page shows that person.
+    function reload(kept) {
+        const before = page.shown
         page.shown = page.personId !== "" ? JSON.parse(page.sioul.personPage(page.personId) || "null") : null
-        page.problem = ""
+        if (kept !== true)
+            page.problem = ""
+        if (kept === true && before && page.shown && before.id === page.shown.id && (before.handover || "") !== "") {
+            page.shown = Object.assign({}, page.shown, { handover: before.handover, handover_age: before.handover_age })
+            return
+        }
         // A hand-over line shown is said for good: never again, on any device.
         if (page.shown && (page.shown.handover || "") !== "")
             page.sioul.personHandoverSaid(page.personId, page.shown.handover_age)
     }
 
     onPersonIdChanged: page.reload()
+
+    // The person, or their agendas, changed here or on another device: read again.
+    Connections {
+        target: page.sioul
+
+        function onPersonsChanged() {
+            if (page.personId !== "")
+                page.reload(true)
+        }
+
+        function onAgendasChanged() {
+            if (page.personId !== "")
+                page.reload(true)
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent

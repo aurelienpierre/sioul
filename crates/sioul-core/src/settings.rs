@@ -1690,7 +1690,8 @@ mod tests {
         let tr = Translator::new("en");
         let inbox_of = |config: &Config| for_view("letters", config, &tr, &[], None).into_iter().find(|s| s.key == "letters.inbox").map(|s| (s.kind, s.value));
         // As an older Sioul wrote it, under the Porch.
-        std::fs::write(&path, format!("case_store = \"{}\"\n\n[letters]\ninbox = \"/stand-in/Scans\"\n", dir.join("Notes").display())).unwrap();
+        // A literal string: Windows' backslashes are no escapes.
+        std::fs::write(&path, format!("case_store = '{}'\n\n[letters]\ninbox = \"/stand-in/Scans\"\n", dir.join("Notes").display())).unwrap();
         let config = Config::load(&path).unwrap();
         assert_eq!(inbox_of(&config), Some((Kind::Folder, SettingValue::Text("/stand-in/Scans".into()))));
         assert!(for_view("porch", &config, &tr, &[], None).iter().all(|s| s.key != "letters.inbox"), "no longer the Porch's");

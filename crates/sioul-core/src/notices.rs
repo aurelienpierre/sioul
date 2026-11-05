@@ -899,13 +899,15 @@ mod tests {
         std::fs::create_dir_all(inbox.join("new")).unwrap();
         std::fs::create_dir_all(inbox.join("cur")).unwrap();
         let file = inbox.join("new").join("1700.M1P2.desk,U5-40");
+        // Flags after the platform's separator (":" is no file name on Windows).
+        let flagged = |flags: &str| inbox.join("cur").join(format!("1700.M1P2.desk,U5-40{}2,{flags}", crate::maildir::INFO));
         std::fs::write(&file, "x").unwrap();
         assert!(message_unread(&file));
-        std::fs::rename(&file, inbox.join("cur").join("1700.M1P2.desk,U5-40:2,F")).unwrap();
+        std::fs::rename(&file, flagged("F")).unwrap();
         assert!(message_unread(&file), "flagged, still unread");
-        std::fs::rename(inbox.join("cur").join("1700.M1P2.desk,U5-40:2,F"), inbox.join("cur").join("1700.M1P2.desk,U5-40:2,FS")).unwrap();
+        std::fs::rename(flagged("F"), flagged("FS")).unwrap();
         assert!(!message_unread(&file), "read");
-        std::fs::remove_file(inbox.join("cur").join("1700.M1P2.desk,U5-40:2,FS")).unwrap();
+        std::fs::remove_file(flagged("FS")).unwrap();
         assert!(!message_unread(&file), "gone");
         let _ = std::fs::remove_dir_all(&dir);
     }

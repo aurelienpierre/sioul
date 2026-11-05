@@ -66,6 +66,8 @@ Item {
         id: shell
 
         property string today: "2099-01-05"
+        // The places at the window's left, New at their top (main.qml); false folded into ☰.
+        property bool railShown: true
         property real now: root.monday + 10 * 3600
         property real backAt: 0
         property var cardRef: null
@@ -167,6 +169,22 @@ Item {
             mock.longWords = false
             mock.overlaps = "[]"
             mock.asideGiven = ""
+            shell.railShown = true
+        }
+
+        // New event: none on the page beside the places' New; where they fold into ☰
+        // (a phone, a narrow window), the page keeps its own (5 November 2026).
+        function test_new_event_only_where_new_is_out_of_sight() {
+            const wide = makePage()
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", can_add: true, days: [day(0)] })
+            wait(50)
+            const button = root.find(wide, "agendaNewEvent")
+            verify(button !== null && !button.visible, "the places' New makes events")
+            shell.railShown = false
+            verify(button.visible, "the places folded: a new event from the page")
+            const phone = makePage(412)
+            wait(50)
+            verify(root.find(phone, "agendaNewEvent").visible, "a phone's")
         }
 
         // What comes showing today asks for the doses' reading as the Day does: when
