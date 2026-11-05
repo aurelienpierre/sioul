@@ -943,7 +943,8 @@ fn movements_are_made_changed_and_removed_by_what_they_are() {
     let today = day("2026-10-20");
     let new = acts::New { label: "Client C".into(), gross: Some(Money(52000)), fees: vec![Fee { kind: FeeKind::Processor, amount: Money(1543), from: FeeFrom::Hand, about: false }], budget: "work".into(), day: day("2026-10-03"), note: "The October lesson".into(), ties: vec!["sioul:project/teaching".into()], ..acts::New::default() };
     let (made, heard) = crate::changes::heard(|| acts::make(&root, &tr, &new, "Written in Sioul on 2026-10-20.", today).unwrap());
-    assert_eq!(heard, [super::KIND]);
+    // Heard as money, by the act and by the budget file's own writer: the window makes one signal of a burst.
+    assert!(!heard.is_empty() && heard.iter().all(|k| *k == super::KIND), "{heard:?}");
     assert_eq!(made.said, "Work holds €504.57 more for October 2026.");
     let books = super::books(&root, &words, today);
     let (m, _) = crate::moneylist::get(&books, &made.address).unwrap();
@@ -1006,4 +1007,36 @@ fn the_payers_card_is_the_one_its_mail_names() {
     assert_eq!(acts::payer_of(&paypal, Some("service@paypal.fr")), acts::Payer { address: None, name: "Lou Exemple".into() }, "the payer, not PayPal");
     let client = mail("mid:c1@example.org", "2026-10-01", PaymentKind::Received, 30000, "EUR", "Lou Exemple");
     assert_eq!(acts::payer_of(&client, Some("lou@example.org")).address.as_deref(), Some("lou@example.org"));
+}
+
+/// The payer's ties written in Sioul's own ties (design §1.1): the card its
+/// mail names and the person whose card it is, each once however often it
+/// is said; a tie you took apart (`[[apart]]` with the card) never made again.
+#[test]
+fn the_payers_ties_are_written_once_and_kept_apart_when_corrected() {
+    use crate::contacts::{Contact, Labeled};
+    let root = folder("ties");
+    let links = root.join("links.toml");
+    let cards = vec![Contact { uid: "c-lou".into(), name: "Lou Exemple".into(), emails: vec![Labeled { label: String::new(), value: "lou@example.org".into() }], ..Contact::default() }];
+    std::fs::write(root.join("persons.toml"), "format = 1\nnames_read = 1\n\n[person.p-lou]\nname = \"Lou\"\ncards = [\"c-lou\"]\nagents = true\n").unwrap();
+    let persons = crate::persons::Persons::load(&root.join("persons.toml"));
+    assert_eq!(persons.persons.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["p-lou"]);
+    let movement = crate::links::movement_uri("bank:main/A1");
+    let lou = acts::Payer { address: Some("lou@example.org".into()), name: String::new() };
+    let made = acts::tie_payers_in(&root, &[(movement.clone(), lou.clone())], &cards, &persons, &links).unwrap();
+    let edges = crate::links::LocalLinks::load(&links).links;
+    assert!(edges.iter().any(|e| e.from == movement && e.to == crate::links::contact_uri("c-lou") && e.how == "payer"), "{edges:?}");
+    assert_eq!(made, edges.len());
+    assert!(edges.iter().any(|e| e.from == movement && e.to == crate::links::person_uri("p-lou")), "the person whose card it is too: {edges:?}");
+    acts::tie_payers_in(&root, &[(movement.clone(), lou.clone())], &cards, &persons, &links).unwrap();
+    assert_eq!(crate::links::LocalLinks::load(&links).links.len(), edges.len(), "each once");
+    // Corrected: never made again for that movement; another movement still is.
+    std::fs::remove_file(&links).unwrap();
+    Store::edit(&root, |e| e.apart("bank:main/A1", &crate::links::contact_uri("c-lou"))).unwrap();
+    acts::tie_payers_in(&root, &[(movement.clone(), lou.clone())], &cards, &persons, &links).unwrap();
+    assert!(crate::links::LocalLinks::load(&links).links.iter().all(|e| e.from != movement), "taken apart, never tied again");
+    let other = crate::links::movement_uri("bank:main/A2");
+    acts::tie_payers_in(&root, &[(other.clone(), lou)], &cards, &persons, &links).unwrap();
+    assert!(crate::links::LocalLinks::load(&links).links.iter().any(|e| e.from == other));
+    let _ = std::fs::remove_dir_all(&root);
 }

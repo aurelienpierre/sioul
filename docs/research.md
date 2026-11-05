@@ -15,7 +15,7 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 - **ME/CFS, long COVID and other illnesses that limit energy**: pacing within the energy envelope (25), the crash after exertion (33), the sides of what an activity costs (36).
 - **Eating disorders and irregular eating**: meals by the clock, set by the person (28).
 - **Everyone who knows admin anxiety**: administrative burden (3), avoidance (4), admin anxiety and its routes (30), worry as a cost of its own (36), the portal model (37), accounts looked away from (39), reminders that name the bill (40), red and accounting words (43).
-- **People who work for themselves**: the admin it adds (31), taxes set aside and weeks of cover (44).
+- **People who work for themselves**: the admin it adds (31), taxes set aside and weeks of cover (44), receipts declared at what the client paid (62), fees told with their payment (63, 65).
 - **People with irregular or tight income** (paid by the week, by benefits or by clients): the pay cycle (38), forecasts that forget expenses (42), how long the money lasts (44).
 - **Parents who share a child's care, in one home or two**: several agendas (46), one person in two places (47), the noticing and reminding (48), a holder from end to end (49), parents in parallel (50), records that invite score-keeping (51), availability kept private (52), one event in two agendas (54).
 - **People who share their time with a partner, or with several**: several agendas (46), availability kept private (52), a bare "busy" (53).
@@ -214,6 +214,23 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 60. **No server keeps a relation as a reference.**
    - vCard's `RELATED` is a typed address or text written on one card (RFC 6350), JSContact's `relatedTo` a map of UIDs (RFC 9553) (standards). Google keeps a related person's name and a type, Apple a labelled name, Nextcloud a typed text; Google's CardDAV speaks vCard 3.0, which has no `RELATED` (vendor documentation; Nextcloud's code). FHIR gives a relation a period, apart from the person's own record (HL7 FHIR R5, RelatedPerson; standard).
    - **Rule**: a person is Sioul's own record, linked to cards by UID, its relation in RFC 6350's words where they exist, with a period; nothing is written into the cards. Detail: [research/persons.md](research/persons.md), §5.
+
+62. **A receipt is declared at what the client paid, on the day its collector received it.**
+   - A micro-entrepreneur's taxable profit is the gross receipts less a flat allowance (CGI art. 102 ter; law); every receipt counts, platform commissions included, and none of a processor's fees can be deducted (BOI-BNC-DECLA-20-10; URSSAF's practical sheet, read in summaries). A sum a third party collects for you is received when that third party receives it, even if it pays it out the next year (BOI-BNC-BASE-20-10-10, §80; law). The receipts register gives each receipt's day, client, means of payment and invoice (Service-public, F23266; official).
+   - That a payment received on PayPal, Stripe or a platform is received on the day it reaches your balance there, not on the day of its payout to the bank, is Sioul's inference from §80.
+   - **Rule**: a movement keeps what was paid, its fees and what arrived, and the day it was paid at its processor; the declaration counts what was paid, by that day, and the register lists each receipt, a payout's payments one by one. Detail: [research/money-ledger.md](research/money-ledger.md), §2.
+
+63. **Every ledger that models fees makes them part of one transaction, and a payout is a move between one's own accounts.**
+   - hledger's PayPal rules make three postings per payment (the gross, the net, the fee), and the withdrawal to the bank a transfer between two accounts (hledger manual; vendor); GnuCash records a payment's deductions as splits of one transaction (GnuCash guide; vendor); Stripe's payout reconciliation report lists each charge, refund and fee inside each payout (vendor). The budgeting apps without a fee field (YNAB, Actual, Firefly III's interface) leave the person to split by hand (their documentation; vendor).
+   - **Rule**: one row per payment, its fees inside it; a payout is one row between your accounts, saying the payments it carried, found by the processor's export, or by its amount oldest first when there is none (an inference a trial must check). Detail: [research/money-ledger.md](research/money-ledger.md), §3 and §4.
+
+64. **People find things again by scrolling and searching, not by filing.**
+   - In 345 people's long-term mail, filing into folders did not make finding easier, while search and threads did, and scrolling was the commonest way of finding (Whittaker et al. 2011; field log study); in personal files, people navigate more than they search, whatever the search engine (Bergman et al. 2008; two questionnaire studies); 94 % of mobile-banking users had checked a balance or recent transactions in the past year (Federal Reserve 2016; survey).
+   - **Rule**: the full ledger and the history of money mail open on the recent past, newest first, the search on top and the filters folded away, shown as words; a typed search reaches every area; no running total and no count. Detail: [research/money-ledger.md](research/money-ledger.md), §5.
+
+65. **A small loss told with the gain it comes with weighs least.**
+   - Thaler's hedonic editing proposes that a small loss is felt less when it is cancelled against the larger gain it comes with (Thaler 1985; theory); people's own judgements supported part of it and not the rest (Thaler & Johnson 1990; lab experiments), so the support is mixed. Seeing each payment apart raises the pain of paying (Prelec & Loewenstein 1998; theory and survey).
+   - **Rule**: fees are said inside their payment's row ("paid €520 · fees €15.43"), never as rows, columns or totals of their own. Detail: [research/money-ledger.md](research/money-ledger.md), §5.1.
 
 ## Sources
 - Kushlev & Dunn (2015), Checking email less frequently reduces stress, *Computers in Human Behavior* 43.
@@ -428,3 +445,15 @@ Sioul is designed for the people for whom admin costs most. Each group below has
   - Verhagen (2026), Le nombre de proches aidants à la vie quotidienne baisse de 6 % entre 2008 et 2022, et l'aide apportée s'intensifie, *Études et résultats* 1377, DREES. https://drees.solidarites-sante.gouv.fr/sites/default/files/2026-06/Embargo_ER1377_Proches_aidants.pdf
   - Wolff, Spillman, Freedman & Kasper (2016), A national profile of family and unpaid caregivers who assist older adults with health care activities, *JAMA Internal Medicine* 176(3). doi:10.1001/jamainternmed.2015.7664 (abstract only)
   - Google, People API (Relation) and CardDAV API; Apple, ABPersonRelatedNamesProperty; Nextcloud Contacts, `src/models/rfcProps.js`; sabre/vobject, `lib/VCardConverter.php`. https://developers.google.com/people/api/rest/v1/people, https://developers.google.com/people/carddav, https://github.com/nextcloud/contacts/tree/main/src/models, https://github.com/sabre-io/vobject/blob/master/lib/VCardConverter.php
+- Findings 62 to 65; "(abstract only)" marks a source read at its abstract or in a summary; the processors' and the ledger apps' pages, and what each source gave, are in [research/money-ledger.md](research/money-ledger.md), §9:
+  - Code général des impôts, art. 102 ter; BOFiP, BOI-BNC-DECLA-20-10 and BOI-BNC-BASE-20-10-10 §80. https://bofip.impots.gouv.fr/bofip/4807-PGP, https://bofip.impots.gouv.fr/bofip/6440-PGP.html
+  - Service-public, Obligations comptables du micro-entrepreneur (F23266). https://entreprendre.service-public.gouv.fr/vosdroits/F23266
+  - URSSAF, Déterminer mon chiffre d'affaires (through a search summary). https://www.autoentrepreneur.urssaf.fr/portail/accueil/une-question/toutes-les-fiches-pratiques/determiner-mon-chiffre-daffaires.html
+  - hledger 1.19 manual, CSV format (the PayPal example). https://hledger.org/1.19/csv.html
+  - GnuCash Tutorial and Concepts Guide, Simple vs. Split Transactions. https://code.gnucash.org/docs/C/gnucash-guide/txns-registers-txntypes.html
+  - Stripe Docs, Payout reconciliation report. https://docs.stripe.com/reports/payout-reconciliation
+  - Whittaker, Matthews, Cerruti, Badenes & Tang (2011), Am I wasting my time organizing email? A study of email refinding, CHI 2011. doi:10.1145/1978942.1979457 (abstract only)
+  - Bergman, Beyth-Marom, Nachmias, Gradovitch & Whittaker (2008), Improved search engines and navigation preference in personal information management, *ACM Transactions on Information Systems* 26(4). doi:10.1145/1402256.1402259
+  - Federal Reserve Board (2016), *Consumers and Mobile Financial Services 2016* (executive summary). https://www.federalreserve.gov/econresdata/consumers-and-mobile-financial-services-report-201603.pdf
+  - Thaler & Johnson (1990), Gambling with the house money and trying to break even, *Management Science* 36(6). doi:10.1287/mnsc.36.6.643 (abstract only)
+  - Prelec & Loewenstein (1998), The red and the black: mental accounting of savings and debt, *Marketing Science* 17(1). doi:10.1287/mksc.17.1.4 (abstract only)

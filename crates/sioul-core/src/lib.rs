@@ -279,6 +279,8 @@ pub mod persons;
 pub mod pause;
 pub mod quiet;
 pub mod reach;
+// receipts: the declaration view and the receipts register (docs/accounting.md, "The declaration").
+pub mod receipts;
 pub mod reviews;
 pub mod routines;
 pub mod reminders;

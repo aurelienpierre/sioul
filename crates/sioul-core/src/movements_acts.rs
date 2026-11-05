@@ -1394,11 +1394,16 @@ pub fn tie_payers(root: &Path, ties: &[(String, Payer)]) -> Result<usize, String
         return Ok(0);
     }
     let persons = crate::persons::Persons::load(&crate::persons::Persons::default_path());
+    tie_payers_in(root, ties, &contacts, &persons, &crate::links::LocalLinks::default_path())
+}
+
+/// `tie_payers` with the cards, the persons and the ties' file given.
+pub fn tie_payers_in(root: &Path, ties: &[(String, Payer)], contacts: &[crate::contacts::Contact], persons: &crate::persons::Persons, links: &Path) -> Result<usize, String> {
     let store = Store::load(root).unwrap_or_default();
     let apart = |a: &str, b: &str| store.apart.iter().any(|p| (p.a == a && p.b == b) || (p.a == b && p.b == a));
     let mut edges: Vec<crate::links::Edge> = Vec::new();
     for (movement, payer) in ties {
-        let Some(card) = card_of(&contacts, payer) else { continue };
+        let Some(card) = card_of(contacts, payer) else { continue };
         let card_uri = crate::links::contact_uri(&card.uid);
         let key = movement.strip_prefix("sioul:movement/").map_or_else(|| movement.clone(), crate::notes::decode);
         if apart(&key, &card_uri) || apart(movement, &card_uri) {
@@ -1410,7 +1415,7 @@ pub fn tie_payers(root: &Path, ties: &[(String, Payer)]) -> Result<usize, String
         }
     }
     let count = edges.len();
-    crate::links::LocalLinks::add_all(&crate::links::LocalLinks::default_path(), &edges)?;
+    crate::links::LocalLinks::add_all(links, &edges)?;
     Ok(count)
 }
 
