@@ -563,6 +563,7 @@ pub fn rename_collection(collection: &Collection, name: &str) -> Result<(), Stri
         state.renamed = true;
         state.save(&path)?;
     }
+    collection_said(collection.kind);
     Ok(())
 }
 
@@ -586,6 +587,7 @@ pub fn recolour_collection(collection: &Collection, colour: &str) -> Result<(), 
         state.recoloured = true;
         state.save(&path)?;
     }
+    collection_said(collection.kind);
     Ok(())
 }
 
@@ -670,10 +672,12 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
     if collection.account == LOCAL || state.pending {
         let _ = std::fs::remove_dir_all(&collection.dir);
         let _ = std::fs::remove_file(&path);
+        collection_said(collection.kind);
         return Ok(copy);
     }
     state.removed = true;
     state.save(&path)?;
+    collection_said(collection.kind);
     Ok(copy)
 }
 
@@ -690,7 +694,9 @@ pub fn stop_showing(collection: &Collection) -> Result<(), String> {
     }
     state.removed = true;
     state.leave = true;
-    state.save(&path)
+    state.save(&path)?;
+    collection_said(collection.kind);
+    Ok(())
 }
 
 /// The items a collection holds here: events, tasks or contacts.
@@ -776,6 +782,7 @@ pub fn create(kind: Kind, account: &str, name: &str, color: Option<&str>, compon
     let state = State { pending: account != LOCAL, components: components.iter().map(|c| c.to_string()).collect(), ..State::default() };
     state.save(&state_path(account, kind, &id))?;
     let dir = prepare(kind, account, &id, name, color).map_err(|e| e.to_string())?;
+    collection_said(kind);
     Ok(Collection { kind, account: account.to_string(), id, dir, name: name.to_string(), color: color.map(str::to_string), read_only: false, components: state.components })
 }
 
@@ -928,11 +935,24 @@ pub fn remove_item(path: &Path) -> Result<(), String> {
 }
 
 /// A write of a task's or an event's file counted (`timeline::written`):
-/// the agenda's layouts made before it are older.
+/// the agenda's layouts made before it are older. Every item's write and
+/// removal comes here, and says its kind to the window (`changes`).
 fn counted(path: &Path) {
     if path.starts_with(Kind::Calendars.root()) {
         crate::timeline::note_written();
+        crate::changes::said(crate::changes::Kind::Calendars);
+    } else if path.starts_with(Kind::Contacts.root()) {
+        crate::changes::said(crate::changes::Kind::Contacts);
     }
+}
+
+/// A collection made, renamed, recoloured, removed or left, said to the
+/// window: a calendar's as the agendas, an address book's as the contacts.
+fn collection_said(kind: Kind) {
+    crate::changes::said(match kind {
+        Kind::Calendars => crate::changes::Kind::Agendas,
+        Kind::Contacts => crate::changes::Kind::Contacts,
+    });
 }
 
 /// `agenda::guard` for a file of a collection, its refusal said.

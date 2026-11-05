@@ -35,6 +35,11 @@ Item {
 
         signal personsChanged
         signal agendasChanged
+        signal papersChanged
+        signal lettersChanged
+        signal moneyChanged
+        signal sitesChanged
+        signal linksChanged
 
         property var agents: []
         property var opened: []
@@ -301,6 +306,19 @@ Item {
             mock.handover = "From 16, Léa can have a carte Vitale and a reimbursement account in Léa’s own name."
             mock.noe = false
             mock.personsChanged()
+        }
+
+        // A person's page shows their papers, letters, budgets, sites and
+        // ties: each kind changed elsewhere reads it again at once.
+        function test_each_kind_of_theirs_reads_the_page_again() {
+            person.personId = "p-lea"
+            waitForRendering(person)
+            const kinds = [mock.papersChanged, mock.lettersChanged, mock.moneyChanged, mock.sitesChanged, mock.linksChanged]
+            for (let i = 0; i < kinds.length; ++i) {
+                const reads = mock.pageReads
+                kinds[i]()
+                compare(mock.pageReads, reads + 1, "kind " + i)
+            }
         }
 
         function test_your_own_page_has_no_switch_and_no_cards() {

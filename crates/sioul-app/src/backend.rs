@@ -190,6 +190,16 @@ pub mod qobject {
         #[qinvokable]
         fn person_page(self: &Sioul, id: &QString) -> QString;
 
+        /// The persons made from older texts on this device, each with what
+        /// named them, for the Porch's card said once in an admin window
+        /// (`persons::made_card`): JSON `[{id, name, from}]`, `[]` none.
+        #[qinvokable]
+        fn persons_made(self: &Sioul) -> QString;
+
+        /// That card said: never shown again here.
+        #[qinvokable]
+        fn persons_made_said(self: &Sioul);
+
         /// A person saved from their form (new when `id` is empty): {"id"} or {"error"}.
         #[qinvokable]
         fn save_person(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
@@ -2417,9 +2427,23 @@ pub mod qobject {
         fn persons_changed(self: Pin<&mut Sioul>);
 
         /// What an agenda is changed (its role, its person, its area; your
-        /// availability's share): Agenda ⚙ and a person's page read it again.
+        /// availability's share; a calendar made, renamed or removed): Agenda ⚙
+        /// and a person's page read it again.
         #[qsignal]
         fn agendas_changed(self: Pin<&mut Sioul>);
+
+        /// The papers changed (`changes`): the Papers page and a person's page read them again.
+        #[qsignal]
+        fn papers_changed(self: Pin<&mut Sioul>);
+
+        /// Money changed (budgets, bank accounts and movements, contracts):
+        /// the bank's and the contracts' sections and a person's page read it again.
+        #[qsignal]
+        fn money_changed(self: Pin<&mut Sioul>);
+
+        /// The projects changed: the Projects and Time pages read them again.
+        #[qsignal]
+        fn projects_changed(self: Pin<&mut Sioul>);
 
         /// A task just done, whichever way (a list, its panel, the focus window):
         /// the status line offers "How was it?", quietly.
@@ -4064,7 +4088,9 @@ impl qobject::Sioul {
 
     fn start(mut self: Pin<&mut Self>) {
         // Each kind of object said changed by the one place that writes it: the views hear it (changes.rs).
-        crate::changes::listen(&self.qt_thread());
+        crate::changes::listen(&self.qt_thread(), &self.shared());
+        // What another program changes (the command line, the agents' tools), by its stamps.
+        crate::changes::watch(&self.qt_thread(), &self.shared());
         // Each agenda's role given its person, those typed before Sioul did (docs/persons.md).
         std::thread::spawn(crate::persons::tie_roles);
         // Nothing ends when a window starts or closes (decision 10): each state has its own end.
@@ -4244,6 +4270,14 @@ impl qobject::Sioul {
 
     fn person_page(&self, id: &QString) -> QString {
         QString::from(&crate::persons::page(&id.to_string()))
+    }
+
+    fn persons_made(&self) -> QString {
+        QString::from(&crate::persons::made_card())
+    }
+
+    fn persons_made_said(&self) {
+        crate::persons::made_said();
     }
 
     fn save_person(self: Pin<&mut Self>, id: &QString, edit: &QString) -> QString {
@@ -7395,6 +7429,10 @@ impl qobject::Sioul {
                 (problem, said)
             };
             let store = crate::share::store_of(&file);
+            if !said.is_empty() {
+                // Put back as if it came: each kind it holds said to its views (changes.rs).
+                crate::changes::arrived_stores(&qt, &shared, &std::iter::once(store.clone()).collect());
+            }
             let done = problem.clone();
             let _ = qt.queue(move |mut sioul| {
                 if !said.is_empty() {

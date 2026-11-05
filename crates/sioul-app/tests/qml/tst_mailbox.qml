@@ -107,7 +107,9 @@ Item {
             && (ask.query === "" || r.subject.toLowerCase().indexOf(ask.query.toLowerCase()) >= 0))
         const shown = rows.slice(0, ask.rows || 60)
         const marks = [root.marks.work, root.marks.home].map(m => Object.assign({ on: mock.off.indexOf(m.account) < 0 }, m))
-        const head = { resting: [], addresses: marks, filter: root.shownFilter(), earlier: ask.windows < 2, sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: "", windows: ask.windows, prefix: root.prefix }
+        // What is not shown, as `mail::hidden_parts` says it: an address switched off, older mail.
+        const hidden = mock.off.map(id => ({ text: "off:" + id, act: "on:" + id, button: "mailbox-hidden-switch-on" })).concat(ask.windows < 2 ? [{ text: "older", act: "earlier", button: "mailbox-show-older" }] : [])
+        const head = { resting: [], hidden: hidden, end: ask.windows < 2 ? "older:" : "mailbox-nothing-older", addresses: marks, filter: root.shownFilter(), earlier: ask.windows < 2, sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: "", windows: ask.windows, prefix: root.prefix }
         const pages = []
         for (let start = 0; start === 0 || start < shown.length; start += 60) {
             const part = shown.slice(start, start + 60)
@@ -509,6 +511,27 @@ Item {
             compare(next.boxChip, "unread")
             compare(lastAsk().chip, "unread")
             mock.kept = "{}"
+        }
+
+        // What is not shown now, said at the list's head, each with what brings it
+        // back: an address switched off here comes on again, older mail comes; the
+        // list's end says it too, then that nothing older is kept (5 November 2026).
+        function test_what_is_hidden_is_said_with_what_brings_it_back() {
+            const page = made()
+            page.switchAddress("home", false)
+            tryVerify(() => find(page, "mailboxHidden").visible)
+            const acts = () => all(find(page, "mailboxHidden"), c => c.objectName === "mailboxHiddenAct" && c.visible)
+            tryCompare(acts(), "length", 2)
+            compare(acts().map(b => b.text).join(" | "), "mailbox-hidden-switch-on | mailbox-show-older")
+            acts()[0].clicked()
+            compare(mock.off.length, 0, "switched on again")
+            tryCompare(acts(), "length", 1)
+            const end = find(page, "mailboxEnd")
+            verify(end.visible && all(end, c => c.text === "older:").length === 1, "the end says what is older")
+            acts()[0].clicked()
+            compare(lastAsk().windows, 2)
+            tryVerify(() => !find(page, "mailboxHidden").visible)
+            tryVerify(() => all(end, c => c.text === "mailbox-nothing-older" && c.visible).length === 1, 3000, "never a blank end")
         }
 
         // "Earlier messages": two more weeks, asked of Rust.

@@ -131,7 +131,7 @@ Un agenda qui est celui de quelqu’un d’autre se montre, et ne prend rien de 
 
 ## Vos agendas sur leurs serveurs {#agendas-on-their-servers}
 
-Agenda ⚙ ▸ **Vos agendas** crée, renomme, recolore, supprime et partage vos agendas sur le serveur qui les tient : Nextcloud et les autres serveurs CalDAV, Google, ou cet ordinateur.
+Agenda ⚙ ▸ **Vos agendas** crée, renomme, recolore, supprime et partage vos agendas sur le serveur qui les tient : Nextcloud et les autres serveurs CalDAV, Google, ou cet ordinateur. Jusqu’ici, la création et le partage n’ont été essayés que sur des serveurs de remplacement, jamais sur les vrais.
 
 - **Nouvel agenda…** demande le compte, un nom, une couleur, et s’il tient des événements, des tâches ou les deux ; dans le même formulaire, à qui il est, pour quoi et quand il vous atteint, pour que le nouvel agenda arrive avec son rôle. Un enfant, un ou une partenaire ou un autre parent nommé là qui n’est pas encore parmi vos proches le devient, avec ce lien ; celui ou celle qui y est déjà est relié ([Vos proches](contacts.md#household)). Un agenda Google ne tient que des événements. Il est sur son serveur après la prochaine synchronisation.
 - **Son nom**, tapé sur sa ligne, et **Couleur**, sur chacun de vos agendas, le changent ici tout de suite et sur son serveur à la prochaine synchronisation, avec Annuler.
@@ -144,7 +144,7 @@ Un agent d’IA ne crée, ne supprime ni ne partage jamais un agenda : ce sont
 
 ## Les événements des enfants {#childrens-events}
 
-L’agenda d’un enfant dit qui peut s’en charger : vous, et l’autre parent, une personne choisie dans la liste, avec l’adresse où vont ses invitations, dans les réglages de l’agenda, **Vos agendas**, sur sa ligne. Un jour de garde titré de l’un ou l’autre de ses noms compte. Là aussi : comment il ou elle répond (par une invitation dans sa messagerie, ou dans son propre Sioul, qui lit l’agenda de l’enfant), et qui se charge d’habitude de chaque type (« Sam se charge du dentiste de Tom »).
+L’agenda d’un enfant dit qui peut s’en charger : vous, et l’autre parent, une personne choisie dans la liste, avec l’adresse où vont ses invitations, dans les réglages de l’agenda, **Vos agendas**, sur sa ligne. Un jour de garde titré de l’un ou l’autre de ses noms compte. Là aussi : comment il ou elle répond (par une invitation dans sa messagerie, ou dans son propre Sioul, qui lit l’agenda de l’enfant), et qui se charge d’habitude de chaque type (« Sam se charge du dentiste de Tom »). Les invitations à l’autre parent n’ont été essayées jusqu’ici que sur des serveurs de remplacement.
 
 - **Qui s’en charge** : la fiche d’un événement d’enfant le dit, « Sam s’en charge, depuis le 3 novembre. », ou « Personne ne s’en charge encore. », avec ce que vous pouvez répondre : **Moi**, l’autre parent, **Pas cette fois**, **Demander à Sam de s’en charger**. Son **Type** (santé, dentiste, école, activité, vêtements, autre) se choisit là aussi, et, quand un parent dépose l’enfant et l’autre le reprend, **Qui ramène Tom**.
 - **Demandé une fois** : un événement ou une tâche qui arrive dans l’agenda d’un enfant sans personne pour s’en charger est demandé une fois, sous la ligne de tête de l’Agenda : « Tom : « Dentiste », mardi 10 novembre à 10:00. Qui s’en charge ? » Sioul propose qui se charge d’habitude de ce type, sinon qui a l’enfant ce jour-là (des journées entières intitulées « Avec Sam » dans l’agenda de l’enfant), la proposition en premier. **Plus tard** redemande une fois à votre prochain moment d’administratif, puis jamais.

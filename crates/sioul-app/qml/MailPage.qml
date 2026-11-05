@@ -289,7 +289,7 @@ Item {
     // place, so that the list keeps where it was.
     function applyBoxPage(text) {
         const got = JSON.parse(text)
-        page.box = { earlier: got.earlier, sentence: got.sentence, addresses: got.addresses, filter: got.filter || null, chip: got.chip, windows: got.windows }
+        page.box = { earlier: got.earlier, sentence: got.sentence, hidden: got.hidden || [], end: got.end || "", addresses: got.addresses, filter: got.filter || null, chip: got.chip, windows: got.windows }
         const rows = got.rows.map(r => page.boxRowOf(r, got.prefix || ""))
         const start = Math.min(got.start, page.boxRows.length)
         const end = start + rows.length
@@ -372,6 +372,19 @@ Item {
     function switchAddress(id, on) {
         page.sioul.switchMailAddress(id, on)
         page.filterAgain()
+    }
+    // What the head of the mailbox says is not shown, brought back: an area
+    // ticked with those ticked now, an address switched on, two more weeks.
+    function bringBack(act) {
+        if (act === "earlier") {
+            page.boxEarlier()
+        } else if (act.indexOf("tick:") === 0) {
+            const now = page.box && page.box.filter ? page.box.filter : {}
+            const areas = ["work", "admin", "leisure"].filter(a => a === act.slice(5) || now[a] === true)
+            page.tickAreas(areas.join("+"))
+        } else if (act.indexOf("on:") === 0) {
+            page.switchAddress(act.slice(3), true)
+        }
     }
     function filterAgain() {
         page.boxWindows = 1
@@ -1313,6 +1326,51 @@ Item {
                 wrapMode: Text.Wrap
                 color: page.searchOpen ? page.theme.text : page.theme.muted
             }
+            // What the mailbox does not show now, each with what brings it back
+            // (`mail::hidden_parts`): an area resting by your hours or left unticked,
+            // an address switched off in this list, older mail. On a phone too.
+            ColumnLayout {
+                objectName: "mailboxHidden"
+                visible: !page.draftsShown && !page.searchOpen && page.boxShown && page.box !== null && (page.box.hidden || []).length > 0
+                Layout.fillWidth: true
+                spacing: 0
+
+                Label {
+                    Layout.fillWidth: true
+                    text: page.sioul.text("mailbox-hidden-head")
+                    textFormat: Text.PlainText
+                    font.pixelSize: 13
+                    color: page.theme.muted
+                }
+                Repeater {
+                    model: page.box ? (page.box.hidden || []) : []
+
+                    delegate: RowLayout {
+                        id: hiddenPart
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 0
+                            text: page.theme.plain(hiddenPart.modelData.text)
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: page.theme.muted
+                        }
+                        Button {
+                            objectName: "mailboxHiddenAct"
+                            flat: true
+                            text: page.theme.plain(hiddenPart.modelData.button)
+                            onClicked: page.bringBack(hiddenPart.modelData.act)
+                        }
+                    }
+                }
+            }
             // What the search found, here and on the servers, in words.
             Label {
                 visible: page.searchOpen && page.found !== null && page.found.status !== ""
@@ -1644,13 +1702,33 @@ Item {
                     color: page.theme.muted
                 }
 
-                footer: Button {
-                    objectName: "mailboxEarlier"
-                    visible: page.box !== null && page.box.earlier && !page.boxMore
+                // The list's end, never blank: "Mail older than two weeks: Show older…",
+                // or that nothing older is kept here.
+                footer: Flow {
+                    objectName: "mailboxEnd"
+                    visible: page.box !== null && !page.boxMore
+                    width: boxList.width - 12
                     height: visible ? implicitHeight + 16 : 0
-                    flat: true
-                    text: page.sioul.text("ui-earlier")
-                    onClicked: page.boxEarlier()
+                    topPadding: 8
+                    leftPadding: 10
+                    spacing: 6
+
+                    Label {
+                        height: earlierButton.visible ? earlierButton.height : implicitHeight
+                        verticalAlignment: Text.AlignVCenter
+                        text: page.box ? (page.box.end || "") : ""
+                        textFormat: Text.PlainText
+                        color: page.theme.muted
+                    }
+                    Button {
+                        id: earlierButton
+
+                        objectName: "mailboxEarlier"
+                        visible: page.box !== null && page.box.earlier && !page.boxMore
+                        flat: true
+                        text: page.sioul.text("mailbox-show-older")
+                        onClicked: page.boxEarlier()
+                    }
                 }
             }
 

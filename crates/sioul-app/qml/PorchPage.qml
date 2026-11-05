@@ -183,6 +183,24 @@ Item {
             page.puttingBack = ""
         }
     }
+    // The persons made from older texts on this device (docs/persons.md, "Made from
+    // older texts"), in an admin window: said once, nothing to answer; once shown a
+    // few seconds, not shown again when the Porch is left.
+    property var personsMade: []
+    property bool personsMadeRead: false
+
+    function readPersonsMade() {
+        if (!page.personsMadeRead)
+            page.personsMade = JSON.parse(page.sioul.personsMade() || "[]")
+    }
+    Timer {
+        interval: 3000
+        running: page.visible && page.personsMade.length > 0 && !page.personsMadeRead
+        onTriggered: {
+            page.personsMadeRead = true
+            page.sioul.personsMadeSaid()
+        }
+    }
     // Shown a few seconds while the Porch is in view: said once, put away when the Porch is left.
     property bool withheldRead: false
     Timer {
@@ -210,7 +228,11 @@ Item {
         if (page.visible) {
             page.reloadDoses()
             page.readWithheld()
-        } else if (page.withheldRead) {
+            page.readPersonsMade()
+        } else if (page.personsMadeRead) {
+            page.personsMade = []
+        }
+        if (!page.visible && page.withheldRead) {
             for (const w of page.withheld)
                 page.sioul.setViewFlag(w.key, true)
             page.withheldRead = false
@@ -228,6 +250,7 @@ Item {
         page.takeShown()
         page.reloadDoses()
         page.readWithheld()
+        page.readPersonsMade()
     }
 
     Connections {
@@ -240,6 +263,8 @@ Item {
                 page.agendaStamp += 1
                 if (!page.withheldRead)
                     page.readWithheld()
+                // An admin window begins: the card waits for it.
+                page.readPersonsMade()
             }
         }
     }
@@ -690,6 +715,41 @@ Item {
                                     page.sioul.setViewFlag("porch-night-left", true)
                                     nightCard.leftAsIs = true
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // The persons made from older texts: who, and what named each.
+                Panel {
+                    objectName: "porchPersonsMade"
+                    visible: page.personsMade.length > 0
+                    Layout.fillWidth: true
+                    theme: page.theme
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 4
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("persons-made-title")
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                        Repeater {
+                            model: page.personsMade
+
+                            delegate: Label {
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                text: modelData.from !== "" ? page.sioul.textArgs("persons-made-row", JSON.stringify({ name: modelData.name, from: modelData.from })) : modelData.name
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 13
+                                color: page.theme.muted
                             }
                         }
                     }

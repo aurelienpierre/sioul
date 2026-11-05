@@ -393,7 +393,10 @@ impl Wallet {
 
     /// Written whole, next to its place then moved: never half a file. Under the file's lock.
     pub fn save(&self) -> Result<(), String> {
-        crate::filelock::with_lock(&self.root.join(MANIFEST), || self.write())
+        crate::filelock::with_lock(&self.root.join(MANIFEST), || self.write())?;
+        // Every view of a paper reads it again (the Papers page, a person's page, the dates asked).
+        crate::changes::said(crate::changes::Kind::Papers);
+        Ok(())
     }
 
     fn write(&self) -> Result<(), String> {

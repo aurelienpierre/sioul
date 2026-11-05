@@ -64,6 +64,32 @@ Panel {
             if (page.personId !== "")
                 page.reload(true)
         }
+
+        // Their papers, letters, budgets, sites and ties.
+        function onPapersChanged() {
+            if (page.personId !== "")
+                page.reload(true)
+        }
+
+        function onLettersChanged() {
+            if (page.personId !== "")
+                page.reload(true)
+        }
+
+        function onMoneyChanged() {
+            if (page.personId !== "")
+                page.reload(true)
+        }
+
+        function onSitesChanged() {
+            if (page.personId !== "")
+                page.reload(true)
+        }
+
+        function onLinksChanged() {
+            if (page.personId !== "")
+                page.reload(true)
+        }
     }
 
     ColumnLayout {
@@ -447,13 +473,21 @@ Panel {
                     Layout.fillWidth: true
                     text: page.sioul.text("person-agents")
                     checked: page.shown !== null && page.shown.agents === true
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.theme.plain(page.sioul.text("person-agents-help"))
-                    ToolTip.delay: 600
                     onToggled: {
                         page.problem = page.sioul.setPersonAgents(page.personId, checked)
                         page.reload()
                     }
+                }
+                // What it means, in one sentence under it (as a project's page says it).
+                Label {
+                    objectName: "personAgentsHelp"
+                    visible: page.shown !== null && !page.shown.me
+                    Layout.fillWidth: true
+                    text: page.sioul.text("person-agents-help")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: page.theme.muted
                 }
             }
         }

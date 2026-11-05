@@ -246,7 +246,8 @@ pub(crate) fn mailbox_pages(config: &Config, ask: &sioul_core::mailbox::Ask, hid
     let (filter, shown) = mailbox_filter(&mode, now.timestamp().as_second());
     let ask = sioul_core::mailbox::Ask { filter: Some(filter), ..ask.clone() };
     let page = mailbox_page(config, &ask, hidden, waiting, &mode, &now);
-    MailboxPages { texts: page_texts(&page, &ask, &shown), indexing: page.indexing, made: started.elapsed() }
+    let hidden = hidden_parts(config, &page, &ask, &shown);
+    MailboxPages { texts: page_texts(&page, &ask, &shown, &hidden), indexing: page.indexing, made: started.elapsed() }
 }
 
 fn mailbox_page(config: &Config, ask: &sioul_core::mailbox::Ask, hidden: &BTreeSet<PathBuf>, waiting: &BTreeMap<PathBuf, sioul_core::spam::labels::Label>, mode: &sioul_core::quiet::Mode, now: &jiff::Zoned) -> sioul_core::mailbox::Page {
@@ -311,12 +312,61 @@ struct PageOut<'a> {
     earlier: bool,
     sentence: &'a str,
     resting: &'a [sioul_core::mailbox::Resting],
+    /// What the list does not show now, each with what brings it back (`hidden_parts`).
+    hidden: &'a [Hidden],
+    /// The list's last line: "Mail older than two weeks:", before Show older…, or that nothing older is kept.
+    end: String,
     addresses: &'a [AddressOut<'a>],
     filter: &'a sioul_core::areafilter::Shown,
     chip: sioul_core::mailbox::Chip,
     account: &'a str,
     windows: u32,
     prefix: &'a str,
+}
+
+/// One thing the mailbox does not show now, said at the head of its list,
+/// with what brings it back: `act` "tick:<area>" (that area ticked too),
+/// "on:<account>" (that address switched on), "earlier" (two more weeks).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct Hidden {
+    pub text: String,
+    pub act: String,
+    pub button: String,
+}
+
+/// What the mailbox hides now, in the list's own words: an area whose mail
+/// rests as your hours say, or that you left unticked (the filter); an
+/// address switched off in this list (a view: its mail stays in its inbox);
+/// mail older than the weeks shown. The filter's rules are the hours' and
+/// each address's "What this address is for" (Accounts), a view's switch is
+/// this list's alone: each said in its own words.
+pub(crate) fn hidden_parts(config: &Config, page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, filter: &sioul_core::areafilter::Shown) -> Vec<Hidden> {
+    use sioul_core::areas::Area;
+    let mut out = Vec::new();
+    let syncing: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
+    for (id, shown, area) in [("work", filter.work, Area::WORK), ("admin", filter.admin, Area { admin: true, ..Area::default() }), ("leisure", filter.leisure, Area { leisure: true, ..Area::default() })] {
+        if shown || !syncing.iter().any(|a| sioul_core::mailbox::area_of(a).meets(area)) {
+            continue;
+        }
+        let words = if filter.own { format!("mailbox-hidden-unticked-{id}") } else { format!("mailbox-hidden-rests-{id}") };
+        out.push(Hidden { text: tr().text(&words, None), act: format!("tick:{id}"), button: tr().text("mailbox-hidden-show-area", None) });
+    }
+    let off: &[String] = ask.filter.as_ref().map_or(&[], |f| f.off.as_slice());
+    for account in syncing.iter().filter(|a| off.contains(&a.id)) {
+        let address = account.address.clone().unwrap_or_else(|| account.id.clone());
+        out.push(Hidden { text: say("mailbox-hidden-off", &[("address", address)]), act: format!("on:{}", account.id), button: tr().text("mailbox-hidden-switch-on", None) });
+    }
+    if page.earlier {
+        out.push(Hidden { text: older_line(page.windows), act: "earlier".into(), button: tr().text("mailbox-show-older", None) });
+    }
+    out
+}
+
+/// "Mail older than two weeks", the weeks the list shows.
+pub(crate) fn older_line(windows: u32) -> String {
+    let mut args = sioul_core::i18n::args();
+    args.set("weeks", i64::from(windows.max(1)) * 2);
+    tr().text("mailbox-older", Some(&args))
 }
 
 /// An address's mark as the filter shows it: switched on or off.
@@ -341,7 +391,7 @@ fn key_prefix(keys: &[&str]) -> String {
 /// The page's rows cut into the pages the window takes, each published only
 /// when it changed (`show_mail_here`); one page, empty, when nothing shows.
 /// `ask` the page was made for (its filter's addresses switched off), `filter` its button.
-fn page_texts(page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, filter: &sioul_core::areafilter::Shown) -> Vec<String> {
+fn page_texts(page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, filter: &sioul_core::areafilter::Shown, hidden: &[Hidden]) -> Vec<String> {
     use sioul_core::mailbox::PAGE;
     let off: &[String] = ask.filter.as_ref().map_or(&[], |f| f.off.as_slice());
     let addresses: Vec<AddressOut> = page.addresses.iter().map(|mark| AddressOut { mark, on: !off.contains(&mark.account) }).collect();
@@ -389,6 +439,8 @@ fn page_texts(page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, 
                 earlier: page.earlier,
                 sentence: &page.sentence,
                 resting: &page.resting,
+                hidden,
+                end: if page.earlier { say("mailbox-older-end", &[("older", older_line(page.windows))]) } else { tr().text("mailbox-nothing-older", None) },
                 addresses: &addresses,
                 filter,
                 chip: page.chip,
@@ -2280,7 +2332,7 @@ mod tests {
         };
         let marks = vec![Mark { account: "work".into(), letter: "N".into(), tint: 0, title: "noa@work.example.org".into() }, Mark { account: "home".into(), letter: "H".into(), tint: 1, title: "noa@home.example.org".into() }];
         let (ask, shown) = (sioul_core::mailbox::Ask::default(), sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: "Work".into(), own: false });
-        let texts_of = |page: &Page| page_texts(page, &ask, &shown);
+        let texts_of = |page: &Page| page_texts(page, &ask, &shown, &[]);
         let page_of = |rows: Vec<Row>, more: bool| Page { rows, resting: Vec::new(), addresses: marks.clone(), earlier: true, more, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let rows: Vec<Row> = (0..PAGE * 2 + 10).map(|n| row(n, if n == 1 { &["work", "home"] } else { &["work"] })).collect();
         let texts = texts_of(&page_of(rows.clone(), false));
@@ -2868,7 +2920,7 @@ mod tests {
         };
         use sioul_core::mailbox::{Ask, Chip};
         let shown = sioul_core::areafilter::Shown { work: true, admin: true, leisure: true, label: String::new(), own: false };
-        let page_texts = |page: &sioul_core::mailbox::Page| page_texts(page, &Ask::default(), &shown);
+        let page_texts = |page: &sioul_core::mailbox::Page| page_texts(page, &Ask::default(), &shown, &[]);
         // The first index: the newest of each folder at once, then steps while the page shows.
         let at = std::time::Instant::now();
         let first = make(&Ask::default());
@@ -2971,5 +3023,34 @@ mod tests {
         use crate::backend::local_path;
         assert_eq!(local_path("file:///home/me/Re%C3%A7u%20final.pdf"), PathBuf::from("/home/me/Reçu final.pdf"));
         assert_eq!(local_path("file:///tmp/100%"), PathBuf::from("/tmp/100%"));
+    }
+
+    /// What the mailbox does not show now, said with what brings it back:
+    /// leisure's mail resting as the hours say (an address for leisure syncs),
+    /// admin's left out (no address for it), an address switched off in this
+    /// list, older mail; your own ticks said as unticked; the list's end said
+    /// older, then nothing older.
+    #[test]
+    fn what_the_mailbox_hides_is_said_with_its_way_back() {
+        use sioul_core::config::{Security, Config};
+        use sioul_core::mailbox::{Ask, Chip, Filter, Page};
+        let mut home = Account::imap("home", "noa@home.example.org", "imap.example.org", 993, Security::Tls, None);
+        home.area = Some("leisure".into());
+        let work = Account::imap("work", "noa@work.example.org", "imap.example.org", 993, Security::Tls, None);
+        let config = Config { accounts: vec![work, home], ..Config::default() };
+        let page = |earlier: bool, windows: u32| Page { rows: Vec::new(), resting: Vec::new(), addresses: Vec::new(), earlier, more: false, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows };
+        let ask = Ask { filter: Some(Filter { areas: sioul_core::areas::Area::WORK, off: vec!["home".into()] }), ..Ask::default() };
+        let shown = sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: String::new(), own: false };
+        let parts = hidden_parts(&config, &page(true, 1), &ask, &shown);
+        assert_eq!(parts.iter().map(|p| p.act.as_str()).collect::<Vec<_>>(), ["tick:leisure", "on:home", "earlier"], "{parts:?}");
+        assert_eq!(parts[0].text, tr().text("mailbox-hidden-rests-leisure", None));
+        assert!(parts[1].text.contains("noa@home.example.org"), "the address by its name: {}", parts[1].text);
+        assert_eq!(parts[2].text, older_line(1));
+        let own = sioul_core::areafilter::Shown { own: true, ..shown.clone() };
+        assert_eq!(hidden_parts(&config, &page(false, 2), &Ask::default(), &own).iter().map(|p| p.text.clone()).collect::<Vec<_>>(), [tr().text("mailbox-hidden-unticked-leisure", None)], "your own ticks; nothing older");
+        assert_ne!(older_line(1), older_line(2), "two weeks, then four");
+        let end = |p: &Page| serde_json::from_str::<serde_json::Value>(&page_texts(p, &ask, &shown, &parts)[0]).unwrap()["end"].as_str().unwrap_or_default().to_string();
+        assert_eq!(end(&page(true, 1)), say("mailbox-older-end", &[("older", older_line(1))]));
+        assert_eq!(end(&page(false, 1)), tr().text("mailbox-nothing-older", None), "never a blank end");
     }
 }
