@@ -55,6 +55,27 @@ pub(crate) mod dates {
     pub fn optional<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Date>, D::Error> {
         Option::<toml::Value>::deserialize(d)?.map(parse).transpose().map_err(D::Error::custom)
     }
+
+    /// A moment as the files write it (`2026-11-05T10:20:00Z`), a TOML date-time or a string; none when it does not read.
+    pub fn moment<'de, D: Deserializer<'de>>(d: D) -> Result<Option<jiff::Timestamp>, D::Error> {
+        let value = Option::<toml::Value>::deserialize(d)?;
+        Ok(value.and_then(|v| match v {
+            toml::Value::Datetime(d) => d.to_string().parse().ok(),
+            toml::Value::String(s) => s.parse().ok(),
+            _ => None,
+        }))
+    }
+
+    /// A moment as the files write it: a TOML offset date-time in UTC, to the second.
+    pub fn moment_item(at: jiff::Timestamp) -> toml_edit::Item {
+        let utc = at.to_zoned(jiff::tz::TimeZone::UTC);
+        let datetime = toml_edit::Datetime {
+            date: Some(toml_edit::Date { year: utc.year() as u16, month: utc.month() as u8, day: utc.day() as u8 }),
+            time: Some(toml_edit::Time { hour: utc.hour() as u8, minute: utc.minute() as u8, second: Some(utc.second() as u8), nanosecond: None }),
+            offset: Some(toml_edit::Offset::Z),
+        };
+        toml_edit::value(datetime)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -221,7 +242,7 @@ impl Preset {
 }
 
 /// One credit or debit of a budget.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct Line {
     /// Its id (`ids`), given when Sioul writes it (`record_line`), by which
     /// your devices merge it and a money movement names it
@@ -247,6 +268,40 @@ pub struct Line {
     /// The preset this line stands for in its period (see `Preset`).
     #[serde(default)]
     pub preset: Option<String>,
+    /// What the payer paid (money in), or the price (money out), signed as
+    /// `amount`, which is what moved the account: `amount = gross − fees`
+    /// (docs/accounting.md, "Fees"). None: the same as `amount`.
+    #[serde(default)]
+    pub gross: Option<Money>,
+    /// Its fees, each a cost without sign: `{ kind = "processor", amount = 1.86, about = true }`.
+    #[serde(default)]
+    pub fees: Vec<LineFee>,
+    /// The day it was paid at the processor, which a declaration counts; none: its `date`.
+    #[serde(default, deserialize_with = "dates::optional")]
+    pub paid_on: Option<Date>,
+    /// Your own words about it.
+    #[serde(default)]
+    pub note: String,
+    /// When Sioul wrote it, and when it was last changed (`2026-11-05T10:20:00Z`).
+    #[serde(default, deserialize_with = "dates::moment")]
+    pub made: Option<jiff::Timestamp>,
+    #[serde(default, deserialize_with = "dates::moment")]
+    pub changed: Option<jiff::Timestamp>,
+    /// The bank account it is paid from or into, by its id, when not the one that fills its budget first.
+    #[serde(default)]
+    pub account: Option<String>,
+}
+
+/// A fee of a line of the budget file.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct LineFee {
+    /// "processor", "commission", "conversion", "contributions", "bank" (`movements::FeeKind`).
+    #[serde(default)]
+    pub kind: String,
+    pub amount: Money,
+    /// An estimate (a rule), not what was kept.
+    #[serde(default)]
+    pub about: bool,
 }
 
 /// A savings account that covers budgets: an assurance vie, a Livret A.
@@ -792,18 +847,28 @@ impl MailLine {
         Some(if self.payment.kind.is_credit() { money } else { -money })
     }
 
-    /// The line it becomes in a budget; none without an amount.
+    /// The line it becomes in a budget; none without an amount. A
+    /// processor's mail that states its fee becomes what arrives, with what
+    /// the payer paid and the fee beside it (docs/accounting.md, "Fees").
     pub fn line(&self, budget: &str) -> Option<Line> {
+        let signed = self.signed()?;
+        let (amount, gross, fees) = match (&self.payment.fee, &self.payment.net) {
+            (Some(fee), Some(net)) if !signed.is_negative() => (net.money, Some(signed), vec![LineFee { kind: "processor".into(), amount: fee.money, about: false }]),
+            _ => (signed, None, Vec::new()),
+        };
         Some(Line {
             id: String::new(),
             budget: budget.to_string(),
             date: self.date,
-            amount: self.signed()?,
+            amount,
             label: self.label.clone(),
             planned: false,
             reserve: None,
             links: vec![self.key.clone()],
             preset: self.preset.clone(),
+            gross,
+            fees,
+            ..Line::default()
         })
     }
 }
@@ -814,7 +879,8 @@ impl MailLine {
 /// the preset; `ignored` holds the keys you said are not payments.
 pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>, words: &crate::words::Words) -> Vec<MailLine> {
     let recorded: BTreeSet<&str> = ledger.lines.iter().flat_map(|l| l.links.iter().map(String::as_str)).collect();
-    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t, words)).collect();
+    let index = crate::moneyindex::Reader::new(&ledger.mail_rules, words);
+    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t, words, &index)).collect();
     lines.sort_by_key(|l| l.date);
     // A message without a Message-ID that an older Sioul keyed by its file
     // ("file:<path>"): the same message while its name's unique part is.
@@ -826,7 +892,7 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
         let old = |known: &BTreeSet<String>| !line.key.starts_with("mid:") && file.as_ref().is_some_and(|f| known.contains(f));
         line.state = if recorded.contains(line.key.as_str()) || old(&older) {
             MailState::Recorded
-        } else if ignored.contains(&line.key) || old(&older_ignored) {
+        } else if crate::moneyindex::ignored(ignored, line).is_some() || old(&older_ignored) {
             MailState::Ignored
         } else {
             MailState::Proposed
@@ -837,9 +903,26 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
     lines
 }
 
-fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Option<MailLine> {
-    let card = &t.card;
-    let rule = ledger.mail_rules.iter().find(|r| r.route.explain(card).is_some());
+fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words, index: &crate::moneyindex::Reader) -> Option<MailLine> {
+    let doubtful = t.lane == Lane::Screener && t.trust != Trust::Verified;
+    // What the money index found in it, when it was looked at already: never read twice.
+    if let (Some(account), Some(path)) = (t.card.account.as_deref(), t.card.path.as_deref())
+        && let Some(kept) = crate::mailpass::kept_for(index, account, path)
+    {
+        return kept.and_then(|columns| crate::moneyindex::mail_line(&columns, &t.card, doubtful));
+    }
+    let mut line = mail_line_of(&ledger.mail_rules, &t.card, words)?;
+    line.doubtful = doubtful;
+    Some(line)
+}
+
+/// What a message says of money, from its card (`payments::detect`, else a
+/// mail rule that names it), as the budgets page and the money index read
+/// it: its amount, who, its kind, its references, its day due, its
+/// instalments, the budget its rule gives. Never doubtful: whoever asks says
+/// whether its sender was verified.
+pub fn mail_line_of(rules: &[MailRule], card: &crate::card::Card, words: &crate::words::Words) -> Option<MailLine> {
+    let rule = rules.iter().find(|r| r.route.explain(card).is_some());
     let detected = payments::detect(words, card);
     let mut payment = match (detected, rule) {
         (Some(payment), _) => payment,
@@ -899,7 +982,7 @@ fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Optio
         sender_domain: card.sender_domain().map(str::to_ascii_lowercase),
         budget: rule.map(|r| r.budget.clone()),
         preset: rule.and_then(|r| r.preset.clone()),
-        doubtful: t.lane == Lane::Screener && t.trust != Trust::Verified,
+        doubtful: false,
         payment,
         state: MailState::Proposed,
     })
@@ -1225,6 +1308,44 @@ pub fn change_line(path: &Path, place: usize, seen: &SeenLine, label: &str, amou
     })
 }
 
+/// One line of the file, named by its key as the money movements name it
+/// (`movements::line_keys`: `line:<id>`, else a digest of what it holds),
+/// changed in place by `change`, its other fields, its comment and the rest
+/// of the file kept, and said changed now (`changed`). Ok(false) when no
+/// line has that key any more: nothing is written.
+pub fn edit_line(path: &Path, key: &str, change: impl FnOnce(&mut Table) -> Result<(), String>) -> Result<bool, String> {
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let ledger: Ledger = toml::from_str(&text).map_err(|e| fail(e.to_string()))?;
+        let Some(at) = crate::movements::line_keys(&ledger).iter().position(|k| k == key) else { return Ok(false) };
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(line) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut).and_then(|lines| lines.get_mut(at)) else { return Ok(false) };
+        change(line).map_err(fail)?;
+        line["changed"] = dates::moment_item(jiff::Timestamp::now());
+        write_ledger(path, &doc)?;
+        Ok(true)
+    })
+}
+
+/// The line `key` names (`edit_line`) taken out of the file; Ok(false) when it is not there.
+pub fn remove_line_by_key(path: &Path, key: &str) -> Result<bool, String> {
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let ledger: Ledger = toml::from_str(&text).map_err(|e| fail(e.to_string()))?;
+        let Some(at) = crate::movements::line_keys(&ledger).iter().position(|k| k == key) else { return Ok(false) };
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+        if at >= lines.len() {
+            return Ok(false);
+        }
+        lines.remove(at);
+        write_ledger(path, &doc)?;
+        Ok(true)
+    })
+}
+
 /// Writes a line at the end of the budget file, keeping its comments, with a
 /// comment saying where it came from.
 pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String> {
@@ -1250,6 +1371,34 @@ pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String>
             table["planned"] = value(true);
         }
         table["links"] = value(line.links.iter().map(String::as_str).collect::<Array>());
+        // What the payer paid and the fees, the day it was paid, your note
+        // (docs/accounting.md, "Fees"): older versions pass over them.
+        if let Some(gross) = line.gross.filter(|g| *g != line.amount) {
+            table["gross"] = value(gross.cents() as f64 / 100.0);
+        }
+        if !line.fees.is_empty() {
+            let mut fees = Array::new();
+            for fee in &line.fees {
+                let mut one = toml_edit::InlineTable::new();
+                one.insert("kind", fee.kind.as_str().into());
+                one.insert("amount", (fee.amount.cents().abs() as f64 / 100.0).into());
+                if fee.about {
+                    one.insert("about", true.into());
+                }
+                fees.push(one);
+            }
+            table["fees"] = value(fees);
+        }
+        if let Some(paid) = line.paid_on.filter(|d| *d != line.date) {
+            table["paid_on"] = value(toml_edit::Datetime { date: Some(toml_edit::Date { year: paid.year() as u16, month: paid.month() as u8, day: paid.day() as u8 }), time: None, offset: None });
+        }
+        if !line.note.trim().is_empty() {
+            table["note"] = value(line.note.trim());
+        }
+        if let Some(account) = line.account.as_deref().filter(|a| !a.trim().is_empty()) {
+            table["account"] = value(account.trim());
+        }
+        table["made"] = dates::moment_item(line.made.unwrap_or_else(jiff::Timestamp::now));
         let origin: String = origin.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
         let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
         let lead = if trailing.trim().is_empty() { String::new() } else { format!("{trailing}\n") };
@@ -2127,6 +2276,7 @@ mod tests {
             reserve: None,
             links: vec!["mid:settled@telecom.example".into()],
             preset: Some("phone".into()),
+            ..Line::default()
         };
         record_line(&path, &line, "From mail: “Le règlement de votre facture” from Telecom.").unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
@@ -2159,6 +2309,7 @@ mod tests {
             reserve: None,
             links: Vec::new(),
             preset: Some(preset.into()),
+            ..Line::default()
         };
         // The real phone bill replaces the preset's amount.
         ledger.lines.push(line(-29.99, "phone"));

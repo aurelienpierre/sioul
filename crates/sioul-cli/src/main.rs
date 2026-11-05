@@ -45,6 +45,7 @@ mod accounts;
 mod dav;
 mod mail;
 mod mcp;
+mod money;
 mod pgp;
 mod remind;
 // The spam filter learned on this computer (sioul-learn): desktops only.
@@ -117,6 +118,15 @@ enum Command {
         #[arg(long)]
         maildir: Vec<PathBuf>,
     },
+    /// Every money movement, newest first: the full ledger, with its filters.
+    Movements(money::MovementsArgs),
+    /// One money movement: shown, made, changed, removed, put back.
+    #[command(subcommand)]
+    Movement(money::MovementCommand),
+    /// Every mail about money kept on this computer, newest first, and what became of each.
+    MoneyMail(money::MoneyMailArgs),
+    /// What a work budget received, as the declaration counts it: the turnover and the receipts register.
+    Receipts(money::ReceiptsArgs),
     /// Mail accounts: add, list, test, change a password, remove.
     #[command(subcommand)]
     Account(accounts::AccountCommand),
@@ -370,6 +380,10 @@ fn main() -> ExitCode {
         Command::Projects { store } => projects_command(&session, store),
         Command::Window => window_command(&session),
         Command::Budgets { file, maildir } => budgets_command(&session, file, &maildir),
+        Command::Movements(args) => money::list(&session, args),
+        Command::Movement(command) => money::run(&session, command),
+        Command::MoneyMail(args) => money::money_mail(&session, args),
+        Command::Receipts(args) => money::receipts(&session, args),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),
@@ -648,12 +662,13 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
     // budget in words, what is coming (docs/accounting.md, "The budgets page").
     let books = path.parent().map(|root| sioul_core::movements::books(root, &words, today));
     let empty = sioul_core::bank::Bank::default();
-    let (counted, bank, movements) = match &books {
+    let (counted, bank, movements, own) = match &books {
         // Another file than its folder's own: its own lines and presets, nothing of the folder's.
-        Some(books) if books.ledger.budgets.len() == ledger.budgets.len() && books.ledger.lines.len() == ledger.lines.len() => (&books.counted, &books.bank, books.movements.as_slice()),
-        _ => (&ledger, &empty, &[][..]),
+        Some(books) if books.ledger.budgets.len() == ledger.budgets.len() && books.ledger.lines.len() == ledger.lines.len() => (&books.counted, &books.bank, books.movements.as_slice(), Some(books.as_ref())),
+        _ => (&ledger, &empty, &[][..], None),
     };
-    let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    let store = path.parent().and_then(|root| sioul_core::movements::Store::load(root).ok()).unwrap_or_default();
+    let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false, books: own, imports: &store.imports };
     for line in view::budgets_lines(&view::budgets_page(&page, &s.tr, today)) {
         let indent = line.len() - line.trim_start().len();
         println!("{}{}", &line[..indent], one_line(line.trim_start()));

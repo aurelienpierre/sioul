@@ -59,6 +59,12 @@ pub struct Payment {
     pub amount: Option<Amount>,
     /// Who paid or was paid, as the message names them; else the sender.
     pub party: String,
+    /// Money in: the fee the message says the processor kept, without sign
+    /// (`Payments::fee`), when it states one; checked against the amount and
+    /// the net, never guessed.
+    pub fee: Option<Amount>,
+    /// Money in: what arrives after the fees, when the message states it (`Payments::net`).
+    pub net: Option<Amount>,
 }
 
 /// Characters of the text read: the payment is stated at the top.
@@ -92,7 +98,28 @@ pub fn read(words: &Words, card: &Card, kind: PaymentKind, start: &str) -> Payme
         .or_else(|| labelled_party(words, start, kind))
         .unwrap_or_else(|| card.sender().to_string());
     let amount = found.map(|f| Amount { money: f.amount.money.abs(), currency: f.amount.currency });
-    Payment { kind, amount, party }
+    let (fee, net) = if kind == PaymentKind::Received { fee_and_net(words, start, amount.as_ref()) } else { (None, None) };
+    Payment { kind, amount, party, fee, net }
+}
+
+/// The fee and the net a processor's mail about money received states, each
+/// on its label's line or the next (`Payments::fee`, `Payments::net`), in the
+/// amount's currency; one found gives the other, and both must add up with
+/// the amount (the gross): what does not is left out, never guessed. Only
+/// for money in: an order's "frais de port" are no processor's fee.
+fn fee_and_net(words: &Words, start: &str, amount: Option<&Amount>) -> (Option<Amount>, Option<Amount>) {
+    let Some(gross) = amount.filter(|a| a.money.cents() > 0) else { return (None, None) };
+    let in_currency = |a: Amount| (a.currency == gross.currency).then(|| Amount { money: a.money.abs(), currency: a.currency });
+    let fee = money::labelled_amount(&words.payments.fee, start).and_then(in_currency).filter(|f| f.money < gross.money);
+    let net = money::labelled_amount(&words.payments.net, start).and_then(in_currency).filter(|n| n.money < gross.money && n.money.cents() > 0);
+    let currency = gross.currency;
+    match (fee, net) {
+        (Some(fee), Some(net)) if fee.money + net.money == gross.money => (Some(fee), Some(net)),
+        (Some(_), Some(_)) => (None, None),
+        (Some(fee), None) => (Some(fee.clone()), Some(Amount { money: gross.money - fee.money, currency })),
+        (None, Some(net)) => (Some(Amount { money: gross.money - net.money, currency }), Some(net)),
+        (None, None) => (None, None),
+    }
 }
 
 /// Receipts set who was paid, or who paid, under a label: "Paiement à" then "Exemple Web".
@@ -251,6 +278,23 @@ mod tests {
         assert_eq!((billed.kind, cents(&billed), billed.party.as_str()), (PaymentKind::Bill, Some(2999), "Opérateur"));
         let receipt = detect(&card(PAY, "Reçu de votre paiement", "Merci.\r\nPaiement de\r\nMoi Même\r\nPaiement à\r\nExemple Web\r\nshop@example.org\r\n84,99 € EUR\r\n-8,49 € EUR\r\n76,50 € EUR")).unwrap();
         assert_eq!((receipt.kind, cents(&receipt), receipt.party.as_str()), (PaymentKind::Paid, Some(7650), "Exemple Web"));
+    }
+
+    /// A processor's mail that states its fee or its net: both read, checked
+    /// against what the payer paid; a fee that does not add up is left out;
+    /// an order's shipping costs are no processor's fee.
+    #[test]
+    fn a_mails_own_fee_and_net() {
+        let both = detect(&card(PAY, "Paiement reçu", "Vous avez reçu un paiement de 52,00 € EUR de Jean Exemple.\r\nFrais : -1,86 € EUR\r\nMontant net\r\n50,14 € EUR")).unwrap();
+        assert_eq!((cents(&both), both.fee.map(|f| f.money.cents()), both.net.map(|n| n.money.cents())), (Some(5200), Some(186), Some(5014)));
+        let net_only = detect(&card(PAY, "You received a payment", "You received a payment of €520.00 EUR from Client A.\r\nYou'll receive €504.57 EUR")).unwrap();
+        assert_eq!((net_only.fee.map(|f| f.money.cents()), net_only.net.map(|n| n.money.cents())), (Some(1543), Some(50457)));
+        let wrong = detect(&card(PAY, "Paiement reçu", "Vous avez reçu un paiement de 52,00 € EUR de Jean Exemple.\r\nFrais : 1,86 €\r\nMontant net : 49,00 €")).unwrap();
+        assert_eq!((wrong.fee, wrong.net), (None, None), "figures that do not add up: neither kept");
+        let none = detect(&card(PAY, "Paiement reçu", "Vous avez reçu un paiement de 12,00 € EUR de Jean Exemple, sans frais.")).unwrap();
+        assert_eq!((none.fee, none.net), (None, None));
+        let order = detect(&card("Boutique <contact@shop.example>", "Commande FR1234 confirmée", "Frais de port 4,90 €\r\nTotal\r\n76,50€")).unwrap();
+        assert_eq!((order.kind, order.fee), (PaymentKind::Order, None));
     }
 
     #[test]

@@ -58,6 +58,8 @@ pub mod qobject {
         // The Mail page's search by conditions: its sentence, what the servers said, the rows (`mailsearch`).
         #[qproperty(QString, mail_search)]
         #[qproperty(QString, undo_line)]
+        // The Budgets page's From mail tab: the page last asked (`ledger::ask_mail`).
+        #[qproperty(QString, money_mail)]
         #[qproperty(QString, contacts)]
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
@@ -1627,6 +1629,63 @@ pub mod qobject {
         #[qinvokable]
         fn same_movement(self: Pin<&mut Sioul>, key: &QString, other: &QString) -> QString;
 
+        /// The Movements tab: a page of the ledger as its filters ask (JSON), as JSON (`ledger::movements`).
+        #[qinvokable]
+        fn movements(self: &Sioul, asked: &QString) -> QString;
+
+        /// One movement in full, by its address, with what it allows (`ledger::movement`).
+        #[qinvokable]
+        fn movement_detail(self: &Sioul, address: &QString) -> QString;
+
+        /// "New movement" from its form (JSON), with Undo: {said} or {problem}.
+        #[qinvokable]
+        fn make_movement(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// A movement changed in the fields its form gives (JSON), with Undo: {said} or {problem}.
+        #[qinvokable]
+        fn change_movement(self: Pin<&mut Sioul>, address: &QString, edit: &QString) -> QString;
+
+        /// A movement removed by what it is made from, with Undo: {said} or {problem}.
+        #[qinvokable]
+        fn remove_movement(self: Pin<&mut Sioul>, address: &QString) -> QString;
+
+        /// What you removed put back: {said} or {problem}.
+        #[qinvokable]
+        fn put_back_movement(self: Pin<&mut Sioul>, address: &QString) -> QString;
+
+        /// The From mail tab: a page of money mail as its filters ask (JSON),
+        /// given as `moneyMail` once read, off the window's thread.
+        #[qinvokable]
+        fn ask_money_mail(self: &Sioul, asked: &QString);
+
+        /// "Not a payment" on a money mail's row (JSON {key, domain, sender, subject}), with Undo.
+        #[qinvokable]
+        fn not_a_payment(self: Pin<&mut Sioul>, named: &QString) -> QString;
+
+        /// "Count it again" on a money mail's row, with Undo.
+        #[qinvokable]
+        fn count_again(self: Pin<&mut Sioul>, named: &QString) -> QString;
+
+        /// The movements a money mail of that day and amount (cents, signed) may be the same payment as.
+        #[qinvokable]
+        fn mail_candidates(self: &Sioul, day: &QString, cents: i64) -> QString;
+
+        /// "The same as…" from a money mail: the mail joined to that movement, with Undo.
+        #[qinvokable]
+        fn mail_same(self: Pin<&mut Sioul>, key: &QString, movement: &QString) -> QString;
+
+        /// "Not the same" from a money mail's row (JSON {key, movement}), with Undo.
+        #[qinvokable]
+        fn mail_not_same(self: Pin<&mut Sioul>, named: &QString) -> QString;
+
+        /// "For the declaration": a declaring budget's turnover and its register over the period holding `anchor`.
+        #[qinvokable]
+        fn declaration(self: &Sioul, budget: &QString, anchor: &QString) -> QString;
+
+        /// "Save the receipts register…" into a folder you chose: {csv, pdf, html, folder} or {error}.
+        #[qinvokable]
+        fn save_receipts(self: &Sioul, budget: &QString, anchor: &QString, folder: &QString) -> QString;
+
         /// The areas ticked in the budgets' filter ("work+leisure", "" for none),
         /// kept until the hours change, a day at most (`areafilter`).
         #[qinvokable]
@@ -2751,6 +2810,7 @@ pub struct SioulRust {
     drafts: QString,
     mail_search: QString,
     undo_line: QString,
+    money_mail: QString,
     contacts: QString,
     duplicates: QString,
     agenda: QString,
@@ -3370,7 +3430,8 @@ fn compute(shared: &Shared) -> Views {
         // `areafilter`); a shortfall on an account shows whatever the filter;
         // every budget stays a choice for a line, whatever the hour (the owner's report of 4 November 2026).
         let (shown, filter) = crate::payments::budget_filter(&mode, now.timestamp().as_second());
-        let page = view::MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &mail, shown, own: filter.own };
+        let store = sioul_core::movements::Store::load(&root).unwrap_or_default();
+        let page = view::MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &mail, shown, own: filter.own, books: Some(&books), imports: &store.imports };
         let mut page = view::budgets_page(&page, tr(), now.date());
         page.filter = Some(filter);
         json(&page)
@@ -5948,6 +6009,62 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn movements(&self, asked: &QString) -> QString {
+        QString::from(&crate::ledger::movements(&asked.to_string()))
+    }
+
+    fn movement_detail(&self, address: &QString) -> QString {
+        QString::from(&crate::ledger::movement(&address.to_string()))
+    }
+
+    fn make_movement(self: Pin<&mut Self>, edit: &QString) -> QString {
+        QString::from(&crate::ledger::make(&self.qt_thread(), &self.shared(), &edit.to_string()))
+    }
+
+    fn change_movement(self: Pin<&mut Self>, address: &QString, edit: &QString) -> QString {
+        QString::from(&crate::ledger::change(&self.qt_thread(), &self.shared(), &address.to_string(), &edit.to_string()))
+    }
+
+    fn remove_movement(self: Pin<&mut Self>, address: &QString) -> QString {
+        QString::from(&crate::ledger::remove(&self.qt_thread(), &self.shared(), &address.to_string()))
+    }
+
+    fn put_back_movement(self: Pin<&mut Self>, address: &QString) -> QString {
+        QString::from(&crate::ledger::put_back(&self.qt_thread(), &self.shared(), &address.to_string()))
+    }
+
+    fn ask_money_mail(&self, asked: &QString) {
+        crate::ledger::ask_mail(&self.qt_thread(), asked.to_string());
+    }
+
+    fn not_a_payment(self: Pin<&mut Self>, named: &QString) -> QString {
+        QString::from(&crate::ledger::not_a_payment(&self.qt_thread(), &self.shared(), &named.to_string()))
+    }
+
+    fn count_again(self: Pin<&mut Self>, named: &QString) -> QString {
+        QString::from(&crate::ledger::count_again(&self.qt_thread(), &self.shared(), &named.to_string()))
+    }
+
+    fn mail_candidates(&self, day: &QString, cents: i64) -> QString {
+        QString::from(&crate::ledger::mail_candidates(&day.to_string(), cents))
+    }
+
+    fn mail_same(self: Pin<&mut Self>, key: &QString, movement: &QString) -> QString {
+        QString::from(&crate::ledger::mail_same(&self.qt_thread(), &self.shared(), &key.to_string(), &movement.to_string()))
+    }
+
+    fn mail_not_same(self: Pin<&mut Self>, named: &QString) -> QString {
+        QString::from(&crate::ledger::mail_not_same(&self.qt_thread(), &self.shared(), &named.to_string()))
+    }
+
+    fn declaration(&self, budget: &QString, anchor: &QString) -> QString {
+        QString::from(&crate::ledger::declaration(&budget.to_string(), &anchor.to_string()))
+    }
+
+    fn save_receipts(&self, budget: &QString, anchor: &QString, folder: &QString) -> QString {
+        QString::from(&crate::ledger::save_receipts(&budget.to_string(), &anchor.to_string(), &folder.to_string()))
+    }
+
     fn tick_budget_areas(self: Pin<&mut Self>, areas: &QString) {
         let now = sioul_core::zone::now();
         crate::payments::tick_areas(&areas.to_string(), &crate::hours::mode_at(&now), now.timestamp().as_second());
@@ -6531,6 +6648,7 @@ impl qobject::Sioul {
                     reserve: None,
                     links: Vec::new(),
                     preset: None,
+                    ..Default::default()
                 };
                 budget::record_line(&path, &line, &origin)?;
             }
@@ -7491,14 +7609,15 @@ impl qobject::Sioul {
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
         // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
-        // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
+        // budgets page, What is coming with its month, the bank accounts (pictures alone), "money-tabs" the
+        // Budgets page's four tabs, a movement's menu and pane, New movement, the declaration (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
         // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "availability"
         // "chain" the chain of ties from a project, drawn and as an outline, "+" pressed, a card
         // beside it and Back (pictures alone; docs/tasks.md),
         // Agenda ⚙ ▸ Your availability and its "Share with…" (pictures alone; docs/client.md), "topics" day one's
         // card, the mailbox with its rows' topics, one topic's mail, "Topic…" and Mail ▸ ⚙ ▸ Topics (pictures alone; docs/topics.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "availability", "topics", "chain"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

@@ -252,10 +252,14 @@ pub mod mailsearch;
 pub mod maildir;
 pub mod matching;
 pub mod mailnote;
+// mailpass: readers of every message kept on this device, each read once (money, topics).
+pub mod mailpass;
 pub mod mailto;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).
 pub mod mms;
 pub mod money;
+pub mod moneyindex;
+pub mod moneylist;
 pub mod moneyview;
 pub mod moves;
 pub mod movements;
@@ -274,11 +278,14 @@ pub mod plan;
 pub mod places;
 pub mod porch;
 pub mod presets;
+pub mod processors;
 pub mod papers;
 pub mod persons;
 pub mod pause;
 pub mod quiet;
 pub mod reach;
+// receipts: the declaration view and the receipts register (docs/accounting.md, "The declaration").
+pub mod receipts;
 pub mod reviews;
 pub mod routines;
 pub mod reminders;

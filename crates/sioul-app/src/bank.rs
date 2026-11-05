@@ -78,6 +78,10 @@ struct AccountView {
     unplaced: usize,
     /// The rules that read its movements (its own and those for every account), in file order.
     rules: Vec<RuleView>,
+    /// When its bank's file was last read, and once, that movements since may be missing (`moneyview::freshness`).
+    fresh: Vec<String>,
+    /// A processor's account: how what you receive reaches your bank, in a sentence; "" otherwise.
+    payout: String,
 }
 
 #[derive(Serialize)]
@@ -202,7 +206,9 @@ fn accounts_into(view: &mut View, books: &sioul_core::movements::Books, aheads: 
         .iter()
         .map(|r| ReserveView { id: r.id.clone(), title: r.title.clone(), balance: r.balance.cents() as f64 / 100.0, as_of: r.as_of.to_string(), floor: r.floor.cents() as f64 / 100.0, delay_days: r.delay_days })
         .collect();
+    let imports = sioul_core::movements::Store::load(&load_config().notes_root_path().unwrap_or_default()).map(|s| s.imports).unwrap_or_default();
     for account in &ledger.bank_accounts {
+        let fresh = sioul_core::moneyview::freshness(&account.id, &imports, accounts::balance_of(bank, account).map(|(day, _)| day), tr(), today);
         let balance = accounts::balance_of(bank, account).map(|(date, amount)| say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))])).unwrap_or_default();
         // Its own lines, as the matching left them: each with whatever else tells of it.
         let mine: Vec<&sioul_core::movements::Movement> = books.movements.iter().filter(|m| m.account.as_deref() == Some(account.id.as_str()) && m.sources.iter().any(|s| matches!(s.kind, Kind::Bank | Kind::Hold)) && matches!(m.state, State::Done | State::NotFinal)).collect();
@@ -319,8 +325,26 @@ fn accounts_into(view: &mut View, books: &sioul_core::movements::Books, aheads: 
             unplaced: mine.iter().filter(|m| m.why_placed() == Some(Why::Unknown) && matches!(m.place, Place::Nowhere | Place::Unplaced)).count(),
             movements,
             rules,
+            fresh,
+            payout: payout_sentence(ledger, account),
         });
     }
+}
+
+/// How what a processor's account receives reaches your bank (design §6,
+/// the Budgets tab): "What you receive waits on PayPal until you move it to
+/// My bank."; paid out by itself, or in batches; "" for a bank, or for an
+/// account in its own right (Wise, Revolut).
+fn payout_sentence(ledger: &Ledger, account: &sioul_core::budget::BankAccount) -> String {
+    let processors = sioul_core::processors::known();
+    let Some(processor) = processors.by_id(account.kind()).filter(|p| p.kind != "account") else { return String::new() };
+    let to = ledger.bank_accounts.iter().find(|a| a.id != account.id && processors.by_id(a.kind()).is_none()).map_or_else(|| tr().text("bank-payout-your-bank", None), |a| a.title.clone());
+    let id = match processor.pays_out.as_str() {
+        "automatic" => "bank-payout-automatic",
+        "batch" => "bank-payout-batch",
+        _ => "bank-payout-request",
+    };
+    say(id, &[("processor", if account.title.trim().is_empty() { processor.name.clone() } else { account.title.clone() }), ("bank", to)])
 }
 
 /// The budget file, where bank accounts, rules and choices are written.

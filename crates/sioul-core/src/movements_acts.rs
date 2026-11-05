@@ -21,6 +21,11 @@
 //!   the same by your hand (`same`) teaches the payee's name.
 //! - **"A payment…"** from any message or letter (`Payment`): a short form
 //!   filled from what it says, any budget, the message or letter its source.
+//! - **Make, change, remove** (`make`, `change`, `remove`; design §3): the
+//!   same acts for the window, the agents and the command line, each by what
+//!   the movement is made from (a line of yours, a recurring payment's
+//!   occurrence, the bank's line, a mail, an invoice, a share set aside, a
+//!   payout), each said in one line, its effect on a budget first.
 
 use super::*;
 use crate::bank::Statement;
@@ -53,6 +58,24 @@ pub fn take_in(root: &Path, statement: &Statement, title: &str, words: &crate::w
         Store::edit(root, |edit| edit.holds(&account, &holds))?;
     }
     let new: Vec<(String, String)> = Bank::load(root)?.movements.iter().map(|m| (m.account.clone(), m.id.clone())).filter(|line| !known.contains(line)).collect();
+    // What its rows say of their fees, by their keys in the store (never in
+    // `sioul-bank.toml`, which every version writes whole), and the export
+    // itself, whose day tells when Sioul was told of each of its lines.
+    let ledger = Ledger::load(root).unwrap_or_default();
+    let card = accounts::account_of(&ledger, &account).map_or_else(|| account.clone(), |a| a.id.clone());
+    let processor = accounts::account_of(&ledger, &account).and_then(|a| crate::processors::known().by_id(a.kind())).map(|p| p.id.clone());
+    let days: Vec<Date> = statement.movements.iter().map(|m| m.date).collect();
+    if let (Some(first), Some(last)) = (days.iter().min().copied(), days.iter().max().copied()) {
+        Store::edit(root, |edit| {
+            // Its new lines' only: the same export twice changes nothing.
+            for row in statement.fees.iter().filter(|r| !known.contains(&(account.clone(), r.id.clone()))) {
+                let kind = if row.bank { FeeKind::Bank } else { FeeKind::Processor };
+                let told = FeeTold { gross: row.gross, currency: None, fees: vec![Fee { kind, amount: row.fee, from: FeeFrom::Export, about: false }], paid_on: None, processor: processor.clone() };
+                edit.fee(&bank_key(&card, &row.id), &told);
+            }
+            edit.import(&card, first, last);
+        })?;
+    }
     let joined = resolve(root, words, &new, today)?;
     Ok(TakenIn { read: added.read, new: added.new, holds: holds.len(), joined })
 }
@@ -100,6 +123,18 @@ pub fn resolve(root: &Path, words: &crate::words::Words, new: &[(String, String)
             edit.link(movement, source, if *probable { "probable" } else { "sure" }, None);
         }
     })?;
+    // An invoice you issued, paid: its client's card tied to the payment (design §1.1).
+    let invoices = crate::invoice::all_in(&crate::invoice::folder());
+    let ties: Vec<(String, Payer)> = keep
+        .iter()
+        .filter_map(|(movement, _, _)| {
+            let number = movement.strip_prefix("sioul:invoice/").map(crate::notes::decode).or_else(|| all.iter().find(|m| m.has(movement)).and_then(|m| m.sources.iter().find(|s| s.kind == Kind::Invoice)).map(|s| crate::links::id_of(&s.key)))?;
+            let invoice = invoices.iter().find(|i| i.number == number)?;
+            let address = all.iter().find(|m| m.has(movement)).map(|m| m.address())?;
+            Some((address, Payer { address: None, name: invoice.client.lines().next().unwrap_or("").to_string() }))
+        })
+        .collect();
+    let _ = tie_payers(root, &ties);
     Ok(keep.len())
 }
 
@@ -126,10 +161,13 @@ fn evidence_of(kind: PaymentKind) -> Evidence {
 /// proposed, to be checked first. Returns how many links were written.
 pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine], today: Date) -> Result<usize, String> {
     let open = |l: &MailLine| l.state == MailState::Proposed && !l.doubtful && l.signed().is_some();
-    if !mail.iter().any(open) {
+    // A payment recorded from its mail waits for the bank too: a payout may carry it.
+    let recorded = |l: &MailLine| l.state == MailState::Recorded && !l.doubtful && l.signed().is_some();
+    recorded_from_processors(root, mail)?;
+    if !mail.iter().any(|l| open(l) || recorded(l)) {
         return Ok(0);
     }
-    let days: Vec<Date> = mail.iter().filter(|l| open(l)).map(|l| l.date).collect();
+    let days: Vec<Date> = mail.iter().filter(|l| open(l) || recorded(l)).map(|l| l.date).collect();
     let (from, to) = (shifted(days.iter().min().copied().unwrap_or(today), -70), shifted(days.iter().max().copied().unwrap_or(today).max(today), 70));
     // The books' movements (`books`, made again only when a file changed), around the mail's days.
     let movements = Movements { list: super::books(root, words, today).between(from, to).cloned().collect() };
@@ -141,10 +179,17 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
             && let Some(m) = movements.find(&link.movement)
         {
             line.state = joined_state(m, link.how == "probable");
+            continue;
+        }
+        // Carried by a payout before.
+        if let Some(entry) = store.carried.iter().find(|c| c.payments.iter().any(|p| p.source == line.key))
+            && let Some(m) = movements.find(&entry.payout)
+        {
+            line.state = joined_state(m, entry.how != "hand");
         }
     }
     let waiting: Vec<usize> = (0..mail.len()).filter(|&i| open(&mail[i])).collect();
-    if waiting.is_empty() {
+    if waiting.is_empty() && !mail.iter().any(recorded) {
         return Ok(0);
     }
     let bank_words = &words.bank;
@@ -170,7 +215,9 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
         .iter()
         .map(|&j| {
             let m = &movements.list[j];
-            crate::matching::Side { way: m.way, sum: m.sum, currency: m.currency.clone(), day: m.day, evidence: Evidence::Transfer, accounts: Vec::new(), names: m.names.iter().map(|n| crate::matching::tokens(bank_words, n)).collect(), refs: m.refs.clone() }
+            // A processor's mail tells what the payer paid: compared with what was paid, not with what arrived.
+            let sum = m.gross.filter(|_| m.gross_currency.is_none()).map_or(m.sum, Sum::Exact);
+            crate::matching::Side { way: m.way, sum, currency: m.currency.clone(), day: m.day, evidence: Evidence::Transfer, accounts: Vec::new(), names: m.names.iter().map(|n| crate::matching::tokens(bank_words, n)).collect(), refs: m.refs.clone() }
         })
         .collect();
     let idf = crate::matching::Idf::of(expected.iter().chain(sides.iter()).flat_map(|s| s.names.iter()));
@@ -205,7 +252,37 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
             links.push((movements.list[set[0]].steady_key().to_string(), l.key.clone(), true, l.signed().unwrap_or_default(), l.date, l.label.clone(), others, None));
         }
     }
-    if links.is_empty() {
+    // What a processor's mail told of the payments it joined: what the payer
+    // paid, the day, its own fee line when it states one.
+    let processors = crate::processors::known();
+    let processor_of = |l: &MailLine| l.sender_domain.as_deref().and_then(|d| processors.by_domain(d));
+    let mut told: Vec<(String, FeeTold)> = Vec::new();
+    for pair in &pairs {
+        let l = &mail[waiting[pair.expected]];
+        let processor = processor_of(l);
+        if processor.is_none() && l.payment.fee.is_none() {
+            continue;
+        }
+        let fees = l.payment.fee.iter().map(|f| Fee { kind: FeeKind::Processor, amount: f.money, from: FeeFrom::Mail, about: false }).collect();
+        let paid_on = (l.payment.kind == PaymentKind::Received).then_some(l.date);
+        told.push((l.key.clone(), FeeTold { gross: l.signed(), currency: None, fees, paid_on, processor: processor.map(|p| p.id.clone()) }));
+    }
+    let used: BTreeSet<usize> = pairs.iter().map(|p| waiting[p.expected]).chain(links.iter().filter_map(|(_, source, ..)| mail.iter().position(|l| &l.key == source))).collect();
+    let fact_taken: BTreeSet<usize> = taken.clone();
+    let platform = platform_invoices(words, mail, &used, &movements, &fact_taken, &store);
+    for (movement, service, fee) in &platform.pairs {
+        let (s, f) = (&mail[*service], &mail[*fee]);
+        let gross = s.payment.amount.as_ref().map_or(Money::ZERO, |a| a.money.abs());
+        let kept = f.payment.amount.as_ref().map_or(Money::ZERO, |a| a.money.abs());
+        let processor = processor_of(s).map(|p| p.id.clone());
+        links.push((movement.clone(), s.key.clone(), false, gross, s.date, s.label.clone(), Vec::new(), None));
+        links.push((movement.clone(), format!("{FEE_INVOICE}{}", f.key), false, -kept, f.date, f.label.clone(), Vec::new(), None));
+        told.push((s.key.clone(), FeeTold { gross: Some(gross), currency: None, fees: Vec::new(), paid_on: None, processor: processor.clone() }));
+        told.push((format!("{FEE_INVOICE}{}", f.key), FeeTold { gross: None, currency: None, fees: vec![Fee { kind: FeeKind::Commission, amount: kept, from: FeeFrom::Invoice, about: false }], paid_on: None, processor }));
+    }
+    let used: BTreeSet<usize> = used.into_iter().chain(platform.pairs.iter().flat_map(|(_, s, f)| [*s, *f])).collect();
+    let carried = payouts_carried(mail, &used, &movements, &fact_taken.into_iter().chain(platform.payouts).collect(), &store);
+    if links.is_empty() && carried.is_empty() {
         return Ok(0);
     }
     Store::edit(root, |edit| {
@@ -215,13 +292,178 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
                 edit.link_together(source, others, *instalments);
             }
         }
+        for (source, told) in &told {
+            edit.fee(source, told);
+        }
+        for (payout, payments) in &carried {
+            edit.carry(payout, "oldest", payments);
+        }
     })?;
     for (movement, source, probable, ..) in &links {
-        if let (Some(line), Some(m)) = (mail.iter_mut().find(|l| &l.key == source), movements.find(movement)) {
+        // A fee invoice is its message.
+        let source = source.strip_prefix(FEE_INVOICE).unwrap_or(source);
+        if let (Some(line), Some(m)) = (mail.iter_mut().find(|l| l.key == source), movements.find(movement)) {
             line.state = joined_state(m, *probable);
         }
     }
-    Ok(links.len())
+    for (payout, payments) in &carried {
+        let Some(m) = movements.find(payout) else { continue };
+        for p in payments {
+            if let Some(line) = mail.iter_mut().find(|l| l.key == p.source) {
+                line.state = joined_state(m, true);
+            }
+        }
+    }
+    // The payer's or the payee's card, tied to the movement each mail joined (design §1.1).
+    let mut ties: Vec<(String, Payer)> = Vec::new();
+    let mut tie = |movement: &str, key: &str| {
+        if let Some(line) = mail.iter().find(|l| l.key == key) {
+            let address = line.path.as_deref().and_then(sender_address);
+            ties.push((crate::links::movement_uri(movement), payer_of(line, address.as_deref())));
+        }
+    };
+    for (movement, source, ..) in &links {
+        if !source.starts_with(FEE_INVOICE) {
+            tie(movement, source);
+        }
+    }
+    for (payout, payments) in &carried {
+        for p in payments {
+            tie(payout, &p.source);
+        }
+    }
+    let _ = tie_payers(root, &ties);
+    Ok(links.len() + carried.iter().map(|(_, p)| p.len()).sum::<usize>())
+}
+
+/// A payment you recorded from a processor's mail (money received): what
+/// the payer paid, its day and the processor kept once (`[[fee]]`), so that
+/// until its payout comes its line says what may arrive, about, after the
+/// processor's fee (design §1.3: "on PayPal, not on My bank yet").
+fn recorded_from_processors(root: &Path, mail: &[MailLine]) -> Result<(), String> {
+    let processors = crate::processors::known();
+    let recorded: Vec<&MailLine> = mail.iter().filter(|l| l.state == MailState::Recorded && l.payment.kind == PaymentKind::Received && !l.doubtful).collect();
+    if recorded.is_empty() {
+        return Ok(());
+    }
+    let store = Store::load(root).unwrap_or_default();
+    let told: Vec<(String, FeeTold)> = recorded
+        .into_iter()
+        .filter(|l| !store.fees.iter().any(|f| f.source == l.key))
+        .filter_map(|l| {
+            let p = processors.by_domain(l.sender_domain.as_deref()?)?;
+            let fees = l.payment.fee.iter().map(|f| Fee { kind: FeeKind::Processor, amount: f.money, from: FeeFrom::Mail, about: false }).collect();
+            Some((l.key.clone(), FeeTold { gross: l.signed(), currency: None, fees, paid_on: Some(l.date), processor: Some(p.id.clone()) }))
+        })
+        .collect();
+    if told.is_empty() {
+        return Ok(());
+    }
+    Store::edit(root, |edit| {
+        for (source, told) in &told {
+            edit.fee(source, told);
+        }
+    })
+}
+
+/// A platform that bills its commission apart (Malt; `Processor::fee_invoice`):
+/// its service invoice (what the client paid) and its fee invoice (what it
+/// kept), a few days apart, whose difference is to the cent a payout of its
+/// on the bank's line. The mails, by their places in `mail`, and the payouts, by theirs.
+struct Platform {
+    pairs: Vec<(String, usize, usize)>,
+    payouts: Vec<usize>,
+}
+
+fn platform_invoices(words: &crate::words::Words, mail: &[MailLine], used: &BTreeSet<usize>, movements: &Movements, taken: &BTreeSet<usize>, store: &Store) -> Platform {
+    let processors = crate::processors::known();
+    let fee_words: Vec<String> = words.payments.fee.iter().map(|w| crate::words::folded(w)).filter(|w| !w.is_empty()).collect();
+    let is_fee = |l: &MailLine| {
+        let text: Vec<char> = crate::text::fold(&format!("{} {}", l.subject, l.label));
+        fee_words.iter().any(|w| crate::text::find_word(&text, w, 0).is_some())
+    };
+    let usable = |i: usize| !used.contains(&i) && !mail[i].doubtful && matches!(mail[i].state, MailState::Proposed) && mail[i].payment.amount.as_ref().is_some_and(|a| a.currency == "EUR" && a.money.cents() != 0);
+    let mut out = Platform { pairs: Vec::new(), payouts: Vec::new() };
+    let mut gone: BTreeSet<usize> = BTreeSet::new();
+    for p in processors.processors.iter().filter(|p| p.fee_invoice) {
+        let theirs: Vec<usize> = (0..mail.len()).filter(|&i| usable(i) && mail[i].sender_domain.as_deref().is_some_and(|d| p.sends_from(d))).collect();
+        let (fees, services): (Vec<usize>, Vec<usize>) = theirs.into_iter().partition(|&i| is_fee(&mail[i]));
+        let payouts = (0..movements.list.len()).filter(|&j| !taken.contains(&j) && is_payout(&movements.list[j], p, store));
+        for j in payouts {
+            let m = &movements.list[j];
+            let net = m.sum.amount().cents();
+            let found = services.iter().filter(|s| !gone.contains(s)).find_map(|&s| {
+                let (gross, day) = (mail[s].payment.amount.as_ref()?.money.abs().cents(), mail[s].date);
+                if day > shifted(m.day, 1) || day < shifted(m.day, -62) {
+                    return None;
+                }
+                fees.iter().filter(|f| !gone.contains(f)).find(|&&f| mail[f].payment.amount.as_ref().is_some_and(|a| (gross - a.money.abs().cents() - net).abs() <= 1) && days_apart(mail[f].date, day) <= 10).map(|&f| (s, f))
+            });
+            if let Some((s, f)) = found {
+                gone.extend([s, f]);
+                out.pairs.push((m.steady_key().to_string(), s, f));
+                out.payouts.push(j);
+            }
+        }
+    }
+    out
+}
+
+/// Whether `m` is one of `p`'s payouts that nothing joined yet: money in,
+/// the bank's line alone, its label naming the processor, not carried yet.
+fn is_payout(m: &Movement, p: &crate::processors::Processor, store: &Store) -> bool {
+    m.way == Way::In && m.sources.len() == 1 && m.has_kind(Kind::Bank) && m.bank_label.as_deref().is_some_and(|l| p.named_in(l)) && !store.carried.iter().any(|c| m.has(&c.payout))
+}
+
+/// The payouts on the bank's line of a processor whose export you do not
+/// take in (docs/accounting.md, "Payouts"), each carrying the payments its
+/// mail told of since its previous payout, oldest first, as far as its
+/// amount goes, the fees within the processor's bounds
+/// (`matching::carried_prefix`). Messages already joined, said not to be
+/// payments, or from a sender not verified are never carried. Each payout
+/// by its steadiest key, with what each payment's message said.
+fn payouts_carried(mail: &[MailLine], used: &BTreeSet<usize>, movements: &Movements, taken: &BTreeSet<usize>, store: &Store) -> Vec<(String, Vec<CarriedPayment>)> {
+    let processors = crate::processors::known();
+    let carried_before: BTreeSet<&str> = store.carried.iter().flat_map(|c| c.payments.iter().map(|p| p.source.as_str())).collect();
+    // A recorded payment waits for the bank while its line's movement has no bank line yet.
+    let waits = |l: &MailLine| match l.state {
+        MailState::Proposed => true,
+        MailState::Recorded => movements.list.iter().find(|m| m.has(&l.key)).is_some_and(expects),
+        _ => false,
+    };
+    let mut out = Vec::new();
+    for p in &processors.processors {
+        let mut told: Vec<usize> = (0..mail.len())
+            .filter(|&i| {
+                let l = &mail[i];
+                !used.contains(&i) && !l.doubtful && waits(l) && !carried_before.contains(l.key.as_str()) && l.payment.kind.is_credit() && l.payment.kind != PaymentKind::Refund
+            })
+            .filter(|&i| mail[i].sender_domain.as_deref().is_some_and(|d| p.sends_from(d)) && mail[i].payment.amount.as_ref().is_some_and(|a| a.currency == "EUR" && a.money.cents() > 0))
+            .collect();
+        if told.is_empty() {
+            continue;
+        }
+        told.sort_by_key(|&i| (mail[i].date, i));
+        let mut payouts: Vec<usize> = (0..movements.list.len()).filter(|&j| !taken.contains(&j) && is_payout(&movements.list[j], p, store)).collect();
+        payouts.sort_by_key(|&j| movements.list[j].day);
+        let mut left = told;
+        for j in payouts {
+            let m = &movements.list[j];
+            let before: Vec<usize> = left.iter().copied().filter(|&i| mail[i].date <= m.day).collect();
+            let grosses: Vec<Money> = before.iter().map(|&i| mail[i].payment.amount.as_ref().map_or(Money::ZERO, |a| a.money)).collect();
+            let Some(k) = crate::matching::carried_prefix(m.sum.amount(), &grosses, &|g, n| p.bounds.of(g, n)) else { continue };
+            let payments: Vec<CarriedPayment> = before[..k]
+                .iter()
+                .map(|&i| {
+                    let l = &mail[i];
+                    CarriedPayment { source: l.key.clone(), gross: l.payment.amount.as_ref().map_or(Money::ZERO, |a| a.money.abs()), day: l.date, label: l.label.clone(), fee: l.payment.fee.as_ref().map(|f| f.money.abs()) }
+                })
+                .collect();
+            left.retain(|i| !before[..k].contains(i));
+            out.push((m.steady_key().to_string(), payments));
+        }
+    }
+    out
 }
 
 /// What moving a movement did, for the page to say: the budget that holds
@@ -410,8 +652,835 @@ impl Payment {
             reserve: None,
             links: vec![self.source.clone()],
             preset: None,
+            ..Line::default()
         };
         crate::budget::record_line(&path, &line, origin)?;
         Ok(id)
     }
+}
+
+// ---------------------------------------------------------------- fees and payouts
+
+/// The payments a payout carried as the store says it (`[[carried]]`):
+/// each one's own movement (a line recorded from its message) made one with
+/// the payout, counted once, or its message a source of the payout; the
+/// payout says what it carried. A payment you said is not part of it ("Not
+/// a payout", `[[apart]]` with the payout) is left out.
+pub(super) fn carry_from_store(out: &mut Vec<Movement>, store: &Store, apart: &dyn Fn(&str, &str) -> bool) {
+    for entry in &store.carried {
+        if !out.iter().any(|m| m.has(&entry.payout) && m.has_kind(Kind::Bank)) {
+            continue;
+        }
+        let probable = entry.how != "hand";
+        let mut carried = Vec::new();
+        for pay in entry.payments.iter().filter(|p| !apart(&entry.payout, &p.source)) {
+            let Some(at) = out.iter().position(|m| m.has(&entry.payout)) else { break };
+            match out.iter().position(|m| m.has(&pay.source)) {
+                Some(own) if own == at => {}
+                Some(own) => {
+                    let other = out.remove(own);
+                    let at = if own < at { at - 1 } else { at };
+                    merge(&mut out[at], other, probable);
+                }
+                None => {
+                    if let Some(mut source) = Source::of_key(&pay.source) {
+                        source.probable = probable;
+                        out[at].sources.push(source);
+                    }
+                }
+            }
+            let fee = pay.fee.map(|f| Fee { kind: FeeKind::Processor, amount: f.abs(), from: FeeFrom::Mail, about: false });
+            carried.push(Carried { key: pay.source.clone(), day: pay.day, label: pay.label.clone(), gross: pay.gross.abs(), fee, how: entry.how.clone() });
+        }
+        if let Some(m) = out.iter_mut().find(|m| m.has(&entry.payout)) {
+            m.carried = carried;
+        }
+    }
+}
+
+/// One record of what was paid and kept, from one source, the most exact first (`FeeFrom`).
+struct Record {
+    rank: FeeFrom,
+    gross: Option<Money>,
+    currency: Option<String>,
+    fees: Vec<Fee>,
+    paid_on: Option<Date>,
+    processor: Option<String>,
+}
+
+/// What every movement was paid, its fees and the day it was paid
+/// (docs/accounting.md, "Fees"), from the most exact record at hand: your
+/// hand (a line's own), the processor's export, a fee invoice, the mail's own
+/// fee line, a payout's difference; the published rule, or your own rate on
+/// the account, only as "about", for what is still expected. Each kind of
+/// fee from its most exact record. Figures that do not add up keep the
+/// bank's net and say the fees are not known yet: nothing is made up. Then a
+/// payout of a processor's account says the payments its export shows it
+/// carried; your words (`[[edit]]`); the days it was made and changed.
+pub(super) fn settle_fees(out: &mut [Movement], input: &Input, lines: &HashMap<String, &Line>, today: Date) {
+    let store = input.store;
+    let processors = crate::processors::known();
+    let country = crate::processors::country_of(input.words);
+    let entries: HashMap<&str, &FeeEntry> = store.fees.iter().map(|e| (e.source.as_str(), e)).collect();
+    let account_processor = |account: Option<&str>| -> Option<&crate::processors::Processor> {
+        let card = input.ledger.bank_accounts.iter().find(|a| Some(a.id.as_str()) == account)?;
+        processors.by_id(card.kind())
+    };
+    // Each account's own rate: the median of its past year's exact fees, as a share of what was paid.
+    let mut rates: HashMap<String, Vec<f64>> = HashMap::new();
+    // What is still expected, for its fee about once the rates are known.
+    let mut expected: Vec<(usize, Money, Option<&crate::processors::Processor>)> = Vec::new();
+    for (index, m) in out.iter_mut().enumerate() {
+        let mut records: Vec<Record> = Vec::new();
+        for source in &m.sources {
+            if let Some(entry) = entries.get(source.key.as_str()) {
+                let fees: Vec<Fee> = entry.fees.iter().map(FeePart::fee).collect();
+                let rank = fees.iter().map(|f| f.from).min().unwrap_or(match source.kind {
+                    Kind::Bank | Kind::Hold => FeeFrom::Export,
+                    Kind::FeeInvoice | Kind::Invoice => FeeFrom::Invoice,
+                    Kind::Line => FeeFrom::Hand,
+                    _ => FeeFrom::Mail,
+                });
+                records.push(Record { rank, gross: entry.gross, currency: entry.currency.clone(), fees, paid_on: entry.paid_on, processor: entry.processor.clone() });
+            }
+            if source.kind == Kind::Line
+                && let Some(line) = lines.get(&source.key)
+                && (line.gross.is_some() || !line.fees.is_empty() || line.paid_on.is_some())
+            {
+                let fees = line.fees.iter().map(|f| Fee { kind: FeeKind::parse(&f.kind), amount: f.amount.abs(), from: if f.about { FeeFrom::Rate } else { FeeFrom::Hand }, about: f.about }).collect();
+                records.push(Record { rank: FeeFrom::Hand, gross: line.gross, currency: None, fees, paid_on: line.paid_on, processor: None });
+            }
+        }
+        records.sort_by_key(|r| r.rank);
+        let net = m.sum.amount();
+        let done = matches!(m.state, State::Done | State::NotFinal);
+        let mut gross = records.iter().find(|r| r.gross.is_some()).map(|r| (r.gross.unwrap_or(net), r.currency.clone().filter(|c| !c.eq_ignore_ascii_case(&m.currency))));
+        // Each kind of fee from its most exact record.
+        let mut fees: Vec<Fee> = Vec::new();
+        for record in &records {
+            for fee in &record.fees {
+                if !fees.iter().any(|f| f.kind == fee.kind) {
+                    fees.push(*fee);
+                }
+            }
+        }
+        let processor = records.iter().find_map(|r| r.processor.as_deref()).and_then(|p| processors.by_id(p)).or_else(|| account_processor(m.account.as_deref())).or_else(|| m.bank_label.as_deref().and_then(|l| processors.by_label(l)));
+        // A payout without its processor's export: what it carried is what was paid.
+        if gross.is_none() && !m.carried.is_empty() {
+            gross = Some((Money(m.carried.iter().map(|c| c.gross.cents()).sum()), None));
+        }
+        m.fees_unknown = false;
+        match &gross {
+            Some((g, None)) => {
+                let all: Money = fees.iter().map(|f| f.amount).sum();
+                let exact = fees.iter().all(|f| !f.about);
+                if fees.is_empty() && *g != net {
+                    let difference = *g - net;
+                    // A payout's or a processor's row: its difference is its fees, within the processor's bounds.
+                    let n = m.carried.len().max(1);
+                    let bounded = processor.is_some_and(|p| {
+                        let (low, high) = p.bounds.of(*g, n);
+                        difference >= low && difference <= high
+                    });
+                    if done && (bounded || !m.carried.is_empty()) && difference.cents() > 0 {
+                        fees.push(Fee { kind: if processor.is_some_and(|p| p.kind == "platform") { FeeKind::Commission } else { FeeKind::Processor }, amount: difference, from: FeeFrom::Payout, about: false });
+                    } else if !done && records.first().is_some_and(|r| r.rank == FeeFrom::Hand) && difference.cents() > 0 {
+                        // Your gross and your amount: the difference is what you said the fees are.
+                        fees.push(Fee { kind: FeeKind::Processor, amount: difference, from: FeeFrom::Hand, about: false });
+                    } else if done {
+                        m.fees_unknown = true;
+                    }
+                } else if !fees.is_empty() && exact && *g - all != net && done {
+                    fees.clear();
+                    m.fees_unknown = true;
+                }
+            }
+            Some((_, Some(_))) => {}
+            None if !fees.is_empty() && fees.iter().all(|f| !f.about) => {
+                gross = Some((net + fees.iter().map(|f| f.amount).sum::<Money>(), None));
+            }
+            None => {}
+        }
+        if !done && fees.is_empty() && m.way == Way::In && processor.is_some() {
+            expected.push((index, gross.as_ref().map_or(net, |(g, _)| *g), processor));
+        }
+        if done && let (Some((g, None)), Some(account)) = (&gross, m.account.as_deref()) {
+            let exact: Money = fees.iter().filter(|f| f.kind == FeeKind::Processor && !f.about && matches!(f.from, FeeFrom::Export | FeeFrom::Hand)).map(|f| f.amount).sum();
+            if exact.cents() > 0 && g.cents() > 0 && m.day >= shifted(today, -365) {
+                rates.entry(account.to_string()).or_default().push(exact.cents() as f64 / g.cents() as f64);
+            }
+        }
+        // A payout's fees shared out among what it carried: exact for one
+        // payment or one its message said, else each its share, about, by the
+        // processor's rule scaled to the payout.
+        if !m.carried.is_empty() {
+            let total = fees.iter().filter(|f| matches!(f.kind, FeeKind::Processor | FeeKind::Commission)).map(|f| f.amount).sum::<Money>();
+            share_out(&mut m.carried, total, processor, country);
+        }
+        m.paid_on = records.iter().find_map(|r| r.paid_on).or_else(|| (m.carried.len() == 1).then(|| m.carried[0].day)).filter(|d| *d != m.day);
+        m.gross = gross.as_ref().map(|(g, _)| *g).filter(|g| *g != net || !fees.is_empty() || m.fees_unknown);
+        m.gross_currency = gross.and_then(|(_, c)| c);
+        m.fees = fees;
+    }
+    // What is still expected: about, by your own rate on its account, else the processor's rule.
+    for (index, paid, processor) in expected {
+        let m = &mut out[index];
+        let own = m.account.as_deref().and_then(|a| rates.get(a)).and_then(|r| median(r));
+        let about = own.map(|share| Money((paid.cents() as f64 * share).round() as i64)).or_else(|| processor.and_then(|p| p.about_fee(paid, country)));
+        if let Some(about) = about.filter(|a| a.cents() > 0) {
+            m.fees.push(Fee { kind: FeeKind::Processor, amount: about, from: FeeFrom::Rate, about: true });
+            m.gross = Some(paid);
+        }
+    }
+    carried_by_exports(out, input);
+    // Your words, then the days it was made and changed.
+    let zone = crate::zone::current();
+    let day_of = |at: &Option<jiff::Timestamp>| at.map(|t| t.to_zoned(zone.clone()).date());
+    for m in out.iter_mut() {
+        let edits: Vec<&EditEntry> = store.edits.iter().filter(|e| m.has(&e.movement)).collect();
+        for edit in edits {
+            if let Some(note) = &edit.note {
+                m.note = note.clone();
+            }
+            if let Some(paid) = edit.paid_on {
+                m.paid_on = Some(paid).filter(|d| *d != m.day);
+            }
+            if let Some(label) = edit.label.as_ref().filter(|l| !l.trim().is_empty()) {
+                m.label = label.trim().to_string();
+            }
+        }
+        let mut told: Vec<Date> = Vec::new();
+        for source in &m.sources {
+            match source.kind {
+                Kind::Bank | Kind::Hold => {
+                    let account = source.key.strip_prefix("bank:").or_else(|| source.key.strip_prefix("hold:")).and_then(|r| r.rsplit_once('/')).map(|(a, _)| a);
+                    told.extend(store.imports.iter().filter(|i| Some(i.account.as_str()) == account && i.first <= m.day && m.day <= i.last).filter_map(|i| day_of(&i.at)));
+                }
+                Kind::Line => told.extend(lines.get(&source.key).and_then(|l| day_of(&l.made))),
+                Kind::Mail | Kind::FeeInvoice => {
+                    let key = source.key.strip_prefix(FEE_INVOICE).unwrap_or(&source.key);
+                    told.extend(store.links.iter().filter(|l| l.source == source.key).filter_map(|l| l.day));
+                    told.extend(m.carried.iter().filter(|c| c.key == key).map(|c| c.day));
+                }
+                Kind::Letter => told.extend(input.letters.iter().filter(|l| crate::links::letter_uri(&l.id) == source.key).filter_map(|l| l.received)),
+                _ => {}
+            }
+        }
+        m.made = told.into_iter().min();
+        let names = |key: &str| m.has(key);
+        let mut corrected: Vec<Date> = Vec::new();
+        corrected.extend(store.edits.iter().filter(|e| names(&e.movement)).filter_map(|e| day_of(&e.at)));
+        corrected.extend(store.moves.iter().filter(|e| names(&e.movement)).filter_map(|e| day_of(&e.at)));
+        corrected.extend(store.links.iter().filter(|l| l.how == "hand" && (names(&l.movement) || names(&l.source))).filter_map(|l| day_of(&l.at)));
+        corrected.extend(store.apart.iter().filter(|a| names(&a.a) || names(&a.b)).filter_map(|a| day_of(&a.at)));
+        corrected.extend(store.carried.iter().filter(|c| c.how == "hand" && names(&c.payout)).filter_map(|c| day_of(&c.at)));
+        corrected.extend(m.sources.iter().filter_map(|s| entries.get(s.key.as_str())).filter(|e| e.fees.iter().any(|f| f.from == "hand")).filter_map(|e| day_of(&e.at)));
+        corrected.extend(m.sources.iter().filter(|s| s.kind == Kind::Line).filter_map(|s| lines.get(&s.key)).filter_map(|l| day_of(&l.changed)));
+        m.changed = corrected.into_iter().max().or(m.made);
+    }
+}
+
+/// The middle of some shares.
+fn median(values: &[f64]) -> Option<f64> {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    if v.is_empty() {
+        return None;
+    }
+    v.sort_by(f64::total_cmp);
+    Some(if v.len() % 2 == 1 { v[v.len() / 2] } else { (v[v.len() / 2 - 1] + v[v.len() / 2]) / 2.0 })
+}
+
+/// A payout's fees (`total`) shared out among the payments it carried: a
+/// fee a message said kept as it is; the rest exact for one payment, else
+/// each its share, about, by the processor's rule (else by what each paid)
+/// scaled to what is left.
+fn share_out(carried: &mut [Carried], total: Money, processor: Option<&crate::processors::Processor>, country: &str) {
+    let stated: Money = carried.iter().filter_map(|c| c.fee.map(|f| f.amount)).sum();
+    let left = total - stated;
+    let open: Vec<usize> = (0..carried.len()).filter(|&i| carried[i].fee.is_none()).collect();
+    if open.is_empty() || left.cents() < 0 {
+        return;
+    }
+    if open.len() == 1 {
+        carried[open[0]].fee = Some(Fee { kind: FeeKind::Processor, amount: left, from: FeeFrom::Payout, about: carried.len() > 1 && stated == Money::ZERO });
+        return;
+    }
+    let weight = |c: &Carried| processor.and_then(|p| p.about_fee(c.gross, country)).map_or(c.gross.cents().abs(), |f| f.cents().max(1)) as f64;
+    let all: f64 = open.iter().map(|&i| weight(&carried[i])).sum();
+    if all <= 0.0 {
+        return;
+    }
+    let mut given = 0i64;
+    for (n, &i) in open.iter().enumerate() {
+        let share = if n + 1 == open.len() { left.cents() - given } else { (left.cents() as f64 * weight(&carried[i]) / all).round() as i64 };
+        given += share;
+        carried[i].fee = Some(Fee { kind: FeeKind::Processor, amount: Money(share), from: FeeFrom::Payout, about: true });
+    }
+}
+
+/// A move out of a processor's account (PayPal's withdrawal, Stripe's
+/// payout), its export read: it carried that account's money in since its
+/// previous one, as its running balance between them says; each payment
+/// says the payout that carried it.
+fn carried_by_exports(out: &mut [Movement], input: &Input) {
+    let processors = crate::processors::known();
+    let processor_account = |id: &str| input.ledger.bank_accounts.iter().find(|a| a.id == id).is_some_and(|a| a.kind() != "bank" && processors.by_id(a.kind()).is_some());
+    let mut payouts: Vec<(usize, String, Date)> = out.iter().enumerate().filter_map(|(i, m)| match &m.place {
+        Place::Transfer { from, .. } if m.way == Way::Between && processor_account(from) => Some((i, from.clone(), m.day)),
+        _ => None,
+    }).collect();
+    payouts.sort_by_key(|(_, _, day)| *day);
+    let mut since: HashMap<String, Date> = HashMap::new();
+    for (at, account, day) in payouts {
+        let start = since.get(&account).copied();
+        let carried: Vec<usize> = (0..out.len())
+            .filter(|&j| j != at && out[j].account.as_deref() == Some(account.as_str()) && out[j].way == Way::In && out[j].state == State::Done && out[j].day <= day && start.is_none_or(|s| out[j].day > s) && out[j].carried_by.is_none())
+            .collect();
+        since.insert(account, day);
+        let key = out[at].steady_key().to_string();
+        let parts: Vec<Carried> = carried
+            .iter()
+            .map(|&j| {
+                let m = &out[j];
+                let fee = m.fees.iter().find(|f| matches!(f.kind, FeeKind::Processor | FeeKind::Commission)).copied();
+                Carried { key: m.steady_key().to_string(), day: m.paid_day(), label: m.label.clone(), gross: m.gross_or_net(), fee, how: "export".into() }
+            })
+            .collect();
+        for &j in &carried {
+            out[j].carried_by = Some(key.clone());
+        }
+        out[at].carried = parts;
+    }
+}
+
+// ---------------------------------------------------------------- make, change, remove
+
+/// A movement made by your hand (design §3.1, "New movement"). Amounts are
+/// signed: + money in, − money out. One of `gross` and `net` at least; the
+/// fees, without sign, each a cost.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct New {
+    /// Who paid, or who was paid.
+    pub label: String,
+    /// What the payer paid (money in), or the price (money out).
+    pub gross: Option<Money>,
+    /// What moved the account, or will.
+    pub net: Option<Money>,
+    pub fees: Vec<Fee>,
+    /// The bank account, by its id; none: the one that fills its budget first.
+    pub account: Option<String>,
+    pub budget: String,
+    pub day: Date,
+    /// The day it was paid at its processor, when not its day.
+    pub paid_on: Option<Date>,
+    /// To come: planned (a day to come is planned whatever this says).
+    pub planned: bool,
+    pub note: String,
+    /// What it is tied to: tasks, projects, contacts, persons, notes, by their addresses.
+    pub ties: Vec<String>,
+}
+
+/// What an act did, for whoever asked to say: the movement's address, and
+/// its effect in one line ("Home holds €12 more for November 2026.").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Act {
+    pub address: String,
+    pub said: String,
+}
+
+/// What a movement is changed in (design §3.1): only what is given. A
+/// field its kind does not allow is refused, with why.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Change {
+    pub label: Option<String>,
+    /// What was paid; `Some(None)`: not known.
+    pub gross: Option<Option<Money>>,
+    /// Its fees, in place of those said before.
+    pub fees: Option<Vec<Fee>>,
+    /// What moved the account (never the bank's line's).
+    pub net: Option<Money>,
+    /// Its day (never the bank's line's).
+    pub day: Option<Date>,
+    /// The day it was paid; `Some(None)`: its day.
+    pub paid_on: Option<Option<Date>>,
+    pub note: Option<String>,
+    /// The budget it goes to (`move_to`), whatever the hour.
+    pub budget: Option<String>,
+    pub planned: Option<bool>,
+    pub account: Option<String>,
+}
+
+/// Each budget's share of a movement, signed.
+fn budget_shares(m: &Movement) -> Vec<(String, Money)> {
+    shares(&m.place, m.sum.amount())
+}
+
+/// The effect of an act on the budgets, in one line: the budget that holds
+/// most more now, else the one that holds most less, "holds €12 more (less)
+/// for November 2026" (the year alone in a yearly budget); none when no
+/// budget's share changed.
+pub fn effect(tr: &crate::i18n::Translator, ledger: &Ledger, before: &[(String, Money)], after: &[(String, Money)], day: Date) -> String {
+    let mut delta: std::collections::BTreeMap<&str, i64> = std::collections::BTreeMap::new();
+    for (budget, amount) in before {
+        *delta.entry(budget.as_str()).or_insert(0) -= amount.cents();
+    }
+    for (budget, amount) in after {
+        *delta.entry(budget.as_str()).or_insert(0) += amount.cents();
+    }
+    // The budget that holds more now, as moving a movement says it; else the one that holds less.
+    let changed: Vec<(&str, i64)> = delta.into_iter().filter(|(_, c)| *c != 0).collect();
+    let more = changed.iter().filter(|(_, c)| *c > 0).max_by_key(|(_, c)| *c).copied();
+    let Some((budget, cents)) = more.or_else(|| changed.iter().min_by_key(|(_, c)| *c).copied()) else { return String::new() };
+    let yearly = ledger.budgets.iter().find(|b| b.id == budget).is_some_and(|b| b.period == crate::budget::Period::Year);
+    let mut args = crate::i18n::args();
+    args.set("budget", ledger.budget_title(budget).to_string());
+    args.set("amount", tr.money(Money(cents.abs())));
+    args.set("period", if yearly { day.year().to_string() } else { tr.month_year(day) });
+    tr.text(if cents > 0 { "moved-more" } else { "made-less" }, Some(&args))
+}
+
+/// "Client A, Wed 5 Nov: changed." when no budget's share changed.
+fn plainly(tr: &crate::i18n::Translator, id: &str, m: &Movement) -> String {
+    let mut args = crate::i18n::args();
+    args.set("who", crate::moneyview::who(tr, m));
+    args.set("day", crate::moneyview::short_day(tr, m.day));
+    tr.text(id, Some(&args))
+}
+
+/// A line's fees as the budget file writes them.
+fn line_fees(fees: &[Fee]) -> Vec<crate::budget::LineFee> {
+    fees.iter().map(|f| crate::budget::LineFee { kind: f.kind.id().into(), amount: f.amount.abs(), about: f.about }).collect()
+}
+
+/// Gross, fees and net that hold together (`gross − fees = net`), from
+/// what was given: the net from the gross and the fees, the gross from the
+/// net and the fees, the fees (yours) from a gross and a net. None when
+/// they cannot hold: another sign, or figures that do not add up.
+fn figures(gross: Option<Money>, net: Option<Money>, fees: &[Fee]) -> Option<(Option<Money>, Money, Vec<Fee>)> {
+    let all: Money = fees.iter().map(|f| f.amount.abs()).sum();
+    let (gross, net, fees) = match (gross, net) {
+        (Some(g), Some(n)) if fees.is_empty() && g != n => (Some(g), n, vec![Fee { kind: FeeKind::Processor, amount: g - n, from: FeeFrom::Hand, about: false }]),
+        (Some(g), Some(n)) if fees.is_empty() || g - all == n => (Some(g), n, fees.to_vec()),
+        (Some(_), Some(_)) => return None,
+        (Some(g), None) => (Some(g), g - all, fees.to_vec()),
+        (None, Some(n)) if fees.is_empty() => (None, n, Vec::new()),
+        (None, Some(n)) => (Some(n + all), n, fees.to_vec()),
+        (None, None) => return None,
+    };
+    let same_sign = gross.is_none_or(|g| g.is_negative() == net.is_negative() && g != Money::ZERO);
+    let costs = fees.iter().all(|f| f.amount.cents() >= 0);
+    (net != Money::ZERO && same_sign && costs).then(|| (gross.filter(|g| *g != net), net, fees))
+}
+
+/// A movement made by your hand (design §3.1): a line of the budget file,
+/// written where every version reads it, its id given now; what was paid,
+/// its fees, the day it was paid, your note and the account beside its
+/// amount, which is what moved the account (`amount = gross − fees`). Any
+/// budget may be chosen, whatever the hour. `origin`: the comment above it.
+pub fn make(root: &Path, tr: &crate::i18n::Translator, new: &New, origin: &str, today: Date) -> Result<Act, String> {
+    let path = root.join(crate::budget::LEDGER);
+    let ledger = Ledger::load(root)?;
+    if !ledger.budgets.iter().any(|b| b.id == new.budget) {
+        return Err(tr.text("movement-no-budget", None));
+    }
+    if let Some(account) = new.account.as_deref().filter(|a| !ledger.bank_accounts.iter().any(|b| b.id == *a)) {
+        let mut args = crate::i18n::args();
+        args.set("account", account.to_string());
+        return Err(tr.text("movement-no-account", Some(&args)));
+    }
+    let fees: Vec<Fee> = new.fees.iter().map(|f| Fee { from: FeeFrom::Hand, amount: f.amount.abs(), ..*f }).collect();
+    let (gross, net, fees) = figures(new.gross, new.net, &fees).ok_or_else(|| tr.text("movement-figures", None))?;
+    let id = crate::ids::new();
+    let line = Line {
+        id: id.clone(),
+        budget: new.budget.clone(),
+        date: new.day,
+        amount: net,
+        label: new.label.trim().to_string(),
+        planned: new.planned || new.day > today,
+        links: new.ties.clone(),
+        gross,
+        fees: line_fees(&fees),
+        paid_on: new.paid_on.filter(|d| *d != new.day),
+        note: new.note.trim().to_string(),
+        made: Some(jiff::Timestamp::now()),
+        account: new.account.clone(),
+        ..Line::default()
+    };
+    crate::budget::record_line(&path, &line, origin)?;
+    super::said();
+    Ok(Act { address: crate::links::movement_uri(&format!("line:{id}")), said: effect(tr, &ledger, &[], &[(new.budget.clone(), net)], new.day) })
+}
+
+/// The movement an address names in the notes folder's books, and the books.
+pub fn found(root: &Path, words: &crate::words::Words, address: &str, today: Date) -> Option<(std::sync::Arc<Books>, usize)> {
+    let books = super::books(root, words, today);
+    let key = address.strip_prefix("sioul:movement/").map_or_else(|| address.to_string(), crate::notes::decode);
+    let at = books.movements.iter().position(|m| m.has(&key) || m.address() == address)?;
+    Some((books, at))
+}
+
+/// The key of its line in the budget file, when it is one of yours.
+fn own_line(ledger: &Ledger, m: &Movement) -> Option<String> {
+    let keys = line_keys(ledger);
+    m.sources.iter().filter(|s| s.kind == Kind::Line).map(|s| s.key.clone()).find(|k| keys.contains(k))
+}
+
+/// A movement changed (design §3.1), by what it is made from:
+/// - a line of yours: every field, in the budget file;
+/// - a recurring payment's occurrence: this time's amount and day, as a
+///   line standing for it; its budget, note, day paid and who as your words;
+/// - the bank's line: its budget, what was paid and its fees, the day paid,
+///   note, who; never its net nor its day, which are the bank's facts;
+/// - a letter or a mail alone: its budget and your words; its amount once
+///   recorded as a line ("A payment…");
+/// - an invoice you issued, a share set aside: refused, with why.
+///
+/// The budget last (`move_to`), so that its effect is said; else "changed".
+pub fn change(root: &Path, words: &crate::words::Words, tr: &crate::i18n::Translator, address: &str, change: &Change, origin: &str, today: Date) -> Result<Act, String> {
+    let (books, at) = found(root, words, address, today).ok_or_else(|| tr.text("movement-gone", None))?;
+    let m = books.movements[at].clone();
+    let ledger = Ledger::load(root)?;
+    let path = root.join(crate::budget::LEDGER);
+    if m.has_kind(Kind::SetAside) {
+        return Err(tr.text("movement-refused-set-aside", None));
+    }
+    let line = own_line(&ledger, &m);
+    let bank = m.has_kind(Kind::Bank) || m.has_kind(Kind::Hold);
+    if m.has_kind(Kind::Invoice) && line.is_none() && !bank {
+        return Err(tr.text("movement-refused-invoice", None));
+    }
+    let occurrence = m.sources.iter().find(|s| s.kind == Kind::Preset).and_then(|s| s.key.strip_prefix("preset:")).and_then(|k| k.rsplit_once('/')).map(|(p, _)| p.to_string());
+    if bank && (change.net.is_some() || change.day.is_some()) {
+        return Err(tr.text("movement-refused-bank", None));
+    }
+    if let Some(account) = change.account.as_deref().filter(|a| !ledger.bank_accounts.iter().any(|b| b.id == *a)) {
+        let mut args = crate::i18n::args();
+        args.set("account", account.to_string());
+        return Err(tr.text("movement-no-account", Some(&args)));
+    }
+    if let Some(budget) = change.budget.as_deref().filter(|b| !ledger.budgets.iter().any(|x| x.id == *b)) {
+        let _ = budget;
+        return Err(tr.text("movement-no-budget", None));
+    }
+    let amounts = change.net.is_some() || change.gross.is_some() || change.fees.is_some();
+    let before = budget_shares(&m);
+    // Your own line takes its new budget in the file; anything else, as moving it does (`move_to`).
+    let own = line.is_some() && !bank;
+    match (&line, bank) {
+        // Your own line: every field, in the file.
+        (Some(key), false) => {
+            let gross = change.gross.unwrap_or(m.gross);
+            let fees = change.fees.clone().unwrap_or_else(|| m.fees.iter().filter(|f| !f.about).copied().collect());
+            let net = change.net.unwrap_or(m.sum.amount());
+            let (gross, net, fees) = if amounts { figures(gross, Some(net), &fees).ok_or_else(|| tr.text("movement-figures", None))? } else { (m.gross, net, Vec::new()) };
+            let changed = crate::budget::edit_line(&path, key, |t| {
+                if amounts {
+                    t["amount"] = value(net.cents() as f64 / 100.0);
+                    match gross {
+                        Some(g) => t["gross"] = value(g.cents() as f64 / 100.0),
+                        None => {
+                            t.remove("gross");
+                        }
+                    }
+                    let mut array = toml_edit::Array::new();
+                    for fee in line_fees(&fees) {
+                        let mut one = toml_edit::InlineTable::new();
+                        one.insert("kind", fee.kind.as_str().into());
+                        one.insert("amount", (fee.amount.cents() as f64 / 100.0).into());
+                        if fee.about {
+                            one.insert("about", true.into());
+                        }
+                        array.push(one);
+                    }
+                    if array.is_empty() {
+                        t.remove("fees");
+                    } else {
+                        t["fees"] = value(array);
+                    }
+                }
+                if let Some(day) = change.day {
+                    t["date"] = day_item(day);
+                    if day > today {
+                        t["planned"] = value(true);
+                    }
+                }
+                if let Some(planned) = change.planned {
+                    if planned || change.day.is_some_and(|d| d > today) {
+                        t["planned"] = value(true);
+                    } else {
+                        t.remove("planned");
+                    }
+                }
+                if let Some(label) = change.label.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
+                    t["label"] = value(label);
+                }
+                if let Some(note) = &change.note {
+                    if note.trim().is_empty() {
+                        t.remove("note");
+                    } else {
+                        t["note"] = value(note.trim());
+                    }
+                }
+                if let Some(paid) = change.paid_on {
+                    match paid {
+                        Some(d) => t["paid_on"] = day_item(d),
+                        None => {
+                            t.remove("paid_on");
+                        }
+                    }
+                }
+                if let Some(account) = &change.account {
+                    t["account"] = value(account.as_str());
+                }
+                if let Some(budget) = &change.budget {
+                    t["budget"] = value(budget.as_str());
+                }
+                Ok(())
+            })?;
+            if !changed {
+                return Err(tr.text("movement-gone", None));
+            }
+        }
+        _ => {
+            if change.planned.is_some() || change.account.is_some() {
+                return Err(tr.text("movement-refused-line-only", None));
+            }
+            if bank && (change.gross.is_some() || change.fees.is_some()) {
+                // What was paid and its fees, by your hand, beside the bank's net.
+                let source = m.sources.iter().find(|s| matches!(s.kind, Kind::Bank | Kind::Hold)).map(|s| s.key.clone()).unwrap_or_default();
+                let fees: Vec<Fee> = change.fees.clone().unwrap_or_else(|| m.fees.iter().filter(|f| !f.about).copied().collect()).into_iter().map(|f| Fee { from: FeeFrom::Hand, about: false, ..f }).collect();
+                let gross = change.gross.unwrap_or(m.gross);
+                let (gross, _, fees) = figures(gross, Some(m.sum.amount()), &fees).ok_or_else(|| tr.text("movement-figures", None))?;
+                let told = FeeTold { gross: gross.or(Some(m.sum.amount())), currency: None, fees, paid_on: None, processor: None };
+                Store::edit(root, |edit| edit.fee(&source, &told))?;
+            } else if amounts || change.day.is_some() {
+                // This time of a recurring payment: a line standing for it, as the file says it.
+                let Some(preset) = occurrence.clone() else { return Err(tr.text("movement-refused-told", None)) };
+                let budget = ledger.presets.iter().find(|p| p.id.as_deref() == Some(preset.as_str())).map(|p| p.budget.clone()).ok_or_else(|| tr.text("movement-gone", None))?;
+                let fees = change.fees.clone().unwrap_or_default();
+                let (gross, net, fees) = figures(change.gross.unwrap_or(None), Some(change.net.unwrap_or(m.sum.amount())), &fees).ok_or_else(|| tr.text("movement-figures", None))?;
+                let day = change.day.unwrap_or(m.day);
+                let standing = Line { id: crate::ids::new(), budget, date: day, amount: net, label: m.label.clone(), planned: day > today, preset: Some(preset), gross, fees: line_fees(&fees), made: Some(jiff::Timestamp::now()), ..Line::default() };
+                crate::budget::record_line(&path, &standing, origin)?;
+            }
+            // Your words beside what the files say, with what you said before.
+            if change.note.is_some() || change.paid_on.is_some() || change.label.is_some() {
+                let store = Store::load(root).unwrap_or_default();
+                let kept = store.edits.iter().find(|e| m.has(&e.movement));
+                let note = change.note.clone().or_else(|| kept.and_then(|e| e.note.clone()));
+                let paid = match change.paid_on {
+                    Some(paid) => paid,
+                    None => kept.and_then(|e| e.paid_on),
+                };
+                let label = change.label.clone().or_else(|| kept.and_then(|e| e.label.clone()));
+                let key = kept.map_or_else(|| m.steady_key().to_string(), |e| e.movement.clone());
+                Store::edit(root, |edit| edit.edit(&key, note.as_deref(), paid, label.as_deref()))?;
+            }
+        }
+    }
+    let mut said = String::new();
+    if let Some(budget) = change.budget.as_deref().filter(|b| !own && !m.place.budgets().contains(b)) {
+        let now = found(root, words, address, today).map(|(books, at)| books.movements[at].clone()).unwrap_or_else(|| m.clone());
+        let moved = move_to(root, words, &now, &Place::Budget(budget.to_string()))?;
+        said = effect(tr, &ledger, &budget_shares(&now), &shares(&Place::Budget(budget.to_string()), now.sum.amount()), now.day);
+        let _ = moved;
+    }
+    super::said();
+    if said.is_empty() {
+        let after = found(root, words, address, today).map(|(books, at)| books.movements[at].clone());
+        said = after.as_ref().map(|a| effect(tr, &ledger, &before, &budget_shares(a), a.day)).unwrap_or_default();
+        if said.is_empty() {
+            said = plainly(tr, "movement-changed", after.as_ref().unwrap_or(&m));
+        }
+    }
+    Ok(Act { address: m.address(), said })
+}
+
+/// A movement removed (design §3.1), by what it is made from: your line
+/// deleted from the file; a recurring payment "not this time"; the bank's
+/// line "left out" (a wrong export); a payout that carries nothing ("Not a
+/// payout"); refused, with why, for an invoice, a share set aside, a letter
+/// or a mail (their own acts say it: "Not a payment"), and for your line
+/// joined to the bank's ("Not the same" first). Its effect said.
+pub fn remove(root: &Path, words: &crate::words::Words, tr: &crate::i18n::Translator, address: &str, today: Date) -> Result<Act, String> {
+    let (books, at) = found(root, words, address, today).ok_or_else(|| tr.text("movement-gone", None))?;
+    let m = books.movements[at].clone();
+    let ledger = Ledger::load(root)?;
+    if m.has_kind(Kind::SetAside) {
+        return Err(tr.text("movement-refused-set-aside", None));
+    }
+    let line = own_line(&ledger, &m);
+    let bank = m.has_kind(Kind::Bank) || m.has_kind(Kind::Hold);
+    let before = budget_shares(&m);
+    let store = Store::load(root).unwrap_or_default();
+    let payout = store.carried.iter().find(|c| m.has(&c.payout)).cloned();
+    if let Some(entry) = payout {
+        Store::edit(root, |edit| {
+            for p in &entry.payments {
+                edit.apart(&entry.payout, &p.source);
+            }
+            edit.uncarry(&entry.payout);
+        })?;
+        super::said();
+        return Ok(Act { address: m.address(), said: plainly(tr, "movement-not-a-payout", &m) });
+    }
+    match (&line, bank) {
+        (Some(key), false) => {
+            if !crate::budget::remove_line_by_key(&root.join(crate::budget::LEDGER), key)? {
+                return Err(tr.text("movement-gone", None));
+            }
+        }
+        (Some(_), true) => return Err(tr.text("movement-refused-joined", None)),
+        (None, true) => Store::edit(root, |edit| edit.gone(m.steady_key(), "left-out"))?,
+        (None, false) if m.has_kind(Kind::Preset) => Store::edit(root, |edit| edit.gone(m.steady_key(), "not-this-time"))?,
+        (None, false) if m.has_kind(Kind::Invoice) => return Err(tr.text("movement-refused-invoice", None)),
+        (None, false) => return Err(tr.text("movement-refused-told", None)),
+    }
+    super::said();
+    let said = effect(tr, &ledger, &before, &[], m.day);
+    Ok(Act { address: m.address(), said: if said.is_empty() { plainly(tr, "movement-removed", &m) } else { said } })
+}
+
+/// What can be done to a movement, by what it is made from (design §3.1),
+/// as `change` and `remove` decide it: the window's form shows these
+/// fields only, and its menu this removal.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Allowed {
+    /// "line", "joined" (your line and the bank's), "occurrence", "bank",
+    /// "told" (a mail or a letter alone), "invoice", "set-aside".
+    pub made: &'static str,
+    /// The fields `change` takes: label, gross, fees, net, day, paid_on,
+    /// note, budget, planned, account.
+    pub fields: Vec<&'static str>,
+    /// "delete", "not-this-time", "leave-out", "not-a-payout"; none: it is
+    /// removed where it is made (the invoice, the budget's form, "Not a
+    /// payment", "Not the same" first).
+    pub removal: Option<&'static str>,
+}
+
+/// What `m` allows (`Allowed`), from the budget file and the store.
+pub fn allowed(ledger: &Ledger, store: &Store, m: &Movement) -> Allowed {
+    let line = own_line(ledger, m).is_some();
+    let bank = m.has_kind(Kind::Bank) || m.has_kind(Kind::Hold);
+    let payout = store.carried.iter().any(|c| m.has(&c.payout));
+    let (made, fields): (&'static str, &[&'static str]) = if m.has_kind(Kind::SetAside) {
+        ("set-aside", &[])
+    } else if line && !bank {
+        ("line", &["label", "gross", "fees", "net", "day", "paid_on", "note", "budget", "planned", "account"])
+    } else if bank {
+        (if line { "joined" } else { "bank" }, &["label", "gross", "fees", "paid_on", "note", "budget"])
+    } else if m.has_kind(Kind::Invoice) {
+        ("invoice", &[])
+    } else if m.has_kind(Kind::Preset) {
+        ("occurrence", &["label", "gross", "fees", "net", "day", "paid_on", "note", "budget"])
+    } else {
+        ("told", &["label", "paid_on", "note", "budget"])
+    };
+    let removal = match made {
+        _ if payout => Some("not-a-payout"),
+        "line" => Some("delete"),
+        "bank" => Some("leave-out"),
+        "occurrence" => Some("not-this-time"),
+        // A recurring payment's occurrence an invoice stands for: "not this time" too, as `remove` does.
+        "invoice" if m.has_kind(Kind::Preset) => Some("not-this-time"),
+        _ => None,
+    };
+    Allowed { made, fields: fields.to_vec(), removal }
+}
+
+/// What you removed back where its files put it (Undo of "Not this time",
+/// "Leave out").
+pub fn put_back(root: &Path, address: &str) -> Result<bool, String> {
+    let key = address.strip_prefix("sioul:movement/").map_or_else(|| address.to_string(), crate::notes::decode);
+    let done = Store::edit(root, |edit| edit.back(&key))?;
+    super::said();
+    Ok(done)
+}
+
+// ---------------------------------------------------------------- the payer's card
+
+/// Who paid or was paid, as a mail or an invoice names them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Payer {
+    /// Their address, when the mail is theirs (not a processor's) or names it.
+    pub address: Option<String>,
+    /// Their name, as the mail or the invoice writes it.
+    pub name: String,
+}
+
+/// The one card these words name: by its address, else by its name, each
+/// compared folded; none when no card or several do.
+pub fn card_of<'a>(contacts: &'a [crate::contacts::Contact], payer: &Payer) -> Option<&'a crate::contacts::Contact> {
+    let one = |found: Vec<&'a crate::contacts::Contact>| (found.len() == 1).then(|| found[0]);
+    if let Some(address) = payer.address.as_deref().map(str::trim).filter(|a| a.contains('@')) {
+        let by_address = one(contacts.iter().filter(|c| c.emails.iter().any(|e| e.value.trim().eq_ignore_ascii_case(address))).collect());
+        if by_address.is_some() {
+            return by_address;
+        }
+    }
+    let name = crate::words::folded(payer.name.trim());
+    if name.chars().filter(|c| c.is_alphabetic()).count() < 3 {
+        return None;
+    }
+    one(contacts.iter().filter(|c| crate::words::folded(c.name.trim()) == name).collect())
+}
+
+/// The payer's or the payee's card tied to each movement automatically
+/// (design §1.1, "links"): when the mail's address, or the name it or the
+/// invoice gives, names exactly one card; the person whose card it is too.
+/// Written in Sioul's own ties (`links.toml`, how "payer"), each once; a tie
+/// you took apart (`[[apart]]` with the card) is never made again. The tie
+/// counts until it is corrected. Returns how many were made.
+pub fn tie_payers(root: &Path, ties: &[(String, Payer)]) -> Result<usize, String> {
+    if ties.is_empty() {
+        return Ok(0);
+    }
+    let contacts = crate::contacts::all();
+    if contacts.is_empty() {
+        return Ok(0);
+    }
+    let persons = crate::persons::Persons::load(&crate::persons::Persons::default_path());
+    tie_payers_in(root, ties, &contacts, &persons, &crate::links::LocalLinks::default_path())
+}
+
+/// `tie_payers` with the cards, the persons and the ties' file given.
+pub fn tie_payers_in(root: &Path, ties: &[(String, Payer)], contacts: &[crate::contacts::Contact], persons: &crate::persons::Persons, links: &Path) -> Result<usize, String> {
+    let store = Store::load(root).unwrap_or_default();
+    let apart = |a: &str, b: &str| store.apart.iter().any(|p| (p.a == a && p.b == b) || (p.a == b && p.b == a));
+    let mut edges: Vec<crate::links::Edge> = Vec::new();
+    for (movement, payer) in ties {
+        let Some(card) = card_of(contacts, payer) else { continue };
+        let card_uri = crate::links::contact_uri(&card.uid);
+        let key = movement.strip_prefix("sioul:movement/").map_or_else(|| movement.clone(), crate::notes::decode);
+        if apart(&key, &card_uri) || apart(movement, &card_uri) {
+            continue;
+        }
+        edges.push(crate::links::Edge { from: movement.clone(), to: card_uri, how: "payer".into() });
+        for person in persons.persons.iter().filter(|p| p.cards.iter().any(|c| *c == card.uid)) {
+            edges.push(crate::links::Edge { from: movement.clone(), to: crate::links::person_uri(&person.id), how: "payer".into() });
+        }
+    }
+    let count = edges.len();
+    crate::links::LocalLinks::add_all(links, &edges)?;
+    Ok(count)
+}
+
+/// A message file's sender's address, from its headers alone.
+pub fn sender_address(path: &Path) -> Option<String> {
+    let mut headers = crate::mailcache::headers_of(path)?;
+    headers.extend_from_slice(b"\r\n\r\nx\r\n");
+    crate::card::Card::from_bytes(&headers)?.from_address
+}
+
+/// Who a mail line names: its sender, unless a processor sent it for
+/// someone (then the payer it names, by address when it gives one).
+pub fn payer_of(line: &MailLine, sender_address: Option<&str>) -> Payer {
+    let processor = line.sender_domain.as_deref().is_some_and(|d| crate::processors::known().by_domain(d).is_some());
+    let party = line.payment.party.trim();
+    if processor {
+        let address = party.contains('@').then(|| party.trim_matches(|c| c == '(' || c == ')' || c == '<' || c == '>').to_string());
+        return Payer { address, name: if party.contains('@') { String::new() } else { party.to_string() } };
+    }
+    Payer { address: sender_address.map(str::to_string), name: if party.is_empty() { line.sender.clone() } else { party.to_string() } }
 }

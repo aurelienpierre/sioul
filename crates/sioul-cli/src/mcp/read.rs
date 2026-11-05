@@ -1217,7 +1217,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     // The bank accounts are in no project: as things outside projects are.
     let empty = bank::Bank::default();
     let bank = if consent.outside { &books.bank } else { &empty };
-    let page = view::MoneyPage { ledger: &ledger, bank, movements: &movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    let page = view::MoneyPage { ledger: &ledger, bank, movements: &movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false, books: None, imports: &[] };
     let mut shown = view::budgets_page(&page, &s.tr, today);
     for account in &mut shown.accounts {
         account.title = mask::text(&account.title);
@@ -1249,7 +1249,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
 /// closed project too; reserves only while things outside projects are open.
 /// Returns it, how many budgets and lines were left out, and the labels of
 /// those lines (what the money watch would name).
-fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger, usize, std::collections::BTreeSet<String>) {
+pub(super) fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger, usize, std::collections::BTreeSet<String>) {
     let projects_in = |links: &[String]| links.iter().filter(|l| links::kind_of(l) == Kind::Project).map(|l| links::id_of(l)).collect::<Vec<_>>();
     let budget_open = |id: &str, ties: &[String]| {
         let mut projects: Vec<String> = consent.budget_projects(id).into_iter().collect();

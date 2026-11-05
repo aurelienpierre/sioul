@@ -13,7 +13,7 @@
 //! listed after the others, unless the person keeps them from agents
 //! (`[mcp] spam = false`).
 
-use super::{items, phone, read, records, write};
+use super::{items, money, phone, read, records, write};
 use crate::Session;
 use jiff::civil::{Date, DateTime};
 use jiff::{Timestamp, Zoned};
@@ -461,6 +461,72 @@ pub const TOOLS: &[Tool] = &[
         open_world: false,
         schema: || object(json!({}), &[]),
         run: read::budgets,
+    },
+    Tool {
+        name: "movements",
+        title: "Money movements",
+        description: "The full ledger, newest first, 60 a page: each money movement with its day, who, what moved the account (signed), its budget and its state in words, and, only when there are some, what the payer paid and its fees, or what a payout carried. Filters as the Budgets page's: days, account, budget, way, amount, area, what told of it, words (which reach every area). A sum only when the filters ask a question that has one (one way, some days). Reading only: nothing moves money. Account and card numbers are masked; movements kept from agents are counted.",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "from": { "type": "string", "description": "From this day, as 2026-10-01." },
+                    "to": { "type": "string", "description": "To this day, included." },
+                    "account": { "type": "string", "description": "A bank account, by its id." },
+                    "budget": { "type": "string", "description": "A budget, by its id." },
+                    "way": { "type": "string", "enum": ["in", "out", "between"], "description": "Money in, money out, or between the person's own accounts." },
+                    "area": { "type": "string", "description": "What it is for: work, admin, leisure, joined by commas." },
+                    "at_least": { "type": "number", "description": "The amount at least, whatever its sign." },
+                    "at_most": { "type": "number" },
+                    "search": { "type": "string", "description": "Words of who, the note, the budget or the amount." },
+                    "told_by": { "type": "array", "items": { "type": "string", "enum": ["bank", "mail", "plan", "hand"] }, "description": "What told of it: the bank's line, a mail or a letter, a recurring payment, the person's own line." },
+                    "page": { "type": "integer", "minimum": 1, "maximum": 10000, "description": "1 by default." },
+                }),
+                &[],
+            )
+        },
+        run: money::movements,
+    },
+    Tool {
+        name: "get_movement",
+        title: "One money movement",
+        description: "One money movement in full: what the payer paid, each fee with its kind and where it was read (an export, a fee invoice, the mail, a payout's difference, a published rate said \"about\"), what moved the account, the day it was paid, its budget, account, state, note, sources, ties, the payments a payout carried, and when Sioul was told of it and when it last changed. Reading only. Account and card numbers are masked.",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || object(json!({ "movement": { "type": "string", "description": "Its address, sioul:movement/… (movements and budgets give them)." } }), &["movement"]),
+        run: money::get_movement,
+    },
+    Tool {
+        name: "money_mail",
+        title: "Mail about money",
+        description: "Every mail about money kept on this computer, newest first, 60 a page: invoices received and sent, receipts, payment and payout notices, bills, tax notices, fee invoices; never what is set aside as spam or forged. Each says its kind, who, its amount (and the fee when the mail states one), its subject masked, and what became of it in words: the same payment as a movement, part of a payout, counted in a budget, not counted as the person said, or not tied to any movement. Filters: days, the address it came to, its movement's account and budget, tied or not, way, amount, area, kind, words. Reading only; mail kept from agents is counted. A first reading of a large mailbox goes on over several calls (still_reading).",
+        writes: false,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "from": { "type": "string", "description": "From this day, as 2026-10-01." },
+                    "to": { "type": "string" },
+                    "address": { "type": "string", "description": "The address it came to, by its account's id." },
+                    "account": { "type": "string", "description": "The bank account of the movement it tells of." },
+                    "budget": { "type": "string" },
+                    "tied": { "type": "boolean", "description": "True: tied to a movement; false: tied to none." },
+                    "way": { "type": "string", "enum": ["in", "out"] },
+                    "at_least": { "type": "number" },
+                    "at_most": { "type": "number" },
+                    "area": { "type": "string", "description": "work, admin, leisure, joined by commas." },
+                    "kind": { "type": "string", "enum": ["received", "paid", "order", "bill", "refund"] },
+                    "search": { "type": "string", "description": "Words of who, the sender, the subject, the budget or the amount." },
+                    "page": { "type": "integer", "minimum": 1, "maximum": 10000 },
+                }),
+                &[],
+            )
+        },
+        run: money::money_mail,
     },
     // Notes, projects, links.
     Tool {
@@ -1125,5 +1191,89 @@ pub const TOOLS: &[Tool] = &[
             )
         },
         run: write::link,
+    },
+    // Money movements: records, never payments.
+    Tool {
+        name: "add_movement",
+        title: "Write a money movement",
+        description: "Writes one money movement of the person's own, as the window's New movement does: a line of the budget file, in a budget opened to agents, with who, what moved the account (`net`) or what the payer paid (`gross`), its fees, the day, the day it was paid, planned or done, a note and ties. It changes nothing else, and moves no money: it is a record. Amounts are signed: + money in, − money out; gross less fees is the net. Said in Sioul's window with Undo. Only when the person asked for it.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "who": { "type": "string", "description": "Who paid, or who was paid." },
+                    "gross": { "type": "number", "description": "What the payer paid, or the price: + in, − out." },
+                    "net": { "type": "number", "description": "What moved the account, or will: + in, − out." },
+                    "fees": { "type": "array", "items": { "type": "object", "properties": { "kind": { "type": "string", "enum": ["processor", "commission", "conversion", "contributions", "bank"] }, "amount": { "type": "number" } }, "required": ["amount"], "additionalProperties": false }, "description": "Each fee, a cost without sign." },
+                    "account": { "type": "string", "description": "A bank account, by its id; else the one that fills the budget first." },
+                    "budget": { "type": "string", "description": "A budget, by its id (budgets gives them)." },
+                    "on": { "type": "string", "description": "Its day, as 2026-11-05." },
+                    "paid_on": { "type": "string", "description": "The day it was paid at its processor, when not its day." },
+                    "planned": { "type": "boolean", "description": "Still to come (a day to come is planned anyway)." },
+                    "note": { "type": "string" },
+                    "ties": { "type": "array", "items": { "type": "string" }, "description": "Addresses it is tied to: a project, a task, a contact, a person." },
+                }),
+                &["who", "budget", "on"],
+            )
+        },
+        run: money::add_movement,
+    },
+    Tool {
+        name: "update_movement",
+        title: "Change a money movement",
+        description: "Changes what is given of one money movement, as its kind allows, the rest kept: the person's own line in every field; a recurring payment's this time (its amount and day, as a line standing for it), budget and note; the bank's line in its budget, what was paid and its fees, the day paid, note and who, never its amount nor its day (the bank's facts); a mail's or a letter's in its budget and note. An invoice and a share set aside are refused, with why. It changes nothing else and moves no money. Said in Sioul's window with Undo. Only when the person asked for it.",
+        writes: true,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "movement": { "type": "string", "description": "Its address, sioul:movement/…" },
+                    "who": { "type": "string" },
+                    "budget": { "type": "string", "description": "Another budget, by its id." },
+                    "gross": { "type": ["number", "string"], "description": "What the payer paid, signed; \"none\": not known." },
+                    "net": { "type": "number", "description": "What moved the account, signed (never the bank's line's)." },
+                    "fees": { "type": "array", "items": { "type": "object", "properties": { "kind": { "type": "string", "enum": ["processor", "commission", "conversion", "contributions", "bank"] }, "amount": { "type": "number" } }, "required": ["amount"], "additionalProperties": false }, "description": "Its fees, in place of those said; empty: none." },
+                    "on": { "type": "string", "description": "Its day (never the bank's line's)." },
+                    "paid_on": { "type": "string", "description": "The day it was paid; \"none\": its day." },
+                    "note": { "type": "string" },
+                    "planned": { "type": "boolean" },
+                    "account": { "type": "string" },
+                }),
+                &["movement"],
+            )
+        },
+        run: money::update_movement,
+    },
+    Tool {
+        name: "delete_movement",
+        title: "Remove a money movement",
+        description: "Removes one money movement as its kind says, as the window does: the person's own line deleted from the budget file; a recurring payment \"not this time\"; the bank's line \"left out\" (a wrong export); a payout said to carry nothing. An invoice, a share set aside, a mail or a letter are refused, with why. It changes nothing else and moves no money. Said in Sioul's window with Undo. Only when the person asked for it.",
+        writes: true,
+        idempotent: false,
+        open_world: false,
+        schema: || object(json!({ "movement": { "type": "string", "description": "Its address, sioul:movement/…" } }), &["movement"]),
+        run: money::delete_movement,
+    },
+    Tool {
+        name: "same_movement",
+        title: "The same payment, or not",
+        description: "Says that two money movements are one payment (`same`: true, the default: they become one, and the bank's name for the payee is taught), or never the same (`same`: false, \"Not the same\", kept for good). It changes nothing else and moves no money. Said in Sioul's window with Undo. Only when the person asked for it.",
+        writes: true,
+        idempotent: true,
+        open_world: false,
+        schema: || {
+            object(
+                json!({
+                    "movement": { "type": "string", "description": "An address, sioul:movement/…" },
+                    "other": { "type": "string", "description": "The other one's address." },
+                    "same": { "type": "boolean", "description": "True: one payment (the default); false: never the same." },
+                }),
+                &["movement", "other"],
+            )
+        },
+        run: money::same_movement,
     },
 ];

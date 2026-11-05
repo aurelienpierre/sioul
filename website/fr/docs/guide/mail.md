@@ -314,7 +314,7 @@ Ce qu’il fait de chaque avis, les seuils et s’il se réentraîne de lui-mêm
 
 **Le modèle attend le courrier, et ne bouge jamais ce que vous voyez.** Un thème est appris une fois qu’il a 20 courriels de 3 expéditeurs, ou 50 d’un seul organisme ; en deçà, vos mots et ses règles le rangent. Chaque semaine, une nouvelle table ne remplace celle en service que si elle ne fait pas moins bien sur le courrier le plus récent, thème par thème, et change moins de 2 % des thèmes déjà affichés : rien ne bouge sous vos yeux. Un doute ne s’affiche que sous le filtre de son thème, en « Peut-être », et ne compte jamais comme étiquette ; les avis sûrs de Sioul comptent pour moitié, jamais plus que les autres exemples d’un thème, comme les verdicts de son filtre anti-spam comptent tant que vous ne les corrigez pas.
 
-Plus dans [ce que dit la recherche](../dev/research.md), constat 61.
+Plus dans [ce que dit la recherche](https://sioul.aurelienpierre.com/dev/research.html), constat 61.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 

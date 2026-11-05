@@ -158,6 +158,30 @@ pub fn stated_amount(words: &MoneyWords, text: &str) -> Option<Found> {
     stated(words, &lines)
 }
 
+/// The amount a line starting with one of `labels` gives ("Frais : -1,86 €"),
+/// the longest label first; else, when the line is the label alone
+/// ("Montant net" above "50,14 €", as receipts set them in a table), the next
+/// line's first amount. None when no line starts with a label: a label in
+/// the middle of a sentence ("sans frais") gives nothing.
+pub fn labelled_amount(labels: &[String], text: &str) -> Option<Amount> {
+    let mut labels: Vec<String> = labels.iter().map(|l| crate::words::folded(l)).filter(|l| !l.is_empty()).collect();
+    labels.sort_by_key(|l| std::cmp::Reverse(l.chars().count()));
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines.iter().enumerate().find_map(|(i, line)| {
+        let folded: String = fold(line).into_iter().collect();
+        let skipped = folded.chars().take_while(|c| !c.is_alphanumeric()).count();
+        let label: String = folded.chars().skip(skipped).collect();
+        let found = labels.iter().find(|l| label.starts_with(l.as_str()) && label[l.len()..].chars().next().is_none_or(|c| !c.is_alphanumeric()))?;
+        // Folding keeps one character per character: the label ends at the same place in the line.
+        let end = skipped + found.chars().count();
+        if let Some(here) = line_amounts_after(line, end).into_iter().next() {
+            return Some(here.amount);
+        }
+        let alone = label[found.len()..].chars().all(|c| !c.is_alphanumeric());
+        alone.then(|| lines.get(i + 1).and_then(|l| line_amounts(l).into_iter().next())).flatten().map(|(amount, _)| amount)
+    })
+}
+
 fn is_legal(words: &MoneyWords, line: &str) -> bool {
     let folded = fold(line);
     words.legal.iter().any(|w| find_word(&folded, w, 0).is_some())

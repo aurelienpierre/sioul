@@ -34,6 +34,17 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
+/// The kind of change every writer of money movements says (`changes`), so
+/// that the windows read the money again: one place for all of them.
+pub const KIND: crate::changes::Kind = crate::changes::Kind::Money;
+
+/// A money movement made, changed or removed, its fees, what a payout
+/// carried: said to the windows (`changes::said`), from the one helper every
+/// writer here calls.
+pub fn said() {
+    crate::changes::said(KIND);
+}
+
 /// The store's name, at the root of the notes folder, beside the budget file.
 pub const STORE: &str = "sioul-movements.toml";
 
@@ -148,7 +159,14 @@ pub enum Kind {
     /// A work budget's share of its incomes set aside for the declaration
     /// (`Budget::set_aside`): `setaside:<budget>/<the declaration's day>`.
     SetAside,
+    /// A fee invoice, a message or a letter that bills what a payment's
+    /// processor or platform kept (Malt's commission, SumUp's monthly
+    /// invoice): `feeinvoice:<its own key>` (`FEE_INVOICE`).
+    FeeInvoice,
 }
+
+/// A fee invoice's key: this, then the message's or the letter's own key.
+pub const FEE_INVOICE: &str = "feeinvoice:";
 
 impl Kind {
     /// The kind a source's key names: "bank:…", "mid:…", "sioul:letter/…".
@@ -163,6 +181,7 @@ impl Kind {
             k if k.starts_with("mid:") || k.starts_with(crate::mailfind::DIGEST_SCHEME) => Kind::Mail,
             k if k.starts_with("sioul:contract/") => Kind::Contract,
             k if k.starts_with("setaside:") => Kind::SetAside,
+            k if k.starts_with(FEE_INVOICE) => Kind::FeeInvoice,
             _ => return None,
         };
         Some(kind)
@@ -170,7 +189,7 @@ impl Kind {
 
     /// A document: what announces a movement rather than plans or settles it.
     fn announces(self) -> bool {
-        matches!(self, Kind::Invoice | Kind::Letter | Kind::Mail)
+        matches!(self, Kind::Invoice | Kind::Letter | Kind::Mail | Kind::FeeInvoice)
     }
 }
 
@@ -196,7 +215,12 @@ impl Source {
     /// A source named by its key alone: a document's key is its address.
     fn of_key(key: &str) -> Option<Source> {
         let kind = Kind::of_key(key)?;
-        let address = if kind.announces() || kind == Kind::Contract { key.to_string() } else { String::new() };
+        let address = match kind {
+            // It opens the message or the letter it is.
+            Kind::FeeInvoice => key.strip_prefix(FEE_INVOICE).unwrap_or(key).to_string(),
+            _ if kind.announces() || kind == Kind::Contract => key.to_string(),
+            _ => String::new(),
+        };
         Some(Source::new(kind, key.to_string(), address))
     }
 }
@@ -228,6 +252,108 @@ impl Place {
             Place::Transfer { .. } | Place::Nowhere | Place::Unplaced => Vec::new(),
         }
     }
+}
+
+/// What a fee is (docs/accounting.md, "Fees").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FeeKind {
+    /// A payment processor's fee: PayPal's, Stripe's, SumUp's.
+    #[default]
+    Processor,
+    /// A platform's commission: Malt's, Etsy's.
+    Commission,
+    /// What a currency conversion cost.
+    Conversion,
+    /// Contributions a platform withheld and paid for you (from 2027): never
+    /// a fee, though they leave the gross too; a work budget that sets money
+    /// aside counts them as already paid for that income.
+    Contributions,
+    /// A bank's charges.
+    Bank,
+}
+
+impl FeeKind {
+    /// "processor", "commission", "conversion", "contributions", "bank".
+    pub fn id(self) -> &'static str {
+        match self {
+            FeeKind::Processor => "processor",
+            FeeKind::Commission => "commission",
+            FeeKind::Conversion => "conversion",
+            FeeKind::Contributions => "contributions",
+            FeeKind::Bank => "bank",
+        }
+    }
+
+    /// The kind an id names; a processor's fee for what is not known.
+    pub fn parse(id: &str) -> FeeKind {
+        [FeeKind::Commission, FeeKind::Conversion, FeeKind::Contributions, FeeKind::Bank].into_iter().find(|k| k.id() == id.trim()).unwrap_or_default()
+    }
+}
+
+/// Where a fee was read, the most exact first: your hand, the processor's
+/// export, a fee invoice, the mail's own fee line, the payout's difference,
+/// the published rule (docs/accounting.md, "Fees").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FeeFrom {
+    Hand,
+    #[default]
+    Export,
+    Invoice,
+    Mail,
+    Payout,
+    /// The processor's rule, or your own rate on the account: only ever "about",
+    /// for what is still expected, never for a declaration.
+    Rate,
+}
+
+impl FeeFrom {
+    /// "hand", "export", "invoice", "mail", "payout", "rate".
+    pub fn id(self) -> &'static str {
+        match self {
+            FeeFrom::Hand => "hand",
+            FeeFrom::Export => "export",
+            FeeFrom::Invoice => "invoice",
+            FeeFrom::Mail => "mail",
+            FeeFrom::Payout => "payout",
+            FeeFrom::Rate => "rate",
+        }
+    }
+
+    pub fn parse(id: &str) -> FeeFrom {
+        [FeeFrom::Hand, FeeFrom::Invoice, FeeFrom::Mail, FeeFrom::Payout, FeeFrom::Rate].into_iter().find(|k| k.id() == id.trim()).unwrap_or_default()
+    }
+}
+
+/// One fee of a movement: a cost, without sign.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fee {
+    pub kind: FeeKind,
+    pub amount: Money,
+    pub from: FeeFrom,
+    /// An estimate: a rule, or one payment's share of a payout's fees.
+    #[serde(default)]
+    pub about: bool,
+}
+
+/// One payment a payout carried, as the payout says it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Carried {
+    /// The payment, by its source's key or its movement's steadiest key.
+    pub key: String,
+    /// The day it was paid.
+    pub day: Date,
+    /// Who paid.
+    pub label: String,
+    /// What the payer paid.
+    pub gross: Money,
+    /// Its share of the payout's fees: exact when the payout carried it
+    /// alone or its export or mail said it, else "about".
+    pub fee: Option<Fee>,
+    /// How it was found: "export" (its processor's export), "oldest" (the
+    /// payout's amount, oldest first), "hand".
+    pub how: String,
 }
 
 /// One sum of money in or out, from all its sources.
@@ -276,6 +402,41 @@ pub struct Movement {
     pub(crate) stands: Option<String>,
     /// Its bank line's label, as the bank wrote it: the payee's name for its next movements.
     bank_label: Option<String>,
+    /// What the payer paid (money in), or the price (money out), signed as
+    /// `sum`, which is the net, what moved the account: `gross − fees = sum`
+    /// (docs/accounting.md, "Fees"). None when nothing says it: the same as the net.
+    #[serde(default)]
+    pub gross: Option<Money>,
+    /// The gross's currency when the payer paid in another one (ISO 4217); none: `currency`.
+    #[serde(default)]
+    pub gross_currency: Option<String>,
+    /// Its fees, each with its kind and where it was read.
+    #[serde(default)]
+    pub fees: Vec<Fee>,
+    /// What it is told to have been paid, its fees and its net do not add up:
+    /// the bank's net is kept and the fees are not known yet, never made up.
+    #[serde(default)]
+    pub fees_unknown: bool,
+    /// The day it was paid at its processor, which a declaration counts
+    /// (BOFiP, BOI-BNC-BASE-20-10-10 §80); none: its day.
+    #[serde(default)]
+    pub paid_on: Option<Date>,
+    /// Your own words about it.
+    #[serde(default)]
+    pub note: String,
+    /// The day Sioul was first told of it: the earliest of its sources'
+    /// (a mail's day, the first export that covered its bank line, its line's own).
+    #[serde(default)]
+    pub made: Option<Date>,
+    /// The day it was last corrected; else the day it was made.
+    #[serde(default)]
+    pub changed: Option<Date>,
+    /// A payout: the payments it carried.
+    #[serde(default)]
+    pub carried: Vec<Carried>,
+    /// A payment: the payout that carried it, by its steadiest key.
+    #[serde(default)]
+    pub carried_by: Option<String>,
 }
 
 /// An area as a kept copy writes it ("work+admin"), none when it says none.
@@ -285,6 +446,21 @@ fn area_or_none<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Area, D::Error
 }
 
 impl Movement {
+    /// What it is told to have been paid, else its net.
+    pub fn gross_or_net(&self) -> Money {
+        self.gross.filter(|_| self.gross_currency.is_none()).unwrap_or_else(|| self.sum.amount())
+    }
+
+    /// The day it was paid, which a declaration counts: at its processor, else its day.
+    pub fn paid_day(&self) -> Date {
+        self.paid_on.unwrap_or(self.day)
+    }
+
+    /// Its fees together, without sign, contributions withheld aside.
+    pub fn fee_total(&self) -> Money {
+        self.fees.iter().filter(|f| f.kind != FeeKind::Contributions).map(|f| f.amount).sum()
+    }
+
     /// The preset its bank line stands for or is spent from, by its key, as its placement said.
     pub fn stands_for(&self) -> Option<&str> {
         self.stands.as_deref()
@@ -358,9 +534,10 @@ pub(crate) fn steadiest<'a>(sources: impl Iterator<Item = &'a Source>) -> Option
         Kind::Letter => 3,
         Kind::Invoice => 4,
         Kind::Mail => 5,
-        Kind::Hold => 6,
-        Kind::Line => 7,
-        Kind::Contract => 8,
+        Kind::FeeInvoice => 6,
+        Kind::Hold => 7,
+        Kind::Line => 8,
+        Kind::Contract => 9,
     };
     sources.filter(|s| s.kind != Kind::Contract).min_by(|a, b| (rank(a), &a.key).cmp(&(rank(b), &b.key))).map(|s| s.key.as_str())
 }
@@ -402,6 +579,129 @@ pub struct Store {
     pub names: Vec<Name>,
     #[serde(default, rename = "decided")]
     pub decided: Vec<Decided>,
+    /// What a source tells of a payment's gross and fees (docs/accounting.md, "Fees").
+    #[serde(default, rename = "fee")]
+    pub fees: Vec<FeeEntry>,
+    /// The payments a payout carried, when its processor's export does not say.
+    #[serde(default, rename = "carried")]
+    pub carried: Vec<CarriedEntry>,
+    /// Your words on a movement: its note, the day it was paid, who.
+    #[serde(default, rename = "edit")]
+    pub edits: Vec<EditEntry>,
+    /// A movement removed: an occurrence "not this time", a bank line "left out".
+    #[serde(default, rename = "gone")]
+    pub gone: Vec<Gone>,
+    /// Each export taken in: what a bank line's "made" reads.
+    #[serde(default, rename = "import")]
+    pub imports: Vec<Import>,
+}
+
+/// What a source tells of a payment's gross and its fees, one per source:
+/// an export's row (`bank:…`), a message, a fee invoice (`feeinvoice:…`).
+/// Never in `sioul-bank.toml`, which every version writes whole.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct FeeEntry {
+    pub source: String,
+    /// What the payer paid, or the price, signed as the movement.
+    #[serde(default)]
+    pub gross: Option<Money>,
+    /// The gross's currency, when not the movement's.
+    #[serde(default)]
+    pub currency: Option<String>,
+    #[serde(default)]
+    pub fees: Vec<FeePart>,
+    /// The day it was paid at its processor.
+    #[serde(default, deserialize_with = "crate::budget::dates::optional")]
+    pub paid_on: Option<Date>,
+    /// The processor that collected it (`processors::Processor::id`), when known.
+    #[serde(default)]
+    pub processor: Option<String>,
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
+}
+
+/// One fee of a `[[fee]]`: its kind (`FeeKind::id`), its amount without
+/// sign, where it was read (`FeeFrom::id`), and whether it is "about".
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct FeePart {
+    #[serde(default)]
+    pub kind: String,
+    pub amount: Money,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub about: bool,
+}
+
+impl FeePart {
+    pub fn fee(&self) -> Fee {
+        Fee { kind: FeeKind::parse(&self.kind), amount: self.amount.abs(), from: FeeFrom::parse(&self.from), about: self.about }
+    }
+}
+
+/// The payments a payout carried, named by the payout's bank line: found
+/// by its amount, oldest first ("oldest"), or by your hand ("hand").
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct CarriedEntry {
+    pub payout: String,
+    #[serde(default)]
+    pub how: String,
+    #[serde(default)]
+    pub payments: Vec<CarriedPayment>,
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
+}
+
+/// One payment of a `[[carried]]`, with what its message said.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct CarriedPayment {
+    pub source: String,
+    pub gross: Money,
+    #[serde(deserialize_with = "crate::budget::dates::required")]
+    pub day: Date,
+    #[serde(default)]
+    pub label: String,
+    /// Its fee, when its message said it.
+    #[serde(default)]
+    pub fee: Option<Money>,
+}
+
+/// Your words on a movement, named by its steadiest key.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct EditEntry {
+    pub movement: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default, deserialize_with = "crate::budget::dates::optional")]
+    pub paid_on: Option<Date>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
+}
+
+/// A movement removed, named by its steadiest key: "not-this-time" (an
+/// occurrence of a recurring payment) or "left-out" (a bank line of a wrong export).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Gone {
+    pub movement: String,
+    #[serde(default)]
+    pub why: String,
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
+}
+
+/// An export taken in: its account (the bank account's id, else the
+/// export's name), when, and the first and the last day it covers.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Import {
+    pub account: String,
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
+    #[serde(deserialize_with = "crate::budget::dates::required")]
+    pub first: Date,
+    #[serde(deserialize_with = "crate::budget::dates::required")]
+    pub last: Date,
 }
 
 /// What you answered, once, after moving a movement: whether this payee's
@@ -443,6 +743,9 @@ pub struct Link {
     pub day: Option<Date>,
     #[serde(default)]
     pub label: String,
+    /// When it was written (since 5 November 2026).
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
 }
 
 /// "Not the same": two sources that are never one movement, named by both
@@ -451,6 +754,8 @@ pub struct Link {
 pub struct Apart {
     pub a: String,
     pub b: String,
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
 }
 
 /// A movement placed by your hand where the files cannot say it (an
@@ -467,6 +772,8 @@ pub struct Move {
     /// In no budget.
     #[serde(default)]
     pub none: bool,
+    #[serde(default, deserialize_with = "crate::budget::dates::moment")]
+    pub at: Option<jiff::Timestamp>,
 }
 
 /// A card hold, as the bank's export listed it: not final yet. Named by its
@@ -558,6 +865,11 @@ fn money_item(m: Money) -> Item {
     value(m.cents() as f64 / 100.0)
 }
 
+/// Now, as the store writes it.
+fn now_item() -> Item {
+    crate::budget::dates::moment_item(jiff::Timestamp::now())
+}
+
 impl Edit {
     fn list(&mut self, name: &str) -> &mut ArrayOfTables {
         let item = self.doc.entry(name).or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
@@ -611,7 +923,7 @@ impl Edit {
             Some((amount, day, label)) => (Some(money_item(amount)), Some(day_item(day)), Some(value(label))),
             None => (None, None, None),
         };
-        self.put("link", &[("source", source)], vec![("movement", Some(value(movement))), ("how", Some(value(how))), ("amount", amount), ("day", day), ("label", label)]);
+        self.put("link", &[("source", source)], vec![("movement", Some(value(movement))), ("how", Some(value(how))), ("amount", amount), ("day", day), ("label", label), ("at", Some(now_item()))]);
     }
 
     /// `source` no longer joined by a link of the store.
@@ -622,7 +934,7 @@ impl Edit {
     /// "Not the same": `a` and `b` never one movement; a link between them goes.
     pub fn apart(&mut self, a: &str, b: &str) {
         let (a, b) = ordered(a, b);
-        self.put("apart", &[("a", a), ("b", b)], Vec::new());
+        self.put("apart", &[("a", a), ("b", b)], vec![("at", Some(now_item()))]);
         let joined = |link: &Table| {
             let (m, s) = (link.get("movement").and_then(Item::as_str).unwrap_or(""), link.get("source").and_then(Item::as_str).unwrap_or(""));
             (m == a && s == b) || (m == b && s == a)
@@ -651,7 +963,7 @@ impl Edit {
             }
             value(array)
         });
-        self.put("move", &[("movement", movement)], vec![("budget", budget.map(value)), ("parts", parts_item), ("none", none.then(|| value(true)))]);
+        self.put("move", &[("movement", movement)], vec![("budget", budget.map(value)), ("parts", parts_item), ("none", none.then(|| value(true))), ("at", Some(now_item()))]);
     }
 
     /// Back to where the files place it.
@@ -685,6 +997,111 @@ impl Edit {
     pub fn decide(&mut self, payee: &str, budget: &str, next: bool) {
         self.put("decided", &[("payee", payee)], vec![("budget", Some(value(budget))), ("next", Some(value(next)))]);
     }
+
+    /// What `source` tells of a payment: what the payer paid (signed as the
+    /// movement), its currency when another, its fees, the day it was paid,
+    /// its processor; in place of what it told before.
+    pub fn fee(&mut self, source: &str, told: &FeeTold) {
+        let fees = (!told.fees.is_empty()).then(|| {
+            let mut array = toml_edit::Array::new();
+            for fee in &told.fees {
+                let mut part = toml_edit::InlineTable::new();
+                part.insert("kind", fee.kind.id().into());
+                part.insert("amount", (fee.amount.cents().abs() as f64 / 100.0).into());
+                part.insert("from", fee.from.id().into());
+                if fee.about {
+                    part.insert("about", true.into());
+                }
+                array.push(part);
+            }
+            value(array)
+        });
+        self.remove("fee", &[("source", source)]);
+        self.put(
+            "fee",
+            &[("source", source)],
+            vec![
+                ("gross", told.gross.map(money_item)),
+                ("currency", told.currency.as_deref().map(value)),
+                ("fees", fees),
+                ("paid_on", told.paid_on.map(day_item)),
+                ("processor", told.processor.as_deref().map(value)),
+                ("at", Some(now_item())),
+            ],
+        );
+    }
+
+    /// What `source` told of a payment, forgotten.
+    pub fn unfee(&mut self, source: &str) -> bool {
+        self.remove("fee", &[("source", source)])
+    }
+
+    /// The payments the payout `payout` (its bank line's key) carried, `how`
+    /// they were found ("oldest", "hand"); in place of what it carried before.
+    pub fn carry(&mut self, payout: &str, how: &str, payments: &[CarriedPayment]) {
+        let mut array = toml_edit::Array::new();
+        for p in payments {
+            let mut one = toml_edit::InlineTable::new();
+            one.insert("source", p.source.as_str().into());
+            one.insert("gross", (p.gross.cents() as f64 / 100.0).into());
+            one.insert("day", toml_edit::Value::Datetime(toml_edit::Formatted::new(toml_edit::Datetime { date: Some(toml_edit::Date { year: p.day.year() as u16, month: p.day.month() as u8, day: p.day.day() as u8 }), time: None, offset: None })));
+            if !p.label.is_empty() {
+                one.insert("label", p.label.as_str().into());
+            }
+            if let Some(fee) = p.fee {
+                one.insert("fee", (fee.cents().abs() as f64 / 100.0).into());
+            }
+            array.push(one);
+        }
+        self.put("carried", &[("payout", payout)], vec![("how", Some(value(how))), ("payments", Some(value(array))), ("at", Some(now_item()))]);
+    }
+
+    /// The payout carries nothing it was said to.
+    pub fn uncarry(&mut self, payout: &str) -> bool {
+        self.remove("carried", &[("payout", payout)])
+    }
+
+    /// Your words on the movement `movement` names: its note, the day it was
+    /// paid, who; `None` for each said nothing of, and nothing at all takes the entry out.
+    pub fn edit(&mut self, movement: &str, note: Option<&str>, paid_on: Option<Date>, label: Option<&str>) {
+        let (note, label) = (note.map(str::trim).filter(|n| !n.is_empty()), label.map(str::trim).filter(|l| !l.is_empty()));
+        if note.is_none() && paid_on.is_none() && label.is_none() {
+            self.remove("edit", &[("movement", movement)]);
+            return;
+        }
+        self.put("edit", &[("movement", movement)], vec![("note", note.map(value)), ("paid_on", paid_on.map(day_item)), ("label", label.map(value)), ("at", Some(now_item()))]);
+    }
+
+    /// The movement `movement` names removed, `why`: "not-this-time", "left-out".
+    pub fn gone(&mut self, movement: &str, why: &str) {
+        self.put("gone", &[("movement", movement)], vec![("why", Some(value(why))), ("at", Some(now_item()))]);
+    }
+
+    /// The movement back where its files put it.
+    pub fn back(&mut self, movement: &str) -> bool {
+        self.remove("gone", &[("movement", movement)])
+    }
+
+    /// An export taken in now: its account and the days it covers.
+    pub fn import(&mut self, account: &str, first: Date, last: Date) {
+        let list = self.list("import");
+        let mut table = Table::new();
+        table["account"] = value(account);
+        table["at"] = now_item();
+        table["first"] = day_item(first);
+        table["last"] = day_item(last);
+        list.push(table);
+    }
+}
+
+/// What a source tells of a payment's gross and fees (`Edit::fee`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FeeTold {
+    pub gross: Option<Money>,
+    pub currency: Option<String>,
+    pub fees: Vec<Fee>,
+    pub paid_on: Option<Date>,
+    pub processor: Option<String>,
 }
 
 /// Two keys in their order: a pair named once whichever comes first.
@@ -822,7 +1239,39 @@ fn reference(kind: &str, value: &str) -> Option<String> {
 /// A movement with nothing but what is given; the rest is filled by its source.
 fn bare(id: String, sum: Sum, day: Date, label: String, place: Place, sources: Vec<Source>, state: State) -> Movement {
     let way = way_of(sum.amount());
-    Movement { id, account: None, way, sum, currency: "EUR".into(), day, expected: None, label, place, area: Area::default(), sources, links: Vec::new(), state, together: Vec::new(), waits: false, why: None, evidence: None, refs: Vec::new(), names: Vec::new(), stands: None, bank_label: None }
+    Movement {
+        id,
+        account: None,
+        way,
+        sum,
+        currency: "EUR".into(),
+        day,
+        expected: None,
+        label,
+        place,
+        area: Area::default(),
+        sources,
+        links: Vec::new(),
+        state,
+        together: Vec::new(),
+        waits: false,
+        why: None,
+        evidence: None,
+        refs: Vec::new(),
+        names: Vec::new(),
+        stands: None,
+        bank_label: None,
+        gross: None,
+        gross_currency: None,
+        fees: Vec::new(),
+        fees_unknown: false,
+        paid_on: None,
+        note: String::new(),
+        made: None,
+        changed: None,
+        carried: Vec::new(),
+        carried_by: None,
+    }
 }
 
 /// Whether a movement waits for the bank's line, for the matching: what was
@@ -870,6 +1319,13 @@ impl NameWords<'_> {
 }
 
 pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement> {
+    derive_with_gone(input, from, to, today).0
+}
+
+/// `derive`, and beside it what you removed (`[[gone]]`): an occurrence "not
+/// this time", a bank line "left out" of a wrong export, which the budgets
+/// then count as nothing (`counted_with_gone`).
+pub fn derive_with_gone(input: &Input, from: Date, to: Date, today: Date) -> (Vec<Movement>, Vec<Movement>) {
     let ledger = input.ledger;
     let tokens = NameWords { bank: &input.words.bank, made: std::cell::RefCell::new(HashMap::new()) };
     let store = input.store;
@@ -964,6 +1420,9 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
                 m.sources.extend(docs);
                 m.links.extend(links);
                 m.names.push(line.label.clone());
+                if !line.note.trim().is_empty() {
+                    m.note = line.note.trim().to_string();
+                }
                 m.refs.extend(refs);
                 // A receipt says it was paid, and is matched as one; only what
                 // is still planned waits for the bank's line.
@@ -980,8 +1439,10 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
             None => Place::Budget(line.budget.clone()),
         };
         let mut m = bare(key, Sum::Exact(line.amount), line.date, line.label.clone(), place, std::iter::once(source).chain(docs).collect(), state);
-        m.account = carrier(&line.budget);
+        // The account it said, when you named one; else the one that fills its budget first.
+        m.account = line.account.clone().filter(|a| ledger.bank_accounts.iter().any(|b| b.id == *a)).or_else(|| carrier(&line.budget));
         m.links = links;
+        m.note = line.note.trim().to_string();
         // Planned, or announced for a day to come (a bill): the bank's line is awaited.
         m.waits = line.planned;
         m.evidence = Some(evidence);
@@ -1039,6 +1500,16 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         out.push(m);
     }
     pair_transfers(&mut out);
+    // 3b. What you removed: an occurrence "not this time", a bank line "left
+    // out"; never matched, never counted. A line of your file is deleted instead.
+    let mut gone: Vec<Movement> = Vec::new();
+    if !store.gone.is_empty() {
+        let (left, kept): (Vec<Movement>, Vec<Movement>) = std::mem::take(&mut out).into_iter().partition(|m| {
+            !m.has_kind(Kind::Line) && m.sources.iter().any(|s| matches!(s.kind, Kind::Preset | Kind::Bank | Kind::Hold)) && store.gone.iter().any(|g| m.has(&g.movement))
+        });
+        out = kept;
+        gone = left;
+    }
     // The lines of accounts not declared keep no books: they only confirm
     // what was planned, as the watch reads them.
     let confirming: Vec<bank::Movement> = input.bank.movements.iter().filter(|b| accounts::account_of(ledger, &b.account).is_none() && b.date >= lo && b.date <= hi).cloned().collect();
@@ -1198,10 +1669,18 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         });
     }
 
+    // 6b. The payments a payout carried, as the store keeps them (`[[carried]]`).
+    acts::carry_from_store(&mut out, store, &|a, b| apart(a, b));
+
     // 7. What is probably together: two invoices paid by one transfer, an
     // order charged in parts, a deferred-debit card's sum and the card
     // payments it settles, a purchase's instalments.
     together(&mut out, input, &apart_both, &tokens);
+
+    // 7a. What each was paid, its fees, the day it was paid, your words, the
+    // days it was made and changed (docs/accounting.md, "Fees").
+    let by_key: HashMap<String, &Line> = lines.iter().cloned().zip(ledger.lines.iter()).collect();
+    acts::settle_fees(&mut out, input, &by_key, today);
 
     // 7b. Work money set aside (docs/accounting.md, "Work money"): a share of
     // each income of a budget that sets one aside, one planned movement per
@@ -1212,13 +1691,18 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
         let quarterly = budget.declare.as_deref() != Some("month");
         let mut by_day: std::collections::BTreeMap<Date, i64> = std::collections::BTreeMap::new();
         for m in out.iter().filter(|m| m.way == Way::In && m.state != State::NotSeen) {
+            // The declaration counts what the client paid, not what arrived
+            // after fees (CGI art. 102 ter; research/money-ledger.md §2.1), on the
+            // day it was paid; contributions a platform withheld are paid already.
             let part: i64 = match &m.place {
-                Place::Budget(b) if *b == budget.id => m.sum.amount().cents(),
+                Place::Budget(b) if *b == budget.id => m.gross_or_net().cents(),
                 Place::Parts(parts) => parts.iter().filter(|(b, _)| *b == budget.id).map(|(_, a)| a.cents()).sum(),
                 _ => continue,
             };
+            let withheld: i64 = m.fees.iter().filter(|f| f.kind == FeeKind::Contributions && matches!(m.place, Place::Budget(_))).map(|f| f.amount.cents()).sum();
             if part > 0 {
-                *by_day.entry(declaration_day(m.day, quarterly)).or_default() += (part as f64 * share.min(100.0) / 100.0).round() as i64;
+                let aside = ((part as f64 * share.min(100.0) / 100.0).round() as i64 - withheld).max(0);
+                *by_day.entry(declaration_day(m.paid_day(), quarterly)).or_default() += aside;
             }
         }
         for (day, cents) in by_day.into_iter().filter(|(day, cents)| *day >= today && *cents > 0) {
@@ -1308,7 +1792,8 @@ pub fn derive(input: &Input, from: Date, to: Date, today: Date) -> Vec<Movement>
     }
     out.retain(|m| m.day >= from && m.day <= to);
     out.sort_by(|a, b| (a.day, &a.id).cmp(&(b.day, &b.id)));
-    out
+    gone.retain(|m| m.day >= from && m.day <= to);
+    (out, gone)
 }
 
 /// The mandates' references (RUM, ICS) a debit's bank line carried once
@@ -1604,6 +2089,14 @@ pub fn load(root: &Path, words: &crate::words::Words, from: Date, to: Date, toda
 /// line's key in their links, so a budget's page lists them without "Delete";
 /// the file's own lines keep their places, so their addresses hold.
 pub fn counted(ledger: &Ledger, movements: &[Movement], today: Date) -> Ledger {
+    counted_with_gone(ledger, movements, &[], today)
+}
+
+/// `counted`, with what you removed (`derive_with_gone`) counted as
+/// nothing: an occurrence "not this time" leaves its preset's budget for
+/// that period, by a line of nothing standing for it; a bank line "left out"
+/// is in no budget.
+pub fn counted_with_gone(ledger: &Ledger, movements: &[Movement], gone: &[Movement], today: Date) -> Ledger {
     let mut out = ledger.clone();
     for (i, preset) in out.presets.iter_mut().enumerate() {
         if preset.id.is_none() {
@@ -1627,6 +2120,7 @@ pub fn counted(ledger: &Ledger, movements: &[Movement], today: Date) -> Ledger {
         reserve,
         links: vec![link.to_string()],
         preset,
+        ..Line::default()
     };
     for m in movements {
         // A share set aside for the declaration: planned in its budget until its
@@ -1716,6 +2210,12 @@ pub fn counted(ledger: &Ledger, movements: &[Movement], today: Date) -> Ledger {
             out.lines.push(line(&budget, m.day, amount, &m.label, stands.clone(), reserve.clone(), &link, false));
         }
     }
+    for m in gone {
+        if let Some((i, day)) = m.sources.iter().find(|s| s.kind == Kind::Preset).and_then(|s| preset_of(&s.key)) {
+            let preset = &ledger.presets[i];
+            out.lines.push(line(&preset.budget, day, Money::ZERO, &preset.label, Some(preset_key(ledger, i)), None, &format!("gone:{}", m.steady_key()), false));
+        }
+    }
     out
 }
 
@@ -1730,7 +2230,8 @@ pub fn counted_in(root: &Path, ledger: &Ledger, words: &crate::words::Words, tod
     let letters = crate::letters::Letters::load(root).map(|l| l.list).unwrap_or_default();
     let store = Store::load(root).unwrap_or_default();
     let input = Input { ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words };
-    counted(ledger, &derive(&input, from, to, today), today)
+    let (movements, gone) = derive_with_gone(&input, from, to, today);
+    counted_with_gone(ledger, &movements, &gone, today)
 }
 
 /// A notes folder's money, read once (`books`): the budget file as
@@ -1743,6 +2244,8 @@ pub struct Books {
     pub counted: Ledger,
     pub bank: Bank,
     pub movements: Vec<Movement>,
+    /// What you removed (`[[gone]]`): counted as nothing, kept for its Undo.
+    pub gone: Vec<Movement>,
     /// The days the movements were derived for.
     pub from: Date,
     pub to: Date,
@@ -1773,8 +2276,9 @@ fn stamp(root: &Path, today: Date) -> Stamp {
 /// The last books made, by what they were made from.
 static BOOKS: std::sync::Mutex<Option<(Stamp, crate::words::Words, std::sync::Arc<Books>)>> = std::sync::Mutex::new(None);
 
-/// The kept copy's format: a copy of another is made anew.
-const KEPT: u32 = 1;
+/// The kept copy's format: a copy of another is made anew. 2: the fees,
+/// the days paid, made and changed, what payouts carried, what was removed.
+const KEPT: u32 = 2;
 
 /// The movements kept on this device (`$XDG_CACHE_HOME/sioul/money-books.json`),
 /// by what they were made from, for a process of its own (`sioul budgets`,
@@ -1787,6 +2291,8 @@ struct Kept {
     stamp: Stamp,
     words: u64,
     movements: Vec<Movement>,
+    #[serde(default)]
+    gone: Vec<Movement>,
 }
 
 fn kept_path() -> PathBuf {
@@ -1802,14 +2308,14 @@ fn words_digest(words: &crate::words::Words) -> u64 {
 }
 
 /// The kept movements, when they were made from what the files are now.
-fn kept(stamp: &Stamp, words: u64) -> Option<Vec<Movement>> {
+fn kept(stamp: &Stamp, words: u64) -> Option<(Vec<Movement>, Vec<Movement>)> {
     let kept: Kept = serde_json::from_slice(&std::fs::read(kept_path()).ok()?).ok()?;
-    (kept.format == KEPT && kept.version == env!("CARGO_PKG_VERSION") && kept.stamp == *stamp && kept.words == words).then_some(kept.movements)
+    (kept.format == KEPT && kept.version == env!("CARGO_PKG_VERSION") && kept.stamp == *stamp && kept.words == words).then_some((kept.movements, kept.gone))
 }
 
 /// The movements kept for the next process; nothing said when it cannot be.
-fn keep(stamp: &Stamp, words: u64, movements: &[Movement]) {
-    let kept = Kept { format: KEPT, version: env!("CARGO_PKG_VERSION").to_string(), stamp: stamp.clone(), words, movements: movements.to_vec() };
+fn keep(stamp: &Stamp, words: u64, movements: &[Movement], gone: &[Movement]) {
+    let kept = Kept { format: KEPT, version: env!("CARGO_PKG_VERSION").to_string(), stamp: stamp.clone(), words, movements: movements.to_vec(), gone: gone.to_vec() };
     let path = kept_path();
     if let (Some(dir), Ok(text)) = (path.parent(), serde_json::to_vec(&kept)) {
         let _ = std::fs::create_dir_all(dir);
@@ -1845,21 +2351,21 @@ pub fn books(root: &Path, words: &crate::words::Words, today: Date) -> std::sync
     let (from, to) = (shifted(first.first_of_month(), -31), shifted(today, 400));
     // Made by another process from the same files: read, not derived again.
     let digest = words_digest(words);
-    let movements = match kept(&now, digest) {
-        Some(movements) => movements,
+    let (movements, gone) = match kept(&now, digest) {
+        Some(kept) => kept,
         None => {
             let contracts = crate::contracts::Contracts::load(root).map(|c| c.list).unwrap_or_default();
             let letters = crate::letters::Letters::load(root).map(|l| l.list).unwrap_or_default();
             let store = Store::load(root).unwrap_or_default();
-            let movements = derive(&Input { ledger: &ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words }, from, to, today);
+            let (movements, gone) = derive_with_gone(&Input { ledger: &ledger, bank: &bank, contracts: &contracts, letters: &letters, store: &store, words }, from, to, today);
             if stamp(root, today) == now {
-                keep(&now, digest, &movements);
+                keep(&now, digest, &movements, &gone);
             }
-            movements
+            (movements, gone)
         }
     };
-    let counted = counted(&ledger, &movements, today);
-    let books = std::sync::Arc::new(Books { ledger, counted, bank, movements, from, to });
+    let counted = counted_with_gone(&ledger, &movements, &gone, today);
+    let books = std::sync::Arc::new(Books { ledger, counted, bank, movements, gone, from, to });
     // Read again before it is kept: a file changed while it was read makes
     // books that are not quite its own, made anew next time.
     if stamp(root, today) == now

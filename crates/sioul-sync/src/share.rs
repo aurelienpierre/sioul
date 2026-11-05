@@ -441,10 +441,13 @@ static CONTRACTS_RULES: Rules = Rules { keyed: &[keyed("contract", &["id"])], wh
 /// keeps the newer word, and two devices adding some keep both: a source
 /// joined by the source, "Not the same" by both keys, a placement by its
 /// movement, a card hold by its account and id, a name taught by the
-/// bank's name, your answer on a payee's next movements by the payee. Its
-/// format, a setting of its own.
+/// bank's name, your answer on a payee's next movements by the payee;
+/// what a source tells of a payment's fees by the source, what a payout
+/// carried by the payout, your words on a movement and its removal by the
+/// movement, an export taken in by its account and its moment. Its format,
+/// a setting of its own.
 static MOVEMENTS_RULES: Rules = Rules {
-    keyed: &[keyed("link", &["source"]), keyed("apart", &["a", "b"]), keyed("move", &["movement"]), keyed("hold", &["account", "id"]), keyed("name", &["bank"]), keyed("decided", &["payee"])],
+    keyed: &[keyed("link", &["source"]), keyed("apart", &["a", "b"]), keyed("move", &["movement"]), keyed("hold", &["account", "id"]), keyed("name", &["bank"]), keyed("decided", &["payee"]), keyed("fee", &["source"]), keyed("carried", &["payout"]), keyed("edit", &["movement"]), keyed("gone", &["movement"]), keyed("import", &["account", "at"])],
     whole: &[],
     local: &[],
     next: None,

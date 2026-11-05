@@ -113,7 +113,7 @@ fn change_words(computer: &Computer, which: &str, change: impl FnOnce(&mut Vec<S
 }
 
 fn bread() -> sioul_core::budget::Line {
-    sioul_core::budget::Line { id: String::new(), budget: "home".into(), date: "2026-09-05".parse().unwrap(), amount: sioul_core::money::Money(-1200), label: "Boulangerie".into(), planned: false, reserve: None, links: Vec::new(), preset: None }
+    sioul_core::budget::Line { id: String::new(), budget: "home".into(), date: "2026-09-05".parse().unwrap(), amount: sioul_core::money::Money(-1200), label: "Boulangerie".into(), planned: false, reserve: None, links: Vec::new(), preset: None, ..Default::default() }
 }
 
 // ---------------------------------------------------------------- R1: a memory put back from before the switch

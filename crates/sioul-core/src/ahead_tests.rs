@@ -59,7 +59,7 @@ fn aheads(root: &Path, today: Date) -> Vec<Ahead> {
 /// The page as the window makes it, the filter showing `shown`.
 fn page(root: &Path, today: Date, shown: Area, own: bool, tr: &Translator) -> view::BudgetsView {
     let books = movements::books(root, &crate::words::Words::builtin(), today);
-    let page = MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &[], shown, own };
+    let page = MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &[], shown, own, books: Some(&books), imports: &[] };
     view::budgets_page(&page, tr, today)
 }
 
@@ -422,4 +422,45 @@ fn timing() {
         said.len(),
         lines.len()
     );
+}
+
+/// The coordinator's window additions (5 November 2026) and the Budgets
+/// tab: each account says when its bank's file was last read, and once
+/// that movements since may be missing when that is older than its rhythm
+/// (a week until there are two exports); what "left for everyday spending"
+/// means, said once; the chart named after its account, one per account;
+/// every budget under its area's heading, the hour's areas first, while
+/// Overview shows the hour's alone; a work budget that declares says its
+/// turnover; money in with fees says them inside its row.
+#[test]
+fn the_overview_says_its_freshness_and_the_budgets_tab_groups_by_area() {
+    let root = folder("overview");
+    let ledger = SALARIED.replace("[[budget]]\nid = 'studio'\ntitle = 'Studio'\nperiod = 'month'\narea = 'work'\n", "[[budget]]\nid = 'studio'\ntitle = 'Studio'\nperiod = 'month'\narea = 'work'\nset_aside = 22\n")
+        + "[[line]]\nid = 'w1'\nbudget = 'studio'\ndate = 2026-11-04\namount = 504.57\ngross = 520\nfees = [{ kind = 'processor', amount = 15.43 }]\nlabel = 'Client A'\n";
+    write(&root, &ledger, SALARIED_BANK);
+    let today = day("2026-11-10");
+    let tr = Translator::new("en");
+    // Freshness: the export's last day; the rhythm, the middle gap between exports.
+    let import = |at: &str, last: &str| movements::Import { account: "main".into(), at: Some(format!("{at}T09:00:00Z").parse().unwrap()), first: day("2026-10-01"), last: day(last) };
+    let weekly = [import("2026-10-20", "2026-10-19"), import("2026-10-27", "2026-10-26"), import("2026-11-03", "2026-11-02")];
+    assert_eq!(crate::moneyview::freshness("main", &weekly, None, &tr, today), ["Last bank update: 2 November.", "Movements since then may be missing."]);
+    assert_eq!(crate::moneyview::freshness("main", &weekly, None, &tr, day("2026-11-06")), ["Last bank update: 2 November."]);
+    assert_eq!(crate::moneyview::freshness("main", &[], Some(day("2026-11-09")), &tr, today), ["Last bank update: 9 November."], "no export said: the balance's day, a week's rhythm");
+    assert!(crate::moneyview::freshness("other", &weekly, None, &tr, today).is_empty());
+    // The page at admin hours, as the window makes it.
+    let books = movements::books(&root, &crate::words::Words::builtin(), today);
+    let page = MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &[], shown: Area::ADMIN, own: false, books: Some(&books), imports: &weekly };
+    let view = view::budgets_page(&page, &tr, today);
+    // Its file's own balance, of the 9th, is newer than the exports said: that day, and fresh.
+    assert_eq!(view.accounts[0].fresh, ["Last bank update: 9 November."]);
+    assert!(view.left_meaning.starts_with("Left for everyday spending is what remains after the payments Sioul knows of"), "{}", view.left_meaning);
+    assert_eq!(view.charts.len(), 1);
+    assert!(view.charts[0].name.starts_with("Main account, until "), "{}", view.charts[0].name);
+    // Overview: the hour's budgets; Budgets: all of them, the hour's area first.
+    assert_eq!(view.budgets.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(), ["home"]);
+    assert_eq!(view.groups.iter().map(|g| (g.area, g.title.as_str(), g.budgets.len())).collect::<Vec<_>>(), [("admin", "Your admin", 1), ("work", "Work", 1), ("leisure", "Leisure", 1)]);
+    let studio = &view.groups[1].budgets[0];
+    assert_eq!(studio.declare, "Turnover received this quarter: €520, to declare by 31 January 2027.");
+    assert!(studio.words.iter().any(|w| w == "Came in: Client A (paid €520, fees €15.43)."), "{:?}", studio.words);
+    let _ = std::fs::remove_dir_all(&root);
 }
