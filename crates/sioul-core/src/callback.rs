@@ -3,9 +3,9 @@
 
 //! The call-back rules (docs/porch.md, "Calls"), each a switch of Porch ⚙ ▸
 //! Calls, on unless said: a missed call from someone in your address books
-//! makes a task, "Call back <name>"; a call of yours to them that did not
-//! reach them (not answered, or shorter than the voicemail threshold), "Call
-//! <name> again". Each goes in the usual list, for the call's day, tied to
+//! makes a task, `Call back <name>`; a call of yours to them that did not
+//! reach them (not answered, or shorter than the voicemail threshold), `Call <name>
+//! again`. Each goes in the usual list, for the call's day, tied to
 //! their card, of the kind "call"; no reminder: tasks never nag.
 //!
 //! - **One open task per person**: another such call adds its time to the

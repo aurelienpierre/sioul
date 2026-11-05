@@ -55,7 +55,7 @@ pub const TAKEN_BY: &str = "X-SIOUL-TAKEN-BY";
 /// A child's event's kind, as a concept under this tag (RFC 4151).
 pub const KIND_CONCEPT: &str = "tag:aurelienpierre.com,2026:sioul/child-kind/";
 /// Sioul's own namespace for the UIDs it derives (RFC 9562 §5.5): the
-/// name-based UUID, version 5, of "https://aurelienpierre.github.io/sioul/"
+/// name-based UUID, version 5, of `https://aurelienpierre.github.io/sioul/`
 /// in the URL namespace (RFC 9562 §6.6).
 pub const NAMESPACE: [u8; 16] = [0x4e, 0x66, 0xfa, 0x6a, 0xc3, 0x06, 0x5f, 0xbd, 0x9d, 0xd4, 0x35, 0x14, 0xf3, 0x55, 0x30, 0xcf];
 /// The URL namespace of RFC 9562 §6.6 (6ba7b811-9dad-11d1-80b4-00c04fd430c8): what `NAMESPACE` is checked against.
@@ -340,7 +340,7 @@ impl Who {
 }
 
 /// Who has the child on a day, by the child agenda's custody days: a whole
-/// day titled "With <name>" (in French, « Avec <name> »), the name one of
+/// day titled `With <name>` (in French, « `Avec <name>` »), the name one of
 /// yours (`mine`) or the other parent's (`other`). None without one, or with
 /// both on that day.
 pub fn custody(whole_days: &[&str], mine: &[String], other: &str) -> Option<Who> {
@@ -962,7 +962,7 @@ pub struct Asked {
     /// "Later", by UID.
     #[serde(default)]
     pub later: BTreeMap<String, Later>,
-    /// What was said once: "<uid>|<since>" of an answer "not this time".
+    /// What was said once: `<uid>|<since>` of an answer "not this time".
     #[serde(default)]
     pub said: std::collections::BTreeSet<String>,
 }

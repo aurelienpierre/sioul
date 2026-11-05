@@ -299,7 +299,7 @@ pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
 /// A change of an agenda's sharing.
 pub(crate) enum Change {
     Read,
-    /// With a user of the same Nextcloud ("group:<name>" a group of it), or an address (Google).
+    /// With a user of the same Nextcloud (`group:<name>` a group of it), or an address (Google).
     Share { who: String, access: Access },
     /// A share taken back, by its id (`Sharee::id`).
     Unshare(String),

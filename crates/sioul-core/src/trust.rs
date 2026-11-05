@@ -797,7 +797,7 @@ pub const SUBJECT_TAGS: usize = 3;
 /// next line), as many as there are up to `SUBJECT_TAGS`, the first one's
 /// start before them: `(start, ends)`, offsets into `value`. A tag is text
 /// between stars ("***Possible-SPAM***", "*****SPAM*****"), brackets
-/// ("[SPAM]"), braces ("{Spam?}") or parentheses ("(Pourriel)"), at most 60
+/// (`[SPAM]`), braces ("{Spam?}") or parentheses ("(Pourriel)"), at most 60
 /// bytes inside, or a word ending with a colon ("SPAM:"), at most 40 bytes.
 /// An encoded Subject (RFC 2047) keeps its tag before its encoded words, as
 /// `rewrite_header` writes it: there it is found; a Subject encoded again

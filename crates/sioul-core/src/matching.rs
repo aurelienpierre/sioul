@@ -291,7 +291,7 @@ fn soft_tfidf(a: &[String], b: &[String], idf: &Idf) -> f64 {
 /// identifier (ICS, "ics:FR12ZZZ123456"), a mandate's reference after its
 /// word (RUM, "rum:…"), and the numbers after the words that lead one
 /// (`PaymentWords::references`: "facture", "commande", "avis", "invoice",
-/// "order"…), digits in them, as "ref:<letters and digits>".
+/// "order"…), digits in them, as `ref:<letters and digits>`.
 pub fn references(leads: &[String], text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let upper = text.to_uppercase();
