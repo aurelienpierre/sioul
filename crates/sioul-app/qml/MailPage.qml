@@ -2292,7 +2292,9 @@ Item {
     // ("probably not spam", "maybe spam"; decided 3 November 2026).
     function quietWord(row) {
         const loud = row.spam ? row.spam : row.trust_level === "forged" ? row.trust : row.flag || ""
-        return loud !== "" ? loud : row.topic || ""
+        // A doubt of Sioul's ("maybe") shows only under its topic's filter, as "Perhaps".
+        const topic = row.topic_why === "maybe" ? (page.boxTopic !== "" ? page.sioul.textWith("topic-perhaps", "topic", row.topic || "") : "") : row.topic || ""
+        return loud !== "" ? loud : topic
     }
 
     // A computer's row: one line, its marks, the dot, who, the subject, its quiet marks, the time.

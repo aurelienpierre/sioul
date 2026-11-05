@@ -513,6 +513,11 @@ sioul-core/src/timelog.rs	remove_in	1	write_atomically(&path, &toml::to_string(&
 sioul-core/src/timelog.rs	keep_running_in	1	write_atomically(&path, &toml::to_string(r).map_err(|e| e.to_string())?)
 sioul-core/src/timelog.rs	keep_running_in	1	std::fs::remove_file(&path)
 
+# sioul-core/src/topics/judging.rs: the topics' table (the computer that trains writes it), and what it judged of the mail kept here, a cache of this device's own: no item.
+sioul-core/src/topics/judging.rs	write_table	1	crate::filelock::replace(path, &table.to_bytes())
+sioul-core/src/topics/judging.rs	keep	1	std::fs::remove_file(entry.path())
+sioul-core/src/topics/judging.rs	keep	1	std::fs::OpenOptions::new()
+
 # sioul-core/src/topics/labels.rs: your word on mail topics, each device's log of messages tagged and senders' rules: no item.
 sioul-core/src/topics/labels.rs	append	1	std::fs::OpenOptions::new()
 

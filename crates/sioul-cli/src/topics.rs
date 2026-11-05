@@ -25,6 +25,17 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub(crate) enum TopicsCommand {
+    /// Trains the topics' model on every message kept here, your topics and
+    /// your word on them (what the weekly run does after the spam filter's):
+    /// the topics through the gate (20 messages from 3 senders, or 50 from
+    /// one office) learned, the table replaced only when no worse, then the
+    /// mail kept here judged by it. --no-replace measures without writing.
+    Train {
+        #[arg(long)]
+        no_replace: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// The topics Sioul would propose from your folders, contacts'
     /// categories and the topic presets' senders (presets/topics.json), from
     /// every message kept here (Sent and archives included); each preset's
@@ -92,6 +103,7 @@ pub(crate) fn run(s: &Session, command: TopicsCommand) -> Result<(), String> {
     let dirs = Dirs::standard();
     match command {
         TopicsCommand::Seeds { json } => long(s, json, None, |progress, cancel| seeds(s, &dirs, progress, cancel)),
+        TopicsCommand::Train { no_replace, json } => long(s, json, None, |progress, cancel| train(s, &dirs, !no_replace, progress, cancel)),
         TopicsCommand::Eval { threads, dim, epochs, buckets, none_weights, quick, seeded_precision, model2vec, json } => {
             let mut options = Options::of(&s.config);
             if let Some(threads) = threads {
@@ -178,7 +190,7 @@ fn topic_lines(s: &Session, topic: &Topic, given_names: &dyn Fn(&str) -> String)
         lines.push(format!("    {}", s.say("topics-kept", &[("n", topic.kept.to_string())])));
     }
     for (to, n) in &topic.given {
-        lines.push(format!("    {}", s.say("topics-given", &[("n", n.to_string()), ("topic", given_names(to))])));
+        lines.push(format!("    {}", s.say("topics-gave-away", &[("n", n.to_string()), ("topic", given_names(to))])));
     }
     lines
 }
@@ -243,6 +255,51 @@ fn seeds(s: &Session, dirs: &Dirs, progress: &mut dyn FnMut(&Progress), cancel: 
     let (seeded, _) = topics::seeded(&read, &options);
     let lines = seeded_lines(s, &seeded, options.rules.least);
     Ok(Report { lines, data: serde_json::to_value(&seeded).map_err(|e| e.to_string())? })
+}
+
+// `sioul topics train`, by hand or in the weekly run.
+
+/// Trains the topics' model (`topics::model::train`) and, when its table is
+/// no worse, writes it where every device reads it and judges the mail kept
+/// here by it; what it did, said topic by topic.
+pub(crate) fn train(s: &Session, dirs: &Dirs, replace: bool, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
+    use sioul_core::topics::judging;
+    let options = Options { compare: false, ..Options::of(&s.config) };
+    let read = read(s, dirs, &options, true, None, progress, cancel)?;
+    let said = sioul_core::topics::labels::Said::load();
+    let presets = sioul_core::topics::presets::Matcher::current();
+    let path = judging::table_path();
+    let previous = judging::cached(&path).map(|(t, _)| t);
+    let trained = topics::model::train(dirs, &read, &s.config.topics, &said, Some(&presets), previous.as_deref(), &options, progress, cancel).map_err(|e| failure(s, &e))?;
+    let written = replace && trained.replaces();
+    if written && let Some(table) = &trained.table {
+        judging::write_table(&path, table)?;
+        let _ = judging::judge_kept(&s.config, usize::MAX);
+    }
+    let name_of = |id: &str| s.config.topics.iter().find(|t| t.id == id).map_or_else(|| id.to_string(), |t| crate::one_line(&t.name));
+    let n = |x: u64| x.to_string();
+    let mut lines = Vec::new();
+    for state in &trained.topics {
+        let key = if state.learned { "topics-train-learned" } else { "topics-train-waits" };
+        lines.push(s.say(key, &[("topic", name_of(&state.id)), ("examples", n(state.examples)), ("senders", n(state.senders)), ("least", n(topics::model::LEAST)), ("least_senders", n(topics::model::LEAST_SENDERS)), ("alone", n(topics::model::LEAST_ALONE)), ("own", n(state.own)), ("capped", n(state.capped))]));
+    }
+    for (id, was, now) in &trained.compared {
+        lines.push(format!("  {}", s.say("topics-train-compared", &[("topic", name_of(id)), ("was", number(s, *was, 3)), ("now", number(s, *now, 3))])));
+    }
+    let outcome = match &trained.outcome {
+        topics::model::Outcome::NoTopic => s.tr.text("topics-train-no-topic", None),
+        topics::model::Outcome::TooFew => s.tr.text("topics-train-too-few", None),
+        topics::model::Outcome::First | topics::model::Outcome::Replaced if !written => s.say("topics-train-not-written", &[("f1", number(s, trained.macro_f1, 3)), ("coverage", share(s, trained.coverage))]),
+        topics::model::Outcome::First => s.say("topics-train-first", &[("f1", number(s, trained.macro_f1, 3)), ("coverage", share(s, trained.coverage))]),
+        topics::model::Outcome::Replaced => s.say("topics-train-replaced", &[("f1", number(s, trained.macro_f1, 3)), ("coverage", share(s, trained.coverage)), ("churn", share(s, trained.churn))]),
+        topics::model::Outcome::Worse { topic } => s.say("topics-train-worse", &[("topic", name_of(topic))]),
+        topics::model::Outcome::Churn => s.say("topics-train-churn", &[("churn", share(s, trained.churn)), ("most", share(s, Some(topics::model::CHURN)))]),
+    };
+    lines.push(outcome);
+    lines.push(s.say("topics-seconds", &[("seconds", format!("{:.0}", trained.seconds))]));
+    let mut data = serde_json::to_value(&trained).map_err(|e| e.to_string())?;
+    data["written"] = json!(written);
+    Ok(Report { lines, data })
 }
 
 // `sioul topics eval`.

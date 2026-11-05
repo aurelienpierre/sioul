@@ -18,11 +18,14 @@
 //! - [`seeds`]: the first topics, proposed from what the person already
 //!   sorted (folders, contacts' categories);
 //! - [`table`]: the model folded into a table that judges a message without
-//!   it, on the phone too.
+//!   it, on the phone too;
+//! - [`judging`]: that table where this device keeps it, and what it judged
+//!   of the mail kept here, after each fetch and when a table arrives.
 //!
 //! The training and its measures are sioul-learn's (`sioul_learn::topics`,
 //! `sioul topics seeds` and `sioul topics eval`), on a computer only.
 
+pub mod judging;
 pub mod labels;
 pub mod presets;
 pub mod rules;

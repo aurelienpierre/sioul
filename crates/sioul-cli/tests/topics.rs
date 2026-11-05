@@ -113,5 +113,22 @@ fn seeds_and_eval_on_stand_in_mail() {
     // Shown with --nocapture: what a person reads.
     println!("{lines}");
     println!("{}", run(&root, "fr", &["topics", "eval", "--quick", "--threads", "2", "--dim", "16", "--epochs", "20", "--buckets", "2000"]));
+
+    // Your topics, then the model: the first table written where every device reads it, the mail kept here judged by it.
+    let config = root.join("config/sioul/config.toml");
+    let mut text = std::fs::read_to_string(&config).unwrap();
+    for (id, name, folder) in [("choir", "Chorale", "Chorale"), ("tax", "Impôts", "Impôts"), ("health", "Santé", "Santé"), ("club", "Club de lecture", "Lecture")] {
+        text.push_str(&format!("\n[[topic]]\nid = \"{id}\"\nname = \"{name}\"\nseeds = {{ folders = [\"{folder}\"] }}\n"));
+    }
+    std::fs::write(&config, text).unwrap();
+    let trained: Value = serde_json::from_str(&run(&root, "en", &["topics", "train", "--json"])).unwrap();
+    assert_eq!((trained["outcome"].as_str(), trained["written"].as_bool()), (Some("first"), Some(true)), "{trained:#}");
+    let club = trained["topics"].as_array().unwrap().iter().find(|t| t["id"] == "club").unwrap();
+    assert_eq!((club["examples"].as_u64(), club["learned"].as_bool()), (Some(0), Some(false)), "no mail, no class");
+    let table = std::fs::read(root.join("data/sioul/topics/table.bin")).unwrap();
+    assert_eq!(sioul_core::topics::table::Table::from_bytes(&table).unwrap().meta.topics, ["choir", "tax", "health"]);
+    let judged = std::fs::read_dir(root.join("cache/sioul/topics/judged")).unwrap().filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "jsonl")).count();
+    assert_eq!(judged, 1, "what this table judged, its own file");
+    println!("{}", run(&root, "fr", &["topics", "train", "--no-replace"]));
     let _ = std::fs::remove_dir_all(root);
 }

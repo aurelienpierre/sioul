@@ -154,6 +154,17 @@ ColumnLayout {
                 font.pixelSize: 13
                 color: page.theme.muted
             }
+            // How it is sorted: by Sioul's table too, or by your words and its rules until it has more mail.
+            Label {
+                objectName: "topicLearned:" + topic.modelData.id
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                text: page.sioul.text(topic.modelData.learned ? "topics-learned" : "topics-not-learned")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: page.theme.muted
+            }
             Repeater {
                 model: topic.modelData.senders
 

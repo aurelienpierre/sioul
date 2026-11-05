@@ -306,6 +306,16 @@ Sous **Votre filtre à indésirables**, dans le ⚙ de la page Courriels. Il ne 
 
 Ce qu’il fait de chaque avis, les seuils et s’il se réentraîne de lui-même voyagent vers vos autres appareils avec vos réglages. Ce que l’apprentissage lit, et ce qu’il garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+**Les thèmes sont des mots sur votre courrier, jamais des endroits où il va.** Classer à la main coûte et échoue : dans les comptes Gmail personnels, environ la moitié des libellés créés finissent avec moins de trois conversations (Grevet et al. 2014), et retrouver un courriel par les dossiers prenait plus de temps que le chercher, sans que les grands classeurs en retrouvent davantage (Whittaker et al. 2011). Un thème est donc un filtre sur la même boîte, un mot sur la ligne et une condition de recherche : un mot erroné ne coûte rien tant que le courriel reste où il était, et une conversation reste entière.
+
+**Ils partent de ce que vous avez déjà.** Vos dossiers et les catégories de vos contacts disent le mieux quels thèmes vous tenez, et les expéditeurs que Sioul peut prouver portent l’essentiel d’un thème : un tri du courrier en ligne plaçait la plupart des messages d’après leur seul expéditeur (Grbovic et al. 2014). Les premiers thèmes viennent donc de vos dossiers, de vos catégories et des expéditeurs d’une banque, des impôts ou d’une mutuelle que Sioul connaît ; votre mot sur un courriel ou un expéditeur passe d’abord, et rien ne vous demande de vérifier quoi que ce soit.
+
+**Le modèle attend le courrier, et ne bouge jamais ce que vous voyez.** Un thème est appris une fois qu’il a 20 courriels de 3 expéditeurs, ou 50 d’un seul organisme ; en deçà, vos mots et ses règles le rangent. Chaque semaine, une nouvelle table ne remplace celle en service que si elle ne fait pas moins bien sur le courrier le plus récent, thème par thème, et change moins de 2 % des thèmes déjà affichés : rien ne bouge sous vos yeux. Un doute ne s’affiche que sous le filtre de son thème, en « Peut-être », et ne compte jamais comme étiquette ; les avis sûrs de Sioul comptent pour moitié, jamais plus que les autres exemples d’un thème, comme les verdicts de son filtre anti-spam comptent tant que vous ne les corrigez pas.
+
+Plus dans [ce que dit la recherche](https://sioul.aurelienpierre.com/dev/research.html), constat 61.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
 En octobre 2026, d’après la documentation de chaque application.
@@ -330,6 +340,8 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     | Envoi programmé, rappel plus tard | ✗³⁹ | en partie⁴⁰ | ✓ | ✓⁴¹ | ✓ | ✓⁴² |
     | Courriels signés et chiffrés | ✓⁴³ | ✓⁴⁴ | en partie⁴⁵ | en partie⁴⁶ | en partie⁴⁷ | ✓⁴⁸ |
     | Adresses Outlook.com, Hotmail et Microsoft 365 | en partie⁴⁹ | ✓ | en partie⁵⁰ | ✓ | ✓ | ✗⁵¹ |
+    | Des thèmes que vous nommez, mots discrets sur votre courrier, jamais un dossier | ✓⁵² | en partie⁵³ | en partie⁵⁴ | en partie⁵⁵ | en partie⁵⁶ | ? |
+    | Les apprend de votre courrier, sur vos appareils | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | en partie⁵⁶ | ? |
 
     1. Thunderbird : seulement par une extension (DKIM Verifier) ; rien sur Android.
     2. Gmail : un point d’interrogation sur un courriel qui n’est pas authentifié, et « Envoyé par » et « Signé par » dans ses détails, sur un ordinateur et sur Android ; pas sur un iPhone ni un iPad.
@@ -382,6 +394,12 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     49. Sioul : connecté sur la page de Microsoft elle-même ; pas encore essayé avec un vrai compte Microsoft. Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation.
     50. Gmail : dans ses applications pour téléphone ; Gmail sur le web cesse de relever les autres comptes en janvier 2027.
     51. Proton Mail : les adresses Proton ; un compte Gmail peut s’y relier.
+    52. Sioul : un thème par courriel, d’après vos dossiers, les catégories de vos contacts, les expéditeurs d’une banque, des impôts ou d’une mutuelle qu’il connaît, et votre propre mot sur un courriel ou un expéditeur ; un filtre, un mot sur la ligne et une condition de recherche.
+    53. Thunderbird : des étiquettes données à la main, sur un ordinateur ; elles n’atteignent vos autres appareils, en mots-clés IMAP, que si le serveur les garde ; aucune sur Android.
+    54. Gmail : cinq onglets fixes (Principale, Promotions, Réseaux sociaux, Notifications, Forums), triés sur les serveurs de Google (« You can't create custom categories ») ; des libellés à la main ou par filtre.
+    55. Outlook : Prioritaire et Autres, triés sur les serveurs de Microsoft ; des catégories à la main, pour les comptes Exchange.
+    56. Apple Mail : quatre catégories fixes depuis iOS 18.2 (Principal, Transactions, Mises à jour, Promotions), triées sur l’appareil et corrigées par expéditeur ; aucune que vous nommez.
+    57. Sioul : appris une fois par semaine sur l’ordinateur qui entraîne, pour chaque thème de 20 courriels de 3 expéditeurs ou plus ; chaque appareil, le téléphone compris, range ensuite le courrier nouveau avec la même table.
 
 === "Technique"
 

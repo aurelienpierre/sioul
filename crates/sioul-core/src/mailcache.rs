@@ -1020,6 +1020,10 @@ mod tests {
         let kept = look();
         let beside = stand.index().with_extension("tsv.new");
         std::fs::write(&beside, std::fs::read(stand.index()).unwrap()).unwrap();
+        // Written later than the file it replaces, as a compaction is: Windows
+        // gives no inode to tell a same-size copy made in the same tick.
+        let was = std::fs::metadata(stand.index()).unwrap().modified().unwrap();
+        std::fs::File::options().write(true).open(&beside).unwrap().set_modified(was + Duration::from_secs(1)).unwrap();
         std::fs::rename(&beside, stand.index()).unwrap();
         let compacted = look();
         assert!(!Arc::ptr_eq(&kept.lines, &compacted.lines), "compacted: looked at again");

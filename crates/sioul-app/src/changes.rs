@@ -106,7 +106,7 @@ pub(crate) fn kinds_of(store: &str) -> Vec<Kind> {
         // The settings: what each agenda is, the accounts, the sites.
         "config/config.toml" => vec![Kind::Agendas, Kind::Accounts, Kind::Sites, Kind::Topics],
         // Your word on mail's topics, as your other devices said it.
-        sioul_sync::share::TOPICS => vec![Kind::Topics],
+        sioul_sync::share::TOPICS | sioul_sync::share::TOPICS_TABLE => vec![Kind::Topics],
         "data/links.toml" => vec![Kind::Links],
         "notes/sioul-cases.toml" | "notes/sioul-projects.toml" => vec![Kind::Projects],
         "notes/sioul-budgets.toml" | "notes/sioul-bank.toml" | "notes/sioul-contracts.toml" | sioul_sync::share::MOVEMENTS => vec![Kind::Money],

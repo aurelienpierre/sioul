@@ -41,6 +41,8 @@
 //!    that static embedding ([`crate::model2vec`]), tested the same way,
 //!    and how it folds.
 
+pub mod model;
+
 use crate::corpus;
 use crate::labels::{self, Copy, Label};
 use crate::model2vec::StaticModel;
@@ -210,6 +212,18 @@ pub(crate) struct Mail {
     pub(crate) to: Vec<String>,
     /// The topic preset its proven sender matches (`topics::presets::Matcher::find`), by id.
     pub(crate) preset: Option<String>,
+    /// What the order of words reads of it (`sioul_core::topics::rules::Facts`):
+    /// its sender when Sioul's checks authenticate it (none for yours), its
+    /// sender's domain when verified, its copies' folders as read, its
+    /// proven sender's cards' categories (compared), its conversation (its
+    /// first first), whether it is a list and its List-Id when read whole.
+    pub(crate) proven: Option<String>,
+    pub(crate) verified_domain: Option<String>,
+    pub(crate) folders: Vec<String>,
+    pub(crate) categories: Vec<String>,
+    pub(crate) conversation: Vec<String>,
+    pub(crate) is_list: bool,
+    pub(crate) list_id: Option<String>,
 }
 
 impl Mail {
@@ -533,12 +547,14 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
         };
         let i = mail.len();
         let mut preset_of = None;
+        let verified_domain = (judged == Trust::Verified && !yours).then(|| card.sender_domain().map(str::to_string)).flatten();
+        let list_id = whole_bytes.as_deref().and_then(sioul_core::card::Card::from_bytes).and_then(|c| c.headers.first("List-Id").map(|v| v.rsplit_once('<').map_or(v, |(_, r)| r.split('>').next().unwrap_or(r)).trim().to_lowercase()));
         // A topic preset's mail, for a verified sender only: counted, and a seed in your language.
         if let Some(matcher) = &sources.presets
             && !yours
         {
-            let verified = (judged == Trust::Verified).then(|| card.sender_domain()).flatten();
-            let list = whole_bytes.as_deref().and_then(sioul_core::card::Card::from_bytes).and_then(|c| c.headers.first("List-Id").map(|v| v.rsplit_once('<').map_or(v, |(_, r)| r.split('>').next().unwrap_or(r)).trim().to_lowercase()));
+            let verified = verified_domain.as_deref();
+            let list = list_id.clone();
             if let Some((p, by)) = matcher.find(verified, list.as_deref(), card.is_list || first.line.is_list) {
                 let preset = &matcher.presets[p];
                 reading.presets.entry(preset.id.clone()).or_default().add(by);
@@ -567,12 +583,38 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
             }
         }
         let date = found.iter().map(|c| sioul_core::mailcache::sent_at(&c.line)).filter(|&d| d > 0).min().unwrap_or(0);
+        let proven = (authenticated && !yours).then(|| from.clone()).flatten();
         let sender = if yours { to.iter().find(|a| !own.contains(*a)).cloned() } else { from };
         reading.yours += u64::from(yours);
         let (subject, refs) = (first.line.subject.clone(), first.line.refs());
         let id = first.line.message_id.as_deref().map(sioul_core::mailindex::bare_id).filter(|id| !id.is_empty());
         let from_name = if yours { None } else { first.line.from_name.clone().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) };
-        mail.push(Mail { date, sender, yours, words: message_words, grouping, senders, tokens, subject, from_name, id, refs, to, preset: preset_of });
+        let categories_of_sender: Vec<String> = proven.as_deref().and_then(|a| categories.get(a)).map(|c| c.iter().map(|(key, _)| key.clone()).collect()).unwrap_or_default();
+        let conversation = sioul_core::topics::rules::conversation(&first.line.references, &first.line.in_reply_to);
+        let folders: Vec<String> = found.iter().map(|c| c.display.clone()).collect();
+        let is_list = card.is_list || first.line.is_list;
+        mail.push(Mail {
+            date,
+            sender,
+            yours,
+            words: message_words,
+            grouping,
+            senders,
+            tokens,
+            subject,
+            from_name,
+            id,
+            refs,
+            to,
+            preset: preset_of,
+            proven,
+            verified_domain,
+            folders,
+            categories: categories_of_sender,
+            conversation,
+            is_list,
+            list_id,
+        });
     }
     reading.messages = mail.len() as u64;
     progress(&Progress { stage: Stage::Tokens, done: total, total, detail: String::new() });
