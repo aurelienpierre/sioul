@@ -486,6 +486,41 @@ pub fn mirror_files(events: &[Occurrence], availability: &Availability, words: &
     blocks(events, availability, words, health, window(availability, now)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
 }
 
+// ---------------------------------------------------------------- who keeps a mirror: the freshest view
+
+/// A device's view of an availability's sources: when it last knew each of
+/// them whole and current (`vdir::State::pulled`: a pull gone through whole,
+/// or a token check that found nothing changed), as (oldest, newest), Unix
+/// seconds on its clock; none while one was never pulled whole here.
+pub fn view(pulled: &[Option<i64>]) -> Option<(i64, i64)> {
+    if pulled.is_empty() || pulled.iter().any(Option::is_none) {
+        return None;
+    }
+    let times = pulled.iter().flatten().copied();
+    Some((times.clone().min()?, times.max()?))
+}
+
+/// What a device notes in its sealed entry once it wrote a mirror from `view`
+/// (`devices::Entry::mirrors`): the freshest pull it relied on.
+pub fn as_of(view: (i64, i64)) -> i64 {
+    view.1
+}
+
+/// The freshest-view rule (design-availability-sharing §3): a device writes
+/// an availability's mirror only when every source of it was known current
+/// here after the freshest pull any other device last wrote it from
+/// (`others`: their `as_of`). So a device opened after days away, or a phone
+/// whose steps were held, writes nothing until its own pulls are newer than
+/// what the mirror already says; then it writes the same bytes as the others
+/// would. Its own earlier writes do not count: its view only moves forward.
+/// Comparing the oldest pull here with the newest there, rather than oldest
+/// with oldest, keeps a device whose sources were pulled unevenly from
+/// writing an older copy of one of them over a newer one.
+pub fn may_write(view: Option<(i64, i64)>, others: impl IntoIterator<Item = i64>) -> bool {
+    let Some((oldest, _)) = view else { return false };
+    others.into_iter().all(|theirs| oldest >= theirs)
+}
+
 // ---------------------------------------------------------------- the way per audience and server
 
 /// What an account's server is, as Sioul knows it: by its sign-in (Google),
@@ -954,5 +989,32 @@ mod tests {
         assert_eq!(mirror_description(&en, jiff::civil::date(2026, 11, 5)), "From Sioul. As of 5 November.");
         assert_eq!(mirror_description(&fr, jiff::civil::date(2026, 11, 5)), "De Sioul. Au 5 novembre.");
         assert_eq!(mirror_description(&fr, jiff::civil::date(2026, 12, 1)), "De Sioul. Au 1er décembre.");
+    }
+
+    /// Two devices keep one mirror from the freshest view: the computer,
+    /// whose sources were pulled a minute ago, writes; the phone, a day
+    /// behind, writes nothing over it; once its own check finds every source
+    /// current, it writes again, the same bytes as the computer's. Sources
+    /// pulled unevenly never let an older copy of one win; a source never
+    /// pulled whole holds every write back.
+    #[test]
+    fn the_stale_device_writes_nothing_until_its_view_is_fresh() {
+        let now = 1_800_000_000;
+        let computer = view(&[Some(now - 60), Some(now - 30)]).unwrap();
+        assert_eq!(computer, (now - 60, now - 30));
+        assert!(may_write(Some(computer), []), "first to write");
+        let written = as_of(computer);
+        let phone = view(&[Some(now - 86_400), Some(now - 86_400)]);
+        assert!(!may_write(phone, [written]), "a day behind: nothing written");
+        let checked = view(&[Some(now + 300), Some(now + 300)]);
+        assert!(may_write(checked, [written]), "its own check done: fresh again");
+        // The same view on both: the same bytes.
+        let events = [event("me/personal", "e1", now + 3_600, now + 7_200, "Dentist")];
+        let a = mine(&["me/personal"]);
+        assert_eq!(mirror_files(&events, &a, &WORDS, &BTreeSet::new(), now), mirror_files(&events, &a, &WORDS, &BTreeSet::new(), now + 300));
+        // Uneven: one source newer than the last write, the other older.
+        assert!(!may_write(view(&[Some(now + 600), Some(now - 120)]), [written]), "one source older than the mirror's: held");
+        assert!(!may_write(view(&[Some(now), None]), []), "one source never pulled whole: held");
+        assert!(!may_write(view(&[]), []), "no source: nothing to write");
     }
 }

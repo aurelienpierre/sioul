@@ -173,6 +173,15 @@ pub struct Entry {
     /// deleted. Sealed with the rest; an older Sioul passes over it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub replaces: Vec<Replaced>,
+    /// The availabilities whose mirror this device last wrote, by id: the
+    /// freshest pull its view of their sources held then (Unix seconds, its
+    /// clock; `sioul_core::availability::as_of`). A device whose own view is
+    /// older writes nothing over it (`mirror_writers`, `availability::may_write`;
+    /// design-availability-sharing §3). Sealed with the rest, never on the
+    /// calendars' server, which would learn when your devices run; an older
+    /// Sioul passes over it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub mirrors: std::collections::BTreeMap<String, i64>,
     /// Its size changed at each writing (`share::pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub pad: String,
@@ -366,6 +375,15 @@ pub fn others_in_use(entries: &[Entry], own: &str, now: i64, asleep: bool) -> bo
     entries.iter().any(|e| e.id != own && e.working && !e.left && now - e.exported <= FRESH + SKEW && (!asleep || e.active != Some(false)))
 }
 
+/// What the other devices last wrote an availability's mirror from
+/// (`Entry::mirrors`), for the freshest-view rule (`availability::may_write`):
+/// this device's own left out, its view only moving forward; a device that
+/// left the sharing too. A time more than ten minutes ahead of `now` (a clock
+/// set wrong) is passed over, so that it never holds every other device back.
+pub fn mirror_writers(entries: &[Entry], own: &str, availability: &str, now: i64) -> Vec<i64> {
+    entries.iter().filter(|e| e.id != own && !e.left).filter_map(|e| e.mirrors.get(availability).copied()).filter(|at| *at <= now + 600).collect()
+}
+
 /// What this device last wrote into the folder, kept beside its own entry and
 /// never shared (`published_path`): what it said then, its exchanges' times
 /// left out (`steady`), the file as written (its size and time), where, under
@@ -534,6 +552,52 @@ mod tests {
             assert!(unread.is_empty() && entries[0].working && entries[0].commit.is_empty(), "{entries:?}");
             assert_eq!(entries[0].build(), said);
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Each device says, sealed, what it last wrote each availability's
+    /// mirror from: written at once into the folder, even put away (the
+    /// others need it before they write); read back by the others, its own
+    /// left out, one that left too, a time far ahead passed over; an older
+    /// Sioul's entry says none and reads as before.
+    #[test]
+    fn a_device_says_what_it_last_wrote_a_mirror_from() {
+        let dir = scratch("mirrors");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let (phone, computer) = (uuid::Uuid::new_v4().to_string(), uuid::Uuid::new_v4().to_string());
+        let vault = Some((folder.as_path(), &KEY));
+        let computer_state = dir.join("computer-state");
+        change(&own_path(&computer_state), vault, |e| {
+            e.id = computer.clone();
+            e.kind = COMPUTER.into();
+            e.start(1_000);
+            e.close(1_010);
+        })
+        .unwrap();
+        let before = std::fs::read_to_string(file_of(&folder, &computer)).unwrap();
+        change(&own_path(&computer_state), vault, |e| {
+            e.mirrors.insert("a1".into(), 1_800_000_000);
+        })
+        .unwrap();
+        assert_ne!(std::fs::read_to_string(file_of(&folder, &computer)).unwrap(), before, "put away, it is written all the same");
+        assert!(!std::fs::read_to_string(file_of(&folder, &computer)).unwrap().contains("1800000000"), "sealed");
+        change(&own_path(&state), vault, |e| {
+            e.id = phone.clone();
+            e.kind = PHONE.into();
+            e.start(1_000);
+            e.mirrors.insert("a1".into(), 1_700_000_000);
+        })
+        .unwrap();
+        let (entries, _) = all(&folder, &KEY);
+        assert_eq!(mirror_writers(&entries, &phone, "a1", 1_800_000_100), [1_800_000_000], "the computer's, the phone's own left out");
+        assert!(mirror_writers(&entries, &phone, "a1", 1_700_000_000).is_empty(), "far ahead of this clock: passed over");
+        assert!(mirror_writers(&entries, &phone, "a2", 1_800_000_100).is_empty());
+        change(&own_path(&computer_state), vault, |e| e.left = true).unwrap();
+        assert!(mirror_writers(&all(&folder, &KEY).0, &phone, "a1", 1_800_000_100).is_empty(), "left: counts no more");
+        // An older Sioul's entry: no mirrors, read as before.
+        std::fs::write(file_of(&folder, &computer), crate::share::seal(&KEY, &bound(&computer), serde_json::json!({ "id": computer, "started": 1_000, "working": true }).to_string().as_bytes())).unwrap();
+        let (entries, unread) = all(&folder, &KEY);
+        assert!(unread.is_empty() && entries.iter().any(|e| e.id == computer && e.mirrors.is_empty()), "{entries:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
