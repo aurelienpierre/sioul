@@ -3930,6 +3930,9 @@ availability-already = Vos disponibilités sont déjà partagées : arrêtez d
 availability-pick = Choisissez les agendas d’où viennent vos heures prises.
 availability-google-own = Choisissez des agendas de ce compte Google : Google partage les heures prises de ses propres agendas.
 availability-stopped = Vos heures prises ne sont plus partagées.
+availability-name-for = Pour { $who }
+availability-name-link = Par lien
+availability-not-known = Pas encore connu
 # Événements des enfants (plusieurs agendas, partie 3) : qui s’en charge, les doublures, les invitations.
 holder-title = Qui s’en charge
 holder-kind = Type

@@ -13,7 +13,8 @@
 use crate::backend::{QtThread, Shared, json, load_config, say, tell, tr};
 use serde::Deserialize;
 use sioul_core::agendas::{self, Agenda, Whose};
-use sioul_core::availability::Availability;
+// The one share of before, until the window moves to the list of availabilities.
+use sioul_core::availability::Single as Availability;
 use sioul_core::config::{Account, Config};
 use sioul_core::vdir::{self, Collection, Kind, State};
 use sioul_sync::calendars::{self, Access, GoogleApi, Sharer, Sharing};
@@ -653,7 +654,7 @@ pub(crate) fn availability_upkeep(qt: &QtThread, shared: &Arc<Shared>) {
 fn keep_blocks(collection: &Collection, availability: &Availability) -> bool {
     let now = sioul_core::zone::now().timestamp().as_second();
     let events = sioul_core::agenda::occurrences(now - 86_400, now + 61 * 86_400);
-    let wanted = sioul_core::availability::wanted(&events, availability, &tr().text("availability-busy", None));
+    let wanted = availability.wanted(&events, &tr().text("availability-busy", None));
     let mut changed = false;
     for (name, text) in &wanted {
         let path = collection.dir.join(name);

@@ -3903,6 +3903,9 @@ availability-already = Your availability is shared already: stop it first.
 availability-pick = Pick the agendas your busy times come from.
 availability-google-own = Pick calendars of this Google account: Google shares its own calendars’ busy times.
 availability-stopped = Your busy times are no longer shared.
+availability-name-for = For { $who }
+availability-name-link = By link
+availability-not-known = Not known yet
 # Children's events (several agendas, part 3): who takes each, the stand-ins, the invitations.
 holder-title = Who takes it
 holder-kind = Kind
