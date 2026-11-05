@@ -414,6 +414,25 @@ mailbox-chip-spam = Indésirables
 mailbox-rests = { $address } se repose jusqu’à { $until }.
 mailbox-rests-sleep = Toutes les adresses se reposent pendant votre sommeil, jusqu’à { $until }.
 mailbox-filter-help = Montre les courriels des adresses activées, pour ce qui est coché. Les cases suivent vos heures, et rien n’est coché pendant votre sommeil ; ce que vous cochez vous-même tient jusqu’au changement d’heures. Une adresse dont l’usage n’est pas dit compte comme travail.
+mailbox-hidden-head = Pas affiché pour l’instant :
+mailbox-hidden-rests-work = les courriels du travail, qui attendent comme vos heures le disent
+mailbox-hidden-rests-admin = les courriels de vos démarches, qui attendent comme vos heures le disent
+mailbox-hidden-rests-leisure = les courriels des loisirs, qui attendent comme vos heures le disent
+mailbox-hidden-unticked-work = les courriels du travail, décochés dans le filtre
+mailbox-hidden-unticked-admin = les courriels de vos démarches, décochés dans le filtre
+mailbox-hidden-unticked-leisure = les courriels des loisirs, décochés dans le filtre
+mailbox-hidden-off = { $address }, éteinte dans cette liste (ses courriels restent dans sa boîte de réception)
+mailbox-hidden-show-area = Les afficher
+mailbox-hidden-switch-on = La rallumer
+mailbox-older =
+    { $weeks ->
+        [2] Les courriels de plus de deux semaines
+        [4] Les courriels de plus de quatre semaines
+       *[other] Les courriels de plus de { $weeks } semaines
+    }
+mailbox-show-older = Afficher les plus anciens…
+mailbox-older-end = { $older } :
+mailbox-nothing-older = Rien de plus ancien n’est gardé ici.
 area-filter-work = Travail
 area-filter-admin = Démarches
 area-filter-leisure = Loisirs
@@ -2295,7 +2314,7 @@ project-invoice = Facture { $number }
 project-no-title = Un projet a besoin d’un nom.
 project-gone = Ce projet n’existe plus.
 project-ai = Ouvert aux agents d’IA
-project-ai-help = Un agent que vous connectez avec sioul mcp lit alors les courriels, les tâches, les notes, le temps, les factures et les lettres de ce projet, et y ajoute des tâches, des notes, des liens et des brouillons ; ce qu’il lit part chez le fournisseur de son modèle. Fermé, il n’en voit rien.
+project-ai-help = Un agent que vous connectez avec sioul mcp voit alors son nom et ce qui lui est lié (ses courriels, tâches, notes, temps, factures et lettres), et peut y ajouter des tâches, des notes, des liens et des brouillons ; ce qu’il lit part chez le fournisseur de son modèle.
 invoice-nothing = Aucun temps facturable n’attend d’être facturé.
 invoice-gone = Cette facture n’existe plus.
 invoice-marked-paid = Facture { $number } marquée payée.
@@ -7163,6 +7182,10 @@ step-before-said = « { $title } » vient maintenant avant son rendez-vous.
 ## Personnes : celles pour qui vous faites des démarches (docs/persons.md)
 persons-household = Proches
 persons-household-help = Les personnes pour qui vous faites des démarches : vous, un enfant, un parent que vous aidez, un ou une partenaire. Chacune est une fiche de Sioul, gardée sur vos seuls appareils, liée à des contacts sans jamais y être écrite. Chacune est fermée aux agents d’IA tant que vous ne l’ouvrez pas sur sa page.
+persons-made-title = Sioul a ajouté ces proches d’après ce que nommaient déjà vos agendas et vos papiers. Ils sont dans Contacts ▸ Proches.
+persons-made-row = { $name } : { $from }
+persons-made-agenda = l’agenda « { $name } »
+persons-made-paper = le papier « { $name } »
 persons-you = Vous
 persons-add = Ajouter une personne
 persons-others = Autres parents des enfants
@@ -7201,7 +7224,7 @@ person-link-card = Lier un contact…
 person-unlink-card = Délier
 person-card-of = lié à { $name }
 person-agents = Ouvert aux agents d’IA
-person-agents-help = Un agent que vous connectez avec sioul mcp lit alors le nom, le type et les papiers de cette personne, jamais sa date de naissance, ses contacts ni ses papiers de santé ; ce qu’il lit part chez le fournisseur de son modèle. Fermée, il n’en voit rien.
+person-agents-help = Un agent que vous connectez avec sioul mcp voit alors son nom, son lien avec vous et ce qui lui est lié, jamais sa date de naissance, ses contacts ni ses papiers de santé ; ce qu’il lit part chez le fournisseur de son modèle.
 person-help = Une personne est celle pour qui sont les papiers et les agendas. Sa fiche reste sur vos propres appareils, scellée quand ils partagent, et n’est jamais écrite dans un contact ni envoyée à un serveur.
 person-of-card = Page de { $name }
 person-card-link = C’est une personne de vos proches…
@@ -7225,7 +7248,8 @@ person-keeps = Ce que Sioul garde sur { $name }…
 person-keeps-papers = Papiers
 person-keeps-file = Ce que garde Sioul
 person-keeps-made = Fait par Sioul le { $date }, sur cet appareil. Rien n’a été envoyé.
-person-keeps-saved = Enregistré dans { $path }, avec les fichiers des papiers.
+person-keeps-not = Pas dans ce fichier : ses budgets et les sites que vous ouvrez pour cette personne.
+person-keeps-saved = Enregistré dans { $path }, avec les fichiers des papiers. Ses budgets et les sites que vous ouvrez pour cette personne n’y sont pas.
 person-ends = Fin…
 person-ends-title = { $name } : la fin
 person-ends-on = Fini le (aujourd’hui sans date)

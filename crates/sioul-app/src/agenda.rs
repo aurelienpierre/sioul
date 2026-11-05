@@ -1660,6 +1660,7 @@ mod tests {
 
     #[test]
     fn the_days_wait_for_the_replan_after_a_write() {
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Replan wait", None, &["VEVENT"]).unwrap();
         let file = calendar.dir.join("moved.ics");
@@ -1786,10 +1787,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 
-    /// One test at a time writes Show's file.
-    fn view_held() -> std::sync::MutexGuard<'static, ()> {
-        static VIEW: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        VIEW.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    /// Show's file and the agenda filter (a set chosen hides every other
+    /// agenda), the stand-in state's own: one test at a time writes them
+    /// (`view_held`), and those that read days through them wait for it
+    /// (`view_read`), so that no test's calendar is hidden by another's set.
+    static VIEW: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+    fn view_held() -> std::sync::RwLockWriteGuard<'static, ()> {
+        VIEW.write().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn view_read() -> std::sync::RwLockReadGuard<'static, ()> {
+        VIEW.read().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// A test's calendar taken out when the test ends, whatever happened:
+    /// a failure leaves nothing for the next test to read.
+    struct Gone(std::path::PathBuf);
+
+    impl Drop for Gone {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 
     /// Show is this device's: everything shown when nothing was said (or the
@@ -1940,6 +1959,7 @@ mod tests {
         // job's write). Today's slots of time for you, which the Tasks job writes as it lays
         // today (other tests do it meanwhile): this thread, where the job runs, never lays it.
         let _health_tests = crate::health::health_files_held();
+        let _view = view_read();
         let health = sioul_core::health::Health::default_path();
         let watched = [sioul_core::health::Health::last_read_path(&health), health.with_extension("toml.unreadable")];
         let state = |path: &std::path::Path| std::fs::metadata(path).ok().map(|m| (m.len(), m.modified().ok()));
@@ -2026,6 +2046,7 @@ mod tests {
     /// 1880bce, M2); the days wait for the page's first ask, or the first plan.
     #[test]
     fn the_porch_s_overlaps_never_wait_for_the_agenda_page() {
+        let _view = view_read();
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Overlaps", None, &["VEVENT"]).unwrap();
@@ -2069,10 +2090,12 @@ mod tests {
         // Meals, the night and four dose times a day (the unified agenda, §4.9), the health
         // tests' files held meanwhile: a measure of its own, never another test's.
         let _health_tests = crate::health::health_files_held();
+        let _view = view_read();
         let health = sioul_core::health::Health::default_path();
         std::fs::create_dir_all(health.parent().unwrap()).unwrap();
         std::fs::write(&health, "[needs]\nmeals_on = true\nsleep_on = true\n\n[[medicine]]\nid = \"heavy\"\nname = \"Heavy\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"12:00\", \"16:00\", \"20:00\"]\n").unwrap();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Heavy week", None, &["VEVENT"]).unwrap();
+        let _gone = Gone(calendar.dir.clone());
         let now = Zoned::now();
         let zone = now.time_zone().clone();
         let monday = now.date();
@@ -2120,6 +2143,7 @@ mod tests {
     /// once, at its generation; review of 1880bce, L22).
     #[test]
     fn a_drag_is_shown_once_at_its_generation() {
+        let _view = view_read();
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Drag test", None, &["VEVENT", "VTODO"]).unwrap();
@@ -2179,11 +2203,13 @@ mod tests {
     #[test]
     fn the_day_and_the_week_draw_every_kind() {
         let _health_tests = crate::health::health_files_held();
+        let _view = view_held();
         sioul_core::config::stand_ins_only();
         let health = sioul_core::health::Health::default_path();
         std::fs::create_dir_all(health.parent().unwrap()).unwrap();
         std::fs::write(&health, "[needs]\nmeals_on = true\nsleep_on = true\n\n[[medicine]]\nid = \"lumiel\"\nname = \"Lumiel\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n").unwrap();
         let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Every kind", None, &["VEVENT", "VTODO"]).unwrap();
+        let _gone = Gone(calendar.dir.clone());
         let (now, zone) = (Zoned::now(), TimeZone::system());
         let tomorrow = now.date().tomorrow().unwrap();
         let utc = |hour: i8| tomorrow.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
@@ -2253,7 +2279,6 @@ mod tests {
         assert!(said.contains(&tr().text("head-work", None)) && !said.contains("Quarterly report"), "{said}");
         // An agenda the filter leaves out is left out of it, its first appointment with it.
         {
-            let _view = view_held();
             assert_eq!(turn(&[format!("{}/{}", calendar.account, calendar.id)], false), "");
             let hidden = head_frames(&[], work::plan_shown().as_deref(), &[], (0, 0), &known, &|_| false, &evening);
             let _ = std::fs::remove_file(view_path());
@@ -2272,6 +2297,7 @@ mod tests {
     #[test]
     fn what_comes_and_the_month_say_their_own() {
         let _health_tests = crate::health::health_files_held();
+        let _view = view_read();
         sioul_core::config::stand_ins_only();
         let health = sioul_core::health::Health::default_path();
         std::fs::create_dir_all(health.parent().unwrap()).unwrap();

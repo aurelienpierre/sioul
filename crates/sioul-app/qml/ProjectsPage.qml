@@ -127,6 +127,12 @@ Item {
             if (page.visible)
                 page.reload()
         }
+
+        // A project made, changed or gone, here or elsewhere.
+        function onProjectsChanged() {
+            if (page.visible)
+                page.reload()
+        }
     }
 
     PdfWriter {
