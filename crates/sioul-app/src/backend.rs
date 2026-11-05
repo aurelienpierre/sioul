@@ -6360,6 +6360,7 @@ impl qobject::Sioul {
                     reserve: None,
                     links: Vec::new(),
                     preset: None,
+                    ..budget::Line::default()
                 };
                 budget::record_line(&path, &line, &origin)?;
             }

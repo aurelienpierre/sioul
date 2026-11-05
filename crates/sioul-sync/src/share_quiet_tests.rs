@@ -840,6 +840,61 @@ fn the_money_movements_store_waits_for_a_device_that_has_it() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// The money movements' new lists (5 November 2026: fees, payouts carried,
+/// your words, removals, exports taken in) travel entry by entry, as links
+/// do: a fee kept on the desk and another on the phone in the same
+/// exchanges both stay on both, never one list winning over the other.
+#[test]
+fn the_money_movements_fees_travel_entry_by_entry() {
+    use sioul_core::movements::{Fee, FeeFrom, FeeKind, FeeTold, Store};
+    let base = scratch("movements-fees");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    for notes in [&desk_notes, &phone_notes] {
+        std::fs::create_dir_all(notes).unwrap();
+        std::fs::write(notes.join(sioul_core::movements::STORE), "format = 1\n").unwrap();
+    }
+    let mut now = NOW;
+    for c in [&desk, &phone] {
+        entry(c, &folder, &key, |e| {
+            e.start(now / 1000);
+            e.movements = MOVEMENTS_SHARED;
+        });
+    }
+    for _ in 0..2 {
+        desk.exchange_notes(&folder, &key, now, &desk_notes);
+        now += MINUTE;
+        phone.exchange_notes(&folder, &key, now, &phone_notes);
+        now += MINUTE;
+    }
+    let told = |cents: i64| FeeTold { gross: Some(sioul_core::money::Money(cents)), fees: vec![Fee { kind: FeeKind::Processor, amount: sioul_core::money::Money(cents / 30), from: FeeFrom::Export, about: false }], ..FeeTold::default() };
+    Store::edit(&desk_notes, |edit| {
+        edit.fee("bank:paypal/T1", &told(52000));
+        edit.gone("preset:rent/2026-10-01", "not-this-time");
+    })
+    .unwrap();
+    Store::edit(&phone_notes, |edit| {
+        edit.fee("bank:paypal/T3", &told(4000));
+        edit.edit("bank:paypal/T3", Some("Client B, the October lesson"), None, None);
+    })
+    .unwrap();
+    for _ in 0..3 {
+        desk.exchange_notes(&folder, &key, now, &desk_notes);
+        now += MINUTE;
+        phone.exchange_notes(&folder, &key, now, &phone_notes);
+        now += MINUTE;
+    }
+    for notes in [&desk_notes, &phone_notes] {
+        let store = Store::load(notes).unwrap();
+        let mut sources: Vec<&str> = store.fees.iter().map(|f| f.source.as_str()).collect();
+        sources.sort();
+        assert_eq!((sources, store.gone.len(), store.edits.len()), (vec!["bank:paypal/T1", "bank:paypal/T3"], 1, 1), "{}", std::fs::read_to_string(notes.join(sioul_core::movements::STORE)).unwrap());
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// The persons' store (`data/persons.toml`) beside a phone whose entry does
 /// not say it has the store, as 705576a's never does: kept on the desk; once
 /// the phone says so, the next exchanges join the two. The persons each

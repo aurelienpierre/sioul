@@ -44,6 +44,28 @@ pub struct Statement {
     /// CAMT's `PDNG`): never movements, which `sioul-bank.toml` keeps for good;
     /// the account's holds in `sioul-movements.toml` (`movements::Hold`).
     pub pending: Vec<Movement>,
+    /// What the export says of its booked lines' fees, by their ids: what
+    /// the payer paid and the fee kept (PayPal's Gross and Fee, Stripe's
+    /// Amount and Fee, Revolut's and Wise's fees, CAMT's charges). Never in
+    /// `sioul-bank.toml`, which every version writes whole: in the store's
+    /// `[[fee]]` (`movements::acts::take_in`).
+    pub fees: Vec<RowFee>,
+}
+
+/// One booked line's fee, as its export says it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RowFee {
+    /// The line's id (`Movement::id`), given once the ids are made (`read`).
+    pub id: String,
+    /// What the payer paid (money in), or the price (money out), signed as the
+    /// line; none when the export gives only the fee.
+    pub gross: Option<Money>,
+    /// The fee kept, without sign.
+    pub fee: Money,
+    /// A bank's charges (CAMT's `Chrgs`), not a processor's fee.
+    pub bank: bool,
+    /// The line's place among the statement's movements, until its id is known.
+    at: usize,
 }
 
 /// An amount as banks write it: "-62,00", "1 234,56", "1,234.56", "+780.00 EUR", "(62.00)".
@@ -129,6 +151,10 @@ pub fn read(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
             m.id = format!("{:016x}", fnv(&format!("{base}|{n}")));
         }
     }
+    for fee in &mut statement.fees {
+        fee.id = statement.movements.get(fee.at).map(|m| m.id.clone()).unwrap_or_default();
+    }
+    statement.fees.retain(|f| !f.id.is_empty());
     if statement.movements.is_empty() && statement.balance.is_none() && statement.pending.is_empty() {
         return Err("no movement".into());
     }
@@ -259,11 +285,36 @@ fn read_camt(text: &str) -> Result<Statement, String> {
             if pending {
                 statement.pending.push(movement);
             } else {
+                if let Some((gross, fee)) = camt_fee(entry, amount) {
+                    statement.fees.push(RowFee { id: String::new(), gross: Some(gross), fee, bank: true, at: statement.movements.len() });
+                }
                 statement.movements.push(movement);
             }
         }
     }
     Ok(statement)
+}
+
+/// What a booked entry's charges took (CAMT's `Chrgs`), when the bank says
+/// they are inside its amount (`ChrgInclInd`), or when its instructed amount
+/// (`AmtDtls/InstdAmt`, in the same currency) differs from it: what the
+/// payer sent, or the price, and the charges. Charges booked as entries of
+/// their own are not this entry's.
+fn camt_fee(entry: XmlNode, net: Money) -> Option<(Money, Money)> {
+    let currency = |n: XmlNode| path(n, &["Amt"]).and_then(|a| a.attribute("Ccy")).map(str::to_string);
+    let records = entry.descendants().filter(|n| n.tag_name().name() == "Rcrd" && n.parent().is_some_and(|p| p.tag_name().name() == "Chrgs"));
+    let included: i64 = records.filter(|r| text_at(*r, &["ChrgInclInd"]).is_some_and(|v| v.eq_ignore_ascii_case("true"))).filter_map(|r| text_at(r, &["Amt"]).and_then(|a| parse_amount(&a))).map(|m| m.cents().abs()).sum();
+    if included > 0 {
+        return Some((net + Money(included), Money(included)));
+    }
+    let instructed = entry.descendants().find(|n| n.tag_name().name() == "InstdAmt")?;
+    if currency(instructed) != currency(entry) {
+        return None;
+    }
+    let sent = parse_amount(&text_at(instructed, &["Amt"])?)?.abs();
+    let gross = if net.is_negative() { Money(-sent.cents()) } else { sent };
+    let fee = gross - net;
+    (fee.cents() > 0).then_some((gross, fee))
 }
 
 /// A CSV's columns, found by their names.
@@ -285,6 +336,15 @@ struct Columns {
     time: Option<usize>,
     currency: Option<usize>,
     id: Option<usize>,
+    /// The amount read is the net of fees (a `net` column: PayPal, Stripe).
+    net: bool,
+    /// What the payer paid, before the fees (PayPal's Gross, Stripe's Amount beside its Net).
+    gross: Option<usize>,
+    /// The row's fee (PayPal's, Stripe's, Revolut's Fee, Wise's Total fees).
+    fee: Option<usize>,
+    /// Without a net column, the fee is taken on top of the amount (Revolut)
+    /// rather than inside it (Wise), as the running balance says.
+    on_top: bool,
 }
 
 /// A bank's CSV, PayPal's and Stripe's too: the header row found by its words
@@ -325,8 +385,11 @@ fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
             let columns = &words.columns;
             let date = find(&columns.date);
             let label = find(&columns.label).or_else(|| exact(&columns.name));
-            // Net of fees first (PayPal, Stripe), else the amount.
-            let amount = exact(&columns.net).or_else(|| find(&columns.amount));
+            // Net of fees first (PayPal, Stripe), else the amount; the amount
+            // beside a net is what the payer paid (Stripe's Amount).
+            let net = exact(&columns.net);
+            let plain = find(&columns.amount).filter(|a| Some(*a) != net && exact(&columns.gross) != Some(*a) && exact(&columns.fee) != Some(*a));
+            let amount = net.or(plain);
             let (debit, credit) = (find(&columns.debit), find(&columns.credit));
             if let (Some(date), Some(label)) = (date, label)
                 && (amount.is_some() || debit.is_some() || credit.is_some())
@@ -348,6 +411,10 @@ fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
                     time: exact(&columns.time),
                     currency: exact(&columns.currency),
                     id: exact(&columns.id),
+                    net: net.is_some(),
+                    gross: exact(&columns.gross).or_else(|| net.and(plain)),
+                    fee: exact(&columns.fee),
+                    on_top: false,
                 });
                 continue;
             }
@@ -366,7 +433,11 @@ fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
         };
         rows.push((row, columns));
     }
-    let Some(columns) = header else { return Err("no header".into()) };
+    let Some(mut columns) = header else { return Err("no header".into()) };
+    columns.on_top = fee_on_top(&columns, &rows);
+    for (_, c) in &mut rows {
+        c.on_top = columns.on_top;
+    }
     // Day or month first, from the dates themselves: PayPal's American download
     // writes 10/13/2026. A first part above 12 is a day; a second, a month's day.
     let month_first = {
@@ -429,10 +500,14 @@ fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
             }
         }
         let id = c.id.and_then(|i| row.get(i)).cloned().unwrap_or_default();
+        let (amount, fee) = row_fee(&c, &row, amount);
         let movement = Movement { account: String::new(), date, amount, label, id };
         if pending {
             statement.pending.push(movement);
         } else {
+            if let Some((gross, fee)) = fee {
+                statement.fees.push(RowFee { id: String::new(), gross: Some(gross), fee, bank: false, at: statement.movements.len() });
+            }
             statement.movements.push(movement);
         }
     }
@@ -444,6 +519,56 @@ fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, St
         statement.balance = Some((date, amount));
     }
     Ok(statement)
+}
+
+/// A row's net, and what the payer paid with the fee kept when the export
+/// says them: the net column's (`net = gross − fee`, the fee a cost without
+/// sign); without one, the amount with the fee on top of it (Revolut: the
+/// net is the amount less the fee) or inside it (Wise: the amount is the
+/// net). Figures that do not add up give no fee.
+fn row_fee(c: &Columns, row: &[String], amount: Money) -> (Money, Option<(Money, Money)>) {
+    let cell = |col: Option<usize>| col.and_then(|i| row.get(i)).and_then(|v| parse_amount(v));
+    let fee = cell(c.fee).map(Money::abs);
+    let (net, gross) = match (c.net, fee) {
+        (true, _) => (amount, cell(c.gross).or_else(|| fee.map(|f| amount + f))),
+        (false, Some(fee)) if c.on_top => (amount - fee, Some(amount)),
+        (false, Some(fee)) => (amount, Some(amount + fee)),
+        (false, None) => (amount, cell(c.gross)),
+    };
+    let Some(gross) = gross.filter(|g| *g != net) else { return (net, None) };
+    let fee = fee.unwrap_or(gross - net);
+    // The same sign, and gross − fee = net to the cent.
+    let holds = gross.is_negative() == net.is_negative() && fee.cents() > 0 && gross - fee == net;
+    (net, holds.then_some((gross, fee)))
+}
+
+/// Without a net column, whether a CSV's fee is taken on top of its amount:
+/// what its running balance moves by from one row to the next, read either
+/// way the file is ordered, is the amount less the fee more often than the
+/// amount alone. None of that said (no balance, no fee), inside.
+fn fee_on_top(c: &Columns, rows: &[(Vec<String>, Columns)]) -> bool {
+    let (Some(fee), Some(balance), Some(at)) = (c.fee, c.balance, c.amount) else { return false };
+    if c.net {
+        return false;
+    }
+    let cell = |row: &[String], i: usize| row.get(i).and_then(|v| parse_amount(v));
+    let read: Vec<(Money, Money, Money)> = rows.iter().filter_map(|(row, _)| Some((cell(row, at)?, cell(row, fee).map_or(Money::ZERO, Money::abs), cell(row, balance)?))).collect();
+    let (mut on_top, mut inside) = (0, 0);
+    for pair in read.windows(2) {
+        let ((a0, f0, b0), (a1, f1, b1)) = (pair[0], pair[1]);
+        // Oldest first: the second row's balance is the first's moved by the second row; newest first, the other way.
+        for (moved, amount, fee) in [(b1 - b0, a1, f1), (b0 - b1, a0, f0)] {
+            if fee == Money::ZERO {
+                continue;
+            }
+            if moved == amount - fee {
+                on_top += 1;
+            } else if moved == amount {
+                inside += 1;
+            }
+        }
+    }
+    on_top > inside
 }
 
 /// An account as kept: its last balance known.
@@ -808,6 +933,56 @@ mod tests {
         let s = read(camt).unwrap();
         assert_eq!(s.movements.iter().map(|m| (m.amount, m.label.as_str())).collect::<Vec<_>>(), vec![(Money(-6200), "EDF Facture 42"), (Money(2000), "VIR EXEMPLE")]);
         assert_eq!(s.balance, Some((day("2026-10-02"), Money(85800))));
+    }
+
+    /// Each booked row's fee, as its export says it: PayPal's in French and
+    /// English, Stripe's, Revolut's (the fee on top of the amount, as its
+    /// running balance shows), Wise's (inside it), and CAMT's charges; a row
+    /// whose figures do not add up gives none.
+    #[test]
+    fn fees_read_from_exports() {
+        let fees = |s: &Statement| s.fees.iter().map(|f| (f.id.clone(), f.gross.map(Money::cents), f.fee.cents(), f.bank)).collect::<Vec<_>>();
+        let paypal = "\u{feff}\"Date\",\"Heure\",\"Fuseau horaire\",\"Nom\",\"Type\",\"État\",\"Devise\",\"Avant commission\",\"Commission\",\"Net\",\"Solde\",\"Numéro de transaction\"\n\
+            \"01/10/2026\",\"10:02:11\",\"Europe/Paris\",\"Client A\",\"Paiement reçu\",\"Terminé\",\"EUR\",\"520,00\",\"-15,43\",\"504,57\",\"504,57\",\"T1\"\n\
+            \"02/10/2026\",\"09:00:00\",\"Europe/Paris\",\"Web Exemple\",\"Paiement Express Checkout\",\"Terminé\",\"EUR\",\"-76,50\",\"0,00\",\"-76,50\",\"428,07\",\"T2\"\n\
+            \"03/10/2026\",\"09:00:00\",\"Europe/Paris\",\"Client B\",\"Paiement reçu\",\"Terminé\",\"EUR\",\"40,00\",\"-1,51\",\"39,00\",\"467,07\",\"T3\"\n\
+            \"04/10/2026\",\"09:00:00\",\"Europe/Paris\",\"\",\"Virement standard\",\"Terminé\",\"EUR\",\"-467,07\",\"0,00\",\"-467,07\",\"0,00\",\"T4\"\n";
+        let s = read(paypal).unwrap();
+        assert_eq!(s.movements.iter().map(|m| m.amount.cents()).collect::<Vec<_>>(), vec![50457, -7650, 3900, -46707], "the net moved the balance");
+        assert_eq!(fees(&s), vec![("T1".to_string(), Some(52000), 1543, false)], "T3's figures do not add up: no fee");
+        let english = "\"Date\",\"Time\",\"TimeZone\",\"Name\",\"Type\",\"Status\",\"Currency\",\"Gross\",\"Fee\",\"Net\",\"Balance\",\"Transaction ID\"\n\
+            \"10/01/2026\",\"10:02:11\",\"PDT\",\"Client C\",\"Website Payment\",\"Completed\",\"EUR\",\"52.00\",\"-1.86\",\"50.14\",\"50.14\",\"U1\"\n\
+            \"10/13/2026\",\"09:00:00\",\"PDT\",\"Client D\",\"Website Payment\",\"Completed\",\"EUR\",\"30.00\",\"-1.22\",\"28.78\",\"78.92\",\"U2\"\n";
+        assert_eq!(fees(&read(english).unwrap()), vec![("U1".to_string(), Some(5200), 186, false), ("U2".to_string(), Some(3000), 122, false)]);
+        let stripe = "id,Type,Source,Amount,Fee,Net,Currency,Created (UTC),Available On (UTC),Description\n\
+            txn_1,charge,ch_1,25.00,-1.03,23.97,eur,2026-10-01 10:00:00,2026-10-08 00:00:00,Support\n\
+            txn_2,payout,po_1,-23.97,0.00,-23.97,eur,2026-10-09 06:00:00,2026-10-09 06:00:00,STRIPE PAYOUT\n";
+        assert_eq!(fees(&read(stripe).unwrap()), vec![("txn_1".to_string(), Some(2500), 103, false)]);
+        // Revolut: the balance moves by the amount less the fee.
+        let revolut = "Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\n\
+            TOPUP,Current,2026-10-01 08:00:00,2026-10-01 08:00:00,Top-up,100.00,0.00,EUR,COMPLETED,100.00\n\
+            EXCHANGE,Current,2026-10-02 08:00:00,2026-10-02 08:00:00,Exchanged to CHF,-50.00,0.50,EUR,COMPLETED,49.50\n\
+            CARD_PAYMENT,Current,2026-10-03 08:00:00,2026-10-03 08:00:00,Shop,-10.00,0.00,EUR,REVERTED,49.50\n";
+        let s = read(revolut).unwrap();
+        assert_eq!(s.movements.iter().map(|m| m.amount.cents()).collect::<Vec<_>>(), vec![10000, -5050], "a reverted row moves nothing");
+        assert_eq!(fees(&s), vec![(s.movements[1].id.clone(), Some(-5000), 50, false)]);
+        // Wise: the amount already holds the fees.
+        let wise = "TransferWise ID,Date,Amount,Currency,Description,Payment Reference,Running Balance,Total fees\n\
+            TRANSFER-2,03-10-2026,-10.50,EUR,Sent money to Exemple,,89.50,0.50\n\
+            TRANSFER-1,01-10-2026,100.00,EUR,Received money,,100.00,0.00\n";
+        let s = read(wise).unwrap();
+        assert_eq!(s.movements.iter().map(|m| (m.id.as_str(), m.amount.cents())).collect::<Vec<_>>(), vec![("TRANSFER-2", -1050), ("TRANSFER-1", 10000)]);
+        assert_eq!(fees(&s), vec![("TRANSFER-2".to_string(), Some(-1000), 50, false)]);
+        // CAMT: charges inside the entry, and an instructed amount that differs.
+        let camt = r#"<?xml version="1.0"?><Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02"><BkToCstmrStmt><Stmt><Acct><Id><IBAN>FR7600000000000000000000000</IBAN></Id></Acct>
+            <Ntry><Amt Ccy="EUR">98.50</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts>BOOK</Sts><BookgDt><Dt>2026-10-05</Dt></BookgDt><AcctSvcrRef>C1</AcctSvcrRef>
+            <Chrgs><Rcrd><Amt Ccy="EUR">1.50</Amt><CdtDbtInd>DBIT</CdtDbtInd><ChrgInclInd>true</ChrgInclInd></Rcrd></Chrgs></Ntry>
+            <Ntry><Amt Ccy="EUR">203.10</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts><BookgDt><Dt>2026-10-06</Dt></BookgDt><AcctSvcrRef>C2</AcctSvcrRef>
+            <NtryDtls><TxDtls><AmtDtls><InstdAmt><Amt Ccy="EUR">200.00</Amt></InstdAmt></AmtDtls></TxDtls></NtryDtls></Ntry>
+            <Ntry><Amt Ccy="EUR">12.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts><BookgDt><Dt>2026-10-06</Dt></BookgDt><AcctSvcrRef>C3</AcctSvcrRef>
+            <Chrgs><Rcrd><Amt Ccy="EUR">0.40</Amt><CdtDbtInd>DBIT</CdtDbtInd><ChrgInclInd>false</ChrgInclInd></Rcrd></Chrgs></Ntry>
+            </Stmt></BkToCstmrStmt></Document>"#;
+        assert_eq!(fees(&read(camt).unwrap()), vec![("C1".to_string(), Some(10000), 150, true), ("C2".to_string(), Some(-20000), 310, true)], "charges booked apart are not the entry's");
     }
 
     /// A real export, named by SIOUL_TEST_EXPORT, read: how many movements and

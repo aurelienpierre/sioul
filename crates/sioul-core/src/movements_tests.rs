@@ -197,7 +197,7 @@ fn the_store_says_its_format_and_its_corrections_hold() {
     let text = std::fs::read_to_string(Store::path(&root)).unwrap();
     assert!(text.contains("format = 1"), "{text}");
     let store = Store::load(&root).unwrap();
-    assert_eq!((store.format, store.apart.clone()), (1, vec![Apart { a: "bank:main/A1".into(), b: "line:l1".into() }]));
+    assert_eq!((store.format, store.apart.iter().map(|a| (a.a.as_str(), a.b.as_str(), a.at.is_some())).collect::<Vec<_>>()), (1, vec![("bank:main/A1", "line:l1", true)]));
     // The SHOP line from mail and the bank's line are one payment, until "Not the same".
     let ledger = ledger(&format!(
         "{BUDGETS}\
@@ -343,7 +343,7 @@ fn mail(key: &str, on: &str, kind: PaymentKind, cents: i64, currency: &'static s
         key: key.into(),
         path: None,
         date: day(on),
-        payment: Told { kind, amount: Some(crate::money::Amount { money: Money(cents), currency }), party: party.into() },
+        payment: Told { kind, amount: Some(crate::money::Amount { money: Money(cents), currency }), party: party.into(), fee: None, net: None },
         subject: String::new(),
         sender: party.into(),
         sender_domain: None,
@@ -668,5 +668,255 @@ fn a_csv_taken_in_twice_adds_nothing_and_keeps_its_hold_apart() {
     assert_eq!((Bank::load(&root).unwrap().movements.len(), Store::load(&root).unwrap().holds.len()), (1, 1));
     let all = load(&root, &words, day("2026-11-01"), day("2026-11-30"), today);
     assert_eq!(all.find("hold:paypal/T2").map(|m| m.state), Some(State::NotFinal));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+// ---------------------------------------------------------------- part 3: fees and payouts
+
+/// What the payer paid, the fee and what arrived, each a movement's own
+/// (research/money-ledger.md §2.5, §3.1): PayPal's French export with its
+/// fees, read into the store, never into the bank's file; its English one;
+/// PayPal's mail joined to its row on what was paid; the withdrawal to the
+/// bank a move between your accounts that carried the payments since the
+/// last one, each saying so; a payment after it not carried yet.
+#[test]
+fn paypal_exports_keep_what_was_paid_its_fee_and_what_arrived() {
+    let root = folder("paypal");
+    std::fs::write(
+        root.join(crate::budget::LEDGER),
+        format!("{BUDGETS}[[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['work']\nexports = ['0123456A']\n[[bank_account]]\nid = 'paypal'\ntitle = 'PayPal'\nkind = 'paypal'\nfills = ['work']\n"),
+    )
+    .unwrap();
+    let words = crate::words::Words::builtin();
+    let today = day("2026-11-01");
+    let french = "\u{feff}\"Date\",\"Heure\",\"Fuseau horaire\",\"Nom\",\"Type\",\"État\",\"Devise\",\"Avant commission\",\"Commission\",\"Net\",\"Solde\",\"Numéro de transaction\"\n\
+        \"01/10/2026\",\"10:02:11\",\"Europe/Paris\",\"Client A\",\"Paiement reçu\",\"Terminé\",\"EUR\",\"520,00\",\"-15,43\",\"504,57\",\"504,57\",\"T1\"\n\
+        \"02/10/2026\",\"09:00:00\",\"Europe/Paris\",\"Web Exemple\",\"Paiement Express Checkout\",\"Terminé\",\"EUR\",\"-76,50\",\"0,00\",\"-76,50\",\"428,07\",\"T2\"\n\
+        \"03/10/2026\",\"09:00:00\",\"Europe/Paris\",\"Client B\",\"Paiement reçu\",\"Terminé\",\"EUR\",\"40,00\",\"-1,51\",\"38,49\",\"466,56\",\"T3\"\n\
+        \"04/10/2026\",\"09:00:00\",\"Europe/Paris\",\"\",\"Virement standard\",\"Terminé\",\"EUR\",\"-466,56\",\"0,00\",\"-466,56\",\"0,00\",\"T4\"\n";
+    let mut statement = crate::bank::read(&words.bank, french).unwrap();
+    statement.account = "paypal".into();
+    acts::take_in(&root, &statement, "PayPal", &words, today).unwrap();
+    let english = "\"Date\",\"Time\",\"TimeZone\",\"Name\",\"Type\",\"Status\",\"Currency\",\"Gross\",\"Fee\",\"Net\",\"Balance\",\"Transaction ID\"\n\
+        \"10/13/2026\",\"09:00:00\",\"PDT\",\"Client D\",\"Website Payment\",\"Completed\",\"EUR\",\"30.00\",\"-1.22\",\"28.78\",\"28.78\",\"U2\"\n";
+    let mut statement = crate::bank::read(&words.bank, english).unwrap();
+    statement.account = "paypal".into();
+    acts::take_in(&root, &statement, "PayPal", &words, today).unwrap();
+    let mut statement = crate::bank::read(&words.bank, "Date;Libellé;Montant\n06/10/2026;VIR PAYPAL EUROPE;466,56\n").unwrap();
+    statement.account = "0123456A".into();
+    acts::take_in(&root, &statement, "My bank", &words, today).unwrap();
+    // The bank's file keeps the net alone, as every version writes it.
+    let bank_file = std::fs::read_to_string(root.join(crate::bank::MANIFEST)).unwrap();
+    assert!(!bank_file.contains("520") && !bank_file.contains("fee"), "{bank_file}");
+    let store = Store::load(&root).unwrap();
+    assert_eq!(store.fees.iter().map(|f| (f.source.as_str(), f.gross, f.processor.as_deref())).collect::<Vec<_>>(), vec![("bank:paypal/T1", Some(Money(52000)), Some("paypal")), ("bank:paypal/T3", Some(Money(4000)), Some("paypal")), ("bank:paypal/U2", Some(Money(3000)), Some("paypal"))]);
+    assert_eq!(store.imports.iter().map(|i| (i.account.as_str(), i.first, i.last)).collect::<Vec<_>>(), vec![("paypal", day("2026-10-01"), day("2026-10-04")), ("paypal", day("2026-10-13"), day("2026-10-13")), ("main", day("2026-10-06"), day("2026-10-06"))]);
+    // PayPal's mail about Client A's payment says what was paid: joined to its row on it.
+    let mut paypal = mail("mid:t1@paypal.example", "2026-10-01", PaymentKind::Received, 52000, "EUR", "Client A");
+    paypal.sender_domain = Some("paypal.fr".into());
+    let mut lines = vec![paypal];
+    assert_eq!(acts::join_mails(&root, &words, &mut lines, today).unwrap(), 1);
+    assert!(matches!(&lines[0].state, MailState::Joined { address, .. } if *address == crate::links::movement_uri("bank:paypal/T1")), "{:?}", lines[0].state);
+    let all = load(&root, &words, day("2026-09-01"), day("2026-11-30"), today).list;
+    let a = one(&all, "bank:paypal/T1");
+    assert_eq!((a.gross, a.sum, a.fees.clone(), a.fees_unknown), (Some(Money(52000)), Sum::Exact(Money(50457)), vec![Fee { kind: FeeKind::Processor, amount: Money(1543), from: FeeFrom::Export, about: false }], false));
+    assert!(a.has("mid:t1@paypal.example") && a.made.is_some() && a.paid_on.is_none(), "{a:#?}");
+    let b = one(&all, "bank:paypal/T3");
+    assert_eq!((b.gross, b.fee_total()), (Some(Money(4000)), Money(151)));
+    // A payment made with PayPal's balance: no fee, one amount.
+    let shop = one(&all, "bank:paypal/T2");
+    assert_eq!((shop.gross, shop.fees.len()), (None, 0));
+    // The withdrawal: one movement between your accounts, carrying the two payments before it.
+    let out = one(&all, "bank:paypal/T4");
+    assert_eq!((out.way, out.sources.len()), (Way::Between, 2), "{out:#?}");
+    assert_eq!(out.carried.iter().map(|c| (c.key.as_str(), c.gross, c.fee.map(|f| f.amount), c.how.as_str())).collect::<Vec<_>>(), vec![("bank:paypal/T1", Money(52000), Some(Money(1543)), "export"), ("bank:paypal/T3", Money(4000), Some(Money(151)), "export")]);
+    assert_eq!(a.carried_by.as_deref(), Some(out.steady_key()));
+    // October's later payment waits on PayPal: nothing carried it yet.
+    let later = one(&all, "bank:paypal/U2");
+    assert_eq!((later.gross, later.fee_total(), later.carried_by.clone()), (Some(Money(3000)), Money(122), None));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Stripe's balance history: each charge's amount and fee; the automatic
+/// payout a move between your accounts that carried them.
+#[test]
+fn a_stripe_payout_carries_its_charges() {
+    let ledger = ledger(&format!("{BUDGETS}[[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['work']\nexports = ['0123456A']\n[[bank_account]]\nid = 'stripe'\ntitle = 'Stripe'\nkind = 'stripe'\nfills = ['work']\n"));
+    let words = crate::words::Words::builtin();
+    let export = "id,Type,Source,Amount,Fee,Net,Currency,Created (UTC),Available On (UTC),Description\n\
+        txn_1,charge,ch_1,25.00,-1.03,23.97,eur,2026-10-01 10:00:00,2026-10-08 00:00:00,Support A\n\
+        txn_3,charge,ch_3,40.00,-1.46,38.54,eur,2026-10-02 10:00:00,2026-10-09 00:00:00,Support B\n\
+        txn_2,payout,po_1,-62.51,0.00,-62.51,eur,2026-10-09 06:00:00,2026-10-09 06:00:00,STRIPE PAYOUT\n";
+    let statement = crate::bank::read(&words.bank, export).unwrap();
+    let mut bank = Bank::default();
+    bank.movements = statement.movements.iter().map(|m| bank::Movement { account: "stripe".into(), ..m.clone() }).collect();
+    bank.movements.push(line("0123456A", "S1", "2026-10-12", 6251, "VIR STRIPE PAYMENTS EUROPE"));
+    let mut store = Store::default();
+    store.fees = statement.fees.iter().map(|f| FeeEntry { source: bank_key("stripe", &f.id), gross: f.gross, fees: vec![FeePart { kind: "processor".into(), amount: f.fee, from: "export".into(), about: false }], ..FeeEntry::default() }).collect();
+    let all = derived(&ledger, &bank, &[], &[], &store, "2026-10-01", "2026-10-31", "2026-11-01");
+    let payout = one(&all, "bank:stripe/txn_2");
+    assert!(payout.has("bank:main/S1") && payout.way == Way::Between, "{payout:#?}");
+    assert_eq!(payout.carried.iter().map(|c| (c.gross.cents(), c.fee.map(|f| f.amount.cents()))).collect::<Vec<_>>(), vec![(2500, Some(103)), (4000, Some(146))]);
+    let charge = one(&all, "bank:stripe/txn_3");
+    assert_eq!((charge.gross, charge.sum.amount(), charge.carried_by.as_deref()), (Some(Money(4000)), Money(3854), Some(payout.steady_key())));
+}
+
+/// A project through Malt (research §3.7): its service invoice says what the
+/// client paid, its commission invoice what Malt kept; the bank's line is
+/// the difference, to the cent. One movement, the commission a fee read
+/// from its invoice; the share set aside for the declaration counts what the
+/// client paid (CGI art. 102 ter).
+#[test]
+fn a_malt_project_gives_its_gross_and_its_commission() {
+    let root = folder("malt");
+    std::fs::write(
+        root.join(crate::budget::LEDGER),
+        "[[budget]]\nid = 'work'\ntitle = 'Work'\nperiod = 'month'\narea = 'work'\nset_aside = 22\n[[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['work']\nexports = ['0123456A']\n",
+    )
+    .unwrap();
+    std::fs::write(root.join(crate::bank::MANIFEST), "[[movement]]\naccount = '0123456A'\ndate = 2026-10-15\namount = 880.0\nlabel = 'VIR MALT COMMUNITY'\nid = 'M1'\n").unwrap();
+    let words = crate::words::Words::builtin();
+    let mut service = mail("mid:service@malt.example", "2026-10-08", PaymentKind::Bill, 100000, "EUR", "Client C");
+    service.sender_domain = Some("malt.fr".into());
+    service.subject = "Votre facture F-2026-042 a été émise".into();
+    let mut commission = mail("mid:fee@malt.example", "2026-10-08", PaymentKind::Bill, 12000, "EUR", "Malt");
+    commission.sender_domain = Some("malt.fr".into());
+    commission.subject = "Votre facture de frais de service".into();
+    let mut lines = vec![service, commission];
+    let today = day("2026-11-01");
+    assert_eq!(acts::join_mails(&root, &words, &mut lines, today).unwrap(), 2);
+    assert!(lines.iter().all(|l| matches!(l.state, MailState::Joined { .. })), "{lines:#?}");
+    let all = load(&root, &words, day("2026-09-01"), day("2027-03-31"), today).list;
+    let project = one(&all, "bank:main/M1");
+    assert_eq!((project.gross, project.sum.amount(), project.fees.clone()), (Some(Money(100000)), Money(88000), vec![Fee { kind: FeeKind::Commission, amount: Money(12000), from: FeeFrom::Invoice, about: false }]));
+    let fee_invoice = project.sources.iter().find(|s| s.kind == Kind::FeeInvoice).unwrap();
+    assert_eq!((fee_invoice.key.as_str(), fee_invoice.address.as_str()), ("feeinvoice:mid:fee@malt.example", "mid:fee@malt.example"));
+    let aside = all.iter().find(|m| m.has_kind(Kind::SetAside)).unwrap();
+    assert_eq!((aside.sum, aside.day), (Sum::About(Money(-22000)), day("2027-01-31")), "22 % of what the client paid, not of what arrived");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A payout without the processor's export (research §3.9, design §1.3):
+/// the bank's line named by PayPal carries the payments PayPal's mail told
+/// of since its previous payout, oldest first, as far as its amount goes;
+/// its difference is their fees, each payment's share "about" when it
+/// carried several, exact when one; a payment told after it is not carried.
+#[test]
+fn a_payout_without_the_export_carries_the_oldest_payments() {
+    let root = folder("payout");
+    std::fs::write(root.join(crate::budget::LEDGER), format!("{BUDGETS}[[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['work']\nexports = ['0123456A']\n")).unwrap();
+    std::fs::write(
+        root.join(crate::bank::MANIFEST),
+        "[[movement]]\naccount = '0123456A'\ndate = 2026-10-12\namount = 1184.10\nlabel = 'VIR PAYPAL EUROPE SARL'\nid = 'P1'\n\
+         [[movement]]\naccount = '0123456A'\ndate = 2026-10-20\namount = 193.85\nlabel = 'VIR PAYPAL EUROPE SARL'\nid = 'P2'\n",
+    )
+    .unwrap();
+    let words = crate::words::Words::builtin();
+    let told = |key: &str, on: &str, cents: i64, who: &str| {
+        let mut m = mail(key, on, PaymentKind::Received, cents, "EUR", who);
+        m.sender_domain = Some("paypal.fr".into());
+        m
+    };
+    let mut lines = vec![
+        told("mid:a@paypal.example", "2026-10-02", 52000, "Client A"),
+        told("mid:b@paypal.example", "2026-10-05", 40000, "Client B"),
+        told("mid:c@paypal.example", "2026-10-09", 30000, "Client C"),
+        told("mid:d@paypal.example", "2026-10-14", 20000, "Client D"),
+        told("mid:e@paypal.example", "2026-10-25", 10000, "Client E"),
+    ];
+    let today = day("2026-11-01");
+    assert_eq!(acts::join_mails(&root, &words, &mut lines, today).unwrap(), 4);
+    let state = |key: &str| lines.iter().find(|l| l.key == key).unwrap().state.clone();
+    assert!(matches!(state("mid:a@paypal.example"), MailState::Joined { ref address, probable: true, .. } if *address == crate::links::movement_uri("bank:main/P1")));
+    assert!(matches!(state("mid:d@paypal.example"), MailState::Joined { ref address, .. } if *address == crate::links::movement_uri("bank:main/P2")));
+    assert_eq!(state("mid:e@paypal.example"), MailState::Proposed, "on PayPal, not on the bank yet");
+    let store = Store::load(&root).unwrap();
+    assert_eq!(store.carried.iter().map(|c| (c.payout.as_str(), c.how.as_str(), c.payments.len())).collect::<Vec<_>>(), vec![("bank:main/P1", "oldest", 3), ("bank:main/P2", "oldest", 1)]);
+    let all = load(&root, &words, day("2026-09-01"), day("2026-11-30"), today).list;
+    let first = one(&all, "bank:main/P1");
+    assert_eq!((first.gross, first.sum.amount(), first.fees.iter().map(|f| (f.amount, f.from, f.about)).collect::<Vec<_>>()), (Some(Money(122000)), Money(118410), vec![(Money(3590), FeeFrom::Payout, false)]));
+    assert!(["mid:a@paypal.example", "mid:b@paypal.example", "mid:c@paypal.example"].iter().all(|k| first.has(k)));
+    let shares: Vec<Fee> = first.carried.iter().filter_map(|c| c.fee).collect();
+    assert_eq!((shares.len(), shares.iter().map(|f| f.amount.cents()).sum::<i64>(), shares.iter().all(|f| f.about)), (3, 3590, true), "{shares:?}");
+    assert_eq!((first.made, first.paid_on), (Some(day("2026-10-02")), None), "told by the first mail");
+    let second = one(&all, "bank:main/P2");
+    assert_eq!((second.carried[0].fee.map(|f| (f.amount, f.about)), second.paid_on), (Some((Money(615), false)), Some(day("2026-10-14"))), "one payment: its fee exact, its day paid");
+    // Counted once, at what arrived.
+    let counted = counted(&Ledger::load(&root).unwrap(), &all, today);
+    assert_eq!(counted.lines.iter().filter(|l| l.links.iter().any(|k| k == "bank:main/P1")).map(|l| l.amount).collect::<Vec<_>>(), vec![Money(118410)]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Your own words and what you removed: a line written with what was paid
+/// and its fee; one planned on PayPal, its fee "about" by PayPal's rule;
+/// figures that do not add up keep the bank's net, the fees not known yet;
+/// a note, a day paid and a name of your own; an occurrence "not this time"
+/// and a bank line "left out", counted as nothing.
+#[test]
+fn your_words_and_what_you_removed() {
+    let ledger = ledger(&format!(
+        "{BUDGETS}\
+         [[preset]]\nid = 'rent'\nbudget = 'home'\nlabel = 'Rent'\namount = -600\nevery = 'month'\nday = 1\n\
+         [[line]]\nid = 'h1'\nbudget = 'work'\ndate = 2026-10-03\namount = 504.57\ngross = 520\nfees = [{{ kind = 'processor', amount = 15.43 }}]\nlabel = 'Client A'\nmade = 2026-10-03T09:00:00Z\n\
+         [[line]]\nid = 'h2'\nbudget = 'work'\ndate = 2026-11-20\namount = 520\nlabel = 'Client B'\nplanned = true\n\
+         [[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['home']\nexports = ['0123456A']\n\
+         [[bank_account]]\nid = 'paypal'\ntitle = 'PayPal'\nkind = 'paypal'\nfills = ['work']\n"
+    ));
+    let mut bank = Bank::default();
+    bank.movements = vec![line("0123456A", "X1", "2026-10-07", 9000, "VIR EXEMPLE"), line("0123456A", "X2", "2026-10-08", -1200, "CB WRONG EXPORT")];
+    let store: Store = toml::from_str(
+        "format = 1\n\
+         [[fee]]\nsource = 'bank:main/X1'\ngross = 100.0\nfees = [{ kind = 'processor', amount = 5.0, from = 'export' }]\n\
+         [[edit]]\nmovement = 'bank:main/X1'\nnote = 'The deposit, back'\npaid_on = 2026-10-05\nlabel = 'Landlord'\nat = 2026-10-09T10:00:00Z\n\
+         [[gone]]\nmovement = 'preset:rent/2026-10-01'\nwhy = 'not-this-time'\n\
+         [[gone]]\nmovement = 'bank:main/X2'\nwhy = 'left-out'\n",
+    )
+    .unwrap();
+    let words = crate::words::Words::builtin();
+    let input = Input { ledger: &ledger, bank: &bank, contracts: &[], letters: &[], store: &store, words: &words };
+    let (all, gone) = derive_with_gone(&input, day("2026-10-01"), day("2026-11-30"), day("2026-11-01"));
+    let hand = one(&all, "line:h1");
+    assert_eq!((hand.gross, hand.fees.clone()), (Some(Money(52000)), vec![Fee { kind: FeeKind::Processor, amount: Money(1543), from: FeeFrom::Hand, about: false }]));
+    assert_eq!(hand.made, Some(day("2026-10-03")));
+    let planned = one(&all, "line:h2");
+    assert_eq!(planned.fees, vec![Fee { kind: FeeKind::Processor, amount: Money(1543), from: FeeFrom::Rate, about: true }], "PayPal France's rule, about: {planned:#?}");
+    let deposit = one(&all, "bank:main/X1");
+    assert_eq!((deposit.gross, deposit.fees.len(), deposit.fees_unknown, deposit.sum.amount()), (Some(Money(10000)), 0, true, Money(9000)), "€100 less €5 is not €90: the net kept");
+    assert_eq!((deposit.note.as_str(), deposit.paid_on, deposit.label.as_str(), deposit.changed), ("The deposit, back", Some(day("2026-10-05")), "Landlord", Some(day("2026-10-09"))));
+    assert!(!all.iter().any(|m| m.has("preset:rent/2026-10-01") || m.has("bank:main/X2")));
+    assert!(all.iter().any(|m| m.has("preset:rent/2026-11-01")), "only that time");
+    assert_eq!(gone.iter().map(|m| m.steady_key()).collect::<Vec<_>>(), vec!["preset:rent/2026-10-01", "bank:main/X2"]);
+    // Counted as nothing: October's rent leaves its budget by a line of nothing standing for it.
+    let counted = counted_with_gone(&ledger, &all, &gone, day("2026-11-01"));
+    assert!(counted.lines.iter().any(|l| l.amount == Money::ZERO && l.preset.as_deref() == Some("rent") && l.date == day("2026-10-01")));
+    assert!(!counted.lines.iter().any(|l| l.links.iter().any(|k| k == "bank:main/X2")));
+}
+
+/// A payment recorded from PayPal's mail: until its payout comes, what may
+/// arrive is said about, after PayPal's rule; once the bank's line comes,
+/// one movement, its fee the difference, exact.
+#[test]
+fn a_recorded_payment_waits_on_paypal_then_arrives() {
+    let root = folder("recorded");
+    let budget = format!("{BUDGETS}[[bank_account]]\nid = 'main'\ntitle = 'My bank'\nfills = ['work']\nexports = ['0123456A']\n[[line]]\nid = 'r1'\nbudget = 'work'\ndate = 2026-10-20\namount = 300\nlabel = 'Client R'\nlinks = ['mid:r@paypal.example']\n");
+    std::fs::write(root.join(crate::budget::LEDGER), &budget).unwrap();
+    let words = crate::words::Words::builtin();
+    let mut recorded = mail("mid:r@paypal.example", "2026-10-20", PaymentKind::Received, 30000, "EUR", "Client R");
+    recorded.sender_domain = Some("paypal.fr".into());
+    recorded.state = MailState::Recorded;
+    let today = day("2026-10-22");
+    acts::join_mails(&root, &words, &mut [recorded], today).unwrap();
+    let waiting = load(&root, &words, day("2026-10-01"), day("2026-11-30"), today).list;
+    let r = one(&waiting, "line:r1");
+    assert_eq!((r.state, r.gross, r.fees.clone()), (State::Announced, Some(Money(30000)), vec![Fee { kind: FeeKind::Processor, amount: Money(905), from: FeeFrom::Rate, about: true }]));
+    std::fs::write(root.join(crate::bank::MANIFEST), "[[movement]]\naccount = '0123456A'\ndate = 2026-10-23\namount = 290.95\nlabel = 'VIR PAYPAL EUROPE SARL'\nid = 'P9'\n").unwrap();
+    let mut recorded = mail("mid:r@paypal.example", "2026-10-20", PaymentKind::Received, 30000, "EUR", "Client R");
+    recorded.sender_domain = Some("paypal.fr".into());
+    recorded.state = MailState::Recorded;
+    assert_eq!(acts::join_mails(&root, &words, &mut [recorded], day("2026-10-24")).unwrap(), 1, "the payout carried it");
+    let arrived = load(&root, &words, day("2026-10-01"), day("2026-11-30"), day("2026-10-24")).list;
+    let r = one(&arrived, "line:r1");
+    assert!(r.has("bank:main/P9"), "{r:#?}");
+    assert_eq!((r.state, r.gross, r.sum.amount(), r.fees.clone()), (State::Done, Some(Money(30000)), Money(29095), vec![Fee { kind: FeeKind::Processor, amount: Money(905), from: FeeFrom::Payout, about: false }]));
     let _ = std::fs::remove_dir_all(&root);
 }

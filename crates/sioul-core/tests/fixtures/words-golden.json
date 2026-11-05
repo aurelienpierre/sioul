@@ -791,7 +791,8 @@
   "bank.columns.date": [
    "date",
    "created",
-   "cree"
+   "cree",
+   "completed date"
   ],
   "bank.columns.label": [
    "libelle",
@@ -826,7 +827,8 @@
   "bank.columns.status": [
    "status",
    "etat",
-   "statut"
+   "statut",
+   "state"
   ],
   "bank.columns.impact": [
    "impact sur le solde",
@@ -834,7 +836,8 @@
   ],
   "bank.columns.balance": [
    "balance",
-   "solde"
+   "solde",
+   "running balance"
   ],
   "bank.columns.time": [
    "time",
@@ -848,7 +851,8 @@
    "id",
    "transaction id",
    "numero de transaction",
-   "id de transaction"
+   "id de transaction",
+   "transferwise id"
   ],
   "bank.above.balance": [
    "solde"
@@ -870,7 +874,9 @@
    "cancel",
    "reversed",
    "failed",
-   "echoue"
+   "echoue",
+   "reverted",
+   "declined"
   ],
   "bank.memo": [
    "memo"
@@ -2977,6 +2983,43 @@
   "bank.pending": [
    "en attente",
    "pending"
+  ],
+  "payments.fee": [
+   "fee",
+   "fees",
+   "transaction fee",
+   "processing fee",
+   "service fee",
+   "commission",
+   "frais",
+   "frais de transaction",
+   "frais de service",
+   "frais paypal"
+  ],
+  "payments.net": [
+   "net amount",
+   "net",
+   "you'll receive",
+   "you will receive",
+   "amount deposited",
+   "montant net",
+   "vous recevrez",
+   "montant verse",
+   "somme versee"
+  ],
+  "bank.columns.gross": [
+   "gross",
+   "avant commission",
+   "brut",
+   "montant brut"
+  ],
+  "bank.columns.fee": [
+   "fee",
+   "fees",
+   "total fees",
+   "commission",
+   "frais",
+   "frais totaux"
   ]
  }
 }

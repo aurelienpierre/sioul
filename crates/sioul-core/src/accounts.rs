@@ -157,13 +157,16 @@ pub fn place_with(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words, ap
             out.push(Placed { account: account.id.clone(), movement: m.clone(), place: Place::Known(i), why: Why::Mail, occurrence: None });
             continue;
         }
-        // 3. Money moved with PayPal or Stripe, when their own exports cover the day:
+        // 3. Money moved with PayPal, Stripe or another processor's account
+        // (presets/processors.json), when their own exports cover the day:
         // both sides read, it counts in no budget, whatever a rule says of it.
+        let processors = crate::processors::known();
         let partner = ledger.bank_accounts.iter().filter(|other| other.id != account.id).find(|other| {
             let named = match other.kind() {
                 "paypal" => label.contains("paypal"),
                 "stripe" => label.contains("stripe"),
-                _ => matches!(account.kind(), "paypal" | "stripe") && looked.accounts.between.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && label.contains(&w)),
+                kind if processors.by_id(kind).is_some_and(|p| p.named_in(&m.label)) => true,
+                _ => (matches!(account.kind(), "paypal" | "stripe") || (account.kind() != "bank" && processors.by_id(account.kind()).is_some())) && looked.accounts.between.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && label.contains(&w)),
             };
             named && covered.get(other.id.as_str()).is_some_and(|(a, b)| m.date >= a.checked_sub(10.days()).unwrap_or(*a) && m.date <= b.checked_add(10.days()).unwrap_or(*b))
         });
@@ -276,6 +279,7 @@ impl Ledger {
                 reserve,
                 links: vec![link.clone()],
                 preset,
+                ..Line::default()
             };
             match item.place {
                 Place::Budgets(shares) => out.lines.extend(shares.into_iter().map(|s| line(s.budget, s.amount, s.preset, None))),
@@ -412,6 +416,8 @@ pub fn save_bank_account(path: &std::path::Path, id: &str, edit: &BankAccountEdi
         table["title"] = value(title);
         match edit.kind.as_str() {
             "paypal" | "stripe" | "other" => table["kind"] = value(edit.kind.as_str()),
+            // A processor or a platform Sioul knows (presets/processors.json): Wise, Revolut, SumUp…
+            kind if crate::processors::known().by_id(kind).is_some() => table["kind"] = value(kind),
             _ => {
                 table.remove("kind");
             }

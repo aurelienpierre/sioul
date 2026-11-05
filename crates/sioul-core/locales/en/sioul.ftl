@@ -550,6 +550,7 @@ source-letter = a letter
 source-mail = a mail
 source-contract = the contract
 source-set-aside = the share set aside
+source-fee-invoice = the fee invoice
 set-aside-label = Taxes and contributions, { $share }
 fig-own-pace = Covers your spending for
 reminder-invoice-send = Expected on { $date }: send the invoice if it is not sent yet.

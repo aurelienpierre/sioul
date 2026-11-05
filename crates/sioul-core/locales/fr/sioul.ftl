@@ -574,6 +574,7 @@ source-letter = un courrier
 source-mail = un courriel
 source-contract = le contrat
 source-set-aside = la part mise de côté
+source-fee-invoice = la facture des frais
 set-aside-label = Impôts et cotisations, { $share }
 fig-own-pace = Couvre vos dépenses
 reminder-invoice-send = Attendu le { $date } : envoyez la facture si ce n’est pas encore fait.

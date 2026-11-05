@@ -1,0 +1,164 @@
+{
+ "version": 1,
+ "checked": "2026-11-05",
+ "about": "Payment processors and platforms Sioul knows (docs/accounting.md, \"Fees\"): their names, the domains their mail comes from, the words on the bank's line of their payouts, how they pay out, the export columns Sioul reads, their fee rules by country with the day each was checked and its source, the bounds a payout's fees fall within, and whether a refund keeps the fee. A rule is only ever an estimate, said \"about\", and never used for a declaration. Edit freely: it needs no building. A copy in ~/.local/share/sioul/presets/processors.json is used when its 'checked' date is newer than the one built in.",
+ "processors": [
+  {
+   "id": "paypal",
+   "name": "PayPal",
+   "kind": "processor",
+   "domains": ["paypal.com", "paypal.fr"],
+   "bank_words": ["paypal"],
+   "pays_out": "request",
+   "columns": ["Gross", "Fee", "Net", "Balance", "Reference Txn ID", "Avant commission", "Commission", "Solde"],
+   "fees": [
+    {
+     "country": "FR",
+     "percent": 2.9,
+     "fixed": 0.35,
+     "currency": "EUR",
+     "what": "most commercial payments received",
+     "checked": "2026-11-05",
+     "source": "https://www.paypal.com/fr/webapps/mpp/merchant-fees"
+    }
+   ],
+   "bounds": { "low": 0.0, "high": 6.5, "fixed": 0.35 },
+   "refund_keeps_fee": true,
+   "fee_invoice": false
+  },
+  {
+   "id": "stripe",
+   "name": "Stripe",
+   "kind": "processor",
+   "domains": ["stripe.com"],
+   "bank_words": ["stripe"],
+   "pays_out": "automatic",
+   "columns": ["Amount", "Fee", "Net", "Available On", "automatic_payout_id", "customer_facing_amount"],
+   "fees": [],
+   "bounds": { "low": 0.0, "high": 6.0, "fixed": 0.5 },
+   "refund_keeps_fee": true,
+   "fee_invoice": false
+  },
+  {
+   "id": "sumup",
+   "name": "SumUp",
+   "kind": "processor",
+   "domains": ["sumup.com", "sumup.fr"],
+   "bank_words": ["sumup"],
+   "pays_out": "batch",
+   "columns": [],
+   "fees": [],
+   "bounds": { "low": 0.0, "high": 5.0, "fixed": 0.25 },
+   "refund_keeps_fee": null,
+   "fee_invoice": true
+  },
+  {
+   "id": "malt",
+   "name": "Malt",
+   "kind": "platform",
+   "domains": ["malt.com", "malt.fr"],
+   "bank_words": ["malt"],
+   "pays_out": "automatic",
+   "columns": [],
+   "fees": [],
+   "bounds": { "low": 0.0, "high": 15.0, "fixed": 0.0 },
+   "refund_keeps_fee": null,
+   "fee_invoice": true
+  },
+  {
+   "id": "wise",
+   "name": "Wise",
+   "kind": "account",
+   "domains": ["wise.com", "transferwise.com"],
+   "bank_words": ["wise", "transferwise"],
+   "pays_out": "request",
+   "columns": ["TransferWise ID", "Amount", "Running Balance", "Total fees"],
+   "fees": [],
+   "bounds": { "low": 0.0, "high": 3.0, "fixed": 10.0 },
+   "refund_keeps_fee": null,
+   "fee_invoice": false
+  },
+  {
+   "id": "revolut",
+   "name": "Revolut",
+   "kind": "account",
+   "domains": ["revolut.com"],
+   "bank_words": ["revolut"],
+   "pays_out": "request",
+   "columns": ["Amount", "Fee", "Balance", "Started Date", "Completed Date"],
+   "fees": [],
+   "bounds": { "low": 0.0, "high": 3.0, "fixed": 1.0 },
+   "refund_keeps_fee": null,
+   "fee_invoice": false
+  },
+  {
+   "id": "lydia",
+   "name": "Lydia, Sumeria",
+   "kind": "account",
+   "domains": ["lydia-app.com", "lydia.me", "sumeria.eu"],
+   "bank_words": ["lydia", "sumeria"],
+   "pays_out": "request",
+   "columns": [],
+   "fees": [
+    {
+     "country": "FR",
+     "percent": 0.0,
+     "fixed": 0.0,
+     "currency": "EUR",
+     "what": "between private users",
+     "checked": "2026-11-05",
+     "source": "https://finance-heros.fr/avis-banque/lydia-avis-test/"
+    }
+   ],
+   "bounds": { "low": 0.0, "high": 3.0, "fixed": 0.1 },
+   "refund_keeps_fee": null,
+   "fee_invoice": false
+  },
+  {
+   "id": "vinted",
+   "name": "Vinted",
+   "kind": "platform",
+   "domains": ["vinted.fr", "vinted.com"],
+   "bank_words": ["vinted"],
+   "pays_out": "request",
+   "columns": [],
+   "fees": [
+    {
+     "country": "FR",
+     "percent": 0.0,
+     "fixed": 0.0,
+     "currency": "EUR",
+     "what": "a private seller pays no commission; the buyer pays the protection",
+     "checked": "2026-11-05",
+     "source": "https://www.vinted.fr/help/550-protezione-acquisti"
+    }
+   ],
+   "bounds": { "low": 0.0, "high": 1.0, "fixed": 0.0 },
+   "refund_keeps_fee": null,
+   "fee_invoice": false
+  },
+  {
+   "id": "etsy",
+   "name": "Etsy",
+   "kind": "platform",
+   "domains": ["etsy.com"],
+   "bank_words": ["etsy"],
+   "pays_out": "batch",
+   "columns": [],
+   "fees": [
+    {
+     "country": "*",
+     "percent": 6.5,
+     "fixed": 0.0,
+     "currency": "EUR",
+     "what": "the transaction fee alone, on the order's total; the payment processing fee is apart and depends on the country",
+     "checked": "2026-11-05",
+     "source": "https://help.etsy.com/hc/en-us/articles/115014483627-"
+    }
+   ],
+   "bounds": { "low": 6.5, "high": 15.0, "fixed": 0.5 },
+   "refund_keeps_fee": null,
+   "fee_invoice": false
+  }
+ ]
+}

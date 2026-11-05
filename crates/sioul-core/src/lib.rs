@@ -268,6 +268,7 @@ pub mod plan;
 pub mod places;
 pub mod porch;
 pub mod presets;
+pub mod processors;
 pub mod papers;
 pub mod persons;
 pub mod pause;

@@ -181,6 +181,10 @@ references = [
 ]
 # A purchase paid in instalments, "#" its number of them (matching.rs).
 instalments = ["en # fois", "# fois sans frais", "#x sans frais", "# echeances"]
+# The label of a fee a processor's mail states, money in only (payments.rs): the amount on its line, or on the next.
+fee = ["frais", "commission", "frais de transaction", "frais de service", "frais paypal"]
+# The label of what arrives after the fees.
+net = ["montant net", "net", "vous recevrez", "montant verse", "somme versee"]
 
 # Bank and payment-processor exports (bank.rs).
 [bank]
@@ -207,6 +211,8 @@ date = ["date", "cree"]
 label = ["libelle", "label", "description", "intitule", "detail", "operation", "nature"]
 name = ["nom"]
 net = ["net"]
+gross = ["avant commission", "brut", "montant brut"]
+fee = ["commission", "frais", "frais totaux"]
 amount = ["montant", "somme"]
 debit = ["debit"]
 credit = ["credit"]

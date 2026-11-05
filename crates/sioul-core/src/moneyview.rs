@@ -273,6 +273,7 @@ fn source_words(tr: &Translator, kind: Kind) -> String {
         Kind::Mail => "source-mail",
         Kind::Contract => "source-contract",
         Kind::SetAside => "source-set-aside",
+        Kind::FeeInvoice => "source-fee-invoice",
     };
     tr.text(id, None)
 }
@@ -285,6 +286,7 @@ fn source_address(source: &crate::movements::Source) -> String {
     }
     match source.kind {
         Kind::Mail | Kind::Letter | Kind::Contract | Kind::Invoice => source.key.clone(),
+        Kind::FeeInvoice => source.key.strip_prefix(crate::movements::FEE_INVOICE).unwrap_or(&source.key).to_string(),
         _ => String::new(),
     }
 }

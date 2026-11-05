@@ -166,6 +166,14 @@ months = [
     "noviembre", "diciembre", "ene", "abr", "ago", "dic",
 ]
 
+# Mail about money (payments.rs): only what a processor's mail states of its fees; the other
+# payment lists wait for real examples (docs/words.md).
+[payments]
+# The label of a fee a processor's mail states, money in only: the amount on its line, or on the next.
+fee = ["comisión", "comisiones", "tarifa"]
+# The label of what arrives after the fees.
+net = ["importe neto", "recibirás"]
+
 # Reading scans (sioul-sync's ocr.rs).
 [ocr]
 # Tesseract's names of this language's models.
