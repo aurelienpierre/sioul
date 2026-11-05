@@ -1598,6 +1598,141 @@ how-mentioned-by = Mentionnée dans
 how-answers = Répond à
 how-answered-by = Réponse
 how-link = Lié
+how-told-by = Annoncé par
+how-payment = Son paiement
+how-probably-told-by = Sans doute annoncé par
+how-probable-payment = Sans doute son paiement
+how-contract = Son contrat
+how-payments = Ses paiements
+how-paper = Son papier
+how-for = Pour
+how-theirs = À son nom
+how-stands-for = Tient lieu de
+how-stand-in = Son double
+how-taken-by = Pris en charge par
+how-takes = Prend en charge
+how-together = Avec
+how-card = Sa fiche
+how-person = La personne
+how-from = De
+how-sent = A envoyé
+how-budget = Son budget
+how-opened-for = Ouvert pour
+how-site = Son site
+how-agenda-of = Dans l’agenda de
+how-agenda = Dans son agenda
+how-parent-of = Parent de
+how-other-parent = Autre parent
+how-conversation = Même conversation
+how-client = Client
+how-client-of = Client de
+how-party = Avec
+
+## La chaîne des liens d’une chose (Liens de …) : chaque type en mots, ce que tient « + », chaque étape.
+chain-kind-task = Tâche
+chain-kind-event = Événement
+chain-kind-mail = Message
+chain-kind-draft = Brouillon
+chain-kind-note = Note
+chain-kind-contact = Contact
+chain-kind-person = Personne
+chain-kind-budget = Budget
+chain-kind-project = Projet
+chain-kind-paper = Papier
+chain-kind-contract = Contrat
+chain-kind-letter = Courrier
+chain-kind-invoice = Facture
+chain-kind-movement = Paiement
+chain-kind-site = Site
+chain-kind-web = Page web
+chain-kind-file = Fichier
+chain-kind-other = Lien
+chain-count-task = { $n } { $n ->
+        [one] tâche
+       *[other] tâches
+    }
+chain-count-event = { $n } { $n ->
+        [one] événement
+       *[other] événements
+    }
+chain-count-mail = { $n } { $n ->
+        [one] message
+       *[other] messages
+    }
+chain-count-draft = { $n } { $n ->
+        [one] brouillon
+       *[other] brouillons
+    }
+chain-count-note = { $n } { $n ->
+        [one] note
+       *[other] notes
+    }
+chain-count-contact = { $n } { $n ->
+        [one] contact
+       *[other] contacts
+    }
+chain-count-person = { $n } { $n ->
+        [one] personne
+       *[other] personnes
+    }
+chain-count-budget = { $n } { $n ->
+        [one] budget
+       *[other] budgets
+    }
+chain-count-project = { $n } { $n ->
+        [one] projet
+       *[other] projets
+    }
+chain-count-paper = { $n } { $n ->
+        [one] papier
+       *[other] papiers
+    }
+chain-count-contract = { $n } { $n ->
+        [one] contrat
+       *[other] contrats
+    }
+chain-count-letter = { $n } { $n ->
+        [one] courrier
+       *[other] courriers
+    }
+chain-count-invoice = { $n } { $n ->
+        [one] facture
+       *[other] factures
+    }
+chain-count-movement = { $n } { $n ->
+        [one] paiement
+       *[other] paiements
+    }
+chain-count-site = { $n } { $n ->
+        [one] site
+       *[other] sites
+    }
+chain-count-web = { $n } { $n ->
+        [one] page web
+       *[other] pages web
+    }
+chain-count-file = { $n } { $n ->
+        [one] fichier
+       *[other] fichiers
+    }
+chain-count-other = { $n } { $n ->
+        [one] lien
+       *[other] liens
+    }
+chain-more = { $n } de plus : { $what }
+chain-name = { $kind } : { $title }
+chain-tied = { $how } : { $title }
+chain-step = { $how } : { $kind }, { $title }
+chain-and = { $a } ; { $b }
+chain-holds = { $n } { $n ->
+        [one] chose
+       *[other] choses
+    } dedans
+chain-sessions = { $n } { $n ->
+        [one] séance notée
+       *[other] séances notées
+    }
+chain-cross = Liés aussi
 task-now-title = L’étape suivante
 task-then = Ensuite
 task-not-found = Aucune tâche ne correspond à « { $what } ».

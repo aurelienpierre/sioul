@@ -58,6 +58,8 @@ pub enum Kind {
     Contract,
     Letter,
     Invoice,
+    /// A money movement (`movements`): a payment out or in, once, with everything that tells of it.
+    Movement,
     /// A site kept in Sioul's Sites: a bank, a tax office, a chat.
     Site,
     Web,
@@ -86,6 +88,7 @@ pub fn kind_of(uri: &str) -> Kind {
             "letter" => Kind::Letter,
             "invoice" => Kind::Invoice,
             "site" => Kind::Site,
+            "movement" => Kind::Movement,
             // A message without a Message-ID: `sioul:mail/<account>/<digest>`.
             "mail" => Kind::Mail,
             _ => Kind::Other,
@@ -218,6 +221,12 @@ pub fn draft_uri(id: &str) -> String {
 /// A budget line by its budget and its position in the file.
 pub fn budget_uri(budget: &str, position: usize) -> String {
     format!("sioul:budget/{}/{position}", encode(budget))
+}
+
+/// A budget whole, by its id: `sioul:budget/<budget>`, the collection its
+/// lines and movements count in (a line is `sioul:budget/<budget>/<position>`).
+pub fn budget_whole_uri(budget: &str) -> String {
+    format!("sioul:budget/{}", encode(budget))
 }
 
 /// A money movement (`movements::Movement`), by its id or by the key of any
@@ -462,16 +471,30 @@ pub struct World<'a> {
     /// The letters of the notes folder, read the first time one is described
     /// (`describe`), once for all (review of e5bd27b, later 5).
     pub letters: std::cell::OnceCell<Option<crate::letters::Letters>>,
+    /// Each UID's kind, a task's or an event's, made the first time a `uid:`
+    /// address is read (`canonical`), once for all: never a scan of every
+    /// task and event per address.
+    pub uids: std::cell::OnceCell<std::collections::HashMap<String, Kind>>,
+    /// The tie index (`ties`), when one was built: `related` reads from it,
+    /// with every tie Sioul knows, and `describe` names movements, papers,
+    /// contracts, invoices and persons by it.
+    pub ties: Option<crate::ties::Ties<'a>>,
 }
 
 impl World<'_> {
     /// One address for one thing, however it was written: `uid:` made a task's
     /// or an event's, a message's id bare, a note's path decoded and without its
-    /// heading, a project's `sioul:case/` (its address before the name changed) `sioul:project/`.
+    /// heading, a project's `sioul:case/` (its address before the name changed) `sioul:project/`;
+    /// with the tie index, a movement named by any of its sources' keys its one address.
     pub fn canonical(&self, uri: &str) -> String {
         let uri = uri.trim();
         if let Some(uid) = uri.strip_prefix("uid:") {
-            return if self.events.iter().any(|e| e.uid == uid) && !self.tasks.iter().any(|t| t.uid == uid) { event_uri(uid) } else { task_uri(uid) };
+            return if self.kind_of_uid(uid) == Kind::Event { event_uri(uid) } else { task_uri(uid) };
+        }
+        if let Some(ties) = self.ties
+            && let Some(address) = ties.index.movement_address(uri)
+        {
+            return address.to_string();
         }
         if uri.starts_with("mid:") {
             return mail_uri(uri);
@@ -490,9 +513,32 @@ impl World<'_> {
             let id = notes::decode(id.split('#').next().unwrap_or(id));
             // A project's address as written before the name changed: the same project.
             let kind = if kind == "case" { "project" } else { kind };
+            // A budget line keeps the "/" before its position (`budget_uri`): its budget alone is encoded.
+            if kind == "budget"
+                && let Some((budget, position)) = id.rsplit_once('/')
+                && let Ok(position) = position.parse::<usize>()
+            {
+                return budget_uri(budget, position);
+            }
             return format!("sioul:{kind}/{}", encode(&id));
         }
         uri.to_string()
+    }
+
+    /// A UID's kind: an event's when an event has it and no task does, else a
+    /// task's (`canonical`), from the map made once (`uids`).
+    pub fn kind_of_uid(&self, uid: &str) -> Kind {
+        let uids = self.uids.get_or_init(|| {
+            let mut map = std::collections::HashMap::with_capacity(self.tasks.len() + self.events.len());
+            for event in self.events {
+                map.insert(event.uid.clone(), Kind::Event);
+            }
+            for task in self.tasks {
+                map.insert(task.uid.clone(), Kind::Task);
+            }
+            map
+        });
+        uids.get(uid).copied().unwrap_or(Kind::Task)
     }
 
     /// Every tie, from every place that holds them.
@@ -597,6 +643,10 @@ impl World<'_> {
     /// What is tied to `uri`, both ways, each once: tasks first, then events,
     /// mail, drafts, notes, contacts, budget lines, projects.
     pub fn related(&self, uri: &str) -> Vec<Related> {
+        // With the tie index: every tie Sioul knows, from both ends, without a pass over everything.
+        if let Some(ties) = self.ties {
+            return ties.index.related(self, uri, ties.rule);
+        }
         let me = self.canonical(uri);
         let mut out: Vec<Related> = Vec::new();
         for edge in self.edges() {
@@ -759,6 +809,14 @@ impl World<'_> {
                     out.detail = line.budget.clone();
                     out.key = line.uri.clone();
                     out.found = true;
+                } else if !id.contains('/') {
+                    // A budget whole, `sioul:budget/<budget>`: by its title, as its lines name it.
+                    let prefix = format!("{uri}/");
+                    if let Some(line) = self.budget.iter().find(|l| l.uri.starts_with(&prefix)) {
+                        out.title = line.budget.clone();
+                        out.key = uri.clone();
+                        out.found = true;
+                    }
                 }
             }
             Kind::Project => {
@@ -789,9 +847,11 @@ impl World<'_> {
             }
             // A person, by their name in the store (`persons`, a small file); you by your own word, `me`.
             Kind::Person => {
-                let persons = crate::persons::Persons::load(&crate::persons::Persons::default_path());
                 out.key = id.clone();
                 out.found = id == crate::persons::ME;
+                // The tie index read the store once: named by it below, never read again here.
+                let indexed = self.ties.is_some_and(|t| t.index.named(&uri).is_some());
+                let persons = if indexed { crate::persons::Persons::default() } else { crate::persons::Persons::load(&crate::persons::Persons::default_path()) };
                 if let Some(person) = persons.get(&id) {
                     out.title = person.name.clone();
                     out.detail = person.relation.clone();
@@ -803,6 +863,12 @@ impl World<'_> {
             Kind::Paper | Kind::Contract | Kind::Invoice => {
                 out.title = id.clone();
                 out.key = id.clone();
+                out.found = true;
+            }
+            // A money movement, by its address (`movements::Movement::address`): its card reads it.
+            Kind::Movement => {
+                out.title = id.clone();
+                out.key = uri.clone();
                 out.found = true;
             }
             Kind::Web | Kind::File | Kind::Other => {
@@ -825,6 +891,14 @@ impl World<'_> {
                 };
                 out.found = true;
             }
+        }
+        // Named by the tie index, which read their stores once: who a movement is with, its
+        // amount and day; a paper's, a contract's, an invoice's, a person's, a budget's title.
+        if let Some(named) = self.ties.and_then(|t| t.index.named(&uri)) {
+            out.title = named.title.clone();
+            out.detail = named.detail.clone();
+            out.when = named.when.or(out.when);
+            out.found = true;
         }
         out
     }
@@ -1092,7 +1166,15 @@ impl Loaded {
             local: &self.local,
             sites: &self.sites,
             letters: Default::default(),
+            uids: Default::default(),
+            ties: None,
         }
+    }
+
+    /// The world with the tie index (`ties::TieIndex`, built from it) and the
+    /// rule it is read by: `related` then reads every tie Sioul knows.
+    pub fn world_with<'a>(&'a self, index: &'a crate::ties::TieIndex, rule: &'a dyn crate::ties::Rule) -> World<'a> {
+        World { ties: Some(crate::ties::Ties { index, rule }), ..self.world() }
     }
 }
 
@@ -1252,7 +1334,7 @@ mod tests {
         let mut local = LocalLinks::default();
         local.add("mid:abc@caf.example", "sioul:contact/caf", "contact");
         let (tasks, events) = (vec![certificate, form], vec![meeting]);
-        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default() };
+        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
         let related = world.related("sioul:task/certificate");
         let seen: Vec<(Kind, &str, &str)> = related.iter().map(|r| (r.kind, r.how.as_str(), r.uri.as_str())).collect();
         assert_eq!(
@@ -1312,7 +1394,7 @@ mod tests {
         let vault = Vault { root: PathBuf::from("/vault"), notes: vec![notes::read("lease.md", "---\ncase: housing\n---\n# Lease\n"), notes::read("rent.md", "# Rent\n\nFor [housing](sioul:project/housing).\n")], folders: Vec::new() };
         let tasks = vec![Task { uid: "rent".into(), title: "Pay the rent".into(), projects: vec!["housing".into()], ..Task::default() }];
         let projects = vec![housing];
-        let world = World { tasks: &tasks, events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &projects, budget: &[], local: &local, sites: &[], letters: Default::default() };
+        let world = World { tasks: &tasks, events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &projects, budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
         assert_eq!(world.canonical("sioul:case/housing"), "sioul:project/housing");
         for address in ["sioul:case/housing", "sioul:project/housing"] {
             let mut tied: Vec<(Kind, String, String)> = world.related(address).into_iter().map(|r| (r.kind, r.how, r.uri)).collect();
@@ -1348,7 +1430,7 @@ mod tests {
         crate::letters::Letters::change(&root, |letters| letters.put(letter)).unwrap();
         let vault = Vault::open(&root);
         let local = LocalLinks::default();
-        let world = World { tasks: &[], events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default() };
+        let world = World { tasks: &[], events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None };
         let named = world.describe("sioul:letter/2026-10-28-1a2b");
         assert_eq!((named.kind, named.title.as_str(), named.found), (Kind::Letter, "CAF", true));
         assert_eq!(world.describe("sioul:letter/elsewhere").title, "elsewhere");

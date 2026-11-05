@@ -109,6 +109,8 @@
 //! - [`composed`]: composed tasks changed: a task made a step, a step a task, an item a step, a bigger task closing with its last step.
 //! - [`checklist`]: checklists in the notes of a task or an event: GitHub task lists, ticked one character at a time.
 //! - [`links`]: links between everything: mail, tasks, events, contacts, notes, budget lines.
+//! - [`ties`]: every tie Sioul knows, read from both ends, in memory; never written anywhere.
+//! - [`chain`]: the chain of ties from one thing: the strongest chains, collections stopped and counted.
 //!
 //! ## Time and money
 //!
@@ -198,6 +200,8 @@ pub mod build;
 pub mod callback;
 pub mod calls;
 pub mod capabilities;
+// The chain of ties from one thing (docs/research/link-graph.md).
+pub mod chain;
 pub mod capacity;
 pub mod capture;
 pub mod checklist;
@@ -297,6 +301,8 @@ pub mod tasks;
 pub mod text;
 pub mod textdraft;
 pub mod threads;
+// Every tie Sioul knows, from both ends, in memory (docs/research/link-graph.md).
+pub mod ties;
 pub mod timeline;
 pub mod timelog;
 pub mod timereport;

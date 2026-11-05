@@ -1571,6 +1571,141 @@ how-mentioned-by = Mentioned in
 how-answers = Answers
 how-answered-by = Answered by
 how-link = Linked
+how-told-by = Told by
+how-payment = Its payment
+how-probably-told-by = Probably told by
+how-probable-payment = Probably its payment
+how-contract = Its contract
+how-payments = Its payments
+how-paper = Its paper
+how-for = For
+how-theirs = Theirs
+how-stands-for = Stands for
+how-stand-in = Its stand-in
+how-taken-by = Taken by
+how-takes = Takes
+how-together = Together with
+how-card = Their card
+how-person = The person
+how-from = From
+how-sent = Sent
+how-budget = Its budget
+how-opened-for = Opened for
+how-site = Their site
+how-agenda-of = In the agenda of
+how-agenda = In their agenda
+how-parent-of = Parent of
+how-other-parent = Other parent
+how-conversation = Same conversation
+how-client = Client
+how-client-of = Client of
+how-party = With
+
+## The chain of ties from one thing (Ties of …): each kind in words, what "+" holds, each step.
+chain-kind-task = Task
+chain-kind-event = Event
+chain-kind-mail = Message
+chain-kind-draft = Draft
+chain-kind-note = Note
+chain-kind-contact = Contact
+chain-kind-person = Person
+chain-kind-budget = Budget
+chain-kind-project = Project
+chain-kind-paper = Paper
+chain-kind-contract = Contract
+chain-kind-letter = Letter
+chain-kind-invoice = Invoice
+chain-kind-movement = Payment
+chain-kind-site = Site
+chain-kind-web = Web page
+chain-kind-file = File
+chain-kind-other = Link
+chain-count-task = { $n } { $n ->
+        [one] task
+       *[other] tasks
+    }
+chain-count-event = { $n } { $n ->
+        [one] event
+       *[other] events
+    }
+chain-count-mail = { $n } { $n ->
+        [one] message
+       *[other] messages
+    }
+chain-count-draft = { $n } { $n ->
+        [one] draft
+       *[other] drafts
+    }
+chain-count-note = { $n } { $n ->
+        [one] note
+       *[other] notes
+    }
+chain-count-contact = { $n } { $n ->
+        [one] contact
+       *[other] contacts
+    }
+chain-count-person = { $n } { $n ->
+        [one] person
+       *[other] people
+    }
+chain-count-budget = { $n } { $n ->
+        [one] budget
+       *[other] budgets
+    }
+chain-count-project = { $n } { $n ->
+        [one] project
+       *[other] projects
+    }
+chain-count-paper = { $n } { $n ->
+        [one] paper
+       *[other] papers
+    }
+chain-count-contract = { $n } { $n ->
+        [one] contract
+       *[other] contracts
+    }
+chain-count-letter = { $n } { $n ->
+        [one] letter
+       *[other] letters
+    }
+chain-count-invoice = { $n } { $n ->
+        [one] invoice
+       *[other] invoices
+    }
+chain-count-movement = { $n } { $n ->
+        [one] payment
+       *[other] payments
+    }
+chain-count-site = { $n } { $n ->
+        [one] site
+       *[other] sites
+    }
+chain-count-web = { $n } { $n ->
+        [one] web page
+       *[other] web pages
+    }
+chain-count-file = { $n } { $n ->
+        [one] file
+       *[other] files
+    }
+chain-count-other = { $n } { $n ->
+        [one] link
+       *[other] links
+    }
+chain-more = { $n } more: { $what }
+chain-name = { $kind }: { $title }
+chain-tied = { $how }: { $title }
+chain-step = { $how }: { $kind }, { $title }
+chain-and = { $a }; { $b }
+chain-holds = { $n } { $n ->
+        [one] thing
+       *[other] things
+    } in it
+chain-sessions = { $n } { $n ->
+        [one] session
+       *[other] sessions
+    } noted
+chain-cross = Also tied
 task-now-title = The next step
 task-then = After that
 task-not-found = No task matches “{ $what }”.

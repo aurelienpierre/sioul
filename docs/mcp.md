@@ -54,7 +54,7 @@ Things are named by their addresses, as links name them ([tasks.md](tasks.md)): 
 | `search_notes` | Notes by title, path or tag; their text too with `in_text`. |
 | `read_note` | One note in full, its open checkboxes, what it is tied to both ways. |
 | `list_projects` | The projects open to agents, with their open tasks; with `id`, an open project on one line of time, its mail as the Porch takes it (what it sets aside is never there; [projects.md](projects.md)). |
-| `links` | What a thing is tied to, both ways, as `sioul links` shows it. |
+| `links` | What a thing is tied to, both ways, one step away. |
 | `find` | Anything whose title holds the words, with its address; a message by its subject as the agent sees it, masked. |
 | `phone_messages` | The messages your phone shares with your computers ([android.md](android.md), "Messages on your computers"), newest first: when, which app, who wrote, the group, and the words where the phone sent them, framed as data. A code or an approval never left the phone: its line says that one came; what the words still hold of one is masked. A message the phone held comes once the phone lets it through. No tool replies to one nor marks one read: a reply from a computer is yours alone, from the Porch ([android.md](android.md), "Replies from your computers"). |
 | `calls` | The calls your phone screened: when, who (their name in your address books, else their number; a hidden number said so), rang or declined and sent to voicemail. |

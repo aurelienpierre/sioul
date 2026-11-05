@@ -176,7 +176,22 @@ enum Command {
     #[command(subcommand)]
     Focus(tasks::FocusCommand),
     /// What a thing is tied to, both ways: `sioul:task/<UID>`, `mid:<Message-ID>`, `sioul:note/<path>`…
-    Links { uri: String },
+    Links {
+        uri: String,
+        /// The chain of ties from it, as an outline: what it is tied to, what those are tied to,
+        /// up to four steps, the strongest chains first; collections stop it, counted.
+        #[arg(long)]
+        chain: bool,
+        /// With --chain: steps from it, at most (1 to 4; 4 when unsaid).
+        #[arg(long)]
+        depth: Option<usize>,
+        /// With --chain: the things whose "+" is pressed, by address; one named twice, pressed twice.
+        #[arg(long, num_args = 1..)]
+        open: Vec<String>,
+        /// With --chain: the chain as the window reads it, in JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Notes of the notes folder: those matching, or one with --path.
     Notes {
         query: Vec<String>,
@@ -368,7 +383,7 @@ fn main() -> ExitCode {
         Command::Verify { again } => verify_command(&session, again),
         Command::Tasks(command) => tasks::run(&session, command),
         Command::Focus(command) => tasks::focus(&session, command),
-        Command::Links { uri } => tasks::links_command(&session, &uri),
+        Command::Links { uri, chain, depth, open, json } => tasks::links_command(&session, &uri, chain.then_some(tasks::Chain { depth, open, json })),
         Command::Notes { query, path } => tasks::notes_command(&session, &query.join(" "), path.as_deref()),
         Command::Sync { account } => accounts::sync_command(&session, account.as_deref()),
         Command::Watch => accounts::watch_command(&session),

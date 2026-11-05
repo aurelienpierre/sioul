@@ -165,7 +165,10 @@ sioul tasks lists | new-list <account|local> <name> [--events]
 sioul tasks import <file.toml> [--dry-run] [--no-sync]
 sioul dav new-book <account> <name>
 sioul focus start <task> [--minutes 25] | status | stop [--done] [--note "…"]
-sioul links <address>                  what a thing is tied to, both ways
+sioul links <address>                  what a thing is tied to, both ways, from every tie Sioul knows
+sioul links <address> --chain [--depth N] [--open <address>…] [--json]
+                                       the chain of ties from it, as an outline: the strongest chains,
+                                       collections counted; --open presses a thing's "+"
 sioul notes [words] | notes --path <path in the store>
 ```
 
