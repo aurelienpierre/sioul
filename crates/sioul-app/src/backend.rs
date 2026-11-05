@@ -2499,6 +2499,11 @@ pub mod qobject {
         #[qsignal]
         fn persons_changed(self: Pin<&mut Sioul>);
 
+        /// Mail's topics changed (`changes`): the topic list, your word on a
+        /// message or a sender; Mail ▸ ⚙ ▸ Topics, the Topic filter and menus read them again.
+        #[qsignal]
+        fn topics_changed(self: Pin<&mut Sioul>);
+
         /// What an agenda is changed (its role, its person, its area; your
         /// availability's share; a calendar made, renamed or removed): Agenda ⚙
         /// and a person's page read it again.
@@ -2754,6 +2759,7 @@ pub struct SioulRust {
     mode: QString,
     forecast: QString,
     places_found: QString,
+    topic_groups: QString,
     shared: Arc<Shared>,
 }
 
@@ -7462,8 +7468,9 @@ impl qobject::Sioul {
         // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
         // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "availability"
-        // Agenda ⚙ ▸ Your availability and its "Share with…" (pictures alone; docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "availability"].contains(&steps.as_str()) && offline()) {
+        // Agenda ⚙ ▸ Your availability and its "Share with…" (pictures alone; docs/client.md), "topics" day one's
+        // card, the mailbox with its rows' topics, one topic's mail, "Topic…" and Mail ▸ ⚙ ▸ Topics (pictures alone; docs/topics.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "availability", "topics"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

@@ -32,6 +32,8 @@ Item {
         property string topicGroups: ""
         // Said in the status line with Undo; the settings read the topics again when it changes.
         property string undoLine: ""
+        // Mail's topics changed (`changes`): the views read them again.
+        signal topicsChanged()
         readonly property var words: ({ "topic-none": "Aucun thème", "topic-new": "Nouveau thème…", "topic-make": "Le créer", "topic-filter-all": "Tous les thèmes", "topics-name-it": "Le nommer", "topics-rename": "Renommer", "topics-remove": "Retirer", "topics-add": "Ajouter un thème" })
 
         function text(key) {
@@ -73,7 +75,7 @@ Item {
             mock.topicGroups = JSON.stringify({ state: "done",
                 groups: [{ size: 42, senders: 3, names: ["Opérateur Exemple", "Service client"], subjects: ["Votre facture de novembre"], proposed: "Téléphone et internet", proposed_by: "sites" },
                          { size: 20, senders: 2, names: ["Jeanne Martin", "Paul Durand"], subjects: ["Dimanche"], proposed: "", proposed_by: "" }],
-                senders: [{ size: 30, senders: 1, names: ["Club Exemple"], subjects: ["Programme"], proposed: "Club Exemple", proposed_by: "sender" }] })
+                senders: [{ size: 30, senders: 1, names: ["Jeanne Martin"], subjects: ["Programme"], proposed: "", proposed_by: "" }] })
         }
         function topicPresets() {
             return JSON.stringify([{ id: "bank", name: "Banque" }, { id: "phone-internet", name: "Téléphone et internet" }])
@@ -252,13 +254,17 @@ Item {
             mouseClick(named(page, "topicGroupName:1"))
             compare(named(page, "topicGroupField:1").text, "")
             compare(named(page, "topicGroupHow:1").text, "topics-named-none")
-            // One sender with much mail: "Always a topic…", its name proposed, given in one act.
+            // One sender with much mail, a person: "Always a topic…", no name proposed, the one you write given in one act.
             waitForItemPolished(page)
             mouseClick(named(page, "topicSenderAlways:0"))
-            compare(named(page, "topicSenderField:0").text, "Club Exemple")
+            compare(named(page, "topicSenderField:0").text, "")
+            named(page, "topicSenderField:0").text = "Chorale"
             waitForItemPolished(page)
             mouseClick(named(page, "topicSenderMake:0"))
-            compare(mock.asked[2], ["always", 0, "Club Exemple"])
+            compare(mock.asked[2], ["always", 0, "Chorale"])
+            // A small mailbox: no group yet, said so.
+            mock.topicGroups = JSON.stringify({ state: "done", waiting: true, groups: [], senders: [] })
+            tryCompare(named(page, "topicGroupsNone"), "text", "topics-groups-waiting")
             for (const row of all(page, i => i.objectName.indexOf("topicRow:") === 0))
                 inside(row)
         }

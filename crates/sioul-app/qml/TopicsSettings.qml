@@ -26,7 +26,7 @@ ColumnLayout {
     property string about: ""
     // The topics (`topics::view`): [{id, name, seeds, senders: [[address, "always" | "never"]]}].
     property var topics: []
-    // The groups found (`topicGroups`): {state, groups: [{size, senders, names, subjects, proposed, proposed_by}], senders: [the same, one sender each], detail}.
+    // The groups found (`topicGroups`): {state, waiting, groups: [{size, senders, names, subjects, proposed, proposed_by}], senders: [the same, one sender each, no name proposed], detail}.
     readonly property var groups: page.sioul.topicGroups ? JSON.parse(page.sioul.topicGroups) : null
     property string problem: ""
     // The topic being renamed, by id; "" for none.
@@ -38,7 +38,7 @@ ColumnLayout {
 
     // How a name offered was found, in one sentence; that none is, else.
     function how(by) {
-        return page.sioul.text(by === "preset" ? "topics-named-preset" : by === "sites" ? "topics-named-sites" : by === "sender" ? "topics-named-sender" : "topics-named-none")
+        return page.sioul.text(by === "preset" ? "topics-named-preset" : by === "sites" ? "topics-named-sites" : "topics-named-none")
     }
     // The groups are looked for on a computer: a phone never reads all the mail for them.
     readonly property bool computer: Qt.platform.os !== "android"
@@ -57,6 +57,9 @@ ColumnLayout {
         target: page.sioul
 
         function onUndoLineChanged() {
+            page.read()
+        }
+        function onTopicsChanged() {
             page.read()
         }
     }
@@ -207,7 +210,7 @@ ColumnLayout {
                 required property var modelData
 
                 objectName: "topicPreset:" + preset.modelData.id
-                text: preset.modelData.name
+                text: page.theme.plain(preset.modelData.name)
                 onClicked: {
                     page.problem = page.sioul.startTopicPreset(preset.modelData.id)
                     page.read()
@@ -270,7 +273,8 @@ ColumnLayout {
         visible: page.groups !== null && (page.groups.state === "failed" || (page.groups.state === "done" && page.groups.groups.length === 0))
         Layout.fillWidth: true
         Layout.preferredWidth: 0
-        text: page.groups === null ? "" : page.groups.state === "failed" ? page.sioul.textWith("topics-groups-failed", "detail", page.groups.detail || "") : page.sioul.text("topics-groups-none")
+        objectName: "topicGroupsNone"
+        text: page.groups === null ? "" : page.groups.state === "failed" ? page.sioul.textWith("topics-groups-failed", "detail", page.groups.detail || "") : page.groups.waiting ? page.sioul.text("topics-groups-waiting") : page.sioul.text("topics-groups-none")
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: page.theme.muted
@@ -416,23 +420,13 @@ ColumnLayout {
                     objectName: "topicSenderAlways:" + offered.index
                     visible: page.namingSender !== offered.index
                     text: page.sioul.text("topics-offer-always")
+                    // You name the topic: none is proposed for one sender (a choir's leader is a person).
                     onClicked: {
                         page.namingSender = offered.index
-                        senderTopic.text = offered.modelData.proposed || ""
+                        senderTopic.text = ""
                         senderTopic.forceActiveFocus()
-                        senderTopic.selectAll()
                     }
                 }
-            }
-            Label {
-                visible: page.namingSender === offered.index
-                Layout.fillWidth: true
-                Layout.preferredWidth: 0
-                text: page.how(offered.modelData.proposed_by)
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: page.theme.muted
             }
             RowLayout {
                 visible: page.namingSender === offered.index

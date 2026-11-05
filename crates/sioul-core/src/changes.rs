@@ -48,10 +48,13 @@ pub enum Kind {
     Projects,
     /// Mail and calendar accounts (`[[account]]`).
     Accounts,
+    /// Mail's topics: the list (`[[topic]]`) and your word on messages and
+    /// senders (`topics::labels`' logs).
+    Topics,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 12] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts];
+    pub const ALL: [Kind; 13] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts, Kind::Topics];
 
     /// Its place among the kinds, for a set of them as bits.
     pub fn bit(self) -> u32 {
@@ -73,6 +76,7 @@ impl Kind {
             Kind::Sites => "sites",
             Kind::Projects => "projects",
             Kind::Accounts => "accounts",
+            Kind::Topics => "topics",
         }
     }
 }

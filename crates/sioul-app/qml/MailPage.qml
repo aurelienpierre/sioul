@@ -380,6 +380,14 @@ Item {
         topicMenu.openAt(item, JSON.stringify(page.rowsOf(keys)), keys.length === 1 ? keys[0] : "", row && keys.length === 1 ? (row.topic_id || "") : "")
     }
 
+    // "Topic…" for the first row with a topic, in the middle (the pictures' step list "topics").
+    function askTopicOfFirst() {
+        const row = page.boxRows.find(r => (r.topic_id || "") !== "") || page.boxRows[0]
+        if (row)
+            page.askTopic(null, [row.key], row)
+    }
+    readonly property alias topicMenu: topicMenu
+
     TopicMenu {
         id: topicMenu
 
@@ -388,11 +396,14 @@ Item {
         theme: page.theme
     }
 
-    // A topic made or removed is said with Undo: the topics counted again.
+    // A topic made or removed, here or on another device: the topics counted again.
     Connections {
         target: page.sioul
 
         function onUndoLineChanged() {
+            page.topicsCount = JSON.parse(page.sioul.topics() || "[]").length
+        }
+        function onTopicsChanged() {
             page.topicsCount = JSON.parse(page.sioul.topics() || "[]").length
         }
     }

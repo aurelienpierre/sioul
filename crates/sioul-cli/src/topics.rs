@@ -432,9 +432,13 @@ fn groups_report(s: &Session, dirs: &Dirs, folder: Option<&std::path::Path>, opt
         }
     }
     // What the window shows of them ("Groups Sioul noticed").
-    let shown = groups::noticed(&found, options);
+    let shown = groups::noticed(&found);
     lines.push(String::new());
-    lines.push(s.say("topics-noticed", &[("shown", n(shown.groups.len() as u64)), ("weak", n(shown.weak)), ("floor", decimal(s, groups::COHERENCE_FLOOR, 1)), ("persons", n(shown.persons)), ("started", n(shown.started)), ("more", n(shown.more))]));
+    if shown.waiting {
+        lines.push(s.say("topics-noticed-waiting", &[("messages", n(found.messages)), ("least", n(groups::LEAST_KEPT))]));
+    } else {
+        lines.push(s.say("topics-noticed", &[("shown", n(shown.groups.len() as u64)), ("weak", n(shown.weak)), ("floor", decimal(s, groups::COHERENCE_FLOOR, 1)), ("started", n(shown.started)), ("more", n(shown.more))]));
+    }
     for group in &shown.groups {
         let names = group.names.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", ");
         lines.push(format!("  {}", s.say("topics-noticed-group", &[("size", n(group.size)), ("senders", n(group.senders)), ("coherence", number(s, group.coherence, 3)), ("names", names)])));
@@ -445,7 +449,6 @@ fn groups_report(s: &Session, dirs: &Dirs, folder: Option<&std::path::Path>, opt
         for group in &shown.senders {
             let names = group.names.iter().map(|w| crate::one_line(w)).collect::<Vec<_>>().join(", ");
             lines.push(format!("  {}", s.say("topics-noticed-sender", &[("size", n(group.size)), ("names", names)])));
-            lines.push(format!("    {}", proposed_line(s, group)));
         }
     }
     lines.push(s.say("topics-seconds", &[("seconds", format!("{:.0}", found.seconds))]));
@@ -459,7 +462,6 @@ fn proposed_line(s: &Session, group: &groups::Group) -> String {
     let how = match group.proposed_by {
         "preset" => "topics-named-preset",
         "sites" => "topics-named-sites",
-        "sender" => "topics-named-sender",
         _ => return s.tr.text("topics-named-none", None),
     };
     s.say("topics-groups-proposed", &[("name", crate::one_line(&group.proposed)), ("how", s.tr.text(how, None))])

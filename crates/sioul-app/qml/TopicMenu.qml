@@ -176,7 +176,7 @@ SafePopup {
             visible: menu.key !== "" && menu.currentTopic !== null
             Layout.fillWidth: true
             flat: true
-            text: menu.currentTopic ? menu.sioul.textWith("topic-always", "topic", menu.currentTopic.name) : ""
+            text: menu.currentTopic ? menu.theme.plain(menu.sioul.textWith("topic-always", "topic", menu.currentTopic.name)) : ""
             onClicked: {
                 menu.sioul.senderTopic(menu.key, menu.current, "always")
                 menu.close()
@@ -187,7 +187,7 @@ SafePopup {
             visible: menu.key !== "" && menu.currentTopic !== null
             Layout.fillWidth: true
             flat: true
-            text: menu.currentTopic ? menu.sioul.textWith("topic-never", "topic", menu.currentTopic.name) : ""
+            text: menu.currentTopic ? menu.theme.plain(menu.sioul.textWith("topic-never", "topic", menu.currentTopic.name)) : ""
             onClicked: {
                 menu.sioul.senderTopic(menu.key, menu.current, "never")
                 menu.close()

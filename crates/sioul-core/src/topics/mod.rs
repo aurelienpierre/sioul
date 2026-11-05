@@ -268,7 +268,8 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join("config.toml");
         std::fs::write(&path, "# Mine.\nlanguage = \"fr\"\n\n[[account]]\nid = \"home\"\nkind = \"imap\"\n").unwrap();
-        let choir = add(&path, " Chorale ", &Seeds { folders: vec!["Chorale".into()], categories: Vec::new() }).unwrap();
+        let (choir, said) = crate::changes::heard(|| add(&path, " Chorale ", &Seeds { folders: vec!["Chorale".into()], categories: Vec::new() }).unwrap());
+        assert_eq!(said, [crate::changes::Kind::Topics], "the topic list's views told");
         let again = add(&path, "chorale", &Seeds::default()).unwrap();
         assert_eq!((choir.id.as_str(), again.id.as_str()), ("chorale", "chorale-2"));
         rename(&path, "chorale", "Chœur").unwrap();

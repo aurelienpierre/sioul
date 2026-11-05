@@ -103,7 +103,10 @@ pub fn append(path: &Path, acts: &[Act]) -> Result<(), String> {
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         options.open(path).and_then(|mut file| file.write_all(text.as_bytes())).map_err(fail)
-    })
+    })?;
+    // Every view of mail's topics told (`changes`).
+    crate::changes::said(crate::changes::Kind::Topics);
+    Ok(())
 }
 
 /// Every act of every device's log under `root`, oldest first (by when you
@@ -213,7 +216,8 @@ mod tests {
         let phone = own_log(&root, "phone/2");
         assert_eq!(phone, root.join(FOLDER).join("phone_2.jsonl"));
         let message = |at, topic: Option<&str>, forget| Act::Message { at, message_id: "<a@example.org>".into(), topic: topic.map(str::to_string), forget };
-        append(&desk, &[message(1, Some("choir"), false), Act::Sender { at: 2, address: "News@Choir.example".into(), topic: "choir".into(), rule: Rule::Always }]).unwrap();
+        let ((), said) = crate::changes::heard(|| append(&desk, &[message(1, Some("choir"), false), Act::Sender { at: 2, address: "News@Choir.example".into(), topic: "choir".into(), rule: Rule::Always }]).unwrap());
+        assert_eq!(said, [crate::changes::Kind::Topics], "every view of topics told");
         append(&phone, &[message(3, None, false), Act::Sender { at: 4, address: "news@choir.example".into(), topic: "tax".into(), rule: Rule::Never }]).unwrap();
         let said = Said::of(&read_all_in(&root));
         assert_eq!(said.message("a@example.org"), Some(None), "the phone took it off later");

@@ -1343,6 +1343,20 @@ def account_id(key: str) -> str:
     return {"work": t("work", "travail"), "personal": t("personal", "perso")}[key]
 
 
+def write_topics(p: Profile, mails: list[Mail]):
+    """Your word on mail's topics, as the window writes it
+    (crates/sioul-core/src/topics/labels.rs): the bank's and the tax office's
+    senders always under their topics, the choir's messages given theirs;
+    and day one's card, the two topics it started, which the Porch says once."""
+    at = int(datetime.now().timestamp())
+    acts = [{"act": "sender", "at": at, "address": address, "topic": topic, "rule": "always"}
+            for address, topic in ((f"no-reply@{W.bank}", "bank"), (f"no-reply@{W.tax}", "taxes"), (f"{t('refund', 'remboursement')}@{W.tax}", "taxes"))]
+    acts += [{"act": "message", "at": at, "message_id": m.message_id, "topic": "choir", "forget": False}
+             for m in mails if m.message_id and domain_of(m.sender[1]) == W.choir]
+    p.write(p.state / "topics" / "labels" / "demo-device.jsonl", "".join(json.dumps(a, ensure_ascii=False) + "\n" for a in acts))
+    p.write(p.state / "topics" / "day-one.toml", f"started = [{toml_string(t('Bank', 'Banque'))}, {toml_string(t('Taxes', 'Impôts'))}]\n")
+
+
 def write_mail(p: Profile, mails: list[Mail]):
     counters: dict[tuple[str, str], int] = {}
     numbered = sorted(enumerate(mails), key=lambda pair: pair[1].when)
@@ -2900,7 +2914,29 @@ host = "dav.example.invalid"
 url = "{DAV_URL}"
 
 # Sites: web-only mailboxes, a chat, video calls (docs/sites.md).
-{site_text}""")
+{site_text}
+# Mail's topics (docs/topics.md): two started from Sioul's presets on day one, one of your own.
+topics_day_one = "{p.clock.day(-1)}"
+
+[[topic]]
+id = "bank"
+name = {toml_string(t("Bank", "Banque"))}
+area = "admin"
+agents = true
+preset = "bank"
+
+[[topic]]
+id = "taxes"
+name = {toml_string(t("Taxes", "Impôts"))}
+area = "admin"
+agents = true
+preset = "taxes"
+
+[[topic]]
+id = "choir"
+name = {toml_string(t("Choir", "Chorale"))}
+area = "leisure"
+""")
     p.write(p.config / "known-senders.txt", f"""# Senders let in: they skip the screener.
 @{W.library}
 {W.tom[1]}
@@ -3012,6 +3048,7 @@ def main():
     mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else [])
     write_config(profile)
     write_mail(profile, mails)
+    write_topics(profile, mails)
     moving_note(profile)
     if args.bulk:
         write_bulk(profile, args.bulk)

@@ -406,6 +406,7 @@ Each kind of object says it changed from the one place that writes it (`sioul_co
 | Sites | the configuration's writer, when `[[site]]` changed | Sites, the Porch (`sites_changed`) | — |
 | Projects | the projects file's writer | Projects, Time (`projects_changed`) | what the pages read projects from, read again |
 | Accounts | the configuration's writer, when `[[account]]` changed | — | by their writers (Accounts, Mail) |
+| Topics | the configuration's writer, when `[[topic]]` changed; `topics::labels::append`, your word on a message or a sender | Mail ▸ ⚙ ▸ Topics, the Topic filter, Mail's count of topics (`topics_changed`) | the mailbox (its rows' topics): by its writers here, again when they come from elsewhere |
 
 - **From another device**: the sharing says each kind among the files it wrote (`changes::arrived_stores`), and makes the Rust-made views again as those kinds need: the agenda and contacts, the Porch, budgets and accounts, the tasks and the notes. An earlier version put back counts the same.
 - **From another program**: the command line and the agents' tools (`sioul`, `sioul mcp`) have no window to tell; each kind they change leaves a stamp, `$XDG_STATE_HOME/sioul/changes/<kind>`, which the window looks at every second while it shows (`changes::watch`) and takes as an arrival. A phone has no other program writing Sioul's files, and does not look. A file changed by hand, or by another application, is seen when its view is next read.

@@ -30,6 +30,15 @@ Item {
     implicitHeight: button.implicitHeight
     Component.onCompleted: filter.topics = JSON.parse(filter.sioul.topics() || "[]")
 
+    // A topic renamed or removed, here or on another device: its name on the button follows.
+    Connections {
+        target: filter.sioul
+
+        function onTopicsChanged() {
+            filter.topics = JSON.parse(filter.sioul.topics() || "[]")
+        }
+    }
+
     function unfold() {
         filter.topics = JSON.parse(filter.sioul.topics() || "[]")
         const at = button.mapToItem(list.parent, 0, button.height)

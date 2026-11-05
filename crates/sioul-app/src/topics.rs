@@ -300,7 +300,7 @@ pub(crate) fn find_groups(qt: &QtThread) {
                 ..sioul_learn::groups::Options::default()
             };
             let found = sioul_learn::groups::groups(&read, &labels, &ids, None, &grouping, &mut |_| {}, &cancel)?;
-            Ok((sioul_learn::groups::noticed(&found, &grouping), said))
+            Ok((sioul_learn::groups::noticed(&found), said))
         });
         let text = match found {
             Ok((noticed, said)) => {
@@ -308,7 +308,8 @@ pub(crate) fn find_groups(qt: &QtThread) {
                 let shown: Vec<sioul_learn_groups::Found> = noticed.groups.into_iter().map(found).collect();
                 // A sender with a rule of yours already is offered no more.
                 let offered: Vec<(String, sioul_learn_groups::Found)> = noticed.senders.into_iter().filter_map(|g| Some((g.sole.clone()?, g))).filter(|(address, _)| said.senders.get(address).is_none_or(|rules| rules.iter().all(|(_, rule)| matches!(rule, Rule::Off)))).map(|(address, g)| (address, found(g))).collect();
-                let text = serde_json::json!({ "state": "done", "groups": shown, "senders": offered.iter().map(|(_, g)| g).collect::<Vec<_>>() }).to_string();
+                // Fewer than a thousand messages kept: no group yet ("Groups come once more mail is kept here"), the offers all the same.
+                let text = serde_json::json!({ "state": "done", "waiting": noticed.waiting, "groups": shown, "senders": offered.iter().map(|(_, g)| g).collect::<Vec<_>>() }).to_string();
                 if let Ok(mut kept) = GROUPS.lock() {
                     *kept = shown;
                 }

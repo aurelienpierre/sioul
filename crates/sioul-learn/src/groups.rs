@@ -27,11 +27,12 @@
 //! tokenizer's placeholders nor HTML's and CSS's words
 //! (`topics::Mail::grouping`). NMF is the way "Groups Sioul noticed" shows
 //! (docs/topics.md): its groups read as categories a person recognises.
-//! What the window shows of them (`noticed`): at most five, none under a
-//! coherence floor, none mostly a preset already started; a group of one
-//! sender becomes an offer of "Always <topic> for this sender" instead.
-//! A group is never named after a person (`topics::is_person`): topics are
-//! categories, and persons are their own dimension.
+//! What the window shows of them (`noticed`): nothing before a thousand
+//! messages are kept here; then five at most, none under a coherence floor,
+//! none half tagged by the presets started already; a group of one sender
+//! becomes an offer of "Always <topic> for this sender" instead. A group is
+//! named only from a topic preset or a site category that holds most of it,
+//! never after a sender: topics are categories, and persons are their own dimension.
 //!
 //! The words that say each group: c-TF-IDF for the first two (each group's
 //! words weighed against the others', as BERTopic does), each model's own
@@ -47,12 +48,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Coherence (NPMI) under which a group is not shown in the window: its words seldom meet.
 pub const COHERENCE_FLOOR: f64 = 0.3;
-/// Groups the window shows at most, and offers for one sender at most.
+/// Groups the window shows at most.
 pub const SHOWN: usize = 5;
+/// Offers for one sender the window shows at most.
+pub const SHOWN_SENDERS: usize = 3;
+/// Messages kept here before the window shows any group: on a small mailbox, groups mislead.
+pub const LEAST_KEPT: u64 = 1000;
 /// The share of a group that a site category or a topic preset must hold to name it.
 pub const NAMED_SHARE: f64 = 0.6;
-/// The share of a group that a started preset holds when the group is left out: that topic takes it already.
-pub const STARTED_SHARE: f64 = 0.8;
+/// The share of a group that the started presets tag when the group is left out: their topics take it already.
+pub const STARTED_SHARE: f64 = 0.5;
 
 /// How groups are made; `Default` holds docs/topics.md's values.
 #[derive(Debug, Clone)]
@@ -119,12 +124,11 @@ pub struct Group {
     pub seed: Option<(String, f64)>,
     /// The topic preset most of its messages match (by id), and that share of the group.
     pub preset: Option<(String, f64)>,
+    /// The share of it that the presets started already tag (`Options::started`).
+    pub started: f64,
     /// Its one correspondent, when it has one alone: "Always <topic> for this sender" sets their rule. Never shown nor written.
     #[serde(skip)]
     pub sole: Option<String>,
-    /// That one correspondent is a person (`topics::is_person`).
-    #[serde(skip)]
-    pub person: bool,
     /// Its messages' bare Message-IDs ("Name it" tags them): never shown nor written.
     #[serde(skip)]
     pub ids: Vec<String>,
@@ -132,9 +136,8 @@ pub struct Group {
     pub names: Vec<String>,
     /// A name proposed for it, and how it was found (`proposed`): "preset"
     /// (60 % of it or more match one topic preset: its name), "sites" (60 %
-    /// or more come from sites of one category: that category's word),
-    /// "sender" (its most common organisation's name); "" without one, as
-    /// when its senders are persons: "Name it" then asks for a name.
+    /// or more come from sites of one category: that category's word); ""
+    /// without one: "Name it" then asks for a name.
     pub proposed: String,
     pub proposed_by: &'static str,
 }
@@ -324,10 +327,10 @@ fn summed(name: &str, read: &Read, docs: &Docs, assigned: &[Option<usize>], typi
         }
         let names = names_of(read, m);
         let preset = preset_share(read, m);
+        let started = m.iter().filter(|&&d| read.mail[d].preset.as_ref().is_some_and(|p| options.started.contains(p))).count() as f64 / m.len().max(1) as f64;
         let (proposed, proposed_by) = proposed(read, m, sites.as_ref(), preset.as_ref(), options);
         let correspondents: HashSet<&str> = m.iter().filter_map(|&d| read.mail[d].sender.as_deref()).collect();
         let sole = (correspondents.len() == 1).then(|| correspondents.iter().next().map(|a| a.to_string())).flatten();
-        let person = sole.is_some() && m.iter().any(|&d| read.mail[d].person);
         shown.push(Group {
             size: m.len() as u64,
             senders: correspondents.len() as u64,
@@ -337,8 +340,8 @@ fn summed(name: &str, read: &Read, docs: &Docs, assigned: &[Option<usize>], typi
             coherence: npmi(docs, &words[g]),
             seed: main.map(|(t, n)| (ids.get(t).cloned().unwrap_or_default(), n as f64 / m.len() as f64)),
             preset,
+            started,
             sole,
-            person,
             ids: m.iter().filter_map(|&d| read.mail[d].id.clone()).collect(),
             names,
             proposed,
@@ -523,33 +526,10 @@ fn preset_share(read: &Read, members: &[usize]) -> Option<(String, f64)> {
     Some((id.to_string(), n as f64 / members.len().max(1) as f64))
 }
 
-/// Whether a sender's name reads as a person's though the address is no
-/// person's known: a personal name (`topics::personal_name`) none of whose
-/// words is in the sender's domain ("Felix Garnier" at an office's domain:
-/// someone who works there; "La Poste" at laposte.example: the office).
-fn sounds_personal(name: &str, address: Option<&str>) -> bool {
-    let domain = address.and_then(|a| a.rsplit_once('@')).map_or("", |(_, d)| d).to_lowercase();
-    crate::topics::personal_name(Some(name), "") && !name.split_whitespace().any(|w| w.chars().count() >= 4 && domain.contains(&w.to_lowercase()))
-}
-
-/// The name of the organisation most of a group's mail comes from: its
-/// most common sender's name among those that are no person and do not
-/// sound like one (`sounds_personal`), none else.
-fn organisation(read: &Read, members: &[usize]) -> Option<String> {
-    let mut count: HashMap<&str, usize> = HashMap::new();
-    for &d in members {
-        let m = &read.mail[d];
-        if let Some(name) = m.from_name.as_deref().filter(|n| !m.person && !m.yours && !sounds_personal(n, m.sender.as_deref())) {
-            *count.entry(name).or_default() += 1;
-        }
-    }
-    count.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(a.0))).map(|(n, _)| n.to_string())
-}
-
 /// A group's proposed name and how it was found (`Group::proposed`): the
 /// preset or the site category that holds 60 % of it or more (the larger
-/// share; the preset on a tie), else its most common organisation's name;
-/// never a person's: none then.
+/// share; the preset on a tie); none else. Never a sender's: a group of
+/// mixed senders named after one of them misleads, and a person names no topic.
 fn proposed(read: &Read, members: &[usize], sites: Option<&Sites>, preset: Option<&(String, f64)>, options: &Options) -> (String, &'static str) {
     let site = sites.and_then(|sites| site_word(read, members, sites, options));
     let preset = preset.filter(|(_, share)| *share >= NAMED_SHARE).and_then(|(id, share)| {
@@ -561,51 +541,51 @@ fn proposed(read: &Read, members: &[usize], sites: Option<&Sites>, preset: Optio
         (Some((name, p)), Some((_, s))) if p >= s => (name, "preset"),
         (Some((name, _)), None) => (name, "preset"),
         (_, Some((word, _))) => (word, "sites"),
-        (None, None) => organisation(read, members).map_or((String::new(), ""), |n| (n, "sender")),
+        (None, None) => (String::new(), ""),
     }
 }
 
 /// What the window shows of the groups found (`groups` with `window`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Noticed {
+    /// Fewer than `LEAST_KEPT` messages kept here: no group shown yet.
+    pub waiting: bool,
     /// NMF's groups, the largest first, five at most.
     pub groups: Vec<Group>,
     /// Groups of one sender, each an offer of "Always <topic> for this
-    /// sender", the largest first, five at most; never a person's.
+    /// sender", the largest first, three at most, persons too (you choose
+    /// the topic: a choir's leader is a person), none with a name proposed.
     pub senders: Vec<Group>,
-    /// Left out: under the coherence floor; of one person; mostly a started
-    /// preset's; groups beyond the five shown, and offers beyond theirs.
+    /// Left out: under the coherence floor; half tagged by the presets
+    /// started already; groups beyond the five shown, and offers beyond theirs.
     pub weak: u64,
-    pub persons: u64,
     pub started: u64,
     pub more: u64,
     pub more_senders: u64,
 }
 
-/// "Groups Sioul noticed" (docs/topics.md): of NMF's groups, those of
-/// several senders, coherent enough (`COHERENCE_FLOOR`), not 80 % or more a
-/// started preset's, five at most; groups of one sender (NMF's or the
-/// senders' graph's) offered as that sender's rule instead, a person's
-/// never: persons are their own dimension.
-pub fn noticed(found: &Groups, options: &Options) -> Noticed {
-    let mut out = Noticed::default();
+/// "Groups Sioul noticed" (docs/topics.md): once `LEAST_KEPT` messages are
+/// kept here, of NMF's groups those of several senders, coherent enough
+/// (`COHERENCE_FLOOR`), less than half tagged by the presets started
+/// already (`STARTED_SHARE`), five at most; groups of one sender (NMF's or
+/// the senders' graph's) offered as that sender's rule instead, three at
+/// most, without a name proposed.
+pub fn noticed(found: &Groups) -> Noticed {
+    let mut out = Noticed { waiting: found.messages < LEAST_KEPT, ..Noticed::default() };
     let mut offered: HashSet<String> = HashSet::new();
-    let started = |g: &Group| g.preset.as_ref().is_some_and(|(id, share)| *share >= STARTED_SHARE && options.started.contains(id));
     for way in found.ways.iter().filter(|w| w.skipped.is_none()) {
         for group in &way.groups {
-            if started(group) {
+            if group.started >= STARTED_SHARE {
                 out.started += u64::from(way.name == "nmf");
                 continue;
             }
             if let Some(address) = &group.sole {
-                if group.person {
-                    out.persons += u64::from(offered.insert(address.clone()));
-                } else if offered.insert(address.clone()) {
-                    out.senders.push(group.clone());
+                if offered.insert(address.clone()) {
+                    out.senders.push(Group { proposed: String::new(), proposed_by: "", ..group.clone() });
                 }
                 continue;
             }
-            if way.name != "nmf" {
+            if way.name != "nmf" || out.waiting {
                 continue;
             }
             if group.coherence.is_none_or(|c| c < COHERENCE_FLOOR) {
@@ -618,8 +598,8 @@ pub fn noticed(found: &Groups, options: &Options) -> Noticed {
         }
     }
     out.senders.sort_by(|a, b| b.size.cmp(&a.size));
-    out.more_senders = out.senders.len().saturating_sub(SHOWN) as u64;
-    out.senders.truncate(SHOWN);
+    out.more_senders = out.senders.len().saturating_sub(SHOWN_SENDERS) as u64;
+    out.senders.truncate(SHOWN_SENDERS);
     out
 }
 
@@ -1173,24 +1153,24 @@ mod tests {
         let found = groups(&read, &labels, &ids, None, &named, &mut |_| {}, &Cancel::new()).unwrap();
         let proposed: Vec<(&str, &str)> = found.ways[1].groups.iter().map(|g| (g.proposed.as_str(), g.proposed_by)).collect();
         assert!(proposed.contains(&("Impôts", "sites")) && proposed.contains(&("Santé", "sites")), "{proposed:?}");
-        // The choir's, the tax office's and the doctor's named; the everyday mail of persons' names, none.
-        assert!(found.ways[1].groups.iter().all(|g| !g.names.is_empty() && g.proposed.is_empty() == g.proposed_by.is_empty()), "{:#?}", found.ways[1]);
-        assert!(found.ways[1].groups.iter().filter(|g| !g.proposed.is_empty()).count() >= 3, "{:#?}", found.ways[1]);
-        // The choir's card is a person's ("Choir office", no organisation): its address never names a group.
-        assert!(found.ways.iter().flat_map(|w| &w.groups).all(|g| g.proposed != "contact"), "{found:#?}");
-        let shown = noticed(&found, &named);
+        // The tax office's and the doctor's named by their sites; the choir's (no site) and the everyday mail, never after a sender.
+        assert!(found.ways.iter().flat_map(|w| &w.groups).all(|g| !g.names.is_empty() && matches!(g.proposed_by, "sites" | "") && g.proposed.is_empty() == g.proposed_by.is_empty()), "{found:#?}");
+        // Fewer than a thousand messages kept: no group shown yet, the offers of one sender alone.
+        let shown = noticed(&found);
+        assert!(shown.waiting && shown.groups.is_empty() && shown.senders.len() <= SHOWN_SENDERS && shown.senders.iter().all(|g| g.proposed.is_empty()), "{shown:#?}");
+        let more = Groups { messages: LEAST_KEPT, ..found.clone() };
+        let shown = noticed(&more);
         assert!(!shown.groups.is_empty() && shown.groups.len() <= SHOWN && shown.groups.iter().all(|g| g.coherence.is_some_and(|c| c >= COHERENCE_FLOOR) && g.sole.is_none()), "{shown:#?}");
         assert_eq!(masked("Votre code 482913 sur https://x.example/a"), "Votre code … sur …");
         let _ = std::fs::remove_dir_all(root);
     }
 
     /// Stand-in messages of one correspondent each, `n` of them.
-    fn from(address: &str, name: &str, person: bool, preset: Option<&str>, n: usize) -> Vec<crate::topics::Mail> {
+    fn from(address: &str, name: &str, preset: Option<&str>, n: usize) -> Vec<crate::topics::Mail> {
         (0..n)
             .map(|i| crate::topics::Mail {
                 sender: Some(address.into()),
                 from_name: Some(name.into()),
-                person,
                 preset: preset.map(str::to_string),
                 subject: format!("{name} {i}"),
                 ..crate::topics::Mail::default()
@@ -1202,18 +1182,16 @@ mod tests {
         Read { mail, seeds: Vec::new(), left_out: crate::topics::LeftOut::default(), reading: crate::topics::Reading::default() }
     }
 
-    /// A person's group gets no name ("Name it" asks); an organisation's
-    /// takes its sender's name; a preset that holds 60 % of a group names it,
-    /// under 60 % it does not.
+    /// A group is named by a topic preset that holds 60 % of it or more,
+    /// never after a sender, an organisation's or a person's: none else ("Name it" asks).
     #[test]
-    fn a_group_is_never_named_after_a_person() {
-        let mut mail = from("jane@example.org", "Jane Doe", true, None, 10);
-        mail.extend(from("office@impots.example", "Centre des impôts", false, None, 10));
-        mail.extend(from("avis@impots.example", "Avis d’impôt", false, Some("taxes"), 7));
-        mail.extend(from("jane@example.org", "Jane Doe", true, None, 3));
-        mail.extend(from("info@boutique.example", "Boutique Exemple", false, Some("taxes"), 5));
-        mail.extend(from("news@boutique.example", "Boutique Exemple", false, None, 5));
-        mail.extend(from("felix@office.example", "Felix Garnier", false, None, 10));
+    fn a_group_is_named_by_a_preset_or_not_at_all() {
+        let mut mail = from("jane@example.org", "Jane Doe", None, 10);
+        mail.extend(from("office@impots.example", "Centre des impôts", None, 10));
+        mail.extend(from("avis@impots.example", "Avis d’impôt", Some("taxes"), 7));
+        mail.extend(from("jane@example.org", "Jane Doe", None, 3));
+        mail.extend(from("info@boutique.example", "Boutique Exemple", Some("taxes"), 5));
+        mail.extend(from("news@boutique.example", "Boutique Exemple", None, 5));
         let read = read_of(mail);
         let presets: sioul_core::topics::presets::TopicPresets = serde_json::from_str(r#"{"checked": "2026-11-05", "topics": [{"id": "taxes", "name": {"en": "Taxes", "fr": "Impôts"}, "area": "admin", "rules": {"domains": [{"domain": "impots.example", "source": "https://impots.example/"}]}}]}"#).unwrap();
         let options = Options { language: "fr".into(), topic_presets: Some(std::sync::Arc::new(sioul_core::topics::presets::Matcher::new(&presets, &sioul_core::presets::Presets::default()))), ..Options::default() };
@@ -1222,49 +1200,46 @@ mod tests {
             proposed(&read, &members, None, preset_share(&read, &members).as_ref(), &options)
         };
         assert_eq!(name(0..10), (String::new(), ""), "a person");
-        assert_eq!(name(10..20), ("Centre des impôts".to_string(), "sender"), "an organisation");
+        assert_eq!(name(10..20), (String::new(), ""), "an organisation");
         assert_eq!(name(20..30), ("Impôts".to_string(), "preset"), "7 of 10 a preset's");
-        assert_eq!(name(30..40), ("Boutique Exemple".to_string(), "sender"), "half a preset's: its sender, named like its domain");
-        assert_eq!(name(40..50), (String::new(), ""), "someone at an office, by their own name: no name");
-        // Persons and organisations as Sioul tells them: a card, or a shared provider under a personal name.
-        let cards = HashMap::from([("jane@example.org".to_string(), true), ("office@impots.example".to_string(), false)]);
-        let shared = vec!["post.example".to_string()];
-        assert!(crate::topics::is_person("jane@example.org", Some("Jane"), &cards, &shared));
-        assert!(!crate::topics::is_person("office@impots.example", Some("Jane Doe"), &cards, &shared));
-        assert!(crate::topics::is_person("anne@post.example", Some("Anne de Lune"), &cards, &shared));
-        assert!(crate::topics::is_person("anne.lune@post.example", None, &cards, &shared));
-        assert!(!crate::topics::is_person("chorale@post.example", Some("Chorale de la vallée"), &cards, &shared));
-        assert!(!crate::topics::is_person("contact@shop.example", Some("Jane Doe"), &cards, &shared), "no card, no shared provider");
+        assert_eq!(name(30..40), (String::new(), ""), "half a preset's");
     }
 
-    /// What the window shows: weak groups, a started preset's, a person's
-    /// left out; one organisation's sender offered once, whichever way found it; five at most.
+    /// What the window shows: nothing under a thousand messages kept but the
+    /// offers; then weak groups and those half tagged by started presets left
+    /// out, five at most; one sender offered once whichever way found it,
+    /// persons too, three at most, none with a name proposed.
     #[test]
     fn the_window_shows_five_groups_and_offers_senders() {
-        let group = |size: u64, coherence: f64, sole: Option<&str>, person: bool, preset: Option<(&str, f64)>| Group {
+        let group = |size: u64, coherence: f64, sole: Option<&str>, started: f64| Group {
             size,
             senders: if sole.is_some() { 1 } else { 4 },
             coherence: Some(coherence),
             sole: sole.map(str::to_string),
-            person,
-            preset: preset.map(|(id, share)| (id.to_string(), share)),
+            started,
+            proposed: "Club".into(),
+            proposed_by: "sites",
             ..Group::default()
         };
         let mut nmf = vec![
-            group(90, 0.1, None, false, None),
-            group(80, 0.6, Some("jane@example.org"), true, None),
-            group(70, 0.6, Some("office@impots.example"), false, None),
-            group(60, 0.6, None, false, Some(("taxes", 0.9))),
-            group(55, 0.6, None, false, Some(("bank", 0.9))),
+            group(90, 0.1, None, 0.0),
+            group(80, 0.6, Some("jane@example.org"), 0.0),
+            group(70, 0.6, Some("office@impots.example"), 0.0),
+            group(60, 0.6, None, 0.5),
+            group(55, 0.6, None, 0.4),
         ];
-        nmf.extend((0..6).map(|i| group(50 - i, 0.5, None, false, None)));
-        let senders = vec![group(40, 0.2, Some("office@impots.example"), false, None), group(30, 0.2, Some("news@shop.example"), false, None)];
-        let found = Groups { ways: vec![Way { name: "senders".into(), groups: senders, ..Way::default() }, Way { name: "nmf".into(), groups: nmf, ..Way::default() }], ..Groups::default() };
-        let options = Options { started: HashSet::from(["taxes".to_string()]), ..Options::default() };
-        let shown = noticed(&found, &options);
-        assert_eq!(shown.groups.iter().map(|g| g.size).collect::<Vec<_>>(), vec![55, 50, 49, 48, 47], "the bank's preset was not started: shown");
-        assert_eq!((shown.weak, shown.persons, shown.started, shown.more, shown.more_senders), (1, 1, 1, 2, 0));
-        assert_eq!(shown.senders.iter().map(|g| g.sole.as_deref().unwrap()).collect::<Vec<_>>(), vec!["office@impots.example", "news@shop.example"]);
+        nmf.extend((0..6).map(|i| group(50 - i, 0.5, None, 0.0)));
+        let senders = vec![group(40, 0.2, Some("office@impots.example"), 0.0), group(30, 0.2, Some("news@shop.example"), 0.0), group(20, 0.2, Some("leader@choir.example"), 0.0)];
+        let ways = vec![Way { name: "senders".into(), groups: senders, ..Way::default() }, Way { name: "nmf".into(), groups: nmf, ..Way::default() }];
+        let found = Groups { messages: LEAST_KEPT, ways, ..Groups::default() };
+        let shown = noticed(&found);
+        assert!(!shown.waiting);
+        assert_eq!(shown.groups.iter().map(|g| g.size).collect::<Vec<_>>(), vec![55, 50, 49, 48, 47], "under half tagged already: shown");
+        assert_eq!((shown.weak, shown.started, shown.more, shown.more_senders), (1, 1, 2, 1));
+        assert_eq!(shown.senders.iter().map(|g| g.sole.as_deref().unwrap()).collect::<Vec<_>>(), vec!["jane@example.org", "office@impots.example", "news@shop.example"], "a person too, three at most");
+        assert!(shown.senders.iter().all(|g| g.proposed.is_empty() && g.proposed_by.is_empty()), "the person chooses the topic");
+        let small = noticed(&Groups { messages: LEAST_KEPT - 1, ..found.clone() });
+        assert!(small.waiting && small.groups.is_empty() && small.senders.len() == 3, "{small:#?}");
     }
 
     /// Words always together score near 1, never together -1.

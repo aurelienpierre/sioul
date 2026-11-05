@@ -2279,6 +2279,7 @@ pub(crate) fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), Strin
     let before: Option<DocumentMut> = std::fs::read_to_string(path).ok().and_then(|old| old.parse().ok());
     let differs = |key: &str| before.as_ref().and_then(|b| b.get(key)).map(|i| i.to_string()) != doc.get(key).map(|i| i.to_string());
     let (accounts, sites) = (differs("account"), differs("site"));
+    let topic_list = differs("topic");
     let temporary = path.with_extension("toml.new");
     std::fs::write(&temporary, text).map_err(fail)?;
     std::fs::rename(&temporary, path).map_err(fail)?;
@@ -2287,6 +2288,9 @@ pub(crate) fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), Strin
     }
     if sites {
         crate::changes::said(crate::changes::Kind::Sites);
+    }
+    if topic_list {
+        crate::changes::said(crate::changes::Kind::Topics);
     }
     Ok(())
 }
