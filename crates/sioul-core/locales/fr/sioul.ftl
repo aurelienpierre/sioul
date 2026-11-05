@@ -3932,6 +3932,24 @@ availability-stopped = Vos heures prises ne sont plus partagées.
 availability-name-for = Pour { $who }
 availability-name-link = Par lien
 availability-not-known = Pas encore connu
+availability-mirror-description = De Sioul. Au { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month }.
+availability-way-mirror-share = { $who } est aussi sur { $server } : un agenda de vos heures prises, partagé avec { $who } seulement.
+availability-way-google-freebusy = { $who } voit vos heures prises dans Google Agenda, tirées de vos agendas mêmes : Google les tient à jour, sans vos marges.
+availability-way-google-mirror = Un agenda de vos heures prises dans votre compte Google, partagé avec { $who } seulement, pour ses heures prises.
+availability-way-mirror-federated = { $who } est sur un autre Nextcloud : un agenda de vos heures prises sur { $server }, partagé avec { $who } seulement.
+availability-way-mirror-link-person = Un agenda de vos heures prises sur { $server }, avec un lien à donner à { $who }.
+availability-way-mirror-group = Un agenda de vos heures prises sur { $server }, partagé avec le groupe { $who }.
+availability-way-google-public = Les heures prises de votre agenda, publiques sur Google : qui a le lien voit leurs heures exactes, sans vos marges.
+availability-way-fastmail-link = Le lien d’heures prises de Fastmail même : activez-le dans Fastmail pour cet agenda, puis collez son lien ici.
+availability-way-mirror-link = Un agenda de vos heures prises sur { $server }, que lit toute personne qui a son lien.
+availability-way-google-schedule = Le planning de rendez-vous de Google : il ne propose que les heures que vos agendas laissent libres.
+availability-way-appointments = Votre page de rendez-vous sur { $server } : elle ne propose que les heures que vos agendas laissent libres.
+availability-way-mirror-link-booking = Un agenda de vos heures prises sur { $server }, que l’outil de réservation lit par son lien ; rien n’est proposé au-delà.
+availability-way-none = Ce serveur ne sait pas partager des heures prises.
+availability-way-no-group = Seul un Nextcloud partage avec un groupe.
 # Événements des enfants (plusieurs agendas, partie 3) : qui s’en charge, les doublures, les invitations.
 holder-title = Qui s’en charge
 holder-kind = Type

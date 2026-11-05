@@ -1490,6 +1490,7 @@ pub fn migrate_availability(path: &Path, tr: &crate::i18n::Translator, today: ji
         let made = migrated_availability(&mut doc, tr, today)?;
         if made.is_some() {
             write_document(path, &doc)?;
+            crate::changes::said(crate::changes::Kind::Agendas);
         }
         Ok(made)
     })
@@ -2973,5 +2974,15 @@ mod tests {
         assert_eq!((older.agenda.availability, older.agenda.between), (None, Some(10)));
         // A file without one: nothing.
         assert_eq!(migrate("language = \"en\"\n", &en).1, None);
+        // On the disk: written, and said to every view of the agendas; once only.
+        let dir = std::env::temp_dir().join(format!("sioul-migrate-availability-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, person).unwrap();
+        let (made, said) = crate::changes::heard(|| migrate_availability(&path, &en, today).unwrap());
+        assert!(made.is_some() && said == [crate::changes::Kind::Agendas], "{said:?}");
+        assert_eq!(Config::load(&path).unwrap().agenda.availabilities.len(), 1);
+        assert_eq!(crate::changes::heard(|| migrate_availability(&path, &en, today).unwrap()), (None, Vec::new()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

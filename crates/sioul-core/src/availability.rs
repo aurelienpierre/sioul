@@ -486,6 +486,261 @@ pub fn mirror_files(events: &[Occurrence], availability: &Availability, words: &
     blocks(events, availability, words, health, window(availability, now)).iter().map(|b| (format!("{}.ics", block_uid(b)), block_text(b))).collect()
 }
 
+// ---------------------------------------------------------------- the way per audience and server
+
+/// What an account's server is, as Sioul knows it: by its sign-in (Google),
+/// by what its DAV header says (Nextcloud's sharing, `calendars::Sharer`), by its host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerKind {
+    Google,
+    Nextcloud,
+    Fastmail,
+    Other,
+}
+
+/// One account a share can live on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Server {
+    pub account: String,
+    pub kind: ServerKind,
+    /// Its host, "cloud.example.org"; for Google, the account's address.
+    pub host: String,
+    /// It shares a calendar with its own users (Nextcloud's DAV sharing, Google's ACL).
+    pub shares: bool,
+    /// It publishes a calendar by a read-only link.
+    pub publishes: bool,
+}
+
+/// A way Sioul would use for an audience, on an account, and why, in one
+/// sentence (`why`, a message id taking `who` and `server`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Choice {
+    pub way: Way,
+    pub account: String,
+    /// Whom, as the server will name them: a user, `group:<name>`, a cloud id, an address; "" for a link.
+    pub who: String,
+    pub why: &'static str,
+}
+
+impl Choice {
+    /// The share it makes, waiting for its server's yes.
+    pub fn share(&self, audience: Audience) -> Share {
+        Share { audience: audience.id().into(), who: self.who.clone(), way: self.way.id().into(), account: self.account.clone(), link: String::new(), made: String::new() }
+    }
+}
+
+/// What Sioul says when no way fits: "This server cannot share busy times.",
+/// "Only a Nextcloud shares with a group."
+pub const NO_WAY: &str = "availability-way-none";
+pub const NO_GROUP: &str = "availability-way-no-group";
+
+/// The ways Sioul would use to share `availability` with `audience` (`who`
+/// for a person or a group), best first (design-availability-sharing §1):
+/// its server's own way where one fits, which needs no Sioul running and
+/// never goes stale; a mirror only where none does. The window offers the
+/// first and names it with its reason; the others stay a choice away.
+///
+/// - **A person**, by a name alone: a user of a server that shares (a
+///   Nextcloud), the mirror shared with them there. By `name@host` of one
+///   of your Nextclouds: that user, the same. By another address: on Google,
+///   your calendars shared busy only when the availability is all in that
+///   Google account and has no word (Google then shows the events' own
+///   times, without your margins), else a mirror there shared busy only;
+///   from a Nextcloud, the mirror federated to that cloud id (Nextcloud 32
+///   and later); else a mirror's link to give them. An address of Google's
+///   own mail, or of your Google account's domain, takes Google first;
+///   another, a Nextcloud's federation first.
+/// - **A group**: a Nextcloud's group, the mirror shared with it.
+/// - **Anyone with a link**: Google's public free/busy, or Fastmail's own
+///   link, when the availability is that one calendar and has no word; else
+///   a mirror's link on a server that publishes.
+/// - **A booking tool**: your booking page on your own server (Google's
+///   appointment schedules, Nextcloud Appointments) where your agendas are;
+///   else a mirror's link, which the tool reads as a feed.
+pub fn choose(availability: &Availability, audience: Audience, who: &str, servers: &[Server]) -> Result<Vec<Choice>, &'static str> {
+    let who = who.trim();
+    let accounts: BTreeSet<&str> = availability.agendas.iter().filter_map(|place| place.split_once('/').map(|(account, _)| account)).collect();
+    let plain = availability.words.values().all(|w| w.trim().is_empty());
+    let all_in = |server: &Server| !accounts.is_empty() && accounts.iter().all(|a| *a == server.account);
+    let holds = |server: &Server| accounts.contains(server.account.as_str());
+    let of = |kind: ServerKind| servers.iter().filter(move |s| s.kind == kind);
+    let choice = |way: Way, server: &Server, who: &str, why: &'static str| Choice { way, account: server.account.clone(), who: who.to_string(), why };
+    let link_on = |out: &mut Vec<Choice>, why: &'static str| {
+        // A Nextcloud first, then any server that publishes, Google's mirror made public last.
+        let mut publishing: Vec<&Server> = servers.iter().filter(|s| s.publishes && s.kind != ServerKind::Google).collect();
+        publishing.sort_by_key(|s| s.kind != ServerKind::Nextcloud);
+        publishing.extend(of(ServerKind::Google));
+        out.extend(publishing.into_iter().map(|s| choice(Way::MirrorLink, s, "", why)));
+    };
+    let mut out: Vec<Choice> = Vec::new();
+    match audience {
+        Audience::Person if who.is_empty() => return Err(NO_WAY),
+        Audience::Person => match who.rsplit_once('@') {
+            // A name alone: a user of a server that shares, where your agendas are first.
+            None => {
+                let mut sharing: Vec<&Server> = servers.iter().filter(|s| s.shares && s.kind != ServerKind::Google).collect();
+                sharing.sort_by_key(|s| (s.kind != ServerKind::Nextcloud, !holds(s)));
+                out.extend(sharing.into_iter().map(|s| choice(Way::MirrorShare, s, who, "availability-way-mirror-share")));
+            }
+            Some((user, host)) => {
+                if let Some(server) = servers.iter().find(|s| s.shares && s.kind == ServerKind::Nextcloud && s.host.eq_ignore_ascii_case(host)) {
+                    out.push(choice(Way::MirrorShare, server, user, "availability-way-mirror-share"));
+                }
+                let host = host.to_ascii_lowercase();
+                let mut google: Vec<Choice> = Vec::new();
+                for server in of(ServerKind::Google) {
+                    if plain && all_in(server) {
+                        google.push(choice(Way::GoogleFreeBusy, server, who, "availability-way-google-freebusy"));
+                    }
+                    google.push(choice(Way::MirrorShare, server, who, "availability-way-google-mirror"));
+                }
+                let federated: Vec<Choice> = if valid_cloud_id(who) { of(ServerKind::Nextcloud).filter(|s| s.shares).map(|s| choice(Way::MirrorFederated, s, who, "availability-way-mirror-federated")).collect() } else { Vec::new() };
+                let google_mail = ["gmail.com", "googlemail.com"].contains(&host.as_str()) || of(ServerKind::Google).any(|s| s.host.rsplit_once('@').is_some_and(|(_, own)| own.eq_ignore_ascii_case(&host)));
+                if google_mail {
+                    out.extend(google);
+                    out.extend(federated);
+                } else {
+                    out.extend(federated);
+                    out.extend(google);
+                }
+                link_on(&mut out, "availability-way-mirror-link-person");
+            }
+        },
+        Audience::Group => {
+            let name = who.strip_prefix("group:").unwrap_or(who).trim();
+            if name.is_empty() {
+                return Err(NO_GROUP);
+            }
+            out.extend(of(ServerKind::Nextcloud).filter(|s| s.shares).map(|s| choice(Way::MirrorShare, s, &format!("group:{name}"), "availability-way-mirror-group")));
+            if out.is_empty() {
+                return Err(NO_GROUP);
+            }
+        }
+        Audience::Link => {
+            if plain && availability.agendas.len() == 1 {
+                for server in servers.iter().filter(|s| all_in(s)) {
+                    match server.kind {
+                        ServerKind::Google => out.push(choice(Way::GooglePublic, server, "", "availability-way-google-public")),
+                        ServerKind::Fastmail => out.push(choice(Way::FastmailLink, server, "", "availability-way-fastmail-link")),
+                        _ => {}
+                    }
+                }
+            }
+            link_on(&mut out, "availability-way-mirror-link");
+        }
+        Audience::Booking => {
+            for server in servers.iter().filter(|s| holds(s)) {
+                match server.kind {
+                    ServerKind::Google => out.push(choice(Way::GoogleSchedule, server, "", "availability-way-google-schedule")),
+                    ServerKind::Nextcloud => out.push(choice(Way::Appointments, server, "", "availability-way-appointments")),
+                    _ => {}
+                }
+            }
+            link_on(&mut out, "availability-way-mirror-link-booking");
+        }
+    }
+    out.dedup_by(|a, b| a.way == b.way && a.account == b.account && a.who == b.who);
+    if out.is_empty() { Err(NO_WAY) } else { Ok(out) }
+}
+
+/// Every reason `choose` may give, and its refusals: each a message in every language.
+pub const REASONS: [&str; 14] = [
+    "availability-way-mirror-share",
+    "availability-way-google-freebusy",
+    "availability-way-google-mirror",
+    "availability-way-mirror-federated",
+    "availability-way-mirror-link-person",
+    "availability-way-mirror-group",
+    "availability-way-google-public",
+    "availability-way-fastmail-link",
+    "availability-way-mirror-link",
+    "availability-way-google-schedule",
+    "availability-way-appointments",
+    "availability-way-mirror-link-booking",
+    NO_WAY,
+    NO_GROUP,
+];
+
+/// Whether a text reads as a Nextcloud cloud id ("sam@cloud.example.org"):
+/// a name and a server, no space, no slash (`calendars::federated_principal`).
+fn valid_cloud_id(text: &str) -> bool {
+    text.rsplit_once('@').is_some_and(|(user, server)| !user.is_empty() && server.contains(['.', ':']) && !text.chars().any(|c| c.is_whitespace() || c.is_control() || c == '/'))
+}
+
+// ---------------------------------------------------------------- your working hours, for a server's free/busy
+
+/// "09:00" as hours and minutes; "24:00" ends a day.
+fn clock(text: &str) -> Option<(u32, u32)> {
+    let (hour, minute) = text.trim().split_once(':')?;
+    let (hour, minute): (u32, u32) = (hour.trim().parse().ok()?, minute.trim().parse().ok()?);
+    (minute < 60 && (hour < 24 || (hour == 24 && minute == 0))).then_some((hour, minute))
+}
+
+/// Your working hours (Settings ▸ Hours: the windows for work) as a
+/// server's free/busy reads them (RFC 7953): one VAVAILABILITY in your time
+/// zone, one AVAILABLE per span of the day repeating weekly on its days, as
+/// Nextcloud's own settings page groups them (`slotsToVavailability`,
+/// @nextcloud/calendar-availability-vue, read 5 November 2026), so that
+/// its page shows them back. Its dates fall in one fixed week and its UIDs
+/// derive from what it says, so that two devices write the same bytes.
+/// None without working hours: the server's property is then taken out,
+/// never written empty, which RFC 7953 reads as never available.
+pub fn working_hours(windows: &[crate::window::AdminWindow], zone_name: &str, zone: &jiff::tz::TimeZone) -> Option<String> {
+    const DAYS: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+    let mut spans: BTreeMap<((u32, u32), (u32, u32)), BTreeSet<usize>> = BTreeMap::new();
+    for window in windows.iter().filter(|w| w.kind() == "work") {
+        let (Some(day), Some(start), Some(end)) = (window.weekday(), clock(&window.start), clock(&window.end_text())) else { continue };
+        if start.0 == 24 || start == end {
+            continue;
+        }
+        spans.entry((start, end)).or_default().insert(day.to_monday_zero_offset() as usize);
+    }
+    if spans.is_empty() {
+        return None;
+    }
+    // The week of Monday 1 January 2024.
+    let day = |offset: usize| jiff::civil::date(2024, 1, 1).checked_add(jiff::Span::new().days(offset as i64)).unwrap_or(jiff::civil::date(2024, 1, 1)).strftime("%Y%m%d").to_string();
+    let utc = zone_name.is_empty() || zone_name.eq_ignore_ascii_case("UTC");
+    let at = |offset: usize, (hour, minute): (u32, u32)| {
+        let (offset, hour) = if hour == 24 { (offset + 1, 0) } else { (offset, hour) };
+        if utc { format!(":{}T{hour:02}{minute:02}00Z", day(offset)) } else { format!(";TZID={zone_name}:{}T{hour:02}{minute:02}00", day(offset)) }
+    };
+    let stamp = "DTSTAMP:20240101T000000Z".to_string();
+    let mut lines = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string()];
+    if !utc {
+        lines.extend(crate::agenda::vtimezone(zone, zone_name, 2024));
+    }
+    let said: String = spans.iter().map(|((s, e), days)| format!("{s:?}-{e:?}-{days:?};")).collect();
+    lines.extend(["BEGIN:VAVAILABILITY".to_string(), format!("UID:{}", crate::holders::uuid_v5(&crate::holders::NAMESPACE, &format!("working-hours\n{zone_name}\n{said}"))), stamp.clone()]);
+    for ((start, end), days) in &spans {
+        let first = *days.iter().next().unwrap_or(&0);
+        // An end before its start ends the next day.
+        let end_day = if end <= start { first + 1 } else { first };
+        let byday: Vec<&str> = days.iter().map(|d| DAYS[*d]).collect();
+        lines.extend([
+            "BEGIN:AVAILABLE".to_string(),
+            format!("UID:{}", crate::holders::uuid_v5(&crate::holders::NAMESPACE, &format!("working-hours\n{zone_name}\n{start:?}\n{end:?}\n{}", byday.join(",")))),
+            stamp.clone(),
+            format!("DTSTART{}", at(first, *start)),
+            format!("DTEND{}", at(end_day, *end)),
+            format!("RRULE:FREQ=WEEKLY;BYDAY={}", byday.join(",")),
+            "END:AVAILABLE".to_string(),
+        ]);
+    }
+    lines.extend(["END:VAVAILABILITY".to_string(), "END:VCALENDAR".to_string()]);
+    Some(crate::lines::fold(&lines))
+}
+
+/// A mirror's description, the reader's only word on how fresh it is: a
+/// date, never a time, which would tell when your devices run
+/// (research/availability-sharing.md §6.1): "From Sioul. As of 5 November."
+pub fn mirror_description(tr: &crate::i18n::Translator, today: jiff::civil::Date) -> String {
+    let mut args = crate::i18n::args();
+    args.set("day", today.day());
+    args.set("month", tr.text(&format!("month-{}", today.month()), None));
+    tr.text("availability-mirror-description", Some(&args))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -612,5 +867,92 @@ mod tests {
         assert_eq!((newer.audience(), newer.way()), (None, None));
         let availability = Availability { shares: vec![Share { way: "mirror-link".into(), account: "cloud".into(), ..Share::default() }, Share { way: "google-freebusy".into(), account: "google".into(), ..Share::default() }], ..mine(&[]) };
         assert!(availability.needs_mirror("cloud") && !availability.needs_mirror("google"));
+    }
+
+    /// Your working hours as Nextcloud's settings page writes them: one
+    /// AVAILABLE per span of the day, its days together, in your zone, in a
+    /// fixed week; an evening past midnight ending the next day; admin hours
+    /// left out; the same bytes whatever the order; none without working hours.
+    #[test]
+    fn working_hours_read_as_nextcloud_s_settings_write_them() {
+        use crate::window::AdminWindow;
+        let w = |day: &str, start: &str, end: &str, kind: Option<&str>| AdminWindow { day: day.into(), start: start.into(), end: Some(end.into()), minutes: 0, kind: kind.map(str::to_string) };
+        let paris = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let windows = vec![w("monday", "09:00", "17:00", None), w("tuesday", "09:00", "17:00", None), w("friday", "09:00", "12:00", None), w("saturday", "10:00", "12:00", Some("admin")), w("wednesday", "22:00", "02:00", None)];
+        let text = working_hours(&windows, "Europe/Paris", &paris).unwrap();
+        let flat = text.replace("\r\n ", "");
+        for line in ["BEGIN:VTIMEZONE", "TZID:Europe/Paris", "BEGIN:VAVAILABILITY", "DTSTART;TZID=Europe/Paris:20240101T090000", "DTEND;TZID=Europe/Paris:20240101T170000", "RRULE:FREQ=WEEKLY;BYDAY=MO,TU", "DTSTART;TZID=Europe/Paris:20240105T090000", "RRULE:FREQ=WEEKLY;BYDAY=FR", "DTSTART;TZID=Europe/Paris:20240103T220000", "DTEND;TZID=Europe/Paris:20240104T020000"] {
+            assert!(flat.contains(line), "{line}: {flat}");
+        }
+        assert_eq!((flat.matches("BEGIN:AVAILABLE").count(), flat.contains("BYDAY=SA")), (3, false), "{flat}");
+        let mut reversed = windows.clone();
+        reversed.reverse();
+        assert_eq!(working_hours(&reversed, "Europe/Paris", &paris), Some(text), "two devices, the same bytes");
+        assert!(working_hours(&windows, "UTC", &jiff::tz::TimeZone::UTC).unwrap().contains("DTSTART:20240101T090000Z"));
+        assert!(working_hours(&[w("monday", "18:00", "24:00", None)], "UTC", &jiff::tz::TimeZone::UTC).unwrap().contains("DTEND:20240102T000000Z"), "midnight ends the day");
+        assert_eq!(working_hours(&windows[3..4], "Europe/Paris", &paris), None, "admin hours alone: none");
+        assert_eq!(working_hours(&[], "Europe/Paris", &paris), None);
+    }
+
+    /// The way: the server's own first, a mirror only where none fits; by
+    /// whom, by server, by how many agendas and whether a word is said; each
+    /// reason a sentence in every language.
+    #[test]
+    fn the_way_is_the_server_s_own_first_and_a_mirror_only_where_none_fits() {
+        let server = |account: &str, kind: ServerKind, host: &str, shares: bool, publishes: bool| Server { account: account.into(), kind, host: host.into(), shares, publishes };
+        let cloud = server("cloud", ServerKind::Nextcloud, "cloud.example.org", true, true);
+        let google = server("g", ServerKind::Google, "alex@example.org", true, true);
+        let fastmail = server("fm", ServerKind::Fastmail, "caldav.fastmail.com", false, false);
+        let icloud = server("ic", ServerKind::Other, "caldav.icloud.com", false, false);
+        let ways = |a: &Availability, audience: Audience, who: &str, servers: &[Server]| choose(a, audience, who, servers).map(|c| c.into_iter().map(|c| (c.way, c.account, c.who)).collect::<Vec<_>>());
+        let w = |way: Way, account: &str, who: &str| (way, account.to_string(), who.to_string());
+        let mine = Availability { agendas: vec!["cloud/personal".into()], ..Availability::default() };
+        let both = [cloud.clone(), google.clone()];
+        // A person, by a name: a user of the Nextcloud.
+        assert_eq!(ways(&mine, Audience::Person, "sam", &both).unwrap()[0], w(Way::MirrorShare, "cloud", "sam"));
+        assert_eq!(ways(&mine, Audience::Person, "sam@cloud.example.org", &both).unwrap()[0], w(Way::MirrorShare, "cloud", "sam"), "a user of your own Nextcloud");
+        // Someone elsewhere: federation first, Google next, a link last.
+        assert_eq!(ways(&mine, Audience::Person, "lea@other.example.net", &both).unwrap(), [w(Way::MirrorFederated, "cloud", "lea@other.example.net"), w(Way::MirrorShare, "g", "lea@other.example.net"), w(Way::MirrorLink, "cloud", ""), w(Way::MirrorLink, "g", "")]);
+        assert_eq!(ways(&mine, Audience::Person, "lea@gmail.com", &both).unwrap()[0], w(Way::MirrorShare, "g", "lea@gmail.com"), "Google's mail: Google first; your agendas elsewhere: a mirror there");
+        assert_eq!(ways(&mine, Audience::Person, "lea@example.org", &both).unwrap()[0], w(Way::MirrorShare, "g", "lea@example.org"), "your Google account's domain");
+        // All in Google, no word: Google's own share; a word: a mirror.
+        let on_google = Availability { agendas: vec!["g/primary".into(), "g/work".into()], ..Availability::default() };
+        assert_eq!(ways(&on_google, Audience::Person, "lea@gmail.com", &[google.clone()]).unwrap()[0], w(Way::GoogleFreeBusy, "g", "lea@gmail.com"));
+        let worded = Availability { words: [("g/work".to_string(), "Work".to_string())].into(), ..on_google.clone() };
+        assert_eq!(ways(&worded, Audience::Person, "lea@gmail.com", &[google.clone()]).unwrap()[0], w(Way::MirrorShare, "g", "lea@gmail.com"));
+        // A group: a Nextcloud's alone.
+        assert_eq!(ways(&mine, Audience::Group, "family", &both).unwrap(), [w(Way::MirrorShare, "cloud", "group:family")]);
+        assert_eq!(choose(&mine, Audience::Group, "family", &[google.clone()]), Err(NO_GROUP));
+        // A link: Google's or Fastmail's own for one calendar without a word; else a mirror's.
+        let one_on_google = Availability { agendas: vec!["g/primary".into()], ..Availability::default() };
+        assert_eq!(ways(&one_on_google, Audience::Link, "", &both).unwrap()[0], w(Way::GooglePublic, "g", ""));
+        assert_eq!(ways(&on_google, Audience::Link, "", &both).unwrap()[0], w(Way::MirrorLink, "cloud", ""), "two calendars: a mirror");
+        let one_on_fastmail = Availability { agendas: vec!["fm/home".into()], ..Availability::default() };
+        assert_eq!(ways(&one_on_fastmail, Audience::Link, "", &[fastmail.clone()]).unwrap(), [w(Way::FastmailLink, "fm", "")]);
+        // A booking tool: your own server's page first.
+        let spread = Availability { agendas: vec!["cloud/personal".into(), "g/work".into()], ..Availability::default() };
+        assert_eq!(ways(&spread, Audience::Booking, "", &both).unwrap()[..2], [w(Way::Appointments, "cloud", ""), w(Way::GoogleSchedule, "g", "")]);
+        // A server that neither shares nor publishes: said.
+        let on_icloud = Availability { agendas: vec!["ic/home".into()], ..Availability::default() };
+        assert_eq!(choose(&on_icloud, Audience::Person, "sam", &[icloud.clone()]), Err(NO_WAY));
+        assert_eq!(choose(&on_icloud, Audience::Link, "", &[icloud]), Err(NO_WAY));
+        assert_eq!(choose(&mine, Audience::Person, " ", &both), Err(NO_WAY));
+        assert_eq!(choose(&mine, Audience::Person, "sam", &both).unwrap()[0].share(Audience::Person), Share { audience: "person".into(), who: "sam".into(), way: "mirror-share".into(), account: "cloud".into(), ..Share::default() });
+        for language in ["en", "fr"] {
+            let tr = crate::i18n::Translator::new(language);
+            for id in REASONS {
+                assert_ne!(tr.text(id, None), id, "{language}: {id}");
+            }
+        }
+    }
+
+    /// A mirror's description says a day, never a time.
+    #[test]
+    fn a_mirror_says_its_day_never_its_time() {
+        let en = crate::i18n::Translator::new("en");
+        let fr = crate::i18n::Translator::new("fr");
+        assert_eq!(mirror_description(&en, jiff::civil::date(2026, 11, 5)), "From Sioul. As of 5 November.");
+        assert_eq!(mirror_description(&fr, jiff::civil::date(2026, 11, 5)), "De Sioul. Au 5 novembre.");
+        assert_eq!(mirror_description(&fr, jiff::civil::date(2026, 12, 1)), "De Sioul. Au 1er décembre.");
     }
 }

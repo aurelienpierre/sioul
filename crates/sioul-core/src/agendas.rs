@@ -913,7 +913,10 @@ fn edit_availability(path: &Path, id: &str, make: bool, change: impl FnOnce(&mut
             }
         }
         crate::config::mark_format(&mut doc);
-        crate::config::write_document(path, &doc)
+        crate::config::write_document(path, &doc)?;
+        // Your availabilities, said to every view of them (Agenda ⚙, the agenda's mirrors left out).
+        crate::changes::said(crate::changes::Kind::Agendas);
+        Ok(())
     })
 }
 
@@ -1685,7 +1688,8 @@ mod tests {
         assert_eq!(back.mirrors, [Mirror { account: "cloud".into(), calendar: "busy-7f3c".into(), transparent: true }], "one mirror per account");
         assert_eq!((back.shares.len(), back.shares[0].made.as_str()), (1, "2026-11-05"), "the same share, said made");
         let public = Availability { shares: vec![share("mirror-link", "")], ..Availability::new("Public", vec!["cloud/personal".into()], Audience::Link) };
-        put_availability(&path, &public).unwrap();
+        let ((), said) = crate::changes::heard(|| put_availability(&path, &public).unwrap());
+        assert_eq!(said, [crate::changes::Kind::Agendas], "every view of them told");
         let both = read().agenda.availabilities;
         assert_eq!((both.len(), both[1].rounding, both[1].horizon), (2, 15, 14), "a link: the quarter hour, two weeks");
         // A newer Sioul's fields, in the availability and in its share: kept through a write.

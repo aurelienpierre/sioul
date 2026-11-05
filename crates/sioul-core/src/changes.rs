@@ -20,7 +20,8 @@ pub enum Kind {
     /// The persons of `persons.toml` (docs/persons.md).
     Persons,
     /// What each agenda is (`[agenda.calendars]`: its role, its person, its
-    /// area), and your availability's share (`[agenda.availability]`).
+    /// area), and your availabilities (`[[agenda.availabilities]]`, and the
+    /// single share of before, `[agenda.availability]`).
     Agendas,
 }
 
