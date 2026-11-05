@@ -33,8 +33,16 @@ Item {
     QtObject {
         id: mock
 
+        signal personsChanged
+        signal agendasChanged
+
         property var agents: []
         property var opened: []
+        // A person made elsewhere (an agenda's role, another device), when a test says so.
+        property bool noe: false
+        // The hand-over line, until said.
+        property string handover: "From 16, Léa can have a carte Vitale and a reimbursement account in Léa’s own name."
+        property int pageReads: 0
 
         // Made up: no real person.
         function household() {
@@ -44,12 +52,13 @@ Item {
                     { id: "p-lea", name: "Léa", relation: "child", line: "Child · 12 · lives with you" },
                     { id: "p-odile", name: "Odile Grandmother-of-the-household", relation: "parent", line: "Parent" },
                     { id: "p-robin", name: "Robin", relation: "partner", line: "Partner" }
-                ],
+                ].concat(mock.noe ? [{ id: "p-noe", name: "Noé", relation: "child", line: "Child" }] : []),
                 others: [{ id: "p-sam", name: "Sam", relation: "other-parent", line: "Léa’s other parent" }],
                 relations: [{ id: "child", label: "Child" }, { id: "", label: "In your household" }]
             })
         }
         function personPage(id) {
+            mock.pageReads++
             if (id === "me")
                 return JSON.stringify({ id: "me", me: true, name: "persons-you", full_name: "", relation: "me", line: "", born: "", lives_with: false, agents: true, holds_papers: true, of: [], papers: [], cards: [] })
             return JSON.stringify({
@@ -60,7 +69,7 @@ Item {
                 cards: [{ uid: "c-lea", key: "/stand-in/lea.vcf", name: "Léa Martin", detail: "lea@example.org" }],
                 agendas: [{ id: "home/lea-school", name: "Léa, school and activities", child: true, whose: "" }],
                 letters: [{ id: "l-1", sender: "Collège de l’Exemple", kind_label: "A request for documents", received: "Monday 2 November" }],
-                handover: "From 16, Léa can have a carte Vitale and a reimbursement account in Léa’s own name.", handover_age: 16,
+                handover: mock.handover, handover_age: mock.handover === "" ? 0 : 16,
                 can_end: false, partner: false, ended: "",
                 same_as: [{ id: "p-lea-m", name: "Léa M." }]
             })
@@ -267,6 +276,31 @@ Item {
             verify(find(person, "personKeeps").visible && find(person, "personSameAs").visible && find(person, "personNotAPerson").visible)
             verify(!find(person, "personEnds").visible, "a child's relation has no end to say")
             compare(past(person, []).join("; "), "", "nothing past 412 points")
+        }
+
+        // A person made or changed elsewhere (an agenda's role, another
+        // device): the household and the open page read again at once.
+        function test_a_change_elsewhere_shows_at_once() {
+            household.reload()
+            person.personId = "p-lea"
+            waitForRendering(household)
+            verify(find(household, "householdChip:Noé") === null)
+            mock.noe = true
+            mock.personsChanged()
+            waitForRendering(household)
+            verify(find(household, "householdChip:Noé") !== null, "the household")
+            const reads = mock.pageReads
+            mock.agendasChanged()
+            compare(mock.pageReads, reads + 1, "the page, its agendas")
+            mock.personsChanged()
+            compare(mock.pageReads, reads + 2, "the page, its person")
+            // The hand-over line, said once, stays while the page shows Léa (its saying writes the store).
+            mock.handover = ""
+            mock.personsChanged()
+            verify(find(person, "personHandover").visible, "the hand-over line stays")
+            mock.handover = "From 16, Léa can have a carte Vitale and a reimbursement account in Léa’s own name."
+            mock.noe = false
+            mock.personsChanged()
         }
 
         function test_your_own_page_has_no_switch_and_no_cards() {

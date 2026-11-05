@@ -2327,6 +2327,12 @@ pub mod qobject {
         #[qinvokable]
         fn plain_notice(self: &Sioul, title: &QString, body: &QString);
 
+        /// `text` put on the system's clipboard (a Copy button: a share's
+        /// link, a code, a number); whether the clipboard holds it then, for
+        /// the button to say "Copied.".
+        #[qinvokable]
+        fn copy_text(self: &Sioul, text: &QString) -> bool;
+
         /// Real time on or off: every folder of every address fetched each minute, and the Porch open.
         #[qinvokable]
         fn set_realtime_mode(self: Pin<&mut Sioul>, on: bool);
@@ -2404,6 +2410,16 @@ pub mod qobject {
         /// Paper letters were read: the Porch shows them again.
         #[qsignal]
         fn letters_changed(self: Pin<&mut Sioul>);
+
+        /// The persons changed (`changes`): the household, a person's page
+        /// and every person chooser read them again.
+        #[qsignal]
+        fn persons_changed(self: Pin<&mut Sioul>);
+
+        /// What an agenda is changed (its role, its person, its area; your
+        /// availability's share): Agenda ⚙ and a person's page read it again.
+        #[qsignal]
+        fn agendas_changed(self: Pin<&mut Sioul>);
 
         /// A task just done, whichever way (a list, its panel, the focus window):
         /// the status line offers "How was it?", quietly.
@@ -4047,6 +4063,10 @@ impl qobject::Sioul {
     }
 
     fn start(mut self: Pin<&mut Self>) {
+        // Each kind of object said changed by the one place that writes it: the views hear it (changes.rs).
+        crate::changes::listen(&self.qt_thread());
+        // Each agenda's role given its person, those typed before Sioul did (docs/persons.md).
+        std::thread::spawn(crate::persons::tie_roles);
         // Nothing ends when a window starts or closes (decision 10): each state has its own end.
         // Sites an older file kept among the accounts move to their own list, a copy kept beside, made once.
         if let Err(e) = config::migrate_sites_at_start(&config_path()) {
@@ -7196,6 +7216,12 @@ impl qobject::Sioul {
         });
     }
 
+    fn copy_text(&self, text: &QString) -> bool {
+        let text = text.to_string();
+        // SAFETY: cpp/clipboard.cpp reads `length` bytes at `text`, which lives through the call; the window's thread calls it.
+        unsafe { crate::sioul_copy_text(text.as_ptr().cast(), text.len()) }
+    }
+
     fn set_realtime_mode(mut self: Pin<&mut Self>, on: bool) {
         let shared = self.shared();
         shared.realtime.store(on, Ordering::Relaxed);
@@ -7311,8 +7337,9 @@ impl qobject::Sioul {
         // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
         // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
-        // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons"].contains(&steps.as_str()) && offline()) {
+        // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
+        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

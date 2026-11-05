@@ -49,12 +49,13 @@ ToolButton {
             shown.scrollTo(key)
     }
 
-    // For the window's images: one of the panel's parts, by its objectName, or null.
-    function part(name) {
+    // For the window's images: one of the panel's parts, by its objectName, or null;
+    // `shown`, the first one shown.
+    function part(name, shown) {
         const within = item => {
             for (let i = 0; i < item.children.length; i++) {
                 const child = item.children[i]
-                if (child.objectName === name)
+                if (child.objectName === name && (shown !== true || child.visible))
                     return child
                 const found = within(child)
                 if (found !== null)
@@ -66,6 +67,13 @@ ToolButton {
     }
 
     // For the window's images: the panel floats over the page, out of its picture.
+    // For the window's images: the first part of that objectName shown, at the top of the panel.
+    function reveal(name) {
+        const shown = panel.item as SettingsPanel
+        if (shown !== null)
+            shown.scrollToItem(button.part(name, true))
+    }
+
     function grab(path) {
         if (panel.item !== null)
             panel.item.contentItem.grabToImage(result => result.saveToFile(path))

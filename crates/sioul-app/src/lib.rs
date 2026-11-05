@@ -132,6 +132,7 @@ mod blocks;
 mod calendarfile;
 mod calls;
 mod capacity;
+mod changes;
 mod children;
 // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
 #[cfg(not(target_os = "android"))]
@@ -235,6 +236,9 @@ unsafe extern "C" {
     /// `PdfWriter::write` without QML (cpp/pdfwriter.cpp): `html` written as a
     /// PDF into `path`, both C strings; 0 when it was.
     fn sioul_pdf_write(html: *const std::ffi::c_char, path: *const std::ffi::c_char) -> i32;
+    /// `length` bytes of UTF-8 at `text` put on the system's clipboard
+    /// (cpp/clipboard.cpp), on the window's thread; whether it holds them then.
+    pub(crate) fn sioul_copy_text(text: *const std::ffi::c_char, length: usize) -> bool;
 }
 
 /// When Sioul started, for `timing`.
