@@ -306,6 +306,16 @@ Under **Your own spam filter**, in the Mail page's ⚙. It judges strangers' mai
 
 What it does with each verdict, the thresholds and whether it trains by itself travel to your other devices with your settings. What training reads, and what it keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
 
+## Why it works this way {#why-it-works-this-way}
+
+**Topics are words on your mail, never places it goes.** Filing by hand costs and fails: in personal Gmail accounts, about half the labels people make end with fewer than three conversations (Grevet et al. 2014), and finding a message through folders took longer than searching for it, without heavy filers finding more (Whittaker et al. 2011). So a topic is a filter over the one mailbox, a word on the row and a search condition: a wrong word costs nothing while the message stays where it was, and a conversation stays whole.
+
+**They start from what you already have.** Your folders and your contacts' categories are the best record of the topics you keep, and the senders Sioul can prove carry most of a topic: a sorter of web mail placed most messages by their sender alone (Grbovic et al. 2014). So the first topics come from your folders, your categories and the senders of a bank, a tax office or a health insurer that Sioul knows; your word on a message or a sender comes first, and nothing asks you to review anything.
+
+**The model waits for mail, and never moves what you see.** A topic is learned once it has 20 messages from 3 senders, or 50 from one office; below that, your words and its rules sort it. Each week a new table replaces the one in use only when it does no worse on the newest mail, topic by topic, and changes fewer than 2 % of the topics already shown, so that nothing moves under your eyes. A doubt is shown only under its topic's filter, as "Perhaps", and never counts as a label; Sioul's own sure guesses count at half weight, never more than a topic's other examples, as its spam filter's own verdicts count until you correct them.
+
+More in [what the research says](../dev/research.md), finding 61.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 As of October 2026, from each app's own documentation.
@@ -330,6 +340,8 @@ Thunderbird is the free-software mail program for computers, with an Android app
     | Send later, snooze | ✗³⁹ | partly⁴⁰ | ✓ | ✓⁴¹ | ✓ | ✓⁴² |
     | Signed and encrypted mail | ✓⁴³ | ✓⁴⁴ | partly⁴⁵ | partly⁴⁶ | partly⁴⁷ | ✓⁴⁸ |
     | Outlook.com, Hotmail and Microsoft 365 addresses | partly⁴⁹ | ✓ | partly⁵⁰ | ✓ | ✓ | ✗⁵¹ |
+    | Topics you name, as quiet words on your mail, never a folder | ✓⁵² | partly⁵³ | partly⁵⁴ | partly⁵⁵ | partly⁵⁶ | ? |
+    | Learns them from your mail, on your devices | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | partly⁵⁶ | ? |
 
     1. Thunderbird: only through an add-on (DKIM Verifier); nothing on Android.
     2. Gmail: a question mark on a message that is not authenticated, and "Mailed by" and "Signed by" in its details, on a computer and on Android; not on an iPhone or iPad.
@@ -382,6 +394,12 @@ Thunderbird is the free-software mail program for computers, with an Android app
     49. Sioul: signed in on Microsoft's own page; not yet tried with a real Microsoft account. A work or school address may need its organisation's approval.
     50. Gmail: in its phone apps; Gmail on the web stops reading other accounts in January 2027.
     51. Proton Mail: Proton addresses; a Gmail account can be connected.
+    52. Sioul: one topic per message, from your folders, your contacts' categories, the senders of a bank, a tax office or a health insurer it knows, and your own word on a message or a sender; a filter, a word on the row and a search condition.
+    53. Thunderbird: tags you give by hand, on a computer; they reach your other devices as IMAP keywords only where the server keeps them; none on Android.
+    54. Gmail: five fixed tabs (Primary, Promotions, Social, Updates, Forums), sorted on Google's servers ("You can't create custom categories"); labels by hand or by filter.
+    55. Outlook: Focused and Other, sorted on Microsoft's servers; categories by hand, for Exchange accounts.
+    56. Apple Mail: four fixed categories since iOS 18.2 (Primary, Transactions, Updates, Promotions), sorted on the device and corrected per sender; none you name.
+    57. Sioul: learned once a week on the computer that trains, for each topic with 20 messages from 3 senders or more; every device, the phone included, then judges new mail with the same table.
 
 === "Technical"
 

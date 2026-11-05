@@ -39,6 +39,8 @@ pub enum Why {
     Category(String),
     /// The topic's preset took it, and how.
     Preset(super::presets::By),
+    /// The model judged it (`judging`): sure, or maybe (shown only under the topic's filter, "Perhaps").
+    Model(super::table::Band),
 }
 
 /// A message's topic: its place in the configuration's list, and why.
@@ -110,6 +112,80 @@ pub fn topic_of(topics: &[Topic], said: &Said, facts: &Facts, presets: Option<&s
     (!never(topic)).then_some(Tagged { topic, why: Why::Preset(by) })
 }
 
+/// A message's topic with the model's word last (docs/topics.md, "The
+/// model"): the order of words first (`topic_of`); then, unless you said
+/// "no topic" for the message or "Never" for its sender and that topic,
+/// the topic the table judged (`judging::Judgments`), sure or maybe, while
+/// the topic is still yours.
+pub fn with_model(topics: &[Topic], said: &Said, facts: &Facts, presets: Option<&super::presets::Matcher>, judged: Option<&(String, super::table::Band)>) -> Option<Tagged> {
+    if let Some(tagged) = topic_of(topics, said, facts, presets) {
+        return Some(tagged);
+    }
+    if facts.id.and_then(|id| said.message(id)).is_some() {
+        return None;
+    }
+    let (id, band) = judged?;
+    let topic = topics.iter().position(|t| t.id == *id)?;
+    let never = facts.sender.and_then(|s| said.senders.get(s)).is_some_and(|rules| rules.iter().any(|(t, r)| *r == Rule::Never && t == id));
+    (!never && *band != super::table::Band::No).then_some(Tagged { topic, why: Why::Model(*band) })
+}
+
+/// What a search's "Topic is" reads (`Field::Topic`), loaded once per
+/// search: your topics and your word on them, the presets' rules, what the
+/// table judged, the stamps each address trusts, your addresses and your
+/// contacts' categories.
+pub struct Lookup {
+    topics: Vec<Topic>,
+    said: Said,
+    presets: std::sync::Arc<super::presets::Matcher>,
+    judged: super::judging::Judgments,
+    trusted: std::collections::HashMap<String, Vec<String>>,
+    own: std::collections::HashSet<String>,
+    contacts: crate::porch::Senders,
+}
+
+impl Lookup {
+    pub fn load(config: &crate::config::Config) -> Lookup {
+        let sources = config.mail_sources();
+        Lookup {
+            topics: config.topics.clone(),
+            said: Said::load(),
+            presets: super::presets::Matcher::current(),
+            judged: super::judging::Judgments::load(&super::judging::table_path()),
+            trusted: sources.iter().filter_map(|s| Some((s.account.clone()?, s.trusted_ids.clone()))).collect(),
+            own: crate::porch::own_addresses(&sources).into_iter().map(|a| a.trim().to_lowercase()).collect(),
+            contacts: crate::porch::Senders::load(config),
+        }
+    }
+
+    /// A stored message's topic by name, as Mail's rows show it (sure; a
+    /// doubt is none), from its card, its account and the folder it is in.
+    pub fn name_of(&self, card: &crate::card::Card, account: &str, folder: &str) -> Option<String> {
+        use crate::trust::{self, Trust};
+        if self.topics.is_empty() {
+            return None;
+        }
+        let trusted = self.trusted.get(account).map(Vec::as_slice).unwrap_or(&[]);
+        let results = trust::read_auth_results(&card.headers, trusted);
+        let sealers = trust::sealers(trusted, &[]);
+        let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &sealers)).flatten();
+        let (judged, _) = trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain());
+        let from = card.from_address.as_deref().map(|a| a.trim().to_lowercase());
+        let own = from.as_ref().is_some_and(|f| self.own.contains(f));
+        let sender = (!own && judged != Trust::Forged && trust::authenticated(results.as_ref(), &card.headers, &sealers)).then_some(from).flatten();
+        let id = card.message_id.as_deref().map(crate::mailindex::bare_id);
+        let all = |name: &str| card.headers.all(name).map(str::to_string).collect::<Vec<String>>();
+        let conversation = conversation(&all("References"), &all("In-Reply-To"));
+        let folders = [folder.to_string()];
+        let categories = sender.as_deref().map(|a| self.contacts.contacts.of_address(a)).unwrap_or_default();
+        let verified = (!own && judged == Trust::Verified).then(|| card.sender_domain()).flatten();
+        let facts = Facts { id: id.as_deref(), sender: sender.as_deref(), conversation: &conversation, folders: &folders, categories: &categories, verified_domain: verified, list_id: None, is_list: card.is_list };
+        let judgment = id.as_deref().and_then(|id| self.judged.of(id));
+        let tagged = with_model(&self.topics, &self.said, &facts, Some(&self.presets), judgment)?;
+        (tagged.why != Why::Model(super::table::Band::Maybe)).then(|| self.topics[tagged.topic].name.clone())
+    }
+}
+
 /// The ids a message's conversation names, its first first: its References
 /// (oldest first), then its In-Reply-To; bare, each once.
 pub fn conversation(references: &[String], in_reply_to: &[String]) -> Vec<String> {
@@ -179,6 +255,50 @@ mod tests {
         // A topic removed names nothing.
         let acts = [tagged(2, "m@example.org", Some("gone"))];
         assert_eq!(topic_of(&topics, &said(&acts), &facts, None), None);
+    }
+
+    /// The model's word comes last: under every rule, never over your "no
+    /// topic" nor a sender's "Never"; a topic since removed names nothing.
+    #[test]
+    fn the_model_speaks_last() {
+        use super::super::table::Band;
+        let topics = topics();
+        let facts = Facts { id: Some("m@example.org"), sender: Some("anne@example.org"), ..Facts::default() };
+        let sure = ("tax".to_string(), Band::Sure);
+        assert_eq!(with_model(&topics, &said(&[]), &facts, None, Some(&sure)), Some(Tagged { topic: 1, why: Why::Model(Band::Sure) }));
+        let maybe = ("tax".to_string(), Band::Maybe);
+        assert_eq!(with_model(&topics, &said(&[]), &facts, None, Some(&maybe)).map(|t| t.why), Some(Why::Model(Band::Maybe)));
+        let folders = vec!["Chorale".to_string()];
+        assert_eq!(with_model(&topics, &said(&[]), &Facts { folders: &folders, ..facts }, None, Some(&sure)).map(|t| t.topic), Some(0), "a seed before the model");
+        assert_eq!(with_model(&topics, &said(&[tagged(1, "m@example.org", None)]), &facts, None, Some(&sure)), None, "your no topic");
+        assert_eq!(with_model(&topics, &said(&[rule(1, "anne@example.org", "tax", Rule::Never)]), &facts, None, Some(&sure)), None, "Never for the sender");
+        assert_eq!(with_model(&topics, &said(&[]), &facts, None, Some(&("gone".to_string(), Band::Sure))), None);
+    }
+
+    /// A search's "Topic is" reads a stored message as Mail's rows do: its
+    /// sender's rule when Sioul's checks prove it, never a forged one's; the
+    /// folder it is in; the table's sure word, never its doubt.
+    #[test]
+    fn a_search_reads_a_message_s_topic() {
+        use super::super::table::Band;
+        let lookup = |acts: &[Act], judged: &[(&str, &str, Band)]| Lookup {
+            topics: topics(),
+            said: said(acts),
+            presets: std::sync::Arc::default(),
+            judged: super::super::judging::Judgments { table: 1, topics: judged.iter().map(|(id, t, b)| (id.to_string(), (t.to_string(), *b))).collect(), judged: Default::default() },
+            trusted: [("work".to_string(), vec!["mx.example.org".to_string()])].into_iter().collect(),
+            own: Default::default(),
+            contacts: crate::porch::Senders::default(),
+        };
+        let card = |auth: &str| crate::card::Card::from_bytes(format!("Authentication-Results: mx.example.org; {auth}\r\nFrom: Anne <anne@choir.example>\r\nMessage-ID: <m@choir.example>\r\nSubject: Rehearsal\r\n\r\nThursday.\r\n").as_bytes()).unwrap();
+        let proven = card("dkim=pass header.d=choir.example; spf=pass smtp.mailfrom=choir.example; dmarc=pass header.from=choir.example");
+        let forged = card("dkim=fail header.d=choir.example; spf=fail smtp.mailfrom=choir.example; dmarc=fail header.from=choir.example");
+        let always = [rule(1, "anne@choir.example", "choir", Rule::Always)];
+        assert_eq!(lookup(&always, &[]).name_of(&proven, "work", "INBOX").as_deref(), Some("Chorale"));
+        assert_eq!(lookup(&always, &[]).name_of(&forged, "work", "INBOX"), None, "never a forged sender's rule");
+        assert_eq!(lookup(&[], &[]).name_of(&forged, "work", "Loisirs/Chorale").as_deref(), Some("Chorale"), "its folder");
+        assert_eq!(lookup(&[], &[("m@choir.example", "tax", Band::Sure)]).name_of(&proven, "work", "INBOX").as_deref(), Some("Impôts"));
+        assert_eq!(lookup(&[], &[("m@choir.example", "tax", Band::Maybe)]).name_of(&proven, "work", "INBOX"), None, "a doubt is no topic for a search");
     }
 
     /// A started preset takes a verified sender's mail after your own words

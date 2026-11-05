@@ -913,6 +913,8 @@ fn your_word_on_topics_waits_for_a_device_that_has_it() {
     let line = "{\"act\":\"message\",\"at\":1791360000,\"message_id\":\"a@example.org\",\"topic\":\"choir\"}\n";
     let desk_log = format!("{TOPICS}{}.jsonl", desk.id);
     desk.write(&desk_log, line);
+    // The topics' table, the desk's own training: the same gate.
+    desk.write("data/topics/table.bin", "SIOULTOP stand-in table");
     let rounds = |now: &mut i64| {
         for _ in 0..2 {
             background(&desk, &folder, &key, *now);
@@ -923,9 +925,11 @@ fn your_word_on_topics_waits_for_a_device_that_has_it() {
     };
     rounds(&mut now);
     assert!(!phone.path(&desk_log).exists(), "kept on the desk");
+    assert!(!phone.path("data/topics/table.bin").exists(), "the table kept on the desk too");
     entry(&phone, &folder, &key, |e| e.topics = TOPICS_SHARED);
     rounds(&mut now);
     assert_eq!(phone.read(&desk_log), line, "the desk's word, on the phone");
+    assert_eq!(phone.read("data/topics/table.bin"), "SIOULTOP stand-in table", "and the desk's table");
     let said = sioul_core::topics::labels::Said::of(&sioul_core::topics::labels::read_all_in(&phone.roots.state.join("topics")));
     assert_eq!(said.message("a@example.org"), Some(Some("choir")));
     let _ = std::fs::remove_dir_all(&base);

@@ -199,12 +199,15 @@ struct TopicRow {
     seeds: String,
     /// Its senders' rules: (address, "always" | "never").
     senders: Vec<(String, &'static str)>,
+    /// In the topics' table: Sioul also sorts mail like its own; else your words and its rules alone, until it has more mail.
+    learned: bool,
 }
 
 /// The topics and their senders' rules, as the settings' page and the menus show them (JSON).
 pub(crate) fn view() -> String {
     let config = load_config();
     let said = Said::load();
+    let table = topics::judging::cached(&topics::judging::table_path()).map(|(t, _)| t);
     let rows: Vec<TopicRow> = config
         .topics
         .iter()
@@ -215,7 +218,8 @@ pub(crate) fn view() -> String {
                 .flat_map(|(address, rules)| rules.iter().filter(|(t, _)| *t == topic.id).map(move |(_, r)| (address.clone(), if *r == Rule::Always { "always" } else { "never" })))
                 .collect();
             senders.sort();
-            TopicRow { id: topic.id.clone(), name: topic.name.clone(), seeds: seeds_words(&topic.seeds), senders }
+            let learned = table.as_ref().is_some_and(|t| t.meta.topics.contains(&topic.id));
+            TopicRow { id: topic.id.clone(), name: topic.name.clone(), seeds: seeds_words(&topic.seeds), senders, learned }
         })
         .collect();
     serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into())
@@ -360,6 +364,38 @@ pub(crate) fn name_sender(qt: &QtThread, shared: &Arc<Shared>, index: usize, nam
     let id = topic.id.clone();
     offer(qt, shared, line, undo, move || if made { topics::remove(&config_path(), &id).err().unwrap_or_default() } else { String::new() });
     String::new()
+}
+
+// The topics' model on this device (`topics::judging`).
+
+/// Mail of `account` that just arrived, judged by the topics' table; how many.
+pub(crate) fn after_fetch(account: &sioul_core::config::Account, new: &[PathBuf]) -> usize {
+    if new.is_empty() {
+        return 0;
+    }
+    topics::judging::judge_files(&load_config(), &account.id, new)
+}
+
+/// Messages judged in one look at the mail kept here (`judge_by_itself`): a
+/// table that just arrived judges the rest at the next looks.
+const KEPT_AT_ONCE: usize = 2000;
+
+/// The mail kept here that the table in use has not judged yet, off the
+/// window's thread, a bounded number at a time; the mailbox made again when some was.
+pub(crate) fn judge_by_itself(qt: &QtThread, shared: &Arc<Shared>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    if !topics::judging::table_path().exists() || RUNNING.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        let (judged, _) = topics::judging::judge_kept(&load_config(), KEPT_AT_ONCE);
+        if judged > 0 {
+            crate::mail::show_mail(&qt, &shared);
+        }
+        RUNNING.store(false, Ordering::Relaxed);
+    });
 }
 
 // Topic presets: day one, and those offered under "Add a topic".

@@ -244,6 +244,8 @@ fn fetch_mail(config: &Config) -> bool {
                     Ok(report) => {
                         let mut came = !report.new.is_empty();
                         crate::spam::after_fetch(account, &report.new, report.first);
+                        // Mail's topics: the new mail judged by the topics' table, then some of the mail kept (docs/topics.md, "The model").
+                        crate::topics::after_fetch(account, &report.new);
                         // Your mail filters, as every device that fetches runs them (docs/client.md,
                         // "Filters"): what they would take quietly is held back from the
                         // notifications, and told as new mail if they could not act on it.
@@ -263,6 +265,8 @@ fn fetch_mail(config: &Config) -> bool {
     });
     // Every account's arrivals known: told now, in one notification.
     crate::mailnote::close_now();
+    // A topics' table that just arrived judges the mail kept here, some at each step (docs/topics.md, "The model").
+    let _ = sioul_core::topics::judging::judge_kept(config, 500);
     let any = any.into_inner();
     if any {
         crate::homecard::mail_came();

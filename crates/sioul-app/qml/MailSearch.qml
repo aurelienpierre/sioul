@@ -73,9 +73,9 @@ ScrollView {
     }
 
     // What a value is, under a field and a test: "nothing", "text", "date",
-    // "dates", "size", "kind", "who", and the search's own "account", "folder", "mark".
+    // "dates", "size", "kind", "who", and the search's own "account", "folder", "mark", "topic".
     function kindOf(field, test) {
-        if (field === "account" || field === "folder" || field === "mark")
+        if (field === "account" || field === "folder" || field === "mark" || field === "topic")
             return field
         const t = column.testOf(field, test)
         return t ? t.value : "text"
@@ -96,6 +96,8 @@ ScrollView {
             return "inbox"
         case "account":
             return column.words.accounts.length > 0 ? column.words.accounts[0].id : ""
+        case "topic":
+            return (column.words.topics || []).length > 0 ? column.words.topics[0].id : ""
         default:
             return ""
         }
@@ -286,7 +288,7 @@ ScrollView {
                     PlainComboBox {
                         id: choiceBox
 
-                        readonly property var choices: !column.words ? [] : row.kind === "kind" ? column.words.kinds : row.kind === "who" ? column.words.who : row.kind === "mark" ? column.words.marks : row.kind === "account" ? column.words.accounts : row.kind === "folder" ? column.words.folders : []
+                        readonly property var choices: !column.words ? [] : row.kind === "kind" ? column.words.kinds : row.kind === "who" ? column.words.who : row.kind === "mark" ? column.words.marks : row.kind === "account" ? column.words.accounts : row.kind === "folder" ? column.words.folders : row.kind === "topic" ? column.words.topics || [] : []
 
                         visible: choiceBox.choices.length > 0
                         Layout.fillWidth: true

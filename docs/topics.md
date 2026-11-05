@@ -94,6 +94,19 @@ Each group shows its size, its senders, yours among its messages, the words that
 
 The commands print names and numbers, and subjects only in `groups`.
 
+## The model
+
+Trained in the spam filter's weekly run, after its own training, on the computer that trains it (`sioul topics train`, by hand too; `sioul_learn::topics::model`):
+
+- **Labels** by the order of words, each at full weight: your word on a message, your rules for senders, conversations, the topics' seeds and the presets' rules. Then the last table's own sure topics on mail nothing else names, half of them, never more than a topic's other examples, in the part learned from only; its doubts never.
+- **The gate**, topic by topic: a topic enters the table once it has 20 messages from 3 senders, or 50 from fewer (one office), counting those words. Below it, the topic has no class at all and its mail is left out of the training, never learned as "no topic": your words and its rules sort it, and Mail ▸ ⚙ ▸ Topics says so ("Sorted by your tags and senders until it has more mail"). With no topic through the gate, there is no table.
+- **The guards**: in a topic of three senders or more, one sender makes at most 20 % of its examples; one conversation at most 20 % in any topic; the newest are kept.
+- **The model**: fastText's softmax over the topics through the gate and a class "no topic" learned from a quarter of the mail nothing names; learned from the oldest 80 % in time order, its temperature and sure thresholds fitted on the newest fifth of that, tested on the newest 20 %, then folded in f16 (below).
+- **Replaced only when no worse**: on the newest mail neither table learned from (after the table in use was made, else the whole test), the new table's F1 of sure topics against the labels must be within half a point of the one in use for every topic both know, and it must change fewer than 2 % of the sure topics the one in use shows on mail nothing else names. The first table needs neither. What the training did is said topic by topic, with the outcome.
+- **Judging, on every device** (`sioul_core::topics::judging`): the table, `$XDG_DATA_HOME/sioul/topics/table.bin`, travels with your word on topics in the settings (`files/topics/table.bin`), once every device has the store. New mail is judged after each fetch, on a phone in its background step too; the mail kept here, 2,000 messages at a look on a computer and 500 at a step on a phone, when a table arrives. What a table judged stays on the device, a line per message by its Message-ID (`$XDG_CACHE_HOME/sioul/topics/judged/`), never shared; a new table starts anew.
+- **The model's word comes last** (`rules::with_model`): under your word, your rules, the conversation, the seeds and the presets; never over your "no topic" nor a sender's "Never". A sure topic shows on the row; a doubt ("maybe") only under its topic's filter, as "Perhaps <topic>", and never counts as a label. The reader says "Sioul's guess".
+- **Search**: "Topic is" and "Topic is not" in More… read a message's topic as the rows show it, sure; a doubt is no topic there. A server's search cannot say a topic.
+
 ## The table
 
 What every device would read is `sioul_core::topics::table`, format 1: each word fastText knows under a 64-bit hash, with one number per class, the sum of its rows' scalars; each character n-gram bucket with its scalars; the end of the line's; the temperature; each topic's sure threshold. A message's scores are the mean of its rows' scalars, counted as the spam filter's table counts them, and its probabilities their softmax. The scores are kept in f16 or f32; the file says which, and ends with a checksum. Nothing of a message's text is in it.

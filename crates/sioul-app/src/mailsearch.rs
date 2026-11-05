@@ -194,6 +194,8 @@ fn scan(search: &Search, generation: u64, hidden: &BTreeSet<PathBuf>) -> Option<
             }
         }
     }
+    // "Topic is": every message's topic read as Mail's rows have it, the topics loaded once.
+    let topics = search.needs_topics().then(|| Arc::new(sioul_core::topics::rules::Lookup::load(&config)));
     let workers = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(1, 8);
     let chunk = candidates.len().div_ceil(workers).max(1);
     let stopped = AtomicBool::new(false);
@@ -201,7 +203,7 @@ fn scan(search: &Search, generation: u64, hidden: &BTreeSet<PathBuf>) -> Option<
         let handles: Vec<_> = candidates
             .chunks(chunk)
             .map(|part| {
-                let (stopped, judge) = (&stopped, judge.as_ref());
+                let (stopped, judge, topics) = (&stopped, judge.as_ref(), topics.as_ref());
                 scope.spawn(move || {
                     let mut out = Vec::new();
                     for (i, (path, place)) in part.iter().enumerate() {
@@ -209,7 +211,10 @@ fn scan(search: &Search, generation: u64, hidden: &BTreeSet<PathBuf>) -> Option<
                             stopped.store(true, Ordering::Relaxed);
                             return out;
                         }
-                        let stored = Stored::new(path.clone(), &place.0, &place.1);
+                        let mut stored = Stored::new(path.clone(), &place.0, &place.1);
+                        if let Some(topics) = topics {
+                            stored = stored.with_topics(Arc::clone(topics));
+                        }
                         if stored.matches(search, judge) {
                             out.push((stored.date().unwrap_or(0), path.clone(), Arc::clone(place), stored.message_id()));
                         }
@@ -630,6 +635,8 @@ struct Fields {
     accounts: Vec<rules::Choice>,
     /// The purposes first (every address's inbox…), then each folder of yours, by name.
     folders: Vec<rules::Choice>,
+    /// Your topics, by name (`Field::Topic`).
+    topics: Vec<rules::Choice>,
     help: String,
 }
 
@@ -649,7 +656,8 @@ fn fields() -> String {
     let mut others: Vec<rules::Choice> = named.into_iter().map(|(id, label)| rules::Choice { id, label }).collect();
     others.sort_by_key(|c| c.label.to_lowercase());
     folders.extend(others);
-    json(&Fields { words, accounts, folders, help: tr().text("search-help", None) })
+    let topics: Vec<rules::Choice> = config.topics.iter().map(|t| rules::Choice { id: t.name.clone(), label: t.name.clone() }).collect();
+    json(&Fields { words, accounts, folders, topics, help: tr().text("search-help", None) })
 }
 
 impl crate::backend::qobject::Sioul {

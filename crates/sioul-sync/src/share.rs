@@ -504,6 +504,12 @@ pub const TOPICS: &str = "state/topics/labels/";
 /// What a device's entry says once its Sioul has the topics' store (`devices::Entry::topics`).
 pub const TOPICS_SHARED: u32 = 1;
 
+/// The topics' model folded (`topics::judging`, docs/topics.md, "The
+/// model"), a single file the computer that trains writes and every device
+/// reads; with your word on topics, it travels once every other device says
+/// it has the topics' store (`topics_shared`).
+pub const TOPICS_TABLE: &str = "files/topics/table.bin";
+
 /// Whether your word on topics travels: at least one other device counts
 /// (`present`), and every one of them says in its sealed entry that its
 /// Sioul has the store (`devices::Entry::topics`), as the persons' store
@@ -742,6 +748,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // Your word on mail's topics, each device's own log, a line each, every device's read:
         // travels once every other device says it has the store (`topics_shared`).
         folder("settings", TOPICS, s.join("topics").join(sioul_core::topics::labels::FOLDER), Shape::Lines, &[]),
+        // The topics' table, the same way.
+        file("settings", TOPICS_TABLE, d.join("topics").join("table.bin"), Shape::Files),
         file("health", "data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
         // Each day's own meals, naps and nights: one entry per field of a block of a day.
         file("health", "data/health-days.toml", d.join("health-days.toml"), Shape::Toml(&PLAIN_RULES)),
@@ -5481,7 +5489,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if topics && !memory.topics_open && topics_shared(sharing, &memory, now_ms) {
         memory.topics_open = true;
     }
-    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open) || (s.name == TOPICS && !memory.topics_open);
+    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open) || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open);
     let stores: &[Store] = if stores.iter().any(left_out) {
         gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
         &gated

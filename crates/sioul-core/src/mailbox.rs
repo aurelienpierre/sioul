@@ -301,6 +301,8 @@ pub struct World {
     pub topics: Vec<crate::topics::Topic>,
     pub topics_said: crate::topics::labels::Said,
     pub topic_presets: std::sync::Arc<crate::topics::presets::Matcher>,
+    /// What the topics' table judged of the mail kept here (`topics::judging`): the last word.
+    pub topic_judged: crate::topics::judging::Judgments,
 }
 
 impl World {
@@ -326,6 +328,7 @@ impl World {
             topics: config.topics.clone(),
             topics_said: crate::topics::labels::Said::load(),
             topic_presets: crate::topics::presets::Matcher::current(),
+            topic_judged: crate::topics::judging::Judgments::load(&crate::topics::judging::table_path()),
         }
     }
 }
@@ -381,8 +384,10 @@ pub struct Row {
     /// Never a message seen on its server only: the folders' menu reads it.
     pub server: bool,
     /// Its topic's name and id, empty for none; why it has it ("yours",
-    /// "sender", "conversation", "folder", "category") and, for the last two,
-    /// the folder's or the category's name.
+    /// "sender", "conversation", "folder", "category", "preset", "site",
+    /// "list", "model": Sioul's guess, "maybe": a doubt, which the window
+    /// shows only under that topic's filter) and, for the folder and the
+    /// category, its name.
     pub topic: String,
     pub topic_id: String,
     pub topic_why: &'static str,
@@ -527,7 +532,8 @@ fn topic_of(world: &World, card: &Card, copies: &[Copy], address: &Address, from
     let categories = sender.as_deref().map(|a| world.senders.contacts.of_address(a)).unwrap_or_default();
     let verified = (!from_own && judged == Trust::Verified).then(|| card.sender_domain()).flatten();
     let facts = crate::topics::rules::Facts { id: id.as_deref(), sender: sender.as_deref(), conversation: &conversation, folders: &folders, categories: &categories, verified_domain: verified, list_id: None, is_list: card.is_list };
-    crate::topics::rules::topic_of(&world.topics, &world.topics_said, &facts, Some(&world.topic_presets))
+    let judged = id.as_deref().and_then(|id| world.topic_judged.of(id));
+    crate::topics::rules::with_model(&world.topics, &world.topics_said, &facts, Some(&world.topic_presets), judged)
 }
 
 /// Why a row has its topic, as a word the window reads.
@@ -542,6 +548,8 @@ fn why_word(why: &crate::topics::rules::Why) -> &'static str {
         Why::Preset(crate::topics::presets::By::Domain) => "preset",
         Why::Preset(crate::topics::presets::By::Site) => "site",
         Why::Preset(crate::topics::presets::By::List) => "list",
+        Why::Model(crate::topics::table::Band::Maybe) => "maybe",
+        Why::Model(_) => "model",
     }
 }
 
@@ -1040,6 +1048,7 @@ mod tests {
             topics: Vec::new(),
             topics_said: crate::topics::labels::Said::default(),
             topic_presets: std::sync::Arc::default(),
+            topic_judged: crate::topics::judging::Judgments::default(),
         }
     }
 
@@ -1126,6 +1135,16 @@ mod tests {
         assert_eq!(topic("Nothing of it"), ("", "", "", ""));
         let choir = stand.page(&world, &Ask { topic: "choir".into(), ..Ask::default() }, &BTreeSet::new());
         assert_eq!(subjects(&choir), ["Concert", "Re: Rehearsal", "Rehearsal"]);
+        // The model's word last: a doubt about the plain message, a sure guess the folder overrules.
+        use crate::topics::table::Band;
+        world.topic_judged.topics.insert("plain@example.org".into(), ("papers".into(), Band::Maybe));
+        world.topic_judged.topics.insert("kept@example.org".into(), ("choir".into(), Band::Sure));
+        let page = stand.page(&world, &Ask::default(), &BTreeSet::new());
+        let plain = row(&page, "Nothing of it");
+        assert_eq!((plain.topic_id.as_str(), plain.topic_why), ("papers", "maybe"));
+        assert_eq!(row(&page, "A paper kept").topic_why, "folder");
+        let papers = stand.page(&world, &Ask { topic: "papers".into(), ..Ask::default() }, &BTreeSet::new());
+        assert_eq!(subjects(&papers), ["Nothing of it", "A paper kept"], "the doubt under the topic's filter too");
     }
 
     /// A row acts on each address's first-ranked copy, and reads as those

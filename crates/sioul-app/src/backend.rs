@@ -3722,6 +3722,10 @@ fn sort_on_server(qt: &QtThread, shared: &Arc<Shared>, account: &Account, new: V
     let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
     std::thread::spawn(move || {
         let moved = crate::spam::after_fetch(&account, &new, false);
+        // Mail's topics: the new mail judged by the topics' table (docs/topics.md, "The model").
+        if crate::topics::after_fetch(&account, &new) > 0 {
+            crate::mail::show_mail(&qt, &shared);
+        }
         let filtered = crate::filters::after_fetch(&account, &new, false);
         if !filtered.problem.is_empty() {
             set_status(&qt, filtered.problem.clone());
@@ -6683,6 +6687,8 @@ impl qobject::Sioul {
         std::thread::spawn(move || crate::spam::by_itself(qt_spam));
         // Mail's topic presets start once, when the mail kept here is enough to judge (docs/topics.md).
         crate::topics::day_one_by_itself(&self.qt_thread(), &self.shared());
+        // The mail kept here judged by the topics' table, a table that arrived the rest at the next looks.
+        crate::topics::judge_by_itself(&self.qt_thread(), &self.shared());
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
         // The Bitwarden vault locked once unused as long as you chose, away or not (Sites ⚙).
