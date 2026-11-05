@@ -548,6 +548,28 @@ Item {
             page.menuRow(row)
     }
 
+    // For the window's pictures: the first thing shown whose title starts with `words`, opened
+    // in its card; the new event form with `text` typed in its place; that form.
+    function openTitled(words) {
+        for (let i = 0; i < page.shown.days.length; i++) {
+            const day = page.shown.days[i]
+            for (const placed of day.timed || [])
+                if ((placed.item.title || "").indexOf(words) === 0) {
+                    page.openRow(timeline.rowOf(placed, day, i, ""))
+                    return
+                }
+        }
+    }
+
+    function typePlace(text) {
+        eventDialog.now().edit("", page.iso(page.anchor))
+        eventDialog.now().typePlace(text)
+    }
+
+    function eventForm() {
+        return eventDialog.now()
+    }
+
     // A meal or a nap had already ("Had it", from its menu or its card): watched as a move is,
     // the tasks moved around it said with its line.
     function watchMove(ref) {

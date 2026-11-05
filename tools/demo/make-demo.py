@@ -1547,7 +1547,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("personal", event(c, "doctor", t("Dr Varga: check-up", "Dr Varga : bilan"), c.weekday_after(1), "09:30", "10:00",
                            location=t("Riverside Health Centre, 5 Rue Imaginaire, Lyon", "Centre de santé des Berges, 5 rue Imaginaire, Lyon"),
                            # What to bring, as a list to tick (docs/tasks.md, "Checklists").
-                           notes=t("Bring:\n- [ ] The blood test results\n- [ ] Carte Vitale", "À emporter :\n- [ ] Les résultats de la prise de sang\n- [ ] La carte Vitale"))),
+                           notes=t("Bring:\n- [ ] The blood test results\n- [ ] Carte Vitale", "À emporter :\n- [ ] Les résultats de la prise de sang\n- [ ] La carte Vitale"),
+                           # Its place's point, as a suggested address chosen writes it (the event card's map).
+                           extra=["GEO:45.764000;4.835700"])),
         # The bus there, a leg of the check-up from the timetable: it moves with it (part E).
         ("personal", event(c, "doctor-bus", t("Bus C3 to the health centre", "Bus C3 jusqu’au centre de santé"), c.weekday_after(1), "08:50", "09:15",
                            leg=("doctor", "BEFORE", 15, True, "09:30"))),
@@ -1557,8 +1559,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("personal", event(c, "choir", t("Choir rehearsal", "Répétition de la chorale"), c.this_week(3), "18:45", "20:30",
                            location=t("Two Rivers Voices, community hall", "Chœur des Deux Rivières, salle des fêtes"), weekly=True, project="choir")),
         ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:30", "13:45", location="Café du Quai")),
+        # To be confirmed: its outline dashed on the timeline, its status chosen in its card.
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
-                           location=t("Bloc & Boulder gym", "Salle Bloc et Prise"))),
+                           location=t("Bloc & Boulder gym", "Salle Bloc et Prise"), extra=["STATUS:TENTATIVE"])),
         ("personal", event(c, "lunch-mum", t("Lunch at Mum's", "Déjeuner chez Maman"), c.this_week(6), "12:30", "15:00", location="Villeurbanne")),
         ("work", event(c, "fernhill-pages", t("Fernhill: pages kick-off", "Fougères : lancement des pages"), c.weekday_after(8), "10:00", "11:00",
                        location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),

@@ -58,10 +58,41 @@ Item {
             "/c/board.ics": { id: "event:c/board.ics", key: "/c/board.ics", uid: "board", start: 4000172800, end: 4000176400, all_day: false, summary: "Board", when: "Wednesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Personal", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "chair@example.org", attendees: [], why: "" },
             "/c/lea/swim.ics": { id: "event:c/lea/swim.ics", key: "/c/lea/swim.ics", uid: "swim", start: 4000010000, end: 4000013600, all_day: false, summary: "Swimming", when: "Monday · 11:46 – 12:46", before: 0, after: 0, location: "Pool", calendar: "Léa", color: null, recurring: false, cancelled: false, tentative: false, read_only: false, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "",
                 child: { kind: "activity", kinds: [{ id: "activity", label: "holder-kind-activity" }, { id: "dentist", label: "holder-kind-dentist" }], state: "nobody", line: "holder-line-nobody", back: "", other: "Sam", proposal: "other", why: "holder-why-custody", busy: "holder-busy", writable: true } },
+            // A meeting with others, to be confirmed, at a place with its point (the event card, 5 November 2026).
+            "/c/review.ics": { id: "event:c/review.ics", key: "/c/review.ics", uid: "review", start: 4000260000, end: 4000263600, all_day: false, summary: "Review", when: "Thursday · 09:00 – 10:00", before: 0, after: 0, location: "Rue Blanche", calendar: "Work", color: null, recurring: false, cancelled: false, tentative: true, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "Chair", attendees: [], why: "", status: "tentative", own_answer: "needs-action", geo: "48.880000;2.330000",
+                people: [{ name: "Chair", address: "chair@example.org", answer: "", organizer: true, optional: false, contact: "", you: false }, { name: "Anne Exemple", address: "anne@example.org", answer: "accepted", organizer: false, optional: false, contact: "/contacts/anne.vcf", you: false }, { name: "bob@example.net", address: "bob@example.net", answer: "needs-action", organizer: false, optional: true, contact: "", you: false }] },
             "/c/holidays.ics": { id: "event:c/holidays.ics", key: "/c/holidays.ics", uid: "holidays", start: 4000086400, end: 4000090000, all_day: false, summary: "Town fair", when: "Tuesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Holidays", color: null, recurring: false, cancelled: false, tentative: false, read_only: true, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "This calendar can only be read." }
         })
 
         function text(key) { return key }
+        // The event card's place, status and suggestions (5 November 2026): what was asked, recorded.
+        property var kept: ({})
+        property var saidOnce: []
+        signal placesChanged
+        signal addressesSuggested(string typed, string suggested)
+        function setEventStatus(key, status) { mock.calls.push({ what: "setEventStatus", key: key, status: status }); return "" }
+        function eventPoint(geo, location) {
+            if (geo !== "")
+                return JSON.stringify({ lat: Number(geo.split(";")[0]), lon: Number(geo.split(";")[1]), from: "event" })
+            return mock.kept[location] ? JSON.stringify(Object.assign({ from: "kept" }, mock.kept[location])) : "{}"
+        }
+        function locatePlace(location) { mock.calls.push({ what: "locatePlace", location: location }); return "" }
+        function geoHandler() { return false }
+        function firstTime(which) {
+            if (mock.saidOnce.indexOf(which) >= 0)
+                return false
+            mock.saidOnce = mock.saidOnce.concat([which])
+            return true
+        }
+        // A port nothing listens on: no tile is ever asked of a real server.
+        function mapTiles() { return "http://127.0.0.1:9/" }
+        function suggestsAddresses() { return true }
+        function addressService() { return "Photon (komoot)" }
+        function suggestAddresses(typed) {
+            mock.calls.push({ what: "suggestAddresses", typed: typed })
+            mock.addressesSuggested(typed, JSON.stringify({ used: ["Rue Blanche"], found: [{ label: "Rue Blanche", lat: 1, lon: 2 }, { label: "3 Rue des Exemples 99999 Exempleville", lat: 45.5, lon: 4.25 }], service: "Photon (komoot)" }))
+        }
+        function keepPoint(label, lat, lon) { mock.calls.push({ what: "keepPoint", label: label, lat: lat, lon: lon }) }
         function zoneName() { return "Europe/Paris" }
         function clockLine(start, end, clock) { return "" }
         function textWith(key, name, value) { return key + ":" + value }
@@ -221,6 +252,7 @@ Item {
         function openMail(ref) { shell.opened.push({ kind: "openMail", ref: ref }) }
         function agendaAgain() { shell.agendaAsked += 1 }
         function openPage(kind, key) { shell.opened.push({ kind: kind, key: key }) }
+        function openContact(key) { shell.opened.push({ kind: "contact", key: key }) }
         function menuAt(menu, item) {}
         function linkFrom(source) {}
         function addLinked(kind, source) {}
@@ -342,6 +374,8 @@ Item {
             mock.status = ""
             mock.past = false
             mock.ahead = false
+            mock.saidOnce = []
+            mock.kept = {}
             shell.opened = []
             keeper.forms = {}
         }
@@ -400,6 +434,100 @@ Item {
             wait(20)
             compare(host.eventCard.title, "card-gone")
             verify(!root.find(host.eventCard, "cardEdit").visible)
+        }
+
+        // The event card (5 November 2026): its own status chosen when it is yours, said
+        // when it is a meeting with others, with your answer; its people, the organizer
+        // first, each with their answer and role, a row with a contact opening it.
+        function test_an_event_s_status_and_people() {
+            const host = makeHost()
+            host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
+            wait(20)
+            const status = root.find(host.eventCard, "eventCardStatus")
+            verify(status !== null && status.visible, "chosen here: it is yours")
+            compare(status.text, "event-status-confirmed  ▾")
+            status.clicked()
+            wait(20)
+            const later = root.all(status, c => typeof c.now === "function")[0]
+            const menu = later.item
+            verify(menu !== null && menu.opened)
+            const tentative = root.all(menu.contentItem, c => c.objectName === "eventCardStatus-tentative")[0]
+            tentative.triggered()
+            const set = mock.calls.filter(c => c.what === "setEventStatus")
+            compare(JSON.stringify(set), JSON.stringify([{ what: "setEventStatus", key: "/c/dentist.ics", status: "tentative" }]))
+            menu.close()
+            // A meeting with others: said, never chosen; your answer; its people.
+            host.show({ kind: "event", srcKey: "/c/review.ics", srcStart: 4000260000 })
+            wait(20)
+            const card = host.eventCard
+            verify(!root.find(card, "eventCardStatus").visible, "its organizer's to change")
+            const words = root.all(card, c => typeof c.text === "string" && c.visible).map(c => c.text)
+            verify(words.indexOf("event-status-tentative") >= 0, JSON.stringify(words))
+            verify(words.indexOf("event-you-needs-action") >= 0)
+            const people = root.all(card, c => c.objectName === "eventCardPerson").map(c => c.text)
+            compare(people, ["Chair  ·  event-organizer-role", "Anne Exemple  ·  answer-accepted", "bob@example.net  ·  event-optional  ·  answer-needs-action"])
+            const anne = root.all(card, c => c.objectName === "eventCardPerson")[1]
+            shell.opened = []
+            mouseClick(anne, 5, anne.height / 2)
+            compare(JSON.stringify(shell.opened), JSON.stringify([{ kind: "contact", key: "/contacts/anne.vcf" }]))
+        }
+
+        // Map pressed: its own GEO draws it at once; else the places kept, else one
+        // question (`locatePlace`), the map drawn once it answered; said the first time.
+        // Directions: a geo: link, or the page of each system when no app takes it.
+        function test_an_event_s_map_and_directions() {
+            mock.kept = {}
+            const host = makeHost()
+            host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
+            wait(20)
+            const card = host.eventCard
+            const map = root.find(card, "eventCardMap")
+            verify(map.visible)
+            map.clicked()
+            compare(card.mapState, "asking")
+            compare(JSON.stringify(mock.calls.filter(c => c.what === "locatePlace")), JSON.stringify([{ what: "locatePlace", location: "Rue Blanche" }]))
+            compare(root.find(card, "eventCardMapSaid").text, "map-said map-finding", "said the first time")
+            verify(!root.find(card, "eventCardMapView").active, "nothing drawn before it is known")
+            mock.kept = { "Rue Blanche": { lat: 48.88, lon: 2.33 } }
+            mock.placesChanged()
+            compare(card.mapState, "found")
+            verify(root.find(card, "eventCardMapView").active, "drawn")
+            // The way there, by system.
+            const point = { lat: 48.88, lon: 2.33 }
+            compare(JSON.stringify(card.directionsOf(point, "Rue Blanche", "linux")), JSON.stringify({ geo: "geo:48.88,2.33?q=Rue%20Blanche", page: "https://www.openstreetmap.org/directions?to=48.88,2.33" }))
+            compare(card.directionsOf(point, "Rue Blanche", "osx").page, "https://maps.apple.com/?daddr=48.88,2.33")
+            compare(JSON.stringify(card.directionsOf(null, "Rue Blanche", "windows")), JSON.stringify({ geo: "geo:0,0?q=Rue%20Blanche", page: "https://www.openstreetmap.org/directions?to=Rue%20Blanche" }))
+            compare(card.directionsOf(null, "Rue Blanche", "android").geo, "geo:0,0?q=Rue%20Blanche")
+            // Its own GEO: no question asked, and said once only.
+            mock.calls = []
+            host.show({ kind: "event", srcKey: "/c/review.ics", srcStart: 4000260000 })
+            wait(20)
+            root.find(host.eventCard, "eventCardMap").clicked()
+            compare(host.eventCard.mapState, "found")
+            compare(mock.calls.filter(c => c.what === "locatePlace").length, 0)
+            compare(root.find(host.eventCard, "eventCardMapSaid").text, "", "said once only")
+        }
+
+        // A place typed in the event form: after a pause, the places used before and the
+        // service's, each once; one chosen keeps its point, written as its GEO; where what
+        // is typed goes, said once; typing again forgets the point.
+        function test_the_place_s_suggestions() {
+            const dialog = createTemporaryObject(dialogComponent, root, { keeper: keeper })
+            dialog.edit("", "2096-10-01")
+            dialog.typePlace("Rue")
+            tryVerify(() => mock.calls.some(c => c.what === "suggestAddresses" && c.typed === "Rue"), 2000)
+            const rows = () => root.all(dialog.contentItem, c => c.objectName === "eventPlaceSuggestion")
+            tryVerify(() => rows().length === 2, 2000)
+            compare(rows().map(r => r.text), ["Rue Blanche", "3 Rue des Exemples 99999 Exempleville"], "each once, used before first")
+            verify(root.find(dialog.contentItem, "eventPlaceSaid").text.indexOf("suggest-said") === 0)
+            rows()[1].clicked()
+            compare(dialog.form().location, "3 Rue des Exemples 99999 Exempleville")
+            compare(dialog.form().geo, "45.500000;4.250000")
+            compare(JSON.stringify(mock.calls.filter(c => c.what === "keepPoint")), JSON.stringify([{ what: "keepPoint", label: "3 Rue des Exemples 99999 Exempleville", lat: 45.5, lon: 4.25 }]))
+            compare(rows().length, 0, "the list gone once chosen")
+            dialog.typePlace("Rue B")
+            compare(dialog.form().geo, "", "typed again: the point no longer holds")
+            dialog.close()
         }
 
         // A child's event (part 3): who takes it, the proposal and why first, the
@@ -1005,8 +1133,10 @@ Item {
 
         // Measured on the stand-ins above, 28 October 2026; the appointment's card
         // with part 4's Leave at, Before (one step), Bring (one group) and Answer…
-        // (its menu made at its first press): 96 before them.
-        readonly property int event: 118
+        // (its menu made at its first press): 96 before them. Measured again on 5
+        // November 2026 with its status, Map and Directions (its place: Rue Blanche),
+        // the map itself made only once pressed: 118 before them.
+        readonly property int event: 151
         readonly property int both: 178
         readonly property int phoneWithTask: 677
     }

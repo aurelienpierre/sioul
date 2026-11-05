@@ -878,6 +878,55 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
     String::new()
 }
 
+/// An event's own status set from its card (5 November 2026): "confirmed",
+/// "tentative" or "cancelled" (`agenda::with_status`), on its main event;
+/// never a calendar you only read, nor a meeting with others (its organizer's,
+/// whose server would tell every guest: the guard refuses it, and so does
+/// this). Sent, the plan made again (a cancelled one holds no time), and
+/// "Undo" offered, which puts back what the file held unless it changed since.
+/// Returns what went wrong, else "".
+pub(crate) fn set_event_status(qt: &QtThread, shared: &Arc<Shared>, key: &str, status: &str) -> String {
+    let Some(path) = ours(key) else { return tr().text("agenda-gone", None) };
+    if collection_of(&path).is_none_or(|c| c.read_only) {
+        return tr().text("agenda-read-only", None);
+    }
+    let Ok(before) = std::fs::read_to_string(&path) else { return tr().text("agenda-gone", None) };
+    if with_others(&before) {
+        return tr().text("event-change-with-others", None);
+    }
+    let Some(text) = agenda::with_status(&before, status) else { return tr().text("agenda-gone", None) };
+    if text == before {
+        return String::new();
+    }
+    let files = match (sioul_core::composed::Change { written: vec![(path.clone(), text.clone())], ..sioul_core::composed::Change::default() }).write() {
+        Ok(files) => files,
+        Err(e) => return e,
+    };
+    crate::work::replan_asked(shared);
+    let accounts: Vec<String> = files.iter().filter_map(|f| account_of(&f.path)).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    for account in &accounts {
+        nudge(shared, account);
+    }
+    let zone = sioul_core::zone::current();
+    let title = agenda::edit_of_text(&text, &zone).map(|e| e.title).filter(|t| !t.trim().is_empty()).unwrap_or_else(|| tr().text("agenda-untitled", None));
+    let line = say("event-status-set", &[("what", title), ("status", tr().text(&format!("event-status-{}", status.trim().to_ascii_lowercase()), None))]);
+    let said = sioul_core::agentwrites::Said { at: 0, line: String::new(), files };
+    mail::offer_back(qt, shared, line, move |qt, shared| {
+        if !said.put_back() {
+            return tr().text("undo-too-late", None);
+        }
+        for account in &accounts {
+            nudge(shared, account);
+        }
+        crate::work::show_work(qt, shared);
+        show_pim(qt, shared);
+        String::new()
+    });
+    crate::work::show_work(qt, shared);
+    show_pim(qt, shared);
+    String::new()
+}
+
 /// An event's file as a drag moved it (`move_event`), written and sent: its
 /// text, the accounts told, every file the gesture wrote (the event and its
 /// legs, for one Undo), and the legs' names as the line says them.

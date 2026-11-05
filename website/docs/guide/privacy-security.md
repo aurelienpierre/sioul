@@ -201,7 +201,10 @@ Fetching changes nothing on the server: no message is marked read by being fetch
 | A mailing list's own unsubscribe address | a one-click request, with nothing of yours but what the list wrote in it; or a short message to that address, from yours; or its page, in your browser | only when you choose **Unsubscribe** |
 | Open-Meteo | the coordinates of the place you chose, rounded to two decimals, or the name of a town you search | only if you choose a place for the weather; every half hour at most |
 | OpenStreetMap's geocoder (Nominatim) | your contacts' postal addresses, once each, nothing else | only after you choose **Place them** |
+| OpenStreetMap's geocoder (Nominatim) | an event's place, once, nothing else | only when you press **Map** in its card, and only when the event has no point of its own and the place was never looked up |
 | OpenStreetMap's map images, or those you chose | which part of the map is shown | while the map is open |
+| The Base Adresse Nationale (France), or Photon (komoot) elsewhere | what you type in an event's place, three characters at least, never its title | as you type a place, after a pause, while **Suggest addresses as you type** is on (Settings ▸ Agenda) |
+| The maps app or page you open | an event's place, and its point when known | only when you press **Directions** |
 | Their domain's Web Key Directory, then keys.openpgp.org | the addresses you write to | only when you choose **Look for their keys** |
 | The address written on your security key, your domain's key directory, then keys.openpgp.org | your security key's fingerprint, and your addresses' domain | only when you choose **Look for it** or **Look for a newer version** |
 | Each site you pin | a request for its own icon | about once a week |

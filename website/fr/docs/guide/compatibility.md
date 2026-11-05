@@ -204,6 +204,7 @@ Comment en connecter un, et ce qu’il peut voir : [Avec un agent d’IA](ai-a
 | Le courrier scanné, lu | Tesseract et Poppler, s’ils sont installés | de même | de même, de Homebrew | non |
 | Les sites | dans Sioul | dans Sioul | dans Sioul | dans votre navigateur |
 | Les clés de sécurité dans les sites | clés USB, leur code PIN demandé par Sioul | la boîte de dialogue de Windows | clés USB pas vérifiées ; pas de Touch ID | celles de votre navigateur |
+| L’**Itinéraire** d’un événement | un lien `geo:` quand une application ou un gestionnaire est réglé pour eux, comme le nomme `xdg-mime query default x-scheme-handler/geo`, sinon la page d’OpenStreetMap | un lien `geo:` quand une application a enregistré le protocole `geo`, sinon la page d’OpenStreetMap ; pas encore vérifié | un lien `geo:` quand une application est enregistrée pour lui, comme le dit LaunchServices, sinon les cartes d’Apple dans le navigateur ; pas encore vérifié | un lien `geo:`, que la plupart des applications de cartes prennent ; la page d’OpenStreetMap quand aucune ne le fait |
 
 Sur Ubuntu 24.04 et suivants, l’AppImage fait tourner les sites sans le bac à sable de Chromium : préférez-y le Flatpak ([Installer](install.md#download)). **Non pris en charge** : iPhone et iPad.
 

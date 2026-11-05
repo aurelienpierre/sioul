@@ -3,8 +3,12 @@
 
 // OpenStreetMap, with a pin for each place given; a click on a pin says
 // whose it is. Tiles come from the server set in the Contacts settings
-// (OpenStreetMap's by default), asked by name, sparingly, and kept by Qt's
-// cache; Qt's own lookup of map providers is turned off.
+// (OpenStreetMap's by default), asked by name (Sioul and its site), only for
+// what is in view, never ahead (no prefetching: the tile policy forbids it),
+// and kept by Qt's cache; Qt's own lookup of map providers is turned off.
+// Still (`still`), it is a small map that neither pans nor zooms: an event's
+// place (EventCard.qml). Its attribution in its corner, a tap opening the
+// licence's page.
 
 pragma ComponentBehavior: Bound
 
@@ -22,6 +26,11 @@ MapView {
     // [{ key, name, address, lat, lon }].
     property var pins: []
     property string chosen: ""
+    // A small map of one place: neither panned nor zoomed, at `zoomOne`.
+    property bool still: false
+    property real zoomOne: 15
+    // OpenStreetMap's contributors, as their licence asks, in your language.
+    property string attribution: "© OpenStreetMap contributors"
 
     signal pinClicked(string key)
 
@@ -31,7 +40,7 @@ MapView {
             return
         if (view.pins.length === 1) {
             view.map.center = QtPositioning.coordinate(view.pins[0].lat, view.pins[0].lon)
-            view.map.zoomLevel = 15
+            view.map.zoomLevel = view.zoomOne
             return
         }
         let shape = QtPositioning.rectangle()
@@ -47,7 +56,12 @@ MapView {
 
         PluginParameter {
             name: "osm.useragent"
-            value: "Sioul (desktop mail and contacts client)"
+            value: "Sioul (https://sioul.aurelienpierre.com/)"
+        }
+        // Only the tiles in view: none fetched ahead.
+        PluginParameter {
+            name: "osm.mapping.prefetching_style"
+            value: "NoPrefetching"
         }
         PluginParameter {
             name: "osm.mapping.providersrepository.disabled"
@@ -66,6 +80,8 @@ MapView {
                 return types[i]
         return types.length > 0 ? types[0] : view.map.activeMapType
     }
+    // Still: no pan, no zoom (the map's own handlers off); its attribution still opens its page.
+    map.enabled: !view.still
     map.zoomLevel: 5
     map.center: QtPositioning.coordinate(46.6, 2.4)
     onPinsChanged: Qt.callLater(view.fit)
@@ -126,11 +142,17 @@ MapView {
         anchors.bottom: parent.bottom
         anchors.margins: 2
         padding: 2
-        text: "© OpenStreetMap"
+        text: view.attribution
+        textFormat: Text.PlainText
         font.pixelSize: 10
         color: "#333333"
         background: Rectangle {
             color: "#ccffffff"
+        }
+
+        TapHandler {
+            cursorShape: Qt.PointingHandCursor
+            onTapped: Qt.openUrlExternally("https://www.openstreetmap.org/copyright")
         }
     }
 }

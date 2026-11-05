@@ -69,6 +69,7 @@ pub fn event_of(task: &Task, time: Option<(i64, i64)>, today: Date, zone: &TimeZ
         demands: task.demands,
         remind: String::new(),
         clock: String::new(),
+        geo: String::new(),
     }
 }
 

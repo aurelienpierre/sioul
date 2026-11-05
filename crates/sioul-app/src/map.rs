@@ -35,7 +35,7 @@ struct MapView {
 }
 
 /// The tile server's address before "{z}/{x}/{y}.png", OpenStreetMap's by default.
-fn tiles() -> String {
+pub(crate) fn tiles() -> String {
     let configured = load_config().map.tiles.unwrap_or_default();
     let host = configured.split("{z}").next().unwrap_or("").trim().to_string();
     if host.is_empty() { "https://tile.openstreetmap.org/".to_string() } else { host }

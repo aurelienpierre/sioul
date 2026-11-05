@@ -488,6 +488,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // How long a new event lasts, made from the timeline's "+" or the form (5 November 2026).
             let s = b.push("agenda.new_event", "agenda-new-event", Kind::Int, int(config.agenda.new_event, 30));
             Builder::range(s, 5.0, 240.0, 5.0, "min");
+            // What is typed in a place sent to suggest addresses (5 November 2026): on unless said off.
+            b.push("agenda.suggest_addresses", "agenda-suggest-addresses", Kind::Bool, SettingValue::Bool(config.agenda.suggests_addresses()));
             // The time zone this device shows (`zone::current`): its own, followed, or one chosen.
             let s = b.push("agenda.time_zone", "agenda-time-zone", Kind::Zone, SettingValue::Text(config.agenda.time_zone.clone().unwrap_or_default()));
             let device = crate::zone::device();
@@ -1405,6 +1407,11 @@ mod tests {
         let file = std::env::temp_dir().join(format!("sioul-agenda-new-event-{}.toml", std::process::id()));
         apply(&file, &config, "agenda.new_event", &SettingValue::Int(45)).unwrap();
         assert_eq!(Config::load(&file).unwrap().agenda.new_event_minutes(), 45);
+        // Addresses suggested as you type: on until said off.
+        assert!(config.agenda.suggests_addresses());
+        assert!(rows.iter().any(|s| s.key == "agenda.suggest_addresses" && s.value == SettingValue::Bool(true)));
+        apply(&file, &config, "agenda.suggest_addresses", &SettingValue::Bool(false)).unwrap();
+        assert!(!Config::load(&file).unwrap().agenda.suggests_addresses());
         let _ = std::fs::remove_file(&file);
     }
 

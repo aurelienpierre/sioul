@@ -2,9 +2,12 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Where an address is, asked of OpenStreetMap's geocoder (Nominatim), under
-//! its usage policy: Sioul says who it is, asks one address at a time, at
-//! most one a second (the caller waits), and keeps the answers
-//! (`sioul_core::places`), so an address is never asked twice.
+//! its usage policy: Sioul says who it is and where to find it, asks one
+//! address at a time, at most one a second across the whole program (every
+//! caller waits its turn: the contacts' map, an event's map), only when you
+//! asked, and keeps the answers (`sioul_core::places`), so an address is
+//! never asked twice. Never while you type: its policy forbids it
+//! (`suggest` has the services made for that).
 
 use crate::SyncError;
 use sioul_core::places::Place;
@@ -15,9 +18,25 @@ const ENDPOINT: &str = "https://nominatim.openstreetmap.org/search";
 /// How long to wait between two questions.
 pub const PAUSE: Duration = Duration::from_millis(1100);
 
-/// The place of one address; None when the geocoder knows none.
+/// The place of one address; None when the geocoder knows none. Waits its turn.
 pub fn locate(address: &str, language: &str) -> Result<Option<Place>, SyncError> {
+    wait_turn();
     locate_at(ENDPOINT, address, language)
+}
+
+/// When Nominatim was last asked, by any caller of this program.
+static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// Waits until `PAUSE` has passed since the last question, then takes its turn.
+fn wait_turn() {
+    let mut last = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(at) = *last {
+        let since = at.elapsed();
+        if since < PAUSE {
+            std::thread::sleep(PAUSE - since);
+        }
+    }
+    *last = Some(std::time::Instant::now());
 }
 
 fn locate_at(endpoint: &str, address: &str, language: &str) -> Result<Option<Place>, SyncError> {
@@ -28,7 +47,7 @@ fn locate_at(endpoint: &str, address: &str, language: &str) -> Result<Option<Pla
         .query("format", "jsonv2")
         .query("limit", "1")
         .query("q", &query)
-        .header("User-Agent", concat!("Sioul/", env!("CARGO_PKG_VERSION"), " (desktop mail and contacts client)"))
+        .header("User-Agent", crate::suggest::AGENT)
         .header("Accept-Language", language)
         .call()
         .map_err(|e| SyncError::Network(e.to_string()))?;

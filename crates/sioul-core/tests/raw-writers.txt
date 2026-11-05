@@ -55,6 +55,9 @@ sioul-app/src/crypto.rs	export	1	std::fs::write(&path, armored)
 sioul-app/src/dnd.rs	save	1	std::fs::write(&fresh, text)
 sioul-app/src/dnd.rs	save	1	std::fs::rename(&fresh, path)
 
+# sioul-app/src/eventplace.rs: the lines said once on this device, the map's and the suggestions' (state): no item.
+sioul-app/src/eventplace.rs	first_time	1	std::fs::write(&path, serde_json::to_string(&said).unwrap_or_default())
+
 # sioul-app/src/everywhere.rs: the cross-device notes of what went: no item.
 sioul-app/src/everywhere.rs	note_gone	1	std::fs::write(&fresh, text)
 sioul-app/src/everywhere.rs	note_gone	1	std::fs::remove_file(&fresh)

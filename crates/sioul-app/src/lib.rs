@@ -144,6 +144,7 @@ mod desktop;
 mod devices;
 mod dnd;
 mod eventalarms;
+mod eventplace;
 mod duplicates;
 // Do-not-disturb on every device, and the phone in the background (docs/do-not-disturb.md).
 mod everywhere;

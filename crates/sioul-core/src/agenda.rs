@@ -1034,6 +1034,12 @@ pub struct EventEdit {
     /// when it is edited unless changed; a whole day has none.
     #[serde(default)]
     pub clock: String,
+    /// Where its place is (`GEO`, RFC 5545 §3.8.1.6): "48.8566;2.3522"; ""
+    /// for none. Written only when a suggested address was chosen in the
+    /// form (the event card's place, 5 November 2026); a place changed
+    /// without a point drops it, since it no longer holds.
+    #[serde(default)]
+    pub geo: String,
 }
 
 /// An event's own clock, as its first DTSTART writes it (`EventEdit::clock`):
@@ -1211,7 +1217,108 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         demands,
         remind: remind_word(&text_of(master, &ICalendarProperty::Other(crate::reminders::REMIND.to_string()))),
         clock: if all_day { String::new() } else { clock },
+        geo: geo_of(text).map(|(lat, lon)| geo_value(lat, lon)).unwrap_or_default(),
     })
+}
+
+/// Where its main event's place is, by its `GEO` (RFC 5545 §3.8.1.6: latitude;
+/// longitude, decimal degrees); None without one, or one that does not read.
+pub fn geo_of(text: &str) -> Option<(f64, f64)> {
+    let source = lines::unfold(text);
+    let master = master_range(&source)?;
+    let line = source[master].iter().find(|l| lines::name(l) == "GEO")?;
+    let (lat, lon) = lines::value(line).trim().split_once([';', ','])?;
+    let (lat, lon) = (lat.trim().parse::<f64>().ok()?, lon.trim().parse::<f64>().ok()?);
+    ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)).then_some((lat, lon))
+}
+
+/// A point as `GEO` writes it: "48.856600;2.352200", six decimals (about 10 cm).
+pub fn geo_value(lat: f64, lon: f64) -> String {
+    format!("{lat:.6};{lon:.6}")
+}
+
+/// An event's own status (`STATUS`, RFC 5545 §3.8.1.11), lower case:
+/// "confirmed", "tentative", "cancelled"; "" when it says none.
+pub fn status_of(text: &str) -> String {
+    let source = lines::unfold(text);
+    let Some(master) = master_range(&source) else { return String::new() };
+    source[master].iter().find(|l| lines::name(l) == "STATUS").map(|l| lines::value(l).trim().to_ascii_lowercase()).filter(|v| ["confirmed", "tentative", "cancelled"].contains(&v.as_str())).unwrap_or_default()
+}
+
+/// The event with its main VEVENT's status set (the event card's chooser, 5
+/// November 2026): "confirmed", "tentative" or "cancelled", its stamps
+/// renewed; the same text when it says so already; None for another word or
+/// no event. Its changed times keep their own. Never for a meeting with
+/// others: every writer refuses it (`may_change`).
+pub fn with_status(text: &str, status: &str) -> Option<String> {
+    let status = status.trim().to_ascii_lowercase();
+    if !["confirmed", "tentative", "cancelled"].contains(&status.as_str()) {
+        return None;
+    }
+    if status_of(text) == status {
+        return Some(text.to_string());
+    }
+    let now = utc(&crate::zone::now());
+    let stripped = remove_lines(text, |line| matches!(lines::name(line).as_str(), "STATUS" | "DTSTAMP" | "LAST-MODIFIED"))?;
+    add_lines(&stripped, &[format!("STATUS:{}", status.to_ascii_uppercase()), format!("DTSTAMP:{now}"), format!("LAST-MODIFIED:{now}")])
+}
+
+/// One person of an event, as its card lists them (the event card's
+/// participants, 5 November 2026): its organizer, or a guest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Participant {
+    /// The name the event gives (`CN`); "" when none.
+    pub name: String,
+    pub address: String,
+    /// "accepted", "declined", "tentative", "needs-action"; "" for an
+    /// organizer who is not among the guests.
+    pub answer: String,
+    pub organizer: bool,
+    /// `ROLE=OPT-PARTICIPANT`: asked, not needed.
+    pub optional: bool,
+}
+
+/// Who an event names (its main VEVENT): its organizer first, then each guest
+/// in its order, an organizer listed as a guest too said once, with its
+/// answer; a resource or a room (`CUTYPE`) is a guest like any.
+pub fn participants(text: &str) -> Vec<Participant> {
+    let source = lines::unfold(text);
+    let Some(master) = master_range(&source) else { return Vec::new() };
+    let mut out: Vec<Participant> = Vec::new();
+    let mut nested = 0usize;
+    let person = |line: &str, organizer: bool| Participant {
+        name: lines::param(line, "CN").unwrap_or_default().trim().to_string(),
+        address: address(lines::value(line)),
+        answer: if organizer { String::new() } else { lines::param(line, "PARTSTAT").map(|p| p.to_ascii_lowercase()).filter(|p| ["accepted", "declined", "tentative"].contains(&p.as_str())).unwrap_or_else(|| "needs-action".to_string()) },
+        organizer,
+        optional: !organizer && lines::param(line, "ROLE").is_some_and(|r| r.eq_ignore_ascii_case("OPT-PARTICIPANT")),
+    };
+    for line in &source[master.start + 1..master.end - 1] {
+        match lines::name(line).as_str() {
+            "BEGIN" => nested += 1,
+            "END" => nested = nested.saturating_sub(1),
+            "ORGANIZER" if nested == 0 => out.insert(0, person(line, true)),
+            "ATTENDEE" if nested == 0 => {
+                let guest = person(line, false);
+                if guest.address.is_empty() {
+                    continue;
+                }
+                match out.iter_mut().find(|p| p.address.eq_ignore_ascii_case(&guest.address)) {
+                    // The organizer among the guests: one row, with its answer.
+                    Some(organizer) if organizer.organizer => organizer.answer = guest.answer,
+                    Some(_) => {}
+                    None => out.push(guest),
+                }
+            }
+            _ => {}
+        }
+    }
+    // An organizer named after its guests: still first.
+    if let Some(at) = out.iter().position(|p| p.organizer).filter(|at| *at > 0) {
+        let organizer = out.remove(at);
+        out.insert(0, organizer);
+    }
+    out
 }
 
 /// The main event's first occurrence still there, as the agenda shows it:
@@ -1459,10 +1566,11 @@ struct Changed {
     margins: bool,
     demands: bool,
     remind: bool,
+    geo: bool,
 }
 
 impl Changed {
-    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true };
+    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true, geo: true };
 }
 
 /// SUMMARY, LOCATION, DESCRIPTION and the repeat rule, those that changed.
@@ -1476,6 +1584,11 @@ fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>) -> 
     }
     if changed.notes && !edit.notes.trim().is_empty() {
         out.push(format!("DESCRIPTION:{}", lines::escape(edit.notes.trim())));
+    }
+    if changed.geo
+        && let Some((lat, lon)) = geo_of(&format!("BEGIN:VEVENT\r\nGEO:{}\r\nEND:VEVENT\r\n", edit.geo.trim()))
+    {
+        out.push(format!("GEO:{}", geo_value(lat, lon)));
     }
     if changed.rule {
         out.extend(rule_line(&edit.repeat, edit.every, old_rule));
@@ -1533,15 +1646,24 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
         master_range(&source).and_then(|range| source[range].iter().find(|l| lines::name(l) == "RRULE").map(|l| lines::value(l).trim().to_string()))
     };
     let changed = match &before {
-        Some(b) => Changed { title: b.title.trim() != edit.title.trim(), location: b.location.trim() != edit.location.trim(), notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind) },
+        Some(b) => {
+            let location = b.location.trim() != edit.location.trim();
+            // Its place changed without a point: the one it had no longer holds, and goes.
+            let geo = b.geo.trim() != edit.geo.trim() || (location && !b.geo.trim().is_empty() && edit.geo.trim() == b.geo.trim());
+            Changed { title: b.title.trim() != edit.title.trim(), location, notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind), geo }
+        }
         None => Changed::ALL,
     };
+    // Its place changed without a point: written with none.
+    let cleared = changed.geo && before.as_ref().is_some_and(|b| b.geo.trim() == edit.geo.trim());
+    let pointed = EventEdit { geo: if cleared { String::new() } else { edit.geo.clone() }, ..edit.clone() };
+    let edit = &pointed;
     let (times, tzid) = if times_changed || rule_changed { time_lines(edit, &zone)? } else { (Vec::new(), None) };
     // The SEQUENCE goes up for a revision its organizer would make (RFC 5545
     // §3.8.7.4), never for Sioul's own lines alone (the time kept around it,
     // its costs and gain, your reminder): kept as it is, where it is, so that
     // they are written into a meeting with others as nothing of theirs (`may_change`).
-    let revised = times_changed || rule_changed || changed.title || changed.location || changed.notes;
+    let revised = times_changed || rule_changed || changed.title || changed.location || changed.notes || changed.geo;
     let rewritten = |name: &str| {
         (EDITED.contains(&name) && (revised || name != "SEQUENCE"))
             || ((times_changed || rule_changed) && TIMES.contains(&name))
@@ -1552,6 +1674,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             || (changed.margins && (name == crate::demands::BEFORE || name == crate::demands::AFTER))
             || (changed.demands && (name == crate::demands::COST || name == crate::demands::GAIN))
             || (changed.remind && name == crate::reminders::REMIND)
+            || (changed.geo && name == "GEO")
     };
     let source = lines::unfold(text);
     let mut out: Vec<String> = Vec::with_capacity(source.len() + 8);
@@ -2081,6 +2204,9 @@ pub struct EventRef {
     pub task: String,
     /// A leg's anchor to its appointment (`anchors`); none for any other event.
     pub anchor: Option<crate::anchors::Anchor>,
+    /// Its place (`LOCATION`), as written: the places used before, which the
+    /// event form suggests from this device alone; "" for none.
+    pub location: String,
 }
 
 /// The ties of one event's text; None when it holds no event.
@@ -2097,6 +2223,7 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
             _ if nested > 0 => {}
             "UID" => found.uid = lines::value(line).trim().to_string(),
             "SUMMARY" => found.summary = lines::unescape(lines::value(line).trim()),
+            "LOCATION" => found.location = lines::unescape(lines::value(line).trim()),
             "LINK" => found.links.push(crate::tasks::link_of(line)),
             "RELATED-TO" => found.related.push(crate::tasks::relation_of(line)),
             "REFID" => found.projects.push(lines::unescape(lines::value(line).trim())),
@@ -2993,6 +3120,42 @@ fn with_categories(text: &str, added: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The event card (5 November 2026): its own status read and set, its
+    /// changed times untouched; its place's point read, written when the form
+    /// gives one, dropped when the place changes without one; its people,
+    /// the organizer first, each guest's answer and role.
+    #[test]
+    fn an_event_s_status_point_and_people() {
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:card-1\r\nDTSTAMP:20261101T090000Z\r\nDTSTART:20991104T090000Z\r\nDTEND:20991104T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Board\r\nLOCATION:3 rue des Exemples\r\nSTATUS:TENTATIVE\r\nATTENDEE;CN=Anne Exemple;PARTSTAT=ACCEPTED:mailto:anne@example.org\r\nATTENDEE;ROLE=OPT-PARTICIPANT:mailto:bob@example.net\r\nORGANIZER;CN=Chair:mailto:chair@example.org\r\nATTENDEE;PARTSTAT=DECLINED:mailto:chair@example.org\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:card-1\r\nRECURRENCE-ID:20991111T090000Z\r\nDTSTART:20991111T100000Z\r\nDTEND:20991111T110000Z\r\nSUMMARY:Board\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(status_of(text), "tentative");
+        let confirmed = with_status(text, "confirmed").unwrap();
+        assert_eq!(status_of(&confirmed), "confirmed");
+        assert!(confirmed.contains("RECURRENCE-ID:20991111T090000Z\r\nDTSTART:20991111T100000Z\r\nDTEND:20991111T110000Z\r\nSUMMARY:Board\r\nSTATUS:CANCELLED"), "its changed time kept: {confirmed}");
+        assert_eq!(confirmed.matches("STATUS:").count(), 2);
+        assert_eq!(with_status(&confirmed, "confirmed").as_deref(), Some(confirmed.as_str()), "said already: the same text");
+        assert_eq!(with_status(text, "maybe"), None);
+        // Its people: the organizer first, its own answer as a guest; the optional one said.
+        let people = participants(text);
+        let rows: Vec<(String, String, bool, bool)> = people.iter().map(|p| (if p.name.is_empty() { p.address.clone() } else { p.name.clone() }, p.answer.clone(), p.organizer, p.optional)).collect();
+        assert_eq!(rows, vec![("Chair".into(), "declined".into(), true, false), ("Anne Exemple".into(), "accepted".into(), false, false), ("bob@example.net".into(), "needs-action".into(), false, true)]);
+        // Its point: none, then one given, then gone with the place changed by hand.
+        assert_eq!(geo_of(text), None);
+        let mut edit = edit_of_text(text, &zone).unwrap();
+        assert_eq!(edit.geo, "");
+        edit.geo = "48.8566;2.3522".into();
+        let pointed = apply(text, &edit, &zone).unwrap();
+        assert_eq!(geo_of(&pointed), Some((48.8566, 2.3522)));
+        assert!(pointed.contains("GEO:48.856600;2.352200"), "{pointed}");
+        let mut moved = edit_of_text(&pointed, &zone).unwrap();
+        assert_eq!(moved.geo, "48.856600;2.352200");
+        moved.location = "5 rue des Exemples".into();
+        let unpointed = apply(&pointed, &moved, &zone).unwrap();
+        assert_eq!(geo_of(&unpointed), None, "a point that no longer holds goes: {unpointed}");
+        assert!(unpointed.contains("LOCATION:5 rue des Exemples"));
+        assert_eq!(geo_of("BEGIN:VEVENT\r\nGEO:91;2\r\nEND:VEVENT\r\n"), None, "no such latitude");
+    }
 
     /// A form's time read on its own clock (a leg's start, review of 4e065b1, L1).
     #[test]

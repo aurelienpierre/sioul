@@ -288,6 +288,23 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     // On another clock: both its times, "Wednesday 4 November · 16:00 – 17:00 here · 15:00 – 16:00 UTC".
     let both = if o.all_day { String::new() } else { timeline::both_times(&time, o.start, o.end, &o.clock, tr()) };
     let when = format!("{} · {}", tr().day(date), if both.is_empty() { time } else { both });
+    // Its own status, its place's point and its people, read from its file (the event card, 5 November 2026).
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let own_addresses = own();
+    let loaded = crate::work::loaded(shared);
+    let people: Vec<serde_json::Value> = agenda::participants(&text)
+        .into_iter()
+        .map(|p| {
+            // By its contact's name when a card holds the address, else the name the event gives, else the address.
+            let contact = sioul_core::contacts::by_address(&loaded.contacts, &p.address);
+            let name = contact.map(|c| c.name.clone()).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| if p.name.is_empty() { p.address.clone() } else { p.name.clone() });
+            let you = own_addresses.iter().any(|a| a.eq_ignore_ascii_case(&p.address));
+            serde_json::json!({ "name": name, "address": p.address, "answer": p.answer, "organizer": p.organizer, "optional": p.optional, "contact": contact.map(|c| c.key.clone()).unwrap_or_default(), "you": you })
+        })
+        .collect();
+    // Invited: your own answer, as you gave it (none yet: "needs-action").
+    let own_answer = if o.with_others { people.iter().find(|p| p["you"] == true && p["organizer"] == false).and_then(|p| p["answer"].as_str()).unwrap_or_default().to_string() } else { String::new() };
+    let geo = agenda::geo_of(&text).map(|(lat, lon)| agenda::geo_value(lat, lon)).unwrap_or_default();
     json(&serde_json::json!({
         "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
         "key": o.key,
@@ -319,6 +336,10 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         "busy": o.busy,
         // A child's event: who takes it, its kind, what you may answer (part 3).
         "child": crate::children::card(&path, if o.recurring { o.start } else { 0 }),
+        "status": agenda::status_of(&text),
+        "own_answer": own_answer,
+        "people": people,
+        "geo": geo,
     }))
 }
 

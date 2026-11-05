@@ -3,9 +3,11 @@
 
 // An appointment's card, where you are (the unified agenda, part 3): read
 // from its own file by its reference (`eventCard(key, start)`), whatever
-// page opened it. Its time and the time kept around it, its place, its
-// calendar and "repeats", its reminder, its notes with their list, its
-// organizer and guests, what prepares it (part D's pairing), what it is tied
+// page opened it. Its time and the time kept around it, its place, with its
+// map and the way there on a press (nothing is asked of a server before), its
+// own status (chosen here when it is yours) and your answer to an invitation,
+// its calendar and "repeats", its reminder, its notes with their list, the
+// people it names and their answers, what prepares it (part D's pairing), what it is tied
 // to. Edit opens its form; Delete asks this time or every time, never for a
 // meeting with others; "Make it a task" and back. A time block of a task
 // known here says the task it is, and opens it. Gone, or its deletion
@@ -37,6 +39,72 @@ CardFrame {
     property bool moreShown: false
     // The event being made a task, asked about first.
     property string converting: ""
+    // Its map, once Map was pressed: {lat, lon} found, "asking", "missing", or "" not asked.
+    property var point: null
+    property string mapState: ""
+    // "To draw the map, the address goes to OpenStreetMap's servers.", the first time only.
+    property string mapSaid: ""
+
+    // Map pressed: its point from its own GEO or the places kept, else asked of
+    // OpenStreetMap's geocoder once (`locatePlace`); the map drawn when it is known.
+    function showMap() {
+        if (!card.there || card.event.location === "")
+            return
+        if (card.mapSaid === "" && card.sioul.firstTime("map"))
+            card.mapSaid = card.sioul.text("map-said")
+        card.readPoint(true)
+    }
+
+    // Its point as known now; `ask`: asked of the geocoder when it is not.
+    function readPoint(ask) {
+        const found = JSON.parse(card.sioul.eventPoint(card.event.geo || "", card.event.location) || "{}")
+        if (found.lat !== undefined) {
+            card.point = { lat: found.lat, lon: found.lon }
+            card.mapState = "found"
+        } else if (found.asked) {
+            card.mapState = "missing"
+        } else if (ask) {
+            card.mapState = "asking"
+            card.said(card.sioul.locatePlace(card.event.location))
+        }
+    }
+
+    // The way there, for `os` (Qt.platform.os): a `geo:` link (RFC 5870), its point when
+    // known, else its words; and the page used when no app takes it: Apple's maps on
+    // macOS, OpenStreetMap's directions elsewhere.
+    function directionsOf(point, place, os) {
+        const words = encodeURIComponent(place)
+        const at = point ? point.lat + "," + point.lon : ""
+        const geo = point ? "geo:" + at + "?q=" + words : "geo:0,0?q=" + words
+        const page = os === "osx" || os === "macos" ? "https://maps.apple.com/?daddr=" + (point ? at : words) : "https://www.openstreetmap.org/directions?to=" + (point ? at : words)
+        return { geo: geo, page: page }
+    }
+
+    // Directions pressed: the `geo:` link when this system has an app for it (asked now,
+    // never assumed; on Android, an intent that resolves), else the page.
+    function directions() {
+        if (!card.there || card.event.location === "")
+            return
+        const known = card.point || JSON.parse(card.sioul.eventPoint(card.event.geo || "", card.event.location) || "{}")
+        const uris = card.directionsOf(known && known.lat !== undefined ? known : null, card.event.location, Qt.platform.os)
+        if (card.sioul.geoHandler() && Qt.openUrlExternally(uris.geo))
+            return
+        Qt.openUrlExternally(uris.page)
+    }
+
+    // Its own status set ("confirmed", "tentative", "cancelled"), by its own writer.
+    function setStatus(status) {
+        if (!card.there || status === (card.status || "confirmed"))
+            return
+        card.said(card.sioul.setEventStatus(card.event.key, status))
+        card.read()
+    }
+
+    // Its own status (`STATUS`), chosen here for an event you may write.
+    readonly property var statuses: ["confirmed", "tentative", "cancelled"]
+    readonly property string status: !card.there ? "" : card.event.status ? card.event.status : card.event.cancelled ? "cancelled" : card.event.tentative ? "tentative" : ""
+    readonly property bool statusChosen: card.there && !card.event.read_only && card.event.with_others !== true && !card.isTask
+
     // The open event, as what new things are tied to.
     readonly property var source: card.there && card.event.uid ? { uri: "sioul:event/" + encodeURIComponent(card.event.uid), kind: "event", key: card.event.key, title: card.event.summary, start: card.event.start } : null
 
@@ -66,6 +134,9 @@ CardFrame {
 
     onKeyChanged: {
         card.moreShown = false
+        card.point = null
+        card.mapState = ""
+        card.mapSaid = ""
         card.read()
     }
     onStartChanged: {
@@ -85,6 +156,11 @@ CardFrame {
         function onTasksChanged() {
             pairing.read()
             part.read()
+        }
+        // The geocoder answered: the map drawn, or "not found" said.
+        function onPlacesChanged() {
+            if (card.mapState === "asking")
+                card.readPoint(false)
         }
     }
 
@@ -188,6 +264,127 @@ CardFrame {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: card.theme.text
+    }
+    // Its own status (chosen here when it is yours), your answer to an invitation, its
+    // place's map and the way there, on a press: nothing is asked of a server before.
+    // Made only for an event with one of them to say.
+    Loader {
+        objectName: "eventCardPlace"
+        active: card.there && (card.event.location !== "" || card.statusChosen || card.status === "tentative" || card.status === "cancelled" || (card.event.own_answer || "") !== "")
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ColumnLayout {
+                spacing: 4
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    // Its status: a menu of three where it is yours, else said when it is not "confirmed".
+                    Button {
+                        id: statusButton
+
+                        objectName: "eventCardStatus"
+                        visible: card.statusChosen
+                        flat: true
+                        text: card.sioul.text("event-status-" + (card.status || "confirmed")) + "  ▾"
+                        Accessible.name: card.sioul.text("event-status") + ": " + card.sioul.text("event-status-" + (card.status || "confirmed"))
+                        onClicked: statusMenu.now().popup(statusButton, 0, statusButton.height)
+
+                        Later {
+                            id: statusMenu
+
+                            sourceComponent: Component {
+                                SioulMenu {
+                                    MenuItem {
+                                        objectName: "eventCardStatus-confirmed"
+                                        text: card.sioul.text("event-status-confirmed")
+                                        checkable: true
+                                        checked: (card.status || "confirmed") === "confirmed"
+                                        onTriggered: card.setStatus("confirmed")
+                                    }
+                                    MenuItem {
+                                        objectName: "eventCardStatus-tentative"
+                                        text: card.sioul.text("event-status-tentative")
+                                        checkable: true
+                                        checked: card.status === "tentative"
+                                        onTriggered: card.setStatus("tentative")
+                                    }
+                                    MenuItem {
+                                        objectName: "eventCardStatus-cancelled"
+                                        text: card.sioul.text("event-status-cancelled")
+                                        checkable: true
+                                        checked: card.status === "cancelled"
+                                        onTriggered: card.setStatus("cancelled")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Label {
+                        visible: !card.statusChosen && (card.status === "tentative" || card.status === "cancelled")
+                        text: card.status !== "" ? card.sioul.text("event-status-" + card.status) : ""
+                        textFormat: Text.PlainText
+                        color: card.theme.muted
+                    }
+                    Button {
+                        objectName: "eventCardMap"
+                        visible: card.event.location !== "" && card.mapState === ""
+                        flat: true
+                        icon.name: "mark-location"
+                        text: card.sioul.text("map-show")
+                        onClicked: card.showMap()
+                    }
+                    Button {
+                        objectName: "eventCardDirections"
+                        visible: card.event.location !== ""
+                        flat: true
+                        icon.name: "go-next"
+                        text: card.sioul.text("map-directions")
+                        onClicked: card.directions()
+                    }
+                }
+                Label {
+                    objectName: "eventCardYourAnswer"
+                    visible: (card.event.own_answer || "") !== ""
+                    Layout.fillWidth: true
+                    text: (card.event.own_answer || "") !== "" ? card.sioul.text("event-you-" + card.event.own_answer) : ""
+                    textFormat: Text.PlainText
+                    color: card.theme.muted
+                }
+                Label {
+                    objectName: "eventCardMapSaid"
+                    visible: text !== ""
+                    Layout.fillWidth: true
+                    text: card.mapState === "asking" ? [card.mapSaid, card.sioul.text("map-finding")].filter(t => t !== "").join(" ") : card.mapState === "missing" ? card.sioul.text("map-not-found") : card.mapState === "found" ? card.mapSaid : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: card.theme.muted
+                    font.pixelSize: 13
+                }
+                // A small map of its point, its tiles from the tile server set (OpenStreetMap's).
+                Loader {
+                    objectName: "eventCardMapView"
+                    active: card.mapState === "found" && card.point !== null
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 200
+
+                    sourceComponent: Component {
+                        ContactMap {
+                            theme: card.theme
+                            tiles: typeof card.sioul.mapTiles === "function" ? card.sioul.mapTiles() : ""
+                            still: true
+                            zoomOne: 16
+                            attribution: card.sioul.text("map-attribution")
+                            pins: card.point ? [{ key: card.event.key, name: card.event.summary, address: card.event.location, lat: card.point.lat, lon: card.point.lon }] : []
+                        }
+                    }
+                }
+            }
+        }
     }
     // You in two places (several agendas): one sentence each, said here and nowhere else.
     Repeater {
@@ -323,7 +520,7 @@ CardFrame {
         }
     }
     Button {
-        readonly property bool any: card.there && ((card.event.notes || "") !== "" || (card.event.organizer || "") !== "" || (card.event.attendees || []).length > 0)
+        readonly property bool any: card.there && (card.event.notes || "") !== ""
 
         visible: any
         flat: true
@@ -347,28 +544,34 @@ CardFrame {
         onConvert: (line, to) => card.said(card.isTask ? card.sioul.convertItem("task", card.event.task, line, to) : card.sioul.convertItem("event", card.event.key, line, to))
         onCheck: (line, state) => card.said(card.isTask ? card.sioul.checkItem("task", card.event.task, line, state) : card.sioul.checkItem("event", card.event.key, line, state))
     }
-    Label {
-        visible: card.moreShown && card.there && (card.event.organizer || "") !== ""
-        Layout.fillWidth: true
-        text: card.there ? card.sioul.textWith("agenda-organizer", "name", card.event.organizer || "") : ""
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        color: card.theme.muted
-    }
+    // The people it names: its organizer first, then each guest with their answer, "optional"
+    // when they are; by their contact's name when a card holds the address, which a tap opens.
+    // Read only, on every event.
     Repeater {
-        model: card.moreShown && card.there ? card.event.attendees || [] : []
+        model: card.there ? card.event.people || [] : []
 
         delegate: Label {
             id: guest
 
             required property var modelData
+            readonly property string role: guest.modelData.organizer ? card.sioul.text("event-organizer-role") : guest.modelData.optional ? card.sioul.text("event-optional") : ""
+            readonly property string answer: guest.modelData.answer !== "" ? card.sioul.text("answer-" + guest.modelData.answer) : ""
 
+            objectName: "eventCardPerson"
             Layout.fillWidth: true
-            text: (guest.modelData.name || guest.modelData.address) + "  ·  " + card.sioul.text("answer-" + guest.modelData.answer)
+            text: [guest.modelData.name, guest.role, guest.answer].filter(t => t !== "").join("  ·  ")
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: card.theme.muted
+            color: guest.modelData.contact !== "" ? card.theme.accent : card.theme.muted
             font.pixelSize: 13
+            Accessible.role: guest.modelData.contact !== "" ? Accessible.Link : Accessible.StaticText
+            Accessible.name: guest.text + (guest.modelData.name !== guest.modelData.address ? ", " + guest.modelData.address : "")
+
+            TapHandler {
+                enabled: guest.modelData.contact !== ""
+                cursorShape: Qt.PointingHandCursor
+                onTapped: card.window.openContact(guest.modelData.contact)
+            }
         }
     }
     // What prepares it: its task, with its steps and list (opened by a tap); else steps to

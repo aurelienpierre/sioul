@@ -22,6 +22,27 @@ SafeDialog {
     required property var theme
     // The event's file; empty for a new one.
     property string key: ""
+    // Its place's point, "48.856600;2.352200" (`GEO`), set when a suggested address is chosen,
+    // gone when the place is typed again; "" none.
+    property string geo: ""
+    // The addresses suggested for the place typed: [{label, lat, lon}] (`suggestAddresses`),
+    // and the one Up and Down are on (-1: none, the field's own text).
+    property var suggestions: []
+    property int suggestionAt: -1
+    // "What you type in a place is sent to … to suggest addresses.", the first time only.
+    property string suggestSaid: ""
+
+    // A suggestion chosen: its words in the place, its point kept on this device, and
+    // written into the event (its GEO) when the event is yours to write.
+    function choosePlace(suggestion) {
+        place.text = suggestion.label
+        dialog.suggestions = []
+        if (suggestion.lat === undefined)
+            return
+        dialog.sioul.keepPoint(suggestion.label, suggestion.lat, suggestion.lon)
+        if (!dialog.withOthers)
+            dialog.geo = suggestion.lat.toFixed(6) + ";" + suggestion.lon.toFixed(6)
+    }
     // A task being made an appointment ("Make it an appointment", 21 October
     // 2026): its UID, and the file of the time block it was opened from.
     property string taskUid: ""
@@ -209,6 +230,8 @@ SafeDialog {
         dialog.losses = ""
         dialog.problem = ""
         dialog.links = []
+        dialog.suggestions = []
+        dialog.geo = ""
         dialog.calendars = JSON.parse(dialog.sioul.calendars() || "[]")
         dialog.zoneName = dialog.sioul.zoneName()
         dialog.clock = ""
@@ -238,6 +261,7 @@ SafeDialog {
             dialog.withOthers = found.with_others === true
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
             dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, e.demands)
+            dialog.geo = e.geo || ""
             dialog.remind = e.remind || ""
             dialog.reminds = JSON.parse(dialog.sioul.reminderChoices(dialog.remind) || "[]")
             dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0 || dialog.remind !== "" || ["cognitive", "emotional", "anxiety", "body", "gain"].some(n => dialog.rating(n) !== null)
@@ -304,6 +328,14 @@ SafeDialog {
         startTime.text = start.time
         endDay.date = end.day
         endTime.text = end.time
+    }
+
+    // For the window's pictures and tests: `text` as if typed in its place.
+    function typePlace(text) {
+        place.forceActiveFocus()
+        place.text = text
+        dialog.geo = ""
+        placePause.restart()
     }
 
     // A new event made from something: its title and notes given, the link kept.
@@ -408,6 +440,7 @@ SafeDialog {
             margins: dialog.around,
             demands: dialog.demands,
             remind: dialog.remind,
+            geo: dialog.geo,
             links: dialog.links
         }
     }
@@ -619,9 +652,100 @@ SafeDialog {
             TextField {
                 id: place
 
+                objectName: "eventPlace"
                 enabled: !dialog.withOthers
                 Layout.fillWidth: true
                 placeholderText: dialog.sioul.text("event-where")
+                // Typed again: the point it had no longer holds; suggestions after a pause.
+                onTextEdited: {
+                    dialog.geo = ""
+                    placePause.restart()
+                }
+                Keys.onEscapePressed: event => {
+                    event.accepted = dialog.suggestions.length > 0
+                    dialog.suggestions = []
+                }
+                // Down and Up through the suggestions, Enter chooses one; the field keeps the keyboard.
+                Keys.onDownPressed: event => {
+                    event.accepted = dialog.suggestions.length > 0
+                    dialog.suggestionAt = Math.min(dialog.suggestions.length - 1, dialog.suggestionAt + 1)
+                }
+                Keys.onUpPressed: event => {
+                    event.accepted = dialog.suggestions.length > 0
+                    dialog.suggestionAt = Math.max(-1, dialog.suggestionAt - 1)
+                }
+                Keys.onReturnPressed: event => {
+                    event.accepted = dialog.suggestionAt >= 0 && dialog.suggestionAt < dialog.suggestions.length
+                    if (event.accepted)
+                        dialog.choosePlace(dialog.suggestions[dialog.suggestionAt])
+                }
+
+                // After 300 ms without typing: the places you used before, then, with
+                // three characters and the switch on (Settings ▸ Agenda), the service's.
+                Timer {
+                    id: placePause
+
+                    interval: 300
+                    onTriggered: {
+                        const typed = place.text.trim()
+                        if (typed.length < 2) {
+                            dialog.suggestions = []
+                            return
+                        }
+                        if (typed.length >= 3 && dialog.suggestSaid === "" && dialog.sioul.suggestsAddresses() && dialog.sioul.firstTime("suggest"))
+                            dialog.suggestSaid = dialog.sioul.textWith("suggest-said", "service", dialog.sioul.addressService())
+                        dialog.sioul.suggestAddresses(typed)
+                    }
+                }
+                Connections {
+                    target: dialog.sioul
+
+                    function onAddressesSuggested(typed, suggested) {
+                        if (typed !== place.text.trim() || !place.activeFocus)
+                            return
+                        const read = JSON.parse(suggested || "{}")
+                        const out = []
+                        for (const label of read.used || [])
+                            if (!out.some(o => o.label.toLowerCase() === label.toLowerCase()))
+                                out.push({ label: label })
+                        for (const found of read.found || [])
+                            if (!out.some(o => o.label.toLowerCase() === found.label.toLowerCase()))
+                                out.push(found)
+                        dialog.suggestions = out.slice(0, 8)
+                        dialog.suggestionAt = -1
+                    }
+                }
+            }
+            // The addresses suggested: places used before first, then the service's; a
+            // tap chooses one. Where what is typed goes, said once.
+            Repeater {
+                model: place.activeFocus ? dialog.suggestions : []
+
+                delegate: ItemDelegate {
+                    id: suggestion
+
+                    required property var modelData
+                    required property int index
+
+                    objectName: "eventPlaceSuggestion"
+                    // The field keeps the keyboard (and the list), its press chooses.
+                    focusPolicy: Qt.NoFocus
+                    highlighted: suggestion.index === dialog.suggestionAt
+                    Layout.fillWidth: true
+                    text: dialog.theme.plain(suggestion.modelData.label)
+                    icon.name: suggestion.modelData.lat !== undefined ? "mark-location" : "document-open-recent"
+                    onClicked: dialog.choosePlace(suggestion.modelData)
+                }
+            }
+            Label {
+                objectName: "eventPlaceSaid"
+                visible: dialog.suggestSaid !== ""
+                Layout.fillWidth: true
+                text: dialog.suggestSaid
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+                font.pixelSize: 13
             }
 
             // Its calendar, said, and another chosen: a new event's, or an event

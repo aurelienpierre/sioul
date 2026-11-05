@@ -965,6 +965,18 @@ Item {
             compare([mock.calls[0].what, mock.calls[0].edit.action, mock.calls[0].edit.from, mock.calls[0].edit.to].join(" "), "dragNeed times 12:10 13:30")
         }
 
+        // A tentative event (to be confirmed) is drawn with a dashed outline, one shape for
+        // the whole timeline; a cancelled one struck through (the event card, 5 November 2026).
+        function test_timeline_tentative_dashed_cancelled_struck() {
+            const days = week()
+            days[0].timed[0].detail.tentative = true
+            days[0].timed[2].detail.cancelled = true
+            const planning = makeWeek({ days: days })
+            compare(planning.tentativeOutlines.length, 1)
+            verify(root.find(planning, "tentativeOutlines").visible)
+            verify(root.all(planning, c => c.font !== undefined && c.font.strikeout === true && c.text === "r.ics").length === 1, "struck through")
+        }
+
         // A busy week far ahead, as the stand-in profile's: each day three
         // appointments, two steps, lunch and dinner, the night, two doses; a
         // nap on two days, an all-day appointment on one.

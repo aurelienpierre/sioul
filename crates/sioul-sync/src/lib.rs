@@ -156,6 +156,7 @@ pub mod send;
 pub mod share;
 // Each wait for the network bounded, on ureq's transport (`ureq::unversioned`, no semver): this module alone.
 mod stalls;
+pub mod suggest;
 pub mod trigger;
 // texts: their lines sealed at rest (SMS phase b, docs/texts.md).
 pub mod textseal;

@@ -604,6 +604,12 @@ pub struct AgendaSettings {
     /// form, Settings ▸ Agenda (5 November 2026); unset, 30.
     #[serde(default)]
     pub new_event: Option<u32>,
+    /// Addresses suggested while a place is typed, from the network (the
+    /// Base Adresse Nationale in France, else Photon), Settings ▸ Agenda
+    /// (5 November 2026); unset, on. Places you used before are suggested
+    /// either way, from this device alone.
+    #[serde(default)]
+    pub suggest_addresses: Option<bool>,
 }
 
 impl AgendaSettings {
@@ -620,6 +626,11 @@ impl AgendaSettings {
     /// The time kept between two events: yours, else none.
     pub fn between(&self) -> u32 {
         self.between.unwrap_or(0).min(24 * 60)
+    }
+
+    /// Whether what is typed in a place is sent to suggest addresses: on unless you said off.
+    pub fn suggests_addresses(&self) -> bool {
+        self.suggest_addresses.unwrap_or(true)
     }
 
     /// How long a new event lasts: yours, else 30 minutes; 5 minutes to a day.

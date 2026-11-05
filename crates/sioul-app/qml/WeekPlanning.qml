@@ -43,6 +43,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Shapes
 
 ColumnLayout {
     id: planning
@@ -705,6 +706,26 @@ ColumnLayout {
         const top = Math.max(planning.frame.from, Math.min(row.from, row.lead))
         const bottom = Math.min(planning.frame.to, Math.max(row.to, row.tail))
         return { x: x, y: planning.yOf(top), width: slot - 2, height: Math.max(planning.cardLeast, planning.yOf(bottom) - planning.yOf(top) - 1) }
+    }
+
+    // Each tentative event's own time as a closed line of points, for its dashed outline.
+    readonly property var tentativeOutlines: {
+        planning.revision
+        planning.hourHeight
+        planning.dayWidth
+        const out = []
+        for (let i = 0; i < things.count; i++) {
+            const row = things.get(i)
+            if (!row.tentative || row.edge !== "" || !(row.kind === "event" || row.kind === "block"))
+                continue
+            const box = planning.boxOf(row)
+            const top = Math.max(box.y, planning.yOf(Math.max(planning.frame.from, row.from)))
+            const bottom = Math.max(top + planning.cardLeast, Math.min(box.y + box.height, planning.yOf(Math.min(planning.frame.to, row.to))))
+            const left = box.x + 0.5
+            const right = box.x + box.width - 0.5
+            out.push([Qt.point(left, top + 0.5), Qt.point(right, top + 0.5), Qt.point(right, bottom - 0.5), Qt.point(left, bottom - 0.5), Qt.point(left, top + 0.5)])
+        }
+        return out
     }
 
     // The night's part that wakes this day (gone to bed before noon: last
@@ -1955,7 +1976,8 @@ ColumnLayout {
                         radius: asCard ? 4 : 0
                         // The plan's proposal outlined, never a promise; the next one filled; a busy time a quiet fill.
                         color: card.busy ? planning.tint(card.hue, 0.16) : card.isNight ? planning.tint(card.hue, 0.12) : card.isNeed ? planning.tint(card.hue, card.tone === "quiet" ? 0.14 : 0.28) : card.isBand ? "transparent" : card.isStep && !card.pinned ? (card.comingNext ? planning.tint(planning.theme.accent, 0.16) : planning.theme.background) : card.chosen ? planning.theme.line : planning.theme.background
-                        border.width: !asCard ? 0 : card.chosen || card.taken || card.underWay || card.focused ? 2 : 1
+                        // A tentative event's outline is dashed (`tentativeOutlines`), drawn over it.
+                        border.width: !asCard || (card.tentative && !card.chosen && !card.taken && !card.focused) ? 0 : card.chosen || card.taken || card.underWay || card.focused ? 2 : 1
                         border.color: card.taken || card.chosen || card.underWay || card.comingNext ? planning.theme.accent : card.focused ? planning.theme.focus : card.isBand || card.done || card.busy ? planning.theme.line : card.kind === "event" || card.kind === "block" ? card.hue : planning.theme.accent
                     }
                     // Its calendar's colour, as a bar: an appointment, a block (a busy time's fill says it).
@@ -2020,6 +2042,27 @@ ColumnLayout {
                             font.pixelSize: 11
                             color: planning.theme.muted
                         }
+                    }
+                }
+            }
+
+            // Tentative events (`STATUS:TENTATIVE`, to be confirmed): their outlines dashed,
+            // one shape for the whole timeline, so that a week of cards stays light.
+            Shape {
+                objectName: "tentativeOutlines"
+                visible: planning.tentativeOutlines.length > 0
+                anchors.fill: parent
+                z: 2
+
+                ShapePath {
+                    strokeColor: planning.theme.text
+                    strokeWidth: 1
+                    strokeStyle: ShapePath.DashLine
+                    dashPattern: [3, 3]
+                    fillColor: "transparent"
+
+                    PathMultiline {
+                        paths: planning.tentativeOutlines
                     }
                 }
             }

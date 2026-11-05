@@ -201,7 +201,10 @@ Relever ne change rien sur le serveur : aucun courriel n’est marqué lu parc
 | L’adresse de désabonnement d’une liste de diffusion | une demande « en un clic », sans rien de vous que ce que la liste y a écrit ; ou un bref courriel à cette adresse, depuis la vôtre ; ou sa page, dans votre navigateur | seulement quand vous choisissez **Se désabonner** |
 | Open-Meteo | les coordonnées du lieu choisi, arrondies à deux décimales, ou le nom d’une ville que vous cherchez | seulement si vous choisissez un lieu pour la météo ; toutes les demi-heures au plus |
 | Le géocodeur d’OpenStreetMap (Nominatim) | les adresses postales de vos contacts, une fois chacune, rien d’autre | seulement après que vous avez choisi **Les placer** |
+| Le géocodeur d’OpenStreetMap (Nominatim) | le lieu d’un événement, une fois, rien d’autre | seulement quand vous appuyez sur **Carte** dans sa fiche, et seulement quand l’événement n’a pas de point à lui et que ce lieu n’a jamais été cherché |
 | Les images de carte d’OpenStreetMap, ou celles que vous avez choisies | quelle partie de la carte est montrée | tant que la carte est ouverte |
+| La Base Adresse Nationale (France), ou Photon (komoot) ailleurs | ce que vous tapez dans le lieu d’un événement, trois caractères au moins, jamais son titre | pendant que vous tapez un lieu, après une pause, tant que **Suggérer des adresses pendant la saisie** est activé (Paramètres ▸ Agenda) |
+| L’application ou la page de cartes que vous ouvrez | le lieu d’un événement, et son point quand il est connu | seulement quand vous appuyez sur **Itinéraire** |
 | Le Web Key Directory du domaine des destinataires, puis keys.openpgp.org | les adresses auxquelles vous écrivez | seulement quand vous choisissez **Chercher leurs clés** |
 | L’adresse écrite sur votre clé de sécurité, l’annuaire de clés de votre domaine, puis keys.openpgp.org | l’empreinte de votre clé de sécurité, et le domaine de vos adresses | seulement quand vous choisissez **La chercher** ou **Chercher une version plus récente** |
 | Chaque site que vous épinglez | une demande de sa propre icône | environ une fois par semaine |

@@ -1399,6 +1399,48 @@ pub mod qobject {
         #[qinvokable]
         fn new_event_minutes(self: &Sioul) -> i32;
 
+        /// An event's own status set ("confirmed", "tentative", "cancelled"), "Undo"
+        /// offered; never a meeting with others (`pim::set_event_status`).
+        #[qinvokable]
+        fn set_event_status(self: Pin<&mut Sioul>, key: &QString, status: &QString) -> QString;
+
+        /// Where a place is, with no network: its event's GEO, else the places kept (`eventplace::point`).
+        #[qinvokable]
+        fn event_point(self: &Sioul, geo: &QString, location: &QString) -> QString;
+
+        /// A place asked of OpenStreetMap's geocoder once, because Map was pressed
+        /// (`eventplace::locate`); `places_changed` when it answered.
+        #[qinvokable]
+        fn locate_place(self: Pin<&mut Sioul>, location: &QString) -> QString;
+
+        /// Whether this system has an app for `geo:` links (`eventplace::geo_handler`).
+        #[qinvokable]
+        fn geo_handler(self: &Sioul) -> bool;
+
+        /// Addresses suggested for `typed` (`eventplace::suggest`): `addresses_suggested`.
+        #[qinvokable]
+        fn suggest_addresses(self: Pin<&mut Sioul>, typed: &QString);
+
+        /// A suggested address chosen: its point kept (`eventplace::keep_point`).
+        #[qinvokable]
+        fn keep_point(self: &Sioul, label: &QString, lat: f64, lon: f64);
+
+        /// Whether a line said once ("map", "suggest") is to be said now: true the first time.
+        #[qinvokable]
+        fn first_time(self: &Sioul, which: &QString) -> bool;
+
+        /// The service addresses are suggested from, by its name.
+        #[qinvokable]
+        fn address_service(self: &Sioul) -> QString;
+
+        /// Whether addresses are suggested from the network as a place is typed.
+        #[qinvokable]
+        fn suggests_addresses(self: &Sioul) -> bool;
+
+        /// The tile server, as Qt's map wants it (`https://tile.openstreetmap.org/`).
+        #[qinvokable]
+        fn map_tiles(self: &Sioul) -> QString;
+
         /// The Health page's settings (⚙): the pauses, where the errands go, the watch, as JSON.
         #[qinvokable]
         fn health_settings(self: &Sioul) -> QString;
@@ -2594,6 +2636,11 @@ pub mod qobject {
         /// Addresses were placed on the map.
         #[qsignal]
         fn places_changed(self: Pin<&mut Sioul>);
+
+        /// Addresses suggested for what was typed in a place (`eventplace::suggest`):
+        /// JSON {used: [label], found: [{label, lat, lon}], service}.
+        #[qsignal]
+        fn addresses_suggested(self: Pin<&mut Sioul>, typed: QString, suggested: QString);
 
         /// A site notified something, or was seen.
         #[qsignal]
@@ -6229,6 +6276,48 @@ impl qobject::Sioul {
         i32::try_from(load_config().agenda.new_event_minutes()).unwrap_or(30)
     }
 
+    fn set_event_status(self: Pin<&mut Self>, key: &QString, status: &QString) -> QString {
+        QString::from(&pim::set_event_status(&self.qt_thread(), &self.shared(), &key.to_string(), &status.to_string()))
+    }
+
+    fn event_point(&self, geo: &QString, location: &QString) -> QString {
+        QString::from(&crate::eventplace::point(&geo.to_string(), &location.to_string()))
+    }
+
+    fn locate_place(self: Pin<&mut Self>, location: &QString) -> QString {
+        QString::from(&crate::eventplace::locate(&self.qt_thread(), &location.to_string()))
+    }
+
+    fn geo_handler(&self) -> bool {
+        crate::eventplace::geo_handler()
+    }
+
+    fn suggest_addresses(self: Pin<&mut Self>, typed: &QString) {
+        let loaded = crate::work::loaded(&self.shared());
+        crate::eventplace::suggest(&self.qt_thread(), &loaded, &typed.to_string());
+    }
+
+    fn keep_point(&self, label: &QString, lat: f64, lon: f64) {
+        crate::eventplace::keep_point(&label.to_string(), lat, lon);
+    }
+
+    fn first_time(&self, which: &QString) -> bool {
+        crate::eventplace::first_time(&which.to_string())
+    }
+
+    fn address_service(&self) -> QString {
+        QString::from(&crate::eventplace::service_name())
+    }
+
+    fn suggests_addresses(&self) -> bool {
+        // A demo profile asks no service: nothing to say of one.
+        load_config().agenda.suggests_addresses() && !offline()
+    }
+
+    fn map_tiles(&self) -> QString {
+        QString::from(&crate::map::tiles())
+    }
+
     fn change_need(self: Pin<&mut Self>, edit: &QString) -> QString {
         let problem = crate::health::change_need(&edit.to_string());
         // The plan goes around it as that day has it now; the page shows it.
@@ -7409,8 +7498,10 @@ impl qobject::Sioul {
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
         // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "timeline" the
         // Day's times shown over a block, its handles, the "+" of an empty quarter, a meal's menu with "Had it", the
-        // Week's named meals and nights (pictures alone; docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "timeline"].contains(&steps.as_str()) && offline()) {
+        // Week's named meals and nights (pictures alone; docs/client.md), "eventcard" an appointment's card with its
+        // status, its place's buttons and its map, a tentative one, the event form's place suggested (pictures
+        // alone; docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "timeline", "eventcard"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

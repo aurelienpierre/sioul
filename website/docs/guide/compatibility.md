@@ -204,6 +204,7 @@ How to connect one, and what it may see: [Using an AI agent](ai-agent.md).
 | Scanned letters read | Tesseract and Poppler, when installed | the same | the same, from Homebrew | no |
 | Sites | inside Sioul | inside Sioul | inside Sioul | in your browser |
 | Security keys in sites | USB keys, their PIN asked by Sioul | Windows' own dialog | USB keys not checked; no Touch ID | your browser's |
+| An event's **Directions** | a `geo:` link when an app or a handler is set for them, as `xdg-mime query default x-scheme-handler/geo` names it, else OpenStreetMap's page | a `geo:` link when an app registered the `geo` protocol, else OpenStreetMap's page; not checked yet | a `geo:` link when an app is registered for it, as LaunchServices says, else Apple's maps in the browser; not checked yet | a `geo:` link, which most maps apps take; OpenStreetMap's page when none does |
 
 On Ubuntu 24.04 and later, the AppImage runs sites without Chromium's sandbox: prefer the Flatpak there ([Install](install.md#download)). **Not supported**: iPhone and iPad.
 
