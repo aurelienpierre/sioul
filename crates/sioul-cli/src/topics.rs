@@ -178,7 +178,7 @@ fn topic_lines(s: &Session, topic: &Topic, given_names: &dyn Fn(&str) -> String)
         lines.push(format!("    {}", s.say("topics-kept", &[("n", topic.kept.to_string())])));
     }
     for (to, n) in &topic.given {
-        lines.push(format!("    {}", s.say("topics-given", &[("n", n.to_string()), ("topic", given_names(to))])));
+        lines.push(format!("    {}", s.say("topics-gave-away", &[("n", n.to_string()), ("topic", given_names(to))])));
     }
     lines
 }
