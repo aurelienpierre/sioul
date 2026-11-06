@@ -157,7 +157,7 @@ Item {
             choose(1)
             compare(dialog.clock, "UTC")
             verify(line().visible)
-            compare(line().text, "2026-11-04T15:00 – 2026-11-04T16:00 on UTC", "the times typed, on the clock chosen")
+            compare(line().text, "2026-11-04T15:00 – 2026-11-04T15:30 on UTC", "the times typed, on the clock chosen")
             dialog.fill("Call", "16:30", "17:00", "")
             compare(line().text, "2026-11-04T16:30 – 2026-11-04T17:00 on UTC", "said again as the times change")
             dialog.save()
@@ -180,7 +180,7 @@ Item {
             compare(dialog.clock, "America/New_York")
             compare(box().currentIndex, 2, "still on another zone")
             compare(query.text, "America/New_York", "the zone picked, in its field")
-            compare(line().text, "2026-11-04T15:00 – 2026-11-04T16:00 on America/New_York")
+            compare(line().text, "2026-11-04T15:00 – 2026-11-04T15:30 on America/New_York")
             dialog.save()
             compare(mock.saved.edit.clock, "America/New_York")
         }

@@ -6,7 +6,7 @@
 // when its addresses arrive, at a computer's size and a phone's (MailPage.qml);
 // a message that does not read here says so in the reader's place (Reader.qml);
 // a note's `mid:` link however spelled asks Rust what it leads to
-// (NotesPage.qml, `linkTarget`); a money row opens its message (BudgetsPage.qml).
+// (NotesPage.qml, `linkTarget`); a money row opening its message is tested in tst_moneymail.qml.
 // Run by tools/qml-test.sh.
 
 import QtQuick
@@ -36,7 +36,6 @@ Item {
         property string mailFolder: ""
         property string drafts: "[]"
         property string mailSearch: ""
-        property string budgets: ""
         property bool realtime: false
         // What a message reads as: "" for one that is not here.
         property string reading: JSON.stringify({ subject: "The plan", from_name: "Ana", from_address: "ana@example.org", to: [], others: false, text: "Hello", attachments: [], uri: "mid:plan@example.org", flagged: false })
@@ -140,17 +139,6 @@ Item {
         id: notesComponent
 
         NotesPage {
-            anchors.fill: parent
-            sioul: mock
-            theme: testTheme
-            window: fakeWindow
-        }
-    }
-
-    Component {
-        id: budgetsComponent
-
-        BudgetsPage {
             anchors.fill: parent
             sioul: mock
             theme: testTheme
@@ -274,31 +262,6 @@ Item {
                 compare(fakeWindow.opened.length, 1, href)
                 compare(fakeWindow.opened[0].key, root.messageKey, href)
             }
-        }
-
-        // A money row opens the message it comes from.
-        function test_a_money_row_opens_its_message() {
-            mock.budgets = JSON.stringify({ budgets: [], choices: [], mail_title: "Mail about money", mail: [
-                { key: "mid:abc@example.org", kind: "invoice", kind_label: "Invoice", party: "Shop", amount: "12.00", credit: false, date: "30 Oct", subject: "Your invoice", note: "", state: "proposed", doubtful: false, can_add: false, budget: "" },
-                { key: "file:/stand-in/mail/alice/cur/9", kind: "invoice", kind_label: "Invoice", party: "Shop", amount: "3.00", credit: false, date: "29 Oct", subject: "No id", note: "", state: "proposed", doubtful: false, can_add: false, budget: "" }
-            ] })
-            const page = createTemporaryObject(budgetsComponent, root)
-            const buttons = () => {
-                const out = []
-                const collect = item => {
-                    if (item.objectName === "budgetOpenMessage")
-                        out.push(item)
-                    for (let i = 0; i < (item.children || []).length; ++i)
-                        collect(item.children[i])
-                }
-                collect(page)
-                return out
-            }
-            tryVerify(() => buttons().length === 2, 5000, "both rows, each with its button")
-            buttons()[0].clicked()
-            buttons()[1].clicked()
-            compare(fakeWindow.opened.map(o => o.key), [root.messageKey, "/stand-in/mail/alice/cur/9"])
-            compare(fakeWindow.opened[0].kind, "mail")
         }
     }
 }

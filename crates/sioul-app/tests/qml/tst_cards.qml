@@ -1188,9 +1188,11 @@ Item {
         // with part 4's Leave at, Before (one step), Bring (one group) and Answer…
         // (its menu made at its first press): 96 before them. Measured again on 5
         // November 2026 with its status, Map and Directions (its place: Rue Blanche),
-        // the map itself made only once pressed: 118 before them.
-        readonly property int event: 151
-        readonly property int both: 178
+        // the map itself made only once pressed: 118 before them. Measured again on
+        // 6 November 2026 with its participants and Invite…, and a meal's Every day
+        // and Had it: 151 and 178 before them.
+        readonly property int event: 161
+        readonly property int both: 204
         readonly property int phoneWithTask: 677
     }
 }
