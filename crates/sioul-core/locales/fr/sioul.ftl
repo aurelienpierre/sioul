@@ -1013,6 +1013,7 @@ dav-rewritten = { $count ->
    *[other] { $count } tâches et événements ont été réécrits sous une forme que le gestionnaire de comptes de votre téléphone peut aussi renvoyer ; ils se lisent de même ici.
 }
 dav-moved-out = « { $summary } », un événement dans une liste de tâches, a été déplacé dans votre calendrier des nouveaux événements.
+dav-withdrawn = « { $summary } » a changé sur son serveur entre-temps : les messages à ses invités qui attendaient dans les brouillons disaient votre version, et ont été retirés.
 dav-conflict = Modifié des deux côtés : la version du serveur est gardée ; la vôtre est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes), à remettre si vous la préférez.
 dav-answered-elsewhere = { $answer ->
         [accepted] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : accepté. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
@@ -3928,6 +3929,10 @@ invite-delete-tells = Le supprimer dit à chaque invité qu’il est annulé.
 invite-delete-one-time = Une seule fois d’une réunion que vous organisez ne se retire pas ici : supprimez toute la réunion, ce qui prévient chaque invité, ou retirez cette fois dans l’application de son agenda.
 invite-cancelled-server = Votre serveur prévient chaque invité.
 invite-cancelled-draft = L’annulation pour les invités attend dans les brouillons : elle part quand vous l’envoyez.
+invite-ask-organizer = Vous en devenez l’organisateur, à la place de { $who }.
+invite-undeleted-server = Si votre serveur a dit à ses invités qu’elle est annulée, il les invite de nouveau.
+invite-undeleted-draft = Ses invités ont appris qu’elle est annulée : une invitation pour eux attend dans les brouillons, et part quand vous l’envoyez.
+invite-replied-time = Cette réponse vaut pour { $when } seulement.
 day-let-plan = Laisser le plan la placer
 day-let-plan-done = Le plan place de nouveau « { $title } ».
 agenda-read-only = Ce calendrier ne peut qu’être lu.
@@ -7036,12 +7041,14 @@ agent-task-to-event = Un agent d’IA a fait de la tâche « { $title } » u
 agent-event-to-task = Un agent d’IA a fait de l’événement « { $title } » une tâche, dans { $list }.
 event-delete-with-others = Une réunion avec d’autres n’est jamais supprimée ici : son serveur l’annulerait ou la déclinerait pour eux. Répondez-y, ou supprimez-la dans son application d’agenda.
 event-change-with-others = Une réunion avec d’autres garde son heure, son titre, son lieu, ses notes et son agenda tels que son organisateur les a mis : son serveur préviendrait chaque invité d’un changement. Votre temps autour, ses coûts et votre rappel se changent ici.
+event-organizes-guests = Il vous nomme organisateur d’invités : écrit ici, votre serveur les inviterait. Les invités s’ajoutent depuis le formulaire de l’événement, qui dit d’abord qui en est prévenu.
 agent-meeting-never-written = C’est une réunion avec d’autres : Sioul ne la change pas ici, son serveur préviendrait chaque invité d’un changement. Le temps gardé autour et le rappel se règlent dans la fenêtre de Sioul.
 invitation-cancel-changed = Il a changé entre-temps : rien n’a été retiré.
 invitation-cancel-refused = Cette annulation ne vient pas de l’organisateur de la réunion, ou la réunion est la vôtre : rien n’a été retiré.
 invitation-older = Votre calendrier garde une version de cette réunion au moins aussi récente que cette invitation : ses heures y restent telles quelles, votre réponse y est, et elle est envoyée.
 invitation-older-added = Votre calendrier garde une version de cet événement au moins aussi récente : il reste tel quel.
 invitation-update-refused = Cette invitation ne vient pas de son organisateur, ou c’est une réunion que vous organisez : rien n’est écrit, et aucune réponse n’est envoyée.
+invitation-organizer-unproven = Cette invitation vous nomme organisateur, et rien ne prouve que vous l’avez envoyée : elle n’est pas ajoutée.
 task-list-would-lose = Cette liste ne garderait pas
 
 # A conversation archived in Texts (25 October 2026): out of the list, its texts kept, back with a newer text.

@@ -685,42 +685,82 @@ pub fn with_others(text: &str) -> bool {
 /// (`may_change`). An organizer alone tells nobody of a change (your own
 /// Google events, a shared calendar's): none; nor is an alarm's recipient a
 /// guest (RFC 5545 §3.6.6 puts one in every EMAIL alarm). `own`: your
-/// addresses, in lower case.
+/// addresses, in lower case. Its organizer is its first ORGANIZER line, as a
+/// server reads it, and yours only as a `mailto:` URI of your address; one
+/// naming two organizers beside a guest is someone else's; a task's
+/// organizer and guests count as an event's (review of 1e8551e, F7, F15, F16).
 pub fn meeting_with_others(text: &str, own: &[String]) -> bool {
     let yours = |value: &str| {
         let at = address(value).trim().to_lowercase();
         !at.is_empty() && own.contains(&at)
     };
-    // Each event in turn: whether its organizer is you (none when it names none), its guests, one not you.
-    let (mut inside, mut nested) = (false, 0usize);
-    let (mut organizer, mut guests, mut others): (Option<bool>, usize, bool) = (None, 0, false);
+    scheduled_parts(text).iter().any(|part| {
+        let organizer = part.organizers.first().map(|o| organizer_is_you(o, own));
+        let others = part.guests.iter().any(|g| !yours(g));
+        let guests = !part.guests.is_empty();
+        others || (guests && (organizer == Some(false) || part.organizers.len() > 1))
+    })
+}
+
+/// One part of a calendar's text a server schedules (RFC 6638 §3.2: a VEVENT
+/// or a VTODO, the series or one time of it): its ORGANIZER lines' values and
+/// its ATTENDEE lines' values, in order; its own alarms aside, whose
+/// recipients are no guests.
+struct ScheduledPart {
+    event: bool,
+    organizers: Vec<String>,
+    guests: Vec<String>,
+}
+
+/// Every VEVENT and VTODO of a text (`ScheduledPart`), in order.
+fn scheduled_parts(text: &str) -> Vec<ScheduledPart> {
+    let (mut out, mut inside, mut nested): (Vec<ScheduledPart>, bool, usize) = (Vec::new(), false, 0);
     for line in lines::unfold(text) {
         let name = lines::name(&line);
         let value = lines::value(&line);
         match name.as_str() {
             "BEGIN" if !inside => {
-                if value.trim().eq_ignore_ascii_case("VEVENT") {
-                    (inside, nested, organizer, guests, others) = (true, 0, None, 0, false);
+                let what = value.trim().to_ascii_uppercase();
+                if what == "VEVENT" || what == "VTODO" {
+                    (inside, nested) = (true, 0);
+                    out.push(ScheduledPart { event: what == "VEVENT", organizers: Vec::new(), guests: Vec::new() });
                 }
             }
-            // Its alarms are nested in it: never its guests.
             "BEGIN" => nested += 1,
             "END" if inside && nested > 0 => nested -= 1,
-            "END" if inside => {
-                inside = false;
-                if others || (organizer == Some(false) && guests > 0) {
-                    return true;
-                }
-            }
-            "ORGANIZER" if inside && nested == 0 => organizer = Some(yours(value)),
-            "ATTENDEE" if inside && nested == 0 => {
-                guests += 1;
-                others |= !yours(value);
-            }
+            "END" if inside => inside = false,
+            "ORGANIZER" if inside && nested == 0 => out.last_mut().into_iter().for_each(|p| p.organizers.push(value.to_string())),
+            "ATTENDEE" if inside && nested == 0 => out.last_mut().into_iter().for_each(|p| p.guests.push(value.to_string())),
             _ => {}
         }
     }
-    false
+    out
+}
+
+/// Whether an ORGANIZER's value names you: a `mailto:` URI of one of your
+/// addresses (`own`, in lower case), as a scheduling server compares calendar
+/// users (RFC 6638 §2.4.1); a value without the scheme is no one you can
+/// tell, and never you (review of 1e8551e, F15).
+fn organizer_is_you(value: &str, own: &[String]) -> bool {
+    let value = value.trim();
+    value.get(..7).is_some_and(|scheme| scheme.eq_ignore_ascii_case("mailto:")) && {
+        let at = value[7..].trim().to_lowercase();
+        !at.is_empty() && own.contains(&at)
+    }
+}
+
+/// Whether a server would schedule an event for you (RFC 6638 §3.2.1): one of
+/// its parts names a guest who is not you beside an ORGANIZER naming one of
+/// your addresses, any of its lines, written as a URI or not. Only the
+/// organizer's door writes one (`may_organize`); every other writer refuses
+/// it (`may_change`, `guard`), never someone else's meeting that names you a
+/// guest, which is added as before (review of 1e8551e, F8).
+pub fn scheduled_for_you(text: &str, own: &[String]) -> bool {
+    let named = |value: &str| {
+        let at = address(value).trim().to_lowercase();
+        !at.is_empty() && own.contains(&at)
+    };
+    scheduled_parts(text).iter().any(|part| part.organizers.iter().any(|o| named(o)) && part.guests.iter().any(|g| !named(g)))
 }
 
 /// How many guests an event names, as the rule reads them
@@ -770,6 +810,10 @@ fn own() -> (Vec<String>, String) {
 
 /// Your addresses, in lower case (`own`): an organizer or a guest that is one of them is you.
 pub fn own_addresses() -> Vec<String> {
+    #[cfg(feature = "test-hooks")]
+    if !test_hooks() {
+        return Vec::new();
+    }
     #[cfg(any(test, feature = "test-hooks"))]
     if let Some(own) = OWN_HERE.with(|here| here.borrow().clone()) {
         return own;
@@ -816,6 +860,10 @@ pub enum Refusal {
     /// written, and nothing more of it is known here. Said by the views;
     /// its writers refuse it as read only.
     Availability,
+    /// A write naming you the organizer of guests (`scheduled_for_you`):
+    /// its server would invite them; the event's form alone invites, through
+    /// the organizer's door, which says first who hears of it.
+    Organizes,
 }
 
 impl Refusal {
@@ -828,6 +876,7 @@ impl Refusal {
             (Refusal::TasksOnly, _) => "agenda-tasks-only",
             (Refusal::EventsOnly, _) => "agenda-events-only",
             (Refusal::Availability, _) => "agenda-availability-only",
+            (Refusal::Organizes, _) => "event-organizes-guests",
         }
     }
 }
@@ -840,9 +889,11 @@ impl Refusal {
 /// yours about it (the time kept around it, its costs and gain, your
 /// reminder) is kept in your own file (`own_time`, decision 18, part 4).
 /// Answering its invitation is no such writer (`vdir::store_item`). Nor is
-/// an event made a meeting with others by a write (`change` writing guests
-/// in): its server would invite them, which your own act alone may ask,
-/// through the organizer's door (`may_organize`, 5 November 2026).
+/// a write that makes you the organizer of guests (`change` writing them in,
+/// `scheduled_for_you`): its server would invite them, which your own act
+/// alone may ask, through the organizer's door (`may_organize`, 5 November
+/// 2026); someone else's meeting naming you a guest is written as before
+/// (review of 1e8551e, F8).
 pub fn may_change(text: &str, read_only: bool, own: &[String], change: Change) -> Result<(), Refusal> {
     if read_only {
         return Err(Refusal::ReadOnly);
@@ -851,9 +902,9 @@ pub fn may_change(text: &str, read_only: bool, own: &[String], change: Change) -
         return Err(Refusal::WithOthers);
     }
     if let Change::Write(new) = change
-        && meeting_with_others(new, own)
+        && scheduled_for_you(new, own)
     {
-        return Err(Refusal::WithOthers);
+        return Err(Refusal::Organizes);
     }
     Ok(())
 }
@@ -862,37 +913,33 @@ pub fn may_change(text: &str, read_only: bool, own: &[String], change: Change) -
 /// organizer (`own`: your addresses, in lower case): a meeting you organize,
 /// or an event of no guest; false for a text that holds no event. An event
 /// with a guest and no organizer is no one's you can tell, as
-/// `meeting_with_others` reads it.
+/// `meeting_with_others` reads it. Its organizer is yours only as a
+/// `mailto:` URI of your address (F15); a part naming two organizers is
+/// malformed and never yours, nor are parts naming different organizers
+/// (sabre reads the first line alone: F7); a task's guests count as an
+/// event's (F16, review of 1e8551e).
 pub fn organized_by_you(text: &str, own: &[String]) -> bool {
-    let yours = |value: &str| {
-        let at = address(value).trim().to_lowercase();
-        !at.is_empty() && own.contains(&at)
-    };
-    let (mut inside, mut nested, mut seen) = (false, 0usize, false);
-    let (mut organizer, mut guests): (bool, usize) = (false, 0);
-    for line in lines::unfold(text) {
-        let name = lines::name(&line);
-        let value = lines::value(&line);
-        match name.as_str() {
-            "BEGIN" if !inside => {
-                if value.trim().eq_ignore_ascii_case("VEVENT") {
-                    (inside, nested, organizer, guests, seen) = (true, 0, false, 0, true);
-                }
+    let parts = scheduled_parts(text);
+    if !parts.iter().any(|p| p.event) {
+        return false;
+    }
+    let mut named: Vec<String> = Vec::new();
+    for part in &parts {
+        if part.organizers.len() > 1 {
+            return false;
+        }
+        let organizer = part.organizers.first();
+        if !part.guests.is_empty() && !organizer.is_some_and(|o| organizer_is_you(o, own)) {
+            return false;
+        }
+        if let Some(o) = organizer {
+            let at = address(o).trim().to_lowercase();
+            if !named.contains(&at) {
+                named.push(at);
             }
-            "BEGIN" => nested += 1,
-            "END" if inside && nested > 0 => nested -= 1,
-            "END" if inside => {
-                inside = false;
-                if guests > 0 && !organizer {
-                    return false;
-                }
-            }
-            "ORGANIZER" if inside && nested == 0 => organizer = yours(value),
-            "ATTENDEE" if inside && nested == 0 => guests += 1,
-            _ => {}
         }
     }
-    seen
+    named.len() <= 1
 }
 
 /// Whether an event is a meeting you organize: a meeting with others
@@ -951,11 +998,23 @@ pub fn open_organizer_door_here(open: bool) {
 }
 
 fn organizer_door_open() -> bool {
+    #[cfg(feature = "test-hooks")]
+    if !test_hooks() {
+        return false;
+    }
     #[cfg(any(test, feature = "test-hooks"))]
     if ORGANIZER_DOOR_HERE.with(std::cell::Cell::get) {
         return true;
     }
     ORGANIZER_DOOR.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The `test-hooks` feature, its mark kept in every program and library
+/// built with it, for `tools/check-test-marks.sh` to find whatever else that
+/// build holds (review of 1e8551e, F17): never in Sioul's builds.
+#[cfg(feature = "test-hooks")]
+fn test_hooks() -> bool {
+    !std::hint::black_box("SIOUL_TEST_HOOKS: this build sets your addresses and the organizer's door for one test's thread").is_empty()
 }
 
 /// `may_organize` for the file at `path` as it is now, `new` what it becomes
@@ -984,8 +1043,8 @@ pub fn guard_organized(path: &Path, new: Option<&str>) -> Result<(), Refusal> {
 /// (`vdir::write_item`, `remove_item`, `move_item`, `replace_items`). A file
 /// of no calendar (a contact) passes; a task passes but in a calendar or a
 /// list you only read; a new event is refused in a calendar you only read,
-/// and when it names guests (an event you organize goes through the
-/// organizer's door, `guard_organized`). What holds no event, before and after, is asked nothing more than
+/// and when it names you its organizer beside guests (an event you organize
+/// goes through the organizer's door, `guard_organized`). What holds no event, before and after, is asked nothing more than
 /// its read: no sync state parsed, no address asked (review of 36002ea,
 /// can-wait 13). A calendar you only read is one its server keeps so, or one
 /// whose agenda you keep read only or for its availability (`agendas`).
@@ -1016,8 +1075,10 @@ pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
     match (old, change) {
         (Some(text), change) => may_change(&text, read_only, &own_addresses(), change),
         (None, Change::Write(_)) if read_only => Err(Refusal::ReadOnly),
-        // A new event that names guests: its server would invite them (`may_change`).
-        (None, Change::Write(new)) if meeting_with_others(new, &own_addresses()) => Err(Refusal::WithOthers),
+        // A new event naming you its organizer beside guests: its server would
+        // invite them (`may_change`); someone else's (a booking, an invitation's
+        // file) is added as before (review of 1e8551e, F8).
+        (None, Change::Write(new)) if scheduled_for_you(new, &own_addresses()) => Err(Refusal::Organizes),
         _ => Ok(()),
     }
 }
@@ -1453,7 +1514,9 @@ pub fn participants(text: &str) -> Vec<Participant> {
         match lines::name(line).as_str() {
             "BEGIN" => nested += 1,
             "END" => nested = nested.saturating_sub(1),
-            "ORGANIZER" if nested == 0 => out.insert(0, person(line, true)),
+            // Its first ORGANIZER line, as a server reads it (review of 1e8551e, F7).
+            "ORGANIZER" if nested == 0 && !out.iter().any(|p| p.organizer) => out.insert(0, person(line, true)),
+            "ORGANIZER" => {}
             "ATTENDEE" if nested == 0 => {
                 let guest = person(line, false);
                 if guest.address.is_empty() {
@@ -1924,6 +1987,27 @@ pub fn skip_occurrence(text: &str, start: i64) -> Option<String> {
     let end = master.end - 1;
     source.insert(end, written_like(&dtstart, "EXDATE", at, &zone));
     Some(lines::fold(&source))
+}
+
+/// A series' text with one time of it given an event of its own
+/// (RECURRENCE-ID), at the times it has and as the series says it: what
+/// holds a guest's answer for that time alone (a REPLY naming it, RFC 5546
+/// §3.2.3; review of 1e8551e, F13). `recurrence`: the RECURRENCE-ID line
+/// naming it, matched by its instant. None when the series has no such time,
+/// or that time has its event already.
+pub fn time_made_own(text: &str, recurrence: &str, zone: &TimeZone) -> Option<String> {
+    let start = instant_in(recurrence, zone)?;
+    let (_, changed) = occurrence_at(text, start, zone)?;
+    if changed {
+        return None;
+    }
+    let ical = parse(&for_expansion(&from_window(text, start)))?;
+    let found = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT).events.into_iter().find(|e| e.start.timestamp() == start)?;
+    let end = match found.end {
+        TimeOrDelta::Time(end) => end.timestamp(),
+        TimeOrDelta::Delta(delta) => start + delta.num_seconds(),
+    };
+    moved(text, start, start, end.max(start + 60), true, zone).ok()
 }
 
 /// Which occurrence of a file's event starts at `start` (Unix seconds), as the
@@ -3701,8 +3785,12 @@ mod tests {
         assert_eq!(may_change(&meeting, false, &own, Change::Write(&retitled)), Err(Refusal::WithOthers));
         let mine = review("ORGANIZER:mailto:me@example.org\r\n");
         let mine_retitled = mine.replace("SUMMARY:Review", "SUMMARY:Review, moved");
-        // The meeting's text written into your own event would make you invite its guests: refused (`may_organize`).
-        assert_eq!(may_change(&mine, false, &own, Change::Write(&retitled)), Err(Refusal::WithOthers));
+        // Someone else's meeting naming you a guest, written as before (review of 1e8551e, F8);
+        // guests written into your own event would have its server invite them: refused.
+        assert_eq!(may_change(&mine, false, &own, Change::Write(&retitled)), Ok(()));
+        let invited = mine.replace("ORGANIZER:mailto:me@example.org\r\n", "ORGANIZER:mailto:me@example.org\r\nATTENDEE:mailto:anne@example.net\r\n");
+        assert_eq!(may_change(&mine, false, &own, Change::Write(&invited)), Err(Refusal::Organizes));
+        assert_eq!(Refusal::Organizes.word(&Change::Write(&invited)), "event-organizes-guests");
         for change in [Change::Move, Change::Delete, Change::Write(&mine_retitled)] {
             assert_eq!(may_change(&mine, false, &own, change), Ok(()), "{change:?}");
             assert_eq!(may_change(&mine, true, &own, change), Err(Refusal::ReadOnly), "{change:?}");
@@ -3932,6 +4020,112 @@ mod tests {
         assert!(wrong.is_empty(), "each name covers the lines it says, no more, no fewer:\n{}", wrong.join("\n"));
     }
 
+    /// The door's names, and who may name them (file, function, name): the
+    /// door's own chain, then the window's acts, then its start.
+    const DOOR: [&str; 5] = ["write_organized", "remove_organized", "guard_organized", "may_organize", "open_organizer_door"];
+    const DOOR_ALLOWED: [(&str, &str, &str); 6] = [
+        ("sioul-core/src/vdir.rs", "organized", "guard_organized"),
+        ("sioul-core/src/agenda.rs", "guard_organized", "may_organize"),
+        ("sioul-app/src/organized.rs", "*", "write_organized"),
+        ("sioul-app/src/organized.rs", "*", "remove_organized"),
+        ("sioul-app/src/lib.rs", "run", "open_organizer_door"),
+        // Its own definitions.
+        ("", "", ""),
+    ];
+    /// The window's acts that write through the door (organized.rs), named by
+    /// the agenda's own writers alone (pim.rs).
+    const DOOR_ACTS: [&str; 7] = ["write", "put_back", "delete", "undelete", "replied", "adopt", "tidy_once"];
+
+    /// Where `word` stands in `line` as a whole name (no letter, digit or `_`
+    /// beside it), each place.
+    fn named_at(line: &str, word: &str) -> Vec<usize> {
+        let part = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        line.match_indices(word).map(|(at, _)| at).filter(|&at| !line[..at].chars().next_back().is_some_and(part) && !line[at + word.len()..].chars().next().is_some_and(part)).collect()
+    }
+
+    /// What reaches the organizer's door from where it may not, over sources
+    /// given as (file under crates/, its text), tests aside (`lines_of`): each
+    /// as "file: function: what". The door's names (`DOOR`) only as calls
+    /// (`name(`) from where `DOOR_ALLOWED` says, never imported, aliased
+    /// (`use … as`), taken as a function's value, nor written in a macro
+    /// (`macro_rules!`, or a name pasted together, `[<…>]`), wherever it is;
+    /// organized.rs's acts (`DOOR_ACTS`) called as `organized::act(` from
+    /// pim.rs alone, the module never imported nor aliased. And whether the
+    /// window's `run` opens the door.
+    fn door_astray(sources: &[(String, String)]) -> (Vec<String>, bool) {
+        let (mut astray, mut opened) = (Vec::new(), false);
+        for (file, text) in sources {
+            // The lines of each macro_rules! (to its closing brace at its indent).
+            let mut macros: Vec<String> = Vec::new();
+            let all: Vec<&str> = text.lines().collect();
+            for (n, line) in all.iter().enumerate() {
+                let code = line.trim_start();
+                if code.starts_with("macro_rules!") || code.contains(" macro_rules!") {
+                    let indent = &line[..line.len() - code.len()];
+                    let closing = format!("{indent}}}");
+                    let end = all.iter().skip(n + 1).position(|l| l.trim_end() == closing || l.trim_end() == format!("{closing};")).map_or(all.len(), |p| n + 2 + p);
+                    macros.extend(all[n..end.min(all.len())].iter().map(|l| l.to_string()));
+                }
+            }
+            for line in macros.iter().map(|l| l.split("//").next().unwrap_or_default()) {
+                for word in DOOR.iter().filter(|w| !named_at(line, w).is_empty()) {
+                    astray.push(format!("{file}: a macro: {word}"));
+                }
+            }
+            for (_, function, line) in lines_of(text) {
+                let line = line.split("//").next().unwrap_or_default();
+                let is_use = ["use ", "pub use ", "pub(crate) use ", "pub(super) use "].iter().any(|u| line.trim_start().starts_with(u));
+                // A name pasted together (the paste crate's `[<…>]`): never near the door.
+                if line.contains("[<") && line.contains("organize") {
+                    astray.push(format!("{file}: {function}: a pasted name"));
+                }
+                for word in DOOR {
+                    for at in named_at(line, word) {
+                        let rest = &line[at + word.len()..];
+                        let defined = line[..at].trim_end().ends_with("fn");
+                        if defined && !is_use {
+                            continue;
+                        }
+                        let call = rest.starts_with('(') && !is_use;
+                        let allowed = DOOR_ALLOWED.iter().any(|(f, n, w)| !f.is_empty() && *f == file && (*n == "*" || *n == function) && *w == word);
+                        if !call || !allowed {
+                            astray.push(format!("{file}: {function}: {word}{}", if call { "(" } else { " (not a call)" }));
+                        }
+                        opened |= call && allowed && word == "open_organizer_door";
+                    }
+                }
+                // organized.rs, named as a module: its acts called from pim.rs alone; never imported or aliased.
+                if file == "sioul-app/src/organized.rs" {
+                    continue;
+                }
+                for at in named_at(line, "organized") {
+                    let rest = &line[at + "organized".len()..];
+                    let module = rest.starts_with("::") || (is_use && !line[..at].trim_end().ends_with("mod"));
+                    if !module {
+                        continue;
+                    }
+                    if is_use {
+                        astray.push(format!("{file}: {function}: use …organized"));
+                        continue;
+                    }
+                    let item: String = rest.trim_start_matches("::").chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+                    if item.is_empty() {
+                        astray.push(format!("{file}: {function}: organized::{}", rest.trim_start_matches("::").chars().next().unwrap_or(' ')));
+                        continue;
+                    }
+                    if !DOOR_ACTS.contains(&item.as_str()) {
+                        continue;
+                    }
+                    let call = rest.trim_start_matches("::")[item.len()..].starts_with('(');
+                    if file != "sioul-app/src/pim.rs" || !call {
+                        astray.push(format!("{file}: {function}: organized::{item}{}", if call { "(" } else { " (not a call)" }));
+                    }
+                }
+            }
+        }
+        (astray, opened)
+    }
+
     /// Over the programs' sources, tests aside: the organizer's door
     /// (`vdir::write_organized`, `remove_organized`, their rule
     /// `guard_organized` and `may_organize`) is called by its own definitions
@@ -3940,21 +4134,14 @@ mod tests {
     /// or `sioul mcp` (sioul-cli: the command line, agents), never by the sync
     /// (sioul-sync), never elsewhere in the core; and organized.rs's acts are
     /// called by the agenda's own writers (pim.rs) alone, never by the
-    /// window's agents' Undo or its sync. A new caller fails here, named with
-    /// its file and function.
+    /// window's agents' Undo or its sync. Matched by name, not by call: an
+    /// alias, an import, a function's value or a macro naming it fails here
+    /// too (`door_astray`; review of 1e8551e). A new caller fails here, named
+    /// with its file and function.
     #[test]
     fn the_organizers_door_is_the_persons_alone() {
         let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let calls = ["write_organized(", "remove_organized(", "guard_organized(", "may_organize(", "open_organizer_door("];
-        // (file, function, what it may call): the door's own chain, then the window's acts, then its start.
-        let door = ["write_organized(", "remove_organized(", "guard_organized(", "may_organize("];
-        let allowed: [(&str, &str, &[&str]); 4] = [
-            ("sioul-core/src/vdir.rs", "organized", &["guard_organized("]),
-            ("sioul-core/src/agenda.rs", "guard_organized", &["may_organize("]),
-            ("sioul-app/src/organized.rs", "*", &door),
-            ("sioul-app/src/lib.rs", "run", &["open_organizer_door("]),
-        ];
-        let mut sources = Vec::new();
+        let mut paths = Vec::new();
         let mut stack = vec![crates.clone()];
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
@@ -3963,38 +4150,56 @@ mod tests {
                 if path.is_dir() && name != "target" && name != "tests" {
                     stack.push(path);
                 } else if name.ends_with(".rs") && !name.contains("tests") && path.components().any(|c| c.as_os_str() == "src") {
-                    sources.push(path);
+                    paths.push(path);
                 }
             }
         }
-        sources.sort();
-        // The window's acts that write through the door (organized.rs), called from the agenda's own writers alone (pim.rs).
-        let acts = ["organized::write(", "organized::put_back(", "organized::delete(", "organized::undelete(", "organized::replied("];
-        let (mut astray, mut opened) = (Vec::new(), false);
-        for path in sources {
-            let file = path.strip_prefix(&crates).unwrap_or(&path).to_string_lossy().replace('\\', "/");
-            for (_, function, line) in lines_of(&std::fs::read_to_string(&path).unwrap_or_default()) {
-                let line = line.split("//").next().unwrap_or_default();
-                for act in acts.iter().filter(|a| line.contains(*a)) {
-                    if file != "sioul-app/src/pim.rs" {
-                        astray.push(format!("{file}: {function}: {act}"));
-                    }
-                }
-                for call in calls.iter().filter(|c| line.contains(*c)) {
-                    // Its own definition, never a call.
-                    if line.contains(&format!("fn {call}")) {
-                        continue;
-                    }
-                    let ok = allowed.iter().any(|(f, n, may)| *f == file && (*n == "*" || *n == function) && may.contains(call));
-                    if !ok {
-                        astray.push(format!("{file}: {function}: {call}"));
-                    }
-                    opened |= *call == "open_organizer_door(" && file == "sioul-app/src/lib.rs";
-                }
-            }
-        }
+        paths.sort();
+        let sources: Vec<(String, String)> = paths.iter().map(|path| (path.strip_prefix(&crates).unwrap_or(path).to_string_lossy().replace('\\', "/"), std::fs::read_to_string(path).unwrap_or_default())).collect();
+        assert!(sources.iter().any(|(f, _)| f == "sioul-app/src/organized.rs"), "the sources read");
+        let (astray, opened) = door_astray(&sources);
         assert!(astray.is_empty(), "the organizer's door is the window's own acts alone, never an agent's, the command line's nor the sync's:\n{}", astray.join("\n"));
         assert!(opened, "the window opens the door (sioul-app's `run`)");
+    }
+
+    /// The door's source test against what would slip past a test of calls
+    /// alone (review of 1e8551e): an alias planted in a fixture (`use … as`),
+    /// an import, the door taken as a function's value, a macro that names
+    /// it, a name pasted together, organized.rs's acts imported or aliased
+    /// or called from elsewhere; and the calls it allows.
+    #[test]
+    fn the_door_s_source_test_finds_aliases_and_macros() {
+        let planted = |file: &str, text: &str| door_astray(&[(file.to_string(), text.to_string())]).0;
+        let caught = [
+            ("sioul-app/src/backend.rs", "use sioul_core::vdir::write_organized as w;\nfn sneak(p: &Path, t: &str) {\n    let _ = w(p, t);\n}\n"),
+            ("sioul-app/src/organized.rs", "pub(crate) use sioul_core::vdir::remove_organized as gone;\n"),
+            ("sioul-app/src/organized.rs", "use sioul_core::vdir::{\n    self,\n    write_organized as w,\n};\n"),
+            ("sioul-cli/src/mcp/items.rs", "macro_rules! m {\n    ($p:expr) => {\n        sioul_core::vdir::remove_organized($p)\n    };\n}\n"),
+            ("sioul-app/src/organized.rs", "macro_rules! m {\n    ($p:expr, $t:expr) => {\n        vdir::write_organized($p, $t)\n    };\n}\n"),
+            ("sioul-sync/src/dav.rs", "fn f(p: &Path, t: &str) {\n    let door = sioul_core::vdir::write_organized;\n    let _ = door(p, t);\n}\n"),
+            ("sioul-app/src/organized.rs", "fn f() {\n    let door = vdir::write_organized;\n}\n"),
+            ("sioul-app/src/backend.rs", "fn f() {\n    paste::paste! { let _ = vdir::[<write_ organized>](p, t); }\n}\n"),
+            ("sioul-cli/src/tasks.rs", "fn f(p: &Path, t: &str) {\n    let _ = sioul_core::vdir::write_organized(p, t);\n}\n"),
+            ("sioul-app/src/backend.rs", "use crate::organized::{write as w};\n"),
+            ("sioul-app/src/backend.rs", "use crate::organized as o;\nfn f() {\n    let _ = o::write(&plan);\n}\n"),
+            ("sioul-app/src/share.rs", "fn f() {\n    let _ = crate::organized::put_back(&written);\n}\n"),
+            ("sioul-app/src/pim.rs", "fn f() {\n    let undo = crate::organized::undelete;\n}\n"),
+            ("sioul-app/src/pim.rs", "use crate::organized::*;\n"),
+            ("sioul-app/src/lib.rs", "fn elsewhere() {\n    sioul_core::agenda::open_organizer_door();\n}\n"),
+        ];
+        for (file, text) in caught {
+            assert!(!planted(file, text).is_empty(), "caught: {file}:\n{text}");
+        }
+        let allowed = [
+            ("sioul-app/src/organized.rs", "fn w(p: &Path, t: &str) -> Result<(), String> {\n    vdir::write_organized(p, t)?;\n    vdir::remove_organized(p)\n}\n"),
+            ("sioul-app/src/pim.rs", "fn save() {\n    let _ = crate::organized::write(&plan);\n    let _ = crate::organized::plan(&p, None, t, None, &c);\n}\n"),
+            ("sioul-core/src/vdir.rs", "pub fn write_organized(path: &Path, text: &str) -> Result<(), String> {\n    organized(path, Some(text))?;\n    store_item(path, text)\n}\n"),
+            ("sioul-app/src/lib.rs", "mod organized;\npub fn run() -> i32 {\n    sioul_core::agenda::open_organizer_door();\n    0\n}\n"),
+        ];
+        for (file, text) in allowed {
+            assert_eq!(planted(file, text), Vec::<String>::new(), "allowed: {file}:\n{text}");
+        }
+        assert!(door_astray(&[(allowed[3].0.to_string(), allowed[3].1.to_string())]).1, "opened by run");
     }
 
     /// The organizer's door (decision 7 of the event card, 5 November 2026):
@@ -4031,7 +4236,7 @@ mod tests {
         assert_eq!(may_organize(None, None, false, &own), Err(Refusal::WithOthers));
         // The sync's put-back of a merge asks `may_change` of the server's copy: refused for yours too.
         assert_eq!(may_change(&invited, false, &own, Change::Write(&invited.replace("Review", "Review, ticked"))), Err(Refusal::WithOthers));
-        assert_eq!(may_change(&alone, false, &own, Change::Write(&invited)), Err(Refusal::WithOthers), "guests written by another writer");
+        assert_eq!(may_change(&alone, false, &own, Change::Write(&invited)), Err(Refusal::Organizes), "guests written by another writer");
         // The doors.
         let account = "guard-organizer";
         for (id, name) in [("mine", "Mine"), ("read", "Read only")] {

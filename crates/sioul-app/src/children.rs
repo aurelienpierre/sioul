@@ -902,10 +902,12 @@ mod tests {
         take_files(&key, 0, "me", &me).unwrap();
         assert_eq!(mine.items().len(), 1);
         // Asked of Sam, who answers in their own Sioul: the stand-in goes, no draft.
-        let drafts_before = sioul_core::compose::Draft::all().len();
+        // Counted for this event alone: other tests draft beside this one (the meetings you organize).
+        let drafts_here = || sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("part3-dentist")) || d.to.iter().any(|t| t.contains("sam@example.org"))).count();
+        let drafts_before = drafts_here();
         let (files, _) = take_files(&key, 0, "other", &me).unwrap().unwrap();
         assert!(!stand_in.exists() && files.iter().any(|f| f.path == stand_in && f.after.is_none()), "{files:?}");
-        assert_eq!(sioul_core::compose::Draft::all().len(), drafts_before);
+        assert_eq!(drafts_here(), drafts_before);
         assert_eq!(state(), "asked");
         let after: Vec<serde_json::Value> = serde_json::from_str::<serde_json::Value>(&who_does_what_as(&day, &place(&tom), true, &me.own)).unwrap()["days"].as_array().unwrap().iter().flat_map(|d| d["items"].as_array().unwrap().clone()).collect();
         assert!(after.is_empty(), "asked of Sam: no longer what I take: {after:?}");

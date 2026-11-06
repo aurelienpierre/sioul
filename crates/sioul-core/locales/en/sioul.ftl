@@ -983,6 +983,7 @@ dav-rewritten = { $count ->
    *[other] { $count } tasks and events were rewritten in a form your phone’s account manager can send back too; they read the same here.
 }
 dav-moved-out = “{ $summary }”, an event in a list of tasks only, was moved to your calendar for new events.
+dav-withdrawn = “{ $summary }” changed on its server meanwhile: the messages to its guests waiting in Drafts said your version, and were taken out.
 dav-conflict = Changed on both sides: the server’s version is kept; yours is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back if you prefer it.
 dav-answered-elsewhere = { $answer ->
         [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.
@@ -3901,6 +3902,10 @@ invite-delete-tells = Deleting it tells every guest that it is cancelled.
 invite-delete-one-time = One time of a meeting you organize is not left out here: delete the whole meeting, which tells every guest, or leave that time out in its calendar’s own app.
 invite-cancelled-server = Your server tells every guest.
 invite-cancelled-draft = The cancellation for the guests waits in Drafts: it leaves when you send it.
+invite-ask-organizer = You become its organizer, in place of { $who }.
+invite-undeleted-server = If your server told its guests it is cancelled, it invites them again.
+invite-undeleted-draft = Its guests were told it is cancelled: an invitation for them waits in Drafts, and leaves when you send it.
+invite-replied-time = That answer is for { $when } alone.
 day-let-plan = Let the plan place it
 day-let-plan-done = The plan places “{ $title }” again.
 agenda-read-only = This calendar can only be read.
@@ -6999,12 +7004,14 @@ agent-task-to-event = An AI agent made the task “{ $title }” an appointment,
 agent-event-to-task = An AI agent made the event “{ $title }” a task, in { $list }.
 event-delete-with-others = A meeting with others is never deleted here: its server would cancel or decline it for them. Answer it, or delete it in its own calendar app.
 event-change-with-others = A meeting with others keeps its time, title, place, notes and calendar as its organizer set them: its server would tell every guest of a change. Your time around it, its costs and your reminder change here.
+event-organizes-guests = It names you as the organizer of guests: written here, your server would invite them. Guests are invited from the event’s form, which says first who hears of it.
 agent-meeting-never-written = This is a meeting with others: Sioul does not change it here, since its server would tell every guest of a change. The time kept around it and the reminder are set in Sioul's window.
 invitation-cancel-changed = It changed meanwhile: nothing was taken out.
 invitation-cancel-refused = This cancellation does not come from the meeting's organizer, or the meeting is yours: nothing was taken out.
 invitation-older = Your calendar holds a version of this meeting at least as recent as this invitation: its times stay as they are there, your answer is in it, and sent.
 invitation-older-added = Your calendar holds a version of this event at least as recent: it stays as it is.
 invitation-update-refused = This invitation does not come from its organizer, or it is a meeting you organize: nothing is written, and no answer is sent.
+invitation-organizer-unproven = This invitation names you as its organizer, and nothing proves you sent it: it is not added.
 task-list-would-lose = That list would not keep
 
 # A conversation archived in Texts (25 October 2026): out of the list, its texts kept, back with a newer text.

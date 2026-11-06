@@ -253,6 +253,10 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
     for (summary, kept) in &report.answered {
         println!("{}", s.say("dav-answered-elsewhere", &[("summary", crate::one_line(summary)), ("answer", kept.to_ascii_lowercase())]));
     }
+    // A meeting you organize set aside for its server's copy: its unsent messages to the guests withdrawn.
+    for summary in &report.withdrawn {
+        println!("{}", s.say("dav-withdrawn", &[("summary", crate::one_line(summary))]));
+    }
     Ok(())
 }
 

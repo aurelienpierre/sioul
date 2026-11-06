@@ -392,6 +392,10 @@ pub fn run() -> i32 {
     // the environment is set, which that thread reads (review of 19 October
     // 2026, F10).
     std::thread::spawn(crypto::seal_clear_drafts);
+    // The meetings you organize that an older Sioul wrote its own lines into,
+    // written without them once, through the door opened above (review of
+    // 1e8551e, F5).
+    std::thread::spawn(pim::tidy_meetings);
     // Where the system puts a window's buttons, read meanwhile for Sioul's own
     // title bar (desktop.rs); after the environment is set, which it reads.
     #[cfg(not(target_os = "android"))]

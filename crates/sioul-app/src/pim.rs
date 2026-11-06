@@ -265,6 +265,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for summary in &report.moved_out {
                 tell(qt, shared, say("dav-moved-out", &[("summary", summary.clone())]));
             }
+            // A meeting you organize set aside for its server's copy: its unsent messages to the guests withdrawn, said once.
+            for summary in &report.withdrawn {
+                tell(qt, shared, say("dav-withdrawn", &[("summary", summary.clone())]));
+            }
             changed || report.rewritten > 0 || !report.moved_out.is_empty()
         }
         Err(_) => {
@@ -690,6 +694,41 @@ pub(crate) fn check_event_item(qt: &QtThread, shared: &Arc<Shared>, key: &str, l
     checked().err().unwrap_or_default()
 }
 
+/// Your own time around a meeting with others, yours to organize or not,
+/// set alone (the reminder chooser of its details): its margins, costs and
+/// gain and your reminder into your own file (`own_time`), never into the
+/// meeting, whose guests read its file (review of 1e8551e, F13); said as the
+/// form's save is.
+pub(crate) fn save_own_time(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &EventEdit) -> Result<(), String> {
+    let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
+    set_own_time(&path, edit)?;
+    tell(qt, shared, tr().text("event-saved", None));
+    crate::work::show_work(qt, shared);
+    show_pim(qt, shared);
+    Ok(())
+}
+
+/// `save_own_time` without the window: your own file written, the meeting's never.
+pub(crate) fn set_own_time(path: &Path, edit: &EventEdit) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    if !with_others(&text) {
+        return Err(tr().text("agenda-gone", None));
+    }
+    let uid = uid_of(&text).ok_or_else(|| tr().text("agenda-gone", None))?;
+    let own = sioul_core::own_time::Own { before: edit.margins.before, after: edit.margins.after, demands: edit.demands, remind: edit.remind.clone() };
+    sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, Some(own)).map(drop)
+}
+
+/// The meetings you organize that an older Sioul wrote its own lines into,
+/// written without them, once (`organized::tidy_once`): from the window's
+/// start, off its thread.
+pub(crate) fn tidy_meetings() {
+    let written = crate::organized::tidy_once();
+    if written > 0 {
+        eprintln!("calendars: {written} meetings you organize kept Sioul's own lines, moved into your own files");
+    }
+}
+
 /// Saves the event form: into its file, or a new one in `calendar` ("account/id"); then sent.
 pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str, calendar: &str) -> Result<(), String> {
     // The events as last read, with the legs made since, never a read of the stores here
@@ -834,7 +873,13 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
             return Err(tr().text("event-move-with-others", None));
         }
         let collection = path.parent().and_then(|dir| vdir::collections(Kind::Calendars).into_iter().find(|c| c.dir == dir)).ok_or_else(|| tr().text("dav-no-calendar", None))?;
-        let plan = crate::organized::plan(&path, before.as_deref(), &text, guests.as_deref(), &collection)?;
+        let mut plan = crate::organized::plan(&path, before.as_deref(), &text, guests.as_deref(), &collection)?;
+        // A meeting's file holds what its guests may read alone: the form's time kept around
+        // it, its costs and gain and your reminder go to your own file (review of 1e8551e, F5).
+        if agenda::meeting_with_others(&plan.text, &own) {
+            plan.aside.own = Some(sioul_core::own_time::Own { before: edit.margins.before, after: edit.margins.after, demands: edit.demands, remind: edit.remind.clone() });
+            plan.own_given = true;
+        }
         crate::organized::write(&plan)?;
         return Ok(SavedEvent { accounts: account_of(&plan.path).into_iter().collect(), path, renamed, title: edit.title.trim().to_string(), legs: Vec::new(), told: plan.done() });
     }
@@ -1063,13 +1108,12 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
         crate::work::replan_asked(shared);
         let told = tr().text(if written.drafts.is_empty() { "invite-cancelled-server" } else { "invite-cancelled-draft" }, None);
         mail::offer_back(qt, shared, format!("{} {told}", tr().text("undo-event-deleted", None)), move |qt, shared| {
-            if !crate::organized::undelete(&written) {
-                return tr().text("undo-too-late", None);
-            }
+            // What its guests hear of it coming back, said (review of 1e8551e, F14).
+            let Some(said) = crate::organized::undelete(&written) else { return tr().text("undo-too-late", None) };
             nudge(shared, &account);
             crate::work::show_work(qt, shared);
             show_pim(qt, shared);
-            String::new()
+            if said.is_empty() { String::new() } else { format!("{} {said}", tr().text("undo-done", None)) }
         });
         crate::work::show_work(qt, shared);
         show_pim(qt, shared);
@@ -1489,6 +1533,27 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                     show_pim(qt, shared);
                 }
             }
+            return Ok(());
+        }
+        // An invitation naming you as the organizer of guests: added only when you sent it,
+        // through the organizer's door, never stored as it came (review of 1e8551e, F6).
+        "accepted" | "tentative" | "add" if agenda::scheduled_for_you(&text, &agenda::own_addresses()) => {
+            if known.is_some() {
+                return Err(tr().text("invitation-update-refused", None));
+            }
+            let calendar = agenda::default_calendar().ok_or_else(|| tr().text("dav-no-calendar", None))?;
+            let message = std::fs::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)).ok_or_else(|| tr().text("mail-message-gone", None))?;
+            let config = load_config();
+            let account = config.account_of(&path).map(|a| a.id.clone()).unwrap_or_default();
+            let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
+            let target = agenda::new_path(&calendar);
+            crate::organized::adopt(&target, &text, &message, &trusted)?;
+            if let Some(account) = account_of(&target) {
+                nudge(shared, &account);
+            }
+            tell(qt, shared, tr().text("invitation-add", None));
+            crate::work::show_work(qt, shared);
+            show_pim(qt, shared);
             return Ok(());
         }
         "accepted" | "tentative" | "add" => {
@@ -2163,6 +2228,82 @@ mod tests {
             let _ = sioul_core::own_time::set(&sioul_core::own_time::default_path(), &format!("{name}-1"), None);
         }
         let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// An event made from a landlord's message (its link and project) with a
+    /// guest invited in the same save, then its time kept before it changed
+    /// from the form, then its reminder chosen: the meeting's file holds what
+    /// its guests may read alone, never Sioul's own lines nor the person's
+    /// ties; those go to the person's own files (`own_time`, links.toml),
+    /// where the form and every view of ties read them, and the reminder
+    /// chooser writes the file nothing (review of 1e8551e, F5, F13).
+    #[test]
+    fn a_meeting_you_organize_keeps_yours_in_your_own_files() {
+        sioul_core::config::stand_ins_only();
+        let dir = sioul_core::config::data_dir().join(format!("organized-own-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n\n[[account]]\nid = \"camille-own\"\nkind = \"imap\"\naddress = \"camille.own@example.org\"\nname = \"Camille\"\nhost = \"imap.example.org\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        agenda::own_addresses_here(Some(&["camille.own@example.org"]));
+        agenda::open_organizer_door_here(true);
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Organized own lines", None, &["VEVENT"]).unwrap();
+        let here = format!("{}/{}", calendar.account, calendar.id);
+        let form = serde_json::json!({
+            "title": "Planning", "start": "2099-11-10T09:00", "end": "2099-11-10T10:00", "location": "Room 2",
+            "margins": { "before": 15, "after": 5 }, "remind": "30",
+            "links": [{ "uri": "mid:landlord-1@mail.example", "label": "Landlord" }, "file:///srv/papers/scan.pdf"],
+            "projects": ["tenancy"],
+            "guests": [{ "address": "anne@example.net", "name": "Anne" }],
+        });
+        let saved = write_event("", &form.to_string(), &here).unwrap();
+        let text = std::fs::read_to_string(&saved.path).unwrap();
+        let unfolded = sioul_core::lines::unfold(&text).join("\n");
+        for private in ["X-SIOUL", "LINK", "REFID", "mid:landlord", "file:///", "tenancy", "VALARM"] {
+            assert!(!unfolded.contains(private), "{private} in the meeting's file:\n{unfolded}");
+        }
+        assert!(agenda::organized_meeting(&text, &agenda::own_addresses()) && unfolded.contains("LOCATION:Room 2"), "{unfolded}");
+        let uid = uid_of(&text).unwrap();
+        let own = || sioul_core::own_time::load(&sioul_core::own_time::default_path()).events.get(&uid).cloned().unwrap_or_default();
+        assert_eq!((own().before, own().after, own().remind.as_str()), (15, 5, "30"), "in your own file");
+        let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
+        let event = sioul_core::links::event_uri(&uid);
+        for (to, how) in [("mid:landlord-1@mail.example", "source"), ("file:///srv/papers/scan.pdf", "link"), ("sioul:project/tenancy", "project")] {
+            assert!(ties.links.iter().any(|e| e.from == event && e.to == to && e.how == how), "{to} ({how}) among your ties: {:?}", ties.links);
+        }
+        let drafts: Vec<_> = sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&uid))).collect();
+        assert_eq!(drafts.len(), 1, "the invitation drafted");
+        assert!(!drafts[0].calendar.as_deref().unwrap().contains("X-SIOUL") && !drafts[0].calendar.as_deref().unwrap().contains("landlord"));
+        // The form again: its fields read from your own file, the time before changed there.
+        let mut edit = edit_with_own(&saved.path).unwrap();
+        assert_eq!((edit.margins.before, edit.remind.as_str()), (15, "30"), "the form reads your own file");
+        edit.margins.before = 25;
+        let mut again = serde_json::to_value(&edit).unwrap();
+        again["guests"] = serde_json::json!([{ "address": "anne@example.net", "name": "Anne" }]);
+        write_event(saved.path.to_str().unwrap(), &again.to_string(), &here).unwrap();
+        assert!(!std::fs::read_to_string(&saved.path).unwrap().contains("X-SIOUL"), "still none in its file");
+        assert_eq!(own().before, 25, "shown as you set it (`own_time::apply`)");
+        // The reminder chooser: your own file alone, the meeting byte for byte.
+        let before = std::fs::read_to_string(&saved.path).unwrap();
+        let mut reminded = edit_with_own(&saved.path).unwrap();
+        reminded.remind = "60".into();
+        set_own_time(&saved.path, &reminded).unwrap();
+        assert_eq!(std::fs::read_to_string(&saved.path).unwrap(), before, "the meeting as it was");
+        assert_eq!(own().remind, "60");
+        for draft in sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&uid))) {
+            draft.discard();
+        }
+        let _ = sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, None);
+        let _ = sioul_core::links::LocalLinks::change(&sioul_core::links::LocalLinks::default_path(), |l| {
+            let n = l.links.len();
+            l.links.retain(|e| e.from != event);
+            l.links.len() != n
+        });
+        agenda::open_organizer_door_here(false);
+        agenda::own_addresses_here(None);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// "Into the agenda" (`letters::event_of`): the new event carries the

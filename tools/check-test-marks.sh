@@ -4,7 +4,10 @@
 #
 # A program or library about to ship holds no test hook: no `SIOUL_TEST_`
 # name at all. A release build names none. A test run builds with the
-# features of the tests (sioul-sync's `no-keyring`, which keeps no password),
+# features of the tests (sioul-sync's `no-keyring`, which keeps no password,
+# marked SIOUL_TEST_NO_KEYRING; sioul-core's `test-hooks`, which sets your
+# addresses and the organizer's door for one test's thread, marked
+# SIOUL_TEST_HOOKS),
 # and Cargo unifies them into every unit that run builds, the programs
 # included: after `cargo test`, `target/release/sioul` and `sioul-app` are
 # such programs until the next `cargo build --release` (review of

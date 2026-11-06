@@ -167,6 +167,10 @@ pub(crate) fn set_event(qt: &QtThread, shared: &std::sync::Arc<crate::backend::S
     // A meeting with others: from your own time around it, where its reminder is kept (`pim::write_event`).
     let mut edit = crate::pim::edit_with_own(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
     edit.remind = remind_word(value);
+    // A meeting, yours to organize too: your own file alone, never its file nor its door (review of 1e8551e, F13).
+    if std::fs::read_to_string(&path).is_ok_and(|text| crate::pim::with_others(&text)) {
+        return crate::pim::save_own_time(qt, shared, key, &edit);
+    }
     let json = serde_json::to_string(&edit).map_err(|e| e.to_string())?;
     crate::pim::save_event(qt, shared, key, &json, "")
 }
