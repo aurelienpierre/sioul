@@ -44,10 +44,10 @@ struct Memo {
     /// The agendas of someone else's availability marked transparent here, by place.
     #[serde(default)]
     transparent: BTreeSet<String>,
-    /// What was tried and refused, by what it is ("share:<id>:<way>:<who>"), and when: tried again a quarter of an hour later.
+    /// What was tried and refused, by what it is ("share:`<id>`:`<way>`:`<who>`"), and when: tried again a quarter of an hour later.
     #[serde(default)]
     tried: BTreeMap<String, i64>,
-    /// The notices said once ("moved:<id>", "stale:<id>:<day>").
+    /// The notices said once ("moved:`<id>`", "stale:`<id>`:`<day>`").
     #[serde(default)]
     said: BTreeSet<String>,
     /// The availabilities the migration made here, to say once.

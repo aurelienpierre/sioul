@@ -13,7 +13,7 @@
 //! - [`labels`]: your word on topics, one line per act, each device its own log;
 //! - [`presets`]: topics Sioul offers to start with (Bank, Taxes, Health…), by the senders it proves;
 //! - [`rules`]: a message's topic and why, your word first;
-//! - [`sender_words`] and [`line`]: what a message's sender adds to the line
+//! - [`sender_words`] and [`line()`]: what a message's sender adds to the line
 //!   the model reads, when Sioul's own checks proved who sent it, and the line itself;
 //! - [`seeds`]: the first topics, proposed from what the person already
 //!   sorted (folders, contacts' categories);
@@ -190,7 +190,7 @@ pub fn remove(path: &Path, id: &str) -> Result<(), String> {
 pub const SENDERS: u32 = 1;
 
 /// Words a line holds at most: fastText learns from lines of 1024 words and
-/// drops the rest, so the sender's words come first ([`line`]).
+/// drops the rest, so the sender's words come first ([`line()`]).
 pub const LINE_WORDS: usize = 1000;
 
 /// The words a message's sender adds to its line, when Sioul's own checks

@@ -29,6 +29,7 @@
     <file>sioul/16/document-new.svg</file>
     <file>sioul/16/document-open-recent.svg</file>
     <file>sioul/16/document-open.svg</file>
+    <file>sioul/16/document-save.svg</file>
     <file>sioul/16/document-send.svg</file>
     <file>sioul/16/document-sign.svg</file>
     <file>sioul/16/edit-clear.svg</file>
@@ -41,7 +42,6 @@
     <file>sioul/16/folder-trash.svg</file>
     <file>sioul/16/folder.svg</file>
     <file>sioul/16/games-hint.svg</file>
-    <file>sioul/16/go-bottom.svg</file>
     <file>sioul/16/go-down.svg</file>
     <file>sioul/16/go-next.svg</file>
     <file>sioul/16/go-previous.svg</file>
@@ -93,6 +93,7 @@
     <file>sioul/16/system-users.svg</file>
     <file>sioul/16/task-complete.svg</file>
     <file>sioul/16/task-new.svg</file>
+    <file>sioul/16/taxes-finances.svg</file>
     <file>sioul/16/text-x-generic.svg</file>
     <file>sioul/16/user-identity.svg</file>
     <file>sioul/16/user-properties.svg</file>
@@ -153,6 +154,7 @@
     <file>sioul/22/document-new.svg</file>
     <file>sioul/22/document-open-recent.svg</file>
     <file>sioul/22/document-open.svg</file>
+    <file>sioul/22/document-save.svg</file>
     <file>sioul/22/document-send.svg</file>
     <file>sioul/22/document-sign.svg</file>
     <file>sioul/22/edit-clear.svg</file>
@@ -167,7 +169,6 @@
     <file>sioul/22/folder.svg</file>
     <file>sioul/22/food.svg</file>
     <file>sioul/22/games-hint.svg</file>
-    <file>sioul/22/go-bottom.svg</file>
     <file>sioul/22/go-down.svg</file>
     <file>sioul/22/go-next.svg</file>
     <file>sioul/22/go-previous.svg</file>
@@ -222,6 +223,7 @@
     <file>sioul/22/system-users.svg</file>
     <file>sioul/22/task-complete.svg</file>
     <file>sioul/22/task-new.svg</file>
+    <file>sioul/22/taxes-finances.svg</file>
     <file>sioul/22/text-x-generic.svg</file>
     <file>sioul/22/user-identity.svg</file>
     <file>sioul/22/user-properties.svg</file>
@@ -268,13 +270,13 @@
     <file>sioul/32/document-new.svg</file>
     <file>sioul/32/document-open-recent.svg</file>
     <file>sioul/32/document-open.svg</file>
+    <file>sioul/32/document-save.svg</file>
     <file>sioul/32/edit-undo.svg</file>
     <file>sioul/32/folder-documents.svg</file>
     <file>sioul/32/folder-mail.svg</file>
     <file>sioul/32/folder-new.svg</file>
     <file>sioul/32/folder-trash.svg</file>
     <file>sioul/32/folder.svg</file>
-    <file>sioul/32/go-bottom.svg</file>
     <file>sioul/32/go-down.svg</file>
     <file>sioul/32/go-next.svg</file>
     <file>sioul/32/go-previous.svg</file>
@@ -308,6 +310,7 @@
     <file>sioul/32/system-search.svg</file>
     <file>sioul/32/system-suspend.svg</file>
     <file>sioul/32/system-users.svg</file>
+    <file>sioul/32/taxes-finances.svg</file>
     <file>sioul/32/text-x-generic.svg</file>
     <file>sioul/32/user-trash.svg</file>
     <file>sioul/32/view-filter.svg</file>
@@ -374,6 +377,7 @@
     <file>sioul-dark/16/document-new.svg</file>
     <file>sioul-dark/16/document-open-recent.svg</file>
     <file>sioul-dark/16/document-open.svg</file>
+    <file>sioul-dark/16/document-save.svg</file>
     <file>sioul-dark/16/document-send.svg</file>
     <file>sioul-dark/16/document-sign.svg</file>
     <file>sioul-dark/16/edit-clear.svg</file>
@@ -386,7 +390,6 @@
     <file>sioul-dark/16/folder-trash.svg</file>
     <file>sioul-dark/16/folder.svg</file>
     <file>sioul-dark/16/games-hint.svg</file>
-    <file>sioul-dark/16/go-bottom.svg</file>
     <file>sioul-dark/16/go-down.svg</file>
     <file>sioul-dark/16/go-next.svg</file>
     <file>sioul-dark/16/go-previous.svg</file>
@@ -438,6 +441,7 @@
     <file>sioul-dark/16/system-users.svg</file>
     <file>sioul-dark/16/task-complete.svg</file>
     <file>sioul-dark/16/task-new.svg</file>
+    <file>sioul-dark/16/taxes-finances.svg</file>
     <file>sioul-dark/16/text-x-generic.svg</file>
     <file>sioul-dark/16/user-identity.svg</file>
     <file>sioul-dark/16/user-properties.svg</file>
@@ -498,6 +502,7 @@
     <file>sioul-dark/22/document-new.svg</file>
     <file>sioul-dark/22/document-open-recent.svg</file>
     <file>sioul-dark/22/document-open.svg</file>
+    <file>sioul-dark/22/document-save.svg</file>
     <file>sioul-dark/22/document-send.svg</file>
     <file>sioul-dark/22/document-sign.svg</file>
     <file>sioul-dark/22/edit-clear.svg</file>
@@ -512,7 +517,6 @@
     <file>sioul-dark/22/folder.svg</file>
     <file>sioul-dark/22/food.svg</file>
     <file>sioul-dark/22/games-hint.svg</file>
-    <file>sioul-dark/22/go-bottom.svg</file>
     <file>sioul-dark/22/go-down.svg</file>
     <file>sioul-dark/22/go-next.svg</file>
     <file>sioul-dark/22/go-previous.svg</file>
@@ -567,6 +571,7 @@
     <file>sioul-dark/22/system-users.svg</file>
     <file>sioul-dark/22/task-complete.svg</file>
     <file>sioul-dark/22/task-new.svg</file>
+    <file>sioul-dark/22/taxes-finances.svg</file>
     <file>sioul-dark/22/text-x-generic.svg</file>
     <file>sioul-dark/22/user-identity.svg</file>
     <file>sioul-dark/22/user-properties.svg</file>
@@ -613,13 +618,13 @@
     <file>sioul-dark/32/document-new.svg</file>
     <file>sioul-dark/32/document-open-recent.svg</file>
     <file>sioul-dark/32/document-open.svg</file>
+    <file>sioul-dark/32/document-save.svg</file>
     <file>sioul-dark/32/edit-undo.svg</file>
     <file>sioul-dark/32/folder-documents.svg</file>
     <file>sioul-dark/32/folder-mail.svg</file>
     <file>sioul-dark/32/folder-new.svg</file>
     <file>sioul-dark/32/folder-trash.svg</file>
     <file>sioul-dark/32/folder.svg</file>
-    <file>sioul-dark/32/go-bottom.svg</file>
     <file>sioul-dark/32/go-down.svg</file>
     <file>sioul-dark/32/go-next.svg</file>
     <file>sioul-dark/32/go-previous.svg</file>
@@ -653,6 +658,7 @@
     <file>sioul-dark/32/system-search.svg</file>
     <file>sioul-dark/32/system-suspend.svg</file>
     <file>sioul-dark/32/system-users.svg</file>
+    <file>sioul-dark/32/taxes-finances.svg</file>
     <file>sioul-dark/32/text-x-generic.svg</file>
     <file>sioul-dark/32/user-trash.svg</file>
     <file>sioul-dark/32/view-filter.svg</file>
