@@ -695,7 +695,7 @@ mod tests {
         let root = sioul_core::config::data_dir().join(format!("recheck-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("cur")).unwrap();
-        let file = root.join("cur").join("1793700000.U7-1.sioul:2,S");
+        let file = root.join("cur").join(format!("1793700000.U7-1.sioul{}2,S", sioul_core::maildir::INFO));
         std::fs::write(&file, &raw).unwrap();
         let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_793_700_000);
         std::fs::File::options().write(true).open(&file).unwrap().set_modified(time).unwrap();
