@@ -137,13 +137,11 @@ Le solde de chaque compte est projeté jusqu’à sa prochaine entrée. Au premi
 
 ## La veille bancaire {#the-bank-watch}
 
-Un prélèvement qui s’arrête ne le dit pas. Sioul compare les mouvements de votre banque aux paiements que vous attendez, et dit, en phrases :
+Un prélèvement qui s’arrête ne le dit pas. Sioul compare les mouvements de votre banque aux paiements que vous attendez, et dit, en phrases, dans l’onglet **Budgets** :
 
 - **ce qui n’est pas sorti** : « Téléphone (19,99 €) n’est pas sorti du compte. Attendu vers le 12 septembre, absent des mouvements de votre banque. » ;
 - **ce qui a changé** : « Électricité a pris 71,40 € le 5 septembre, là où 62 € était attendu. » ;
 - **ce que le compte risque de ne pas tenir** : un compte qui ne tiendrait pas un paiement avant sa prochaine entrée, avec ce qui le couvre ([Renfloué à temps](#topped-up-in-time)), dit quelle que soit l’heure.
-
-**Cette semaine** : les paiements des sept prochains jours, en une ligne en haut du Porche : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. »
 
 **Des rappels**, une fois chacun, au début du travail : deux jours ouvrés avant un paiement que vous faites vous-même (une facture prévue, un impôt, la facture d’un courrier, un paiement régulier coché **Vous le payez vous-même**) ou une facture que vous envoyez (**Vous envoyez sa facture**), en disant si le compte le tiendra ; une semaine après un paiement qui n’est pas sorti ; cinq jours ouvrés avant un jour où le compte ne tiendrait pas un paiement, un prélèvement aussi. Un prélèvement n’a pas de rappel sinon. Ils ne viennent que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows). Un téléphone ne les dit pas.
 

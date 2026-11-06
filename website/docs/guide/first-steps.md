@@ -22,8 +22,8 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 
 **On the left**, a narrow column of icons, from top to bottom:
 
-- **New ▾**, the **+**, makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper, a paper letter's scan (on a computer: [The Porch](porch.md#paper-letters)); and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
-- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Health (a heart). The place shown is marked by a soft tint and a short bar.
+- **New ▾**, the **+**, makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper, a paper letter's scan (on a computer: [Letters](papers.md#paper-letters)); and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
+- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Texts (a speech bubble; on a computer), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Letters (an envelope, as Mail's), Health (a heart). The place shown is marked by a soft tint and a short bar.
 - **Apart at the bottom**: **Close the work day** (a ticked list) and, under it, **Close the whole day** (a moon), at any hour ([the end of the day](tasks.md#the-end-of-the-day)); then three icons, side by side when the names show: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
 
 Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
@@ -36,8 +36,9 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 
 | Keys | What they do |
 |---|---|
-| ++ctrl+1++ to ++ctrl+9++, ++ctrl+0++ | the first ten places, in the order of the list: Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets |
+| ++ctrl+1++ to ++ctrl+9++, ++ctrl+0++ | ten places, in this order: Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets |
 | ++ctrl+n++ | New ▾ |
+| ++ctrl+g++ | The chain of ties of the thing open ([Ties](ties.md)) |
 | ++ctrl+z++ | Undo, while it is offered |
 | ++f5++ | Refresh everything |
 | ++f9++ | The places' names beside their icons, or their icons only; in a narrow window, pull the places out or put them away |

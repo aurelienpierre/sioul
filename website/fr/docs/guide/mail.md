@@ -187,7 +187,7 @@ Quand vous avez une clé OpenPGP (créée ou importée dans [Comptes ▸ Chiffre
 
 Un courriel chiffré est déchiffré quand vous l’ouvrez ; une signature est vérifiée et dite sous l’expéditeur : « Chiffré · Signé par … », ou « La signature ne correspond pas au texte », en couleurs chaudes, jamais en rouge.
 
-Sur un ordinateur, votre clé peut vivre sur une clé de sécurité, comme une YubiKey, qui ne la donne jamais ([plus bas](#your-key-on-a-security-key)).
+Votre clé peut vivre sur une clé de sécurité, comme une YubiKey, qui ne la donne jamais, sur un ordinateur comme sur un téléphone ([plus bas](#your-key-on-a-security-key)).
 
 ## Pendant le calme {#in-quiet-time}
 
@@ -195,7 +195,7 @@ En dehors des heures de travail, les adresses du travail se replient dans la col
 
 ## Pas encore là {#not-there-yet}
 
-Vider la corbeille ou les indésirables d’un coup, copier un courriel dans un dossier, l’enregistrer comme fichier, garder les brouillons sur le serveur, envoyer plus tard, un objet chiffré, révoquer ou prolonger une clé OpenPGP, les clés de sécurité sur un téléphone, les noms de domaine qui en imitent d’autres. C’est prévu. Sioul n’a pas S/MIME.
+Vider la corbeille ou les indésirables d’un coup, copier un courriel dans un dossier, l’enregistrer comme fichier, garder les brouillons sur le serveur, envoyer plus tard, un objet chiffré, révoquer une clé OpenPGP ou prolonger une clé gardée sur cet appareil, les noms de domaine qui en imitent d’autres. C’est prévu. Sioul n’a pas S/MIME.
 
 ## Pour aller plus loin {#going-further}
 
@@ -253,13 +253,13 @@ Les filtres agissent sur chaque courriel qui arrive, sur son serveur : dans un
 
 ### Votre clé sur une clé de sécurité {#your-key-on-a-security-key}
 
-Sur un ordinateur, votre clé OpenPGP peut rester sur une clé de sécurité (une YubiKey, une Nitrokey), qui signe et déchiffre elle-même et ne donne jamais la clé. Elle se met en place dans [Comptes ▸ Clé de sécurité](accounts.md#security-key).
+Votre clé OpenPGP peut rester sur une clé de sécurité (une YubiKey, une Nitrokey), qui signe et déchiffre elle-même et ne donne jamais la clé. Elle se met en place dans [Comptes ▸ Clé de sécurité](accounts.md#security-key).
 
-Un courriel que votre clé de sécurité signe est signé quand vous appuyez sur **Envoyer**, avant les dix secondes d’**Annuler** : un bandeau en bas de la fenêtre d’écriture demande le code PIN de la clé, et dit combien d’essais il reste quand certains ont été perdus ; puis, quand la clé demande un toucher, il dit de la toucher maintenant et de garder le doigt dessus une seconde ou deux, car la clé attend environ quinze secondes et un toucher bref n’est souvent pas pris. Non branchée, il le dit, et reprend dès qu’elle arrive. **Envoyer sans signature** et **Pas maintenant** restent là tout du long, et **Annuler** jette le courriel signé et rouvre le brouillon. Le code PIN reste en mémoire quinze minutes après son dernier usage, jamais écrit ni journalisé nulle part ; il est oublié quand vous retirez la clé, fermez Sioul, ou choisissez **Oublier le code PIN maintenant** dans Comptes.
+Un courriel que votre clé de sécurité signe est signé quand vous appuyez sur **Envoyer**, avant les dix secondes d’**Annuler** : un bandeau en bas de la fenêtre d’écriture demande le code PIN de la clé, et dit combien d’essais il reste quand certains ont été perdus ; puis, quand la clé demande un toucher, il dit de la toucher maintenant et de garder le doigt dessus une seconde ou deux, car la clé attend environ quinze secondes et un toucher bref n’est souvent pas pris. Non branchée, il le dit, et reprend dès qu’elle arrive. **Envoyer sans signature** et **Pas maintenant** restent là tout du long, et **Annuler** jette le courriel signé et rouvre le brouillon. Sur un ordinateur, le code PIN reste en mémoire quinze minutes après son dernier usage, jamais écrit ni journalisé nulle part ; il est oublié quand vous retirez la clé, fermez Sioul, ou choisissez **Oublier le code PIN maintenant** dans Comptes.
 
 Un courriel chiffré pour votre clé de sécurité n’est jamais ouvert parce qu’il est affiché : la ligne sous l’expéditeur dit « Chiffré pour votre clé de sécurité », avec **Ouvrir avec votre clé de sécurité**. Une fois ouvert, il s’ouvre de nouveau sans la clé, ses pièces jointes aussi, jusqu’à la fermeture de Sioul.
 
-Pas encore sur un téléphone.
+Sur un téléphone, le bandeau demande d’abord le code PIN, tapé à chaque usage et jamais gardé, puis la clé : tenue à plat contre le dos du téléphone (NFC) ou branchée sur son port USB-C, jusqu’à ce que Sioul dise que c’est fait ([Comptes](accounts.md#security-key)). Là, elle n’est testée qu’avec une carte de remplacement.
 
 ### Les réglages {#settings}
 
@@ -314,7 +314,13 @@ Ce qu’il fait de chaque avis, les seuils et s’il se réentraîne de lui-mêm
 
 **Le modèle attend le courrier, et ne bouge jamais ce que vous voyez.** Un thème est appris une fois qu’il a 20 courriels de 3 expéditeurs, ou 50 d’un seul organisme ; en deçà, vos mots et ses règles le rangent. Chaque semaine, une nouvelle table ne remplace celle en service que si elle ne fait pas moins bien sur le courrier le plus récent, thème par thème, et change moins de 2 % des thèmes déjà affichés : rien ne bouge sous vos yeux. Un doute ne s’affiche que sous le filtre de son thème, en « Peut-être », et ne compte jamais comme étiquette ; les avis sûrs de Sioul comptent pour moitié, jamais plus que les autres exemples d’un thème, comme les verdicts de son filtre anti-spam comptent tant que vous ne les corrigez pas.
 
-Plus dans [ce que dit la recherche](https://sioul.aurelienpierre.com/dev/research.html), constat 61.
+**Le courrier attend ses heures, et rien n’est compté.** Relever ses courriels à quelques moments fixes a fait baisser le stress quotidien dans un essai randomisé (Kushlev et Dunn 2015), et la seule attente de devoir lire ses courriels de travail le soir nuit, qu’on les lise ou non (Becker et al. 2021). **Toutes les adresses** montre donc ce que vos heures apportent, les adresses du travail se reposent en dehors des heures de travail, et aucun compte ni aperçu ne vous tire vers elles.
+
+**Votre propre filtre.** Les filtres qui apprennent dans une seule boîte ont fait environ cent fois mieux que ceux entraînés sur le courrier d’autres personnes (Cormack 2008 ; Sculley et Wachman 2007), et 89 % du courrier indésirable passe SPF, DKIM ou DMARC (Cloudflare 2023). Votre filtre apprend donc sur votre ordinateur, de votre courrier et de votre mot, ne déplace rien tant que vous n’avez pas choisi, et un expéditeur prouvé ne suffit jamais à faire revenir un courriel des indésirables : il y faut aussi vos échanges avec ce domaine.
+
+**Chiffrer, pour que les lettres reviennent.** Les portails ont reporté sur les personnes le travail de suivre le courrier officiel, et leurs bases ont été piratées (Défenseur des droits 2022 ; CNIL 2025). Le courrier chiffré pour votre clé, gardée dans votre trousseau ou sur une clé de sécurité, est ce qui permet à ces lettres de revenir dans votre boîte ([pourquoi](privacy-security.md#why-sioul-encrypts-mail)).
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 1, 21, 35, 37 et 61.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
@@ -441,7 +447,7 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     21. Thunderbird : et keys.openpgp.org.
     22. FairEmail : laissé à OpenKeychain.
     23. Proton Mail : ses serveurs cherchent les clés.
-    24. Sioul : une carte OpenPGP (YubiKey, Nitrokey) par le service de cartes à puce du système, sur un ordinateur seulement ; essayée avec une vraie clé, une YubiKey 5, sous Linux (8 octobre 2026).
+    24. Sioul : une carte OpenPGP (YubiKey, Nitrokey), par le service de cartes à puce du système sur un ordinateur, tenue contre un téléphone (NFC) ou branchée dessus (USB-C) ; essayée avec une vraie clé, une YubiKey 5, sous Linux (8 octobre 2026), sur un téléphone avec une carte de remplacement seulement.
     25. Thunderbird : par GnuPG, installé et réglé à part ; signer et déchiffrer seulement.
     26. Proton Mail : ses clés de sécurité servent à se connecter au compte.
     27. Sioul : prévu.

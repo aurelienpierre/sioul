@@ -137,13 +137,11 @@ Each account is carried to its next income. On the first payment it would not ho
 
 ## The bank watch {#the-bank-watch}
 
-A debit that stops does not say so. Sioul holds your bank's movements against the payments you expect, and says, in sentences:
+A debit that stops does not say so. Sioul holds your bank's movements against the payments you expect, and says, in sentences, on the **Budgets** tab:
 
 - **what has not left**: "Phone (€19.99) has not left the account. Expected around 12 September, not in your bank's movements.";
 - **what changed**: "Electricity took €71.40 on 5 September, where €62 was expected.";
 - **what may not be held**: an account that would not hold a payment before its next income, with what covers it ([Topped up in time](#topped-up-in-time)), said whatever the hour.
-
-**This week**: the payments of the next seven days, in one line at the top of the Porch: "This week: Electricity €62 (Mon). The account holds them."
 
 **Reminders**, each once, when work starts: two working days before a payment you make yourself (a planned bill, a tax, a letter's bill, a recurring payment ticked **You pay it yourself**) or an invoice you send (**You send its invoice**), saying whether the account will hold it; a week after a payment that did not leave; five working days before a day the account would not hold a payment, a direct debit too. A direct debit gets no reminder otherwise. They come from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet). A phone does not tell them.
 

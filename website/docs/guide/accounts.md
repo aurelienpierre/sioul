@@ -50,6 +50,7 @@ Always in view below it:
 
 - **Priority**: *More important*, *Normal* or *Less important*. See [the Porch](porch.md#some-addresses-first-others-last).
 - **Name and signature…**: your name, as recipients see it, and your signature, in Markdown.
+- **Its colour**, once you have more than one address: one of eight for the square that marks its mail in [All addresses](mail.md#all-addresses), or **As its rank gives it**. Your other devices draw the same.
 
 Then **Server and folders**, folded: the server, and where its mail is kept on this device.
 
@@ -136,9 +137,15 @@ Sioul only uses the key: it never asks for its Admin PIN, never changes or unblo
 - **The AI shield's key**, for addresses that let the AI read them first, is kept in the keyring like a password; **Forget the key** removes it ([the Porch](porch.md#a-public-address-protected)).
 - **Sharing the security key with GnuPG**: add the line `pcsc-shared` to `~/.gnupg/scdaemon.conf`, and both use the key in turn.
 
+## Why it works this way {#why-it-works-this-way}
+
+Remembering passwords and copying codes are "a very high or impossible burden" for some people with cognitive disabilities, and a password manager is a named remedy (WCAG 2.2, SC 3.3.8; W3C 2021). So each device asks a password once and your system's keyring keeps it, or Bitwarden gives it. Your own key is what lets offices write to you encrypted, in your mailbox rather than behind their portals ([why](privacy-security.md#why-sioul-encrypts-mail)).
+
+More in [what the research says](../dev/research.md), finding 37.
+
 ## Compared with other apps {#compared-with-other-apps}
 
-**Your passwords and your keys, kept by your system and your security key.** Sioul keeps account passwords in your system's keyring, where Thunderbird keeps its own store. It lets Bitwarden give an account its password, which no other mail app here describes. It uses OpenPGP keys straight from a security key, without GnuPG, where Thunderbird needs GnuPG and a hidden setting and calls it experimental. Others do more elsewhere: Sioul has no S/MIME, needs a Google app of your own, or an app password, for Gmail's mail, and has not yet tried its Microsoft sign-in with a real Microsoft account; its OpenPGP security key is not yet available on phones, nor tried with a real key on Windows or macOS.
+**Your passwords and your keys, kept by your system and your security key.** Sioul keeps account passwords in your system's keyring, where Thunderbird keeps its own store. It lets Bitwarden give an account its password, which no other mail app here describes. It uses OpenPGP keys straight from a security key, without GnuPG, where Thunderbird needs GnuPG and a hidden setting and calls it experimental. Others do more elsewhere: Sioul has no S/MIME, needs a Google app of your own, or an app password, for Gmail's mail, and has not yet tried its Microsoft sign-in with a real Microsoft account; its OpenPGP security key has been tried with a real key on Linux only, and on a phone only against a stand-in card.
 
 As of October 2026, from each app's own documentation.
 

@@ -75,6 +75,12 @@ Les projets pour des clients se reposent en dehors des heures de travail : «�
 - **À la main, si vous voulez** : la liste des projets est un fichier lisible, `sioul-projects.toml`, que vous pouvez modifier ; sa forme est [plus bas](#for-technical-readers).
 - **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) peut lire la page d’un projet telle que la fenêtre la montre, les codes à usage unique, les liens de connexion, les numéros de compte et de carte masqués dans ses courriels. Il n’y change rien.
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+Classer ses courriels à la main coûte et échoue : dans le courrier de 345 personnes, retrouver un courriel par son dossier prenait 59 secondes, par une recherche 17, et celles qui classaient le plus n’en retrouvaient pas davantage (Whittaker et al. 2011). Les courriels d’un projet y viennent donc par les règles que vous lui donnez une fois, après que Sioul a vérifié qui les envoie, et vous ne classez rien. Les supports visuels aident beaucoup de personnes autistes (Steinbrenner et al. 2020) : les tâches d’un projet peuvent se dessiner sur un Gantt quand cela aide, sans jamais y être obligées.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 13 et 61.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
 En octobre 2026, d’après la documentation de chaque application.

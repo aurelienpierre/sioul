@@ -50,6 +50,7 @@ Toujours en vue en dessous :
 
 - **Priorité** : *Plus important*, *Normal* ou *Moins important*. Voir [le Porche](porch.md#some-addresses-first-others-last).
 - **Nom et signature…** : votre nom, tel que les destinataires le voient, et votre signature, en Markdown.
+- **Sa couleur**, dès que vous avez plus d’une adresse : l’une de huit pour le carré qui marque ses courriels dans [Toutes les adresses](mail.md#all-addresses), ou **Selon son rang**. Vos autres appareils dessinent la même.
 
 Puis **Serveur et dossiers**, replié : le serveur, et l’endroit où ses courriels sont gardés sur cet appareil.
 
@@ -136,9 +137,15 @@ Sioul ne fait qu’utiliser la clé : il ne demande jamais son code PIN d’ad
 - **La clé du bouclier IA**, pour les adresses qui laissent l’IA les lire d’abord, est gardée dans le trousseau comme un mot de passe ; **Oublier la clé** la retire ([le Porche](porch.md#a-public-address-protected)).
 - **Partager la clé de sécurité avec GnuPG** : ajoutez la ligne `pcsc-shared` à `~/.gnupg/scdaemon.conf`, et les deux se servent de la clé à tour de rôle.
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+Se souvenir de mots de passe et recopier des codes est « une charge très lourde, voire impossible » pour certaines personnes ayant un handicap cognitif, et un gestionnaire de mots de passe est un remède nommé (WCAG 2.2, critère 3.3.8 ; W3C 2021). Chaque appareil demande donc un mot de passe une fois et le trousseau de votre système le garde, ou Bitwarden le donne. Votre propre clé est ce qui permet aux organismes de vous écrire chiffré, dans votre boîte plutôt que derrière leurs portails ([pourquoi](privacy-security.md#why-sioul-encrypts-mail)).
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constat 37.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courriel ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul n’a pas S/MIME, a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour les courriels de Gmail, et n’a pas encore essayé sa connexion Microsoft avec un vrai compte Microsoft ; sa clé de sécurité OpenPGP n’existe pas encore sur les téléphones, et n’a pas encore été essayée avec une vraie clé sous Windows ni macOS.
+**Vos mots de passe et vos clés, gardés par votre système et votre clé de sécurité.** Sioul garde les mots de passe des comptes dans le trousseau de votre système, là où Thunderbird garde sa propre réserve. Il laisse Bitwarden donner son mot de passe à un compte, ce qu’aucun autre logiciel de courriel ici ne décrit. Il se sert des clés OpenPGP directement depuis une clé de sécurité, sans GnuPG, là où Thunderbird a besoin de GnuPG et d’un réglage caché, et qualifie cela d’expérimental. D’autres font plus ailleurs : Sioul n’a pas S/MIME, a besoin d’une application Google à vous, ou d’un mot de passe d’application, pour les courriels de Gmail, et n’a pas encore essayé sa connexion Microsoft avec un vrai compte Microsoft ; sa clé de sécurité OpenPGP n’a été essayée avec une vraie clé que sous Linux, et sur un téléphone qu’avec une carte de remplacement.
 
 En octobre 2026, d’après la documentation de chaque application.
 

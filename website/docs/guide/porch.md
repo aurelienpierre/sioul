@@ -147,6 +147,7 @@ When there is something, a few lines come before the lanes:
 - **When your hours are not set**, a card asks for them, with **Set my hours** (which opens Settings at them) and **Leave as is** (which stops asking).
 - **When your night is not set**, a card says that nothing keeps notifications away while you sleep, with **Set my night** (which opens the Health page where meals and the night are set) and **Leave as is**. See [Hours](hours.md#sleep).
 - **Notes deleted many at once**, on a device that shares its notes: how many went, from which folders, when, and when they leave your other devices by themselves, with **Put them back**, **Take them out now** and **Leave as is**. Nothing has to be pressed. Said once: once shown, the card does not come back after you leave the Porch; Settings says it as long as it lasts. See [Sharing](sharing.md#notes-and-papers).
+- **The topics Sioul started** from the senders it knows, the first time enough mail is here: which ones, and where to rename or remove them, with **Leave as is** ([Mail, Topics](mail.md#topics)).
 - **Where you stopped**: the line you left when something interrupted you, with its task, until you press **Done**. See [Tasks](tasks.md#starting-and-stopping).
 - **Two events at once today**, the time to get there and back counted, with **Open "…"** for each and **Don't mention it again**. See [Agenda](agenda.md#two-events-at-once).
 - **Today's doses not marked yet**, from their time on, whether a notification reminded you or not: each with its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). Whatever your hours: a dose is not mail. Each stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, they wait for your waking. When another device may know more, the doubt is said under the dose: check before taking it. See [Health](health.md#reminders).
@@ -168,7 +169,7 @@ After those cards, the Porch shows what came in sections, each drawn the same wa
 5. **From your phone**: the calls Sioul declined, on your phone and on your other devices, each at a time its caller may reach you, with **Text back**, and **Call back** in its menu ([Calls](calls.md#afterwards-on-the-porch)); once Sioul may read the phone's call history, the calls you missed and those of yours that did not reach them too ([Calls](calls.md#calls-missed)); on a computer, the texts and other apps' notifications your phone sends there, with **Reply** where it works ([What reaches you](notifications.md#messages-on-your-computers)).
 6. **Agenda**: two events of yours at once, or too close for the time you keep between them, when someone else's change made it, each said once at a time its agenda may reach you: **Move mine** opens your own event, **Keep both** says it no more.
 7. **Sites**: what the websites you keep in Sioul notified, a row per site. Opening the site reads its news ([Sites](sites.md)).
-8. **Money**: what is due or expected in the next two weeks, money in as well as out, each with its day, whether it is planned, announced or not final yet, and its amount; what was expected and did not pass on its account is said once. **Open in Budgets** ([Budgets](budgets.md)). Work money only in your work hours, and nothing while you sleep. A payment your account would not hold comes first, whatever the hour, with what can cover it.
+8. **Money**: what is due or expected in the next two weeks, money in as well as out, each with its day, whether it is planned, announced or not final yet, and its amount; what was expected and did not pass on its account is said once. **Open in Budgets** ([Budgets](budgets.md)). Work money only in your work hours, and nothing while you sleep. A payment an account would not hold comes first, work's money or not, with what can cover it.
 9. **Paper letters**, only while one waits ([below](#paper-letters)). Not while you sleep.
 10. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded.
 
@@ -181,11 +182,7 @@ Both act at once on all your devices, with ten seconds to change your mind: **Un
 
 ## Paper letters {#paper-letters}
 
-Sioul reads your paper post too, from scans:
-
-- **The folder**: unset, it is `letters/inbox` in your notes folder; another is chosen with the letters' own settings. You, a scanner, a phone's scanner app syncing into it, or someone who opens your post for you can put scans there. The **New** menu's **A paper letter (scan)…** copies PDF files or pictures (PNG, JPEG, TIFF, WebP) into it, several at once; the file you chose stays where it was.
-- **What Sioul reads**: who sent the letter, what it is (a bill, a reminder, a decision, an appointment…), how much it asks and by when, a delay such as "within two months" turned into a date. Within a minute or two each scan becomes a row of **Paper letters** here, what it asks under it, with **See the scan**; its menu makes a task for its date, puts its appointment in the agenda, or files it when you are done. See [Papers and letters](papers.md#paper-letters).
-- **Reading needs two programs** of your system, Tesseract and Poppler. Nothing leaves your computer.
+Paper letters have their own page, **Letters**, where their folder and the two programs that read them are set up ([Papers and letters](papers.md#paper-letters)). Within a minute or two of its scan, each letter waiting is also a row of **Paper letters** here, what it asks under it: the row opens it on the Letters page, **See the scan** opens the scan, and its menu makes a task for its date, puts its appointment in the agenda, or files it when you are done.
 
 A phone reads no scans: it shows the letters your computer read.
 
@@ -194,8 +191,11 @@ A phone reads no scans: it shows the letters your computer read.
 - Checking mail three times a day lowered daily stress in a randomised trial (Kushlev & Dunn 2015). Batching notifications helped attention and mood, while having none at all made people more anxious (Fitz et al. 2019): what helps is predictability, not silence. So the Porch opens in hours you choose, and says when.
 - Interrupted people work faster, with more stress and frustration (Mark, Gudith & Klocke 2008), and a notification left unanswered still costs attention (Stothart, Mitchum & Yehnert 2015). So nothing pops up outside the times you choose, one notification says a whole batch, and nothing moves under your eyes when mail arrives.
 - People avoid information they expect to hurt (Sweeny et al. 2010). So what a message is, who sent it and how far that is verified come before its text.
+- 78 % of autistic adults avoid the phone where they can (Doherty et al. 2022), and people anxious about admin find it the hardest channel (Holkar, Evans & Langston 2018). So a call Sioul declined waits here, at a time its caller may reach you, with **Text back** first.
+- People look at their accounts less when it goes badly (Olafsson & Pagel 2017), and alerts that came unasked cut overdraft charges by a quarter, where an invitation to sign up lowered nothing (Caflisch et al. 2018; FCA 2018). So a payment an account would not hold comes unasked, first in Money, with what can cover it.
+- Partners argued over clashes neither had looked for (Thayer et al. 2012), and family plans broke at the changes from routine (Davidoff, Zimmerman & Dey 2010). So a clash that someone else's change made is said here once, never as a count or a colour.
 
-More in [what the research says](../dev/research.md).
+More in [what the research says](../dev/research.md), findings 1, 2, 4, 34, 39 and 47.
 
 ## Going further {#going-further}
 
@@ -296,7 +296,7 @@ HEY holds the closest idea, its Screener and Imbox; Gmail, Outlook and Apple Mai
 40. HEY: spam and screened-out mail deleted after 90 days.
 41. Spam deleted after 30 days (Outlook.com: between 10 and 30 days; Apple: in iCloud Mail).
 42. They let you block or screen out a sender once you have read them; none holds mail back by its tone.
-43. Sioul: any IMAP and SMTP server; not Outlook.com, Hotmail or Microsoft 365.
+43. Sioul: any IMAP and SMTP server; Gmail with a Google app of your own or an app password; Outlook.com, Hotmail and Microsoft 365 signed in on Microsoft's page, not yet tried with a real Microsoft account.
 44. HEY: HEY addresses only; other mail can be forwarded in.
 45. Gmail: other accounts in its phone apps; on the web, until January 2027.
 46. Superhuman: Gmail and Microsoft 365 accounts only.

@@ -21,7 +21,7 @@ Tout dans Sioul est lié à d’autres choses : une tâche faite à partir d�
 - **Liens** au pied de chaque carte (une tâche, un événement, une note, un contact, un projet), à côté de **Ajouter** et **Lier à…** ;
 - **Les voir tous** sous ce à quoi une chose est liée ;
 - **Ses liens** dans le menu d’une chose (un clic droit, ou un appui long sur un téléphone), dans la chaîne elle-même aussi ;
-- **Liens** sur la carte d’un papier, d’un contrat, d’une lettre, d’une facture ou d’une ligne de budget, et sur la page d’une personne ;
+- **Liens** sur la carte d’un papier, d’un contrat, d’une lettre, d’une facture, d’une ligne de budget ou d’un mouvement (Budgets ▸ **Mouvements**), et sur la page d’une personne ;
 - **Ctrl+G** sur la chose ouverte.
 
 Chaque ouverture repart de cette chose. **Échap**, ou Retour sur un téléphone, ramène là où vous étiez.

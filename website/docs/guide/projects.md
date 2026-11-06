@@ -75,6 +75,12 @@ Projects for clients rest outside working hours: "Work projects rest until work 
 - **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
 - **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read a project's page as the window shows it, with one-time codes, sign-in links, account and card numbers masked in its mail. It changes nothing there.
 
+## Why it works this way {#why-it-works-this-way}
+
+Filing mail by hand costs and fails: in 345 people's mail, finding a message by its folder took 59 seconds, by a search 17, and those who filed most found no more (Whittaker et al. 2011). So a project's mail comes to it by the routes you give it once, after Sioul checked who sent it, and you file nothing. Visual supports help many autistic people (Steinbrenner et al. 2020): a project's tasks can be drawn on a Gantt when that helps, and never must be.
+
+More in [what the research says](../dev/research.md), findings 13 and 61.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 As of October 2026, from each app's own documentation.

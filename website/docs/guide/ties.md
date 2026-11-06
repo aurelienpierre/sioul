@@ -21,7 +21,7 @@ Everything in Sioul is tied to other things: a task made from a message, a payme
 - **Ties** at the foot of any card (a task, an event, a note, a contact, a project), beside **Add** and **Link to…**;
 - **See them all** under what a thing is tied to;
 - **Its ties** in the menu of a thing (a right click, or a long press on a phone), in the chain itself too;
-- **Ties** on a paper's, a contract's, a letter's, an invoice's or a budget line's card, and on a person's page;
+- **Ties** on a paper's, a contract's, a letter's, an invoice's, a budget line's or a movement's card (Budgets ▸ **Movements**), and on a person's page;
 - **Ctrl+G** on the thing open.
 
 Each opening starts afresh from that thing. **Escape**, or Back on a phone, returns where you were.

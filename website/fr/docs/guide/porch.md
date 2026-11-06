@@ -147,6 +147,7 @@ Quand il y a quelque chose, quelques lignes viennent avant les files :
 - **Quand vos heures ne sont pas réglées**, une carte les demande, avec **Régler mes heures** (qui ouvre les Paramètres à cet endroit) et **Laisser ainsi** (qui arrête de demander).
 - **Quand votre nuit n’est pas réglée**, une carte dit que rien n’éloigne les notifications pendant que vous dormez, avec **Régler ma nuit** (qui ouvre la page Santé là où se règlent les repas et la nuit) et **Laisser ainsi**. Voir [Les heures](hours.md#sleep).
 - **Des fichiers de vos notes effacés en nombre**, sur un appareil qui partage ses notes : combien sont partis, de quels dossiers, quand, et quand ils quittent d’eux-mêmes vos autres appareils, avec **Les remettre**, **Les retirer maintenant** et **Laisser ainsi**. Rien n’est à presser. Dit une fois : une fois montrée, la carte ne revient plus après que vous avez quitté le Porche ; les Paramètres le disent tant que cela dure. Voir [Le partage](sharing.md#notes-and-papers).
+- **Les thèmes que Sioul a commencés** d’après les expéditeurs qu’il connaît, la première fois qu’il y a assez de courriels : lesquels, et où les renommer ou les retirer, avec **Laisser ainsi** ([Les courriels, Les thèmes](mail.md#topics)).
 - **Où vous en étiez** : la ligne que vous avez laissée quand quelque chose est venu vous interrompre, avec sa tâche, jusqu’à ce que vous appuyiez sur **C’est fait**. Voir [Les tâches](tasks.md#starting-and-stopping).
 - **Deux événements en même temps aujourd’hui**, le temps d’y aller et d’en revenir compté, avec **Ouvrir « … »** pour chacun et **Ne plus en parler**. Voir [L’agenda](agenda.md#two-events-at-once).
 - **Les prises du jour pas encore marquées**, à partir de leur heure, qu’une notification vous les ait rappelées ou non : chacune avec son heure, son nom et **Pris** (plus d’une demi-heure en retard, **Pris…** demande quand vous l’avez prise). Quelles que soient vos heures : une prise n’est pas un courriel. Chacune reste jusqu’à ce que vous la marquiez, que la journée finisse ou que douze heures soient passées ; pendant votre sommeil, si les prises restent silencieuses, elles attendent votre réveil. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise : vérifiez avant de la prendre. Voir [La santé](health.md#reminders).
@@ -168,7 +169,7 @@ Après ces cartes, le Porche montre ce qui est arrivé en sections, toutes dessi
 5. **De votre téléphone** : les appels refusés par Sioul, sur votre téléphone et sur vos autres appareils, chacun à un moment où son auteur peut vous joindre, avec **Répondre par SMS**, et **Rappeler** dans son menu ([Les appels](calls.md#afterwards-on-the-porch)) ; dès que Sioul peut lire l’historique des appels du téléphone, les appels que vous avez manqués et ceux des vôtres qui n’ont pas abouti aussi ([Les appels](calls.md#calls-missed)) ; sur un ordinateur, les SMS et les notifications des autres applications que votre téléphone y envoie, avec **Répondre** là où cela marche ([Ce qui vous joint](notifications.md#messages-on-your-computers)).
 6. **Agenda** : deux de vos événements en même temps, ou trop proches pour le temps que vous gardez entre eux, quand le changement de quelqu’un d’autre l’a fait, chacun dit une fois à un moment où son agenda peut vous joindre : **Déplacer le mien** ouvre votre propre événement, **Garder les deux** ne le dit plus.
 7. **Sites** : ce que les sites que vous gardez dans Sioul ont notifié, une ligne par site. Ouvrir le site lit ses nouvelles ([Les sites](sites.md)).
-8. **Argent** : ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, chacun avec son jour, s’il est prévu, annoncé ou pas encore définitif, et son montant ; ce qui était attendu sans passer sur son compte est dit une fois. **Ouvrir dans Budgets** ([Les budgets](budgets.md)). L’argent du travail seulement à vos heures de travail, et rien pendant votre sommeil. Un paiement que votre compte ne tiendrait pas vient d’abord, quelle que soit l’heure, avec ce qui peut le couvrir.
+8. **Argent** : ce qui est dû ou attendu dans les deux semaines, l’argent qui entre comme celui qui sort, chacun avec son jour, s’il est prévu, annoncé ou pas encore définitif, et son montant ; ce qui était attendu sans passer sur son compte est dit une fois. **Ouvrir dans Budgets** ([Les budgets](budgets.md)). L’argent du travail seulement à vos heures de travail, et rien pendant votre sommeil. Un paiement qu’un compte ne tiendrait pas vient d’abord, argent du travail ou non, avec ce qui peut le couvrir.
 9. **Courrier papier**, seulement quand une lettre attend ([plus bas](#paper-letters)). Pas pendant votre sommeil.
 10. **Rangé**, replié ; **Nouveaux expéditeurs** ; **Comptes moins importants**, replié ; **Retenu par votre filtre à indésirables**, replié ; **Mis de côté**, replié.
 
@@ -181,11 +182,7 @@ Les deux agissent tout de suite sur tous vos appareils, avec dix secondes pour c
 
 ## Le courrier papier {#paper-letters}
 
-Sioul lit aussi votre courrier papier, à partir de scans :
-
-- **Le dossier** : non réglé, c’est `letters/inbox` dans votre dossier de notes ; un autre se choisit dans les réglages du courrier. Vous, un scanner, l’application de scan d’un téléphone qui s’y synchronise, ou une personne qui ouvre votre courrier pour vous pouvez y déposer des scans. Dans le menu **Nouveau**, **Une lettre papier (scan)…** y copie des fichiers PDF ou des images (PNG, JPEG, TIFF, WebP), plusieurs à la fois ; le fichier choisi reste où il était.
-- **Ce que Sioul lit** : qui a envoyé la lettre, ce qu’elle est (une facture, une relance, une décision, une convocation…), combien elle demande et pour quand, un délai comme « dans un délai de deux mois » changé en date. D’ici une minute ou deux, chaque scan devient ici une ligne de **Courrier papier**, ce qu’elle demande en dessous, avec **Voir le scan** ; son menu fait une tâche pour sa date, met son rendez-vous dans l’agenda, ou la range quand vous en avez fini. Voir [Les papiers et les lettres](papers.md#paper-letters).
-- **La lecture demande deux programmes** de votre système, Tesseract et Poppler. Rien ne quitte votre ordinateur.
+Le courrier papier a sa propre page, **Courrier**, où se règlent son dossier et les deux programmes qui le lisent ([Les papiers et les lettres](papers.md#paper-letters)). D’ici une minute ou deux après son scan, chaque lettre qui attend est aussi une ligne de **Courrier papier** ici, ce qu’elle demande en dessous : la ligne l’ouvre sur la page Courrier, **Voir le scan** ouvre le scan, et son menu fait une tâche pour sa date, met son rendez-vous dans l’agenda, ou la range quand vous en avez fini.
 
 Un téléphone ne lit aucun scan : il montre les lettres lues par votre ordinateur.
 
@@ -194,8 +191,11 @@ Un téléphone ne lit aucun scan : il montre les lettres lues par votre ordina
 - Relever ses courriels trois fois par jour a fait baisser le stress quotidien dans un essai randomisé (Kushlev & Dunn 2015). Regrouper les notifications a aidé l’attention et l’humeur, alors que n’en recevoir aucune rendait les personnes plus anxieuses (Fitz et al. 2019) : ce qui aide, c’est la prévisibilité, pas le silence. Le Porche ouvre donc aux heures que vous choisissez, et dit quand.
 - Les personnes interrompues travaillent plus vite, avec plus de stress et de frustration (Mark, Gudith & Klocke 2008), et une notification laissée sans réponse coûte quand même de l’attention (Stothart, Mitchum & Yehnert 2015). Rien ne surgit donc hors des heures que vous choisissez, une seule notification dit tout un lot, et rien ne bouge sous vos yeux quand les courriels arrivent.
 - On évite les informations dont on attend qu’elles fassent mal (Sweeny et al. 2010). Ce qu’est un courriel, qui l’a envoyé et à quel point c’est vérifié viennent donc avant son texte.
+- 78 % des adultes autistes évitent le téléphone quand ils le peuvent (Doherty et al. 2022), et les personnes angoissées par les démarches le trouvent le canal le plus dur (Holkar, Evans & Langston 2018). Un appel que Sioul a refusé attend donc ici, à un moment où son auteur peut vous joindre, avec **Répondre par SMS** d’abord.
+- On regarde moins ses comptes quand ça va mal (Olafsson & Pagel 2017), et des alertes venues sans être demandées ont réduit d’un quart les frais de découvert, quand une invitation à s’y inscrire n’a rien réduit (Caflisch et al. 2018 ; FCA 2018). Un paiement qu’un compte ne tiendrait pas vient donc sans être demandé, en tête d’Argent, avec ce qui peut le couvrir.
+- Des couples se disputaient pour des chevauchements que personne n’avait cherchés (Thayer et al. 2012), et les plans des familles cassaient aux écarts à la routine (Davidoff, Zimmerman & Dey 2010). Un chevauchement que le changement de quelqu’un d’autre a créé est donc dit ici une fois, jamais comme un compte ni une couleur.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html).
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 1, 2, 4, 34, 39 et 47.
 
 ## Pour aller plus loin {#going-further}
 
@@ -296,7 +296,7 @@ HEY porte l’idée la plus proche, avec son Screener et son Imbox ; Gmail, Ou
 40. HEY : les indésirables et les courriels refusés à l’accueil supprimés au bout de 90 jours.
 41. Les indésirables supprimés au bout de 30 jours (Outlook.com : entre 10 et 30 jours ; Apple : dans iCloud Mail).
 42. Ils permettent de bloquer ou de refuser un expéditeur une fois qu’on l’a lu ; aucun ne retient les courriels selon leur ton.
-43. Sioul : tout serveur IMAP et SMTP ; pas Outlook.com, Hotmail ni Microsoft 365.
+43. Sioul : tout serveur IMAP et SMTP ; Gmail avec une application Google à vous ou un mot de passe d’application ; Outlook.com, Hotmail et Microsoft 365 connectés sur la page de Microsoft, pas encore essayés avec un vrai compte Microsoft.
 44. HEY : les adresses HEY seulement ; les autres courriels peuvent y être transférés.
 45. Gmail : les autres comptes dans ses applications pour téléphone ; sur le web, jusqu’en janvier 2027.
 46. Superhuman : les comptes Gmail et Microsoft 365 seulement.

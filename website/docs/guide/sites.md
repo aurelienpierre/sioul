@@ -143,6 +143,12 @@ When Sioul closes, it closes each site as a browser closes its tabs: a site that
 - **Your own list of usual sites**: the list is a plain file (`sites.json`) that anyone can correct without building Sioul; a copy in `~/.local/share/sioul/presets/` is used when it is newer than Sioul's own. See [the developers' notes](../dev/sites.md#presets).
 - **Limits**: signing in with Google inside a site may be refused, since Google blocks sign-ins in browsers it takes for embedded ones; a call cannot go full screen. What was tried, and with which sites: [Works with](compatibility.md#sites).
 
+## Why it works this way {#why-it-works-this-way}
+
+Offices that moved their mail to their own sites moved the work of following it onto people: a personal space not read in time can cost a person their rights (Défenseur des droits 2022), and remembering passwords and copying codes are "a very high or impossible burden" for some people (WCAG 2.2, SC 3.3.8). So each site is logged in once, Bitwarden fills its login when you ask, and its news waits for your hours, said in one line on the Porch.
+
+More in [what the research says](../dev/research.md), finding 37.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 **Notifications for your hours, and the offices ready to pin.** Apps that keep web services in one window, and a browser with containers, compared. No other app's documentation describes holding notifications until your hours and giving them together at set times: Ferdium and Rambox mute them on a schedule, Wavebox for a set time. Sioul has the secure spaces of banks, insurers and public offices ready to pin for France, Canada and the United States; it fills Bitwarden logins with nothing to install; its own dialog asks a security key's PIN on Linux, where Electron, which Ferdium and Rambox are built on, turns such a request down; and it keeps your sites in step between your computers without an account at a company. Others do more elsewhere: they open two accounts of one service side by side, take browser extensions and ad blockers, and Sioul's phone only opens your sites in its browser.

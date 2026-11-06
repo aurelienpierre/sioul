@@ -6,7 +6,7 @@ description: Les papiers et le courrier papier dans Sioul – les papiers demand
 
 ## En bref {#in-short}
 
-La page Papiers garde les documents qu’on vous demande encore et encore (une carte d’identité, un avis d’impôt, des quittances de loyer), dit en mots où en est chacun, et vous rappelle une fois, quand le renouvellement de l’un d’eux doit commencer. Les lettres papier que vous scannez ou photographiez sont lues sur votre propre ordinateur : chacune arrive sur le Porche sous forme de carte calme, qui dit qui a écrit, ce qui est demandé, combien et pour quand, avec « dans un délai de deux mois » changé en date, et une tâche pour cette date en un clic. Rien n’est envoyé nulle part pour être lu.
+La page Papiers garde les documents qu’on vous demande encore et encore (une carte d’identité, un avis d’impôt, des quittances de loyer), dit en mots où en est chacun, et vous rappelle une fois, quand le renouvellement de l’un d’eux doit commencer. Les lettres papier que vous scannez ou photographiez sont lues sur votre propre ordinateur : chacune devient une carte calme sur la page **Courrier**, et arrive sur le Porche comme un courriel. La carte dit qui a écrit, ce qui est demandé, combien et pour quand, avec « dans un délai de deux mois » changé en date, et une tâche pour cette date en un clic. Rien n’est envoyé nulle part pour être lu.
 
 ## Protégé par défaut {#what-is-protected}
 
@@ -48,7 +48,7 @@ En mots, jamais en rouge :
 
 Depuis un courriel, **Garder dans les papiers**, à côté d’une pièce jointe, fait de même : l’antivirus vérifie le fichier, il est gardé, et le formulaire s’ouvre avec un nom et un type devinés d’après le nom du fichier et l’objet du courriel. Vous ne dites que ce qui ne se devine pas.
 
-Quand des papiers sont pour d’autres, des pastilles au-dessus de la liste montrent ceux de **Tout le monde**, ou d’une seule personne : vous, Léa, Odile. La page d’une personne, dans Contacts, montre aussi ses papiers.
+Quand des papiers sont pour d’autres, des pastilles au-dessus de la liste montrent ceux de **Tout le monde**, ou d’une seule personne : vous, Léa, Odile. La page d’une personne, dans Contacts, montre aussi ses papiers, et **Ce que Sioul garde sur …** y enregistre ses papiers, ses agendas et ses lettres dans un PDF et un dossier, pour que vous les lui remettiez : rien n’est envoyé ([Vos proches](contacts.md#household)).
 
 Pour en envoyer un, la fenêtre d’écriture a **Un papier**, à côté de **Joindre**. Un papier fini, ou plus vieux que ce qui est demandé d’habitude, le dit dans la liste.
 
@@ -137,7 +137,7 @@ Si vous connectez un agent d’IA ([Avec un agent d’IA](ai-agent.md)), il peut
 
 Les démarches se font aussi pour d’autres. Un adulte sur quatre a retardé ou renoncé à des soins à cause de leurs formalités (Kyle et Frakt 2021), les personnes qui coordonnent les soins et les médicaments d’un parent renoncent cinq fois plus souvent à leurs propres activités (Wolff et al. 2016), et en France 9,3 millions de personnes aident un proche, son argent et ses démarches du quotidien parmi ce qu’elles font (DREES 2023). Un papier peut donc être pour une personne de vos proches, et reçoit le soin que reçoivent les vôtres : où il en est, un rappel, un renouvellement prévu.
 
-Chaque lien vous donne une part différente. Les papiers d’un enfant sont gardés pour lui, dont l’autorité sur sa propre vie grandit avec l’âge et devient entière à dix-huit ans (Code civil, art. 371-1 et 414) : ils sont alors les siens, et Sioul le dira une fois, à seize ans pour la carte Vitale et à dix-huit ans. Un adulte que vous aidez décide pour lui-même : le soutien doit suivre « sa volonté et ses préférences », jamais s’y substituer (Convention des Nations unies relative aux droits des personnes handicapées, art. 12). Sioul ne marque donc jamais personne comme incapable de décider ; une procuration ou une mesure du juge est un papier, avec ses dates et son renouvellement, comme les autres (à venir). Avec un ou une partenaire, vous êtes à égalité : les papiers que vous partagez, le bail, l’avis d’impôt commun, sont pour vous deux.
+Chaque lien vous donne une part différente. Les papiers d’un enfant sont gardés pour lui, dont l’autorité sur sa propre vie grandit avec l’âge et devient entière à dix-huit ans (Code civil, art. 371-1 et 414) : ils sont alors les siens, et Sioul le dit une fois sur la page de l’enfant, à seize ans pour la carte Vitale et à dix-huit ans. Un adulte que vous aidez décide pour lui-même : le soutien doit suivre « sa volonté et ses préférences », jamais s’y substituer (Convention des Nations unies relative aux droits des personnes handicapées, art. 12). Sioul ne marque donc jamais personne comme incapable de décider ; une procuration ou une mesure du juge est un papier, avec ses dates et son renouvellement, comme les autres. Avec un ou une partenaire, vous êtes à égalité : les papiers que vous partagez, le bail, l’avis d’impôt commun, sont pour vous deux.
 
 Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 55 à 60.
 
