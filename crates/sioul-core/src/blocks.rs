@@ -54,6 +54,10 @@ pub const TIME_BLOCK: &str = "tag:aurelienpierre.com,2026:sioul/rel/time-block";
 pub const CALENDAR: &str = "planned-tasks";
 /// A block's alarm, when Tasks ⚙ asks for one: five minutes before it starts.
 pub const ALARM_BEFORE: &str = "-PT5M";
+/// The line that says a block's alarm is Sioul's own: a meeting's file keeps
+/// every other program's alarm, and leaves Sioul's out once it names guests
+/// (`organizer::for_guests`; second review of the organizer's door, N6).
+pub const ALARM_MARK: &str = "X-SIOUL-ALARM:block";
 /// How far ahead blocks are read in their own calendars: as far as the plan lays tasks.
 pub const AHEAD_DAYS: i64 = 3 * 366;
 /// The least a block lasts, in minutes.
@@ -208,7 +212,7 @@ pub fn new_block(task: &Task, uid: &str, start: i64, end: i64, alarm: bool, now:
     }
     out.push(tasks::link_line(&Link { uri: format!("uid:{}", task.uid), label: String::new(), rel: BLOCK_OF.to_string() }));
     if alarm {
-        out.extend(["BEGIN:VALARM".to_string(), "ACTION:DISPLAY".to_string(), format!("DESCRIPTION:{}", lines::escape(title)), format!("TRIGGER:{ALARM_BEFORE}"), "END:VALARM".to_string()]);
+        out.extend(["BEGIN:VALARM".to_string(), "ACTION:DISPLAY".to_string(), format!("DESCRIPTION:{}", lines::escape(title)), format!("TRIGGER:{ALARM_BEFORE}"), ALARM_MARK.to_string(), "END:VALARM".to_string()]);
     }
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
     Ok(lines::fold(&out))

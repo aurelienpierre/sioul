@@ -755,10 +755,24 @@ pub struct Report {
     /// form not said done meanwhile (the A6 check, L1).
     pub passing: usize,
     /// The meetings you organize whose version here was set aside for the
-    /// server's, changed there meanwhile, their unsent invitations and
-    /// cancellations taken out of your drafts (`withdrawn`): each one's
-    /// title, said once (review of 1e8551e, F10).
-    pub withdrawn: Vec<String>,
+    /// server's, changed there meanwhile (`set_aside_meeting`): what became
+    /// of their guests' messages, each said once (review of 1e8551e, F10;
+    /// its second review, N3, N8).
+    pub meetings: Vec<MeetingSetAside>,
+}
+
+/// A meeting you organize whose change here was set aside for its server's
+/// version (`set_aside_meeting`), as the window says it once.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MeetingSetAside {
+    /// Its title.
+    pub summary: String,
+    /// How many of its unsent messages were taken out of your Drafts: they said your change.
+    pub withdrawn: usize,
+    /// Those an invitation of the server's version was drafted for, as a sentence names them.
+    pub invited: Vec<String>,
+    /// Its guests its server tells, as a sentence names them: it never had your change.
+    pub served: Vec<String>,
 }
 
 /// Whether a server's answer refuses an item for what it is (its content or
@@ -2053,11 +2067,12 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         merged = merged.filter(|merged| sioul_core::agenda::may_change(data, state.read_only, &sioul_core::agenda::own_addresses(), sioul_core::agenda::Change::Write(merged)).is_ok());
         if merged.is_none() {
             report.conflicts.push(set_aside(&path, &mine)?);
-            // A meeting you organize: its drafts say the version set aside (review of 1e8551e, F10).
+            // A meeting you organize: what each guest still needs to hear, from the server's
+            // version (review of 1e8551e, F10; its second review, N3).
             if kind == Kind::Calendars
-                && let Some(summary) = std::str::from_utf8(&mine).ok().and_then(|mine| withdrawn(mine, &sioul_core::agenda::own_addresses()))
+                && let Some(said) = std::str::from_utf8(&mine).ok().and_then(|mine| set_aside_meeting(dir, state.owned, mine, data, &sioul_core::agenda::own_addresses()))
             {
-                report.withdrawn.push(summary);
+                report.meetings.push(said);
             }
         }
     }
@@ -2078,35 +2093,54 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
     Ok(())
 }
 
-/// A meeting you organize whose version here was set aside for the server's
-/// (`store`): its unsent invitations and cancellations (drafts carrying an
-/// iTIP REQUEST or CANCEL of its UID, organized by you) taken out of your
-/// drafts, since each says a version the calendar no longer holds, and its
-/// guests would act on it; you invite again from the event, as its server
-/// holds it now (review of 1e8551e, F10). The meeting's title when any
-/// went; none for anything else (a child's event's invitation, whose own
-/// upkeep follows it, names no guest in its file). `own`: your addresses.
-fn withdrawn(mine: &str, own: &[String]) -> Option<String> {
-    use sioul_core::lines;
+/// A meeting you organize whose version here (`mine`) was set aside for
+/// its server's (`theirs`, `store`), in the calendar at `dir` (`owned`: the
+/// calendar is yours there): what each of its guests still needs to hear,
+/// worked out from `theirs` (`organizer::reconcile`; second review of the
+/// organizer's door, N3). Its unsent messages (invitations and cancellations
+/// of its UID in your Drafts) that still say what a guest needs stay; those
+/// that said your change are taken out; a guest who still needs the
+/// server's version and whose message went gets an invitation of it,
+/// drafted from the same account. The guests its server tells are named
+/// (N8): it never had your change. None for anything else (someone else's
+/// meeting; a child's event, whose invitation its own upkeep follows).
+/// `own`: your addresses.
+fn set_aside_meeting(dir: &Path, owned: Option<bool>, mine: &str, theirs: &str, own: &[String]) -> Option<MeetingSetAside> {
+    use sioul_core::{lines, organizer};
     if !sioul_core::agenda::organized_meeting(mine, own) {
         return None;
     }
     let source = lines::unfold(mine);
     let uid = source.iter().find(|l| lines::name(l) == "UID").map(|l| lines::value(l).trim().to_string()).filter(|u| !u.is_empty())?;
-    let mut went = false;
-    for draft in sioul_core::compose::Draft::all() {
-        let Some(ics) = draft.calendar.as_deref() else { continue };
-        let ics = lines::unfold(ics);
-        let named = |name: &str| ics.iter().find(|l| lines::name(l) == name).map(|l| lines::value(l).trim().to_string()).unwrap_or_default();
-        let method = named("METHOD").to_ascii_uppercase();
-        let organizer = named("ORGANIZER");
-        let organizer = organizer.get(..7).filter(|s| s.eq_ignore_ascii_case("mailto:")).map_or(organizer.as_str(), |_| &organizer[7..]).trim().to_lowercase();
-        if (method == "REQUEST" || method == "CANCEL") && named("UID") == uid && own.contains(&organizer) {
-            draft.discard();
-            went = true;
+    let account = dir.parent().and_then(Path::file_name).map(|a| a.to_string_lossy().to_string()).unwrap_or_default();
+    let organizer = organizer::organizer_of(theirs).or_else(|| organizer::organizer_of(mine)).map(|o| o.address).unwrap_or_default();
+    let server_tells = owned == Some(true) && crate::scheduling::schedules_for(&account, &organizer);
+    let pending = organizer::pending_of(&uid, own);
+    let got = organizer::reconcile(theirs, &pending, server_tells);
+    let drafts: Vec<sioul_core::compose::Draft> = pending.iter().filter_map(|p| sioul_core::compose::Draft::by_id(&p.id)).collect();
+    // The account the invitation goes out from: the one its withdrawn message would have gone from.
+    let from = drafts.iter().find(|d| got.withdraw.contains(&d.id)).or(drafts.first()).map(|d| d.account.clone());
+    for draft in drafts.iter().filter(|d| got.withdraw.contains(&d.id)) {
+        draft.discard();
+    }
+    let mut invited: Vec<String> = Vec::new();
+    if let Some(account) = from.filter(|_| !got.invite.is_empty()) {
+        let config = sioul_core::config::Config::load(&sioul_core::config::default_path()).unwrap_or_default();
+        let signature = config.account(&account).and_then(|a| a.signature.clone());
+        let tr = sioul_core::agenda::translator();
+        // The series' guests get its invitation whole; one asked to some times alone, those times.
+        let series = organizer::guests_of(theirs);
+        let (whole, apart): (Vec<organizer::Guest>, Vec<organizer::Guest>) = got.invite.iter().cloned().partition(|g| series.iter().any(|s| s.address.eq_ignore_ascii_case(&g.address)));
+        let addresses: Vec<String> = apart.iter().map(|g| g.address.clone()).collect();
+        for (to, ics) in [(whole, organizer::request(theirs)), (apart, organizer::request_for(theirs, &addresses))] {
+            let Some(ics) = ics.filter(|_| !to.is_empty()) else { continue };
+            if organizer::draft(&account, signature.as_deref(), &to, theirs, ics, false, &tr).save().is_ok() {
+                invited.extend(to.iter().map(organizer::Guest::said));
+            }
         }
     }
-    went.then(|| source.iter().find(|l| lines::name(l) == "SUMMARY").map(|l| lines::unescape(lines::value(l).trim())).unwrap_or_default())
+    let summary = source.iter().find(|l| lines::name(l) == "SUMMARY").map(|l| lines::unescape(lines::value(l).trim())).unwrap_or_default();
+    Some(MeetingSetAside { summary, withdrawn: got.withdraw.len(), invited, served: got.served.iter().map(organizer::Guest::said).collect() })
 }
 
 /// Tests the login and finds where the account's contacts and calendars are.
@@ -2883,37 +2917,66 @@ mod tests {
         assert_eq!(dav.items("work")["planning.ics"], theirs);
     }
 
-    /// A meeting you organize, your version set aside for the server's:
-    /// its unsent invitation and cancellation (iTIP of its UID, organized by
-    /// you) taken out of your drafts, said by its title; another meeting's
-    /// invitation, someone else's, a message of no iTIP stay; a meeting of
-    /// someone else's withdraws nothing (review of 1e8551e, F10).
+    /// A meeting you organize whose move here was set aside for its
+    /// server's version, in which Bob answered meanwhile (the second
+    /// review's N3, its scenario turned; review of 1e8551e, F10): Anne's
+    /// invitation of the version the server keeps, still unsent, stays; the
+    /// move's update and Carl's cancellation (the server's version still
+    /// asks Carl) go; another meeting's message, someone else's and a message
+    /// of no iTIP stay; said once, the guest its server tells named (N8). A
+    /// version another app moved since (a later SEQUENCE): Anne and Carl get
+    /// an invitation of it, drafted from the same account. Someone else's
+    /// meeting: nothing.
     #[test]
-    fn a_meeting_set_aside_withdraws_its_unsent_messages() {
+    fn a_meeting_set_aside_keeps_what_its_guests_still_need() {
         home();
         let own = vec!["jane@example.org".to_string()];
-        let mine = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:withdrawn-planning\r\nDTSTAMP:20261105T090000Z\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:jane@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-        let itip = |method: &str, uid: &str, organizer: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nORGANIZER:mailto:{organizer}\r\nATTENDEE:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
-        let saved = |ics: Option<String>| {
+        let account = "set-aside-meeting";
+        let dir = sioul_core::config::data_dir().join("calendars").join(account).join("work");
+        let state = state_dir().join("dav").join(account);
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(state.join("scheduling.toml"), "auto = true\naddresses = [\"jane@example.org\"]\nchecked = 4102444800\n").unwrap();
+        let agreed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:set-aside-1\r\nDTSTAMP:20261105T090000Z\r\nSEQUENCE:0\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:jane@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.net\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:carl@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let theirs = agreed.replace("PARTSTAT=NEEDS-ACTION:mailto:bob", "PARTSTAT=ACCEPTED:mailto:bob");
+        let mine = agreed.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T110000Z").replace("DTEND:20991110T100000Z", "DTEND:20991110T120000Z").replace("SEQUENCE:0", "SEQUENCE:1").replace("ATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:carl@example.net\r\n", "");
+        let saved = |to: &str, ics: Option<String>| {
             let mut draft = sioul_core::compose::Draft::new("jane");
+            draft.to = vec![to.to_string()];
             draft.calendar = ics;
             draft.save().unwrap();
             draft.id
         };
-        let request = saved(Some(itip("REQUEST", "withdrawn-planning", "jane@example.org")));
-        let cancel = saved(Some(itip("CANCEL", "withdrawn-planning", "Jane@Example.org")));
-        let other = saved(Some(itip("REQUEST", "another", "jane@example.org")));
-        let theirs = saved(Some(itip("REPLY", "withdrawn-planning", "boss@example.org")));
-        let plain = saved(None);
-        assert_eq!(withdrawn(&mine.replace("ORGANIZER:mailto:jane", "ORGANIZER:mailto:boss"), &own), None, "someone else's meeting");
-        assert_eq!(withdrawn(mine, &own).as_deref(), Some("Planning"));
+        let itip = |method: &str, uid: &str, organizer: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nORGANIZER:mailto:{organizer}\r\nATTENDEE:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let invitation = saved("Anne <anne@example.net>", sioul_core::organizer::request(agreed));
+        let update = saved("Anne <anne@example.net>", sioul_core::organizer::request(&mine));
+        let off = saved("carl@example.net", sioul_core::organizer::cancel(agreed, &["carl@example.net".into()], false));
+        let other = saved("anne@example.net", Some(itip("REQUEST", "another", "jane@example.org")));
+        let reply = saved("anne@example.net", Some(itip("REPLY", "set-aside-1", "boss@example.org")));
+        let plain = saved("anne@example.net", None);
+        assert_eq!(set_aside_meeting(&dir, Some(true), &mine.replace("ORGANIZER:mailto:jane", "ORGANIZER:mailto:boss"), &theirs, &own), None, "someone else's meeting");
+        let said = set_aside_meeting(&dir, Some(true), &mine, &theirs, &own).unwrap();
+        assert_eq!(said, MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: Vec::new(), served: vec!["bob@example.net".into()] });
         let here = |id: &str| sioul_core::compose::Draft::by_id(id).is_some();
-        assert!(!here(&request) && !here(&cancel), "its unsent messages withdrawn");
-        assert!(here(&other) && here(&theirs) && here(&plain), "the others stay");
-        assert_eq!(withdrawn(mine, &own), None, "said once");
-        for id in [other, theirs, plain] {
+        assert!(here(&invitation) && !here(&update) && !here(&off), "the invitation still true stays; the update and the cancellation go");
+        assert!(here(&other) && here(&reply) && here(&plain), "the others stay");
+        let drafts = |uid: &str| sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&format!("UID:{uid}")) && ics.contains("METHOD:REQUEST"))).collect::<Vec<_>>();
+        assert_eq!(drafts("set-aside-1").len(), 1, "nothing more drafted");
+        // Moved by another app since: a version Anne and Carl did not hear.
+        let update = saved("Anne <anne@example.net>", sioul_core::organizer::request(&mine));
+        let off = saved("carl@example.net", sioul_core::organizer::cancel(agreed, &["carl@example.net".into()], false));
+        let elsewhere = theirs.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T100000Z").replace("DTEND:20991110T100000Z", "DTEND:20991110T110000Z").replace("SEQUENCE:0", "SEQUENCE:1");
+        let said = set_aside_meeting(&dir, Some(true), &mine, &elsewhere, &own).unwrap();
+        assert_eq!((said.withdrawn, said.invited.clone()), (3, vec!["anne@example.net".to_string(), "carl@example.net".to_string()]), "{said:?}");
+        assert!(!here(&invitation) && !here(&update) && !here(&off));
+        let again = drafts("set-aside-1");
+        assert!(again.len() == 1 && again[0].account == "jane" && again[0].to.len() == 2 && again[0].calendar.as_deref().unwrap().contains("DTSTART:20991110T100000Z"), "{again:?}");
+        for draft in again {
+            draft.discard();
+        }
+        for id in [other, reply, plain] {
             sioul_core::compose::Draft::by_id(&id).unwrap().discard();
         }
+        let _ = std::fs::remove_dir_all(&state);
     }
 
     /// A server that only notes what it is asked, and with what login.

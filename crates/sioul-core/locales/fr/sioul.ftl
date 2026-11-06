@@ -1013,7 +1013,10 @@ dav-rewritten = { $count ->
    *[other] { $count } tâches et événements ont été réécrits sous une forme que le gestionnaire de comptes de votre téléphone peut aussi renvoyer ; ils se lisent de même ici.
 }
 dav-moved-out = « { $summary } », un événement dans une liste de tâches, a été déplacé dans votre calendrier des nouveaux événements.
-dav-withdrawn = « { $summary } » a changé sur son serveur entre-temps : les messages à ses invités qui attendaient dans les brouillons disaient votre version, et ont été retirés.
+dav-meeting-set-aside = « { $summary } » a changé sur son serveur entre-temps : la version du serveur est gardée, et votre changement est parmi les versions précédentes ; refaites-le depuis l’événement si vous le voulez toujours.
+dav-withdrawn = Les messages des brouillons qui disaient votre changement ont été retirés.
+dav-reinvited = Une invitation avec la version du serveur attend dans les brouillons pour { $who }.
+dav-served-untold = Votre serveur n’a jamais eu votre changement : il n’en a rien dit à { $who }.
 dav-conflict = Modifié des deux côtés : la version du serveur est gardée ; la vôtre est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes), à remettre si vous la préférez.
 dav-answered-elsewhere = { $answer ->
         [accepted] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : accepté. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
@@ -3299,6 +3302,7 @@ share-put-back-whole = { $file } revient comme il était ({ $when }) ; le fich
 share-put-back-meeting = { $file } est une réunion avec d’autres : seules vos propres lignes de cette version ({ $when }) reviennent, votre temps autour, ses coûts et votre rappel ; son heure, son titre et ses invités restent tels que son organisateur les a mis. La réunion telle qu’elle est maintenant est gardée dans la liste.
 share-put-back-meeting-gone = { $file } est une réunion qui n’est plus dans votre agenda : elle n’est pas remise, son serveur préviendrait chaque invité.
 share-put-back-meeting-done = Vos propres lignes de { $file } sont revenues ({ $when }) : son heure, son titre et ses invités restent tels que son organisateur les a.
+share-put-back-organized = Vous organisez { $file } : son changement lui-même n’est pas refait, ni dit à ses invités ; refaites-le depuis son formulaire.
 share-put-back-was-meeting = { $file } était une réunion avec d’autres dans cette version ({ $when }) : elle n’est pas remise, son serveur préviendrait chaque invité. L’événement reste tel qu’il est maintenant.
 share-put-back-nothing = { $file } contient déjà ce que contenait cette version : rien à remettre.
 share-put-back-entries = { $file } comme il était ({ $when }) : { $changed ->
@@ -3901,6 +3905,8 @@ invite-take-off = Retirer { $who } des invités
 invite-ask-drafts = Sioul rédige les messages à { $who } ; vous les envoyez depuis Courrier.
 invite-ask-served = Votre serveur prévient { $who }.
 invite-server-unknown = Sioul ne sait pas encore si le serveur de cet agenda prévient lui-même les invités : réessayez après sa prochaine synchronisation.
+invite-marks-mixed = { $who } est prévenu de certaines dates de cette réunion par votre serveur, et des autres par vous : changez-la dans l’application qui l’a faite, pour que { $who } en soit prévenu une seule fois.
+invite-undo-served = Votre serveur a prévenu les invités ; changez-la de nouveau pour leur dire autre chose.
 invite-save = Enregistrer
 invite-done-server = Votre serveur prévient les invités.
 invite-done-draft = Le message aux invités attend dans les brouillons : il part quand vous l’envoyez.

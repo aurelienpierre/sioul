@@ -252,6 +252,7 @@ pub mod mailto;
 pub mod mms;
 pub mod money;
 pub mod moneyview;
+pub mod meeting_lines;
 pub mod moves;
 pub mod movements;
 pub mod needs;

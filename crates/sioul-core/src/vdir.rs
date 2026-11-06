@@ -903,6 +903,17 @@ impl State {
     }
 }
 
+/// The hash (`content_hash`) of a calendar item's file as its server last
+/// agreed on it (`ItemState::hash`), from its calendar's sync state; none for
+/// a file its sync never had (made here and not sent yet, or in a calendar
+/// no server holds). The file's own hash being another, its change here has
+/// not reached its server (second review of the organizer's door, N7).
+pub fn agreed_hash(path: &Path) -> Option<String> {
+    let (dir, file) = (path.parent()?, path.file_name()?.to_str()?);
+    let collection = collections(Kind::Calendars).into_iter().find(|c| c.dir == dir)?;
+    State::load(&collection.state_path()).items.into_iter().find(|i| i.file == file).map(|i| i.hash).filter(|h| !h.is_empty())
+}
+
 /// A short hash of a file's content, to tell whether it changed since sync.
 pub fn content_hash(bytes: &[u8]) -> String {
     // FNV-1a, 64 bits: stable across versions of Rust, unlike `DefaultHasher`.

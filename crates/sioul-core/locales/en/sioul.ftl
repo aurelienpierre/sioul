@@ -983,7 +983,10 @@ dav-rewritten = { $count ->
    *[other] { $count } tasks and events were rewritten in a form your phone’s account manager can send back too; they read the same here.
 }
 dav-moved-out = “{ $summary }”, an event in a list of tasks only, was moved to your calendar for new events.
-dav-withdrawn = “{ $summary }” changed on its server meanwhile: the messages to its guests waiting in Drafts said your version, and were taken out.
+dav-meeting-set-aside = “{ $summary }” changed on its server meanwhile: the server’s version is kept, and your change is among the earlier versions; make it again from the event if you still want it.
+dav-withdrawn = The messages in Drafts that said your change were taken out.
+dav-reinvited = An invitation with the server’s version waits in Drafts for { $who }.
+dav-served-untold = Your server never had your change: it told { $who } nothing of it.
 dav-conflict = Changed on both sides: the server’s version is kept; yours is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back if you prefer it.
 dav-answered-elsewhere = { $answer ->
         [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.
@@ -3272,6 +3275,7 @@ share-put-back-whole = { $file } goes back as it was ({ $when }); the file as it
 share-put-back-meeting = { $file } is a meeting with others: only your own lines of that version ({ $when }) come back, your time around it, its costs and your reminder; its time, title and guests stay as its organizer set them. The meeting as it is now is kept in the list.
 share-put-back-meeting-gone = { $file } is a meeting no longer in your calendar: it is not put back, since its server would tell every guest.
 share-put-back-meeting-done = Your own lines of { $file } are back ({ $when }): its time, title and guests stay as its organizer has them.
+share-put-back-organized = You organize { $file }: its change itself is not made, nor told to its guests; make it again from its form.
 share-put-back-was-meeting = { $file } was a meeting with others in that version ({ $when }): it is not put back, since its server would tell every guest. The event stays as it is now.
 share-put-back-nothing = { $file } holds that version's entries already: nothing to put back.
 share-put-back-entries = { $file } as it was ({ $when }): { $changed ->
@@ -3874,6 +3878,8 @@ invite-take-off = Take { $who } off the guests
 invite-ask-drafts = Sioul drafts the messages to { $who }; you send them from Mail.
 invite-ask-served = Your server tells { $who }.
 invite-server-unknown = Sioul does not know yet whether this calendar’s server tells the guests itself: try again after its next sync.
+invite-marks-mixed = { $who } is told of some times of this meeting by your server and of others by you: change it in the app that made it, so that { $who } hears of it once.
+invite-undo-served = Your server has told the guests; change it again to tell them otherwise.
 invite-save = Save
 invite-done-server = Your server tells the guests.
 invite-done-draft = The message to the guests waits in Drafts: it leaves when you send it.

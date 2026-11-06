@@ -228,6 +228,24 @@ fn status_of(report: &dav::Report, account: &str, time: &str) -> (String, bool) 
     }
 }
 
+/// The line a meeting you organize set aside by the sync says, once: its
+/// server's version kept, your change not made; the messages that said it
+/// taken out of Drafts; to whom an invitation of the server's version waits
+/// there; the guests its server tells, who never heard your change.
+fn meeting_set_aside_line(meeting: &dav::MeetingSetAside) -> String {
+    let mut said = vec![say("dav-meeting-set-aside", &[("summary", meeting.summary.clone())])];
+    if meeting.withdrawn > 0 {
+        said.push(tr().text("dav-withdrawn", None));
+    }
+    if !meeting.invited.is_empty() {
+        said.push(say("dav-reinvited", &[("who", meeting.invited.join(", "))]));
+    }
+    if !meeting.served.is_empty() {
+        said.push(say("dav-served-untold", &[("who", meeting.served.join(", "))]));
+    }
+    said.join(" ")
+}
+
 /// What a sync said: the account's status, conflicts in the status line, the pages again.
 fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Result<dav::Report, SyncError>) {
     eprintln!("{}", sync_line(&result));
@@ -250,8 +268,9 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             }
             // Collections new here, renamed or recoloured count too: the lists are read again.
             let changed = report.sent + report.received + report.removed > 0 || !report.conflicts.is_empty() || report.registered > 0;
-            // Yours kept among the earlier versions, which the window lists and puts back, on a phone too.
-            if !report.conflicts.is_empty() {
+            // Yours kept among the earlier versions, which the window lists and puts back, on a phone too;
+            // a meeting you organize said apart, below, once.
+            if report.conflicts.len() > report.meetings.len() {
                 tell(qt, shared, tr().text("dav-conflict", None));
             }
             // An invitation you had answered otherwise on another device: its answer kept, said once.
@@ -265,9 +284,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for summary in &report.moved_out {
                 tell(qt, shared, say("dav-moved-out", &[("summary", summary.clone())]));
             }
-            // A meeting you organize set aside for its server's copy: its unsent messages to the guests withdrawn, said once.
-            for summary in &report.withdrawn {
-                tell(qt, shared, say("dav-withdrawn", &[("summary", summary.clone())]));
+            // A meeting you organize set aside for its server's copy: what its guests still need
+            // to hear, worked out from the server's version, said once (second review of the door, N3, N8).
+            for meeting in &report.meetings {
+                tell(qt, shared, meeting_set_aside_line(meeting));
             }
             changed || report.rewritten > 0 || !report.moved_out.is_empty()
         }
@@ -890,7 +910,7 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
         if !gesture.legs.is_empty()
             && let Err(e) = (sioul_core::composed::Change { written: gesture.legs, ..sioul_core::composed::Change::default() }).write()
         {
-            crate::organized::put_back(&written);
+            let _ = crate::organized::put_back(&written);
             return Err(e);
         }
         return Ok(SavedEvent { accounts, path, renamed, title: edit.title.trim().to_string(), legs, told: plan.done() });
@@ -954,14 +974,17 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
     let said = sioul_core::agentwrites::Said { at: 0, line: String::new(), files };
     mail::offer_back(qt, shared, line, move |qt, shared| {
         // Only what this drag wrote is put back, every file or none: a change since stays.
-        // A meeting you organize, through its own door, its unsent draft discarded.
+        // A meeting you organize, through its own door, its unsent draft discarded; its legs
+        // too, under the same Undo (F19), each looked at before any is put back (N10).
+        let unchanged = said.files.iter().all(|f| std::fs::read_to_string(&f.path).ok() == f.after);
         let back = match &organized {
-            // Its legs too, under the same Undo (F19).
-            Some(written) => crate::organized::put_back(written) && (said.files.is_empty() || said.put_back()),
-            None => said.put_back(),
+            Some(_) if !unchanged => Err(tr().text("undo-too-late", None)),
+            Some(written) => crate::organized::put_back(written).and_then(|()| if said.files.is_empty() || said.put_back() { Ok(()) } else { Err(tr().text("undo-too-late", None)) }),
+            None if said.put_back() => Ok(()),
+            None => Err(tr().text("undo-too-late", None)),
         };
-        if !back {
-            return tr().text("undo-too-late", None);
+        if let Err(said) = back {
+            return said;
         }
         for account in &accounts {
             nudge(shared, account);
@@ -1095,7 +1118,7 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
             match (sioul_core::composed::Change { written: gesture.legs, ..sioul_core::composed::Change::default() }).write() {
                 Ok(files) => files,
                 Err(e) => {
-                    crate::organized::put_back(&written);
+                    let _ = crate::organized::put_back(&written);
                     return Err(e);
                 }
             }
@@ -1128,17 +1151,26 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
         if only_this {
             return tr().text("invite-delete-one-time", None);
         }
-        let written = match crate::organized::delete(&path) {
-            Ok(written) => written,
+        let (written, gone) = match deleted_with_legs(shared, &path) {
+            Ok(done) => done,
             Err(e) => return e,
         };
         nudge(shared, &account);
+        let mut accounts: Vec<String> = gone.iter().filter_map(|f| account_of(&f.path)).filter(|a| *a != account).collect();
+        accounts.sort();
+        accounts.dedup();
+        for other in &accounts {
+            nudge(shared, other);
+        }
         crate::work::replan_asked(shared);
         let told = tr().text(if written.drafts.is_empty() { "invite-cancelled-server" } else { "invite-cancelled-draft" }, None);
-        mail::offer_back(qt, shared, format!("{} {told}", tr().text("undo-event-deleted", None)), move |qt, shared| {
-            // What its guests hear of it coming back, said (review of 1e8551e, F14).
-            let Some(said) = crate::organized::undelete(&written) else { return tr().text("undo-too-late", None) };
+        let deleted = if gone.is_empty() { tr().text("undo-event-deleted", None) } else { tr().text("legs-deleted-with", Some(&tr().counted(gone.len()))) };
+        mail::offer_back(qt, shared, format!("{deleted} {told}"), move |qt, shared| {
+            let Some(said) = undeleted_with_legs(&written, &gone) else { return tr().text("undo-too-late", None) };
             nudge(shared, &account);
+            for other in &accounts {
+                nudge(shared, other);
+            }
             crate::work::show_work(qt, shared);
             show_pim(qt, shared);
             if said.is_empty() { String::new() } else { format!("{} {said}", tr().text("undo-done", None)) }
@@ -1166,6 +1198,39 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
     }
     show_pim(qt, shared);
     String::new()
+}
+
+/// A meeting you organize deleted (`delete_event`): through its own door,
+/// its guests told (`organized::delete`), and its legs to come with it, as
+/// an appointment's go (part E2; second review of the organizer's door,
+/// N10), ordinary events of yours through the ordinary doors, one Undo for
+/// both (`undeleted_with_legs`). The meeting's write, and the legs' files.
+pub(crate) fn deleted_with_legs(shared: &Shared, path: &Path) -> Result<(crate::organized::Written, Vec<sioul_core::agentwrites::FileChange>), String> {
+    let legs = legs_to_come(shared, path, &sioul_core::zone::current());
+    let written = crate::organized::delete(path)?;
+    match (sioul_core::composed::Change { gone: legs, ..sioul_core::composed::Change::default() }).write() {
+        Ok(gone) => Ok((written, gone)),
+        Err(e) => {
+            let _ = crate::organized::undelete(&written);
+            Err(e)
+        }
+    }
+}
+
+/// `deleted_with_legs` taken back (Undo): every leg looked at first, each
+/// still as it was left, and the meeting's place still free; then the
+/// meeting, its guests told as they hear of it coming back (review of
+/// 1e8551e, F14), and its legs. What the line says (`organized::undelete`),
+/// none when it is too late.
+pub(crate) fn undeleted_with_legs(written: &crate::organized::Written, legs: &[sioul_core::agentwrites::FileChange]) -> Option<String> {
+    if !legs.iter().all(|f| std::fs::read_to_string(&f.path).ok() == f.after) || written.file.as_ref().is_some_and(|f| f.path.exists()) {
+        return None;
+    }
+    let said = crate::organized::undelete(written)?;
+    if !legs.is_empty() && !(sioul_core::agentwrites::Said { at: 0, line: String::new(), files: legs.to_vec() }).put_back() {
+        return None;
+    }
+    Some(said)
 }
 
 /// The events as last read (`work::loaded_known`), with what changed since
@@ -1365,16 +1430,29 @@ pub(crate) fn guest_completions(typed: &str) -> String {
     if current.chars().count() >= 2 {
         let persons = sioul_core::persons::Persons::load(&sioul_core::persons::Persons::default_path());
         for person in persons.persons.iter().filter(|p| folded(&p.name).split_whitespace().any(|w| w.starts_with(&folded(current))) || folded(&p.full_name).starts_with(&folded(current))) {
-            for email in all.iter().filter(|c| person.cards.contains(&c.uid)).flat_map(|c| c.emails.iter()) {
-                let line = format!("{} <{}>", person.name, email.value);
-                if !found.iter().any(|f| f.to_lowercase().contains(&email.value.to_lowercase())) {
-                    found.push(line);
+            // A guest's name is their full name, which every guest reads in the list of guests
+            // and the server keeps; never the short name Your people know them by (N10).
+            for card in all.iter().filter(|c| person.cards.contains(&c.uid)) {
+                let name = guest_name(person, card);
+                for email in &card.emails {
+                    let line = if name.is_empty() { email.value.clone() } else { format!("{name} <{}>", email.value) };
+                    if !found.iter().any(|f| f.to_lowercase().contains(&email.value.to_lowercase())) {
+                        found.push(line);
+                    }
                 }
             }
         }
     }
     found.truncate(6);
     json(&found)
+}
+
+/// The name a guest from Your people is invited by: their full name, else
+/// their card's, never the short name Your people know them by ("Maman"),
+/// which every guest reads in the invitation's list of guests and the server
+/// keeps (second review of the organizer's door, N10); "" for none.
+fn guest_name(person: &sioul_core::persons::Person, card: &contacts::Contact) -> String {
+    [person.full_name.trim(), card.name.trim()].into_iter().find(|n| !n.is_empty()).unwrap_or_default().to_string()
 }
 
 /// What saving the event form would tell anyone, said before it is asked
@@ -2057,7 +2135,7 @@ mod tests {
         assert_eq!(agenda::first_times(&std::fs::read_to_string(&bus).unwrap(), &zone), Some((at(13, 10), at(13, 35))), "the bus moved with it");
         assert!(moved.organized.is_some() && moved.files.len() == 1 && moved.legs.len() == 1, "the meeting through its door, its leg under the same Undo");
         let written = moved.organized.clone().unwrap();
-        assert!(crate::organized::put_back(&written) && sioul_core::agentwrites::Said { at: 0, line: String::new(), files: moved.files.clone() }.put_back());
+        assert!(crate::organized::put_back(&written).is_ok() && sioul_core::agentwrites::Said { at: 0, line: String::new(), files: moved.files.clone() }.put_back());
         assert_eq!([std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap()], [doctor_before.clone(), bus_before.clone()], "both back");
         // The form moves it, and its leg.
         let events = crate::work::loaded(&shared).events.clone();
@@ -2071,6 +2149,58 @@ mod tests {
             draft.discard();
         }
         let _ = invited;
+        agenda::open_organizer_door_here(false);
+        agenda::own_addresses_here(None);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A guest from Your people goes by their full name, else their card's,
+    /// never their short name (the second review's N10); a meeting set aside
+    /// by the sync is said in one line, its server-told guests named (N3, N8).
+    #[test]
+    fn guests_are_named_and_a_set_aside_meeting_said_once() {
+        let person = sioul_core::persons::Person { name: "Mum".into(), full_name: "Jeanne Exemple".into(), ..Default::default() };
+        let card = contacts::Contact { name: "Jeanne E.".into(), ..Default::default() };
+        assert_eq!(guest_name(&person, &card), "Jeanne Exemple");
+        assert_eq!(guest_name(&sioul_core::persons::Person { full_name: String::new(), ..person.clone() }, &card), "Jeanne E.", "the card's, never the short name");
+        assert_eq!(guest_name(&sioul_core::persons::Person { full_name: String::new(), ..person }, &contacts::Contact::default()), "");
+        let line = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: vec!["Anne".into()], served: vec!["Bob".into()] });
+        let parts = [say("dav-meeting-set-aside", &[("summary", "Planning".into())]), tr().text("dav-withdrawn", None), say("dav-reinvited", &[("who", "Anne".into())]), say("dav-served-untold", &[("who", "Bob".into())])];
+        assert_eq!(line, parts.join(" "));
+        assert_eq!(meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), ..Default::default() }), parts[0], "nothing more to say");
+    }
+
+    /// An appointment with a bus before it, made a meeting you organize
+    /// (Anne invited), deleted: its bus to come goes with it, Anne's
+    /// cancellation drafted; Undo puts both back, the cancellation unsent
+    /// discarded (the second review's N10: its legs stayed before).
+    #[test]
+    fn a_meeting_you_organize_is_deleted_with_its_legs() {
+        let (calendar, doctor, bus) = doctor_and_bus("legs-deleted");
+        let dir = sioul_core::config::data_dir().join(format!("legs-deleted-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n\n[[account]]\nid = \"camille-gone\"\nkind = \"imap\"\naddress = \"camille.gone@example.org\"\nname = \"Camille\"\nhost = \"imap.example.org\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        agenda::own_addresses_here(Some(&["camille.gone@example.org"]));
+        agenda::open_organizer_door_here(true);
+        let own = std::fs::read_to_string(&doctor).unwrap();
+        let anne = [sioul_core::organizer::Guest { address: "anne@example.net".into(), name: "Anne".into() }];
+        let invited = crate::organized::write(&crate::organized::plan(&doctor, Some(&own), &own, Some(&anne), &calendar).unwrap()).unwrap();
+        invited.drafts.iter().filter_map(|id| sioul_core::compose::Draft::by_id(id)).for_each(|d| d.discard());
+        let (doctor_before, bus_before) = (std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap());
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
+        let (written, legs) = deleted_with_legs(&shared, &doctor).unwrap();
+        assert!(!doctor.exists() && !bus.exists() && legs.len() == 1, "its bus to come went with it");
+        let cancel = sioul_core::compose::Draft::by_id(&written.drafts[0]).unwrap();
+        assert!(cancel.to[0].contains("anne@example.net") && cancel.calendar.as_deref().unwrap().contains("METHOD:CANCEL"));
+        assert_eq!(undeleted_with_legs(&written, &legs).as_deref(), Some(""));
+        assert_eq!([std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap()], [doctor_before, bus_before], "both back");
+        assert!(sioul_core::compose::Draft::by_id(&written.drafts[0]).is_none(), "its cancellation, unsent, discarded");
+        assert!(undeleted_with_legs(&written, &legs).is_none(), "once");
         agenda::open_organizer_door_here(false);
         agenda::own_addresses_here(None);
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);

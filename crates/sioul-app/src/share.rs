@@ -1269,13 +1269,19 @@ pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(Stri
     let current = std::fs::read_to_string(&path).ok();
     match &current {
         // A meeting: the version's lines of yours into your own time around it, the meeting as it is.
+        // A version holding none (one the organizer's door wrote, as its guests read it) leaves your
+        // own time as it is; a meeting you organize says that its change is not made, nor told to
+        // its guests, and is made again from its form (second review of the organizer's door, N8).
         Some(current) if meeting(current) => {
-            let zone = sioul_core::zone::current();
             let uid = sioul_core::lines::unfold(current).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()).filter(|u| !u.is_empty()).ok_or_else(|| format!("{file}?"))?;
-            let yours = sioul_core::agenda::edit_of_text(&text, &zone).ok_or_else(|| format!("{file}?"))?;
-            let own = sioul_core::own_time::Own { before: yours.margins.before, after: yours.margins.after, demands: yours.demands, remind: yours.remind };
-            let changed = sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, Some(own))?;
-            return Ok((String::new(), if changed { say("share-put-back-meeting-done", &[("file", shown), ("when", kept)]) } else { say("share-put-back-nothing", &[("file", shown)]) }));
+            let yours = sioul_core::organizer::aside_of(&text).own;
+            let changed = match yours {
+                Some(own) => sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, Some(own))?,
+                None => false,
+            };
+            let line = if changed { say("share-put-back-meeting-done", &[("file", shown.clone()), ("when", kept)]) } else { say("share-put-back-nothing", &[("file", shown.clone())]) };
+            let line = if sioul_core::agenda::organized_meeting(current, &own) { format!("{line} {}", say("share-put-back-organized", &[("file", shown)])) } else { line };
+            return Ok((String::new(), line));
         }
         None if meeting(&text) => return Err(say("share-put-back-meeting-gone", &[("file", shown)])),
         // Yours now, a meeting then: the meeting never written back.
@@ -3551,6 +3557,40 @@ mod tests {
     /// back your own lines of the version alone (its reminder), its
     /// organizer's time staying; an event of your own goes back whole; a
     /// calendar you only read takes nothing, said; the preview says each first.
+    /// A meeting you organize whose change the sync set aside (the door
+    /// wrote it as its guests read it: none of Sioul's lines): putting that
+    /// version back keeps your own time around it as it is, the meeting byte
+    /// for byte, and says that its change itself is not made, nor told to
+    /// its guests (the second review's N8).
+    #[test]
+    fn putting_back_a_meeting_you_organize_keeps_your_own_time() {
+        sioul_core::config::stand_ins_only();
+        use sioul_core::vdir::{self, Kind};
+        sioul_core::agenda::own_addresses_here(Some(&["camille.n8@example.org"]));
+        let account = "put-back-n8";
+        vdir::prepare(Kind::Calendars, account, "mine", "Mine", None).unwrap();
+        let dir = Kind::Calendars.root().join(account).join("mine");
+        let root = sioul_sync::history::root(&memory_path());
+        let event = |start: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:n8-planning\r\nDTSTART:{start}\r\nDTEND:20991023T170000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:camille.n8@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        let file = format!("data/calendars/{account}/mine/n8.ics");
+        std::fs::write(dir.join("n8.ics"), event("20991023T150000Z")).unwrap();
+        sioul_sync::history::keep_bytes(&root, sioul_sync::history::ACCOUNTS, &file, event("20991023T140000Z").as_bytes(), 1_790_000_000_000).unwrap();
+        let stamp = sioul_sync::history::versions(&root, sioul_sync::history::ACCOUNTS, &file).first().unwrap().stamp.clone();
+        let own_path = sioul_core::own_time::default_path();
+        sioul_core::own_time::set(&own_path, "n8-planning", Some(sioul_core::own_time::Own { before: 25, remind: "45".into(), ..Default::default() })).unwrap();
+        let before = std::fs::read(dir.join("n8.ics")).unwrap();
+        let shown = share::shown(&file).to_string();
+        let got = put_back_item(sioul_sync::history::ACCOUNTS, &file, &stamp);
+        let kept = sioul_core::own_time::load(&own_path).events.get("n8-planning").cloned();
+        let _ = sioul_core::own_time::set(&own_path, "n8-planning", None);
+        sioul_core::agenda::own_addresses_here(None);
+        let after = std::fs::read(dir.join("n8.ics")).unwrap();
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
+        assert_eq!(got, Ok((String::new(), format!("{} {}", say("share-put-back-nothing", &[("file", shown.clone())]), say("share-put-back-organized", &[("file", shown)])))));
+        assert_eq!(kept.map(|o| (o.before, o.remind)), Some((25, "45".to_string())), "your own time as it was");
+        assert_eq!(after, before, "the meeting byte for byte");
+    }
+
     #[test]
     fn a_set_aside_item_goes_back_through_the_agenda_s_rule() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
