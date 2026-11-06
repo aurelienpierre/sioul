@@ -173,7 +173,7 @@ static ASKING: AtomicBool = AtomicBool::new(false);
 /// places used before at once, then, when allowed (Settings ▸ Agenda) and
 /// three characters at least, the service's, on a thread, one question at a
 /// time, the last typed only; each told (`addresses_suggested(typed, json)`:
-/// {used: [label], found: [{label, lat, lon}], service}). Only what was
+/// `{used: [label], found: [{label, lat, lon}], service}`). Only what was
 /// typed is sent; a network away sends nothing and says nothing.
 pub(crate) fn suggest(qt: &QtThread, loaded: &sioul_core::links::Loaded, typed: &str) {
     let used = used_before(loaded, typed);
