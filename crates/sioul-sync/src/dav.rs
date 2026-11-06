@@ -877,8 +877,8 @@ fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
             first = false;
         }
         if kind == Kind::Calendars {
-            // Whether its server sends your meetings' invitations itself (RFC 6638), once a day:
-            // never both a server's and a draft (`scheduling`, `organizer::Sender`).
+            // Whether its server sends your meetings' invitations itself (RFC 6638), once a day: who tells
+            // the guests of a meeting made elsewhere, never both a server's and a draft (`scheduling`).
             crate::scheduling::keep_fresh(client, &account.id, home);
             report.calendars_listed = listed.len();
             report.calendars_synced = report.collections - synced_before;

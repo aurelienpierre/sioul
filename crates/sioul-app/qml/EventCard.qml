@@ -69,27 +69,21 @@ CardFrame {
         }
     }
 
-    // The way there, for `os` (Qt.platform.os): a `geo:` link (RFC 5870), its point when
-    // known, else its words; and the page used when no app takes it: Apple's maps on
-    // macOS, OpenStreetMap's directions elsewhere.
-    function directionsOf(point, place, os) {
-        const words = encodeURIComponent(place)
-        const at = point ? point.lat + "," + point.lon : ""
-        const geo = point ? "geo:" + at + "?q=" + words : "geo:0,0?q=" + words
-        const page = os === "osx" || os === "macos" ? "https://maps.apple.com/?daddr=" + (point ? at : words) : "https://www.openstreetmap.org/directions?to=" + (point ? at : words)
-        return { geo: geo, page: page }
+    // The way there (Directions.qml, shared with a contact's addresses).
+    readonly property Directions way: Directions {
+        sioul: card.sioul
     }
 
-    // Directions pressed: the `geo:` link when this system has an app for it (asked now,
-    // never assumed; on Android, an intent that resolves), else the page.
+    // The way there, for `os` (Qt.platform.os): {geo, page} (`Directions.uris`).
+    function directionsOf(point, place, os) {
+        return card.way.uris(point, place, os)
+    }
+
+    // Directions pressed: its point when known (its GEO, the places kept), else its words (`Directions.open`).
     function directions() {
         if (!card.there || card.event.location === "")
             return
-        const known = card.point || JSON.parse(card.sioul.eventPoint(card.event.geo || "", card.event.location) || "{}")
-        const uris = card.directionsOf(known && known.lat !== undefined ? known : null, card.event.location, Qt.platform.os)
-        if (card.sioul.geoHandler() && Qt.openUrlExternally(uris.geo))
-            return
-        Qt.openUrlExternally(uris.page)
+        card.way.open(card.point || JSON.parse(card.sioul.eventPoint(card.event.geo || "", card.event.location) || "{}"), card.event.location)
     }
 
     // Its own status set ("confirmed", "tentative", "cancelled"), by its own writer.

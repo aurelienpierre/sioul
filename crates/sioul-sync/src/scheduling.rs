@@ -15,8 +15,17 @@
 //!
 //! Asked once a day per account, at the end of a calendars' sync, and kept
 //! in `$XDG_STATE_HOME/sioul/dav/<account>/scheduling.toml`, this device's
-//! own. A request that fails keeps what was known and is asked again at
-//! the next sync; a server that answers without the word does not schedule.
+//! own. Only a clear answer changes what is known: an OPTIONS answered 2xx,
+//! whose DAV header says the word or not, and PROPFINDs answered 207. A
+//! request that fails, an error answered (403, 404, 429, 5xx…) or a PROPFIND
+//! answered otherwise keeps what was known, asked again at the next sync
+//! (review of 1e8551e, F9).
+//!
+//! **What it decides** (the owner's word, 6 November 2026: "per meeting"):
+//! only who tells the guests of a meeting made elsewhere, whose guests are
+//! not marked `SCHEDULE-AGENT=CLIENT` (`organizer::teller`). How a meeting
+//! sends is read from its own file, never from this: a guest marked so is
+//! told by your drafts, whatever this says.
 
 use crate::SyncError;
 use crate::dav::{CALDAV, Client, absolute, multistatus};
@@ -60,10 +69,10 @@ fn save(account: &str, scheduling: &Scheduling) -> Result<(), String> {
 }
 
 /// Whether a server schedules for this organizer, as it said last: it
-/// schedules by itself, and names this address among yours there. A server
-/// that names none of your addresses, or was never asked, is not trusted to
-/// send: Sioul drafts the invitation, each guest marked as left to you
-/// (`organizer::Sender::Draft`).
+/// schedules by itself, and names this address among yours there. Read for
+/// the guests of a meeting made elsewhere alone (not left to you); the
+/// window tells "never asked" apart (`of`), and then changes nothing of such
+/// a meeting (`organized::server_for`).
 pub fn schedules_for(account: &str, organizer: &str) -> bool {
     of(account).is_some_and(|s| s.auto && s.addresses.iter().any(|a| a.eq_ignore_ascii_case(organizer.trim())))
 }
@@ -79,24 +88,38 @@ fn mailto(href: &str) -> Option<String> {
     href.get(..7).filter(|p| p.eq_ignore_ascii_case("mailto:")).map(|_| href[7..].trim().to_lowercase()).filter(|a| !a.is_empty())
 }
 
+/// An answer that says nothing clear (an error, a PROPFIND not answered 207):
+/// what was known stays (F9).
+fn unclear(what: &str, status: u16) -> SyncError {
+    SyncError::Server(format!("{what}: {status}"))
+}
+
 /// Asks the server at your calendars' home (`home`): its DAV header, then
-/// your principal's addresses.
+/// your principal's addresses. An answer that says nothing clear is an
+/// error: what was known stays (`keep_fresh`).
 pub(crate) fn ask(client: &Client, home: &str, now: i64) -> Result<Scheduling, SyncError> {
     let options = client.send("OPTIONS", home, &[], None)?;
-    let auto = options.status / 100 == 2 && options.dav.as_deref().is_some_and(|h| says(h, "calendar-auto-schedule"));
+    if options.status / 100 != 2 {
+        return Err(unclear("OPTIONS", options.status));
+    }
+    let auto = options.dav.as_deref().is_some_and(|h| says(h, "calendar-auto-schedule"));
     let mut addresses = Vec::new();
     if auto {
         let current = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>"#;
         let answer = client.send("PROPFIND", home, &[("Depth", "0"), ("Content-Type", "application/xml; charset=utf-8")], Some(current))?;
-        let principal = if answer.status == 207 { multistatus(&answer.body)?.0.iter().find_map(|r| r.prop("DAV:", "current-user-principal").and_then(|p| p.hrefs.first().cloned())) } else { None };
+        if answer.status != 207 {
+            return Err(unclear("PROPFIND", answer.status));
+        }
+        let principal = multistatus(&answer.body)?.0.iter().find_map(|r| r.prop("DAV:", "current-user-principal").and_then(|p| p.hrefs.first().cloned()));
         let principal = principal.map_or_else(|| home.to_string(), |href| absolute(home, &href));
         let set = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:c="{CALDAV}"><d:prop><c:calendar-user-address-set/></d:prop></d:propfind>"#);
         let answer = client.send("PROPFIND", &principal, &[("Depth", "0"), ("Content-Type", "application/xml; charset=utf-8")], Some(&set))?;
-        if answer.status == 207 {
-            for response in multistatus(&answer.body)?.0 {
-                if let Some(prop) = response.prop(CALDAV, "calendar-user-address-set") {
-                    addresses.extend(prop.hrefs.iter().filter_map(|h| mailto(h)));
-                }
+        if answer.status != 207 {
+            return Err(unclear("PROPFIND", answer.status));
+        }
+        for response in multistatus(&answer.body)?.0 {
+            if let Some(prop) = response.prop(CALDAV, "calendar-user-address-set") {
+                addresses.extend(prop.hrefs.iter().filter_map(|h| mailto(h)));
             }
         }
         addresses.sort();
@@ -106,8 +129,9 @@ pub(crate) fn ask(client: &Client, home: &str, now: i64) -> Result<Scheduling, S
 }
 
 /// What an account's server says of its scheduling, asked again when a day
-/// old or never asked (`ask`), kept; a request that fails keeps what was
-/// known. Never an error of the sync.
+/// old or never asked (`ask`), kept; a request that fails, or an answer that
+/// says nothing clear, keeps what was known and is asked again at the next
+/// sync (F9). Never an error of the sync.
 pub(crate) fn keep_fresh(client: &Client, account: &str, home: &str) {
     let now = sioul_core::zone::now().timestamp().as_second();
     if of(account).is_some_and(|s| (0..EVERY).contains(&(now - s.checked))) {
@@ -130,6 +154,8 @@ mod tests {
     struct Scheduler {
         auto: bool,
         seen: Mutex<Vec<String>>,
+        /// What it answers instead, while set: a passing error (503, 429), or a PROPFIND refused.
+        failing: Mutex<Option<(&'static str, u16)>>,
     }
 
     impl Server for Scheduler {
@@ -139,6 +165,11 @@ mod tests {
 
         fn answer(&self, request: &Request) -> Reply {
             self.seen.lock().unwrap().push(format!("{} {}", request.method, request.path));
+            if let Some((method, status)) = *self.failing.lock().unwrap()
+                && method == request.method
+            {
+                return Reply::new(status, "");
+            }
             match (request.method.as_str(), request.path.as_str()) {
                 ("OPTIONS", _) if self.auto => Reply { status: 200, headers: vec![("DAV", "1, 3, extended-mkcol, access-control, calendar-access, calendar-auto-schedule, calendar-availability".into())], body: String::new() },
                 ("OPTIONS", _) => Reply { status: 200, headers: vec![("DAV", "1, 2, 3, calendar-access".into())], body: String::new() },
@@ -155,7 +186,7 @@ mod tests {
     #[test]
     fn a_server_s_scheduling_is_read_and_kept() {
         home();
-        let scheduler = Arc::new(Scheduler { auto: true, seen: Mutex::new(Vec::new()) });
+        let scheduler = Arc::new(Scheduler { auto: true, seen: Mutex::new(Vec::new()), failing: Mutex::new(None) });
         let base = serve(scheduler.clone());
         let client = Client::new("camille", "secret");
         let at = format!("{base}/remote.php/dav/calendars/camille/");
@@ -166,7 +197,7 @@ mod tests {
         let asked = scheduler.seen.lock().unwrap().len();
         keep_fresh(&client, "scheduling-auto", &at);
         assert_eq!(scheduler.seen.lock().unwrap().len(), asked, "asked once a day");
-        let plain = Arc::new(Scheduler { auto: false, seen: Mutex::new(Vec::new()) });
+        let plain = Arc::new(Scheduler { auto: false, seen: Mutex::new(Vec::new()), failing: Mutex::new(None) });
         let base = serve(plain.clone());
         keep_fresh(&client, "scheduling-plain", &format!("{base}/remote.php/dav/calendars/camille/"));
         assert_eq!(of("scheduling-plain").map(|s| (s.auto, s.addresses.len())), Some((false, 0)));
@@ -175,5 +206,38 @@ mod tests {
         // A server gone: what was known stays.
         keep_fresh(&client, "scheduling-gone", "http://127.0.0.1:9/cal/");
         assert_eq!(of("scheduling-gone"), None);
+    }
+
+    /// A server known to schedule, asked again a day later: a 503, a 429, a
+    /// 403 or a 404 to its OPTIONS, or a PROPFIND not answered 207, keeps
+    /// what was known, and it is asked again at the next sync; a clear
+    /// answer changes it (review of 1e8551e, F9, the review's 503-after-200).
+    #[test]
+    fn an_error_keeps_what_the_server_said() {
+        home();
+        let scheduler = Arc::new(Scheduler { auto: true, seen: Mutex::new(Vec::new()), failing: Mutex::new(None) });
+        let base = serve(scheduler.clone());
+        let client = Client::new("camille", "secret");
+        let at = format!("{base}/remote.php/dav/calendars/camille/");
+        let account = "scheduling-errors";
+        keep_fresh(&client, account, &at);
+        let known = of(account).unwrap();
+        assert!(known.auto && schedules_for(account, "camille@example.org"));
+        let day_old = |known: &Scheduling| save(account, &Scheduling { checked: known.checked - EVERY - 1, ..known.clone() }).unwrap();
+        for failing in [("OPTIONS", 503), ("OPTIONS", 429), ("OPTIONS", 403), ("OPTIONS", 404), ("PROPFIND", 500), ("PROPFIND", 403)] {
+            day_old(&known);
+            *scheduler.failing.lock().unwrap() = Some(failing);
+            let asked = scheduler.seen.lock().unwrap().len();
+            keep_fresh(&client, account, &at);
+            assert!(scheduler.seen.lock().unwrap().len() > asked, "{failing:?}: asked");
+            let kept = of(account).unwrap();
+            assert!(kept.auto && kept.addresses == known.addresses && kept.checked < known.checked, "{failing:?}: what was known kept, asked again next time: {kept:?}");
+        }
+        // A clear answer: a DAV header without the word.
+        *scheduler.failing.lock().unwrap() = None;
+        let plain = Arc::new(Scheduler { auto: false, seen: Mutex::new(Vec::new()), failing: Mutex::new(None) });
+        let plain_at = format!("{}/remote.php/dav/calendars/camille/", serve(plain));
+        keep_fresh(&client, account, &plain_at);
+        assert!(!of(account).unwrap().auto, "a clear answer changes it");
     }
 }

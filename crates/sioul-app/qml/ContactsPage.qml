@@ -186,6 +186,14 @@ Item {
         page.open(answer.key || page.openKey)
     }
 
+    // The card's details unfolded and scrolled to (`revealed`), for the window's images:
+    // on a phone the card's scroll is short, under what it keeps in sight.
+    property int revealed: 0
+    function revealDetails() {
+        page.moreShown = true
+        page.revealed += 1
+    }
+
     // The first contact, for the window's images.
     function openFirst() {
         if (page.shown.contacts.length > 0)
@@ -566,6 +574,18 @@ Item {
                             Layout.fillHeight: true
                             contentWidth: availableWidth
 
+                            // Its end in sight once the details are unfolded for a picture (`revealDetails`).
+                            Connections {
+                                target: page
+                                function onRevealedChanged() {
+                                    Qt.callLater(() => {
+                                        const flick = cardScroll.contentItem as Flickable
+                                        if (flick)
+                                            flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+                                    })
+                                }
+                            }
+
                             ColumnLayout {
                                 width: cardScroll.availableWidth
                                 spacing: 10
@@ -805,21 +825,21 @@ Item {
                                     columnSpacing: 12
                                     rowSpacing: 6
 
+                                    // Each postal address, its label, then the address with Directions (AddressLine.qml).
                                     Repeater {
-                                        model: page.person && page.moreShown ? page.person.addresses.reduce((all, a) => all.concat([page.sioul.text("contact-address") + (a.label ? " · " + page.labelText(a.label) : ""), a.value]), []) : []
+                                        model: page.person && page.moreShown ? page.person.addresses.reduce((all, a) => all.concat([{ text: page.sioul.text("contact-address") + (a.label ? " · " + page.labelText(a.label) : ""), address: "" }, { text: a.value, address: a.value }]), []) : []
 
-                                        delegate: Label {
+                                        delegate: AddressLine {
                                             id: addressCell
 
-                                            required property string modelData
-                                            required property int index
+                                            required property var modelData
 
-                                            Layout.fillWidth: addressCell.index % 2 === 1
+                                            Layout.fillWidth: addressCell.address !== ""
                                             Layout.alignment: Qt.AlignTop
-                                            text: addressCell.modelData
-                                            textFormat: Text.PlainText
-                                            wrapMode: Text.Wrap
-                                            color: addressCell.index % 2 === 0 ? page.theme.muted : page.theme.text
+                                            theme: page.theme
+                                            sioul: page.sioul
+                                            text: addressCell.modelData.text
+                                            address: addressCell.modelData.address
                                         }
                                     }
                                     Label {

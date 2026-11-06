@@ -58,6 +58,8 @@ fn main() {
         "qml/CardHost.qml",
         "qml/CardFrame.qml",
         "qml/EventCard.qml",
+        "qml/Directions.qml",
+        "qml/AddressLine.qml",
         "qml/EventMenu.qml",
         "qml/NeedCard.qml",
         "qml/NeedMenu.qml",

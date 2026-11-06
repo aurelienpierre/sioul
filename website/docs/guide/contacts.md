@@ -63,6 +63,7 @@ A contact opens on the right:
 - **How they reach you**: who they are to you, in a sentence ("Your contacts: in your address book, on no list."), and their sheet ([below](#how-they-reach-you));
 - a small map with a pin at their address, once it is placed ([The map](#the-map));
 - folded under **More**: their postal addresses, organisation and role, birthday, notes, web sites, and the address book the card is in;
+- beside each postal address, **Directions**, which opens the way there as an event's place does ([Agenda](agenda.md#status-map-directions)): in your maps app when this system has one for `geo:` links, with the point the map placed it at when it has one, else on OpenStreetMap's page, or Apple's on a Mac;
 - what is **tied to it**: the tasks that name them, the events they are invited to, the notes that mention them, and what you tied to them by hand. A message shows there when you tied it to them; the [mail search](mail.md#searching) finds the rest of their mail.
 
 **To change it**, **Edit**, then **Save**: it is changed in place. On a phone, **Back** leaves the form without saving. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.

@@ -8,13 +8,24 @@
 //! itself (iTIP over iMIP, RFC 5546 and RFC 6047: `request`, `cancel`), and
 //! a guest's answer read from their REPLY (`replied`).
 //!
-//! **Who sends.** A server that schedules by itself (RFC 6638,
-//! `calendar-auto-schedule` in its DAV header, as Nextcloud does) emails the
-//! guests when it receives the event, as your organizer's copy; Sioul then
-//! drafts nothing. Otherwise (a plain CalDAV server, a calendar of this
-//! device's own) Sioul drafts the invitation, which you send from Mail, and
-//! marks each guest `SCHEDULE-AGENT=CLIENT` (RFC 6638 §7.1), so that a
-//! server that would schedule after all leaves it to you: never both.
+//! **Who sends: per meeting, per guest, read from its file** (the owner's
+//! word, 6 November 2026: "per meeting"). A guest marked
+//! `SCHEDULE-AGENT=CLIENT` (RFC 6638 §7.1) is left to you: Sioul drafts their
+//! invitation, update or cancellation (iTIP over iMIP), which you send from
+//! Mail, and a server schedules nothing for them. A guest without it is told
+//! by the calendar's server when it schedules by itself for the organizer's
+//! address (RFC 6638, `calendar-auto-schedule`, as Nextcloud does); else
+//! Sioul drafts for them too (`teller`). The mark of a guest already in the
+//! file is never added nor taken out: added, sabre would cancel the meeting
+//! for them; taken out, nobody would tell them again (review of 1e8551e, F1,
+//! F2). A meeting made in Sioul marks every guest, those added later too; one
+//! made elsewhere without the mark (Nextcloud's web page, Thunderbird) has
+//! its new guests unmarked, told as the others are (`marks_new_guests`). A
+//! change its server would not send (sabre sends a change of time, rule or
+//! status alone: `significant`) reaches its server-told guests by
+//! `SCHEDULE-FORCE-SEND=REQUEST` for that write (RFC 6638 §7.3, which sabre
+//! honours and takes out of the stored copy once delivered:
+//! `with_force_send`; F3). Never both for one guest and one change.
 //!
 //! These texts are written through the organizer's door alone
 //! (`vdir::write_organized`): every other writer refuses a meeting with others.
@@ -50,13 +61,89 @@ impl Guest {
     }
 }
 
-/// Who sends the invitations of a meeting: its calendar's server, or you, from a draft.
+/// Who tells a guest of a meeting: its calendar's server, or you, from a
+/// draft; for the guests a write adds, how they are marked (`with_guests`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sender {
-    /// The server schedules by itself (RFC 6638): Sioul drafts nothing.
+    /// The server schedules by itself (RFC 6638): Sioul drafts nothing for them.
     Server,
-    /// Sioul drafts the iTIP message; you send it from Mail.
+    /// Sioul drafts the iTIP message; you send it from Mail (`SCHEDULE-AGENT=CLIENT`).
     Draft,
+}
+
+/// Whether a guest's line leaves them to you (`SCHEDULE-AGENT=CLIENT`).
+pub fn left_to_you_line(line: &str) -> bool {
+    lines::param(line, "SCHEDULE-AGENT").is_some_and(|a| a.trim().eq_ignore_ascii_case("CLIENT"))
+}
+
+/// The guests of a meeting left to you (`left_to_you_line`), by address in
+/// lower case, as their first line in the file says it (the series' first).
+pub fn clients(text: &str) -> Vec<String> {
+    let (mut seen, mut out): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+    let (mut inside, mut nested) = (false, 0usize);
+    for line in lines::unfold(text) {
+        match lines::name(&line).as_str() {
+            "BEGIN" if !inside => inside = lines::value(&line).trim().eq_ignore_ascii_case("VEVENT"),
+            "BEGIN" => nested += 1,
+            "END" if inside && nested > 0 => nested -= 1,
+            "END" if inside => inside = false,
+            "ATTENDEE" if inside && nested == 0 => {
+                let who = address_of(lines::value(&line));
+                if seen.contains(&who) {
+                    continue;
+                }
+                if left_to_you_line(&line) {
+                    out.push(who.clone());
+                }
+                seen.push(who);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Who tells `address`, a guest of the meeting `text`: your drafts when its
+/// line leaves them to you, else `server` (its calendar's server when it
+/// schedules for the organizer, else your drafts too).
+pub fn teller(text: &str, address: &str, server: Sender) -> Sender {
+    if clients(text).contains(&address.trim().to_lowercase()) { Sender::Draft } else { server }
+}
+
+/// A meeting's every guest left to you (`SCHEDULE-AGENT=CLIENT`), for the
+/// file Sioul makes of your own invitation seen in your mail: your message
+/// told them, so no server tells them again (`organized::adopt`). Never for a
+/// file already there: a guest's mark is never changed in a file (F1, F2).
+pub fn every_guest_left_to_you(text: &str) -> String {
+    let organizer = organizer_of(text).map(|o| o.address.to_lowercase()).unwrap_or_default();
+    let source = lines::unfold(text);
+    let (mut inside, mut nested) = (false, 0usize);
+    let mut out = Vec::with_capacity(source.len());
+    for line in &source {
+        match lines::name(line).as_str() {
+            "BEGIN" if !inside => inside = lines::value(line).trim().eq_ignore_ascii_case("VEVENT"),
+            "BEGIN" => nested += 1,
+            "END" if inside && nested > 0 => nested -= 1,
+            "END" if inside => inside = false,
+            "ATTENDEE" if inside && nested == 0 && !left_to_you_line(line) && address_of(lines::value(line)) != organizer => {
+                out.push(with_params(line, &["SCHEDULE-AGENT"], &[("SCHEDULE-AGENT", "CLIENT")]));
+                continue;
+            }
+            _ => {}
+        }
+        out.push(line.clone());
+    }
+    if out == source { text.to_string() } else { lines::fold(&out) }
+}
+
+/// How the guests a write adds to `text` are marked (the owner's word, 6
+/// November 2026): left to you (`Sender::Draft`, `SCHEDULE-AGENT=CLIENT`)
+/// in a meeting made in Sioul, or an event of no guest yet; unmarked, told
+/// as its others are (`Sender::Server`), in a meeting made elsewhere, whose
+/// guests none is left to you.
+pub fn marks_new_guests(text: &str) -> Sender {
+    let guests = guests_of(text);
+    if !guests.is_empty() && clients(text).is_empty() { Sender::Server } else { Sender::Draft }
 }
 
 /// "mailto:Jane@Example.org" → "jane@example.org".
@@ -126,7 +213,7 @@ fn person_line(property: &str, who: &Guest, more: &str) -> String {
 }
 
 /// A new guest's line: asked to answer (RFC 5546 §3.2.2), and left to you to
-/// tell when you send the invitation (`Sender::Draft`).
+/// tell when you send the invitation (`Sender::Draft`: `marks_new_guests`).
 fn guest_line(guest: &Guest, sender: Sender) -> String {
     let agent = if sender == Sender::Draft { ";SCHEDULE-AGENT=CLIENT" } else { "" };
     person_line("ATTENDEE", guest, &format!(";ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE{agent}"))
@@ -169,15 +256,18 @@ fn names_organizer(line: &str, organizer: &Guest) -> bool {
 /// A time of it changed keeps its own guests (another program excused one
 /// from it), less those taken off the series, plus those added to it
 /// (review of 1e8551e, F11). An ORGANIZER line is written as the `mailto:`
-/// URI of your address (F15). Its stamps are renewed where it changed. The
-/// same text when nothing changes; None for no event.
-pub fn with_guests(text: &str, organizer: &Guest, guests: &[Guest], sender: Sender) -> Option<String> {
+/// URI of your address (F15). A guest's line kept is kept as it is, its
+/// SCHEDULE-AGENT never added nor taken out (F1, F2); `added` says how the
+/// new ones are marked (`marks_new_guests`). Its stamps are renewed where it
+/// changed. The same text when nothing changes; None for no event.
+pub fn with_guests(text: &str, organizer: &Guest, guests: &[Guest], added: Sender) -> Option<String> {
     let source = lines::unfold(text);
     let ranges = events(&source);
     if ranges.is_empty() {
         return None;
     }
     let now = crate::moves::utc(crate::zone::now().timestamp().as_second());
+    let added_marks = added;
     let wanted: Vec<&Guest> = guests.iter().filter(|g| !g.address.trim().is_empty() && !organizer.is(&g.address)).collect();
     // The series' guests as they are: who is taken off it, and who added, for each time changed.
     let had: Vec<String> = guests_of(text).into_iter().map(|g| g.address.trim().to_lowercase()).filter(|a| !organizer.is(a)).collect();
@@ -226,13 +316,6 @@ pub fn with_guests(text: &str, organizer: &Guest, guests: &[Guest], sender: Send
                         continue;
                     }
                     present.push(who);
-                    // Left to you to tell: said on every guest, so that no server tells them too.
-                    let agent = lines::param(line, "SCHEDULE-AGENT").unwrap_or_default();
-                    if sender == Sender::Draft && !agent.eq_ignore_ascii_case("CLIENT") {
-                        kept.push(with_params(line, &["SCHEDULE-AGENT"], &[("SCHEDULE-AGENT", "CLIENT")]));
-                        changed = true;
-                        continue;
-                    }
                 }
                 _ => {}
             }
@@ -240,11 +323,12 @@ pub fn with_guests(text: &str, organizer: &Guest, guests: &[Guest], sender: Send
         }
         // Before its alarms, else before its end.
         let mut added: Vec<String> = Vec::new();
+        let marks = added_marks;
         if !has_organizer {
             added.push(person_line("ORGANIZER", organizer, ""));
         }
         let new_here: &[&Guest] = if one_time { &added_to } else { &wanted };
-        added.extend(new_here.iter().filter(|g| !present.contains(&g.address.trim().to_lowercase())).map(|g| guest_line(g, sender)));
+        added.extend(new_here.iter().filter(|g| !present.contains(&g.address.trim().to_lowercase())).map(|g| guest_line(g, marks)));
         changed |= !added.is_empty();
         if changed {
             for at in stamps.into_iter().rev() {
@@ -468,6 +552,75 @@ pub fn told(before: &str, after: &str) -> bool {
     seen_by_guests(before) != seen_by_guests(after)
 }
 
+/// What a scheduling server sends a change of (sabre/vobject's ITip Broker,
+/// `significantChangeProperties`, read 6 November 2026): each VEVENT's times,
+/// rule, dates added or left out, and status; a title, a place or notes
+/// changed alone are not sent (Nextcloud's iMIP plugin mails only a
+/// significant change).
+const SIGNIFICANT: [&str; 10] = ["UID", "RECURRENCE-ID", "DTSTART", "DTEND", "DURATION", "DUE", "RRULE", "RDATE", "EXDATE", "STATUS"];
+
+/// Whether a server that schedules sends the change from `before` to `after`
+/// to the guests it tells (`SIGNIFICANT`); a guest added or taken off is
+/// sent their invitation or cancellation whatever this says.
+pub fn significant(before: &str, after: &str) -> bool {
+    let of = |text: &str| {
+        let source = lines::unfold(text);
+        let mut out = Vec::new();
+        for range in events(&source) {
+            let mut nested = 0usize;
+            out.push("BEGIN:VEVENT".to_string());
+            for line in &source[range.start + 1..range.end - 1] {
+                match lines::name(line).as_str() {
+                    "BEGIN" => nested += 1,
+                    "END" => nested = nested.saturating_sub(1),
+                    name if nested == 0 && SIGNIFICANT.contains(&name) => out.push(line.clone()),
+                    _ => {}
+                }
+            }
+        }
+        out
+    };
+    of(before) != of(after)
+}
+
+/// A meeting with no `SCHEDULE-FORCE-SEND` left on any line: one asked for a
+/// write before (`with_force_send`) is never asked again by the next. The
+/// same text when there is none.
+pub fn without_force_send(text: &str) -> String {
+    let source = lines::unfold(text);
+    let out: Vec<String> = source.iter().map(|line| if matches!(lines::name(line).as_str(), "ATTENDEE" | "ORGANIZER") && lines::param(line, "SCHEDULE-FORCE-SEND").is_some() { with_params(line, &["SCHEDULE-FORCE-SEND"], &[]) } else { line.clone() }).collect();
+    if out == source { text.to_string() } else { lines::fold(&out) }
+}
+
+/// A meeting with `SCHEDULE-FORCE-SEND=REQUEST` on the lines of the guests
+/// `to` (addresses) in its first VEVENT (RFC 6638 §7.3): its server sends
+/// them this write's change, which it would not send by itself
+/// (`significant`), then takes the parameter out of the copy it keeps
+/// (sabre/dav's Schedule plugin, `processICalendarChange`, on the first
+/// VEVENT's guests, which is where sabre's broker reads it; read 6 November
+/// 2026). Those of `to` it names there, by address in lower case.
+pub fn with_force_send(text: &str, to: &[String]) -> (String, Vec<String>) {
+    let mut source = lines::unfold(text);
+    let Some(first) = events(&source).into_iter().next() else { return (text.to_string(), Vec::new()) };
+    let mut forced = Vec::new();
+    let mut nested = 0usize;
+    for i in first.start + 1..first.end - 1 {
+        match lines::name(&source[i]).as_str() {
+            "BEGIN" => nested += 1,
+            "END" => nested = nested.saturating_sub(1),
+            "ATTENDEE" if nested == 0 => {
+                let who = address_of(lines::value(&source[i]));
+                if to.iter().any(|t| t.trim().eq_ignore_ascii_case(&who)) && !forced.contains(&who) {
+                    source[i] = with_params(&source[i], &["SCHEDULE-FORCE-SEND"], &[("SCHEDULE-FORCE-SEND", "REQUEST")]);
+                    forced.push(who);
+                }
+            }
+            _ => {}
+        }
+    }
+    if forced.is_empty() { (text.to_string(), forced) } else { (lines::fold(&source), forced) }
+}
+
 /// The VTIMEZONEs of a calendar's text, whole.
 fn zones(source: &[String]) -> Vec<String> {
     let (mut out, mut inside) = (Vec::new(), false);
@@ -540,17 +693,18 @@ pub fn request(text: &str) -> Option<String> {
 
 /// The cancellation of a meeting you organize (an iTIP CANCEL, RFC 5546
 /// §3.2.5): its main VEVENT's UID, times, rule, title and place, its
-/// organizer, the guests in `to` (all of them when empty: the whole meeting
-/// cancelled, its SEQUENCE one more than the file's; else those taken off
-/// it, at the file's SEQUENCE), and STATUS:CANCELLED. None for no event.
-pub fn cancel(text: &str, to: &[String]) -> Option<String> {
+/// organizer, the guests in `to` (all of them when empty), and
+/// STATUS:CANCELLED; `whole`, the meeting cancelled, its SEQUENCE one more
+/// than the file's, else those guests taken off it, at the file's SEQUENCE.
+/// None for no event.
+pub fn cancel(text: &str, to: &[String], whole: bool) -> Option<String> {
     const KEPT: [&str; 9] = ["UID", "DTSTART", "DTEND", "DURATION", "RRULE", "RDATE", "EXDATE", "SUMMARY", "LOCATION"];
     let source = lines::unfold(text);
     let ranges = events(&source);
     let main = ranges.iter().find(|r| !source[(*r).clone()].iter().any(|l| lines::name(l) == "RECURRENCE-ID")).or(ranges.first())?.clone();
     let block = as_sent(&source[main]);
     let sequence: i64 = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0);
-    let whole = to.is_empty();
+    let every = to.is_empty();
     let now = crate::moves::utc(crate::zone::now().timestamp().as_second());
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string(), "METHOD:CANCEL".to_string()];
     out.extend(zones(&source));
@@ -559,7 +713,7 @@ pub fn cancel(text: &str, to: &[String]) -> Option<String> {
         let name = lines::name(line);
         if KEPT.contains(&name.as_str()) || name == "ORGANIZER" {
             out.push(line.clone());
-        } else if name == "ATTENDEE" && (whole || to.iter().any(|t| t.trim().eq_ignore_ascii_case(&address_of(lines::value(line))))) {
+        } else if name == "ATTENDEE" && (every || to.iter().any(|t| t.trim().eq_ignore_ascii_case(&address_of(lines::value(line))))) {
             out.push(with_params(line, &["PARTSTAT", "RSVP"], &[]));
         }
     }
@@ -771,9 +925,10 @@ mod tests {
     }
 
     /// Guests set: you as organizer, a new guest asked to answer before the
-    /// alarm, a kept guest's line as it was (its answer), one taken out; by
-    /// a draft, each guest left to you (`SCHEDULE-AGENT=CLIENT`), by the
-    /// server, none; nothing changed, the same text.
+    /// alarm, a kept guest's line as it was (its answer, its mark), one taken
+    /// out; a new guest left to you (`SCHEDULE-AGENT=CLIENT`) when the
+    /// meeting's guests are, unmarked when they are not; nothing changed,
+    /// the same text.
     #[test]
     fn guests_are_set_as_the_form_lists_them() {
         let own = event("");
@@ -786,7 +941,7 @@ mod tests {
         assert!(crate::agenda::organized_meeting(&invited, &["me@example.org".into()]));
         let answered = invited.replace("PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:anne", "PARTSTAT=ACCEPTED:mailto:anne");
         let changed = un(&with_guests(&answered, &me(), &[guest("anne@example.net", "Anne"), guest("carl@example.net", "Carl")], Sender::Draft).unwrap());
-        assert!(changed.contains("ATTENDEE;CN=Anne;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net"), "Anne's answer kept: {changed}");
+        assert!(changed.contains("ATTENDEE;CN=Anne;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED:mailto:anne@example.net\r\n"), "Anne's line kept as it is, no mark added (F1): {changed}");
         assert!(!changed.contains("bob@example.net") && changed.contains("CN=Carl;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;SCHEDULE-AGENT=CLIENT:mailto:carl@example.net"));
         assert_eq!(changed.matches("ORGANIZER").count(), 1);
         assert_eq!(un(&with_guests(&changed, &me(), &[guest("Anne@Example.net", ""), guest("carl@example.net", "")], Sender::Draft).unwrap()), changed, "nothing changed");
@@ -807,11 +962,11 @@ mod tests {
         assert!(asked.contains("mailto:anne@example.net") && asked.contains("mailto:bob@example.net"));
         assert!(!told(&invited, &invited.replace("X-SIOUL-BEFORE:15", "X-SIOUL-BEFORE:30").replace("TRIGGER:-PT15M", "TRIGGER:-PT5M")), "yours alone");
         assert!(told(&invited, &invited.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T080000Z")) && told(&invited, &invited.replace("SUMMARY:Planning", "SUMMARY:Plans")));
-        let off = un(&cancel(&invited, &["bob@example.net".into()]).unwrap());
+        let off = un(&cancel(&invited, &["bob@example.net".into()], false).unwrap());
         assert!(off.contains("METHOD:CANCEL") && off.contains("STATUS:CANCELLED") && off.contains("SEQUENCE:2") && off.contains("mailto:bob@example.net") && !off.contains("anne@example.net"), "{off}");
         let gone = with_guests(&invited, &me(), &[guest("anne@example.net", "")], Sender::Draft).unwrap();
-        assert!(un(&cancel(&gone, &["bob@example.net".into()]).unwrap()).contains("ATTENDEE:mailto:bob@example.net"), "named though the file no longer names them");
-        let all = un(&cancel(&invited, &[]).unwrap());
+        assert!(un(&cancel(&gone, &["bob@example.net".into()], false).unwrap()).contains("ATTENDEE:mailto:bob@example.net"), "named though the file no longer names them");
+        let all = un(&cancel(&invited, &[], true).unwrap());
         assert!(all.contains("SEQUENCE:3") && all.contains("anne@example.net") && all.contains("bob@example.net") && !all.contains("PARTSTAT"), "{all}");
     }
 
@@ -861,7 +1016,7 @@ mod tests {
     #[test]
     fn the_invitation_carries_what_its_guests_need_alone() {
         let text = private_meeting();
-        for sent in [request(&text).unwrap(), cancel(&text, &[]).unwrap(), cancel(&text, &["anne@example.net".into()]).unwrap()] {
+        for sent in [request(&text).unwrap(), cancel(&text, &[], true).unwrap(), cancel(&text, &["anne@example.net".into()], false).unwrap()] {
             let sent = un(&sent);
             for private in PRIVATE {
                 assert!(!sent.contains(private), "{private} in:\n{sent}");
@@ -979,7 +1134,7 @@ mod tests {
     #[test]
     fn a_meeting_back_after_its_cancellation_is_a_later_version() {
         let invited = un(&with_guests(&event(""), &me(), &[guest("anne@example.net", "")], Sender::Draft).unwrap());
-        let cancelled = un(&cancel(&invited, &[]).unwrap());
+        let cancelled = un(&cancel(&invited, &[], true).unwrap());
         assert!(cancelled.contains("SEQUENCE:3"), "{cancelled}");
         let back = un(&after_cancel(&invited).unwrap());
         assert!(back.contains("SEQUENCE:4") && !back.contains("SEQUENCE:2") && un(&request(&back).unwrap()).contains("SEQUENCE:4"), "{back}");
@@ -1004,5 +1159,62 @@ mod tests {
         assert!(recorded.0.is_ok() && recorded.1.is_ok(), "{recorded:?}");
         assert_eq!(recorded.2, Err(crate::agenda::said(crate::agenda::Refusal::Organizes, &crate::agenda::Change::Write(""))), "its own reason");
         assert_ne!(crate::agenda::Refusal::Organizes.word(&crate::agenda::Change::Write("")), crate::agenda::Refusal::WithOthers.word(&crate::agenda::Change::Write("")));
+    }
+
+    // ---- Per meeting (the owner's word, 6 November 2026): F1, F2, F3.
+
+    /// A meeting made elsewhere (Anne unmarked), written by Sioul however its
+    /// device's check stands: Anne's line kept byte for byte, never marked
+    /// (sabre would cancel the meeting for Anne: F1, the probe
+    /// `probe_server_then_draft_adds_client_untold`), Bob added unmarked as
+    /// Anne is; a meeting made in Sioul (Anne left to you): Anne's mark never
+    /// taken out (nobody would tell Anne again: F2, the probe
+    /// `probe_draft_then_server_keeps_client`), Bob added left to you too.
+    #[test]
+    fn a_guest_s_mark_is_never_changed() {
+        let theirs = event("ORGANIZER;CN=Camille:mailto:me@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=ACCEPTED:mailto:anne@example.net\r\n");
+        let anne_line = "ATTENDEE;CN=Anne;PARTSTAT=ACCEPTED:mailto:anne@example.net\r\n";
+        assert_eq!(marks_new_guests(&theirs), Sender::Server, "made elsewhere");
+        for marks in [Sender::Server, Sender::Draft] {
+            assert_eq!(with_guests(&theirs, &me(), &guests_of(&theirs), marks).unwrap(), theirs, "nothing changed, nothing written: {marks:?}");
+            let more = un(&with_guests(&theirs, &me(), &[guest("anne@example.net", "Anne"), guest("bob@example.net", "")], marks).unwrap());
+            assert!(more.contains(anne_line), "{more}");
+        }
+        let bob = un(&with_guests(&theirs, &me(), &[guest("anne@example.net", "Anne"), guest("bob@example.net", "")], marks_new_guests(&theirs)).unwrap());
+        assert!(!bob.contains("SCHEDULE-AGENT"), "Bob told as Anne is: {bob}");
+        assert_eq!((teller(&bob, "anne@example.net", Sender::Server), teller(&bob, "bob@example.net", Sender::Server)), (Sender::Server, Sender::Server));
+        let made = theirs.replace("PARTSTAT=ACCEPTED:mailto:anne", "PARTSTAT=ACCEPTED;SCHEDULE-AGENT=CLIENT:mailto:anne");
+        assert_eq!(marks_new_guests(&made), Sender::Draft, "made in Sioul");
+        assert_eq!(marks_new_guests(&event("")), Sender::Draft, "no guest yet: made in Sioul");
+        let moved = made.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T110000Z");
+        for marks in [Sender::Server, Sender::Draft] {
+            let kept = un(&with_guests(&moved, &me(), &[guest("anne@example.net", "Anne"), guest("bob@example.net", "")], marks).unwrap());
+            assert!(kept.contains("ATTENDEE;CN=Anne;PARTSTAT=ACCEPTED;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\n"), "{kept}");
+        }
+        let both = un(&with_guests(&moved, &me(), &[guest("anne@example.net", "Anne"), guest("bob@example.net", "")], marks_new_guests(&made)).unwrap());
+        assert!(both.contains("SCHEDULE-AGENT=CLIENT:mailto:bob@example.net"));
+        assert_eq!((teller(&both, "Anne@example.net", Sender::Server), clients(&both)), (Sender::Draft, vec!["anne@example.net".to_string(), "bob@example.net".to_string()]));
+    }
+
+    /// What a scheduling server sends by itself (sabre's
+    /// `significantChangeProperties`): a new time, rule or status, a time of
+    /// the series added; never a new title, place or notes alone. Those
+    /// reach its guests by `SCHEDULE-FORCE-SEND=REQUEST` on the first
+    /// event's lines, asked once: the next write takes it out (F3).
+    #[test]
+    fn a_change_the_server_would_not_send_is_asked_of_it_once() {
+        let meeting = event("LOCATION:Room 2\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE:mailto:anne@example.net\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\n");
+        assert!(significant(&meeting, &meeting.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T080000Z")));
+        assert!(significant(&meeting, &meeting.replace("SUMMARY:Planning", "STATUS:CANCELLED\r\nSUMMARY:Planning")));
+        for alone in [meeting.replace("Room 2", "Hall"), meeting.replace("SUMMARY:Planning", "SUMMARY:Plans"), meeting.replace("SUMMARY:Planning", "SUMMARY:Planning\r\nDESCRIPTION:Bring the plans")] {
+            assert!(told(&meeting, &alone) && !significant(&meeting, &alone), "{alone}");
+        }
+        let (forced, named) = with_force_send(&meeting, &["Anne@example.net".into(), "eve@example.net".into()]);
+        assert_eq!(named, ["anne@example.net"], "those it names");
+        assert!(un(&forced).contains("ATTENDEE;SCHEDULE-FORCE-SEND=REQUEST:mailto:anne@example.net\r\n") && !un(&request(&forced).unwrap()).contains("FORCE"), "{forced}");
+        assert_eq!(without_force_send(&forced), lines::fold(&lines::unfold(&meeting)), "taken out at the next write");
+        assert_eq!(without_force_send(&meeting), meeting);
+        let mine = every_guest_left_to_you(&meeting);
+        assert_eq!(clients(&mine), ["anne@example.net", "bob@example.net"], "your own invitation's file: each left to you");
     }
 }

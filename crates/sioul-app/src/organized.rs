@@ -14,10 +14,13 @@
 //! every meeting with others (`agenda` tests,
 //! `the_organizers_door_is_the_persons_alone`).
 //!
-//! **Who tells the guests** (`sioul_core::organizer`): the calendar's
-//! server, when it schedules by itself for your address there
-//! (`sioul_sync::scheduling`); else a draft in Mail, which leaves when you
-//! send it. Never both.
+//! **Who tells the guests**, per meeting and per guest, read from its file
+//! (`sioul_core::organizer::teller`; the owner's word, 6 November 2026): a
+//! guest left to you (`SCHEDULE-AGENT=CLIENT`, every guest of a meeting made
+//! in Sioul) by a draft in Mail, which leaves when you send it; one not left
+//! to you (a meeting made elsewhere) by the calendar's server when it
+//! schedules by itself for your address there (`sioul_sync::scheduling`),
+//! else by a draft too. Never both for one guest and one change.
 
 use crate::backend::{say, tr};
 use sioul_core::agenda;
@@ -46,20 +49,36 @@ pub(crate) fn organizer_for(calendar: &Collection) -> Option<Guest> {
     Some(Guest { address, name })
 }
 
-/// Who tells the guests of an event in `calendar` you organize as
-/// `organizer`: its server, when it is a server's calendar its server says is
-/// yours (one shared with you, or whose owner it never said, is not: a server
-/// schedules with its owner's addresses, review of 1e8551e, F18) and whose
-/// server schedules for that address; else you, by a draft.
-pub(crate) fn sender_for(calendar: &Collection, organizer: &str) -> Sender {
+/// Who tells the guests of a meeting in `calendar` you organize as
+/// `organizer` that are not left to you (a meeting made elsewhere): its
+/// server, when its server said, in its last clear answer, that it schedules
+/// by itself for that address, and that the calendar is yours; your drafts,
+/// when it said it does not, or for a calendar of this device's own or one
+/// shared with you, whose server schedules nothing for you (Nextcloud).
+/// Unknown while it never answered clearly, or for a calendar whose owner it
+/// does not say (review of 1e8551e, F18): a write that would tell such a
+/// guest is refused then, never guessed, so that nobody is told twice or not
+/// at all (F1). The guests left to you need none of this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Teller {
+    Server,
+    Drafts,
+    Unknown,
+}
+
+pub(crate) fn server_for(calendar: &Collection, organizer: &str) -> Teller {
     if crate::pim::here_only(calendar) {
-        return Sender::Draft;
+        return Teller::Drafts;
     }
-    let owned = vdir::State::load(&vdir::state_path(&calendar.account, Kind::Calendars, &calendar.id)).owned;
-    if owned != Some(true) {
-        return Sender::Draft;
+    let Some(said) = sioul_sync::scheduling::of(&calendar.account) else { return Teller::Unknown };
+    if !said.auto || !said.addresses.iter().any(|a| a.eq_ignore_ascii_case(organizer.trim())) {
+        return Teller::Drafts;
     }
-    if sioul_sync::scheduling::schedules_for(&calendar.account, organizer) { Sender::Server } else { Sender::Draft }
+    match vdir::State::load(&vdir::state_path(&calendar.account, Kind::Calendars, &calendar.id)).owned {
+        Some(true) => Teller::Server,
+        Some(false) => Teller::Drafts,
+        None => Teller::Unknown,
+    }
 }
 
 /// The guests the form gives, as written: addresses trimmed, each once,
@@ -87,12 +106,18 @@ pub(crate) struct Plan {
     pub before: Option<String>,
     pub text: String,
     pub calendar: Collection,
-    pub sender: Sender,
+    /// Who tells its guests not left to you (`server_for`).
+    pub server: Teller,
     pub guests: Vec<Guest>,
     pub added: Vec<Guest>,
     pub removed: Vec<Guest>,
     /// The guests kept must hear of it: its time, title, place, notes or status changed.
     pub told: bool,
+    /// A change a scheduling server sends by itself (`organizer::significant`).
+    pub significant: bool,
+    /// The server-told guests kept, asked `SCHEDULE-FORCE-SEND=REQUEST` for
+    /// this write: a change it would not send by itself (review of 1e8551e, F3).
+    pub forced: Vec<String>,
     /// The organizer an event alone named, whom you replace by inviting
     /// guests to it (review of 1e8551e, F12): said before you are asked.
     pub replaced: Option<Guest>,
@@ -105,6 +130,9 @@ pub(crate) struct Plan {
     pub own_given: bool,
 }
 
+/// Those of `guests` told by drafts and those told by the server, apart.
+type Apart = (Vec<Guest>, Vec<Guest>);
+
 impl Plan {
     /// Who receives an invitation (an update, for those asked before): every
     /// guest when the meeting changed, else the new ones.
@@ -112,43 +140,81 @@ impl Plan {
         if self.told { self.guests.clone() } else { self.added.clone() }
     }
 
+    /// Whether `guest`, of `text`, is told by the server (`organizer::teller`).
+    fn by_server(&self, text: &str, guest: &Guest) -> bool {
+        self.server == Teller::Server && organizer::teller(text, &guest.address, Sender::Server) == Sender::Server
+    }
+
+    /// The invited apart (`invited`): by drafts, by the server. A guest the
+    /// server tells hears from it: invited, their invitation; kept, a change
+    /// it sends by itself, or one asked of it (`forced`); a change it cannot
+    /// be asked for (a guest of one time alone) is drafted for them instead,
+    /// never both.
+    fn invited_apart(&self) -> Apart {
+        let (mut drafts, mut served) = (Vec::new(), Vec::new());
+        for guest in self.invited() {
+            let new = self.added.iter().any(|g| g.address.eq_ignore_ascii_case(&guest.address));
+            let reached = new || self.significant || self.forced.iter().any(|f| f.eq_ignore_ascii_case(&guest.address));
+            if self.by_server(&self.text, &guest) && reached { served.push(guest) } else { drafts.push(guest) }
+        }
+        (drafts, served)
+    }
+
+    /// Those taken off apart, as their lines said before: by drafts, by the server.
+    fn removed_apart(&self) -> Apart {
+        let before = self.before.as_deref().unwrap_or(&self.text);
+        self.removed.iter().cloned().partition(|g| !self.by_server(before, g))
+    }
+
     /// Whether anyone hears of it.
     pub(crate) fn tells(&self) -> bool {
         !self.invited().is_empty() || !self.removed.is_empty()
     }
 
-    /// What the window says before writing it, so that you choose: "" when
-    /// nobody hears of it.
+    /// Whether the plan needs to know who tells the guests not left to you,
+    /// and does not (`Teller::Unknown`): then it is refused (`plan`).
+    fn unknown(&self) -> bool {
+        if self.server != Teller::Unknown {
+            return false;
+        }
+        let before = self.before.as_deref().unwrap_or(&self.text);
+        let not_left = |text: &str, g: &Guest| organizer::teller(text, &g.address, Sender::Server) == Sender::Server;
+        self.invited().iter().any(|g| not_left(&self.text, g)) || self.removed.iter().any(|g| not_left(before, g))
+    }
+
+    /// What the window says before writing it, so that you choose (the
+    /// owner's words, 6 November 2026): "Sioul drafts the messages to Anne;
+    /// you send them from Mail." and "Your server tells Bob.", per guest;
+    /// "" when nobody hears of it.
     pub(crate) fn asked(&self) -> String {
         let names = |guests: &[Guest]| guests.iter().map(Guest::said).collect::<Vec<_>>().join(", ");
         let mut said = Vec::new();
         if let Some(organizer) = self.replaced.as_ref().filter(|_| !self.added.is_empty()) {
             said.push(say("invite-ask-organizer", &[("who", organizer.said())]));
         }
-        let invited = self.invited();
-        if !invited.is_empty() {
-            let new = self.added.len() == invited.len();
-            let id = match (self.sender, new) {
-                (Sender::Server, true) => "invite-ask-server",
-                (Sender::Server, false) => "invite-ask-update-server",
-                (Sender::Draft, true) => "invite-ask-draft",
-                (Sender::Draft, false) => "invite-ask-update-draft",
-            };
-            said.push(say(id, &[("who", names(&invited))]));
+        let ((mut drafts, mut served), (off_drafts, off_served)) = (self.invited_apart(), self.removed_apart());
+        drafts.extend(off_drafts);
+        served.extend(off_served);
+        if !drafts.is_empty() {
+            said.push(say("invite-ask-drafts", &[("who", names(&drafts))]));
         }
-        if !self.removed.is_empty() {
-            let id = if self.sender == Sender::Server { "invite-ask-removed-server" } else { "invite-ask-removed-draft" };
-            said.push(say(id, &[("who", names(&self.removed))]));
+        if !served.is_empty() {
+            said.push(say("invite-ask-served", &[("who", names(&served))]));
         }
         said.join(" ")
     }
 
-    /// What the status line says once it is written: who was told, and how.
+    /// What the status line says once it is written: how its guests were told.
     pub(crate) fn done(&self) -> String {
-        if !self.tells() {
-            return String::new();
+        let ((drafts, served), (off_drafts, off_served)) = (self.invited_apart(), self.removed_apart());
+        let mut said = Vec::new();
+        if !drafts.is_empty() || !off_drafts.is_empty() {
+            said.push(tr().text("invite-done-draft", None));
         }
-        tr().text(if self.sender == Sender::Server { "invite-done-server" } else { "invite-done-draft" }, None)
+        if !served.is_empty() || !off_served.is_empty() {
+            said.push(tr().text("invite-done-server", None));
+        }
+        said.join(" ")
     }
 }
 
@@ -156,7 +222,9 @@ impl Plan {
 /// `before` its file as it is, `applied` its text as the form or a drag
 /// made it, guests aside; `guests` those the form lists (none: as its file
 /// has them); `calendar` where it is. You are its organizer as it says, or
-/// as `organizer_for` makes you; refused when it is someone else's.
+/// as `organizer_for` makes you; refused when it is someone else's, and when
+/// it would tell a guest not left to you while nobody knows yet whether its
+/// server does (`Teller::Unknown`).
 pub(crate) fn plan(path: &Path, before: Option<&str>, applied: &str, guests: Option<&[Guest]>, calendar: &Collection) -> Result<Plan, String> {
     let own = agenda::own_addresses();
     if before.is_some_and(|b| agenda::meeting_with_others(b, &own) && !agenda::organized_by_you(b, &own)) {
@@ -167,10 +235,13 @@ pub(crate) fn plan(path: &Path, before: Option<&str>, applied: &str, guests: Opt
         .filter(|o| own.contains(&o.address.to_lowercase()))
         .or_else(|| organizer_for(calendar))
         .ok_or_else(|| tr().text("invite-no-address", None))?;
-    let sender = sender_for(calendar, &organizer.address);
+    let server = server_for(calendar, &organizer.address);
     let had = before.map(organizer::guests_of).unwrap_or_default();
     let guests = guests.map_or_else(|| had.clone(), cleaned);
-    let text = organizer::with_guests(applied, &organizer, &guests, sender).ok_or_else(|| tr().text("agenda-gone", None))?;
+    // A force asked by an earlier write is never asked again (F3); new guests marked as its others are.
+    let applied = organizer::without_force_send(applied);
+    let marks = organizer::marks_new_guests(before.unwrap_or(&applied));
+    let text = organizer::with_guests(&applied, &organizer, &guests, marks).ok_or_else(|| tr().text("agenda-gone", None))?;
     // Someone else named as its organizer, with nobody invited yet: you take their place, said first (F12).
     let replaced = before.and_then(organizer::organizer_of).filter(|o| !o.address.trim().is_empty() && !own.contains(&o.address.trim().to_lowercase()));
     // A meeting's file holds what its guests may read alone; yours goes into your own files (F5).
@@ -180,7 +251,19 @@ pub(crate) fn plan(path: &Path, before: Option<&str>, applied: &str, guests: Opt
     let removed: Vec<Guest> = had.iter().filter(|g| !is_in(&guests, g)).cloned().collect();
     let kept = guests.iter().any(|g| is_in(&had, g));
     let told = kept && before.is_some_and(|b| organizer::told(b, &text));
-    Ok(Plan { path: path.to_path_buf(), before: before.map(str::to_string), text, calendar: calendar.clone(), sender, guests, added, removed, told, replaced, aside, own_given: false })
+    let significant = before.is_some_and(|b| organizer::significant(b, &text));
+    // A change its server would not send, to the kept guests it tells: asked of it for this write (F3).
+    let (text, forced) = if told && !significant && server == Teller::Server {
+        let to: Vec<String> = guests.iter().filter(|g| is_in(&had, g) && organizer::teller(&text, &g.address, Sender::Server) == Sender::Server).map(|g| g.address.clone()).collect();
+        organizer::with_force_send(&text, &to)
+    } else {
+        (text, Vec::new())
+    };
+    let plan = Plan { path: path.to_path_buf(), before: before.map(str::to_string), text, calendar: calendar.clone(), server, guests, added, removed, told, significant, forced, replaced, aside, own_given: false };
+    if plan.unknown() {
+        return Err(tr().text("invite-server-unknown", None));
+    }
+    Ok(plan)
 }
 
 /// What a plan sets aside (`Plan::aside`), kept in your own files before its
@@ -235,26 +318,24 @@ fn draft(account: &sioul_core::config::Account, to: &[Guest], text: &str, ics: S
     draft
 }
 
-/// The drafts a plan asks for (`Sender::Draft`): the invitation, to every
-/// guest or to the new ones (`Plan::invited`), and the cancellation, to
-/// those taken off. None when the server tells them.
+/// The drafts a plan asks for, for the guests told by drafts
+/// (`Plan::invited_apart`, `removed_apart`): the invitation, to every guest
+/// or to the new ones, and the cancellation, to those taken off. None for
+/// the guests the server tells.
 fn drafts_of(plan: &Plan) -> Result<Vec<Draft>, String> {
-    if plan.sender == Sender::Server {
-        return Ok(Vec::new());
-    }
     let organizer = organizer::organizer_of(&plan.text).map(|o| o.address).unwrap_or_default();
     let mut out = Vec::new();
-    let invited = plan.invited();
+    let ((invited, _), (removed, _)) = (plan.invited_apart(), plan.removed_apart());
     if !invited.is_empty() {
         let account = sending_account(&plan.calendar, &organizer)?;
         let ics = organizer::request(&plan.text).ok_or_else(|| tr().text("agenda-gone", None))?;
         out.push(draft(&account, &invited, &plan.text, ics, false));
     }
-    if !plan.removed.is_empty() {
+    if !removed.is_empty() {
         let account = sending_account(&plan.calendar, &organizer)?;
-        let to: Vec<String> = plan.removed.iter().map(|g| g.address.clone()).collect();
-        let ics = organizer::cancel(plan.before.as_deref().unwrap_or(&plan.text), &to).ok_or_else(|| tr().text("agenda-gone", None))?;
-        out.push(draft(&account, &plan.removed, &plan.text, ics, true));
+        let to: Vec<String> = removed.iter().map(|g| g.address.clone()).collect();
+        let ics = organizer::cancel(plan.before.as_deref().unwrap_or(&plan.text), &to, false).ok_or_else(|| tr().text("agenda-gone", None))?;
+        out.push(draft(&account, &removed, &plan.text, ics, true));
     }
     Ok(out)
 }
@@ -265,8 +346,9 @@ fn drafts_of(plan: &Plan) -> Result<Vec<Draft>, String> {
 pub(crate) struct Written {
     pub file: Option<FileChange>,
     pub drafts: Vec<String>,
-    /// A deletion: who tells the guests it is cancelled (`delete`).
-    pub cancelled_by: Option<Sender>,
+    /// The guests its server told (a change, an invitation, a cancellation):
+    /// what Undo tells them back.
+    pub served: Vec<Guest>,
 }
 
 /// A plan written: through the organizer's door, then its drafts saved; a
@@ -287,14 +369,18 @@ pub(crate) fn write(plan: &Plan) -> Result<Written, String> {
         }
         ids.push(draft.id.clone());
     }
-    Ok(Written { file: Some(FileChange { path: plan.path.clone(), before: plan.before.clone(), after: Some(plan.text.clone()) }), drafts: ids, cancelled_by: None })
+    let ((_, mut served), (_, off_served)) = (plan.invited_apart(), plan.removed_apart());
+    served.extend(off_served);
+    Ok(Written { file: Some(FileChange { path: plan.path.clone(), before: plan.before.clone(), after: Some(plan.text.clone()) }), drafts: ids, served })
 }
 
 /// A write through the door taken back (Undo): the file as it was, while it
 /// is still as it was left (a sync, another device, changed none since);
 /// the drafts it made, still unsent in Drafts, discarded. When one was sent
-/// meanwhile, its guests heard of it: the change back is told them as any
-/// change is (a new draft, or the server). Whether it was put back.
+/// meanwhile, or its server told some guests, they heard of it: the change
+/// back is told them as any change is (a new draft, or the server), and a
+/// guest whose draft was never sent hears nothing of either. Whether it was
+/// put back.
 pub(crate) fn put_back(written: &Written) -> bool {
     let Some(file) = &written.file else { return false };
     if std::fs::read_to_string(&file.path).ok() != file.after {
@@ -302,12 +388,21 @@ pub(crate) fn put_back(written: &Written) -> bool {
     }
     // Sent, or discarded by hand: no longer in Drafts.
     let sent = written.drafts.iter().any(|id| Draft::by_id(id).is_none());
+    let heard = sent || !written.served.is_empty();
+    // Told back: the drafts for guests who never had theirs taken out again.
+    let unsent = |again: &Written| {
+        if !sent {
+            again.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
+        }
+    };
     let back = match (&file.before, file.after.as_deref()) {
-        (Some(before), Some(after)) if sent => crate::pim::collection_of(&file.path)
+        (Some(before), Some(after)) if heard => crate::pim::collection_of(&file.path)
             .and_then(|calendar| plan(&file.path, Some(after), before, Some(&organizer::guests_of(before)), &calendar).ok())
-            .is_some_and(|again| write(&again).is_ok()),
+            .and_then(|again| write(&again).ok())
+            .inspect(unsent)
+            .is_some(),
         (Some(before), _) => vdir::write_organized(&file.path, before).is_ok(),
-        (None, Some(_)) if sent => delete(&file.path).is_ok(),
+        (None, Some(_)) if heard => delete(&file.path).inspect(unsent).is_ok(),
         (None, _) => vdir::remove_organized(&file.path).is_ok(),
     };
     if back {
@@ -317,10 +412,11 @@ pub(crate) fn put_back(written: &Written) -> bool {
 }
 
 /// A meeting you organize deleted, as its Delete asks (after "Deleting it
-/// tells every guest"): the cancellation drafted for every guest when the
-/// server does not send it (`organizer::cancel`), then the file taken out
-/// through the door; the server sends its own when it schedules. What Undo
-/// needs to put it back.
+/// tells every guest"): the cancellation drafted for the guests told by
+/// drafts (`organizer::cancel`), then the file taken out through the door;
+/// its server sends its own to the guests it tells. Refused while nobody
+/// knows yet whether its server tells those not left to you
+/// (`Teller::Unknown`). What Undo needs to put it back.
 pub(crate) fn delete(path: &Path) -> Result<Written, String> {
     let before = std::fs::read_to_string(path).map_err(|_| tr().text("agenda-gone", None))?;
     let calendar = crate::pim::collection_of(path).ok_or_else(|| tr().text("agenda-gone", None))?;
@@ -329,14 +425,20 @@ pub(crate) fn delete(path: &Path) -> Result<Written, String> {
         return Err(tr().text("event-delete-with-others", None));
     }
     let organizer = organizer::organizer_of(&before).map(|o| o.address).unwrap_or_default();
-    let sender = sender_for(&calendar, &organizer);
+    let server = server_for(&calendar, &organizer);
+    let not_left = |g: &Guest| organizer::teller(&before, &g.address, Sender::Server) == Sender::Server;
     let guests = organizer::guests_of(&before);
-    let cancelled = if sender == Sender::Draft {
-        let account = sending_account(&calendar, &organizer)?;
-        let ics = organizer::cancel(&before, &[]).ok_or_else(|| tr().text("agenda-gone", None))?;
-        Some(draft(&account, &guests, &before, ics, true))
-    } else {
+    if server == Teller::Unknown && guests.iter().any(not_left) {
+        return Err(tr().text("invite-server-unknown", None));
+    }
+    let (served, drafted): (Vec<Guest>, Vec<Guest>) = guests.into_iter().partition(|g| server == Teller::Server && not_left(g));
+    let cancelled = if drafted.is_empty() {
         None
+    } else {
+        let account = sending_account(&calendar, &organizer)?;
+        let to: Vec<String> = drafted.iter().map(|g| g.address.clone()).collect();
+        let ics = organizer::cancel(&before, &to, true).ok_or_else(|| tr().text("agenda-gone", None))?;
+        Some(draft(&account, &drafted, &before, ics, true))
     };
     vdir::remove_organized(path)?;
     let mut drafts = Vec::new();
@@ -347,46 +449,58 @@ pub(crate) fn delete(path: &Path) -> Result<Written, String> {
         }
         drafts.push(draft.id.clone());
     }
-    Ok(Written { file: Some(FileChange { path: path.to_path_buf(), before: Some(before), after: None }), drafts, cancelled_by: Some(sender) })
+    Ok(Written { file: Some(FileChange { path: path.to_path_buf(), before: Some(before), after: None }), drafts, served })
 }
 
 /// A deletion taken back (Undo), while nothing took its place: what the
 /// status line says then (`Some("")`: nothing more than Undo's own word), or
 /// None when it could not be put back. Never silent towards the guests
-/// (review of 1e8551e, F14):
-/// - its cancellation still unsent in Drafts: discarded, the file as it was;
-/// - sent (no longer in Drafts): the file written back one SEQUENCE past
-///   the cancellation (`organizer::after_cancel`), and an invitation for
-///   every guest drafted, which says so;
-/// - its server's to tell: written back so too, and the line says the
-///   server invites them again if it told them it was cancelled.
+/// (review of 1e8551e, F14), each told as their line says:
+/// - its cancellation still unsent in Drafts: discarded;
+/// - sent (no longer in Drafts): an invitation drafted for the guests told
+///   by drafts, which the line says;
+/// - the guests its server told: the line says it invites them again if it
+///   told them it was cancelled.
+///
+/// Written back as it was when nobody heard of it, else one SEQUENCE past
+/// the cancellation (`organizer::after_cancel`), which guests' programs take
+/// as a later version.
 pub(crate) fn undelete(written: &Written) -> Option<String> {
     let Some(FileChange { path, before: Some(before), .. }) = &written.file else { return None };
     if path.exists() {
         return None;
     }
     let sent = written.drafts.iter().any(|id| Draft::by_id(id).is_none());
-    if written.cancelled_by == Some(Sender::Server) {
-        let again = organizer::after_cancel(before)?;
-        vdir::write_organized(path, &again).ok()?;
-        return Some(tr().text("invite-undeleted-server", None));
+    let served = !written.served.is_empty();
+    if !sent && !served {
+        vdir::write_organized(path, before).ok()?;
+        written.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
+        return Some(String::new());
     }
-    if sent {
-        let again = organizer::after_cancel(before)?;
+    let again = organizer::after_cancel(before)?;
+    let mut said = Vec::new();
+    let invitation = if sent {
         let calendar = crate::pim::collection_of(path)?;
         let organizer = organizer::organizer_of(&again).map(|o| o.address).unwrap_or_default();
         let account = sending_account(&calendar, &organizer).ok()?;
-        let invitation = draft(&account, &organizer::guests_of(&again), &again, organizer::request(&again)?, false);
-        vdir::write_organized(path, &again).ok()?;
+        let drafted: Vec<Guest> = organizer::guests_of(&again).into_iter().filter(|g| !written.served.iter().any(|s| s.address.eq_ignore_ascii_case(&g.address))).collect();
+        (!drafted.is_empty()).then(|| organizer::request(&again).map(|ics| draft(&account, &drafted, &again, ics, false))).flatten()
+    } else {
+        None
+    };
+    vdir::write_organized(path, &again).ok()?;
+    if let Some(invitation) = invitation {
         if invitation.save().is_err() {
             let _ = vdir::remove_organized(path);
             return None;
         }
-        return Some(tr().text("invite-undeleted-draft", None));
+        said.push(tr().text("invite-undeleted-draft", None));
     }
-    vdir::write_organized(path, before).ok()?;
+    if served {
+        said.push(tr().text("invite-undeleted-server", None));
+    }
     written.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
-    Some(String::new())
+    Some(said.join(" "))
 }
 
 /// A guest's REPLY to a meeting you organize, read in your mail (RFC 5546
@@ -460,7 +574,7 @@ pub(crate) fn adopt(path: &Path, invitation: &str, message: &sioul_core::card::C
     }
     let stored = agenda::stored(invitation);
     let text = organizer::with_guests(&stored, &organizer, &organizer::guests_of(&stored), Sender::Draft).ok_or_else(|| tr().text("agenda-gone", None))?;
-    let (text, aside) = organizer::set_aside(&text);
+    let (text, aside) = organizer::set_aside(&organizer::every_guest_left_to_you(&text));
     keep_aside(&text, &aside, false)?;
     vdir::write_organized(path, &text)
 }
@@ -548,7 +662,7 @@ mod tests {
         let anne = [Guest { address: "anne@example.net".into(), name: "Anne".into() }];
         // Invited: the draft, the file through the door.
         let plan = plan(&path, Some(own), own, Some(&anne), &calendar).unwrap();
-        assert_eq!((plan.sender, plan.added.len(), plan.removed.len(), plan.told), (Sender::Draft, 1, 0, false));
+        assert_eq!((plan.server, plan.added.len(), plan.removed.len(), plan.told), (Teller::Drafts, 1, 0, false));
         assert!(plan.asked().contains("Anne") && plan.tells(), "{}", plan.asked());
         let written = write(&plan).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
@@ -677,7 +791,7 @@ mod tests {
         let here = Here::new("undeleted", "camille.undo@example.org");
         let path = here.meeting("planning.ics", &planning("undeleted-1", ""), &anne());
         let gone = delete(&path).unwrap();
-        assert_eq!(gone.cancelled_by, Some(Sender::Draft));
+        assert!(gone.served.is_empty() && gone.drafts.len() == 1, "drafted for Anne, left to you");
         // Sent from Mail: no longer in Drafts.
         Draft::by_id(&gone.drafts[0]).unwrap().discard();
         assert_eq!(undelete(&gone).as_deref(), Some(tr().text("invite-undeleted-draft", None).as_str()));
@@ -689,7 +803,7 @@ mod tests {
         // The server's to tell: written back so too, and said.
         let gone = delete(&path).unwrap();
         gone.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
-        let served = Written { cancelled_by: Some(Sender::Server), drafts: Vec::new(), ..gone };
+        let served = Written { served: anne(), drafts: Vec::new(), ..gone };
         assert_eq!(undelete(&served).as_deref(), Some(tr().text("invite-undeleted-server", None).as_str()));
         assert_eq!(sequence(&path), "SEQUENCE:4");
     }
@@ -760,27 +874,177 @@ mod tests {
         assert!(!unfolded.contains("METHOD") && !unfolded.contains("X-SIOUL") && !unfolded.contains("X-MOZ"), "{unfolded}");
     }
 
-    /// A calendar of a server that schedules for your address, whose owner
-    /// it never said: Sioul drafts, never leaves it to the server; one it
-    /// says is yours: the server (review of 1e8551e, F18).
+    /// Who tells the guests not left to you, by what the calendar's server
+    /// last said clearly: never asked, or a calendar whose owner it does not
+    /// say, unknown; one it says is not yours, or a server that does not
+    /// schedule for your address, your drafts; yours on a server that
+    /// schedules for your address, the server (review of 1e8551e, F18, F1).
     #[test]
-    fn a_calendar_of_an_unknown_owner_is_never_its_server_s_to_schedule() {
+    fn who_tells_the_guests_not_left_to_you() {
         sioul_core::config::stand_ins_only();
         let account = format!("unknown-owner-{}", std::process::id());
         let calendar = vdir::create(Kind::Calendars, &account, "Shared, owner unsaid", None, &["VEVENT"]).unwrap();
+        assert_eq!(server_for(&calendar, "camille@example.org"), Teller::Unknown, "never asked");
         let state = sioul_core::config::state_dir().join("dav").join(&account);
         std::fs::create_dir_all(&state).unwrap();
-        std::fs::write(state.join("scheduling.toml"), "auto = true\naddresses = [\"camille@example.org\"]\nchecked = 4102444800\n").unwrap();
-        assert!(sioul_sync::scheduling::schedules_for(&account, "camille@example.org"), "the stand-in says it schedules");
+        let said = |auto: bool| std::fs::write(state.join("scheduling.toml"), format!("auto = {auto}\naddresses = [\"camille@example.org\"]\nchecked = 4102444800\n")).unwrap();
+        said(true);
         let marks = vdir::state_path(&calendar.account, Kind::Calendars, &calendar.id);
-        for (owned, sender) in [(None, Sender::Draft), (Some(false), Sender::Draft), (Some(true), Sender::Server)] {
+        let owned = |owned: Option<bool>| {
             let mut kept = vdir::State::load(&marks);
             kept.owned = owned;
             kept.save(&marks).unwrap();
-            assert_eq!(sender_for(&calendar, "camille@example.org"), sender, "{owned:?}");
+        };
+        for (whose, teller) in [(None, Teller::Unknown), (Some(false), Teller::Drafts), (Some(true), Teller::Server)] {
+            owned(whose);
+            assert_eq!(server_for(&calendar, "camille@example.org"), teller, "{whose:?}");
         }
+        assert_eq!(server_for(&calendar, "other@example.org"), Teller::Drafts, "not an address it schedules for");
+        said(false);
+        assert_eq!(server_for(&calendar, "camille@example.org"), Teller::Drafts, "it does not schedule");
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(&account));
         let _ = std::fs::remove_dir_all(&state);
+    }
+
+    /// A calendar of a server that schedules for your address, yours there
+    /// (`Teller::Server`), for one test.
+    fn served(here: &Here, name: &str, address: &str) -> (Collection, PathBuf) {
+        let account = format!("{name}-{}", std::process::id());
+        let calendar = vdir::create(Kind::Calendars, &account, name, None, &["VEVENT"]).unwrap();
+        let state = sioul_core::config::state_dir().join("dav").join(&account);
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(state.join("scheduling.toml"), format!("auto = true\naddresses = [\"{address}\"]\nchecked = 4102444800\n")).unwrap();
+        let marks = vdir::state_path(&calendar.account, Kind::Calendars, &calendar.id);
+        let mut kept = vdir::State::load(&marks);
+        kept.owned = Some(true);
+        kept.save(&marks).unwrap();
+        assert_eq!(server_for(&calendar, address), Teller::Server);
+        let _ = &here.dir;
+        (calendar, state)
+    }
+
+    fn gone_served(calendar: &Collection, state: &Path) {
+        let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(&calendar.account));
+        let _ = std::fs::remove_dir_all(state);
+    }
+
+    fn drafts_of_uid(uid: &str) -> Vec<Draft> {
+        Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&format!("UID:{uid}")))).collect()
+    }
+
+    /// A meeting made in Sioul (every guest left to you), in a calendar whose
+    /// server schedules: written on a device whatever its check says, moved,
+    /// a guest added; each guest's line kept as it is, the new one left to you
+    /// too, and every message drafted, nothing left to the server: no server
+    /// cancels it for them (review of 1e8551e, F1, the probe
+    /// `probe_server_then_draft_adds_client_untold` turned; F2 its other way).
+    #[test]
+    fn a_meeting_made_in_sioul_is_told_by_your_drafts_alone() {
+        let here = Here::new("made-here", "camille.made@example.org");
+        let (calendar, state) = served(&here, "made-here-served", "camille.made@example.org");
+        let made = planning("made-here-1", "ORGANIZER;CN=Camille:mailto:camille.made@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=ACCEPTED;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\n");
+        let path = calendar.dir.join("made.ics");
+        vdir::store_item(&path, &made).unwrap();
+        let moved = made.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T100000Z").replace("DTEND:20991110T100000Z", "DTEND:20991110T110000Z");
+        let guests = [anne()[0].clone(), Guest { address: "bob@example.net".into(), name: "Bob".into() }];
+        let asked = plan(&path, Some(&made), &moved, Some(&guests), &calendar).unwrap();
+        let text = sioul_core::lines::unfold(&asked.text).join("\n");
+        assert!(text.contains("ATTENDEE;CN=Anne;PARTSTAT=ACCEPTED;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net"), "Anne's line as it was: {text}");
+        assert!(text.contains("SCHEDULE-AGENT=CLIENT:mailto:bob@example.net"), "Bob left to you too: {text}");
+        assert!(!text.contains("SCHEDULE-FORCE-SEND"), "{text}");
+        assert_eq!(asked.asked(), say("invite-ask-drafts", &[("who", "Anne, Bob".into())]));
+        let written = write(&asked).unwrap();
+        assert!(written.served.is_empty() && drafts_of_uid("made-here-1").len() == 1, "drafted, never the server's");
+        drafts_of_uid("made-here-1").iter().for_each(Draft::discard);
+        gone_served(&calendar, &state);
+    }
+
+    /// A meeting made elsewhere (no guest left to you) in a calendar whose
+    /// server schedules, moved in Sioul: told by the server, nothing drafted,
+    /// no mark added; a guest added unmarked, told by it too; its new place
+    /// alone, which the server would not send, asked of it once
+    /// (`SCHEDULE-FORCE-SEND=REQUEST` on the first event's kept guests, for
+    /// that write alone), never drafted too; the next write asks it nothing
+    /// again (review of 1e8551e, F1, F2, F3: the probes
+    /// `probe_draft_then_server_keeps_client` and the new place turned).
+    #[test]
+    fn a_meeting_made_elsewhere_is_told_by_its_server_once() {
+        let here = Here::new("made-elsewhere", "camille.there@example.org");
+        let (calendar, state) = served(&here, "made-elsewhere-served", "camille.there@example.org");
+        let theirs = planning("elsewhere-1", "LOCATION:Room 2\r\nORGANIZER;CN=Camille:mailto:camille.there@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=ACCEPTED:mailto:anne@example.net\r\n");
+        let path = calendar.dir.join("elsewhere.ics");
+        vdir::store_item(&path, &theirs).unwrap();
+        // Moved: the server's to send.
+        let moved = theirs.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T100000Z").replace("DTEND:20991110T100000Z", "DTEND:20991110T110000Z");
+        let asked = plan(&path, Some(&theirs), &moved, None, &calendar).unwrap();
+        assert!(asked.significant && asked.forced.is_empty() && !sioul_core::lines::unfold(&asked.text).join("").contains("SCHEDULE-"), "{}", asked.text);
+        assert_eq!(asked.asked(), say("invite-ask-served", &[("who", "Anne".into())]));
+        let written = write(&asked).unwrap();
+        assert!(written.drafts.is_empty() && written.served.len() == 1, "the server tells Anne, nothing drafted");
+        // Bob added: unmarked, as Anne is.
+        let now = std::fs::read_to_string(&path).unwrap();
+        let bob = [anne()[0].clone(), Guest { address: "bob@example.net".into(), name: "Bob".into() }];
+        let added = plan(&path, Some(&now), &now, Some(&bob), &calendar).unwrap();
+        let flat = sioul_core::lines::unfold(&added.text).join("\n");
+        assert!(flat.contains("mailto:bob@example.net") && !flat.contains("SCHEDULE-AGENT"), "{flat}");
+        assert_eq!(added.asked(), say("invite-ask-served", &[("who", "Bob".into())]));
+        // Its place alone: asked of the server once, for Anne, never drafted.
+        let placed = now.replace("LOCATION:Room 2", "LOCATION:3 rue de l'Exemple");
+        let asked = plan(&path, Some(&now), &placed, None, &calendar).unwrap();
+        assert!(asked.told && !asked.significant && asked.forced == ["anne@example.net"], "{asked:?}");
+        let unfolded = sioul_core::lines::unfold(&asked.text).join("\n");
+        assert!(unfolded.contains("ATTENDEE;CN=Anne;PARTSTAT=ACCEPTED;SCHEDULE-FORCE-SEND=REQUEST:mailto:anne@example.net"), "{unfolded}");
+        assert_eq!(asked.asked(), say("invite-ask-served", &[("who", "Anne".into())]));
+        let written = write(&asked).unwrap();
+        assert!(written.drafts.is_empty() && drafts_of_uid("elsewhere-1").is_empty(), "never both");
+        // The next write, its server's copy not back yet: no force asked again.
+        let after = std::fs::read_to_string(&path).unwrap();
+        let again = plan(&path, Some(&after), &after.replace("DTSTART:20991110T100000Z", "DTSTART:20991110T110000Z").replace("DTEND:20991110T110000Z", "DTEND:20991110T120000Z"), None, &calendar).unwrap();
+        assert!(!sioul_core::lines::unfold(&again.text).join("").contains("SCHEDULE-FORCE-SEND") && again.forced.is_empty(), "{}", again.text);
+        // Never asked here (a new device): a change for Anne refused, said; nothing guessed.
+        let _ = std::fs::remove_file(state.join("scheduling.toml"));
+        assert_eq!(plan(&path, Some(&after), &after.replace("LOCATION:3 rue", "LOCATION:4 rue"), None, &calendar).map(|p| p.asked()), Err(tr().text("invite-server-unknown", None)));
+        assert_eq!(delete(&path).map(|_| ()), Err(tr().text("invite-server-unknown", None)));
+        gone_served(&calendar, &state);
+    }
+
+    /// A meeting whose guests are told both ways (Anne left to you, Bob not),
+    /// its place changed in a calendar whose server schedules: Anne's update
+    /// drafted, Bob's asked of the server; a guest added left to you, as the
+    /// meeting already leaves one; deleted, Anne's cancellation drafted and
+    /// Bob's the server's; Undo after Anne's went invites Anne again by draft
+    /// and says the server invites Bob again.
+    #[test]
+    fn a_meeting_told_both_ways_tells_each_guest_once() {
+        let here = Here::new("mixed", "camille.mixed@example.org");
+        let (calendar, state) = served(&here, "mixed-served", "camille.mixed@example.org");
+        let mixed = planning("mixed-1", "LOCATION:Room 2\r\nORGANIZER;CN=Camille:mailto:camille.mixed@example.org\r\nATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nATTENDEE;CN=Bob:mailto:bob@example.net\r\n");
+        let path = calendar.dir.join("mixed.ics");
+        vdir::store_item(&path, &mixed).unwrap();
+        let placed = mixed.replace("LOCATION:Room 2", "LOCATION:Hall");
+        let asked = plan(&path, Some(&mixed), &placed, None, &calendar).unwrap();
+        assert_eq!(asked.forced, ["bob@example.net"]);
+        assert_eq!(asked.asked(), format!("{} {}", say("invite-ask-drafts", &[("who", "Anne".into())]), say("invite-ask-served", &[("who", "Bob".into())])));
+        let written = write(&asked).unwrap();
+        let drafted = drafts_of_uid("mixed-1");
+        assert!(drafted.len() == 1 && drafted[0].to.len() == 1 && drafted[0].to[0].contains("anne@example.net"), "Anne's alone: {drafted:?}");
+        assert_eq!(written.served.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), ["bob@example.net"]);
+        drafted.iter().for_each(Draft::discard);
+        let now = std::fs::read_to_string(&path).unwrap();
+        let carl = [anne()[0].clone(), Guest { address: "bob@example.net".into(), name: "Bob".into() }, Guest { address: "carl@example.net".into(), name: "Carl".into() }];
+        let with_carl = sioul_core::lines::unfold(&plan(&path, Some(&now), &now, Some(&carl), &calendar).unwrap().text).join("\n");
+        assert!(with_carl.contains("SCHEDULE-AGENT=CLIENT:mailto:carl@example.net"), "Carl left to you, as Anne is: {with_carl}");
+        let gone = delete(&path).unwrap();
+        let cancel = Draft::by_id(&gone.drafts[0]).unwrap();
+        assert!(cancel.to.len() == 1 && cancel.to[0].contains("anne@example.net") && cancel.calendar.as_deref().unwrap().contains("METHOD:CANCEL"));
+        assert_eq!(gone.served.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), ["bob@example.net"]);
+        cancel.discard();
+        let said = undelete(&gone).unwrap();
+        assert_eq!(said, format!("{} {}", tr().text("invite-undeleted-draft", None), tr().text("invite-undeleted-server", None)));
+        let again = drafts_of_uid("mixed-1");
+        assert!(again.len() == 1 && again[0].to.len() == 1 && again[0].to[0].contains("anne@example.net"), "{again:?}");
+        again.iter().for_each(Draft::discard);
+        gone_served(&calendar, &state);
     }
 
     /// Meetings you organize that an older Sioul wrote its own lines and ties

@@ -880,8 +880,20 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
             plan.aside.own = Some(sioul_core::own_time::Own { before: edit.margins.before, after: edit.margins.after, demands: edit.demands, remind: edit.remind.clone() });
             plan.own_given = true;
         }
-        crate::organized::write(&plan)?;
-        return Ok(SavedEvent { accounts: account_of(&plan.path).into_iter().collect(), path, renamed, title: edit.title.trim().to_string(), legs: Vec::new(), told: plan.done() });
+        // Its times changed, its rides and walks move with it, as an appointment's (F19).
+        let gesture = before.as_deref().map(|b| sioul_core::anchors::gesture(&path, b, &plan.text, events, &zone)).unwrap_or_default();
+        let legs: Vec<String> = gesture.legs.iter().map(|(_, t)| sioul_core::anchors::moved_name(t, tr())).collect();
+        let mut accounts: Vec<String> = account_of(&plan.path).into_iter().chain(gesture.legs.iter().filter_map(|(p, _)| account_of(p))).collect();
+        accounts.sort();
+        accounts.dedup();
+        let written = crate::organized::write(&plan)?;
+        if !gesture.legs.is_empty()
+            && let Err(e) = (sioul_core::composed::Change { written: gesture.legs, ..sioul_core::composed::Change::default() }).write()
+        {
+            crate::organized::put_back(&written);
+            return Err(e);
+        }
+        return Ok(SavedEvent { accounts, path, renamed, title: edit.title.trim().to_string(), legs, told: plan.done() });
     }
     let mut accounts: Vec<String> = account_of(&path).into_iter().collect();
     let mut legs = Vec::new();
@@ -944,7 +956,8 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
         // Only what this drag wrote is put back, every file or none: a change since stays.
         // A meeting you organize, through its own door, its unsent draft discarded.
         let back = match &organized {
-            Some(written) => crate::organized::put_back(written),
+            // Its legs too, under the same Undo (F19).
+            Some(written) => crate::organized::put_back(written) && (said.files.is_empty() || said.put_back()),
             None => said.put_back(),
         };
         if !back {
@@ -1071,13 +1084,28 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
     if organized {
         let calendar = collection_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
         let plan = crate::organized::plan(&path, Some(&before), &text, None, &calendar)?;
+        // Its rides and walks move with it, as an appointment's (part E2): ordinary events of
+        // yours, through the ordinary doors, under the same Undo (review of 1e8551e, F19).
+        let gesture = sioul_core::anchors::gesture(&path, &before, &plan.text, &events_known(shared, &path, &zone), &zone);
+        let legs: Vec<String> = gesture.legs.iter().map(|(_, t)| sioul_core::anchors::moved_name(t, tr())).collect();
         let written = crate::organized::write(&plan)?;
+        let files = if gesture.legs.is_empty() {
+            Vec::new()
+        } else {
+            match (sioul_core::composed::Change { written: gesture.legs, ..sioul_core::composed::Change::default() }).write() {
+                Ok(files) => files,
+                Err(e) => {
+                    crate::organized::put_back(&written);
+                    return Err(e);
+                }
+            }
+        };
         crate::work::replan_asked(shared);
-        let accounts: Vec<String> = account_of(&path).into_iter().collect();
+        let accounts: Vec<String> = account_of(&path).into_iter().chain(files.iter().filter_map(|f| account_of(&f.path))).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
         for account in &accounts {
             nudge(shared, account);
         }
-        return Ok(Some(Moved { text: plan.text.clone(), accounts, files: Vec::new(), legs: Vec::new(), organized: Some(written), told: plan.done() }));
+        return Ok(Some(Moved { text: plan.text.clone(), accounts, files, legs, organized: Some(written), told: plan.done() }));
     }
     let (files, legs) = written_with_legs(shared, &path, &before, &text, &zone)?;
     crate::work::replan_asked(shared);
@@ -2001,6 +2029,53 @@ mod tests {
         // Deleted: its legs to come go with it.
         assert_eq!(sioul_core::anchors::to_come("legs-drag-doctor", &events, Timestamp::now().as_second(), &zone), vec![bus.clone()]);
         let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// An appointment with a bus before it, made a meeting you organize
+    /// (Anne invited): dragged an hour later, its bus moves with it under the
+    /// same Undo, as an appointment's legs do, and Undo puts both back; the
+    /// form moves it too (review of 1e8551e, F19).
+    #[test]
+    fn a_meeting_you_organize_moves_with_its_legs() {
+        let (calendar, doctor, bus) = doctor_and_bus("legs-organized");
+        let dir = sioul_core::config::data_dir().join(format!("legs-organized-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n\n[[account]]\nid = \"camille-legs\"\nkind = \"imap\"\naddress = \"camille.legs@example.org\"\nname = \"Camille\"\nhost = \"imap.example.org\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        agenda::own_addresses_here(Some(&["camille.legs@example.org"]));
+        agenda::open_organizer_door_here(true);
+        let own = std::fs::read_to_string(&doctor).unwrap();
+        let anne = [sioul_core::organizer::Guest { address: "anne@example.net".into(), name: "Anne".into() }];
+        let invited = crate::organized::write(&crate::organized::plan(&doctor, Some(&own), &own, Some(&anne), &calendar).unwrap()).unwrap();
+        let (doctor_before, bus_before) = (std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap());
+        let at = |h: i8, m: i8| jiff::civil::date(2099, 10, 29).at(h, m, 0, 0).to_zoned(TimeZone::UTC).unwrap().timestamp().as_second();
+        let shared = Shared::default();
+        let _ = crate::work::loaded(&shared);
+        let moved = move_written(&shared, &doctor.display().to_string(), at(13, 0), at(14, 0), at(14, 30), false).unwrap().unwrap();
+        let zone = TimeZone::system();
+        assert_eq!(agenda::first_times(&std::fs::read_to_string(&bus).unwrap(), &zone), Some((at(13, 10), at(13, 35))), "the bus moved with it");
+        assert!(moved.organized.is_some() && moved.files.len() == 1 && moved.legs.len() == 1, "the meeting through its door, its leg under the same Undo");
+        let written = moved.organized.clone().unwrap();
+        assert!(crate::organized::put_back(&written) && sioul_core::agentwrites::Said { at: 0, line: String::new(), files: moved.files.clone() }.put_back());
+        assert_eq!([std::fs::read_to_string(&doctor).unwrap(), std::fs::read_to_string(&bus).unwrap()], [doctor_before.clone(), bus_before.clone()], "both back");
+        // The form moves it, and its leg.
+        let events = crate::work::loaded(&shared).events.clone();
+        let mut edit = edit_with_own(&doctor).unwrap();
+        (edit.start, edit.end) = ("2099-10-30T09:00".into(), "2099-10-30T09:30".into());
+        let saved = write_event_with(&doctor.display().to_string(), &serde_json::to_string(&edit).unwrap(), &format!("{}/{}", calendar.account, calendar.id), &events).unwrap();
+        assert_eq!(saved.legs.len(), 1, "{:?}", saved.legs);
+        let local = |h: i8, m: i8| jiff::civil::date(2099, 10, 30).at(h, m, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        assert_eq!(agenda::first_times(&std::fs::read_to_string(&bus).unwrap(), &zone), Some((local(8, 10), local(8, 35))));
+        for draft in sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("UID:legs-organized-doctor"))) {
+            draft.discard();
+        }
+        let _ = invited;
+        agenda::open_organizer_door_here(false);
+        agenda::own_addresses_here(None);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Your own time around a meeting with others (decision 18, the unified

@@ -1399,7 +1399,7 @@ def offset_zone(clock: Clock) -> tuple[str, str] | None:
 
 
 def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *, location="", notes="", weekly=False,
-          organizer=None, attendees=(), project=None, leg=None, extra=()) -> str:
+          organizer=None, attendees=(), left_to_you=False, project=None, leg=None, extra=()) -> str:
     # A repeating event on its zone's own clock, with its VTIMEZONE, as Sioul writes one
     # (`agenda::time_lines`): it keeps its wall time, and shows one time; a one-off at its
     # instant in UTC, as Sioul wrote them until 28 October 2026.
@@ -1422,8 +1422,10 @@ def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *
         lines.append("RRULE:FREQ=WEEKLY")
     if organizer:
         lines.append(f'ORGANIZER;CN="{organizer[0]}":mailto:{organizer[1]}')
+    # A meeting made in Sioul: each guest left to you to tell (SCHEDULE-AGENT=CLIENT), from your drafts.
+    agent = ";SCHEDULE-AGENT=CLIENT" if left_to_you else ""
     for name, addr, answer in attendees:
-        lines.append(f'ATTENDEE;CN="{name}";PARTSTAT={answer}:mailto:{addr}')
+        lines.append(f'ATTENDEE;CN="{name}";PARTSTAT={answer}{agent}:mailto:{addr}')
     if project:
         lines.append(f"REFID:{project}")
     # A leg of an appointment (composed tasks, part E): (its appointment's uid, BEFORE or AFTER,
@@ -1563,11 +1565,11 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
                            location=t("Bloc & Boulder gym", "Salle Bloc et Prise"), extra=["STATUS:TENTATIVE"])),
         ("personal", event(c, "lunch-mum", t("Lunch at Mum's", "Déjeuner chez Maman"), c.this_week(6), "12:30", "15:00", location="Villeurbanne")),
-        # A meeting you organize (the event card's step 3): its guests in it, moved and changed
-        # through the organizer's door; its invitation drafted, since this calendar's server says nothing of scheduling.
+        # A meeting you organize, made in Sioul (the event card's step 3): its guests in it, each
+        # left to you, moved and changed through the organizer's door; its messages drafted.
         ("personal", event(c, "garden", t("Garden work party", "Chantier au jardin partagé"), c.this_week(5), "15:00", "16:30",
                            location=t("Shared garden, Rue des Exemples", "Jardin partagé, rue des Exemples"), organizer=(ME, HOME),
-                           attendees=[(W.jonas[0], W.jonas[1], "ACCEPTED"), (W.tom[0], W.tom[1], "NEEDS-ACTION")])),
+                           attendees=[(W.jonas[0], W.jonas[1], "ACCEPTED"), (W.tom[0], W.tom[1], "NEEDS-ACTION")], left_to_you=True)),
         ("work", event(c, "fernhill-pages", t("Fernhill: pages kick-off", "Fougères : lancement des pages"), c.weekday_after(8), "10:00", "11:00",
                        location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),
         ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Étienne")),

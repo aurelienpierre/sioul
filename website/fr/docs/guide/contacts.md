@@ -63,6 +63,7 @@ Un contact s’ouvre à droite :
 - **Comment cette personne vous joint** : qui elle est pour vous, en une phrase (« Vos contacts : dans votre carnet d’adresses, sur aucune liste. »), et sa fiche ([plus bas](#how-they-reach-you)) ;
 - une petite carte avec une épingle à son adresse, une fois celle-ci placée ([La carte](#the-map)) ;
 - replié sous **Plus** : ses adresses postales, son organisation et sa fonction, son anniversaire, ses notes, ses sites web, et le carnet d’adresses où se trouve la fiche ;
+- à côté de chaque adresse postale, **Itinéraire**, qui ouvre le chemin comme le fait le lieu d’un événement ([Agenda](agenda.md#status-map-directions)) : dans votre application de cartes quand ce système en a une pour les liens `geo:`, avec le point où la carte l’a placée quand elle l’a, sinon sur la page d’OpenStreetMap, ou celle d’Apple sur un Mac ;
 - **Lié à cela** : les tâches qui la nomment, les événements où elle est invitée, les notes qui la mentionnent, et ce que vous lui avez lié à la main. Un courriel s’y montre quand vous le lui avez lié ; la [recherche des courriels](mail.md#searching) trouve le reste de ses courriels.
 
 **Pour le changer**, **Modifier**, puis **Enregistrer** : il est modifié sur place. Sur un téléphone, **Retour** quitte le formulaire sans enregistrer. **Pour en ajouter un**, le **+** au-dessus de la liste, ou **Nouveau ▾ ▸ Un contact**. Depuis un courriel, **Ajouter aux contacts** fait de l’expéditeur un contact en un clic.
