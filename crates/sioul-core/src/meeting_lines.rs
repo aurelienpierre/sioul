@@ -257,6 +257,49 @@ pub fn folded(text: &str, kept: &Kept) -> String {
     put_in(text, kept, true)
 }
 
+/// An event that is no meeting any more with what is kept of it here put
+/// back name by name (review of round 4, R1-a): its file's own line wins
+/// where it has one of that name for that time, the entry fills the names
+/// it lacks. A holder line written on another device meanwhile is kept, and
+/// so is the kind this device kept.
+pub fn filled(text: &str, kept: &Kept) -> String {
+    let source = lines::unfold(text);
+    let mut events: Vec<(String, Vec<String>)> = Vec::new();
+    let (mut inside, mut nested, mut time, mut names): (bool, usize, String, Vec<String>) = (false, 0, String::new(), Vec::new());
+    for line in &source {
+        let name = lines::name(line);
+        let value = lines::value(line).trim().to_ascii_uppercase();
+        if !inside {
+            if name == "BEGIN" && value == "VEVENT" {
+                (inside, nested, time, names) = (true, 0, String::new(), Vec::new());
+            }
+            continue;
+        }
+        match name.as_str() {
+            "BEGIN" => nested += 1,
+            "END" if nested > 0 => nested -= 1,
+            "END" => {
+                inside = false;
+                events.push((std::mem::take(&mut time), std::mem::take(&mut names)));
+            }
+            "RECURRENCE-ID" if nested == 0 => time = line.clone(),
+            _ if nested == 0 => names.push(lines::raw_name(line)),
+            _ => {}
+        }
+    }
+    // What each time lacks of the entry's names: those lines alone, merged in.
+    let mut lacking = Kept::default();
+    for (t, wanted) in &kept.times {
+        for (time, names) in events.iter().filter(|(time, _)| same_time(t, time)) {
+            let missing: Vec<String> = wanted.iter().filter(|l| !names.contains(&lines::raw_name(l))).cloned().collect();
+            if !missing.is_empty() {
+                lacking.times.entry(time.clone()).or_default().extend(missing);
+            }
+        }
+    }
+    put_in(text, &lacking, false)
+}
+
 /// `merged_with`, or `folded` (`whole`: every line of Sioul's of each event
 /// replaced, not only those of the names kept).
 fn put_in(text: &str, kept: &Kept, whole: bool) -> String {
@@ -344,18 +387,26 @@ pub enum Read {
 /// An event's text as this device reads it, `store` being what it keeps
 /// and `meeting` whether the event is a meeting with others now
 /// (`agenda::with_others`): a meeting, with its entry put back
-/// (`merged_with`), or `Read::Unknown` without one (R1); an event that is
-/// no meeting, its file as it is, or, when it holds none of Sioul's other
-/// lines and an entry is here (taken off its last guest elsewhere), with
-/// the entry put back until they go back into its file (`forget`).
+/// (`merged_with`); without one, as its file says when the file holds
+/// Sioul's lines itself (who takes it, its kind: review of round 4, R1-b),
+/// else `Read::Unknown` (R1). An event that is no meeting, its file as it
+/// is, or with an entry here (taken off its last guest elsewhere) the
+/// entry filling what its file lacks, name by name (`filled`, R1-a), until
+/// it is back in its file (`forget`).
 pub fn read(text: &str, store: &MeetingLines, meeting: bool) -> Read {
     let entry = store.events.get(&uid_of(text));
     match entry {
         Some(kept) if meeting => Read::Known(merged_with(text, kept)),
-        None if meeting => Read::Unknown,
-        Some(kept) if crate::organizer::aside_of(text).lines.is_empty() => Read::Known(merged_with(text, kept)),
-        _ => Read::Known(text.to_string()),
+        None if meeting && !holds_own(text) => Read::Unknown,
+        Some(kept) => Read::Known(filled(text, kept)),
+        None => Read::Known(text.to_string()),
     }
+}
+
+/// Whether an event's file holds Sioul's other lines itself (who takes it,
+/// its kind: `organizer::aside_of`).
+pub fn holds_own(text: &str) -> bool {
+    !crate::organizer::aside_of(text).lines.is_empty()
 }
 
 #[cfg(test)]
@@ -424,7 +475,8 @@ mod tests {
         // No meeting any more, its lines still here: read from here, until back in its file.
         assert_eq!(read(plain, &load(&path), false), Read::Known(merged_with(plain, &load(&path).events["psy-1"])));
         let own_lines = plain.replace("END:VEVENT", "X-SIOUL-TAKEN-BY;CN=Sam;PARTSTAT=ACCEPTED:mailto:sam@example.org\r\nEND:VEVENT");
-        assert_eq!(read(&own_lines, &load(&path), false), Read::Known(own_lines.clone()), "its file holds its own: the file's word");
+        let Read::Known(both) = read(&own_lines, &load(&path), false) else { panic!("known") };
+        assert!(both.contains("sam@example.org") && !both.contains(&held) && both.contains(&kind), "its file's holder, the kind kept here (R1-a): {both}");
         // Folded: the entry's lines in place of the file's.
         let entry_wins = folded(&own_lines, &load(&path).events["psy-1"]);
         assert!(entry_wins.contains(&held) && entry_wins.contains(&kind) && !entry_wins.contains("sam@example.org"), "{entry_wins}");
@@ -444,5 +496,59 @@ mod tests {
         assert!(!as_left(&path, before.as_deref(), after.as_deref()) && !put_back(&path, before.as_deref(), after.as_deref()).unwrap(), "changed again since: too late");
         assert!(is_store(&path) && !is_store(&dir.join("other.toml")));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- The review of round 4 (ab79db0): its probes turned.
+
+    /// R1-a: device A keeps Tom's psychiatrist's kind (health) and holder
+    /// (Alex), its stand-in masked in Alex's agenda for work; on device B the
+    /// office's line went and Alex took it there (a holder line alone in the
+    /// file). A reads it name by name: B's holder line, A's kind, so the
+    /// stand-in stays masked; its lines back in the file the same way, the
+    /// kind kept (the probe `review4_r1_a_take_on_the_other_device_…`).
+    #[test]
+    fn a_holder_written_elsewhere_keeps_the_kind_kept_here() {
+        use crate::holders::{self, Act, Answer, ChildItem, Context, Holder, Kind, Mine, Taken, Target};
+        let zone = jiff::tz::TimeZone::UTC;
+        let own = vec!["alex@example.org".to_string()];
+        let collection = crate::vdir::Collection { kind: crate::vdir::Kind::Calendars, account: "family".into(), id: "tom".into(), dir: std::path::PathBuf::from("/nowhere/family/tom"), name: "Tom".into(), color: None, read_only: false, components: vec!["VEVENT".into(), "VTODO".into()] };
+        let said = crate::agendas::Said { whose: Some("child".into()), name: Some("Tom".into()), ..Default::default() };
+        let tom = crate::agendas::Agenda::of(&collection, &said, &crate::config::Config::default(), false, &|| true);
+        let work = Target { place: "me/work".into(), dir: std::path::PathBuf::from("/nowhere/me/work"), work: true };
+        let target = |_: Option<Kind>| Some(work.clone());
+        let details = |_: &crate::agendas::Agenda| "Details: Tom’s agenda".to_string();
+        let follow_up = |_: &crate::agendas::Agenda, _: Kind| None;
+        let now = 1_793_500_000;
+        let cx = Context { own: &own, target: &target, details: &details, away: "Away", follow_up: &follow_up, now, zone: &zone };
+        let child = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:psy-r4\r\nDTSTAMP:20261101T090000Z\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Tom: psychiatrist\r\nLOCATION:Dr Martin\\, 12 rue des Lilas\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let alex = Holder { name: "Alex".into(), address: "alex@example.org".into(), answer: Answer::Accepted, since: Some(now), back: false };
+        let held = holders::with_kind(&holders::with_taken(child, None, &Taken { to: Some(alex.clone()), back: None }, &zone).unwrap(), Some(Kind::Health)).unwrap();
+        let path = std::path::PathBuf::from("/nowhere/family/tom/psy-r4.ics");
+        let acts = holders::upkeep(&[ChildItem { path: &path, text: &held, agenda: &tom }], &[], &cx);
+        let [Act::Made { path: stand_in_path, text: stand_in, .. }] = acts.as_slice() else { panic!("{acts:?}") };
+        let meeting = held.replace("END:VEVENT", "ORGANIZER;CN=Alex:mailto:alex@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:office@example.net\r\nEND:VEVENT");
+        let (file, aside) = crate::organizer::set_aside(&meeting);
+        let store_a = MeetingLines { events: [("psy-r4".to_string(), Kept { times: [(String::new(), aside.lines.iter().map(|(_, l)| l.clone()).collect())].into() })].into() };
+        let me = crate::organizer::Guest { address: "alex@example.org".into(), name: "Alex".into() };
+        let off = crate::organizer::with_guests(&file, &me, &[], crate::organizer::Sender::Draft).unwrap();
+        let b_written = holders::with_taken(&off, None, &Taken { to: Some(alex), back: None }, &zone).unwrap();
+        let Read::Known(on_a) = read(&b_written, &store_a, false) else { panic!("known") };
+        assert_eq!((holders::kind_of(&on_a), holders::taken(&on_a, None, &zone).to.map(|h| h.address)), (Some(Kind::Health), Some("alex@example.org".to_string())));
+        let mine = [Mine { path: stand_in_path.as_path(), text: stand_in.as_str(), place: "me/work", work: true }];
+        assert_eq!(holders::upkeep(&[ChildItem { path: &path, text: &on_a, agenda: &tom }], &mine, &cx), [], "the stand-in stays masked");
+        assert_eq!(filled(&b_written, &store_a.events["psy-r4"]), on_a, "back into its file the same way");
+    }
+
+    /// R1-b: a child's meeting whose file holds who takes it and its kind
+    /// (another organizer's, written before) reads as its file says with no
+    /// entry here; one holding neither, with no entry here, stays unknown.
+    #[test]
+    fn a_meeting_whose_file_holds_its_lines_is_known() {
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:office-1\r\nDTSTAMP:20261101T090000Z\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Tom: check-up\r\nORGANIZER:mailto:office@example.net\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:alex@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(read(text, &MeetingLines::default(), true), Read::Unknown, "nothing here, nothing in its file");
+        let zone = jiff::tz::TimeZone::UTC;
+        let alex = crate::holders::Holder { name: "Alex".into(), address: "alex@example.org".into(), answer: crate::holders::Answer::Accepted, since: Some(1), back: false };
+        let held = crate::holders::with_kind(&crate::holders::with_taken(text, None, &crate::holders::Taken { to: Some(alex), back: None }, &zone).unwrap(), Some(crate::holders::Kind::Health)).unwrap();
+        assert_eq!(read(&held, &MeetingLines::default(), true), Read::Known(held.clone()), "its file says it");
     }
 }

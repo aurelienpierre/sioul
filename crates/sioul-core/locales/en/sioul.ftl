@@ -1152,6 +1152,12 @@ dav-reinvited = An invitation with the server’s version waits in Drafts for { 
 dav-served-untold = Your server never had your change: it told { $who } nothing of it.
 dav-conflict = Changed on both sides: the server’s version is kept; yours is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions), to put back if you prefer it.
 dav-undeleted = “{ $summary }” changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
+dav-undeleted-untitled = { $kind ->
+        [contact] A contact with no name changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
+        [task] A task with no title changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
+       *[event] An event with no title changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
+    }
+dav-cancel-heard = { $who } had its cancellation already: an invitation of it waits in Drafts.
 dav-answered-elsewhere = { $answer ->
         [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.
         [tentative] You had already answered “{ $summary }” on another device: maybe. Your calendar keeps that answer; to change it, answer again from the invitation.
@@ -4188,7 +4194,7 @@ invite-ask-drafts = Sioul drafts the messages to { $who }; you send them from Ma
 invite-ask-served = Your server tells { $who }.
 invite-server-unknown = Sioul does not know yet whether this calendar’s server tells the guests itself: try again after its next sync.
 invite-marks-mixed = { $who } is told of some times of this meeting by your server and of others by you: change it in the app that made it, so that { $who } hears of it once.
-invite-holder-elsewhere = Who takes this event and its kind are kept on your other device, where its guests were invited: take its last guest off there.
+invite-holder-elsewhere = Who takes this event is not known on this device, so its last guest stays here. Take the guest off where its card says who takes it.
 invite-undo-served = Your server has told the guests; change it again to tell them otherwise.
 invite-save = Save
 invite-done-server = Your server tells the guests.
@@ -4458,7 +4464,7 @@ holder-follow-up-dentist = Book { $name }’s next dentist appointment
 holder-follow-up-health = Book { $name }’s next check-up
 holder-follow-up-other = Book { $name }’s next appointment: { $kind }
 holder-not-child = This is not in a child’s agenda.
-holder-unknown = Who takes it is not known on this device: answer on the device where its guests were invited.
+holder-unknown = Who takes it is not known on this device, so it is left as it is here. Answer where its card says who takes it.
 holder-no-parent = Write the other parent’s address in this agenda’s settings first (Agenda ⚙ ▸ Your agendas).
 holder-no-address = Give one of your accounts an address first: it says it is you who takes it.
 holder-invite-details = { $child }: “{ $title }”, { $when }. Answer this invitation to say whether you take it.

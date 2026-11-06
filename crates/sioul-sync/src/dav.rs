@@ -719,10 +719,11 @@ pub struct Report {
     /// Changed on both sides: the server's kept, yours set aside.
     pub conflicts: Vec<PathBuf>,
     /// Deleted here, changed on the server before the deletion reached it
-    /// (its DELETE refused, 412): each one's title, back here, said once
-    /// (third review of the organizer's door, R8). A meeting you organize is
-    /// said among `meetings` instead.
-    pub undeleted: Vec<String>,
+    /// (its DELETE refused, 412): each one's kind ("event", "task",
+    /// "contact") and title ("" when it has none: said by its kind), back
+    /// here, said once (third review of the organizer's door, R8; review of
+    /// round 4, R4-B). A meeting you organize is said among `meetings` instead.
+    pub undeleted: Vec<(String, String)>,
     /// Collections synced whole this time (calendars and address books).
     pub collections: usize,
     /// Collections the server listed, each made here at once, empty until pulled.
@@ -780,6 +781,9 @@ pub struct MeetingSetAside {
     pub served: Vec<String>,
     /// Your change was its deletion, which its server refused: the meeting is back.
     pub deleted: bool,
+    /// Its deletion refused, the guests its cancellation had reached already,
+    /// as a sentence names them: an invitation of it was drafted for them.
+    pub reinvited: Vec<String>,
 }
 
 /// Whether a server's answer refuses an item for what it is (its content or
@@ -1531,8 +1535,10 @@ fn upgrade(client: &Client, dir: &Path, listed: &Listed, state: &mut State, only
                     let sent = if etag.is_empty() { sent_hash(&migrated) } else { String::new() };
                     state.items[i] = ItemState { etag, hash: vdir::content_hash(migrated.as_bytes()), size, mtime, sent, ..item };
                 } else {
-                    // Not written here (a full disk): rewritten again at its next turn.
+                    // Not written here (a full disk), or changed here meanwhile: rewritten again at its
+                    // next turn; without an ETag, the pull tells that copy by what was sent (R4-E).
                     left += usize::from(unchanged);
+                    state.items[i].sent = if etag.is_empty() { sent_hash(&migrated) } else { String::new() };
                     state.items[i].etag = etag;
                 }
                 if state.items[i].etag.is_empty() {
@@ -1559,7 +1565,7 @@ fn upgrade(client: &Client, dir: &Path, listed: &Listed, state: &mut State, only
 #[allow(clippy::too_many_arguments)]
 fn both_ways(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, report: &mut Report, first: bool, until: Option<Instant>) -> Result<(bool, Option<SyncError>), SyncError> {
     let mut refetch: BTreeSet<String> = BTreeSet::new();
-    let refused = if listed.read_only || !first { None } else { push(client, listed.kind, dir, listed, state, &mut refetch, report)? };
+    let refused = if listed.read_only || !first { None } else { push(client, listed.kind, dir, listed, state, state_path, &mut refetch, report)? };
     let unchanged = state.ctag.is_some() && state.ctag == listed.ctag && refetch.is_empty() && refused.is_none();
     if !unchanged && !pull(client, dir, listed, state, state_path, &refetch, report, until)? {
         return Ok((false, None));
@@ -1611,18 +1617,29 @@ fn local_files(dir: &Path, kind: Kind) -> BTreeSet<String> {
 
 /// Sends what changed here: edits with If-Match, new items with If-None-Match,
 /// deletions. The state follows each answer, so a push cut short keeps what
-/// it did. What the server refuses of one item, or what cannot be read of it,
-/// is returned, the others sent all the same; a lost connection stops it.
-fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut State, refetch: &mut BTreeSet<String>, report: &mut Report) -> Result<Option<SyncError>, SyncError> {
+/// it did, and is saved after each one the server took: a write planned or
+/// taken back meanwhile (`organized::plan`, `put_back`, `vdir::agreed_hash`)
+/// knows its server has it (review of round 4, R4-G). What the server
+/// refuses of one item, or what cannot be read of it, is returned, the
+/// others sent all the same; a lost connection stops it.
+#[allow(clippy::too_many_arguments)]
+fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, refetch: &mut BTreeSet<String>, report: &mut Report) -> Result<Option<SyncError>, SyncError> {
     let mut refused = None;
     let mut i = 0;
     while i < state.items.len() {
+        let sent = report.sent;
         match send_known(client, kind, dir, listed, &state.items[i], refetch, report)? {
             Sent::Deleted => {
                 state.items.remove(i);
+                state.save(state_path).map_err(SyncError::Disk)?;
                 continue;
             }
-            Sent::Agreed(item) => state.items[i] = item,
+            Sent::Agreed(item) => {
+                state.items[i] = item;
+                if report.sent > sent {
+                    state.save(state_path).map_err(SyncError::Disk)?;
+                }
+            }
             Sent::Kept => {}
             Sent::Refused(e) => {
                 refused.get_or_insert(e);
@@ -1682,6 +1699,7 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
                 }
                 let sent = if etag.is_empty() { sent_hash(&text) } else { String::new() };
                 state.items.push(ItemState { href: path_key(&href), file, etag, hash: vdir::content_hash(text.as_bytes()), size, mtime, sent });
+                state.save(state_path).map_err(SyncError::Disk)?;
             }
             // Already there: sent before and its answer lost, or another item
             // at that address. Known, never agreed (no ETag, no hash): what the
@@ -1981,8 +1999,10 @@ fn sent_hash(text: &str) -> String {
             if !matches!(sioul_core::lines::name(&line).as_str(), "ATTENDEE" | "ORGANIZER") {
                 return line.trim_end().to_string();
             }
+            // Split at its colon only when it is one: a malformed line (no colon) is its head alone.
             let value = sioul_core::lines::value(&line).to_string();
-            let head = &line[..line.len().saturating_sub(value.len() + 1)];
+            let at = line.len().saturating_sub(value.len() + 1);
+            let head = if line.as_bytes().get(at) == Some(&b':') { &line[..at] } else { line.as_str() };
             let (mut parts, mut quoted, mut start) = (Vec::new(), false, 0);
             for (i, c) in head.char_indices() {
                 match c {
@@ -2078,6 +2098,8 @@ fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_p
         state.items.remove(i);
         report.removed += 1;
     }
+    // Each item's ETag as the listing says it: what a fetch that says none takes (R4-D).
+    let listed_etags: BTreeMap<String, String> = changed.iter().filter_map(|(href, etag)| etag.clone().filter(|e| !e.is_empty()).map(|e| (key(href), e))).collect();
     // Changed there, or to read again after a send.
     let known: BTreeMap<String, usize> = state.items.iter().enumerate().map(|(i, item)| (key(&item.href), i)).collect();
     let mut wanted: BTreeMap<String, String> = changed
@@ -2106,6 +2128,8 @@ fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_p
             Err(_) => {}
         }
         for (href, etag, data) in fetched? {
+            // A server whose fetch says no ETag: the listing's, else an edit here could never go.
+            let etag = if etag.is_empty() { listed_etags.get(&key(&href)).cloned().unwrap_or_default() } else { etag };
             store(dir, listed.kind, state, &listed.url, (&href, &etag, &data), report)?;
         }
         // Kept as it goes: cut short, the next sync goes on from here.
@@ -2218,16 +2242,35 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         None => file_name(href, kind.extension(), &state.items.iter().map(|i| i.file.clone()).chain(local_files(dir, kind)).collect()),
     };
     let path = dir.join(&file);
+    // Your addresses, read only where a meeting is looked at.
+    let own = || sioul_core::agenda::own_addresses();
     // The server's copy of a write it took without saying its ETag (`ItemState::sent`): a change
     // or a deletion made here since is no conflict. It stays, and goes at the next push over
-    // this copy, its ETag known now (third review of the organizer's door, R3).
+    // this copy, its ETag known now (third review of the organizer's door, R3). A meeting you
+    // organize was changed on a view older than that copy, what its guests were told: a force
+    // its server sent already goes; a change it would not tell a guest, or an older version of
+    // their times (an Undo while its write was sent), is set aside for that copy, as any change
+    // made on both sides (`organizer::kept_over_its_server`; review of round 4, R4-A, R4-G).
     if let Some(i) = position
         && !state.items[i].sent.is_empty()
         && sent_hash(data) == state.items[i].sent
-        && (!path.exists() || changed_here(&path, &state.items[i]).is_some())
     {
-        state.items[i] = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(crlf(data).as_bytes()), ..ItemState::default() };
-        return Ok(());
+        // None: as agreed; Some(None): deleted here; Some(Some(text)): changed here.
+        let here: Option<Option<String>> = if path.exists() { changed_here(&path, &state.items[i]).map(|bytes| Some(String::from_utf8_lossy(&bytes).into_owned())) } else { Some(None) };
+        let kept: Option<Option<String>> = match &here {
+            None => None,
+            Some(Some(mine)) if kind == Kind::Calendars && sioul_core::agenda::organized_meeting(mine, &own()) => sioul_core::organizer::kept_over_its_server(data, mine, server_tells(dir, state.owned, data, mine)).map(Some),
+            Some(mine) => Some(mine.clone()),
+        };
+        if let Some(kept) = kept {
+            if let (Some(Some(mine)), Some(kept)) = (&here, &kept)
+                && kept != mine
+            {
+                vdir::store_item(&path, kept).map_err(SyncError::Disk)?;
+            }
+            state.items[i] = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(crlf(data).as_bytes()), ..ItemState::default() };
+            return Ok(());
+        }
     }
     // Deleted here, changed there before the deletion reached it (its DELETE refused, 412, or
     // the file deleted while this sync ran): the server's version comes back, said once (R8).
@@ -2249,16 +2292,32 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
             // A meeting you organize: what each guest still needs to hear, from the server's
             // version (review of 1e8551e, F10; its second review, N3).
             if kind == Kind::Calendars
-                && let Some(said) = std::str::from_utf8(&mine).ok().and_then(|mine| set_aside_meeting(dir, state.owned, mine, data, &sioul_core::agenda::own_addresses()))
+                && let Some(said) = std::str::from_utf8(&mine).ok().and_then(|mine| set_aside_meeting(dir, state.owned, mine, data, &own()))
             {
                 report.meetings.push(said);
             }
         }
     }
+    // Its deletion refused: a meeting you organize said with its cancellations in your Drafts
+    // withdrawn while its guests are still asked there, and, for those its cancellation reached,
+    // the meeting one SEQUENCE past it and an invitation drafted (`refused_deletion`); anything
+    // else by its title, or its kind when it has none (review of round 4, R8-told, R4-B).
+    let mut again: Option<String> = None;
+    if undeleted {
+        let config = || sioul_core::config::Config::load(&sioul_core::config::default_path()).unwrap_or_default();
+        match (kind == Kind::Calendars).then(|| refused_deletion(dir, state.owned, data, &own(), &config())).flatten() {
+            Some((said, later)) => {
+                report.meetings.push(said);
+                again = later;
+            }
+            None => report.undeleted.push((kind_word(kind, data).to_string(), title_of(kind, data))),
+        }
+    }
     let text = crlf(data);
-    // The server's as it came: what it holds now. A merge differs from it, so the next sync sends it.
+    // The server's as it came: what it holds now. A merge or a later version differs from it, so
+    // the next sync sends it.
     let hash = vdir::content_hash(text.as_bytes());
-    let written = merged.map_or(text, |merged| crlf(&merged));
+    let written = again.or(merged).map_or(text, |later| crlf(&later));
     // The server's copy, or the merge the rule let through: written as it is (`vdir::store_item`).
     vdir::store_item(&path, &written).map_err(SyncError::Disk)?;
     // Written now, its time not trusted yet (`SETTLED`): read once at the next sync.
@@ -2267,18 +2326,99 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         Some(i) => state.items[i] = item,
         None => state.items.push(item),
     }
-    if undeleted {
-        // A meeting you organize: its cancellations in your Drafts withdrawn while its guests are
-        // still asked there (`organizer::reconcile`), said with it; anything else, its title.
-        let meeting = (kind == Kind::Calendars).then(|| set_aside_meeting(dir, state.owned, data, data, &sioul_core::agenda::own_addresses())).flatten();
-        match meeting {
-            Some(said) => report.meetings.push(MeetingSetAside { deleted: true, ..said }),
-            None => report.undeleted.push(summary_of(data)),
-        }
-    }
     report.received += 1;
     report.brought.insert(path);
     Ok(())
+}
+
+/// Whether the server of the calendar at `dir` tells a meeting's guests not
+/// left to you (`owned`: the calendar is yours there; its organizer, from
+/// `theirs` else `mine`, an address it schedules for): RFC 6638's
+/// automatic scheduling, as `organized::server_for` says `Teller::Server`.
+fn server_tells(dir: &Path, owned: Option<bool>, theirs: &str, mine: &str) -> bool {
+    let account = dir.parent().and_then(Path::file_name).map(|a| a.to_string_lossy().to_string()).unwrap_or_default();
+    let organizer = sioul_core::organizer::organizer_of(theirs).or_else(|| sioul_core::organizer::organizer_of(mine)).map(|o| o.address).unwrap_or_default();
+    owned == Some(true) && crate::scheduling::schedules_for(&account, &organizer)
+}
+
+/// What kind of item a text is, as a sentence says it when it has no title:
+/// "contact", "task" or "event".
+fn kind_word(kind: Kind, text: &str) -> &'static str {
+    match kind {
+        Kind::Contacts => "contact",
+        Kind::Calendars if sioul_core::lines::unfold(text).iter().any(|l| sioul_core::lines::name(l) == "BEGIN" && sioul_core::lines::value(l).trim().eq_ignore_ascii_case("VTODO")) => "task",
+        Kind::Calendars => "event",
+    }
+}
+
+/// An item's title, as a sentence says it: a card's name (FN), an event's
+/// or a task's SUMMARY; "" when it has none (`kind_word` says it then).
+fn title_of(kind: Kind, text: &str) -> String {
+    match kind {
+        Kind::Contacts => sioul_core::lines::unfold(text).iter().find(|l| sioul_core::lines::name(l) == "FN").map(|l| sioul_core::lines::unescape(sioul_core::lines::value(l).trim())).unwrap_or_default(),
+        Kind::Calendars => summary_of(text),
+    }
+}
+
+/// The account a draft for a meeting of the calendar at `dir` goes out from,
+/// with its signature: that calendar's account when it sends mail, else the
+/// one of the organizer's address, else the first that sends mail (as
+/// `organized::sending_account`).
+fn sending_account(config: &sioul_core::config::Config, dir: &Path, organizer: &str) -> Option<(String, Option<String>)> {
+    let account = dir.parent().and_then(Path::file_name).map(|a| a.to_string_lossy().to_string()).unwrap_or_default();
+    config
+        .accounts
+        .iter()
+        .find(|a| a.id == account && a.syncs())
+        .or_else(|| config.accounts.iter().find(|a| a.syncs() && a.address.as_deref().is_some_and(|x| x.trim().eq_ignore_ascii_case(organizer.trim()))))
+        .or_else(|| config.accounts.iter().find(|a| a.syncs()))
+        .map(|a| (a.id.clone(), a.signature.clone()))
+}
+
+/// A meeting you organize whose deletion its server refused (412: it
+/// changed there first; `store`, R8), `theirs` being its server's version,
+/// back here: its cancellations in your Drafts withdrawn while its guests
+/// are still asked there (`set_aside_meeting`). The guests your drafts tell
+/// whose cancellation is no longer in Drafts (sent: the deletion drafted it
+/// under its name, `organizer::draft_id` over `organizer::cancel`) heard it:
+/// as the door's own Undo of a deletion does (`organized::undelete`), the
+/// meeting comes back one SEQUENCE past that cancellation
+/// (`organizer::after_cancel`, the text written here and sent at the next
+/// push, a change its server sends nobody) and an invitation of it is
+/// drafted for them, said (`MeetingSetAside::reinvited`; review of round 4,
+/// R8-told). None for anything but a meeting you organize.
+fn refused_deletion(dir: &Path, owned: Option<bool>, theirs: &str, own: &[String], config: &sioul_core::config::Config) -> Option<(MeetingSetAside, Option<String>)> {
+    use sioul_core::organizer::{self, Guest, Sender};
+    if !sioul_core::agenda::organized_meeting(theirs, own) {
+        return None;
+    }
+    let tells = server_tells(dir, owned, theirs, theirs);
+    let drafted: Vec<Guest> = organizer::every_guest(theirs).into_iter().filter(|g| !(tells && organizer::teller(theirs, &g.address, Sender::Server) == Sender::Server)).collect();
+    let to: Vec<String> = drafted.iter().map(|g| g.address.clone()).collect();
+    // Looked at before the withdrawn ones are taken out of Drafts.
+    let heard = !drafted.is_empty() && organizer::cancel(theirs, &to, true).is_some_and(|ics| sioul_core::compose::Draft::by_id(&organizer::draft_id(&ics, &drafted)).is_none());
+    let mut said = MeetingSetAside { deleted: true, ..set_aside_meeting(dir, owned, theirs, theirs, own)? };
+    let cancelled = sioul_core::lines::unfold(theirs).iter().any(|l| sioul_core::lines::name(l) == "STATUS" && sioul_core::lines::value(l).trim().eq_ignore_ascii_case("CANCELLED"));
+    if !heard || cancelled {
+        return Some((said, None));
+    }
+    let again = organizer::after_cancel(theirs)?;
+    let organizer = organizer::organizer_of(&again).map(|o| o.address).unwrap_or_default();
+    let Some((account, signature)) = sending_account(config, dir, &organizer) else { return Some((said, None)) };
+    let tr = sioul_core::agenda::translator();
+    // The series' guests its whole invitation; those of some times alone, those times.
+    let series = organizer::guests_of(&again);
+    let (whole, apart): (Vec<Guest>, Vec<Guest>) = drafted.into_iter().partition(|g| series.iter().any(|s| s.address.eq_ignore_ascii_case(&g.address)));
+    let addresses: Vec<String> = apart.iter().map(|g| g.address.clone()).collect();
+    for (to, ics) in [(whole, organizer::request(&again)), (apart, organizer::request_for(&again, &addresses))] {
+        let Some(ics) = ics.filter(|_| !to.is_empty()) else { continue };
+        let draft = organizer::draft(&account, signature.as_deref(), &to, &again, ics, false, &tr);
+        if sioul_core::compose::Draft::by_id(&draft.id).is_some() || draft.save().is_ok() {
+            said.reinvited.extend(to.iter().map(Guest::said));
+        }
+    }
+    let later = (!said.reinvited.is_empty()).then_some(again);
+    Some((said, later))
 }
 
 /// A meeting you organize whose version here (`mine`) was set aside for
@@ -2302,9 +2442,7 @@ fn set_aside_meeting(dir: &Path, owned: Option<bool>, mine: &str, theirs: &str, 
     }
     let source = lines::unfold(mine);
     let uid = source.iter().find(|l| lines::name(l) == "UID").map(|l| lines::value(l).trim().to_string()).filter(|u| !u.is_empty())?;
-    let account = dir.parent().and_then(Path::file_name).map(|a| a.to_string_lossy().to_string()).unwrap_or_default();
-    let organizer = organizer::organizer_of(theirs).or_else(|| organizer::organizer_of(mine)).map(|o| o.address).unwrap_or_default();
-    let server_tells = owned == Some(true) && crate::scheduling::schedules_for(&account, &organizer);
+    let server_tells = server_tells(dir, owned, theirs, mine);
     let pending = organizer::pending_of(&uid, own);
     let got = organizer::reconcile(theirs, &pending, server_tells);
     let drafts: Vec<sioul_core::compose::Draft> = pending.iter().filter_map(|p| sioul_core::compose::Draft::by_id(&p.id)).collect();
@@ -2333,7 +2471,7 @@ fn set_aside_meeting(dir: &Path, owned: Option<bool>, mine: &str, theirs: &str, 
         }
     }
     let summary = source.iter().find(|l| lines::name(l) == "SUMMARY").map(|l| lines::unescape(lines::value(l).trim())).unwrap_or_default();
-    Some(MeetingSetAside { summary, withdrawn: got.withdraw.len(), invited, served: got.served.iter().map(organizer::Guest::said).collect(), deleted: false })
+    Some(MeetingSetAside { summary, withdrawn: got.withdraw.len(), invited, served: got.served.iter().map(organizer::Guest::said).collect(), deleted: false, reinvited: Vec::new() })
 }
 
 /// Tests the login and finds where the account's contacts and calendars are.
@@ -3221,7 +3359,7 @@ mod tests {
         let plain = saved("anne@example.net", None);
         assert_eq!(set_aside_meeting(&dir, Some(true), &mine.replace("ORGANIZER:mailto:jane", "ORGANIZER:mailto:boss"), &theirs, &own), None, "someone else's meeting");
         let said = set_aside_meeting(&dir, Some(true), &mine, &theirs, &own).unwrap();
-        assert_eq!(said, MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: Vec::new(), served: vec!["bob@example.net".into()], deleted: false });
+        assert_eq!(said, MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: Vec::new(), served: vec!["bob@example.net".into()], deleted: false, reinvited: Vec::new() });
         let here = |id: &str| sioul_core::compose::Draft::by_id(id).is_some();
         assert!(here(&invitation) && !here(&update) && !here(&off), "the invitation still true stays; the update and the cancellation go");
         assert!(here(&other) && here(&reply) && here(&plain), "the others stay");
@@ -3313,11 +3451,274 @@ mod tests {
         sioul_core::agenda::own_addresses_here(None);
         assert_eq!(std::fs::read_to_string(dir.join("planning.ics")).unwrap(), theirs, "back as its server keeps it");
         assert!(dir.join("lunch.ics").exists() && report.conflicts.is_empty(), "{report:?}");
-        assert_eq!(report.meetings, [MeetingSetAside { summary: "Planning".into(), withdrawn: 1, invited: Vec::new(), served: Vec::new(), deleted: true }], "said once, with the cancellation withdrawn");
+        assert_eq!(report.meetings, [MeetingSetAside { summary: "Planning".into(), withdrawn: 1, invited: Vec::new(), served: Vec::new(), deleted: true, reinvited: Vec::new() }], "said once, with the cancellation withdrawn");
         assert!(sioul_core::compose::Draft::by_id(&cancel.id).is_none(), "Anne's cancellation withdrawn: the meeting stands");
-        assert_eq!(report.undeleted, ["Lunch at noon"]);
+        assert_eq!(report.undeleted, [("event".to_string(), "Lunch at noon".to_string())]);
         let again = sync_one(&client, "refused-deletion", &home, "work").unwrap();
         assert!(again.meetings.is_empty() && again.undeleted.is_empty(), "said once: {again:?}");
+    }
+
+    // ---- The review of round 4 (ab79db0): each probe turned.
+
+    /// A server that answers as the stand-in, its multiget without any
+    /// getetag and its GET without an ETag header (`fetch`'s two ways); its
+    /// listing still says them.
+    struct NoEtagAtFetch(Arc<Dav>);
+    impl super::stand_in::Server for NoEtagAtFetch {
+        fn misbehaves(&self, r: &super::stand_in::Request) -> Option<Fault> {
+            super::stand_in::Server::misbehaves(self.0.as_ref(), r)
+        }
+        fn answer(&self, r: &super::stand_in::Request) -> super::stand_in::Reply {
+            let mut reply = super::stand_in::Server::answer(self.0.as_ref(), r);
+            if r.method == "REPORT" && r.body.contains("calendar-multiget") {
+                while let Some(start) = reply.body.find("<d:getetag>") {
+                    let end = reply.body[start..].find("</d:getetag>").unwrap() + start + "</d:getetag>".len();
+                    reply.body.replace_range(start..end, "");
+                }
+            }
+            if r.method == "GET" {
+                reply.headers.retain(|(n, _)| !n.eq_ignore_ascii_case("ETag"));
+            }
+            reply
+        }
+    }
+
+    /// A server that answers as the stand-in, every PUT without an ETag.
+    struct NoEtagAtPut(Arc<Dav>);
+    impl super::stand_in::Server for NoEtagAtPut {
+        fn misbehaves(&self, r: &super::stand_in::Request) -> Option<Fault> {
+            super::stand_in::Server::misbehaves(self.0.as_ref(), r)
+        }
+        fn answer(&self, r: &super::stand_in::Request) -> super::stand_in::Reply {
+            let mut reply = super::stand_in::Server::answer(self.0.as_ref(), r);
+            if r.method == "PUT" {
+                reply.headers.retain(|(n, _)| !n.eq_ignore_ascii_case("ETag"));
+            }
+            reply
+        }
+    }
+
+    /// A calendar whose server schedules for jane@example.org, yours there
+    /// (`server_tells`), after its first sync.
+    fn scheduled_here(account: &str, calendar: &str) {
+        let state = state_dir().join("dav").join(account);
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(state.join("scheduling.toml"), "auto = true\naddresses = [\"jane@example.org\"]\nchecked = 4102444800\n").unwrap();
+        let path = vdir::state_path(account, Kind::Calendars, calendar);
+        let mut kept = State::load(&path);
+        kept.owned = Some(true);
+        kept.save(&path).unwrap();
+    }
+
+    /// The PUTs' bodies, and the sync state's agreed hash of `file` when the
+    /// first PUT is asked and at the first request after it; at that first
+    /// PUT, `then` is written into `file` (a save made while it is sent).
+    #[allow(clippy::type_complexity)]
+    fn while_sent(dav: &Dav, file: &Path, then: &str) -> (Arc<std::sync::Mutex<Vec<String>>>, Arc<std::sync::Mutex<(Option<String>, Option<String>)>>) {
+        let bodies: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let agreed: Arc<std::sync::Mutex<(Option<String>, Option<String>)>> = Arc::default();
+        let (file, then, b, a) = (file.to_path_buf(), then.to_string(), bodies.clone(), agreed.clone());
+        let mut step = 0;
+        dav.fault(move |r: &super::stand_in::Request| {
+            if r.method == "PUT" {
+                b.lock().unwrap().push(r.body.clone());
+            }
+            match step {
+                0 if r.method == "PUT" => {
+                    a.lock().unwrap().0 = vdir::agreed_hash(&file);
+                    std::fs::write(&file, &then).unwrap();
+                    step = 1;
+                }
+                1 => {
+                    a.lock().unwrap().1 = vdir::agreed_hash(&file);
+                    step = 2;
+                }
+                _ => {}
+            }
+            None
+        });
+        (bodies, agreed)
+    }
+
+    fn scheduled_meeting(uid: &str, place: &str, anne: &str, more: &str) -> String {
+        format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//tests//EN\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261105T090000Z\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning\r\nLOCATION:{place}\r\nORGANIZER:mailto:jane@example.org\r\nATTENDEE{anne}:mailto:anne@example.net\r\n{more}END:VEVENT\r\nEND:VCALENDAR\r\n")
+    }
+
+    /// R4-A: Bob added in a second save made while the forced place change
+    /// (Anne told by the server) is sent, its server answering without an
+    /// ETag. The state is saved right after the PUT went (a save then sees
+    /// it agreed); the second save, planned before, kept Anne's force: the
+    /// pull keeps that save without it (Anne's view does not change), and
+    /// the next push sends Bob alone. Anne is mailed once.
+    #[test]
+    fn a_save_during_the_push_never_sends_its_force_twice() {
+        home();
+        sioul_core::agenda::own_addresses_here(Some(&["jane@example.org"]));
+        let (dav, home) = Dav::start(&["work"]);
+        dav.schedules();
+        dav.put("work", "planning.ics", &scheduled_meeting("r4a", "Room 2", "", ""));
+        let client = client();
+        sync_one(&client, "r4a-race", &home, "work").unwrap();
+        scheduled_here("r4a-race", "work");
+        let file = folder("r4a-race", "work").join("planning.ics");
+        let forced = scheduled_meeting("r4a", "Hall", ";SCHEDULE-FORCE-SEND=REQUEST", "");
+        std::fs::write(&file, &forced).unwrap();
+        let second = scheduled_meeting("r4a", "Hall", ";SCHEDULE-FORCE-SEND=REQUEST", "ATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\n");
+        let (bodies, agreed) = while_sent(&dav, &file, &second);
+        let report = sync_one(&client, "r4a-race", &home, "work").unwrap();
+        let forced_hash = vdir::content_hash(forced.as_bytes());
+        assert_eq!(agreed.lock().unwrap().1.as_deref(), Some(forced_hash.as_str()), "saved right after the PUT went");
+        assert!(report.conflicts.is_empty() && report.meetings.is_empty(), "{report:?}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), scheduled_meeting("r4a", "Hall", "", "ATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\n"), "the second save kept, Anne's force out");
+        sync_one(&client, "r4a-race", &home, "work").unwrap();
+        sioul_core::agenda::own_addresses_here(None);
+        let bodies = bodies.lock().unwrap().clone();
+        assert_eq!(bodies.len(), 2, "{bodies:?}");
+        assert!(bodies[0].contains("SCHEDULE-FORCE-SEND=REQUEST:mailto:anne") && !bodies[1].contains("SCHEDULE-FORCE-SEND") && bodies[1].contains("bob@example.net"), "Anne asked once: {bodies:?}");
+        assert!(dav.if_matches().iter().all(|m| !m.is_empty()));
+    }
+
+    /// R4-G: Undo pressed while a forced place change is sent (its server
+    /// answering without an ETag), before the state said it agreed: the
+    /// Undo's version (the old place, no force) would tell Anne nothing, the
+    /// server not sending a place alone. It is set aside for the server's
+    /// copy, which says what Anne was told, said once as a meeting set
+    /// aside; nothing more is sent.
+    #[test]
+    fn an_undo_during_the_push_is_set_aside_for_what_the_guests_were_told() {
+        home();
+        sioul_core::agenda::own_addresses_here(Some(&["jane@example.org"]));
+        let (dav, home) = Dav::start(&["work"]);
+        dav.schedules();
+        dav.put("work", "planning.ics", &scheduled_meeting("r4g", "Room 2", "", ""));
+        let client = client();
+        sync_one(&client, "r4g-undo", &home, "work").unwrap();
+        scheduled_here("r4g-undo", "work");
+        let file = folder("r4g-undo", "work").join("planning.ics");
+        let before = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(&file, scheduled_meeting("r4g", "Hall", ";SCHEDULE-FORCE-SEND=REQUEST", "")).unwrap();
+        let (bodies, _) = while_sent(&dav, &file, &before);
+        let report = sync_one(&client, "r4g-undo", &home, "work").unwrap();
+        sioul_core::agenda::own_addresses_here(None);
+        assert_eq!((report.conflicts.len(), report.meetings.len()), (1, 1), "set aside, said: {report:?}");
+        assert!(std::fs::read_to_string(&file).unwrap().contains("LOCATION:Hall"), "what Anne was told");
+        sync_one(&client, "r4g-undo", &home, "work").unwrap();
+        assert_eq!(bodies.lock().unwrap().len(), 1, "nothing sent behind Anne's back");
+        assert!(dav.items("work")["planning.ics"].contains("LOCATION:Hall"));
+    }
+
+    /// R4-B: a refused deletion of a contact is said by its name; one of an
+    /// untitled event by its kind, never "“”".
+    #[test]
+    fn a_refused_deletion_is_said_by_its_name_or_its_kind() {
+        home();
+        for (kind, file, text, said) in [
+            (Kind::Contacts, "anne.vcf", "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:anne\r\nFN:Anne Example\r\nTEL:01 99 00 00 00\r\nEND:VCARD\r\n", ("contact", "Anne Example")),
+            (Kind::Calendars, "untitled.ics", "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:untitled\r\nDTSTAMP:20261105T090000Z\r\nDTSTART:20991110T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", ("event", "")),
+            (Kind::Calendars, "chore.ics", "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:chore\r\nDTSTAMP:20261105T090000Z\r\nEND:VTODO\r\nEND:VCALENDAR\r\n", ("task", "")),
+        ] {
+            let dir = kind.root().join("r4b-undeleted").join("book");
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut state = State::default();
+            state.items.push(ItemState { href: format!("/dav/book/{file}"), file: file.into(), etag: "\"e1\"".into(), hash: "0123".into(), ..ItemState::default() });
+            let mut report = Report::default();
+            let href = format!("/dav/book/{file}");
+            store(&dir, kind, &mut state, "http://127.0.0.1/dav/book/", (href.as_str(), "\"e2\"", text), &mut report).unwrap();
+            assert_eq!(report.undeleted, [(said.0.to_string(), said.1.to_string())]);
+            assert!(dir.join(file).exists());
+        }
+    }
+
+    /// R4-C: a guest's line with no colon, its last letter not ASCII:
+    /// hashed as it is, no panic.
+    #[test]
+    fn a_malformed_line_is_hashed_as_it_is() {
+        let text = "BEGIN:VEVENT\r\nATTENDEE;CN=Zoé\r\nORGANIZER;CN=Léa\r\nEND:VEVENT\r\n";
+        assert_eq!(sent_hash(text), sent_hash(text));
+        assert_ne!(sent_hash(text), sent_hash(&text.replace("Zoé", "Zoe")));
+    }
+
+    /// R4-D: a server whose fetch says no ETag, its listing saying one: the
+    /// listing's is kept, so an edit here goes over it and a deletion goes.
+    #[test]
+    fn a_fetch_without_its_etag_takes_the_listing_s() {
+        home();
+        let (dav, _) = Dav::start(&["work"]);
+        let base = super::stand_in::serve(Arc::new(NoEtagAtFetch(dav.clone())));
+        let home = format!("{base}/cal/");
+        dav.put("work", "lunch.ics", &event("r4d-noetag", "Lunch"));
+        let client = client();
+        sync_one(&client, "r4d-noetag", &home, "work").unwrap();
+        assert_ne!(state_of("r4d-noetag", "work").items[0].etag, "", "the listing's ETag");
+        let file = folder("r4d-noetag", "work").join("lunch.ics");
+        std::fs::write(&file, event("r4d-noetag", "Lunch at noon")).unwrap();
+        let report = sync_one(&client, "r4d-noetag", &home, "work").unwrap();
+        assert!(report.conflicts.is_empty() && dav.items("work")["lunch.ics"].contains("noon"), "{report:?} {:?}", dav.seen());
+        std::fs::remove_file(&file).unwrap();
+        let report = sync_one(&client, "r4d-noetag", &home, "work").unwrap();
+        assert!(report.undeleted.is_empty() && !file.exists() && dav.items("work").is_empty(), "{report:?} {:?}", dav.seen());
+    }
+
+    /// R4-E: a change made here while its rewrite is sent (the upgrade),
+    /// the server answering without an ETag: the pull tells the server's
+    /// copy as that rewrite (`sent`), so the change stays, and goes next.
+    #[test]
+    fn a_change_during_a_rewrite_without_its_etag_stays() {
+        home();
+        let (dav, _) = Dav::start(&["tasks"]);
+        let base = super::stand_in::serve(Arc::new(NoEtagAtPut(dav.clone())));
+        let home = format!("{base}/cal/");
+        dav.holds("tasks", &["VTODO"]);
+        dav.put("tasks", "t0.ics", &old_task("t-r4e", "Task 0"));
+        let client = client();
+        let here = folder("r4e-during", "tasks").join("t0.ics");
+        let ticked = old_task("t-r4e", "Task 0, ticked here");
+        let (path, text) = (here.clone(), ticked.clone());
+        let mut once = true;
+        dav.fault(move |r: &super::stand_in::Request| {
+            if r.method == "PUT" && std::mem::take(&mut once) {
+                std::fs::write(&path, &text).unwrap();
+            }
+            None
+        });
+        sync_one(&client, "r4e-during", &home, "tasks").unwrap();
+        assert_ne!(state_of("r4e-during", "tasks").items[0].sent, "", "what was sent, told at the pull");
+        let report = sync_one(&client, "r4e-during", &home, "tasks").unwrap();
+        assert!(report.conflicts.is_empty() && std::fs::read_to_string(&here).unwrap().contains("ticked here"), "{report:?}");
+        sync_one(&client, "r4e-during", &home, "tasks").unwrap();
+        assert!(dav.items("tasks")["t0.ics"].contains("ticked here"), "{:?}", dav.seen());
+    }
+
+    /// R8-told: a meeting you organize deleted here, its cancellation sent
+    /// to Anne already (gone from Drafts), its deletion refused (Bob
+    /// accepted there): as the door's own Undo of a deletion does, it comes
+    /// back one SEQUENCE past the cancellation, an invitation of it waits in
+    /// Drafts for Anne, and the line says so. Its cancellation still in
+    /// Drafts: withdrawn, nobody invited.
+    #[test]
+    fn a_refused_deletion_whose_cancellation_went_invites_again() {
+        home();
+        let own = vec!["jane@example.org".to_string()];
+        let dir = sioul_core::config::data_dir().join("calendars").join("r8-told").join("work");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config: sioul_core::config::Config = toml::from_str("[[account]]\nid = \"jane\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
+        let theirs = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:r8-told\r\nDTSTAMP:20261105T090000Z\r\nSEQUENCE:0\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:jane@example.org\r\nATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let anne = [sioul_core::organizer::Guest { address: "anne@example.net".into(), name: "Anne".into() }];
+        let tr = sioul_core::agenda::translator();
+        let cancel = || sioul_core::organizer::draft("jane", None, &anne, theirs, sioul_core::organizer::cancel(theirs, &["anne@example.net".into()], true).unwrap(), true, &tr);
+        // Its cancellation still in Drafts: withdrawn, nobody invited, nothing more written.
+        cancel().save().unwrap();
+        let (said, again) = refused_deletion(&dir, None, theirs, &own, &config).unwrap();
+        assert!(said.deleted && said.withdrawn == 1 && said.reinvited.is_empty() && again.is_none(), "{said:?}");
+        assert!(sioul_core::compose::Draft::by_id(&cancel().id).is_none());
+        // Sent (gone from Drafts): one SEQUENCE past it, an invitation for Anne.
+        let (said, again) = refused_deletion(&dir, None, theirs, &own, &config).unwrap();
+        let again = again.expect("written one SEQUENCE past the cancellation");
+        assert!(sioul_core::lines::unfold(&again).contains(&"SEQUENCE:2".to_string()) && said.reinvited == ["Anne"], "{said:?} {again}");
+        let invitations: Vec<sioul_core::compose::Draft> = sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("UID:r8-told") && ics.contains("METHOD:REQUEST"))).collect();
+        assert!(invitations.len() == 1 && invitations[0].account == "jane" && invitations[0].calendar.as_deref().unwrap().contains("SEQUENCE:2"), "{invitations:?}");
+        invitations.iter().for_each(sioul_core::compose::Draft::discard);
+        assert!(refused_deletion(&dir, None, &theirs.replace("ORGANIZER:mailto:jane", "ORGANIZER:mailto:boss"), &own, &config).is_none(), "someone else's meeting");
     }
 
     /// A server that only notes what it is asked, and with what login.
@@ -3799,13 +4200,16 @@ mod tests {
         dav.fault(nth(3, |r| r.method == "PUT", Fault::Drop));
         let mut state = state_of("cut-push", "four");
         let (mut refetch, mut report) = (BTreeSet::new(), Report::default());
-        assert!(push(&client, Kind::Calendars, &dir, &listed(&client, &home, "four"), &mut state, &mut refetch, &mut report).is_err());
+        let state_path = vdir::state_path("cut-push", Kind::Calendars, "four");
+        assert!(push(&client, Kind::Calendars, &dir, &listed(&client, &home, "four"), &mut state, &state_path, &mut refetch, &mut report).is_err());
         assert_eq!(state.items.len(), 4, "every item still known: {:?}", state.items);
         for (now, then) in state.items.iter().zip(&before).take(2) {
             assert_ne!(now.etag, then.etag);
             assert_eq!(Some(now.hash.clone()), hash_of(&dir.join(&now.file)));
         }
         assert_eq!(state.items[2..], before[2..]);
+        // Saved after each PUT its server took (review of round 4, R4-G): on disk as in memory.
+        assert_eq!(state_of("cut-push", "four").items, state.items);
     }
 
     /// A task as Sioul wrote them up to 27 October 2026 (fiction): the RFC

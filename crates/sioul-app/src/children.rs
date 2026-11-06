@@ -188,11 +188,13 @@ fn read_item(path: &Path) -> Option<String> {
     read_with(path, &sioul_core::meeting_lines::load(&sioul_core::meeting_lines::default_path())).map(|(text, _)| text)
 }
 
-/// Whether one of your agendas holds a stand-in of the child's event at
-/// `path` and this device keeps nothing of who takes it (a meeting made on
-/// another device): taking its last guest off here would leave its file
-/// without its kind, and your stand-in would follow its title (third review
-/// of the organizer's door, R1). The organizer's door refuses it then.
+/// Whether the child's event at `path` is a meeting whose kind and holder
+/// this device does not know (no entry here, none in its file: `read_with`):
+/// taking its last guest off here would leave its file without them, and a
+/// stand-in of it, on any device, would follow its title (third review of
+/// the organizer's door, R1; review of round 4, R1-a: a device may keep no
+/// stand-in file, and still the other's would). The organizer's door
+/// refuses it then, until the store of those lines travels.
 pub(crate) fn held_elsewhere(path: &Path) -> bool {
     let config = load_config();
     let Some(collection) = crate::pim::collection_of(path) else { return false };
@@ -200,7 +202,7 @@ pub(crate) fn held_elsewhere(path: &Path) -> bool {
         return false;
     }
     let store = sioul_core::meeting_lines::load(&sioul_core::meeting_lines::default_path());
-    read_with(path, &store).is_some_and(|(text, unknown)| unknown && config_stand_in(&config, &text))
+    read_with(path, &store).is_some_and(|(_, unknown)| unknown)
 }
 
 /// Whether the event at `path` is in a child's agenda: the door keeps an
@@ -211,9 +213,11 @@ pub(crate) fn in_child_agenda(path: &Path) -> bool {
 
 /// Sioul's own lines of an item that is no meeting any more, kept in the
 /// store, back into its file (`meeting_lines::read` reads them from there
-/// meanwhile), then its entry forgotten; its entry alone forgotten when its
-/// file holds lines of its own (written since: the file's word). Nothing
-/// for a meeting, or an item with no entry. Whether its file was written.
+/// meanwhile), name by name: a line its file holds of a name wins (a holder
+/// written on another device since), the entry fills the names it lacks
+/// (the kind this device kept: review of round 4, R1-a); then its entry is
+/// forgotten, never before. Nothing for a meeting, or an item with no
+/// entry. Whether its file was written.
 fn lines_back(path: &Path, store: &sioul_core::meeting_lines::MeetingLines) -> bool {
     let Ok(file) = std::fs::read_to_string(path) else { return false };
     let uid = sioul_core::meeting_lines::uid_of(&file);
@@ -222,11 +226,7 @@ fn lines_back(path: &Path, store: &sioul_core::meeting_lines::MeetingLines) -> b
         return false;
     }
     let at = sioul_core::meeting_lines::default_path();
-    if !sioul_core::organizer::aside_of(&file).lines.is_empty() {
-        let _ = sioul_core::meeting_lines::forget(&at, &uid);
-        return false;
-    }
-    let back = sioul_core::meeting_lines::merged_with(&file, kept);
+    let back = sioul_core::meeting_lines::filled(&file, kept);
     if back != file
         && let Err(e) = vdir::write_item(path, &back)
     {
@@ -669,7 +669,7 @@ fn card_as(path: &Path, start: i64, own: &[String]) -> Option<serde_json::Value>
     }
     let store = sioul_core::meeting_lines::load(&sioul_core::meeting_lines::default_path());
     let (text, unknown) = read_with(path, &store)?;
-    // Who takes it kept on another device (R1): said, nothing to answer here.
+    // Who takes it not known here (R1): said, nothing to answer here.
     if unknown {
         return Some(serde_json::json!({ "kind": "", "kinds": [], "state": "unknown", "line": tr().text("holder-line-unknown", None), "back": "", "back_who": "", "child": child_name(&agenda), "other": agenda.parent, "proposal": "", "why": "", "busy": "", "writable": false }));
     }
@@ -1228,6 +1228,19 @@ mod tests {
         written.drafts.iter().filter_map(|id| sioul_core::compose::Draft::by_id(id)).for_each(|d| d.discard());
         assert_eq!(sioul_core::meeting_lines::load(&store).events.get("r1-dentist"), Some(&sioul_core::meeting_lines::Kept::default()));
         assert_eq!(card_as(&dentist, 0, &own).unwrap()["state"], "nobody", "known here: nobody takes it yet");
+        // Review of round 4, R1-a: a child's meeting kept nowhere here and holding nothing of
+        // Sioul's, no stand-in of it on this device (one may be on another): its last guest stays.
+        let school = tom.dir.join("r1-school.ics");
+        let lesson = sioul_core::organizer::set_aside(&child.replace("UID:r1-psy", "UID:r1-school").replace("Tom: psychiatrist", "Swimming").replace("END:VEVENT", "ORGANIZER;CN=Alex:mailto:alex@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:coach@example.net\r\nEND:VEVENT")).0;
+        vdir::store_item(&school, &lesson).unwrap();
+        let lesson = std::fs::read_to_string(&school).unwrap();
+        assert!(held_elsewhere(&school) && card_as(&school, 0, &own).unwrap()["state"] == "unknown");
+        assert_eq!(crate::organized::plan(&school, Some(&lesson), &lesson, Some(&[]), &tom).err(), Some(tr().text("invite-holder-elsewhere", None)));
+        // R1-b: someone else's meeting in Tom's agenda whose file says who takes it: read as it says.
+        let visit = tom.dir.join("r1-visit.ics");
+        let theirs = holders::with_taken(&child.replace("UID:r1-psy", "UID:r1-visit").replace("END:VEVENT", "ORGANIZER:mailto:office@example.net\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:alex@example.org\r\nEND:VEVENT"), None, &Taken { to: Some(Holder { name: "Alex".into(), address: "alex@example.org".into(), answer: Answer::Accepted, since: Some(now), back: false }), back: None }, &zone).unwrap();
+        vdir::store_item(&visit, &theirs).unwrap();
+        assert_eq!(card_as(&visit, 0, &own).unwrap()["state"], "yours", "its file says it: known");
         sioul_core::meeting_lines::path_here(None);
         sioul_core::agenda::open_organizer_door_here(false);
         sioul_core::agenda::own_addresses_here(None);

@@ -882,6 +882,39 @@ pub fn with_force_send(text: &str, to: &[String]) -> (String, Vec<String>) {
     if forced.is_empty() { (text.to_string(), forced) } else { (lines::fold(&source), forced) }
 }
 
+/// A meeting you organize changed here (`mine`) while its server took an
+/// earlier write of it without saying its ETag, so that the change was
+/// planned on a view older than the server's copy (`server`, what its
+/// guests were told; the sync's `store`, third review's follow-up, R4-A and
+/// R4-G): `mine` as it may go over that copy, a force on a guest whose view
+/// does not change taken out (the server sent that change already); None
+/// when it may not, because a guest the server tells (`server_tells`, not
+/// left to you, in both versions) would see a change the server does not
+/// send (no significant change, no force for them), or an older version of
+/// their times than the server's (an Undo of a write it had sent): that
+/// change is set aside for the server's copy, which says what they were told.
+pub fn kept_over_its_server(server: &str, mine: &str, server_tells: bool) -> Option<String> {
+    let forced = forced_of(mine);
+    let kept: Vec<String> = forced.iter().filter(|g| told_guest(server, mine, g)).cloned().collect();
+    let text = if kept.len() == forced.len() { mine.to_string() } else { with_force_send(&without_force_send(mine), &kept).0 };
+    if !server_tells {
+        return Some(text);
+    }
+    let significant = significant(server, &text);
+    let there = every_guest(server);
+    for guest in every_guest(&text).iter().filter(|g| there.iter().any(|t| t.is(&g.address))) {
+        if teller(&text, &guest.address, Sender::Server) != Sender::Server || !told_guest(server, &text, &guest.address) {
+            continue;
+        }
+        let older = !version_holds(server, &text, &guest.address, |now, said| now <= said);
+        let forced_here = kept.iter().any(|f| guest.is(f));
+        if older || (!significant && !forced_here) {
+            return None;
+        }
+    }
+    Some(text)
+}
+
 /// The VTIMEZONEs of a calendar's text, whole.
 fn zones(source: &[String]) -> Vec<String> {
     let (mut out, mut inside) = (Vec::new(), false);
@@ -1978,6 +2011,30 @@ mod tests {
         let back = past(&write1, &write2).unwrap();
         assert!(forced_of(&back).is_empty() && !un(&back).contains("FORCE"), "{back}");
         assert!(!told_guest(&write2, &back, "anne@example.net") && un(&back).contains("LOCATION:Hall"), "Anne hears nothing of it");
+    }
+
+    /// Review of round 4, R4-A and R4-G: a meeting changed here on a view
+    /// older than its server's copy (its forced write taken without an
+    /// ETag): a second save adding Bob keeps going without Anne's force,
+    /// Anne's view the same; an Undo of the place, which the server would not send
+    /// Anne (no significant change, no force), or a version of Anne's time
+    /// older than the server's, does not go (set aside); a significant change
+    /// does; where the server tells nobody, everything goes.
+    #[test]
+    fn a_change_on_a_stale_view_goes_only_as_its_guests_would_hear_it() {
+        let told = event("SEQUENCE:3\r\nLOCATION:Hall\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;SCHEDULE-STATUS=1.2:mailto:anne@example.net\r\n").replace("SEQUENCE:2\r\n", "");
+        let second = told.replace("ATTENDEE;SCHEDULE-STATUS=1.2:mailto:anne", "ATTENDEE;SCHEDULE-FORCE-SEND=REQUEST:mailto:anne").replace("BEGIN:VALARM", "ATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\nBEGIN:VALARM");
+        let kept = kept_over_its_server(&told, &second, true).expect("Bob's save goes");
+        assert!(!un(&kept).contains("SCHEDULE-FORCE-SEND") && un(&kept).contains("bob@example.net"), "{kept}");
+        let undo = told.replace("LOCATION:Hall", "LOCATION:Room 2");
+        assert_eq!(kept_over_its_server(&told, &undo, true), None, "a place alone: never sent to Anne");
+        let older = told.replace("SEQUENCE:3", "SEQUENCE:2").replace("DTSTART:20991110T090000Z", "DTSTART:20991110T080000Z");
+        assert_eq!(kept_over_its_server(&told, &older, true), None, "an older version of Anne's time");
+        let moved = told.replace("SEQUENCE:3", "SEQUENCE:4").replace("DTSTART:20991110T090000Z", "DTSTART:20991110T080000Z");
+        assert_eq!(kept_over_its_server(&told, &moved, true).as_deref(), Some(moved.as_str()), "a new time the server sends");
+        let (forced, _) = with_force_send(&undo, &["anne@example.net".into()]);
+        assert!(kept_over_its_server(&told, &forced, true).is_some(), "asked of the server: Anne hears it");
+        assert_eq!(kept_over_its_server(&told, &undo, false).as_deref(), Some(undo.as_str()), "no server tells: your drafts do");
     }
 
     /// R10: a narrow no-break space typed in place of a space (French

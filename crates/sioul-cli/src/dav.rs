@@ -250,15 +250,20 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
     for conflict in &report.conflicts {
         println!("{}", s.say("dav-conflict", &[("path", crate::one_line(&conflict.display().to_string()))]));
     }
-    for summary in &report.undeleted {
-        println!("{}", s.say("dav-undeleted", &[("summary", crate::one_line(summary))]));
+    for (kind, title) in &report.undeleted {
+        let said = if title.trim().is_empty() { s.say("dav-undeleted-untitled", &[("kind", kind.clone())]) } else { s.say("dav-undeleted", &[("summary", crate::one_line(title))]) };
+        println!("{said}");
     }
     for (summary, kept) in &report.answered {
         println!("{}", s.say("dav-answered-elsewhere", &[("summary", crate::one_line(summary)), ("answer", kept.to_ascii_lowercase())]));
     }
     // A meeting you organize set aside for its server's copy: what its guests still need to hear, said once.
     for meeting in &report.meetings {
-        let mut said = vec![s.say(if meeting.deleted { "dav-undeleted" } else { "dav-meeting-set-aside" }, &[("summary", crate::one_line(&meeting.summary))])];
+        let mut said = vec![match (meeting.deleted, meeting.summary.trim().is_empty()) {
+            (true, true) => s.say("dav-undeleted-untitled", &[("kind", "event".to_string())]),
+            (true, false) => s.say("dav-undeleted", &[("summary", crate::one_line(&meeting.summary))]),
+            (false, _) => s.say("dav-meeting-set-aside", &[("summary", crate::one_line(&meeting.summary))]),
+        }];
         if meeting.withdrawn > 0 {
             said.push(s.say("dav-withdrawn", &[]));
         }
@@ -267,6 +272,9 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
         }
         if !meeting.served.is_empty() {
             said.push(s.say("dav-served-untold", &[("who", crate::one_line(&meeting.served.join(", ")))]));
+        }
+        if !meeting.reinvited.is_empty() {
+            said.push(s.say("dav-cancel-heard", &[("who", crate::one_line(&meeting.reinvited.join(", ")))]));
         }
         println!("{}", said.join(" "));
     }

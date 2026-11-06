@@ -233,7 +233,7 @@ fn status_of(report: &dav::Report, account: &str, time: &str) -> (String, bool) 
 /// taken out of Drafts; to whom an invitation of the server's version waits
 /// there; the guests its server tells, who never heard your change.
 fn meeting_set_aside_line(meeting: &dav::MeetingSetAside) -> String {
-    let mut said = vec![say(if meeting.deleted { "dav-undeleted" } else { "dav-meeting-set-aside" }, &[("summary", meeting.summary.clone())])];
+    let mut said = vec![undeleted_or_set_aside(meeting)];
     if meeting.withdrawn > 0 {
         said.push(tr().text("dav-withdrawn", None));
     }
@@ -243,7 +243,27 @@ fn meeting_set_aside_line(meeting: &dav::MeetingSetAside) -> String {
     if !meeting.served.is_empty() {
         said.push(say("dav-served-untold", &[("who", meeting.served.join(", "))]));
     }
+    if !meeting.reinvited.is_empty() {
+        said.push(say("dav-cancel-heard", &[("who", meeting.reinvited.join(", "))]));
+    }
     said.join(" ")
+}
+
+/// The first sentence of a meeting's line: its deletion refused, or its
+/// change set aside; one with no title said by its kind, never "“”" (review
+/// of round 4, R4-B).
+fn undeleted_or_set_aside(meeting: &dav::MeetingSetAside) -> String {
+    match (meeting.deleted, meeting.summary.trim().is_empty()) {
+        (true, true) => undeleted_line("event", ""),
+        (true, false) => undeleted_line("event", &meeting.summary),
+        (false, _) => say("dav-meeting-set-aside", &[("summary", meeting.summary.clone())]),
+    }
+}
+
+/// An item whose deletion its server refused, back: by its title, else by
+/// its kind ("event", "task", "contact").
+fn undeleted_line(kind: &str, title: &str) -> String {
+    if title.trim().is_empty() { say("dav-undeleted-untitled", &[("kind", kind.to_string())]) } else { say("dav-undeleted", &[("summary", title.to_string())]) }
 }
 
 /// What a sync said: the account's status, conflicts in the status line, the pages again.
@@ -274,8 +294,8 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
                 tell(qt, shared, tr().text("dav-conflict", None));
             }
             // A deletion its server refused (it changed there first): the item is back, said once (R8).
-            for summary in &report.undeleted {
-                tell(qt, shared, say("dav-undeleted", &[("summary", summary.clone())]));
+            for (kind, title) in &report.undeleted {
+                tell(qt, shared, undeleted_line(kind, title));
             }
             // An invitation you had answered otherwise on another device: its answer kept, said once.
             for (summary, kept) in report.answered {
@@ -2174,13 +2194,20 @@ mod tests {
         assert_eq!(guest_name(&person, &card), "Jeanne Exemple");
         assert_eq!(guest_name(&sioul_core::persons::Person { full_name: String::new(), ..person.clone() }, &card), "Jeanne E.", "the card's, never the short name");
         assert_eq!(guest_name(&sioul_core::persons::Person { full_name: String::new(), ..person }, &contacts::Contact::default()), "");
-        let line = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: vec!["Anne".into()], served: vec!["Bob".into()], deleted: false });
+        let line = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: vec!["Anne".into()], served: vec!["Bob".into()], ..Default::default() });
         let parts = [say("dav-meeting-set-aside", &[("summary", "Planning".into())]), tr().text("dav-withdrawn", None), say("dav-reinvited", &[("who", "Anne".into())]), say("dav-served-untold", &[("who", "Bob".into())])];
         assert_eq!(line, parts.join(" "));
         assert_eq!(meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), ..Default::default() }), parts[0], "nothing more to say");
         // Its deletion refused by its server (the third review's R8): back, its cancellation withdrawn, said once.
-        let back = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 1, deleted: true, ..Default::default() });
-        assert_eq!(back, [say("dav-undeleted", &[("summary", "Planning".into())]), tr().text("dav-withdrawn", None)].join(" "));
+        let back = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 1, deleted: true, reinvited: vec!["Anne".into()], ..Default::default() });
+        assert_eq!(back, [say("dav-undeleted", &[("summary", "Planning".into())]), tr().text("dav-withdrawn", None), say("dav-cancel-heard", &[("who", "Anne".into())])].join(" "));
+        // No title: said by its kind, never "“”" (review of round 4, R4-B).
+        let untitled = meeting_set_aside_line(&dav::MeetingSetAside { deleted: true, ..Default::default() });
+        assert!(!untitled.contains("“”") && untitled == say("dav-undeleted-untitled", &[("kind", "event".into())]), "{untitled}");
+        for kind in ["event", "task", "contact"] {
+            let line = undeleted_line(kind, "");
+            assert!(!line.is_empty() && !line.contains("“”") && !line.contains('{'), "{kind}: {line}");
+        }
     }
 
     /// An appointment with a bus before it, made a meeting you organize

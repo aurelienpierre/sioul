@@ -1182,6 +1182,12 @@ dav-reinvited = Une invitation avec la version du serveur attend dans les brouil
 dav-served-untold = Votre serveur n’a jamais eu votre changement : il n’en a rien dit à { $who }.
 dav-conflict = Modifié des deux côtés : la version du serveur est gardée ; la vôtre est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes), à remettre si vous la préférez.
 dav-undeleted = « { $summary } » a changé sur son serveur avant que votre suppression lui parvienne : il est de retour. Supprimez-le à nouveau si vous n’en voulez plus.
+dav-undeleted-untitled = { $kind ->
+        [contact] Un contact sans nom a changé sur son serveur avant que votre suppression lui parvienne : il est de retour. Supprimez-le à nouveau si vous n’en voulez plus.
+        [task] Une tâche sans titre a changé sur son serveur avant que votre suppression lui parvienne : elle est de retour. Supprimez-la à nouveau si vous n’en voulez plus.
+       *[event] Un événement sans titre a changé sur son serveur avant que votre suppression lui parvienne : il est de retour. Supprimez-le à nouveau si vous n’en voulez plus.
+    }
+dav-cancel-heard = { $who } a déjà reçu son annulation : une invitation attend dans les brouillons.
 dav-answered-elsewhere = { $answer ->
         [accepted] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : accepté. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
         [tentative] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : peut-être. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
@@ -4215,7 +4221,7 @@ invite-ask-drafts = Sioul rédige les messages à { $who } ; vous les envoyez 
 invite-ask-served = Votre serveur prévient { $who }.
 invite-server-unknown = Sioul ne sait pas encore si le serveur de cet agenda prévient lui-même les invités : réessayez après sa prochaine synchronisation.
 invite-marks-mixed = { $who } est prévenu de certaines dates de cette réunion par votre serveur, et des autres par vous : changez-la dans l’application qui l’a faite, pour que { $who } en soit prévenu une seule fois.
-invite-holder-elsewhere = Qui se charge de cet événement et son type sont gardés sur votre autre appareil, celui où ses invités ont été ajoutés : retirez-y son dernier invité.
+invite-holder-elsewhere = Qui se charge de cet événement n’est pas connu sur cet appareil, aussi son dernier invité reste ici. Retirez-le là où sa carte dit qui s’en charge.
 invite-undo-served = Votre serveur a prévenu les invités ; changez-la de nouveau pour leur dire autre chose.
 invite-save = Enregistrer
 invite-done-server = Votre serveur prévient les invités.
@@ -4488,7 +4494,7 @@ holder-follow-up-dentist = Prendre le prochain rendez-vous de dentiste de { $nam
 holder-follow-up-health = Prendre le prochain bilan de santé de { $name }
 holder-follow-up-other = Prendre le prochain rendez-vous de { $name } : { $kind }
 holder-not-child = Ce n’est pas dans l’agenda d’un enfant.
-holder-unknown = Qui s’en charge n’est pas connu sur cet appareil : répondez sur l’appareil où ses invités ont été ajoutés.
+holder-unknown = Qui s’en charge n’est pas connu sur cet appareil, aussi rien n’en est changé ici. Répondez là où sa carte dit qui s’en charge.
 holder-no-parent = Écrivez d’abord l’adresse de l’autre parent dans les réglages de cet agenda (Agenda ⚙ ▸ Vos agendas).
 holder-no-address = Donnez d’abord une adresse à l’un de vos comptes : elle dit que c’est vous qui vous en chargez.
 holder-invite-details = { $child } : « { $title } », { $when }. Répondez à cette invitation pour dire si vous vous en chargez.
