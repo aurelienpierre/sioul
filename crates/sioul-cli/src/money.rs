@@ -419,8 +419,8 @@ pub(crate) fn receipts(s: &Session, args: ReceiptsArgs) -> Result<(), String> {
         None => return Err(s.tr.text("receipts-which-budget", None)),
     };
     let register = match (args.from.as_deref().map(day).transpose()?, args.to.as_deref().map(day).transpose()?) {
-        (Some(from), Some(to)) => sioul_core::receipts::register(&books, &budget.id, from, to, None),
-        (Some(from), None) => sioul_core::receipts::register(&books, &budget.id, from, today, None),
+        (Some(from), Some(to)) => sioul_core::receipts::register_rows(&books, &budget.id, from, to, None),
+        (Some(from), None) => sioul_core::receipts::register_rows(&books, &budget.id, from, today, None),
         (None, _) => sioul_core::receipts::of_period(&books, budget, today),
     };
     if args.csv {

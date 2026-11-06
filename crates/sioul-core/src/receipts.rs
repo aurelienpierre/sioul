@@ -124,7 +124,7 @@ fn share(m: &Movement, budget: &str) -> Option<Money> {
 /// What `budget` received from `from` to `to`, each receipt by the day it
 /// was paid: the money in that has come (done), each payment a payout
 /// carried by its own day and client; the oldest first.
-pub fn register(books: &Books, budget: &str, from: Date, to: Date, due: Option<Date>) -> Register {
+pub fn register_rows(books: &Books, budget: &str, from: Date, to: Date, due: Option<Date>) -> Register {
     let mut receipts: Vec<Receipt> = Vec::new();
     let within = |d: Date| d >= from && d <= to;
     for m in books.movements.iter().filter(|m| m.way == Way::In && matches!(m.state, State::Done) && !m.sources.iter().any(|s| s.kind == Kind::SetAside)) {
@@ -168,7 +168,7 @@ pub fn register(books: &Books, budget: &str, from: Date, to: Date, due: Option<D
 /// The register of the declaration period that holds `day`.
 pub fn of_period(books: &Books, budget: &Budget, day: Date) -> Register {
     let p = period_of(budget, day);
-    register(books, &budget.id, p.from, p.to, Some(p.due))
+    register_rows(books, &budget.id, p.from, p.to, Some(p.due))
 }
 
 fn long_day(tr: &Translator, d: Date) -> String {

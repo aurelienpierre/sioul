@@ -73,7 +73,7 @@ fn the_history_holds_every_money_mail_once() {
     message(&root, 5, &mail("n1@shop.example", "Boutique <news@shop.example>", "Black Friday : 20 € offerts", "Thu, 08 Oct 2026 10:00:00 +0200", "Total 20,00 €"));
     message(&root.join(".Sent"), 6, &mail("i1@example.org", "Jane <jane@example.org>", "Invoice 2026-042", "Fri, 09 Oct 2026 10:00:00 +0200", "Please find invoice 2026-042.\r\nTotal 480,00 €"));
     message(&root.join(".Junk"), 7, &mail("j1@scam.example", "Banque <alerte@scam.example>", "Confirmation de paiement", "Sat, 10 Oct 2026 10:00:00 +0200", "Vous avez payé 999,00 €."));
-    let config: crate::config::Config = toml::from_str(&format!("language = \"fr\"\n[[account]]\nid = \"{account}\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nmaildir = \"{}\"\n", root.display())).unwrap();
+    let config: crate::config::Config = toml::from_str(&format!("language = \"fr\"\n[[account]]\nid = \"{account}\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nmaildir = '{}'\n", root.display())).unwrap();
     let ledger: Ledger = toml::from_str("[[budget]]\nid = 'home'\ntitle = 'Home'\nperiod = 'month'\n[[line]]\nid = 'r'\nbudget = 'home'\ndate = 2026-10-06\namount = -387\nlabel = 'Exemple Retail'\nlinks = ['mid:r1@shop.example']\n").unwrap();
     let (bank, store) = (crate::bank::Bank::default(), Store::default());
     let words = crate::words::Words::of(&config);

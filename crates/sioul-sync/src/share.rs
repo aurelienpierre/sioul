@@ -751,8 +751,10 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // Your word on mail's topics, each device's own log, a line each, every device's read:
         // travels once every other device says it has the store (`topics_shared`).
         folder("settings", TOPICS, s.join("topics").join(sioul_core::topics::labels::FOLDER), Shape::Lines, &[]),
-        // The topics' table, the same way.
-        file("settings", TOPICS_TABLE, d.join("topics").join("table.bin"), Shape::Files),
+        // The topics' table, the same way, in the spam part beside the spam
+        // filter's table: both come from the weekly training, and their files
+        // are sealed apart in a part every sweep knows of (`FILE_PARTS`).
+        file("spam", TOPICS_TABLE, d.join("topics").join("table.bin"), Shape::Files),
         file("health", "data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
         // Each day's own meals, naps and nights: one entry per field of a block of a day.
         file("health", "data/health-days.toml", d.join("health-days.toml"), Shape::Toml(&PLAIN_RULES)),

@@ -353,7 +353,7 @@ mod tests {
         }
         for (n, subject) in ["About money, again", "A picnic", "More money"].iter().enumerate() {
             let raw = format!("Message-ID: <p{n}@example.org>\r\nFrom: Lou <lou@example.org>\r\nSubject: {subject}\r\nDate: Thu, 01 Oct 2026 10:0{n}:00 +0200\r\n\r\nText.\r\n");
-            std::fs::write(root.join("cur").join(format!("17770000{n}0.U1-{n}.stand:2,S")), raw).unwrap();
+            std::fs::write(root.join("cur").join(format!("17770000{n}0.U1-{n}.stand{}2,S", crate::maildir::INFO)), raw).unwrap();
         }
         let reader = Lengths { stamp: "one", read: std::cell::Cell::new(0) };
         let first = folder(&reader, &account, &root, "", 1);
