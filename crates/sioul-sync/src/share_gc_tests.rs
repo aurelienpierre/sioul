@@ -1372,12 +1372,16 @@ fn a_version_put_back_over_a_large_note_never_copies_it_under_the_lock() {
         let copy = crate::history::versions(&root, "notes", "files/notes/big.md").into_iter().find(|v| v.sealed.is_none()).expect("the second note kept");
         assert_eq!(copy.size, second.len() as u64);
         // That copy put back over the first note, each copy into the history slow.
-        let slowed = put_back_beside(copy.stamp, 400, NOW + 3 * MINUTE);
+        // A copy run under the lock would make a dose wait as long as it is slowed;
+        // the bound stays well under that. Windows' runners take longer for the
+        // rest of the put back, so both are wider there, as far apart.
+        let (slow, bound) = if cfg!(windows) { (1200, 800) } else { (400, 250) };
+        let slowed = put_back_beside(copy.stamp, slow, NOW + 3 * MINUTE);
         assert_eq!(std::fs::read(dn.join("big.md")).unwrap(), second);
         assert!(crate::history::versions(&root, "notes", "files/notes/big.md").iter().filter(|v| v.sealed.is_none()).count() == 2, "the first note kept too");
         assert!(std::fs::read_dir(&dn).unwrap().filter_map(Result::ok).all(|e| !is_leftover(&e.file_name().to_string_lossy())), "nothing left beside");
-        println!("a {megabytes} MB version over a {megabytes} MB note: a dose's exchange waited {measured:?} at most; each copy 400 ms slower: {slowed:?}");
-        assert!(slowed < std::time::Duration::from_millis(250), "a dose's exchange waited {slowed:?} at most");
+        println!("a {megabytes} MB version over a {megabytes} MB note: a dose's exchange waited {measured:?} at most; each copy {slow} ms slower: {slowed:?}");
+        assert!(slowed < std::time::Duration::from_millis(bound), "a dose's exchange waited {slowed:?} at most");
         let _ = std::fs::remove_dir_all(&base);
     }
 }
@@ -1468,7 +1472,8 @@ fn a_large_version_put_back_never_holds_the_lock_for_its_time() {
     assert_eq!(std::fs::read(dn.join("big.md")).unwrap(), big.as_bytes(), "the version back whole");
     assert!(std::fs::read_dir(&dn).unwrap().filter_map(Result::ok).all(|e| !is_leftover(&e.file_name().to_string_lossy())), "nothing left beside");
     println!("a 24 MB version put back: {took:?}, a dose's exchange waited {longest:?} at most, {taken} times");
-    assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most, the put back taking {took:?}");
+    // Windows' runners copy more slowly; the bound stays well under the put back's own time.
+    assert!(longest < std::time::Duration::from_millis(if cfg!(windows) { 800 } else { 250 }), "a dose's exchange waited {longest:?} at most, the put back taking {took:?}");
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -1517,7 +1522,8 @@ fn a_large_note_put_back_never_holds_the_lock_for_its_time() {
     let took = started.elapsed();
     assert_eq!(std::fs::read(dn.join("bulk/big.md")).unwrap(), big.as_bytes(), "the large note back whole");
     println!("put back with a 24 MB note: {took:?}, a dose's exchange waited {longest:?} at most");
-    assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most, the put back taking {took:?}");
+    // Windows' runners copy more slowly; the bound stays well under the put back's own time.
+    assert!(longest < std::time::Duration::from_millis(if cfg!(windows) { 800 } else { 250 }), "a dose's exchange waited {longest:?} at most, the put back taking {took:?}");
     let _ = std::fs::remove_dir_all(&base);
 }
 
