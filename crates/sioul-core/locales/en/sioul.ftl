@@ -4170,7 +4170,6 @@ event-you-tentative = You answered maybe.
 event-you-needs-action = You have not answered yet.
 event-organizer-role = organises
 event-optional = optional
-map-show = Map
 map-directions = Directions
 map-said = To draw the map, the address goes to OpenStreetMap's servers.
 map-finding = Finding the place…

@@ -4197,7 +4197,6 @@ event-you-tentative = Vous avez répondu peut-être.
 event-you-needs-action = Vous n’avez pas encore répondu.
 event-organizer-role = organise
 event-optional = facultatif
-map-show = Carte
 map-directions = Itinéraire
 map-said = Pour dessiner la carte, l’adresse part vers les serveurs d’OpenStreetMap.
 map-finding = Recherche du lieu…
