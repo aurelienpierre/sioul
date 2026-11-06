@@ -227,6 +227,7 @@ Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se d�
 - **Le plan place la tâche dans son créneau**, quoi qu’il y ait là, et autour ce qui tient encore. Le créneau compte une fois, comme la tâche : jamais comme un événement en plus.
 - **Déplacez-le** avec **Changer…**, en faisant glisser l’étape dans [la journée](#the-day), ou en faisant glisser le créneau dans l’[agenda](agenda.md#tasks-pinned-to-a-time) ou dans tout autre programme d’agenda : la tâche suit, à la synchronisation suivante pour un autre programme. Supprimez le créneau n’importe où, et le plan replace la tâche.
 - **Laisser le plan la placer** retire le créneau ; **Annuler** attend dix secondes.
+- **Son jour et son heure** se règlent comme ceux d’un événement, au clavier seul ou au pointeur seul ([Un jour et une heure](agenda.md#a-day-and-an-hour)).
 - **Le créneau passe et la tâche n’est pas faite** : le plan la replace. Le créneau reste dans votre agenda tel qu’il était ; rien n’est dit, rien n’est compté.
 - **Faite ou abandonnée** : un créneau encore à venir part, son temps libéré ; un créneau en cours finit à ce moment-là ; un créneau passé reste, la trace du moment où le travail a été fait. Une tâche supprimée emporte ses créneaux à venir, et **Annuler** ramène les deux.
 - **Une tâche qui revient** : un créneau fixe un seul de ses tours ; le tour suivant est planifié comme d’habitude.
@@ -362,8 +363,9 @@ Le ⚙ en haut de la page :
 - Une seule étape suivante, petite, avec un quand : les plans « Quand X, je fais Y » augmentent le passage à l’acte (Gollwitzer & Sheeran 2006). Trop d’options pèsent surtout quand choisir est difficile (Chernev, Böckenholt & Goodman 2015).
 - Rien en retard : se pardonner d’avoir procrastiné a réduit la procrastination ensuite (Wohl, Pychyl & Bennett 2010).
 - Découper une tâche permet de la commencer, et rend son estimation plus juste (Kruger & Evans 2004).
-- Le temps rendu visible, sans tic-tac : des minuteurs visuels ont aidé des enfants avec un TDAH à gérer le temps (Wennberg et al. 2018).
+- Le temps rendu visible, sans tic-tac : un entraînement avec minuteurs visuels et plannings a aidé des enfants avec un TDAH à gérer le temps, le tout testé ensemble (Wennberg et al. 2018).
 - Une ligne pour noter où l’on s’est arrêté libère l’esprit pour la suite (Leroy & Glomb 2018).
+- Un jour et une heure au clavier seul ou au pointeur seul : aucune étude ne compare les façons de régler une heure, le panneau est donc une déduction, appuyée sur ce que demandent les WCAG 2.2 ([constat 70, en anglais](https://sioul.aurelienpierre.com/dev/research.html)).
 - Certains jours, on peut moins, et il n’y a que vous pour savoir lesquels (Raymaker et al. 2020 ; Chen, Meng & Nie 2026).
 - Clore le travail en donnant une place à ce qui reste aide à le laisser le soir (Smit 2016), et une liste pour le lendemain écrite au coucher a aidé à s’endormir plus vite (Scullin et al. 2018). Une réponse par jour sur la façon dont il s’est passé est ce qu’il faut à un plan pour apprendre ce qu’une journée peut tenir, plutôt que ce que vous faites d’habitude.
 

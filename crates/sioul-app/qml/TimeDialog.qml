@@ -175,6 +175,7 @@ SafeDialog {
             sioul: dialog.sioul
             locale: Qt.locale(dialog.sioul.text("qt-locale"))
             pickLabel: dialog.sioul.text("event-pick-day")
+            hourField: at
         }
         Label {
             text: dialog.sioul.text("time-field-from")
@@ -187,7 +188,8 @@ SafeDialog {
             ClockField {
                 id: at
 
-                Layout.preferredWidth: 70
+                theme: dialog.theme
+                sioul: dialog.sioul
                 inputMask: "99:99;_"
                 inputMethodHints: Qt.ImhTime
                 Accessible.name: dialog.sioul.text("time-field-from")
@@ -202,7 +204,8 @@ SafeDialog {
                 // An end: Up stops at 23:55 (ClockField's `end`).
                 end: true
 
-                Layout.preferredWidth: 70
+                theme: dialog.theme
+                sioul: dialog.sioul
                 inputMask: "99:99;_"
                 inputMethodHints: Qt.ImhTime
                 Accessible.name: dialog.sioul.text("time-field-to")

@@ -93,7 +93,8 @@ SafeDialog {
                 ClockField {
                     id: when
 
-                    Layout.preferredWidth: 70
+                    theme: dialog.theme
+                    sioul: dialog.sioul
                     inputMethodHints: Qt.ImhTime
                     Accessible.name: dialog.sioul.text("need-move-to")
                     onAccepted: dialog.move(0, when.text)

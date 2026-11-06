@@ -348,7 +348,8 @@ ColumnLayout {
             color: section.theme.muted
         }
         ClockField {
-            Layout.preferredWidth: 70
+            theme: section.theme
+            sioul: section.sioul
             inputMethodHints: Qt.ImhTime
             text: timeField.value
             Accessible.name: timeField.label

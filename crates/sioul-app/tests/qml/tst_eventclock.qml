@@ -6,7 +6,9 @@
 // another zone found by its name (ZonePicker.qml); on another clock, the
 // line beside the times says them here (`agenda::clock_line`, its words
 // tested in Rust); an edit keeps the event's own clock; a whole day has
-// none. Run by tools/qml-test.sh.
+// none. Its times, by keys or by pointer alone: a moved start keeps the event's
+// length, a day picked moves on to the hour beside it, Esc in a panel leaves the
+// form open. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -219,6 +221,171 @@ Item {
             verify(!box().visible, "a whole day has no clock")
             dialog.save()
             compare(mock.saved.edit.clock, "")
+        }
+
+        function startTime() {
+            return find(dialog.contentItem, "eventStartTime")
+        }
+
+        function endTime() {
+            return find(dialog.contentItem, "eventEndTime")
+        }
+
+        function startDay() {
+            return find(dialog.contentItem, "eventStartDay")
+        }
+
+        function endDay() {
+            return find(dialog.contentItem, "eventEndDay")
+        }
+
+        // A new event of an hour and a half, at 10:00 on a day.
+        function openNew() {
+            dialog.edit("", "2026-11-04", 10)
+            tryCompare(dialog, "opened", true)
+            dialog.fill("Board", "10:00", "11:30", "")
+        }
+
+        function type(keys) {
+            for (const key of keys)
+                keyClick(key)
+        }
+
+        function dayCell(month, day) {
+            const kids = month.contentItem.children
+            for (let i = 0; i < kids.length; ++i)
+                if (kids[i].model && kids[i].model.day === day && kids[i].model.month === month.month)
+                    return kids[i]
+            return null
+        }
+
+        // Moved by typing, Up, the panel or Esc: the end follows, the event as long.
+        function test_a_moved_start_keeps_the_length() {
+            openNew()
+            startTime().forceActiveFocus(Qt.TabFocusReason)
+            type("1400")
+            compare(endTime().text, "15:30", "typed")
+            keyClick(Qt.Key_Up)
+            compare(startTime().text, "14:05")
+            compare(endTime().text, "15:35", "stepped")
+            keyClick(Qt.Key_PageDown)
+            compare(endTime().text, "14:35", "by an hour")
+            mouseClick(find(startTime(), "clockButton"))
+            mouseClick(find(startTime().panel.contentItem, "clockHour9"))
+            compare(startTime().text, "09:05")
+            compare(endTime().text, "10:35", "by a click")
+            keyClick(Qt.Key_Escape)
+            compare(startTime().text, "13:05", "Esc gives the start back")
+            compare(endTime().text, "14:35", "and the end with it")
+        }
+
+        // Half typed, the length waits; `14` then Tab says the hour, and the end follows.
+        function test_half_typed_keeps_the_end_until_it_reads() {
+            openNew()
+            startTime().forceActiveFocus(Qt.TabFocusReason)
+            type("14")
+            compare(endTime().text, "11:30", "not yet")
+            keyClick(Qt.Key_Tab)
+            compare(startTime().text, "14:00")
+            compare(endTime().text, "15:30")
+        }
+
+        // Past midnight, the end's day follows; picked on the end, the length changes.
+        function test_the_length_across_days_and_a_new_end() {
+            openNew()
+            startTime().forceActiveFocus(Qt.TabFocusReason)
+            type("2345")
+            compare(endTime().text, "01:15")
+            compare(endDay().date, "2026-11-05", "the next day")
+            startTime().forceActiveFocus(Qt.TabFocusReason)
+            type("1000")
+            compare(endDay().date, "2026-11-04", "and back")
+            endTime().forceActiveFocus(Qt.TabFocusReason)
+            type("1200")
+            startTime().forceActiveFocus(Qt.TabFocusReason)
+            type("0900")
+            compare(endTime().text, "11:00", "two hours now")
+        }
+
+        // A later day keeps a long event's length; an edit's own length is kept from what it opened with.
+        function test_a_moved_day_keeps_the_length() {
+            dialog.edit("/calendars/local/personal/board.ics", "")
+            tryCompare(dialog, "opened", true)
+            mouseClick(find(startDay(), "dateButton"))
+            const month = find(startDay().monthPopup.contentItem, "dateMonth")
+            tryVerify(() => dayCell(month, 10) !== null)
+            mouseClick(dayCell(month, 10))
+            compare(startDay().date, "2026-11-10")
+            compare(endDay().date, "2026-11-10", "the end's day with it")
+            compare(endTime().text, "11:00")
+            // A day picked moves on to the hour beside it, with its panel, in the form.
+            verify(startTime().activeFocus, "the focus on the hour")
+            verify(startTime().panelOpen, "its panel open")
+            keyClick(Qt.Key_Escape)
+            verify(dialog.opened, "Esc closes the panel, not the form")
+            verify(!startTime().panelOpen)
+            keyClick(Qt.Key_Escape)
+            tryCompare(dialog, "opened", false)
+        }
+
+        // A whole day of several days keeps its span; its hours are out of the way.
+        function test_a_whole_day_keeps_its_span() {
+            openNew()
+            find(dialog.contentItem, "eventAllDay").checked = true
+            endDay().date = "2026-11-06"
+            dialog.measureLength()
+            startDay().date = "2026-11-10"
+            dialog.startMoved()
+            compare(endDay().date, "2026-11-12")
+            verify(!startTime().visible)
+            find(dialog.contentItem, "eventAllDay").checked = false
+        }
+
+        // The panel under the field, in a modal form: a click elsewhere in the form closes
+        // it, the value kept, and reaches what it was aimed at.
+        function test_a_click_elsewhere_in_the_form() {
+            openNew()
+            mouseClick(find(startTime(), "clockButton"))
+            verify(startTime().panelOpen)
+            mouseClick(find(startTime().panel.contentItem, "clockHour14"))
+            compare(startTime().text, "14:00")
+            const title = find(dialog.contentItem, "eventTitle")
+            mouseClick(title)
+            verify(!startTime().panelOpen, "closed")
+            verify(title.activeFocus, "the click reached the title")
+            verify(dialog.opened, "the form stays")
+            compare(startTime().text, "14:00", "kept")
+            compare(endTime().text, "15:30")
+            dialog.save()
+            compare(mock.saved.edit.start, "2026-11-04T14:00")
+            compare(mock.saved.edit.end, "2026-11-04T15:30")
+        }
+
+        // From one panel to the next: the second button opens its own, the first closes.
+        function test_from_one_panel_to_the_next() {
+            openNew()
+            mouseClick(find(startTime(), "clockButton"))
+            mouseClick(find(endTime(), "clockButton"))
+            verify(!startTime().panelOpen)
+            verify(endTime().panelOpen)
+            verify(endTime().activeFocus)
+            mouseClick(find(endTime().panel.contentItem, "clockHour17"))
+            compare(endTime().text, "17:30")
+            compare(startTime().text, "10:00", "the end changes alone")
+            keyClick(Qt.Key_Escape)
+            compare(endTime().text, "11:30")
+            verify(dialog.opened)
+        }
+
+        // Date and hour next to each other, in the same row.
+        function test_date_and_hour_side_by_side() {
+            openNew()
+            verify(startTime().x > startDay().x)
+            compare(startTime().y, startDay().y)
+            verify(startTime().x - (startDay().x + startDay().width) < 20, "next to each other")
+            compare(startTime().Accessible.name, "event-starts")
+            compare(endTime().Accessible.name, "event-ends")
+            verify(endTime().end, "the end's limits")
         }
 
         // A leg's form on another clock reads its start on that clock: its

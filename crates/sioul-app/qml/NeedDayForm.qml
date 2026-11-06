@@ -233,7 +233,8 @@ SafeDialog {
         ClockField {
             id: from
 
-            Layout.preferredWidth: 80
+            theme: form.theme
+            sioul: form.sioul
             inputMethodHints: Qt.ImhTime
             Accessible.name: form.sioul.text(form.mode === "move" ? "need-move-to" : "need-form-from")
             onAccepted: form.save()
@@ -248,7 +249,8 @@ SafeDialog {
             id: bed
 
             visible: form.mode === "times" && form.night
-            Layout.preferredWidth: 80
+            theme: form.theme
+            sioul: form.sioul
             inputMethodHints: Qt.ImhTime
             Accessible.name: form.sioul.text("needs-bed")
         }
@@ -263,7 +265,8 @@ SafeDialog {
             end: form.item === null || form.item.kind !== "sleep"
 
             visible: form.mode !== "move"
-            Layout.preferredWidth: 80
+            theme: form.theme
+            sioul: form.sioul
             inputMethodHints: Qt.ImhTime
             Accessible.name: form.sioul.text(form.night ? "needs-wake" : "need-form-to")
             onAccepted: form.save()

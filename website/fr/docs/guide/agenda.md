@@ -61,6 +61,15 @@ Un événement s’ouvre dans sa carte : à côté de la page sur un ordinateu
 - **Une réunion qu’une autre personne organise**, un événement avec des personnes invitées où quelqu’un d’autre vous a invité : son heure, son titre, son lieu, ses notes et son agenda sont ceux de son organisateur, car son serveur préviendrait chaque invité d’un changement. Sioul ne la fait ni glisser ni supprimer, et son formulaire ne change que ce qui est à vous : le temps gardé avant et après, ses coûts et ce qu’elle vous rend, votre rappel. Un événement qui ne nomme qu’un organisateur, comme Google l’écrit dans vos propres événements, reste à vous de le changer.
 - **Une réunion que vous organisez**, où vous avez invité des personnes : chaque champ est à vous, ses invités aussi ([Inviter des personnes](#inviting-people)).
 
+### Un jour et une heure {#a-day-and-an-hour}
+
+Chaque formulaire qui demande une heure la prend au clavier seul ou au pointeur seul.
+
+- **Au pointeur** : le bouton d’horloge, au bout d’une heure, ouvre un panneau, comme le bouton de calendrier à côté d’un jour ouvre son mois. Le panneau montre les 24 heures et les minutes de cinq en cinq, avec **−1** et **+1** pour celles d’entre elles. Chaque clic s’applique aussitôt, et une heure cliquée sans minutes encore donne :00. Un clic à côté garde l’heure, Échap redonne celle d’avant, et rien ne demande de valider. Un jour choisi passe à l’heure à côté de lui, son panneau ouvert.
+- **Au clavier** : Tab va du jour à l’heure, sans s’arrêter sur les boutons. Tapez `1430`, `14:30` ou `14h30`, `930` pour 09:30, ou `14` puis Tab pour 14:00. Les flèches Haut et Bas changent l’heure de cinq minutes, Page précédente et Page suivante d’une heure, et Alt+Bas ouvre le panneau à côté de ce que vous tapez.
+- **Sur un téléphone** : les boutons ouvrent un volet au bas de l’écran, aux cases larges comme un doigt. Le clavier ne vient que si vous touchez le champ lui-même.
+- **Déplacer le début** déplace la fin avec lui, et l’événement reste aussi long. Changer la fin change sa durée.
+
 ### Son statut, sa carte et le chemin {#status-map-directions}
 
 - **Son statut** : sur un événement à vous, un bouton sous son lieu le dit, **Confirmé**, **À confirmer** ou **Annulé**, et le change, avec **Annuler**. Sur la ligne du temps, un événement à confirmer a un contour en pointillés, et un événement annulé est barré ; un événement annulé ne prend plus de temps à votre plan. Une réunion avec d’autres dit son statut quand il n’est pas confirmé, sans le changer ici, et votre propre réponse à son invitation (« Vous n’avez pas encore répondu. ») ; vous répondez avec **Répondre…**, comme avant.
@@ -321,7 +330,9 @@ Une invitation est envoyée par le serveur de votre agenda ou par vous, jamais p
 
 Un repas ou une sieste déjà fait se déplace, et c’est tout ce que Sioul en garde. Noter si un repas a été pris aide au sein d’un traitement que guide un soignant, mais est lié à des torts comme suivi général, et les comptes ou les messages de « manqué » nourrissent la honte et la pensée du tout ou rien qui entretiennent les difficultés avec l’alimentation ([la recherche sur les rappels de repas et de sommeil (en anglais)](https://sioul.aurelienpierre.com/dev/research/meal-prompts.html), critères 17, 18 et 20). Aussi **Déjà fait** garde une heure, jamais une coche, et aucun jour ne dit ce qui lui a manqué.
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54 et 66.
+Un jour choisi au pointeur ne laisse plus une heure à taper, et un jour tapé n’a plus besoin du pointeur pour son heure. Le champ reste pour qui tape, et à un clic de là les heures et les minutes de cinq en cinq sont toutes en vue, sans rien à faire glisser ni à faire défiler sur un ordinateur. Aucune étude ne compare les façons de régler une heure : cette disposition est donc une déduction. Elle s’appuie sur les WCAG 2.2, qui demandent que rien n’exige de glisser (2.5.7) et que les cibles mesurent au moins 24 pixels (2.5.8), et qui sont un plancher, pas une mesure de vitesse. Aucune preuve ne soutient non plus un cadran à aiguilles pour la cécité temporelle : le seul essai proche de la question testait ensemble un entraînement et des appareils, chez des enfants, et n’a jamais opposé l’analogique au numérique (Wennberg et al. 2018).
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54, 66 et 70.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
@@ -408,6 +419,17 @@ En novembre 2026, d’après la documentation de chaque application.
     14. Le titre, la description, le lieu et les personnes invitées sont chiffrés sur votre appareil ; le début et la fin, le fuseau horaire, la répétition et les alarmes sont seulement signés, et les serveurs de Proton les lisent.
     15. Le code du client web est sous GPL-3.0 ; Proton dit que toutes ses applications sont libres.
 
+=== "Régler une heure"
+
+    | | Comment une heure se règle | Au pointeur seul | Au clavier seul |
+    |---|---|---|---|
+    | Sioul | Un champ à taper, et un panneau de 24 heures et des minutes de cinq en cinq, tous en vue | ✓ sans glisser : deux clics pour une heure ronde, cinq au plus pour n’importe quelle minute | ✓ tapée, rien à ouvrir |
+    | Sélecteur de date d’iOS | Une étiquette qui ouvre un éditeur, un éditeur sur place, ou des roues, au choix de l’application | ✓ | ? |
+    | Calendrier d’Apple (Mac) | Les bords d’un événement glissés ; Contrôle-Option-Haut ou Bas le déplace de 15 minutes | ✓ en glissant | en partie : des déplacements de 15 minutes ; le formulaire de l’événement non confirmé |
+    | Outlook (Android, iOS) | Les poignées d’un bloc de temps glissées ; **Plus d’options** ouvre un second écran | ✓ en glissant | ? |
+
+    Seules figurent les applications dont les pages disent comment une heure se règle.
+
 === "Agendas partagés"
 
     | | Sioul | OurFamilyWizard | AppClose | TalkingParents | TimeTree | Google | Fantastical |
@@ -453,6 +475,10 @@ En novembre 2026, d’après la documentation de chaque application.
 **Familles et agendas partagés.** Cozi et FamCal donnent une couleur à chaque membre de la famille, et Cozi envoie les rappels d’un événement aux membres que vous choisissez ; 2houses garde les jours de garde et les demandes pour les changer. Les listes de rappels partagées d’Apple confient un rappel à une personne. Outlook (« Can view when I’m busy ») et Proton (« Limited view », par lien) partagent aussi un agenda en heures occupées seulement, Nextcloud événement par événement, et iCloud pas du tout.
 
 ??? info "Sources (en anglais)"
+    - Microsoft : le sélecteur d’heure d’Outlook, <https://support.microsoft.com/en-us/outlook/how-does-the-new-time-picker-work>, lu le 6 novembre 2026.
+    - Apple : les styles d’UIDatePicker, <https://developer.apple.com/documentation/uikit/uidatepickerstyle.md>, résumé de la page par une recherche, 6 novembre 2026.
+    - Calendrier pour Mac : les événements, <https://support.apple.com/en-sa/guide/calendar/icalwr13-events/mac>, et les raccourcis clavier, <https://support.apple.com/en-gb/guide/calendar/ical002/mac>, résumés des pages par une recherche, 6 novembre 2026.
+    - W3C : Understanding WCAG 2.2, Dragging Movements, <https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html>, lu le 6 novembre 2026.
     - Google Agenda : les réglages sous Android, <https://support.google.com/calendar/answer/6084644?co=GENIE.Platform%3DAndroid>, lu le 8 octobre 2026.
     - Waze : les événements de l’agenda et quand partir, <https://support.google.com/waze/answer/6341187>, lu le 8 octobre 2026.
     - Google Workspace Updates : les suggestions de réunion avec Gemini dans Agenda (janvier 2026), <https://workspaceupdates.googleblog.com/2026/01/improved-meeting-suggestions-gemini-calendar.html>, lu le 8 octobre 2026.

@@ -208,7 +208,9 @@ SafeDialog {
                 ClockField {
                     id: dayTime
 
-                    Layout.preferredWidth: 70
+                    theme: form.theme
+                    sioul: form.sioul
+                    Accessible.name: form.sioul.text("health-field-at")
                 }
             }
             Label {
@@ -247,7 +249,9 @@ SafeDialog {
                 ClockField {
                     id: hourFrom
 
-                    Layout.preferredWidth: 70
+                    theme: form.theme
+                    sioul: form.sioul
+                    Accessible.name: form.sioul.text("health-field-from-time")
                 }
             }
 

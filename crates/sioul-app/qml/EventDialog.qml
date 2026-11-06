@@ -109,6 +109,40 @@ SafeDialog {
         const d = dialog.wall(seconds * 1000)
         return dialog.pad(d.getHours()) + ":" + dialog.pad(d.getMinutes())
     }
+
+    // How long the event lasts, in minutes as the form's clock reads them: what a moved
+    // start keeps. Measured when the form is filled and when its end is edited.
+    property real keptLength: NaN
+
+    // A day and a time of the form as minutes, on the form's own clock whatever it is; NaN
+    // while they do not read.
+    function wallMinutes(day, time) {
+        const d = /^(\d{4})-(\d\d)-(\d\d)$/.exec(day)
+        const t = /^(\d\d):(\d\d)$/.exec(time)
+        if (!d || !t || Number(t[1]) > 23 || Number(t[2]) > 59)
+            return NaN
+        const at = new Date(Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3]), Number(t[1]), Number(t[2])))
+        return at.getUTCMonth() === Number(d[2]) - 1 && at.getUTCDate() === Number(d[3]) ? at.getTime() / 60000 : NaN
+    }
+
+    function measureLength() {
+        dialog.keptLength = dialog.wallMinutes(endDay.date, endTime.text) - dialog.wallMinutes(startDay.date, startTime.text)
+    }
+
+    // The start moved by hand, by a day or a time: the end moves with it, and the event
+    // lasts as long as it did. While the start is half typed, or the end comes before it,
+    // no length is known: the end's day at least follows a later start.
+    function startMoved() {
+        const start = dialog.wallMinutes(startDay.date, startTime.text)
+        if (isNaN(start) || !(dialog.keptLength >= 0)) {
+            if (endDay.date < startDay.date)
+                endDay.date = startDay.date
+            return
+        }
+        const end = new Date((start + dialog.keptLength) * 60000)
+        endDay.date = end.getUTCFullYear() + "-" + dialog.pad(end.getUTCMonth() + 1) + "-" + dialog.pad(end.getUTCDate())
+        endTime.text = dialog.pad(end.getUTCHours()) + ":" + dialog.pad(end.getUTCMinutes())
+    }
     // What the task cannot keep as an appointment, said before Save (F5); else "".
     property string losses: ""
     property var calendars: []
@@ -220,6 +254,7 @@ SafeDialog {
         startTime.text = f.all_day ? "09:00" : f.start.slice(11, 16)
         endDay.date = f.end.slice(0, 10)
         endTime.text = f.all_day ? "10:00" : f.end.slice(11, 16)
+        dialog.measureLength()
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(f.repeat))
         every.value = Math.max(1, f.every || 1)
         dialog.clock = f.clock || ""
@@ -292,6 +327,7 @@ SafeDialog {
             startTime.text = e.all_day ? "09:00" : e.start.slice(11, 16)
             endDay.date = e.end.slice(0, 10)
             endTime.text = e.all_day ? "10:00" : e.end.slice(11, 16)
+            dialog.measureLength()
             repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(e.repeat))
             every.value = Math.max(1, e.every || 1)
             dialog.clock = e.clock || ""
@@ -331,6 +367,7 @@ SafeDialog {
             // As long as a new event lasts (Settings ▸ Agenda), within its day.
             const end = Math.min(hour * 60 + dialog.newLength(), 23 * 60 + 59)
             endTime.text = dialog.pad(Math.floor(end / 60)) + ":" + dialog.pad(end % 60)
+            dialog.measureLength()
             repeat.currentIndex = 0
             every.value = 1
             calendar.currentIndex = 0
@@ -373,6 +410,7 @@ SafeDialog {
         startTime.text = start.time
         endDay.date = end.day
         endTime.text = end.time
+        dialog.measureLength()
     }
 
     // For the window's pictures and tests: `text` as if typed in its place.
@@ -412,6 +450,7 @@ SafeDialog {
         startTime.text = made.start.slice(11, 16)
         endDay.date = made.end.slice(0, 10)
         endTime.text = made.end.slice(11, 16)
+        dialog.measureLength()
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(made.repeat))
         every.value = Math.max(1, made.every || 1)
         dialog.around = Object.assign({ before: 0, after: 0 }, made.margins)
@@ -433,6 +472,7 @@ SafeDialog {
         endDay.date = day
         startTime.text = from
         endTime.text = to
+        dialog.measureLength()
     }
 
     // For the window's pictures: the costs and the gain in view.
@@ -449,6 +489,7 @@ SafeDialog {
         title.text = text
         startTime.text = from
         endTime.text = to
+        dialog.measureLength()
         repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(how))
         every.value = 1
         dialog.moreShown = true
@@ -638,18 +679,23 @@ SafeDialog {
                 DateField {
                     id: startDay
 
+                    objectName: "eventStartDay"
                     theme: dialog.theme
                     sioul: dialog.sioul
                     locale: Qt.locale(dialog.sioul.text("qt-locale"))
                     pickLabel: dialog.sioul.text("event-pick-day")
-                    // The end follows the start when it would come before it.
-                    onEdited: if (endDay.date < startDay.date) endDay.date = startDay.date
+                    hourField: startTime
+                    onEdited: dialog.startMoved()
                 }
                 ClockField {
                     id: startTime
 
+                    objectName: "eventStartTime"
+                    theme: dialog.theme
+                    sioul: dialog.sioul
                     visible: !allDay.checked
-                    Layout.preferredWidth: 80
+                    Accessible.name: dialog.sioul.text("event-starts")
+                    onTextEdited: dialog.startMoved()
                 }
                 Label {
                     text: dialog.sioul.text("event-ends")
@@ -658,18 +704,25 @@ SafeDialog {
                 DateField {
                     id: endDay
 
+                    objectName: "eventEndDay"
                     theme: dialog.theme
                     sioul: dialog.sioul
                     locale: Qt.locale(dialog.sioul.text("qt-locale"))
                     pickLabel: dialog.sioul.text("event-pick-day")
+                    hourField: endTime
+                    onEdited: dialog.measureLength()
                 }
                 ClockField {
                     id: endTime
                     // An end: Up stops at 23:55 (ClockField's `end`).
                     end: true
 
+                    objectName: "eventEndTime"
+                    theme: dialog.theme
+                    sioul: dialog.sioul
                     visible: !allDay.checked
-                    Layout.preferredWidth: 80
+                    Accessible.name: dialog.sioul.text("event-ends")
+                    onTextEdited: dialog.measureLength()
                 }
             }
             // The clock its times are on: local time (the time zone shown), UTC,
