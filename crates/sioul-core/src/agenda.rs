@@ -1892,12 +1892,14 @@ fn content_lines(edit: &EventEdit, changed: Changed, old_rule: Option<&str>) -> 
 
 /// A title, a place or notes as a form's text field gives it back (Qt 6.11's
 /// TextArea, checked 6 November 2026: a no-break space comes back as a
-/// space, a line separator and CRLF as a line end): U+00A0 and U+202F as
-/// spaces, CRLF, CR, U+2028 and U+2029 as LF, each line's trailing spaces
-/// and the text's ends trimmed. What tells a field the person changed from
-/// one they did not (second review of the organizer's door, N2).
+/// space, a line separator and CRLF as a line end): U+00A0 as a space,
+/// CRLF, CR, U+2028 and U+2029 as LF, each line's trailing spaces and the
+/// text's ends trimmed. What tells a field the person changed from one they
+/// did not (second review of the organizer's door, N2). A narrow no-break
+/// space (U+202F, French typography) stays as it is: Qt gives it back so,
+/// and one typed in place of a space is a change (third review, R10).
 pub fn normalised(text: &str) -> String {
-    let text = text.replace("\r\n", "\n").replace(['\r', '\u{2028}', '\u{2029}'], "\n").replace(['\u{a0}', '\u{202f}'], " ");
+    let text = text.replace("\r\n", "\n").replace(['\r', '\u{2028}', '\u{2029}'], "\n").replace('\u{a0}', " ");
     text.split('\n').map(str::trim_end).collect::<Vec<_>>().join("\n").trim().to_string()
 }
 
@@ -2995,6 +2997,51 @@ pub enum Answered {
     Refused,
 }
 
+/// Someone else's meeting `newer` with your own answers as `copy` says them:
+/// your ATTENDEE line of each time (by any of `own`) given the PARTSTAT of
+/// the same time in the copy, else of its series, its RSVP as the copy has
+/// it; a time where the copy names you without an answer, or does not name
+/// you, as `newer` says. An updated booking's file opened again keeps your
+/// "accepted", and no server mails its organizer a REPLY for an answer you
+/// never changed (third review of the organizer's door, R7).
+fn with_own_answers(copy: &str, newer: &str, own: &[String]) -> String {
+    let there = cut(copy);
+    let mine = |event: &[String]| -> Option<String> {
+        own_lines(event).find(|l| lines::name(l) == "ATTENDEE" && own.iter().any(|a| address(lines::value(l)).eq_ignore_ascii_case(a))).cloned()
+    };
+    let series = there.events.iter().find(|e| which_time(e).is_empty()).and_then(|e| mine(e));
+    let mut out = cut(newer);
+    let mut changed = false;
+    for event in &mut out.events {
+        let time = which_time(event);
+        let kept = there.events.iter().find(|e| which_time(e) == time).and_then(|e| mine(e)).or_else(|| series.clone());
+        let Some(kept) = kept.filter(|l| lines::param(l, "PARTSTAT").is_some()) else { continue };
+        let answer = lines::param(&kept, "PARTSTAT").unwrap_or_default();
+        let rsvp = lines::param(&kept, "RSVP");
+        let mut nested = 0usize;
+        for (i, line) in event.clone().iter().enumerate() {
+            match lines::name(line).as_str() {
+                "BEGIN" if i > 0 => nested += 1,
+                "END" if nested > 0 => nested -= 1,
+                "ATTENDEE" if nested == 0 && own.iter().any(|a| address(lines::value(line)).eq_ignore_ascii_case(a)) => {
+                    let said_now = lines::param(line, "PARTSTAT").is_some_and(|p| p.eq_ignore_ascii_case(&answer)) && lines::param(line, "RSVP") == rsvp;
+                    if !said_now {
+                        let mut written = with_answer(line, &answer);
+                        if let Some(rsvp) = &rsvp {
+                            let at = written.len() - lines::value(&written).len() - 1;
+                            written.insert_str(at, &format!(";RSVP={rsvp}"));
+                        }
+                        event[i] = written;
+                        changed = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if changed { out.text() } else { newer.to_string() }
+}
+
 /// An invitation answered (accepted or maybe; "" for an event published,
 /// added as it is), written into the copy your calendar holds already
 /// (`stored_text`): only from the copy's organizer, never for a meeting you
@@ -3390,8 +3437,9 @@ impl CalendarFile {
                         return Err(said(Refusal::ReadOnly, &Change::Write(&object)));
                     }
                     match answered_into(copy, &object, "", "", &own) {
-                        // Its organizer's newer version: written as an invitation's update is, the one path into a meeting with others.
-                        Answered::Written(newer) => vdir::store_item(&path, &newer)?,
+                        // Its organizer's newer version: written as an invitation's update is, the one path into a
+                        // meeting with others, your own answer to each time as the copy said it (third review, R7).
+                        Answered::Written(newer) => vdir::store_item(&path, &with_own_answers(copy, &newer, &own))?,
                         Answered::Same | Answered::Older(_) => {}
                         Answered::Refused => return Err(said(Refusal::WithOthers, &Change::Write(&object))),
                     }
@@ -4488,6 +4536,25 @@ mod tests {
     /// One time of a series moved by its organizer, as an invitation carries it.
     fn one_time(method: &str, sequence: u32, extra: &str) -> String {
         format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nSEQUENCE:{sequence}\r\nRECURRENCE-ID:20261111T090000Z\r\nDTSTART:20261111T140000Z\r\nDTEND:20261111T150000Z\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@example.org\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n")
+    }
+
+    /// The third review of the organizer's door, R7: someone else's meeting
+    /// whose updated file is opened again, which says you have not answered,
+    /// keeps your own answers as the copy said them, time by time: the series
+    /// accepted, one time declined; a time the copy names you nowhere, as the
+    /// update says.
+    #[test]
+    fn an_updated_file_keeps_your_answers_time_by_time() {
+        let own = vec!["me@example.org".to_string()];
+        let copy = SERIES.replace("END:VEVENT\r\nEND:VCALENDAR", "END:VEVENT\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nSEQUENCE:2\r\nRECURRENCE-ID:20261111T090000Z\r\nDTSTART:20261111T090000Z\r\nDTEND:20261111T100000Z\r\nSUMMARY:Review\r\nORGANIZER:mailto:boss@example.org\r\nATTENDEE;PARTSTAT=DECLINED:mailto:me@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR");
+        let newer = copy.replace("SEQUENCE:2", "SEQUENCE:3").replace("SUMMARY:Review", "SUMMARY:Review, room 4").replace("PARTSTAT=ACCEPTED", "PARTSTAT=NEEDS-ACTION;RSVP=TRUE").replace("PARTSTAT=DECLINED", "PARTSTAT=NEEDS-ACTION;RSVP=TRUE");
+        let kept = with_own_answers(&copy, &newer, &own);
+        let events = cut(&kept).events;
+        assert!(events[0].iter().any(|l| l == "ATTENDEE;PARTSTAT=ACCEPTED:mailto:me@example.org") && events[1].iter().any(|l| l == "ATTENDEE;PARTSTAT=DECLINED:mailto:me@example.org"), "{kept}");
+        assert!(kept.contains("Review\\, room 4") || kept.contains("Review, room 4"), "the update's own words: {kept}");
+        assert_eq!(with_own_answers(&copy, &copy, &own), copy, "nothing to keep: the same text");
+        let elsewhere = copy.replace("me@example.org", "you@example.org");
+        assert_eq!(with_own_answers(&elsewhere, &newer, &own), newer, "the copy names you nowhere: as the update says");
     }
 
     /// M7, M8 and M9 of the check of 1b6795e: an older message is judged by

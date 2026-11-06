@@ -472,10 +472,44 @@ fn shared(line: &str) -> bool {
 /// one goes whole.
 const TEXTS: [&str; 4] = ["SUMMARY", "LOCATION", "DESCRIPTION", "COMMENT"];
 
-/// Whether a line holds one of Sioul's own addresses (`sioul:…`), in its
-/// value or in a parameter.
+/// The kinds of Sioul's own addresses (`links::kind_of`; a label's
+/// `sioul:label/`, a list's `sioul:tasks/`).
+const ADDRESS_KINDS: [&str; 18] = ["task", "tasks", "event", "contact", "person", "note", "draft", "budget", "project", "case", "paper", "contract", "letter", "invoice", "site", "movement", "mail", "label"];
+
+/// Whether `text` holds one of Sioul's own addresses: `sioul:` at the start
+/// of a word (no letter of any script, digit, `+`, `-` or `.` before it), one of its kinds
+/// and a slash (`sioul:event/…`, `sioul:note/…`). Plain words such as
+/// "Sioul: release planning" hold none (third review of the organizer's
+/// door, R2).
+pub fn holds_sioul_address(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut from = 0;
+    while let Some(found) = lower[from..].find("sioul:") {
+        let at = from + found;
+        from = at + "sioul:".len();
+        let starts = at == 0 || !matches!(bytes[at - 1], b'a'..=b'z' | b'0'..=b'9' | b'+' | b'-' | b'.' | 0x80..=0xff);
+        let rest = &lower[from..];
+        if starts && ADDRESS_KINDS.iter().any(|kind| rest.strip_prefix(kind).is_some_and(|after| after.starts_with('/'))) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether a line holds one of Sioul's own addresses where a program reads
+/// one (`holds_sioul_address`): in its value as it reads (an address after
+/// an escaped line end, "…\nsioul:event/…", starts a word), or in a
+/// parameter but a name (CN), such as ALTREP; a guest named "Sioul: support"
+/// holds none.
 fn carries_sioul_link(line: &str) -> bool {
-    line.to_ascii_lowercase().contains("sioul:")
+    let (head, value) = split(line);
+    holds_sioul_address(&lines::unescape(value)) || written_params(head).iter().skip(1).any(|part| uri_parameter(part) && holds_sioul_address(part))
+}
+
+/// Whether a parameter as written may name an address: any but a name (CN).
+fn uri_parameter(part: &str) -> bool {
+    !part.split('=').next().unwrap_or_default().trim().eq_ignore_ascii_case("CN")
 }
 
 /// A line as its guests may read it as far as Sioul's own addresses go
@@ -494,7 +528,7 @@ fn without_sioul_links(line: &str) -> Option<String> {
     let (head, value) = split(line);
     let parts = written_params(head);
     let mut kept_head = parts.first().copied().unwrap_or_default().to_string();
-    for part in parts.iter().skip(1).filter(|p| !carries_sioul_link(p)) {
+    for part in parts.iter().skip(1).filter(|p| !(uri_parameter(p) && holds_sioul_address(p))) {
         kept_head.push(';');
         kept_head.push_str(part);
     }
@@ -502,10 +536,10 @@ fn without_sioul_links(line: &str) -> Option<String> {
     let mut rows: Vec<String> = text
         .split('\n')
         .filter_map(|row| {
-            if !carries_sioul_link(row) {
+            if !holds_sioul_address(row) {
                 return Some(row.to_string());
             }
-            let left = row.split_whitespace().filter(|w| !carries_sioul_link(w)).collect::<Vec<_>>().join(" ");
+            let left = row.split_whitespace().filter(|w| !holds_sioul_address(w)).collect::<Vec<_>>().join(" ");
             (!left.trim().is_empty()).then_some(left)
         })
         .collect();
@@ -693,6 +727,17 @@ pub fn aside_of(text: &str) -> Aside {
         aside.own = Some(crate::own_time::Own { before: edit.margins.before, after: edit.margins.after, demands: edit.demands, remind: edit.remind });
     }
     aside
+}
+
+/// Whether a line of an event's own level is one of Sioul's other lines,
+/// which `aside_of` keeps among `Aside::lines` (`main`: the meeting's main
+/// event, whose own time and ties go to their own files instead).
+pub fn kept_apart(line: &str, main: bool) -> bool {
+    if !sioul_own(line) {
+        return without_sioul_links(line).is_none();
+    }
+    let name = lines::name(line);
+    !(main && ["LINK", "RELATED-TO", "REFID", crate::demands::BEFORE, crate::demands::AFTER, crate::demands::COST, crate::demands::GAIN, crate::reminders::REMIND].contains(&name.as_str()))
 }
 
 /// A meeting's file as its guests may read it (`for_guests`), and what it
@@ -1139,10 +1184,51 @@ pub fn sequence_of(text: &str) -> i64 {
 /// event's SEQUENCE one past the highest of `heard`, the version they
 /// received, so that their programs take it as a later one (RFC 5546
 /// §2.1.5), never as an older; its stamps renewed. None for no event.
+///
+/// Without any `SCHEDULE-FORCE-SEND` the earlier version still held: its
+/// server sent that change already, and the guests it tells hear what this
+/// one changes alone (`organized::plan` asks the force it needs; third
+/// review of the organizer's door, R6).
 pub fn past(text: &str, heard: &str) -> Option<String> {
     let source = lines::unfold(heard);
     let top = events(&source).into_iter().filter_map(|r| source[r].iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse::<i64>().ok())).max().unwrap_or(0);
-    resequenced(text, |own| own.max(top) + 1)
+    resequenced(&without_force_send(text), |own| own.max(top) + 1)
+}
+
+/// The version of each event of a meeting naming `guest` (every event when
+/// none): its own SEQUENCE (0 unsaid), by its time, "" for the series, else
+/// its RECURRENCE-ID's instant (its value when it reads as none), in order.
+/// A guest's version of a series is each time of it they are asked to:
+/// one time moved raises that time's SEQUENCE alone (third review of the
+/// organizer's door, R4).
+fn versions(text: &str, guest: Option<&str>) -> Vec<(String, i64)> {
+    let source = lines::unfold(text);
+    let zone = crate::zone::current();
+    let mut out: Vec<(String, i64)> = Vec::new();
+    for range in events(&source) {
+        let block = &source[range];
+        if guest.is_some_and(|g| !names_guest(block, g)) {
+            continue;
+        }
+        let time = block.iter().find(|l| lines::name(l) == "RECURRENCE-ID").map(|l| crate::agenda::instant_in(l, &zone).map_or_else(|| lines::value(l).trim().to_string(), |at| at.to_string())).unwrap_or_default();
+        let sequence = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0);
+        out.push((time, sequence));
+    }
+    out.sort();
+    out
+}
+
+/// Whether `theirs` says, for `guest`, a version that `holds` against what
+/// a message `sent` said: each of its events naming them compared with the
+/// same time in `theirs` (`versions`); when no time matches (a cancellation
+/// of the series to a guest of one time alone), the main events' SEQUENCE.
+fn version_holds(theirs: &str, sent: &str, guest: &str, holds: impl Fn(i64, i64) -> bool) -> bool {
+    let there = versions(theirs, Some(guest));
+    let pairs: Vec<(i64, i64)> = versions(sent, Some(guest)).into_iter().filter_map(|(time, said)| there.iter().find(|(t, _)| *t == time).map(|(_, now)| (*now, said))).collect();
+    if pairs.is_empty() {
+        return holds(sequence_of(theirs), sequence_of(sent));
+    }
+    pairs.into_iter().all(|(now, said)| holds(now, said))
 }
 
 /// An unsent message to a meeting's guests waiting in your Drafts (`reconcile`): its id, to whom, its iTIP object.
@@ -1179,14 +1265,21 @@ pub struct Reconciled {
 ///
 /// - An invitation stays when every guest it goes to is told by your drafts
 ///   in `theirs` and it says `theirs` (the times, title, place, notes and
-///   status of the events naming them, and its SEQUENCE); a cancellation
+///   status of the events naming them, and each one's SEQUENCE: a guest
+///   asked to one time alone by that time's own, `versions`); a cancellation
 ///   stays when its guests are no longer asked in `theirs`, or `theirs` is
 ///   cancelled. Every other one goes.
 /// - A guest told by your drafts in `theirs` whose message went, and whom
 ///   no message kept tells, gets an invitation of `theirs` when they have
-///   not heard it: an invitation that went was for a version at least as
-///   recent as theirs (`SEQUENCE`), or a cancellation for an earlier one.
-///   One of theirs older than what went they heard already: nothing more.
+///   not heard it: `theirs` is at least as recent as an invitation that
+///   went, or more recent than a cancellation, time by time for the times
+///   naming them (`version_holds`). One of theirs older than what went they
+///   heard already: nothing more.
+/// - Only this device's Drafts are seen, those the sharing brought from your
+///   other devices included: a message drafted on another device and not
+///   come yet, or sent there before this sync, is not. A draft made here
+///   for a version already drafted there has the same name (`draft_id`), so
+///   the sharing keeps one of the two.
 pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool) -> Reconciled {
     let server = if server_tells { Sender::Server } else { Sender::Draft };
     let guests = every_guest(theirs);
@@ -1199,13 +1292,13 @@ pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool) -> Recon
         let main = ranges.iter().find(|r| !source[(*r).clone()].iter().any(|l| lines::name(l) == "RECURRENCE-ID")).or(ranges.first()).cloned();
         main.is_some_and(|r| source[r].iter().any(|l| lines::name(l) == "STATUS" && lines::value(l).trim().eq_ignore_ascii_case("CANCELLED")))
     };
-    let ours = sequence_of(theirs);
     let method = |ics: &str| lines::unfold(ics).iter().find(|l| lines::name(l) == "METHOD").map(|l| lines::value(l).trim().to_ascii_uppercase()).unwrap_or_default();
     let mut out = Reconciled::default();
     let mut gone: Vec<&Pending> = Vec::new();
     for p in pending {
         let valid = match method(&p.ics).as_str() {
-            "REQUEST" => !cancelled && sequence_of(&p.ics) == ours && p.to.iter().all(|r| is_drafted(r) && seen_by_guests(&p.ics, Some(r)) == seen_by_guests(theirs, Some(r))),
+            // Each guest's own times, their SEQUENCE each (R4): a guest of one time alone by that time's.
+            "REQUEST" => !cancelled && p.to.iter().all(|r| is_drafted(r) && versions(&p.ics, Some(r)) == versions(theirs, Some(r)) && seen_by_guests(&p.ics, Some(r)) == seen_by_guests(theirs, Some(r))),
             "CANCEL" => cancelled || p.to.iter().all(|r| !asked(r)),
             _ => true,
         };
@@ -1219,8 +1312,8 @@ pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool) -> Recon
     let kept_request = |address: &str| pending.iter().any(|p| out.keep.contains(&p.id) && method(&p.ics) == "REQUEST" && p.to.iter().any(|r| r.trim().eq_ignore_ascii_case(address)));
     for guest in drafted.iter().filter(|_| !cancelled) {
         let unheard = gone.iter().filter(|p| p.to.iter().any(|r| guest.is(r))).any(|p| match method(&p.ics).as_str() {
-            "REQUEST" => ours >= sequence_of(&p.ics),
-            "CANCEL" => ours > sequence_of(&p.ics),
+            "REQUEST" => version_holds(theirs, &p.ics, &guest.address, |now, said| now >= said),
+            "CANCEL" => version_holds(theirs, &p.ics, &guest.address, |now, said| now > said),
             _ => false,
         });
         if unheard && !kept_request(&guest.address) {
@@ -1256,14 +1349,31 @@ pub fn named(text: &str, tr: &crate::i18n::Translator) -> (String, String) {
     (title, when)
 }
 
+/// The name of a draft carrying the iTIP object `ics` to `to`
+/// (`compose::Draft::id`): the same on every device for the same meeting
+/// (its UID), method, version of each of its events (`versions`) and
+/// guests. Two devices drafting the same message make one file, which the
+/// sharing keeps once; a second one of the same version for the same guests
+/// is never made (third review of the organizer's door, R5).
+pub fn draft_id(ics: &str, to: &[Guest]) -> String {
+    let source = lines::unfold(ics);
+    let named = |name: &str| source.iter().find(|l| lines::name(l) == name).map(|l| lines::value(l).trim().to_string()).unwrap_or_default();
+    let mut who: Vec<String> = to.iter().map(|g| address_of(&g.address)).collect();
+    who.sort();
+    who.dedup();
+    let key = format!("{}\n{}\n{:?}\n{}", named("UID"), named("METHOD").to_ascii_uppercase(), versions(ics, None), who.join(","));
+    format!("itip{}", crate::vdir::content_hash(key.as_bytes()))
+}
+
 /// A draft to `to`, guests of the meeting `text`, carrying `ics` (iMIP, RFC
 /// 6047), from `account` with its `signature`: an invitation or an update,
 /// or a cancellation (`cancel`), its words in `tr`'s language; tied to the
-/// meeting (`links::event_uri`).
+/// meeting (`links::event_uri`); named after what it says (`draft_id`).
 pub fn draft(account: &str, signature: Option<&str>, to: &[Guest], text: &str, ics: String, cancel: bool, tr: &crate::i18n::Translator) -> crate::compose::Draft {
     let (title, when) = named(text, tr);
     let place = lines::unfold(text).iter().find(|l| lines::name(l) == "LOCATION").map(|l| lines::unescape(lines::value(l).trim())).unwrap_or_default();
     let mut draft = crate::compose::Draft::new(account);
+    draft.id = draft_id(&ics, to);
     draft.to = to.iter().map(|g| if g.name.trim().is_empty() { g.address.clone() } else { format!("{} <{}>", g.name.trim(), g.address) }).collect();
     let pairs = [("title", title), ("when", when), ("place", place.clone())];
     let (subject, body) = if cancel { ("invite-cancel-subject", "invite-cancel-body") } else if place.is_empty() { ("invite-subject", "invite-body") } else { ("invite-subject", "invite-body-place") };
@@ -1558,7 +1668,9 @@ mod tests {
         // The booking's own update (the same UID, a later SEQUENCE, a new time): it takes the
         // first one's place, never doubled; an older one changes nothing; another
         // organizer's of the same UID is refused (the second review's N9, its probe turned).
-        let updated = booking.replace("DTSTAMP:20261101T090000Z", "DTSTAMP:20261102T090000Z\r\nSEQUENCE:1").replace("DTSTART:20991104T150000Z", "DTSTART:20991105T150000Z").replace("DTEND:20991104T151500Z", "DTEND:20991105T151500Z");
+        // Its update says you have not answered (as a booking's resent file does): your
+        // "accepted" kept, as the copy said it (the third review's R7, its probe turned).
+        let updated = booking.replace("DTSTAMP:20261101T090000Z", "DTSTAMP:20261102T090000Z\r\nSEQUENCE:1").replace("DTSTART:20991104T150000Z", "DTSTART:20991105T150000Z").replace("DTEND:20991104T151500Z", "DTEND:20991105T151500Z").replace("PARTSTAT=ACCEPTED", "PARTSTAT=NEEDS-ACTION;RSVP=TRUE");
         let path = recorded.0.as_ref().map(|w| w[0].0.clone()).unwrap();
         let replaced = record(&updated);
         let after_update = std::fs::read_to_string(&path).unwrap_or_default();
@@ -1573,6 +1685,7 @@ mod tests {
         assert_ne!(crate::agenda::Refusal::Organizes.word(&crate::agenda::Change::Write("")), crate::agenda::Refusal::WithOthers.word(&crate::agenda::Change::Write("")));
         assert_eq!(replaced.map(|w| w.into_iter().map(|(p, there)| (p == path, there)).collect::<Vec<_>>()), Ok(vec![(true, true)]), "the same file, written over");
         assert!(after_update.contains("DTSTART:20991105T150000Z") && !after_update.contains("DTSTART:20991104T150000Z"), "the update's time: {after_update}");
+        assert!(after_update.contains("ATTENDEE;PARTSTAT=ACCEPTED:mailto:me@example.org") && !after_update.contains("NEEDS-ACTION"), "your answer kept: {after_update}");
         assert!(older.is_ok() && after_older == after_update, "an older one changes nothing");
         assert!(theirs.is_err(), "another organizer's: {theirs:?}");
         assert_eq!(files, 2, "never doubled: the booking and the request");
@@ -1657,7 +1770,7 @@ mod tests {
         assert!(!told(&text, &applied) && applied.contains("SEQUENCE:2"), "nobody told, no revision: {applied}");
         edit.notes = "Salle 3".into();
         assert!(told(&text, &crate::agenda::apply(&text, &edit, &zone).unwrap()), "a real change is told");
-        assert_eq!(crate::agenda::normalised("a\u{a0}b \r\nc\u{202f}d\u{2028}e  "), "a b\nc d\ne");
+        assert_eq!(crate::agenda::normalised("a\u{a0}b \r\nc\u{202f}d\u{2028}e  "), "a b\nc\u{202f}d\ne", "a narrow no-break space stays (R10)");
     }
 
     /// N6: a meeting made in Nextcloud with its attachment, categories,
@@ -1767,5 +1880,119 @@ mod tests {
         let back = un(&past(&before, &moved).unwrap());
         assert!(back.contains("SEQUENCE:4") && back.contains("DTSTART:20991110T090000Z") && !back.contains("DTSTAMP:20261001T000000Z"), "{back}");
         assert_eq!(sequence_of(&back), 4);
+    }
+
+    // ---- The third review of the organizer's door (6 November 2026): each probe turned.
+
+    /// R2: "Sioul" in plain words (a meeting about Sioul, a guest named for
+    /// it, another program's alarm repeating the title) stays in the file and
+    /// in the draft, and nobody is told; Sioul's own addresses (a kind and a
+    /// slash after `sioul:`) still go: a stand-in's URL, a contact's ALTREP,
+    /// a note named in the notes (the probe `probe3_sioul_colon_in_plain_text`).
+    #[test]
+    fn plain_words_about_sioul_stay_in_the_meeting() {
+        for (text, holds) in [("Sioul: release planning", false), ("sioul:event/abc", true), ("see (sioul:note/Release.md)", true), ("SIOUL:TASK/x", true), ("xsioul:event/a", false), ("sioul:events", false), ("Sioul:", false), ("mysioul:task/1", false)] {
+            assert_eq!(holds_sioul_address(text), holds, "{text}");
+        }
+        let plain = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:s-1\r\nDTSTAMP:20261101T090000Z\r\nSEQUENCE:0\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Sioul: release planning\r\nLOCATION:Room 2\r\nDESCRIPTION:Agenda\\nSioul: what ships in 0.0.3\r\nORGANIZER;CN=Camille:mailto:me@example.org\r\nATTENDEE;CN=\"Sioul: support desk\";SCHEDULE-AGENT=CLIENT:mailto:support@example.net\r\nATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Sioul: release planning\r\nTRIGGER:-PT1H\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(for_guests(plain), plain, "nothing of Sioul's: the startup pass leaves it as it is");
+        assert!(aside_of(plain).is_empty());
+        let request = un(&request(plain).unwrap());
+        assert!(request.contains("SUMMARY:Sioul: release planning") && request.contains("Sioul: what ships") && request.contains("support@example.net"), "{request}");
+        // Sioul's own addresses beside them: out, the words kept.
+        let mixed = plain.replace("LOCATION:Room 2", "LOCATION:Room 2\r\nURL:sioul:event/child-1\r\nCONTACT;ALTREP=\"sioul:contact/landlord\":Landlord").replace("0.0.3\r\n", "0.0.3\\nsee sioul:note/Release.md\r\n");
+        let (file, aside) = set_aside(&mixed);
+        let file = un(&file);
+        assert!(file.contains("SUMMARY:Sioul: release planning") && file.contains("DESCRIPTION:Agenda\\nSioul: what ships in 0.0.3\\nsee\r\n") && file.contains("support@example.net") && file.contains("DESCRIPTION:Sioul: release planning\r\nTRIGGER"), "{file}");
+        assert!(!file.to_ascii_lowercase().contains("sioul:event") && !file.contains("CONTACT") && !file.contains("sioul:note"), "{file}");
+        assert_eq!(aside.lines.iter().map(|(_, l)| l.as_str()).collect::<Vec<_>>(), ["URL:sioul:event/child-1", "CONTACT;ALTREP=\"sioul:contact/landlord\":Landlord"]);
+        assert!(!told(&mixed, &file), "nothing its guests see changed");
+    }
+
+    /// R4: a weekly meeting made in Sioul, Bob asked to one time of it alone;
+    /// that time moved (its own SEQUENCE 1, the series' 0), then a change
+    /// here set aside for the server's version, which still says that move:
+    /// Bob's invitation, which says what the server tells Bob, stays, and
+    /// nobody is drafted again; Anne's update of the set-aside change goes.
+    /// Bob's time moved again there: that invitation goes, and Bob gets one of
+    /// the server's version (the probe `probe3_reconcile_withdraws_…` turned).
+    #[test]
+    fn a_guest_of_one_time_keeps_a_still_valid_invitation() {
+        let series = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:w-9\r\nDTSTAMP:20261101T090000Z\r\nSEQUENCE:0\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:w-9\r\nRECURRENCE-ID:20991117T090000Z\r\nDTSTAMP:20261101T090000Z\r\nSEQUENCE:0\r\nDTSTART:20991117T090000Z\r\nDTEND:20991117T100000Z\r\nSUMMARY:Weekly\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nATTENDEE;CN=Bob;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let zone = jiff::tz::TimeZone::UTC;
+        let at = |day: i8, hour: i8| jiff::civil::date(2099, 11, day).at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let write1 = crate::agenda::moved(series, at(17, 9), at(17, 11), at(17, 12), true, &zone).unwrap();
+        let anne = Pending { id: "anne1".into(), to: vec!["anne@example.net".into()], ics: request(&write1).unwrap() };
+        let bob = Pending { id: "bob1".into(), to: vec!["bob@example.net".into()], ics: request_for(&write1, &["bob@example.net".into()]).unwrap() };
+        let theirs = write1.replace("ATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT", "ATTENDEE;CN=Anne;PARTSTAT=ACCEPTED;SCHEDULE-AGENT=CLIENT");
+        let write2 = theirs.replace("SUMMARY:Weekly\r\nORGANIZER", "SUMMARY:Weekly review\r\nORGANIZER");
+        let update = Pending { id: "anne2".into(), to: vec!["anne@example.net".into()], ics: request(&write2).unwrap() };
+        for server_tells in [false, true] {
+            let got = reconcile(&theirs, &[anne.clone(), bob.clone(), update.clone()], server_tells);
+            assert_eq!((got.keep, got.withdraw, got.invite), (vec!["anne1".to_string(), "bob1".to_string()], vec!["anne2".to_string()], Vec::new()), "server_tells={server_tells}");
+        }
+        // Bob's time moved again on the server (its own SEQUENCE 2): Bob hears of it.
+        let again = crate::agenda::moved(&theirs, at(17, 11), at(17, 14), at(17, 15), true, &zone).unwrap();
+        let got = reconcile(&again, &[bob.clone()], false);
+        assert_eq!((got.withdraw.clone(), got.invite.iter().map(|g| g.address.as_str()).collect::<Vec<_>>()), (vec!["bob1".to_string()], vec!["bob@example.net"]), "{got:?}");
+    }
+
+    /// R5: the same invitation drafted on two devices (the phone's draft of
+    /// its move, the computer's of the server's version after its own write
+    /// was set aside) has one name, whatever the server added to the copy
+    /// (a guest's answer, its scheduling status): the sharing keeps one
+    /// file. Another version, other guests, a cancellation: other names.
+    /// Present here, the other device's draft is kept and nothing more is
+    /// drafted (the probe `probe3_reconcile_redrafts_what_another_device_drafted`).
+    #[test]
+    fn the_same_message_from_two_devices_is_one_draft() {
+        let base = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:p-2\r\nDTSTAMP:20261101T090000Z\r\nSEQUENCE:1\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let phone = base.replace("SEQUENCE:1", "SEQUENCE:2").replace("DTSTART:20991110T090000Z", "DTSTART:20991110T100000Z").replace("DTEND:20991110T100000Z", "DTEND:20991110T110000Z");
+        let server_copy = phone.replace("ATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT", "ATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT;SCHEDULE-STATUS=1.1");
+        let anne = [guest("Anne@example.net", "Anne")];
+        let tr = crate::i18n::Translator::new("en");
+        let made_there = draft("camille", None, &anne, &phone, request(&phone).unwrap(), false, &tr);
+        let made_here = draft("camille", Some("Camille"), &[guest("anne@example.net", "")], &server_copy, request(&server_copy).unwrap(), false, &tr);
+        assert_eq!(made_there.id, made_here.id, "one name for one message");
+        assert!(made_there.id.starts_with("itip") && made_there.id.chars().all(|c| c.is_ascii_alphanumeric()), "{}", made_there.id);
+        assert_ne!(draft_id(&request(base).unwrap(), &anne), made_there.id, "another version");
+        assert_ne!(draft_id(&request(&phone).unwrap(), &[guest("bob@example.net", "")]), made_there.id, "another guest");
+        assert_ne!(draft_id(&cancel(&phone, &[], true).unwrap(), &anne), made_there.id, "a cancellation");
+        let mine = base.replace("SEQUENCE:1", "SEQUENCE:2").replace("DTSTART:20991110T090000Z", "DTSTART:20991110T140000Z").replace("DTEND:20991110T100000Z", "DTEND:20991110T150000Z");
+        let here = Pending { id: "here".into(), to: vec!["anne@example.net".into()], ics: request(&mine).unwrap() };
+        let there = Pending { id: made_there.id.clone(), to: vec!["anne@example.net".into()], ics: request(&phone).unwrap() };
+        let got = reconcile(&server_copy, &[here, there], false);
+        assert_eq!((got.keep, got.withdraw, got.invite.len()), (vec![made_there.id.clone()], vec!["here".to_string()], 0));
+    }
+
+    /// R6: write 1 forced Anne's change, write 2 added Bob, the push sent
+    /// both; Undo of write 2 puts write 1 back without its force: the server
+    /// sent it already (the probe `probe3_undo_after_push_carries_the_old_force`).
+    #[test]
+    fn a_change_taken_back_after_its_push_asks_no_force_again() {
+        let original = event("LOCATION:Room 2\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=ACCEPTED:mailto:anne@example.net\r\n");
+        let hall = original.replace("LOCATION:Room 2", "LOCATION:Hall").replace("SEQUENCE:2", "SEQUENCE:3");
+        let (write1, forced) = with_force_send(&hall, &["anne@example.net".into()]);
+        assert_eq!(forced, ["anne@example.net"]);
+        let write2 = with_guests(&write1, &me(), &[guest("anne@example.net", "Anne"), guest("bob@example.net", "Bob")], Sender::Server).unwrap();
+        let back = past(&write1, &write2).unwrap();
+        assert!(forced_of(&back).is_empty() && !un(&back).contains("FORCE"), "{back}");
+        assert!(!told_guest(&write2, &back, "anne@example.net") && un(&back).contains("LOCATION:Hall"), "Anne hears nothing of it");
+    }
+
+    /// R10: a narrow no-break space typed in place of a space (French
+    /// typography; Qt gives it back as it is) is the person's edit: written,
+    /// and told (the probe `probe3_narrow_nbsp_edit_is_dropped` turned).
+    #[test]
+    fn a_narrow_no_break_space_typed_is_written() {
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:n-1\r\nDTSTAMP:20261101T090000Z\r\nSEQUENCE:0\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Réunion\r\nDESCRIPTION:Salle 2 : entrée B\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let zone = jiff::tz::TimeZone::UTC;
+        let mut edit = crate::agenda::edit_of_text(text, &zone).unwrap();
+        edit.notes = "Salle\u{202f}2\u{202f}: entrée B".into();
+        let applied = crate::agenda::apply(text, &edit, &zone).unwrap();
+        assert!(un(&applied).contains("DESCRIPTION:Salle\u{202f}2\u{202f}: entrée B\r\n"), "{applied}");
+        assert!(told(text, &applied), "a real change of the notes");
+        edit.notes = "Salle\u{a0}2 : entrée B".into();
+        assert_eq!(crate::agenda::apply(text, &edit, &zone).unwrap(), text, "a no-break space Qt gives back as a space: no change");
     }
 }

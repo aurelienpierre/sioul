@@ -233,7 +233,7 @@ fn status_of(report: &dav::Report, account: &str, time: &str) -> (String, bool) 
 /// taken out of Drafts; to whom an invitation of the server's version waits
 /// there; the guests its server tells, who never heard your change.
 fn meeting_set_aside_line(meeting: &dav::MeetingSetAside) -> String {
-    let mut said = vec![say("dav-meeting-set-aside", &[("summary", meeting.summary.clone())])];
+    let mut said = vec![say(if meeting.deleted { "dav-undeleted" } else { "dav-meeting-set-aside" }, &[("summary", meeting.summary.clone())])];
     if meeting.withdrawn > 0 {
         said.push(tr().text("dav-withdrawn", None));
     }
@@ -270,8 +270,12 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             let changed = report.sent + report.received + report.removed > 0 || !report.conflicts.is_empty() || report.registered > 0;
             // Yours kept among the earlier versions, which the window lists and puts back, on a phone too;
             // a meeting you organize said apart, below, once.
-            if report.conflicts.len() > report.meetings.len() {
+            if report.conflicts.len() > report.meetings.iter().filter(|m| !m.deleted).count() {
                 tell(qt, shared, tr().text("dav-conflict", None));
+            }
+            // A deletion its server refused (it changed there first): the item is back, said once (R8).
+            for summary in &report.undeleted {
+                tell(qt, shared, say("dav-undeleted", &[("summary", summary.clone())]));
             }
             // An invitation you had answered otherwise on another device: its answer kept, said once.
             for (summary, kept) in report.answered {
@@ -2170,10 +2174,13 @@ mod tests {
         assert_eq!(guest_name(&person, &card), "Jeanne Exemple");
         assert_eq!(guest_name(&sioul_core::persons::Person { full_name: String::new(), ..person.clone() }, &card), "Jeanne E.", "the card's, never the short name");
         assert_eq!(guest_name(&sioul_core::persons::Person { full_name: String::new(), ..person }, &contacts::Contact::default()), "");
-        let line = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: vec!["Anne".into()], served: vec!["Bob".into()] });
+        let line = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 2, invited: vec!["Anne".into()], served: vec!["Bob".into()], deleted: false });
         let parts = [say("dav-meeting-set-aside", &[("summary", "Planning".into())]), tr().text("dav-withdrawn", None), say("dav-reinvited", &[("who", "Anne".into())]), say("dav-served-untold", &[("who", "Bob".into())])];
         assert_eq!(line, parts.join(" "));
         assert_eq!(meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), ..Default::default() }), parts[0], "nothing more to say");
+        // Its deletion refused by its server (the third review's R8): back, its cancellation withdrawn, said once.
+        let back = meeting_set_aside_line(&dav::MeetingSetAside { summary: "Planning".into(), withdrawn: 1, deleted: true, ..Default::default() });
+        assert_eq!(back, [say("dav-undeleted", &[("summary", "Planning".into())]), tr().text("dav-withdrawn", None)].join(" "));
     }
 
     /// An appointment with a bus before it, made a meeting you organize

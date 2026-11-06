@@ -884,6 +884,13 @@ pub struct ItemState {
     pub size: u64,
     #[serde(default)]
     pub mtime: i64,
+    /// What was sent, when its server took it without saying its ETag (it
+    /// changed what it stored: a meeting's scheduling, RFC 6638): a hash of
+    /// the text sent without its scheduling parameters, so that the pull
+    /// tells the server's copy of that write from a change made there
+    /// meanwhile (third review of the organizer's door, R3). Empty otherwise.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sent: String,
 }
 
 impl State {

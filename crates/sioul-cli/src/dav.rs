@@ -250,12 +250,15 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
     for conflict in &report.conflicts {
         println!("{}", s.say("dav-conflict", &[("path", crate::one_line(&conflict.display().to_string()))]));
     }
+    for summary in &report.undeleted {
+        println!("{}", s.say("dav-undeleted", &[("summary", crate::one_line(summary))]));
+    }
     for (summary, kept) in &report.answered {
         println!("{}", s.say("dav-answered-elsewhere", &[("summary", crate::one_line(summary)), ("answer", kept.to_ascii_lowercase())]));
     }
     // A meeting you organize set aside for its server's copy: what its guests still need to hear, said once.
     for meeting in &report.meetings {
-        let mut said = vec![s.say("dav-meeting-set-aside", &[("summary", crate::one_line(&meeting.summary))])];
+        let mut said = vec![s.say(if meeting.deleted { "dav-undeleted" } else { "dav-meeting-set-aside" }, &[("summary", crate::one_line(&meeting.summary))])];
         if meeting.withdrawn > 0 {
             said.push(s.say("dav-withdrawn", &[]));
         }

@@ -98,6 +98,8 @@ android-keyring = { version = "0.2", default-features = false, features = ["ndk-
 ndk-context = "0.1"
 
 [dev-dependencies]
+# Your addresses for one test's thread alone (`agenda::own_addresses_here`): a meeting you organize, its deletion refused (dav.rs).
+sioul-core = { path = "../sioul-core", features = ["test-hooks"] }
 # The phone's backend tested against a stand-in card (securitykey/phone_tests.rs).
 sequoia-openpgp.workspace = true
 # X25519 lent to the stand-in card's Curve25519 key (phone_tests.rs): in the lock already (Sequoia's RustCrypto side).
