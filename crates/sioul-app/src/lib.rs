@@ -61,6 +61,7 @@
 //! - [`outside`](outside/index.html): writing from other applications: shared files and text, `mailto:` links.
 //! - [`sites`](sites/index.html): sites kept in Sioul: the list, their notifications, logins filled from Bitwarden.
 //! - [`spam`](spam/index.html): Sioul's own spam filter in the mail settings, and on a computer "Train now" (docs/spam-filter.md).
+//! - [`topics`](topics/index.html): mail's topics: a message's topic, several at once, a sender's rule, each with Undo; Mail ▸ ⚙ ▸ Topics and, on a computer, the groups Sioul noticed (docs/topics.md).
 //!
 //! ## Tasks, projects and time
 //!
@@ -83,6 +84,7 @@
 //! ## Money and papers
 //!
 //! - [`bank`](bank/index.html): the money watch: bank accounts, where each movement went, what passed and what did not.
+//! - [`ledger`](ledger/index.html): the Budgets page's Movements and From mail tabs and the declaration: the ledger by its filters, each act with Undo, every money mail and what became of it, the receipts register.
 //! - [`contracts`](contracts/index.html): contracts and subscriptions.
 //! - [`papers`](papers/index.html): the papers wallet.
 //!
@@ -160,11 +162,13 @@ mod join;
 mod mail;
 mod mailsearch;
 mod mailnote;
+mod mirrors;
 mod openmail;
 mod organized;
 #[cfg(target_os = "android")]
 mod nfc;
 mod notices;
+mod ledger;
 mod letters;
 mod map;
 // Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).
@@ -192,6 +196,7 @@ mod sites;
 mod spam;
 mod steps;
 mod timenote;
+mod topics;
 mod wake;
 mod work;
 

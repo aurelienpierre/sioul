@@ -40,7 +40,7 @@ On the left, every project, with its open tasks and the time left to bill. On th
 - **Its tasks**, as a **Board**, a **List** or a **Gantt**: each opens the [Tasks](tasks.md) page, kept to this project. The **Gantt** is the Tasks page's own ([List, Board, Gantt](tasks.md#list-board-timeline)): each task on its days, the date asked as a small diamond.
 - **Note time**: a meeting, a call, work done away from the timer.
 - **Make the invoice**, when billable time waits to be billed. See [Time and invoices](time.md).
-- **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact.
+- **Add ▾** and **Link to…**, at the end: something new tied to the project, or a tie to something that exists, such as the client's contact; **Ties**, everything the project holds and what that is tied to ([Ties](ties.md)).
 
 ## Mail that comes here by itself {#mail-that-comes-here-by-itself}
 
@@ -74,6 +74,12 @@ Projects for clients rest outside working hours: "Work projects rest until work 
 - **Yours, outside work**: a project of your own, marked so, stays in view in quiet time, when work projects rest.
 - **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
 - **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read a project's page as the window shows it, with one-time codes, sign-in links, account and card numbers masked in its mail. It changes nothing there.
+
+## Why it works this way {#why-it-works-this-way}
+
+Filing mail by hand costs and fails: in 345 people's mail, finding a message by its folder took 59 seconds, by a search 17, and those who filed most found no more (Whittaker et al. 2011). So a project's mail comes to it by the routes you give it once, after Sioul checked who sent it, and you file nothing. Visual supports help many autistic people (Steinbrenner et al. 2020): a project's tasks can be drawn on a Gantt when that helps, and never must be.
+
+More in [what the research says](../dev/research.md), findings 13 and 61.
 
 ## Compared with other apps {#compared-with-other-apps}
 

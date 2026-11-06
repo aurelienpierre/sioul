@@ -746,6 +746,9 @@ pub(crate) fn setup() -> String {
                 "titles": a.titles,
                 // Its server, and whether it is yours to rename and remove (part 5).
                 "server": collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default(),
+                // A calendar of busy blocks Sioul keeps for your availability (Agenda ⚙ ▸ Your availability), and for which.
+                "mirror": a.mirror,
+                "kept_for": if a.mirror { config.agenda.availabilities.iter().find(|x| x.mirrors.iter().any(|m| format!("{}/{}", m.account, m.calendar) == a.id)).map(|x| x.name.clone()).unwrap_or_default() } else { String::new() },
             })
         })
         .collect();
@@ -754,9 +757,10 @@ pub(crate) fn setup() -> String {
         .iter()
         .map(|k| serde_json::json!({ "id": k.id(), "label": tr().text(&format!("holder-kind-{}", k.id()), None), "stand_in": config.agenda.stand_ins.get(k.id()).cloned().unwrap_or_default(), "months": config.agenda.rhythm(*k).unwrap_or(0), "usual_months": k.rhythm().unwrap_or(0) }))
         .collect();
-    let yours: Vec<serde_json::Value> = agendas.iter().filter(|a| a.whose == sioul_core::agendas::Whose::Yours && a.events && !a.read_only()).map(|a| serde_json::json!({ "id": a.id, "name": a.name, "for_work": a.for_work() })).collect();
+    let yours: Vec<serde_json::Value> = agendas.iter().filter(|a| a.whose == sioul_core::agendas::Whose::Yours && a.events && !a.read_only() && !a.mirror).map(|a| serde_json::json!({ "id": a.id, "name": a.name, "for_work": a.for_work() })).collect();
     let children = serde_json::json!({ "kinds": kinds, "yours": yours, "follow_ups": config.agenda.follow_ups(), "any": agendas.iter().any(|a| a.whose == sioul_core::agendas::Whose::Child) });
-    let events: Vec<&sioul_core::agendas::Agenda> = agendas.iter().filter(|a| a.events).collect();
+    // A calendar of busy blocks Sioul keeps is compared with nothing: it is out of the matrix.
+    let events: Vec<&sioul_core::agendas::Agenda> = agendas.iter().filter(|a| a.events && !a.mirror).collect();
     let mut pairs = Vec::new();
     for (i, a) in events.iter().enumerate() {
         for b in &events[i..] {

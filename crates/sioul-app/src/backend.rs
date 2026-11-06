@@ -58,6 +58,8 @@ pub mod qobject {
         // The Mail page's search by conditions: its sentence, what the servers said, the rows (`mailsearch`).
         #[qproperty(QString, mail_search)]
         #[qproperty(QString, undo_line)]
+        // The Budgets page's From mail tab: the page last asked (`ledger::ask_mail`).
+        #[qproperty(QString, money_mail)]
         #[qproperty(QString, contacts)]
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
         #[qproperty(QString, duplicates)]
@@ -92,6 +94,8 @@ pub mod qobject {
         #[qproperty(QString, mode)]
         #[qproperty(QString, forecast)]
         #[qproperty(QString, places_found)]
+        // The groups Sioul noticed, for Mail ▸ ⚙ ▸ Topics (`topics::find_groups`).
+        #[qproperty(QString, topic_groups)]
         type Sioul = super::SioulRust;
 
         /// A sentence of the interface, in your language.
@@ -760,16 +764,29 @@ pub mod qobject {
         #[qinvokable]
         fn agenda_link(self: Pin<&mut Sioul>, id: &QString, on: bool);
 
-        /// Your availability: what is shared, the accounts and agendas to pick (JSON).
+        /// Your availabilities, Agenda ⚙ ▸ Your availability (JSON {head, items, agendas, accounts}).
         #[qinvokable]
         fn availability(self: &Sioul) -> QString;
 
-        /// Your availability shared (JSON {account, agendas, with, link, words}), or no longer; what went wrong, else "".
+        /// An availability shared once more (JSON {id | name, agendas, words; audience, who, way, account, link}); what went wrong, else "".
         #[qinvokable]
         fn share_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
 
+        /// One share stopped (JSON {id, way, account, who}), with Undo; what went wrong, else "".
         #[qinvokable]
-        fn stop_availability(self: Pin<&mut Sioul>) -> QString;
+        fn stop_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// The ways Sioul would share with an audience, best first (JSON {id | agendas, words; audience, who} → {choices, problem}).
+        #[qinvokable]
+        fn availability_ways(self: &Sioul, text: &QString) -> QString;
+
+        /// An availability's name, agendas and words written (JSON {id?, name, agendas, words} → {id, problem}).
+        #[qinvokable]
+        fn save_availability(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// Your working hours told to an account's server, or no longer; what went wrong, else "".
+        #[qinvokable]
+        fn availability_hours(self: Pin<&mut Sioul>, account: &QString, on: bool) -> QString;
 
         /// A named set of agendas chosen in the filter (part 4): its agendas
         /// shown, the others left out, until work's hours change.
@@ -1154,6 +1171,13 @@ pub mod qobject {
         /// Ties two things, in the one that can hold the link, else locally; returns what the line says.
         #[qinvokable]
         fn link_things(self: Pin<&mut Sioul>, from: &QString, to: &QString) -> QString;
+
+        /// The chain of ties from a thing (`chain::walk`), with the things
+        /// whose "+" was pressed (`opened`, a JSON list, once per press), at a
+        /// phone's bounds or a computer's: made on a worker thread, brought
+        /// by `chain_ready`.
+        #[qinvokable]
+        fn ask_chain(self: &Sioul, uri: &QString, opened: &QString, phone: bool);
 
         /// Undoes a tie wherever it is written; returns what the line says.
         #[qinvokable]
@@ -1671,6 +1695,63 @@ pub mod qobject {
         #[qinvokable]
         fn same_movement(self: Pin<&mut Sioul>, key: &QString, other: &QString) -> QString;
 
+        /// The Movements tab: a page of the ledger as its filters ask (JSON), as JSON (`ledger::movements`).
+        #[qinvokable]
+        fn movements(self: &Sioul, asked: &QString) -> QString;
+
+        /// One movement in full, by its address, with what it allows (`ledger::movement`).
+        #[qinvokable]
+        fn movement_detail(self: &Sioul, address: &QString) -> QString;
+
+        /// "New movement" from its form (JSON), with Undo: {said} or {problem}.
+        #[qinvokable]
+        fn make_movement(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// A movement changed in the fields its form gives (JSON), with Undo: {said} or {problem}.
+        #[qinvokable]
+        fn change_movement(self: Pin<&mut Sioul>, address: &QString, edit: &QString) -> QString;
+
+        /// A movement removed by what it is made from, with Undo: {said} or {problem}.
+        #[qinvokable]
+        fn remove_movement(self: Pin<&mut Sioul>, address: &QString) -> QString;
+
+        /// What you removed put back: {said} or {problem}.
+        #[qinvokable]
+        fn put_back_movement(self: Pin<&mut Sioul>, address: &QString) -> QString;
+
+        /// The From mail tab: a page of money mail as its filters ask (JSON),
+        /// given as `moneyMail` once read, off the window's thread.
+        #[qinvokable]
+        fn ask_money_mail(self: &Sioul, asked: &QString);
+
+        /// "Not a payment" on a money mail's row (JSON {key, domain, sender, subject}), with Undo.
+        #[qinvokable]
+        fn not_a_payment(self: Pin<&mut Sioul>, named: &QString) -> QString;
+
+        /// "Count it again" on a money mail's row, with Undo.
+        #[qinvokable]
+        fn count_again(self: Pin<&mut Sioul>, named: &QString) -> QString;
+
+        /// The movements a money mail of that day and amount (cents, signed) may be the same payment as.
+        #[qinvokable]
+        fn mail_candidates(self: &Sioul, day: &QString, cents: i64) -> QString;
+
+        /// "The same as…" from a money mail: the mail joined to that movement, with Undo.
+        #[qinvokable]
+        fn mail_same(self: Pin<&mut Sioul>, key: &QString, movement: &QString) -> QString;
+
+        /// "Not the same" from a money mail's row (JSON {key, movement}), with Undo.
+        #[qinvokable]
+        fn mail_not_same(self: Pin<&mut Sioul>, named: &QString) -> QString;
+
+        /// "For the declaration": a declaring budget's turnover and its register over the period holding `anchor`.
+        #[qinvokable]
+        fn declaration(self: &Sioul, budget: &QString, anchor: &QString) -> QString;
+
+        /// "Save the receipts register…" into a folder you chose: {csv, pdf, html, folder} or {error}.
+        #[qinvokable]
+        fn save_receipts(self: &Sioul, budget: &QString, anchor: &QString, folder: &QString) -> QString;
+
         /// The areas ticked in the budgets' filter ("work+leisure", "" for none),
         /// kept until the hours change, a day at most (`areafilter`).
         #[qinvokable]
@@ -1838,6 +1919,64 @@ pub mod qobject {
         /// The training running stops at its next step.
         #[qinvokable]
         fn spam_stop(self: Pin<&mut Sioul>);
+
+        /// Mail's topics and their senders' rules (`topics::view`), as JSON.
+        #[qinvokable]
+        fn topics(self: &Sioul) -> QString;
+
+        /// Gives messages (a JSON list of keys; a mailbox row's keys as a list
+        /// within it, one message) the topic `topic`, or none (""), with Undo.
+        #[qinvokable]
+        fn tag_messages(self: Pin<&mut Sioul>, keys: &QString, topic: &QString);
+
+        /// "+ Topic": a topic named `name` made, and the messages of `keys`
+        /// given it, in one act with Undo. Returns what went wrong, else "".
+        #[qinvokable]
+        fn new_topic(self: Pin<&mut Sioul>, keys: &QString, name: &QString) -> QString;
+
+        /// "Always <topic> for this sender" (`rule` "always"), "Never" ("never"),
+        /// or the rule taken off ("off"), for the sender of the message `key`; with Undo.
+        #[qinvokable]
+        fn sender_topic(self: Pin<&mut Sioul>, key: &QString, topic: &QString, rule: &QString);
+
+        /// A sender's rule taken off from the settings' page, by its address; with Undo.
+        #[qinvokable]
+        fn forget_sender_topic(self: Pin<&mut Sioul>, address: &QString, topic: &QString);
+
+        /// A topic renamed; returns what went wrong, else "".
+        #[qinvokable]
+        fn rename_topic(self: Pin<&mut Sioul>, topic: &QString, name: &QString) -> QString;
+
+        /// A topic removed, with Undo.
+        #[qinvokable]
+        fn remove_topic(self: Pin<&mut Sioul>, topic: &QString);
+
+        /// Looks for the groups Sioul noticed, off the window's thread; `topicGroups` follows.
+        #[qinvokable]
+        fn find_topic_groups(self: Pin<&mut Sioul>);
+
+        /// "Name it": the group at `index` of `topicGroups` made a topic named
+        /// `name`, its messages given it, with Undo. Returns what went wrong, else "".
+        #[qinvokable]
+        fn name_topic_group(self: Pin<&mut Sioul>, index: i32, name: &QString) -> QString;
+
+        /// "Always a topic…": the sender at `index` of `topicGroups`' senders
+        /// given "Always <topic>" for the topic named `name` (made when none
+        /// has that name), with Undo. Returns what went wrong, else "".
+        #[qinvokable]
+        fn name_topic_sender(self: Pin<&mut Sioul>, index: i32, name: &QString) -> QString;
+
+        /// The topic presets not started yet, for "Add a topic" (JSON [{id, name}]).
+        #[qinvokable]
+        fn topic_presets(self: &Sioul) -> QString;
+
+        /// A topic preset started as a topic of yours, with Undo. Returns what went wrong, else "".
+        #[qinvokable]
+        fn start_topic_preset(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// Day one's card for the Porch ("Sioul sorted your mail into…"), "" for none.
+        #[qinvokable]
+        fn topics_card(self: &Sioul) -> QString;
 
         /// The mail filters as Mail ▸ ⚙ shows them (`filters::view`): each
         /// filter in words, the addresses, their folders, the editor's words, as JSON.
@@ -2479,6 +2618,10 @@ pub mod qobject {
         #[qsignal]
         fn account_added(self: Pin<&mut Sioul>);
 
+        /// The chain asked of `uri` with `opened` as asked (`ask_chain`), as JSON (`chain::ChainView`).
+        #[qsignal]
+        fn chain_ready(self: Pin<&mut Sioul>, uri: QString, opened: QString, json: QString);
+
         /// An account's password given here: kept (`problem` empty), else why not.
         #[qsignal]
         fn account_password_done(self: Pin<&mut Sioul>, id: QString, problem: QString);
@@ -2491,6 +2634,11 @@ pub mod qobject {
         /// and every person chooser read them again.
         #[qsignal]
         fn persons_changed(self: Pin<&mut Sioul>);
+
+        /// Mail's topics changed (`changes`): the topic list, your word on a
+        /// message or a sender; Mail ▸ ⚙ ▸ Topics, the Topic filter and menus read them again.
+        #[qsignal]
+        fn topics_changed(self: Pin<&mut Sioul>);
 
         /// What an agenda is changed (its role, its person, its area; your
         /// availability's share; a calendar made, renamed or removed): Agenda ⚙
@@ -2733,6 +2881,7 @@ pub struct SioulRust {
     drafts: QString,
     mail_search: QString,
     undo_line: QString,
+    money_mail: QString,
     contacts: QString,
     duplicates: QString,
     agenda: QString,
@@ -2752,6 +2901,7 @@ pub struct SioulRust {
     mode: QString,
     forecast: QString,
     places_found: QString,
+    topic_groups: QString,
     shared: Arc<Shared>,
 }
 
@@ -2811,6 +2961,11 @@ pub(crate) struct Shared {
     pub(crate) work_shown_generation: AtomicU64,
     /// Everything links reach, read after the last change.
     pub(crate) loaded: Mutex<Option<Arc<sioul_core::links::Loaded>>>,
+    /// The tie index of that reading (`ties::Built`), made on a worker thread
+    /// the first time a page asks (`work::ties_made`); dropped when what it
+    /// reads beyond it changes (persons, papers, letters, money, agendas,
+    /// sites: `changes::listen`). Never written anywhere.
+    pub(crate) ties: Mutex<Option<(std::sync::Weak<sioul_core::links::Loaded>, Arc<sioul_core::ties::Built>)>>,
     /// Real time: every folder each minute, the Porch open.
     pub(crate) realtime: AtomicBool,
     /// Addresses are being placed on the map.
@@ -3346,7 +3501,8 @@ fn compute(shared: &Shared) -> Views {
         // `areafilter`); a shortfall on an account shows whatever the filter;
         // every budget stays a choice for a line, whatever the hour (the owner's report of 4 November 2026).
         let (shown, filter) = crate::payments::budget_filter(&mode, now.timestamp().as_second());
-        let page = view::MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &mail, shown, own: filter.own };
+        let store = sioul_core::movements::Store::load(&root).unwrap_or_default();
+        let page = view::MoneyPage { ledger: &books.counted, bank: &books.bank, movements: &books.movements, mail: &mail, shown, own: filter.own, books: Some(&books), imports: &store.imports };
         let mut page = view::budgets_page(&page, tr(), now.date());
         page.filter = Some(filter);
         json(&page)
@@ -3714,6 +3870,10 @@ fn sort_on_server(qt: &QtThread, shared: &Arc<Shared>, account: &Account, new: V
     let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
     std::thread::spawn(move || {
         let moved = crate::spam::after_fetch(&account, &new, false);
+        // Mail's topics: the new mail judged by the topics' table (docs/topics.md, "The model").
+        if crate::topics::after_fetch(&account, &new) > 0 {
+            crate::mail::show_mail(&qt, &shared);
+        }
         let filtered = crate::filters::after_fetch(&account, &new, false);
         if !filtered.problem.is_empty() {
             set_status(&qt, filtered.problem.clone());
@@ -4169,6 +4329,8 @@ impl qobject::Sioul {
         if let Err(e) = config::migrate_sites_at_start(&config_path()) {
             eprintln!("{e}");
         }
+        // The single share of your availability of before, read once as an availability of the list.
+        crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
         self.as_mut().set_mode(QString::from(&mode_json()));
         // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
@@ -5242,8 +5404,20 @@ impl qobject::Sioul {
         QString::from(&crate::servers::share_availability(&self.qt_thread(), &self.shared(), &text.to_string()))
     }
 
-    fn stop_availability(self: Pin<&mut Self>) -> QString {
-        QString::from(&crate::servers::stop_availability(&self.qt_thread(), &self.shared()))
+    fn stop_availability(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::servers::stop_availability(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn availability_ways(&self, text: &QString) -> QString {
+        QString::from(&crate::servers::availability_ways(&text.to_string()))
+    }
+
+    fn save_availability(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::servers::save_availability(&text.to_string()))
+    }
+
+    fn availability_hours(self: Pin<&mut Self>, account: &QString, on: bool) -> QString {
+        QString::from(&crate::servers::availability_hours(&self.qt_thread(), &self.shared(), &account.to_string(), on))
     }
 
     fn who_does_what(&self, from: &QString, child: &QString, mine: bool) -> QString {
@@ -5653,6 +5827,10 @@ impl qobject::Sioul {
         QString::from(&work::link_target(&self.shared(), &source.to_string(), &href.to_string()))
     }
 
+    fn ask_chain(&self, uri: &QString, opened: &QString, phone: bool) {
+        work::ask_chain(&self.qt_thread(), &self.shared(), uri.to_string(), opened.to_string(), phone);
+    }
+
     fn link_things(mut self: Pin<&mut Self>, from: &QString, to: &QString) -> QString {
         let line = work::link(&self.qt_thread(), &self.shared(), &from.to_string(), &to.to_string());
         self.as_mut().set_status(QString::from(&line));
@@ -5908,6 +6086,62 @@ impl qobject::Sioul {
         let problem = crate::payments::same(&key.to_string(), &other.to_string());
         show(&self.qt_thread(), &self.shared());
         QString::from(&problem)
+    }
+
+    fn movements(&self, asked: &QString) -> QString {
+        QString::from(&crate::ledger::movements(&asked.to_string()))
+    }
+
+    fn movement_detail(&self, address: &QString) -> QString {
+        QString::from(&crate::ledger::movement(&address.to_string()))
+    }
+
+    fn make_movement(self: Pin<&mut Self>, edit: &QString) -> QString {
+        QString::from(&crate::ledger::make(&self.qt_thread(), &self.shared(), &edit.to_string()))
+    }
+
+    fn change_movement(self: Pin<&mut Self>, address: &QString, edit: &QString) -> QString {
+        QString::from(&crate::ledger::change(&self.qt_thread(), &self.shared(), &address.to_string(), &edit.to_string()))
+    }
+
+    fn remove_movement(self: Pin<&mut Self>, address: &QString) -> QString {
+        QString::from(&crate::ledger::remove(&self.qt_thread(), &self.shared(), &address.to_string()))
+    }
+
+    fn put_back_movement(self: Pin<&mut Self>, address: &QString) -> QString {
+        QString::from(&crate::ledger::put_back(&self.qt_thread(), &self.shared(), &address.to_string()))
+    }
+
+    fn ask_money_mail(&self, asked: &QString) {
+        crate::ledger::ask_mail(&self.qt_thread(), asked.to_string());
+    }
+
+    fn not_a_payment(self: Pin<&mut Self>, named: &QString) -> QString {
+        QString::from(&crate::ledger::not_a_payment(&self.qt_thread(), &self.shared(), &named.to_string()))
+    }
+
+    fn count_again(self: Pin<&mut Self>, named: &QString) -> QString {
+        QString::from(&crate::ledger::count_again(&self.qt_thread(), &self.shared(), &named.to_string()))
+    }
+
+    fn mail_candidates(&self, day: &QString, cents: i64) -> QString {
+        QString::from(&crate::ledger::mail_candidates(&day.to_string(), cents))
+    }
+
+    fn mail_same(self: Pin<&mut Self>, key: &QString, movement: &QString) -> QString {
+        QString::from(&crate::ledger::mail_same(&self.qt_thread(), &self.shared(), &key.to_string(), &movement.to_string()))
+    }
+
+    fn mail_not_same(self: Pin<&mut Self>, named: &QString) -> QString {
+        QString::from(&crate::ledger::mail_not_same(&self.qt_thread(), &self.shared(), &named.to_string()))
+    }
+
+    fn declaration(&self, budget: &QString, anchor: &QString) -> QString {
+        QString::from(&crate::ledger::declaration(&budget.to_string(), &anchor.to_string()))
+    }
+
+    fn save_receipts(&self, budget: &QString, anchor: &QString, folder: &QString) -> QString {
+        QString::from(&crate::ledger::save_receipts(&budget.to_string(), &anchor.to_string(), &folder.to_string()))
     }
 
     fn tick_budget_areas(self: Pin<&mut Self>, areas: &QString) {
@@ -6556,6 +6790,7 @@ impl qobject::Sioul {
                     reserve: None,
                     links: Vec::new(),
                     preset: None,
+                    ..Default::default()
                 };
                 budget::record_line(&path, &line, &origin)?;
             }
@@ -6730,6 +6965,10 @@ impl qobject::Sioul {
         // The spam filter trains again by itself, plugged in and idle, on the computer that made its table.
         let qt_spam = self.qt_thread();
         std::thread::spawn(move || crate::spam::by_itself(qt_spam));
+        // Mail's topic presets start once, when the mail kept here is enough to judge (docs/topics.md).
+        crate::topics::day_one_by_itself(&self.qt_thread(), &self.shared());
+        // The mail kept here judged by the topics' table, a table that arrived the rest at the next looks.
+        crate::topics::judge_by_itself(&self.qt_thread(), &self.shared());
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
         // The Bitwarden vault locked once unused as long as you chose, away or not (Sites ⚙).
@@ -7512,16 +7751,21 @@ impl qobject::Sioul {
         // address's mail, a selection across two, the Spam chip (pictures alone), "mailbox-measure" the
         // mailbox and a folder timed and counted (make-demo.py's --bulk), "porch-notices" the Porch's
         // sections and rows, a section's help, a row dismissed and its Undo (pictures alone), "budgets-page" the
-        // budgets page, What is coming with its month, the bank accounts (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
+        // budgets page, What is coming with its month, the bank accounts (pictures alone), "money-tabs" the
+        // Budgets page's four tabs, a movement's menu and pane, New movement, the declaration (pictures alone), "letters-page" the Letters page and its settings (pictures alone), "persons" the household on
         // Contacts, a child's page, the Papers page's chips and a paper's "For" (pictures alone; docs/persons.md), "crud" your
-        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "timeline" the
+        // availability shared by a link and an agenda's link in Agenda ⚙, then the Day (docs/client.md), "availability"
+        // "chain" the chain of ties from a project, drawn and as an outline, "+" pressed, a card
+        // beside it and Back (pictures alone; docs/tasks.md),
+        // Agenda ⚙ ▸ Your availability and its "Share with…" (pictures alone; docs/client.md), "topics" day one's
+        // card, the mailbox with its rows' topics, one topic's mail, "Topic…" and Mail ▸ ⚙ ▸ Topics (pictures alone; docs/topics.md),
         // Day's times shown over a block, its handles, the "+" of an empty quarter, a meal's menu with "Had it", the
         // Week's named meals and nights (pictures alone; docs/client.md), "eventcard" an appointment's card with its
         // status, its place's buttons and its map, a tentative one, the event form's place suggested (pictures
         // alone; docs/client.md), "invite" a meeting you organize, its form's guests and what Save says first
         // (pictures alone, nothing saved; docs/client.md), "contact-address" a contact's card with its postal
         // address and Directions (a picture alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "letters-page", "persons", "crud", "timeline", "eventcard", "invite", "contact-address"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -7675,6 +7919,60 @@ impl qobject::Sioul {
 
     fn spam_stop(self: Pin<&mut Self>) {
         crate::spam::stop(self.qt_thread());
+    }
+
+    fn topics(&self) -> QString {
+        QString::from(&crate::topics::view())
+    }
+
+    fn tag_messages(self: Pin<&mut Self>, keys: &QString, topic: &QString) {
+        crate::topics::tag(&self.qt_thread(), &self.shared(), &mail::rows_of(&keys.to_string()), &topic.to_string());
+    }
+
+    fn new_topic(self: Pin<&mut Self>, keys: &QString, name: &QString) -> QString {
+        QString::from(&crate::topics::new_topic(&self.qt_thread(), &self.shared(), &mail::rows_of(&keys.to_string()), &name.to_string()))
+    }
+
+    fn sender_topic(self: Pin<&mut Self>, key: &QString, topic: &QString, rule: &QString) {
+        crate::topics::sender_rule(&self.qt_thread(), &self.shared(), &key.to_string(), &topic.to_string(), &rule.to_string());
+    }
+
+    fn forget_sender_topic(self: Pin<&mut Self>, address: &QString, topic: &QString) {
+        if let Some(found) = load_config().topics.iter().find(|t| t.id == topic.to_string()).cloned() {
+            crate::topics::set_rule(&self.qt_thread(), &self.shared(), &address.to_string(), &found, sioul_core::topics::labels::Rule::Off);
+        }
+    }
+
+    fn rename_topic(self: Pin<&mut Self>, topic: &QString, name: &QString) -> QString {
+        QString::from(&crate::topics::rename(&self.qt_thread(), &self.shared(), &topic.to_string(), &name.to_string()))
+    }
+
+    fn remove_topic(self: Pin<&mut Self>, topic: &QString) {
+        crate::topics::remove(&self.qt_thread(), &self.shared(), &topic.to_string());
+    }
+
+    fn find_topic_groups(self: Pin<&mut Self>) {
+        crate::topics::find_groups(&self.qt_thread());
+    }
+
+    fn name_topic_group(self: Pin<&mut Self>, index: i32, name: &QString) -> QString {
+        QString::from(&crate::topics::name_group(&self.qt_thread(), &self.shared(), usize::try_from(index).unwrap_or(usize::MAX), &name.to_string()))
+    }
+
+    fn name_topic_sender(self: Pin<&mut Self>, index: i32, name: &QString) -> QString {
+        QString::from(&crate::topics::name_sender(&self.qt_thread(), &self.shared(), usize::try_from(index).unwrap_or(usize::MAX), &name.to_string()))
+    }
+
+    fn topic_presets(&self) -> QString {
+        QString::from(&crate::topics::presets_offered())
+    }
+
+    fn start_topic_preset(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::topics::start_preset(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn topics_card(&self) -> QString {
+        QString::from(&crate::topics::card())
     }
 
     fn mail_filters(&self) -> QString {

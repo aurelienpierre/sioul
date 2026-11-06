@@ -50,6 +50,7 @@ nav = [
       { "Calls: who may ring, and when" = "guide/calls.md" },
       # texts: SMS phase (b).
       { "Texts: read and sent from your computer" = "guide/texts.md" },
+      { "Ties: the chain from any thing" = "guide/ties.md" },
       { "Sharing between your devices" = "guide/sharing.md" },
       { "Using an AI agent" = "guide/ai-agent.md" },
       { "Privacy and security" = "guide/privacy-security.md" },
@@ -101,6 +102,13 @@ nav = [
       { "Colours on the screen" = "dev/research/colour.md" },
       { "Devices of calls in sites" = "dev/research/calls.md" },
       { "Secure mailboxes and their record" = "dev/research/secure-mailboxes.md" },
+      { "Parents, children and two homes" = "dev/research/agendas.md" },
+      { "Sharing one's availability" = "dev/research/availability-sharing.md" },
+      { "Budgets from one income to the next" = "dev/research/budgets.md" },
+      { "Money movements, fees and payouts" = "dev/research/money-ledger.md" },
+      { "The persons one does admin for" = "dev/research/persons.md" },
+      { "Sorting mail by topic" = "dev/research/mail-topics.md" },
+      { "The chain of ties" = "dev/research/link-graph.md" },
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },
@@ -118,7 +126,9 @@ nav = [
     { "Mail" = [
       { "The Porch" = "dev/porch.md" },
       { "Your own spam filter" = "dev/spam-filter.md" },
+      { "Mail topics" = "dev/topics.md" },
       { "Mail, contacts, calendars" = "dev/client.md" },
+      { "Persons" = "dev/persons.md" },
       { "The notes folder" = "dev/notes-folder.md" },
       { "Virtual Secretary" = "dev/virtual-secretary.md" },
     ] },

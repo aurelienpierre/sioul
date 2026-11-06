@@ -164,7 +164,7 @@ Une tâche s’ouvre dans sa carte à droite, à côté de la liste (sur un tél
 - en haut, le rendez-vous qu’elle prépare, avec dessous l’heure de partir (« Partir à 13:10 · Bus 24 ») ;
 - ses étiquettes, **ses étapes** dans leur ordre (chacune se coche ici ; leurs minutes s’additionnent), puis ses notes avec leur liste à cocher, **ce qu’elle attend**, chaque attente avec son délai quand elle en a un (« deux semaines après elle »), et ce qu’elle libère ;
 - ses champs en mots, ceux qui sont dits : **Peut commencer le**, **Avant** et **Après**, ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Projet**, **Facturé**, **Type**, **Pour**, **Demande un bureau ouvert**, **Revient**, **Liste** ; ses notes, leur Markdown dessiné sans risque (pas de HTML, pas d’image, des liens ouverts par votre navigateur ; une liste de lignes `- [ ]` montre ses cases) ;
-- **Lié à cela** : le courriel d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un courriel aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste.
+- **Lié à cela** : le courriel d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un courriel aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste ; **Liens** montre toute la chaîne, ce à quoi ces choses sont liées aussi ([Les liens](ties.md)).
 
 **Modifier**, en haut, change les détails en son formulaire, et **Détails** revient aux détails. Chaque champ est gardé au fur et à mesure :
 

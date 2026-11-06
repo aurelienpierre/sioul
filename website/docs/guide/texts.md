@@ -62,9 +62,17 @@ Your computers keep every text and everything a later restore onto a new phone w
 - **On the Porch**, a text's **Reply** sends one of these texts, and **Open on the Texts page**, in its menu, opens its conversation here (**Text back**, where no Reply is offered).
 - **On a person's sheet**, **Texts with them…**.
 
+A chat app's message that your phone passes on (Signal, WhatsApp, Telegram…) has **Reply** on the Porch too: your phone sends it through that notification's own Reply ([What reaches you](notifications.md#messages-on-your-computers)).
+
 ## Not there yet {#not-there-yet}
 
-- Answering a chat app's message from the computer.
+- Putting the archive back onto a new phone ([above](#an-archive)).
+
+## Compared with other apps {#compared-with-other-apps}
+
+KDE Connect, and GSConnect on GNOME, carries texts at once over a direct link on your home network, and not beyond it; when the phone sends a text, nothing comes back to say so. Sioul's sharing is slower, from about half a minute to a few minutes, reaches wherever both devices reach your folder's server, and says what became of each text. Microsoft's Phone Link shows the last 30 days and lets nothing be deleted from the computer; Google Messages for web relays through the phone, one computer at a time; Sioul's computers keep every text, sealed, as an archive. Pushbullet sealed texts with a password typed on each device, as Sioul's sharing does with your passphrase.
+
+As of October 2026, from each app's own documentation and code ([the research](../dev/research/sms.md), §1.5 and §5.5).
 
 ## For technical readers {#for-technical-readers}
 

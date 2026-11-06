@@ -1343,6 +1343,20 @@ def account_id(key: str) -> str:
     return {"work": t("work", "travail"), "personal": t("personal", "perso")}[key]
 
 
+def write_topics(p: Profile, mails: list[Mail]):
+    """Your word on mail's topics, as the window writes it
+    (crates/sioul-core/src/topics/labels.rs): the bank's and the tax office's
+    senders always under their topics, the choir's messages given theirs;
+    and day one's card, the two topics it started, which the Porch says once."""
+    at = int(datetime.now().timestamp())
+    acts = [{"act": "sender", "at": at, "address": address, "topic": topic, "rule": "always"}
+            for address, topic in ((f"no-reply@{W.bank}", "bank"), (f"no-reply@{W.tax}", "taxes"), (f"{t('refund', 'remboursement')}@{W.tax}", "taxes"))]
+    acts += [{"act": "message", "at": at, "message_id": m.message_id, "topic": "choir", "forget": False}
+             for m in mails if m.message_id and domain_of(m.sender[1]) == W.choir]
+    p.write(p.state / "topics" / "labels" / "demo-device.jsonl", "".join(json.dumps(a, ensure_ascii=False) + "\n" for a in acts))
+    p.write(p.state / "topics" / "day-one.toml", f"started = [{toml_string(t('Bank', 'Banque'))}, {toml_string(t('Taxes', 'Impôts'))}]\n")
+
+
 def write_mail(p: Profile, mails: list[Mail]):
     counters: dict[tuple[str, str], int] = {}
     numbered = sorted(enumerate(mails), key=lambda pair: pair[1].when)
@@ -1525,6 +1539,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         # partner's, shared for when they are busy alone (read only, one word for every title).
         ("calendars", "lea", "Léa", "#b07d3f", ["VEVENT"]),
         ("calendars", "sam", "Sam", "#4f6d8f", ["VEVENT"]),
+        # Your availability for Sam (5 November 2026): the calendar of busy blocks Sioul keeps,
+        # shared with Sam on the server (Agenda ⚙ ▸ Your availability); its blocks come from the upkeep.
+        ("calendars", "busy-sam", t("Noa, busy times", "Noa, heures prises"), "#5b6470", ["VEVENT"]),
         ("contacts", "contacts", "Contacts", None, []),
     ]
     for kind, cid, name, colour, components in collections:
@@ -1536,6 +1553,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
         state = [f"url = {toml_string(DAV_URL + kind + '/noa/' + cid + '/')}", f"ctag = \"demo-{cid}-1\"", f"read_only = {read_only}",
                  "components = " + toml_list(components)]
         p.write(p.state / "dav" / DAV / kind / f"{cid}.toml", "\n".join(state) + "\n")
+    # Where the account's calendars live, as a Nextcloud says it (`/remote.php/dav/`): what
+    # Agenda ⚙ ▸ Your availability reads the server's kind and name from.
+    p.write(p.state / "dav" / DAV / "homes.toml", f'calendars = "{DAV_URL}remote.php/dav/calendars/noa/"\n')
 
     me_w = (ME, WORK, "ACCEPTED")
     events = [
@@ -2125,6 +2145,9 @@ title = {toml_string(t("Work", "Travail"))}
 period = "month"
 target = 1250
 area = "work"
+# A micro-entrepreneur's: a share set aside as each income arrives, declared each quarter.
+set_aside = 22
+declare = "quarter"
 
 # What keeps the flat and its people going: about this much a month.
 [[budget]]
@@ -2282,6 +2305,9 @@ def write_bank(p: Profile):
                                   (-4, -48.00, t("Foundry North", "Fonderie du Nord")), (-11, -12.00, W.paper_name),
                                   (-33, 40.00, t("Payment from Lise Moreau (print)", "Paiement de Lise Moreau (tirage)"))]:
         add("paypal", c.weekday_before(offset), amount, label)
+    # What PayPal received moved to the bank: one payout, on both accounts.
+    add("paypal", c.weekday_before(-17), -65.00, t("Withdrawal to bank", "Retrait vers la banque"))
+    add("bank", c.weekday_before(-15), 65.00, "VIR PAYPAL EUROPE SARL")
     rows.sort()
     bank_balance = 1846.27
     paypal_balance = sum(r[2] for r in rows if r[1] == "paypal") + 61.50
@@ -2291,6 +2317,26 @@ def write_bank(p: Profile):
     for n, (day, account, amount, label) in enumerate(rows):
         out += ["[[movement]]", f'account = "{account}"', f"date = {day}", f"amount = {amount:.2f}", f"label = {toml_string(label)}", f'id = "demo-{n:03d}"', ""]
     p.write(p.notes / "sioul-bank.toml", "\n".join(out))
+    write_movements_store(p, rows, end)
+
+
+def write_movements_store(p: Profile, rows: list, end: date):
+    """Sioul's own record beside the exports (docs/accounting.md, "Movements"):
+    what PayPal's export said each payment's client paid and the fee it kept
+    (PayPal France: 2.90 % plus €0.35), and each export taken in, by account,
+    for "Last bank update": the bank's every month, PayPal's each day until
+    two days ago, so that its card says movements since may be missing."""
+    c = p.clock
+    out = ["# Sioul's own record of money movements (docs/accounting.md). Kept beside the budgets.", "format = 1", ""]
+    for n, (day, account, amount, label) in enumerate(rows):
+        if account != "paypal" or amount <= 0:
+            continue
+        gross = round((amount + 0.35) / (1 - 0.029), 2)
+        fee = round(gross - amount, 2)
+        out += ["[[fee]]", f'source = "bank:paypal/demo-{n:03d}"', f"gross = {gross:.2f}", f'fees = [{{ kind = "processor", amount = {fee:.2f}, from = "export" }}]', 'processor = "paypal"', f"at = {c.day(-12)}T09:00:00Z", ""]
+    for account, taken, first, last in [("bank", -33, -62, -32), ("bank", -2, -31, -2), ("paypal", -4, -62, -4), ("paypal", -3, -3, -2)]:
+        out += ["[[import]]", f'account = "{account}"', f"at = {c.day(taken)}T08:30:00Z", f"first = {max(c.day(first), c.day(-62))}", f"last = {min(c.day(last), end)}", ""]
+    p.write(p.notes / "sioul-movements.toml", "\n".join(out))
 
 
 def write_contracts(p: Profile):
@@ -2796,6 +2842,30 @@ parent_address = "sam@example.org"
 whose = "partner"
 name = "Sam"
 {work_agenda}
+# Your availability (Agenda ⚙ ▸ Your availability): your busy times for Sam,
+# "Work" for the work agenda, kept in a calendar of blocks shared with Sam.
+[[agenda.availabilities]]
+id = "5a0c9e1e-6f1b-4c1e-9c43-7b2d5e8a1f00"
+name = {toml_string(t("For Sam", "Pour Sam"))}
+agendas = ["{DAV}/personal", "{DAV}/work"]
+words = {{ "{DAV}/work" = {toml_string(t("Work", "Travail"))} }}
+rounding = 0
+horizon = 60
+closing = false
+
+[[agenda.availabilities.mirrors]]
+account = "{DAV}"
+calendar = "busy-sam"
+transparent = true
+
+[[agenda.availabilities.shares]]
+audience = "person"
+who = "sam"
+way = "mirror-share"
+account = "{DAV}"
+link = ""
+made = "{p.clock.today}"
+
 [map]
 geocode = false
 
@@ -2880,7 +2950,29 @@ host = "dav.example.invalid"
 url = "{DAV_URL}"
 
 # Sites: web-only mailboxes, a chat, video calls (docs/sites.md).
-{site_text}""")
+{site_text}
+# Mail's topics (docs/topics.md): two started from Sioul's presets on day one, one of your own.
+topics_day_one = "{p.clock.day(-1)}"
+
+[[topic]]
+id = "bank"
+name = {toml_string(t("Bank", "Banque"))}
+area = "admin"
+agents = true
+preset = "bank"
+
+[[topic]]
+id = "taxes"
+name = {toml_string(t("Taxes", "Impôts"))}
+area = "admin"
+agents = true
+preset = "taxes"
+
+[[topic]]
+id = "choir"
+name = {toml_string(t("Choir", "Chorale"))}
+area = "leisure"
+""")
     p.write(p.config / "known-senders.txt", f"""# Senders let in: they skip the screener.
 @{W.library}
 {W.tom[1]}
@@ -2992,6 +3084,7 @@ def main():
     mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else [])
     write_config(profile)
     write_mail(profile, mails)
+    write_topics(profile, mails)
     moving_note(profile)
     if args.bulk:
         write_bulk(profile, args.bulk)

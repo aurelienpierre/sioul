@@ -2,12 +2,16 @@
 // Copyright © 2026 Aurélien Pierre
 
 // What a money movement's row offers (docs/accounting.md, "Moving a
-// movement"): where it goes (one budget, or split between two), "Not the
-// same payment" beside a source joined as probably the same, "The same
-// as…", and what tells of it opened (the mail, the letter, the contract).
+// movement", "Movements tab"): Change… in the fields its kind allows,
+// where it goes (one budget, or split between two), "The same as…", "Not
+// the same payment" beside a source joined as probably the same, Tie to…,
+// its removal by what it is made from (Delete, asked once; Not this time;
+// Leave out; Not a payout), Put back for one removed, and what tells of it
+// opened (the mail, the letter, the contract). Change…, Tie to… and the
+// removal come with a row that says what it allows (the Movements tab's).
 // Opened by a long press on a phone, a right click or its "⋯" button on a
-// computer. Each act says its effect, and asks once whether the payee's next
-// movements go there too: your act is the consent.
+// computer. Each act says its effect, with Undo, and a move asks once
+// whether the payee's next movements go there too: your act is the consent.
 
 pragma ComponentBehavior: Bound
 
@@ -23,15 +27,52 @@ Item {
     required property var window
     // Every budget, whatever the hour: [{id, title}].
     property var budgets: []
+    // The bank accounts, for Change…: [{id, title}].
+    property var accounts: []
+    // What an act on a movement could not do, in words; "" for nothing.
+    property string problem: ""
+    // The form of Change…, once made (the window's tests).
+    readonly property var changing: changeForm.item
 
     // An act done: its effect in words, and what to ask once ({payee, budget, title, way}, or null).
     signal said(string text, var ask)
 
     visible: false
 
-    // The menu of a row: {key, who, amount, cents, budget_id, sources: [{kind, words, address, probable, key}], probable}.
+    // The menu of a row: {key, who, amount, cents, budget_id, sources: [{kind, words, address, probable, key}], probable};
+    // from the Movements tab also {address, gone, allowed: {made, fields, removal}, data}.
     function show(row) {
         menu.now().show(row)
+    }
+
+    // An act's answer ({said} or {problem}): its line is the status line's, with Undo.
+    function done(text) {
+        const answer = JSON.parse(text || "{}")
+        actions.problem = answer.problem || ""
+        actions.said(answer.problem || "", null)
+    }
+
+    // Every menu and form of it closed (the window's pictures).
+    function closeAll() {
+        menu.close()
+        changeForm.close()
+    }
+
+    // Change… from elsewhere than the menu (a movement's pane).
+    function changeNow(row) {
+        changeForm.now().change(row)
+    }
+
+    // The row Delete asks about, until its answer.
+    property var deleting: null
+
+    // The removal of its kind: Delete asked once, the others at once (each with Undo).
+    function removeRow(row) {
+        actions.deleting = row
+        if (row.allowed.removal === "delete")
+            confirmDelete.now().ask(actions.theme.plain(row.who + "  ·  " + row.amount), actions.sioul.text("movement-delete-ask"), actions.sioul.text("movement-removal-delete"))
+        else
+            actions.done(actions.sioul.removeMovement(row.address))
     }
 
     // What tells of it opened, as a link to it opens.
@@ -57,11 +98,20 @@ Item {
                 readonly property var probable: rowMenu.row ? rowMenu.row.sources.filter(s => s.probable) : []
                 readonly property var openable: rowMenu.row ? rowMenu.row.sources.filter(s => s.address !== "") : []
 
+                readonly property var allowed: rowMenu.row && rowMenu.row.allowed ? rowMenu.row.allowed : null
+
                 function show(row) {
                     rowMenu.row = row
                     rowMenu.popup()
                 }
 
+                MenuItem {
+                    objectName: "movementChange"
+                    visible: rowMenu.allowed !== null && rowMenu.allowed.fields.length > 0 && rowMenu.row.gone !== true
+                    height: visible ? implicitHeight : 0
+                    text: actions.sioul.text("movement-change")
+                    onTriggered: changeForm.now().change(rowMenu.row)
+                }
                 MenuItem {
                     objectName: "movementPlace"
                     text: actions.sioul.text("bank-movement-where") + "…"
@@ -86,8 +136,38 @@ Item {
                         text: actions.sioul.text("movement-not-same") + " · " + actions.theme.plain(modelData.words)
                         onTriggered: actions.said(actions.sioul.notSameMovement(rowMenu.row.key, modelData.key), null)
                     }
-                    onObjectAdded: (index, item) => rowMenu.insertItem(3 + index, item)
+                    onObjectAdded: (index, item) => rowMenu.insertItem(4 + index, item)
                     onObjectRemoved: (index, item) => rowMenu.removeItem(item)
+                }
+                // Tied to a contact, a task, a project…
+                MenuItem {
+                    objectName: "movementTie"
+                    visible: rowMenu.allowed !== null && rowMenu.row.gone !== true
+                    height: visible ? implicitHeight : 0
+                    text: actions.sioul.text("movement-tie")
+                    onTriggered: tie.now().show({ uri: rowMenu.row.address }, "")
+                }
+                // Its ties as a chain (ChainPage.qml): what tells of it, its budget, what it is tied to.
+                MenuItem {
+                    objectName: "movementTies"
+                    visible: rowMenu.row !== null && (rowMenu.row.address || "") !== ""
+                    height: visible ? implicitHeight : 0
+                    text: actions.sioul.text("chain-its-ties")
+                    onTriggered: actions.window.openChain(rowMenu.row.address)
+                }
+                MenuItem {
+                    objectName: "movementRemove"
+                    visible: rowMenu.allowed !== null && !!rowMenu.allowed.removal && rowMenu.row.gone !== true
+                    height: visible ? implicitHeight : 0
+                    text: rowMenu.allowed && rowMenu.allowed.removal ? actions.sioul.text("movement-removal-" + rowMenu.allowed.removal) : ""
+                    onTriggered: actions.removeRow(rowMenu.row)
+                }
+                MenuItem {
+                    objectName: "movementPutBack"
+                    visible: rowMenu.row !== null && rowMenu.row.gone === true
+                    height: visible ? implicitHeight : 0
+                    text: actions.sioul.text("movement-put-back-button")
+                    onTriggered: actions.done(actions.sioul.putBackMovement(rowMenu.row.address))
                 }
                 Instantiator {
                     model: rowMenu.openable
@@ -295,6 +375,46 @@ Item {
                         onClicked: sameForm.close()
                     }
                 }
+            }
+        }
+    }
+
+    // Change…: the movement's form, the fields its kind allows.
+    Later {
+        id: changeForm
+
+        sourceComponent: Component {
+            MovementDialog {
+                sioul: actions.sioul
+                theme: actions.theme
+                budgets: actions.budgets
+                accounts: actions.accounts
+                onChanged: text => actions.done(text)
+            }
+        }
+    }
+
+    // Tie to…: anything, by a few words of its title.
+    Later {
+        id: tie
+
+        sourceComponent: Component {
+            LinkPicker {
+                sioul: actions.sioul
+                theme: actions.theme
+            }
+        }
+    }
+
+    // Delete, asked once (with Undo after).
+    Later {
+        id: confirmDelete
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                sioul: actions.sioul
+                theme: actions.theme
+                onConfirmed: actions.done(actions.sioul.removeMovement(actions.deleting.address))
             }
         }
     }

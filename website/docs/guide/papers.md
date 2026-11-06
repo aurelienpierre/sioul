@@ -6,7 +6,7 @@ description: Papers and paper letters in Sioul - the papers asked again and agai
 
 ## In short {#in-short}
 
-Papers keeps the documents you are asked for again and again (an identity card, a tax notice, rent receipts), says in words where each one stands, and reminds you once, when renewing one should start. Paper letters you scan or photograph are read on your own computer: each one comes to the Porch as a calm card that says who wrote, what it asks, how much and by when, with "within two months" turned into a date, and a task for that date in one click. Nothing is sent anywhere to be read.
+Papers keeps the documents you are asked for again and again (an identity card, a tax notice, rent receipts), says in words where each one stands, and reminds you once, when renewing one should start. Paper letters you scan or photograph are read on your own computer: each one becomes a calm card on the **Letters** page, and comes to the Porch as mail does. The card says who wrote, what it asks, how much and by when, with "within two months" turned into a date, and a task for that date in one click. Nothing is sent anywhere to be read.
 
 ## Protected by default {#what-is-protected}
 
@@ -48,7 +48,7 @@ In words, never in red:
 
 From a message, **Keep in papers** beside an attachment does the same: the antivirus checks the file, it is kept, and the form opens with a name and a kind guessed from the file's name and the subject. You only say what cannot be guessed.
 
-When some papers are for others, chips above the list show **Everyone**'s, or one person's: you, Léa, Odile. A person's page in Contacts shows their papers too.
+When some papers are for others, chips above the list show **Everyone**'s, or one person's: you, Léa, Odile. A person's page in Contacts shows their papers too, and **What Sioul keeps about …** there saves them, with that person's agendas and letters, in one PDF and a folder, for you to hand over: nothing is sent ([Your people](contacts.md#household)).
 
 To send one, the writing window has **A paper**, beside **Attach**. One that has ended, or is older than usually asked, says so in the list.
 
@@ -137,7 +137,7 @@ If you connect an AI agent ([Using an AI agent](ai-agent.md)), it can read the l
 
 Admin is done for others too. One adult in four delayed or gave up care because of its paperwork (Kyle & Frakt 2021), people who coordinate a parent's care and medicines give up their own activities five times as often (Wolff et al. 2016), and in France 9.3 million people help a relative, their money and their everyday steps among what they do (DREES 2023). So a paper can be for one of your people, and gets the care yours get: where it stands, one reminder, a renewal planned.
 
-Each relation gives you a different part. A child's papers are kept for the child, whose authority over their own life grows with age and is whole at eighteen (Code civil, art. 371-1 and 414): that is when they are theirs, and Sioul will say so once, at sixteen for the carte Vitale and at eighteen. An adult you help decides for themself: support must follow their "will and preferences", never replace them (the UN Convention on the Rights of Persons with Disabilities, art. 12). So Sioul never marks anyone as unable to decide; a procuration or a judge's measure is a paper, with its dates and its renewal, like any other (to come). A partner is an equal: the papers you share, the lease, the joint tax notice, are for both of you.
+Each relation gives you a different part. A child's papers are kept for the child, whose authority over their own life grows with age and is whole at eighteen (Code civil, art. 371-1 and 414): that is when they are theirs, and Sioul says so once on the child's page, at sixteen for the carte Vitale and at eighteen. An adult you help decides for themself: support must follow their "will and preferences", never replace them (the UN Convention on the Rights of Persons with Disabilities, art. 12). So Sioul never marks anyone as unable to decide; a procuration or a judge's measure is a paper, with its dates and its renewal, like any other. A partner is an equal: the papers you share, the lease, the joint tax notice, are for both of you.
 
 More in [what the research says](../dev/research.md), findings 55 to 60.
 

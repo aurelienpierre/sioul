@@ -653,11 +653,11 @@ pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
     let zone = crate::zone::current();
     let own = own_addresses();
     // The calendars that take events (a task list's tasks are the task views'; its tasks show here by their time blocks),
-    // but the busy blocks Sioul keeps from them for your availability (`availability::is_blocks`).
-    let blocks = crate::availability::blocks_place();
+    // but the calendars of busy blocks Sioul keeps from them for your availabilities (`availability::mirror_places`).
+    let mirrors = crate::availability::mirror_places();
     let mut all: Vec<Occurrence> = vdir::collections(Kind::Calendars)
         .iter()
-        .filter(|c| c.holds("VEVENT") && blocks.as_ref().is_none_or(|(account, id)| c.account != *account || c.id != *id))
+        .filter(|c| c.holds("VEVENT") && !mirrors.iter().any(|(account, id)| c.account == *account && c.id == *id))
         .flat_map(|calendar| calendar.items().into_iter().flat_map(|path| file_occurrences_as(&path, calendar, from, to, &zone, &own)).collect::<Vec<_>>())
         .collect();
     // Your answers, by your accounts' addresses: an invitation needs you once accepted, none once declined.
@@ -2586,7 +2586,9 @@ pub fn default_calendar() -> Option<Collection> {
 
 /// `default_calendar`, the choice given.
 pub fn default_calendar_of(chosen: Option<&str>) -> Option<Collection> {
-    let writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT")).collect();
+    // Never a calendar of busy blocks Sioul keeps for your availability.
+    let mirrors = crate::availability::mirror_places();
+    let writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT") && !mirrors.iter().any(|(a, id)| *a == c.account && *id == c.id)).collect();
     if let Some(found) = chosen.and_then(|id| writable.iter().find(|c| format!("{}/{}", c.account, c.id) == id)) {
         return Some(found.clone());
     }

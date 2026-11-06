@@ -36,7 +36,11 @@
 //! 5. when to look next: two minutes while the phone keeps close
 //!    (`keeps_close`, read again after the step's pull: another device in
 //!    use; while you sleep, a computer only with someone at it, or any while
-//!    a dose is due and not marked), five otherwise, fifteen while you sleep.
+//!    a dose is due and not marked), five otherwise, fifteen while you sleep;
+//! 6. your availabilities' calendars (`mirrors::background_step`), beside
+//!    the mail, at most every quarter of an hour while you are awake and every
+//!    hour while you sleep: one token check per calendar that counts, a pull
+//!    and a rewrite of a mirror only when one changed, from the freshest view.
 //!
 //! On a computer nothing here runs: the window does all of it each minute.
 
@@ -50,6 +54,10 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 static IN_SERVICE: AtomicBool = AtomicBool::new(false);
 /// Mail fetched in the background this often (seconds).
 pub(crate) const MAIL_EVERY: i64 = 15 * 60;
+/// Your availabilities' calendars looked at in the background this often
+/// while you are awake, and while you sleep (seconds; design-availability-sharing §3).
+pub(crate) const AVAILABILITY_AWAKE: i64 = 15 * 60;
+pub(crate) const AVAILABILITY_ASLEEP: i64 = 60 * 60;
 /// Steps while another device is in use, while awake otherwise, while asleep (seconds).
 pub(crate) const STEP_IN_USE: i64 = 2 * 60;
 pub(crate) const STEP_AWAKE: i64 = 5 * 60;
@@ -187,6 +195,8 @@ pub(crate) fn setup(config: &Config) -> serde_json::Value {
 static POKED: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
 /// When mail was last fetched in the background (Unix seconds).
 static MAILED: AtomicI64 = AtomicI64::new(0);
+/// When the availabilities' calendars were last looked at in the background.
+static CHECKED: AtomicI64 = AtomicI64::new(0);
 
 /// How long until the next step (seconds): two minutes while the phone keeps
 /// close (`keeps_close`: another device in use, its news fresh, the doses'
@@ -234,6 +244,8 @@ fn fetch_mail(config: &Config) -> bool {
                     Ok(report) => {
                         let mut came = !report.new.is_empty();
                         crate::spam::after_fetch(account, &report.new, report.first);
+                        // Mail's topics: the new mail judged by the topics' table, then some of the mail kept (docs/topics.md, "The model").
+                        crate::topics::after_fetch(account, &report.new);
                         // Your mail filters, as every device that fetches runs them (docs/client.md,
                         // "Filters"): what they would take quietly is held back from the
                         // notifications, and told as new mail if they could not act on it.
@@ -253,6 +265,8 @@ fn fetch_mail(config: &Config) -> bool {
     });
     // Every account's arrivals known: told now, in one notification.
     crate::mailnote::close_now();
+    // A topics' table that just arrived judges the mail kept here, some at each step (docs/topics.md, "The model").
+    let _ = sioul_core::topics::judging::judge_kept(config, 500);
     let any = any.into_inner();
     if any {
         crate::homecard::mail_came();
@@ -384,7 +398,17 @@ fn step(reason: &str) -> serde_json::Value {
         std::thread::spawn(|| {
             fetch_mail(&load_config());
             crate::mailnote::tick();
+            // Then a few hundred messages more read for money, so that From mail opens on what is found.
+            crate::ledger::background_step(&load_config());
         })
+    });
+    // 6, begun now beside the mail: your availabilities' calendars, a token
+    // check each, a pull and a rewrite only when one changed, at most every
+    // quarter of an hour awake and every hour asleep (`mirrors::background_step`).
+    let every = if asleep { AVAILABILITY_ASLEEP } else { AVAILABILITY_AWAKE };
+    let calendars = (config.agenda.availabilities.iter().any(|a| !a.mirrors.is_empty()) && started - CHECKED.load(Ordering::Relaxed) >= every - 30).then(|| {
+        CHECKED.store(started, Ordering::Relaxed);
+        std::thread::spawn(|| crate::mirrors::background_step(&load_config()))
     });
     // Expecting a call pressed on the notification: carried into the switch
     // and the calls' table first, and sent at once, the sync app not waited for.
@@ -431,6 +455,12 @@ fn step(reason: &str) -> serde_json::Value {
         && mail.join().is_err()
     {
         eprintln!("sioul: steps: mail stopped short");
+    }
+    // 6, done: the availabilities' calendars looked at, their mirrors sent.
+    if let Some(calendars) = calendars
+        && calendars.join().is_err()
+    {
+        eprintln!("sioul: steps: availability stopped short");
     }
     // The sealed files waited for, twenty-five seconds more at most: a large
     // paper on a slow line goes on without holding the step (asked again

@@ -113,6 +113,12 @@ The detail, with what comes from research and what is a guess: [What a day holds
 
 `sioul focus start <task> [--minutes 25]`, `sioul focus status` and `sioul focus stop [--done] [--note "…"]` run the focus timer from a terminal; its minutes count as the window's do.
 
+## Why it works this way {#why-it-works-this-way}
+
+Your guess of how long a task takes carries information, with a bias: the typical error is 20 to 30 %, short tasks overestimated, long ones underestimated, and a day's total runs over (Halkjelsvik & Jørgensen 2012). People misremember how long past tasks took, and seeing the measured times of similar ones helps (Roy, Christenfeld & McKenzie 2005). So your guess is kept and corrected in the plan, never replaced; timed minutes count more than remembered ones; and the margin is the day's, not each task's.
+
+More in [what the research says](../dev/research.md), finding 24, and in [Time estimation](../dev/research/time-estimation.md).
+
 ## Compared with other apps {#compared-with-other-apps}
 
 As of October 2026, from each app's own documentation.

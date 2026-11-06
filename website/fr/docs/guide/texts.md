@@ -62,9 +62,17 @@ Vos ordinateurs gardent chaque SMS et tout ce dont aurait besoin une restauratio
 - **Sur le Porche**, **Répondre** sur un SMS envoie l’un de ces SMS, et **Ouvrir dans la page des SMS**, dans son menu, ouvre sa conversation ici (**Répondre par SMS**, là où aucune réponse n’est proposée).
 - **Sur la fiche d’une personne**, **SMS avec cette personne…**.
 
+Le message d’une application de discussion que votre téléphone transmet (Signal, WhatsApp, Telegram…) a lui aussi **Répondre** sur le Porche : votre téléphone l’envoie par la réponse de cette notification elle-même ([Ce qui vous joint](notifications.md#messages-on-your-computers)).
+
 ## Pas encore là {#not-there-yet}
 
-- Répondre depuis l’ordinateur au message d’une application de discussion.
+- Remettre l’archive sur un nouveau téléphone ([plus haut](#an-archive)).
+
+## Comparé à d’autres applications {#compared-with-other-apps}
+
+KDE Connect, et GSConnect sous GNOME, porte les SMS aussitôt par un lien direct sur le réseau de votre domicile, et pas au-delà ; quand le téléphone envoie un SMS, rien ne revient le dire. Le partage de Sioul est plus lent, d’environ une demi-minute à quelques minutes, va partout où vos deux appareils atteignent le serveur de votre dossier, et dit ce qu’est devenu chaque SMS. Phone Link, de Microsoft, montre les 30 derniers jours et ne laisse rien supprimer depuis l’ordinateur ; Google Messages pour le web passe par le téléphone, un seul ordinateur à la fois ; les ordinateurs de Sioul gardent chaque SMS, scellé, comme une archive. Pushbullet scellait les SMS avec un mot de passe tapé sur chaque appareil, comme le partage de Sioul le fait avec votre phrase de passe.
+
+En octobre 2026, d’après la documentation et le code de chaque application ([la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research/sms.html), §1.5 et §5.5).
 
 ## Pour les lecteurs techniques {#for-technical-readers}
 

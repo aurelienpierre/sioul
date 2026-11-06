@@ -164,7 +164,7 @@ A task opens in its card on the right, beside the list (on a phone, it takes the
 - at the top, the appointment it prepares, with when to leave under it ("Leave at 13:10 · Bus 24");
 - its tags, **its steps** in their order (each can be ticked here; their minutes are added up), then its notes with their list to tick, **what it waits for**, each wait with its gap when it has one ("two weeks after it"), and what it frees;
 - its fields in words, those that are said: **Can start from**, **Before** and **After**, what it costs and what it gives back, **What it takes**, **Project**, **Billed**, **Kind**, **For**, **Needs an open office**, **Comes back**, **List**; its notes, their Markdown drawn safely (no HTML, no picture, links opened by your browser; a list of `- [ ]` items shows its boxes);
-- **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else.
+- **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else; **Ties** shows the whole chain, what those things are tied to as well ([Ties](ties.md)).
 
 **Edit**, at the top, turns the details into its form, and **Details** turns it back. Each field is kept as you change it:
 

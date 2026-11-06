@@ -872,7 +872,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // What the children's holder lines ask of your agendas (several agendas, part 3): your
         // stand-ins made, following their child event or taken out, the follow-ups, each said once.
         crate::children::upkeep(&qt, &shared, &desk.loaded.events);
-        // Your availability's calendar of busy blocks, where Sioul keeps one (part 5).
+        // Your availabilities: their mirrors from the freshest view, what waits on their servers (design-availability-sharing §3).
         crate::servers::availability_upkeep(&qt, &shared);
         // An appointment over: the steps before it drop quietly, its task closes once none is left (`pairs::closing`).
         let mut moved = moved;
@@ -2384,10 +2384,82 @@ pub(crate) fn create_note(qt: &QtThread, shared: &Arc<Shared>, title: &str, link
 
 // Links.
 
-/// What a thing is tied to, both ways, as JSON.
-pub(crate) fn related(shared: &Shared, uri: &str) -> String {
+/// What a thing is tied to, both ways, as JSON: from every tie Sioul knows
+/// once the tie index of this reading is made (`ties_made`), else from the
+/// ties the things hold, as before, while it is made.
+pub(crate) fn related(shared: &Arc<Shared>, uri: &str) -> String {
     let loaded = loaded(shared);
-    crate::backend::json(&taskview::related_views(tr(), &loaded.world().related(uri)))
+    let rows = match ties_made(shared, &loaded) {
+        Some(built) => built.world(&loaded).related(uri),
+        None => loaded.world().related(uri),
+    };
+    crate::backend::json(&taskview::related_views(tr(), &rows))
+}
+
+/// The tie index of this reading (`Shared::ties`) when it is made; else made
+/// now on a worker thread, never the window's, for the next ask.
+fn ties_made(shared: &Arc<Shared>, loaded: &Arc<Loaded>) -> Option<Arc<sioul_core::ties::Built>> {
+    if let Some(made) = kept_ties(shared, loaded) {
+        return Some(made);
+    }
+    let (shared, loaded) = (Arc::clone(shared), Arc::clone(loaded));
+    std::thread::spawn(move || {
+        made_ties(&shared, &loaded);
+    });
+    None
+}
+
+/// The tie index kept for this very reading, if any.
+fn kept_ties(shared: &Shared, loaded: &Arc<Loaded>) -> Option<Arc<sioul_core::ties::Built>> {
+    let kept = shared.ties.lock().ok()?;
+    kept.as_ref().filter(|(of, _)| of.upgrade().is_some_and(|of| Arc::ptr_eq(&of, loaded))).map(|(_, built)| Arc::clone(built))
+}
+
+/// One build at a time: a second ask waits for the first's index.
+static MAKING_TIES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// The tie index of this reading, made here if it was not, its cost said
+/// once as a `sioul-perf` line (counts and times only), then kept beside it.
+fn made_ties(shared: &Shared, loaded: &Arc<Loaded>) -> Arc<sioul_core::ties::Built> {
+    let _one = MAKING_TIES.lock();
+    if let Some(made) = kept_ties(shared, loaded) {
+        return made;
+    }
+    let began = std::time::Instant::now();
+    let built = Arc::new(sioul_core::ties::Built::of(&load_config(), loaded));
+    eprintln!(
+        "sioul-perf: ties: {} built in {} ms ({} ms reading their stores), about {} KB, {} things",
+        built.index.len(),
+        began.elapsed().as_millis(),
+        built.read_in.as_millis(),
+        built.index.bytes() / 1024,
+        built.index.things()
+    );
+    if let Ok(mut kept) = shared.ties.lock() {
+        *kept = Some((Arc::downgrade(loaded), Arc::clone(&built)));
+    }
+    built
+}
+
+/// The chain of ties from `uri` (`chain::walk`) with the things whose "+"
+/// was pressed, made on a worker thread and brought to the window by
+/// `chain_ready`; a phone's bounds or a computer's.
+pub(crate) fn ask_chain(qt: &QtThread, shared: &Arc<Shared>, uri: String, asked: String, phone: bool) {
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        // The things whose "+" was pressed, as the window gives them back with the answer.
+        let opened: Vec<String> = serde_json::from_str(&asked).unwrap_or_default();
+        let began = std::time::Instant::now();
+        let loaded = loaded(&shared);
+        let built = made_ties(&shared, &loaded);
+        let world = built.world(&loaded);
+        let weights = if phone { sioul_core::chain::Weights::phone() } else { sioul_core::chain::Weights::computer() };
+        let now = sioul_core::zone::now().timestamp().as_second();
+        let view = sioul_core::chain::walk(&world, &built.index, &built.gates, &uri, &opened, &weights, tr(), now);
+        eprintln!("sioul-perf: chain of {} things in {} ms", view.things.len(), began.elapsed().as_millis());
+        let json = crate::backend::json(&view);
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().chain_ready(QString::from(&uri), QString::from(&asked), QString::from(&json)));
+    });
 }
 
 /// What a link written in `source` leads to, as one row of the Related panel

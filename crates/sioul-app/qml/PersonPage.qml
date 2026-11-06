@@ -120,6 +120,18 @@ Panel {
                         wrapMode: Text.Wrap
                         color: page.theme.text
                     }
+                    // Their ties as a chain (ChainPage.qml): papers, letters, agendas, cards, sites.
+                    ToolButton {
+                        objectName: "personTies"
+                        visible: page.shown !== null && (page.shown.id || "") !== ""
+                        icon.name: "view-list-tree"
+                        icon.color: page.theme.text
+                        Accessible.name: page.sioul.text("ui-ties")
+                        ToolTip.visible: hovered
+                        ToolTip.text: page.sioul.text("ui-ties")
+                        ToolTip.delay: 300
+                        onClicked: page.window.openChain("sioul:person/" + encodeURIComponent(page.shown.id))
+                    }
                     ToolButton {
                         objectName: "personHelp"
                         text: "?"

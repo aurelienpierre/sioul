@@ -182,11 +182,11 @@ SioulWindow {
     }
 
     // Each page's name, by its place in the pages' stack.
-    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers", "texts-page-title", "ui-letters"]
+    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers", "texts-page-title", "ui-letters", "ui-ties"]
     // Each page is made when it is first shown, then kept: the window opens
     // with the Porch alone, and a page asked for (a link, "New") is made
     // before it is used, as the page is set first.
-    property var made: sioul.grabFolder() !== "" && sioul.grabSteps() !== "memory" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 15: true }) : ({ 0: true })
+    property var made: sioul.grabFolder() !== "" && sioul.grabSteps() !== "memory" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 15: true, 16: true }) : ({ 0: true })
     onPageChanged: {
         window.placesOpen = false
         // On a phone the card covers the page: the page asked for shows (review of 590eb18, M3).
@@ -200,10 +200,10 @@ SioulWindow {
     // Each page's file, read the first time it is made (setSource, for their
     // required properties): what it imports (maps, PDFs, sites, sounds) is
     // loaded then, not as the window opens. Android has its own Sites page.
-    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml", "TextsPage.qml", "LettersPage.qml"]
+    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml", "TextsPage.qml", "LettersPage.qml", "ChainPage.qml"]
     onMadeChanged: window.makePages()
     function makePages() {
-        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader, textsPageLoader, lettersPageLoader]
+        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader, textsPageLoader, lettersPageLoader, chainPageLoader]
         for (let i = 0; i < loaders.length; i++) {
             if (window.made[i] !== true || loaders[i].status !== Loader.Null)
                 continue
@@ -233,6 +233,32 @@ SioulWindow {
     readonly property var textsPage: textsPageLoader.item
     // Paper letters: their own page, waiting then filed (LettersPage.qml).
     readonly property var lettersPage: lettersPageLoader.item
+    // The chain of ties from one thing (ChainPage.qml), opened from any thing's card or menu.
+    readonly property var chainPage: chainPageLoader.item
+    // The page it was opened from, which Back gives again.
+    property int chainFrom: 0
+    // The thing last shown with its card's buttons (ThingActions.qml), whose ties Ctrl+G opens.
+    property var thingShown: null
+
+    // The chain of ties from a thing, by its address (docs/tasks.md, "The chain of ties").
+    function openChain(uri) {
+        if ((uri || "") === "")
+            return
+        cardHost.leave()
+        if (window.page !== 16)
+            window.chainFrom = window.page
+        window.page = 16
+        Qt.callLater(() => {
+            if (window.chainPage)
+                window.chainPage.show(uri)
+        })
+    }
+
+    // Back from the chain: the page it was opened from.
+    function closeChain() {
+        cardHost.leave()
+        window.page = window.chainFrom
+    }
     // The page in view; on a phone, a page showing one thing it opened
     // (a message, a task) says so (canGoBack) and closes it (back()).
     readonly property var shownPage: pages.children[window.page] ? pages.children[window.page].item : null
@@ -781,6 +807,11 @@ SioulWindow {
         // A person of the household: their page, in Contacts (docs/persons.md).
         else if (item.kind === "person")
             window.openPerson(item.key || decodeURIComponent((item.uri || "").slice("sioul:person/".length)))
+        // A money movement: the Budgets page's Movements tab, opened on it.
+        else if ((item.uri || "").startsWith("sioul:movement/")) {
+            window.page = 9
+            budgetsPage.openMovement(item.uri)
+        }
         // A paper, a contract, a letter, an invoice, a payment's line: its dated card where
         // you are, when it reads (the unified agenda, part 4); else its page.
         else if (window.openDated(item, fromCard))
@@ -1269,7 +1300,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1421,16 +1452,16 @@ SioulWindow {
             readonly property var crudSteps: [
                 () => window.page = 4,
                 () => agendaPage.showDay(window.today),
-                () => sioul.shareAvailability(JSON.stringify({ account: "cloud", agendas: ["cloud/personal"], with: "", link: true, words: {} })),
+                () => sioul.shareAvailability(JSON.stringify({ name: "Public", agendas: ["cloud/personal"], audience: "link", who: "", way: "mirror-link", account: "cloud" })),
                 () => agendaPage.openSettings(true, "agendas"),
                 () => {},
                 () => {},
-                () => agendaPage.revealSetting("availabilityLine"),
+                () => agendaPage.revealSetting("availabilityLink"),
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-availability-link.png"),
                 // The clipboard takes a link and holds it (`copyText`, read back), said in the log.
                 () => console.warn("sioul-copied: " + window.copy("https://cloud.example.org/remote.php/dav/public-calendars/busy-times?export")),
-                () => agendaPage.openAgendaLine(JSON.parse(sioul.availability()).place),
+                () => agendaPage.openAgendaLine(JSON.parse(sioul.availability()).items.slice(-1)[0].mirrors[0]),
                 () => {},
                 () => {},
                 () => agendaPage.revealSetting("agendaLink"),
@@ -1439,6 +1470,89 @@ SioulWindow {
                 () => agendaPage.openSettings(false),
                 () => {},
                 () => grabber.saveCounted("agenda-day", agendaPage),
+                () => window.close()
+            ]
+            // Agenda ⚙ ▸ Your availability (SIOUL_GRAB_STEPS=availability; SIOUL_GRAB_PHONE for a
+            // phone's): the demo's availability for Sam, then one more shared by a link (the demo
+            // profile asks no server: made at once, its link stood in); the section, then
+            // "Share with…" opened on the first card, the way it names for a person.
+            // Mail's topics (docs/topics.md): day one's card on the Porch, the
+            // mailbox with its rows' topics, one topic's mail, a row's "Topic…",
+            // and Mail ▸ ⚙ ▸ Topics (pictures alone).
+            // The chain of ties from the demo's website project: the drawing, the outline,
+            // "+" on the project, a card beside it and Back to the same picture; what passes
+            // the window's right edge said in the log, at a computer's size and a phone's.
+            readonly property var chainSteps: [
+                () => window.openChain("sioul:project/fernhill"),
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveChecked("chain-drawing"),
+                () => window.chainPage.outlineShown = true,
+                () => {},
+                () => grabber.saveChecked("chain-outline"),
+                () => window.chainPage.plus(0),
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveChecked("chain-plus"),
+                () => window.chainPage.outlineShown = false,
+                () => {},
+                () => grabber.saveChecked("chain-plus-drawing"),
+                () => window.chainPage.openAt(1),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("chain-card"),
+                () => window.goBack(),
+                () => {},
+                () => grabber.saveChecked("chain-back"),
+                () => window.close()
+            ]
+            readonly property var topicSteps: [
+                () => window.page = 0,
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-porch"),
+                () => window.page = 2,
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-mail"),
+                () => mailPage.chooseTopic("bank"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-mail-bank"),
+                () => mailPage.chooseTopic(""),
+                () => {},
+                () => mailPage.askTopicOfFirst(),
+                () => {},
+                () => grabber.savePopup(mailPage.topicMenu, "topics-menu"),
+                () => mailPage.topicMenu.close(),
+                () => mailPage.openSettings(true),
+                () => mailPage.scrollSettings("topics.list"),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("topics-settings"),
+                () => mailPage.openSettings(false),
+                () => window.close()
+            ]
+            readonly property var availabilitySteps: [
+                () => window.page = 4,
+                () => agendaPage.showDay(window.today),
+                () => sioul.shareAvailability(JSON.stringify({ name: "Public", agendas: ["cloud/personal"], audience: "link", who: "", way: "mirror-link", account: "cloud" })),
+                () => agendaPage.openSettings(true, "availability"),
+                () => {},
+                () => {},
+                // A phone's panel scrolled to the section's own top (its row's title above it on a computer).
+                () => { if (agendaPage.narrow) agendaPage.revealSetting("availabilitySetup") },
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-availability.png"),
+                () => agendaPage.openAvailabilityChooser(),
+                () => {},
+                () => agendaPage.askAvailability("sam"),
+                () => {},
+                () => agendaPage.revealSetting("availabilityChooser"),
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-availability-chooser.png"),
                 () => window.close()
             ]
             readonly property var agendaSteps: [
@@ -3078,6 +3192,51 @@ SioulWindow {
                 () => budgetsPage.showBank(),
                 () => {},
                 () => grabber.save("budgets-4"),
+                () => window.close()
+            ]
+            // The Budgets page's four tabs (the money ledger's design §6): Overview,
+            // Budgets, Movements with a payout opened and its menu, New movement
+            // with More, the declaration, From mail and a row's menu (pictures alone).
+            readonly property var moneyTabSteps: [
+                () => window.page = 9,
+                () => {},
+                () => {},
+                () => grabber.saveCounted("money-overview", budgetsPage),
+                () => grabber.saveCounted("money-budgets-made", budgetsPage.bank.parent),
+                () => budgetsPage.showTab(1),
+                () => {},
+                () => {},
+                () => grabber.save("money-budgets"),
+                () => budgetsPage.showBank(),
+                () => {},
+                () => grabber.save("money-bank"),
+                () => budgetsPage.showTab(2),
+                () => {},
+                () => {},
+                () => grabber.saveCounted("money-movements", budgetsPage.movements),
+                () => budgetsPage.movements.menuOf(budgetsPage.movements.firstTold()),
+                () => {},
+                () => grabber.saveWindow("money-menu"),
+                () => budgetsPage.movements.closeForms(),
+                () => budgetsPage.movements.openMovement(budgetsPage.movements.firstTold()),
+                () => {},
+                () => grabber.save("money-movement-open"),
+                () => budgetsPage.movements.detail = null,
+                () => budgetsPage.movements.startNew(),
+                () => budgetsPage.movements.moreNew(),
+                () => {},
+                () => grabber.saveWindow("money-new"),
+                () => budgetsPage.movements.closeForms(),
+                () => budgetsPage.movements.showDeclaration("", ""),
+                () => {},
+                () => grabber.save("money-declaration"),
+                () => budgetsPage.movements.declaration = null,
+                () => budgetsPage.showTab(3),
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveCounted("money-mail", budgetsPage.moneyMail),
+                () => budgetsPage.showTab(0),
                 () => window.close()
             ]
             readonly property var bankSteps: [
@@ -4951,6 +5110,8 @@ SioulWindow {
         health: window.page === 10 || (doseTaken.item !== null && doseTaken.item.opened)
                 || (cardHost.open && cardHost.ref.card === "dated" && ["prescription-ends", "runs-out"].indexOf(cardHost.ref.datedKind) >= 0)
                 || (cardHost.open && cardHost.ref.card === "task" && sioul.isErrand(cardHost.ref.owner || ""))
+                // The chain of ties showing an errand, its appointment or a prescription's date.
+                || (window.page === 16 && window.chainPage !== null && window.chainPage.health)
     }
     Loader {
         id: interruption
@@ -5058,6 +5219,18 @@ SioulWindow {
         sequence: "Escape"
         enabled: cardHost.open
         onActivated: cardHost.back()
+    }
+    // Then the chain of ties, back to where it was opened.
+    Shortcut {
+        sequence: "Escape"
+        enabled: !cardHost.open && window.page === 16
+        onActivated: window.closeChain()
+    }
+    // The chain of ties of the thing open (Ctrl+L forwards a message in the Reader).
+    Shortcut {
+        sequence: "Ctrl+G"
+        enabled: window.thingShown !== null && (window.thingShown.uri || "") !== ""
+        onActivated: window.openChain(window.thingShown.uri)
     }
     Shortcut {
         sequence: "Ctrl+1"
@@ -5333,6 +5506,9 @@ SioulWindow {
                     }
                     Loader {
                         id: lettersPageLoader
+                    }
+                    Loader {
+                        id: chainPageLoader
                     }
                 }
 

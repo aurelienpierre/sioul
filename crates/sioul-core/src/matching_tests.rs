@@ -119,3 +119,27 @@ fn assignment_is_one_to_one_and_doubts_near_equals() {
     assert_eq!(adding_up(Money(-10000), &[(7, Money(-6050)), (9, Money(-4000))], 0), None);
     assert_eq!(adding_up(Money(-10000), &[(7, Money(-6050)), (9, Money(-4000))], 100), Some(vec![7, 9]));
 }
+
+/// A payout without the processor's export carries the payments told of,
+/// oldest first, as far as its amount goes, its fees within the bounds: three
+/// payments of €520, €400 and €300 paid out as €1,184.10 carry all three
+/// (€35.90 of fees); a payout of €504.57 carries the first alone; one that
+/// asks for fees no processor takes carries nothing.
+#[test]
+fn a_payout_carries_the_oldest_payments_within_the_bounds() {
+    // PayPal's own bounds (presets/processors.json): up to 6.5 % plus €0.35 a payment.
+    let paypal = crate::processors::built_in().by_id("paypal").unwrap().bounds;
+    let bounds = |gross: Money, n: usize| paypal.of(gross, n);
+    let told = [Money(52000), Money(40000), Money(30000)];
+    assert_eq!(carried_prefix(Money(118410), &told, &bounds), Some(3));
+    assert_eq!(carried_prefix(Money(50457), &told, &bounds), Some(1));
+    assert_eq!(carried_prefix(Money(88000), &told, &bounds), Some(2), "€920 paid, €40 of fees: within 6.5 % plus €0.70");
+    assert_eq!(carried_prefix(Money(70000), &told, &bounds), None, "€220 of fees on €920: no processor's");
+    assert_eq!(carried_prefix(Money(130000), &told, &bounds), None, "more than was told of");
+    assert_eq!(carried_prefix(Money(-5000), &told, &bounds), None);
+    // A platform that always keeps a share: the fewest payments that leave at least its least.
+    let etsy = crate::processors::built_in().by_id("etsy").unwrap().bounds;
+    assert_eq!(carried_prefix(Money(10000), &[Money(10000), Money(5000)], &|g, n| etsy.of(g, n)), None, "no fee at all is no Etsy payout, nor a third of it");
+    assert_eq!(carried_prefix(Money(9350), &[Money(10000), Money(1000)], &|g, n| etsy.of(g, n)), Some(1));
+    assert_eq!(plain_words("VIR PAYPAL EUROPE S.A.R.L."), ["vir", "paypal", "europe", "s", "a", "r", "l"]);
+}

@@ -113,6 +113,12 @@ Le détail, avec ce qui vient de la recherche et ce qui est une supposition : 
 
 `sioul focus start <task> [--minutes 25]`, `sioul focus status` et `sioul focus stop [--done] [--note "…"]` mènent le minuteur de concentration depuis un terminal ; ses minutes comptent comme celles de la fenêtre.
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+Votre estimation de la durée d’une tâche porte une information, avec un biais : l’erreur typique est de 20 à 30 %, les tâches courtes surestimées, les longues sous-estimées, et le total d’une journée déborde (Halkjelsvik et Jørgensen 2012). On se souvient mal de la durée des tâches passées, et voir les temps mesurés de tâches semblables aide (Roy, Christenfeld et McKenzie 2005). Votre estimation est donc gardée et corrigée dans le plan, jamais remplacée ; les minutes chronométrées comptent plus que celles dont on se souvient ; et la marge est celle de la journée, pas de chaque tâche.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constat 24, et dans [Time estimation (en anglais)](https://sioul.aurelienpierre.com/dev/research/time-estimation.html).
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
 En octobre 2026, d’après la documentation de chaque application.

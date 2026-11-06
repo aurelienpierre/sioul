@@ -164,6 +164,12 @@ confirmed_words = ["confirmed"]
 references = ["invoice", "inv", "order", "contract", "customer number", "mandate", "mandate reference", "creditor identifier"]
 # A purchase paid in instalments, "#" its number of them (matching.rs).
 instalments = ["in # instalments", "in # installments", "in # payments", "pay in #"]
+# The label of a fee a processor's mail states, money in only (payments.rs): the amount on its line, or on the next.
+fee = ["fee", "fees", "transaction fee", "processing fee", "service fee", "commission"]
+# The label of what arrives after the fees.
+net = ["net amount", "net", "you'll receive", "you will receive", "amount deposited"]
+# Words in an attachment's name that make it look like an invoice (moneyindex.rs).
+attachments = ["invoice", "receipt", "bill", "statement", "credit note"]
 
 # Bank and payment-processor exports (bank.rs).
 [bank]
@@ -174,7 +180,7 @@ filler = [
     "reference", "mandate",
 ]
 # Statuses of rows left out: pending, refused, cancelled.
-skipped = ["pending", "denied", "cancel", "reversed", "failed"]
+skipped = ["pending", "denied", "cancel", "reversed", "failed", "reverted", "declined"]
 # A balance impact that says the row moves no money.
 memo = ["memo"]
 # A card payment's label, by its first words (matching.rs): what a deferred-debit card's sum settles.
@@ -186,20 +192,22 @@ deferred = ["card statement", "deferred debit", "card total"]
 
 # A CSV export's columns, found by their names (a name starting with one of these; `name`, `net`, `kind`, `status`, `impact`, `balance`, `time`, `currency` and `id` are exact names).
 [bank.columns]
-date = ["date", "created"]
+date = ["date", "created", "completed date"]
 label = ["label", "description", "detail", "operation", "nature"]
 name = ["name"]
 net = ["net"]
+gross = ["gross"]
+fee = ["fee", "fees", "total fees"]
 amount = ["amount"]
 debit = ["debit"]
 credit = ["credit"]
 kind = ["type"]
-status = ["status"]
+status = ["status", "state"]
 impact = ["balance impact"]
-balance = ["balance"]
+balance = ["balance", "running balance"]
 time = ["time"]
 currency = ["currency"]
-id = ["id", "transaction id"]
+id = ["id", "transaction id", "transferwise id"]
 
 # Lines above a CSV export's header: its balance, its day, its account.
 [bank.above]

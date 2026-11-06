@@ -205,6 +205,13 @@ pub fn tokens(words: &crate::words::BankWords, text: &str) -> Vec<String> {
     out
 }
 
+/// A label's words, folded, letters and digits only, whatever their length:
+/// a processor's word on a bank line ("VIR PAYPAL EUROPE") is a whole word of these.
+pub fn plain_words(text: &str) -> Vec<String> {
+    let folded: String = crate::text::fold(text).into_iter().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect();
+    folded.split_whitespace().map(str::to_string).collect()
+}
+
 /// How rare each word is among the names compared: its inverse document frequency.
 #[derive(Debug, Clone, Default)]
 pub struct Idf {
@@ -589,6 +596,33 @@ pub fn adding_up(target: Money, candidates: &[(usize, Money)], part: i64) -> Opt
                 }
             }
         }
+    }
+    None
+}
+
+/// How many of the payments a processor told of, oldest first (`told`:
+/// what each payer paid, the gross), a payout of `net` carries: the fewest
+/// whose gross reaches the payout, their fees (the gross less the payout)
+/// within `bounds` (the least and the most the fees of so many payments of
+/// so much may be). None when no such run of them holds: the payout then
+/// carries nothing, and its fees are not known (docs/accounting.md,
+/// "Payouts"). Processors pay out what has become available, oldest first;
+/// that is an inference, which a trial on real payouts must check
+/// (research/money-ledger.md §8).
+pub fn carried_prefix(net: Money, told: &[Money], bounds: &dyn Fn(Money, usize) -> (Money, Money)) -> Option<usize> {
+    if net.cents() <= 0 {
+        return None;
+    }
+    let mut gross = Money::ZERO;
+    for (n, paid) in told.iter().enumerate() {
+        gross += paid.abs();
+        let (low, high) = bounds(gross, n + 1);
+        let fees = gross - net;
+        if fees < low {
+            continue;
+        }
+        // Past the bounds: the next payment would only add more.
+        return (fees <= high).then_some(n + 1);
     }
     None
 }

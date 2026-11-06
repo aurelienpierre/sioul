@@ -660,7 +660,7 @@ fn unreadable_lines_are_said() {
 }
 
 const READING: &[&str] = &[
-    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
+    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "money_mail", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
     "letters", "time", "invoices", "reminders", "now",
 ];
 /// The command line and the agents run on a computer only: what they say
@@ -685,7 +685,7 @@ fn the_agents_texts_say_this_computer() {
     }
 }
 
-const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link"];
+const WRITING: &[&str] = &["add_task", "add_steps", "complete_task", "add_event", "update_event", "delete_event", "update_task", "move_step", "check_item", "set_checklist", "convert_item", "delete_task", "task_to_event", "attach_to_event", "detach_from_event", "event_to_task", "add_note", "draft_reply", "draft_message", "link", "add_movement", "update_movement", "delete_movement", "same_movement"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
 const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
@@ -722,7 +722,7 @@ fn the_tools_listed() {
     for word in ["send", "remove", "pay", "password", "secret", "key"] {
         assert!(names.iter().all(|n| !n.contains(word)), "{word}");
     }
-    assert_eq!(names.iter().filter(|n| n.contains("delete")).copied().collect::<Vec<_>>(), ["delete_event", "delete_task"]);
+    assert_eq!(names.iter().filter(|n| n.contains("delete")).copied().collect::<Vec<_>>(), ["delete_event", "delete_task", "delete_movement"]);
 }
 
 /// A message without a Message-ID is read by its address
@@ -859,6 +859,10 @@ fn a_closed_project_is_never_shown() {
         ("agenda", json!({ "days": 5 })),
         ("search_contacts", json!({})),
         ("budgets", json!({})),
+        ("movements", json!({})),
+        ("movements", json!({ "search": "Zeugma" })),
+        ("money_mail", json!({})),
+        ("money_mail", json!({ "search": "Zeugma" })),
         ("search_notes", json!({})),
         ("search_notes", json!({ "query": "Zeugma", "in_text": true })),
         ("list_projects", json!({})),
@@ -931,6 +935,7 @@ fn a_closed_project_is_never_shown() {
         ("draft_message", json!({ "to": ["office@example.org"], "subject": "Taxes", "body": "Hello.", "links": ["sioul:project/taxes"] })),
         ("complete_task", json!({ "task": "zeugma-pay" })),
         ("spam_label", json!({ "message": "mid:zeugma-1@finances.example", "label": "spam" })),
+        ("add_movement", json!({ "who": "Tax office", "net": -100, "budget": "zeugma", "on": "2026-11-05" })),
     ] {
         let refused = call(&mut server, tool, arguments.clone());
         assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
@@ -948,6 +953,34 @@ fn a_closed_project_is_never_shown() {
 /// parent's identity card comes, with the parent's address. A closed
 /// child's agenda is kept, an opened child's comes but for its dentist's
 /// appointment, kept as health whatever the switch, with your stand-in of it.
+/// The agents' `links` walks the chain of ties as the window does, with
+/// consent at every step (the chain of ties, phase 5): `depth` and `limit`
+/// bound it; a closed project's things never come, nor what they alone tie;
+/// what was left out is counted, never named; a code stays masked.
+#[test]
+fn links_walk_the_chain_with_consent_at_every_step() {
+    let _home = home();
+    let mut server = server();
+    for depth in [1, 2, 3] {
+        let tied = call(&mut server, "links", json!({ "uri": "sioul:project/housing", "depth": depth }));
+        assert!(tied["isError"] != true, "{tied}");
+        never_zeugma(&tied, "links");
+        let chain = tied["structuredContent"]["chain"].as_array().unwrap().clone();
+        assert!(chain.iter().all(|t| t["step"].as_u64().unwrap() <= depth), "{tied}");
+        assert!(chain.iter().any(|t| t["title"] == "Find the rent receipt"), "{tied}");
+        assert!(chain.iter().all(|t| t.get("name").is_none() && t.get("chain").is_none()), "no sentence holding raw titles: {tied}");
+        let said = tied.to_string();
+        assert!(!said.contains("482 913") && !said.contains("482913"), "{said}");
+    }
+    let few = call(&mut server, "links", json!({ "uri": "sioul:project/housing", "limit": 2 }));
+    assert!(few["structuredContent"]["chain"].as_array().unwrap().len() <= 2, "{few}");
+    let receipt = call(&mut server, "links", json!({ "uri": "sioul:task/receipt", "depth": 3 }));
+    never_zeugma(&receipt, "links");
+    assert!(receipt["structuredContent"]["kept_from_agents"].as_u64().is_some(), "{receipt}");
+    let deep = call(&mut server, "links", json!({ "uri": "sioul:project/housing", "depth": 9 }));
+    assert_eq!(deep["isError"], true, "{deep}");
+}
+
 #[test]
 fn a_closed_person_is_never_shown() {
     let _ = home();
@@ -1369,6 +1402,11 @@ fn health_never_reaches_an_agent() {
         ("agenda", json!({ "from": last_week.to_string(), "days": 8 }), Answers),
         ("search_contacts", json!({ "query": "Thistlewick" }), Answers),
         ("budgets", json!({}), Answers),
+        ("movements", json!({}), Answers),
+        ("movements", json!({ "search": "Ferngale" }), Answers),
+        ("get_movement", json!({ "movement": "sioul:movement/line:none-such" }), Refused),
+        ("money_mail", json!({}), Answers),
+        ("money_mail", json!({ "search": "brackenwort" }), Answers),
         ("search_notes", json!({}), Answers),
         ("search_notes", json!({ "query": "Quillaine", "in_text": true }), Answers),
         ("search_notes", json!({ "query": "Ferngale", "in_text": true }), Answers),
@@ -1437,6 +1475,10 @@ fn health_never_reaches_an_agent() {
         ("draft_reply", json!({ "message": "mid:letter-1@housing.example", "body": "Thanks.", "links": ["sioul:task/errand-category"] }), Kept),
         ("draft_message", json!({ "to": ["office@example.org"], "subject": "Hello", "body": "Hello.", "links": ["sioul:task/errand-category"] }), Kept),
         ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:task/errand-recorded" }), Kept),
+        ("add_movement", json!({ "who": "Pharmacy", "net": -12, "budget": "home", "on": today.to_string(), "ties": ["sioul:task/errand-category"] }), Kept),
+        ("update_movement", json!({ "movement": "sioul:movement/line:none-such", "note": "x" }), Refused),
+        ("delete_movement", json!({ "movement": "sioul:movement/line:none-such" }), Refused),
+        ("same_movement", json!({ "movement": "sioul:movement/line:none-such", "other": "sioul:movement/line:none-either" }), Refused),
     ];
     let listed = ask(&mut server, "tools/list", json!({}));
     let names: Vec<String> = listed["result"]["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
@@ -3629,4 +3671,35 @@ fn list_tasks_gives_the_tasks_as_data_by_default() {
         let shown = call(&mut server, "list_tasks", json!({ "view": view }));
         assert!(shown["isError"] != true && shown["structuredContent"].get("groups").is_none(), "{view}: {shown}");
     }
+}
+
+/// Money movements for agents (design §3.3): one written in a budget
+/// opened to agents, with what the payer paid and its fee, listed, read in
+/// full, changed, said the same as another or not, removed; each said in the
+/// window with Undo; nothing in a budget kept from agents.
+#[test]
+fn money_movements_are_written_as_the_window_writes_them() {
+    home();
+    let mut server = server();
+    let made = call(&mut server, "add_movement", json!({ "who": "Quillwort lessons", "gross": 52, "fees": [{ "kind": "processor", "amount": 1.86 }], "budget": "home", "on": "2026-10-03", "note": "The October lesson" }));
+    assert_eq!(made["isError"], false, "{made}");
+    let address = made["structuredContent"]["movement"].as_str().unwrap().to_string();
+    assert!(text(&made).contains("Home holds €50.14 more for October 2026."), "{}", text(&made));
+    assert!(said_about("Quillwort lessons").line.contains("An AI agent wrote the movement"));
+    let listed = call(&mut server, "movements", json!({ "search": "quillwort" }));
+    assert!(text(&listed).contains("paid €52 · fees €1.86") && text(&listed).contains(&address), "{}", text(&listed));
+    let one = call(&mut server, "get_movement", json!({ "movement": address }));
+    assert_eq!((one["structuredContent"]["gross"].as_f64(), one["structuredContent"]["amount"].as_f64()), (Some(52.0), Some(50.14)), "{one}");
+    assert!(text(&one).contains("The processor's fee: €1.86, said by you"), "{}", text(&one));
+    let changed = call(&mut server, "update_movement", json!({ "movement": address, "note": "Paid by card", "paid_on": "2026-10-02" }));
+    assert_eq!(changed["isError"], false, "{changed}");
+    assert_eq!(call(&mut server, "get_movement", json!({ "movement": address }))["structuredContent"]["paid_on"], "2026-10-02");
+    // Into a budget kept from agents: refused, the budget not named.
+    let refused = call(&mut server, "update_movement", json!({ "movement": address, "budget": "zeugma" }));
+    assert_eq!(refused["isError"], true, "{refused}");
+    never_zeugma(&refused, "update_movement");
+    let removed = call(&mut server, "delete_movement", json!({ "movement": address }));
+    assert_eq!(removed["isError"], false, "{removed}");
+    assert!(said_about("Quillwort lessons").line.contains("An AI agent removed the movement"));
+    assert!(text(&call(&mut server, "movements", json!({ "search": "quillwort" }))).contains("No movement says this."));
 }

@@ -249,6 +249,11 @@ pub struct Agenda {
     pub titles: bool,
     /// What you said of it, field by field.
     pub said: Said,
+    /// A calendar of busy blocks Sioul keeps for one of your availabilities
+    /// (`availability::Availability::mirrors`): derived from your own events,
+    /// no agenda of yours to compare, filter, plan around or pick from.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub mirror: bool,
 }
 
 impl Agenda {
@@ -299,6 +304,7 @@ impl Agenda {
             standing,
             titles: said.titles.as_deref().is_some_and(|t| t.trim().eq_ignore_ascii_case("shown")),
             said: said.clone(),
+            mirror: is_mirror(config, &collection.account, &collection.id),
         }
     }
 
@@ -384,6 +390,13 @@ fn work_account(config: &Config, account: &str) -> bool {
     }
     let Some(address) = own.address.as_deref().map(str::trim).filter(|a| !a.is_empty()) else { return false };
     config.every_account().filter(|a| a.id != account && a.address.as_deref().is_some_and(|other| other.trim().eq_ignore_ascii_case(address))).any(|a| only_work(a.area.as_deref()))
+}
+
+/// Whether a calendar is one of busy blocks Sioul keeps for an availability
+/// (its mirrors, and the calendar of the single share of before).
+pub fn is_mirror(config: &Config, account: &str, id: &str) -> bool {
+    config.agenda.availabilities.iter().flat_map(|a| a.mirrors.iter()).any(|m| m.account == account && m.calendar == id)
+        || config.agenda.availability.as_ref().is_some_and(|single| single.account == account && !single.calendar.is_empty() && single.calendar == id)
 }
 
 /// Every agenda here, by account then name: the calendars and the task lists.
@@ -706,8 +719,10 @@ pub fn set_set(path: &Path, name: &str, set: Option<&Set>) -> Result<(), String>
     })
 }
 
-/// Your availability's share written (`[agenda.availability]`), or taken out (none).
-pub fn set_availability(path: &Path, availability: Option<&crate::availability::Availability>) -> Result<(), String> {
+/// Your availability's one share of before written (`[agenda.availability]`),
+/// or taken out (none): the window's way until it moves to the list
+/// (`put_availability`); read once and moved by `config::migrate_availability`.
+pub fn set_availability(path: &Path, availability: Option<&crate::availability::Single>) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let mut doc = crate::config::read_document(path)?;
         if !doc.contains_key("agenda") {
@@ -736,6 +751,318 @@ pub fn set_availability(path: &Path, availability: Option<&crate::availability::
         crate::changes::said(crate::changes::Kind::Agendas);
         Ok(())
     })
+}
+
+// ---------------------------------------------------------------- your availabilities
+
+/// The list `[[agenda.availabilities]]` of a document, made when `make` (else
+/// none when it is not there). A list written inline (by hand) becomes a
+/// list of tables, its elements as they were.
+pub(crate) fn availabilities_in(doc: &mut toml_edit::DocumentMut, make: bool) -> Result<Option<&mut toml_edit::ArrayOfTables>, String> {
+    if !doc.contains_key("agenda") {
+        if !make {
+            return Ok(None);
+        }
+        doc["agenda"] = toml_edit::table();
+    }
+    let agenda = doc["agenda"].as_table_mut().ok_or("agenda is not a table")?;
+    match agenda.get("availabilities") {
+        None if !make => return Ok(None),
+        None => {
+            agenda.insert("availabilities", toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
+        }
+        Some(toml_edit::Item::Value(toml_edit::Value::Array(elements))) => {
+            let mut tables = toml_edit::ArrayOfTables::new();
+            for element in elements.iter() {
+                let inline = element.as_inline_table().ok_or("agenda.availabilities: not a list of tables")?;
+                tables.push(inline.clone().into_table());
+            }
+            agenda.insert("availabilities", toml_edit::Item::ArrayOfTables(tables));
+        }
+        Some(toml_edit::Item::ArrayOfTables(_)) => {}
+        Some(_) => return Err("agenda.availabilities: not a list of tables".into()),
+    }
+    Ok(agenda.get_mut("availabilities").and_then(toml_edit::Item::as_array_of_tables_mut))
+}
+
+/// A list of words as TOML.
+fn words_array(words: &[String]) -> toml_edit::Array {
+    words.iter().map(String::as_str).collect()
+}
+
+/// An availability's own fields written into its table; what this Sioul
+/// does not know of it (a newer one's fields) kept as it was.
+fn set_availability_fields(table: &mut toml_edit::Table, availability: &crate::availability::Availability) {
+    table.insert("id", toml_edit::value(availability.id.as_str()));
+    table.insert("name", toml_edit::value(availability.name.as_str()));
+    table.insert("agendas", toml_edit::value(words_array(&availability.agendas)));
+    let words: Vec<(&String, &String)> = availability.words.iter().filter(|(_, w)| !w.trim().is_empty()).collect();
+    if words.is_empty() {
+        table.remove("words");
+    } else {
+        let mut inline = toml_edit::InlineTable::new();
+        for (place, word) in words {
+            inline.insert(place.as_str(), word.trim().into());
+        }
+        table.insert("words", toml_edit::value(inline));
+    }
+    table.insert("rounding", toml_edit::value(i64::from(availability.rounding)));
+    table.insert("horizon", toml_edit::value(i64::from(availability.days_ahead())));
+    table.insert("closing", toml_edit::value(availability.closing));
+}
+
+fn set_mirror_fields(table: &mut toml_edit::Table, mirror: &crate::availability::Mirror) {
+    table.insert("account", toml_edit::value(mirror.account.as_str()));
+    table.insert("calendar", toml_edit::value(mirror.calendar.as_str()));
+    table.insert("transparent", toml_edit::value(mirror.transparent));
+}
+
+fn set_share_fields(table: &mut toml_edit::Table, share: &crate::availability::Share) {
+    for (field, text) in [("audience", &share.audience), ("who", &share.who), ("way", &share.way), ("account", &share.account), ("link", &share.link), ("made", &share.made)] {
+        table.insert(field, toml_edit::value(text.trim()));
+    }
+}
+
+/// What a table holds at a field, as text.
+fn text_at<'t>(table: &'t toml_edit::Table, field: &str) -> &'t str {
+    table.get(field).and_then(toml_edit::Item::as_str).unwrap_or_default()
+}
+
+fn mirror_of(table: &toml_edit::Table) -> crate::availability::Mirror {
+    crate::availability::Mirror { account: text_at(table, "account").into(), calendar: text_at(table, "calendar").into(), transparent: table.get("transparent").and_then(toml_edit::Item::as_bool).unwrap_or(false) }
+}
+
+fn share_of(table: &toml_edit::Table) -> crate::availability::Share {
+    let text = |field: &str| text_at(table, field).to_string();
+    crate::availability::Share { audience: text("audience"), who: text("who"), way: text("way"), account: text("account"), link: text("link"), made: text("made") }
+}
+
+/// The list of tables at `name` in `table`, made when not there (an inline one becoming tables).
+fn tables_at<'t>(table: &'t mut toml_edit::Table, name: &str) -> Result<&'t mut toml_edit::ArrayOfTables, String> {
+    if let Some(toml_edit::Item::Value(toml_edit::Value::Array(elements))) = table.get(name) {
+        let mut tables = toml_edit::ArrayOfTables::new();
+        for element in elements.iter() {
+            tables.push(element.as_inline_table().ok_or_else(|| format!("{name}: not a list of tables"))?.clone().into_table());
+        }
+        table.insert(name, toml_edit::Item::ArrayOfTables(tables));
+    }
+    if !table.contains_key(name) {
+        table.insert(name, toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
+    }
+    table.get_mut(name).and_then(toml_edit::Item::as_array_of_tables_mut).ok_or_else(|| format!("{name}: not a list of tables"))
+}
+
+/// The element of `list` that `matches`, its fields set by `set`; added when none does.
+fn put_element(list: &mut toml_edit::ArrayOfTables, matches: impl Fn(&toml_edit::Table) -> bool, set: impl Fn(&mut toml_edit::Table)) {
+    let found = list.iter().position(|t| matches(t));
+    match found {
+        Some(at) => {
+            if let Some(table) = list.get_mut(at) {
+                set(table);
+            }
+        }
+        None => {
+            let mut table = toml_edit::Table::new();
+            set(&mut table);
+            list.push(table);
+        }
+    }
+}
+
+/// An availability as a table of its own, its mirrors and shares within.
+pub(crate) fn availability_table(availability: &crate::availability::Availability) -> toml_edit::Table {
+    let mut table = toml_edit::Table::new();
+    set_availability_fields(&mut table, availability);
+    let mut mirrors = toml_edit::ArrayOfTables::new();
+    for mirror in &availability.mirrors {
+        let mut one = toml_edit::Table::new();
+        set_mirror_fields(&mut one, mirror);
+        mirrors.push(one);
+    }
+    if !mirrors.is_empty() {
+        table.insert("mirrors", toml_edit::Item::ArrayOfTables(mirrors));
+    }
+    let mut shares = toml_edit::ArrayOfTables::new();
+    for share in &availability.shares {
+        let mut one = toml_edit::Table::new();
+        set_share_fields(&mut one, share);
+        shares.push(one);
+    }
+    if !shares.is_empty() {
+        table.insert("shares", toml_edit::Item::ArrayOfTables(shares));
+    }
+    table
+}
+
+/// One availability of the list changed by `change` (by its id), under the
+/// file's lock; the list made when `make`, taken out once empty, and the
+/// settings' format marked (`config::FORMAT`). An unknown id is said.
+fn edit_availability(path: &Path, id: &str, make: bool, change: impl FnOnce(&mut toml_edit::ArrayOfTables) -> Result<(), String>) -> Result<(), String> {
+    if id.trim().is_empty() {
+        return Err("an availability needs its id".into());
+    }
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        let Some(list) = availabilities_in(&mut doc, make).map_err(|e| format!("{}: {e}", path.display()))? else { return Err(format!("{id}: no such availability")) };
+        change(list)?;
+        let empty = list.is_empty();
+        if empty && let Some(agenda) = doc.get_mut("agenda").and_then(toml_edit::Item::as_table_mut) {
+            agenda.remove("availabilities");
+            if agenda.is_empty() {
+                doc.remove("agenda");
+            }
+        }
+        crate::config::mark_format(&mut doc);
+        crate::config::write_document(path, &doc)?;
+        // Your availabilities, said to every view of them (Agenda ⚙, the agenda's mirrors left out).
+        crate::changes::said(crate::changes::Kind::Agendas);
+        Ok(())
+    })
+}
+
+/// The table of availability `id` in a list, or what to say.
+fn availability_at<'l>(list: &'l mut toml_edit::ArrayOfTables, id: &str) -> Result<&'l mut toml_edit::Table, String> {
+    list.iter_mut().find(|t| text_at(t, "id") == id).ok_or_else(|| format!("{id}: no such availability"))
+}
+
+/// An availability written (`[[agenda.availabilities]]`), by its id: added,
+/// or its fields, mirrors (by account) and shares (by way, whom and
+/// account) made what it says, each element's other fields kept; those it
+/// no longer holds taken out.
+pub fn put_availability(path: &Path, availability: &crate::availability::Availability) -> Result<(), String> {
+    edit_availability(path, &availability.id, true, |list| {
+        if !list.iter().any(|t| text_at(t, "id") == availability.id) {
+            list.push(availability_table(availability));
+            return Ok(());
+        }
+        let table = availability_at(list, &availability.id)?;
+        set_availability_fields(table, availability);
+        let mirrors = tables_at(table, "mirrors")?;
+        let wanted: Vec<&str> = availability.mirrors.iter().map(|m| m.account.as_str()).collect();
+        mirrors.retain(|t| wanted.contains(&text_at(t, "account")));
+        for mirror in &availability.mirrors {
+            put_element(mirrors, |t| text_at(t, "account") == mirror.account, |t| set_mirror_fields(t, mirror));
+        }
+        let none = mirrors.is_empty();
+        if none {
+            table.remove("mirrors");
+        }
+        let shares = tables_at(table, "shares")?;
+        shares.retain(|t| availability.shares.iter().any(|s| s.same(&share_of(t))));
+        for share in &availability.shares {
+            put_element(shares, |t| share.same(&share_of(t)), |t| set_share_fields(t, share));
+        }
+        if shares.is_empty() {
+            table.remove("shares");
+        }
+        Ok(())
+    })
+}
+
+/// Your working hours told to an account's server, or no longer
+/// (`[agenda] send_hours`, by account id).
+pub fn set_send_hours(path: &Path, account: &str, on: bool) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = crate::config::read_document(path)?;
+        if !doc.contains_key("agenda") {
+            if !on {
+                return Ok(());
+            }
+            doc["agenda"] = toml_edit::table();
+        }
+        let agenda = doc["agenda"].as_table_mut().ok_or_else(|| format!("{}: agenda is not a table", path.display()))?;
+        let mut accounts: Vec<String> = agenda.get("send_hours").and_then(toml_edit::Item::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        accounts.retain(|a| a != account);
+        if on {
+            accounts.push(account.to_string());
+        }
+        if accounts.is_empty() {
+            agenda.remove("send_hours");
+        } else {
+            agenda.insert("send_hours", toml_edit::value(words_array(&accounts)));
+        }
+        if agenda.is_empty() {
+            doc.remove("agenda");
+        }
+        crate::config::write_document(path, &doc)?;
+        crate::changes::said(crate::changes::Kind::Agendas);
+        Ok(())
+    })
+}
+
+/// An availability as its table says it; none when it does not read.
+fn availability_of(table: &toml_edit::Table) -> Option<crate::availability::Availability> {
+    toml::from_str(&toml_edit::DocumentMut::from(table.clone()).to_string()).ok()
+}
+
+/// An availability taken out, by its id: what it was, for Undo; none when it was not there.
+pub fn remove_availability(path: &Path, id: &str) -> Result<Option<crate::availability::Availability>, String> {
+    let mut found = None;
+    let result = edit_availability(path, id, false, |list| {
+        found = list.iter().find(|t| text_at(t, "id") == id).and_then(availability_of);
+        if !list.iter().any(|t| text_at(t, "id") == id) {
+            return Err(String::new());
+        }
+        list.retain(|t| text_at(t, "id") != id);
+        Ok(())
+    });
+    match result {
+        // Not there: nothing to take out, nothing written.
+        Err(e) if e.is_empty() || e.ends_with("no such availability") => Ok(None),
+        Err(e) => Err(e),
+        Ok(()) => Ok(found),
+    }
+}
+
+/// An availability's mirror in an account written (made, or marked transparent).
+pub fn put_mirror(path: &Path, id: &str, mirror: &crate::availability::Mirror) -> Result<(), String> {
+    edit_availability(path, id, false, |list| {
+        let table = availability_at(list, id)?;
+        put_element(tables_at(table, "mirrors")?, |t| text_at(t, "account") == mirror.account, |t| set_mirror_fields(t, mirror));
+        Ok(())
+    })
+}
+
+/// An availability's mirror in an account taken out: what it was, if it was there.
+pub fn remove_mirror(path: &Path, id: &str, account: &str) -> Result<Option<crate::availability::Mirror>, String> {
+    let mut found = None;
+    edit_availability(path, id, false, |list| {
+        let table = availability_at(list, id)?;
+        let mirrors = tables_at(table, "mirrors")?;
+        found = mirrors.iter().find(|t| text_at(t, "account") == account).map(mirror_of);
+        mirrors.retain(|t| text_at(t, "account") != account);
+        if mirrors.is_empty() {
+            table.remove("mirrors");
+        }
+        Ok(())
+    })?;
+    Ok(found)
+}
+
+/// A share of an availability written: added, or the same share (`Share::same`)
+/// changed, as when its server said yes (`made`) or gave its link.
+pub fn put_share(path: &Path, id: &str, share: &crate::availability::Share) -> Result<(), String> {
+    edit_availability(path, id, false, |list| {
+        let table = availability_at(list, id)?;
+        put_element(tables_at(table, "shares")?, |t| share.same(&share_of(t)), |t| set_share_fields(t, share));
+        Ok(())
+    })
+}
+
+/// A share of an availability taken out (`Share::same`): what it was, for Undo, if it was there.
+pub fn remove_share(path: &Path, id: &str, share: &crate::availability::Share) -> Result<Option<crate::availability::Share>, String> {
+    let mut found = None;
+    edit_availability(path, id, false, |list| {
+        let table = availability_at(list, id)?;
+        let shares = tables_at(table, "shares")?;
+        found = shares.iter().map(share_of).find(|s| s.same(share));
+        shares.retain(|t| !share.same(&share_of(t)));
+        if shares.is_empty() {
+            table.remove("shares");
+        }
+        Ok(())
+    })?;
+    Ok(found)
 }
 
 /// Follow-up tasks on or off (`[agenda] follow_ups`): on, the default, takes your word out.
@@ -960,7 +1287,8 @@ pub struct Matrix {
 
 impl Matrix {
     pub fn of(config: &Config, agendas: &[Agenda]) -> Matrix {
-        Matrix { said: config.agenda.overlaps.clone(), kinds: agendas.iter().map(|a| (a.id.clone(), (a.whose, a.busy()))).collect() }
+        // A calendar of busy blocks Sioul keeps counts as availability only: never ticked by the rule.
+        Matrix { said: config.agenda.overlaps.clone(), kinds: agendas.iter().map(|a| (a.id.clone(), (a.whose, a.busy() || a.mirror))).collect() }
     }
 
     /// As the configuration says now (`read_config`).
@@ -1360,5 +1688,84 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("lea-ecole") && !text.contains("overlaps"), "{text}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The availabilities are written one by one, by their ids: an
+    /// availability, its mirror made then marked transparent, its share said
+    /// made with its day, a second one; what a newer Sioul wrote in them kept
+    /// through every write; a list written inline by hand read and written
+    /// as tables; each taken out, what it was given back for Undo, the list
+    /// gone with the last; the settings' format marked; an unknown id said.
+    #[test]
+    fn availabilities_are_written_one_by_one_and_keep_what_this_sioul_does_not_know() {
+        use crate::availability::{Audience, Availability, Mirror, Share};
+        let dir = std::env::temp_dir().join(format!("sioul-availabilities-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\nlanguage = \"fr\"\n\n[agenda]\nbetween = 5\n").unwrap();
+        let read = || Config::load(&path).unwrap();
+        let share = |way: &str, who: &str| Share { audience: if who.is_empty() { "link".into() } else { "person".into() }, who: who.into(), way: way.into(), account: "cloud".into(), ..Share::default() };
+        let mut sam = Availability::new("For Sam", vec!["cloud/personal".into(), "work/main".into()], Audience::Person);
+        sam.words.insert("work/main".into(), "Work".into());
+        sam.shares.push(share("mirror-share", "sam"));
+        put_availability(&path, &sam).unwrap();
+        let config = read();
+        assert_eq!((config.format, config.agenda.availabilities.clone()), (Some(crate::config::FORMAT), vec![sam.clone()]));
+        assert_eq!(config.agenda.between, Some(5));
+        put_mirror(&path, &sam.id, &Mirror { account: "cloud".into(), calendar: "busy-7f3c".into(), transparent: false }).unwrap();
+        put_mirror(&path, &sam.id, &Mirror { account: "cloud".into(), calendar: "busy-7f3c".into(), transparent: true }).unwrap();
+        put_share(&path, &sam.id, &Share { made: "2026-11-05".into(), ..share("mirror-share", "Sam") }).unwrap();
+        let back = read().agenda.availabilities[0].clone();
+        assert_eq!(back.mirrors, [Mirror { account: "cloud".into(), calendar: "busy-7f3c".into(), transparent: true }], "one mirror per account");
+        assert_eq!((back.shares.len(), back.shares[0].made.as_str()), (1, "2026-11-05"), "the same share, said made");
+        let public = Availability { shares: vec![share("mirror-link", "")], ..Availability::new("Public", vec!["cloud/personal".into()], Audience::Link) };
+        let ((), said) = crate::changes::heard(|| put_availability(&path, &public).unwrap());
+        assert_eq!(said, [crate::changes::Kind::Agendas], "every view of them told");
+        let both = read().agenda.availabilities;
+        assert_eq!((both.len(), both[1].rounding, both[1].horizon), (2, 15, 14), "a link: the quarter hour, two weeks");
+        // A newer Sioul's fields, in the availability and in its share: kept through a write.
+        let mut doc = crate::config::read_document(&path).unwrap();
+        let first = availabilities_in(&mut doc, false).unwrap().unwrap().get_mut(0).unwrap();
+        first.insert("colour", toml_edit::value("teal"));
+        first["shares"].as_array_of_tables_mut().unwrap().get_mut(0).unwrap().insert("pigeon", toml_edit::value(true));
+        crate::config::write_document(&path, &doc).unwrap();
+        put_availability(&path, &Availability { name: "Sam".into(), ..back.clone() }).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("colour = \"teal\"") && text.contains("pigeon = true") && text.contains("# mine"), "{text}");
+        assert_eq!(read().agenda.availabilities[0].name, "Sam");
+        // Taken out one by one, each given back.
+        assert_eq!(remove_share(&path, &sam.id, &share("mirror-share", "sam")).unwrap().map(|s| s.made), Some("2026-11-05".to_string()));
+        assert_eq!(remove_mirror(&path, &sam.id, "cloud").unwrap().map(|m| m.calendar), Some("busy-7f3c".to_string()));
+        assert!(read().agenda.availabilities[0].shares.is_empty() && read().agenda.availabilities[0].mirrors.is_empty());
+        assert_eq!(remove_availability(&path, &public.id).unwrap().map(|a| a.name), Some("Public".to_string()));
+        assert_eq!(remove_availability(&path, &public.id).unwrap(), None, "not there: nothing");
+        assert!(put_share(&path, "no-such-id", &share("mirror-link", "")).is_err());
+        assert_eq!(remove_availability(&path, &sam.id).unwrap().map(|a| a.id), Some(sam.id.clone()));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("availabilities") && text.contains("between = 5") && text.contains("format = 2"), "{text}");
+        // Written inline, by hand: read, then written as tables.
+        std::fs::write(&path, "[agenda]\navailabilities = [{ id = \"x1\", name = \"Inline\", agendas = [\"cloud/personal\"] }]\n").unwrap();
+        assert_eq!(read().agenda.availabilities[0].name, "Inline");
+        put_share(&path, "x1", &share("mirror-link", "")).unwrap();
+        let config = read();
+        assert_eq!((config.agenda.availabilities.len(), config.agenda.availabilities[0].shares.len(), config.agenda.availabilities[0].name.as_str()), (1, 1, "Inline"));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("[[agenda.availabilities.shares]]"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A calendar of busy blocks Sioul keeps, a mirror of the list or the
+    /// calendar of the single share of before, is marked so, and the matrix
+    /// never ticks it by the rule: derived from your own events, it is no
+    /// agenda of yours to compare.
+    #[test]
+    fn a_mirror_is_marked_and_never_compared_by_the_rule() {
+        let mut config = Config::default();
+        config.agenda.availabilities.push(crate::availability::Availability { id: "a1".into(), mirrors: vec![crate::availability::Mirror { account: "cloud".into(), calendar: "busy-7f3c".into(), transparent: true }], ..Default::default() });
+        config.agenda.availability = Some(crate::availability::Single { account: "cloud".into(), calendar: "busy-old".into(), ..Default::default() });
+        let of = |id: &str| Agenda::of(&collection("cloud", id, &["VEVENT"]), &Said::default(), &config, false, &|| true);
+        let (mirror, old, personal) = (of("busy-7f3c"), of("busy-old"), of("personal"));
+        assert!(mirror.mirror && old.mirror && !personal.mirror);
+        let matrix = Matrix::of(&config, &[mirror.clone(), personal.clone()]);
+        assert!(matrix.usual(&personal.id, &personal.id) && !matrix.usual(&mirror.id, &mirror.id) && !matrix.usual(&mirror.id, &personal.id));
     }
 }

@@ -420,7 +420,7 @@ fn two_identical_lines_made_on_one_device_stay_two() {
         if format == 2 {
             now = into_format_2(&folder, &key, &both, now);
         }
-        let bread = sioul_core::budget::Line { id: String::new(), budget: "home".into(), date: "2026-09-05".parse().unwrap(), amount: sioul_core::money::Money(-1200), label: "Boulangerie".into(), planned: false, reserve: None, links: Vec::new(), preset: None };
+        let bread = sioul_core::budget::Line { id: String::new(), budget: "home".into(), date: "2026-09-05".parse().unwrap(), amount: sioul_core::money::Money(-1200), label: "Boulangerie".into(), planned: false, reserve: None, links: Vec::new(), preset: None, ..Default::default() };
         sioul_core::budget::record_line(&ledger_path(&desk_notes), &bread, "by hand").unwrap();
         sioul_core::budget::record_line(&ledger_path(&desk_notes), &bread, "by hand").unwrap();
         now = rounds(&folder, &key, &both, now, 2);

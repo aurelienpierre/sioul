@@ -1166,10 +1166,29 @@ pub(crate) fn focus(s: &Session, command: FocusCommand) -> Result<(), String> {
     }
 }
 
-/// What a thing is tied to, both ways.
-pub(crate) fn links_command(s: &Session, uri: &str) -> Result<(), String> {
+/// `sioul links --chain`: how far, what was opened, and in what form.
+pub(crate) struct Chain {
+    pub depth: Option<usize>,
+    pub open: Vec<String>,
+    pub json: bool,
+}
+
+/// What a thing is tied to, both ways, from every tie Sioul knows (the tie
+/// index, as the Porch lets mail through); or, with `chain`, the chain of
+/// ties from it, as an outline (or the window's JSON).
+pub(crate) fn links_command(s: &Session, uri: &str, chain: Option<Chain>) -> Result<(), String> {
+    use sioul_core::ties;
     let loaded = Loaded::read(&s.config);
-    let world = loaded.world();
+    let began = std::time::Instant::now();
+    let sources = ties::Sources::read(&s.config, &loaded);
+    let gates = ties::Gates::read(&s.config, &loaded, &sources);
+    let read = began.elapsed();
+    let index = ties::TieIndex::build(&loaded.world(), &sources);
+    let world = loaded.world_with(&index, &gates);
+    if let Some(chain) = chain {
+        eprintln!("sioul-perf: ties: their stores read in {} ms ({} movements)", read.as_millis(), sources.movements.len());
+        return chain_command(s, &world, &index, &gates, uri, &chain);
+    }
     let me = world.describe(uri);
     println!("{}  <{}>", one_line(&me.title), one_line(&me.uri));
     for r in taskview::related_views(&s.tr, &world.related(uri)) {
@@ -1177,6 +1196,70 @@ pub(crate) fn links_command(s: &Session, uri: &str) -> Result<(), String> {
         println!("  {}: {}{when}  <{}>", one_line(&r.how), one_line(&r.title), one_line(&r.uri));
     }
     Ok(())
+}
+
+/// The chain of ties from `uri`: each thing on its line, indented by its
+/// step, how it is tied to the line above it, its "+N"; then the ties
+/// between things shown that are not the outline's.
+fn chain_command(s: &Session, world: &links::World, index: &sioul_core::ties::TieIndex, rule: &dyn sioul_core::ties::Rule, uri: &str, chain: &Chain) -> Result<(), String> {
+    use sioul_core::chain::{self as walk, Weights};
+    let mut weights = Weights::computer();
+    if let Some(depth) = chain.depth {
+        weights.depth = depth.clamp(1, 4);
+    }
+    let began = std::time::Instant::now();
+    let view = walk::walk(world, index, rule, uri, &chain.open, &weights, &s.tr, sioul_core::zone::now().timestamp().as_second());
+    // What it cost, for the trial on real data (counts and times only, never an address).
+    eprintln!("sioul-perf: ties: {} built in {} ms, about {} KB, {} things; the chain walked in {} ms", index.len(), index.built_in.as_millis(), index.bytes() / 1024, index.things(), began.elapsed().as_millis());
+    if chain.json {
+        println!("{}", serde_json::to_string_pretty(&view).map_err(|e| e.to_string())?);
+        return Ok(());
+    }
+    for line in outline(s, &view) {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// The chain as lines: each thing indented by its step, how it is tied to
+/// the thing it hangs from, its kind, title, detail, date, what a collection
+/// holds, the time noted, its address, its "+N"; then the cross-ties.
+fn outline(s: &Session, view: &sioul_core::chain::ChainView) -> Vec<String> {
+    let mut out = Vec::new();
+    for thing in &view.things {
+        let mut line = "  ".repeat(thing.column);
+        let named = format!("{}, {}", one_line(&thing.kind_words), one_line(&thing.title));
+        // How it is tied to the line above it, seen from there: "Made into: Task, Pay the rent".
+        if thing.how_words.is_empty() {
+            line.push_str(&named);
+        } else {
+            line.push_str(&s.say("chain-tied", &[("how", one_line(&thing.how_words)), ("title", named)]));
+        }
+        for part in [&thing.detail, &thing.date] {
+            if !part.trim().is_empty() {
+                line.push_str(&format!(" · {}", one_line(part)));
+            }
+        }
+        if thing.collection {
+            line.push_str(&format!(" · {}", s.say("chain-holds", &[("n", thing.count.to_string())])));
+        }
+        if thing.sessions > 0 {
+            line.push_str(&format!(" · {}", s.say("chain-sessions", &[("n", thing.sessions.to_string())])));
+        }
+        line.push_str(&format!("  <{}>", one_line(&thing.uri)));
+        if !thing.more_words.is_empty() {
+            line.push_str(&format!("  +{} ({})", thing.more, one_line(&thing.more_words)));
+        }
+        out.push(line);
+    }
+    if !view.cross.is_empty() {
+        out.push(s.tr.text("chain-cross", None));
+        for tie in &view.cross {
+            let (a, b) = (&view.things[tie.from], &view.things[tie.to]);
+            out.push(format!("  {} · {} · {}", one_line(&a.title), one_line(&tie.words), one_line(&b.title)));
+        }
+    }
+    out
 }
 
 /// Notes of the notes folder: those matching, or one in full with its links back.
@@ -1208,6 +1291,34 @@ pub(crate) fn notes_command(s: &Session, query: &str, path: Option<&str>) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `sioul links --chain` as an outline: each thing under the one it
+    /// hangs from, its tie's words seen from there, what a collection holds.
+    #[test]
+    fn the_chain_as_an_outline() {
+        use sioul_core::chain::{self, Weights};
+        use sioul_core::mailindex::{MailIndex, MailRef};
+        use sioul_core::ties::{Open, Sources, TieIndex};
+        let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
+        let rent = Task { uid: "rent".into(), title: "Pay the rent".into(), links: vec![Link { uri: "mid:rent@landlord.example".into(), label: String::new(), rel: "via".into() }], projects: vec!["flat".into()], ..Task::default() };
+        let iban = Task { uid: "iban".into(), title: "Find the IBAN".into(), relations: vec![tasks::Relation { kind: "PARENT".into(), uid: "rent".into(), gap: 0 }], ..Task::default() };
+        let mut mail = MailIndex::default();
+        mail.insert("rent@landlord.example", MailRef { subject: "Rent for November".into(), address: "mina@landlord.example".into(), ..MailRef::default() });
+        let flat = sioul_core::projects::Project { id: "flat".into(), title: "Flat".into(), ..Default::default() };
+        let loaded = Loaded { tasks: vec![rent, iban], mail, projects: vec![flat], ..Loaded::default() };
+        let index = TieIndex::build(&loaded.world(), &Sources::default());
+        let world = loaded.world_with(&index, &Open);
+        let view = chain::walk(&world, &index, &Open, "mid:<rent@landlord.example>", &[], &Weights::computer(), &s.tr, 0);
+        assert_eq!(
+            outline(&s, &view),
+            [
+                "Message, Rent for November  <mid:rent@landlord.example>",
+                "  Made into: Task, Pay the rent  <sioul:task/rent>",
+                "    A step: Task, Find the IBAN  <sioul:task/iban>",
+                "    Project: Project, Flat · 1 thing in it  <sioul:project/flat>",
+            ]
+        );
+    }
 
     /// Steps imported keep the file's order, whatever their titles; `sioul
     /// tasks move` puts one before another; what is no step, or a step of

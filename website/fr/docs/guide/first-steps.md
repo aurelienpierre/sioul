@@ -22,8 +22,8 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 
 **À gauche**, une étroite colonne d’icônes, de haut en bas :
 
-- **Nouveau ▾**, le **+**, crée une chose de n’importe quel type : un courriel, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier, le scan d’une lettre papier (sur un ordinateur : [Le Porche](porch.md#paper-letters)) ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
-- **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courriels (une enveloppe), Sites (un globe et ses méridiens), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
+- **Nouveau ▾**, le **+**, crée une chose de n’importe quel type : un courriel, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier, le scan d’une lettre papier (sur un ordinateur : [Le courrier](papers.md#paper-letters)) ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
+- **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courriels (une enveloppe), SMS (une bulle de bande dessinée ; sur un ordinateur), Sites (un globe et ses méridiens), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Courrier (une enveloppe, comme celle des Courriels), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
 - **À part en bas** : **Clore la journée de travail** (une liste cochée) et, dessous, **Clore toute la journée** (une lune), à toute heure ([la fin de la journée](tasks.md#the-end-of-the-day)) ; puis trois icônes, côte à côte quand les noms s’affichent : Comptes (une personne), Paramètres (des curseurs), et Tout actualiser, qui relève à nouveau, d’un coup, les courriels, l’agenda, les tâches et les contacts.
 
 Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile.
@@ -36,8 +36,9 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 
 | Touches | Ce qu’elles font |
 |---|---|
-| ++ctrl+1++ à ++ctrl+9++, ++ctrl+0++ | les dix premiers lieux, dans l’ordre de la liste : Porche, Tâches, Courriels, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets |
+| ++ctrl+1++ à ++ctrl+9++, ++ctrl+0++ | dix lieux, dans cet ordre : Porche, Tâches, Courriels, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets |
 | ++ctrl+n++ | Nouveau ▾ |
+| ++ctrl+g++ | La chaîne des liens de la chose ouverte ([Les liens](ties.md)) |
 | ++ctrl+z++ | Annuler, tant que c’est proposé |
 | ++f5++ | Tout actualiser |
 | ++f9++ | Le nom des lieux à côté de leur icône, ou leurs icônes seules ; dans une fenêtre étroite, sortir les lieux ou les ranger |

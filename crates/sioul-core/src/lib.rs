@@ -81,6 +81,7 @@
 //! - [`mailsearch`]: searching the mail by conditions, here and on the servers.
 //! - [`folders`]: mail folders: what each is for, its name as you read it, where it is kept.
 //! - [`threads`]: conversations, tied by Message-ID, never by subject alone.
+//! - [`topics`]: mail topics, one quiet word per message at most: the sender's words, the first topics from folders, projects and contacts' categories, the folded table every device judges with (docs/topics.md).
 //! - [`reading`]: a message laid out for reading: its text, what it quotes, what it forwards.
 //! - [`compose`]: writing: Markdown in, mail out.
 //! - [`mailto`]: `mailto:` addresses: the message a link asks to write.
@@ -109,6 +110,8 @@
 //! - [`composed`]: composed tasks changed: a task made a step, a step a task, an item a step, a bigger task closing with its last step.
 //! - [`checklist`]: checklists in the notes of a task or an event: GitHub task lists, ticked one character at a time.
 //! - [`links`]: links between everything: mail, tasks, events, contacts, notes, budget lines.
+//! - [`ties`]: every tie Sioul knows, read from both ends, in memory; never written anywhere.
+//! - [`chain`]: the chain of ties from one thing: the strongest chains, collections stopped and counted.
 //!
 //! ## Time and money
 //!
@@ -198,6 +201,8 @@ pub mod build;
 pub mod callback;
 pub mod calls;
 pub mod capabilities;
+// The chain of ties from one thing (docs/research/link-graph.md).
+pub mod chain;
 pub mod capacity;
 pub mod capture;
 pub mod changes;
@@ -247,10 +252,14 @@ pub mod mailsearch;
 pub mod maildir;
 pub mod matching;
 pub mod mailnote;
+// mailpass: readers of every message kept on this device, each read once (money, topics).
+pub mod mailpass;
 pub mod mailto;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).
 pub mod mms;
 pub mod money;
+pub mod moneyindex;
+pub mod moneylist;
 pub mod moneyview;
 pub mod meeting_lines;
 pub mod moves;
@@ -271,11 +280,14 @@ pub mod plan;
 pub mod places;
 pub mod porch;
 pub mod presets;
+pub mod processors;
 pub mod papers;
 pub mod persons;
 pub mod pause;
 pub mod quiet;
 pub mod reach;
+// receipts: the declaration view and the receipts register (docs/accounting.md, "The declaration").
+pub mod receipts;
 pub mod reviews;
 pub mod routines;
 pub mod reminders;
@@ -300,6 +312,9 @@ pub mod tasks;
 pub mod text;
 pub mod textdraft;
 pub mod threads;
+// Every tie Sioul knows, from both ends, in memory (docs/research/link-graph.md).
+pub mod ties;
+pub mod topics;
 pub mod timeline;
 pub mod timelog;
 pub mod timereport;

@@ -209,6 +209,10 @@ month-year = { $month } { $year }
 date-day = { $weekday } { $day } { $month }
 date-day-month = { $day } { $month }
 budgets-title = Budgets, { $month }
+money-tab-overview = Overview
+money-tab-budgets = Budgets
+money-tab-movements = Movements
+money-tab-mail = From mail
 reserves-title = Reserves
 period-month = monthly
 period-year = yearly
@@ -489,6 +493,156 @@ moved-ask = Next payments to { $payee }: to { $budget } too?
 moved-ask-yes = Yes, from now on
 moved-ask-no = Only this one
 moved-next-yes = Next payments to { $payee } go to { $budget }.
+made-less = { $budget } holds { $amount } less for { $period }.
+movement-origin = Written in Sioul on { $date }.
+movement-origin-agent = Written by an AI agent on { $date }, as you asked.
+movement-no-budget = Choose a budget: this one is not in the budgets' file.
+movement-no-account = No bank account “{ $account }” in the budgets' file.
+movement-figures = What was paid, its fees and what arrived do not add up: what was paid less the fees is what arrives.
+movement-gone = This movement is no longer as it was shown, so nothing was changed. It may have changed meanwhile, on another device or by hand.
+movement-refused-set-aside = A share set aside comes from its budget: it is switched off in the budget's form.
+movement-refused-invoice = An invoice you issued is a numbered record: change the invoice, or tie its payment.
+movement-refused-bank = The bank's line says its amount and its day; what was paid, its fees, its budget and your words can change.
+movement-refused-line-only = Only a line of yours says whether it is planned and which account it is on.
+movement-refused-told = A mail or a letter tells of it: record it first with “A payment…”, or say “Not a payment”.
+movement-refused-joined = Your line and the bank's line are one payment here: say “Not the same” first, then remove the one that is wrong.
+movement-changed = { $who }, { $day }: changed.
+movement-removed = { $who }, { $day }: removed.
+movement-not-a-payout = { $who }, { $day }: it carries no payment now.
+movement-paid-in = paid { $gross } · fees { $fees }
+movement-paid-out = price { $gross } · fees { $fees }
+movement-paid-about = paid { $gross } · about { $fees } of fees
+movement-paid-unknown = paid { $gross } · the fees are not known yet
+movement-carries = { $count ->
+    [one] carries one payment
+   *[other] carries { $count } payments
+}
+movement-carried-by = part of the payout of { $day }
+movement-paid-on = paid on { $day }
+movement-told = Told on { $made }.
+movement-told-changed = Told on { $made }; changed on { $changed }.
+movement-fee-from-hand = said by you
+movement-fee-from-export = read from its export
+movement-fee-from-invoice = read from the fee invoice
+movement-fee-from-mail = read from the mail
+movement-fee-from-payout = the payout's difference
+movement-fee-from-rate = about, by the published rate
+movement-fee-kind-processor = The processor's fee
+movement-fee-kind-commission = The platform's commission
+movement-fee-kind-conversion = The currency conversion
+movement-fee-kind-contributions = Contributions withheld
+movement-fee-kind-bank = The bank's charges
+movement-fee-line = { $kind }: { $amount }, { $from }
+movement-sources = From: { $list }
+movement-ties = Tied to: { $list }
+movements-none = No movement says this.
+movements-more = More on page { $page }.
+movements-sum-in = Money in: { $gross } paid, { $net } arrived.
+movements-sum-out = Money out: { $gross } asked, { $net } left the accounts.
+movements-search = Search: who, a note, a budget, an amount
+movements-filters = Filters…
+movements-filters-apply = Show
+movements-new = New movement
+movements-menu = What to do with this movement
+movements-areas-help = Like Mail, the list starts with the areas your hours say; a search finds anything, at any hour.
+movements-chip-forget = Forget this filter: { $filter }
+movements-filter-any = Any
+movements-filter-account = Account
+movements-filter-budget = Budget
+movements-filter-way = In or out
+movements-filter-in = Money in
+movements-filter-out = Money out
+movements-filter-from-day = From
+movements-filter-to-day = Until
+movements-filter-amount = Amount
+movements-filter-at-least = at least
+movements-filter-at-most = at most
+movements-filter-told = Told by
+movements-filter-days = { $from } to { $to }
+movements-filter-from = from { $from }
+movements-filter-to = until { $to }
+movements-filter-between = { $least } to { $most }
+movements-filter-least = at least { $least }
+movements-filter-most = at most { $most }
+movements-told-bank = the bank
+movements-told-mail = a mail
+movements-told-plan = a recurring payment
+movements-told-hand = your own line
+movement-change = Change…
+movement-tie = Tie to…
+movement-removal-delete = Delete…
+movement-removal-not-this-time = Not this time
+movement-removal-leave-out = Leave out
+movement-removal-not-a-payout = Not a payout
+movement-delete-ask = This line is taken out of the budget file. Undo puts it back.
+movement-put-back-button = Put back
+movement-put-back = Put back where its files put it.
+movement-done = Changed.
+movement-open-payout = Open the payout
+movement-form-more = What was paid, the fees, a note…
+movement-form-paid = What was paid
+movement-form-price = The price
+movement-form-paid-hint = when fees were kept on the way
+movement-form-fees = Fees
+movement-form-account = Account
+movement-form-account-budget = As its budget says
+movement-form-paid-on = Paid on another day
+movement-form-paid-on-help = The day the client paid at the processor, when it reached the account later: the declaration counts that day.
+movement-form-planned = Still to come
+movement-form-note = Note
+movement-form-bank = Its amount and its day are the bank's; what was paid, its fees, its budget and your words can change.
+movement-form-occurrence = This time only: the recurring payment stays as it is.
+movement-form-told = A mail or a letter tells of it: its amount changes once it is recorded with “A payment…”.
+money-mail-joined = the same payment as { $who }, { $day }
+money-mail-carried = part of the payout “{ $who }” of { $day }
+money-mail-fees = the fees of { $who }, { $day }
+money-mail-recorded = counted in { $budget }
+money-mail-ignored = not counted: you said it is no payment
+money-mail-ignored-shape = not counted: mail like this from { $sender } is no longer counted
+money-mail-untied = not tied to any movement
+money-mail-fee = fees { $fees }
+money-mail-none = No mail about money says this.
+money-mail-waiting = Older mail is still being read for money; it comes as it is read.
+money-mail-search = Search: who, a subject, a budget, an amount
+money-mail-filter-address = Address
+money-mail-filter-tied-or-not = Tied or not
+money-mail-filter-tied = tied to a movement
+money-mail-filter-untied = not tied to any movement
+money-mail-filter-kind = Kind
+money-mail-count-again = Count it again
+money-mail-counted-again = Mail like this is counted again.
+money-mail-not-counted = Mail like this from { $sender } is no longer counted.
+money-mail-joined-now = The mail and the movement are one payment now.
+money-mail-apart = The mail and the movement are kept apart now.
+money-mail-open-movement = Open its movement
+receipts-turnover = Turnover received from { $from } to { $to }: { $gross }, paid by clients.
+receipts-turnover-at-least = Turnover received from { $from } to { $to }: at least { $gross }, paid by clients.
+receipts-reached = { $net } reached your accounts after { $fees } of fees.
+receipts-declare-by = To declare by { $due }.
+receipts-this-quarter = Turnover received this quarter: { $gross }, to declare by { $due }.
+receipts-this-quarter-at-least = Turnover received this quarter: at least { $gross }, to declare by { $due }.
+receipts-this-month = Turnover received this month: { $gross }, to declare by { $due }.
+receipts-this-month-at-least = Turnover received this month: at least { $gross }, to declare by { $due }.
+receipts-gross-unknown = what the client paid is not known yet
+receipts-at-least = at least
+receipts-means-transfer = Bank transfer
+receipts-means-hand = written by hand
+receipts-column-day = Day
+receipts-column-client = Client
+receipts-column-invoice = Invoice
+receipts-column-means = Means of payment
+receipts-column-gross = Paid
+receipts-column-note = Note
+receipts-column-total = Total
+receipts-title = Receipts register of { $budget }, { $from } to { $to }
+receipts-which-budget = Say which budget: --budget and its id. Only a work budget that sets money aside or declares has a register.
+receipts-for-declaration = For the declaration
+receipts-previous = The period before
+receipts-next = The period after
+receipts-save = Save the receipts register…
+receipts-saved = The receipts register is saved in { $path }, as a spreadsheet (CSV) and as a PDF.
+receipts-file-name = Receipts register, { $budget }, { $from } to { $to }
+receipts-none = No budget declares: a work budget that sets money aside for taxes, or says how often it declares, has a register.
 # The budgets page from one income to the next (docs/accounting.md, "The budgets page").
 ahead-holds = Until { $income } comes in on { $day }, the account holds every payment.
 ahead-holds-if = If { $income } comes in by { $day }, the account holds every payment until then.
@@ -496,6 +650,10 @@ ahead-short = Until { $income } comes in on { $day }, the account does not hold 
 ahead-short-if = Even if { $income } comes in by { $day }, the account does not hold every payment until then: after { $payment } on { $when }, { $missing } is missing.
 ahead-left = { $left } is left for everyday spending, about { $per_day } a day.
 ahead-left-none = Until then, everything goes to payments.
+ahead-left-meaning = Left for everyday spending is what remains after the payments Sioul knows of, until the next income, from the movements taken in so far.
+ahead-fresh = Last bank update: { $day }.
+ahead-stale = Movements since then may be missing.
+ahead-chart-choose = The balance ahead of another account
 ahead-low = The lowest point is { $amount } on { $when }, after { $payment }.
 ahead-low-day = The lowest point comes on { $when }, after { $payment }.
 ahead-without = Without it, after { $payment } on { $when }, { $missing } would be missing.
@@ -519,7 +677,7 @@ ahead-kept-leisure = Leisure budgets are kept for your free time.
 ahead-unticked-work = Work budgets are not ticked.
 ahead-unticked-admin = Admin budgets are not ticked.
 ahead-unticked-leisure = Leisure budgets are not ticked.
-ahead-chart-name = The balance ahead, until { $day }
+ahead-chart-name = { $account }, until { $day }
 ahead-chart-floor = What the account keeps
 bw-item = { $label }, { $amount }, { $day }
 bw-separator = {"; "}
@@ -527,6 +685,8 @@ bw-paid = Paid: { $list }.
 bw-to-come = Still to come: { $list }.
 bw-not-seen = Not on the account yet: { $list }.
 bw-in = Came in: { $list }.
+bw-in-fees = { $label } (paid { $gross }, fees { $fees })
+bw-in-fees-about = { $label } (paid { $gross }, about { $fees } of fees)
 bw-to-come-in = Still to come in: { $list }.
 bw-left = { $what }: { $left } left until { $end }.
 bw-over = { $what }: { $over } more than planned.
@@ -569,6 +729,7 @@ source-letter = a letter
 source-mail = a mail
 source-contract = the contract
 source-set-aside = the share set aside
+source-fee-invoice = the fee invoice
 set-aside-label = Taxes and contributions, { $share }
 fig-own-pace = Covers your spending for
 reminder-invoice-send = Expected on { $date }: send the invoice if it is not sent yet.
@@ -820,6 +981,8 @@ search-phrase-account-is = in { $account }
 search-phrase-account-is-not = not in { $account }
 search-phrase-folder-is = in { $folder }
 search-phrase-folder-is-not = not in { $folder }
+search-phrase-topic-is = under the topic { $topic }
+search-phrase-topic-is-not = not under the topic { $topic }
 search-phrase-mark-is-read = already read
 search-phrase-mark-is-not-read = not read yet
 search-phrase-mark-is-flagged = flagged
@@ -1594,6 +1757,151 @@ how-mentioned-by = Mentioned in
 how-answers = Answers
 how-answered-by = Answered by
 how-link = Linked
+how-told-by = Told by
+how-payment = Its payment
+how-probably-told-by = Probably told by
+how-probable-payment = Probably its payment
+how-contract = Its contract
+how-payments = Its payments
+how-paper = Its paper
+how-for = For
+how-theirs = Theirs
+how-stands-for = Stands for
+how-stand-in = Its stand-in
+how-taken-by = Taken by
+how-takes = Takes
+how-together = Together with
+how-card = Their card
+how-person = The person
+how-from = From
+how-sent = Sent
+how-budget = Its budget
+how-opened-for = Opened for
+how-site = Their site
+how-agenda-of = In the agenda of
+how-agenda = In their agenda
+how-parent-of = Parent of
+how-other-parent = Other parent
+how-conversation = Same conversation
+how-client = Client
+how-client-of = Client of
+how-party = With
+
+## The chain of ties from one thing (Ties of …): each kind in words, what "+" holds, each step.
+chain-kind-task = Task
+chain-kind-event = Event
+chain-kind-mail = Message
+chain-kind-draft = Draft
+chain-kind-note = Note
+chain-kind-contact = Contact
+chain-kind-person = Person
+chain-kind-budget = Budget
+chain-kind-project = Project
+chain-kind-paper = Paper
+chain-kind-contract = Contract
+chain-kind-letter = Letter
+chain-kind-invoice = Invoice
+chain-kind-movement = Payment
+chain-kind-site = Site
+chain-kind-web = Web page
+chain-kind-file = File
+chain-kind-other = Link
+chain-count-task = { $n } { $n ->
+        [one] task
+       *[other] tasks
+    }
+chain-count-event = { $n } { $n ->
+        [one] event
+       *[other] events
+    }
+chain-count-mail = { $n } { $n ->
+        [one] message
+       *[other] messages
+    }
+chain-count-draft = { $n } { $n ->
+        [one] draft
+       *[other] drafts
+    }
+chain-count-note = { $n } { $n ->
+        [one] note
+       *[other] notes
+    }
+chain-count-contact = { $n } { $n ->
+        [one] contact
+       *[other] contacts
+    }
+chain-count-person = { $n } { $n ->
+        [one] person
+       *[other] people
+    }
+chain-count-budget = { $n } { $n ->
+        [one] budget
+       *[other] budgets
+    }
+chain-count-project = { $n } { $n ->
+        [one] project
+       *[other] projects
+    }
+chain-count-paper = { $n } { $n ->
+        [one] paper
+       *[other] papers
+    }
+chain-count-contract = { $n } { $n ->
+        [one] contract
+       *[other] contracts
+    }
+chain-count-letter = { $n } { $n ->
+        [one] letter
+       *[other] letters
+    }
+chain-count-invoice = { $n } { $n ->
+        [one] invoice
+       *[other] invoices
+    }
+chain-count-movement = { $n } { $n ->
+        [one] payment
+       *[other] payments
+    }
+chain-count-site = { $n } { $n ->
+        [one] site
+       *[other] sites
+    }
+chain-count-web = { $n } { $n ->
+        [one] web page
+       *[other] web pages
+    }
+chain-count-file = { $n } { $n ->
+        [one] file
+       *[other] files
+    }
+chain-count-other = { $n } { $n ->
+        [one] link
+       *[other] links
+    }
+chain-more = { $n } more: { $what }
+chain-name = { $kind }: { $title }
+chain-tied = { $how }: { $title }
+chain-step = { $how }: { $kind }, { $title }
+chain-and = { $a }; { $b }
+chain-holds = { $n } { $n ->
+        [one] thing
+       *[other] things
+    } in it
+chain-sessions = { $n } { $n ->
+        [one] session
+       *[other] sessions
+    } noted
+chain-cross = Also tied
+ui-ties = Ties
+chain-title = Ties of { $title }
+chain-drawing = Chain
+chain-outline = Outline
+chain-fit = Fit
+chain-its-ties = Its ties
+chain-see-all = See them all
+chain-minus = Fold them back
+chain-folded = folded
+chain-unfolded = unfolded
 task-now-title = The next step
 task-then = After that
 task-not-found = No task matches “{ $what }”.
@@ -2008,6 +2316,7 @@ filter-field-size = Size
 filter-field-anywhere = Anywhere
 filter-field-account = Address
 filter-field-folder = Folder
+filter-field-topic = Topic
 filter-field-mark = Message
 filter-mark-read = read
 filter-mark-flagged = flagged
@@ -4012,6 +4321,69 @@ availability-already = Your availability is shared already: stop it first.
 availability-pick = Pick the agendas your busy times come from.
 availability-google-own = Pick calendars of this Google account: Google shares its own calendars’ busy times.
 availability-stopped = Your busy times are no longer shared.
+availability-name-for = For { $who }
+availability-name-link = By link
+availability-not-known = Not known yet
+availability-mirror-description = From Sioul. As of { $day } { $month }.
+availability-way-mirror-share = { $who } is on { $server } too: a calendar of your busy times, shared with { $who } alone.
+availability-way-google-freebusy = { $who } sees your busy times in Google Calendar, straight from your calendars: Google keeps them up to date, without your margins.
+availability-way-google-mirror = A calendar of your busy times in your Google account, shared with { $who } alone for its busy times.
+availability-way-mirror-federated = { $who } is on another Nextcloud: a calendar of your busy times on { $server }, shared with { $who } alone.
+availability-way-mirror-link-person = A calendar of your busy times on { $server }, with a link to give { $who }.
+availability-way-mirror-group = A calendar of your busy times on { $server }, shared with the group { $who }.
+availability-way-google-public = Your calendar's busy times, public on Google: anyone with the link sees their exact times, without your margins.
+availability-way-fastmail-link = Fastmail's own link of busy times: switch it on in Fastmail for this calendar, then paste its link here.
+availability-way-mirror-link = A calendar of your busy times on { $server }, which anyone with its link can read.
+availability-way-google-schedule = Google's appointment schedule: it offers only the times your calendars leave free.
+availability-way-appointments = Your appointment page on { $server }: it offers only the times your calendars leave free.
+availability-way-mirror-link-booking = A calendar of your busy times on { $server }, which the booking tool reads by its link; nothing past it is offered.
+availability-way-none = This server cannot share busy times.
+availability-way-no-group = Only a Nextcloud shares with a group.
+availability-mirror-name = { $name }, busy times
+availability-mirror-missing = This availability has no calendar of busy times in this account yet.
+availability-mirror-not-yet = Its calendar of busy times is not on its server yet: it will be shared once it is.
+availability-google-public-already = This calendar is public on Google with its details already: Sioul leaves it as it is.
+availability-moved = Your availability for { $who } is now in Agenda ⚙ ▸ Your availability. You can share it in other ways from there.
+availability-stale = Your busy times for { $who } were last brought up to date { $when }. Open Sioul on a device to bring them up to date.
+availability-device-phone = the phone
+availability-device-computer = the computer
+availability-today-at = at { $time }
+availability-yesterday-at = yesterday at { $time }
+availability-kept-by-server = Your server keeps it up to date.
+availability-kept-by-devices = Your devices keep it up to date: the phone in the background, a computer while Sioul runs.
+availability-kept-while-open = Kept up to date while Sioul is open on one of your devices.
+availability-kept-last = Last brought up to date { $when }, on { $device }.
+availability-share-waiting = Shared with { $who } once its calendar is on { $server }.
+availability-share-google = { $who } sees these busy times on Google, without your margins.
+availability-share-google-public = Anyone with the link sees these busy times on Google, without your margins.
+availability-share-group = The group { $who }, on { $server }, sees these busy times.
+availability-share-person = { $who }, on { $server }, sees these busy times.
+availability-share-booking-tool = A booking tool reads these busy times by their link.
+availability-share-link = Anyone with the link sees the next { $days } days.
+availability-share-fastmail = Fastmail's own link of these busy times.
+availability-share-appointments = Your appointment page on { $server }.
+availability-share-google-schedule = Your appointment schedule on Google.
+availability-share-newer = Shared by a newer Sioul, in a way this one does not know.
+availability-server-sees = People with an account on { $server } see your busy times when they invite you.
+availability-stopped-for = Your busy times are no longer shared with { $who }.
+availability-needs-name = An availability needs a name.
+availability-hours = Send my working hours to { $server }
+availability-hours-proposed = Its agendas are for work: its users see when you work.
+availability-share-with = Share with…
+availability-audience-person = A person
+availability-audience-group = A group
+availability-audience-link = Anyone with a link
+availability-audience-booking = A booking tool
+availability-who-person = A user name, user@server or an address
+availability-who-group = The group’s name on its server
+availability-another-way = Another way
+availability-booking-direct = A booking tool can also read your calendars on their server itself (cal.com over CalDAV, Calendly over Google): nothing to share from here.
+agenda-mirror-kept-for = kept for “{ $name }”
+agenda-mirror-kept = kept for your availability
+agenda-mirror-open = Open Your availability
+availability-paste-link = Paste its link here
+availability-new = New availability…
+availability-name = Its name, for you alone
 # Children's events (several agendas, part 3): who takes each, the stand-ins, the invitations.
 holder-title = Who takes it
 holder-kind = Kind
@@ -4264,6 +4636,10 @@ money-short-reserve = { $short } will be missing then; { $reserve } covers it.
 money-short-ask = { $short } will be missing then. Moving money in before, or asking for a later date?
 bank = The bank
 bank-import = Take in an export…
+bank-payout-request = What you receive waits on { $processor } until you move it to { $bank }.
+bank-payout-automatic = { $processor } pays what you receive out to { $bank } by itself.
+bank-payout-batch = { $processor } pays what you receive out to { $bank } in batches.
+bank-payout-your-bank = your bank
 bank-files = Bank exports
 bank-balance = { $amount } on { $date }, from your bank's file.
 bank-coming = This week:
@@ -6890,6 +7266,8 @@ set-agenda-calendar-help = The calendar a new event is put in; the event's edito
 set-agenda-calendar-first = The first calendar that takes events
 set-agendas = Your agendas
 set-agendas-help = What each one is: whose, what for, when it reaches you, what you may do with it. Sioul guessed from what it saw; open one to say otherwise.
+set-availability = Your availability
+set-availability-help = What you give of your time, and to whom.
 set-conflicts = Conflicts
 set-conflicts-help = A conflict is you in two places: your agendas’ events, the invitations you accepted, the child events you take. A ticked pair compares all its events, whoever they need; one of yours unticked, none.
 event-calendar-in = In { $name }
@@ -6988,6 +7366,11 @@ texts-delete-said = Its texts until now leave Sioul on every device: your comput
 agent-event-changed = An AI agent changed the event “{ $title }”.
 agent-event-moved = An AI agent moved the event “{ $title }” to { $calendar }.
 agent-event-deleted = An AI agent deleted the event “{ $title }”.
+agent-movement-made = An AI agent wrote the movement “{ $who }” ({ $amount }).
+agent-movement-changed = An AI agent changed the movement “{ $who }”.
+agent-movement-removed = An AI agent removed the movement “{ $who }”.
+agent-movement-same = An AI agent said that “{ $who }” and “{ $other }” are one payment.
+agent-movement-apart = An AI agent said that “{ $who }” and “{ $other }” are not the same payment.
 agent-event-skipped = An AI agent left out the { $when } time of “{ $title }”.
 agent-task-changed = An AI agent changed the task “{ $title }”.
 agent-task-moved = An AI agent moved the task “{ $title }” to { $list }.
@@ -7256,3 +7639,167 @@ paper-family-legal = Procurations and measures
 paper-renew-legal = A review or a new one must be asked before it ends, or it lapses.
 paper-steps-procuration = Ask the person who gave it whether it goes on, and for a new one if so.
 paper-steps-protection = Ask the judge (the juge des contentieux de la protection) for a review before it ends: without one, the measure lapses.
+
+## sioul topics: mail topics measured on this computer (crates/sioul-cli/src/topics.rs, docs/topics.md)
+topics-eval-start = Each way is learned, then tested, in turn: it takes a while.
+topics-error = Topics could not be measured: { $detail }
+topics-reading = { $messages } messages kept here, each once, from { $folders } folders ({ $files } files); { $yours } of them yours (in Sent, or from your addresses).
+topics-reading-left = Left out: { $folders } junk, trash and draft folders, { $spam } messages the spam filter calls spam, { $forged } forged.
+topics-reading-seeds = Seeds name: folders { $folders } messages ({ $folders_yours } yours), contacts' categories { $categories } ({ $categories_yours } yours).
+topics-read = { $named } of these messages are in a proposed topic, { $yours } of them yours.
+topics-none = No topic to propose yet: no folder, project or category holds enough mail.
+topics-proposed = Topics proposed ({ $n }):
+topics-beyond = Beyond the twelve ({ $n }):
+topics-waiting = Waiting for more mail ({ $n }):
+topics-topic = { $name } ({ $id }): { $count ->
+    [one] one message
+   *[other] { $count } messages
+} from { $senders ->
+    [one] one sender
+   *[other] { $senders } senders
+}
+topics-from = from { $seeds }
+topics-seed-folder = the folder { $name } ({ $n })
+topics-seed-category = your contacts' category { $name } ({ $n })
+topics-kept = { $n } of its messages, also named by another topic, stay here, the more specific.
+topics-gave-away = { $n } went to { $topic }, the more specific.
+topics-left-out = Folders that seed nothing: { $system } of the server's own, { $small } with fewer than { $least } messages, { $unused } unused for a year.
+topics-seed-preset = Sioul's preset { $name } ({ $n })
+topics-presets = Topic presets that match your mail, their senders proven ({ $least } messages or more start one on day one):
+topics-preset = { $name } ({ $id }): { $total } messages, { $domain } by its own senders, { $site } by their sites, { $list } as lists.
+topics-preset-starts = It would start.
+topics-presets-none = No topic preset matches your mail yet.
+topics-nothing = Nothing to measure: no topic is proposed, or a part of the time order holds none of its mail.
+topics-split = Learned from { $learned } messages, tested on the newest { $tested } (the first: { $date }); the newest { $validation } learned set the bands.
+topics-none-shares = The class "none", learned from a share of the mail no seed names (macro F1 and coverage on the newest learned):
+topics-none-share = { $share }: { $f1 }, { $coverage }
+topics-ways = Each way on the test (macro F1; coverage; precision and recall against the seeds; new senders' recall; small topics' F1):
+topics-way = { $name }: { $f1 }; { $coverage }; { $precision }, { $recall }; { $fresh }; { $small }
+topics-senders-kept = kept
+topics-senders-left = left out
+topics-decided = Kept: { $way }; the sender's words { $senders }; { $bucket } buckets; temperature { $t }.
+topics-topic-numbers = { $name }: { $learned } learned, sure from { $sure }; precision { $precision } ({ $seeded } among seeded mail), recall { $recall } ({ $counts }); new senders' recall { $fresh } of { $fresh_n }
+topics-counts = { $right } of { $seeded } right, { $other } of another topic, { $unseeded } on mail no seed names, { $maybe } maybe
+topics-never = never
+topics-new-senders = Senders never seen before ({ $n } messages): precision { $precision }, recall { $recall }.
+topics-fold = The table: { $words } words, { $bucket } buckets, { $f16 } KB in f16 ({ $f32 } KB in f32); off fastText's predictions by { $e32 } in f32, { $e16 } in f16; f16 changes the topic or band of { $flips } of { $judged } messages.
+topics-fold-broken = The f32 table is off fastText's predictions by more than { $tolerance }: it would not be written.
+topics-churn = Learned a week earlier, the model showed { $shown } sure topics on the tested mail; the newer one changes { $changed } of them ({ $share }) and adds { $added }.
+topics-churn-none = No churn measured: too little mail a week before the test.
+topics-centroid = The centroid: { $f1 }; { $coverage }; { $precision }, { $recall }; { $fresh }; { $small }
+topics-centroid-fold = Folded: { $vocabulary } pieces, { $kb } KB in f16 beside a tokenizer of { $tokenizer } KB; off by { $e16 } in f16, which changes { $flips } of { $judged } messages.
+topics-seconds = { $seconds } seconds.
+topics-groups-read = { $messages } messages read, { $words } of them with words to group by; { $vocabulary } words kept.
+topics-groups-way = { $way }: { $found } groups found, { $shown } shown ({ $grouped } messages); coherence { $coherence }; agreement with the seeds { $agreement }.
+topics-groups-k = k = { $k }, silhouette { $silhouette }
+topics-groups-skipped-no-model = { $way }: no Model2Vec folder given (--model2vec).
+topics-groups-skipped-too-few = { $way }: too few messages to group.
+topics-groups-skipped-no-senders = { $way }: no sender proven.
+topics-groups-group = #{ $n }: { $size } messages, { $senders ->
+    [one] one sender
+   *[other] { $senders } senders
+} ({ $yours } yours); coherence { $coherence }; { $seed }
+topics-groups-seed = mostly { $topic } ({ $share })
+topics-groups-no-seed = in no seed
+topics-groups-names = senders: { $names }
+topics-groups-proposed = proposed name: { $name } ({ $how })
+topics-groups-words = words: { $words }
+topics-groups-subjects = for example: { $subjects }
+topics-groups-quoted = "{ $subject }"
+topics-noticed = Groups Sioul noticed, as the window shows them: { $shown } shown; left out: { $weak } under coherence { $floor }, { $started } half tagged by the topic presets started already, { $more } beyond the five.
+topics-noticed-waiting = Groups Sioul noticed, as the window shows them: none yet, { $messages } messages kept here of the { $least } they wait for.
+topics-noticed-group = { $size } messages, { $senders } senders, coherence { $coherence }: { $names }
+topics-noticed-senders = Offered as "Always … for this sender", one sender each:
+topics-noticed-sender = { $size } messages: { $names }
+topics-train-learned = { $topic }: learned from { $examples } messages of { $senders } senders ({ $own } of them the last table's own guesses; { $capped } left out so that no sender or conversation weighs too much).
+topics-train-waits = { $topic }: sorted by your words and its rules until it has more mail ({ $examples } messages of { $senders } senders; it needs { $least } from { $least_senders } senders, or { $alone }).
+topics-train-compared = { $topic } on the newest mail: { $was } with the table in use, { $now } with the new one (F1).
+topics-train-no-topic = No topic has mail enough yet: no table, your words and rules sort them.
+topics-train-too-few = Too little mail to learn and test in time order: no table.
+topics-train-first = The first table, written (F1 { $f1 }, { $coverage } of the newest mail with a sure topic); the mail kept here judged by it.
+topics-train-replaced = A new table, no worse, written (F1 { $f1 }, { $coverage } with a sure topic, { $churn } of the topics shown changed); the mail kept here judged by it.
+topics-train-not-written = Measured, not written (--no-replace): F1 { $f1 }, { $coverage } of the newest mail with a sure topic.
+topics-train-worse = The table in use is kept: the new one does worse on { $topic }.
+topics-train-churn = The table in use is kept: the new one would change { $churn } of the topics shown (at most { $most }).
+
+## Mail's topics in the window (crates/sioul-app/src/topics.rs, TopicMenu.qml, TopicFilter.qml, TopicsSettings.qml, docs/topics.md)
+topics-not-written = Your word could not be kept: { $detail }
+topics-gone = That topic is no longer there.
+topics-no-id = This message has no Message-ID: no topic can be kept for it.
+topics-given = { $n ->
+    [one] { $topic } given to this message.
+   *[other] { $topic } given to { $n } messages.
+}
+topics-taken-off = { $n ->
+    [one] Topic taken off this message.
+   *[other] Topic taken off { $n } messages.
+}
+topics-made = Topic { $topic } made.
+topics-made-given = { $n ->
+    [one] Topic { $topic } made and given to this message.
+   *[other] Topic { $topic } made and given to { $n } messages.
+}
+topics-rule-always = Always { $topic } for mail from { $address }.
+topics-rule-never = Never { $topic } for mail from { $address }.
+topics-rule-off = The rule for { $address } taken off.
+topics-renamed = { $old } renamed { $topic }.
+topics-removed = { $topic } removed: its word is off every message.
+topics-seed-folder-of = the folder { $name }
+topics-seed-category-of = your contacts' category { $name }
+topics-and = and
+topics-seeds-line = From { $seeds }.
+topics-group-gone = That group is no longer there: look again.
+topic-word = Topic
+topic-menu = Topic…
+topic-none = No topic
+topic-new = New topic…
+topic-new-name = The new topic's name
+topic-make = Make it
+topic-always = Always { $topic } for this sender
+topic-never = Never { $topic } for this sender
+topic-why-yours = given by you
+topic-why-sender = by its sender
+topic-why-conversation = by its conversation
+topic-why-folder = from the folder { $name }
+topic-why-category = from your contacts' category { $name }
+topic-why-preset = by its sender, one Sioul knows
+topic-why-site = by its sender's site
+topic-why-list = as a newsletter or a list
+topic-why-model = Sioul's guess, from mail like it
+topic-why-maybe = perhaps: Sioul's doubt, from mail like it
+topic-perhaps = Perhaps { $topic }
+topic-filter-all = All topics
+topic-filter-name = Topic: { $topic }
+topics-settings = Topics
+set-topics = Your topics
+set-topics-help = A topic is a quiet word on a message: a filter, never a folder. Give one from a message, or from several selected at once; a reply follows its conversation's first message you gave one. Sorted by your tags and senders until a topic has more mail.
+topics-settings-none = No topic yet. Give one from a message: Topic…
+topics-rename = Rename
+topics-remove = Remove
+topics-add = Add a topic
+topics-sender-always = Always: { $address }
+topics-sender-never = Never: { $address }
+topics-sender-off = Take this rule off
+topics-groups = Groups Sioul noticed
+topics-groups-look = Look for groups
+topics-groups-looking = Looking at your mail…
+topics-groups-failed = The groups could not be found: { $detail }
+topics-groups-none = No group stands out yet.
+topics-groups-size = { $n ->
+    [one] one message
+   *[other] { $n } messages
+}
+topics-name-it = Name it
+topics-learned = Sioul also sorts mail like its own.
+topics-not-learned = Sorted by your tags and senders until it has more mail.
+topics-offers = Senders with much mail of their own: all of it under one topic.
+topics-offer-always = Always a topic…
+topics-day-one = { $n ->
+    [one] Sioul sorted your mail into one topic, from the senders it knows: { $topics }. Rename or remove it in Mail ▸ ⚙ ▸ Topics.
+   *[other] Sioul sorted your mail into { $n } topics, from the senders it knows: { $topics }. Rename or remove them in Mail ▸ ⚙ ▸ Topics.
+}
+topics-offered = Topics Sioul knows:
+topics-named-sites = Named from your senders' sites.
+topics-named-preset = Named after the topic preset most of its mail matches.
+topics-named-none = No name proposed: no topic preset and no kind of site holds most of it.
+topics-groups-waiting = Groups come once more mail is kept here.

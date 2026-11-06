@@ -108,6 +108,19 @@ Opening a message marks it read, as any mail program does. Sioul never sends a r
   <figcaption>Sorting from a search: the messages chosen, dragged onto a folder.</figcaption>
 </figure>
 
+### Topics {#topics}
+
+A topic is a quiet word on a message, such as Health, Tax or Choir: a way to look at your mail, never a folder. Nothing moves, and nothing asks you to tag anything.
+
+- **Topic…**, under the sender's line in the reader, in a message's menu, or in the bar above a selection, gives a topic to one message or to several at once, changes it or takes it off. **New topic…** makes it and gives it in one act.
+- **Always <topic> for this sender**, or **Never…**, in the same menu: the sender's mail takes it, or never does. A reply takes the topic you gave its conversation.
+- **The Topic filter**, beside the filter by area, shows one topic's mail alone. The topic shows quietly after the subject, and in the reader with why it has it.
+- Each act says what it did, with **Undo**. In the Mail page's ⚙, **Topics** lists them, renames and removes them, and on a computer **Groups Sioul noticed** gathers mail no topic names yet, by its words: **Name it** gives the whole group a topic, once a thousand messages are kept here, named when a topic preset or a kind of site holds most of it, and **Always a topic…** files all the mail of a sender who writes to you a lot under the topic you name.
+
+**To start**, Sioul knows some topics (Bank, Taxes, Health, Phone and internet…) by their senders, those it can prove: once enough mail is here, those that find five messages or more start by themselves, said once on the Porch; the others wait in **Topics**, one tap each. Started, a topic is yours: renamed or removed like any other.
+
+Topics and projects are independent: a project is something to complete, a topic a standing part of life.
+
 ### Unsubscribing {#unsubscribing}
 
 A newsletter or a list's message that says how to leave it has **Unsubscribe** above it. One click, and ten seconds later Sioul does what the list asks:
@@ -174,7 +187,7 @@ When you have an OpenPGP key (made or imported in [Accounts ▸ Encryption](acco
 
 An encrypted message is decrypted when you open it; a signature is checked and said under the sender: "Encrypted · Signed by …", or "The signature does not match the text", in warm colours, never red.
 
-On a computer, your key can live on a security key, such as a YubiKey, which never gives it out ([below](#your-key-on-a-security-key)).
+Your key can live on a security key, such as a YubiKey, which never gives it out, on a computer and on a phone ([below](#your-key-on-a-security-key)).
 
 ## In quiet time {#in-quiet-time}
 
@@ -182,7 +195,7 @@ Outside working hours, work addresses fold in the column, without their dots, an
 
 ## Not there yet {#not-there-yet}
 
-Emptying the trash or the junk in one go, copying a message to a folder, saving it as a file, drafts kept on the server, sending later, an encrypted subject, revoking or extending an OpenPGP key, security keys on a phone, lookalike domain names. They are planned. Sioul has no S/MIME.
+Emptying the trash or the junk in one go, copying a message to a folder, saving it as a file, drafts kept on the server, sending later, an encrypted subject, revoking an OpenPGP key or extending one kept on this device, lookalike domain names. They are planned. Sioul has no S/MIME.
 
 ## Going further {#going-further}
 
@@ -240,13 +253,13 @@ Filters act on new mail as it arrives, on its server: into a folder, archived, t
 
 ### Your key on a security key {#your-key-on-a-security-key}
 
-On a computer, your OpenPGP key can stay on a security key (a YubiKey, a Nitrokey), which signs and decrypts by itself and never gives the key out. Set it up in [Accounts ▸ Security key](accounts.md#security-key).
+Your OpenPGP key can stay on a security key (a YubiKey, a Nitrokey), which signs and decrypts by itself and never gives the key out. Set it up in [Accounts ▸ Security key](accounts.md#security-key).
 
-A message your security key signs is signed when you press **Send**, before the ten seconds of **Undo**: a band at the bottom of the writing window asks for the key's PIN, and says how many tries are left when some were lost; then, when the key asks for a touch, it says to touch it now and hold the finger on it a second or two, as the key waits about fifteen seconds and a brief tap is often not taken. Not plugged in, it says so, and goes on as soon as the key comes. **Send unsigned** and **Not now** are there all along, and **Undo** throws the signed message away and opens the draft again. The PIN stays in memory fifteen minutes after its last use, never written or logged anywhere; it is forgotten when you pull the key out, close Sioul, or choose **Forget the PIN now** in Accounts.
+A message your security key signs is signed when you press **Send**, before the ten seconds of **Undo**: a band at the bottom of the writing window asks for the key's PIN, and says how many tries are left when some were lost; then, when the key asks for a touch, it says to touch it now and hold the finger on it a second or two, as the key waits about fifteen seconds and a brief tap is often not taken. Not plugged in, it says so, and goes on as soon as the key comes. **Send unsigned** and **Not now** are there all along, and **Undo** throws the signed message away and opens the draft again. On a computer, the PIN stays in memory fifteen minutes after its last use, never written or logged anywhere; it is forgotten when you pull the key out, close Sioul, or choose **Forget the PIN now** in Accounts.
 
 A message encrypted to your security key is never opened just because it is shown: the line under the sender says "Encrypted for your security key", with **Open with your security key**. Once opened, it opens again without the key, its attachments too, until Sioul closes.
 
-Not yet on a phone.
+On a phone, the band asks the PIN first, typed for each use and never kept, then the key: held flat against the back of the phone (NFC) or plugged into its USB-C port, until Sioul says it is done ([Accounts](accounts.md#security-key)). There it is tested against a stand-in card only.
 
 ### Settings {#settings}
 
@@ -293,6 +306,22 @@ Under **Your own spam filter**, in the Mail page's ⚙. It judges strangers' mai
 
 What it does with each verdict, the thresholds and whether it trains by itself travel to your other devices with your settings. What training reads, and what it keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
 
+## Why it works this way {#why-it-works-this-way}
+
+**Topics are words on your mail, never places it goes.** Filing by hand costs and fails: in personal Gmail accounts, about half the labels people make end with fewer than three conversations (Grevet et al. 2014), and finding a message through folders took longer than searching for it, without heavy filers finding more (Whittaker et al. 2011). So a topic is a filter over the one mailbox, a word on the row and a search condition: a wrong word costs nothing while the message stays where it was, and a conversation stays whole.
+
+**They start from what you already have.** Your folders and your contacts' categories are the best record of the topics you keep, and the senders Sioul can prove carry most of a topic: a sorter of web mail placed most messages by their sender alone (Grbovic et al. 2014). So the first topics come from your folders, your categories and the senders of a bank, a tax office or a health insurer that Sioul knows; your word on a message or a sender comes first, and nothing asks you to review anything.
+
+**The model waits for mail, and never moves what you see.** A topic is learned once it has 20 messages from 3 senders, or 50 from one office; below that, your words and its rules sort it. Each week a new table replaces the one in use only when it does no worse on the newest mail, topic by topic, and changes fewer than 2 % of the topics already shown, so that nothing moves under your eyes. A doubt is shown only under its topic's filter, as "Perhaps", and never counts as a label; Sioul's own sure guesses count at half weight, never more than a topic's other examples, as its spam filter's own verdicts count until you correct them.
+
+**Mail waits for its hours, and nothing is counted.** Checking mail at a few set times lowered daily stress in a randomised trial (Kushlev & Dunn 2015), and the mere expectation of checking work mail in the evening harms, read or not (Becker et al. 2021). So **All addresses** shows what your hours bring, work's addresses rest outside working hours, and no count or preview pulls at you.
+
+**Your own filter.** Filters learning inside one mailbox did about a hundred times better than filters trained on other people's mail (Cormack 2008; Sculley & Wachman 2007), and 89 % of unwanted mail passes SPF, DKIM or DMARC (Cloudflare 2023). So your filter learns on your computer, from your mail and your word, moves nothing until you choose, and a proven sender alone never brings mail back from the junk folder: it takes your dealing with that domain as well.
+
+**Encryption, so that letters come back.** Portals moved the work of following official mail onto people, and their stores were breached (Défenseur des droits 2022; CNIL 2025). Mail encrypted to your key, kept in your keyring or on a security key, is what lets those letters come back to your mailbox ([why](privacy-security.md#why-sioul-encrypts-mail)).
+
+More in [what the research says](../dev/research.md), findings 1, 21, 35, 37 and 61.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 As of October 2026, from each app's own documentation.
@@ -317,6 +346,8 @@ Thunderbird is the free-software mail program for computers, with an Android app
     | Send later, snooze | ✗³⁹ | partly⁴⁰ | ✓ | ✓⁴¹ | ✓ | ✓⁴² |
     | Signed and encrypted mail | ✓⁴³ | ✓⁴⁴ | partly⁴⁵ | partly⁴⁶ | partly⁴⁷ | ✓⁴⁸ |
     | Outlook.com, Hotmail and Microsoft 365 addresses | partly⁴⁹ | ✓ | partly⁵⁰ | ✓ | ✓ | ✗⁵¹ |
+    | Topics you name, as quiet words on your mail, never a folder | ✓⁵² | partly⁵³ | partly⁵⁴ | partly⁵⁵ | partly⁵⁶ | ? |
+    | Learns them from your mail, on your devices | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | partly⁵⁶ | ? |
 
     1. Thunderbird: only through an add-on (DKIM Verifier); nothing on Android.
     2. Gmail: a question mark on a message that is not authenticated, and "Mailed by" and "Signed by" in its details, on a computer and on Android; not on an iPhone or iPad.
@@ -369,6 +400,12 @@ Thunderbird is the free-software mail program for computers, with an Android app
     49. Sioul: signed in on Microsoft's own page; not yet tried with a real Microsoft account. A work or school address may need its organisation's approval.
     50. Gmail: in its phone apps; Gmail on the web stops reading other accounts in January 2027.
     51. Proton Mail: Proton addresses; a Gmail account can be connected.
+    52. Sioul: one topic per message, from your folders, your contacts' categories, the senders of a bank, a tax office or a health insurer it knows, and your own word on a message or a sender; a filter, a word on the row and a search condition.
+    53. Thunderbird: tags you give by hand, on a computer; they reach your other devices as IMAP keywords only where the server keeps them; none on Android.
+    54. Gmail: five fixed tabs (Primary, Promotions, Social, Updates, Forums), sorted on Google's servers ("You can't create custom categories"); labels by hand or by filter.
+    55. Outlook: Focused and Other, sorted on Microsoft's servers; categories by hand, for Exchange accounts.
+    56. Apple Mail: four fixed categories since iOS 18.2 (Primary, Transactions, Updates, Promotions), sorted on the device and corrected per sender; none you name.
+    57. Sioul: learned once a week on the computer that trains, for each topic with 20 messages from 3 senders or more; every device, the phone included, then judges new mail with the same table.
 
 === "Technical"
 
@@ -410,7 +447,7 @@ Thunderbird is the free-software mail program for computers, with an Android app
     21. Thunderbird: and keys.openpgp.org.
     22. FairEmail: left to OpenKeychain.
     23. Proton Mail: its servers look the keys up.
-    24. Sioul: an OpenPGP card (YubiKey, Nitrokey) through the system's smart card service, on a computer only; tried with a real key, a YubiKey 5, on Linux (8 October 2026).
+    24. Sioul: an OpenPGP card (YubiKey, Nitrokey), through the system's smart card service on a computer, held against a phone (NFC) or plugged into it (USB-C); tried with a real key, a YubiKey 5, on Linux (8 October 2026), on a phone against a stand-in card only.
     25. Thunderbird: through GnuPG, installed and set up separately; signing and decrypting only.
     26. Proton Mail: its security keys sign you in to the account.
     27. Sioul: planned.

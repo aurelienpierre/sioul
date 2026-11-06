@@ -108,6 +108,19 @@ Ouvrir un courriel le marque comme lu, comme le fait tout logiciel de courriel. 
   <figcaption>Trier depuis une recherche : les courriels choisis, glissés sur un dossier.</figcaption>
 </figure>
 
+### Les thèmes {#topics}
+
+Un thème est un mot discret sur un courriel, comme Santé, Impôts ou Chorale : une façon de regarder votre courrier, jamais un dossier. Rien ne bouge, et rien ne vous demande de ranger quoi que ce soit.
+
+- **Thème…**, sous la ligne de l’expéditeur dans la lecture, dans le menu d’un courriel, ou dans la barre au-dessus d’une sélection, donne un thème à un courriel ou à plusieurs à la fois, le change ou le retire. **Nouveau thème…** le crée et le donne d’un seul geste.
+- **Toujours <thème> pour cet expéditeur**, ou **Jamais…**, dans le même menu : le courrier de l’expéditeur le prend, ou ne le prend jamais. Une réponse prend le thème que vous avez donné à sa conversation.
+- **Le filtre par thème**, à côté du filtre par usage, montre le courrier d’un seul thème. Le thème s’affiche discrètement après l’objet, et dans la lecture avec ce qui le lui donne.
+- Chaque geste dit ce qu’il a fait, avec **Annuler**. Dans le ⚙ de la page Courriels, **Thèmes** les liste, les renomme et les retire, et sur un ordinateur **Groupes remarqués par Sioul** rassemble par leurs mots les courriels qu’aucun thème ne nomme encore : **Le nommer** donne un thème à tout le groupe, une fois mille courriels gardés ici, nommé quand un thème proposé ou un type de site en tient la plupart, et **Toujours un thème…** range tout le courrier d’un expéditeur qui vous écrit beaucoup sous le thème que vous nommez.
+
+**Pour commencer**, Sioul connaît quelques thèmes (Banque, Impôts, Santé, Téléphone et internet…) par leurs expéditeurs, ceux qu’il peut prouver : une fois assez de courrier ici, ceux qui trouvent cinq courriels ou plus commencent d’eux-mêmes, dit une fois sur le Porche ; les autres attendent dans **Thèmes**, un toucher chacun. Commencé, un thème est le vôtre : il se renomme ou se retire comme les autres.
+
+Les thèmes et les projets sont indépendants : un projet est une chose à mener à bien, un thème une part durable de la vie.
+
 ### Se désabonner {#unsubscribing}
 
 Une infolettre ou le courriel d’une liste qui dit comment la quitter a **Se désabonner** au-dessus. Un clic, et dix secondes plus tard Sioul fait ce que la liste demande :
@@ -174,7 +187,7 @@ Quand vous avez une clé OpenPGP (créée ou importée dans [Comptes ▸ Chiffre
 
 Un courriel chiffré est déchiffré quand vous l’ouvrez ; une signature est vérifiée et dite sous l’expéditeur : « Chiffré · Signé par … », ou « La signature ne correspond pas au texte », en couleurs chaudes, jamais en rouge.
 
-Sur un ordinateur, votre clé peut vivre sur une clé de sécurité, comme une YubiKey, qui ne la donne jamais ([plus bas](#your-key-on-a-security-key)).
+Votre clé peut vivre sur une clé de sécurité, comme une YubiKey, qui ne la donne jamais, sur un ordinateur comme sur un téléphone ([plus bas](#your-key-on-a-security-key)).
 
 ## Pendant le calme {#in-quiet-time}
 
@@ -182,7 +195,7 @@ En dehors des heures de travail, les adresses du travail se replient dans la col
 
 ## Pas encore là {#not-there-yet}
 
-Vider la corbeille ou les indésirables d’un coup, copier un courriel dans un dossier, l’enregistrer comme fichier, garder les brouillons sur le serveur, envoyer plus tard, un objet chiffré, révoquer ou prolonger une clé OpenPGP, les clés de sécurité sur un téléphone, les noms de domaine qui en imitent d’autres. C’est prévu. Sioul n’a pas S/MIME.
+Vider la corbeille ou les indésirables d’un coup, copier un courriel dans un dossier, l’enregistrer comme fichier, garder les brouillons sur le serveur, envoyer plus tard, un objet chiffré, révoquer une clé OpenPGP ou prolonger une clé gardée sur cet appareil, les noms de domaine qui en imitent d’autres. C’est prévu. Sioul n’a pas S/MIME.
 
 ## Pour aller plus loin {#going-further}
 
@@ -240,13 +253,13 @@ Les filtres agissent sur chaque courriel qui arrive, sur son serveur : dans un
 
 ### Votre clé sur une clé de sécurité {#your-key-on-a-security-key}
 
-Sur un ordinateur, votre clé OpenPGP peut rester sur une clé de sécurité (une YubiKey, une Nitrokey), qui signe et déchiffre elle-même et ne donne jamais la clé. Elle se met en place dans [Comptes ▸ Clé de sécurité](accounts.md#security-key).
+Votre clé OpenPGP peut rester sur une clé de sécurité (une YubiKey, une Nitrokey), qui signe et déchiffre elle-même et ne donne jamais la clé. Elle se met en place dans [Comptes ▸ Clé de sécurité](accounts.md#security-key).
 
-Un courriel que votre clé de sécurité signe est signé quand vous appuyez sur **Envoyer**, avant les dix secondes d’**Annuler** : un bandeau en bas de la fenêtre d’écriture demande le code PIN de la clé, et dit combien d’essais il reste quand certains ont été perdus ; puis, quand la clé demande un toucher, il dit de la toucher maintenant et de garder le doigt dessus une seconde ou deux, car la clé attend environ quinze secondes et un toucher bref n’est souvent pas pris. Non branchée, il le dit, et reprend dès qu’elle arrive. **Envoyer sans signature** et **Pas maintenant** restent là tout du long, et **Annuler** jette le courriel signé et rouvre le brouillon. Le code PIN reste en mémoire quinze minutes après son dernier usage, jamais écrit ni journalisé nulle part ; il est oublié quand vous retirez la clé, fermez Sioul, ou choisissez **Oublier le code PIN maintenant** dans Comptes.
+Un courriel que votre clé de sécurité signe est signé quand vous appuyez sur **Envoyer**, avant les dix secondes d’**Annuler** : un bandeau en bas de la fenêtre d’écriture demande le code PIN de la clé, et dit combien d’essais il reste quand certains ont été perdus ; puis, quand la clé demande un toucher, il dit de la toucher maintenant et de garder le doigt dessus une seconde ou deux, car la clé attend environ quinze secondes et un toucher bref n’est souvent pas pris. Non branchée, il le dit, et reprend dès qu’elle arrive. **Envoyer sans signature** et **Pas maintenant** restent là tout du long, et **Annuler** jette le courriel signé et rouvre le brouillon. Sur un ordinateur, le code PIN reste en mémoire quinze minutes après son dernier usage, jamais écrit ni journalisé nulle part ; il est oublié quand vous retirez la clé, fermez Sioul, ou choisissez **Oublier le code PIN maintenant** dans Comptes.
 
 Un courriel chiffré pour votre clé de sécurité n’est jamais ouvert parce qu’il est affiché : la ligne sous l’expéditeur dit « Chiffré pour votre clé de sécurité », avec **Ouvrir avec votre clé de sécurité**. Une fois ouvert, il s’ouvre de nouveau sans la clé, ses pièces jointes aussi, jusqu’à la fermeture de Sioul.
 
-Pas encore sur un téléphone.
+Sur un téléphone, le bandeau demande d’abord le code PIN, tapé à chaque usage et jamais gardé, puis la clé : tenue à plat contre le dos du téléphone (NFC) ou branchée sur son port USB-C, jusqu’à ce que Sioul dise que c’est fait ([Comptes](accounts.md#security-key)). Là, elle n’est testée qu’avec une carte de remplacement.
 
 ### Les réglages {#settings}
 
@@ -293,6 +306,22 @@ Sous **Votre filtre à indésirables**, dans le ⚙ de la page Courriels. Il ne 
 
 Ce qu’il fait de chaque avis, les seuils et s’il se réentraîne de lui-même voyagent vers vos autres appareils avec vos réglages. Ce que l’apprentissage lit, et ce qu’il garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
 
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+**Les thèmes sont des mots sur votre courrier, jamais des endroits où il va.** Classer à la main coûte et échoue : dans les comptes Gmail personnels, environ la moitié des libellés créés finissent avec moins de trois conversations (Grevet et al. 2014), et retrouver un courriel par les dossiers prenait plus de temps que le chercher, sans que les grands classeurs en retrouvent davantage (Whittaker et al. 2011). Un thème est donc un filtre sur la même boîte, un mot sur la ligne et une condition de recherche : un mot erroné ne coûte rien tant que le courriel reste où il était, et une conversation reste entière.
+
+**Ils partent de ce que vous avez déjà.** Vos dossiers et les catégories de vos contacts disent le mieux quels thèmes vous tenez, et les expéditeurs que Sioul peut prouver portent l’essentiel d’un thème : un tri du courrier en ligne plaçait la plupart des messages d’après leur seul expéditeur (Grbovic et al. 2014). Les premiers thèmes viennent donc de vos dossiers, de vos catégories et des expéditeurs d’une banque, des impôts ou d’une mutuelle que Sioul connaît ; votre mot sur un courriel ou un expéditeur passe d’abord, et rien ne vous demande de vérifier quoi que ce soit.
+
+**Le modèle attend le courrier, et ne bouge jamais ce que vous voyez.** Un thème est appris une fois qu’il a 20 courriels de 3 expéditeurs, ou 50 d’un seul organisme ; en deçà, vos mots et ses règles le rangent. Chaque semaine, une nouvelle table ne remplace celle en service que si elle ne fait pas moins bien sur le courrier le plus récent, thème par thème, et change moins de 2 % des thèmes déjà affichés : rien ne bouge sous vos yeux. Un doute ne s’affiche que sous le filtre de son thème, en « Peut-être », et ne compte jamais comme étiquette ; les avis sûrs de Sioul comptent pour moitié, jamais plus que les autres exemples d’un thème, comme les verdicts de son filtre anti-spam comptent tant que vous ne les corrigez pas.
+
+**Le courrier attend ses heures, et rien n’est compté.** Relever ses courriels à quelques moments fixes a fait baisser le stress quotidien dans un essai randomisé (Kushlev et Dunn 2015), et la seule attente de devoir lire ses courriels de travail le soir nuit, qu’on les lise ou non (Becker et al. 2021). **Toutes les adresses** montre donc ce que vos heures apportent, les adresses du travail se reposent en dehors des heures de travail, et aucun compte ni aperçu ne vous tire vers elles.
+
+**Votre propre filtre.** Les filtres qui apprennent dans une seule boîte ont fait environ cent fois mieux que ceux entraînés sur le courrier d’autres personnes (Cormack 2008 ; Sculley et Wachman 2007), et 89 % du courrier indésirable passe SPF, DKIM ou DMARC (Cloudflare 2023). Votre filtre apprend donc sur votre ordinateur, de votre courrier et de votre mot, ne déplace rien tant que vous n’avez pas choisi, et un expéditeur prouvé ne suffit jamais à faire revenir un courriel des indésirables : il y faut aussi vos échanges avec ce domaine.
+
+**Chiffrer, pour que les lettres reviennent.** Les portails ont reporté sur les personnes le travail de suivre le courrier officiel, et leurs bases ont été piratées (Défenseur des droits 2022 ; CNIL 2025). Le courrier chiffré pour votre clé, gardée dans votre trousseau ou sur une clé de sécurité, est ce qui permet à ces lettres de revenir dans votre boîte ([pourquoi](privacy-security.md#why-sioul-encrypts-mail)).
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 1, 21, 35, 37 et 61.
+
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
 En octobre 2026, d’après la documentation de chaque application.
@@ -317,6 +346,8 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     | Envoi programmé, rappel plus tard | ✗³⁹ | en partie⁴⁰ | ✓ | ✓⁴¹ | ✓ | ✓⁴² |
     | Courriels signés et chiffrés | ✓⁴³ | ✓⁴⁴ | en partie⁴⁵ | en partie⁴⁶ | en partie⁴⁷ | ✓⁴⁸ |
     | Adresses Outlook.com, Hotmail et Microsoft 365 | en partie⁴⁹ | ✓ | en partie⁵⁰ | ✓ | ✓ | ✗⁵¹ |
+    | Des thèmes que vous nommez, mots discrets sur votre courrier, jamais un dossier | ✓⁵² | en partie⁵³ | en partie⁵⁴ | en partie⁵⁵ | en partie⁵⁶ | ? |
+    | Les apprend de votre courrier, sur vos appareils | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | en partie⁵⁶ | ? |
 
     1. Thunderbird : seulement par une extension (DKIM Verifier) ; rien sur Android.
     2. Gmail : un point d’interrogation sur un courriel qui n’est pas authentifié, et « Envoyé par » et « Signé par » dans ses détails, sur un ordinateur et sur Android ; pas sur un iPhone ni un iPad.
@@ -369,6 +400,12 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     49. Sioul : connecté sur la page de Microsoft elle-même ; pas encore essayé avec un vrai compte Microsoft. Une adresse professionnelle ou scolaire peut demander l’approbation de son organisation.
     50. Gmail : dans ses applications pour téléphone ; Gmail sur le web cesse de relever les autres comptes en janvier 2027.
     51. Proton Mail : les adresses Proton ; un compte Gmail peut s’y relier.
+    52. Sioul : un thème par courriel, d’après vos dossiers, les catégories de vos contacts, les expéditeurs d’une banque, des impôts ou d’une mutuelle qu’il connaît, et votre propre mot sur un courriel ou un expéditeur ; un filtre, un mot sur la ligne et une condition de recherche.
+    53. Thunderbird : des étiquettes données à la main, sur un ordinateur ; elles n’atteignent vos autres appareils, en mots-clés IMAP, que si le serveur les garde ; aucune sur Android.
+    54. Gmail : cinq onglets fixes (Principale, Promotions, Réseaux sociaux, Notifications, Forums), triés sur les serveurs de Google (« You can't create custom categories ») ; des libellés à la main ou par filtre.
+    55. Outlook : Prioritaire et Autres, triés sur les serveurs de Microsoft ; des catégories à la main, pour les comptes Exchange.
+    56. Apple Mail : quatre catégories fixes depuis iOS 18.2 (Principal, Transactions, Mises à jour, Promotions), triées sur l’appareil et corrigées par expéditeur ; aucune que vous nommez.
+    57. Sioul : appris une fois par semaine sur l’ordinateur qui entraîne, pour chaque thème de 20 courriels de 3 expéditeurs ou plus ; chaque appareil, le téléphone compris, range ensuite le courrier nouveau avec la même table.
 
 === "Technique"
 
@@ -410,7 +447,7 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     21. Thunderbird : et keys.openpgp.org.
     22. FairEmail : laissé à OpenKeychain.
     23. Proton Mail : ses serveurs cherchent les clés.
-    24. Sioul : une carte OpenPGP (YubiKey, Nitrokey) par le service de cartes à puce du système, sur un ordinateur seulement ; essayée avec une vraie clé, une YubiKey 5, sous Linux (8 octobre 2026).
+    24. Sioul : une carte OpenPGP (YubiKey, Nitrokey), par le service de cartes à puce du système sur un ordinateur, tenue contre un téléphone (NFC) ou branchée dessus (USB-C) ; essayée avec une vraie clé, une YubiKey 5, sous Linux (8 octobre 2026), sur un téléphone avec une carte de remplacement seulement.
     25. Thunderbird : par GnuPG, installé et réglé à part ; signer et déchiffrer seulement.
     26. Proton Mail : ses clés de sécurité servent à se connecter au compte.
     27. Sioul : prévu.

@@ -1217,7 +1217,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     // The bank accounts are in no project: as things outside projects are.
     let empty = bank::Bank::default();
     let bank = if consent.outside { &books.bank } else { &empty };
-    let page = view::MoneyPage { ledger: &ledger, bank, movements: &movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    let page = view::MoneyPage { ledger: &ledger, bank, movements: &movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false, books: None, imports: &[] };
     let mut shown = view::budgets_page(&page, &s.tr, today);
     for account in &mut shown.accounts {
         account.title = mask::text(&account.title);
@@ -1249,7 +1249,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
 /// closed project too; reserves only while things outside projects are open.
 /// Returns it, how many budgets and lines were left out, and the labels of
 /// those lines (what the money watch would name).
-fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger, usize, std::collections::BTreeSet<String>) {
+pub(super) fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger, usize, std::collections::BTreeSet<String>) {
     let projects_in = |links: &[String]| links.iter().filter(|l| links::kind_of(l) == Kind::Project).map(|l| links::id_of(l)).collect::<Vec<_>>();
     let budget_open = |id: &str, ties: &[String]| {
         let mut projects: Vec<String> = consent.budget_projects(id).into_iter().collect();
@@ -1455,28 +1455,58 @@ fn open_related(consent: &Consent, world: &links::World, related: Vec<links::Rel
 }
 
 pub fn links(s: &Session, args: &Args) -> Result<Answer, String> {
+    use sioul_core::chain::{self, Weights};
     let uri = args.needed("uri")?;
+    let depth = args.number("depth", 2, 1, 3)? as usize;
+    let limit = args.number("limit", 30, 1, 100)? as usize;
     let loaded = Loaded::read(&s.config);
-    let world = loaded.world();
     let consent = access::of(s, &loaded);
     let shield = Shield::of(&s.config);
+    // Every tie Sioul knows (the tie index), read in memory for this answer alone.
+    let built = sioul_core::ties::Built::of(&s.config, &loaded);
+    let base = loaded.world();
+    let rule = access::AgentRule { window: &built.gates, consent: &consent, world: &base };
+    let world = loaded.world_with(&built.index, &rule);
     let me = world.describe(&uri);
-    if me.found && !access::allows(&consent, &world, &me.uri) {
+    if me.found && !access::allows(&consent, &base, &me.uri) {
         return Err(access::kept("This thing"));
     }
-    let (related, closed) = open_related(&consent, &world, world.related(&uri));
-    let related = related_rows(s, shield.as_ref(), &taskview::related_views(&s.tr, &related));
-    let (title, detail) = if me.kind == Kind::Mail { mail_shown(s, shield.as_ref(), Path::new(&me.key), &me.title, &me.detail) } else { (me.title.clone(), me.detail.clone()) };
-    let mut lines = vec![format!("{title}  <{}>", me.uri)];
-    if !me.found {
-        lines.push("(Sioul knows nothing at this address.)".into());
+    // The chain from it: consent at every step, the same scores the person's window uses.
+    let weights = Weights { depth, total: limit, ..Weights::computer() };
+    let view = chain::walk(&world, &built.index, &rule, &uri, &[], &weights, &s.tr, sioul_core::zone::now().timestamp().as_second());
+    let shown: Vec<String> = view.things.iter().map(|t| t.uri.clone()).collect();
+    let closed = access::kept_around(&built.index, &consent, &base, &shown);
+    // Mail as agents see it: subjects masked, hostile senders unnamed; the chain's own sentences left out, which hold raw titles.
+    let words = |t: &chain::ChainNode| if t.kind == Kind::Mail { mail_shown(s, shield.as_ref(), Path::new(&t.key), &t.title, &t.detail) } else { (t.title.clone(), t.detail.clone()) };
+    let mut lines = Vec::new();
+    let mut things = Vec::new();
+    for t in &view.things {
+        let (title, detail) = words(t);
+        let mut line = "  ".repeat(t.column);
+        if !t.how_words.is_empty() {
+            line.push_str(&format!("{}: ", t.how_words));
+        }
+        line.push_str(&format!("{}, {title}", t.kind_words));
+        for part in [&t.date, &detail] {
+            if !part.is_empty() {
+                line.push_str(&format!(" · {part}"));
+            }
+        }
+        line.push_str(&format!("  <{}>", t.uri));
+        if t.more > 0 {
+            line.push_str(&format!("  ({})", t.more_words));
+        }
+        lines.push(line);
+        things.push(json!({ "uri": t.uri, "kind": t.kind, "title": title, "detail": detail, "how": t.how, "how_words": t.how_words, "step": t.column, "under": t.parent, "date": t.date, "found": t.found, "more": t.more, "more_words": t.more_words }));
     }
-    for r in &related {
-        let when = r["when"].as_str().filter(|w| !w.is_empty()).map_or(String::new(), |w| format!(" · {w}"));
-        lines.push(format!("  {}: {}{when}  <{}>", r["how"].as_str().unwrap_or_default(), r["title"].as_str().unwrap_or_default(), r["uri"].as_str().unwrap_or_default()));
+    if !me.found {
+        lines.insert(1, "(Sioul knows nothing at this address.)".into());
     }
     lines.extend(access::left_out(closed));
-    let data = json!({ "uri": me.uri, "kind": me.kind, "title": title, "detail": detail, "found": me.found, "related": related, "kept_from_agents": closed });
+    let (title, detail) = things.first().map_or((me.title.clone(), me.detail.clone()), |t| (t["title"].as_str().unwrap_or_default().to_string(), t["detail"].as_str().unwrap_or_default().to_string()));
+    // One step away, as before: what it is tied to directly.
+    let related: Vec<Value> = things.iter().filter(|t| t["under"] == json!(0)).cloned().collect();
+    let data = json!({ "uri": me.uri, "kind": me.kind, "title": title, "detail": detail, "found": me.found, "related": related, "chain": things, "kept_from_agents": closed });
     Ok(Answer { text: rows(&lines), data })
 }
 

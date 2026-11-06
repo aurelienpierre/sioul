@@ -174,6 +174,14 @@ pub struct Payments {
     /// A purchase paid in instalments, "#" standing for their number
     /// ("en # fois"): its bank lines are probably together (`matching`).
     pub instalments: Vec<String>,
+    /// The label of a fee a processor's mail states ("Frais", "Fee"): the
+    /// amount on its line, or on the next, is what it kept (`payments::read`).
+    pub fee: Vec<String>,
+    /// The label of what arrives after the fees ("Montant net", "You'll receive").
+    pub net: Vec<String>,
+    /// Words in an attachment's name that make it look like an invoice: the
+    /// money index opens such a message (`moneyindex`).
+    pub attachments: Vec<String>,
 }
 
 /// A CSV export's columns, by their names (`bank`).
@@ -184,6 +192,10 @@ pub struct BankColumns {
     pub label: Vec<String>,
     pub name: Vec<String>,
     pub net: Vec<String>,
+    /// What the payer paid, before the fees (PayPal's "Gross", "Avant commission"): exact names.
+    pub gross: Vec<String>,
+    /// The fee of the row (PayPal's and Stripe's "Fee", Revolut's, Wise's "Total fees"): exact names.
+    pub fee: Vec<String>,
     pub amount: Vec<String>,
     pub debit: Vec<String>,
     pub credit: Vec<String>,

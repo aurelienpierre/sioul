@@ -51,6 +51,7 @@ nav = [
       { "Les appels : qui peut sonner, et quand" = "guide/calls.md" },
       # texts: SMS phase (b).
       { "Les SMS : lus et envoyés depuis votre ordinateur" = "guide/texts.md" },
+      { "Les liens : la chaîne de chaque chose" = "guide/ties.md" },
       { "Partager entre vos appareils" = "guide/sharing.md" },
       { "Avec un agent d’IA" = "guide/ai-agent.md" },
       { "Vie privée et sécurité" = "guide/privacy-security.md" },

@@ -8,7 +8,7 @@
 //!
 //! - a signal for the views that read the kind themselves: `persons_changed`,
 //!   `agendas_changed`, `papers_changed`, `letters_changed`, `money_changed`,
-//!   `links_changed`, `sites_changed`, `projects_changed`;
+//!   `links_changed`, `sites_changed`, `projects_changed`, `topics_changed`;
 //! - the agenda made again where the kind has dates or names in it and its
 //!   writers do not ask (persons' names, papers, letters, money).
 //!
@@ -37,6 +37,8 @@ pub(crate) struct Heard {
     pub agenda: bool,
     /// What the pages read their links, notes and projects from (`Shared::loaded`) read again.
     pub loaded: bool,
+    /// The tie index (`Shared::ties`) made again: it reads this kind's store beside `loaded`.
+    pub ties: bool,
 }
 
 /// What a kind's own word does in the window (`said` here).
@@ -44,11 +46,15 @@ pub(crate) fn heard(kind: Kind) -> Heard {
     let (signal, agenda, loaded) = match kind {
         Kind::Persons | Kind::Papers | Kind::Letters | Kind::Money => (true, true, false),
         Kind::Agendas | Kind::Sites => (true, false, false),
+        // The topic list and its menus read again; the mailbox, its rows' topics, made again by its writers.
+        Kind::Topics => (true, false, false),
         Kind::Links | Kind::Projects => (true, false, true),
         // Made in Rust by their writers as they write.
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => (false, false, false),
     };
-    Heard { signal, agenda, loaded }
+    // The tie index reads the persons, papers, letters, money, agendas and sites beside `loaded`.
+    let ties = loaded || matches!(kind, Kind::Persons | Kind::Papers | Kind::Letters | Kind::Money | Kind::Agendas | Kind::Sites);
+    Heard { signal, agenda, loaded, ties }
 }
 
 /// The window listens, from its start: each kind said becomes what its views need.
@@ -60,6 +66,11 @@ pub(crate) fn listen(qt: &QtThread, shared: &Arc<Shared>) {
             && let Ok(mut cache) = shared.loaded.lock()
         {
             *cache = None;
+        }
+        if heard.ties
+            && let Ok(mut kept) = shared.ties.lock()
+        {
+            *kept = None;
         }
         if !heard.signal && !heard.agenda {
             return;
@@ -92,6 +103,7 @@ fn emit(mut sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kin
         Kind::Links => sioul.as_mut().links_changed(),
         Kind::Sites => sioul.as_mut().sites_changed(),
         Kind::Projects => sioul.as_mut().projects_changed(),
+        Kind::Topics => sioul.as_mut().topics_changed(),
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => {}
     }
 }
@@ -101,7 +113,9 @@ pub(crate) fn kinds_of(store: &str) -> Vec<Kind> {
     match store {
         sioul_sync::share::PERSONS => vec![Kind::Persons],
         // The settings: what each agenda is, the accounts, the sites.
-        "config/config.toml" => vec![Kind::Agendas, Kind::Accounts, Kind::Sites],
+        "config/config.toml" => vec![Kind::Agendas, Kind::Accounts, Kind::Sites, Kind::Topics],
+        // Your word on mail's topics, as your other devices said it.
+        sioul_sync::share::TOPICS | sioul_sync::share::TOPICS_TABLE => vec![Kind::Topics],
         "data/links.toml" => vec![Kind::Links],
         "notes/sioul-cases.toml" | "notes/sioul-projects.toml" => vec![Kind::Projects],
         "notes/sioul-budgets.toml" | "notes/sioul-bank.toml" | "notes/sioul-contracts.toml" | sioul_sync::share::MOVEMENTS => vec![Kind::Money],
@@ -157,6 +171,10 @@ pub(crate) fn arrived(qt: &QtThread, shared: &Arc<Shared>, kinds: &BTreeSet<Kind
     if remade.views {
         crate::backend::show(qt, shared);
     }
+    // The mailbox's rows carry their topic.
+    if kinds.contains(&Kind::Topics) {
+        crate::mail::show_mail(qt, shared);
+    }
 }
 
 /// What the sharing wrote here, said by kind, each once.
@@ -209,7 +227,8 @@ mod tests {
     fn what_another_device_brought_is_said_by_kind() {
         let written: BTreeSet<String> = ["data/persons.toml", "config/config.toml", "data/health.toml", "notes/sioul-bank.toml", "files/papers/"].into_iter().map(String::from).collect();
         let kinds: BTreeSet<Kind> = written.iter().flat_map(|s| kinds_of(s)).collect();
-        assert_eq!(kinds, [Kind::Persons, Kind::Agendas, Kind::Papers, Kind::Money, Kind::Sites, Kind::Accounts].into_iter().collect());
+        assert_eq!(kinds, [Kind::Persons, Kind::Agendas, Kind::Papers, Kind::Money, Kind::Sites, Kind::Accounts, Kind::Topics].into_iter().collect());
+        assert_eq!(kinds_of(sioul_sync::share::TOPICS), [Kind::Topics], "your word on topics, from another device");
         assert_eq!(kinds_of("state/today.toml"), []);
         assert!(kinds_of("data/calendars/local/").contains(&Kind::Calendars));
         assert!(kinds_of("files/notes/").contains(&Kind::Letters), "letters live in the notes folder");
@@ -229,6 +248,10 @@ mod tests {
             assert!(h.signal || r.pim || r.views || r.work, "{kind:?} reaches no view when it comes from elsewhere");
         }
         assert!(heard(Kind::Papers).agenda && heard(Kind::Money).agenda && heard(Kind::Persons).agenda, "dates and names in the agenda");
+        // The tie index reads these beside what the pages read: made again when they change.
+        for kind in [Kind::Persons, Kind::Papers, Kind::Letters, Kind::Money, Kind::Agendas, Kind::Sites, Kind::Links, Kind::Projects] {
+            assert!(heard(kind).ties, "{kind:?}");
+        }
         let calendars: BTreeSet<Kind> = [Kind::Calendars].into_iter().collect();
         assert_eq!(remade(&calendars), Remade { pim: true, views: false, work: true });
     }

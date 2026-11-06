@@ -143,6 +143,52 @@ pub fn allows(consent: &Consent, world: &World, uri: &str) -> bool {
     }
 }
 
+/// What an agent may follow in the chain of ties (`chain::walk`): the
+/// window's own rule (the Porch's checks, availability-only events), and at
+/// every step what the agent may see (`allows`). A thing kept from agents is
+/// neither shown nor walked through: going through it would tell that an
+/// open thing is tied to a closed one, and the chain's words would name it.
+pub struct AgentRule<'a> {
+    pub window: &'a sioul_core::ties::Gates,
+    pub consent: &'a Consent,
+    pub world: &'a World<'a>,
+}
+
+impl sioul_core::ties::Rule for AgentRule<'_> {
+    fn admission(&self, uri: &str, path: &std::path::Path) -> Option<sioul_core::porch::Admission> {
+        self.window.admission(uri, path)
+    }
+
+    fn busy(&self, uri: &str) -> bool {
+        self.window.busy(uri)
+    }
+
+    fn shows(&self, uri: &str) -> bool {
+        allows(self.consent, self.world, uri)
+    }
+
+    /// Never which cards are a person, nor a child's other parent: the persons tool gives neither.
+    fn follows_how(&self, how: sioul_core::ties::How) -> bool {
+        !matches!(how, sioul_core::ties::How::Card | sioul_core::ties::How::Parent)
+    }
+}
+
+/// How many things kept from agents are tied to the things shown (`shown`, by
+/// address): counted, never named.
+pub fn kept_around(index: &sioul_core::ties::TieIndex, consent: &Consent, world: &World, shown: &[String]) -> usize {
+    let mut kept: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for uri in shown {
+        let Some(node) = index.node(uri) else { continue };
+        for seen in index.ties_of(node) {
+            let other = index.address(seen.other);
+            if !allows(consent, world, other) {
+                kept.insert(other);
+            }
+        }
+    }
+    kept.len()
+}
+
 /// Tasks and projects as an agent may see them in a plan: the closed ones
 /// stay, so that the plan is the person's, but with nothing of theirs (a
 /// title, notes, a place, ties), to be left out wherever they are listed.

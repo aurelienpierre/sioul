@@ -76,6 +76,9 @@ sioul-app/src/join.rs	defer_agenda	1	sioul_sync::share::write_atomically(&pendin
 sioul-app/src/join.rs	agenda_later	2	std::fs::remove_file(&path)
 sioul-app/src/join.rs	replace	1	sioul_sync::share::write_atomically(&asked_path(), format!("# Sioul: the phones this one was asked whether it replaces (docs/database.md). Never shared.\n{text}").as_bytes())
 
+# sioul-app/src/ledger.rs: the receipts register exported as a spreadsheet where you choose (Save the receipts register…): no item.
+sioul-app/src/ledger.rs	save_csv	1	std::fs::write(path, csv)
+
 # sioul-app/src/letters.rs: a letter's scan copied into the letters' inbox: no item.
 sioul-app/src/letters.rs	add	1	std::fs::copy(&source, free_name(&inbox, &name))
 
@@ -87,6 +90,8 @@ sioul-app/src/mail.rs	write_view	1	sioul_core::filelock::replace(path, text.as_b
 
 # sioul-app/src/organized.rs: the mark of the once-only pass over meetings you organize (state): no item.
 sioul-app/src/organized.rs	tidy_once	1	std::fs::write(&mark, VERSION)
+# sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities (state): no item.
+sioul-app/src/mirrors.rs	save	1	sioul_sync::share::write_atomically(&memo_path(), text.as_bytes())
 
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
@@ -162,6 +167,9 @@ sioul-app/src/texts.rs	set_limit	1	write_whole(&path, toml::to_string(&chosen).m
 sioul-app/src/texts.rs	set_cap	1	write_whole(&path, toml::to_string(&chosen).map_err(|e| e.to_string())?.as_bytes())
 sioul-app/src/texts.rs	call	1	std::fs::copy(p, &target)
 sioul-app/src/texts.rs	call	1	std::fs::remove_dir_all(opened_folder())
+
+# sioul-app/src/topics.rs: the topics started on day one, kept for the Porch's card that names them once (state): no item.
+sioul-app/src/topics.rs	day_one_by_itself	1	sioul_core::filelock::replace(&card_path(), text.as_bytes())
 
 # sioul-app/src/work.rs: the work page's own state: no item.
 sioul-app/src/work.rs	save	1	std::fs::write(&path, text)
@@ -344,6 +352,13 @@ sioul-core/src/maildir.rs	move_into	1	std::fs::File::options()
 sioul-core/src/maildir.rs	move_into	1	std::fs::rename(&temporary, &target)
 sioul-core/src/maildir.rs	move_into	1	std::fs::remove_file(file)
 
+# sioul-core/src/mailpass.rs: what each reader of every message found in it (the money index), a cache in the cache folder (written beside then renamed, or added to under its lock), removed with its address: no item.
+sioul-core/src/mailpass.rs	write_whole	1	std::fs::OpenOptions::new()
+sioul-core/src/mailpass.rs	write_whole	1	std::fs::rename(&beside, path)
+sioul-core/src/mailpass.rs	append	1	std::fs::OpenOptions::new()
+sioul-core/src/mailpass.rs	folder	1	write_whole(&path, &header, &all)
+sioul-core/src/mailpass.rs	forget_account	1	std::fs::remove_dir_all(&dir)
+
 # sioul-core/src/mailmoved.rs: the messages Sioul moved whose copy has not come yet, in the state folder (written beside then renamed under its lock, removed with its last note): no item.
 sioul-core/src/mailmoved.rs	save	1	std::fs::remove_file(path)
 sioul-core/src/mailmoved.rs	save	1	std::fs::OpenOptions::new()
@@ -505,6 +520,14 @@ sioul-core/src/timelog.rs	remove_in	1	write_atomically(&path, &toml::to_string(&
 sioul-core/src/timelog.rs	keep_running_in	1	write_atomically(&path, &toml::to_string(r).map_err(|e| e.to_string())?)
 sioul-core/src/timelog.rs	keep_running_in	1	std::fs::remove_file(&path)
 
+# sioul-core/src/topics/judging.rs: the topics' table (the computer that trains writes it), and what it judged of the mail kept here, a cache of this device's own: no item.
+sioul-core/src/topics/judging.rs	write_table	1	crate::filelock::replace(path, &table.to_bytes())
+sioul-core/src/topics/judging.rs	keep	1	std::fs::remove_file(entry.path())
+sioul-core/src/topics/judging.rs	keep	1	std::fs::OpenOptions::new()
+
+# sioul-core/src/topics/labels.rs: your word on mail topics, each device's log of messages tagged and senders' rules: no item.
+sioul-core/src/topics/labels.rs	append	1	std::fs::OpenOptions::new()
+
 # sioul-core/src/today.rs: today's plan (state): no item.
 sioul-core/src/today.rs	save	1	crate::filelock::save_merged(path, &self.read, self)
 
@@ -586,6 +609,10 @@ sioul-learn/src/supervised.rs	drop	1	std::fs::remove_file(&self.0)
 sioul-learn/src/supervised.rs	write_learning	1	std::fs::File::create(path)
 sioul-learn/src/supervised.rs	train	1	std::fs::rename(&fresh, dirs.language())
 sioul-learn/src/supervised.rs	train	1	crate::corpus::write_whole(&dirs.trained(), text.as_bytes())
+
+# sioul-learn/src/topics.rs: the file the topics' classifier learns from, in the cache, removed whatever happens: no item.
+sioul-learn/src/topics.rs	drop	1	std::fs::remove_file(&self.0)
+sioul-learn/src/topics.rs	learn	1	std::fs::File::create(&path)
 
 # sioul-learn/src/train.rs: the spam filter's training files: no item.
 sioul-learn/src/train.rs	drop	1	std::fs::remove_file(&self.0)

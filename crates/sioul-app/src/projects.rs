@@ -416,6 +416,7 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
                 reserve: None,
                 links: vec![format!("sioul:invoice/{number}"), links::project_uri(&project.id)],
                 preset: None,
+                ..Line::default()
             };
             budget::record_line(&ledger, &line, &say("invoice-budget-origin", &[("number", number.clone())]))?;
         }

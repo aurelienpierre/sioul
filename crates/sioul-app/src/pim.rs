@@ -289,6 +289,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for meeting in &report.meetings {
                 tell(qt, shared, meeting_set_aside_line(meeting));
             }
+            // Events came or went: your availabilities' mirrors kept from this fresher view (design-availability-sharing §3).
+            if report.received + report.removed > 0 {
+                crate::servers::availability_upkeep(qt, shared);
+            }
             changed || report.rewritten > 0 || !report.moved_out.is_empty()
         }
         Err(_) => {

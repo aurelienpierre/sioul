@@ -39,17 +39,22 @@
 //! - [`remind`]: reminders before dates: `sioul remind`, and `--watch` with the window closed.
 //! - [`mcp`]: `sioul mcp`, what Sioul keeps served to AI agents over the Model Context Protocol.
 //! - [`spam`]: `sioul spam`, the spam filter learned on this computer (docs/spam-filter.md); computers only.
+//! - [`topics`]: `sioul topics`, mail topics measured on this computer (docs/topics.md); computers only.
 
 mod accounts;
 mod dav;
 mod mail;
 mod mcp;
+mod money;
 mod pgp;
 mod remind;
 // The spam filter learned on this computer (sioul-learn): desktops only.
 #[cfg(not(target_os = "android"))]
 mod spam;
 mod tasks;
+// Mail topics measured on this computer (sioul-learn): desktops only.
+#[cfg(not(target_os = "android"))]
+mod topics;
 
 use clap::{Parser, Subcommand};
 use jiff::{Timestamp, Zoned};
@@ -113,6 +118,15 @@ enum Command {
         #[arg(long)]
         maildir: Vec<PathBuf>,
     },
+    /// Every money movement, newest first: the full ledger, with its filters.
+    Movements(money::MovementsArgs),
+    /// One money movement: shown, made, changed, removed, put back.
+    #[command(subcommand)]
+    Movement(money::MovementCommand),
+    /// Every mail about money kept on this computer, newest first, and what became of each.
+    MoneyMail(money::MoneyMailArgs),
+    /// What a work budget received, as the declaration counts it: the turnover and the receipts register.
+    Receipts(money::ReceiptsArgs),
     /// Mail accounts: add, list, test, change a password, remove.
     #[command(subcommand)]
     Account(accounts::AccountCommand),
@@ -176,7 +190,22 @@ enum Command {
     #[command(subcommand)]
     Focus(tasks::FocusCommand),
     /// What a thing is tied to, both ways: `sioul:task/<UID>`, `mid:<Message-ID>`, `sioul:note/<path>`…
-    Links { uri: String },
+    Links {
+        uri: String,
+        /// The chain of ties from it, as an outline: what it is tied to, what those are tied to,
+        /// up to four steps, the strongest chains first; collections stop it, counted.
+        #[arg(long)]
+        chain: bool,
+        /// With --chain: steps from it, at most (1 to 4; 4 when unsaid).
+        #[arg(long)]
+        depth: Option<usize>,
+        /// With --chain: the things whose "+" is pressed, by address; one named twice, pressed twice.
+        #[arg(long, num_args = 1..)]
+        open: Vec<String>,
+        /// With --chain: the chain as the window reads it, in JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Notes of the notes folder: those matching, or one with --path.
     Notes {
         query: Vec<String>,
@@ -215,6 +244,11 @@ enum Command {
     #[cfg(not(target_os = "android"))]
     #[command(subcommand)]
     Spam(spam::SpamCommand),
+    /// Mail topics measured on this computer: the topics your folders, projects and
+    /// contacts' categories would propose, and how well a model of them sorts your mail.
+    #[cfg(not(target_os = "android"))]
+    #[command(subcommand)]
+    Topics(topics::TopicsCommand),
 }
 
 /// What every command needs: the configuration, where it lives, and the language.
@@ -346,6 +380,10 @@ fn main() -> ExitCode {
         Command::Projects { store } => projects_command(&session, store),
         Command::Window => window_command(&session),
         Command::Budgets { file, maildir } => budgets_command(&session, file, &maildir),
+        Command::Movements(args) => money::list(&session, args),
+        Command::Movement(command) => money::run(&session, command),
+        Command::MoneyMail(args) => money::money_mail(&session, args),
+        Command::Receipts(args) => money::receipts(&session, args),
         Command::Account(command) => accounts::run(&session, command),
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),
@@ -371,7 +409,7 @@ fn main() -> ExitCode {
         Command::Verify { again } => verify_command(&session, again),
         Command::Tasks(command) => tasks::run(&session, command),
         Command::Focus(command) => tasks::focus(&session, command),
-        Command::Links { uri } => tasks::links_command(&session, &uri),
+        Command::Links { uri, chain, depth, open, json } => tasks::links_command(&session, &uri, chain.then_some(tasks::Chain { depth, open, json })),
         Command::Notes { query, path } => tasks::notes_command(&session, &query.join(" "), path.as_deref()),
         Command::Sync { account } => accounts::sync_command(&session, account.as_deref()),
         Command::Watch => accounts::watch_command(&session),
@@ -381,6 +419,8 @@ fn main() -> ExitCode {
         Command::Mcp => mcp::run(&session),
         #[cfg(not(target_os = "android"))]
         Command::Spam(command) => spam::run(&session, command),
+        #[cfg(not(target_os = "android"))]
+        Command::Topics(command) => topics::run(&session, command),
     };
     result.map_or_else(
         |message| {
@@ -622,12 +662,13 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
     // budget in words, what is coming (docs/accounting.md, "The budgets page").
     let books = path.parent().map(|root| sioul_core::movements::books(root, &words, today));
     let empty = sioul_core::bank::Bank::default();
-    let (counted, bank, movements) = match &books {
+    let (counted, bank, movements, own) = match &books {
         // Another file than its folder's own: its own lines and presets, nothing of the folder's.
-        Some(books) if books.ledger.budgets.len() == ledger.budgets.len() && books.ledger.lines.len() == ledger.lines.len() => (&books.counted, &books.bank, books.movements.as_slice()),
-        _ => (&ledger, &empty, &[][..]),
+        Some(books) if books.ledger.budgets.len() == ledger.budgets.len() && books.ledger.lines.len() == ledger.lines.len() => (&books.counted, &books.bank, books.movements.as_slice(), Some(books.as_ref())),
+        _ => (&ledger, &empty, &[][..], None),
     };
-    let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false };
+    let store = path.parent().and_then(|root| sioul_core::movements::Store::load(root).ok()).unwrap_or_default();
+    let page = view::MoneyPage { ledger: counted, bank, movements, mail: &[], shown: sioul_core::areas::Area::ALL, own: false, books: own, imports: &store.imports };
     for line in view::budgets_lines(&view::budgets_page(&page, &s.tr, today)) {
         let indent = line.len() - line.trim_start().len();
         println!("{}{}", &line[..indent], one_line(line.trim_start()));

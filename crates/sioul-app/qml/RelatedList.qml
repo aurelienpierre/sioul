@@ -29,6 +29,11 @@ ColumnLayout {
     // The ties shown: each {uri, how, title, …}, those of the kinds left out
     // (`leaveOut`) taken out.
     property var items: []
+    // Rows shown at most; "See them all" opens the chain of ties (ChainPage.qml).
+    property int atMost: 12
+    // The window that opens the chain, when this list is in Sioul's main window.
+    readonly property var shownIn: related.Window.window
+    readonly property var chainOpener: related.shownIn !== null && typeof related.shownIn.openChain === "function" ? related.shownIn : null
 
     // A tie clicked: the thing it names, to open where it lives.
     signal openThing(var item)
@@ -66,7 +71,7 @@ ColumnLayout {
     }
 
     Repeater {
-        model: related.items
+        model: related.items.slice(0, related.atMost)
 
         delegate: ItemDelegate {
             id: thing
@@ -134,7 +139,16 @@ ColumnLayout {
         }
     }
 
-    // Right click on a tie: open it, or undo it.
+    // Every tie, and what those are tied to: the chain of ties from the thing open.
+    Button {
+        objectName: "relatedSeeAll"
+        visible: related.chainOpener !== null && related.uri !== ""
+        flat: true
+        text: related.sioul.text("chain-see-all")
+        onClicked: related.chainOpener.openChain(related.uri)
+    }
+
+    // Right click on a tie: open it, its own ties, or undo it.
     SioulMenu {
         id: tieMenu
 
@@ -144,6 +158,13 @@ ColumnLayout {
             enabled: tieMenu.target !== null && tieMenu.target.found
             text: related.sioul.text("ui-open")
             onTriggered: related.openThing(tieMenu.target)
+        }
+        MenuItem {
+            visible: related.chainOpener !== null
+            height: visible ? implicitHeight : 0
+            enabled: tieMenu.target !== null
+            text: related.sioul.text("chain-its-ties")
+            onTriggered: related.chainOpener.openChain(tieMenu.target.uri)
         }
         MenuItem {
             text: related.sioul.text("link-undo")
