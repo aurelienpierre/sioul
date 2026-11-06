@@ -267,7 +267,7 @@ Item {
                 visible: tab.shown.declares.length > 0
                 flat: true
                 text: tab.sioul.text("receipts-for-declaration")
-                icon.name: "view-financial-transfer"
+                icon.name: "taxes-finances"
                 icon.color: tab.theme.text
                 onClicked: tab.showDeclaration(tab.shown.declares[0].id, "")
             }

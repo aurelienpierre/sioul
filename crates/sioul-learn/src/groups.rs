@@ -30,7 +30,7 @@
 //! What the window shows of them (`noticed`): nothing before a thousand
 //! messages are kept here; then five at most, none under a coherence floor,
 //! none half tagged by the presets started already; a group of one sender
-//! becomes an offer of "Always <topic> for this sender" instead. A group is
+//! becomes an offer of "Always `<topic>` for this sender" instead. A group is
 //! named only from a topic preset or a site category that holds most of it,
 //! never after a sender: topics are categories, and persons are their own dimension.
 //!
@@ -126,7 +126,7 @@ pub struct Group {
     pub preset: Option<(String, f64)>,
     /// The share of it that the presets started already tag (`Options::started`).
     pub started: f64,
-    /// Its one correspondent, when it has one alone: "Always <topic> for this sender" sets their rule. Never shown nor written.
+    /// Its one correspondent, when it has one alone: "Always `<topic>` for this sender" sets their rule. Never shown nor written.
     #[serde(skip)]
     pub sole: Option<String>,
     /// Its messages' bare Message-IDs ("Name it" tags them): never shown nor written.
@@ -552,7 +552,7 @@ pub struct Noticed {
     pub waiting: bool,
     /// NMF's groups, the largest first, five at most.
     pub groups: Vec<Group>,
-    /// Groups of one sender, each an offer of "Always <topic> for this
+    /// Groups of one sender, each an offer of "Always `<topic>` for this
     /// sender", the largest first, three at most, persons too (you choose
     /// the topic: a choir's leader is a person), none with a name proposed.
     pub senders: Vec<Group>,

@@ -4,7 +4,7 @@
 //! Mail's topics in the window (docs/topics.md): giving messages a topic
 //! ("Topic…" on a message, on several selected at once, "+ Topic" from the
 //! reader, which makes the topic and gives it in one act), a sender's rule
-//! ("Always <topic> for this sender", "Never…"), and the settings' page,
+//! ("Always `<topic>` for this sender", "Never…"), and the settings' page,
 //! Mail ▸ ⚙ ▸ Topics: the list, each topic's seeds in words and its senders'
 //! rules, Rename and Remove, and on a computer the groups Sioul noticed
 //! (`sioul_learn::groups`, NMF), each with "Name it", which makes a topic and
@@ -137,7 +137,7 @@ fn give_new(qt: &QtThread, shared: &Arc<Shared>, ids: &[String], name: &str, see
     String::new()
 }
 
-/// "Always <topic> for this sender" (`rule` "always"), "Never…" ("never"),
+/// "Always `<topic>` for this sender" (`rule` "always"), "Never…" ("never"),
 /// or the rule taken off ("off"), for the sender of the message `key`.
 pub(crate) fn sender_rule(qt: &QtThread, shared: &Arc<Shared>, key: &str, id: &str, rule: &str) {
     let rule = match rule {
@@ -341,7 +341,7 @@ pub(crate) fn name_group(qt: &QtThread, shared: &Arc<Shared>, index: usize, name
 }
 
 /// "Always a topic…": the sender offered at `index` of those found last
-/// gets "Always <topic>" for the topic named `name` (made when no topic of
+/// gets "Always `<topic>`" for the topic named `name` (made when no topic of
 /// yours has that name), in one act, with Undo. Returns what went wrong, else "".
 pub(crate) fn name_sender(qt: &QtThread, shared: &Arc<Shared>, index: usize, name: &str) -> String {
     let Some(address) = SENDERS.lock().ok().and_then(|s| s.get(index).cloned()) else { return tr().text("topics-group-gone", None) };

@@ -6,7 +6,7 @@
 //!
 //! 1. **Your word on the message** (`labels::Act::Message`): its topic, or
 //!    none, which nothing below overrules.
-//! 2. **Your rule for its sender**: "Always <topic> for this sender".
+//! 2. **Your rule for its sender**: "Always `<topic>` for this sender".
 //! 3. **Its conversation**: the topic you gave the first message of it you
 //!    tagged (its References, oldest first, then In-Reply-To).
 //! 4. **The topic's seeds** (`[[topic]]`'s `seeds`): one of its folders
@@ -16,7 +16,7 @@
 //!    domains and List-Id patterns, then a site's category, then any list;
 //!    for a sender Sioul's checks verify only.
 //!
-//! "Never <topic> for this sender" keeps that topic from 3, 4 and 5. A sender
+//! "Never `<topic>` for this sender" keeps that topic from 3, 4 and 5. A sender
 //! counts only when Sioul's checks find the message authenticated (the
 //! caller gives none otherwise): forged mail never borrows a sender's topic.
 //! A topic since removed from the configuration names nothing.

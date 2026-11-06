@@ -49,7 +49,7 @@ fn message(dir: &Path, n: u32, raw: &str) {
     for sub in ["tmp", "new", "cur"] {
         std::fs::create_dir_all(dir.join(sub)).unwrap();
     }
-    std::fs::write(dir.join("cur").join(format!("177700{n:04}.U7-{n}.stand:2,S")), raw).unwrap();
+    std::fs::write(dir.join("cur").join(format!("177700{n:04}.U7-{n}.stand{}2,S", crate::maildir::INFO)), raw).unwrap();
 }
 
 fn mail(id: &str, from: &str, subject: &str, date: &str, body: &str) -> String {
