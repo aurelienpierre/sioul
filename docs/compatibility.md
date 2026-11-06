@@ -83,7 +83,7 @@ Code: `crates/sioul-sync/src/dav.rs`, a small client on `ureq` and `roxmltree`; 
 | A named calendar checked by its token alone: REPORT `sync-collection` (RFC 6578) | any CalDAV server that keeps tokens | a phone's background step reading only your availability's calendars | a forgotten token: that calendar synced whole, as at any sync |
 | POST to the address book | RFC 5995 | Google's new contacts, when its PUT is refused (403, 405, 409) | — |
 
-**Not used**: `calendar-query` and time ranges to sync (everything is synced, and repeating events are expanded here, `calcard`; a `calendar-query` on a UID only when a new item meets one, above); CalDAV scheduling (RFC 6638): invitations go by mail (below); free-busy; CalDAV sharing; WebDAV-Push.
+**Not used**: `calendar-query` and time ranges to sync (everything is synced, and repeating events are expanded here, `calcard`; a `calendar-query` on a UID only when a new item meets one, above); WebDAV-Push. CalDAV scheduling (RFC 6638) is read, never driven: once a day Sioul asks whether a calendar's server schedules for your addresses (`OPTIONS` for `calendar-auto-schedule`, `calendar-user-address-set`), and each guest of a meeting you organize is told by that server or by your drafts, as their own `SCHEDULE-AGENT` says (below). Free/busy and calendar sharing are the server's own, where it has them (above).
 
 **Sync rounds**: what changed here first, then what changed there; every fifteen minutes and at once after a change in the window; one sync of an account at a time, across processes; a round cut short resumes where it stopped (`dav::tests`).
 
@@ -95,8 +95,8 @@ Code: `crates/sioul-sync/src/dav.rs`, a small client on `ureq` and `roxmltree`; 
 **Invitations**, by mail: iMIP (RFC 6047) carrying iTIP (RFC 5546).
 - Read in a message: REQUEST, CANCEL, PUBLISH (`agenda::invitation`).
 - Answered: a REPLY by mail to the organizer, from the account the invitation came to, with PARTSTAT ACCEPTED, TENTATIVE or DECLINED (`agenda::reply`).
-- Kept: the invitation's event, its METHOD taken out (`agenda::stored`), into the first calendar. **Limit**: its ATTENDEE lines stay as the organizer sent them, so the copy does not hold your answer, and other calendar applications may show it unanswered. Whether a server that schedules itself (RFC 6638) also writes to the organizer when this copy arrives: not checked.
-- **Not supported**: inviting people from Sioul (no METHOD:REQUEST is ever written).
+- Kept: the invitation's event, its METHOD taken out (`agenda::stored`), into the first calendar. Your answer is written on your own ATTENDEE line of that copy (`agenda::stored_answered`, `answered_into`), time by time. Whether a server that schedules itself (RFC 6638) also writes to the organizer when this copy arrives: not checked.
+- Inviting people, for meetings you organize only, through the organizer's door ([client.md](client.md)): each guest is told by the server or by a METHOD:REQUEST draft you send, never both; never by an agent, the sync or the command line. Tested against stand-ins only.
 
 ### Sharing and agendas on their servers
 Agendas made, renamed, recoloured, removed and shared from Agenda ⚙ ▸ Your agendas ([client.md](client.md#agendas-on-their-servers)) were tested against stand-ins alone, small fakes that answer as each vendor's code or documentation shows (`calendars::tests`, `dav::tests::names_colours_removals_and_leaving_go_to_the_server`, all on `dav::stand_in`). **Untested against the real servers**:

@@ -79,7 +79,7 @@ In the form of an event of your own, **Invite…** takes your guests' addresses.
 - **A meeting made elsewhere** (in Nextcloud's web page, in Thunderbird): its guests stay with whoever told them. Your calendar's server tells them when it schedules meetings itself, as Nextcloud does, and knows you by the address you invite from: "Your server tells Bob."; a guest you add in Sioul is told the same way. Such a server sends a new time by itself, not a new place, title or notes: Sioul asks it to send those too, and that ask stays in the meeting until your server has it, through any save you make before your next sync. On a server that sends nothing, Sioul drafts for those guests too. Until Sioul has heard from your server what it does (on a new device, before its first sync), when your server does not say whose the calendar is, in a calendar someone shares with you (whether its server tells your guests there depends on its version: Nextcloud does from version 30), and in a Google calendar (Google does not say), such a meeting is not changed here, and Sioul says so; a meeting made in Sioul is drafted for there as anywhere.
 - **A calendar of this device's own**, carried to your other devices by the sharing or not, has no server: Sioul drafts for every guest.
 
-Never both. Your guests' answers come back into the event, through your server, or when you open an answer in Mail and Sioul can prove it comes from them; the card's people say them. Change the meeting later, take a guest off, drag it on the timeline or delete it: Sioul says first that it tells every guest ("Moving it tells every guest"), then your server or a draft tells them, and **Undo** puts it back, with the draft not sent yet. One time of a repeating meeting you organise is not left out here: change it in its calendar's own app.
+Never both. Your guests' answers come back into the event, through your server, or when you open an answer in Mail and Sioul can prove it comes from them; the card's people say them. Change the meeting later, take a guest off, drag it on the timeline or delete it: Sioul says first that it tells every guest ("Moving it tells every guest"), then your server or a draft tells them, and **Undo** puts it back, with the draft not sent yet. One time of a repeating meeting you organise is not left out here: change it in its calendar's own app. So far, inviting was tested against stand-ins of calendar servers only, never against Nextcloud or Google themselves.
 
 What your drafts send your guests is what they need of it: its title, times, place, notes, its status and who else is invited. Your time around it, its costs and your reminder stay in your own file, as for a meeting someone else organises; what ties it to your messages, notes and projects stays among your own ties; and Sioul's other lines (who takes a child's event, its kind) stay in a file of Sioul's on this device: none of it is in the meeting your server keeps, which it sends whole to the guests it tells, nor any of Sioul's own addresses. What other apps wrote into the meeting stays as they wrote it: an alarm you set in Nextcloud, an attachment, its categories, a video link. A few cases are said as they come:
 
@@ -192,7 +192,7 @@ An AI agent never makes, removes or shares an agenda: these are your own presses
 
 ## Your availability {#your-availability}
 
-Agenda ⚙ ▸ **Your availability** holds what you give of your time, and to whom: your busy times, never what fills them. Nothing is shared until you press **Share**.
+Agenda ⚙ ▸ **Your availability** holds what you give of your time, and to whom: your busy times, never what fills them. Nothing is shared until you press **Share**. So far, this was tested against stand-ins of the servers only, never against the real ones.
 
 - **An availability** is the agendas of yours that count as busy, and a name for you alone ("For Sam"). **New availability…** starts with no agenda ticked. Each agenda may say a word instead of "Busy" ("Work"). Its blocks include the time you keep before and after your events, since getting there is your time too. Anything about health always says "Busy".
 - **Share with…** asks only who: **A person** (a user name, `user@server` or an address), **A group**, **Anyone with a link**, or **A booking tool**. Sioul then says which way it will use and why, in one sentence; **Another way** shows the next one. **Share** makes it.
@@ -206,7 +206,7 @@ An AI agent never shares your availability: these are your own presses.
 
 ## Children's events {#childrens-events}
 
-A child's agenda says who may take its events: you, and the other parent, a person chosen in the list, with the address their invitations go to, in the Agenda settings, **Your agendas**, on its line. A custody day titled with either of their names counts. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist"). So far, invitations to the other parent were tested against stand-ins only.
+A child's agenda says who may take its events: you, and the other parent, a person chosen in the list, with the address their invitations go to, in the Agenda settings, **Your agendas**, on its line. A custody day titled with either of their names counts. There too: how they answer (by an invitation in their mail, or in their own Sioul, which reads the child's agenda), and who usually takes each kind ("Sam takes Tom's dentist"). So far, the copy in your own agenda and the invitations to the other parent were tested against stand-ins only, not against Google, Outlook or Nextcloud.
 
 - **Who takes it**: a child's event's card says it, "Sam takes it, since 3 November.", or "Nobody takes it yet.", with what you may answer: **Me**, the other parent, **Not this time**, **Ask Sam to take it**. Its **Kind** (health, dentist, school, activity, clothes, other) is chosen there too, and, when one parent drops the child off and the other picks them up, **Who brings Tom back**.
 - **Asked once**: an event or a task that comes into a child's agenda without anyone to take it is asked about once, under the Agenda's head line: "Tom: “Dentist”, Tuesday 10 November at 10:00. Who takes it?" Sioul proposes who usually takes that kind, else who has the child that day (whole days titled "With Sam" in the child's agenda), the proposal shown first. **Later** asks once more at your next admin time, then never.
@@ -283,7 +283,7 @@ Health's own day and week drawn in time, and Tasks' **The day**, are this agenda
 
 ## Not there yet
 
-Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: leaving out one time of a repeating meeting you organise; sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event. The copy of an invitation kept in your calendar does not record your answer: the organiser has it.
+Changing one occurrence's title or place (its time moves by hand) is planned. Not built either: leaving out one time of a repeating meeting you organise; sharing an agenda from a server other than Nextcloud and Google; exporting `.ics` files, and subscribing to a calendar by its address; more than one reminder of Sioul's for an event.
 
 ## Going further {#going-further}
 
@@ -326,7 +326,7 @@ More in [what the research says](../dev/research.md), findings 46 to 54 and 66.
 
 ## Compared with other apps {#compared-with-other-apps}
 
-**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul sends an invitation only to offer a child's event to another parent, and cannot export `.ics` files or subscribe to a calendar by its address, or show birthdays by itself, where most others can; and among these apps, only Proton encrypts what an event says end to end, its times aside.
+**Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul cannot export `.ics` files or subscribe to a calendar by its address, or show birthdays by itself, where most others can, and its invitations to the meetings you organise were tried against stand-ins of servers only; among these apps, only Proton encrypts what an event says end to end, its times aside.
 
 **A child's events, each taken by one parent.** Sioul gives each child an agenda, and each of its events and tasks one parent, who gets its reminders, its time to get there and the next appointment to book, while the details stay in the child's agenda; nothing enters another parent's agenda until they accept. OurFamilyWizard marks who drives, in a calendar of its own beside each parent's; AppClose adds a shared event to a calendar once it is accepted. None of the apps read warns when one person is needed in two places across agendas, or moves the reminders to whoever takes an event.
 
@@ -345,7 +345,7 @@ As of November 2026, from each app's own documentation.
     | Several reminders for one event | partly¹⁹ | ✓ | ✓ | ?²⁰ | ✓²¹ | ✓ |
     | Repeats on rules like "the first Monday" | partly²² | ✓ | ✓ | ✓ | ✓ | ✓ |
     | Answers invitations that come by mail | ✓ | ✓ | ✓ | ✓ | ✓ | partly²³ |
-    | Sends invitations | partly²⁴ | ✓ | ✓²⁵ | ✓ | ✓ | ✓ |
+    | Sends invitations | ✓²⁴ | ✓ | ✓²⁵ | ✓ | ✓ | ✓ |
     | Moves an event by dragging, with undo | ✓ | ✓ | partly²⁶ | ?²⁷ | ✓ | partly²⁸ |
     | Moves an event to another calendar | ✓ | ✓ | ✓ | ✓ | ✓ | ? |
     | Shows your contacts' birthdays | ✗²⁹ | ✓ | ✓ | ✓ | ✗ | ? |
@@ -373,7 +373,7 @@ As of November 2026, from each app's own documentation.
     21. Several per event; one default for all calendars; reminders come only while Thunderbird runs.
     22. Sioul keeps any rule made elsewhere, and makes every so many days, weeks, months or years.
     23. Morgen answers on events with guests, through the calendar's provider; it reads no mail.
-    24. Only to offer a child's event to another parent whose agenda Sioul cannot write: a draft, which leaves when you press Send. Not yet tried against Google, Outlook or Nextcloud.
+    24. For a meeting you organise: drafts you send from Mail, or your calendar's server when it schedules meetings itself, never both; also to offer a child's event to another parent. One time of a repeating meeting is not left out from Sioul. Tried against stand-ins of servers only, not against Google, Outlook or Nextcloud.
     25. With iCloud, Exchange and some CalDAV servers.
     26. Drag to move on the Mac and the iPhone; an undo is not described in Apple's guides.
     27. Dragging an event to another calendar is described; moving it in the grid, and undoing that, are not described in the pages read.
