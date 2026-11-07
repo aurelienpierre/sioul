@@ -1260,7 +1260,9 @@ fn removing_a_device_plans_outside_the_lock() {
     let (longest, taken) = waits_beside(&o.desk.memory, &removing, std::time::Duration::from_millis(5));
     assert_eq!(removing.join().unwrap(), Ok(said));
     println!("removal of 1,502 sealed files, its memory written 600 ms slower a file: the plan {plan:?}, a dose's exchange waited {longest:?} at most, {taken} times");
-    assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most (the plan {plan:?})");
+    // A wait behind the lock would last one slowed write at least (600 ms); below it, the runner's own pauses
+    // (Windows' job of 7 November 2026 paused one for 314 ms), as the put-back bounds are set (5656959).
+    assert!(longest < std::time::Duration::from_millis(450), "a dose's exchange waited {longest:?} at most (the plan {plan:?})");
     let _ = std::fs::remove_dir_all(&o.base);
 }
 
