@@ -91,3 +91,17 @@ From Free time, **Keep my usual end** turns it into a pause that moves nothing: 
 - It sends nothing: no message, no call, no location, to anyone.
 - It does not watch you and cannot tell how you are: nothing starts a pause but your press.
 - It is not a medical tool and not an emergency service. In danger, call the emergency number of your country; the pause's screen shows it.
+
+## Why it works this way {#why-it-works-this-way}
+
+- Acute stress narrows working memory and flexibility (Shields, Sazma & Yonelinas 2016), and much of what is said is forgotten at once (Kessels 2003). So the pause is set up beforehand and takes one press: it asks nothing, shows nothing new, and says a few literal sentences.
+- Trying to relax under load raises arousal (Wegner, Broome & Blumberg 1997), so nothing tells you to calm down. Single-session debriefing helped nobody (Rose et al. 2002), so nothing asks what happened. No study has tested a pause button.
+- Control over one's own working time improves the balance between work and the rest of life (Nijp et al. 2012), and pleasant weather lifted mood only in people who spent more than half an hour outside (Keller et al. 2005). So Free time is one press, and the work day may end later by as much, never into the wind-down.
+
+More in [what the research says](../dev/research.md), findings 32 and 33, and in the notes on [the pause](../dev/research/emergency-pause.md) and [Free time](../dev/research/global-pause.md).
+
+## Compared with other apps {#compared-with-other-apps}
+
+iOS's Focus and Android's Focus mode filter people and apps, on a schedule or for a while, and know nothing of your work plan. Motion's Flexible Hours and Structured's Replan lay the day's tasks again in the hours left. Tiimo shows the day as a timeline, for neurodivergent people, with a focus timer. None was found that pauses work and moves the end of the work day by the pause's length. None of these features has a published study of its effect that was found, and neither has Sioul's.
+
+As of October 2026, from each product's own pages, some read through other guides or reviews ([the research](../dev/research/global-pause.md), §6.1).

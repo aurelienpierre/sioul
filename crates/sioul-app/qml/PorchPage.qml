@@ -1358,7 +1358,7 @@ Item {
                             theme: page.theme
                             compact: page.narrowRows
                             notice: letterRow.modelData.notice
-                            iconName: "mail-mark-unread"
+                            iconName: "mail-read"
                             // A scan not read: why, said calmly.
                             note: (letterRow.letter.problem || "") !== "" ? page.sioul.textWith("letters-unread", "problem", letterRow.letter.problem) : ""
                             // The row opens the letter on the Letters page; its main action, the scan.

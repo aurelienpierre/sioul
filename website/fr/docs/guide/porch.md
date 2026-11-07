@@ -234,11 +234,11 @@ Sur la fiche de chaque adresse dans Comptes, **Priorité** : *Plus important*,
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-En octobre 2026, d’après la documentation de chaque application.
+En octobre 2026, d’après la documentation de chaque application ; le second tableau, en novembre.
 
 ✓ documenté · en partie, avec une note · ✗ introuvable dans la documentation de l’application (pour Sioul : pas fait) · ? pas confirmé · — sans objet.
 
-HEY porte l’idée la plus proche, avec son Screener et son Imbox ; Gmail, Outlook et Apple Mail rangent les courriels en catégories ou en onglets ; Superhuman découpe la boîte de réception. Proton Mail, Thunderbird et FairEmail sont comparés sur [la page Courriels](mail.md#compared-with-other-apps) : aucun ne retient le premier courriel d’un inconnu ni ne montre les courriels selon des heures.
+HEY porte l’idée la plus proche sur qui peut entrer, avec son Screener et son Imbox ; Gmail, Outlook et Apple Mail rangent les courriels en catégories ou en onglets ; Superhuman découpe la boîte de réception. Proton Mail, Thunderbird et FairEmail sont comparés sur [la page Courriels](mail.md#compared-with-other-apps) : aucun ne retient le premier courriel d’un inconnu ni ne montre les courriels selon des heures.
 
 | | Sioul | HEY | Gmail | Outlook | Apple Mail | Superhuman |
 |---|---|---|---|---|---|---|
@@ -301,6 +301,40 @@ HEY porte l’idée la plus proche, avec son Screener et son Imbox ; Gmail, Ou
 45. Gmail : les autres comptes dans ses applications pour téléphone ; sur le web, jusqu’en janvier 2027.
 46. Superhuman : les comptes Gmail et Microsoft 365 seulement.
 
+**Regrouper le courrier, et quand il vient**
+
+Sur le moment où le courrier vient, SaneBox et Shortwave s’approchent plus que tout outil du premier tableau, et vont plus loin que Sioul sur certains points. Le Digest de SaneBox résume ce qui a attendu aux jours et aux heures que vous choisissez, là où l’unique notification de Sioul dit combien de courriels attendent et nomme les premiers expéditeurs. Les horaires de distribution de Shortwave retiennent le courrier de n’importe quel libellé, expéditeur ou liste jusqu’aux heures que vous lui donnez. Aucune page lue ne décrit toute la vue de votre courrier suivant à la fois vos heures et la liste de chaque expéditeur, ce que fait le Porche.
+
+| | Sioul | HEY | Gmail | Superhuman | SaneBox | Spark | Shortwave |
+|---|---|---|---|---|---|---|---|
+| Le courrier moins urgent regroupé à part | ✓¹ | ✓² | ✓³ | ✓⁴ | ✓⁵ | ✓⁶ | ✓⁷ |
+| Le courrier retenu jusqu’aux heures que vous choisissez | ✓⁸ | ✗ | ✗ | ✗ | en partie⁹ | ✗ | ✓¹⁰ |
+| Ce qui a attendu résumé aux heures que vous choisissez | en partie¹¹ | ✗ | en partie¹² | ?¹³ | ✓¹⁴ | ✗ | ?¹⁵ |
+| Des notifications selon qui écrit, et quand elles peuvent vous joindre | ✓¹⁶ | en partie¹⁷ | en partie¹⁸ | en partie¹⁹ | ?²⁰ | en partie²¹ | en partie²² |
+
+1. Sioul : des files sur le Porche ; infolettres et notifications repliées ([Les files](#the-lanes)).
+2. HEY : pour chaque expéditeur, l’Imbox, The Feed ou la Paper Trail. The Feed tient les infolettres, la Paper Trail les reçus et les confirmations.
+3. Gmail : cinq catégories fixes.
+4. Superhuman : un découpage à vous pour les infolettres.
+5. SaneBox : déplace le courrier moins important dans un dossier, @SaneLater, sur votre propre serveur de courriel.
+6. Spark : trie en courrier personnel, infolettres et notifications, les personnes en haut.
+7. Shortwave : des regroupements, une ligne dans la boîte par libellé, expéditeur ou liste de diffusion.
+8. Sioul : en dehors de vos heures, le Porche dit quand il ouvre et ne montre rien d’autre de votre courrier ([Quand il ouvre](#when-it-opens)) ; la page Courriels le liste toujours, selon ce à quoi sert chaque adresse.
+9. SaneBox : le courrier moins important va dans un dossier que vous pouvez ouvrir à tout moment ; seul le Digest vient à heures fixes.
+10. Shortwave : des horaires de distribution pour n’importe quel libellé, expéditeur, liste de diffusion ou canal, aux heures que vous choisissez. Le courrier retenu reste sur sa page Snoozed et dans la recherche.
+11. Sioul : une notification quand le moment vient (« Le Porche ouvre : trois courriels vous attendent. »), avec les premiers expéditeurs et sujets, puis le Porche lui-même ([Les nouveaux courriels, dits à leurs heures](#new-mail-told-at-its-times)).
+12. Gmail : AI Inbox donne des tâches suggérées et des sujets à rattraper, en bêta, aux États-Unis et en anglais, sur les offres payantes, depuis l’onglet Principale. Vous l’ouvrez et l’actualisez ; aucun horaire dans sa documentation.
+13. Superhuman : rien de tel dans les pages lues ; son centre d’aide a refusé la lecture ce jour-là.
+14. SaneBox : le Digest, un résumé de ses dossiers, aux jours et aux heures que vous choisissez.
+15. Shortwave : sa page de tarifs nomme des résumés de la boîte par IA ; qu’ils viennent selon un horaire n’est pas confirmé.
+16. Sioul : une notification discrète par lot, aux moments que permet la liste de chaque expéditeur.
+17. HEY : notifications coupées par défaut, ouvertes pour les personnes ou les conversations que vous choisissez ; aucun horaire dans sa documentation.
+18. Gmail : tous les courriels, seulement les prioritaires, ou aucun ; par libellé sur Android. Avec les catégories, les notifications de nouveaux courriels ne couvrent que Principale.
+19. Superhuman : seulement les prioritaires, ou des découpages choisis sur un téléphone ; aucun horaire dans sa documentation.
+20. SaneBox « doesn’t send or receive emails » ; les pages lues ne parlent pas des notifications sur téléphone.
+21. Spark : seuls les expéditeurs prioritaires notifient ; les inconnus et le courrier automatique sont muets. Aucun horaire sur cette page.
+22. Shortwave : des notifications réglées par libellé ou expéditeur ; que les horaires de distribution les retiennent aussi n’est pas dit.
+
 ??? info "Sources (en anglais)"
     Le centre d’aide de Superhuman a été lu par sa propre interface publique, ses pages refusant ce jour-là la lecture automatique.
 
@@ -344,6 +378,21 @@ HEY porte l’idée la plus proche, avec son Screener et son Imbox ; Gmail, Ou
     - Superhuman, gérer les comptes : <https://help.superhuman.com/hc/en-us/articles/46005777934733-Managing-Accounts>, lu le 8 octobre 2026.
     - Superhuman, éviter les indésirables (le filtrage est celui du fournisseur) : <https://help.superhuman.com/hc/en-us/articles/46005520093453-Keeping-Your-Emails-Out-of-Spam>, lu le 8 octobre 2026.
     - Superhuman, téléchargement (plateformes) : <https://help.superhuman.com/hc/en-us/articles/46005778798605-Download-Superhuman-Mail>, lu le 8 octobre 2026.
+    - HEY, The Feed : <https://www.hey.com/features/the-feed/>, lu le 6 novembre 2026.
+    - HEY, la Paper Trail : <https://www.hey.com/features/paper-trail/>, lu le 6 novembre 2026.
+    - Gmail, les catégories : <https://support.google.com/mail/answer/3094499?hl=en>, lu le 6 novembre 2026.
+    - Gmail, AI Inbox : <https://support.google.com/mail/answer/16845247>, lu le 6 novembre 2026.
+    - Superhuman, découper sa boîte (2021) : <https://blog.superhuman.com/how-to-split-your-inbox-in-superhuman/>, lu le 6 novembre 2026.
+    - Superhuman, arrêter le courriel inutile (2025) : <https://blog.superhuman.com/how-to-stop-unnecessary-email/>, lu le 6 novembre 2026.
+    - SaneBox, comment il fonctionne : <https://www.sanebox.com/help/155-how-does-sanebox-work>, lu le 6 novembre 2026.
+    - SaneBox, le Digest : <https://www.sanebox.com/help/170-daily-digest-how-to-guide>, lu le 6 novembre 2026.
+    - SaneBox, quand vient le Digest : <https://www.sanebox.com/help/176-daily-digest-do-you-fear-missing-important-emails>, lu le 6 novembre 2026.
+    - Spark, sa boîte intelligente : <https://sparkmailapp.com/features/smart_inbox>, lu le 6 novembre 2026.
+    - Spark, ses notifications intelligentes : <https://sparkmailapp.com/features/smart_notifications>, lu le 6 novembre 2026.
+    - Shortwave, ses réglages et horaires de distribution : <https://www.shortwave.com/docs/guides/customize-your-shortwave-settings/>, lu le 6 novembre 2026.
+    - Shortwave, la distribution groupée (2022, mise à jour en 2023) : <https://www.shortwave.com/blog/batched-delivery/>, lu le 6 novembre 2026.
+    - Shortwave, les regroupements : <https://www.shortwave.com/docs/guides/bundles/>, lu le 6 novembre 2026.
+    - Shortwave, les tarifs : <https://www.shortwave.com/pricing/>, lu le 6 novembre 2026.
 
 ## Côté technique {#for-technical-readers}
 

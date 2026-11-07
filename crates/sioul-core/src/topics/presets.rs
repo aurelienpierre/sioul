@@ -282,24 +282,23 @@ pub fn count(config: &crate::config::Config, matcher: &Matcher) -> (BTreeMap<Str
     let sources = config.mail_sources();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut counts: BTreeMap<String, Counted> = BTreeMap::new();
-    for account in config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap) {
-        let root = account.maildir_path();
-        let trusted = sources.iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids.clone()).unwrap_or_default();
-        let saved = crate::folders::saved(&account.id);
-        for local in crate::mailcache::folders(&root) {
-            let role = if local.is_empty() { Role::Inbox } else { saved.iter().find(|f| f.local == local).map_or_else(|| crate::folders::role_of(local.trim_start_matches('.'), None), |f| f.role) };
-            if matches!(role, Role::Junk | Role::Trash | Role::Drafts) {
+    let addresses: Vec<(String, std::path::PathBuf)> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| (a.id.clone(), a.maildir_path())).collect();
+    let saved: Vec<_> = addresses.iter().map(|(id, _)| crate::folders::saved(id)).collect();
+    for (a, local) in crate::mailpass::folders(&addresses) {
+        let (account, root) = &addresses[a];
+        let trusted = sources.iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids.clone()).unwrap_or_default();
+        let role = if local.is_empty() { Role::Inbox } else { saved[a].iter().find(|f| f.local == local).map_or_else(|| crate::folders::role_of(local.trim_start_matches('.'), None), |f| f.role) };
+        if matches!(role, Role::Junk | Role::Trash | Role::Drafts) {
+            continue;
+        }
+        for found in crate::mailpass::folder(&crate::mailpass::Headers, account, root, &local, 0).found {
+            let key = found.line.message_id.as_deref().map(crate::mailindex::bare_id).unwrap_or_else(|| format!("{account}/{}", found.line.unique));
+            if !seen.insert(key) {
                 continue;
             }
-            for (path, line) in crate::mailcache::folder(&account.id, &root, &local) {
-                let key = line.message_id.as_deref().map(crate::mailindex::bare_id).unwrap_or_else(|| format!("{}/{}", account.id, line.unique));
-                if !seen.insert(key) {
-                    continue;
-                }
-                let card = line.card(&path);
-                if let Some((p, by)) = judge(matcher, &card, &trusted) {
-                    counts.entry(matcher.presets[p].id.clone()).or_default().add(by);
-                }
+            let card = found.line.card(&found.path);
+            if let Some((p, by)) = judge(matcher, &card, &trusted) {
+                counts.entry(matcher.presets[p].id.clone()).or_default().add(by);
             }
         }
     }

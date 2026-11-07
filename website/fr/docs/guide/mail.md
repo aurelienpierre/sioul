@@ -329,7 +329,7 @@ Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurel
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-En octobre 2026, d’après la documentation de chaque application.
+En octobre 2026, d’après la documentation de chaque application ; les deux lignes sur une seule liste de toutes vos adresses, en novembre.
 
 ✓ documenté · en partie, avec une note · ✗ introuvable dans la documentation de l’application (pour Sioul : pas fait) · ? pas confirmé · — sans objet.
 
@@ -353,6 +353,8 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     | Adresses Outlook.com, Hotmail et Microsoft 365 | en partie⁴⁹ | ✓ | en partie⁵⁰ | ✓ | ✓ | ✗⁵¹ |
     | Des thèmes que vous nommez, mots discrets sur votre courrier, jamais un dossier | ✓⁵² | en partie⁵³ | en partie⁵⁴ | en partie⁵⁵ | en partie⁵⁶ | ? |
     | Les apprend de votre courrier, sur vos appareils | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | en partie⁵⁶ | ? |
+    | Une seule liste du courrier de toutes vos adresses, sur un ordinateur | ✓⁵⁸ | ✓⁵⁹ | en partie⁶⁰ | en partie⁶¹ | ✓⁶² | ✗⁶³ |
+    | La même liste sur un téléphone | ✓⁵⁸ | en partie⁶⁴ | ✓⁶⁵ | ✓⁶⁶ | ?⁶⁷ | ✗⁶³ |
 
     1. Thunderbird : seulement par une extension (DKIM Verifier) ; rien sur Android.
     2. Gmail : un point d’interrogation sur un courriel qui n’est pas authentifié, et « Envoyé par » et « Signé par » dans ses détails, sur un ordinateur et sur Android ; pas sur un iPhone ni un iPad.
@@ -411,6 +413,18 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     55. Outlook : Prioritaire et Autres, triés sur les serveurs de Microsoft ; des catégories à la main, pour les comptes Exchange.
     56. Apple Mail : quatre catégories fixes depuis iOS 18.2 (Principal, Transactions, Mises à jour, Promotions), triées sur l’appareil et corrigées par expéditeur ; aucune que vous nommez.
     57. Sioul : appris une fois par semaine sur l’ordinateur qui entraîne, pour chaque thème de 20 courriels de 3 expéditeurs ou plus ; chaque appareil, le téléphone compris, range ensuite le courrier nouveau avec la même table.
+    58. Sioul : chaque adresse et ce que vous avez envoyé, le plus récent d’abord, chaque courriel une fois ([Toutes les adresses](#all-addresses)).
+    59. Thunderbird : le mode Dossiers unifiés, où les boîtes de réception de tous les comptes viennent d’abord, puis les brouillons, les envoyés et la corbeille. Le mode par défaut est Tous les dossiers : il faut donc le choisir.
+    60. Gmail : sur le web, relever un autre compte par POP n’accepte plus de nouveaux utilisateurs depuis le premier trimestre 2026, et cesse pour les autres en janvier 2027. « Toutes les boîtes de réception » est documenté pour ses applications pour téléphone.
+    61. Outlook : sur un Mac, la boîte de réception sous Tous les comptes. Outlook sur Windows et sur le web n’ont pas été vérifiés.
+    62. Apple Mail sur un Mac : la boîte Toutes les boîtes de réception, ajoutée aux Favoris.
+    63. Proton Mail : les applications passent d’une boîte de compte à l’autre. Pour réunir des comptes dans une seule boîte, les autres sont fusionnés dans un compte payant et supprimés pour toujours.
+    64. Thunderbird : une seule boîte de réception sur Android. L’application iOS n’avait pas de date de sortie dans le rapport de l’équipe de septembre 2025.
+    65. Gmail : « Toutes les boîtes de réception » dans l’application, sur Android, iPhone et iPad.
+    66. Outlook : une seule boîte de réception dans les applications pour Android et iOS.
+    67. Apple Mail sur un iPhone : absent de la page d’Apple qui a pu être lue.
+
+    Spark offre une seule boîte de réception pour tous les comptes, triée en courrier personnel, infolettres et notifications, les personnes en haut. Celle de Canary est facultative : une seule liste, ou un compte à la fois. K-9 Mail annonce une boîte unifiée, et son site désigne Thunderbird pour Android comme son avenir.
 
 === "Technique"
 
@@ -566,6 +580,20 @@ Thunderbird est le logiciel libre de courriel pour ordinateur, avec une applicat
     - Proton, code ouvert : <https://proton.me/community/open-source>, lu le 8 octobre 2026.
     - Proton Mail, applications : <https://proton.me/mail/download>, lu le 8 octobre 2026.
     - FairEmail, FAQ (sections 12, 92, 111, 163 et 181), README, PRIVACY et CHANGELOG : <https://github.com/M66B/FairEmail>, lu le 8 octobre 2026.
+    - Thunderbird, modes de dossiers (documentation de ses développeurs) : <https://source-docs.thunderbird.net/en/latest/frontend/mail_display.html>, lu le 6 novembre 2026.
+    - Thunderbird sur un téléphone : <https://www.thunderbird.net/en-US/mobile/>, lu le 6 novembre 2026.
+    - Thunderbird, rapport d’avancement mobile de septembre 2025 : <https://blog.thunderbird.net/2025/09/mobile-progress-report-july-august-2025/>, lu le 6 novembre 2026.
+    - K-9 Mail : <https://k9mail.app/>, lu le 6 novembre 2026.
+    - Gmail, tout votre courrier au même endroit dans l’application : <https://support.google.com/mail/answer/6078445?hl=en&co=GENIE.Platform%3DAndroid>, lu le 6 novembre 2026.
+    - Gmail, la fin de la relève d’autres comptes par POP : <https://support.google.com/mail/answer/16604719?hl=en>, lu le 6 novembre 2026.
+    - Outlook pour Mac, la boîte unifiée : <https://support.microsoft.com/en-US/Outlook/unified-inbox-in-outlook-for-mac>, lu le 6 novembre 2026.
+    - Outlook pour Android et iOS, la boîte unifiée (édition tchèque) : <https://support.microsoft.com/cs-cz/outlook/how-do-i-consolidate-unify-my-email-accounts-in-my-inbox>, lu le 6 novembre 2026.
+    - Apple Mail sur un Mac, Toutes les boîtes : <https://support.apple.com/guide/mail/switch-to-mail-mlhle2e8ce37/mac>, lu le 6 novembre 2026.
+    - Apple Mail sur un iPhone, ses catégories : <https://support.apple.com/en-us/104971>, lu le 6 novembre 2026.
+    - Proton Mail, fusionner des comptes : <https://proton.me/support/combine-accounts>, lu le 6 novembre 2026.
+    - Proton Mail, plusieurs comptes sur Android (2019) : <https://proton.me/blog/android-multi-account-support>, lu le 6 novembre 2026.
+    - Spark, sa boîte intelligente : <https://sparkmailapp.com/features/smart_inbox>, lu le 6 novembre 2026.
+    - Canary Mail, son blogue sur plusieurs comptes : <https://canarymail.io/blog/best-email-app-multiple-accounts>, lu le 6 novembre 2026.
 
 ## Côté technique {#for-technical-readers}
 

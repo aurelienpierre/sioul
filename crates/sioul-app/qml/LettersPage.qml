@@ -257,7 +257,7 @@ Item {
                                 spacing: 8
 
                                 Icon {
-                                    iconName: "mail-mark-unread"
+                                    iconName: "mail-read"
                                 }
                                 // What the scan says (its letterhead) is plain text, as wide as the row lets it.
                                 Label {

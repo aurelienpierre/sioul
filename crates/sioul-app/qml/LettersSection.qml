@@ -83,7 +83,7 @@ ColumnLayout {
                     spacing: 8
 
                     Icon {
-                        iconName: "mail-mark-unread"
+                        iconName: "mail-read"
                     }
                     // What the scan says (its letterhead, its words) is plain text; its
                     // width the row's room, never its words' (a phone's 412 points).

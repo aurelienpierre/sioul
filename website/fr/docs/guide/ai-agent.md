@@ -54,16 +54,19 @@ Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sio
 
 **Les comptes Microsoft professionnels et scolaires** restent fermés aux agents quels que soient leurs projets, jusqu’à ce que vous les ouvriez (**Paramètres ▸ Agents d’IA**, **Comptes Microsoft professionnels et scolaires**, montré dès que vous en avez un) : les conditions de Microsoft laissent l’organisation, pas vous seul, permettre d’utiliser ses courriels au-delà de la synchronisation. Ouvrez-les seulement si votre organisation le permet.
 
+**Vos proches** sont fermés aux agents un par un : **Ouvert aux agents d’IA**, sur la page d’une personne dans [Contacts](contacts.md#household), ouvre cette personne. D’une personne fermée, un agent ne voit rien : ses papiers et ses courriers, et les événements et les tâches de ses agendas, sont laissés de côté et comptés, jamais nommés. Quel que soit l’interrupteur, il n’a jamais une date de naissance, une fiche de contact, les papiers de santé de quelqu’un d’autre, ni les rendez-vous de santé et de dentiste d’un enfant.
+
 ## Ce qu’un agent peut lire {#what-an-agent-can-read}
 
 - **Le Porche**, file par file, seulement dans vos heures, sauf si vous lui demandez de l’ouvrir. On lui dit qu’un code est arrivé, jamais le code.
 - **Vos courriels** : des courriels trouvés par leur objet, leur expéditeur ou leur texte (reçus, envoyés ou indésirables quand il le demande) ; un courriel entier, avec qui l’a écrit, s’il est authentique ou falsifié et pourquoi, et le nom de ses pièces jointes.
 - **Toutes les adresses**, comme la boîte les liste : le courrier de chaque adresse, du plus récent au plus ancien, deux semaines à la fois ou depuis là où il s’est arrêté, chaque courriel une fois avec les adresses qui le gardent, s’il est non lu, répondu ou falsifié ; jamais un fichier. On lui dit d’abord quelles adresses se reposent et jusqu’à quand, pour qu’il ne vous presse pas de courrier de travail le soir. Les indésirables seulement si leurs outils sont ouverts ; le courrier des expéditeurs bloqués et ce que vous gardez fermé, laissés de côté et seulement comptés. Il ne marque rien comme lu.
 - **Vos tâches** : la prochaine étape et pourquoi, le déroulé de la journée, chaque tâche ouverte dans l’ordre du plan, à toute heure (le soir, il lui est d’abord dit qu’elles attendent leurs propres heures).
-- **Votre agenda**, avec les étapes que le plan donne à chaque jour des quatre semaines à venir, vos **contacts**, vos **budgets** (chaque verdict, les réserves, ce que la veille sur l’argent a remarqué), vos **notes**, vos **projets**.
+- **Votre agenda**, avec les étapes que le plan donne à chaque jour des quatre semaines à venir, vos **contacts**, vos **budgets** (chaque compte jusqu’à sa prochaine entrée, le verdict de chaque budget, ce qui vient, les réserves), vos **notes**, vos **projets**.
 - **Ce à quoi chaque chose est liée**, dans les deux sens, et toute chose trouvée par quelques mots de son titre.
 - **Les messages de votre téléphone**, tels que votre téléphone les partage avec vos ordinateurs : qui a écrit, quand, dans quelle appli, et les mots ; jamais un code, seulement qu’il en est arrivé un. Et **les appels** que votre téléphone a filtrés : qui a appelé, quand, si ça a sonné.
 - **Vos papiers** (ce qu’est chacun, jusqu’à quand il vaut, quand le renouveler), **vos contrats** (quand chacun se renouvelle, le préavis qu’il demande) et **vos lettres papier** (qui a envoyé chacune, ce que c’est, la date demandée).
+- **[Vos proches](contacts.md#household)** que vous avez ouverts aux agents : le nom de chacun, son lien avec vous, et ce qui lui est lié : ses papiers, ses courriers, ses agendas, ses budgets et les sites que vous ouvrez pour lui.
 - **Le temps et les factures** : le temps noté par projet, ce qui se facture et n’est pas encore facturé, les factures émises et si elles sont payées.
 - **Vos SMS**, seulement si vous les autorisez (**Paramètres ▸ Agents d’IA ▸ SMS**, désactivé au départ, car les SMS portent les mots d’autres personnes) : il les lit et les cherche, codes cachés, et peut écrire un SMS en brouillon qui attend dans la page des SMS, dans sa conversation, sous **Écrit par un agent d’IA, pas envoyé** ; **L’utiliser** met ses mots dans la zone d’écriture, et c’est vous qui l’envoyez, ou vous le supprimez. Il n’envoie jamais un SMS, et n’écrit jamais à un groupe. Pour ouvrir vos SMS, Sioul lit sa clé de partage dans le trousseau de cet ordinateur, et seulement alors ; la clé ne parvient jamais à l’agent.
 - **Les rappels** à venir, et **à quoi sert le moment** : le travail, vos démarches, les loisirs, un repas, le sommeil, une pause ou le Temps libre, le mode Ne pas déranger, et ce qui vous parvient maintenant, pour qu’il respecte vos heures.
@@ -104,6 +107,13 @@ Les agents et les scripts peuvent aussi se servir de la ligne de commande, comme
 ## L’autre IA dans Sioul {#the-other-ai-in-sioul}
 
 Une seule autre fonction se sert d’une IA, et seulement pour une adresse que vous protégez contre le harcèlement, quand vous l’autorisez : **Laisser l’IA le lire d’abord** envoie à Claude, d’Anthropic, avec votre propre clé, chaque courriel de la boîte de réception de cette adresse, pour en dire le ton et le sujet. Il reçoit l’objet de chaque courriel et les 4 000 premiers caractères de son texte, **sans rien masquer** : contrairement à ce que reçoit un agent, rien n’y est caché, si bien qu’un code, un mot de passe ou un numéro de compte dans un tel courriel parvient aussi à Anthropic. Une fois la fonction activée, les courriels qui se trouvent déjà dans cette boîte partent aussi, de n’importe qui. Elle a son propre interrupteur, sur cette adresse, et n’appartient à aucun projet : ouvrir ou fermer des projets aux agents ne la change pas. Voir [le Porche](porch.md#a-public-address-protected).
+
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+- Des travailleurs autistes ont préféré une IA à une personne pour des conseils sur la communication au travail, tandis qu’une conseillère à l’emploi a jugé certains de ces conseils discutables (Jang et al. 2024). Alors un agent rédige et explique ; vous lisez, et vous envoyez.
+- L’abri que la loi donne à ce qu’un foyer garde se lit étroitement : publier pour tout le monde n’est pas une affaire de foyer (*Lindqvist*, 2003), ni une caméra de maison qui filme la rue (*Ryneš*, 2014). Que le fournisseur d’un agent soit hors du foyer est la lecture de ces textes par Sioul lui-même. Alors chaque personne reste fermée aux agents jusqu’à ce que vous l’ouvriez, et les papiers de santé de quelqu’un d’autre n’atteignent jamais un agent.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 12 et 57.
 
 ## Pas encore là {#not-there-yet}
 

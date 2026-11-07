@@ -9,7 +9,7 @@ Indépendants, consultants, micro-entrepreneurs : vous vendez votre temps. D�
 Dans Sioul, c’est une seule boucle, dans une seule fenêtre. Les courriels du client arrivent à son projet. Le travail se compte pendant que vous le faites. La facture est faite de ce qui a été compté, et attend dans votre budget jusqu’à son paiement.
 
 <figure markdown="span">
-  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Les courriels qui arrivent ici tout seuls », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](../assets/screens/fr/projects.png){ loading=lazy }](../assets/screens/fr/projects.png "Ouvrir l’image en grand")
+  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Gantt, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Les courriels qui arrivent ici tout seuls », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](../assets/screens/fr/projects.png){ loading=lazy }](../assets/screens/fr/projects.png "Ouvrir l’image en grand")
   <figcaption>Le projet d’un client : ses tâches, son temps, ses courriels, ses factures, sur une ligne de temps.</figcaption>
 </figure>
 
@@ -17,7 +17,7 @@ Dans Sioul, c’est une seule boucle, dans une seule fenêtre. Les courriels du 
 
 1. **Un projet par client.** **Nouveau ▾ ▸ Un projet**, puis **Pour un client : son temps se facture à un taux horaire** : pour qui, ce que coûte une heure, et le budget où son argent est attendu. Quand **Pour** nomme l’un de vos contacts (son nom, ou son organisation), la facture prend l’adresse postale du contact. **Lier à…**, au bas du projet, y lie le contact du client, avec tout ce qui en fait partie : une note, un événement, un site. [Les projets](projects.md#making-a-project)
 2. **Ses courriels arrivent tout seuls.** Donnez au projet le domaine ou les adresses du client, des mots d’un objet, ou du nom d’une pièce jointe (« devis ») : les courriels qui correspondent y sont rangés à leur arrivée, chacun avec la raison de sa venue. Les réponses suivent leur conversation. Sioul vérifie d’abord qui a envoyé chaque courriel : un courriel falsifié n’est jamais rangé dans le projet d’un client, même quand son adresse ressemble à la sienne. [Les courriels qui arrivent ici tout seuls](projects.md#mail-that-comes-here-by-itself)
-3. **Le travail tient dans vos heures de travail.** Les tâches du projet, en tableau, en liste ou en calendrier ; la prochaine étape, placée dans les heures que vous gardez pour le travail. [Les tâches](tasks.md)
+3. **Le travail tient dans vos heures de travail.** Les tâches du projet, en tableau, en liste ou en diagramme de Gantt ; la prochaine étape, placée dans les heures que vous gardez pour le travail. [Les tâches](tasks.md)
 4. **Le temps se compte pendant que vous travaillez.** Les minutes d’une séance de concentration vont à sa tâche, et au projet de la tâche. Une réunion, un appel, un travail fait loin du minuteur : **Noter du temps**, `1h30`. Une tâche peut rester hors de la facture. [D’où vient le temps](time.md#where-time-comes-from)
 5. **Ce qui reste à facturer reste en vue** : pour chaque projet, en heures et en argent, sur la page Temps et à côté du projet. [La page Temps](time.md#the-time-page)
 6. **La facture, faite de ce temps.** **Faire la facture** : une ligne par tâche, au taux du projet ; un numéro qui suit le dernier et n’est jamais donné deux fois ; le temps facturé marqué comme tel, pour que la facture suivante le laisse de côté ; un PDF, prêt à envoyer. [Les factures](time.md#invoices)
@@ -55,6 +55,13 @@ En dehors de vos heures de travail, les projets des clients et la page Temps se 
 - Les factures sont faites pour le travail à l’heure, sans TVA ajoutée à leurs totaux. Les devis, les lignes au forfait, les frais et les montants de TVA ne se font pas encore.
 - **« EI » après votre nom** n’est pas ajouté pour vous : le nom d’un entrepreneur individuel doit être accompagné de « EI » ou de « entrepreneur individuel » (service-public.gouv.fr, fiche F31808). Écrivez-le juste après votre nom dans Paramètres ▸ Factures.
 - **La facture électronique.** À partir du 1er septembre 2027, une micro-entreprise française, en franchise de TVA aussi, doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée, avec le SIREN du client. Sioul ne fait que des factures en PDF, pour l’instant ([Le temps et les factures](time.md#not-there-yet)).
+
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+- Les personnes qui travaillent pour elles-mêmes déclarent et paient leurs propres impôts, là où un employeur le fait pour ses salariés (Milanez & Bratta 2019), et le coût des obligations pèse le plus sur les plus petites entreprises (Evans 2003). Les personnes handicapées travaillent plus souvent pour elles-mêmes : 9,1 % de celles qui avaient un emploi aux États-Unis en 2025, contre 5,9 % des autres (U.S. Bureau of Labor Statistics 2026). Alors Sioul porte aussi les démarches d’une petite entreprise, du premier courriel du client à la facture payée.
+- Avec des revenus irréguliers, ce qui compte est combien de temps l’argent dure : le revenu mensuel a varié de 39 % sur une année de carnets de ménages (Hannagan & Morduch 2015). Alors un budget de travail peut mettre de côté une part de chaque paiement pour les impôts dès son arrivée, et les réserves se comptent en semaines de vos propres dépenses.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 31 et 44.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 

@@ -184,11 +184,16 @@ ColumnLayout {
                                         font.weight: line.modelData.way === "in" ? Font.DemiBold : Font.Normal
                                         color: section.theme.text
                                     }
-                                    ToolButton {
-                                        visible: !section.compact
-                                        text: "⋯"
-                                        Accessible.name: section.sioul.text("bank-movement-where")
-                                        onClicked: section.menuOf(line.modelData)
+                                    // A computer's; a long press on a phone.
+                                    Loader {
+                                        visible: active
+                                        active: !section.compact
+
+                                        sourceComponent: ToolButton {
+                                            text: "⋯"
+                                            Accessible.name: section.sioul.text("bank-movement-where")
+                                            onClicked: section.menuOf(line.modelData)
+                                        }
                                     }
                                 }
                                 Label {
@@ -228,89 +233,93 @@ ColumnLayout {
             }
         }
 
-        // The same movements on a month's calendar, beside the list.
-        ColumnLayout {
+        // The same movements on a month's calendar, beside the list; made when asked for.
+        Loader {
             objectName: "comingGrid"
-            visible: section.month && !section.compact
+            visible: active
+            active: section.month && !section.compact
             Layout.alignment: Qt.AlignTop
             Layout.preferredWidth: 7 * 62
-            spacing: 4
 
-            RowLayout {
-                Layout.fillWidth: true
+            sourceComponent: ColumnLayout {
+                    spacing: 4
 
-                Button {
-                    flat: true
-                    text: "◂"
-                    Accessible.name: section.sioul.text("agenda-earlier")
-                    onClicked: section.monthShown = new Date(section.monthShown.getFullYear(), section.monthShown.getMonth() - 1, 1)
-                }
-                Label {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: section.monthShown.toLocaleDateString(Qt.locale(section.sioul.text("qt-locale")), "MMMM yyyy")
-                    color: section.theme.text
-                }
-                Button {
-                    flat: true
-                    text: "▸"
-                    Accessible.name: section.sioul.text("agenda-later")
-                    onClicked: section.monthShown = new Date(section.monthShown.getFullYear(), section.monthShown.getMonth() + 1, 1)
-                }
-            }
-            GridLayout {
-                Layout.fillWidth: true
-                columns: 7
-                columnSpacing: 2
-                rowSpacing: 2
+                    RowLayout {
+                        Layout.fillWidth: true
 
-                Repeater {
-                    model: section.month ? section.monthDays() : []
+                        Button {
+                            flat: true
+                            text: "◂"
+                            Accessible.name: section.sioul.text("agenda-earlier")
+                            onClicked: section.monthShown = new Date(section.monthShown.getFullYear(), section.monthShown.getMonth() - 1, 1)
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            text: section.monthShown.toLocaleDateString(Qt.locale(section.sioul.text("qt-locale")), "MMMM yyyy")
+                            color: section.theme.text
+                        }
+                        Button {
+                            flat: true
+                            text: "▸"
+                            Accessible.name: section.sioul.text("agenda-later")
+                            onClicked: section.monthShown = new Date(section.monthShown.getFullYear(), section.monthShown.getMonth() + 1, 1)
+                        }
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 7
+                        columnSpacing: 2
+                        rowSpacing: 2
 
-                    delegate: Rectangle {
-                        id: cell
+                        Repeater {
+                            model: section.month ? section.monthDays() : []
 
-                        required property var modelData
-                        readonly property var here: section.rows.filter(r => r.day === cell.modelData.day)
+                            delegate: Rectangle {
+                                id: cell
 
-                        Layout.preferredWidth: 60
-                        Layout.preferredHeight: Math.max(48, entries.implicitHeight + 6)
-                        radius: 3
-                        color: "transparent"
-                        border.color: section.theme.line
-                        opacity: cell.modelData.inMonth ? 1 : 0.45
+                                required property var modelData
+                                readonly property var here: section.rows.filter(r => r.day === cell.modelData.day)
 
-                        ColumnLayout {
-                            id: entries
+                                Layout.preferredWidth: 60
+                                Layout.preferredHeight: Math.max(48, entries.implicitHeight + 6)
+                                radius: 3
+                                color: "transparent"
+                                border.color: section.theme.line
+                                opacity: cell.modelData.inMonth ? 1 : 0.45
 
-                            anchors.fill: parent
-                            anchors.margins: 3
-                            spacing: 0
+                                ColumnLayout {
+                                    id: entries
 
-                            Label {
-                                text: cell.modelData.number
-                                textFormat: Text.PlainText
-                                font.pixelSize: 11
-                                color: section.theme.muted
-                            }
-                            Repeater {
-                                model: cell.here
+                                    anchors.fill: parent
+                                    anchors.margins: 3
+                                    spacing: 0
 
-                                delegate: Label {
-                                    required property var modelData
+                                    Label {
+                                        text: cell.modelData.number
+                                        textFormat: Text.PlainText
+                                        font.pixelSize: 11
+                                        color: section.theme.muted
+                                    }
+                                    Repeater {
+                                        model: cell.here
 
-                                    Layout.fillWidth: true
-                                    text: (modelData.way === "in" ? "+" : "") + modelData.amount + " " + modelData.who
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                    font.pixelSize: 10
-                                    font.features: { "tnum": 1 }
-                                    color: section.theme.text
+                                        delegate: Label {
+                                            required property var modelData
+
+                                            Layout.fillWidth: true
+                                            text: (modelData.way === "in" ? "+" : "") + modelData.amount + " " + modelData.who
+                                            textFormat: Text.PlainText
+                                            elide: Text.ElideRight
+                                            font.pixelSize: 10
+                                            font.features: { "tnum": 1 }
+                                            color: section.theme.text
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                }
             }
         }
     }

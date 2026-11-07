@@ -4,11 +4,14 @@
 //! Readers of every message kept on this device (the money ledger's design
 //! §5, "Found once"): what one reader finds in each message, read once,
 //! ever, and kept beside the mail cache (`mailcache`), one small file per
-//! folder. Money (`moneyindex`) is one reader; the mail's topics may be
-//! another: a reader says its name, the stamp of what it depends on, which
-//! messages are worth opening from their cached headers alone (`wanted`),
-//! and what it finds in one (`read`). Everything else is here, the same for
-//! every reader:
+//! folder. Money (`moneyindex`) is one reader: a reader says its name, the
+//! stamp of what it depends on, which messages are worth opening from their
+//! cached headers alone (`wanted`), and what it finds in one (`read`).
+//! Everything else is here, the same for every reader. The mail's topics walk
+//! the same way (`folders`) with `Headers`, which opens nothing and keeps
+//! nothing: they read a message after gathering its copies, however many
+//! folders hold it, and what they find in it is too large to keep (`topics::line`'s
+//! words of every message).
 //!
 //! - **Where:** `$XDG_CACHE_HOME/sioul/<name>/<account>/<folder>.tsv`, the
 //!   folder named by a digest of its directory. Yours alone (0600, its
@@ -43,7 +46,8 @@ const FORMAT: &str = "1";
 
 /// What reads every message kept on this device.
 pub trait Reader {
-    /// Its folder under the cache ("money-index"): a plain name, one of `NAMES`.
+    /// Its folder under the cache ("money-index"): a plain name, one of
+    /// `NAMES`. Empty for a reader that keeps no file (`Headers`).
     fn name(&self) -> &'static str;
     /// What its findings depend on (words, rules): another stamp, its files made again.
     fn stamp(&self) -> String;
@@ -52,6 +56,28 @@ pub trait Reader {
     /// What it finds in a message opened (its bytes): its columns, none for nothing.
     /// A column holds no tab and no line end.
     fn read(&self, line: &mailcache::Line, path: &Path, raw: &[u8]) -> Option<Vec<String>>;
+}
+
+/// The reader for whoever reads messages at its own time: every message as
+/// the mail cache says it, nothing opened, no file kept.
+pub struct Headers;
+
+impl Reader for Headers {
+    fn name(&self) -> &'static str {
+        ""
+    }
+
+    fn stamp(&self) -> String {
+        String::new()
+    }
+
+    fn wanted(&self, _: &mailcache::Line) -> bool {
+        false
+    }
+
+    fn read(&self, _: &mailcache::Line, _: &Path, _: &[u8]) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// One message of a folder, with what the mail cache and the reader say of it.
@@ -255,17 +281,23 @@ pub fn folder(reader: &dyn Reader, account: &str, root: &Path, local: &str, fill
     })
 }
 
-/// Every folder of every address: (its account id, its Maildir), each folder
-/// looked at (`folder`), at most `fill` messages opened in all.
+/// The one walk of the mail kept on this device: every folder of every
+/// address (its account id, its Maildir), each with its address's place in
+/// `accounts`, one at a time, so that a caller can pass over one or stop.
+pub fn folders(accounts: &[(String, PathBuf)]) -> impl Iterator<Item = (usize, String)> + '_ {
+    accounts.iter().enumerate().flat_map(|(a, (_, root))| mailcache::folders(root).into_iter().map(move |local| (a, local)))
+}
+
+/// Every folder of every address (`folders`), each looked at (`folder`), at
+/// most `fill` messages opened in all.
 pub fn every(reader: &dyn Reader, accounts: &[(String, PathBuf)], fill: usize) -> Vec<(String, String, Pass)> {
     let mut left = fill;
     let mut out = Vec::new();
-    for (account, root) in accounts {
-        for local in mailcache::folders(root) {
-            let pass = folder(reader, account, root, &local, left);
-            left = left.saturating_sub(pass.opened);
-            out.push((account.clone(), local, pass));
-        }
+    for (a, local) in folders(accounts) {
+        let (account, root) = &accounts[a];
+        let pass = folder(reader, account, root, &local, left);
+        left = left.saturating_sub(pass.opened);
+        out.push((account.clone(), local, pass));
     }
     out
 }
@@ -374,6 +406,41 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         if let Some(dir) = mailcache::account_dir(&account) {
             let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// The walk gives each address's folders in turn, the inbox first; through
+    /// `Headers`, a folder's messages come as the mail cache says them, none
+    /// opened, and no file is kept for them.
+    #[test]
+    fn headers_walk_every_folder_and_keep_nothing() {
+        let id = std::process::id();
+        let (first, second) = (format!("stand-walk-a-{id}"), format!("stand-walk-b-{id}"));
+        let base = std::env::temp_dir().join(format!("sioul-mailpass-walk-{id}"));
+        let _ = std::fs::remove_dir_all(&base);
+        let (one, two) = (base.join("one"), base.join("two"));
+        for dir in [one.clone(), one.join(".Sent"), two.clone()] {
+            for sub in ["tmp", "new", "cur"] {
+                std::fs::create_dir_all(dir.join(sub)).unwrap();
+            }
+        }
+        for (n, dir) in [one.clone(), one.join(".Sent"), two.clone()].iter().enumerate() {
+            let raw = format!("Message-ID: <w{n}@example.org>\r\nFrom: Lou <lou@example.org>\r\nSubject: Message {n}\r\nDate: Thu, 01 Oct 2026 10:0{n}:00 +0200\r\n\r\nText.\r\n");
+            std::fs::write(dir.join("cur").join(format!("17770000{n}0.U1-{n}.stand{}2,S", crate::maildir::INFO)), raw).unwrap();
+        }
+        let accounts = [(first.clone(), one), (second.clone(), two)];
+        let walked: Vec<(usize, String)> = folders(&accounts).collect();
+        assert_eq!(walked, [(0, String::new()), (0, ".Sent".to_string()), (1, String::new())]);
+        let every = every(&Headers, &accounts, usize::MAX);
+        let subjects: Vec<&str> = every.iter().flat_map(|(_, _, pass)| &pass.found).map(|f| f.line.subject.as_str()).collect();
+        assert_eq!(subjects, ["Message 0", "Message 1", "Message 2"]);
+        assert!(every.iter().all(|(_, _, pass)| pass.opened == 0 && pass.waiting == 0 && pass.found.iter().all(|f| f.columns.is_none())));
+        assert_eq!(file_of(Headers.name(), &first, &accounts[0].1), None, "no file for a reader that keeps nothing");
+        let _ = std::fs::remove_dir_all(&base);
+        for account in [first, second] {
+            if let Some(dir) = mailcache::account_dir(&account) {
+                let _ = std::fs::remove_dir_all(dir);
+            }
         }
     }
 }

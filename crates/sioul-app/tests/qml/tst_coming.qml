@@ -6,7 +6,8 @@
 // for Sioul: each account's sentences at the top, the area filter mounted
 // as Mail's (its ticks said to Rust), What is coming by week with money in
 // as plain as money out, the month beside the list on a computer only, a
-// row's menu; at a phone's 412 points nothing passes the window's edge.
+// row's menu; at a phone's 412 points nothing passes the window's edge; a
+// phone's page holds no more than 400 objects as it opens, as Mail's.
 // Run by tools/qml-test.sh.
 
 import QtQuick
@@ -50,6 +51,7 @@ Item {
 
         property string budgets: root.view
         property var ticked: []
+        property var bankAccounts: []
 
         function text(key) {
             return key
@@ -66,7 +68,7 @@ Item {
         function budgetAreasAsHours() {
         }
         function bank() {
-            return JSON.stringify({ store: true, any: false, balance: "", findings: [], coming: [], problem: "", accounts: [], budgets: [], reserves: [] })
+            return JSON.stringify({ store: true, any: false, balance: "", findings: [], coming: [], problem: "", accounts: mock.bankAccounts, budgets: [], reserves: [] })
         }
         function contracts() {
             return JSON.stringify({ store: true, problem: "", kinds: [], contracts: [], suggestions: [], presets: [] })
@@ -138,6 +140,63 @@ Item {
         function cleanup() {
             fakeWindow.compact = false
             mock.ticked = []
+            mock.bankAccounts = []
+            mock.budgets = root.view
+        }
+
+        function count(item) {
+            let n = 1
+            for (let i = 0; i < item.children.length; ++i)
+                n += count(item.children[i])
+            return n
+        }
+
+        // A view fuller than the demo profile's: three accounts, six budgets, twelve rows coming.
+        function fullView() {
+            const view = JSON.parse(root.view)
+            view.accounts = [1, 2, 3].map(n => ({ id: "account" + n, title: "Account " + n, sentences: ["Until Salary comes in, the account holds every payment.", "€460 is left for everyday spending.", "About €25 a day."], fresh: ["Its bank's file was read on Monday."] }))
+            view.budgets = [1, 2, 3, 4, 5, 6].map(n => ({ id: "budget" + n, title: "Budget " + n, period: "November", mood: "as-planned", verdict: "It should end as planned.", words: ["€120 is paid.", "€40 is still to come.", "€60 is left."] }))
+            view.coming = [1, 2, 3, 4].map(week => ({ title: "Week " + week, rows: [1, 2, 3].map(n => Object.assign({}, root.row, { key: "row:" + week + "/" + n })) }))
+            return JSON.stringify(view)
+        }
+
+        // On a phone the Budgets tab is made when it first shows, or when
+        // something on it is asked for; what the page holds until then stays
+        // within Mail's budget of 400 objects. On a computer it comes just after the page.
+        function test_a_phone_s_page_keeps_to_its_budget_of_objects() {
+            mock.budgets = fullView()
+            fakeWindow.compact = true
+            const page = createTemporaryObject(pageComponent, root, { width: 412, height: 891 })
+            tryVerify(() => named(page, "aheadAccount").length === 3, 5000)
+            wait(200)
+            compare(page.bank, null, "the Budgets tab waits")
+            const opening = count(page)
+            verify(opening <= 400, "the whole page: " + opening)
+            named(page, "moneyTab1")[0].clicked()
+            tryVerify(() => page.bank !== null, 5000, "made at first show")
+            verify(page.bank.visible)
+            console.warn("sioul-objects: a phone's budgets page " + opening + ", the Budgets tab shown too " + count(page))
+            // Asked for from elsewhere, before it showed: there at once.
+            const asked = createTemporaryObject(pageComponent, root, { width: 412, height: 891 })
+            tryVerify(() => named(asked, "aheadAccount").length === 3, 5000)
+            compare(asked.bank, null)
+            verify(asked.contractsNow() !== null)
+            verify(asked.bank !== null)
+            fakeWindow.compact = false
+            const computer = createTemporaryObject(pageComponent, root)
+            tryVerify(() => computer.bank !== null, 5000, "just after the page")
+            compare(computer.tab, 0)
+        }
+
+        // A new movement names its bank account though the Budgets tab was never made.
+        function test_a_new_movement_has_its_accounts_on_a_phone() {
+            fakeWindow.compact = true
+            mock.bankAccounts = [{ id: "main", title: "Main account" }]
+            const page = createTemporaryObject(pageComponent, root, { width: 412, height: 891 })
+            tryVerify(() => named(page, "aheadAccount").length === 1, 5000)
+            page.startNew()
+            compare(page.bank, null)
+            compare(page.newAccounts, [{ id: "main", title: "Main account" }])
         }
 
         // The page opens with each account's sentences, what the hour leaves
@@ -196,7 +255,7 @@ Item {
             }
             const page = createTemporaryObject(pageComponent, root)
             tryVerify(() => named(page, "budgetAreasPhone").length === 1, 5000)
-            verify(named(page, "budgetAreasPhone")[0].visible && !named(page, "budgetAreas")[0].visible, "the filter under the title")
+            verify(named(page, "budgetAreasPhone")[0].visible && named(page, "budgetAreas").length === 0, "the filter under the title")
         }
     }
 }

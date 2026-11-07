@@ -66,3 +66,19 @@ A person's calls of the last month, rang or declined, are on their sheet: Contac
 ## What Sioul never does {#what-sioul-never-does}
 
 It never answers a call, never records one, never listens, and sends no number anywhere: no server, no lookup. The list of calls your phone screened travels only to your own devices, sealed, while the part **Calls** of the sharing is on. Texts are held as other apps' messages are, by who wrote, when Sioul has Android's notification access ([Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone)); Android's own blocked numbers stop a number's calls and texts for every app.
+
+## Why it works this way {#why-it-works-this-way}
+
+- 78 % of autistic adults avoid the phone where they can, and 61 % avoid voicemail too (Doherty et al. 2022); people anxious about admin find it the hardest channel (Holkar, Evans & Langston 2018). So a call can wait for its time, and the Porch says afterwards who called, with **Text back**.
+- Not knowing what comes weighs: intolerance of uncertainty and anxiety go together in autism (Jenkinson, Milne & Thompson 2020). So the rules are yours, and each call that did not ring is said.
+- No study tests call screening itself: this rests on what people say they prefer, and on a plausible mechanism.
+
+More in [what the research says](../dev/research.md), finding 34, and in [Screening phone calls](../dev/research/call-screening.md).
+
+## Compared with other apps {#compared-with-other-apps}
+
+Some go further than Sioul can. Google's Call Screen, on Pixel phones, answers a caller with a voice; in France only when you tap "Screen call", and it saves the screening audio unless you change that. Apple's Live Voicemail writes out what a caller says on the iPhone, and iOS 26 can ask an unknown caller why they call before the phone rings. Android keeps answering with a voice to the system's own phone app, so Sioul sends a call to voicemail and never answers it.
+
+Truecaller and CallApp name callers from directories fed by their users' address books, which Sioul never does: it sends no number anywhere. Exodus Privacy finds 30 trackers in Truecaller's store build, 24 in CallApp's and 3 in Hiya's; its reports find tracker code and do not prove that it runs.
+
+As of October 2026, from each app's own documentation and Exodus Privacy's reports ([the research](../dev/research/call-screening.md), §4.4 and §5.2).

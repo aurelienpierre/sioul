@@ -8,9 +8,10 @@
 // budget under its area, the reserves, the bank accounts, the contracts;
 // Movements, the full ledger; From mail, every mail about money kept here.
 // A notice or a link opens the tab and the row it names. Overview is made
-// with the page, Budgets just after it without holding the window, the
-// other two the first time they show. A budget opened shows its ledger and
-// its balance in place of the tabs.
+// with the page; Budgets without holding the window, just after it on a
+// computer, the first time it shows on a phone, where each object counts
+// (tst_coming.qml); the other two the first time they show. A budget opened
+// shows its ledger and its balance in place of the tabs.
 
 pragma ComponentBehavior: Bound
 
@@ -31,7 +32,8 @@ Item {
     readonly property var view: page.budgetsText ? JSON.parse(page.budgetsText) : null
     // The tab shown: 0 Overview, 1 Budgets, 2 Movements, 3 From mail.
     property int tab: 0
-    // The Movements and From mail tabs, made the first time they show.
+    // The tabs not made with the page, each kept once made.
+    property bool budgetsMade: false
     property bool movementsMade: false
     property bool mailMade: false
 
@@ -54,12 +56,18 @@ Item {
         page.takeShown()
     }
     onTabChanged: {
+        if (page.tab === 1)
+            page.budgetsMade = true
         if (page.tab === 2)
             page.movementsMade = true
         if (page.tab === 3)
             page.mailMade = true
     }
-    Component.onCompleted: page.takeShown()
+    Component.onCompleted: {
+        if (!page.window.compact)
+            page.budgetsMade = true
+        page.takeShown()
+    }
     // A budget opened: its ledger and its balance.
     property string openId: ""
     // The budget's detail, made the first time one opens.
@@ -85,10 +93,14 @@ Item {
         page.tab = index
     }
 
-    // A movement added by hand, from "New".
+    // A movement added by hand, from "New"; the bank accounts it may be on read
+    // as it opens, whether or not the Budgets tab is made.
     function startNew() {
+        page.newAccounts = JSON.parse(page.sioul.bank()).accounts.map(a => ({ id: a.id, title: a.title }))
         newMovement.now().choose()
     }
+
+    property var newAccounts: []
 
     // A movement opened in the Movements tab, by its address (a link, a notice, a reminder).
     function openMovement(address) {
@@ -102,6 +114,7 @@ Item {
     // The Budgets tab made now, when asked before it was (the bank, the contracts).
     function budgetsNow() {
         budgetsTab.asynchronous = false
+        page.budgetsMade = true
         return budgetsTab.item
     }
 
@@ -244,10 +257,11 @@ Item {
                 onActed: (text, ask) => page.acted(text, ask)
                 onNewBudget: newBudget.now().edit("", null)
             }
-            // Made just after the first screen, without holding the window.
+            // Never holds the window while it is made.
             Loader {
                 id: budgetsTab
 
+                active: page.budgetsMade
                 asynchronous: true
                 sourceComponent: MoneyBudgets {
                     sioul: page.sioul
@@ -306,7 +320,7 @@ Item {
                 sioul: page.sioul
                 theme: page.theme
                 budgets: page.view ? page.view.choices : []
-                accounts: page.bank ? page.bank.shown.accounts.map(a => ({ id: a.id, title: a.title })) : []
+                accounts: page.newAccounts
             }
         }
     }

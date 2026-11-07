@@ -52,6 +52,7 @@ use serde::Serialize;
 use sioul_core::contacts::Contact;
 use sioul_core::folders::{Folder, Role};
 use sioul_core::mailcache::Line;
+use sioul_core::mailpass;
 use sioul_core::spam::tokenize::Lexicon;
 use sioul_core::topics::seeds::{self, Kind, Proposal, Seed};
 use sioul_core::topics::table::{self, Band, Judged, Precision, Table};
@@ -453,34 +454,34 @@ struct Local {
 }
 
 /// Every copy of every message kept on this device, by key (Message-ID, or
-/// the account's digest): each folder of each account's Maildir through its
-/// index (`mailcache::folder`), Junk, Trash and Drafts counted and left
-/// out. The one place that walks the Maildirs, so that the shared reader
-/// (`mailpass`) can take its place alone.
+/// the account's digest): every folder of the shared walk (`mailpass::folders`)
+/// as the mail cache says it (`mailpass::Headers`), Junk, Trash and Drafts
+/// counted and left out. Nothing is opened here: `read` opens a message once,
+/// whatever its copies, what the spam filter's labels call spam never.
 fn kept_copies(sources: &Sources, reading: &mut Reading, system: &mut BTreeSet<String>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<BTreeMap<String, Vec<Local>>, LearnError> {
+    let addresses: Vec<(String, PathBuf)> = sources.maildirs.iter().map(|m| (m.account.clone(), m.root.clone())).collect();
     let mut copies: BTreeMap<String, Vec<Local>> = BTreeMap::new();
-    for (d, maildir) in sources.maildirs.iter().enumerate() {
-        for local in sioul_core::mailcache::folders(&maildir.root) {
-            let (role, display) = folder_of(maildir, &local);
-            if matches!(role, Role::Junk | Role::Trash | Role::Drafts) {
-                reading.folders_left_out += 1;
-                system.insert(format!("{}/{}", maildir.account, folded(&display)));
-                continue;
-            }
-            if role != Role::Other && role != Role::Inbox || SYSTEM_PREFIXES.iter().any(|p| display.starts_with(p)) {
-                system.insert(format!("{}/{}", maildir.account, folded(&display)));
-            }
-            reading.folders += 1;
-            progress(&Progress { stage: Stage::Tokens, done: reading.folders, total: 0, detail: format!("{} · {display}", maildir.account) });
-            for (path, line) in sioul_core::mailcache::folder(&maildir.account, &maildir.root, &local) {
-                reading.files += 1;
-                let Some(key) = key_of(&maildir.account, &line) else { continue };
-                let keywords = sioul_core::maildir::keywords_of(&path);
-                copies.entry(key).or_default().push(Local { maildir: d, path, role, display: display.clone(), line, junk: keywords.junk && !keywords.not_junk });
-            }
-            if cancel.cancelled() {
-                return Err(LearnError::Cancelled);
-            }
+    for (d, local) in mailpass::folders(&addresses) {
+        let maildir = &sources.maildirs[d];
+        let (role, display) = folder_of(maildir, &local);
+        if matches!(role, Role::Junk | Role::Trash | Role::Drafts) {
+            reading.folders_left_out += 1;
+            system.insert(format!("{}/{}", maildir.account, folded(&display)));
+            continue;
+        }
+        if role != Role::Other && role != Role::Inbox || SYSTEM_PREFIXES.iter().any(|p| display.starts_with(p)) {
+            system.insert(format!("{}/{}", maildir.account, folded(&display)));
+        }
+        reading.folders += 1;
+        progress(&Progress { stage: Stage::Tokens, done: reading.folders, total: 0, detail: format!("{} · {display}", maildir.account) });
+        for found in mailpass::folder(&mailpass::Headers, &maildir.account, &maildir.root, &local, 0).found {
+            reading.files += 1;
+            let Some(key) = key_of(&maildir.account, &found.line) else { continue };
+            let keywords = sioul_core::maildir::keywords_of(&found.path);
+            copies.entry(key).or_default().push(Local { maildir: d, path: found.path, role, display: display.clone(), line: found.line, junk: keywords.junk && !keywords.not_junk });
+        }
+        if cancel.cancelled() {
+            return Err(LearnError::Cancelled);
         }
     }
     Ok(copies)
@@ -489,7 +490,7 @@ fn kept_copies(sources: &Sources, reading: &mut Reading, system: &mut BTreeSet<S
 /// Reads every message kept on this device, once (the copies in several
 /// folders or accounts, by Message-ID, are one): every folder of every
 /// account's Maildir but Junk, Trash and Drafts, Sent and the archives
-/// included, through each folder's index (`mailcache::folder`), so that no
+/// included, through each folder's index (`kept_copies`), so that no
 /// message is read again for what its headers say. Left out: what the spam
 /// filter's labels call spam (the corpus serves only for them: `spam_keys`)
 /// or a `$Junk` keyword marks; forged mail (`trust::judge_sender`; a list's

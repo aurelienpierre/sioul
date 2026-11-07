@@ -371,7 +371,7 @@ Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurel
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 
-En octobre 2026, d’après la documentation de chaque application.
+En octobre 2026, d’après la documentation de chaque application ; les deux lignes sur les étapes d’une tâche, en novembre.
 
 ✓ documenté ; **en partie**, avec une note ; ✗ introuvable dans la documentation de l’application (pour Sioul : pas fait) ; ? pas confirmé ; — sans objet. La colonne de Sioul a été vérifiée dans son code.
 
@@ -394,6 +394,8 @@ Things 3 et OmniFocus, qui ne tournent que sur les appareils d’Apple (OmniFocu
 | Listes partagées, tâches confiées à d’autres | ✗²² | ✓ | ✓ | ✓ | en partie²³ |
 | Des tâches standard sur un serveur que vous choisissez (CalDAV) ; logiciel libre | ✓ | ✗ | ✗²⁴ | ✗²⁵ | ✓ |
 | Des tâches chiffrées de bout en bout quand elles se synchronisent | en partie²⁶ | ✗²⁷ | ✗²⁷ | ? | en partie²⁸ |
+| Des étapes dans une tâche | ✓²⁹ | ✓³⁰ | ✓³¹ | ✓³² | ✓³³ |
+| Une tâche montre sa prochaine étape, pas toutes ses étapes | ✓³⁴ | ✗³⁵ | ?³⁶ | ✗³⁷ | ?³⁸ |
 
 1. Les « Suggested Tasks » rangent les tâches en quatre groupes où choisir : ajoutées récemment, reportées, en retard depuis longtemps, à venir.
 2. Les suggestions de « Ma journée », où choisir ; qu’une raison soit donnée n’est pas confirmé.
@@ -423,8 +425,20 @@ Things 3 et OmniFocus, qui ne tournent que sur les appareils d’Apple (OmniFocu
 26. Une liste gardée sur cet appareil voyage scellée entre vos appareils ; une liste sur votre serveur CalDAV y est gardée comme le veut la norme, envoyée par une connexion chiffrée mais lisible par qui gère le serveur.
 27. Chiffrées pendant le transport et au repos sur les serveurs de l’entreprise ; le chiffrement de bout en bout n’est pas dans ses pages sur la sécurité.
 28. Avec EteSync seulement.
+29. Sioul : des étapes dans un ordre à vous ; une étape peut se découper en étapes à elle.
+30. Todoist : des sous-tâches, sur quatre niveaux de retrait.
+31. TickTick : des sous-tâches, sur cinq niveaux, chacune avec ce qu’a une tâche ; de simples éléments à cocher dans la description aussi (son billet de décembre 2020).
+32. Microsoft To Do : des Étapes dans une tâche (son billet de juin 2018).
+33. Tasks.org : « infinite-depth subtasks ».
+34. Sioul : une tâche avec des étapes tient en une ligne, « prochaine étape : Se brosser les dents », et sa flèche montre le reste. Repliée, la ligne ne compte rien ; ouverte, elle dit combien d’étapes restent.
+35. Todoist : un nombre de sous-tâches, qui les ouvre toutes.
+36. TickTick : sa page d’aide sur les tâches à plusieurs niveaux n’a pas pu être lue ; un résumé de recherche dit que l’avancement se calcule d’après les éléments à cocher.
+37. Microsoft To Do : sous le nom, combien d’étapes il y a et combien sont faites (son billet de juin 2018).
+38. Tasks.org : son propre site ne nomme que les sous-tâches.
 
 Things 3 garde une date de début à part de l’échéance, n’a pas de points, et pas de dépendances : son propre conseil pour une tâche bloquée est une étiquette « Waiting ». OmniFocus a des projets séquentiels, où seule la première action est disponible et les suivantes attendent, des dates de report et prévues à part des échéances, et une synchronisation chiffrée de bout en bout ; les éléments en retard s’affichent en rouge.
+
+Things 3 a des listes à cocher dans une tâche, et des titres dans un projet. Rappels d’Apple permet des sous-tâches à chaque rappel, avec les Rappels iCloud. Google Tasks permet jusqu’à 2 000 sous-tâches par tâche ; une tâche répétée ne peut en avoir aucune. Nextcloud Tasks gère les sous-tâches. Aucune de ces pages ne décrit une tâche montrant sa prochaine étape à la place du reste.
 
 **Planifier votre journée**
 
@@ -470,8 +484,17 @@ Things 3 garde une date de début à part de l’échéance, n’a pas de points
 D’autres en font plus par endroits : les rappels selon le lieu, le partage et la répartition des tâches (Todoist, TickTick, Microsoft To Do) ; des tâches chiffrées de bout en bout entre les appareils (Tasks.org avec EteSync, OmniFocus) ; la pause de midi et les trajets protégés de Reclaim.ai dans des agendas partagés ; la limite de charge en heures de Sunsama ; les minuteurs visuels de Tiimo à chaque étape ; des applications sur chaque plateforme et de nombreuses intégrations (Todoist). Sioul prévient aussi, une fois, quand une date demandée ne tiendra pas, comme Motion et Reclaim 2.0 : la ligne sur le rouge et les comptes porte sur la couleur et le compte, pas sur cet avertissement.
 
 ??? info "Sources"
-    Toutes lues le 8 octobre 2026.
+    Lues le 8 octobre 2026, sauf les sources sur les étapes, indiquées.
 
+    - **Todoist, les sous-tâches**, lu le 6 novembre 2026 : <https://www.todoist.com/help/articles/introduction-to-sub-tasks-kMamDo>
+    - **TickTick, sa revue de 2020**, lu le 6 novembre 2026 : <https://blog.ticktick.com/2020/12/18/ticktick-feature-review-2020/>
+    - **TickTick, les tâches à plusieurs niveaux (un résumé de recherche)**, lu le 6 novembre 2026 : <https://help.ticktick.com/articles/7055782219767349248>
+    - **Microsoft To Do, les Étapes (2018)**, lu le 6 novembre 2026 : <https://techcommunity.microsoft.com/blog/to-doblog/introducing-list-sharing-and-steps-in-microsoft-to-do/200109>
+    - **Tasks.org**, lu le 6 novembre 2026 : <https://tasks.org/>
+    - **Things 3, ses fonctions et son guide**, lu le 6 novembre 2026 : <https://culturedcode.com/things/features/>, <https://culturedcode.com/things/guide/>
+    - **Rappels d’Apple, les sous-tâches**, lu le 6 novembre 2026 : <https://support.apple.com/en-us/102484>
+    - **Google Tasks, les sous-tâches**, lu le 6 novembre 2026 : <https://support.google.com/tasks/answer/7675772?hl=en>, <https://developers.google.com/workspace/tasks/reference/rest/v1/tasks/move>
+    - **Nextcloud Tasks**, lu le 6 novembre 2026 : <https://github.com/nextcloud/tasks>
     - **Todoist**, les articles de son centre d’aide sur les dates de début, les dates et heures, Karma, les créneaux, l’ajout rapide, la vue en tableau et les rappels selon le lieu, sa page sur le Pomodoro, la fiche du module Ganttify et ses offres : <https://www.todoist.com/help/articles/does-todoist-support-start-dates-qhqlgZhk>, <https://www.todoist.com/help/articles/introduction-to-dates-and-time-q7VobO>, <https://www.todoist.com/help/todoist/features/introduction-to-karma-OgWkWy>, <https://todoist.com/help/articles/time-blocking-in-todoist-d6Pf1uTpc>, <https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz>, <https://www.todoist.com/help/articles/use-the-board-layout-in-todoist-AiAVsyEI>, <https://www.todoist.com/productivity-methods/pomodoro-technique>, <https://www.todoist.com/help/articles/use-location-reminders-in-todoist-uGcwH2AJ6>, <https://www.todoist.com/integrations/apps/ganttify>, <https://www.todoist.com/help/account-and-billing/plans/todoist-plans-pricing-and-billing-faq-Vq2z0HWL6>
     - **TickTick**, son centre d’aide (ses 96 articles parcourus) et sa page des offres : <https://help.ticktick.com/articles/7401564165023727616>, <https://help.ticktick.com/articles/7055782010496745472>, <https://help.ticktick.com/articles/7503016104470511616>, <https://help.ticktick.com/articles/7055782381696843776>, <https://help.ticktick.com/articles/7082302534169133056>, <https://help.ticktick.com/articles/7056594711640801280>, <https://help.ticktick.com/articles/7055782395743567872>, <https://help.ticktick.com/articles/7209388126463066112>, <https://ticktick.com/upgrade>
     - **Microsoft To Do**, les pages d’aide de Microsoft sur « Ma journée », To Do dans Outlook, une tâche glissée dans le calendrier, la répartition dans les listes partagées, et la demande de rappels selon le lieu sur le forum de Microsoft : <https://support.microsoft.com/en-us/todo/my-day-and-suggestions>, <https://support.microsoft.com/en-us/outlook/calendar/manage-tasks-with-to-do-in-outlook>, <https://support.microsoft.com/en-us/outlook/calendar/drag-a-task-to-your-calendar-with-to-do-in-outlook>, <https://support.microsoft.com/en-us/todo/assign-tasks-in-shared-lists>, <https://support.microsoft.com/en-us/todo/welcome-to-microsoft-to-do>, <https://techcommunity.microsoft.com/discussions/to-doinsiders_android/feature-request-location-based-reminders/401454>

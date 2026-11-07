@@ -9,8 +9,8 @@ description: Health in Sioul - meals, rest and sleep kept free before any work a
 Health keeps your day's needs first. Your meals, rests and nights are set once and kept free: Sioul plans your work around them, and a day that differs is changed in a tap. Your medicines are reminded once and quietly, on the device you are using; a dose marked on one of your devices is known on the others, and when Sioul cannot know, it says so rather than "not taken". Nothing about food, weight or what was missed is asked or kept: no score, no streak, nothing turns red. Sioul keeps time and reminds you; it gives no medical advice and makes no health claim.
 
 <figure markdown="span">
-  [![The Health page: "Today, Monday 5 October" between two arrows, Day and Week, the settings' gear. On the left, the day's timeline: the night until 07:00, breakfast, lunch and dinner each with its time to get it ready, lighter, the night from 22:00; the day's events and planned steps faded in a lane of their own; a dot for each dose, filled when taken; a line at now. On the right, the same as a list: each meal with its times and "eating from…", a dose "Taken at 07:41", the next ones with Taken, dinner and the night with "15 min later" and a menu; then "Add a meal or a rest…". Under it, the medicines, each with its dose, its times and Edit, and the prescriptions.](../assets/screens/health.png){ loading=lazy }](../assets/screens/health.png "Open the picture at full size")
-  <figcaption>The day at a glance: its timeline and its list, one thing.</figcaption>
+  [![The Health page: "Today, Monday 5 October" between two arrows; "The week, in the agenda" and the settings' gear. The day as a list: each meal with its times and "eating from…", a dose "Taken at 07:41", the next ones with Taken, dinner and the night with "15 min later" and a menu; then "Add a meal or a rest…". Under it, the medicines, each with its dose, its times and Edit, and the prescriptions.](../assets/screens/health.png){ loading=lazy }](../assets/screens/health.png "Open the picture at full size")
+  <figcaption>The day at a glance, as a list.</figcaption>
 </figure>
 
 ## Protected by default {#what-is-protected}
