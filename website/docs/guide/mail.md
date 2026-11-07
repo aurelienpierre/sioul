@@ -324,7 +324,7 @@ More in [what the research says](../dev/research.md), findings 1, 21, 35, 37 and
 
 ## Compared with other apps {#compared-with-other-apps}
 
-As of October 2026, from each app's own documentation.
+As of October 2026, from each app's own documentation; the two rows on one list of all your addresses, as of November.
 
 ✓ documented · partly, with a note · ✗ not found in the app's own documentation (for Sioul: not built) · ? not confirmed · — not applicable.
 
@@ -348,6 +348,8 @@ Thunderbird is the free-software mail program for computers, with an Android app
     | Outlook.com, Hotmail and Microsoft 365 addresses | partly⁴⁹ | ✓ | partly⁵⁰ | ✓ | ✓ | ✗⁵¹ |
     | Topics you name, as quiet words on your mail, never a folder | ✓⁵² | partly⁵³ | partly⁵⁴ | partly⁵⁵ | partly⁵⁶ | ? |
     | Learns them from your mail, on your devices | ✓⁵⁷ | ✗ | ✗⁵⁴ | ✗⁵⁵ | partly⁵⁶ | ? |
+    | One list of all your addresses' mail, on a computer | ✓⁵⁸ | ✓⁵⁹ | partly⁶⁰ | partly⁶¹ | ✓⁶² | ✗⁶³ |
+    | The same list on a phone | ✓⁵⁸ | partly⁶⁴ | ✓⁶⁵ | ✓⁶⁶ | ?⁶⁷ | ✗⁶³ |
 
     1. Thunderbird: only through an add-on (DKIM Verifier); nothing on Android.
     2. Gmail: a question mark on a message that is not authenticated, and "Mailed by" and "Signed by" in its details, on a computer and on Android; not on an iPhone or iPad.
@@ -406,6 +408,18 @@ Thunderbird is the free-software mail program for computers, with an Android app
     55. Outlook: Focused and Other, sorted on Microsoft's servers; categories by hand, for Exchange accounts.
     56. Apple Mail: four fixed categories since iOS 18.2 (Primary, Transactions, Updates, Promotions), sorted on the device and corrected per sender; none you name.
     57. Sioul: learned once a week on the computer that trains, for each topic with 20 messages from 3 senders or more; every device, the phone included, then judges new mail with the same table.
+    58. Sioul: every address and what you sent, newest first, each message once ([All addresses](#all-addresses)).
+    59. Thunderbird: the Unified Folders mode, where the inboxes of all accounts come first, then drafts, sent and trash. The default mode is All Folders, so it has to be chosen.
+    60. Gmail: on the web, checking another account by POP takes no new users since the first quarter of 2026, and ends for the others in January 2027. "All inboxes" is documented for its phone apps.
+    61. Outlook: on a Mac, Inbox under All Accounts. Outlook on Windows and on the web were not checked.
+    62. Apple Mail on a Mac: the All Inboxes mailbox, added to Favorites.
+    63. Proton Mail: the apps switch between accounts' inboxes. To gather accounts in one inbox, the others are merged into a paid account and permanently deleted.
+    64. Thunderbird: one unified inbox on Android. The iOS app had no release date in the team's report of September 2025.
+    65. Gmail: "All inboxes" in the app, on Android, iPhone and iPad.
+    66. Outlook: one unified inbox in the apps for Android and iOS.
+    67. Apple Mail on an iPhone: not in the Apple page that could be read.
+
+    Spark offers one unified inbox for all accounts, sorted into personal mail, newsletters and notifications, with people at the top. Canary's is optional: one list, or one account at a time. K-9 Mail lists a unified inbox, and its site points to Thunderbird for Android as its future.
 
 === "Technical"
 
@@ -561,6 +575,20 @@ Thunderbird is the free-software mail program for computers, with an Android app
     - Proton, open source: <https://proton.me/community/open-source>, read 8 October 2026.
     - Proton Mail, apps: <https://proton.me/mail/download>, read 8 October 2026.
     - FairEmail, FAQ (sections 12, 92, 111, 163 and 181), README, PRIVACY and CHANGELOG: <https://github.com/M66B/FairEmail>, read 8 October 2026.
+    - Thunderbird, folder modes (its developers' documentation): <https://source-docs.thunderbird.net/en/latest/frontend/mail_display.html>, read 6 November 2026.
+    - Thunderbird on a phone: <https://www.thunderbird.net/en-US/mobile/>, read 6 November 2026.
+    - Thunderbird, mobile progress report of September 2025: <https://blog.thunderbird.net/2025/09/mobile-progress-report-july-august-2025/>, read 6 November 2026.
+    - K-9 Mail: <https://k9mail.app/>, read 6 November 2026.
+    - Gmail, all your mail in one place in the app: <https://support.google.com/mail/answer/6078445?hl=en&co=GENIE.Platform%3DAndroid>, read 6 November 2026.
+    - Gmail, the end of checking other accounts by POP: <https://support.google.com/mail/answer/16604719?hl=en>, read 6 November 2026.
+    - Outlook for Mac, the unified inbox: <https://support.microsoft.com/en-US/Outlook/unified-inbox-in-outlook-for-mac>, read 6 November 2026.
+    - Outlook for Android and iOS, the unified inbox (Czech edition): <https://support.microsoft.com/cs-cz/outlook/how-do-i-consolidate-unify-my-email-accounts-in-my-inbox>, read 6 November 2026.
+    - Apple Mail on a Mac, All Inboxes: <https://support.apple.com/guide/mail/switch-to-mail-mlhle2e8ce37/mac>, read 6 November 2026.
+    - Apple Mail on an iPhone, its categories: <https://support.apple.com/en-us/104971>, read 6 November 2026.
+    - Proton Mail, merging accounts: <https://proton.me/support/combine-accounts>, read 6 November 2026.
+    - Proton Mail, several accounts on Android (2019): <https://proton.me/blog/android-multi-account-support>, read 6 November 2026.
+    - Spark, its Smart Inbox: <https://sparkmailapp.com/features/smart_inbox>, read 6 November 2026.
+    - Canary Mail, its blog on several accounts: <https://canarymail.io/blog/best-email-app-multiple-accounts>, read 6 November 2026.
 
 ## For technical readers {#for-technical-readers}
 

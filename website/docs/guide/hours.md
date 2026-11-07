@@ -21,6 +21,7 @@ A source or a task is for **work**, for **your admin** (bills, letters, offices,
 |---|---|---|
 | A mail address | on its card in [Accounts](accounts.md#a-mail-address): **What this address is for** | work: an address you did not classify never reaches your evenings |
 | A budget | its form: **For** | your admin |
+| An agenda | Agenda ⚙ ▸ **Your agendas**: **For** | work, on an account you said is only for work; else your admin and leisure |
 | A site | its menu: **For** | by its type: secure mailboxes and client areas are admin; chats, social networks and dating are leisure; video calls and other sites are admin and leisure |
 | A task | its panel: **For** | by its tags and project: work's (a client's project, GitHub, the categories you call work), leisure's (joy, family, friends…), both admin and leisure for personal ones (health), else admin |
 
@@ -65,6 +66,7 @@ The status line says what now is, and until when: "Admin time until 19:00: offic
 - **Sites**: the sites for now are listed first; the others fold under "Other hours". Their notifications wait for their hours, real time and calls included, and none comes while you sleep.
 - **Tasks**: the task pages keep what fits, and the plan places each task in the hours meant for it: work in working hours, your admin in admin hours. Leisure has no hours: what is only for leisure takes no room in the plan and waits for none. The next step is never a call to an office that is closed now.
 - **Budgets**: by what each one is for.
+- **What a page shows**: Mail's [All addresses](mail.md#all-addresses), [Budgets](budgets.md#at-a-glance) and the [agenda's **Agendas**](agenda.md#several-agendas) show at first what now is for. Tick others and they show at once, until your hours change; **As the hours say** gives the hours' ticks back.
 
 ## Quiet time
 

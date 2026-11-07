@@ -91,3 +91,17 @@ Depuis le temps libre, **Garder ma fin habituelle** en fait une pause qui ne dé
 - Il n’envoie rien : ni message, ni appel, ni position, à personne.
 - Il ne vous surveille pas et ne peut pas savoir comment vous allez : rien ne lance une pause, sinon votre appui.
 - Ce n’est ni un outil médical ni un service d’urgence. En danger, appelez le numéro d’urgence de votre pays ; l’écran de la pause l’affiche.
+
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+- Le stress aigu rétrécit la mémoire de travail et la souplesse (Shields, Sazma & Yonelinas 2016), et une bonne part de ce qui est dit s’oublie aussitôt (Kessels 2003). Alors la pause se prépare à l’avance et tient en un appui : elle ne demande rien, ne montre rien de nouveau, et dit quelques phrases littérales.
+- Essayer de se détendre sous la charge augmente l’activation (Wegner, Broome & Blumberg 1997) : rien ne vous dit donc de vous calmer. Le débriefing en une séance n’a aidé personne (Rose et al. 2002) : rien ne demande donc ce qui s’est passé. Aucune étude n’a testé un bouton de pause.
+- Avoir la main sur son temps de travail améliore l’équilibre entre le travail et le reste de la vie (Nijp et al. 2012), et le beau temps n’a amélioré l’humeur que chez ceux qui ont passé plus d’une demi-heure dehors (Keller et al. 2005). Alors le temps libre tient en un appui, et la journée de travail peut finir plus tard d’autant, jamais jusque dans la préparation au sommeil.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 32 et 33, et dans les notes sur [la pause](https://sioul.aurelienpierre.com/dev/research/emergency-pause.html) et [le temps libre](https://sioul.aurelienpierre.com/dev/research/global-pause.html) (en anglais).
+
+## Comparé à d’autres applications {#compared-with-other-apps}
+
+Le mode Concentration d’iOS et le mode Sans distractions d’Android filtrent des personnes et des applications, selon un horaire ou pour un moment, et ne savent rien de votre plan de travail. Les Flexible Hours de Motion et le Replan de Structured replacent les tâches du jour dans les heures qui restent. Tiimo montre la journée en ligne du temps, pour les personnes neurodivergentes, avec un minuteur. Aucun n’a été trouvé qui mette le travail en pause et repousse la fin de la journée de travail de la durée de la pause. Aucune étude publiée sur l’effet de ces fonctions n’a été trouvée, pas plus que sur celle de Sioul.
+
+En octobre 2026, d’après les pages de chaque produit, certaines lues à travers d’autres guides ou avis ([la recherche, en anglais](https://sioul.aurelienpierre.com/dev/research/global-pause.html), §6.1).

@@ -169,7 +169,7 @@ Chaque notification vient une fois, jamais répétée. Ce que fait chaque type, 
 - **Les prises** : une notification par prise, dans la demi-heure qui suit son heure, avec **Prise**, à tout moment, sommeil compris, sauf si vous les retenez pendant le sommeil ou une pause ([plus bas](#doses)). Voir [La santé](health.md#reminders).
 - **Le réveil**, sur un téléphone : toujours ([La santé](health.md#meals-rest-and-sleep)).
 - **Les alarmes d’un événement**, à leur heure : tout de suite, et la nuit ou pendant le temps libre quand l’événement lui-même y tombe. Sur un téléphone, elles sonnent, dans un canal à elles qui passe les modes de Sioul.
-- **Les rappels avant un événement** : un quart d’heure avant lui et son temps pour se préparer et y aller, sauf si vous le changez ([L’agenda](agenda.md#reminders)) ; **les événements, le jour travaillé d’avant** : une demi-heure avant la fin du travail. Chaque appareil dit les siens.
+- **Les rappels avant un événement** : un quart d’heure avant lui et son temps pour se préparer et y aller, sauf si vous le changez ([L’agenda](agenda.md#reminders)) ; une sortie, avec un trajet avant elle ou une liste encore à cocher, est rappelée une fois à sa place : « Partir dans 15 minutes pour Médecin (14:00) » ; **les événements, le jour travaillé d’avant** : une demi-heure avant la fin du travail. Chaque appareil dit les siens.
 - **Les dates demandées, les attentes finies, les paiements, les papiers et contrats à renouveler** : une fois chacun, sur un ordinateur, pendant les moments éveillés ([Les paramètres](settings.md#reminders)).
 - **Les repas, les siestes et la nuit** : deux avis au plus pour chacun, chacun une fois ; aucun pendant une réunion, aucun pendant le sommeil, une pause ou le temps libre ([La santé](health.md#meals-rest-and-sleep)).
 - **La pause pour bouger**, toutes les 45 minutes sauf si vous le changez, pendant les moments éveillés ([La santé](health.md#moving)) ; **« Les heures de travail sont finies »**, une fois, à la fin de vos heures, jamais pendant le travail lui-même ([Les tâches](tasks.md#the-end-of-the-day)).
@@ -402,6 +402,7 @@ Sur le téléphone, dans la carte Ce qui vous joint maintenant, **Les laisser pa
 - Ce que votre propre filtre à indésirables a signalé ou déplacé, en attente dans **Retenu par votre filtre à indésirables** ([Le Porche](porch.md#spam-and-your-own-filter)), sur aucun appareil, ni sur l’écran d’accueil d’un téléphone.
 - Les courriels de vos comptes moins importants ; les infolettres et les listes de diffusion, sauf **Avec les infolettres** ; ce que vous envoyez vous-même ; les courriels déjà lus ailleurs ; les deux semaines de courriels qu’apporte une adresse quand vous l’ajoutez.
 - Le courriel d’un code, comme nouveau courriel : le code a sa propre notification.
+- Deux événements à la fois que le changement de quelqu’un d’autre a créés, et un compte qui ne tiendrait pas un paiement : le [Porche](porch.md#the-sections) dit chacun une fois, un conflit à un moment où son agenda peut vous joindre, un manque à toute heure. Un rappel avant le jour d’un manque est une autre affaire ([Réglages](settings.md#reminders)).
 - Sur un téléphone : les codes, et les rappels de dates, d’attentes, de paiements, de papiers et de contrats. Ils viennent sur un ordinateur.
 
 ## Ce qui passe quand même {#what-comes-through-anyway}
@@ -426,3 +427,11 @@ Sur un téléphone Android, le filtrage des appels est à part de « Ne pas d�
 - **Le ⚙ de la page Santé** : les avis des repas, des siestes et de la nuit, la pause pour bouger ([La santé](health.md)).
 - **Le ⚙ des tâches** : **Du temps pour vous** ([Les tâches](tasks.md#the-tasks-settings)).
 - **Les paramètres d’Android**, sur un téléphone : chacun des canaux de Sioul, son son compris : « Doses » et « Prises pendant une pause », « Alarmes des événements » et « Alarmes des événements pendant une pause », « Événements » (les rappels de Sioul avant eux), « Nouveaux courriels » et « Courriels des personnes qui passent toujours », « Réveil », « Minuteur de concentration », « Appareils à jour ». Un canal « pendant une pause » passe les modes de Sioul tant que vous ne l’y avez pas changé ; les conversations que vous laissez toujours passer, **Prioritaire** dans la page de chacune.
+
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+- Regrouper les notifications trois fois par jour a amélioré l’attention, l’humeur et le stress, tandis que les personnes qui n’en avaient aucune se sentaient plus anxieuses que les autres (Fitz et al. 2019). Alors ce qui peut attendre vient regroupé, à des moments que vous pouvez lire à l’avance, et ne disparaît pas.
+- Une notification laissée sans réponse coûte encore de l’attention (Stothart, Mitchum & Yehnert 2015). Alors chacune vient une fois, les courriels sans bruit, et aucune pastille ne les compte.
+- Les messages de travail le soir coûtent la soirée, et la seule attente de devoir regarder fait du mal, lu ou non (Butts, Becker & Boswell 2015 ; Becker et al. 2021). Alors le travail attend ses heures, et seuls ceux que vous laissez passer vous joignent le reste de la journée.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 1, 2 et 21, et dans [le modèle de l’attention (en anglais)](https://sioul.aurelienpierre.com/dev/attention.html). Ce que font les autres applications de courriel est dans [les tableaux du Porche](porch.md#compared-with-other-apps).

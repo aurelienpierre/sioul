@@ -94,7 +94,7 @@ QtObject {
             "invoice": "view-financial-account-cash",
             "contract": "document-sign",
             "paper": "view-certificate",
-            "letter": "mail-mark-unread",
+            "letter": "mail-read",
             "site": "sioul-web",
             "project": "folder-documents",
             "web": "insert-link",

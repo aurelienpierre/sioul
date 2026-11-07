@@ -28,7 +28,7 @@ SioulMenu {
         { kind: "note", words: "new-note", icon: "view-pim-notes" },
         { kind: "movement", words: "new-movement", icon: "view-financial-account-add" },
         { kind: "paper", words: "new-paper", icon: "document-new" },
-        { kind: "letter", words: "new-letter", icon: "mail-mark-unread" },
+        { kind: "letter", words: "new-letter", icon: "mail-read" },
         { kind: "time", words: "new-time", icon: "chronometer-start" },
         { kind: "project", words: "new-project", icon: "folder-new" },
         // One line on where you stopped, for when you are back.

@@ -135,7 +135,7 @@ La carte d’un prestataire de paiement dit comment ce qu’il reçoit arrive à
 
 Le solde de chaque compte est projeté jusqu’à sa prochaine entrée. Au premier paiement qu’il ne tiendrait pas au-dessus de son plancher, Sioul dit quoi verser, depuis quelle réserve, et d’ici quand, en comptant les jours que met cette réserve : « Assurance vie : demandez 590 € d’ici le jeudi 15 octobre ; il faut environ 10 jours, et le loyer part le 1er novembre. » Quand demander aujourd’hui est déjà trop tard, il le dit.
 
-## La veille bancaire {#the-bank-watch}
+## Ce que les mouvements ont trouvé {#the-bank-watch}
 
 Un prélèvement qui s’arrête ne le dit pas. Sioul compare les mouvements de votre banque aux paiements que vous attendez, et dit, en phrases, dans l’onglet **Budgets** :
 

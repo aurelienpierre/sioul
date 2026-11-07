@@ -21,6 +21,7 @@ Une source ou une tâche sert au **travail**, à **vos démarches** (factures, c
 |---|---|---|
 | Une adresse électronique | sur sa fiche dans [Comptes](accounts.md#a-mail-address) : **À quoi sert cette adresse** | le travail : une adresse que vous n’avez pas classée n’atteint jamais vos soirées |
 | Un budget | son formulaire : **Pour** | vos démarches |
+| Un agenda | Agenda ⚙ ▸ **Vos agendas** : **Pour** | le travail, sur un compte que vous avez dit réservé au travail ; sinon vos démarches et les loisirs |
 | Un site | son menu : **Pour** | selon son type : messageries sécurisées et espaces clients vont aux démarches ; discussions, réseaux sociaux et rencontres aux loisirs ; appels vidéo et autres sites aux démarches et aux loisirs |
 | Une tâche | son panneau : **Pour** | selon ses étiquettes et son projet : le travail (projet pour un client, GitHub, les catégories que vous appelez travail), les loisirs (joy, famille, amis…), démarches et loisirs à la fois pour les personnelles (santé), sinon les démarches |
 
@@ -65,6 +66,7 @@ La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : �
 - **Les sites** : ceux du moment présent viennent en premier ; les autres se replient sous « Autres heures ». Leurs notifications attendent leurs heures, temps réel et appels compris, et aucune ne vient pendant le sommeil.
 - **Les tâches** : les pages de tâches gardent ce qui convient, et le plan place chaque tâche dans les heures prévues pour elle : le travail aux heures de travail, vos démarches aux heures de démarches. Les loisirs n’ont pas d’heures : ce qui n’est que pour les loisirs ne prend pas de place dans le plan et n’attend rien. La prochaine étape n’est jamais un appel à un bureau fermé à ce moment.
 - **Les budgets** : selon ce à quoi chacun sert.
+- **Ce qu’une page montre** : [Toutes les adresses](mail.md#all-addresses) dans les courriels, [les budgets](budgets.md#at-a-glance) et [**Agendas** dans l’agenda](agenda.md#several-agendas) montrent d’abord ce à quoi sert le moment présent. Cochez-en d’autres, et ils se montrent aussitôt, jusqu’à ce que vos heures changent ; **Selon vos heures** rend les coches de vos heures.
 
 ## Le calme {#quiet-time}
 

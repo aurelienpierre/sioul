@@ -63,6 +63,11 @@ TestCase {
 
     // The mailbox's address marks (part 4): eight tints, each one apart, the
     // window's own text readable on each in both themes (4.5:1 at least).
+    // A paper letter is not an e-mail: each has its own icon, wherever things are listed.
+    function test_a_letter_does_not_look_like_a_mail() {
+        verify(theme.kindIcons.letter !== theme.kindIcons.mail)
+    }
+
     function test_the_address_marks_are_readable_in_both_themes() {
         for (const t of [lightTheme, darkTheme]) {
             compare(t.tints.length, 8)

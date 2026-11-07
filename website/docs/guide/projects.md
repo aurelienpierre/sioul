@@ -9,7 +9,7 @@ description: Projects in Sioul - any matter you follow, for a client or for your
 A project is any matter you follow: work for a client, whose time is billed, or one of your own, such as housing, health, a tax return or a trip. Its page gathers what belongs to it: its tasks, its events, its mail, its notes, the time you spent on it and its invoices, on one line of time, with what is coming first. As mail arrives, Sioul files it there by rules you give the project, after checking who sent it. The list of projects is one plain file in your own notes folder.
 
 <figure markdown="span">
-  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Calendar, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](../assets/screens/projects.png){ loading=lazy }](../assets/screens/projects.png "Open the picture at full size")
+  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Gantt, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](../assets/screens/projects.png){ loading=lazy }](../assets/screens/projects.png "Open the picture at full size")
   <figcaption>A project: what is coming, then what happened.</figcaption>
 </figure>
 

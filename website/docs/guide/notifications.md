@@ -169,7 +169,7 @@ Each notification comes once, never repeated. What each kind does, unless you ch
 - **Doses**: one notification per dose, within half an hour of its time, with **Taken**, at any time, sleep included, unless you hold them in sleep or a pause ([below](#doses)). See [Health](health.md#reminders).
 - **The alarm at waking**, on a phone: always ([Health](health.md#meals-rest-and-sleep)).
 - **An event's alarms**, at their time: at once, and in the night or in Free time when the event itself falls then. On a phone they ring, on a channel of their own that passes Sioul's modes.
-- **Reminders before an event**: a quarter of an hour before it and its time to get ready and get there, unless you change it ([Agenda](agenda.md#reminders)); **events, the working day before**: half an hour before work ends. Each device tells its own.
+- **Reminders before an event**: a quarter of an hour before it and its time to get ready and get there, unless you change it ([Agenda](agenda.md#reminders)); an outing, with a ride before it or a list still to tick, is reminded once in its place: "Leave in 15 minutes for Doctor (14:00)"; **events, the working day before**: half an hour before work ends. Each device tells its own.
 - **Dates asked, waits over, payments, papers and contracts to renew**: once each, on a computer, in waking times ([Settings](settings.md#reminders)).
 - **Meals, naps and the night**: two notices at most for each, each once; none during a meeting, none in sleep, a pause or Free time ([Health](health.md#meals-rest-and-sleep)).
 - **The pause to move**, every 45 minutes unless you change it, in waking times ([Health](health.md#moving)); **"Work hours are over"**, once, at the end of your hours, not in work time itself ([Tasks](tasks.md#the-end-of-the-day)).
@@ -402,6 +402,7 @@ On the phone, in the card What reaches you now, **Let them through then** on a h
 - What your own spam filter flagged or moved, waiting in **Caught by your own spam filter** ([The Porch](porch.md#spam-and-your-own-filter)), on any device, nor on a phone's home screen.
 - Mail to your less important accounts; newsletters and mailing lists, unless **Include newsletters**; what you send yourself; mail already read elsewhere; the two weeks of mail an address brings when you add it.
 - A code's message, as new mail: the code has its own notification.
+- Two events at once that someone else's change made, and an account that would not hold a payment: the [Porch](porch.md#the-sections) says each once, a clash at a time its agenda may reach you, a shortfall whatever the hour. A reminder before a shortfall's day is another matter ([Settings](settings.md#reminders)).
 - On a phone: codes, and the reminders of dates, waits, payments, papers and contracts. They come on a computer.
 
 ## What comes through anyway {#what-comes-through-anyway}
@@ -426,3 +427,11 @@ On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.
 - **Health ⚙**: the notices of meals, naps and the night, the pause to move ([Health](health.md)).
 - **Tasks ⚙**: **Time for you** ([Tasks](tasks.md#the-tasks-settings)).
 - **Android's settings**, on a phone: each of Sioul's channels, its sound included: "Doses" and "Doses during a pause", "An event's alarms" and "An event's alarms during a pause", "Events" (Sioul's reminders before them), "New mail" and "New mail from people always let through", "Waking", "Focus timer", "Devices in step". A channel "during a pause" passes Sioul's modes while you have not changed it there; the conversations you let through always, **Priority** in each one's page.
+
+## Why it works this way {#why-it-works-this-way}
+
+- Batching notifications three times a day improved attention, mood and stress, while people given none at all felt more anxious than controls (Fitz et al. 2019). So what can wait comes gathered, at times you can read in advance, and it does not vanish.
+- A notification left unanswered still costs attention (Stothart, Mitchum & Yehnert 2015). So each comes once, mail without a sound, and no badge counts them.
+- Work messages in the evening cost the evening, and the mere expectation of checking harms, read or not (Butts, Becker & Boswell 2015; Becker et al. 2021). So work waits for its hours, and only those you let through reach you in the rest of your day.
+
+More in [what the research says](../dev/research.md), findings 1, 2 and 21, and in [the attention model](../dev/attention.md). How other mail apps notify is in [the Porch's tables](porch.md#compared-with-other-apps).

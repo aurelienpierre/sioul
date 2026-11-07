@@ -234,11 +234,11 @@ On each address's card in Accounts, **Priority**: *More important*, *Normal* or 
 
 ## Compared with other apps {#compared-with-other-apps}
 
-As of October 2026, from each app's own documentation.
+As of October 2026, from each app's own documentation; the second table, as of November.
 
 ✓ documented; **partly**, with a note; ✗ not found in the app's own documentation (for Sioul: not built); ? not confirmed; — not applicable. Sioul's column was checked against its code.
 
-HEY holds the closest idea, its Screener and Imbox; Gmail, Outlook and Apple Mail sort mail into categories or tabs; Superhuman splits the inbox. Proton Mail, Thunderbird and FairEmail are compared on [the Mail page](mail.md#compared-with-other-apps): none of them holds a stranger's first message or shows mail by hours.
+HEY holds the closest idea on who may enter, its Screener and Imbox; Gmail, Outlook and Apple Mail sort mail into categories or tabs; Superhuman splits the inbox. Proton Mail, Thunderbird and FairEmail are compared on [the Mail page](mail.md#compared-with-other-apps): none of them holds a stranger's first message or shows mail by hours.
 
 | | Sioul | HEY | Gmail | Outlook | Apple Mail | Superhuman |
 |---|---|---|---|---|---|---|
@@ -301,6 +301,40 @@ HEY holds the closest idea, its Screener and Imbox; Gmail, Outlook and Apple Mai
 45. Gmail: other accounts in its phone apps; on the web, until January 2027.
 46. Superhuman: Gmail and Microsoft 365 accounts only.
 
+**Gathering mail, and when it comes**
+
+On when mail comes, SaneBox and Shortwave come closer than any tool in the first table, and go further than Sioul on some points. SaneBox's Digest sums up what waited on the days and times you choose, where Sioul's one notification says how many e-mails wait and names the first senders. Shortwave's delivery schedules hold any label's, sender's or list's mail until the times you set for it. No page read describes the whole view of your mail following your hours and each sender's list together, which is what the Porch does.
+
+| | Sioul | HEY | Gmail | Superhuman | SaneBox | Spark | Shortwave |
+|---|---|---|---|---|---|---|---|
+| Less urgent mail gathered apart from the rest | ✓¹ | ✓² | ✓³ | ✓⁴ | ✓⁵ | ✓⁶ | ✓⁷ |
+| Mail held back until times you choose | ✓⁸ | ✗ | ✗ | ✗ | partly⁹ | ✗ | ✓¹⁰ |
+| What waited summed up at times you choose | partly¹¹ | ✗ | partly¹² | ?¹³ | ✓¹⁴ | ✗ | ?¹⁵ |
+| Notifications by who wrote, and when they may reach you | ✓¹⁶ | partly¹⁷ | partly¹⁸ | partly¹⁹ | ?²⁰ | partly²¹ | partly²² |
+
+1. Sioul: lanes on the Porch; newsletters and notifications folded ([The lanes](#the-lanes)).
+2. HEY: for each sender, the Imbox, The Feed or the Paper Trail. The Feed holds newsletters, the Paper Trail receipts and confirmations.
+3. Gmail: five fixed categories.
+4. Superhuman: a split of your own for newsletters.
+5. SaneBox: moves less important mail into a folder, @SaneLater, on your own mail server.
+6. Spark: sorts into personal mail, newsletters and notifications, with people at the top.
+7. Shortwave: bundles, one line in the inbox per label, sender or mailing list.
+8. Sioul: outside your hours, the Porch says when it opens and shows nothing else of your mail ([When it opens](#when-it-opens)); the Mail page still lists it, by what each address is for.
+9. SaneBox: less important mail goes to a folder you can open at any time; only the Digest comes at set times.
+10. Shortwave: delivery schedules for any label, sender, mailing list or channel, at times you choose. Held mail stays on its Snoozed page and in search.
+11. Sioul: one notification when the time comes ("The Porch opens: three e-mails wait for you."), with the first senders and subjects, then the Porch itself ([New mail, told at its times](#new-mail-told-at-its-times)).
+12. Gmail: AI Inbox gives suggested to-dos and topics to catch up on, in beta, in the US and in English, on paid plans, from the Primary tab. You open it and refresh it; no schedule in its documentation.
+13. Superhuman: nothing of the kind in the pages read; its help centre refused the read that day.
+14. SaneBox: the Digest, a summary of its folders, on the days and times you choose.
+15. Shortwave: its pricing page names AI summaries of the inbox; whether they come on a schedule is not confirmed.
+16. Sioul: one quiet notification per batch, at the times each sender's list allows.
+17. HEY: notifications off by default, on for the people or threads you choose; no schedule in its documentation.
+18. Gmail: all mail, high priority only, or none; per label on Android. With categories on, new-mail notifications cover Primary only.
+19. Superhuman: high priority only, or chosen splits on a phone; no schedule in its documentation.
+20. SaneBox "doesn't send or receive emails"; the pages read do not speak of phone notifications.
+21. Spark: only priority senders notify; strangers and automated mail are muted. No schedule on that page.
+22. Shortwave: push notifications set by label or sender; whether a delivery schedule also holds them is not stated.
+
 ??? info "Sources"
     Superhuman's help centre was read through its own public interface, since its pages refused automated reading that day.
 
@@ -344,6 +378,21 @@ HEY holds the closest idea, its Screener and Imbox; Gmail, Outlook and Apple Mai
     - Superhuman, managing accounts: <https://help.superhuman.com/hc/en-us/articles/46005777934733-Managing-Accounts>, read 8 October 2026.
     - Superhuman, keeping your emails out of spam (filtering is the provider's): <https://help.superhuman.com/hc/en-us/articles/46005520093453-Keeping-Your-Emails-Out-of-Spam>, read 8 October 2026.
     - Superhuman, download (platforms): <https://help.superhuman.com/hc/en-us/articles/46005778798605-Download-Superhuman-Mail>, read 8 October 2026.
+    - HEY, The Feed: <https://www.hey.com/features/the-feed/>, read 6 November 2026.
+    - HEY, the Paper Trail: <https://www.hey.com/features/paper-trail/>, read 6 November 2026.
+    - Gmail, categories: <https://support.google.com/mail/answer/3094499?hl=en>, read 6 November 2026.
+    - Gmail, AI Inbox: <https://support.google.com/mail/answer/16845247>, read 6 November 2026.
+    - Superhuman, splitting your inbox (2021): <https://blog.superhuman.com/how-to-split-your-inbox-in-superhuman/>, read 6 November 2026.
+    - Superhuman, stopping unnecessary email (2025): <https://blog.superhuman.com/how-to-stop-unnecessary-email/>, read 6 November 2026.
+    - SaneBox, how it works: <https://www.sanebox.com/help/155-how-does-sanebox-work>, read 6 November 2026.
+    - SaneBox, the Digest: <https://www.sanebox.com/help/170-daily-digest-how-to-guide>, read 6 November 2026.
+    - SaneBox, when the Digest comes: <https://www.sanebox.com/help/176-daily-digest-do-you-fear-missing-important-emails>, read 6 November 2026.
+    - Spark, its Smart Inbox: <https://sparkmailapp.com/features/smart_inbox>, read 6 November 2026.
+    - Spark, its smart notifications: <https://sparkmailapp.com/features/smart_notifications>, read 6 November 2026.
+    - Shortwave, its settings and delivery schedules: <https://www.shortwave.com/docs/guides/customize-your-shortwave-settings/>, read 6 November 2026.
+    - Shortwave, batched delivery (2022, updated 2023): <https://www.shortwave.com/blog/batched-delivery/>, read 6 November 2026.
+    - Shortwave, bundles: <https://www.shortwave.com/docs/guides/bundles/>, read 6 November 2026.
+    - Shortwave, pricing: <https://www.shortwave.com/pricing/>, read 6 November 2026.
 
 ## For technical readers {#for-technical-readers}
 

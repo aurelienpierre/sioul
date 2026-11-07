@@ -66,3 +66,19 @@ Les appels d’une personne depuis un mois, sonnés ou refusés, sont sur sa fic
 ## Ce que Sioul ne fait jamais {#what-sioul-never-does}
 
 Il ne décroche jamais, n’enregistre jamais un appel, n’écoute jamais, et n’envoie aucun numéro nulle part : aucun serveur, aucune recherche. La liste des appels filtrés par votre téléphone ne voyage que vers vos propres appareils, scellée, tant que la partie **Appels** du partage est activée. Les SMS sont retenus comme les messages des autres applications, selon qui écrit, quand Sioul a l’accès aux notifications d’Android ([Les notifications des autres applications, sur un téléphone](notifications.md#other-apps-on-a-phone)) ; les numéros bloqués d’Android arrêtent les appels et les SMS d’un numéro dans toutes les applications.
+
+## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
+
+- 78 % des adultes autistes évitent le téléphone quand ils le peuvent, et 61 % évitent aussi la messagerie vocale (Doherty et al. 2022) ; les personnes anxieuses devant les démarches le trouvent le canal le plus dur (Holkar, Evans & Langston 2018). Alors un appel peut attendre son moment, et le Porche dit ensuite qui a appelé, avec **Répondre par SMS**.
+- Ne pas savoir ce qui vient pèse : l’intolérance à l’incertitude et l’anxiété vont ensemble dans l’autisme (Jenkinson, Milne & Thompson 2020). Alors les règles sont les vôtres, et chaque appel qui n’a pas sonné est dit.
+- Aucune étude ne teste le filtrage des appels lui-même : ceci repose sur ce que les personnes disent préférer, et sur un mécanisme plausible.
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constat 34, et dans [le filtrage des appels (en anglais)](https://sioul.aurelienpierre.com/dev/research/call-screening.html).
+
+## Comparé à d’autres applications {#compared-with-other-apps}
+
+Certaines vont plus loin que Sioul ne le peut. Le filtrage d’appels de Google, sur les téléphones Pixel, répond à l’appelant d’une voix ; en France seulement quand vous touchez « Screen call », et il garde le son du filtrage tant que vous ne changez pas ce réglage. Live Voicemail, d’Apple, écrit sur l’iPhone ce que dit l’appelant, et iOS 26 peut demander à un inconnu pourquoi il appelle avant que le téléphone sonne. Android réserve le fait de répondre d’une voix à l’application de téléphone du système : Sioul envoie donc un appel vers la messagerie et n’y répond jamais.
+
+Truecaller et CallApp nomment les appelants d’après des annuaires nourris par les carnets d’adresses de leurs utilisateurs, ce que Sioul ne fait jamais : il n’envoie aucun numéro nulle part. Exodus Privacy trouve 30 traqueurs dans la version de Truecaller sur le magasin d’applications, 24 dans celle de CallApp et 3 dans celle de Hiya ; ses rapports trouvent le code d’un traqueur, sans prouver qu’il tourne.
+
+En octobre 2026, d’après la documentation de chaque application et les rapports d’Exodus Privacy ([la recherche, en anglais](https://sioul.aurelienpierre.com/dev/research/call-screening.html), §4.4 et §5.2).

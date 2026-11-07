@@ -60,9 +60,9 @@
     <file>sioul/16/mail-forward.svg</file>
     <file>sioul/16/mail-mark-junk.svg</file>
     <file>sioul/16/mail-mark-notjunk.svg</file>
-    <file>sioul/16/mail-mark-unread.svg</file>
     <file>sioul/16/mail-message-new.svg</file>
     <file>sioul/16/mail-message.svg</file>
+    <file>sioul/16/mail-read.svg</file>
     <file>sioul/16/mail-replied.svg</file>
     <file>sioul/16/mail-reply-all.svg</file>
     <file>sioul/16/mail-reply-sender.svg</file>
@@ -187,9 +187,9 @@
     <file>sioul/22/mail-forward.svg</file>
     <file>sioul/22/mail-mark-junk.svg</file>
     <file>sioul/22/mail-mark-notjunk.svg</file>
-    <file>sioul/22/mail-mark-unread.svg</file>
     <file>sioul/22/mail-message-new.svg</file>
     <file>sioul/22/mail-message.svg</file>
+    <file>sioul/22/mail-read.svg</file>
     <file>sioul/22/mail-replied.svg</file>
     <file>sioul/22/mail-reply-all.svg</file>
     <file>sioul/22/mail-reply-sender.svg</file>
@@ -289,9 +289,9 @@
     <file>sioul/32/mail-forward.svg</file>
     <file>sioul/32/mail-mark-junk.svg</file>
     <file>sioul/32/mail-mark-notjunk.svg</file>
-    <file>sioul/32/mail-mark-unread.svg</file>
     <file>sioul/32/mail-message-new.svg</file>
     <file>sioul/32/mail-message.svg</file>
+    <file>sioul/32/mail-read.svg</file>
     <file>sioul/32/mail-replied.svg</file>
     <file>sioul/32/mail-reply-all.svg</file>
     <file>sioul/32/mail-reply-sender.svg</file>
@@ -408,9 +408,9 @@
     <file>sioul-dark/16/mail-forward.svg</file>
     <file>sioul-dark/16/mail-mark-junk.svg</file>
     <file>sioul-dark/16/mail-mark-notjunk.svg</file>
-    <file>sioul-dark/16/mail-mark-unread.svg</file>
     <file>sioul-dark/16/mail-message-new.svg</file>
     <file>sioul-dark/16/mail-message.svg</file>
+    <file>sioul-dark/16/mail-read.svg</file>
     <file>sioul-dark/16/mail-replied.svg</file>
     <file>sioul-dark/16/mail-reply-all.svg</file>
     <file>sioul-dark/16/mail-reply-sender.svg</file>
@@ -535,9 +535,9 @@
     <file>sioul-dark/22/mail-forward.svg</file>
     <file>sioul-dark/22/mail-mark-junk.svg</file>
     <file>sioul-dark/22/mail-mark-notjunk.svg</file>
-    <file>sioul-dark/22/mail-mark-unread.svg</file>
     <file>sioul-dark/22/mail-message-new.svg</file>
     <file>sioul-dark/22/mail-message.svg</file>
+    <file>sioul-dark/22/mail-read.svg</file>
     <file>sioul-dark/22/mail-replied.svg</file>
     <file>sioul-dark/22/mail-reply-all.svg</file>
     <file>sioul-dark/22/mail-reply-sender.svg</file>
@@ -637,9 +637,9 @@
     <file>sioul-dark/32/mail-forward.svg</file>
     <file>sioul-dark/32/mail-mark-junk.svg</file>
     <file>sioul-dark/32/mail-mark-notjunk.svg</file>
-    <file>sioul-dark/32/mail-mark-unread.svg</file>
     <file>sioul-dark/32/mail-message-new.svg</file>
     <file>sioul-dark/32/mail-message.svg</file>
+    <file>sioul-dark/32/mail-read.svg</file>
     <file>sioul-dark/32/mail-replied.svg</file>
     <file>sioul-dark/32/mail-reply-all.svg</file>
     <file>sioul-dark/32/mail-reply-sender.svg</file>

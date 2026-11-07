@@ -140,14 +140,14 @@ Under **What travels from this device**, each part has its switch, says what it 
 
 | Part | What it carries |
 |---|---|
-| Settings and accounts | your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment, do-not-disturb's switch |
+| Settings and accounts | your settings and accounts (never their passwords), with what each agenda is; the ties between things; [your people](contacts.md#household), once every other device's Sioul knows them; where the Porch was closed, mail you said is no payment, do-not-disturb's switch; your word on mail's topics; a [security key's](accounts.md#security-key) public part, never a private key nor its PIN |
 | Senders | who may reach you (the lists: known, blocked, safe, neutral, restricted, with addresses, numbers and cards), who may reach you during do-not-disturb, what the shield read, others' public keys |
 | Calls | the calls your phones screened, declined or let ring, a month of them, and those you dismissed: so that a computer's Porch lists what your phone declined ([Calls](calls.md#on-your-computers)) |
 | Messages from your phone | the messages your phone's notifications brought, for the apps you chose there (its texts first), a week of them, and those you dismissed or marked read: so that a computer's Porch shows them; off until you turn it on, on the phone and on each computer that should show them ([What reaches you](notifications.md#messages-on-your-computers)) |
 | Texts | your phone's texts, the whole history with its multimedia messages' media, read on the phone and kept as an archive that only grows; the texts written on a computer for the phone to send, and what became of each; sealed, and sealed again on each device; off until you turn it on, on the phone and on each computer that should read or write them ([Texts](texts.md)) |
 | Spam filter | the table your own spam filter's training makes on a computer, so that every device judges mail alike, and what you said is spam or not on each device; never the mail it learned from, nor its words ([Settings](settings.md#your-own-spam-filter)) |
 | Health | medicines, prescriptions and the doses taken |
-| Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day |
+| Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day, the time you keep around meetings with others |
 | Drafts and invoices | mail being written, invoices made |
 | Projects and money | from your notes folder: projects and their mail routes, budgets, bank accounts and movements, contracts |
 | Lists kept here | calendars and contacts kept on this device only |

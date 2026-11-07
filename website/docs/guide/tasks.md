@@ -371,7 +371,7 @@ More in [what the research says](../dev/research.md), findings 6 to 23.
 
 ## Compared with other apps {#compared-with-other-apps}
 
-As of October 2026, from each app's own documentation.
+As of October 2026, from each app's own documentation; the two rows on a task's steps, as of November.
 
 ✓ documented; **partly**, with a note; ✗ not found in the app's own documentation (for Sioul: not built); ? not confirmed; — not applicable. Sioul's column was checked against its code.
 
@@ -394,6 +394,8 @@ Things 3 and OmniFocus, which run on Apple's devices only (OmniFocus also on the
 | Shared lists, tasks given to others | ✗²² | ✓ | ✓ | ✓ | partly²³ |
 | Standard tasks on a server you choose (CalDAV); free software | ✓ | ✗ | ✗²⁴ | ✗²⁵ | ✓ |
 | Tasks encrypted end to end when they sync | partly²⁶ | ✗²⁷ | ✗²⁷ | ? | partly²⁸ |
+| Steps inside a task | ✓²⁹ | ✓³⁰ | ✓³¹ | ✓³² | ✓³³ |
+| A task shows its next step, not all its steps | ✓³⁴ | ✗³⁵ | ?³⁶ | ✗³⁷ | ?³⁸ |
 
 1. "Suggested Tasks" sorts tasks into four groups to pick from: recently added, postponed, long overdue, upcoming.
 2. My Day's suggestions, to pick from; whether a reason is shown is not confirmed.
@@ -423,8 +425,20 @@ Things 3 and OmniFocus, which run on Apple's devices only (OmniFocus also on the
 26. A list kept on this device travels sealed between your devices; a list on your CalDAV server is stored there as the standard has it, sent over an encrypted connection but readable by whoever runs the server.
 27. Encrypted in transit and at rest on the company's servers; end-to-end encryption is not in its security pages.
 28. With EteSync only.
+29. Sioul: steps in an order of your own; a step can be broken down into steps of its own.
+30. Todoist: sub-tasks, in four indent levels.
+31. TickTick: subtasks, in five levels, each with what a task has; simple check items in the description too (its post of December 2020).
+32. Microsoft To Do: Steps inside a to-do (its post of June 2018).
+33. Tasks.org: "infinite-depth subtasks".
+34. Sioul: a task with steps is one row, "next: Brush teeth", and its arrow shows the rest. Folded, the row counts nothing; opened, it says how many steps are left.
+35. Todoist: a count of sub-tasks, which opens them all.
+36. TickTick: its help page on multilevel tasks could not be read; a search summary of it says progress is computed from check items.
+37. Microsoft To Do: under the name, how many steps there are and how many are done (its post of June 2018).
+38. Tasks.org: its own site names subtasks only.
 
 Things 3 keeps a start date apart from the deadline and has no points, and no dependencies: its own tip for a blocked to-do is a "Waiting" tag. OmniFocus has sequential projects, where only the first action is available and the next ones wait, defer and planned dates apart from due dates, and sync encrypted end to end; overdue items show in red.
+
+Things 3 has checklists inside a to-do, and headings inside a project. Apple Reminders lets every reminder have subtasks, with iCloud Reminders. Google Tasks allows up to 2,000 subtasks per task; a repeating task can have none. Nextcloud Tasks supports subtasks. None of these pages describes a task showing its next step in place of the rest.
 
 **Planning your day**
 
@@ -470,8 +484,17 @@ Things 3 keeps a start date apart from the deadline and has no points, and no de
 Others do more in places: reminders at a place, sharing and assigning (Todoist, TickTick, Microsoft To Do); tasks encrypted end to end on their way between devices (Tasks.org with EteSync, OmniFocus); Reclaim.ai's protected lunch and travel time in shared calendars; Sunsama's workload limit in hours; Tiimo's visual timers on every step; apps on every platform and many integrations (Todoist). Sioul also warns once when a date asked will not hold, as Motion and Reclaim 2.0 do: the row on red and counting is about colour and counting, not about that warning.
 
 ??? info "Sources"
-    All read on 8 October 2026.
+    Read on 8 October 2026, but for the steps' sources, marked.
 
+    - **Todoist, sub-tasks**, read 6 November 2026: <https://www.todoist.com/help/articles/introduction-to-sub-tasks-kMamDo>
+    - **TickTick, its review of 2020**, read 6 November 2026: <https://blog.ticktick.com/2020/12/18/ticktick-feature-review-2020/>
+    - **TickTick, multilevel tasks (a search summary)**, read 6 November 2026: <https://help.ticktick.com/articles/7055782219767349248>
+    - **Microsoft To Do, Steps (2018)**, read 6 November 2026: <https://techcommunity.microsoft.com/blog/to-doblog/introducing-list-sharing-and-steps-in-microsoft-to-do/200109>
+    - **Tasks.org**, read 6 November 2026: <https://tasks.org/>
+    - **Things 3, its features and guide**, read 6 November 2026: <https://culturedcode.com/things/features/>, <https://culturedcode.com/things/guide/>
+    - **Apple Reminders, subtasks**, read 6 November 2026: <https://support.apple.com/en-us/102484>
+    - **Google Tasks, subtasks**, read 6 November 2026: <https://support.google.com/tasks/answer/7675772?hl=en>, <https://developers.google.com/workspace/tasks/reference/rest/v1/tasks/move>
+    - **Nextcloud Tasks**, read 6 November 2026: <https://github.com/nextcloud/tasks>
     - **Todoist**, help centre articles on start dates, dates and times, Karma, time blocking, quick add, the board layout and location reminders, its Pomodoro page, the Ganttify add-on's listing and its plans: <https://www.todoist.com/help/articles/does-todoist-support-start-dates-qhqlgZhk>, <https://www.todoist.com/help/articles/introduction-to-dates-and-time-q7VobO>, <https://www.todoist.com/help/todoist/features/introduction-to-karma-OgWkWy>, <https://todoist.com/help/articles/time-blocking-in-todoist-d6Pf1uTpc>, <https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz>, <https://www.todoist.com/help/articles/use-the-board-layout-in-todoist-AiAVsyEI>, <https://www.todoist.com/productivity-methods/pomodoro-technique>, <https://www.todoist.com/help/articles/use-location-reminders-in-todoist-uGcwH2AJ6>, <https://www.todoist.com/integrations/apps/ganttify>, <https://www.todoist.com/help/account-and-billing/plans/todoist-plans-pricing-and-billing-faq-Vq2z0HWL6>
     - **TickTick**, its help centre (all 96 articles searched) and its upgrade page: <https://help.ticktick.com/articles/7401564165023727616>, <https://help.ticktick.com/articles/7055782010496745472>, <https://help.ticktick.com/articles/7503016104470511616>, <https://help.ticktick.com/articles/7055782381696843776>, <https://help.ticktick.com/articles/7082302534169133056>, <https://help.ticktick.com/articles/7056594711640801280>, <https://help.ticktick.com/articles/7055782395743567872>, <https://help.ticktick.com/articles/7209388126463066112>, <https://ticktick.com/upgrade>
     - **Microsoft To Do**, Microsoft's support pages on My Day, To Do in Outlook, dragging a task to the calendar, assigning in shared lists, and the request for location reminders on Microsoft's own forum: <https://support.microsoft.com/en-us/todo/my-day-and-suggestions>, <https://support.microsoft.com/en-us/outlook/calendar/manage-tasks-with-to-do-in-outlook>, <https://support.microsoft.com/en-us/outlook/calendar/drag-a-task-to-your-calendar-with-to-do-in-outlook>, <https://support.microsoft.com/en-us/todo/assign-tasks-in-shared-lists>, <https://support.microsoft.com/en-us/todo/welcome-to-microsoft-to-do>, <https://techcommunity.microsoft.com/discussions/to-doinsiders_android/feature-request-location-based-reminders/401454>

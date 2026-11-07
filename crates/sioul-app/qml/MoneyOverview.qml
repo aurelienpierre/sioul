@@ -70,15 +70,20 @@ ScrollView {
                 color: overview.theme.text
             }
             // Budgets by area, as Mail's: as the hours say, until you tick others.
-            AreaFilter {
-                objectName: "budgetAreas"
+            // Not made on a phone, whose own filter is under the title.
+            Loader {
                 visible: overview.view !== null && !!overview.view.filter && !overview.window.compact
-                sioul: overview.sioul
-                theme: overview.theme
-                shown: overview.view ? overview.view.filter : null
-                help: overview.sioul.text("budgets-filter-help")
-                onTicked: areas => overview.sioul.tickBudgetAreas(areas)
-                onAsHours: overview.sioul.budgetAreasAsHours()
+                active: !overview.window.compact
+
+                sourceComponent: AreaFilter {
+                    objectName: "budgetAreas"
+                    sioul: overview.sioul
+                    theme: overview.theme
+                    shown: overview.view ? overview.view.filter : null
+                    help: overview.sioul.text("budgets-filter-help")
+                    onTicked: areas => overview.sioul.tickBudgetAreas(areas)
+                    onAsHours: overview.sioul.budgetAreasAsHours()
+                }
             }
             Button {
                 text: overview.window.compact ? "" : overview.sioul.text("budget-new")
@@ -213,33 +218,37 @@ ScrollView {
             wrapMode: Text.Wrap
             color: overview.theme.text
         }
-        Flow {
-            visible: overview.asking !== null
+        Loader {
+            visible: active
+            active: overview.asking !== null
             Layout.fillWidth: true
-            spacing: 8
 
-            Label {
-                width: Math.min(implicitWidth, parent.width)
-                text: overview.asking ? overview.sioul.textArgs("moved-ask", JSON.stringify({ payee: overview.asking.payee, budget: overview.asking.title })) : ""
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: overview.theme.text
-            }
-            Button {
-                text: overview.sioul.text("moved-ask-yes")
-                onClicked: {
-                    const a = overview.asking
-                    overview.asking = null
-                    overview.said = overview.sioul.decidePayee(a.payee, a.budget, a.way, true)
+            sourceComponent: Flow {
+                spacing: 8
+
+                Label {
+                    width: Math.min(implicitWidth, parent.width)
+                    text: overview.asking ? overview.sioul.textArgs("moved-ask", JSON.stringify({ payee: overview.asking.payee, budget: overview.asking.title })) : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: overview.theme.text
                 }
-            }
-            Button {
-                flat: true
-                text: overview.sioul.text("moved-ask-no")
-                onClicked: {
-                    const a = overview.asking
-                    overview.asking = null
-                    overview.said = overview.sioul.decidePayee(a.payee, a.budget, a.way, false)
+                Button {
+                    text: overview.sioul.text("moved-ask-yes")
+                    onClicked: {
+                        const a = overview.asking
+                        overview.asking = null
+                        overview.said = overview.sioul.decidePayee(a.payee, a.budget, a.way, true)
+                    }
+                }
+                Button {
+                    flat: true
+                    text: overview.sioul.text("moved-ask-no")
+                    onClicked: {
+                        const a = overview.asking
+                        overview.asking = null
+                        overview.said = overview.sioul.decidePayee(a.payee, a.budget, a.way, false)
+                    }
                 }
             }
         }

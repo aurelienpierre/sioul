@@ -9,7 +9,7 @@ Freelancers, consultants, the self-employed: you sell your time. Usually that ta
 In Sioul it is one loop, in one window. The client's mail comes to their project. The work is counted while you do it. The invoice is made from what was counted, and waits in your budget until it is paid.
 
 <figure markdown="span">
-  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Calendar, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](../assets/screens/projects.png){ loading=lazy }](../assets/screens/projects.png "Open the picture at full size")
+  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Gantt, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](../assets/screens/projects.png){ loading=lazy }](../assets/screens/projects.png "Open the picture at full size")
   <figcaption>A client's project: its tasks, its time, its mail, its invoices, on one line of time.</figcaption>
 </figure>
 
@@ -17,7 +17,7 @@ In Sioul it is one loop, in one window. The client's mail comes to their project
 
 1. **A project per client.** **New ▾ ▸ A project**, then **For a client: its time is billed at an hourly rate**: who it is for, what an hour costs, and the budget where its money is expected. When **For** names one of your contacts (their name, or their organisation), the invoice takes the contact's postal address. **Link to…**, at the end of the project, ties the client's contact to it, with whatever else belongs there: a note, an event, a site. [Projects](projects.md#making-a-project)
 2. **Their mail comes by itself.** Give the project the client's domain or addresses, words of a subject, or of an attachment's name ("quote"): the messages that match are filed with it as they arrive, each with the reason it came. Replies follow their conversation. Sioul checks who sent each message first: forged mail is never filed with a client's project, even when its address looks like theirs. [Mail that comes here by itself](projects.md#mail-that-comes-here-by-itself)
-3. **The work fits in your working hours.** The project's tasks, as a board, a list or a calendar; the one next step, placed in the hours you keep for work. [Tasks](tasks.md)
+3. **The work fits in your working hours.** The project's tasks, as a board, a list or a Gantt chart; the one next step, placed in the hours you keep for work. [Tasks](tasks.md)
 4. **Time counts while you work.** The minutes of a focus session go to its task, and to the task's project. A meeting, a call, work done away from the timer: **Note time**, `1h30`. A task can be left off the bill. [Where time comes from](time.md#where-time-comes-from)
 5. **What is left to bill stays in view**: for each project, in hours and in money, on the Time page and beside the project. [The Time page](time.md#the-time-page)
 6. **The invoice, from that time.** **Make the invoice**: one line per task, at the project's rate; a number that follows the last one and is never given twice; the time it bills marked as billed, so that the next invoice leaves it out; a PDF, ready to send. [Invoices](time.md#invoices)
@@ -55,6 +55,13 @@ Outside your working hours, client projects and the Time page rest: "Work projec
 - Invoices are for hourly work, without VAT added to their totals. Quotes, fixed-price lines, expenses and VAT amounts are not made yet.
 - **« EI » after your name** is not added for you: an entrepreneur individuel's name must come with « EI » or « entrepreneur individuel » (service-public.gouv.fr, sheet F31808). Write it right after your name in Settings ▸ Invoices.
 - **Electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Sioul makes PDF invoices only, for now ([Time and invoices](time.md#not-there-yet)).
+
+## Why it works this way {#why-it-works-this-way}
+
+- People who work for themselves declare and pay their own taxes, where an employer does it for employees (Milanez & Bratta 2019), and compliance costs weigh most on the smallest businesses (Evans 2003). People with a disability work for themselves more often: 9.1 % of those employed in the US in 2025, against 5.9 % of others (U.S. Bureau of Labor Statistics 2026). So Sioul carries a small business's admin too, from the client's first mail to the paid invoice.
+- With irregular income, what matters is how long the money lasts: monthly income varied by 39 % over a year of household diaries (Hannagan & Morduch 2015). So a work budget can set aside a share of each payment for taxes as it arrives, and reserves count in weeks of your own spending.
+
+More in [what the research says](../dev/research.md), findings 31 and 44.
 
 ## Compared with other apps {#compared-with-other-apps}
 

@@ -135,7 +135,7 @@ A processor's card says how what it receives reaches your bank: "What you receiv
 
 Each account is carried to its next income. On the first payment it would not hold above its floor, Sioul says what to move, from which reserve, and by when, counting the days that reserve takes: "Savings: ask for €590 by Thursday 15 October; it takes about ten days, and the rent leaves on 1 November." When asking today is already too late, it says so.
 
-## The bank watch {#the-bank-watch}
+## What the movements found {#the-bank-watch}
 
 A debit that stops does not say so. Sioul holds your bank's movements against the payments you expect, and says, in sentences, on the **Budgets** tab:
 

@@ -54,16 +54,19 @@ Sioul serves agents through the Model Context Protocol (MCP), with the command `
 
 **Work and school Microsoft accounts** are kept from agents whatever their projects, until you open them (**Settings ▸ AI agents**, **Work and school Microsoft accounts**, shown once you have one): Microsoft's terms let the organisation, not you alone, allow its mail to be used beyond syncing. Open them only if your organisation allows it.
 
+**Your people** are closed to agents one by one: **Open to AI agents**, on a person's page in [Contacts](contacts.md#household), opens that person. Of someone closed, an agent sees nothing: their papers and letters, and the events and tasks of their agendas, are left out and counted, never named. Whatever the switch, it never gets a date of birth, a contact card, someone else's health papers, or a child's health and dentist appointments.
+
 ## What an agent can read {#what-an-agent-can-read}
 
 - **The Porch**, lane by lane, in your hours only, unless you ask it to open it. It is told that a code came, never the code.
 - **Your mail**: messages found by their subject, sender or text (received, sent or spam when it asks); one message whole, with who wrote, whether it is genuine or forged and why, and its attachments' names.
 - **All addresses**, as the mailbox lists them: every address's mail newest first, two weeks at a time or from where it stopped, each message once with the addresses that hold it, whether it is unread, answered or forged; never a file. It is told first which addresses rest now and until when, so that it does not press you with work mail in your evening. Spam only if its tools are on; mail from blocked senders and what you keep closed, left out and only counted. It marks nothing read.
 - **Your tasks**: the next step and why, the day laid out, every open task in the plan's order, whatever the hour (in your evening it is told first that they wait for their own hours).
-- **Your agenda**, with the steps the plan gives each of the next four weeks' days, your **contacts**, your **budgets** (each verdict, the reserves, what the money watch noticed), your **notes**, your **projects**.
+- **Your agenda**, with the steps the plan gives each of the next four weeks' days, your **contacts**, your **budgets** (each account until its next income, each budget's verdict, what is coming, the reserves), your **notes**, your **projects**.
 - **What anything is tied to**, both ways, and anything found by a few words of its title.
 - **Your phone's messages**, as your phone shares them with your computers: who wrote, when, in which app, and the words; a code never, only that one came. And **the calls** your phone screened: who called, when, whether it rang.
 - **Your papers** (what each is, until when it holds, when to renew it), **contracts** (when each renews, the notice it needs), and **paper letters** (who sent each, what it is, the date asked).
+- **[Your people](contacts.md#household)** you opened to agents: each one's name, who they are to you, and what is tied to them: their papers, letters, agendas, budgets and the sites you open for them.
 - **Time and invoices**: time noted per project, what is billable and not billed yet, the invoices issued and whether they are paid.
 - **Your texts**, only if you allow them (**Settings ▸ AI agents ▸ Texts**, off at first, as texts carry other people's words): it reads and searches them, codes hidden, and can write a text as a draft that waits in the Texts page, in its conversation, under **Drafted by an AI agent, not sent**; **Use it** puts its words in the box, and you send it yourself, or you delete it. It never sends a text, and never writes to a group. To open your texts, Sioul reads its sharing key from this computer's keyring, and only then; the key never reaches the agent.
 - **Reminders** coming, and **what now is for**: work, your admin, leisure, a meal, sleep, a pause or Free time, do-not-disturb, and what reaches you now, so that it respects your hours.
@@ -104,6 +107,13 @@ Agents and scripts can also use the command line, as you can: `sioul tasks now`,
 ## The other AI in Sioul {#the-other-ai-in-sioul}
 
 One more feature uses an AI, and only for an address you protect against harassment, when you allow it: **Let the AI read it first** sends Anthropic's Claude, with your own key, each message in that address's inbox, to say its tone and topic. It receives each message's subject and the first 4,000 characters of its text, **unmasked**: unlike what an agent is given, nothing is hidden there, so a code, a password or an account number in such a message reaches Anthropic too. Once you turn it on, the messages already in that inbox are sent as well, from anyone. It has its own switch, on that address, and belongs to no project: opening or closing projects to agents does not change it. See [the Porch](porch.md#a-public-address-protected).
+
+## Why it works this way {#why-it-works-this-way}
+
+- Autistic workers preferred an AI to a person for advice on workplace communication, while a job coach found some of that advice questionable (Jang et al. 2024). So an agent drafts and explains; you read, and you send.
+- The law's shelter for what a household keeps is read narrowly: publishing to anyone is not a household matter (*Lindqvist*, 2003), nor a home camera filming the street (*Ryneš*, 2014). That an agent's provider stands outside the household is Sioul's own reading of these texts. So each person is closed to agents until you open them, and someone else's health papers never reach an agent.
+
+More in [what the research says](../dev/research.md), findings 12 and 57.
 
 ## Not there yet {#not-there-yet}
 
