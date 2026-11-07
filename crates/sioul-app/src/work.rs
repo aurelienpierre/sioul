@@ -1496,7 +1496,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     let today = sioul_core::zone::now().date();
     let soon = today.checked_add(jiff::Span::new().days(21)).unwrap_or(today);
     let budget = match task.due_date() {
-        Some(date) if task.status.is_open() && date >= today && date <= soon && desk.plan.items.get(uid).is_some_and(|p| !p.optional) => desk.budget_line(date),
+        // A date a tie wrote, its time passed, counts for nothing (`Task::tie_passed`).
+        Some(date) if task.status.is_open() && date >= today && date <= soon && !task.tie_passed(sioul_core::zone::now().timestamp().as_second(), &sioul_core::zone::current()) && desk.plan.items.get(uid).is_some_and(|p| !p.optional) => desk.budget_line(date),
         _ => String::new(),
     };
     let proposed = sioul_core::capacity::FeltIndex::of(&loaded.tasks).proposal(task);
@@ -1508,13 +1509,20 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     let appointment = match sioul_core::pairs::appointment_of(task) {
         Some(uid) => match loaded.events.iter().find(|e| e.uid == uid).cloned().or_else(|| sioul_core::pairs::switched_off_events(&zone).into_iter().find(|e| e.uid == uid)) {
             Some(event) => {
-                // Its next time, as the plan read it (its margins and your own time around it), else its first.
-                let now = sioul_core::zone::now().timestamp().as_second();
-                let time = desk.read.iter().filter(|o| o.uid == uid && o.end > now).min_by_key(|o| o.start).cloned().unwrap_or_else(|| sioul_core::agenda::Occurrence { key: event.key.clone(), uid: uid.clone(), summary: event.summary.clone(), start: event.start, end: event.start, cancelled: event.cancelled, ..Default::default() });
+                // Its next time, as the plan read it (its margins and your own time around it), else its first;
+                // tied to one time of it, that time.
+                let moment = sioul_core::zone::now();
+                let now = moment.timestamp().as_second();
+                let ours = |o: &&sioul_core::agenda::Occurrence| o.uid == uid && if task.occurrence.is_empty() { o.end > now } else { o.rid == task.occurrence };
+                let time = desk.read.iter().filter(ours).min_by_key(|o| o.start).cloned().unwrap_or_else(|| sioul_core::agenda::Occurrence { key: event.key.clone(), uid: uid.clone(), summary: event.summary.clone(), start: event.start, end: event.start, cancelled: event.cancelled, rid: task.occurrence.clone(), ..Default::default() });
                 let legs = sioul_core::anchors::legs_seen_in(&uid, &desk.read);
                 let mut view = serde_json::to_value(sioul_core::pairs::appointment_view(&time, &event.links, &loaded.tasks, &legs, None, tr(), &zone)).unwrap_or_default();
                 if event.start <= 0 {
                     view["when"] = serde_json::Value::String(String::new());
+                }
+                // One time of a repeating event: "Before: …", "Was before: …", and the way on (`pairs::turn_line`).
+                if let Some(line) = std::fs::read_to_string(&event.key).ok().and_then(|text| sioul_core::pairs::turn_line(task, &text, tr(), &moment)) {
+                    view["turn"] = serde_json::to_value(line).unwrap_or_default();
                 }
                 view
             }
@@ -1710,6 +1718,10 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
     let read: Option<TaskEdit> = serde_json::from_str::<serde_json::Value>(edit).ok().and_then(|v| v.get("read").cloned()).and_then(|r| serde_json::from_value(r).ok());
     let result = serde_json::from_str::<TaskEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
         if uid.is_empty() {
+            // A date asked its start would make refused, said as the form says its other errors.
+            if let Some(word) = tasks::dates_refusal(&edit.start, &edit.due) {
+                return Err(tr().text(word, None));
+            }
             return create(qt, shared, &edit, list);
         }
         // Notes its list would cut: said, nothing written (the field keeps what was typed).
@@ -1721,10 +1733,17 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
         change(qt, shared, uid, |text| {
             let zone = sioul_core::zone::current();
             // Over the file as it is now: the fields the form changed since it read the task, the rest as the file has them (§5.2).
-            let edit = match (&read, tasks::task_of_text(text, &zone)) {
-                (Some(read), Some(now)) => TaskEdit::of(&now).changed_over(read, &edit),
+            let was = tasks::task_of_text(text, &zone);
+            let edit = match (&read, &was) {
+                (Some(read), Some(now)) => TaskEdit::of(now).changed_over(read, &edit),
                 _ => edit.clone(),
             };
+            // Its dates changed, a date asked its start would make refused: said, nothing written.
+            if was.as_ref().is_none_or(|w| w.start != edit.start || w.due != edit.due)
+                && let Some(word) = tasks::dates_refusal(&edit.start, &edit.due)
+            {
+                return Err(tr().text(word, None));
+            }
             tasks::apply(text, &edit, &zone, &sioul_core::zone::now())
         })?;
         write_gaps(qt, shared, uid, &edit);
@@ -2585,15 +2604,59 @@ struct Found {
     key: String,
     /// Already tied to the thing open.
     linked: bool,
+    /// Which time of a repeating event (`links::World::search_events`), "" otherwise.
+    rid: String,
+    /// That time as a screen reader says it: "This one: Tue 10 Nov".
+    turn: String,
 }
 
-/// Things to tie `from` to: matching `query`, of `kind` ("" for all), as JSON.
+/// How many next times of a repeating event the task form's field offers.
+const TURNS_OFFERED: usize = 3;
+
+/// Each calendar, by its folder: its agenda's name, or None for one whose events
+/// are not to be found by their titles (a mirror of busy blocks; an agenda for
+/// availability only, whose titles you did not ask to see).
+fn agenda_names(config: &sioul_core::config::Config) -> BTreeMap<PathBuf, Option<String>> {
+    vdir::collections(Kind::Calendars)
+        .iter()
+        .map(|c| {
+            let agenda = sioul_core::agendas::agenda_of(c, config);
+            let hidden = sioul_core::agendas::is_mirror(config, &c.account, &c.id) || (agenda.busy() && !agenda.titles);
+            // A person's agenda says whose it is.
+            let name = if agenda.person.is_empty() || agenda.person == agenda.name { agenda.name } else { format!("{} · {}", agenda.name, agenda.person) };
+            (c.dir.clone(), (!hidden).then_some(name))
+        })
+        .collect()
+}
+
+/// Events found (`links::World::found`), each saying its agenda (`agenda_names`), those
+/// whose titles are not to be found left out.
+fn with_agendas(found: &mut Vec<links::Related>, names: &BTreeMap<PathBuf, Option<String>>) {
+    found.retain_mut(|r| {
+        if r.kind != LinkKind::Event {
+            return true;
+        }
+        match Path::new(&r.key).parent().and_then(|dir| names.get(dir)) {
+            Some(Some(name)) => {
+                r.detail = name.clone();
+                true
+            }
+            Some(None) => false,
+            None => true,
+        }
+    });
+}
+
+/// Things to tie `from` to: matching `query`, of `kind` ("" for all; "occurrence": events,
+/// a repeating one by its next times, for a task to come before), as JSON. Each event says
+/// its agenda, a person's too.
 pub(crate) fn search_things(shared: &Shared, query: &str, kind: &str, from: &str) -> String {
     let loaded = loaded(shared);
     let world = loaded.world();
+    let turns = kind == "occurrence";
     let kind = match kind {
         "task" => Some(LinkKind::Task),
-        "event" => Some(LinkKind::Event),
+        "event" | "occurrence" => Some(LinkKind::Event),
         "mail" => Some(LinkKind::Mail),
         "note" => Some(LinkKind::Note),
         "contact" => Some(LinkKind::Contact),
@@ -2603,10 +2666,24 @@ pub(crate) fn search_things(shared: &Shared, query: &str, kind: &str, from: &str
         _ => None,
     };
     let linked: BTreeSet<String> = world.related(from).into_iter().map(|r| r.uri).collect();
-    let found = world.search(query, kind, from, 40);
+    let mut found = if turns { world.search_events(query, from, 40, TURNS_OFFERED) } else { world.search(query, kind, from, 40) };
+    if kind.is_none() || kind == Some(LinkKind::Event) {
+        with_agendas(&mut found, &agenda_names(&load_config()));
+    }
+    let zone = sioul_core::zone::current();
+    let this_one = |r: &links::Related| -> String {
+        if r.rid.is_empty() {
+            return String::new();
+        }
+        let Some(day) = r.when.and_then(|at| Timestamp::from_second(at).ok()).map(|t| t.to_zoned(zone.clone()).date()) else { return String::new() };
+        say("pair-this-one", &[("day", tr().day_short(day))])
+    };
+    let turn_of: Vec<String> = found.iter().map(this_one).collect();
+    let rids: Vec<String> = found.iter().map(|r| r.rid.clone()).collect();
     let rows: Vec<Found> = taskview::related_views(tr(), &found)
         .into_iter()
-        .map(|r| Found { linked: linked.contains(&r.uri), uri: r.uri, kind: r.kind, title: r.title, detail: r.detail, when: r.when, key: r.key })
+        .zip(rids.into_iter().zip(turn_of))
+        .map(|(r, (rid, turn))| Found { linked: linked.contains(&r.uri), uri: r.uri, kind: r.kind, title: r.title, detail: r.detail, when: r.when, key: r.key, rid, turn })
         .collect();
     crate::backend::json(&rows)
 }
@@ -2971,6 +3048,37 @@ mod tests {
     /// Another day's meals move past a pinned block where it is now: a plan
     /// older than a write (the block moved since) never lends its pins
     /// (review of 3a2fbd4, later 10).
+    /// The task form's field: every agenda's events, a repeating one by its next times, each row
+    /// its agenda; an agenda for availability alone keeps its titles out, unless you asked to see them.
+    #[test]
+    fn the_field_says_each_row_s_agenda() {
+        sioul_core::config::stand_ins_only();
+        let create = |name: &str| sioul_core::vdir::create(sioul_core::vdir::Kind::Calendars, sioul_core::vdir::LOCAL, name, None, &["VEVENT"]).unwrap();
+        let (here, theirs) = (create("Field here"), create("Field theirs"));
+        let event = |uid: &str, title: &str, rule: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261001T100000Z\r\nDTSTART:20200105T100000Z\r\nDTEND:20200105T110000Z\r\n{rule}SUMMARY:{title}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        std::fs::write(here.dir.join("series.ics"), event("field-series", "Field routine", "RRULE:FREQ=DAILY;INTERVAL=2\r\n")).unwrap();
+        std::fs::write(theirs.dir.join("one.ics"), event("field-one", "Field routine at the desk", "")).unwrap();
+        let shared = Shared::default();
+        let rows = |text: String| -> Vec<serde_json::Value> { serde_json::from_str(&text).unwrap() };
+        let found = rows(search_things(&shared, "field routine", "occurrence", ""));
+        assert_eq!(found.len(), 4, "{found:?}");
+        assert!(found[..3].iter().all(|r| r["uri"] == "sioul:event/field-series" && r["detail"] == "Field here" && r["rid"].as_str().is_some_and(|rid| !rid.is_empty()) && r["turn"].as_str().is_some_and(|t| !t.is_empty())), "{found:?}");
+        assert_eq!((found[3]["detail"].as_str(), found[3]["rid"].as_str()), (Some("Field theirs"), Some("")));
+        // Link to…: the event once, by its next time.
+        let plain = rows(search_things(&shared, "field routine", "event", ""));
+        assert_eq!(plain.len(), 2, "{plain:?}");
+        assert_eq!((plain[0]["uri"].as_str(), plain[0]["rid"].as_str()), (Some("sioul:event/field-series"), Some("")));
+        // For its availability alone: left out, its title showing only by your word.
+        let mut config = sioul_core::config::Config::default();
+        let place = sioul_core::agendas::place(&theirs);
+        config.agenda.calendars.insert(place.clone(), sioul_core::agendas::Said { access: Some("availability".into()), ..Default::default() });
+        let mut found = vec![links::Related { uri: "sioul:event/field-one".into(), kind: LinkKind::Event, title: "Field routine at the desk".into(), detail: String::new(), when: None, key: theirs.dir.join("one.ics").display().to_string(), how: String::new(), found: true, program: false, rid: String::new() }];
+        with_agendas(&mut found, &agenda_names(&config));
+        assert!(found.is_empty(), "its title kept out");
+        let _ = std::fs::remove_dir_all(&here.dir);
+        let _ = std::fs::remove_dir_all(&theirs.dir);
+    }
+
     #[test]
     fn another_day_is_held_where_its_blocks_are_now() {
         sioul_core::config::stand_ins_only();

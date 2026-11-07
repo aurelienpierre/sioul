@@ -1300,7 +1300,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "ties": grabber.tiesSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2955,12 +2955,106 @@ SioulWindow {
                 const read = JSON.parse(sioul.task(grabber.pairTask) || "{}")
                 console.warn("pair: " + what + ": event " + (event ? sioul.eventPairing(event.key) : "not shown") + " · task " + JSON.stringify(read.appointment || null) + " due " + (read.edit ? read.edit.due : ""))
             }
+            // A task before one time of a repeating event, and a date asked's hour (docs/tasks.md, "One
+            // time of a repeating event", "A date asked and its hour"): a series begun a week ago made,
+            // a task's form, its field's rows, a time tied, the task's line and the card of that time.
+            property string tiesTask: ""
+            function tiesFind(item, name) {
+                if (!item)
+                    return null
+                if (item.objectName === name)
+                    return item
+                for (const kid of item.children || []) {
+                    const found = grabber.tiesFind(kid, name)
+                    if (found)
+                        return found
+                }
+                return item.contentItem && item.contentItem !== item ? grabber.tiesFind(item.contentItem, name) : null
+            }
+            readonly property var tiesSteps: [
+                () => {
+                    const two = n => (n < 10 ? "0" : "") + n
+                    const first = new Date(Date.now() - 7 * 86400000)
+                    const day = first.getFullYear() + "-" + two(first.getMonth() + 1) + "-" + two(first.getDate())
+                    console.warn("ties: event: " + sioul.saveEvent("", JSON.stringify({ title: "Morning routine", start: day + "T11:00", end: day + "T11:30", repeat: "daily", every: 2 }), ""))
+                    const blank = JSON.parse(sioul.newTaskForm("", "", 0, ""))
+                    const made = JSON.parse(sioul.saveTask("", JSON.stringify(Object.assign({}, blank.edit, { title: "Bring the keys" })), ""))
+                    grabber.tiesTask = made.uid || ""
+                    console.warn("ties: task: " + JSON.stringify(made))
+                },
+                () => {},
+                () => {},
+                () => tasksPage.open(grabber.tiesTask),
+                () => {},
+                () => {
+                    tasksPage.panel.editing = true
+                    tasksPage.panel.moreShown = true
+                },
+                () => {},
+                () => {
+                    const field = grabber.tiesFind(tasksPage.panel, "taskAttach")
+                    console.warn("ties: field " + (field ? field.visible : "none"))
+                    field.text = "Morning"
+                    field.textEdited()
+                    console.warn("ties: rows: " + JSON.stringify(field.matches.map(r => [r.title, r.when, r.detail, r.rid])))
+                },
+                () => {},
+                () => frame.Overlay.overlay.parent.grabToImage(result => result.saveToFile(grabber.folder + "/ties-rows.png")),
+                () => {},
+                () => {
+                    const field = grabber.tiesFind(tasksPage.panel, "taskAttach")
+                    const row = field.matches[1]
+                    console.warn("ties: attach: " + (sioul.attachToEvent(grabber.tiesTask, row.key, row.rid) || "done"))
+                    field.clear()
+                },
+                () => {},
+                () => {},
+                () => tasksPage.panel.reload(),
+                () => {
+                    const read = JSON.parse(sioul.task(grabber.tiesTask) || "{}")
+                    console.warn("ties: read: " + JSON.stringify(read.appointment ? read.appointment.turn : null) + " due " + read.edit.due)
+                },
+                () => grabber.save("ties-task"),
+                () => {
+                    const read = JSON.parse(sioul.task(grabber.tiesTask))
+                    const shown = new Date(read.edit.due + ":00")
+                    console.warn("ties: pairing: " + sioul.eventPairing(read.appointment.key))
+                    console.warn("ties: that time's card: " + JSON.stringify(JSON.parse(sioul.appointmentView(read.appointment.key, shown.getTime() / 1000)).to_do_before))
+                    // Another task, before a time passed: its line, and the one button.
+                    const blank = JSON.parse(sioul.newTaskForm("", "", 0, ""))
+                    const made = JSON.parse(sioul.saveTask("", JSON.stringify(Object.assign({}, blank.edit, { title: "Bring the chairs" })), ""))
+                    const two = n => (n < 10 ? "0" : "") + n
+                    const rid = read.appointment.rid
+                    const back = new Date(Date.UTC(+rid.slice(0, 4), +rid.slice(4, 6) - 1, +rid.slice(6, 8) - 6, +rid.slice(9, 11), +rid.slice(11, 13)))
+                    const passed = back.getUTCFullYear() + two(back.getUTCMonth() + 1) + two(back.getUTCDate()) + "T" + two(back.getUTCHours()) + two(back.getUTCMinutes()) + "00Z"
+                    console.warn("ties: a time passed " + passed + ": " + (sioul.attachToEvent(made.uid, read.appointment.key, passed) || "done"))
+                    grabber.tiesTask = made.uid
+                },
+                () => {},
+                () => {},
+                () => tasksPage.open(grabber.tiesTask),
+                () => {},
+                () => tasksPage.panel.editing = false,
+                () => tasksPage.panel.reload(),
+                () => console.warn("ties: read: " + JSON.stringify(JSON.parse(sioul.task(grabber.tiesTask)).appointment.turn)),
+                () => grabber.save("ties-passed"),
+                () => {
+                    const next = grabber.tiesFind(tasksPage.panel, "taskNextOne")
+                    console.warn("ties: next one: " + (next ? next.visible + " " + next.text : "none"))
+                    next.clicked()
+                },
+                () => {},
+                () => {},
+                () => console.warn("ties: read: " + JSON.stringify(JSON.parse(sioul.task(grabber.tiesTask)).appointment.turn) + " due " + JSON.parse(sioul.task(grabber.tiesTask)).edit.due),
+                () => grabber.save("ties-next"),
+                () => window.close()
+            ]
             readonly property var pairSteps: [
                 () => window.page = 1,
                 () => {},
                 () => {
                     const event = grabber.eventNamed("demo-event-doctor")
-                    const made = event ? JSON.parse(sioul.stepsForEvent(event.key) || "{}") : { error: "not shown" }
+                    const made = event ? JSON.parse(sioul.stepsForEvent(event.key, "") || "{}") : { error: "not shown" }
                     grabber.pairTask = made.uid || ""
                     console.warn("pair: made: " + JSON.stringify(made))
                 },
@@ -2974,7 +3068,7 @@ SioulWindow {
                 () => grabber.pairSaid("untied"),
                 () => {
                     const event = grabber.eventNamed("demo-event-doctor")
-                    console.warn("pair: attach: " + (event ? sioul.attachToEvent(grabber.pairTask, event.key) || "done" : "not shown"))
+                    console.warn("pair: attach: " + (event ? sioul.attachToEvent(grabber.pairTask, event.key, "") || "done" : "not shown"))
                 },
                 () => {},
                 () => grabber.pairSaid("tied again"),

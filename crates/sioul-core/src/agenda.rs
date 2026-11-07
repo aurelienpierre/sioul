@@ -89,6 +89,9 @@ pub struct Occurrence {
     /// Its reminder before, as it says it (`reminders::REMIND`): "" as usual,
     /// "NONE", "15"; a changed occurrence's own, else its series'.
     pub remind: String,
+    /// Which time of its series it is (`Turn::rid`), for a repeating event alone; "" otherwise.
+    #[serde(skip)]
+    pub rid: String,
     /// A leg's anchor to its appointment (`anchors`), read with its file; none for any other event.
     #[serde(skip)]
     pub anchor: Option<crate::anchors::Anchor>,
@@ -556,6 +559,7 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
     let clock = Some(clock_of_text(&text, zone)).filter(|c| *c != crate::zone::name_of(zone, Timestamp::now()) && !crate::appointments::block_of(&text, "")).unwrap_or_default();
     let Some(ical) = parse(&for_expansion(&from_window(&text, from))) else { return Vec::new() };
     let expanded = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT);
+    let changed = changed_rids(&ical, &text, zone);
     let mut found = Vec::new();
     for event in expanded.events {
         let Some(component) = ical.components.get(event.comp_id as usize) else { continue };
@@ -639,12 +643,155 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
                 ..Occurrence::default()
             }
         };
-        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, stands_for: stands_for.clone(), opaque, ..occurrence });
+        let rid = if component.is_recurrent_or_override() { changed.get(&event.comp_id).cloned().unwrap_or_else(|| rid_of_start(start, all_day, zone)) } else { String::new() };
+        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, stands_for: stands_for.clone(), opaque, rid, ..occurrence });
     }
     // Your own time around a meeting, kept in your own file, wins over the
     // meeting's lines (decision 18): every reader expands through here.
     crate::own_time::apply(&mut found, &crate::own_time::current());
     found
+}
+
+/// Occurrences looked at for the times of one repeating event (`turns`): asked
+/// again as you type in a search, for each event that matches, and expansion
+/// starts just before the stretch asked for (`from_window`).
+const TURNS_LOOKED_AT: usize = 5_000;
+
+/// One time of a repeating event, named as a task's tie names it
+/// (`pairs::OCCURRENCE`, docs/tasks.md, "One time of a repeating event").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Turn {
+    /// Its RECURRENCE-ID in one form, whatever its file writes: its first
+    /// start in UTC ("20261110T100000Z"), or its day ("20261110") for a whole
+    /// day. It stays when the time is moved (RFC 5545 §3.8.4.4), so a tie
+    /// follows a time moved, and says nothing any more once the series is
+    /// timed otherwise.
+    pub rid: String,
+    /// Unix seconds, where it is now; a time moved (an override) says its new one.
+    pub start: i64,
+    pub end: i64,
+    pub all_day: bool,
+    pub cancelled: bool,
+    /// That time's own title (an override may have one).
+    pub title: String,
+}
+
+/// The form `Turn::rid` has for a time of a series starting at `start`, unchanged.
+pub fn rid_of_start(start: i64, all_day: bool, zone: &TimeZone) -> String {
+    if !all_day {
+        return crate::moves::utc(start);
+    }
+    Timestamp::from_second(start).map(|t| t.to_zoned(zone.clone()).strftime("%Y%m%d").to_string()).unwrap_or_default()
+}
+
+/// The form `Turn::rid` has for a `RECURRENCE-ID` line, as a file writes it.
+fn rid_of_line(line: &str, zone: &TimeZone) -> Option<String> {
+    let value = lines::value(line).trim();
+    if lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("DATE")) || value.len() == 8 {
+        return Date::strptime("%Y%m%d", value.get(..8)?).ok().map(|d| d.strftime("%Y%m%d").to_string());
+    }
+    let civil = DateTime::strptime("%Y%m%dT%H%M%S", value.trim_end_matches(['Z', 'z'])).ok()?;
+    let source = if value.ends_with(['Z', 'z']) { TimeZone::UTC } else { lines::param(line, "TZID").and_then(|z| TimeZone::get(z.trim_start_matches('/')).ok()).unwrap_or_else(|| zone.clone()) };
+    civil.to_zoned(source).ok().map(|z| crate::moves::utc(z.timestamp().as_second()))
+}
+
+/// The RECURRENCE-ID of each changed time in `text`, by its component's place
+/// in `ical` (calcard keeps the VEVENTs in the text's order, `occurrence_at`).
+fn changed_rids(ical: &ICalendar, text: &str, zone: &TimeZone) -> BTreeMap<u32, String> {
+    if !text.contains("RECURRENCE-ID") {
+        return BTreeMap::new();
+    }
+    let source = lines::unfold(text);
+    let places = ical.components.iter().enumerate().filter(|(_, c)| c.component_type == ICalendarComponentType::VEvent).map(|(i, _)| i as u32);
+    places
+        .zip(event_ranges(&source))
+        .filter_map(|(place, range)| {
+            let mut nested = 0usize;
+            let line = source[range.start + 1..range.end.saturating_sub(1)].iter().find(|l| match lines::name(l).as_str() {
+                "BEGIN" => {
+                    nested += 1;
+                    false
+                }
+                "END" => {
+                    nested = nested.saturating_sub(1);
+                    false
+                }
+                "RECURRENCE-ID" => nested == 0,
+                _ => false,
+            })?;
+            Some((place, rid_of_line(line, zone)?))
+        })
+        .collect()
+}
+
+/// The times of a repeating event's file between `from` and `to` (Unix
+/// seconds), by start: its changed times (overrides) where they are now, those
+/// left out (EXDATE) gone, those cancelled said so. Each is named by its
+/// RECURRENCE-ID (`Turn::rid`). Expanded from just before `from`, as the agenda
+/// is (`from_window`). The file is left as it is.
+pub fn turns(text: &str, from: i64, to: i64, zone: &TimeZone) -> Vec<Turn> {
+    let Some(ical) = parse(&for_expansion(&from_window(text, from))) else { return Vec::new() };
+    let changed = changed_rids(&ical, text, zone);
+    let mut found: Vec<Turn> = ical
+        .expand_dates(calcard_zone(zone), TURNS_LOOKED_AT)
+        .events
+        .into_iter()
+        .filter_map(|event| {
+            let component = ical.components.get(event.comp_id as usize).filter(|c| c.component_type == ICalendarComponentType::VEvent)?;
+            let start = event.start.timestamp();
+            let end = match event.end {
+                TimeOrDelta::Time(end) => end.timestamp(),
+                TimeOrDelta::Delta(delta) => start + delta.num_seconds(),
+            };
+            let all_day = is_all_day(component);
+            let end = if end > start { end } else if all_day { start + 86_400 } else { start };
+            if end <= from || start >= to {
+                return None;
+            }
+            let rid = changed.get(&event.comp_id).cloned().unwrap_or_else(|| rid_of_start(start, all_day, zone));
+            let cancelled = text_of(component, &ICalendarProperty::Status).eq_ignore_ascii_case("CANCELLED");
+            Some(Turn { rid, start, end, all_day, cancelled, title: lines::unescape(&text_of(component, &ICalendarProperty::Summary)) })
+        })
+        .collect();
+    found.sort_by_key(|t| t.start);
+    found
+}
+
+/// When a time named `rid` (`Turn::rid`) first was, Unix seconds, and whether
+/// it lasts the whole day: what is left to say of a time the series no longer holds.
+pub fn rid_instant(rid: &str, zone: &TimeZone) -> Option<(i64, bool)> {
+    if let Some(at) = crate::moves::read_utc(rid) {
+        return Some((at, false));
+    }
+    let day = Date::strptime("%Y%m%d", rid).ok()?;
+    day.to_zoned(zone.clone()).ok().map(|z| (z.timestamp().as_second(), true))
+}
+
+/// How far ahead of now, or of its first time when that is to come, a repeating
+/// event's next times are looked for: five years (a rule that comes back every
+/// other year still shows; the limit of occurrences stops one that repeats by
+/// the hour long before).
+const TURNS_AHEAD: i64 = 5 * 366 * 86_400;
+
+/// The next `count` times of a repeating event's file, starting after `now`:
+/// never one cancelled. Empty for a series over.
+pub fn next_turns(text: &str, now: i64, count: usize, zone: &TimeZone) -> Vec<Turn> {
+    let from = first_times(text, zone).map_or(now, |(first, _)| first.max(now));
+    turns(text, now, from.saturating_add(TURNS_AHEAD), zone).into_iter().filter(|t| t.start > now && !t.cancelled).take(count).collect()
+}
+
+/// The time of a repeating event's file named `rid` (`Turn::rid`), where it is
+/// now; None when the series no longer holds it (left out, or timed otherwise
+/// since). A time moved far from its first start is found through its own
+/// RECURRENCE-ID: a year either side.
+pub fn turn_named(text: &str, rid: &str, zone: &TimeZone) -> Option<Turn> {
+    let named = |found: Vec<Turn>| found.into_iter().find(|t| t.rid == rid);
+    let (around, _) = rid_instant(rid, zone)?;
+    let day = 2 * 86_400;
+    named(turns(text, around - day, around + day, zone)).or_else(|| {
+        let year = 366 * 86_400;
+        text.contains("RECURRENCE-ID").then(|| named(turns(text, around - year, around + year, zone))).flatten()
+    })
 }
 
 /// Everything between `from` and `to`, from every calendar, by start; those
@@ -2519,6 +2666,8 @@ pub struct EventRef {
     pub cancelled: bool,
     /// It comes back (RRULE, RDATE): its first start is not its next.
     pub recurring: bool,
+    /// It lasts the whole day.
+    pub all_day: bool,
     /// The task it is the time block of (`X-SIOUL-TASK`, `blocks`), by UID; "" for an event of its own.
     pub task: String,
     /// A leg's anchor to its appointment (`anchors`); none for any other event.
@@ -2555,6 +2704,7 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
     }
     found.anchor = crate::anchors::parse(text);
     let edit = edit_of_text(text, zone);
+    found.all_day = edit.as_ref().is_some_and(|e| e.all_day);
     found.start = edit.as_ref().and_then(|e| {
         let at: DateTime = if e.all_day { format!("{}T00:00", e.start).parse().ok()? } else { e.start.parse().ok()? };
         // Its form's time is on its own clock.

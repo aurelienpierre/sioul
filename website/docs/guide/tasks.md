@@ -169,7 +169,7 @@ A task opens in its card on the right, beside the list (on a phone, it takes the
 **Edit**, at the top, turns the details into its form, and **Details** turns it back. Each field is kept as you change it:
 
 - **its steps**, and one more in a line ("A step, in one line"), which goes after the others. Their order is yours: each step has a handle ⠿; drag a step with a mouse to another place, or use its menu (right click, or a long press on a touch screen), **Move up** and **Move down**; on the keyboard, Alt+↑ and Alt+↓. The same menu offers **Break this step down** (the step opened, to give it steps of its own), **Make it a task of its own**, and **Fold into the list**, which makes the step an item of the task's list to tick (a step with more than words and a tick, such as a length or a wait, says what it would lose first); **a step of…**: the task it is part of, found by its title ("A step of… (a task's title)"); it moves into that task's list with its own steps, after the steps there. A step shows "A step of …" instead, with × to make it a task of its own again. A task's menu in the lists offers **Make it a step of…** too, and, for a step, **Make it a task of its own**. Each change says so in the status line, with **Undo**; **what it waits for** ("Waits for…": another task, found by its title), and, for the next wait you add, **Then wait**: a gap in days or weeks after the other is done ("the answer comes within two weeks"; 0, none);
-- under **More**: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), what it costs and what it gives back, **What it takes**, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first.
+- under **More**: **Can start from**, **Date asked** with its hour ([A date asked and its hour](#a-date-asked-and-its-hour)), **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), what it costs and what it gives back, **What it takes**, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first.
 
 Anything can become a task: a message, a line of a note, an event to prepare.
 
@@ -282,7 +282,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 
 - **The order**: a task never comes before what it waits for. Tasks that wait for each other in a loop are said, calmly: "These wait for each other: … One of them has to go first."
 - **The next step**, among the tasks free to start: the one you started; then the one whose date comes soonest, counting the work behind it; then your own order; then the one that frees the most others; then the smaller one.
-- **An appointment and its steps**: a task can prepare an appointment ("Going to the doctor" for the appointment "Doctor"): in its form, **Its appointment…** finds the event by its title; in the Agenda, an event's details offer **Add steps and a list**, which makes such a task, or the task made from it before ("Prepare: …") to use as its steps. "Make it an appointment" on a task with steps keeps the task and ties it to the new event. The task's date asked becomes the appointment's day, and follows it when it moves, never set before the day the task starts. A step with a start of its own goes by it; another waits for the appointment's day, unless it, or a bigger step it belongs to, or the task itself, has an earlier date of its own: then it is free now, to be done by then. The appointment deleted or cancelled, the task and its steps wait for a date, and come back when you tie another. × beside the appointment unties it. An invitation never changes: the tie is written in your task alone. A task of a Google Tasks list cannot be tied: Google would not keep the tie. A step can come **After the appointment** (its menu in the task): it is laid once you are back, and says itself under **Coming back** in the appointment's card. Once the appointment is over, the steps before it still open are set aside quietly, never marked done; the steps after it stay, and so does a step with a date of its own, a start or a time, and one added once the appointment was over. Moved later, it gives back what it set aside. The appointment's card lists what it set aside, under **Set aside after it**, each with **Bring back**; so does the task list with **Done too**, the appointment deleted since included.
+- **An appointment and its steps**: a task can prepare an appointment ("Going to the doctor" for the appointment "Doctor"): in its form, **Its appointment…** finds the event by its title; in the Agenda, an event's details offer **Add steps and a list**, which makes such a task, or the task made from it before ("Prepare: …") to use as its steps. "Make it an appointment" on a task with steps keeps the task and ties it to the new event. The task's date asked becomes the moment the appointment starts (its day for a whole day), and follows it when it moves, never set before the day the task starts. A step with a start of its own goes by it; another waits for the appointment's day, unless it, or a bigger step it belongs to, or the task itself, has an earlier date of its own: then it is free now, to be done by then. The appointment deleted or cancelled, the task and its steps wait for a date, and come back when you tie another. × beside the appointment unties it. An invitation never changes: the tie is written in your task alone. A task of a Google Tasks list cannot be tied: Google would not keep the tie. A step can come **After the appointment** (its menu in the task): it is laid once you are back, and says itself under **Coming back** in the appointment's card. Once the appointment is over, the steps before it still open are set aside quietly, never marked done; the steps after it stay, and so does a step with a date of its own, a start or a time, and one added once the appointment was over. Moved later, it gives back what it set aside. The appointment's card lists what it set aside, under **Set aside after it**, each with **Bring back**; so does the task list with **Done too**, the appointment deleted since included.
 - **Steps** of a task come together, in the order you gave them: the first one you can do now is the next step. The order never makes you wait: you can tick a later step first, and nothing says it was out of order. To make a step wait for another, give it a wait. A step without its own length counts five minutes, and short steps of one task that follow each other are laid back to back, with one pause after them. Other programs that know this order (Nextcloud Tasks, Tasks.org) show your steps in it too. A task without a length of its own is done with its last step: "Done. “Going to the doctor” is done too.", with **Undo**. One with a length of its own keeps its own tick.
 - **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin; leisure has no hours, so what is only for leisure takes no room and waits for none ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; not an event marked free in its calendar (shown as available), nor an invitation you declined, which still show in the agenda; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. A task with a **Before** or an **After** is never cut: it goes whole on a day whose room holds it, or gets a day of its own. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Each task takes its corrected length ([How long things take](time.md#how-long-things-take)), and each day keeps some time free for steps running long, and half an hour for you. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
 - **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order, and the times you pin tasks to, as events in your calendar.
@@ -352,6 +352,26 @@ The ⚙ at the top of the page:
 - **What is work** and **What is yours**: the categories that say what a task is for ([Hours](hours.md)).
 - **Code**, last: **GitHub issues and pull requests as tasks**, off unless you turn it on. Yours come into a "GitHub" list on this device, every thirty minutes; nothing is written to GitHub.
 
+### A date asked and its hour {#a-date-asked-and-its-hour}
+
+A date asked is a day, and it can have an hour: the field beside **Date asked** in the form. It says **No hour** until you give one, and that word is the button back. A date never gets an hour you did not give it.
+
+- An hour means "done by". It holds no time and draws no block: "By 30 October, 16:00: three weeks left". The plan places the task before it, and the reminder says it.
+- When a date falls before the task's start, or at the very moment of it, the form says so and keeps nothing until you change one of them. A start and a date on one day stand: the day holds both.
+- A list on Google Tasks keeps the day alone ("the time portion of the timestamp is discarded", its documentation says), so its form offers no hour.
+
+### A task before an event {#a-task-before-an-event}
+
+In a task's form, **Its appointment…** finds an event by a few words of its title, in every agenda, a person's too. Each row says its agenda. A repeating event comes by its next three times, each saying "Tue 10 Nov 11:00": a click ties the task to that time.
+
+- The task then reads "Before: Team meeting, Tue 10 Nov 11:00", and that time's card lists it under **To do before**, that time alone. Several tasks can come before one time.
+- Its date asked becomes that time's start, and follows it if it moves. A date you give it yourself holds, and the tie stays.
+- Only the task is written. The event's file stays as it is, so a meeting's guests hear nothing, and a calendar you only read can have tasks before its events.
+- When that time has passed and the task is not done, the task stays open and reads "Was before: …". Nothing marks it, nothing counts it, and it never moves by itself. One button, **Next one: Thu 12 Nov**, moves it. A time cancelled, or gone since the series was timed otherwise, is said the same way: the task keeps its date, **Next one** is offered, and nothing is deleted.
+- Tied to an event of one time, a task also takes that event's start as its date, its hour with it. A task tied before this keeps the date it has.
+- A list on Google Tasks keeps no tie, so its form offers none.
+- There is no "each time": a task tied to one time of a series stays with that time until you move it.
+
 ### Elsewhere in Sioul {#elsewhere-in-sioul}
 
 - **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can list your tasks, add one and mark one done, on this computer's files; what it does with what it reads is up to the agent.
@@ -367,7 +387,10 @@ The ⚙ at the top of the page:
 - Capacity is lower on some days, and only you know which (Raymaker et al. 2020; Chen, Meng & Nie 2026).
 - Closing work with a place for what remains helps leave it in the evening (Smit 2016), and a list for tomorrow written at bedtime helped people fall asleep sooner (Scullin et al. 2018). One answer a day on how it went is what a plan needs to learn what a day can hold, rather than what you usually do.
 
-More in [what the research says](../dev/research.md), findings 6 to 23.
+- A task before an event writes nothing into the event, because a server tells every guest of any change to a meeting (RFC 6638). No standard names one time of a repeating event in a tie (RFC 5545, RFC 9253), so the task carries it, on a line of Sioul's own, and writes its date out where every CalDAV program can read it. That no program loses that line, or what it does if it does, was not tested.
+- A time passed moves nothing by itself: a task is about that meeting, and which one comes next is yours to say. This is a design rule of Sioul's, not a finding: no study of it turned up.
+
+More in [what the research says](../dev/research.md), findings 6 to 23, 71 and 72.
 
 ## Compared with other apps {#compared-with-other-apps}
 
@@ -482,6 +505,32 @@ Others do more in places: reminders at a place, sharing and assigning (Todoist, 
     - **Reclaim.ai**, its whole help centre (223 articles, from its index), with the 2.0 tasks overview, hours and buffer time, and its prices: <https://help.reclaim.ai/llms.txt>, <https://help.reclaim.ai/en/articles/16558552-reclaim-2-0-tasks-overview>, <https://help.reclaim.ai/en/articles/3600766-set-your-working-meeting-personal-custom-hours>, <https://help.reclaim.ai/en/articles/4281992-buffer-time-overview-travel-decompression-and-tasks-habit-breaks>, <https://reclaim.ai/pricing>
     - **Sunsama**, its user manual (105 pages), with timeboxing, daily planning, planned and actual times, task rollover, and its prices: <https://help.sunsama.com/>, <https://help.sunsama.com/docs/usage-guides/timeboxing/timeboxing-auto-scheduling>, <https://help.sunsama.com/docs/usage-guides/daily-planning>, <https://help.sunsama.com/docs/usage-guides/tasks/planned-and-actual-times>, <https://help.sunsama.com/docs/getting-started/basics/task-rollover-and-recurring-tasks-the-basics>, <https://www.sunsama.com/pricing>
     - **Tiimo**, its FAQ and feature guides, its article on the Co-planner's design, and its streaks page: <https://www.tiimoapp.com/faq>, <https://www.tiimoapp.com/resource-hub/ai-co-planner-design>, <https://www.tiimoapp.com/faq/focus-timer>, <https://www.tiimoapp.com/product/streaks>
+
+**An hour on a date asked**
+
+As of November 2026, from each maker's own pages; "summary" means a search summary of that page, not the page read.
+
+| | An hour on the date | What it does |
+|---|---|---|
+| Sioul | a day by default, an hour when you give one | "done by": the plan places the task before it; a day alone never gets an hour |
+| [Google Tasks](https://developers.google.com/workspace/tasks/reference/rest/v1/tasks) | none: "the time portion of the timestamp is discarded" | `due` is the day to do it, and "doesn't represent the deadline of the task" |
+| [Apple Reminders](https://support.apple.com/en-us/102484) (summary) | a date, or a date and time | a date without a time notifies at 9:00 by default |
+| [Todoist](https://www.todoist.com/help/articles/introduction-to-reminders-9PezfU) (summary) | a date, or a date and time | a time can add an automatic reminder, with lead time in settings |
+| [Things](https://culturedcode.com/things/support/articles/2803579/) (summary) | a start date and a deadline are separate, a reminder is a separate time | a deadline task stays active; a start date brings it forward |
+| [Microsoft To Do](https://support.microsoft.com/en-us/todo/add-due-dates-and-reminders-in-microsoft-to-do) (summary) | a due date, and a separate "Remind me" date and time | |
+| [Reclaim](https://help.reclaim.ai/en/articles/12304458-carve-out-time-for-work-with-tasks) (summary) | a due date means finish before that date | it carves out blocks before it |
+| [Morgen](https://www.morgen.so/guides/the-starter-guide-to-morgen-tasks) (summary) | a scheduled block can sit before the due date | [a recurring due date](https://www.morgen.so/guides/recurring-due-dates) makes a new instance when done |
+
+**A task tied to an event**
+
+| | The tie | A repeating event |
+|---|---|---|
+| Sioul | the task carries the tie and its date; the event is never written | one time of it, which survives being moved; passed, the task stays open, and one button moves it |
+| [Akiflow](https://product.akiflow.com/p/assign-todos-to-meetings) | users ask for it on its board, with no status shown | the request asks for one occurrence or the series; a slot at the event's time "doesn't move when the event does" |
+| [Google Tasks' API](https://developers.google.com/workspace/tasks/reference/rest/v1/tasks) | no field links a task to an event | not applicable |
+| [Pinwork](https://pinwork.app/articles/add-task-to-apple-calendar-while-creating-it/) (summary) | a repeating task writes an event for its current occurrence and keeps the rule on the task | the opposite direction, with the same one-at-a-time idea |
+| [RFC 5545](https://icalendar.org/iCalendar-RFC-5545/3-8-4-5-related-to.html) | RELATED-TO names a UID | [RECURRENCE-ID](https://icalendar.org/iCalendar-RFC-5545/3-8-4-4-recurrence-id.html) addresses one instance, and RELATED-TO has no way to use it |
+| [RFC 9253](https://www.rfc-editor.org/rfc/rfc9253.html) | adds FINISHTOSTART and others, GAP, and LINK | it does not mention RECURRENCE-ID |
 
 ## For technical readers {#for-technical-readers}
 

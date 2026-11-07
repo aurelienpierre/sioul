@@ -619,11 +619,40 @@ pub struct Cushion {
     pub room: u32,
 }
 
+/// The day `task` must be done by, as the plan orders it: the day asked; with an
+/// hour (`Task::due_at`), that day when its hours hold `minutes` before that hour,
+/// else the last day before it that has hours for it, its hour being "done by",
+/// never a slot. None for a date a tie wrote and whose time passed
+/// (`Task::tie_passed`): nothing presses it, or counts it. No day with hours for it
+/// in the week before says the day: nothing can be laid before its hour anyway.
+fn done_by(task: &Task, minutes: u32, kinds: Area, settings: &Settings, now: i64, zone: &TimeZone) -> Option<Date> {
+    let day = task.due_date()?;
+    let Some(at) = task.due_at(zone) else { return Some(day) };
+    if task.tie_passed(now, zone) {
+        return None;
+    }
+    let open = |on: Date| -> Vec<(i64, i64, Area)> { settings.hours_on(on, zone).into_iter().filter(|h| h.2.meets(kinds)).collect() };
+    let before: i64 = open(day).iter().map(|h| (h.1.min(at) - h.0).max(0)).sum();
+    if before >= i64::from(minutes) * 60 {
+        return Some(day);
+    }
+    Some((1..=7).map(|back| add_days(day, -back)).find(|on| !open(*on).is_empty()).unwrap_or(day))
+}
+
+/// The instant the plan is made at, for a date asked with an hour: now while
+/// `today` is today, the first minute of `today` otherwise (a plan asked of another day).
+fn moment_of(today: Date, zone: &TimeZone) -> i64 {
+    let now = jiff::Timestamp::now();
+    if now.to_zoned(zone.clone()).date() == today { now.as_second() } else { today.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second()) }
+}
+
 /// The time budget until `date`: the tasks asked by then (optional ones aside),
 /// with what they wait for and their steps, against each day's room until then.
 pub fn cushion(tasks: &[Task], plan: &Plan, settings: &Settings, today: Date, date: Date) -> Cushion {
     let open = |uid: &str| plan.items.get(uid).filter(|p| p.column != Column::Done && !p.optional);
-    let mut wanted: Vec<String> = tasks.iter().filter(|t| t.due_date().is_some_and(|d| d <= date) && open(&t.uid).is_some()).map(|t| t.uid.clone()).collect();
+    let zone = crate::zone::current();
+    let moment = moment_of(today, &zone);
+    let mut wanted: Vec<String> = tasks.iter().filter(|t| t.due_date().is_some_and(|d| d <= date) && !t.tie_passed(moment, &zone) && open(&t.uid).is_some()).map(|t| t.uid.clone()).collect();
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut need = 0u32;
     // The hours these tasks can take.
@@ -840,7 +869,10 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let appointment_of = |i: usize| -> Option<Option<Option<Date>>> {
         let known = settings.appointments.as_ref()?;
         let uid = crate::pairs::appointment_of(tasks[i])?;
-        Some(known.get(&uid).filter(|a| !a.cancelled).map(|a| a.day))
+        // Tied to one time of a repeating event: it comes before that time, and its
+        // steps are free now, whatever day the series began (`pairs`).
+        let one_time = !tasks[i].occurrence.is_empty();
+        Some(known.get(&uid).filter(|a| !a.cancelled).map(|a| if one_time { None } else { a.day }))
     };
     let appointment: Vec<Option<Option<Option<Date>>>> = (0..n).map(|i| std::iter::once(i).chain(graph.ancestors(i)).find_map(appointment_of)).collect();
     let parked: Vec<bool> = appointment.iter().map(|a| matches!(a, Some(None))).collect();
@@ -939,8 +971,13 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let usable: Vec<Area> = tasks.iter().map(|t| settings.usable(t)).collect();
     let weekly: Vec<u32> = usable.iter().map(|&kinds| settings.week.iter().map(|r| r.for_kinds(kinds)).sum()).collect();
     let mut latest: Vec<Option<Date>> = vec![None; n];
+    let plan_zone = crate::zone::current();
+    let moment = moment_of(today, &plan_zone);
+    // The day a task must be done by, its hour counted (`Task::due_at`): an hour that leaves it
+    // no room that morning makes it the day before's. A tie's date past presses nothing.
+    let due_by: Vec<Option<Date>> = (0..n).map(|i| done_by(tasks[i], laid[i], usable[i], settings, moment, &plan_zone)).collect();
     for &i in topological.iter().rev() {
-        let mut finish = tasks[i].due_date();
+        let mut finish = due_by[i];
         for &s in &order_edges[i] {
             let gap = preds[s].iter().find(|(p, _)| *p == i).map_or(0, |(_, g)| gap_days(*g));
             if let Some(start) = latest[s] {
@@ -1368,7 +1405,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let depth = |i: usize| graph.ancestors(i).len();
     let mut items = BTreeMap::new();
     for i in 0..n {
-        let tight = open[i] && matches!((finish[i], tasks[i].due_date()), (Some(f), Some(d)) if f > d);
+        let tight = open[i] && matches!((finish[i], due_by[i]), (Some(f), Some(d)) if f > d);
         items.insert(
             tasks[i].uid.clone(),
             Planned {
@@ -1722,6 +1759,62 @@ mod tests {
         assert!(!planned.items["a"].run_next && !planned.items["x"].run_next);
     }
 
+    /// An hour on a date asked: "done by" then, so an hour that leaves no room that morning
+    /// makes it the day before's (the plan orders by it); a tie's date past presses nothing.
+    #[test]
+    fn a_date_with_an_hour_is_done_by_it() {
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let settings = Settings::default();
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        // Tuesday, its hours from 9:00.
+        let by = |due: &str, minutes: u32| done_by(&Task { due: due.into(), ..task("t", minutes) }, minutes, Area::ALL, &settings, at("2026-10-05T08:00"), &zone);
+        assert_eq!(by("2026-10-06", 60), Some(day("2026-10-06")), "a day alone");
+        assert_eq!(by("2026-10-06T09:30", 30), Some(day("2026-10-06")), "half an hour holds it");
+        assert_eq!(by("2026-10-06T09:30", 60), Some(day("2026-10-05")), "an hour does not: the day before");
+        assert_eq!(by("2026-10-06T16:00", 60), Some(day("2026-10-06")));
+        // A Monday morning with no room: the Friday before, the last day with hours for it.
+        assert_eq!(by("2026-10-12T09:30", 60), Some(day("2026-10-09")));
+        // A day without hours (a Sunday): the Friday before too.
+        assert_eq!(by("2026-10-11T10:00", 60), Some(day("2026-10-09")));
+        // A tie's date, its time past: no date to press.
+        let tied = Task { due: "2026-10-05T07:00".into(), due_written: "2026-10-05T07:00".into(), occurrence: "20261005T050000Z".into(), ..task("t", 30) };
+        assert_eq!(done_by(&tied, 30, Area::ALL, &settings, at("2026-10-05T08:00"), &zone), None);
+        assert_eq!(done_by(&tied, 30, Area::ALL, &settings, at("2026-10-05T06:00"), &zone), Some(day("2026-10-02")), "to come: the Friday before, a Monday at 7:00");
+    }
+
+    /// The plan orders by the hour: the same day, the task whose hour leaves no room comes
+    /// first; not tight when it can be done the day before. A tie's date past is not counted.
+    #[test]
+    fn the_plan_goes_by_the_hour_of_a_date() {
+        let none = BTreeSet::new();
+        let no_hour = Task { due: "2026-10-07".into(), priority: 1, ..task("no-hour", 60) };
+        let early = Task { due: "2026-10-07T09:30".into(), priority: 9, ..task("early", 60) };
+        let tasks = vec![no_hour, early];
+        let planned = plan(&tasks, today(), &Settings::default(), &BTreeMap::new(), &none);
+        assert_eq!(planned.ready.first().map(String::as_str), Some("early"), "{:?}", planned.ready);
+        assert!(!planned.items["early"].tight);
+        assert!(planned.items["early"].latest_start < planned.items["no-hour"].latest_start);
+    }
+
+    /// Tied to one time of a repeating event: its steps are free now, whatever day the series
+    /// began or begins; the whole series tied as before waits as before. A series cancelled parks it.
+    #[test]
+    fn a_task_before_one_time_has_its_steps_free() {
+        let link = crate::tasks::Link { uri: crate::links::event_uri("visit"), label: String::new(), rel: crate::pairs::APPOINTMENT.into() };
+        let tied = Task { links: vec![link], occurrence: "20261015T080000Z".into(), ..task("doctor", 0) };
+        let tasks = vec![tied, step_of("brush", 1)];
+        let none = BTreeSet::new();
+        let on = |cancelled: bool| {
+            let mut settings = Settings::default();
+            settings.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: Some(day("2026-10-08")), cancelled, recurring: true, start: 0, all_day: false })]));
+            settings
+        };
+        let planned = plan(&tasks, today(), &on(false), &BTreeMap::new(), &none);
+        assert_eq!((planned.items["brush"].not_before, planned.items["brush"].parked), (None, false));
+        assert!(planned.ready.contains(&"brush".to_string()));
+        assert!(plan(&tasks, today(), &on(true), &BTreeMap::new(), &none).items["brush"].parked, "the series itself cancelled");
+    }
+
     #[test]
     fn an_appointment_frees_its_steps_on_its_day_and_parks_them_when_gone() {
         let link = crate::tasks::Link { uri: crate::links::event_uri("visit"), label: String::new(), rel: crate::pairs::APPOINTMENT.into() };
@@ -1731,7 +1824,7 @@ mod tests {
         let none = BTreeSet::new();
         let on = |day: &str, cancelled: bool| -> Settings {
             let mut settings = Settings::default();
-            settings.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: Some(day.parse().unwrap()), cancelled, recurring: false, start: 0 })]));
+            settings.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: Some(day.parse().unwrap()), cancelled, recurring: false, start: 0, all_day: false })]));
             settings
         };
         // Thursday the 8th: its steps free that day, not before; one with a day of its own, on its day.
@@ -1777,7 +1870,7 @@ mod tests {
         assert_eq!(with_due("2026-10-08", "2026-10-08"), Some(day("2026-10-08")));
         // F7: an appointment whose start cannot be read is here, without a day: nothing parked, nothing held.
         let mut undated = Settings::default();
-        undated.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: None, cancelled: false, recurring: false, start: 0 })]));
+        undated.appointments = Some(BTreeMap::from([("visit".to_string(), crate::pairs::Appointment { day: None, cancelled: false, recurring: false, start: 0, all_day: false })]));
         let planned = plan(&tasks, today(), &undated, &BTreeMap::new(), &none);
         assert!(!planned.items["doctor"].parked && planned.ready.contains(&"brush".to_string()));
     }

@@ -169,8 +169,9 @@ Item {
                 return JSON.stringify({ uid: "bus", key: key, title: "Bus 24", line: "", before: [], more: 0, bring: [], getting_there: [], coming_back: [], steps_after: [], also: [], leg_of: { uid: "dentist", key: "/c/dentist.ics", title: "Dentist", start: 4000000000, side: "before", unconfirmed: true, line: "Before Dentist (09:00) · moves with it" } })
             if (key !== "/c/dentist.ics")
                 return "{}"
-            return JSON.stringify({ uid: "dentist", key: key, title: "Dentist", leave_at: 3999999100, line: "Leave at 08:45 · Next: Find the card", preparation: { uid: "prep", title: "Prepare the dentist" }, before: [{ uid: "card", title: "Find the card" }], more: 2, bring: [{ name: "Bring", items: [{ task: "prep", line: 3, text: "Carte Vitale", done: false }], more: 0 }], getting_there: mock.withLegs ? [{ uid: "bus", key: "/c/bus.ics", title: "Bus 24", start: 3999997800, end: 3999999300, when: "08:30 – 08:55", unconfirmed: true }] : [], coming_back: mock.withLegs ? [{ uid: "home", key: "/c/home.ics", title: "Walk home", start: 4000004200, end: 4000005400, when: "10:10 – 10:30", unconfirmed: false }] : [], steps_after: mock.withLegs ? [{ uid: "next", title: "Book the next one" }] : [], also: mock.withLegs ? [{ uid: "papers", title: "The papers" }] : [], set_aside: mock.withAside ? [{ uid: "early", title: "Send the prescription" }] : [], leg_of: null })
+            return JSON.stringify({ uid: "dentist", key: key, rid: mock.withToDo ? "20261110T100000Z" : "", to_do_before: mock.withToDo ? [{ uid: "slides", title: "Bring the slides" }] : [], title: "Dentist", leave_at: 3999999100, line: "Leave at 08:45 · Next: Find the card", preparation: { uid: "prep", title: "Prepare the dentist" }, before: [{ uid: "card", title: "Find the card" }], more: 2, bring: [{ name: "Bring", items: [{ task: "prep", line: 3, text: "Carte Vitale", done: false }], more: 0 }], getting_there: mock.withLegs ? [{ uid: "bus", key: "/c/bus.ics", title: "Bus 24", start: 3999997800, end: 3999999300, when: "08:30 – 08:55", unconfirmed: true }] : [], coming_back: mock.withLegs ? [{ uid: "home", key: "/c/home.ics", title: "Walk home", start: 4000004200, end: 4000005400, when: "10:10 – 10:30", unconfirmed: false }] : [], steps_after: mock.withLegs ? [{ uid: "next", title: "Book the next one" }] : [], also: mock.withLegs ? [{ uid: "papers", title: "The papers" }] : [], set_aside: mock.withAside ? [{ uid: "early", title: "Send the prescription" }] : [], leg_of: null })
         }
+        property bool withToDo: false
         property bool withLegs: false
         property bool withAside: false
         function bringBack(uid) {
@@ -220,7 +221,31 @@ Item {
             return { card: { title: title, status: "needs-action", read_only: false, due: "", estimate: 30, has_steps: false, spent: 0, stopped: "", tight: false, unblocks: [], waits: [], done_on: "" }, edit: { title: title, notes: "", area: "", billable: false, categories: [], demands: {}, due: "", energy: "", estimate: 30, felt: {}, kind: "", margins: { before: 0, after: 0 }, office_hours: "", office_times: [], parent: "", projects: [], repeat: "", start: "" }, steps: [], steps_total: "", waits_for: [], frees: [], sessions: [], related: [], area_tags: "", level: "", felt_on: "", ratio_line: "", pin: null, pin_minutes: 0, list: "Tasks", lists: [], parent_title: "", appointment: null, budget: null, limited: null, proposed: null, source: null, keeps_ties: false }
         }
         function task(uid) {
-            const titles = { t1: "Write the letter", t2: "Call the office", t9: "Book the room", t3: "Going to the doctor" }
+            const titles = { t1: "Write the letter", t2: "Call the office", t9: "Book the room", t3: "Going to the doctor", t4: "Bring the form", t5: "Fill the form", t6: "On a list of Google's", t7: "Bring the keys", t8: "Bring the key" }
+            if (uid === "t4") {
+                const detail = mock.taskDetail(uid, titles[uid])
+                detail.keeps_ties = true
+                return JSON.stringify(detail)
+            }
+            if (uid === "t5") {
+                const detail = mock.taskDetail(uid, titles[uid])
+                detail.keeps_ties = true
+                detail.edit.due = "2096-11-10"
+                return JSON.stringify(detail)
+            }
+            if (uid === "t6") {
+                const detail = mock.taskDetail(uid, titles[uid])
+                detail.edit.due = "2096-11-10"
+                detail.limited = ["start", "due_hour", "estimate"]
+                return JSON.stringify(detail)
+            }
+            if (uid === "t7" || uid === "t8") {
+                const detail = mock.taskDetail(uid, titles[uid])
+                detail.keeps_ties = true
+                const past = uid === "t7"
+                detail.appointment = { uid: "series", key: "/c/series.ics", title: "Morning routine", when: "", here: true, leave_at: 0, leave: "", line: "", rid: past ? "20261103T100000Z" : "20261110T100000Z", turn: { line: past ? "Was before: Morning routine, Tue 3 Nov 11:00" : "Before: Morning routine, Tue 10 Nov 11:00", state: past ? "passed" : "coming", next: past ? { rid: "20261112T100000Z", start: 0, label: "Next one: Thu 12 Nov" } : null } }
+                return JSON.stringify(detail)
+            }
             if (uid === "t3") {
                 // A composed task (§7.2): its appointment, two steps, a list to tick in its notes.
                 const detail = mock.taskDetail(uid, titles[uid])
@@ -240,13 +265,30 @@ Item {
             blank.card = null
             return JSON.stringify(blank)
         }
+        // The form's dates refused, as `work::save` says it.
+        property bool refuseDates: false
         function saveTask(uid, edit, list) {
             mock.calls.push({ what: "saveTask", uid: uid, edit: JSON.parse(edit) })
+            if (mock.refuseDates)
+                return JSON.stringify({ error: "task-due-before-start" })
             return JSON.stringify(uid === "" ? { uid: "t9" } : {})
         }
         function searchTasks(text) { return "[]" }
         function descriptionHtml(markdown, tickable) { return "<p>" + markdown + "</p>" }
-        function searchThings(text) { return "[]" }
+        // The events the task form's field finds: a repeating one by its next times, each row its agenda.
+        property string lastSearchKind: ""
+        function searchThings(text, kind) {
+            mock.lastSearchKind = kind || ""
+            return JSON.stringify(text === "morning" ? [
+                { uri: "sioul:event/series", kind: "event", title: "Morning routine", detail: "Cloud", when: "Tue 10 Nov 11:00", key: "/c/series.ics", rid: "20261110T100000Z", turn: "This one: Tue 10 Nov" },
+                { uri: "sioul:event/series", kind: "event", title: "Morning routine", detail: "Cloud", when: "Thu 12 Nov 11:00", key: "/c/series.ics", rid: "20261112T100000Z", turn: "This one: Thu 12 Nov" },
+                { uri: "sioul:event/one", kind: "event", title: "Morning routine at the desk", detail: "Here", when: "Tue 1 Sep 12:00", key: "/c/one.ics", rid: "" }
+            ] : [])
+        }
+        function attachToEvent(uid, key, rid) {
+            mock.calls.push({ what: "attachToEvent", uid: uid, key: key, rid: rid })
+            return ""
+        }
         function textCounted(key, n) { return key }
         function focusStart(uid, minutes) {}
     }
@@ -340,6 +382,14 @@ Item {
     }
 
     // Every object under `item` that `test` takes, its children and its popups' own searched.
+    // A field typed into, key by key, from its start.
+    function typeInto(field, text) {
+        field.forceActiveFocus()
+        field.cursorPosition = 0
+        for (const key of text)
+            cards.keyClick(key)
+    }
+
     function all(item, test, out) {
         out = out || []
         if (!item)
@@ -374,6 +424,8 @@ Item {
     }
 
     TestCase {
+        id: cards
+
         name: "Cards"
         when: windowShown
 
@@ -872,6 +924,134 @@ Item {
             verify(!host.ref.making)
         }
 
+        // The task form's field (docs/tasks.md, "One time of a repeating event"): the shape that
+        // failed, a repeating event's rows naming its times, each its agenda; a row ties that time.
+        function test_the_form_s_field_offers_the_times_to_come() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t4" })
+            wait(50)
+            const panel = host.taskPanel
+            panel.editing = true
+            wait(50)
+            const field = root.find(panel, "taskAttach")
+            verify(field !== null && field.visible, "offered")
+            field.text = "morning"
+            field.textEdited()
+            wait(100)
+            compare(mock.lastSearchKind, "occurrence", "by the times to come")
+            const popup = root.all(field, c => c.active !== undefined && c.sourceComponent !== undefined)[0].item
+            verify(popup.visible, "the rows show")
+            const list = popup.contentItem.children[0]
+            compare(list.count, 3)
+            const rows = list.contentItem.children.filter(c => c.text !== undefined).sort((a, b) => a.y - b.y)
+            compare(rows[0].text, "Morning routine  ·  Tue 10 Nov 11:00  ·  Cloud", "its time and its agenda")
+            compare(rows[2].text, "Morning routine at the desk  ·  Tue 1 Sep 12:00  ·  Here")
+            mock.calls = []
+            rows[1].clicked()
+            const tied = mock.calls.filter(c => c.what === "attachToEvent")
+            compare(tied.length, 1, JSON.stringify(mock.calls))
+            compare(tied[0].key + " " + tied[0].rid, "/c/series.ics 20261112T100000Z", "that time")
+            panel.editing = false
+        }
+
+        // A task's date asked takes an hour: none by default, "No hour" its way back, its day
+        // kept; an hour of no day is not offered (docs/tasks.md, "A date asked and its hour").
+        function test_a_date_asked_takes_an_hour() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t5" })
+            wait(50)
+            const panel = host.taskPanel
+            panel.editing = true
+            panel.moreShown = true
+            wait(50)
+            const hour = root.find(panel, "taskDueHour")
+            const word = root.find(panel, "taskNoHourLabel")
+            const back = root.find(panel, "taskNoHour")
+            verify(hour.visible && hour.enabled, "beside the date")
+            verify(word.visible && !back.visible, "no hour: said")
+            compare(panel.detail.edit.due, "2096-11-10")
+            mock.calls = []
+            root.typeInto(hour, "14:30")
+            const saved = () => mock.calls.filter(c => c.what === "saveTask").pop()
+            compare(saved().edit.due, "2096-11-10T14:30", "its day and its hour")
+            wait(20)
+            verify(back.visible && !word.visible, "an hour: the way back offered")
+            back.clicked()
+            compare(saved().edit.due, "2096-11-10", "its day alone")
+            wait(20)
+            verify(word.visible && !back.visible)
+            compare(hour.text.replace(/[: _]/g, ""), "", "no hour left in the field")
+            // Emptied by hand: its day alone too.
+            root.typeInto(hour, "09:15")
+            compare(saved().edit.due, "2096-11-10T09:15")
+            hour.forceActiveFocus()
+            hour.selectAll()
+            cards.keyClick(Qt.Key_Delete)
+            compare(saved().edit.due, "2096-11-10", "emptied")
+            panel.editing = false
+        }
+
+        // A date before the start: said by the form as its other errors, the hour typed still there.
+        function test_a_date_asked_before_its_start_is_said() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t5" })
+            wait(50)
+            const panel = host.taskPanel
+            panel.editing = true
+            panel.moreShown = true
+            wait(50)
+            const hour = root.find(panel, "taskDueHour")
+            mock.refuseDates = true
+            root.typeInto(hour, "08:00")
+            mock.refuseDates = false
+            verify(root.all(panel, c => c.text === "task-due-before-start" && c.visible).length > 0, "said")
+            compare(panel.detail.edit.due, "2096-11-10", "not kept")
+            compare(hour.text, "08:00", "as typed")
+            panel.editing = false
+        }
+
+        // A list that keeps no hour and no tie (Google Tasks): neither offered.
+        function test_google_tasks_offers_no_hour_nor_tie() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t6" })
+            wait(50)
+            const panel = host.taskPanel
+            panel.editing = true
+            panel.moreShown = true
+            wait(50)
+            verify(!root.find(panel, "taskDueHour").visible, "no hour")
+            verify(!root.find(panel, "taskNoHourLabel").visible)
+            verify(!root.find(panel, "taskAttach").visible, "no tie")
+            panel.editing = false
+        }
+
+        // Tied to one time, passed: the line in the past, one button to the next, never by itself.
+        function test_a_time_passed_offers_the_next_one() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t7" })
+            wait(50)
+            const panel = host.taskPanel
+            compare(root.find(panel, "taskAppointment").text, "Was before: Morning routine, Tue 3 Nov 11:00")
+            const next = root.find(panel, "taskNextOne")
+            verify(next.visible, "offered")
+            compare(next.text, "Next one: Thu 12 Nov")
+            mock.calls = []
+            next.clicked()
+            const tied = mock.calls.filter(c => c.what === "attachToEvent")
+            compare(tied.length, 1, "moved by the button alone")
+            compare(tied[0].rid, "20261112T100000Z")
+        }
+
+        // Coming, or a one-off's line: no button.
+        function test_a_time_to_come_offers_no_next_one() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t8" })
+            wait(50)
+            const panel = host.taskPanel
+            compare(root.find(panel, "taskAppointment").text, "Before: Morning routine, Tue 10 Nov 11:00")
+            verify(!root.find(panel, "taskNextOne").visible)
+        }
+
         // A composed task's details (§7.2): its appointment at the top with when to leave, its
         // steps in order, the checklist under them; Edit turns the steps into drag handles.
         function test_a_composed_task_s_details() {
@@ -1107,6 +1287,19 @@ Item {
             verify(barArrow, "the bar's arrow")
             barArrow.clicked()
             compare(opened.join(","), "prep true")
+        }
+
+        // The tasks tied to this time of a repeating event, listed on its card and opened by a tap.
+        function test_an_event_s_card_lists_what_comes_before_this_time() {
+            const host = makeHost()
+            mock.withToDo = true
+            host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 })
+            wait(20)
+            const rows = root.all(host.eventCard, c => c.objectName === "eventCardToDoBefore" && c.visible)
+            mock.withToDo = false
+            compare(rows.length, 1)
+            compare(rows[0].text, "·  Bring the slides")
+            verify(root.all(host.eventCard, c => c.text === "appointment-to-do-before" && c.visible).length > 0, "under its heading")
         }
 
         function test_an_appointment_s_part_f() {

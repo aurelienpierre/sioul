@@ -134,6 +134,10 @@ With a keyboard, once you clicked the timeline: Up and Down go from thing to thi
 
 Click an empty stretch of the day (tap it on a phone): a **+** shows there, from the quarter of an hour you clicked, as long as a new event lasts (30 minutes until you change it in the [Agenda settings](#the-agenda-settings)). Click it again, and the form of a new event opens on that time, in the calendar for new events, ready for its title. A double click on an empty stretch does both at once. A click elsewhere, or Escape, hides the **+**.
 
+### What comes before one time of it {#to-do-before}
+
+An event's card lists **To do before**: the tasks tied to this time of it ([A task before an event](tasks.md#a-task-before-an-event)). On a repeating event that is this time alone, a time moved or changed too. **Add steps and a list** on its card makes a task for the time you opened.
+
 ## Moving things by hand {#moving-an-event-by-hand}
 
 In **Day** and **Week**, drag an event, a meal, a nap or the night to another time: it keeps its length. In **Week**, drag an event to another day too. Drag its top edge to change when it starts, its bottom edge to change when it ends: by five minutes, and fifteen minutes long at least. The time kept around an event (Before and After) moves with it; you change those in its card. While you drag, its new place shows with its times ("Tue 6, 11:15 – 12:15").
@@ -322,9 +326,13 @@ An invitation is sent by your calendar's server or by you, never by both. A serv
 
 A meal or a nap had early moves, and that is all Sioul keeps of it. Recording whether a meal was eaten helps within a treatment that a clinician guides, but is linked to harm as general tracking, and counts or "missed" messages feed the shame and the all-or-nothing thinking that keep eating difficulties going (the [meal and sleep prompts research](../dev/research/meal-prompts.md), criteria 17, 18 and 20). So **Had it** keeps a time, never a tick, and no day says what it lacked.
 
-More in [what the research says](../dev/research.md), findings 46 to 54 and 66.
+A task tied to one time of a repeating event writes nothing into the event: a server tells every guest of any change to a meeting (RFC 6638), and a calendar you only read could not take it. No standard names one time in a tie (RFC 5545, RFC 9253), so the task carries it ([A task before an event](tasks.md#a-task-before-an-event)).
+
+More in [what the research says](../dev/research.md), findings 46 to 54, 66 and 71.
 
 ## Compared with other apps {#compared-with-other-apps}
+
+**A task before an event.** Sioul ties a task to one time of a repeating event, and the event is never written; how others do it, from their own pages, is [with the tasks](tasks.md#compared-with-other-apps).
 
 **Time around events, and a plan around them.** Sioul keeps time before and after each event, set by you, and counts it everywhere at once: in your plan, in the warning for two events at once, and in its reminder. Apple Calendar and Fantastical keep a travel time before an event only, and tell you when to leave from live traffic, which Sioul does not. Morgen computes travel time both ways with Google Maps, and Reclaim adds a fixed travel time both ways, each for Google and Outlook calendars (Morgen also for iCloud and Fastmail), with an account at them. Morgen's AI Planner and Reclaim's Habits also lay work and routines, such as lunch, around your events; Sioul does it on your device, from your own hours, meals and nights, with any CalDAV server and no account elsewhere. Sioul cannot export `.ics` files or subscribe to a calendar by its address, or show birthdays by itself, where most others can, and its invitations to the meetings you organise were tried against stand-ins of servers only; among these apps, only Proton encrypts what an event says end to end, its times aside.
 

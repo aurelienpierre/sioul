@@ -79,6 +79,8 @@ As built, with the research it follows: [tasks.md](tasks.md).
   - it places tasks into the hours of their kind (working hours for work, your hours for your own admin), each day filled to what it holds for you ([capacity.md](capacity.md)). Near a date asked, it says how much work and how much room are left before it, and when the work does not fit, it asks: "More time asked, or a lighter plan?"
 - **Waiting on others**: a task can wait for an incoming letter. When the letter arrives in its project, the task unblocks.
 - **The Gantt chart** is computed from durations and links: soft bars, a today line, deadlines as marks, slack as faint extensions, all driven by keyboard.
+- **A task before an event** is tied by the task alone: one time of a repeating event by default, named by its RECURRENCE-ID on the task's own link, its date that time's start and following it. The event is never written, so a meeting's guests hear nothing. Once that time passes, the task stays open, says "Was before…", counts for nothing, and moves only by its one button: it was about that meeting, and Sioul does not decide that it now concerns the next ([tasks.md](tasks.md#one-time-of-a-repeating-event), finding 71).
+- **A date asked may have an hour**, which means "done by" and is never a slot: the plan places the task before it, and a date without an hour never gets one invented ([tasks.md](tasks.md#a-date-asked-and-its-hour), finding 72).
 
 ## Calendar
 - **CalDAV**, and invitations by mail (iTIP/iMIP): accept or decline from the card.

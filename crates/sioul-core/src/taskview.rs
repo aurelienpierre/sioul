@@ -230,14 +230,42 @@ fn time_left(cx: &Context, days: i64) -> String {
     }
 }
 
-/// The date asked, as time left; once passed, only the date it was.
+/// A date asked as the views say it: "30 October", with its hour "30 October, 16:00".
+fn due_words(cx: &Context, task: &Task, due: Date) -> String {
+    let date = cx.tr.day_month(due);
+    match task.due.get(11..16) {
+        Some(time) => cx.say("task-due-at", &[("date", date), ("time", time.to_string())]),
+        None => date,
+    }
+}
+
+/// Now as the views read it: the moment asked (`Offices::now`), else the clock.
+fn moment(cx: &Context) -> (TimeZone, i64) {
+    let zone = cx.offices.now.as_ref().map_or_else(crate::zone::current, |z| z.time_zone().clone());
+    let stamp = cx.offices.now.as_ref().map_or_else(|| Timestamp::now().as_second(), |z| z.timestamp().as_second());
+    (zone, stamp)
+}
+
+/// The date asked, as time left; once passed, only the date it was. Tied to
+/// one time of a repeating event, the date being the tie's: what it comes
+/// before ("Before: Team meeting, Tue 10 Nov 11:00"), and once that time passed,
+/// "Was before…", never a mark (`Task::tie_passed`).
 fn due_text(cx: &Context, task: &Task) -> String {
     let Some(due) = task.due_date() else { return String::new() };
     if !task.status.is_open() {
         return String::new();
     }
+    if !task.occurrence.is_empty()
+        && task.due == task.due_written
+        && let Some(outing) = crate::pairs::appointment_of(task).and_then(|uid| cx.outings.get(&uid))
+    {
+        let (zone, stamp) = moment(cx);
+        let at = task.due_at(&zone).or_else(|| due.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())).unwrap_or(0);
+        let when = crate::pairs::turn_when(at, task.due_at(&zone).is_none(), cx.tr, &zone);
+        return cx.say(if task.tie_passed(stamp, &zone) { "pair-was-before" } else { "pair-before" }, &[("event", outing.title.clone()), ("when", when)]);
+    }
     let days = days_between(cx.today, due);
-    let date = cx.tr.day_month(due);
+    let date = due_words(cx, task, due);
     if days < 0 {
         return cx.say("task-date-asked", &[("date", date)]);
     }
@@ -404,7 +432,10 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         estimate: if steps_total > 0 { String::new() } else { estimate_text(cx.tr, task.estimate) },
         minutes: planned.left,
         due: due_text(cx, task),
-        due_soon: task.status.is_open() && task.due_date().is_some_and(|d| (0..=7).contains(&days_between(cx.today, d))),
+        due_soon: task.status.is_open() && task.due_date().is_some_and(|d| (0..=7).contains(&days_between(cx.today, d))) && !{
+            let (zone, stamp) = moment(cx);
+            task.tie_passed(stamp, &zone)
+        },
         waits,
         unblocks: if planned.unblocks > 0 && task.status.is_open() { cx.counted("task-unblocks", planned.unblocks, &[]) } else { String::new() },
         steps,
@@ -448,8 +479,7 @@ fn next_step<'a>(cx: &Context<'a>, task: &Task) -> Option<&'a Task> {
 /// A folded row's line (`Fold`): its appointment's time when it prepares
 /// one, still to come, and its next step.
 fn fold_line(cx: &Context, task: &Task) -> String {
-    let zone = cx.offices.now.as_ref().map_or_else(crate::zone::current, |z| z.time_zone().clone());
-    let stamp = cx.offices.now.as_ref().map_or_else(|| Timestamp::now().as_second(), |z| z.timestamp().as_second());
+    let (zone, stamp) = moment(cx);
     let when = crate::pairs::outing_of(task, cx.tasks, cx.outings).filter(|o| o.start > stamp).and_then(|o| Timestamp::from_second(o.start).ok()).map(|t| cx.tr.date(&t.to_zoned(zone), true));
     let next = next_step(cx, task).map(|s| cx.say("task-fold-next", &[("title", s.title.clone())]));
     when.into_iter().chain(next).collect::<Vec<_>>().join(" · ")
@@ -602,9 +632,12 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
         if first.status == Status::InProcess {
             why.push(cx.tr.text("task-why-started", None));
         }
-        let own_due = first.due_date().filter(|d| *d >= cx.today);
+        let own_due = first.due_date().filter(|d| *d >= cx.today).filter(|_| {
+            let (zone, stamp) = moment(cx);
+            !first.tie_passed(stamp, &zone)
+        });
         if let Some(due) = own_due {
-            why.push(cx.say("task-why-due", &[("date", cx.tr.day_month(due)), ("left", time_left(cx, days_between(cx.today, due)))]));
+            why.push(cx.say("task-why-due", &[("date", due_words(cx, first, due)), ("left", time_left(cx, days_between(cx.today, due)))]));
         }
         // A date further down the chain, sooner than its own: the reason it comes now.
         if let Some((title, whole, due)) = dates_after(cx, &first.uid).into_iter().find(|(_, _, d)| own_due.is_none_or(|own| d < &own)) {
@@ -1195,6 +1228,19 @@ mod tests {
         let fr = Translator::new("fr");
         let cx = Context { tr: &fr, ..cx };
         assert_eq!(now(&cx, Weather::Clear, &BTreeSet::new()).why[0], "Sa date est le 30 octobre\u{202f}: encore trois semaines.");
+        let cx = Context { tr: &tr, ..cx };
+        // An hour on its date: said, and counted the same.
+        let timed = Task { due: "2026-10-30T16:00".into(), ..task("timed", "Send the file") };
+        assert_eq!(due_text(&cx, &timed), "By 30 October, 16:00: three weeks left");
+        assert_eq!(due_text(&cx, &Task { due: "2026-10-01T16:00".into(), ..timed.clone() }), "Date asked: 1 October, 16:00");
+        // Tied to one time of a repeating event, the date its tie's: what it comes before, then, past, that it was.
+        let link = crate::tasks::Link { uri: crate::links::event_uri("series"), label: String::new(), rel: crate::pairs::APPOINTMENT.into() };
+        let outings: BTreeMap<String, crate::pairs::Outing> = [("series".to_string(), crate::pairs::Outing { title: "Team meeting".into(), start: 1, leg: None, recurring: true })].into_iter().collect();
+        let cx = Context { outings: &outings, ..cx };
+        let tied = Task { due: "2099-11-10T11:00".into(), due_written: "2099-11-10T11:00".into(), occurrence: "20991110T100000Z".into(), links: vec![link.clone()], ..task("tied", "Bring the slides") };
+        assert!(due_text(&cx, &tied).starts_with("Before: Team meeting, ") && due_text(&cx, &tied).ends_with("10 Nov 11:00"), "{}", due_text(&cx, &tied));
+        let passed = Task { due: "2020-11-10T11:00".into(), due_written: "2020-11-10T11:00".into(), occurrence: "20201110T100000Z".into(), links: vec![link], ..task("passed", "Bring the slides") };
+        assert!(due_text(&cx, &passed).starts_with("Was before: Team meeting, "), "{}", due_text(&cx, &passed));
         // Minutes chosen by their number: "1 minute", not "1 minutes".
         assert_eq!((minutes_text(&tr, "task-spent-time", 1, None), minutes_text(&tr, "task-spent-time", 25, None)), ("1 minute so far".to_string(), "25 minutes so far".to_string()));
         assert_eq!(minutes_text(&fr, "task-session-time", 1, Some("lundi 5 octobre".into())), "lundi 5 octobre\u{202f}: 1 minute");
@@ -1303,7 +1349,7 @@ mod tests {
         let aside = Task { status: Status::Cancelled, set_aside: "older".into(), set_aside_end: 1, ..step("form", "Print the form", 2) };
         let tasks = vec![prep, done, aside, step("teeth", "Brush teeth", 3), step("bag", "Check the bag", 4)];
         let at = |hm: &str| format!("2099-01-05T{hm}").parse::<jiff::civil::DateTime>().unwrap().to_zoned(TimeZone::system()).unwrap().timestamp().as_second();
-        let outings = [("doctor".to_string(), crate::pairs::Outing { title: "Doctor".into(), start: at("14:00"), leg: Some(("Bus 24".into(), at("13:10"))) })].into_iter().collect();
+        let outings = [("doctor".to_string(), crate::pairs::Outing { title: "Doctor".into(), start: at("14:00"), leg: Some(("Bus 24".into(), at("13:10"))), recurring: false })].into_iter().collect();
         (tasks, outings, today)
     }
 

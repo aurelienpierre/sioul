@@ -234,9 +234,16 @@ pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventR
     let zone = now.time_zone();
     let stamp = now.timestamp().as_second();
     let mut followers: BTreeMap<String, (Vec<&crate::tasks::Task>, Vec<&crate::agenda::EventRef>)> = BTreeMap::new();
+    // Tied to one time of a repeating event: that time is followed as an appointment of its own,
+    // seen here under `<UID>#<its name>` (`turn_key`).
+    let mut turns: BTreeMap<(String, String), Vec<&crate::tasks::Task>> = BTreeMap::new();
     for task in tasks.iter().filter(|t| t.status.is_open()) {
         if let Some(uid) = crate::pairs::appointment_of(task) {
-            followers.entry(uid).or_default().0.push(task);
+            if task.occurrence.is_empty() {
+                followers.entry(uid).or_default().0.push(task);
+            } else {
+                turns.entry((uid, task.occurrence.clone())).or_default().push(task);
+            }
         }
     }
     for leg in events {
@@ -244,7 +251,7 @@ pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventR
             followers.entry(anchor.appointment.clone()).or_default().1.push(leg);
         }
     }
-    seen.keep_only(&followers.keys().cloned().collect());
+    seen.keep_only(&followers.keys().cloned().chain(turns.keys().map(|(uid, rid)| turn_key(uid, rid))).collect());
     let mut written = Vec::new();
     for (uid, (tied, legs)) in &followers {
         // The appointment itself, never one of its legs.
@@ -255,7 +262,7 @@ pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventR
         let at = seen.at.get(uid).copied();
         let (mut settled, mut waits) = (true, Vec::new());
         let day = jiff::Timestamp::from_second(appointment.instants.start).ok().map(|t| t.to_zoned(zone.clone()).date());
-        let dated = crate::pairs::Appointment { day, cancelled: reference.cancelled, recurring: reference.recurring, start: appointment.instants.start };
+        let dated = crate::pairs::Appointment { day, cancelled: reference.cancelled, recurring: reference.recurring, start: appointment.instants.start, all_day: appointment.all_day };
         for task in tied {
             let Ok(text) = std::fs::read_to_string(&task.key) else {
                 settled = false;
@@ -287,7 +294,53 @@ pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventR
             seen.note(uid, appointment.instants);
         }
     }
+    // One time of a repeating event, by the same rule. Cancelled, or no longer in the series:
+    // nothing follows, its tasks keep their dates (`pairs::turn_line` says so); seen as it was,
+    // so that a time that comes back is no move.
+    for ((uid, rid), tied) in &turns {
+        let Some(reference) = events.iter().find(|e| e.uid == *uid && e.anchor.is_none()) else { continue };
+        let path = Path::new(&reference.key);
+        let Ok(event_text) = std::fs::read_to_string(path) else { continue };
+        let Some(turn) = crate::agenda::turn_named(&event_text, rid, zone).filter(|t| !t.cancelled) else { continue };
+        let key = turn_key(uid, rid);
+        let pull = Pull::of_with(path, local);
+        let at = seen.at.get(&key).copied();
+        let day = jiff::Timestamp::from_second(turn.start).ok().map(|t| t.to_zoned(zone.clone()).date());
+        let dated = crate::pairs::Appointment { day, cancelled: false, recurring: false, start: turn.start, all_day: turn.all_day };
+        let (mut settled, mut waits) = (true, Vec::new());
+        for task in tied {
+            let Ok(text) = std::fs::read_to_string(&task.key) else {
+                settled = false;
+                continue;
+            };
+            let (consistent, saw, set_for) = crate::pairs::stand(task, &text, &dated, at, zone);
+            match verdict(consistent, saw, seen.since(&key, set_for, stamp), pull) {
+                Verdict::Consistent => {}
+                Verdict::Wait => waits.push(set_for),
+                Verdict::Follow => {
+                    if let Some(followed) = crate::pairs::followed(task, &text, &dated, now) {
+                        match crate::vdir::write_item(Path::new(&task.key), &followed) {
+                            Ok(()) => written.push(PathBuf::from(&task.key)),
+                            Err(_) => settled = false,
+                        }
+                    }
+                }
+            }
+        }
+        if !waits.is_empty() {
+            for instant in waits {
+                seen.doubted(&key, instant, stamp);
+            }
+        } else if settled {
+            seen.note(&key, Instants { start: turn.start, end: turn.end });
+        }
+    }
     written
+}
+
+/// What `Seen` keeps one time of a repeating event by.
+fn turn_key(uid: &str, rid: &str) -> String {
+    format!("{uid}#{rid}")
 }
 
 #[cfg(test)]

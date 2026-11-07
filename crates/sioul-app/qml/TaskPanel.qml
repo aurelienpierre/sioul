@@ -205,6 +205,18 @@ Panel {
         title.text = Qt.binding(() => panel.detail ? panel.detail.edit.title : "")
         startField.date = Qt.binding(() => panel.detail ? panel.detail.edit.start.slice(0, 10) : "")
         dueField.date = Qt.binding(() => panel.detail ? panel.detail.edit.due.slice(0, 10) : "")
+        dueHour.text = Qt.binding(() => panel.detail ? panel.detail.edit.due.slice(11, 16) : "")
+    }
+
+    // The date asked as its two fields say it: "2026-10-30", or with its hour
+    // "2026-10-30T16:00"; "" without a day. An hour that does not read whole adds nothing.
+    function dueOf(day, hour) {
+        const date = day.replace(/[-_ ]/g, "") === "" ? "" : day
+        return date !== "" && panel.hourReads(hour) ? date + "T" + hour : date
+    }
+
+    function hourReads(hour) {
+        return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(hour)
     }
 
     // The form's own copy changed: a task not made yet, or not read yet. What
@@ -222,7 +234,11 @@ Panel {
         const blank = JSON.parse(panel.sioul.newTaskForm("", "", 0, id))
         if (blank.error)
             return
-        panel.hold(Object.assign({}, panel.detail.edit), { list: blank.list, limited: blank.limited })
+        const edit = Object.assign({}, panel.detail.edit)
+        // Google Tasks discards the hour of a date (`capabilities::task_fields_lost`).
+        if (blank.limited.indexOf("due_hour") >= 0)
+            edit.due = edit.due.slice(0, 10)
+        panel.hold(edit, { list: blank.list, limited: blank.limited })
     }
 
     // What it waits for, in the form of a task not read yet; with a gap in
@@ -631,14 +647,14 @@ Panel {
                     Layout.fillWidth: true
                     // The room left: its words wrap, never widening the card (a phone's 412 points).
                     Layout.preferredWidth: 0
-                    text: !panel.detail || !panel.detail.appointment ? "" : panel.detail.appointment.here ? panel.sioul.textArgs("pair-appointment", JSON.stringify({ event: panel.detail.appointment.title, when: panel.detail.appointment.when })) : panel.sioul.text("pair-appointment-gone")
+                    text: !panel.detail || !panel.detail.appointment ? "" : panel.detail.appointment.turn ? panel.detail.appointment.turn.line : panel.detail.appointment.here ? panel.sioul.textArgs("pair-appointment", JSON.stringify({ event: panel.detail.appointment.title, when: panel.detail.appointment.when })) : panel.sioul.text("pair-appointment-gone")
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: panel.theme.text
 
                     TapHandler {
                         onTapped: {
-                            if (panel.detail.appointment.here)
+                            if (panel.detail.appointment.here || panel.detail.appointment.turn)
                                 panel.window.openThing({ kind: "event", uri: "", key: panel.detail.appointment.key }, true)
                         }
                     }
@@ -651,6 +667,19 @@ Panel {
                     ToolTip.visible: hovered
                     ToolTip.text: panel.sioul.text("pair-detach")
                     onClicked: error.text = panel.sioul.detachFromEvent(panel.uid)
+                }
+            }
+            // That time passed or gone (docs/tasks.md, "One time of a repeating event"): the
+            // next one, by this button alone; it never moves by itself.
+            Button {
+                objectName: "taskNextOne"
+                visible: panel.canEdit && !panel.done && panel.detail !== null && !!panel.detail.appointment && !!panel.detail.appointment.turn && !!panel.detail.appointment.turn.next
+                Layout.leftMargin: 22
+                flat: true
+                text: visible ? panel.theme.plain(panel.detail.appointment.turn.next.label) : ""
+                onClicked: {
+                    error.text = panel.sioul.attachToEvent(panel.uid, panel.detail.appointment.key, panel.detail.appointment.turn.next.rid)
+                    panel.reload()
                 }
             }
             // When to leave, and how, under it: "Leave at 13:10 · Bus 24" (composed tasks §7.2).
@@ -676,7 +705,8 @@ Panel {
                 Layout.fillWidth: true
                 placeholderText: panel.sioul.text("pair-attach-field")
                 onTextEdited: {
-                    appointmentOf.matches = appointmentOf.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchThings(appointmentOf.text, "event", "") || "[]")
+                    // Every agenda's events, a repeating one by its next times (`links::World::search_events`).
+                    appointmentOf.matches = appointmentOf.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchThings(appointmentOf.text, "occurrence", "") || "[]")
                     if (appointmentOf.matches.length > 0)
                         appointmentFound.now().open()
                 }
@@ -711,9 +741,10 @@ Panel {
 
                                     width: appointmentList.width
                                     // "&" doubled: a button reads one as a key to underline.
-                                    text: panel.theme.plain((found.modelData.title || "") + (found.modelData.when ? "  ·  " + found.modelData.when : "")).replace(/&/g, "&&")
+                                    text: panel.theme.plain([found.modelData.title || "", found.modelData.when || "", found.modelData.detail || ""].filter(t => t !== "").join("  ·  ")).replace(/&/g, "&&")
+                                    Accessible.description: found.modelData.turn || ""
                                     onClicked: {
-                                        error.text = panel.sioul.attachToEvent(panel.uid, found.modelData.key)
+                                        error.text = panel.sioul.attachToEvent(panel.uid, found.modelData.key, found.modelData.rid || "")
                                         appointmentOf.clear()
                                         appointmentFoundForm.close()
                                     }
@@ -889,7 +920,8 @@ Panel {
 
             // What matters about it, in words.
             Repeater {
-                model: panel.card ? [panel.card.due, panel.detail.budget || "", panel.card.estimate, panel.card.waits, panel.card.unblocks, panel.card.stopped, panel.card.spent, panel.card.done_on, panel.detail.steps_total].filter(t => t !== "") : []
+                // Its date, unless its line at the top says it already ("Before: …").
+                model: panel.card ? [panel.detail.appointment && panel.detail.appointment.turn && panel.detail.appointment.turn.line === panel.card.due ? "" : panel.card.due, panel.detail.budget || "", panel.card.estimate, panel.card.waits, panel.card.unblocks, panel.card.stopped, panel.card.spent, panel.card.done_on, panel.detail.steps_total].filter(t => t !== "") : []
 
                 delegate: Label {
                     required property string modelData
@@ -1534,18 +1566,69 @@ Panel {
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
                 }
-                DateField {
-                    id: dueField
+                // The date asked, and an hour when it has one: "done by", never a slot (docs/tasks.md,
+                // "A date asked and its hour"). No hour by default, the word its way back; a list that keeps none (Google
+                // Tasks) is told so once, by `task-limited`, and offers none. It wraps on a phone.
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    spacing: 4
 
-                    theme: panel.theme
-                    sioul: panel.sioul
-                    locale: panel.window.sioulLocale
-                    enabled: panel.canEdit
-                    date: panel.detail ? panel.detail.edit.due.slice(0, 10) : ""
-                    pickLabel: panel.sioul.text("event-pick-day")
-                    onEdited: {
-                        if (date.length === 10 || date.replace(/[-_ ]/g, "") === "")
-                            panel.change("due", date.replace(/[-_ ]/g, "") === "" ? "" : date)
+                    DateField {
+                        id: dueField
+
+                        theme: panel.theme
+                        sioul: panel.sioul
+                        locale: panel.window.sioulLocale
+                        enabled: panel.canEdit
+                        date: panel.detail ? panel.detail.edit.due.slice(0, 10) : ""
+                        pickLabel: panel.sioul.text("event-pick-day")
+                        onEdited: {
+                            if (date.length === 10 || date.replace(/[-_ ]/g, "") === "")
+                                panel.change("due", panel.dueOf(date, dueHour.text))
+                        }
+                    }
+                    ClockField {
+                        id: dueHour
+
+                        objectName: "taskDueHour"
+                        readonly property bool given: panel.hourReads(dueHour.text)
+
+                        visible: panel.keeps("due_hour")
+                        width: 80
+                        // An hour of no day means nothing: a day first.
+                        enabled: panel.canEdit && dueField.date.replace(/[-_ ]/g, "") !== ""
+                        Accessible.name: panel.sioul.text("task-field-due-hour")
+                        text: panel.detail ? panel.detail.edit.due.slice(11, 16) : ""
+                        // Read here, not from `given`: `textEdited` comes before the text's change is told.
+                        onTextEdited: {
+                            if (panel.hourReads(dueHour.text))
+                                panel.change("due", panel.dueOf(dueField.date, dueHour.text))
+                            // Emptied by hand, as by the button.
+                            else if (dueHour.text.replace(/[^0-9]/g, "") === "" && panel.detail && panel.detail.edit.due.length > 10)
+                                panel.change("due", dueField.date)
+                        }
+                    }
+                    // The word a day alone is said by, and the way back to it.
+                    Label {
+                        objectName: "taskNoHourLabel"
+                        visible: panel.keeps("due_hour") && !dueHour.given
+                        height: dueHour.height
+                        verticalAlignment: Text.AlignVCenter
+                        text: panel.sioul.text("task-no-hour")
+                        color: panel.theme.muted
+                    }
+                    Button {
+                        objectName: "taskNoHour"
+                        visible: panel.keeps("due_hour") && dueHour.given
+                        flat: true
+                        // Its words' width, not a button's usual 100: it stays on the line of the hour.
+                        implicitWidth: implicitContentWidth + 12
+                        leftPadding: 6
+                        rightPadding: 6
+                        enabled: panel.canEdit
+                        text: panel.sioul.text("task-no-hour")
+                        onClicked: panel.change("due", dueField.date)
                     }
                 }
                 Label {

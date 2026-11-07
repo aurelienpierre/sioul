@@ -608,7 +608,8 @@ CardFrame {
             flat: true
             text: "+  " + card.sioul.text("pair-add-steps")
             onClicked: {
-                const answer = JSON.parse(card.sioul.stepsForEvent(card.event.key) || "{}")
+                // A repeating event: for this time of it (`pairs::new_for`).
+                const answer = JSON.parse(card.sioul.stepsForEvent(card.event.key, part.shown ? part.shown.rid || "" : "") || "{}")
                 if (answer.error)
                     card.sioul.status = answer.error
                 else
@@ -626,7 +627,7 @@ CardFrame {
                 flat: true
                 text: card.theme.plain(card.sioul.textWith("pair-adopt", "title", adopt.modelData.title))
                 onClicked: {
-                    card.said(card.sioul.attachToEvent(adopt.modelData.uid, card.event.key))
+                    card.said(card.sioul.attachToEvent(adopt.modelData.uid, card.event.key, part.shown ? part.shown.rid || "" : ""))
                     pairing.read()
                 }
             }
@@ -641,7 +642,7 @@ CardFrame {
         id: part
 
         // `appointmentView`: {leave_at, line, preparation, before, more, bring,
-        // getting_there, coming_back, steps_after, also, leg_of}.
+        // to_do_before, getting_there, coming_back, steps_after, also, leg_of}.
         property var shown: null
         readonly property var legOf: part.shown && part.shown.leg_of ? part.shown.leg_of : null
         // Never on an appointment that will not be (cancelled, declined), nor a task's block opened
@@ -670,7 +671,7 @@ CardFrame {
             legDialog.now().makeLeg(card.event.key, card.event.summary, card.event.start, card.event.end, day(begin), clock(begin), clock(end))
         }
 
-        visible: part.shown !== null && ((part.shown.set_aside || []).length > 0 || (part.shown.line || "") !== "" || (part.shown.before || []).length > 0 || (part.shown.bring || []).length > 0 || (part.shown.getting_there || []).length > 0 || (part.shown.coming_back || []).length > 0 || (part.shown.steps_after || []).length > 0 || (part.shown.also || []).length > 0 || part.legOf !== null || part.legsTaken)
+        visible: part.shown !== null && ((part.shown.set_aside || []).length > 0 || (part.shown.line || "") !== "" || (part.shown.to_do_before || []).length > 0 || (part.shown.before || []).length > 0 || (part.shown.bring || []).length > 0 || (part.shown.getting_there || []).length > 0 || (part.shown.coming_back || []).length > 0 || (part.shown.steps_after || []).length > 0 || (part.shown.also || []).length > 0 || part.legOf !== null || part.legsTaken)
         Layout.fillWidth: true
         spacing: 4
 
@@ -734,6 +735,36 @@ CardFrame {
                         color: card.theme.muted
                     }
 
+                }
+            }
+        }
+        // The tasks tied to this time of a repeating event, this time alone, a changed one too.
+        Label {
+            visible: !!part.shown && (part.shown.to_do_before || []).length > 0
+            Layout.topMargin: 4
+            text: card.sioul.text("appointment-to-do-before")
+            textFormat: Text.PlainText
+            font.bold: true
+            color: card.theme.text
+        }
+        Repeater {
+            model: part.shown ? part.shown.to_do_before || [] : []
+
+            delegate: Label {
+                id: toDo
+
+                required property var modelData
+
+                objectName: "eventCardToDoBefore"
+                Layout.fillWidth: true
+                text: "·  " + toDo.modelData.title
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: card.theme.accent
+
+                TapHandler {
+                    cursorShape: Qt.PointingHandCursor
+                    onTapped: card.host.follow({ kind: "task", owner: toDo.modelData.uid, title: toDo.modelData.title })
                 }
             }
         }
