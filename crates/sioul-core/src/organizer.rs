@@ -203,24 +203,29 @@ pub fn every_guest(text: &str) -> Vec<Guest> {
     let organizer = organizer_of(text).map(|o| o.address.to_lowercase()).unwrap_or_default();
     let source = lines::unfold(text);
     for range in events(&source) {
-        let mut nested = 0usize;
-        for line in &source[range.start + 1..range.end - 1] {
-            match lines::name(line).as_str() {
-                "BEGIN" => nested += 1,
-                "END" => nested = nested.saturating_sub(1),
-                "ATTENDEE" if nested == 0 => {
-                    let address = address_of(lines::value(line));
-                    if address.is_empty() || address == organizer || out.iter().any(|g| g.is(&address)) {
-                        continue;
-                    }
-                    let name = lines::param(line, "CN").unwrap_or_default();
-                    out.push(Guest { address, name });
-                }
-                _ => {}
-            }
-        }
+        add_guests_of(&source[range], &organizer, &mut out);
     }
     out
+}
+
+/// The guests one VEVENT names, added to `out`, each once, `organizer` left out.
+fn add_guests_of(block: &[String], organizer: &str, out: &mut Vec<Guest>) {
+    let mut nested = 0usize;
+    for line in &block[1..block.len().saturating_sub(1)] {
+        match lines::name(line).as_str() {
+            "BEGIN" => nested += 1,
+            "END" => nested = nested.saturating_sub(1),
+            "ATTENDEE" if nested == 0 => {
+                let address = address_of(lines::value(line));
+                if address.is_empty() || address == organizer || out.iter().any(|g| g.is(&address)) {
+                    continue;
+                }
+                let name = lines::param(line, "CN").unwrap_or_default();
+                out.push(Guest { address, name });
+            }
+            _ => {}
+        }
+    }
 }
 
 /// The guests asked to some times of a meeting alone, not to its series
@@ -986,27 +991,24 @@ pub fn request(text: &str) -> Option<String> {
     Some(lines::fold(&out))
 }
 
-/// The cancellation of a meeting you organize (an iTIP CANCEL, RFC 5546
-/// §3.2.5): its main VEVENT's UID, times, rule, title and place, its
-/// organizer, the guests in `to` (all of them when empty), and
-/// STATUS:CANCELLED; `whole`, the meeting cancelled, its SEQUENCE one more
-/// than the file's, else those guests taken off it, at the file's SEQUENCE.
-/// None for no event.
-pub fn cancel(text: &str, to: &[String], whole: bool) -> Option<String> {
-    const KEPT: [&str; 9] = ["UID", "DTSTART", "DTEND", "DURATION", "RRULE", "RDATE", "EXDATE", "SUMMARY", "LOCATION"];
-    let source = lines::unfold(text);
-    let ranges = events(&source);
-    let main = ranges.iter().find(|r| !source[(*r).clone()].iter().any(|l| lines::name(l) == "RECURRENCE-ID")).or(ranges.first())?.clone();
-    let block = as_sent(&source[main]);
-    let sequence: i64 = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0);
+/// The highest SEQUENCE among a meeting's events: the version its guests may
+/// have heard last, whichever of its times it was.
+pub fn top_sequence(text: &str) -> i64 {
+    versions(text, None).into_iter().map(|(_, sequence)| sequence).max().unwrap_or(0)
+}
+
+/// One cancelled VEVENT, as its iTIP CANCEL carries it, from `block` as its
+/// guests receive it (`as_sent`): the lines `kept`, its organizer, the guests
+/// in `to` (all of them when empty), and STATUS:CANCELLED at `sequence`.
+fn cancelled_message(source: &[String], block: &[String], kept: &[&str], to: &[String], sequence: i64) -> String {
     let every = to.is_empty();
     let now = crate::moves::utc(crate::zone::now().timestamp().as_second());
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string(), "METHOD:CANCEL".to_string()];
-    out.extend(zones(&source));
+    out.extend(zones(source));
     out.push("BEGIN:VEVENT".to_string());
     for line in &block[1..block.len() - 1] {
         let name = lines::name(line);
-        if KEPT.contains(&name.as_str()) || name == "ORGANIZER" {
+        if kept.contains(&name.as_str()) || name == "ORGANIZER" {
             out.push(line.clone());
         } else if name == "ATTENDEE" && (every || to.iter().any(|t| t.trim().eq_ignore_ascii_case(&address_of(lines::value(line))))) {
             out.push(with_params(line, &["PARTSTAT", "RSVP"], &[]));
@@ -1018,8 +1020,116 @@ pub fn cancel(text: &str, to: &[String], whole: bool) -> Option<String> {
             out.push(format!("ATTENDEE:mailto:{}", gone.trim()));
         }
     }
-    out.extend([format!("SEQUENCE:{}", if whole { sequence + 1 } else { sequence }), format!("DTSTAMP:{now}"), "STATUS:CANCELLED".to_string(), "END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
-    Some(lines::fold(&out))
+    out.extend([format!("SEQUENCE:{sequence}"), format!("DTSTAMP:{now}"), "STATUS:CANCELLED".to_string(), "END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
+    lines::fold(&out)
+}
+
+/// The cancellation of a meeting you organize (an iTIP CANCEL, RFC 5546
+/// §3.2.5): its main VEVENT's UID, times, rule, title and place, its
+/// organizer, the guests in `to` (all of them when empty), and
+/// STATUS:CANCELLED; `whole`, the meeting cancelled, its SEQUENCE one more
+/// than the highest of the file's (a guest of one time moved holds that
+/// time's), else those guests taken off it, at the file's SEQUENCE.
+/// None for no event.
+pub fn cancel(text: &str, to: &[String], whole: bool) -> Option<String> {
+    const KEPT: [&str; 9] = ["UID", "DTSTART", "DTEND", "DURATION", "RRULE", "RDATE", "EXDATE", "SUMMARY", "LOCATION"];
+    let source = lines::unfold(text);
+    let ranges = events(&source);
+    let main = ranges.iter().find(|r| !source[(*r).clone()].iter().any(|l| lines::name(l) == "RECURRENCE-ID")).or(ranges.first())?.clone();
+    let block = as_sent(&source[main]);
+    let sequence: i64 = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0);
+    Some(cancelled_message(&source, &block, &KEPT, to, if whole { top_sequence(text) + 1 } else { sequence }))
+}
+
+/// The cancellation of one time of a repeating meeting you organize (RFC 5546
+/// §3.2.5, an iTIP CANCEL carrying its RECURRENCE-ID), the time starting at
+/// `start` (`agenda::one_time`): its UID, RECURRENCE-ID, times, title and
+/// place, never the series' rule; its organizer and the guests in `to`; its
+/// SEQUENCE one more than the highest of the file's, as the file gets
+/// (`without_time`). None when no time starts there.
+pub fn cancel_time(text: &str, start: i64, to: &[String], zone: &jiff::tz::TimeZone) -> Option<String> {
+    const KEPT: [&str; 7] = ["UID", "RECURRENCE-ID", "DTSTART", "DTEND", "DURATION", "SUMMARY", "LOCATION"];
+    let block = as_sent(&crate::agenda::one_time(text, start, zone)?);
+    Some(cancelled_message(&lines::unfold(text), &block, &KEPT, to, top_sequence(text) + 1))
+}
+
+/// The guests asked to the time of a repeating meeting starting at `start`:
+/// those its own event names when it has one (guests of that time alone
+/// included, a guest excused from it not), else the series' (`agenda::one_time`).
+pub fn time_guests(text: &str, start: i64, zone: &jiff::tz::TimeZone) -> Vec<Guest> {
+    let organizer = organizer_of(text).map(|o| o.address.to_lowercase()).unwrap_or_default();
+    let mut out = Vec::new();
+    if let Some(block) = crate::agenda::one_time(text, start, zone) {
+        add_guests_of(&block, &organizer, &mut out);
+    }
+    out
+}
+
+/// A repeating meeting you organize without the time starting at `start`: left
+/// out of its series (EXDATE), that time's own event taken out if it has one
+/// (`agenda::skip_occurrence`), each event's SEQUENCE one past the highest
+/// heard (RFC 5546 §2.1.4), its stamps renewed. None when no time starts
+/// there.
+pub fn without_time(text: &str, start: i64, zone: &jiff::tz::TimeZone) -> Option<String> {
+    crate::agenda::one_time(text, start, zone)?;
+    let top = top_sequence(text);
+    resequenced(&crate::agenda::skip_occurrence(text, start)?, |own| own.max(top) + 1)
+}
+
+/// A meeting you organize with its status set (RFC 5545 §3.8.1.11), a change
+/// each guest must hear (RFC 5546 §2.1.4): "confirmed", "tentative" or
+/// "cancelled" on every event of it, the series and each time of it changed,
+/// as a server reads it (sabre's broker takes the last event's), and as a
+/// guest of one time alone must hear it. A time cancelled by itself (another
+/// program's) stays so, the whole meeting cancelled or on again: on the way to
+/// Cancelled it keeps its own SEQUENCE, which every other event passes, and that
+/// lower SEQUENCE tells it on the way back (review of f85f504, L1). Each other
+/// event's SEQUENCE one past the highest heard, its stamps renewed. The same
+/// text when its main event says so already; None for another word, or no event.
+pub fn with_status(text: &str, status: &str) -> Option<String> {
+    let status = status.trim().to_ascii_lowercase();
+    if !["confirmed", "tentative", "cancelled"].contains(&status.as_str()) {
+        return None;
+    }
+    let was = crate::agenda::status_of(text);
+    if was == status {
+        return Some(text.to_string());
+    }
+    let word = format!("STATUS:{}", status.to_ascii_uppercase());
+    let source = lines::unfold(text);
+    let ranges = events(&source);
+    if ranges.is_empty() {
+        return None;
+    }
+    let top = top_sequence(text);
+    let main_sequence = sequence_of(text);
+    let cancelled_alone = |block: &[String]| {
+        let cancelled = block.iter().any(|l| lines::name(l) == "RECURRENCE-ID") && block.iter().any(|l| lines::name(l) == "STATUS" && lines::value(l).trim().eq_ignore_ascii_case("CANCELLED"));
+        let own: i64 = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0);
+        cancelled && (was != "cancelled" || own < main_sequence)
+    };
+    let mut alone: Vec<&String> = Vec::new();
+    let mut out: Vec<String> = Vec::with_capacity(source.len() + ranges.len());
+    let mut at = 0;
+    for range in ranges {
+        out.extend(source[at..range.start].iter().cloned());
+        at = range.end;
+        let block = &source[range];
+        if cancelled_alone(block) {
+            alone.extend(block.iter().find(|l| lines::name(l) == "RECURRENCE-ID"));
+            out.extend(block.iter().cloned());
+            continue;
+        }
+        let place = first_nested(block);
+        let mut kept: Vec<String> = block[..place].iter().filter(|l| lines::name(l) != "STATUS").cloned().collect();
+        kept.push(word.clone());
+        kept.extend(block[place..].iter().cloned());
+        out.extend(kept);
+    }
+    out.extend(source[at..].iter().cloned());
+    let written = lines::fold(&out);
+    // On the way to Cancelled, a time cancelled alone keeps its version; every other write renews all.
+    resequenced_where(&written, |own| own.max(top) + 1, |block| status == "cancelled" && block.iter().any(|l| alone.contains(&l)))
 }
 
 /// A guest's answer to a meeting you organize, read from their REPLY
@@ -1161,6 +1271,11 @@ pub fn replied(text: &str, reply: &str) -> Option<Reply> {
 /// A meeting's text with each event's SEQUENCE set by `next` (given its
 /// own, 0 when unsaid) and its stamps renewed. None for no event.
 fn resequenced(text: &str, next: impl Fn(i64) -> i64) -> Option<String> {
+    resequenced_where(text, next, |_| false)
+}
+
+/// `resequenced`, the events `left` says written as they are.
+fn resequenced_where(text: &str, next: impl Fn(i64) -> i64, left: impl Fn(&[String]) -> bool) -> Option<String> {
     let source = lines::unfold(text);
     let ranges = events(&source);
     if ranges.is_empty() {
@@ -1173,6 +1288,10 @@ fn resequenced(text: &str, next: impl Fn(i64) -> i64) -> Option<String> {
         out.extend(source[at..range.start].iter().cloned());
         at = range.end;
         let block = &source[range];
+        if left(block) {
+            out.extend(block.iter().cloned());
+            continue;
+        }
         let sequence: i64 = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0);
         let mut nested = 0usize;
         let mut kept: Vec<String> = Vec::with_capacity(block.len() + 3);
@@ -1197,11 +1316,22 @@ fn resequenced(text: &str, next: impl Fn(i64) -> i64) -> Option<String> {
 
 /// A meeting you organize as it comes back after its cancellation went to
 /// its guests (Undo of its deletion, review of 1e8551e, F14): each event's
-/// SEQUENCE two past its own, so one past the cancellation's
-/// (`cancel`), which guests' programs take as a later version; its stamps
-/// renewed. None for no event.
+/// SEQUENCE two past the highest of the file's, so one past the
+/// cancellation's (`cancel`), which guests' programs take as a later version;
+/// its stamps renewed. None for no event.
 pub fn after_cancel(text: &str) -> Option<String> {
-    resequenced(text, |own| own + 2)
+    told_past(text, 0)
+}
+
+/// `after_cancel`, and past `heard` too, the highest SEQUENCE its guests may
+/// have heard: a guest's program ignores a message at or below what it holds,
+/// so that someone told it is on again at a lower one keeps it cancelled
+/// (review of f85f504, M4). `text` may be at a lower version than the
+/// cancellation: your server's copy, while several changes left here before it
+/// heard of them.
+pub fn told_past(text: &str, heard: i64) -> Option<String> {
+    let top = (top_sequence(text) + 1).max(heard);
+    resequenced(text, |own| own.max(top) + 1)
 }
 
 /// The SEQUENCE of a meeting's main event (the series, else its first event); 0 unsaid.
@@ -1264,6 +1394,12 @@ fn version_holds(theirs: &str, sent: &str, guest: &str, holds: impl Fn(i64, i64)
     pairs.into_iter().all(|(now, said)| holds(now, said))
 }
 
+/// The time a CANCEL of one time of a series names (`cancel_time`): its
+/// RECURRENCE-ID's instant; None for a cancellation of the whole meeting.
+fn cancelled_time(ics: &str) -> Option<i64> {
+    lines::unfold(ics).iter().find(|l| lines::name(l) == "RECURRENCE-ID").and_then(|l| crate::agenda::instant_in(l, &crate::zone::current()))
+}
+
 /// An unsent message to a meeting's guests waiting in your Drafts (`reconcile`): its id, to whom, its iTIP object.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pending {
@@ -1301,7 +1437,8 @@ pub struct Reconciled {
 ///   status of the events naming them, and each one's SEQUENCE: a guest
 ///   asked to one time alone by that time's own, `versions`); a cancellation
 ///   stays when its guests are no longer asked in `theirs`, or `theirs` is
-///   cancelled. Every other one goes.
+///   cancelled, or, for one time, that time is out of `theirs`. Every other
+///   one goes.
 /// - A guest told by your drafts in `theirs` whose message went, and whom
 ///   no message kept tells, gets an invitation of `theirs` when they have
 ///   not heard it: `theirs` is at least as recent as an invitation that
@@ -1313,12 +1450,18 @@ pub struct Reconciled {
 ///   come yet, or sent there before this sync, is not. A draft made here
 ///   for a version already drafted there has the same name (`draft_id`), so
 ///   the sharing keeps one of the two.
-pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool) -> Reconciled {
+/// - `heard`: those a cancellation of yours reached (`cancellations_heard`),
+///   whom one invitation past it tells, drafted by the sync (`dav::invited_again`).
+///   Never a second message for them (review of f85f504, M3): none is drafted
+///   here, and an invitation naming one goes, the others it named told apart.
+pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool, heard: &[Guest]) -> Reconciled {
+    let zone = crate::zone::current();
     let server = if server_tells { Sender::Server } else { Sender::Draft };
     let guests = every_guest(theirs);
     let drafted: Vec<&Guest> = guests.iter().filter(|g| teller(theirs, &g.address, server) == Sender::Draft).collect();
     let is_drafted = |address: &str| drafted.iter().any(|g| g.is(address));
     let asked = |address: &str| guests.iter().any(|g| g.is(address));
+    let told_past_it = |address: &str| heard.iter().any(|g| g.is(address));
     let cancelled = {
         let source = lines::unfold(theirs);
         let ranges = events(&source);
@@ -1331,8 +1474,9 @@ pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool) -> Recon
     for p in pending {
         let valid = match method(&p.ics).as_str() {
             // Each guest's own times, their SEQUENCE each (R4): a guest of one time alone by that time's.
-            "REQUEST" => !cancelled && p.to.iter().all(|r| is_drafted(r) && versions(&p.ics, Some(r)) == versions(theirs, Some(r)) && seen_by_guests(&p.ics, Some(r)) == seen_by_guests(theirs, Some(r))),
-            "CANCEL" => cancelled || p.to.iter().all(|r| !asked(r)),
+            "REQUEST" => !cancelled && p.to.iter().all(|r| !told_past_it(r) && is_drafted(r) && versions(&p.ics, Some(r)) == versions(theirs, Some(r)) && seen_by_guests(&p.ics, Some(r)) == seen_by_guests(theirs, Some(r))),
+            // One time's: while that time is out of `theirs`, whoever is still asked to the others.
+            "CANCEL" => cancelled || p.to.iter().all(|r| !asked(r)) || cancelled_time(&p.ics).is_some_and(|at| !crate::agenda::holds_time(theirs, at, &zone)),
             _ => true,
         };
         if valid {
@@ -1343,7 +1487,7 @@ pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool) -> Recon
         }
     }
     let kept_request = |address: &str| pending.iter().any(|p| out.keep.contains(&p.id) && method(&p.ics) == "REQUEST" && p.to.iter().any(|r| r.trim().eq_ignore_ascii_case(address)));
-    for guest in drafted.iter().filter(|_| !cancelled) {
+    for guest in drafted.iter().filter(|g| !cancelled && !told_past_it(&g.address)) {
         let unheard = gone.iter().filter(|p| p.to.iter().any(|r| guest.is(r))).any(|p| match method(&p.ics).as_str() {
             "REQUEST" => version_holds(theirs, &p.ics, &guest.address, |now, said| now >= said),
             "CANCEL" => version_holds(theirs, &p.ics, &guest.address, |now, said| now > said),
@@ -1357,6 +1501,174 @@ pub fn reconcile(theirs: &str, pending: &[Pending], server_tells: bool) -> Recon
         out.served = guests.iter().filter(|g| !is_drafted(&g.address)).cloned().collect();
     }
     out
+}
+
+/// Those of `drafted` (the guests your drafts tell) a cancellation of `mine`
+/// reached, set aside for `theirs`, which holds what it cancelled: the
+/// meeting cancelled in `mine` and not in `theirs`, or a time left out of
+/// `mine` that `theirs` holds. Reached is drafted here (`notes`,
+/// `cancellation_notes`) and no longer in your Drafts (`pending`), so sent:
+/// they were told it is off, and it is not. They hear `theirs` again, one
+/// version past it (`told_past`), as a refused deletion tells them.
+///
+/// A cancellation drafted on another device is not counted, here or by
+/// `theirs`: that device told them what it knew, and the one that took it back
+/// told them that (review of f85f504, M5). A draft you discarded by hand reads
+/// as sent, as it does for every other act's Undo.
+pub fn cancellations_heard(mine: &str, theirs: &str, notes: &[CancelNote], pending: &[Pending], drafted: &[Guest]) -> Vec<Guest> {
+    let zone = crate::zone::current();
+    let cancels = |p: &&Pending, time: Option<i64>| lines::unfold(&p.ics).iter().any(|l| lines::name(l) == "METHOD" && lines::value(l).trim().eq_ignore_ascii_case("CANCEL")) && cancelled_time(&p.ics) == time;
+    let waits = |g: &Guest, time: Option<i64>| pending.iter().filter(|p| cancels(p, time)).any(|p| p.to.iter().any(|t| g.is(t)));
+    let drafted_here = |g: &Guest, time: Option<i64>| notes.iter().any(|n| n.time == time && n.to.iter().any(|t| g.is(t)));
+    let mut out: Vec<Guest> = Vec::new();
+    if crate::agenda::status_of(mine) == "cancelled" && crate::agenda::status_of(theirs) != "cancelled" {
+        out.extend(drafted.iter().filter(|g| drafted_here(g, None) && !waits(g, None)).cloned());
+    }
+    for at in crate::agenda::left_out_times(mine, &zone).into_iter().filter(|at| crate::agenda::holds_time(theirs, *at, &zone)) {
+        for guest in time_guests_at(theirs, at, &zone).iter().filter_map(|g| drafted.iter().find(|d| d.is(&g.address))) {
+            if drafted_here(guest, Some(at)) && !waits(guest, Some(at)) && !out.iter().any(|o| o.is(&guest.address)) {
+                out.push(guest.clone());
+            }
+        }
+    }
+    out
+}
+
+/// A cancellation of a meeting you organize drafted on this device (the status
+/// Cancelled, its deletion, or one time left out; review of f85f504, M4, M5):
+/// what the sync needs when its server's version comes back holding what it
+/// cancelled, since its draft leaves your Drafts once sent. Its UID, the time
+/// it names (`cancelled_time`, none the whole meeting), its guests' addresses,
+/// its SEQUENCE, and the status the meeting said before (what its guests
+/// last heard, "" none said). `state/dav/cancellations.toml`, this device's
+/// own: what another device drafted is that device's to know.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelNote {
+    pub uid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<i64>,
+    pub to: Vec<String>,
+    pub sequence: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub was: String,
+    /// When it was noted: a note outlives no meeting by long, its deletion leaving no file to say so.
+    pub at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct CancelNotes {
+    #[serde(default, rename = "cancellation")]
+    notes: Vec<CancelNote>,
+}
+
+/// A note kept this long at most, once its meeting is gone there is nothing to settle it.
+const CANCEL_NOTE_DAYS: i64 = 400;
+
+fn cancel_notes_path() -> std::path::PathBuf {
+    crate::config::state_dir().join("dav").join("cancellations.toml")
+}
+
+fn cancel_notes_read(path: &std::path::Path) -> CancelNotes {
+    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+}
+
+/// The notes changed by `change`, under their lock, written only when it changes
+/// them; what the change gives back.
+fn cancel_notes_change<T>(change: impl FnOnce(&mut Vec<CancelNote>) -> T) -> T {
+    let path = cancel_notes_path();
+    crate::filelock::with_lock(&path, || {
+        let mut all = cancel_notes_read(&path);
+        let before = all.notes.clone();
+        let out = change(&mut all.notes);
+        if all.notes != before {
+            if all.notes.is_empty() {
+                let _ = std::fs::remove_file(&path);
+            } else if let Ok(text) = toml::to_string(&all) {
+                if let Some(folder) = path.parent() {
+                    let _ = std::fs::create_dir_all(folder);
+                }
+                let _ = crate::filelock::replace(&path, text.as_bytes());
+            }
+        }
+        out
+    })
+}
+
+/// A cancellation just drafted here (`ics`, to `to`) noted, in the place of an
+/// earlier one of the same meeting and time; `was` the status the meeting said before.
+pub fn note_cancellation(ics: &str, to: &[String], was: &str) {
+    let source = lines::unfold(ics);
+    let uid = source.iter().find(|l| lines::name(l) == "UID").map(|l| lines::value(l).trim().to_string()).unwrap_or_default();
+    if uid.is_empty() {
+        return;
+    }
+    let now = crate::zone::now().timestamp().as_second();
+    let note = CancelNote { uid, time: cancelled_time(ics), to: to.iter().map(|t| t.trim().to_lowercase()).collect(), sequence: sequence_of(ics), was: was.to_string(), at: now };
+    cancel_notes_change(|notes| {
+        notes.retain(|n| !(n.uid == note.uid && n.time == note.time) && now - n.at < CANCEL_NOTE_DAYS * 86_400);
+        notes.push(note);
+    });
+}
+
+/// The cancellations of this meeting drafted here (`CancelNote`).
+pub fn cancellation_notes(uid: &str) -> Vec<CancelNote> {
+    cancel_notes_read(&cancel_notes_path()).notes.into_iter().filter(|n| n.uid == uid).collect()
+}
+
+/// The notes of a meeting whose version `text` no longer stands for them
+/// taken out: the meeting not cancelled there, a time it holds. Those taken out,
+/// for an Undo that brings that version back (`notes_back`).
+pub fn cancellations_settled(text: &str) -> Vec<CancelNote> {
+    let path = cancel_notes_path();
+    // A sync brings many items, and most devices hold no note.
+    if !path.exists() {
+        return Vec::new();
+    }
+    let uid = crate::meeting_lines::uid_of(text);
+    if uid.is_empty() || cancellation_notes(&uid).is_empty() {
+        return Vec::new();
+    }
+    let zone = crate::zone::current();
+    let off = crate::agenda::status_of(text) == "cancelled";
+    cancel_notes_change(|notes| {
+        let (settled, kept): (Vec<CancelNote>, Vec<CancelNote>) = std::mem::take(notes).into_iter().partition(|n| {
+            n.uid == uid
+                && match n.time {
+                    None => !off,
+                    Some(at) => crate::agenda::holds_time(text, at, &zone),
+                }
+        });
+        *notes = kept;
+        settled
+    })
+}
+
+/// Notes taken out by `cancellations_settled` put back (Undo of the write that
+/// settled them): a later one of the same meeting and time stays.
+pub fn notes_back(back: &[CancelNote]) {
+    if back.is_empty() {
+        return;
+    }
+    cancel_notes_change(|notes| {
+        for note in back {
+            if !notes.iter().any(|n| n.uid == note.uid && n.time == note.time) {
+                notes.push(note.clone());
+            }
+        }
+    });
+}
+
+/// Your unsent cancellations of the whole meeting with this UID, in your
+/// Drafts (`pending_of`): its guests have not heard them.
+pub fn unsent_cancellations(uid: &str, own: &[String]) -> Vec<Pending> {
+    pending_of(uid, own).into_iter().filter(|p| lines::unfold(&p.ics).iter().any(|l| lines::name(l) == "METHOD" && lines::value(l).trim().eq_ignore_ascii_case("CANCEL")) && cancelled_time(&p.ics).is_none()).collect()
+}
+
+/// The guests of the time of a series its RECURRENCE-ID names `at`, moved or
+/// not (`time_guests`, whose `start` is where it shows).
+fn time_guests_at(text: &str, at: i64, zone: &jiff::tz::TimeZone) -> Vec<Guest> {
+    let shown = crate::agenda::moved_to(text, at, zone).unwrap_or(at);
+    time_guests(text, shown, zone)
 }
 
 /// A sentence of the translator `tr` with its arguments.
@@ -1418,6 +1730,14 @@ pub fn draft(account: &str, signature: Option<&str>, to: &[Guest], text: &str, i
         draft.links = vec![crate::links::event_uri(&uid)];
     }
     draft
+}
+
+/// A draft to `to` carrying the cancellation of one time of a meeting
+/// (`cancel_time`), from `account` with its `signature`: its words say that
+/// time, never the series' first, as `draft` says a meeting.
+pub fn time_draft(account: &str, signature: Option<&str>, to: &[Guest], ics: String, tr: &crate::i18n::Translator) -> crate::compose::Draft {
+    let that_time: Vec<String> = lines::unfold(&ics).into_iter().filter(|l| !matches!(lines::name(l).as_str(), "RECURRENCE-ID" | "METHOD")).collect();
+    draft(account, signature, to, &lines::fold(&that_time), ics, true, tr)
 }
 
 /// The unsent messages of the meeting with this UID that you organize, in
@@ -1485,6 +1805,264 @@ mod tests {
         let alone = with_guests(&changed, &me(), &[], Sender::Draft).unwrap();
         assert!(!alone.contains("ATTENDEE") && alone.contains("ORGANIZER"), "every guest taken out");
         assert!(!crate::agenda::meeting_with_others(&alone, &["me@example.org".into()]));
+    }
+
+    /// A weekly meeting: Anne of the series, its third time moved and given
+    /// Carl alone beside Anne, its second time excusing Anne and asking Bob.
+    fn weekly() -> String {
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nDTSTAMP:20261001T000000Z\r\nSEQUENCE:1\r\nDTSTART:20991103T090000Z\r\nDTEND:20991103T100000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Planning\r\nLOCATION:Room 2\r\nSTATUS:CONFIRMED\r\nORGANIZER;CN=Camille:mailto:me@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=ACCEPTED;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nX-SIOUL-BEFORE:15\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nRECURRENCE-ID:20991110T090000Z\r\nDTSTAMP:20261001T000000Z\r\nSEQUENCE:1\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning\r\nORGANIZER;CN=Camille:mailto:me@example.org\r\nATTENDEE;CN=Bob;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:weekly-1\r\nRECURRENCE-ID:20991117T090000Z\r\nDTSTAMP:20261001T000000Z\r\nSEQUENCE:4\r\nDTSTART:20991117T140000Z\r\nDTEND:20991117T150000Z\r\nSUMMARY:Planning moved\r\nORGANIZER;CN=Camille:mailto:me@example.org\r\nATTENDEE;CN=Anne;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nATTENDEE;CN=Carl;SCHEDULE-AGENT=CLIENT:mailto:carl@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n".to_string()
+    }
+
+    /// A status on every event, each past the highest version heard; a time
+    /// cancelled by itself stays so (`a_time_cancelled_by_itself_stays_through_a_status`);
+    /// the same word, the same text. The cancellation one past the highest
+    /// version, for every guest named; the meeting back after it one past that.
+    #[test]
+    fn a_status_is_told_as_a_later_version_of_every_event() {
+        let text = weekly();
+        let tentative = un(&with_status(&text, "tentative").unwrap());
+        assert_eq!(tentative.matches("STATUS:TENTATIVE").count(), 3, "{tentative}");
+        assert!(!tentative.contains("STATUS:CONFIRMED") && tentative.matches("SEQUENCE:5").count() == 3 && !tentative.contains("DTSTAMP:20261001T000000Z"), "{tentative}");
+        assert!(tentative.contains("X-SIOUL-BEFORE:15") && tentative.contains("BEGIN:VALARM"), "yours kept, the guests' copy made apart (`for_guests`)");
+        assert!(told(&text, &tentative) && significant(&text, &tentative), "a change every guest hears, its server by itself");
+        assert_eq!(with_status(&text, "confirmed").unwrap(), text, "says so already");
+        assert_eq!(with_status(&text, "maybe"), None);
+        let one_cancelled = text.replacen("SUMMARY:Planning moved\r\n", "SUMMARY:Planning moved\r\nSTATUS:CANCELLED\r\n", 1);
+        let kept = un(&with_status(&one_cancelled, "tentative").unwrap());
+        assert_eq!((kept.matches("STATUS:CANCELLED").count(), kept.matches("STATUS:TENTATIVE").count()), (1, 2), "{kept}");
+        let cancelled = un(&with_status(&one_cancelled, "cancelled").unwrap());
+        assert_eq!(cancelled.matches("STATUS:CANCELLED").count(), 3, "{cancelled}");
+        let told_all = un(&cancel(&text, &["anne@example.net".into(), "bob@example.net".into(), "carl@example.net".into()], true).unwrap());
+        assert!(told_all.contains("METHOD:CANCEL\r\n") && told_all.contains("SEQUENCE:5\r\n") && told_all.contains("STATUS:CANCELLED\r\n") && told_all.contains("RRULE:FREQ=WEEKLY") && !told_all.contains("RECURRENCE-ID"), "{told_all}");
+        for address in ["anne@example.net", "bob@example.net", "carl@example.net"] {
+            assert!(told_all.contains(&format!("mailto:{address}")), "{address}: {told_all}");
+        }
+        assert!(!told_all.contains("X-SIOUL") && !told_all.contains("VALARM") && !told_all.contains("SCHEDULE-AGENT"), "{told_all}");
+        let back = un(&after_cancel(&text).unwrap());
+        assert_eq!(back.matches("SEQUENCE:6").count(), 3, "one past its cancellation, whichever time a guest holds: {back}");
+    }
+
+    /// One time left out, by when it shows: its guests alone, those of that
+    /// time alone included, one excused not; EXDATE on the series, that time's
+    /// own event gone; its cancellation names it (RECURRENCE-ID), says its own
+    /// times, carries no rule, one past the highest version heard, nothing
+    /// of Sioul's. A time of no event of its own: the series' guests. No time
+    /// starts there: nothing.
+    #[test]
+    fn one_time_left_out_tells_the_guests_of_that_time_alone() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let text = weekly();
+        let at = |stamp: &str| crate::agenda::instant_in(&format!("DTSTART:{stamp}"), &zone).unwrap();
+        let names = |list: Vec<Guest>| list.into_iter().map(|g| g.address).collect::<Vec<_>>();
+        // The third time, moved to 14:00, Carl asked to it alone.
+        let moved = at("20991117T140000Z");
+        assert_eq!(names(time_guests(&text, moved, &zone)), ["anne@example.net", "carl@example.net"]);
+        // The second, excusing Anne: Bob alone.
+        assert_eq!(names(time_guests(&text, at("20991110T090000Z"), &zone)), ["bob@example.net"]);
+        // Any other: the series'.
+        let plain = at("20991124T090000Z");
+        assert_eq!(names(time_guests(&text, plain, &zone)), ["anne@example.net"]);
+        assert!(time_guests(&text, at("20991124T100000Z"), &zone).is_empty() && without_time(&text, at("20991124T100000Z"), &zone).is_none() && cancel_time(&text, at("20991124T100000Z"), &[], &zone).is_none(), "no time starts there");
+        // The moved one: its event gone, the instant it replaced left out.
+        let without = un(&without_time(&text, moved, &zone).unwrap());
+        assert!(without.contains("EXDATE:20991117T090000Z\r\n") && !without.contains("RECURRENCE-ID:20991117T090000Z") && !without.contains("Planning moved"), "{without}");
+        assert!(without.contains("RECURRENCE-ID:20991110T090000Z"), "the other time kept: {without}");
+        assert_eq!(without.matches("SEQUENCE:5").count(), 2, "{without}");
+        let to = ["anne@example.net".to_string(), "carl@example.net".to_string()];
+        let said = un(&cancel_time(&text, moved, &to, &zone).unwrap());
+        assert!(said.contains("METHOD:CANCEL\r\n") && said.contains("UID:weekly-1\r\n") && said.contains("RECURRENCE-ID:20991117T090000Z\r\n") && said.contains("DTSTART:20991117T140000Z\r\n") && said.contains("SUMMARY:Planning moved\r\n") && said.contains("SEQUENCE:5\r\n") && said.contains("STATUS:CANCELLED\r\n"), "{said}");
+        assert!(!said.contains("RRULE") && !said.contains("X-SIOUL") && !said.contains("VALARM") && !said.contains("SCHEDULE-AGENT") && !said.contains("bob@"), "{said}");
+        // A plain time: made from the series, at that time.
+        let plain_said = un(&cancel_time(&text, plain, &["anne@example.net".into()], &zone).unwrap());
+        assert!(plain_said.contains("RECURRENCE-ID:20991124T090000Z\r\n") && plain_said.contains("DTSTART:20991124T090000Z\r\n") && plain_said.contains("DTEND:20991124T100000Z\r\n") && plain_said.contains("LOCATION:Room 2\r\n") && !plain_said.contains("RRULE") && !plain_said.contains("X-SIOUL"), "{plain_said}");
+        let without_plain = un(&without_time(&text, plain, &zone).unwrap());
+        assert!(without_plain.contains("EXDATE:20991124T090000Z\r\n") && without_plain.matches("BEGIN:VEVENT").count() == 3, "{without_plain}");
+        // Its draft says that time, its id another than any other time's.
+        let tr = crate::i18n::Translator::new("en");
+        let anne = [guest("anne@example.net", "Anne")];
+        let d = time_draft("work", None, &anne, cancel_time(&text, plain, &["anne@example.net".into()], &zone).unwrap(), &tr);
+        assert!(d.subject.contains("Planning") && d.subject.contains("24"), "that time's day: {}", d.subject);
+        let other = time_draft("work", None, &anne, cancel_time(&text, at("20991201T090000Z"), &["anne@example.net".into()], &zone).unwrap(), &tr);
+        assert_ne!(d.id, other.id, "one draft for each time");
+    }
+
+    /// No address of Sioul's nor line of its own reaches a guest by the
+    /// cancellation of a meeting or of one time of it, whatever its file holds.
+    #[test]
+    fn nothing_of_sioul_s_reaches_a_guest_by_a_cancellation() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let text = weekly().replacen("SUMMARY:Planning\r\n", "SUMMARY:Planning\r\nDESCRIPTION:see sioul:task/abc there\r\nURL:sioul:event/abc\r\nX-SIOUL-TAKEN-BY;CN=Sam:mailto:sam@example.org\r\nRELATED-TO:sioul:task/abc\r\nCATEGORIES:yours\r\n", 1);
+        let at = crate::agenda::instant_in("DTSTART:20991124T090000Z", &zone).unwrap();
+        let to = ["anne@example.net".to_string()];
+        for said in [cancel_time(&text, at, &to, &zone).unwrap(), cancel(&text, &to, true).unwrap(), request(&with_status(&text, "tentative").unwrap()).unwrap()] {
+            let flat = un(&said);
+            assert!(!flat.contains("sioul:") && !flat.contains("X-SIOUL") && !flat.contains("sam@") && !flat.contains("CATEGORIES") && !flat.contains("RELATED-TO") && !flat.contains("VALARM"), "{flat}");
+            for line in lines::unfold(&said) {
+                let name = lines::raw_name(&line);
+                assert!(SHARED.contains(&name.as_str()) || ["BEGIN", "END", "VERSION", "PRODID", "METHOD"].contains(&name.as_str()), "{line}");
+            }
+        }
+    }
+
+    /// A conflict with its server, for a cancellation in your Drafts: one
+    /// time's stays while that time is out of the server's version, and goes
+    /// when that version holds it; the whole meeting's goes unless that
+    /// version is cancelled. Once one went (no longer in Drafts) and the
+    /// server's version holds what it cancelled, its guests heard it.
+    #[test]
+    fn a_cancellation_waits_only_while_it_says_the_server_s_version() {
+        let zone = jiff::tz::TimeZone::UTC;
+        let text = weekly();
+        let plain = crate::agenda::instant_in("DTSTART:20991124T090000Z", &zone).unwrap();
+        let without = without_time(&text, plain, &zone).unwrap();
+        let anne = vec!["anne@example.net".to_string()];
+        let time_cancel = Pending { id: "t".into(), to: anne.clone(), ics: cancel_time(&text, plain, &anne, &zone).unwrap() };
+        assert_eq!(reconcile(&text, std::slice::from_ref(&time_cancel), false, &[]).withdraw, ["t"], "that time still there");
+        assert_eq!(reconcile(&without, std::slice::from_ref(&time_cancel), false, &[]).keep, ["t"], "that time out of it");
+        let whole = Pending { id: "w".into(), to: anne.clone(), ics: cancel(&text, &anne, true).unwrap() };
+        assert_eq!(reconcile(&text, std::slice::from_ref(&whole), false, &[]).withdraw, ["w"]);
+        assert_eq!(reconcile(&with_status(&text, "cancelled").unwrap(), std::slice::from_ref(&whole), false, &[]).keep, ["w"]);
+        let guests = [guest("anne@example.net", "Anne")];
+        let time_note = CancelNote { uid: "w".into(), time: Some(crate::agenda::instant_in("RECURRENCE-ID:20991124T090000Z", &zone).unwrap()), to: anne.clone(), sequence: 5, ..CancelNote::default() };
+        let time_notes = std::slice::from_ref(&time_note);
+        assert!(cancellations_heard(&without, &text, time_notes, std::slice::from_ref(&time_cancel), &guests).is_empty(), "in Drafts: nobody heard");
+        assert_eq!(cancellations_heard(&without, &text, time_notes, &[], &guests), guests, "drafted here, gone from Drafts: heard");
+        assert!(cancellations_heard(&without, &without, time_notes, &[], &guests).is_empty(), "that time out of both");
+        assert!(cancellations_heard(&without, &text, &[], &[], &guests).is_empty(), "never drafted here (M5): not heard");
+        let off = with_status(&text, "cancelled").unwrap();
+        let whole_note = CancelNote { uid: "w".into(), to: anne.clone(), sequence: 5, ..CancelNote::default() };
+        let whole_notes = std::slice::from_ref(&whole_note);
+        assert!(cancellations_heard(&off, &text, whole_notes, std::slice::from_ref(&whole), &guests).is_empty());
+        assert_eq!(cancellations_heard(&off, &text, whole_notes, &[], &guests), guests);
+        assert!(cancellations_heard(&off, &off, whole_notes, &[], &guests).is_empty());
+        assert!(cancellations_heard(&off, &text, time_notes, &[], &guests).is_empty(), "a time's note says nothing of the whole");
+        assert!(cancellations_heard(&off, &text, &[], &[], &guests).is_empty(), "cancelled elsewhere: that device told them (M5)");
+    }
+
+    /// The review of f85f504, M3: those a cancellation reached are told by
+    /// one invitation past it, drafted by the sync: here, no invitation for
+    /// them, and one still in Drafts naming one goes, the others it named told
+    /// apart. Beside them, what was asked before stands.
+    #[test]
+    fn those_a_cancellation_reached_are_told_from_one_place() {
+        let theirs = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:m3\r\nDTSTAMP:20261105T090000Z\r\nSEQUENCE:1\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Planning at noon\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let both = vec!["anne@example.net".to_string(), "bob@example.net".to_string()];
+        let anne = guest("anne@example.net", "Anne");
+        // An older version's invitation: withdrawn, and only Bob is drafted one here.
+        let older = Pending { id: "older".into(), to: both.clone(), ics: request(&theirs.replace("Planning at noon", "Planning")).unwrap() };
+        let got = reconcile(theirs, std::slice::from_ref(&older), false, std::slice::from_ref(&anne));
+        assert_eq!(got.withdraw, ["older"]);
+        assert_eq!(got.invite.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), ["bob@example.net"], "{got:?}");
+        // This very version's: it stayed for all before; naming Anne, it goes, and Bob is drafted one apart.
+        let same = Pending { id: "same".into(), to: both.clone(), ics: request(theirs).unwrap() };
+        assert_eq!(reconcile(theirs, std::slice::from_ref(&same), false, &[]).keep, ["same"]);
+        let got = reconcile(theirs, std::slice::from_ref(&same), false, std::slice::from_ref(&anne));
+        assert_eq!(got.withdraw, ["same"], "{got:?}");
+        assert_eq!(got.invite.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), ["bob@example.net"]);
+    }
+
+    /// The review of f85f504, M4: told back past both the server's version and
+    /// the cancellation heard, on every event of it.
+    #[test]
+    fn told_back_past_what_was_heard() {
+        let text = weekly();
+        let top = top_sequence(&text);
+        assert_eq!(top_sequence(&told_past(&text, 0).unwrap()), top + 2, "as `after_cancel`");
+        assert_eq!(after_cancel(&text), told_past(&text, 0));
+        assert_eq!(top_sequence(&told_past(&text, top + 10).unwrap()), top + 11);
+        let told = told_past(&text, top + 10).unwrap();
+        assert!(versions(&told, None).iter().all(|(_, sequence)| *sequence == top + 11), "{told}");
+    }
+
+    /// The review of f85f504, L1 (`probe_c1`, turned): a time cancelled by
+    /// itself stays so through the meeting cancelled and on again, over two
+    /// rounds; a time the whole meeting's status cancelled comes back with it.
+    #[test]
+    fn a_time_cancelled_by_itself_stays_through_a_status() {
+        let one_cancelled = weekly().replacen("SUMMARY:Planning moved\r\n", "SUMMARY:Planning moved\r\nSTATUS:CANCELLED\r\n", 1);
+        let off = with_status(&one_cancelled, "cancelled").unwrap();
+        assert_eq!(crate::agenda::status_of(&off), "cancelled");
+        assert_eq!(un(&off).matches("STATUS:CANCELLED").count(), 3, "{}", un(&off));
+        let on = un(&with_status(&off, "confirmed").unwrap());
+        assert_eq!(on.matches("STATUS:CANCELLED").count(), 1, "that time stays cancelled: {on}");
+        assert_eq!(on.matches("STATUS:CONFIRMED").count(), 2, "{on}");
+        assert_eq!(versions(&off, None).iter().map(|(_, sequence)| *sequence).collect::<Vec<_>>().iter().filter(|s| **s == 5).count(), 2, "the two others past it, that time's own kept: {off}");
+        let round = un(&with_status(&with_status(&on, "cancelled").unwrap(), "tentative").unwrap());
+        assert_eq!(round.matches("STATUS:CANCELLED").count(), 1, "and again: {round}");
+        // No time cancelled by itself: every event comes back.
+        let plain = un(&with_status(&with_status(&weekly(), "cancelled").unwrap(), "confirmed").unwrap());
+        assert_eq!(plain.matches("STATUS:CANCELLED").count(), 0, "{plain}");
+    }
+
+    /// `probe_c2`, kept: a CANCEL of one time for an all-day series and a
+    /// zoned one: its RECURRENCE-ID, the EXDATE and the reconciling read agree.
+    #[test]
+    fn one_time_left_out_of_an_all_day_and_a_zoned_series() {
+        let zone = crate::zone::current();
+        for (name, master) in [("all-day", "DTSTART;VALUE=DATE:20991103\r\nDTEND;VALUE=DATE:20991104\r\n"), ("zoned", "DTSTART;TZID=Europe/Paris:20991103T090000\r\nDTEND;TZID=Europe/Paris:20991103T100000\r\n")] {
+            let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:c2-{name}\r\nDTSTAMP:20261001T000000Z\r\nSEQUENCE:1\r\n{master}RRULE:FREQ=WEEKLY\r\nSUMMARY:Planning\r\nORGANIZER:mailto:me@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+            let (first, _) = crate::agenda::first_times(&text, &zone).unwrap();
+            let at = first + 7 * 86400;
+            let anne = ["anne@example.net".to_string()];
+            let said = cancel_time(&text, at, &anne, &zone).expect("a cancellation");
+            let without = without_time(&text, at, &zone).expect("left out");
+            assert_eq!(cancelled_time(&said), Some(at), "{name}: its RECURRENCE-ID names the time: {said}");
+            assert!(!crate::agenda::holds_time(&without, at, &zone), "{name}: out of the file: {without}");
+            assert!(crate::agenda::left_out_times(&without, &zone).contains(&at), "{name}: left out: {without}");
+            let p = Pending { id: "t".into(), to: anne.to_vec(), ics: said };
+            assert_eq!(reconcile(&without, std::slice::from_ref(&p), false, &[]).keep, ["t"], "{name}");
+            assert_eq!(reconcile(&text, std::slice::from_ref(&p), false, &[]).withdraw, ["t"], "{name}");
+        }
+    }
+
+    /// `probe_c3`, kept: the first time of a series left out, an event of it
+    /// holding a higher SEQUENCE than the series': nobody's next message is lower.
+    #[test]
+    fn the_first_time_left_out_goes_past_the_top_sequence() {
+        let zone = crate::zone::current();
+        let text = weekly();
+        let (first, _) = crate::agenda::first_times(&text, &zone).unwrap();
+        let anne = ["anne@example.net".to_string()];
+        let said = un(&cancel_time(&text, first, &anne, &zone).unwrap());
+        let without = un(&without_time(&text, first, &zone).unwrap());
+        assert!(said.contains("SEQUENCE:5") && without.contains("EXDATE"), "{said}\n{without}");
+    }
+
+    /// The review of f85f504, M4, M5: a cancellation drafted here is noted
+    /// with its time and SEQUENCE, in the place of an earlier one; a version
+    /// that no longer stands for it settles it, and an Undo puts it back.
+    #[test]
+    fn a_cancellation_drafted_here_is_noted_until_it_is_settled() {
+        crate::config::stand_ins_only();
+        let zone = crate::zone::current();
+        let text = weekly();
+        let uid = crate::meeting_lines::uid_of(&text);
+        let (first, _) = crate::agenda::first_times(&text, &zone).unwrap();
+        let anne = vec!["Anne@example.net ".to_string()];
+        let whole = cancel(&text, &anne, true).unwrap();
+        note_cancellation(&whole, &anne, "confirmed");
+        note_cancellation(&whole, &anne, "tentative");
+        let later = first + 21 * 86_400;
+        note_cancellation(&cancel_time(&text, later, &anne, &zone).unwrap(), &anne, "");
+        let notes = cancellation_notes(&uid);
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        let of_whole = notes.iter().find(|n| n.time.is_none()).unwrap();
+        assert_eq!((of_whole.was.as_str(), of_whole.sequence, of_whole.to.as_slice()), ("tentative", top_sequence(&text) + 1, &["anne@example.net".to_string()][..]));
+        assert_eq!(notes.iter().find(|n| n.time.is_some()).unwrap().time, Some(later));
+        // Still cancelled, that time out: nothing settled.
+        let off = with_status(&without_time(&text, later, &zone).unwrap(), "cancelled").unwrap();
+        assert!(cancellations_settled(&off).is_empty() && cancellation_notes(&uid).len() == 2);
+        // On again, that time out still: the whole's alone.
+        let on = with_status(&off, "confirmed").unwrap();
+        assert_eq!(cancellations_settled(&on).iter().map(|n| n.time).collect::<Vec<_>>(), [None]);
+        // That time back too: the other.
+        let settled = cancellations_settled(&text);
+        assert_eq!(settled.iter().map(|n| n.time).collect::<Vec<_>>(), [Some(later)]);
+        assert!(cancellation_notes(&uid).is_empty());
+        notes_back(&settled);
+        notes_back(&settled);
+        assert_eq!(cancellation_notes(&uid).len(), 1, "put back once");
+        assert_eq!(cancellations_settled(&text).len(), 1);
     }
 
     /// The invitation as the guests receive it: METHOD:REQUEST, no alarm, no
@@ -1840,7 +2418,7 @@ mod tests {
         let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:child-1\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Tom: dentist\r\nX-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health\r\nX-SIOUL-TAKEN-BY;CN=Sam;PARTSTAT=ACCEPTED;SINCE=20261103T090000Z:mailto:sam@example.org\r\nORGANIZER;CN=Camille:mailto:me@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:dr@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         let (file, aside) = set_aside(text);
         assert!(!un(&file).contains("TAKEN-BY") && !un(&file).contains("child-kind"), "{file}");
-        let kept = crate::meeting_lines::Kept { times: [(String::new(), aside.lines.iter().map(|(_, l)| l.clone()).collect())].into() };
+        let kept = crate::meeting_lines::Kept::of(aside.lines.clone());
         let read = crate::meeting_lines::merged_with(&file, &kept);
         assert_eq!(crate::holders::kind_of(&read), Some(crate::holders::Kind::Health));
         assert_eq!(crate::holders::taken(&read, None, &jiff::tz::TimeZone::UTC).to.map(|h| h.address), Some("sam@example.org".to_string()));
@@ -1890,17 +2468,17 @@ mod tests {
         let mine = agreed.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T110000Z").replace("SEQUENCE:2", "SEQUENCE:3");
         let invitation = Pending { id: "invited".into(), to: vec!["anne@example.net".into()], ics: request(&agreed).unwrap() };
         let update = Pending { id: "moved".into(), to: vec!["anne@example.net".into()], ics: request(&mine).unwrap() };
-        let got = reconcile(&theirs, &[invitation.clone(), update.clone()], true);
+        let got = reconcile(&theirs, &[invitation.clone(), update.clone()], true, &[]);
         assert_eq!((got.keep.as_slice(), got.withdraw.as_slice(), got.invite.len()), (&["invited".to_string()][..], &["moved".to_string()][..], 0), "{got:?}");
         assert_eq!(got.served.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), ["bob@example.net"], "the server tells Bob");
-        let sent = reconcile(&theirs, std::slice::from_ref(&update), true);
+        let sent = reconcile(&theirs, std::slice::from_ref(&update), true, &[]);
         assert!(sent.withdraw == ["moved"] && sent.invite.is_empty(), "Anne heard the server's version: {sent:?}");
         let elsewhere = theirs.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T100000Z").replace("SEQUENCE:2", "SEQUENCE:3");
-        let other = reconcile(&elsewhere, &[invitation, update], true);
+        let other = reconcile(&elsewhere, &[invitation, update], true, &[]);
         assert_eq!((other.withdraw.len(), other.invite.iter().map(|g| g.address.as_str()).collect::<Vec<_>>()), (2, vec!["anne@example.net"]), "{other:?}");
         let off = Pending { id: "off".into(), to: vec!["carl@example.net".into()], ics: cancel(&agreed, &["carl@example.net".into()], false).unwrap() };
-        assert_eq!(reconcile(&theirs, &[off], true).keep, ["off"], "Carl is off the server's version too");
-        let plain = reconcile(&theirs, &[], false);
+        assert_eq!(reconcile(&theirs, &[off], true, &[]).keep, ["off"], "Carl is off the server's version too");
+        let plain = reconcile(&theirs, &[], false, &[]);
         assert!(plain.served.is_empty(), "a server that tells nobody");
     }
 
@@ -1961,12 +2539,12 @@ mod tests {
         let write2 = theirs.replace("SUMMARY:Weekly\r\nORGANIZER", "SUMMARY:Weekly review\r\nORGANIZER");
         let update = Pending { id: "anne2".into(), to: vec!["anne@example.net".into()], ics: request(&write2).unwrap() };
         for server_tells in [false, true] {
-            let got = reconcile(&theirs, &[anne.clone(), bob.clone(), update.clone()], server_tells);
+            let got = reconcile(&theirs, &[anne.clone(), bob.clone(), update.clone()], server_tells, &[]);
             assert_eq!((got.keep, got.withdraw, got.invite), (vec!["anne1".to_string(), "bob1".to_string()], vec!["anne2".to_string()], Vec::new()), "server_tells={server_tells}");
         }
         // Bob's time moved again on the server (its own SEQUENCE 2): Bob hears of it.
         let again = crate::agenda::moved(&theirs, at(17, 11), at(17, 14), at(17, 15), true, &zone).unwrap();
-        let got = reconcile(&again, &[bob.clone()], false);
+        let got = reconcile(&again, &[bob.clone()], false, &[]);
         assert_eq!((got.withdraw.clone(), got.invite.iter().map(|g| g.address.as_str()).collect::<Vec<_>>()), (vec!["bob1".to_string()], vec!["bob@example.net"]), "{got:?}");
     }
 
@@ -1994,7 +2572,7 @@ mod tests {
         let mine = base.replace("SEQUENCE:1", "SEQUENCE:2").replace("DTSTART:20991110T090000Z", "DTSTART:20991110T140000Z").replace("DTEND:20991110T100000Z", "DTEND:20991110T150000Z");
         let here = Pending { id: "here".into(), to: vec!["anne@example.net".into()], ics: request(&mine).unwrap() };
         let there = Pending { id: made_there.id.clone(), to: vec!["anne@example.net".into()], ics: request(&phone).unwrap() };
-        let got = reconcile(&server_copy, &[here, there], false);
+        let got = reconcile(&server_copy, &[here, there], false, &[]);
         assert_eq!((got.keep, got.withdraw, got.invite.len()), (vec![made_there.id.clone()], vec!["here".to_string()], 0));
     }
 

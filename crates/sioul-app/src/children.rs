@@ -171,8 +171,8 @@ fn child_items(here: &[(Agenda, Collection)]) -> Vec<ChildRead> {
 /// store: who takes it, its kind, which its file no longer holds once its
 /// guests read it (second review of the organizer's door, N6). A meeting
 /// this device keeps nothing of is unknown here (`true`, its file as it
-/// is): its lines may be on another device, which the sharing does not
-/// carry yet (third review, R1); one that is no meeting any more reads its
+/// is): its lines may be on another device, and the sharing has not brought
+/// them yet (third review, R1); one that is no meeting any more reads its
 /// lines from the store until they are back in its file.
 fn read_with(path: &Path, store: &sioul_core::meeting_lines::MeetingLines) -> Option<(String, bool)> {
     let file = std::fs::read_to_string(path).ok()?;
@@ -194,7 +194,7 @@ fn read_item(path: &Path) -> Option<String> {
 /// stand-in of it, on any device, would follow its title (third review of
 /// the organizer's door, R1; review of round 4, R1-a: a device may keep no
 /// stand-in file, and still the other's would). The organizer's door
-/// refuses it then, until the store of those lines travels.
+/// refuses it then, until the sharing brings those lines.
 pub(crate) fn held_elsewhere(path: &Path) -> bool {
     let config = load_config();
     let Some(collection) = crate::pim::collection_of(path) else { return false };
@@ -209,32 +209,6 @@ pub(crate) fn held_elsewhere(path: &Path) -> bool {
 /// entry of its own lines when it makes it a meeting, even of none (R1).
 pub(crate) fn in_child_agenda(path: &Path) -> bool {
     crate::pim::collection_of(path).is_some_and(|c| agendas::agenda_of(&c, &load_config()).whose == Whose::Child)
-}
-
-/// Sioul's own lines of an item that is no meeting any more, kept in the
-/// store, back into its file (`meeting_lines::read` reads them from there
-/// meanwhile), name by name: a line its file holds of a name wins (a holder
-/// written on another device since), the entry fills the names it lacks
-/// (the kind this device kept: review of round 4, R1-a); then its entry is
-/// forgotten, never before. Nothing for a meeting, or an item with no
-/// entry. Whether its file was written.
-fn lines_back(path: &Path, store: &sioul_core::meeting_lines::MeetingLines) -> bool {
-    let Ok(file) = std::fs::read_to_string(path) else { return false };
-    let uid = sioul_core::meeting_lines::uid_of(&file);
-    let Some(kept) = store.events.get(&uid) else { return false };
-    if sioul_core::agenda::with_others(&file) {
-        return false;
-    }
-    let at = sioul_core::meeting_lines::default_path();
-    let back = sioul_core::meeting_lines::filled(&file, kept);
-    if back != file
-        && let Err(e) = vdir::write_item(path, &back)
-    {
-        eprintln!("Sioul: a child's event kept its lines apart: {e}");
-        return false;
-    }
-    let _ = sioul_core::meeting_lines::forget(&at, &uid);
-    back != file
 }
 
 /// Whether the file at `path` is a meeting with others: nothing of the
@@ -306,7 +280,7 @@ fn upkeep_at(events: &[sioul_core::agenda::EventRef], asked_path: &Path) -> (Vec
         let children = here.iter().filter(|(a, _)| a.whose == Whose::Child).flat_map(|(_, c)| c.items());
         let yours = events.iter().filter(|e| store.events.contains_key(&e.uid)).map(|e| PathBuf::from(&e.key));
         for path in children.chain(yours) {
-            if lines_back(&path, &store) {
+            if sioul_core::meeting_lines::back_into_file(&path, &sioul_core::meeting_lines::default_path(), &store) {
                 accounts.extend(crate::pim::account_of(&path));
             }
         }
@@ -1116,7 +1090,7 @@ mod tests {
         let (files, _) = take_files(&key, 0, "me", &me).unwrap().unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), child, "the meeting untouched");
         let kept = sioul_core::meeting_lines::load(&store).events.get("n6-child-meeting").cloned().unwrap_or_default();
-        assert!(kept.times.get("").is_some_and(|l| l.iter().any(|l| l.starts_with("X-SIOUL-TAKEN-BY;CN=Alex;PARTSTAT=ACCEPTED"))), "{kept:?}");
+        assert!(kept.lines("").iter().any(|l| l.starts_with("X-SIOUL-TAKEN-BY;CN=Alex;PARTSTAT=ACCEPTED")), "{kept:?}");
         assert_eq!(card("state"), serde_json::json!("yours"));
         let stand_in = mine.dir.join(format!("{}.ics", holders::stand_in_uid("n6-child-meeting", &place(&mine))));
         assert!(stand_in.exists() && files.iter().any(|f| f.path == store) && files.iter().any(|f| f.path == stand_in), "{files:?}");
@@ -1213,7 +1187,7 @@ mod tests {
         // Undo, its cancellation unsent: the meeting back as its guests read it, its lines kept apart again.
         assert_eq!(crate::organized::put_back(&written), Ok(()));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), there);
-        assert!(sioul_core::meeting_lines::load(&store).events.get("r1-psy").is_some_and(|k| k.times[""].iter().any(|l| l.starts_with("X-SIOUL-TAKEN-BY"))), "kept apart again");
+        assert!(sioul_core::meeting_lines::load(&store).events.get("r1-psy").is_some_and(|k| k.lines("").iter().any(|l| l.starts_with("X-SIOUL-TAKEN-BY"))), "kept apart again");
         let written = crate::organized::write(&crate::organized::plan(&file, Some(&there), &there, Some(&[]), &tom).unwrap()).unwrap();
         written.drafts.iter().filter_map(|id| sioul_core::compose::Draft::by_id(id)).for_each(|d| d.discard());
         assert!(!sioul_core::meeting_lines::load(&store).events.contains_key("r1-psy"));
@@ -1226,7 +1200,7 @@ mod tests {
         let office = [sioul_core::organizer::Guest { address: "office@example.net".into(), name: String::new() }];
         let written = crate::organized::write(&crate::organized::plan(&dentist, Some(&plain), &plain, Some(&office), &tom).unwrap()).unwrap();
         written.drafts.iter().filter_map(|id| sioul_core::compose::Draft::by_id(id)).for_each(|d| d.discard());
-        assert_eq!(sioul_core::meeting_lines::load(&store).events.get("r1-dentist"), Some(&sioul_core::meeting_lines::Kept::default()));
+        assert!(sioul_core::meeting_lines::load(&store).events.get("r1-dentist").is_some_and(sioul_core::meeting_lines::Kept::is_empty));
         assert_eq!(card_as(&dentist, 0, &own).unwrap()["state"], "nobody", "known here: nobody takes it yet");
         // Review of round 4, R1-a: a child's meeting kept nowhere here and holding nothing of
         // Sioul's, no stand-in of it on this device (one may be on another): its last guest stays.
@@ -1241,6 +1215,24 @@ mod tests {
         let theirs = holders::with_taken(&child.replace("UID:r1-psy", "UID:r1-visit").replace("END:VEVENT", "ORGANIZER:mailto:office@example.net\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:alex@example.org\r\nEND:VEVENT"), None, &Taken { to: Some(Holder { name: "Alex".into(), address: "alex@example.org".into(), answer: Answer::Accepted, since: Some(now), back: false }), back: None }, &zone).unwrap();
         vdir::store_item(&visit, &theirs).unwrap();
         assert_eq!(card_as(&visit, 0, &own).unwrap()["state"], "yours", "its file says it: known");
+        // The review of f85f504, H1 (`probe_a1` turned): an entry the sharing brought ahead of its
+        // calendar's sync. The file, older than the meeting that made the entry, is no meeting:
+        // nothing written, nothing forgotten, whatever the upkeep runs on. Later, its guests gone:
+        // its lines back, and its entry goes.
+        let ahead = tom.dir.join("h1-ahead.ics");
+        let stale = child.replace("UID:r1-psy", "UID:h1-ahead");
+        vdir::write_item(&ahead, &stale).unwrap();
+        let lines = [(String::new(), sioul_core::tasks::concept_line(&Kind::Health.concept()))];
+        sioul_core::meeting_lines::add(&store, "h1-ahead", &lines).unwrap();
+        sioul_core::meeting_lines::stamped(&store, "h1-ahead", &utc(start)).unwrap();
+        upkeep_at(&[], &asked);
+        assert_eq!(std::fs::read_to_string(&ahead).unwrap(), stale, "nothing written");
+        assert!(sioul_core::meeting_lines::load(&store).events.contains_key("h1-ahead"), "never forgotten: that removal would reach the device that made the meeting");
+        let later = stale.replacen(&format!("DTSTAMP:{}", utc(start - 86_400)), &format!("DTSTAMP:{}", utc(start + 60)), 1);
+        vdir::write_item(&ahead, &later).unwrap();
+        upkeep_at(&[], &asked);
+        assert!(!sioul_core::meeting_lines::load(&store).events.contains_key("h1-ahead"));
+        assert_eq!(holders::kind_of(&std::fs::read_to_string(&ahead).unwrap()), Some(Kind::Health));
         sioul_core::meeting_lines::path_here(None);
         sioul_core::agenda::open_organizer_door_here(false);
         sioul_core::agenda::own_addresses_here(None);

@@ -1187,6 +1187,17 @@ dav-undeleted-untitled = { $kind ->
         [task] Une tâche sans titre a changé sur son serveur avant que votre suppression lui parvienne : elle est de retour. Supprimez-la à nouveau si vous n’en voulez plus.
        *[event] Un événement sans titre a changé sur son serveur avant que votre suppression lui parvienne : il est de retour. Supprimez-le à nouveau si vous n’en voulez plus.
     }
+dav-moved-changed = « { $summary } » a changé dans son ancien agenda avant que votre déplacement parvienne à son serveur. Le déplacement tient ; ce qui a changé là-bas est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes).
+dav-moved-changed-untitled = { $kind ->
+        [contact] Un contact sans nom a changé dans son ancien carnet avant que votre déplacement parvienne à son serveur. Le déplacement tient ; ce qui a changé là-bas est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes).
+        [task] Une tâche sans titre a changé dans son ancienne liste avant que votre déplacement parvienne à son serveur. Le déplacement tient ; ce qui a changé là-bas est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes).
+       *[event] Un événement sans titre a changé dans son ancien agenda avant que votre déplacement parvienne à son serveur. Le déplacement tient ; ce qui a changé là-bas est parmi les versions précédentes (Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes).
+    }
+dav-moved-both = « { $summary } » a désormais des invités dans ses deux agendas : son ancienne copie en a reçu sur son serveur avant que votre déplacement lui parvienne, et la copie déplacée a les siens. Les deux restent, car supprimer l’une ou l’autre le dit à ses invités ; à vous de choisir laquelle s’en va.
+dav-moved-both-untitled = { $kind ->
+        [task] Une tâche sans titre a désormais des invités dans ses deux listes : son ancienne copie en a reçu sur son serveur avant que votre déplacement lui parvienne, et la copie déplacée a les siens. Les deux restent, car supprimer l’une ou l’autre le dit à ses invités ; à vous de choisir laquelle s’en va.
+       *[event] Un événement sans titre a désormais des invités dans ses deux agendas : son ancienne copie en a reçu sur son serveur avant que votre déplacement lui parvienne, et la copie déplacée a les siens. Les deux restent, car supprimer l’une ou l’autre le dit à ses invités ; à vous de choisir laquelle s’en va.
+    }
 dav-cancel-heard = { $who } a déjà reçu son annulation : une invitation attend dans les brouillons.
 dav-answered-elsewhere = { $answer ->
         [accepted] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : accepté. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
@@ -4271,7 +4282,8 @@ invite-replied-unproven = Sioul n’a pas pu prouver que cette réponse vient de
 invite-move-tells = Le déplacer prévient chaque invité.
 invite-move = Déplacer
 invite-delete-tells = Le supprimer dit à chaque invité qu’il est annulé.
-invite-delete-one-time = Une seule fois d’une réunion que vous organisez ne se retire pas ici : supprimez toute la réunion, ce qui prévient chaque invité, ou retirez cette fois dans l’application de son agenda.
+invite-delete-time-tells = Supprimer cette fois dit à ses invités qu’elle est annulée.
+invite-cancelled-first = Cette réunion est annulée, et ses invités l’ont appris. Donnez-lui d’abord un autre statut : cela leur dit qu’elle a lieu de nouveau.
 invite-cancelled-server = Votre serveur prévient chaque invité.
 invite-cancelled-draft = L’annulation pour les invités attend dans les brouillons : elle part quand vous l’envoyez.
 invite-ask-organizer = Vous en devenez l’organisateur, à la place de { $who }.

@@ -61,6 +61,8 @@ Item {
             // A meeting with others, to be confirmed, at a place with its point (the event card, 5 November 2026).
             "/c/review.ics": { id: "event:c/review.ics", key: "/c/review.ics", uid: "review", start: 4000260000, end: 4000263600, all_day: false, summary: "Review", when: "Thursday · 09:00 – 10:00", before: 0, after: 0, location: "Rue Blanche", calendar: "Work", color: null, recurring: false, cancelled: false, tentative: true, read_only: false, with_others: true, task: "", list: "", notes: "", organizer: "Chair", attendees: [], why: "", status: "tentative", own_answer: "needs-action", geo: "48.880000;2.330000",
                 people: [{ name: "Chair", address: "chair@example.org", answer: "", organizer: true, optional: false, contact: "", you: false }, { name: "Anne Exemple", address: "anne@example.org", answer: "accepted", organizer: false, optional: false, contact: "/contacts/anne.vcf", you: false }, { name: "bob@example.net", address: "bob@example.net", answer: "needs-action", organizer: false, optional: true, contact: "", you: false }] },
+            // A weekly meeting you organize: its status and its times deleted say first who hears of it.
+            "/c/planning.ics": { id: "event:c/planning.ics", key: "/c/planning.ics", uid: "planning", start: 4000346400, end: 4000350000, all_day: false, summary: "Planning", when: "Friday · 10:00 – 11:00", before: 0, after: 0, location: "", calendar: "Work", color: null, recurring: true, cancelled: false, tentative: false, read_only: false, with_others: true, organized: true, task: "", list: "", notes: "", organizer: "You", attendees: [], why: "", status: "confirmed", people: [] },
             "/c/holidays.ics": { id: "event:c/holidays.ics", key: "/c/holidays.ics", uid: "holidays", start: 4000086400, end: 4000090000, all_day: false, summary: "Town fair", when: "Tuesday · 09:00 – 10:00", before: 0, after: 0, location: "", calendar: "Holidays", color: null, recurring: false, cancelled: false, tentative: false, read_only: true, with_others: false, task: "", list: "", notes: "", organizer: "", attendees: [], why: "This calendar can only be read." }
         })
 
@@ -71,6 +73,8 @@ Item {
         signal placesChanged
         signal addressesSuggested(string typed, string suggested)
         function setEventStatus(key, status) { mock.calls.push({ what: "setEventStatus", key: key, status: status }); return "" }
+        function statusSaid(key, status) { return key === "/c/planning.ics" ? JSON.stringify({ ask: "invite-ask-drafts" }) : "{}" }
+        function deleteSaid(key, start, onlyThis) { return key === "/c/planning.ics" ? JSON.stringify({ ask: onlyThis ? "invite-delete-time-tells" : "invite-delete-tells" }) : "{}" }
         function eventPoint(geo, location) {
             if (geo !== "")
                 return JSON.stringify({ lat: Number(geo.split(";")[0]), lon: Number(geo.split(";")[1]), from: "event" })
@@ -497,6 +501,36 @@ Item {
             wait(20)
             compare(host.eventCard.title, "card-gone")
             verify(!root.find(host.eventCard, "cardEdit").visible)
+        }
+
+        // A meeting you organize: its status offered, who hears of it said first, set on Save
+        // alone; a time of it deleted asks which, then says who hears of it, then goes.
+        function test_a_meeting_you_organize_says_first_who_hears_of_it() {
+            const host = makeHost()
+            host.show({ kind: "event", srcKey: "/c/planning.ics", srcStart: 4000346400 })
+            wait(20)
+            const card = host.eventCard
+            verify(root.find(card, "eventCardStatus").visible, "yours to change, through its door")
+            mock.calls = []
+            card.setStatus("cancelled")
+            wait(20)
+            compare(mock.calls.filter(c => c.what === "setEventStatus").length, 0, "asked first")
+            const asked = root.all(card, c => typeof c.now === "function" && c.item && c.item.objectName === "eventCardStatusTells")[0].item
+            verify(asked.opened)
+            asked.confirmed()
+            asked.close()
+            compare(JSON.stringify(mock.calls.filter(c => c.what === "setEventStatus")), JSON.stringify([{ what: "setEventStatus", key: "/c/planning.ics", status: "cancelled" }]))
+            mock.calls = []
+            card.chosenDelete(true)
+            wait(20)
+            compare(mock.calls.filter(c => c.what === "deleteEvent").length, 0, "asked first")
+            const tells = root.all(card, c => typeof c.now === "function" && c.item && c.item.objectName === "eventCardDeleteTells")[0].item
+            verify(tells.opened)
+            tells.confirmed()
+            tells.close()
+            const deleted = mock.calls.filter(c => c.what === "deleteEvent")
+            compare(deleted.length, 1)
+            compare([deleted[0].key, deleted[0].start, deleted[0].onlyThis].join(" "), "/c/planning.ics 4000346400 true")
         }
 
         // The event card (5 November 2026): its own status chosen when it is yours, said

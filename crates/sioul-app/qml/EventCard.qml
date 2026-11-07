@@ -86,18 +86,42 @@ CardFrame {
         card.way.open(card.point || JSON.parse(card.sioul.eventPoint(card.event.geo || "", card.event.location) || "{}"), card.event.location)
     }
 
-    // Its own status set ("confirmed", "tentative", "cancelled"), by its own writer.
+    // Its own status set ("confirmed", "tentative", "cancelled"), by its own writer; for a
+    // meeting you organize, who hears of it said first (`statusSaid`), Save or Cancel.
     function setStatus(status) {
         if (!card.there || status === (card.status || "confirmed"))
+            return
+        if (card.event.organized === true) {
+            const said = JSON.parse(card.sioul.statusSaid(card.event.key, status) || "{}")
+            if (said.error) {
+                card.said(said.error)
+                return
+            }
+            if (said.ask) {
+                card.statusAsked = status
+                tellsStatus.now().ask(card.event.summary, said.ask, card.sioul.text("invite-save"))
+                return
+            }
+        }
+        card.setStatusNow(status)
+    }
+
+    function setStatusNow(status) {
+        if (!card.there)
             return
         card.said(card.sioul.setEventStatus(card.event.key, status))
         card.read()
     }
 
+    // The status a meeting you organize waits for, while who hears of it is asked.
+    property string statusAsked: ""
+    // Which times a deletion that tells its guests waits for, while it is asked.
+    property bool deleteOnlyThis: false
+
     // Its own status (`STATUS`), chosen here for an event you may write.
     readonly property var statuses: ["confirmed", "tentative", "cancelled"]
     readonly property string status: !card.there ? "" : card.event.status ? card.event.status : card.event.cancelled ? "cancelled" : card.event.tentative ? "tentative" : ""
-    readonly property bool statusChosen: card.there && !card.event.read_only && card.event.with_others !== true && !card.isTask
+    readonly property bool statusChosen: card.there && !card.event.read_only && (card.event.with_others !== true || card.event.organized === true) && !card.isTask
 
     // The open event, as what new things are tied to.
     readonly property var source: card.there && card.event.uid ? { uri: "sioul:event/" + encodeURIComponent(card.event.uid), kind: "event", key: card.event.key, title: card.event.summary, start: card.event.start } : null
@@ -218,17 +242,31 @@ CardFrame {
     }
 
     // Deleted: a repeating one asks this time or every time; a single one goes at once;
-    // a meeting you organize says first that every guest is told, and goes whole.
+    // a meeting you organize then says first who hears of it (`deleteSaid`).
     function askDelete() {
-        if (card.event.organized === true) {
-            tellsDelete.now().ask(card.event.summary, card.sioul.text("invite-delete-tells"), card.sioul.text("ui-delete"))
-            return
-        }
         if (!card.event.recurring) {
-            card.deleteNow(false)
+            card.chosenDelete(false)
             return
         }
         deleteChoice.now().ask(card.event.summary, "")
+    }
+
+    function chosenDelete(onlyThis) {
+        if (card.event.organized !== true) {
+            card.deleteNow(onlyThis)
+            return
+        }
+        const said = JSON.parse(card.sioul.deleteSaid(card.event.key, card.event.start, onlyThis) || "{}")
+        if (said.error) {
+            card.said(said.error)
+            return
+        }
+        if (!said.ask) {
+            card.deleteNow(onlyThis)
+            return
+        }
+        card.deleteOnlyThis = onlyThis
+        tellsDelete.now().ask(card.event.summary, said.ask, card.sioul.text("ui-delete"))
     }
 
     function deleteNow(onlyThis) {
@@ -1129,7 +1167,7 @@ CardFrame {
     // The message that brought its invitation, while it is in your mail (`invitationOf`); "" for none.
     readonly property string invitation: card.there && card.event.with_others === true ? card.sioul.invitationOf(card.event.key) : ""
 
-    // A meeting you organize deleted: "Deleting it tells every guest that it is cancelled." Made the first time.
+    // A meeting you organize deleted, the whole of it or one time: who hears of it. Made the first time.
     Later {
         id: tellsDelete
 
@@ -1138,7 +1176,21 @@ CardFrame {
                 objectName: "eventCardDeleteTells"
                 sioul: card.sioul
                 theme: card.theme
-                onConfirmed: card.deleteNow(false)
+                onConfirmed: card.deleteNow(card.deleteOnlyThis)
+            }
+        }
+    }
+
+    // A meeting you organize given a status: who hears of it. Made the first time.
+    Later {
+        id: tellsStatus
+
+        sourceComponent: Component {
+            ConfirmDialog {
+                objectName: "eventCardStatusTells"
+                sioul: card.sioul
+                theme: card.theme
+                onConfirmed: card.setStatusNow(card.statusAsked)
             }
         }
     }
@@ -1151,7 +1203,7 @@ CardFrame {
             WhichTimes {
                 sioul: card.sioul
                 theme: card.theme
-                onChosen: onlyThis => card.deleteNow(onlyThis)
+                onChosen: onlyThis => card.chosenDelete(onlyThis)
             }
         }
     }

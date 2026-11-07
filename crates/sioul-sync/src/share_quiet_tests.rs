@@ -662,6 +662,356 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// Sioul's own lines of meetings with others (`data/meeting-lines.toml`:
+/// who takes a child's event, its kind) beside a phone whose entry does not
+/// say it has the store in the sharing, as an older Sioul's never does:
+/// neither sent nor read, so the older phone holds no record of it and writes
+/// none over it, and each device knows what it knows. Once the phone says
+/// so, the desk's next exchange sends every entry, a time's lines and an entry
+/// of no line included, as the desk's own writers wrote them. An entry taken
+/// out (its lines back in its file) travels as a removal, and does not come
+/// back.
+#[test]
+fn a_meeting_s_own_lines_wait_for_a_device_that_has_their_store_then_travel() {
+    use sioul_core::meeting_lines as lines;
+    let base = scratch("meeting-lines-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.meeting_lines = MEETING_LINES_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+    let kind = "X-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health".to_string();
+    let held = "X-SIOUL-TAKEN-BY;CN=Alex;PARTSTAT=ACCEPTED:mailto:alex@example.org".to_string();
+    let that_time = "RECURRENCE-ID;TZID=Europe/Paris:20991117T090000".to_string();
+    lines::add(&on_desk, "psy.1@example.org", &[(String::new(), kind.clone()), (String::new(), held.clone()), (that_time.clone(), held.clone())]).unwrap();
+    lines::ensure(&on_desk, "known-empty").unwrap();
+    assert_eq!(stores(&Config::default(), &desk.roots).iter().find(|s| s.name == MEETING_LINES).map(|s| (s.part, matches!(s.shape, Shape::Files))), Some(("time", false)), "a TOML file of the part \"time\": no sealed file for the sweeps (`FILE_PARTS`)");
+    for _ in 0..2 {
+        assert_eq!(background(&desk, &folder, &key, now).sent, 0, "kept to itself");
+        now += MINUTE;
+    }
+    // The phone as an older Sioul: no such store, none known. It places all it reads, and writes nothing there.
+    let older = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != MEETING_LINES).collect::<Vec<_>>();
+    super::tests::OLDER.with(|o| *o.borrow_mut() = vec![MEETING_LINES.to_string()]);
+    for _ in 0..3 {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let outcome = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None }, &older, now).unwrap();
+        assert_eq!(outcome.pending, 0, "nothing it cannot place: {outcome:?}");
+    }
+    assert!(!on_phone.exists(), "nothing written there");
+    // The phone updated: the whole file comes, as it was written.
+    super::tests::OLDER.with(|o| o.borrow_mut().clear());
+    entry(&phone, &folder, &key, |e| e.meeting_lines = MEETING_LINES_SHARED);
+    now += MINUTE;
+    background(&desk, &folder, &key, now);
+    now += MINUTE;
+    let came = background(&phone, &folder, &key, now);
+    assert!(came.written.contains(MEETING_LINES), "{came:?}");
+    assert_eq!(lines::load(&on_phone), lines::load(&on_desk), "the same entries on both: {}", phone.read(MEETING_LINES));
+    assert_eq!(lines::load(&on_phone).events["psy.1@example.org"].lines(&that_time), [held.clone()], "a time's own lines");
+    assert!(lines::load(&on_phone).events.get("known-empty").is_some_and(lines::Kept::is_empty), "known there too, of no line");
+    now += MINUTE;
+    assert_eq!(background(&desk, &folder, &key, now).sent, 0, "sent once");
+    // Its lines back in its file on the desk: the entry goes on the phone too, and stays gone.
+    lines::forget(&on_desk, "psy.1@example.org").unwrap();
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(!lines::load(&on_phone).events.contains_key("psy.1@example.org") && !lines::load(&on_desk).events.contains_key("psy.1@example.org"), "gone on both: {}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+    assert!(lines::load(&on_phone).events.contains_key("known-empty"), "the other entry stays");
+    assert_eq!(lines::load(&on_phone), lines::load(&on_desk), "{}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+const KIND_HEALTH: &str = "X-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health";
+
+fn holder_line(who: &str) -> String {
+    format!("X-SIOUL-TAKEN-BY;CN={who};PARTSTAT=ACCEPTED:mailto:{}@example.org", who.to_lowercase())
+}
+
+/// A desk and a phone sharing `data/meeting-lines.toml`.
+fn both_with_lines(name: &str) -> (std::path::PathBuf, std::path::PathBuf, [u8; 32], Computer, Computer) {
+    let base = scratch(name);
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    for c in [&desk, &phone] {
+        entry(c, &folder, &key, |e| {
+            e.start(NOW / 1000);
+            e.meeting_lines = MEETING_LINES_SHARED;
+        });
+    }
+    (base, folder, key, desk, phone)
+}
+
+/// The review of f85f504, H1 (`probe_s3`, `probe_a1`, end to end on two
+/// devices): Tom's psychiatrist made a meeting on the desk, its lines in the
+/// entry. The sharing brings the entry to the phone before its calendar's sync
+/// brings the meeting. The phone's upkeep, on its stale file: nothing written,
+/// nothing forgotten, so no removal reaches the desk. The phone's file then
+/// takes the server's meeting, and both read its kind and holder. Later its
+/// guests go, on the server: a later file brings the lines back, and that
+/// forget travels as any.
+#[test]
+fn an_entry_ahead_of_its_calendar_stays_on_both_devices() {
+    use sioul_core::meeting_lines as lines;
+    crate::dav::stand_in::home();
+    let (base, folder, key, desk, phone) = both_with_lines("meeting-lines-stale");
+    let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+    let plain = |stamp: &str, more: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:h1-two\r\nDTSTAMP:{stamp}\r\nDTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Tom: psychiatrist\r\n{more}END:VEVENT\r\nEND:VCALENDAR\r\n");
+    let held = holder_line("Alex");
+    let stale = plain("20261105T090000Z", &format!("{KIND_HEALTH}\r\n{held}\r\n"));
+    let meeting = plain("20261106T120000Z", "ORGANIZER:mailto:alex@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:office@example.net\r\n");
+    // The desk's door: the lines out of the file, into the entry, with the meeting's stamp.
+    lines::add(&on_desk, "h1-two", &[(String::new(), KIND_HEALTH.to_string()), (String::new(), held.clone())]).unwrap();
+    lines::stamped(&on_desk, "h1-two", &lines::stamp_of(&meeting)).unwrap();
+    let mut now = NOW;
+    for c in [&desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(lines::load(&on_phone).events.contains_key("h1-two"), "it travelled: {}", phone.read(MEETING_LINES));
+    // The phone's upkeep, its file behind the entry.
+    let file = base.join("phone-h1-two.ics");
+    std::fs::write(&file, &stale).unwrap();
+    assert!(!lines::back_into_file(&file, &on_phone, &lines::load(&on_phone)), "nothing written");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), stale);
+    for c in [&phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    let known = |at: &std::path::Path, text: &str| match lines::read(text, &lines::load(at), true) {
+        lines::Read::Known(read) => read.contains(KIND_HEALTH) && read.contains(&held),
+        lines::Read::Unknown => false,
+    };
+    assert!(known(&on_desk, &meeting) && known(&on_phone, &meeting), "known on both: {}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+    // Its guests gone later, on the server: the later file takes the lines back on the phone, and the desk's entry goes too.
+    std::fs::write(&file, plain("20261107T080000Z", "")).unwrap();
+    assert!(lines::back_into_file(&file, &on_phone, &lines::load(&on_phone)));
+    assert!(std::fs::read_to_string(&file).unwrap().contains(KIND_HEALTH) && std::fs::read_to_string(&file).unwrap().contains(&held));
+    for c in [&phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(!lines::load(&on_desk).events.contains_key("h1-two") && !lines::load(&on_phone).events.contains_key("h1-two"), "{}", desk.read(MEETING_LINES));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The review of f85f504, M1 (`probe_s1`): each device kept its own lines of
+/// one meeting before the store travelled: the desk its kind and a holder, the
+/// phone a holder. Once it opens, whichever device goes first: the kind stays,
+/// the two holders keep one, and both devices hold the same.
+#[test]
+fn a_kind_and_a_holder_kept_apart_both_stay_when_the_store_opens() {
+    use sioul_core::meeting_lines as lines;
+    for first in ["desk", "phone"] {
+        let (base, folder, key, desk, phone) = both_with_lines(&format!("meeting-lines-open-{first}"));
+        let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+        lines::add(&on_desk, "m1", &[(String::new(), KIND_HEALTH.to_string()), (String::new(), holder_line("Alex"))]).unwrap();
+        lines::add(&on_phone, "m1", &[(String::new(), holder_line("Sam"))]).unwrap();
+        let order: Vec<&Computer> = if first == "desk" { vec![&desk, &phone, &desk, &phone] } else { vec![&phone, &desk, &phone, &desk] };
+        let mut now = NOW;
+        for c in order {
+            now += MINUTE;
+            background(c, &folder, &key, now);
+        }
+        let (d, p) = (lines::load(&on_desk).events["m1"].clone(), lines::load(&on_phone).events["m1"].clone());
+        assert_eq!(d, p, "{first}: one entry on both: {}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+        let read = d.lines("");
+        assert!(read.contains(&KIND_HEALTH.to_string()), "{first}: the kind: {read:?}");
+        assert_eq!(read.iter().filter(|l| l.starts_with("X-SIOUL-TAKEN-BY")).count(), 1, "{first}: one holder: {read:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+/// The review of f85f504, M1 (`probe_s2`), after the store opened: between two
+/// exchanges the desk sets the kind and the phone takes it: both stay, each
+/// line on its own. The same holder written on both keeps the later, and a
+/// kind taken out on one device goes on both, the holder staying.
+#[test]
+fn a_kind_and_a_holder_set_apart_between_two_exchanges_both_stay() {
+    use sioul_core::meeting_lines as lines;
+    let (base, folder, key, desk, phone) = both_with_lines("meeting-lines-apart");
+    let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+    lines::ensure(&on_desk, "m1").unwrap();
+    let mut now = NOW;
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(lines::load(&on_phone).events.contains_key("m1"), "an entry of no line travels");
+    lines::add(&on_desk, "m1", &[(String::new(), KIND_HEALTH.to_string())]).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    lines::add(&on_phone, "m1", &[(String::new(), holder_line("Alex"))]).unwrap();
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    let read = lines::load(&on_desk).events["m1"].lines("");
+    assert!(read.contains(&KIND_HEALTH.to_string()) && read.contains(&holder_line("Alex")), "{read:?}");
+    assert_eq!(lines::load(&on_desk), lines::load(&on_phone));
+    // A later holder on one device, then the other's exchange: the later word.
+    lines::add(&on_phone, "m1", &[(String::new(), holder_line("Sam"))]).unwrap();
+    for c in [&phone, &desk] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    let read = lines::load(&on_desk).events["m1"].lines("");
+    assert!(read.contains(&holder_line("Sam")) && !read.contains(&holder_line("Alex")) && read.contains(&KIND_HEALTH.to_string()), "{read:?}");
+    // The kind taken out on the desk (`set_from`, every line it read): that line goes on both.
+    let meeting = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:m1\r\nDTSTAMP:20261106T120000Z\r\nDTSTART:20991110T090000Z\r\nSUMMARY:Tom\r\n{}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", holder_line("Sam"));
+    lines::set_from(&on_desk, "m1", &meeting).unwrap();
+    for c in [&desk, &phone, &desk] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert_eq!(lines::load(&on_phone).events["m1"].lines(""), [holder_line("Sam")], "{}", phone.read(MEETING_LINES));
+    assert_eq!(lines::load(&on_phone), lines::load(&on_desk));
+    assert_eq!(lines::load(&on_phone).events["m1"].stamp.as_deref(), Some("20261106T120000Z"), "its stamp travelled");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// `probe_s4`, kept for the store's new shape: nothing of the lines in the
+/// clear in the folder, and UIDs with a quote, a hash, brackets, dots, a
+/// space, a backslash and `*` travel whole, a time's name too, their removals too.
+#[test]
+fn a_meeting_s_lines_travel_sealed_whatever_their_uid() {
+    use sioul_core::meeting_lines as lines;
+    let (base, folder, key, desk, phone) = both_with_lines("meeting-lines-sealed");
+    let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+    let odd = ["040000008200E0 \"x\".y#z[1]@exämple.org", "a.b.c", "with space", "back\\slash", "*"];
+    for uid in odd {
+        lines::add(&on_desk, uid, &[(String::new(), holder_line("Alex")), ("RECURRENCE-ID;TZID=Europe/Paris:20991117T090000".to_string(), KIND_HEALTH.to_string())]).unwrap();
+    }
+    let mut now = NOW;
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert_eq!(lines::load(&on_phone), lines::load(&on_desk), "{}", phone.read(MEETING_LINES));
+    assert_eq!(lines::load(&on_phone).events.len(), odd.len());
+    let mut clear = Vec::new();
+    let mut stack = vec![folder.clone()];
+    while let Some(d) = stack.pop() {
+        for f in std::fs::read_dir(&d).unwrap().flatten() {
+            if f.path().is_dir() {
+                stack.push(f.path());
+                continue;
+            }
+            let bytes = std::fs::read(f.path()).unwrap_or_default();
+            let text = String::from_utf8_lossy(&bytes);
+            if text.contains("X-SIOUL") || text.contains("alex@example") || text.contains("040000008200E0") || text.contains("times") {
+                clear.push(f.path());
+            }
+        }
+    }
+    assert!(clear.is_empty(), "in the clear: {clear:?}");
+    lines::forget(&on_phone, odd[0]).unwrap();
+    lines::forget(&on_phone, "*").unwrap();
+    for c in [&phone, &desk] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    let d = lines::load(&on_desk);
+    assert!(!d.events.contains_key(odd[0]) && !d.events.contains_key("*") && d.events.contains_key("a.b.c"), "{d:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// `probe_s5`, kept for the store's new shape: a removal against an edit, both
+/// orders, ends the same on both devices, line by line by the exchange's clock.
+#[test]
+fn a_removal_against_an_edit_ends_the_same_on_both() {
+    use sioul_core::meeting_lines as lines;
+    let (base, folder, key, desk, phone) = both_with_lines("meeting-lines-removal");
+    let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+    for uid in ["a", "b"] {
+        lines::add(&on_desk, uid, &[(String::new(), holder_line("Alex"))]).unwrap();
+    }
+    let mut now = NOW;
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    // a: the desk removes, then the phone edits; b: the phone edits, then the desk removes.
+    lines::forget(&on_desk, "a").unwrap();
+    lines::add(&on_phone, "b", &[(String::new(), KIND_HEALTH.to_string())]).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    lines::add(&on_phone, "a", &[(String::new(), KIND_HEALTH.to_string())]).unwrap();
+    lines::forget(&on_desk, "b").unwrap();
+    for c in [&desk, &phone, &desk, &phone, &desk] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert_eq!(lines::load(&on_desk), lines::load(&on_phone), "{}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// `probe_s6`, the known cost said (the same as your own time's): the store
+/// open between desk and phone, an older Sioul coming back holds what it cannot
+/// place until it is updated, writing nothing and losing nothing; updated, it
+/// gets every entry.
+#[test]
+fn an_older_device_back_after_the_store_opened_gets_it_once_updated() {
+    use sioul_core::meeting_lines as lines;
+    let (base, folder, key, desk, phone) = both_with_lines("meeting-lines-tablet");
+    lines::add(&desk.path(MEETING_LINES), "u1", &[(String::new(), KIND_HEALTH.to_string())]).unwrap();
+    let mut now = NOW;
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    let tablet = Computer::new(&base, "tablet");
+    entry(&tablet, &folder, &key, |e| e.start(now / 1000));
+    let older = stores(&Config::default(), &tablet.roots).into_iter().filter(|s| s.name != MEETING_LINES).collect::<Vec<_>>();
+    super::tests::OLDER.with(|o| *o.borrow_mut() = vec![MEETING_LINES.to_string()]);
+    for _ in 0..3 {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        exchange(&Sharing { folder: &folder, computer: &tablet.id, key: &key, memory: &tablet.memory, files: false, hurry: None }, &older, now).unwrap();
+    }
+    super::tests::OLDER.with(|o| o.borrow_mut().clear());
+    assert!(!tablet.path(MEETING_LINES).exists(), "nothing written there");
+    entry(&tablet, &folder, &key, |e| e.meeting_lines = MEETING_LINES_SHARED);
+    for c in [&desk, &tablet, &desk, &tablet] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(lines::load(&tablet.path(MEETING_LINES)).events.contains_key("u1"));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The store as an older Sioul wrote it on this device, when it opens: read
+/// whole, written in its present form, and sent as such: the other device
+/// reads each line by its name, no entry lost, no exchange stopped on a time
+/// that is a list in one file and a table in the other.
+#[test]
+fn the_older_form_of_a_meeting_s_lines_opens_in_its_present_form() {
+    use sioul_core::meeting_lines as lines;
+    let (base, folder, key, desk, phone) = both_with_lines("meeting-lines-older");
+    let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+    let held = holder_line("Alex");
+    std::fs::create_dir_all(on_desk.parent().unwrap()).unwrap();
+    std::fs::write(&on_desk, format!("[event.\"old-1\".times]\n\"\" = [\"{KIND_HEALTH}\", \"{held}\"]\n\n[event.\"old-empty\".times]\n")).unwrap();
+    lines::add(&on_phone, "old-1", &[(String::new(), holder_line("Sam"))]).unwrap();
+    let mut now = NOW;
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        let outcome = background(c, &folder, &key, now);
+        assert!(outcome.problems.is_empty(), "{outcome:?}");
+    }
+    assert_eq!(lines::load(&on_desk), lines::load(&on_phone), "{}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+    assert!(lines::load(&on_phone).events["old-1"].lines("").contains(&KIND_HEALTH.to_string()));
+    assert!(lines::load(&on_phone).events.contains_key("old-empty"));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// The notices' words wait for every device to have their store, as your
 /// own time does: a phone still on a Sioul without it (705576a) would keep
 /// their records waiting at every exchange. The desk's log stays on the desk

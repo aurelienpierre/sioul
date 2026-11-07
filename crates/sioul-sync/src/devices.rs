@@ -80,6 +80,15 @@ pub struct Entry {
     /// serde, unknown fields left aside, and writes its own entry alone).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub own_time: u32,
+    /// Whether its Sioul shares its own lines of meetings with others
+    /// (`share::MEETING_LINES`: who takes a child's event, its kind): 1 from a
+    /// build that has that store in the sharing, 0 from an older one. The
+    /// store travels only once every other device that counts says 1
+    /// (`share::meeting_lines_shared`), as your own time does: an older Sioul
+    /// neither receives nor overwrites it. An older Sioul reads the entry as
+    /// before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub meeting_lines: u32,
     /// Whether its Sioul has the notices' store (`share::NOTICES`, the
     /// Porch's notices): 1 from a build that has it, 0 from an older one.
     /// The store travels only once every other device that counts says 1

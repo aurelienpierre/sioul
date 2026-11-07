@@ -3,8 +3,9 @@
 
 //! Meetings you organize, by your own acts in the window (decisions 7 and 8
 //! of the event card, 5 November 2026): guests invited from the event's
-//! form, taken off it, the meeting changed, moved on the timeline or
-//! deleted, and a guest's answer read from their REPLY.
+//! form, taken off it, the meeting changed, moved on the timeline, given a
+//! status, deleted or one time of it left out, and a guest's answer read
+//! from their REPLY.
 //!
 //! Every write here goes through the organizer's door
 //! (`vdir::write_organized`, `remove_organized`), which this window alone
@@ -104,6 +105,19 @@ pub(crate) fn cleaned(given: &[Guest]) -> Vec<Guest> {
     out
 }
 
+/// What a write's message to its guests says, when it is told by a draft
+/// (`drafts_of`): an invitation or its update (RFC 5546 §3.2.2), or a
+/// cancellation (§3.2.5), of the whole meeting or of one time of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum Says {
+    #[default]
+    Invitation,
+    /// The meeting's status set to Cancelled (`status_plan`).
+    Cancelled,
+    /// The time starting then left out (`time_plan`): its guests alone are told, by a CANCEL naming it.
+    TimeCancelled(i64),
+}
+
 /// What writing a meeting you organize does, worked out before it is
 /// written, and said before you are asked (`asked`).
 #[derive(Debug, Clone)]
@@ -148,6 +162,12 @@ pub(crate) struct Plan {
     /// The meeting this write makes no meeting any more: its own lines kept
     /// apart went back into `text`, and their entry goes once it is written.
     pub lines_back: bool,
+    /// What its drafts say (`Says`).
+    pub says: Says,
+    /// Its unsent cancellations, by id, that the status going back from
+    /// Cancelled takes out of Drafts once it is written (`status_plan`): what
+    /// they say no longer holds, and their guests heard nothing of it.
+    pub withdrawn: Vec<String>,
 }
 
 /// Those of `guests` told by drafts and those told by the server, apart.
@@ -169,6 +189,16 @@ impl Plan {
         self.server == Teller::Server && organizer::teller(text, &guest.address, Sender::Server) == Sender::Server
     }
 
+    /// The text whose lines say who tells the guests it invites: what it
+    /// writes; for one time left out, the file as it was, since the guests of
+    /// that time alone go with it and their lines said how they are told.
+    fn marks(&self) -> &str {
+        match self.says {
+            Says::TimeCancelled(_) => self.before.as_deref().unwrap_or(&self.text),
+            _ => &self.text,
+        }
+    }
+
     /// The invited apart (`invited`): by drafts, by the server. A guest the
     /// server tells hears from it: invited, their invitation; kept, a change
     /// it sends by itself, or one asked of it (`forced`); a change it cannot
@@ -179,7 +209,7 @@ impl Plan {
         for guest in self.invited() {
             let new = self.added.iter().any(|g| g.address.eq_ignore_ascii_case(&guest.address));
             let reached = new || self.significant || self.forced.iter().any(|f| f.eq_ignore_ascii_case(&guest.address));
-            if self.by_server(&self.text, &guest) && reached { served.push(guest) } else { drafts.push(guest) }
+            if self.by_server(self.marks(), &guest) && reached { served.push(guest) } else { drafts.push(guest) }
         }
         (drafts, served)
     }
@@ -204,7 +234,7 @@ impl Plan {
         }
         let before = self.before.as_deref().unwrap_or(&self.text);
         let not_left = |text: &str, g: &Guest| organizer::teller(text, &g.address, Sender::Server) == Sender::Server;
-        self.invited().iter().any(|g| not_left(&self.text, g)) || self.removed.iter().any(|g| not_left(before, g))
+        self.invited().iter().any(|g| not_left(self.marks(), g)) || self.removed.iter().any(|g| not_left(before, g))
     }
 
     /// A guest it would tell who is left to you on some of their lines and
@@ -326,6 +356,14 @@ pub(crate) fn plan(path: &Path, before: Option<&str>, applied: &str, guests: Opt
     let earlier = before.map(organizer::every_guest).unwrap_or_default();
     let one_time: Vec<Guest> = organizer::one_time_guests(&text).into_iter().filter(|g| is_in(&earlier, g) && told_of(g)).collect();
     let told = !kept.is_empty() || !one_time.is_empty();
+    // A cancelled meeting stays as its guests heard it: any change they would see goes after
+    // another status, which tells them it is on again. A server that schedules would send every
+    // later write of it as one more cancellation (sabre's broker, for its status).
+    let cancelled = |t: &str| agenda::status_of(t) == "cancelled";
+    if before.is_some_and(cancelled) && cancelled(&text) && (told || !added.is_empty() || !removed.is_empty()) {
+        return Err(tr().text("invite-cancelled-first", None));
+    }
+    let says = if before.is_some_and(|b| !cancelled(b)) && cancelled(&text) { Says::Cancelled } else { Says::Invitation };
     let significant = before.is_some_and(|b| organizer::significant(b, &text));
     // A change its server would not send, to the series' kept guests it tells: asked of it for this write (F3).
     let (text, forced) = if told && !significant && server == Teller::Server {
@@ -336,7 +374,70 @@ pub(crate) fn plan(path: &Path, before: Option<&str>, applied: &str, guests: Opt
     };
     let mut told_guests = kept;
     told_guests.extend(one_time);
-    let plan = Plan { path: path.to_path_buf(), before: before.map(str::to_string), text, calendar: calendar.clone(), server, guests, added, removed, told, told_guests, significant, forced, replaced, aside, own_given: false, known, lines_back };
+    let plan = Plan { path: path.to_path_buf(), before: before.map(str::to_string), text, calendar: calendar.clone(), server, guests, added, removed, told, told_guests, significant, forced, replaced, aside, own_given: false, known, lines_back, says, withdrawn: Vec::new() };
+    if plan.unknown() {
+        return Err(tr().text("invite-server-unknown", None));
+    }
+    if let Some(guest) = plan.told_two_ways() {
+        return Err(say("invite-marks-mixed", &[("who", guest.said())]));
+    }
+    Ok(plan)
+}
+
+/// The plan of a meeting you organize given a status, from the event card's
+/// chooser: "confirmed" or "tentative" a new invitation at a later SEQUENCE,
+/// "cancelled" a cancellation (RFC 5546 §2.1.4, §3.2.5), each guest told as
+/// their lines say (`plan`); refused as `plan` refuses. None when it says so
+/// already.
+///
+/// Going back from Cancelled, its cancellation still unsent (review of
+/// f85f504, M6): that draft is withdrawn, since it says what no longer holds,
+/// and a guest it was to tell hears nothing more when the status is the one
+/// they last heard (`CancelNote::was`). Unknown (cancelled on another device,
+/// its draft brought here by the sharing), they are told: one message more
+/// rather than none.
+pub(crate) fn status_plan(path: &Path, before: &str, status: &str, calendar: &Collection) -> Result<Option<Plan>, String> {
+    let text = organizer::with_status(before, status).ok_or_else(|| tr().text("agenda-gone", None))?;
+    if text == before {
+        return Ok(None);
+    }
+    let mut plan = plan(path, Some(before), &text, None, calendar)?;
+    if agenda::status_of(before) == "cancelled" {
+        let uid = sioul_core::meeting_lines::uid_of(before);
+        let waiting = organizer::unsent_cancellations(&uid, &agenda::own_addresses());
+        // No status said is what Confirmed says to a guest.
+        let word = |status: &str| if status.is_empty() { "confirmed".to_string() } else { status.trim().to_ascii_lowercase() };
+        let heard_the_same = organizer::cancellation_notes(&uid).into_iter().any(|n| n.time.is_none() && word(&n.was) == word(status));
+        if heard_the_same {
+            plan.told_guests.retain(|g| !waiting.iter().any(|p| p.to.iter().any(|t| t.eq_ignore_ascii_case(g.address.trim()))));
+            plan.told = !plan.told_guests.is_empty();
+        }
+        plan.withdrawn = waiting.into_iter().map(|p| p.id).collect();
+    }
+    Ok(Some(plan))
+}
+
+/// The plan of one time of a repeating meeting you organize left out, the
+/// time starting at `start`: left out of the series (EXDATE), its own event
+/// taken out if it has one (`organizer::without_time`), and the guests of that
+/// time told, those asked to it alone included: by a CANCEL naming it where
+/// your drafts tell them (`organizer::cancel_time`), by its server where it
+/// does, each as their lines said (`Plan::marks`). A guest excused from that
+/// time gets no draft; one of the series its server tells hears from it all
+/// the same, since an EXDATE is a change it sends the series' guests by itself,
+/// and is named first (review of f85f504, L4). Refused as `plan` refuses, and
+/// when no time starts there.
+pub(crate) fn time_plan(path: &Path, before: &str, start: i64, calendar: &Collection) -> Result<Plan, String> {
+    let zone = sioul_core::zone::current();
+    let text = organizer::without_time(before, start, &zone).ok_or_else(|| tr().text("agenda-gone", None))?;
+    let mut plan = plan(path, Some(before), &text, None, calendar)?;
+    plan.says = Says::TimeCancelled(start);
+    plan.told_guests = organizer::time_guests(before, start, &zone);
+    if plan.significant {
+        let excused: Vec<Guest> = organizer::guests_of(before).into_iter().filter(|g| !plan.told_guests.iter().any(|t| t.address.eq_ignore_ascii_case(&g.address)) && plan.by_server(before, g)).collect();
+        plan.told_guests.extend(excused);
+    }
+    plan.told = !plan.told_guests.is_empty();
     if plan.unknown() {
         return Err(tr().text("invite-server-unknown", None));
     }
@@ -369,6 +470,8 @@ fn keep_aside(text: &str, aside: &organizer::Aside, given: bool, known: bool) ->
     if known {
         sioul_core::meeting_lines::ensure(&sioul_core::meeting_lines::default_path(), &uid)?;
     }
+    // Its entry knows the meeting it is kept for: a file older than that is behind it (H1).
+    sioul_core::meeting_lines::stamped(&sioul_core::meeting_lines::default_path(), &uid, &sioul_core::meeting_lines::stamp_of(text))?;
     Ok(())
 }
 
@@ -396,10 +499,26 @@ fn draft(account: &sioul_core::config::Account, to: &[Guest], text: &str, ics: S
 /// (`Plan::invited_apart`, `removed_apart`): the invitation, to every guest
 /// or to the new ones, the times they are asked to alone for those of some
 /// times of it (`organizer::request_for`), and the cancellation, to those
-/// taken off. None for the guests the server tells.
+/// taken off; the meeting or one time of it cancelled, that cancellation
+/// alone (`Says`). None for the guests the server tells.
 fn drafts_of(plan: &Plan) -> Result<Vec<Draft>, String> {
     let organizer = organizer::organizer_of(&plan.text).map(|o| o.address).unwrap_or_default();
     let mut out = Vec::new();
+    if plan.says != Says::Invitation {
+        let before = plan.before.as_deref().unwrap_or(&plan.text);
+        let (drafted, _) = plan.invited_apart();
+        if drafted.is_empty() {
+            return Ok(out);
+        }
+        let account = sending_account(&plan.calendar, &organizer)?;
+        let to: Vec<String> = drafted.iter().map(|g| g.address.clone()).collect();
+        let gone = || tr().text("agenda-gone", None);
+        out.push(match plan.says {
+            Says::TimeCancelled(start) => organizer::time_draft(&account.id, account.signature.as_deref(), &drafted, organizer::cancel_time(before, start, &to, &sioul_core::zone::current()).ok_or_else(gone)?, tr()),
+            _ => draft(&account, &drafted, before, organizer::cancel(before, &to, true).ok_or_else(gone)?, true),
+        });
+        return Ok(out);
+    }
     let ((invited, _), (removed, _)) = (plan.invited_apart(), plan.removed_apart());
     let series = organizer::guests_of(&plan.text);
     let (whole, apart): (Vec<Guest>, Vec<Guest>) = invited.into_iter().partition(|g| series.iter().any(|s| s.address.eq_ignore_ascii_case(&g.address)));
@@ -436,6 +555,11 @@ pub(crate) struct Written {
     /// It made the meeting no meeting, its own lines kept here put back into
     /// its file (`Plan::lines_back`): Undo keeps them apart again (R1).
     pub lines_back: bool,
+    /// The unsent cancellations it took out of Drafts (`Plan::withdrawn`), and
+    /// the notes of cancellations its text no longer stands for
+    /// (`organizer::cancellations_settled`): Undo puts both back.
+    pub withdrawn: Vec<Draft>,
+    pub settled: Vec<organizer::CancelNote>,
 }
 
 /// A draft's guests' addresses, in lower case.
@@ -459,6 +583,12 @@ pub(crate) fn write(plan: &Plan) -> Result<Written, String> {
             ids.iter().filter_map(|id: &String| Draft::by_id(id)).for_each(|d| d.discard());
             return Err(e);
         }
+        // A cancellation drafted here: what the sync reads if its server's version comes back holding it.
+        if plan.says != Says::Invitation
+            && let Some(ics) = draft.calendar.as_deref()
+        {
+            organizer::note_cancellation(ics, &addresses(&draft), &plan.before.as_deref().map(agenda::status_of).unwrap_or_default());
+        }
         to.insert(draft.id.clone(), addresses(&draft));
         ids.push(draft.id.clone());
     }
@@ -467,9 +597,28 @@ pub(crate) fn write(plan: &Plan) -> Result<Written, String> {
     if plan.lines_back {
         sioul_core::meeting_lines::forget(&sioul_core::meeting_lines::default_path(), &sioul_core::meeting_lines::uid_of(&plan.text))?;
     }
+    // The status back from Cancelled: its cancellation still unsent says what no longer holds (M6).
+    let withdrawn: Vec<Draft> = plan.withdrawn.iter().filter_map(|id| Draft::by_id(id)).collect();
+    withdrawn.iter().for_each(Draft::discard);
+    let settled = organizer::cancellations_settled(&plan.text);
     let ((_, mut served), (_, off_served)) = (plan.invited_apart(), plan.removed_apart());
     served.extend(off_served);
-    Ok(Written { file: Some(FileChange { path: plan.path.clone(), before: plan.before.clone(), after: Some(plan.text.clone()) }), drafts: ids, to, served, lines_back: plan.lines_back })
+    Ok(Written { file: Some(FileChange { path: plan.path.clone(), before: plan.before.clone(), after: Some(plan.text.clone()) }), drafts: ids, to, served, lines_back: plan.lines_back, withdrawn, settled })
+}
+
+/// What a write took back with it, restored once its Undo went through: the
+/// cancellations it withdrew from Drafts and the notes it settled; then the
+/// notes the meeting as it is now no longer stands for taken out.
+fn restored(written: &Written, path: &Path) {
+    organizer::notes_back(&written.settled);
+    for draft in &written.withdrawn {
+        if let Err(e) = draft.save() {
+            eprintln!("Sioul: a cancellation withdrawn could not come back to Drafts: {e}");
+        }
+    }
+    if let Ok(text) = std::fs::read_to_string(path) {
+        organizer::cancellations_settled(&text);
+    }
 }
 
 /// A write through the door taken back (Undo), while its file is still as
@@ -532,6 +681,7 @@ pub(crate) fn put_back(written: &Written) -> Result<(), String> {
             None => vdir::remove_organized(&file.path)?,
         }
         unsent();
+        restored(written, &file.path);
         return Ok(());
     }
     let calendar = crate::pim::collection_of(&file.path).ok_or_else(too_late)?;
@@ -551,6 +701,10 @@ pub(crate) fn put_back(written: &Written) -> Result<(), String> {
         (Some(before), Some(after)) => {
             let back = organizer::past(before, after).ok_or_else(too_late)?;
             let mut again = plan(&file.path, Some(after), &back, Some(&organizer::guests_of(before)), &calendar)?;
+            // One who heard and whose time comes back (a guest of one time left out, which went
+            // with their lines): told back too.
+            let more: Vec<Guest> = organizer::every_guest(&back).into_iter().filter(|g| heard.iter().any(|h| g.address.eq_ignore_ascii_case(h)) && !again.invited().iter().any(|i| i.address.eq_ignore_ascii_case(&g.address))).collect();
+            again.told_guests.extend(more);
             // Its server never had the change: nothing more asked of it than `before` asked.
             if !pushed {
                 again.text = organizer::with_force_send(&organizer::without_force_send(&again.text), &organizer::forced_of(before)).0;
@@ -566,15 +720,56 @@ pub(crate) fn put_back(written: &Written) -> Result<(), String> {
         _ => return Err(too_late()),
     }
     unsent();
+    restored(written, &file.path);
     Ok(())
+}
+
+/// Who hears of a meeting you organize deleted: those its server tells, and
+/// those your drafts tell, every event's guests each once; none of those
+/// when it is cancelled already, whose cancellation told them. Refused while
+/// nobody knows yet whether its server tells those not left to you
+/// (`Teller::Unknown`).
+fn told_of_deletion(before: &str, calendar: &Collection) -> Result<Apart, String> {
+    let organizer = organizer::organizer_of(before).map(|o| o.address).unwrap_or_default();
+    let server = server_for(calendar, &organizer);
+    let not_left = |g: &Guest| organizer::teller(before, &g.address, Sender::Server) == Sender::Server;
+    let guests = organizer::every_guest(before);
+    if server == Teller::Unknown && guests.iter().any(not_left) {
+        return Err(tr().text("invite-server-unknown", None));
+    }
+    let (served, mut drafted): Apart = guests.into_iter().partition(|g| server == Teller::Server && not_left(g));
+    if agenda::status_of(before) == "cancelled" {
+        drafted.clear();
+    }
+    Ok((served, drafted))
+}
+
+/// What deleting a meeting you organize says before you are asked: every
+/// guest hears it is cancelled, and how each is told; "" when nobody hears
+/// of it (cancelled already, your drafts told them).
+pub(crate) fn deletion_asked(before: &str, calendar: &Collection) -> Result<String, String> {
+    let (served, drafted) = told_of_deletion(before, calendar)?;
+    if served.is_empty() && drafted.is_empty() {
+        return Ok(String::new());
+    }
+    let names = |guests: &[Guest]| guests.iter().map(Guest::said).collect::<Vec<_>>().join(", ");
+    let mut said = vec![tr().text("invite-delete-tells", None)];
+    if !drafted.is_empty() {
+        said.push(say("invite-ask-drafts", &[("who", names(&drafted))]));
+    }
+    if !served.is_empty() {
+        said.push(say("invite-ask-served", &[("who", names(&served))]));
+    }
+    Ok(said.join(" "))
 }
 
 /// A meeting you organize deleted, as its Delete asks (after "Deleting it
 /// tells every guest"): the cancellation drafted for the guests told by
-/// drafts, those of one time of it alone too (`organizer::cancel`), then the
-/// file taken out through the door; its server sends its own to the guests
-/// it tells. Refused while nobody knows yet whether its server tells those
-/// not left to you (`Teller::Unknown`). What Undo needs to put it back.
+/// drafts, those of one time of it alone too (`organizer::cancel`), none when
+/// it is cancelled already (`told_of_deletion`), then the file taken out
+/// through the door; its server sends its own to the guests it tells. Refused
+/// while nobody knows yet whether its server tells those not left to you
+/// (`Teller::Unknown`). What Undo needs to put it back.
 pub(crate) fn delete(path: &Path) -> Result<Written, String> {
     let before = std::fs::read_to_string(path).map_err(|_| tr().text("agenda-gone", None))?;
     let calendar = crate::pim::collection_of(path).ok_or_else(|| tr().text("agenda-gone", None))?;
@@ -582,14 +777,8 @@ pub(crate) fn delete(path: &Path) -> Result<Written, String> {
     if !agenda::organized_meeting(&before, &own) {
         return Err(tr().text("event-delete-with-others", None));
     }
+    let (served, drafted) = told_of_deletion(&before, &calendar)?;
     let organizer = organizer::organizer_of(&before).map(|o| o.address).unwrap_or_default();
-    let server = server_for(&calendar, &organizer);
-    let not_left = |g: &Guest| organizer::teller(&before, &g.address, Sender::Server) == Sender::Server;
-    let guests = organizer::every_guest(&before);
-    if server == Teller::Unknown && guests.iter().any(not_left) {
-        return Err(tr().text("invite-server-unknown", None));
-    }
-    let (served, drafted): (Vec<Guest>, Vec<Guest>) = guests.into_iter().partition(|g| server == Teller::Server && not_left(g));
     let cancelled = if drafted.is_empty() {
         None
     } else {
@@ -605,10 +794,13 @@ pub(crate) fn delete(path: &Path) -> Result<Written, String> {
             let _ = vdir::write_organized(path, &before);
             return Err(e);
         }
+        if let Some(ics) = draft.calendar.as_deref() {
+            organizer::note_cancellation(ics, &addresses(&draft), &agenda::status_of(&before));
+        }
         to.insert(draft.id.clone(), addresses(&draft));
         drafts.push(draft.id.clone());
     }
-    Ok(Written { file: Some(FileChange { path: path.to_path_buf(), before: Some(before), after: None }), drafts, to, served, lines_back: false })
+    Ok(Written { file: Some(FileChange { path: path.to_path_buf(), before: Some(before), after: None }), drafts, to, served, lines_back: false, ..Written::default() })
 }
 
 /// A deletion taken back (Undo), while nothing took its place: what the
@@ -634,6 +826,7 @@ pub(crate) fn undelete(written: &Written) -> Option<String> {
     if !sent && !served {
         vdir::write_organized(path, before).ok()?;
         written.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
+        organizer::cancellations_settled(before);
         return Some(String::new());
     }
     let again = organizer::after_cancel(before)?;
@@ -667,6 +860,7 @@ pub(crate) fn undelete(written: &Written) -> Option<String> {
         said.push(tr().text("invite-undeleted-server", None));
     }
     written.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
+    organizer::cancellations_settled(&again);
     Some(said.join(" "))
 }
 
@@ -1025,6 +1219,375 @@ mod tests {
         assert!(asked.asked().starts_with(&say("invite-ask-organizer", &[("who", "Colleague".into())])), "{}", asked.asked());
         let mine = planning("replaced-2", "ORGANIZER:mailto:camille.place@example.org\r\n");
         assert!(plan(&path, Some(&mine), &mine, Some(&anne()), &here.calendar).unwrap().replaced.is_none(), "yours: nothing to say");
+    }
+
+    /// A meeting you organize given a status, by your drafts (made in Sioul):
+    /// "To be confirmed" a REQUEST at a later SEQUENCE, said first; Undo before
+    /// it is sent as it was, its draft discarded. "Cancelled" a CANCEL for
+    /// every guest, one past the highest version, in the same way; sent, Undo
+    /// tells them back one version past it. A cancelled meeting takes no
+    /// change its guests would see, until it has another status; deleted, it
+    /// tells nobody again, and Undo says nothing.
+    #[test]
+    fn a_status_goes_to_your_guests_by_your_drafts() {
+        let here = Here::new("status-drafts", "camille.status@example.org");
+        let path = here.meeting("status.ics", &planning("status-1", ""), &anne());
+        let before = std::fs::read_to_string(&path).unwrap();
+        let asked = status_plan(&path, &before, "tentative", &here.calendar).unwrap().unwrap();
+        assert_eq!(asked.asked(), say("invite-ask-drafts", &[("who", "Anne".into())]));
+        assert!(status_plan(&path, &before, "maybe", &here.calendar).is_err());
+        let written = write(&asked).unwrap();
+        let invitation = Draft::by_id(&written.drafts[0]).unwrap().calendar.unwrap();
+        let flat_invitation = flat(&invitation);
+        assert!(flat_invitation.contains("METHOD:REQUEST") && flat_invitation.contains("STATUS:TENTATIVE") && flat_invitation.contains("SEQUENCE:1"), "{flat_invitation}");
+        assert!(flat(&std::fs::read_to_string(&path).unwrap()).contains("SCHEDULE-AGENT=CLIENT:mailto:anne@example.net"), "Anne's mark as it was");
+        assert_eq!(put_back(&written), Ok(()));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before, "as it was");
+        assert!(Draft::by_id(&written.drafts[0]).is_none(), "its draft discarded");
+        // Cancelled: its CANCEL alone.
+        let cancelling = status_plan(&path, &before, "cancelled", &here.calendar).unwrap().unwrap();
+        let written = write(&cancelling).unwrap();
+        assert_eq!(written.drafts.len(), 1, "one message");
+        let cancel = flat(&Draft::by_id(&written.drafts[0]).unwrap().calendar.unwrap());
+        assert!(cancel.contains("METHOD:CANCEL") && cancel.contains("STATUS:CANCELLED") && cancel.contains("SEQUENCE:1") && cancel.contains("mailto:anne@example.net"), "{cancel}");
+        let cancelled = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(agenda::status_of(&cancelled), "cancelled");
+        assert!(flat(&cancelled).contains("SEQUENCE:1"));
+        // Sent: Undo tells Anne back, one past it.
+        Draft::by_id(&written.drafts[0]).unwrap().discard();
+        assert_eq!(put_back(&written), Ok(()));
+        let back = std::fs::read_to_string(&path).unwrap();
+        assert_ne!(agenda::status_of(&back), "cancelled");
+        assert!(flat(&back).contains("SEQUENCE:2"), "{back}");
+        let told_back = drafts_of_uid("status-1");
+        assert_eq!(told_back.len(), 1);
+        let told = flat(told_back[0].calendar.as_deref().unwrap());
+        assert!(told.contains("METHOD:REQUEST") && told.contains("SEQUENCE:2") && told_back[0].to[0].contains("anne@example.net"), "{told}");
+        told_back.iter().for_each(Draft::discard);
+        // Cancelled again: no change its guests would see, until another status.
+        let written = write(&status_plan(&path, &back, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
+        written.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
+        let off = std::fs::read_to_string(&path).unwrap();
+        let refused = tr().text("invite-cancelled-first", None);
+        assert_eq!(plan(&path, Some(&off), &off.replace("SUMMARY:Planning", "SUMMARY:Board"), None, &here.calendar).map(|_| ()), Err(refused.clone()));
+        assert_eq!(plan(&path, Some(&off), &off, Some(&[]), &here.calendar).map(|_| ()), Err(refused));
+        assert!(plan(&path, Some(&off), &off, None, &here.calendar).is_ok(), "nothing its guests see");
+        assert_eq!(deletion_asked(&off, &here.calendar), Ok(String::new()), "they heard it");
+        let on = status_plan(&path, &off, "confirmed", &here.calendar).unwrap().unwrap();
+        assert_eq!(on.says, Says::Invitation);
+        assert!(flat(&request_of(&on)).contains("STATUS:CONFIRMED"));
+        // Deleted, cancelled already: nobody told again, and its Undo says nothing.
+        let gone = delete(&path).unwrap();
+        assert!(gone.drafts.is_empty() && gone.served.is_empty() && drafts_of_uid("status-1").is_empty());
+        assert_eq!(undelete(&gone).as_deref(), Some(""));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), off);
+    }
+
+    /// The invitation a plan drafts.
+    fn request_of(plan: &Plan) -> String {
+        drafts_of(plan).unwrap().remove(0).calendar.unwrap()
+    }
+
+    /// A meeting you organize given a status, by its server (made elsewhere):
+    /// nothing drafted, nothing forced (a status is a change it sends by
+    /// itself), said first, and Undo as for its other acts. Refused while
+    /// nobody knows yet whether its server tells them. Both ways in one
+    /// meeting: each guest once.
+    #[test]
+    fn a_status_goes_to_your_guests_by_its_server() {
+        let here = Here::new("status-served", "camille.served@example.org");
+        let (calendar, state) = served(&here, "status-served-cal", "camille.served@example.org");
+        let theirs = planning("status-2", "ORGANIZER;CN=Camille:mailto:camille.served@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=ACCEPTED:mailto:anne@example.net\r\nATTENDEE;CN=Bob;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\n");
+        let path = calendar.dir.join("status.ics");
+        vdir::store_item(&path, &theirs).unwrap();
+        agreed(&calendar, &path, &theirs);
+        for status in ["tentative", "cancelled"] {
+            let asked = status_plan(&path, &theirs, status, &calendar).unwrap().unwrap();
+            assert!(asked.significant && asked.forced.is_empty() && !flat(&asked.text).contains("SCHEDULE-FORCE-SEND"), "{}", asked.text);
+            assert_eq!(asked.asked(), [say("invite-ask-drafts", &[("who", "Bob".into())]), say("invite-ask-served", &[("who", "Anne".into())])].join(" "));
+            let written = write(&asked).unwrap();
+            assert_eq!(written.served.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), ["anne@example.net"], "Anne by its server");
+            let drafted = drafts_of_uid("status-2");
+            assert_eq!(drafted.len(), 1, "Bob's alone");
+            assert!(drafted[0].to.len() == 1 && drafted[0].to[0].contains("bob@example.net"), "{:?}", drafted[0].to);
+            let method = if status == "cancelled" { "METHOD:CANCEL" } else { "METHOD:REQUEST" };
+            assert!(flat(drafted[0].calendar.as_deref().unwrap()).contains(method));
+            // Not sent yet: as it was, its draft discarded, nothing asked of the server.
+            assert_eq!(put_back(&written), Ok(()));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), theirs);
+            assert!(drafts_of_uid("status-2").is_empty());
+        }
+        // Its server has it: told back as any change is.
+        let written = write(&status_plan(&path, &theirs, "cancelled", &calendar).unwrap().unwrap()).unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+        agreed(&calendar, &path, &after);
+        drafts_of_uid("status-2").iter().for_each(Draft::discard);
+        assert_eq!(put_back(&written), Ok(()));
+        let back = flat(&std::fs::read_to_string(&path).unwrap());
+        assert!(!back.contains("STATUS:CANCELLED") && back.contains("SEQUENCE:2") && !back.contains("SCHEDULE-FORCE-SEND"), "{back}");
+        drafts_of_uid("status-2").iter().for_each(Draft::discard);
+        // Nobody knows yet whether its server tells Anne: refused, both acts.
+        std::fs::remove_file(state.join("scheduling.toml")).unwrap();
+        assert_eq!(status_plan(&path, &theirs, "tentative", &calendar).map(|_| ()), Err(tr().text("invite-server-unknown", None)));
+        gone_served(&calendar, &state);
+    }
+
+    /// One time of a weekly meeting you organize, by your drafts: said first;
+    /// EXDATE, nothing else asked; a CANCEL naming that time to its guests
+    /// alone, Anne of the series, never a whole update; Undo before it is sent
+    /// as it was, its draft discarded; sent, Anne told back one version past
+    /// it. A time moved and given Carl alone: Carl and Anne told, its event
+    /// gone; told back, Carl by that time alone. One excused: not told.
+    #[test]
+    fn one_time_left_out_tells_its_guests_by_your_drafts() {
+        let here = Here::new("one-time-off", "camille.off@example.org");
+        let zone = sioul_core::zone::current();
+        let path = here.meeting("weekly.ics", &planning("off-1", "RRULE:FREQ=WEEKLY\r\n"), &anne());
+        let series = std::fs::read_to_string(&path).unwrap();
+        let (first, _) = agenda::first_times(&series, &zone).unwrap();
+        let second = first + 7 * 86400;
+        let asked = time_plan(&path, &series, second, &here.calendar).unwrap();
+        assert_eq!(asked.asked(), say("invite-ask-drafts", &[("who", "Anne".into())]));
+        assert!(time_plan(&path, &series, second + 60, &here.calendar).is_err(), "no time starts there");
+        let written = write(&asked).unwrap();
+        assert_eq!(written.drafts.len(), 1, "one message");
+        let draft = Draft::by_id(&written.drafts[0]).unwrap();
+        let said = flat(draft.calendar.as_deref().unwrap());
+        assert!(said.contains("METHOD:CANCEL") && said.contains("RECURRENCE-ID") && !said.contains("RRULE") && said.contains("SEQUENCE:1") && draft.to[0].contains("anne@example.net"), "{said}");
+        let without = flat(&std::fs::read_to_string(&path).unwrap());
+        assert!(without.contains("EXDATE") && without.contains("RRULE") && without.contains("SCHEDULE-AGENT=CLIENT:mailto:anne@example.net"), "{without}");
+        assert_eq!(put_back(&written), Ok(()));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), series, "as it was");
+        assert!(Draft::by_id(&written.drafts[0]).is_none());
+        // Sent: Anne told back, one version past it.
+        let written = write(&time_plan(&path, &series, second, &here.calendar).unwrap()).unwrap();
+        Draft::by_id(&written.drafts[0]).unwrap().discard();
+        assert_eq!(put_back(&written), Ok(()));
+        let back = flat(&std::fs::read_to_string(&path).unwrap());
+        assert!(!back.contains("EXDATE") && back.contains("SEQUENCE:2"), "{back}");
+        let told = drafts_of_uid("off-1");
+        assert!(told.len() == 1 && flat(told[0].calendar.as_deref().unwrap()).contains("METHOD:REQUEST") && told[0].to[0].contains("anne@example.net"), "{told:?}");
+        told.iter().for_each(Draft::discard);
+        // A time moved, Carl asked to it alone by another app; another excusing Anne, asking Bob.
+        let now = std::fs::read_to_string(&path).unwrap();
+        let carl = "BEGIN:VEVENT\r\nUID:off-1\r\nRECURRENCE-ID:20991117T090000Z\r\nDTSTAMP:20991101T090000Z\r\nSEQUENCE:6\r\nDTSTART:20991117T140000Z\r\nDTEND:20991117T150000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:camille.off@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:anne@example.net\r\nATTENDEE;CN=Carl;SCHEDULE-AGENT=CLIENT:mailto:carl@example.net\r\nEND:VEVENT\r\n";
+        let bob = "BEGIN:VEVENT\r\nUID:off-1\r\nRECURRENCE-ID:20991124T090000Z\r\nDTSTAMP:20991101T090000Z\r\nSEQUENCE:2\r\nDTSTART:20991124T090000Z\r\nDTEND:20991124T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:camille.off@example.org\r\nATTENDEE;CN=Bob;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\nEND:VEVENT\r\n";
+        let wide = now.replace("END:VCALENDAR", &format!("{carl}{bob}END:VCALENDAR"));
+        vdir::store_item(&path, &wide).unwrap();
+        let moved = jiff::civil::date(2099, 11, 17).at(14, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).unwrap().timestamp().as_second();
+        let asked = time_plan(&path, &wide, moved, &here.calendar).unwrap();
+        assert_eq!(asked.asked(), say("invite-ask-drafts", &[("who", "Anne, Carl".into())]));
+        let written = write(&asked).unwrap();
+        let draft = Draft::by_id(&written.drafts[0]).unwrap();
+        let said = flat(draft.calendar.as_deref().unwrap());
+        assert!(written.drafts.len() == 1 && draft.to.len() == 2 && said.contains("mailto:carl@example.net") && said.contains("RECURRENCE-ID:20991117T090000Z") && said.contains("SEQUENCE:7") && !said.contains("bob@"), "{said}");
+        let without = flat(&std::fs::read_to_string(&path).unwrap());
+        assert!(!without.contains("carl@") && without.contains("bob@"), "its event gone, the other kept: {without}");
+        // Sent: Carl told back too, by that time alone; Anne by the whole of it.
+        Draft::by_id(&written.drafts[0]).unwrap().discard();
+        assert_eq!(put_back(&written), Ok(()));
+        assert!(flat(&std::fs::read_to_string(&path).unwrap()).contains("carl@"));
+        let told = drafts_of_uid("off-1");
+        let to_carl = told.iter().find(|d| d.to.iter().any(|t| t.contains("carl@"))).expect("Carl told back");
+        let carl_said = flat(to_carl.calendar.as_deref().unwrap());
+        assert!(carl_said.contains("METHOD:REQUEST") && carl_said.contains("RECURRENCE-ID:20991117T090000Z") && !carl_said.contains("RRULE"), "{carl_said}");
+        assert!(told.iter().any(|d| d.to.iter().any(|t| t.contains("anne@"))), "{told:?}");
+        assert!(!told.iter().any(|d| d.to.iter().any(|t| t.contains("bob@"))), "Bob never heard of it");
+        told.iter().for_each(Draft::discard);
+    }
+
+    /// One time of a meeting made elsewhere, by its server: nothing drafted
+    /// for those it tells, nothing forced, a guest left to you drafted alone,
+    /// each told once. Refused while nobody knows yet whether it tells them,
+    /// and for a guest told two ways.
+    #[test]
+    fn one_time_left_out_tells_its_guests_by_its_server() {
+        let here = Here::new("one-time-served", "camille.os@example.org");
+        let zone = sioul_core::zone::current();
+        let (calendar, state) = served(&here, "one-time-served-cal", "camille.os@example.org");
+        let theirs = planning("off-2", "RRULE:FREQ=WEEKLY\r\nORGANIZER;CN=Camille:mailto:camille.os@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=ACCEPTED:mailto:anne@example.net\r\nATTENDEE;CN=Bob;SCHEDULE-AGENT=CLIENT:mailto:bob@example.net\r\n");
+        let path = calendar.dir.join("weekly.ics");
+        vdir::store_item(&path, &theirs).unwrap();
+        agreed(&calendar, &path, &theirs);
+        let (first, _) = agenda::first_times(&theirs, &zone).unwrap();
+        let asked = time_plan(&path, &theirs, first + 7 * 86400, &calendar).unwrap();
+        assert!(asked.significant && asked.forced.is_empty());
+        assert_eq!(asked.asked(), [say("invite-ask-drafts", &[("who", "Bob".into())]), say("invite-ask-served", &[("who", "Anne".into())])].join(" "));
+        let written = write(&asked).unwrap();
+        assert_eq!(written.served.iter().map(|g| g.address.as_str()).collect::<Vec<_>>(), ["anne@example.net"]);
+        let drafted = drafts_of_uid("off-2");
+        assert!(drafted.len() == 1 && drafted[0].to.len() == 1 && drafted[0].to[0].contains("bob@") && flat(drafted[0].calendar.as_deref().unwrap()).contains("RECURRENCE-ID"), "{drafted:?}");
+        // Sent, its server has it: Anne told back by its server, Bob by a draft.
+        let after = std::fs::read_to_string(&path).unwrap();
+        agreed(&calendar, &path, &after);
+        drafted.iter().for_each(Draft::discard);
+        assert_eq!(put_back(&written), Ok(()));
+        let back = flat(&std::fs::read_to_string(&path).unwrap());
+        assert!(!back.contains("EXDATE") && back.contains("SEQUENCE:2") && !back.contains("SCHEDULE-FORCE-SEND"), "{back}");
+        let told = drafts_of_uid("off-2");
+        assert!(told.len() == 1 && told[0].to.iter().all(|t| t.contains("bob@")), "{told:?}");
+        told.iter().for_each(Draft::discard);
+        // Bob marked two ways: refused where a server schedules.
+        let mixed = theirs.replace("END:VCALENDAR", "BEGIN:VEVENT\r\nUID:off-2\r\nRECURRENCE-ID:20991117T090000Z\r\nDTSTAMP:20991101T090000Z\r\nDTSTART:20991117T090000Z\r\nDTEND:20991117T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:camille.os@example.org\r\nATTENDEE:mailto:bob@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR");
+        assert_eq!(time_plan(&path, &mixed, first + 7 * 86400, &calendar).map(|_| ()), Err(say("invite-marks-mixed", &[("who", "Bob".into())])));
+        std::fs::remove_file(state.join("scheduling.toml")).unwrap();
+        assert_eq!(time_plan(&path, &theirs, first + 7 * 86400, &calendar).map(|_| ()), Err(tr().text("invite-server-unknown", None)));
+        gone_served(&calendar, &state);
+    }
+
+    // ---- The review of f85f504: its probes turned.
+
+    /// M6 (`probe_o1`): Cancelled by mistake, its cancellation unsent, then
+    /// Confirmed from the chooser: nobody heard of it, so nothing is asked and
+    /// nothing is drafted, and the unsent cancellation goes. Undo: it is back in
+    /// Drafts beside the meeting cancelled again, and its note with it.
+    #[test]
+    fn confirmed_again_withdraws_a_cancellation_still_unsent() {
+        let here = Here::new("m6-unsent", "camille.m6@example.org");
+        let path = here.meeting("m6.ics", &planning("m6", ""), &anne());
+        let before = std::fs::read_to_string(&path).unwrap();
+        let cancelled = write(&status_plan(&path, &before, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
+        assert_eq!(organizer::cancellation_notes("m6").len(), 1, "noted");
+        let off = std::fs::read_to_string(&path).unwrap();
+        let on = status_plan(&path, &off, "confirmed", &here.calendar).unwrap().unwrap();
+        assert_eq!(on.asked(), "", "nobody hears of it");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), off, "a plan writes nothing");
+        assert!(Draft::by_id(&cancelled.drafts[0]).is_some(), "a plan takes nothing out of Drafts");
+        let written = write(&on).unwrap();
+        assert!(written.drafts.is_empty() && drafts_of_uid("m6").is_empty(), "{:?}", drafts_of_uid("m6"));
+        assert!(organizer::cancellation_notes("m6").is_empty(), "its story is over");
+        assert_eq!(agenda::status_of(&std::fs::read_to_string(&path).unwrap()), "confirmed");
+        assert_eq!(put_back(&written), Ok(()));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), off, "cancelled again");
+        let back = drafts_of_uid("m6");
+        assert!(back.len() == 1 && back[0].calendar.as_deref().unwrap().contains("METHOD:CANCEL"), "{back:?}");
+        assert_eq!(organizer::cancellation_notes("m6").len(), 1, "noted again");
+        back.iter().for_each(Draft::discard);
+        assert!(organizer::cancellations_settled(&before).len() == 1);
+    }
+
+    /// M6's other cases. Its cancellation sent: told back as any change, past
+    /// it. Its cancellation unsent, the status not the one they last heard: the
+    /// draft goes, and they hear the new status. Its draft brought from another
+    /// device, what they last heard unknown here: the draft goes, and they are
+    /// told: one message more rather than none.
+    #[test]
+    fn a_status_back_from_cancelled_tells_whom_it_must() {
+        let here = Here::new("m6-told", "camille.m6t@example.org");
+        let request_of = |uid: &str| {
+            let left = drafts_of_uid(uid);
+            let said: Vec<String> = left.iter().map(|d| flat(d.calendar.as_deref().unwrap()).lines().filter(|l| l.starts_with("METHOD") || l.starts_with("SEQUENCE")).collect::<Vec<_>>().join(" ")).collect();
+            left.iter().for_each(Draft::discard);
+            said
+        };
+        // Sent.
+        let path = here.meeting("sent.ics", &planning("m6-sent", ""), &anne());
+        let before = std::fs::read_to_string(&path).unwrap();
+        write(&status_plan(&path, &before, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
+        drafts_of_uid("m6-sent").iter().for_each(Draft::discard);
+        let off = std::fs::read_to_string(&path).unwrap();
+        let on = status_plan(&path, &off, "confirmed", &here.calendar).unwrap().unwrap();
+        assert!(on.asked().contains("Anne"), "{}", on.asked());
+        write(&on).unwrap();
+        assert_eq!(request_of("m6-sent"), ["METHOD:REQUEST SEQUENCE:2"], "past the cancellation (1)");
+        // Unsent, another status than they last heard.
+        let path = here.meeting("other.ics", &planning("m6-other", ""), &anne());
+        let before = std::fs::read_to_string(&path).unwrap();
+        write(&status_plan(&path, &before, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
+        let off = std::fs::read_to_string(&path).unwrap();
+        write(&status_plan(&path, &off, "tentative", &here.calendar).unwrap().unwrap()).unwrap();
+        assert_eq!(request_of("m6-other"), ["METHOD:REQUEST SEQUENCE:2"], "one message, no cancellation");
+        // Unsent, drafted elsewhere: no note here.
+        let path = here.meeting("there.ics", &planning("m6-there", ""), &anne());
+        let before = std::fs::read_to_string(&path).unwrap();
+        write(&status_plan(&path, &before, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
+        organizer::cancellations_settled(&before);
+        let off = std::fs::read_to_string(&path).unwrap();
+        write(&status_plan(&path, &off, "confirmed", &here.calendar).unwrap().unwrap()).unwrap();
+        assert_eq!(request_of("m6-there"), ["METHOD:REQUEST SEQUENCE:2"], "one message, no cancellation");
+    }
+
+    /// M5: what the door drafts is noted, its deletion and one time left out
+    /// too, and Undo settles it: only a cancellation drafted here reads as heard.
+    #[test]
+    fn a_cancellation_is_noted_where_it_is_drafted() {
+        let here = Here::new("m5-noted", "camille.m5@example.org");
+        let zone = sioul_core::zone::current();
+        let path = here.meeting("weekly.ics", &planning("m5-weekly", "RRULE:FREQ=WEEKLY\r\n"), &anne());
+        let series = std::fs::read_to_string(&path).unwrap();
+        let (first, _) = agenda::first_times(&series, &zone).unwrap();
+        let one_time = write(&time_plan(&path, &series, first + 7 * 86400, &here.calendar).unwrap()).unwrap();
+        let notes = organizer::cancellation_notes("m5-weekly");
+        assert!(notes.len() == 1 && notes[0].time == Some(first + 7 * 86400) && notes[0].to == ["anne@example.net"], "{notes:?}");
+        assert_eq!(put_back(&one_time), Ok(()));
+        assert!(organizer::cancellation_notes("m5-weekly").is_empty() && drafts_of_uid("m5-weekly").is_empty(), "undone unsent");
+        let deleted = delete(&path).unwrap();
+        let notes = organizer::cancellation_notes("m5-weekly");
+        assert!(notes.len() == 1 && notes[0].time.is_none() && notes[0].sequence == organizer::top_sequence(&series) + 1, "{notes:?}");
+        assert_eq!(undelete(&deleted).as_deref(), Some(""));
+        assert!(organizer::cancellation_notes("m5-weekly").is_empty() && drafts_of_uid("m5-weekly").is_empty());
+    }
+
+    /// `probe_o2`, kept: a series with no guest of its own, Carl asked to one
+    /// time alone: that time left out keeps its organizer and tells Carl, once;
+    /// Undo tells them back.
+    #[test]
+    fn a_series_whose_only_guest_is_of_one_time() {
+        let here = Here::new("o2-carl", "camille.o2@example.org");
+        let text = planning("o2-carl", "RRULE:FREQ=WEEKLY\r\nORGANIZER:mailto:camille.o2@example.org\r\n").replace("END:VCALENDAR", "BEGIN:VEVENT\r\nUID:o2-carl\r\nRECURRENCE-ID:20991117T090000Z\r\nDTSTAMP:20991101T090000Z\r\nSEQUENCE:0\r\nDTSTART:20991117T140000Z\r\nDTEND:20991117T150000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:camille.o2@example.org\r\nATTENDEE;CN=Carl;SCHEDULE-AGENT=CLIENT:mailto:carl@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR");
+        let path = here.calendar.dir.join("o2.ics");
+        vdir::store_item(&path, &text).unwrap();
+        let moved = jiff::civil::date(2099, 11, 17).at(14, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).unwrap().timestamp().as_second();
+        let written = write(&time_plan(&path, &text, moved, &here.calendar).unwrap()).unwrap();
+        let drafted = drafts_of_uid("o2-carl");
+        assert!(drafted.len() == 1 && drafted[0].to[0].contains("carl@"), "{drafted:?}");
+        drafted.iter().for_each(Draft::discard);
+        assert_eq!(put_back(&written), Ok(()));
+        let told = drafts_of_uid("o2-carl");
+        told.iter().for_each(Draft::discard);
+        assert!(flat(&std::fs::read_to_string(&path).unwrap()).contains("carl@"));
+        assert_eq!(told.len(), 1, "Carl told back");
+    }
+
+    /// `probe_o3`, kept: cancelled, its cancellation unsent: one time left out
+    /// is refused; deleted whole, nobody new is told and that cancellation
+    /// stays; undeleted, the same text.
+    #[test]
+    fn a_cancelled_meeting_deleted_tells_nobody_new() {
+        let here = Here::new("o3-off", "camille.o3@example.org");
+        let zone = sioul_core::zone::current();
+        let path = here.meeting("o3.ics", &planning("o3-off", "RRULE:FREQ=WEEKLY\r\n"), &anne());
+        let series = std::fs::read_to_string(&path).unwrap();
+        let (first, _) = agenda::first_times(&series, &zone).unwrap();
+        let written = write(&status_plan(&path, &series, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
+        let off = std::fs::read_to_string(&path).unwrap();
+        assert!(time_plan(&path, &off, first + 7 * 86400, &here.calendar).is_err(), "refused");
+        let gone = delete(&path).unwrap();
+        assert!(gone.drafts.is_empty());
+        assert!(Draft::by_id(&written.drafts[0]).is_some(), "the unsent cancellation stays: Anne will hear");
+        assert_eq!(organizer::cancellation_notes("o3-off").len(), 1, "and its note");
+        assert_eq!(undelete(&gone).as_deref(), Some(""));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), off);
+        drafts_of_uid("o3-off").iter().for_each(Draft::discard);
+    }
+
+    /// L4 (`probe_o4`): one time left out by a server that schedules, Bob of
+    /// the series, excused from that time: the server sends them an update for
+    /// the EXDATE, so what is said first names them; no draft for them.
+    #[test]
+    fn what_is_said_first_names_whom_its_server_tells() {
+        let here = Here::new("l4-served", "camille.l4@example.org");
+        let (calendar, state) = served(&here, "l4-served-cal", "camille.l4@example.org");
+        let theirs = planning("l4", "RRULE:FREQ=WEEKLY\r\nORGANIZER:mailto:camille.l4@example.org\r\nATTENDEE;CN=Anne:mailto:anne@example.net\r\nATTENDEE;CN=Bob:mailto:bob@example.net\r\n").replace("END:VCALENDAR", "BEGIN:VEVENT\r\nUID:l4\r\nRECURRENCE-ID:20991117T090000Z\r\nDTSTAMP:20991101T090000Z\r\nDTSTART:20991117T090000Z\r\nDTEND:20991117T100000Z\r\nSUMMARY:Planning\r\nORGANIZER:mailto:camille.l4@example.org\r\nATTENDEE;CN=Anne:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR");
+        let path = calendar.dir.join("weekly.ics");
+        vdir::store_item(&path, &theirs).unwrap();
+        agreed(&calendar, &path, &theirs);
+        let at = jiff::civil::date(2099, 11, 17).at(9, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).unwrap().timestamp().as_second();
+        let asked = time_plan(&path, &theirs, at, &calendar).unwrap();
+        let said = asked.asked();
+        assert!(said.contains("Anne") && said.contains("Bob"), "{said}");
+        assert!(drafts_of(&asked).unwrap().is_empty(), "no draft: both hear from their server");
+        gone_served(&calendar, &state);
     }
 
     /// A guest's answer for one time of a weekly meeting Sioul drafts for:
@@ -1607,7 +2170,7 @@ mod tests {
         assert!(read(&paths[1]).contains("CATEGORIES:Board") && read(&paths[1]).contains("TRIGGER:-PT1H") && !read(&paths[1]).contains("X-SIOUL"), "{}", read(&paths[1]));
         assert!(!read(&paths[2]).contains("child-kind") && !read(&paths[2]).contains("TAKEN-BY"));
         let kept = sioul_core::meeting_lines::load(&sioul_core::meeting_lines::default_path());
-        let lines = |uid: &str| kept.events.get(uid).map(|k| k.times.get("").cloned().unwrap_or_default()).unwrap_or_default();
+        let lines = |uid: &str| kept.events.get(uid).map(|k| k.lines("")).unwrap_or_default();
         assert!(lines("n6-tidy-child").contains(&holder.to_string()) && lines("n6-tidy-child").contains(&kind.to_string()), "{kept:?}");
         assert_eq!(lines("n6-tidy-older"), vec![holder.to_string()], "recovered from its earlier version");
         let merged = sioul_core::meeting_lines::merged(&read(&paths[2]));

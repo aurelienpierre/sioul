@@ -395,10 +395,22 @@ fn moved_change<T>(f: impl FnOnce(&mut Moved) -> T) -> T {
     })
 }
 
+/// A move noted, one note for each old copy (review of f85f504, M2): moved
+/// again before its server heard, an earlier old copy now waits for the last
+/// new one, since the copy it waited for is gone (a to b, then b to c: a's old
+/// copy waits for c, never in both calendars, on some server all along).
+/// Moved back to an old copy's place, that copy is the item again, and nothing
+/// waits for it.
 fn note_moved(old: &Path, new: &Path) {
     moved_change(|m| {
         m.moved.retain(|i| i.old != old);
-        m.moved.push(MovedItem { old: old.to_path_buf(), new: new.to_path_buf() });
+        for item in m.moved.iter_mut().filter(|i| i.new == old) {
+            item.new = new.to_path_buf();
+        }
+        m.moved.retain(|i| i.old != new);
+        if old != new {
+            m.moved.push(MovedItem { old: old.to_path_buf(), new: new.to_path_buf() });
+        }
     });
 }
 
@@ -408,6 +420,15 @@ fn note_moved(old: &Path, new: &Path) {
 pub fn deletion_waits_for(old: &Path) -> Option<PathBuf> {
     let new = moved_change(|m| m.moved.iter().find(|i| i.old == old).map(|i| i.new.clone()))?;
     (!new_is_there(old, &new)).then_some(new)
+}
+
+/// The new item of a move whose old copy is `old`, while that item is here
+/// and the old copy's deletion has not been done on its server, whether it
+/// still waits for the new one or not (`deletion_waits_for`). A change to the
+/// old copy on its server finds its place here: the move holds, never a copy
+/// in both calendars (`dav`, review of round 4, R4-F).
+pub fn moved_away(old: &Path) -> Option<PathBuf> {
+    moved_change(|m| m.moved.iter().find(|i| i.old == old).map(|i| i.new.clone())).filter(|new| new.exists())
 }
 
 /// Whether the new item of a move is on its server, or needs not be: gone
@@ -891,6 +912,13 @@ pub struct ItemState {
     /// meanwhile (third review of the organizer's door, R3). Empty otherwise.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub sent: String,
+    /// Its server's copy (`etag`, `hash`) was set aside among the earlier
+    /// versions while the item was moved to another calendar here (`dav::store`,
+    /// R4-F): this device never held it. Its file back at this place (the move
+    /// taken back) is a change made on both sides, never one sent over the
+    /// server's (review of f85f504, L3).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub moved_over: bool,
 }
 
 impl State {

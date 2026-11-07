@@ -254,6 +254,14 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
         let said = if title.trim().is_empty() { s.say("dav-undeleted-untitled", &[("kind", kind.clone())]) } else { s.say("dav-undeleted", &[("summary", crate::one_line(title))]) };
         println!("{said}");
     }
+    for (kind, title) in &report.moved_changed {
+        let said = if title.trim().is_empty() { s.say("dav-moved-changed-untitled", &[("kind", kind.clone())]) } else { s.say("dav-moved-changed", &[("summary", crate::one_line(title))]) };
+        println!("{said}");
+    }
+    for (kind, title) in &report.moved_both {
+        let said = if title.trim().is_empty() { s.say("dav-moved-both-untitled", &[("kind", kind.clone())]) } else { s.say("dav-moved-both", &[("summary", crate::one_line(title))]) };
+        println!("{said}");
+    }
     for (summary, kept) in &report.answered {
         println!("{}", s.say("dav-answered-elsewhere", &[("summary", crate::one_line(summary)), ("answer", kept.to_ascii_lowercase())]));
     }

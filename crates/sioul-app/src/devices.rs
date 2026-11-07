@@ -132,6 +132,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.keeping = sioul_sync::blobs::KEEPING;
         // It has the store of your own time around meetings: it travels once every device says so.
         entry.own_time = sioul_sync::share::OWN_TIME_SHARED;
+        // It shares Sioul's own lines of meetings with others: they travel once every device says so.
+        entry.meeting_lines = sioul_sync::share::MEETING_LINES_SHARED;
         // It has the notices' store: their words travel once every device says so.
         entry.notices = sioul_sync::share::NOTICES_SHARED;
         // It keeps a leg that is a step's time: offered once every device says so (part 7).

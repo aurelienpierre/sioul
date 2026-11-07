@@ -343,6 +343,33 @@ fn own_time_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.own_time >= OWN_TIME_SHARED))
 }
+/// Sioul's own lines of meetings with others (`sioul_core::meeting_lines`:
+/// who takes a child's event, its kind, a block's task): each entry by its
+/// UID, each line by its time and its name, never a table whole. A kind set on
+/// one device and a holder on another both stay, as `meeting_lines::filled`
+/// reads them; two holders written apart keep the later (review of f85f504,
+/// M1). An entry taken out (its lines back in its file) is a removal of each of
+/// them that travels too, and an entry of no line travels by its stamp.
+static MEETING_LINES_RULES: Rules = Rules { keyed: &[], whole: &[], local: &[], next: None };
+
+/// The store of Sioul's own lines of meetings with others.
+pub const MEETING_LINES: &str = "data/meeting-lines.toml";
+
+/// What a device's entry says once its Sioul has that store (`devices::Entry::meeting_lines`).
+pub const MEETING_LINES_SHARED: u32 = 1;
+
+/// Whether Sioul's own lines of meetings with others travel: at least one
+/// other device counts (`present`), and every one of them says in its sealed
+/// entry that its Sioul has the store (`devices::Entry::meeting_lines`), as
+/// your own time around meetings waits (`own_time_shared`): until then the
+/// store is left out of the exchange, neither sent nor read, so that an older
+/// Sioul neither receives nor overwrites it, and each device knows what it
+/// knows, a meeting with no entry here being unknown here
+/// (`meeting_lines::Read::Unknown`).
+fn meeting_lines_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.meeting_lines >= MEETING_LINES_SHARED))
+}
 /// What a device's entry says once its Sioul keeps a leg that is a step's time (`devices::Entry::legs`).
 pub const LEGS_AS_STEPS: u32 = 1;
 
@@ -764,6 +791,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // device says it has the store (`own_time_shared`); an older Sioul would keep its
         // records waiting at every exchange, never quiet again (review of part 4, M1).
         file("time", OWN_TIME, d.join(sioul_core::own_time::FILE), Shape::Toml(&OWN_TIME_RULES)),
+        // Sioul's own lines of meetings with others: beside it, and waiting as it does (`meeting_lines_shared`).
+        file("time", MEETING_LINES, d.join(sioul_core::meeting_lines::FILE), Shape::Toml(&MEETING_LINES_RULES)),
         folder("time", "data/time/", d.join("time"), Shape::Toml(&TIME_RULES), &["running.toml"]),
         // How each day went, with the plan it is the outcome of (today.toml, quiet.toml, the sessions):
         // every device that plans learns the same (docs/reviews.md).
@@ -2584,6 +2613,13 @@ struct Memory {
     /// not yet. An older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     topics_open: bool,
+    /// Sioul's own lines of meetings with others (`MEETING_LINES`) travelled
+    /// from here once every device said it has the store
+    /// (`meeting_lines_shared`): from then on it stays in this device's
+    /// exchanges, as `own_time_open` keeps your own time. Missing: not yet. An
+    /// older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    meeting_lines_open: bool,
     /// How far each other computer's records were read: its round and the bytes read in it.
     #[serde(default)]
     read: BTreeMap<String, (u32, u64)>,
@@ -5469,9 +5505,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if sealed == Some(true) {
         memory.seal_salt = salt;
     }
-    // Your own time around meetings, the money movements' store, the notices' words and the persons'
-    // store: each left out until every device has its store (`own_time_shared`, `movements_shared`,
-    // `notices_shared`, `persons_shared`), then kept in for good (`Memory::own_time_open`,
+    // Your own time around meetings, Sioul's own lines of them, the money movements' store, the
+    // notices' words and the persons' store: each left out until every device has its store
+    // (`own_time_shared`, `meeting_lines_shared`, `movements_shared`, `notices_shared`,
+    // `persons_shared`), then kept in for good (`Memory::own_time_open`, `Memory::meeting_lines_open`,
     // `Memory::movements_open`, `Memory::notices_open`, `Memory::persons_open`).
     let gated: Vec<Store>;
     let own_time = stores.iter().any(|s| s.name == OWN_TIME);
@@ -5494,7 +5531,13 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if topics && !memory.topics_open && topics_shared(sharing, &memory, now_ms) {
         memory.topics_open = true;
     }
-    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open) || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open);
+    let meeting_lines = stores.iter().any(|s| s.name == MEETING_LINES);
+    if meeting_lines && !memory.meeting_lines_open && meeting_lines_shared(sharing, &memory, now_ms) {
+        // What opens is in its present form: an older form's file would travel as lists of a
+        // time. Not written (a disk full), it stays shut and is tried at the next exchange.
+        memory.meeting_lines_open = stores.iter().filter(|s| s.name == MEETING_LINES).all(|s| sioul_core::meeting_lines::in_present_form(&s.path).is_ok());
+    }
+    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MEETING_LINES && !memory.meeting_lines_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open) || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open);
     let stores: &[Store] = if stores.iter().any(left_out) {
         gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
         &gated

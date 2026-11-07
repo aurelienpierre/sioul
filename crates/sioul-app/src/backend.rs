@@ -866,6 +866,17 @@ pub mod qobject {
         #[qinvokable]
         fn invite_said(self: &Sioul, key: &QString, edit: &QString, calendar: &QString) -> QString;
 
+        /// What giving a meeting you organize this status would tell its
+        /// guests, said before it is asked (`{"ask": …}`, "" for nobody;
+        /// `{"error": …}` when refused); nothing written.
+        #[qinvokable]
+        fn status_said(self: &Sioul, key: &QString, status: &QString) -> QString;
+
+        /// What deleting a meeting you organize, or that one time of it,
+        /// would tell its guests, said before it is asked, as `status_said`.
+        #[qinvokable]
+        fn delete_said(self: &Sioul, key: &QString, start: f64, only_this: bool) -> QString;
+
         /// The contact with this address, by file; empty when none.
         #[qinvokable]
         fn contact_for(self: &Sioul, address: &QString) -> QString;
@@ -5499,6 +5510,14 @@ impl qobject::Sioul {
 
     fn invite_said(&self, key: &QString, edit: &QString, calendar: &QString) -> QString {
         QString::from(&pim::invite_said(&key.to_string(), &edit.to_string(), &calendar.to_string()))
+    }
+
+    fn status_said(&self, key: &QString, status: &QString) -> QString {
+        QString::from(&pim::status_said(&key.to_string(), &status.to_string()))
+    }
+
+    fn delete_said(&self, key: &QString, start: f64, only_this: bool) -> QString {
+        QString::from(&pim::delete_said(&key.to_string(), start as i64, only_this))
     }
 
     fn contact_for(&self, address: &QString) -> QString {

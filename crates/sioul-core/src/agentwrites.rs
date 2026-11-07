@@ -146,7 +146,7 @@ mod tests {
         crate::meeting_lines::add(&store, "child-2", &line("Sam")).unwrap();
         assert!(said.put_back(), "another meeting's change stops nothing");
         let kept = crate::meeting_lines::load(&store);
-        assert!(kept.events["child-1"].times[""][0].contains("CN=Sam") && kept.events.contains_key("child-2"), "{kept:?}");
+        assert!(kept.events["child-1"].lines("")[0].contains("CN=Sam") && kept.events.contains_key("child-2"), "{kept:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
