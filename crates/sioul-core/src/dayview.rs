@@ -448,7 +448,8 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
         if event.start >= next_midnight {
             continue;
         }
-        let Some(preparation) = tasks.iter().find(|t| t.status.is_open() && crate::pairs::appointment_of(t).as_deref() == Some(event.uid.as_str())) else { continue };
+        // Tied to one time of a repeating event, that time alone.
+        let Some(preparation) = tasks.iter().find(|t| t.status.is_open() && crate::pairs::appointment_of(t).as_deref() == Some(event.uid.as_str()) && (t.occurrence.is_empty() || t.occurrence == event.rid)) else { continue };
         // After it: from its end and its coming back, forward, back to back.
         let back = event.end + i64::from(event.margins.after) * 60;
         let after: Vec<&str> = crate::tasks::steps_of(tasks, &preparation.uid).into_iter().filter(|t| t.status.is_open() && t.after).map(|t| t.uid.as_str()).collect();
@@ -522,7 +523,12 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
     }
     // Where the last step laid ends when the next of its run follows it at once (`Planned::run_next`).
     let mut joined: Option<i64> = None;
-    for step in spread_out(others) {
+    // Done by an hour of that day (`Task::due_at`): first, the earliest hour first, so that the room
+    // before it is still there, unless it waits for a step of the day; never a slot, it goes where it fits.
+    let due_at = |task: &Task| task.due_at(&zone).filter(|at| *at > start_at && *at < next_midnight);
+    let (mut by_hour, others): (Vec<Step>, Vec<Step>) = others.into_iter().partition(|s| due_at(s.task).is_some() && s.planned.waits_for.iter().all(|w| laid.contains_key(w.as_str()) || (!is_today && !of_the_day.contains(w.as_str()))));
+    by_hour.sort_by_key(|s| due_at(s.task));
+    for step in by_hour.into_iter().chain(spread_out(others)) {
         let (task, planned) = (step.task, step.planned);
         // What it waits for comes first: when that is not laid that day, neither is it (another
         // day: what the plan gives an earlier day is done by then).
@@ -580,27 +586,33 @@ pub fn lay_on(date: Date, now: &Zoned, events: &[Occurrence], plan: &Plan, tasks
         // quarter of an hour at least.
         // Never cut when it has margins: going there twice is not the same step.
         let cut = !planned.in_run && task.margins.is_empty() && (planned.laid > WHOLE || step.minutes < planned.laid.max(SHORTEST));
-        let pieces: Vec<(i64, i64)> = if cut {
-            let (mut pieces, mut owed, shortest) = (Vec::new(), length, i64::from(SHORTEST) * 60);
-            for &(from, to) in &free {
-                let mut take = owed.min(to - from);
-                // As the plan cuts: never less than a quarter of an hour left for later
-                // (40 minutes in gaps of 35 and 20 go 25 + 15, not 35 + 5); else not this gap.
-                if take < owed && owed - take < shortest {
-                    take = owed - shortest;
+        let fitted = |free: &[(i64, i64)]| -> Vec<(i64, i64)> {
+            if cut {
+                let (mut pieces, mut owed, shortest) = (Vec::new(), length, i64::from(SHORTEST) * 60);
+                for &(from, to) in free {
+                    let mut take = owed.min(to - from);
+                    // As the plan cuts: never less than a quarter of an hour left for later
+                    // (40 minutes in gaps of 35 and 20 go 25 + 15, not 35 + 5); else not this gap.
+                    if take < owed && owed - take < shortest {
+                        take = owed - shortest;
+                    }
+                    if take >= owed.min(shortest) {
+                        pieces.push((from, from + take));
+                        owed -= take;
+                    }
+                    if owed == 0 {
+                        break;
+                    }
                 }
-                if take >= owed.min(shortest) {
-                    pieces.push((from, from + take));
-                    owed -= take;
-                }
-                if owed == 0 {
-                    break;
-                }
+                if owed > 0 { Vec::new() } else { pieces }
+            } else {
+                free.iter().find(|(from, to)| to - from >= length).map(|&(from, _)| vec![(from, from + length)]).unwrap_or_default()
             }
-            if owed > 0 { Vec::new() } else { pieces }
-        } else {
-            free.iter().find(|(from, to)| to - from >= length).map(|&(from, _)| vec![(from, from + length)]).unwrap_or_default()
         };
+        // Before its hour while the gaps there hold it; else where it fits, as any step (the plan says it is tight).
+        let before_hour: Vec<(i64, i64)> = due_at(task).map(|at| free.iter().filter(|(from, _)| *from < at).map(|&(from, to)| (from, to.min(at))).collect()).unwrap_or_default();
+        let early = fitted(&before_hour);
+        let pieces = if early.is_empty() { fitted(&free) } else { early };
         if pieces.is_empty() {
             view.more += 1;
             view.unlaid.push(task.uid.clone());
@@ -702,6 +714,26 @@ mod tests {
 
     fn window(day: &str, start: &str, end: &str, kind: &str) -> AdminWindow {
         AdminWindow { day: day.into(), start: start.into(), end: Some(end.into()), minutes: 0, kind: Some(kind.into()) }
+    }
+
+    /// Done by an hour: laid before it, ahead of what the plan puts first; with no room before
+    /// it, laid where it fits all the same, its hour never a slot.
+    #[test]
+    fn a_step_done_by_an_hour_is_laid_before_it() {
+        let now = at("2026-10-05T08:00");
+        let hours = [window("monday", "09:00", "17:00", "work")];
+        let long = Task { due: "2026-10-05".into(), priority: 1, ..task("long", 120, "") };
+        let by_eleven = Task { due: "2026-10-05T11:00".into(), priority: 9, ..task("by eleven", 20, "") };
+        let view = laid_out(&now, &hours, &[], &[long.clone(), by_eleven.clone()]);
+        let block = |view: &DayView, title: &str| view.blocks.iter().find(|b| b.title == title && b.kind == "task").map(|b| (b.start, b.end));
+        let (_, end) = block(&view, "by eleven").expect("laid");
+        assert!(end <= at("2026-10-05T11:00").timestamp().as_second(), "{:?}", laid(&view));
+        assert!(block(&view, "long").is_some());
+        // The morning taken by an event: after it, all the same.
+        let event = Occurrence { summary: "Taken".into(), start: at("2026-10-05T08:30").timestamp().as_second(), end: at("2026-10-05T12:00").timestamp().as_second(), key: "taken".into(), uid: "taken".into(), ..Occurrence::default() };
+        let view = laid_out(&now, &hours, std::slice::from_ref(&event), &[by_eleven]);
+        let (from, _) = block(&view, "by eleven").expect("laid after it, never dropped");
+        assert!(from >= at("2026-10-05T12:00").timestamp().as_second());
     }
 
     /// Minutes from midnight of each block, with its title.

@@ -1249,17 +1249,19 @@ pub mod qobject {
         fn move_task(self: Pin<&mut Sioul>, uid: &QString, list: &QString, confirmed: bool) -> QString;
 
         /// A task tied to the appointment in `key` (an event's file), its steps
-        /// and list preparing it; returns what went wrong, else "".
+        /// and list preparing it; on a repeating event, to the time `rid`
+        /// (`agenda::Turn::rid`), "" for its next; returns what went wrong, else "".
         #[qinvokable]
-        fn attach_to_event(self: Pin<&mut Sioul>, uid: &QString, key: &QString) -> QString;
+        fn attach_to_event(self: Pin<&mut Sioul>, uid: &QString, key: &QString, rid: &QString) -> QString;
 
         /// A task untied from its appointment; returns what went wrong, else "".
         #[qinvokable]
         fn detach_from_event(self: Pin<&mut Sioul>, uid: &QString) -> QString;
 
-        /// A task made to prepare the event in `key`, paired with it: {"uid"} or {"error"}.
+        /// A task made to prepare the event in `key`, paired with it, on a repeating event
+        /// with the time `rid`, "" for its next: {"uid"} or {"error"}.
         #[qinvokable]
-        fn steps_for_event(self: Pin<&mut Sioul>, key: &QString) -> QString;
+        fn steps_for_event(self: Pin<&mut Sioul>, key: &QString, rid: &QString) -> QString;
 
         /// What prepares the event in `key`: {task, adoptable, can}, or null.
         #[qinvokable]
@@ -6307,16 +6309,16 @@ impl qobject::Sioul {
         QString::from(&work::calm_sounds(&self.shared()))
     }
 
-    fn attach_to_event(self: Pin<&mut Self>, uid: &QString, key: &QString) -> QString {
-        QString::from(&crate::appointments::attach_to_event(&self.qt_thread(), &self.shared(), &uid.to_string(), &key.to_string()))
+    fn attach_to_event(self: Pin<&mut Self>, uid: &QString, key: &QString, rid: &QString) -> QString {
+        QString::from(&crate::appointments::attach_to_event(&self.qt_thread(), &self.shared(), &uid.to_string(), &key.to_string(), &rid.to_string()))
     }
 
     fn detach_from_event(self: Pin<&mut Self>, uid: &QString) -> QString {
         QString::from(&crate::appointments::detach_from_event(&self.qt_thread(), &self.shared(), &uid.to_string()))
     }
 
-    fn steps_for_event(self: Pin<&mut Self>, key: &QString) -> QString {
-        QString::from(&crate::appointments::steps_for_event(&self.qt_thread(), &self.shared(), &key.to_string()))
+    fn steps_for_event(self: Pin<&mut Self>, key: &QString, rid: &QString) -> QString {
+        QString::from(&crate::appointments::steps_for_event(&self.qt_thread(), &self.shared(), &key.to_string(), &rid.to_string()))
     }
 
     fn event_pairing(&self, key: &QString) -> QString {
@@ -7738,7 +7740,8 @@ impl qobject::Sioul {
         // task's steps moved in their order, its step menu and its form (docs/tasks.md), "checklist" a
         // task's and an event's lists ticked (docs/tasks.md), "composed" a task made a step and its
         // own again, a step folded, a bigger task done with its last step (docs/tasks.md), "pair" the
-        // doctor's appointment given a task to prepare it, untied and tied again (docs/tasks.md), "compose"
+        // doctor's appointment given a task to prepare it, untied and tied again (docs/tasks.md), "ties" a task
+        // tied to one time of a repeating event, found by its field's rows (docs/tasks.md), "compose"
         // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
         // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
         // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
@@ -7779,7 +7782,7 @@ impl qobject::Sioul {
         // alone; docs/client.md), "invite" a meeting you organize, its form's guests and what Save says first
         // (pictures alone, nothing saved; docs/client.md), "contact-address" a contact's card with its postal
         // address and Directions (a picture alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "ties"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

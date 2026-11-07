@@ -156,19 +156,35 @@ fn paired_done(qt: &QtThread, shared: &Arc<Shared>, change: sioul_core::composed
     Ok(())
 }
 
+/// How a tie just made is said: "… comes before “Team meeting”, Tue 10 Nov
+/// 11:00, now." for one time of a repeating event (`rid`, as the task now
+/// reads), else "… prepares …".
+fn attached_line(uid: &str, title: String, summary: String, text: &str) -> String {
+    let zone = sioul_core::zone::current();
+    let task_text = sioul_core::tasks::all(&zone).into_iter().find(|t| t.uid == uid);
+    let turn = task_text.filter(|t| !t.occurrence.is_empty()).and_then(|t| agenda::turn_named(text, &t.occurrence, &zone));
+    match turn {
+        Some(turn) => say("pair-attached-time", &[("title", title), ("event", summary), ("when", sioul_core::pairs::turn_when(turn.start, turn.all_day, tr(), &zone))]),
+        None => say("pair-attached", &[("title", title), ("event", summary)]),
+    }
+}
+
 /// A task tied to the appointment in `key` (an event's file): its steps and
-/// list then prepare it (`pairs::attach`). Returns what went wrong, else "".
-pub(crate) fn attach_to_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str, key: &str) -> String {
+/// list then prepare it (`pairs::attach_turn`); on a repeating event, to the
+/// time `rid`, "" for its next. Returns what went wrong, else "".
+pub(crate) fn attach_to_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str, key: &str, rid: &str) -> String {
     let attached = || -> Result<(), String> {
         let (path, text, writable) = event_file(key)?;
         let loaded = work::loaded(shared);
         let all = sioul_core::tasks::all(&sioul_core::zone::current());
         let event = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
         let config = load_config();
-        let change = sioul_core::pairs::attach(&all, uid, &event, &loaded.events, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
+        let change = sioul_core::pairs::attach_turn(&all, uid, &event, Some(rid).filter(|r| !r.is_empty()), &loaded.events, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
         let title = all.iter().find(|t| t.uid == uid).map(|t| t.title.clone()).unwrap_or_default();
         let summary = agenda::edit_of_text(&text, &sioul_core::zone::current()).map(|e| e.title).unwrap_or_default();
-        paired_done(qt, shared, change, say("pair-attached", &[("title", title), ("event", summary)]))
+        let files = change.write()?;
+        crate::agents::say(qt, shared, sioul_core::agentwrites::Said { at: 0, line: attached_line(uid, title, summary, &text), files });
+        Ok(())
     };
     attached().err().unwrap_or_default()
 }
@@ -188,8 +204,9 @@ pub(crate) fn detach_from_event(qt: &QtThread, shared: &Arc<Shared>, uid: &str) 
 }
 
 /// A task made to prepare the event in `key`, titled as it, paired with it,
-/// in the usual list: {"uid"} or {"error"}.
-pub(crate) fn steps_for_event(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
+/// in the usual list; on a repeating event, with the time `rid`, "" for its
+/// next: {"uid"} or {"error"}.
+pub(crate) fn steps_for_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, rid: &str) -> String {
     let made = || -> Result<String, String> {
         let (path, text, writable) = event_file(key)?;
         let list = work::target_list("")?;
@@ -197,7 +214,7 @@ pub(crate) fn steps_for_event(qt: &QtThread, shared: &Arc<Shared>, key: &str) ->
         let all = sioul_core::tasks::all(&sioul_core::zone::current());
         let event = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
         let config = load_config();
-        let (change, uid) = sioul_core::pairs::new_for(&all, &event, &loaded.events, &list, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
+        let (change, uid) = sioul_core::pairs::new_for(&all, &event, Some(rid).filter(|r| !r.is_empty()), &loaded.events, &list, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
         let summary = agenda::edit_of_text(&text, &sioul_core::zone::current()).map(|e| e.title).unwrap_or_default();
         paired_done(qt, shared, change, say("pair-made", &[("title", summary.clone()), ("event", summary)]))?;
         Ok(uid)

@@ -92,6 +92,10 @@ pub(crate) enum TasksCommand {
         task: String,
         /// The event: its UID, or words of its title; "none" to untie.
         event: String,
+        /// Which time of a repeating event: a day (2026-11-10) or a time
+        /// (2026-11-10T11:00); its next without it.
+        #[arg(long)]
+        on: Option<String>,
         /// Write it here only; the next sync sends it.
         #[arg(long)]
         no_sync: bool,
@@ -263,7 +267,7 @@ pub(crate) fn run(s: &Session, command: TasksCommand) -> Result<(), String> {
         TasksCommand::Add { line, list, parent, after, no_sync } => add(s, &line.join(" "), list.as_deref(), parent.as_deref(), &after, no_sync),
         TasksCommand::Move { step, before, no_sync } => move_step(s, &step, before.as_deref(), no_sync),
         TasksCommand::Parent { task, bigger, confirm, no_sync } => parent(s, &task, &bigger, confirm, no_sync),
-        TasksCommand::Attach { task, event, no_sync } => attach(s, &task, &event, no_sync),
+        TasksCommand::Attach { task, event, on, no_sync } => attach(s, &task, &event, on.as_deref(), no_sync),
         TasksCommand::Done { task } => set_status(s, &task, Status::Completed),
         TasksCommand::Start { task } => set_status(s, &task, Status::InProcess),
         TasksCommand::NotNow { task } => not_now(s, &task),
@@ -528,9 +532,10 @@ fn parent(s: &Session, wanted: &str, bigger: &str, confirm: bool, no_sync: bool)
     Ok(())
 }
 
-/// A task tied to the appointment it prepares (`pairs::attach`), or untied
-/// with "none" (`pairs::detach`); the event by its UID, else words of its title, one only.
-fn attach(s: &Session, wanted: &str, event: &str, no_sync: bool) -> Result<(), String> {
+/// A task tied to the appointment it prepares (`pairs::attach_turn`), or untied
+/// with "none" (`pairs::detach`); the event by its UID, else words of its title, one only;
+/// on a repeating event, the time `on` (`pairs::turn_asked`), else its next.
+fn attach(s: &Session, wanted: &str, event: &str, on: Option<&str>, no_sync: bool) -> Result<(), String> {
     let desk = Desk::read(s);
     let task = desk.find(s, wanted)?.clone();
     let now = sioul_core::zone::now();
@@ -557,7 +562,17 @@ fn attach(s: &Session, wanted: &str, event: &str, no_sync: bool) -> Result<(), S
         };
         let (path, text, writable) = file_of(&one.key)?;
         let file = sioul_core::pairs::EventFile { path: &path, text: &text, writable };
-        (sioul_core::pairs::attach(&desk.loaded.tasks, &task.uid, &file, &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &now).map_err(|r| r.said(&s.tr))?, s.say("pair-attached", &[("title", one_line(&task.title)), ("event", one_line(&one.summary))]))
+        let zone = sioul_core::zone::current();
+        let turn = match on.filter(|_| one.recurring) {
+            Some(asked) => Some(sioul_core::pairs::turn_asked(&text, asked, &zone).ok_or_else(|| s.say("pair-event-no-time", &[("event", one_line(&one.summary)), ("what", one_line(asked))]))?),
+            None => one.recurring.then(|| sioul_core::agenda::next_turns(&text, now.timestamp().as_second(), 1, &zone).into_iter().next()).flatten(),
+        };
+        let change = sioul_core::pairs::attach_turn(&desk.loaded.tasks, &task.uid, &file, turn.as_ref().map(|t| t.rid.as_str()), &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &now).map_err(|r| r.said(&s.tr))?;
+        let line = match &turn {
+            Some(turn) => s.say("pair-attached-time", &[("title", one_line(&task.title)), ("event", one_line(&one.summary)), ("when", sioul_core::pairs::turn_when(turn.start, turn.all_day, &s.tr, &zone))]),
+            None => s.say("pair-attached", &[("title", one_line(&task.title)), ("event", one_line(&one.summary))]),
+        };
+        (change, line)
     };
     let files = change.files();
     change.write()?;

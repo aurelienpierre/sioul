@@ -3603,7 +3603,7 @@ fn tasks_are_tied_to_their_appointments() {
     let event_file = PathBuf::from(event["structuredContent"]["file"].as_str().unwrap());
     let tied = call(&mut server, "attach_to_event", json!({ "task": task, "event": event_uri }));
     assert_eq!(tied["isError"], false, "{tied}");
-    assert_eq!(tied["structuredContent"]["due"], "2026-11-24", "{tied}");
+    assert_eq!(tied["structuredContent"]["due"], "2026-11-24T10:00", "the moment it starts: {tied}");
     said_about("“Going to the optician” to the appointment");
     let got = call(&mut server, "get_task", json!({ "task": task }));
     assert_eq!(got["structuredContent"]["appointment"], event_uri.as_str(), "{got}");
@@ -3633,6 +3633,26 @@ fn tasks_are_tied_to_their_appointments() {
     assert_eq!(call(&mut server, "attach_to_event", json!({ "task": other, "event": "sioul:event/pair-meeting" }))["isError"], false);
     assert_eq!(std::fs::read_to_string(&meeting).unwrap(), kept, "the invitation never changes");
     assert_eq!(call(&mut server, "get_event", json!({ "event": "sioul:event/pair-meeting" }))["structuredContent"]["preparation"], format!("sioul:task/{other}"));
+    // A repeating event: one time of it, as asked, its next by default; the task alone is written.
+    let series = call(&mut server, "add_event", json!({ "title": "Swimming", "start": "2099-01-05T10:00", "end": "2099-01-05T11:00", "repeat": "daily", "every": 2 }));
+    assert_eq!(series["isError"], false, "{series}");
+    let series_uri = series["structuredContent"]["uri"].as_str().unwrap().to_string();
+    let series_file = PathBuf::from(series["structuredContent"]["file"].as_str().unwrap());
+    let series_text = std::fs::read_to_string(&series_file).unwrap();
+    let towel = uid(&call(&mut server, "add_task", json!({ "title": "Pack the towel" })));
+    let tied = call(&mut server, "attach_to_event", json!({ "task": towel, "event": series_uri, "occurrence": "2099-01-07" }));
+    assert_eq!(tied["isError"], false, "{tied}");
+    assert_eq!(tied["structuredContent"]["due"], "2099-01-07T10:00", "{tied}");
+    let named = tied["structuredContent"]["occurrence"].as_str().unwrap().to_string();
+    assert_eq!(std::fs::read_to_string(&series_file).unwrap(), series_text, "the event's file stays");
+    assert_eq!(call(&mut server, "get_task", json!({ "task": towel }))["structuredContent"]["occurrence"], named.as_str());
+    let again = call(&mut server, "attach_to_event", json!({ "task": towel, "event": series_uri, "occurrence": "2099-01-07T10:00" }));
+    assert_eq!((again["isError"].clone(), again["structuredContent"]["changed"].clone()), (Value::Bool(false), Value::Bool(false)), "tied already: {again}");
+    let refused = call(&mut server, "attach_to_event", json!({ "task": towel, "event": series_uri, "occurrence": "2099-01-08" }));
+    assert_eq!(refused["isError"], true, "no such time: {refused}");
+    let goggles = uid(&call(&mut server, "add_task", json!({ "title": "Find the goggles" })));
+    let tied = call(&mut server, "attach_to_event", json!({ "task": goggles, "event": series_uri }));
+    assert_eq!(tied["structuredContent"]["due"], "2099-01-05T10:00", "its next time, several tasks before a series: {tied}");
     // Kept from agents: never tied.
     let refused = call(&mut server, "attach_to_event", json!({ "task": "zeugma-pay", "event": event_uri }));
     assert_eq!(refused["isError"], true, "{refused}");
@@ -3640,7 +3660,8 @@ fn tasks_are_tied_to_their_appointments() {
     // Taken out again: these tests share one home.
     let _ = std::fs::remove_file(&meeting);
     let _ = std::fs::remove_file(&event_file);
-    for task in sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().filter(|t| [&task, &other, &steps].contains(&&t.uid) || t.parent() == Some(steps.as_str())) {
+    let _ = std::fs::remove_file(&series_file);
+    for task in sioul_core::tasks::all(&jiff::tz::TimeZone::system()).into_iter().filter(|t| [&task, &other, &steps, &towel, &goggles].contains(&&t.uid) || t.parent() == Some(steps.as_str())) {
         let _ = std::fs::remove_file(task.key);
     }
     if let Some(path) = made["structuredContent"]["uri"].as_str().and_then(|u| vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| sioul_core::appointments::uid_in(p) == sioul_core::links::id_of(u))) {

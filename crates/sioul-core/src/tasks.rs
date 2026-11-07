@@ -236,10 +236,15 @@ pub struct Task {
     /// The appointments it was untied from whose event could not be written
     /// (`pairs::UNTIED`): their own line names it still, and never ties it back.
     pub untied: Vec<String>,
-    /// The day the pairing wrote as its DUE (`pairs::DUE_WRITTEN`, on its
-    /// link to its appointment), "2026-10-29"; "" when none: a DUE that says
-    /// it is the pairing's, not a date of its own (`pairs::own_date`).
+    /// What the pairing wrote as its DUE (on its link to its appointment:
+    /// `pairs::DUE_WRITTEN`, "2026-10-29", or `pairs::DUE_AT`,
+    /// "2026-10-29T14:00" in your time zone); "" when none: a DUE that says it
+    /// is the pairing's, not a date of its own (`pairs::own_date`).
     pub due_written: String,
+    /// The time of a repeating event its link names (`pairs::OCCURRENCE`,
+    /// `agenda::Turn::rid`); "" for a tie to the whole event, or none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub occurrence: String,
     /// A step that comes after its appointment (composed tasks, part E6:
     /// `X-SIOUL-ANCHOR:AFTER`): laid forward from the appointment's end, said
     /// under Coming back, never dropped when the appointment is over.
@@ -276,6 +281,30 @@ impl Task {
     /// The day asked.
     pub fn due_date(&self) -> Option<Date> {
         day_of(&self.due)
+    }
+
+    /// The instant its date asked falls at, in `zone`, when it has an hour:
+    /// "done by" then, never a slot. None for a day alone.
+    pub fn due_at(&self, zone: &TimeZone) -> Option<i64> {
+        if !self.due.contains('T') {
+            return None;
+        }
+        let local: DateTime = self.due.parse().ok()?;
+        local.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())
+    }
+
+    /// Tied to one time of a repeating event, its date asked what the tie wrote,
+    /// and that moment past (`now`, Unix seconds; a bare day, once over): the date
+    /// is no date to press or count any more; the task says "Was before…", and
+    /// waits for your word.
+    pub fn tie_passed(&self, now: i64, zone: &TimeZone) -> bool {
+        if self.occurrence.is_empty() || self.due_written.is_empty() || self.due != self.due_written {
+            return false;
+        }
+        match self.due_at(zone) {
+            Some(at) => at <= now,
+            None => self.due_date().zip(jiff::Timestamp::from_second(now).ok().map(|t| t.to_zoned(zone.clone()).date())).is_some_and(|(due, today)| due < today),
+        }
     }
 
     /// The time given to it for `date` in the day view (Unix seconds, in
@@ -650,10 +679,15 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             AT => task.at = zoned(line, zone).map(|z| z.strftime("%Y-%m-%dT%H:%M").to_string()).unwrap_or_default(),
             "LINK" => {
                 let link = link_of(line);
-                if link.rel == crate::pairs::APPOINTMENT
-                    && let Some(day) = lines::param(line, crate::pairs::DUE_WRITTEN).and_then(|d| jiff::civil::Date::strptime("%Y%m%d", d.trim()).ok())
-                {
-                    task.due_written = day.to_string();
+                if link.rel == crate::pairs::APPOINTMENT {
+                    if let Some(day) = lines::param(line, crate::pairs::DUE_WRITTEN).and_then(|d| jiff::civil::Date::strptime("%Y%m%d", d.trim()).ok()) {
+                        task.due_written = day.to_string();
+                    } else if let Some(at) = lines::param(line, crate::pairs::DUE_AT).and_then(|a| crate::moves::read_utc(&a)) {
+                        task.due_written = crate::pairs::local_moment(at, zone);
+                    }
+                    if let Some(rid) = lines::param(line, crate::pairs::OCCURRENCE) {
+                        task.occurrence = rid.trim().to_string();
+                    }
                 }
                 // Both forms of one link (an older build wrote RFC 9253's beside Sioul's own): one link.
                 if !task.links.contains(&link) {
@@ -961,6 +995,20 @@ fn dates_lines(start: &str, due: &str, zone: &TimeZone) -> Result<Vec<String>, S
     }
     out.push(date_line("DUE", due, zone)?);
     Ok(out)
+}
+
+/// Why a form's dates cannot stand, as a word of the translations: a date asked
+/// before the start, or at the very moment of it (RFC 5545 §3.8.2.3 wants it later,
+/// and Sabre, so Murena, refuses one before). A start and a date asked on one
+/// day, either or both without an hour, stand: the day holds both. Said
+/// where the dates are given, as a form says its other errors; `dates_lines`
+/// stays the writer's own net, which never writes what a server refuses.
+pub fn dates_refusal(start: &str, due: &str) -> Option<&'static str> {
+    if start.is_empty() || due.is_empty() {
+        return None;
+    }
+    let before = due.get(..10) < start.get(..10) || (start.len() == due.len() && start.contains('T') && due <= start);
+    before.then_some("task-due-before-start")
 }
 
 /// A value written as it is (a UID, an address): without line breaks or
@@ -1950,5 +1998,85 @@ mod tests {
         // The whole form over the file, as before: the tick goes (what this replaces).
         let whole = task_of_text(&apply(&ticked, &form, &zone, &now).unwrap(), &zone).unwrap();
         assert!(whole.notes.contains("- [ ] the bank's letter"));
+    }
+
+    /// The form's dates (RFC 5545 §3.8.2.3, Sabre's refusals): a date asked before its start, or
+    /// at the very moment of it, is said; a day holds both, with or without an hour.
+    #[test]
+    fn dates_a_form_says_cannot_stand() {
+        let refused = "task-due-before-start";
+        for (start, due, said) in [
+            ("", "", None),
+            ("", "2026-11-10T11:00", None),
+            ("2026-11-10", "", None),
+            ("2026-11-10", "2026-11-10", None),
+            ("2026-11-10", "2026-11-10T11:00", None),
+            ("2026-11-10T09:00", "2026-11-10", None),
+            ("2026-11-10T09:00", "2026-11-10T11:00", None),
+            ("2026-11-09", "2026-11-10T00:00", None),
+            ("2026-11-10T11:00", "2026-11-10T11:00", Some(refused)),
+            ("2026-11-10T11:00", "2026-11-10T09:00", Some(refused)),
+            ("2026-11-11", "2026-11-10", Some(refused)),
+            ("2026-11-11", "2026-11-10T11:00", Some(refused)),
+            ("2026-11-11T08:00", "2026-11-10", Some(refused)),
+            ("2026-11-11T08:00", "2026-11-10T11:00", Some(refused)),
+        ] {
+            assert_eq!(dates_refusal(start, due), said, "{start} {due}");
+        }
+    }
+
+    /// Whatever the form gives, the file holds what Sabre takes: a value type of one form for
+    /// DUE and DTSTART, and a DUE not before DTSTART; the start read back as given when the
+    /// dates can stand, an hour never invented on a day alone.
+    #[test]
+    fn a_task_s_dates_are_never_written_as_a_server_refuses() {
+        let zone = paris();
+        let now = Zoned::now();
+        let sabre = |text: &str| {
+            let source = lines::unfold(text);
+            let line = |name: &str| source.iter().find(|l| lines::raw_name(l) == name);
+            let Some((start, due)) = line("DTSTART").zip(line("DUE")) else { return true };
+            let is_date = |l: &String| lines::param(l, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("DATE"));
+            is_date(start) == is_date(due) && lines::value(due).trim() >= lines::value(start).trim()
+        };
+        let days = ["", "2026-11-09", "2026-11-10", "2026-11-11"];
+        let times = ["2026-11-10T09:00", "2026-11-10T11:00"];
+        let forms: Vec<&str> = days.iter().chain(times.iter()).copied().collect();
+        for start in &forms {
+            for due in &forms {
+                let edit = TaskEdit { title: "Fill the form".into(), start: (*start).into(), due: (*due).into(), ..TaskEdit::default() };
+                let text = new_task(&edit, "dates", &zone, &now).unwrap();
+                assert!(sabre(&text), "{start} {due}: {text}");
+                let read = task_of_text(&text, &zone).unwrap();
+                assert_eq!(read.due, *due, "{start} {due}: its date asked, as given, an hour never invented");
+                if dates_refusal(start, due).is_none() {
+                    assert_eq!(read.start, *start, "{start} {due}: its start kept");
+                }
+                // An hour added or taken off, over a file already written.
+                for later in &forms {
+                    let changed = apply(&text, &TaskEdit { due: (*later).into(), ..TaskEdit::of(&read) }, &zone, &now).unwrap();
+                    assert!(sabre(&changed), "{start} {due} then {later}: {changed}");
+                    assert_eq!(task_of_text(&changed, &zone).unwrap().due, *later);
+                }
+            }
+        }
+    }
+
+    /// A date asked's hour: "done by" then; a day alone has none. A tie's date past presses nothing.
+    #[test]
+    fn a_date_asked_s_hour_and_a_tie_passed() {
+        let zone = paris();
+        let at = |text: &str| text.parse::<DateTime>().unwrap().to_zoned(zone.clone()).unwrap().timestamp().as_second();
+        let timed = Task { due: "2026-11-10T11:00".into(), ..Task::default() };
+        assert_eq!(timed.due_at(&zone), Some(at("2026-11-10T11:00")));
+        assert_eq!(Task { due: "2026-11-10".into(), ..Task::default() }.due_at(&zone), None);
+        assert!(!timed.tie_passed(at("2026-11-11T00:00"), &zone), "a date of its own");
+        let tied = Task { occurrence: "20261110T100000Z".into(), due_written: timed.due.clone(), ..timed.clone() };
+        assert!(!tied.tie_passed(at("2026-11-10T10:59"), &zone));
+        assert!(tied.tie_passed(at("2026-11-10T11:00"), &zone));
+        let by_hand = Task { due: "2026-11-12T09:00".into(), ..tied.clone() };
+        assert!(!by_hand.tie_passed(at("2026-11-11T00:00"), &zone), "a date you gave it");
+        let whole = Task { occurrence: "20261110".into(), due: "2026-11-10".into(), due_written: "2026-11-10".into(), ..Task::default() };
+        assert!(!whole.tie_passed(at("2026-11-10T23:00"), &zone) && whole.tie_passed(at("2026-11-11T00:00"), &zone));
     }
 }

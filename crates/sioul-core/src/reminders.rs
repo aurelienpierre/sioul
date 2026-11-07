@@ -618,7 +618,17 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
             && task.created <= due.timestamp().as_second()
         {
             let mut args = crate::i18n::args();
-            args.set("date", tr.day(day));
+            // Its hour said, when it has one: "done by" then.
+            let date = match task.due.get(11..16) {
+                Some(time) => {
+                    let mut at = crate::i18n::args();
+                    at.set("date", tr.day(day));
+                    at.set("time", time.to_string());
+                    tr.text("task-due-at", Some(&at))
+                }
+                None => tr.day(day),
+            };
+            args.set("date", date);
             out.push(Reminder {
                 key: format!("asked:{}:{}", task.uid, task.due),
                 kind: Kind::Asked,
@@ -1084,6 +1094,20 @@ mod tests {
         assert!(gather(&[done("first", "2026-10-01T11:00", 2, "follow up"), late]).is_empty());
     }
 
+
+    /// A date asked's hour: said, counted back as a day is, and held until that hour.
+    #[test]
+    fn a_date_asked_with_an_hour_says_it() {
+        let tr = Translator::new("en");
+        let config = config();
+        let now = at("2026-10-05T08:00");
+        let tasks = vec![task("form", "2026-10-08T16:00")];
+        let all = all(&config, &tr, &now, &[], &tasks, None, &[], &[], None, |_| false);
+        let asked = all.iter().find(|r| r.key.starts_with("asked:")).unwrap_or_else(|| panic!("{all:#?}"));
+        assert_eq!(asked.title, "Asked for Thursday 8 October, 16:00");
+        assert_eq!(asked.at, at("2026-10-06T09:00").timestamp().as_second());
+        assert_eq!(asked.until, at("2026-10-08T16:00").timestamp().as_second());
+    }
     #[test]
     fn once_each_at_its_time() {
         let tr = Translator::new("en");

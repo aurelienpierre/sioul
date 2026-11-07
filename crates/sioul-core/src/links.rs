@@ -419,6 +419,32 @@ pub struct Related {
     pub found: bool,
     /// A program, a script or an installer on this computer: `key` is its folder, never it.
     pub program: bool,
+    /// Which time of a repeating event the row is (`search_events`, `agenda::Turn::rid`); "" otherwise.
+    pub rid: String,
+}
+
+/// One thing a search found, before it is said (`World::found`).
+struct Found {
+    kind: Kind,
+    /// Its title starts with what was typed.
+    starts: bool,
+    /// Its date, Unix seconds; 0 for none.
+    when: i64,
+    uri: String,
+    rid: String,
+    /// An event's own file and title, for two copies or a time of it with its own.
+    key: Option<String>,
+    title: Option<String>,
+}
+
+impl Found {
+    /// The one order of what a search finds: an event to come before anything
+    /// past, whatever the limit cuts; then a title starting with what was
+    /// typed; the soonest first of what comes, the newest first of what was.
+    fn rank(&self, now: i64) -> (bool, bool, i64, Kind) {
+        let coming = self.kind == Kind::Event && self.when > now;
+        (!coming, !self.starts, if coming { self.when } else { -self.when }, self.kind)
+    }
 }
 
 /// How a tie reads from its other end.
@@ -676,10 +702,25 @@ impl World<'_> {
     }
 
     /// Things to link to: those whose title or detail holds every word typed
-    /// (case and accents aside), of one kind or all, `except` left out. Titles
-    /// starting with what was typed come first, then the newest. Typed nothing:
-    /// the newest few of each kind.
+    /// (case and accents aside), of one kind or all, `except` left out, in one
+    /// order (`Found::rank`): events to come first, then titles starting with
+    /// what was typed, the soonest or the newest first, before `limit` cuts.
+    /// A repeating event by its next time, not its first. Typed nothing: a few of
+    /// each kind.
     pub fn search(&self, query: &str, kind: Option<Kind>, except: &str, limit: usize) -> Vec<Related> {
+        self.found(query, kind, except, limit, None)
+    }
+
+    /// Events to tie a task to (the task form's field), found and ordered as
+    /// `search`: every agenda's, a repeating one by its next `turns` times, one
+    /// row each naming that time (`Related::rid`); one with none to come, by
+    /// its first start.
+    pub fn search_events(&self, query: &str, except: &str, limit: usize, turns: usize) -> Vec<Related> {
+        self.found(query, Some(Kind::Event), except, limit, Some(turns))
+    }
+
+    /// The one search (`search`, `search_events`).
+    fn found(&self, query: &str, kind: Option<Kind>, except: &str, limit: usize, turns: Option<usize>) -> Vec<Related> {
         let folded = |text: &str| crate::text::fold(text).into_iter().collect::<String>();
         let typed = folded(query.trim());
         let words: Vec<&str> = typed.split_whitespace().collect();
@@ -688,18 +729,15 @@ impl World<'_> {
             words.iter().all(|w| text.contains(w))
         };
         let want = |k: Kind| kind.is_none_or(|wanted| wanted == k);
-        // (kind, starts with what was typed, date, address) for each match.
-        let mut found: Vec<(Kind, bool, i64, String)> = Vec::new();
+        let starts = |title: &str| !typed.is_empty() && folded(title).starts_with(&typed);
+        let mut found: Vec<Found> = Vec::new();
         let mut push = |k: Kind, title: &str, detail: &str, when: i64, uri: String| {
             if want(k) && matches(title, detail) {
-                found.push((k, !typed.is_empty() && folded(title).starts_with(&typed), when, uri));
+                found.push(Found { kind: k, starts: starts(title), when, uri, rid: String::new(), key: None, title: None });
             }
         };
         for task in self.tasks {
             push(Kind::Task, &task.title, &task.list, 0, task_uri(&task.uid));
-        }
-        for event in self.events {
-            push(Kind::Event, &event.summary, "", event.start, event_uri(&event.uid));
         }
         for (id, mail) in self.mail.iter() {
             push(Kind::Mail, &mail.subject, &mail.from, mail.date, mail_uri(id));
@@ -723,19 +761,42 @@ impl World<'_> {
         for project in self.projects {
             push(Kind::Project, &project.title, &project.id, 0, project_uri(&project.id));
         }
+        // The events apart: a repeating one is read from its file, by its times to come, matching alone.
+        let now = crate::zone::now().timestamp().as_second();
+        let zone = crate::zone::current();
+        if want(Kind::Event) {
+            for event in self.events.iter().filter(|e| matches(&e.summary, "")) {
+                let coming = if event.recurring { std::fs::read_to_string(&event.key).ok().map(|text| crate::agenda::next_turns(&text, now, turns.unwrap_or(1).max(1), &zone)).unwrap_or_default() } else { Vec::new() };
+                let one = |when: i64, rid: String, title: String| Found { kind: Kind::Event, starts: starts(&event.summary), when, uri: event_uri(&event.uid), rid, key: Some(event.key.clone()), title: Some(if title.trim().is_empty() { event.summary.clone() } else { title }) };
+                if coming.is_empty() {
+                    found.push(one(event.start, String::new(), String::new()));
+                }
+                for turn in coming {
+                    found.push(one(turn.start, if turns.is_some() { turn.rid } else { String::new() }, turn.title));
+                }
+            }
+        }
         let except = self.canonical(except);
-        found.retain(|(_, _, _, uri)| *uri != except);
-        found.sort_by(|a, b| (!a.1, std::cmp::Reverse(a.2), a.0).cmp(&(!b.1, std::cmp::Reverse(b.2), b.0)));
+        found.retain(|f| f.uri != except);
+        found.sort_by_key(|f| f.rank(now));
         // Typed nothing: a few of each kind rather than a flood of one.
         if words.is_empty() {
             let mut per_kind: std::collections::BTreeMap<Kind, usize> = Default::default();
-            found.retain(|(k, ..)| {
-                let n = per_kind.entry(*k).or_default();
+            found.retain(|f| {
+                let n = per_kind.entry(f.kind).or_default();
                 *n += 1;
                 *n <= 6
             });
         }
-        found.into_iter().take(limit).map(|(_, _, _, uri)| self.describe(&uri)).collect()
+        found
+            .into_iter()
+            .take(limit)
+            .map(|f| match f.key {
+                // An event as it was found, its own file and time, never read again for each row.
+                Some(key) => Related { uri: f.uri, kind: f.kind, title: f.title.unwrap_or_default(), detail: String::new(), when: (f.when > 0).then_some(f.when), key, how: String::new(), found: true, program: false, rid: f.rid },
+                None => self.describe(&f.uri),
+            })
+            .collect()
     }
 
     /// What a link written in `source` leads to (a note's `mid:` or `sioul:`
@@ -753,7 +814,7 @@ impl World<'_> {
         let uri = self.canonical(uri);
         let kind = kind_of(&uri);
         let id = id_of(&uri);
-        let mut out = Related { uri: uri.clone(), kind, title: id.clone(), detail: String::new(), when: None, key: String::new(), how: String::new(), found: false, program: false };
+        let mut out = Related { uri: uri.clone(), kind, title: id.clone(), detail: String::new(), when: None, key: String::new(), how: String::new(), found: false, program: false, rid: String::new() };
         match kind {
             Kind::Task => {
                 if let Some(task) = self.tasks.iter().find(|t| t.uid == id) {
@@ -766,7 +827,9 @@ impl World<'_> {
             Kind::Event => {
                 if let Some(event) = self.events.iter().find(|e| e.uid == id) {
                     out.title = event.summary.clone();
-                    out.when = (event.start > 0).then_some(event.start);
+                    // A repeating event by its next time, as long as it has one: its first is long past.
+                    let next = event.recurring.then(|| std::fs::read_to_string(&event.key).ok()).flatten().and_then(|text| crate::agenda::next_turns(&text, crate::zone::now().timestamp().as_second(), 1, &crate::zone::current()).first().map(|t| t.start));
+                    out.when = next.or((event.start > 0).then_some(event.start));
                     out.key = event.key.clone();
                     out.found = true;
                 }
@@ -1441,5 +1504,57 @@ mod tests {
         // Read once for all (review of e5bd27b, later 5): the file gone, the next letter is named still.
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(world.describe("sioul:letter/2026-10-28-1a2b").title, "CAF");
+    }
+
+    /// The shape that failed (a calendar's repeating event with one time moved, and two
+    /// older one-off events of nearly its title, in other calendars): each row used to say the
+    /// series' first start, a week back, and named none of its times to come.
+    #[test]
+    fn a_repeating_event_is_found_by_its_times_to_come() {
+        crate::config::stand_ins_only();
+        use crate::vdir;
+        let here = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, "Search here", None, &["VEVENT"]).unwrap();
+        let cloud = vdir::create(vdir::Kind::Calendars, "search-cloud", "Search cloud", None, &["VEVENT"]).unwrap();
+        let series = vdir::create(vdir::Kind::Calendars, "search-cloud", "Search series", None, &["VEVENT"]).unwrap();
+        let now = crate::zone::now().timestamp().as_second();
+        // Every other day at 10:00 UTC, begun a little over a week ago; its next time moved by five minutes.
+        let first = now - now.rem_euclid(86_400) - 8 * 86_400 + 10 * 3_600;
+        let next = (0..).map(|k| first + k * 2 * 86_400).find(|at| *at > now).unwrap();
+        let utc = crate::moves::utc;
+        let text = format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:search-series\r\nDTSTAMP:20261001T100000Z\r\nDTSTART:{start}\r\nDURATION:PT30M\r\nRRULE:FREQ=DAILY;INTERVAL=2\r\nSUMMARY:Morning routine\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:search-series\r\nDTSTAMP:20261001T100000Z\r\nRECURRENCE-ID:{rid}\r\nDTSTART:{moved}\r\nDURATION:PT30M\r\nSUMMARY:Morning routine\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+            start = utc(first),
+            rid = utc(next),
+            moved = utc(next + 300)
+        );
+        std::fs::write(series.dir.join("series.ics"), &text).unwrap();
+        let one = |uid: &str, title: &str, at: i64| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261001T100000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{title}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(at), utc(at + 3_600));
+        std::fs::write(here.dir.join("one.ics"), one("search-one", "Morning routine at the desk", first - 40 * 86_400)).unwrap();
+        std::fs::write(cloud.dir.join("two.ics"), one("search-two", "Morning routine old", first - 60 * 86_400)).unwrap();
+        let ours = |e: &crate::agenda::EventRef| [&here.dir, &cloud.dir, &series.dir].iter().any(|dir| std::path::Path::new(&e.key).parent() == Some(dir.as_path()));
+        let events: Vec<_> = crate::agenda::event_refs().into_iter().filter(ours).collect();
+        assert_eq!(events.len(), 3);
+        let loaded = Loaded { events, ..Loaded::default() };
+        let world = loaded.world();
+        // The task form's field: its next times, one row each, the moved one where it is now, named as it was.
+        let rows = world.search_events("morning", "", 40, 3);
+        assert_eq!(rows.len(), 5, "{rows:?}");
+        assert!(rows[..3].iter().all(|r| r.uri == "sioul:event/search-series" && r.when.is_some_and(|w| w > now)), "{rows:?}");
+        assert_eq!((rows[0].when, rows[0].rid.as_str()), (Some(next + 300), utc(next).as_str()));
+        assert_eq!((rows[1].when, rows[1].rid.as_str()), (Some(next + 2 * 86_400), utc(next + 2 * 86_400).as_str()));
+        assert_eq!([rows[3].uri.as_str(), rows[4].uri.as_str()], ["sioul:event/search-one", "sioul:event/search-two"], "what was, the newest first");
+        assert!(rows[3].rid.is_empty() && rows[3].key.ends_with("one.ics"));
+        // The link picker: the event once, a link names the whole of it, by its next time.
+        let plain = world.search("morning", Some(Kind::Event), "", 40);
+        assert_eq!(plain.iter().map(|r| r.uri.as_str()).collect::<Vec<_>>(), ["sioul:event/search-series", "sioul:event/search-one", "sioul:event/search-two"]);
+        assert_eq!((plain[0].when, plain[0].rid.as_str()), (Some(next + 300), ""));
+        // What comes first whatever the limit cuts: a title that does not start with the words,
+        // behind a hundred past titles that do.
+        let past: Vec<crate::agenda::EventRef> = (0..100).map(|k| crate::agenda::EventRef { key: format!("/gone/{k}.ics"), uid: format!("past-{k}"), summary: format!("Budget review {k}"), start: now - (k + 1) * 86_400, ..Default::default() }).collect();
+        let coming = crate::agenda::EventRef { key: "/gone/coming.ics".into(), uid: "coming".into(), summary: "Yearly budget".into(), start: now + 86_400, ..Default::default() };
+        let crowd = Loaded { events: past.into_iter().chain([coming]).collect(), ..Loaded::default() };
+        let world = crowd.world();
+        let cut = world.search("budget", None, "", 40);
+        assert_eq!((cut.len(), cut[0].uri.as_str()), (40, "sioul:event/coming"));
     }
 }

@@ -701,6 +701,8 @@ fn task_json(task: &Task) -> Value {
         "parent": task.parent(),
         // The appointment it prepares (`pairs`).
         "appointment": sioul_core::pairs::appointment_of(task).map(|uid| links::event_uri(&uid)),
+        // Which time of a repeating appointment, when it names one (`pairs::OCCURRENCE`).
+        "occurrence": Some(task.occurrence.as_str()).filter(|o| !o.is_empty()),
     })
 }
 
@@ -1065,18 +1067,30 @@ pub fn attach_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
     may_change(&desk.consent, &links::task_uri(&task.uid))?;
     let found = find_event(&desk.consent, &args.needed("event")?)?;
     may_change(&desk.consent, &links::event_uri(&found.uid))?;
-    let all = tasks::all(&sioul_core::zone::current());
-    let change = sioul_core::pairs::attach(&all, &task.uid, &event_file(&found), &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &sioul_core::zone::now()).map_err(|r| r.said(&s.tr))?;
+    let zone = sioul_core::zone::current();
+    let all = tasks::all(&zone);
+    // One time of a repeating event, as asked; its next by default (`pairs::attach_turn`).
+    let asked = args.text("occurrence")?.filter(|o| !o.trim().is_empty());
+    let recurring = agenda::event_ref(&found.text, "", &zone).is_some_and(|r| r.recurring);
+    let turn = match asked.as_ref().filter(|_| recurring) {
+        Some(asked) => Some(sioul_core::pairs::turn_asked(&found.text, asked, &zone).ok_or_else(|| format!("This event has no time “{}”: give one of its coming dates (2026-11-10) or times (2026-11-10T11:00).", one_line(asked)))?),
+        None => None,
+    };
+    let change = sioul_core::pairs::attach_turn(&all, &task.uid, &event_file(&found), turn.as_ref().map(|t| t.rid.as_str()), &desk.loaded.events, &sioul_core::pairs::links_kept(&s.config), &sioul_core::zone::now()).map_err(|r| r.said(&s.tr))?;
     // Tied already, as it is: nothing written, nothing said in the window.
     if change.is_empty() {
-        return Ok(Answer { text: "Nothing changed: the task is tied to this appointment already.".into(), data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "changed": false, "sent": false }) });
+        return Ok(Answer { text: "Nothing changed: the task is tied to this appointment already.".into(), data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "occurrence": Some(task.occurrence.as_str()).filter(|o| !o.is_empty()), "changed": false, "sent": false }) });
     }
     let files = change.write()?;
-    let summary = agenda::edit_of_text(&found.text, &sioul_core::zone::current()).map(|e| e.title).unwrap_or_default();
-    let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&summary))]);
+    let task = tasks::all(&zone).into_iter().find(|t| t.uid == task.uid).unwrap_or(task);
+    let summary = agenda::edit_of_text(&found.text, &zone).map(|e| e.title).unwrap_or_default();
+    let tied_to = Some(task.occurrence.as_str()).filter(|o| !o.is_empty()).and_then(|rid| agenda::turn_named(&found.text, rid, &zone));
+    let line = match &tied_to {
+        Some(turn) => s.say("agent-attached-time", &[("title", one_line(&task.title)), ("event", one_line(&summary)), ("when", sioul_core::pairs::turn_when(turn.start, turn.all_day, &s.tr, &zone))]),
+        None => s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&summary))]),
+    };
     say_in_window(line.clone(), files);
-    let task = tasks::all(&sioul_core::zone::current()).into_iter().find(|t| t.uid == task.uid).unwrap_or(task);
-    Ok(Answer { text: line, data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "sent": false }) })
+    Ok(Answer { text: line, data: json!({ "uri": links::task_uri(&task.uid), "event": links::event_uri(&found.uid), "due": task.due, "occurrence": Some(task.occurrence.as_str()).filter(|o| !o.is_empty()), "sent": false }) })
 }
 
 pub fn detach_from_event(s: &Session, args: &Args) -> Result<Answer, String> {

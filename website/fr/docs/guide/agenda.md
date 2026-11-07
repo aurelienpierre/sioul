@@ -143,6 +143,10 @@ Au clavier, une fois la ligne du temps cliquée : Haut et Bas vont d’une cho
 
 Cliquez un moment libre de la journée (touchez-le sur un téléphone) : un **+** s’y affiche, à partir du quart d’heure cliqué, aussi long qu’un nouvel événement (30 minutes, tant que vous ne le changez pas dans les [réglages de l’Agenda](#the-agenda-settings)). Cliquez-le encore : le formulaire d’un nouvel événement s’ouvre sur ce moment, dans l’agenda des nouveaux événements, prêt pour son titre. Un double clic sur un moment libre fait les deux d’un coup. Un clic ailleurs, ou Échap, cache le **+**.
 
+### Ce qui vient avant une de ses dates {#to-do-before}
+
+La carte d’un événement range sous **À faire avant** les tâches liées à cette date ([Une tâche avant un événement](tasks.md#a-task-before-an-event)). Sur un événement qui se répète, c’est cette date seule, une date déplacée ou changée aussi. **Ajouter des étapes et une liste** sur sa carte fait une tâche pour la date ouverte.
+
 ## Déplacer les choses à la main {#moving-an-event-by-hand}
 
 Dans **Jour** et **Semaine**, faites glisser un événement, un repas, une sieste ou la nuit vers une autre heure : il garde sa durée. Dans **Semaine**, un événement va aussi vers un autre jour. Faites glisser son bord du haut pour changer l’heure à laquelle il commence, son bord du bas pour celle à laquelle il finit : de cinq en cinq minutes, et quinze minutes au moins. Le temps gardé autour d’un événement (Avant et Après) se déplace avec lui ; il se change dans sa carte. Pendant que vous le faites glisser, sa nouvelle place s’affiche avec ses heures (« mar. 6, 11:15 – 12:15 »).
@@ -332,9 +336,13 @@ Un repas ou une sieste déjà fait se déplace, et c’est tout ce que Sioul en 
 
 Un jour choisi au pointeur ne laisse plus une heure à taper, et un jour tapé n’a plus besoin du pointeur pour son heure. Le champ reste pour qui tape, et à un clic de là les heures et les minutes de cinq en cinq sont toutes en vue, sans rien à faire glisser ni à faire défiler sur un ordinateur. Aucune étude ne compare les façons de régler une heure : cette disposition est donc une déduction. Elle s’appuie sur les WCAG 2.2, qui demandent que rien n’exige de glisser (2.5.7) et que les cibles mesurent au moins 24 pixels (2.5.8), et qui sont un plancher, pas une mesure de vitesse. Aucune preuve ne soutient non plus un cadran à aiguilles pour la cécité temporelle : le seul essai proche de la question testait ensemble un entraînement et des appareils, chez des enfants, et n’a jamais opposé l’analogique au numérique (Wennberg et al. 2018).
 
-Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54, 66 et 70.
+Une tâche liée à une date d’un événement répété n’écrit rien dans l’événement : un serveur dit à chaque invité tout changement d’une réunion (RFC 6638), et un agenda que vous lisez seulement ne pourrait pas le prendre. Aucune norme ne nomme une date dans un lien (RFC 5545, RFC 9253) : la tâche le porte ([Une tâche avant un événement](tasks.md#a-task-before-an-event)).
+
+Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurelienpierre.com/dev/research.html), constats 46 à 54, 66, 71 et 72.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
+
+**Une tâche avant un événement.** Sioul lie une tâche à une date d’un événement répété, et l’événement n’est jamais écrit ; ce que font les autres, d’après leurs propres pages, est [avec les tâches](tasks.md#compared-with-other-apps).
 
 **Du temps autour des événements, et un plan autour d’eux.** Sioul garde du temps avant et après chaque événement, réglé par vous, et le compte partout à la fois : dans votre plan, dans l’avertissement pour deux événements en même temps, et dans son rappel. Calendrier d’Apple et Fantastical gardent un temps de trajet avant un événement seulement, et disent quand partir d’après la circulation du moment, ce que Sioul ne fait pas. Morgen calcule le temps de trajet dans les deux sens avec Google Maps, et Reclaim ajoute un temps de trajet fixe dans les deux sens, chacun pour les agendas Google et Outlook (Morgen aussi pour iCloud et Fastmail), avec un compte chez eux. Le planificateur IA de Morgen et les habitudes de Reclaim placent aussi le travail et les routines, comme le déjeuner, autour de vos événements ; Sioul le fait sur votre appareil, d’après vos propres heures, vos repas et vos nuits, avec n’importe quel serveur CalDAV et sans compte ailleurs. Sioul ne sait pas exporter des fichiers `.ics` ni s’abonner à un agenda par son adresse, ni montrer de lui-même les anniversaires, là où la plupart des autres le savent, et ses invitations aux réunions que vous organisez n’ont été essayées que sur des serveurs de remplacement ; parmi ces applications, seul Proton chiffre de bout en bout ce que dit un événement, ses heures mises à part.
 
