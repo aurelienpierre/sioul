@@ -470,7 +470,7 @@ mod tests {
             let id = format!("leave-{name}-{}", std::process::id());
             let root = sioul_core::config::data_dir().join(&id);
             let _ = std::fs::remove_dir_all(&root);
-            let config: Config = toml::from_str(&format!("[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"noa@home.example\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n", root.display())).unwrap();
+            let config: Config = toml::from_str(&format!("[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"noa@home.example\"\nhost = \"imap.example.org\"\nmaildir = '{}'\ntrusted_authserv_ids = [\"mx.example.org\"]\n", root.display())).unwrap();
             let folders = vec![sioul_core::folders::folder("INBOX", Some("/"), Some(Role::Inbox)), sioul_core::folders::folder("Junk", Some("/"), Some(Role::Junk))];
             let saved: String = folders.iter().map(|f| format!("[[folder]]\nname = \"{}\"\ndisplay = \"{}\"\nrole = \"{}\"\nlocal = \"{}\"\n", f.name, f.display, serde_json::to_value(f.role).unwrap().as_str().unwrap(), f.local)).collect();
             std::fs::create_dir_all(sioul_core::folders::saved_path(&id).parent().unwrap()).unwrap();

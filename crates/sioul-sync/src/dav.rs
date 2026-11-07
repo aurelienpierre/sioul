@@ -3870,7 +3870,7 @@ mod tests {
         assert_eq!(report.moved_changed, [("event".to_string(), "Dentist at 10".to_string())], "{report:?}");
         assert!(report.undeleted.is_empty() && report.conflicts.is_empty() && report.meetings.is_empty(), "said once: {report:?}");
         let data = sioul_core::config::data_dir();
-        let kept = format!("data/{}", from.strip_prefix(&data).unwrap().display());
+        let kept = format!("data/{}", from.strip_prefix(&data).unwrap().components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"));
         let root = crate::history::root(&state_dir().join("share").join("memory.json"));
         let versions = crate::history::versions(&root, crate::history::ACCOUNTS, &kept);
         assert_eq!(versions.len(), 1, "kept once, among the earlier versions");
