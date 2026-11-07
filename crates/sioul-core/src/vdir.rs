@@ -410,6 +410,15 @@ pub fn deletion_waits_for(old: &Path) -> Option<PathBuf> {
     (!new_is_there(old, &new)).then_some(new)
 }
 
+/// The new item of a move whose old copy is `old`, while that item is here
+/// and the old copy's deletion has not been done on its server, whether it
+/// still waits for the new one or not (`deletion_waits_for`). A change to the
+/// old copy on its server finds its place here: the move holds, never a copy
+/// in both calendars (`dav`, review of round 4, R4-F).
+pub fn moved_away(old: &Path) -> Option<PathBuf> {
+    moved_change(|m| m.moved.iter().find(|i| i.old == old).map(|i| i.new.clone())).filter(|new| new.exists())
+}
+
 /// Whether the new item of a move is on its server, or needs not be: gone
 /// since, kept on this device alone, or in the old one's own collection.
 fn new_is_there(old: &Path, new: &Path) -> bool {

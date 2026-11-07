@@ -662,6 +662,89 @@ fn your_own_time_waits_for_a_device_that_has_its_store() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// Sioul's own lines of meetings with others (`data/meeting-lines.toml`:
+/// who takes a child's event, its kind) beside a phone whose entry does not
+/// say it has the store in the sharing, as an older Sioul's never does:
+/// neither sent nor read, so the older phone holds no record of it and writes
+/// none over it, and each device knows what it knows. Once the phone says
+/// so, the desk's next exchange sends every entry, a time's lines and an entry
+/// of no line included, as the desk's own writers wrote them. Each entry
+/// travels whole: two devices answering the same meeting keep the later
+/// answer, never a mix. An entry taken out (its lines back in its file)
+/// travels as a removal, and does not come back.
+#[test]
+fn a_meeting_s_own_lines_wait_for_a_device_that_has_their_store_then_travel_whole() {
+    use sioul_core::meeting_lines as lines;
+    let base = scratch("meeting-lines-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.meeting_lines = MEETING_LINES_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let (on_desk, on_phone) = (desk.path(MEETING_LINES), phone.path(MEETING_LINES));
+    let kind = "X-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health".to_string();
+    let held = "X-SIOUL-TAKEN-BY;CN=Alex;PARTSTAT=ACCEPTED:mailto:alex@example.org".to_string();
+    let that_time = "RECURRENCE-ID;TZID=Europe/Paris:20991117T090000".to_string();
+    lines::add(&on_desk, "psy.1@example.org", &[(String::new(), kind.clone()), (String::new(), held.clone()), (that_time.clone(), held.clone())]).unwrap();
+    lines::ensure(&on_desk, "known-empty").unwrap();
+    assert_eq!(stores(&Config::default(), &desk.roots).iter().find(|s| s.name == MEETING_LINES).map(|s| (s.part, matches!(s.shape, Shape::Files))), Some(("time", false)), "a TOML file of the part \"time\": no sealed file for the sweeps (`FILE_PARTS`)");
+    for _ in 0..2 {
+        assert_eq!(background(&desk, &folder, &key, now).sent, 0, "kept to itself");
+        now += MINUTE;
+    }
+    // The phone as an older Sioul: no such store, none known. It places all it reads, and writes nothing there.
+    let older = stores(&Config::default(), &phone.roots).into_iter().filter(|s| s.name != MEETING_LINES).collect::<Vec<_>>();
+    super::tests::OLDER.with(|o| *o.borrow_mut() = vec![MEETING_LINES.to_string()]);
+    for _ in 0..3 {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let outcome = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None }, &older, now).unwrap();
+        assert_eq!(outcome.pending, 0, "nothing it cannot place: {outcome:?}");
+    }
+    assert!(!on_phone.exists(), "nothing written there");
+    // The phone updated: the whole file comes, as it was written.
+    super::tests::OLDER.with(|o| o.borrow_mut().clear());
+    entry(&phone, &folder, &key, |e| e.meeting_lines = MEETING_LINES_SHARED);
+    now += MINUTE;
+    background(&desk, &folder, &key, now);
+    now += MINUTE;
+    let came = background(&phone, &folder, &key, now);
+    assert!(came.written.contains(MEETING_LINES), "{came:?}");
+    assert_eq!(lines::load(&on_phone), lines::load(&on_desk), "the same entries on both: {}", phone.read(MEETING_LINES));
+    assert_eq!(lines::load(&on_phone).events["psy.1@example.org"].times[that_time.as_str()], [held.clone()], "a time's own lines");
+    assert_eq!(lines::load(&on_phone).events.get("known-empty"), Some(&lines::Kept::default()), "known there too, of no line");
+    now += MINUTE;
+    assert_eq!(background(&desk, &folder, &key, now).sent, 0, "sent once");
+    // Answered on both: the later word, the whole entry, never a mix.
+    let answered = |who: &str| vec![(String::new(), format!("X-SIOUL-TAKEN-BY;CN={who};PARTSTAT=ACCEPTED:mailto:{}@example.org", who.to_lowercase()))];
+    lines::forget(&on_desk, "psy.1@example.org").unwrap();
+    lines::add(&on_desk, "psy.1@example.org", &answered("Sam")).unwrap();
+    now += MINUTE;
+    background(&desk, &folder, &key, now);
+    lines::forget(&on_phone, "psy.1@example.org").unwrap();
+    lines::add(&on_phone, "psy.1@example.org", &answered("Alex")).unwrap();
+    lines::add(&on_phone, "psy.1@example.org", &[(String::new(), kind.clone())]).unwrap();
+    for c in [&phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert_eq!(lines::load(&on_phone).events["psy.1@example.org"], lines::load(&on_desk).events["psy.1@example.org"], "one entry on both: {}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+    assert_eq!(lines::load(&on_desk).events["psy.1@example.org"].times[""].len(), 2, "the phone's, later and whole: {}", desk.read(MEETING_LINES));
+    // Its lines back in its file on the desk: the entry goes on the phone too, and stays gone.
+    lines::forget(&on_desk, "psy.1@example.org").unwrap();
+    for c in [&desk, &phone, &desk, &phone] {
+        now += MINUTE;
+        background(c, &folder, &key, now);
+    }
+    assert!(!lines::load(&on_phone).events.contains_key("psy.1@example.org") && !lines::load(&on_desk).events.contains_key("psy.1@example.org"), "gone on both: {}\n{}", desk.read(MEETING_LINES), phone.read(MEETING_LINES));
+    assert!(lines::load(&on_phone).events.contains_key("known-empty"), "the other entry stays");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// The notices' words wait for every device to have their store, as your
 /// own time does: a phone still on a Sioul without it (705576a) would keep
 /// their records waiting at every exchange. The desk's log stays on the desk

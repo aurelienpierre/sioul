@@ -1157,6 +1157,12 @@ dav-undeleted-untitled = { $kind ->
         [task] A task with no title changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
        *[event] An event with no title changed on its server before your deletion reached it: it is back. Delete it again if you still want it gone.
     }
+dav-moved-changed = “{ $summary }” changed in its old calendar before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
+dav-moved-changed-untitled = { $kind ->
+        [contact] A contact with no name changed in its old address book before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
+        [task] A task with no title changed in its old list before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
+       *[event] An event with no title changed in its old calendar before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
+    }
 dav-cancel-heard = { $who } had its cancellation already: an invitation of it waits in Drafts.
 dav-answered-elsewhere = { $answer ->
         [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.
@@ -4218,7 +4224,8 @@ invite-replied-unproven = Sioul could not prove that this answer comes from { $w
 invite-move-tells = Moving it tells every guest.
 invite-move = Move
 invite-delete-tells = Deleting it tells every guest that it is cancelled.
-invite-delete-one-time = One time of a meeting you organize is not left out here: delete the whole meeting, which tells every guest, or leave that time out in its calendar’s own app.
+invite-delete-time-tells = Deleting this time tells its guests that it is cancelled.
+invite-cancelled-first = This meeting is cancelled, and its guests heard it. Give it another status first: that tells them it is on again.
 invite-cancelled-server = Your server tells every guest.
 invite-cancelled-draft = The cancellation for the guests waits in Drafts: it leaves when you send it.
 invite-ask-organizer = You become its organizer, in place of { $who }.

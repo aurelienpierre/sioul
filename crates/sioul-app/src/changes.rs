@@ -124,6 +124,8 @@ pub(crate) fn kinds_of(store: &str) -> Vec<Kind> {
         "files/notes/" => vec![Kind::Notes, Kind::Letters, Kind::Links],
         // This device's own calendars and address books, as your other devices keep them.
         "data/calendars/local/" | "state/dav/local/" => vec![Kind::Calendars, Kind::Agendas],
+        // Who takes a child's meeting and its kind, as your other devices keep them: its card and its stand-ins.
+        sioul_sync::share::MEETING_LINES => vec![Kind::Calendars],
         "data/contacts/local/" => vec![Kind::Contacts],
         _ => Vec::new(),
     }

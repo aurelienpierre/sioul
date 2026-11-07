@@ -2068,6 +2068,42 @@ pub fn skip_occurrence(text: &str, start: i64) -> Option<String> {
     Some(lines::fold(&source))
 }
 
+/// The VEVENT of the time of a repeating event starting at `start` (Unix
+/// seconds, as shown): its own when it has one (RECURRENCE-ID), else as a
+/// changed occurrence of the series would be (`moved`), its RECURRENCE-ID
+/// naming it, at the times it has. What a message about that time alone is
+/// made from (`organizer::cancel_time`). None when no time starts there, or
+/// the event does not repeat.
+pub fn one_time(text: &str, start: i64, zone: &TimeZone) -> Option<Vec<String>> {
+    let (place, changed) = occurrence_at(text, start, zone)?;
+    if changed {
+        let source = lines::unfold(text);
+        return event_ranges(&source).get(place).map(|range| source[range.clone()].to_vec());
+    }
+    let ical = parse(&for_expansion(&from_window(text, start)))?;
+    let found = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT).events.into_iter().find(|e| e.start.timestamp() == start)?;
+    let end = match found.end {
+        TimeOrDelta::Time(end) => end.timestamp(),
+        TimeOrDelta::Delta(delta) => start + delta.num_seconds(),
+    };
+    let made = lines::unfold(&moved(text, start, start, end.max(start + 60), true, zone).ok()?);
+    event_ranges(&made).into_iter().map(|range| made[range].to_vec()).find(|block| own_lines(block).any(|l| lines::name(l) == "RECURRENCE-ID" && instant_in(l, zone) == Some(start)))
+}
+
+/// Whether an event still holds the time of its series named by `instant`
+/// (Unix seconds, as a RECURRENCE-ID names it): an event of that time, moved
+/// or not, or a time of its rule not left out.
+pub fn holds_time(text: &str, instant: i64, zone: &TimeZone) -> bool {
+    cut(text).events.iter().any(|event| own_lines(event).any(|l| lines::name(l) == "RECURRENCE-ID" && instant_in(l, zone) == Some(instant))) || occurrence_at(text, instant, zone).is_some()
+}
+
+/// The times a repeating event leaves out (its series' EXDATE lines), as instants.
+pub fn left_out_times(text: &str, zone: &TimeZone) -> Vec<i64> {
+    let source = lines::unfold(text);
+    let Some(master) = master_range(&source) else { return Vec::new() };
+    source[master].iter().filter(|l| lines::name(l) == "EXDATE").flat_map(|line| lines::value(line).split(',').filter_map(|v| moment_in(line, v, zone).map(|z| z.timestamp().as_second())).collect::<Vec<_>>()).collect()
+}
+
 /// A series' text with one time of it given an event of its own
 /// (RECURRENCE-ID), at the times it has and as the series says it: what
 /// holds a guest's answer for that time alone (a REPLY naming it, RFC 5546
@@ -4185,10 +4221,10 @@ mod tests {
     const DOOR_ACTS: [&str; 7] = ["write", "put_back", "delete", "undelete", "replied", "adopt", "tidy_once"];
     /// Which of pim.rs's functions call which act (second review of the
     /// organizer's door, N10): the form's save, a drag and its Undo, a
-    /// deletion and its Undo, a guest's answer read, your own invitation
-    /// added, the window's start. A new caller in pim.rs (a watcher, a
-    /// reader's thread) fails here too.
-    const DOOR_ACT_CALLERS: [(&str, &str); 11] = [
+    /// deletion and its Undo, a status and its Undo, one time left out and its
+    /// Undo, a guest's answer read, your own invitation added, the window's
+    /// start. A new caller in pim.rs (a watcher, a reader's thread) fails here too.
+    const DOOR_ACT_CALLERS: [(&str, &str); 15] = [
         ("write_event_with", "write"),
         ("write_event_with", "put_back"),
         ("move_event", "put_back"),
@@ -4197,6 +4233,10 @@ mod tests {
         ("deleted_with_legs", "delete"),
         ("deleted_with_legs", "undelete"),
         ("undeleted_with_legs", "undelete"),
+        ("status_written", "write"),
+        ("organized_status", "put_back"),
+        ("deleted_time", "write"),
+        ("delete_event", "put_back"),
         ("invitation", "replied"),
         ("answer", "adopt"),
         ("tidy_meetings", "tidy_once"),

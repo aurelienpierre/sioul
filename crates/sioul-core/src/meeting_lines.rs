@@ -9,8 +9,10 @@
 //! is kept here, by the event's UID and by its time ("" the series, else
 //! that time's RECURRENCE-ID line), each line as it was written: who takes a
 //! child's event and its kind (`holders`), a block's task, one time's own
-//! margins. `$XDG_DATA_HOME/sioul/meeting-lines.toml`, this device's own:
-//! the sharing does not carry it yet.
+//! margins. `$XDG_DATA_HOME/sioul/meeting-lines.toml`. The sharing carries
+//! it among your devices, sealed, each entry whole (`share::MEETING_LINES`,
+//! the part "time"), once every device says it has the store; an entry taken
+//! out travels as a removal. It never reaches a guest.
 //!
 //! Its readers take the meeting's text with these lines put back
 //! (`merged`, `read`), as an older Sioul wrote them into the file, so that
@@ -19,10 +21,11 @@
 //! into the meeting (`set_from`).
 //!
 //! **An entry is what this device knows** (third review of the organizer's
-//! door, R1). Until the sharing carries this file, a meeting with no entry
-//! here may have its lines on another device: who takes it and its kind are
-//! unknown here (`Read::Unknown`), and the children's upkeep leaves it and
-//! its stand-ins as they are. An entry may hold no line: the door made the
+//! door, R1). Until an entry reaches this device (an older device held the
+//! store back, the part "time" is off, the exchange has not come), a meeting
+//! with no entry here may have its lines on another device: who takes it and
+//! its kind are unknown here (`Read::Unknown`), and the children's upkeep
+//! leaves it and its stand-ins as they are. An entry may hold no line: the door made the
 //! meeting here from an event that held none (`ensure`). When an event is no
 //! meeting any more, its lines go back into its file and its entry goes
 //! (`forget`).

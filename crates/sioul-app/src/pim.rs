@@ -266,6 +266,12 @@ fn undeleted_line(kind: &str, title: &str) -> String {
     if title.trim().is_empty() { say("dav-undeleted-untitled", &[("kind", kind.to_string())]) } else { say("dav-undeleted", &[("summary", title.to_string())]) }
 }
 
+/// An item moved here whose old copy changed on its server first: by its
+/// title, else by its kind ("event", "task", "contact").
+fn moved_changed_line(kind: &str, title: &str) -> String {
+    if title.trim().is_empty() { say("dav-moved-changed-untitled", &[("kind", kind.to_string())]) } else { say("dav-moved-changed", &[("summary", title.to_string())]) }
+}
+
 /// What a sync said: the account's status, conflicts in the status line, the pages again.
 fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Result<dav::Report, SyncError>) {
     eprintln!("{}", sync_line(&result));
@@ -296,6 +302,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             // A deletion its server refused (it changed there first): the item is back, said once (R8).
             for (kind, title) in &report.undeleted {
                 tell(qt, shared, undeleted_line(kind, title));
+            }
+            // Moved here, its old copy changed there first: the move holds, what changed kept, said once (R4-F).
+            for (kind, title) in &report.moved_changed {
+                tell(qt, shared, moved_changed_line(kind, title));
             }
             // An invitation you had answered otherwise on another device: its answer kept, said once.
             for (summary, kept) in report.answered {
@@ -1028,17 +1038,21 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
 
 /// An event's own status set from its card (5 November 2026): "confirmed",
 /// "tentative" or "cancelled" (`agenda::with_status`), on its main event;
-/// never a calendar you only read, nor a meeting with others (its organizer's,
-/// whose server would tell every guest: the guard refuses it, and so does
-/// this). Sent, the plan made again (a cancelled one holds no time), and
-/// "Undo" offered, which puts back what the file held unless it changed since.
-/// Returns what went wrong, else "".
+/// never a calendar you only read, nor someone else's meeting (its
+/// organizer's, whose server would tell every guest: the guard refuses it, and
+/// so does this). A meeting you organize goes through its own door, its
+/// guests told (`organized_status`). Sent, the plan made again (a cancelled
+/// one holds no time), and "Undo" offered, which puts back what the file held
+/// unless it changed since. Returns what went wrong, else "".
 pub(crate) fn set_event_status(qt: &QtThread, shared: &Arc<Shared>, key: &str, status: &str) -> String {
     let Some(path) = ours(key) else { return tr().text("agenda-gone", None) };
     if collection_of(&path).is_none_or(|c| c.read_only) {
         return tr().text("agenda-read-only", None);
     }
     let Ok(before) = std::fs::read_to_string(&path) else { return tr().text("agenda-gone", None) };
+    if agenda::organized_meeting(&before, &agenda::own_addresses()) {
+        return organized_status(qt, shared, &path, &before, status);
+    }
     if with_others(&before) {
         return tr().text("event-change-with-others", None);
     }
@@ -1073,6 +1087,94 @@ pub(crate) fn set_event_status(qt: &QtThread, shared: &Arc<Shared>, key: &str, s
     crate::work::show_work(qt, shared);
     show_pim(qt, shared);
     String::new()
+}
+
+/// A meeting you organize given a status (`set_event_status`), its guests
+/// told as its own way says, the plan made again, and "Undo" offered, which
+/// tells back those who heard (`organized::put_back`), as for the door's other
+/// acts. Returns what went wrong, else "".
+fn organized_status(qt: &QtThread, shared: &Arc<Shared>, path: &Path, before: &str, status: &str) -> String {
+    let (written, told, title) = match status_written(path, before, status) {
+        Ok(Some(done)) => done,
+        Ok(None) => return String::new(),
+        Err(problem) => return problem,
+    };
+    crate::work::replan_asked(shared);
+    let accounts: Vec<String> = account_of(path).into_iter().collect();
+    for account in &accounts {
+        nudge(shared, account);
+    }
+    let set = say("event-status-set", &[("what", title), ("status", tr().text(&format!("event-status-{}", status.trim().to_ascii_lowercase()), None))]);
+    let line = if told.is_empty() { set } else { format!("{set} {told}") };
+    mail::offer_back(qt, shared, line, move |qt, shared| {
+        if let Err(said) = crate::organized::put_back(&written) {
+            return said;
+        }
+        for account in &accounts {
+            nudge(shared, account);
+        }
+        crate::work::show_work(qt, shared);
+        show_pim(qt, shared);
+        String::new()
+    });
+    crate::work::show_work(qt, shared);
+    show_pim(qt, shared);
+    String::new()
+}
+
+/// The write of `organized_status`, without the window: through the door,
+/// what Undo needs, how its guests were told and its title; None when it says
+/// so already.
+fn status_written(path: &Path, before: &str, status: &str) -> Result<Option<(crate::organized::Written, String, String)>, String> {
+    let calendar = collection_of(path).ok_or_else(|| tr().text("agenda-gone", None))?;
+    let Some(plan) = crate::organized::status_plan(path, before, status, &calendar)? else { return Ok(None) };
+    let written = crate::organized::write(&plan)?;
+    let title = agenda::edit_of_text(before, &sioul_core::zone::current()).map(|e| e.title).filter(|t| !t.trim().is_empty()).unwrap_or_else(|| tr().text("agenda-untitled", None));
+    Ok(Some((written, plan.done(), title)))
+}
+
+/// What giving a meeting you organize this status would tell its guests, said
+/// before it is asked (`{"ask": …}`, "" for nobody; `{"error": …}` when it is
+/// refused); nothing written. "" for any other event, written as it is.
+pub(crate) fn status_said(key: &str, status: &str) -> String {
+    let asked = || -> Result<String, String> {
+        let Some(path) = ours(key) else { return Err(tr().text("agenda-gone", None)) };
+        let before = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        if !agenda::organized_meeting(&before, &agenda::own_addresses()) {
+            return Ok(String::new());
+        }
+        let calendar = collection_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
+        Ok(crate::organized::status_plan(&path, &before, status, &calendar)?.map(|plan| plan.asked()).unwrap_or_default())
+    };
+    said_as_json(asked())
+}
+
+/// What deleting a meeting you organize, or the time of it starting at
+/// `start` (`only_this`), would tell its guests, said before it is asked, as
+/// `status_said` says it; nothing written. "" for any other event.
+pub(crate) fn delete_said(key: &str, start: i64, only_this: bool) -> String {
+    let asked = || -> Result<String, String> {
+        let Some(path) = ours(key) else { return Err(tr().text("agenda-gone", None)) };
+        let before = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        if !agenda::organized_meeting(&before, &agenda::own_addresses()) {
+            return Ok(String::new());
+        }
+        let calendar = collection_of(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
+        if !only_this {
+            return crate::organized::deletion_asked(&before, &calendar);
+        }
+        let ask = crate::organized::time_plan(&path, &before, start, &calendar)?.asked();
+        Ok(if ask.is_empty() { ask } else { format!("{} {ask}", tr().text("invite-delete-time-tells", None)) })
+    };
+    said_as_json(asked())
+}
+
+/// What a door's act asks before it is written, as the card reads it.
+fn said_as_json(asked: Result<String, String>) -> String {
+    match asked {
+        Ok(ask) => json(&serde_json::json!({ "ask": ask })),
+        Err(error) => json(&serde_json::json!({ "ask": "", "error": error })),
+    }
 }
 
 /// An event's file as a drag moved it (`move_event`), written and sent: its
@@ -1173,11 +1275,30 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
 /// Returns what went wrong, else "".
 pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: i64, only_this: bool) -> String {
     let Some((path, account)) = ours(key).and_then(|p| Some((p.clone(), account_of(&p)?))) else { return tr().text("agenda-gone", None) };
-    // A meeting you organize: deleted whole through its own door, its guests told
-    // (decision 7 of the event card), after the window said so; Undo puts it back.
+    // A meeting you organize: deleted through its own door, whole or this time alone, its guests
+    // told (decision 7 of the event card), after the window said so; Undo puts it back.
     if std::fs::read_to_string(&path).is_ok_and(|t| agenda::organized_meeting(&t, &agenda::own_addresses())) {
         if only_this {
-            return tr().text("invite-delete-one-time", None);
+            let (written, told) = match deleted_time(&path, start) {
+                Ok(done) => done,
+                Err(e) => return e,
+            };
+            nudge(shared, &account);
+            crate::work::replan_asked(shared);
+            let left_out = tr().text("undo-occurrence-skipped", None);
+            let line = if told.is_empty() { left_out } else { format!("{left_out} {told}") };
+            mail::offer_back(qt, shared, line, move |qt, shared| {
+                if let Err(said) = crate::organized::put_back(&written) {
+                    return said;
+                }
+                nudge(shared, &account);
+                crate::work::show_work(qt, shared);
+                show_pim(qt, shared);
+                String::new()
+            });
+            crate::work::show_work(qt, shared);
+            show_pim(qt, shared);
+            return String::new();
         }
         let (written, gone) = match deleted_with_legs(shared, &path) {
             Ok(done) => done,
@@ -1191,9 +1312,11 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
             nudge(shared, other);
         }
         crate::work::replan_asked(shared);
-        let told = tr().text(if written.drafts.is_empty() { "invite-cancelled-server" } else { "invite-cancelled-draft" }, None);
+        // Cancelled already, your drafts told them: nobody hears of it again.
+        let told = if !written.drafts.is_empty() { tr().text("invite-cancelled-draft", None) } else if !written.served.is_empty() { tr().text("invite-cancelled-server", None) } else { String::new() };
         let deleted = if gone.is_empty() { tr().text("undo-event-deleted", None) } else { tr().text("legs-deleted-with", Some(&tr().counted(gone.len()))) };
-        mail::offer_back(qt, shared, format!("{deleted} {told}"), move |qt, shared| {
+        let line = if told.is_empty() { deleted } else { format!("{deleted} {told}") };
+        mail::offer_back(qt, shared, line, move |qt, shared| {
             let Some(said) = undeleted_with_legs(&written, &gone) else { return tr().text("undo-too-late", None) };
             nudge(shared, &account);
             for other in &accounts {
@@ -1226,6 +1349,17 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
     }
     show_pim(qt, shared);
     String::new()
+}
+
+/// One time of a repeating meeting you organize left out (`delete_event`):
+/// through its own door, the guests of that time told (`organized::time_plan`).
+/// What Undo needs, and how they were told.
+fn deleted_time(path: &Path, start: i64) -> Result<(crate::organized::Written, String), String> {
+    let before = std::fs::read_to_string(path).map_err(|_| tr().text("agenda-gone", None))?;
+    let calendar = collection_of(path).ok_or_else(|| tr().text("agenda-gone", None))?;
+    let plan = crate::organized::time_plan(path, &before, start, &calendar)?;
+    let written = crate::organized::write(&plan)?;
+    Ok((written, plan.done()))
 }
 
 /// A meeting you organize deleted (`delete_event`): through its own door,
