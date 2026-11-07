@@ -46,8 +46,6 @@ pub const LEAST: u64 = 20;
 pub const LEAST_SENDERS: u64 = 3;
 /// …or from this many, whoever sent them (one office).
 pub const LEAST_ALONE: u64 = 50;
-/// The share of the last table's own sure topics learned from.
-pub const OWN_WEIGHT: f64 = 0.5;
 /// One sender's, or one conversation's, share of a topic's examples at most.
 pub const CAP: f64 = 0.2;
 /// The share of the sure topics shown that a new table may change.
@@ -66,8 +64,6 @@ pub struct TopicState {
     pub senders: u64,
     /// Through the gate: a class of the table.
     pub learned: bool,
-    /// The last table's own sure topics it learned from.
-    pub own: u64,
     /// Examples left out by the guards (one sender's or one conversation's share).
     pub capped: u64,
 }
@@ -153,7 +149,9 @@ fn sure_of<'t>(table: &'t Table, m: &Mail) -> Option<&'t str> {
 }
 
 /// Trains the topics' model on the mail read (`topics::read` with its
-/// words), your topics and your word on them; `previous`, the table in use.
+/// words), your topics and your word on them, never on a table's own
+/// guesses; `previous`, the table in use, against which the new one is
+/// judged.
 #[allow(clippy::too_many_arguments)]
 pub fn train(dirs: &crate::Dirs, read: &Read, topics: &[Topic], said: &Said, presets: Option<&Matcher>, previous: Option<&Table>, options: &Options, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Trained, LearnError> {
     let started = std::time::Instant::now();
@@ -190,33 +188,11 @@ pub fn train(dirs: &crate::Dirs, read: &Read, topics: &[Topic], said: &Said, pre
     order.sort_by_key(|&m| (read.mail[m].date, m));
     let (learned, tested) = fifths(&order);
     let (fit, validation) = fifths(&learned);
-    let mut labels: Vec<Option<usize>> = by_words.iter().map(|l| l.and_then(|t| class_of.get(&t).copied())).collect();
-    // The last table's own sure topics, in the part learned from first: half, never more than a topic's other examples.
-    if let Some(previous) = previous {
-        let mut own: Vec<Vec<usize>> = vec![Vec::new(); classes.len()];
-        let mut rng = crate::Rng::new(options.spam.seed.wrapping_add(11));
-        // Only from a sender the topic has already: a guess on a stranger's mail drifts.
-        let known: Vec<HashSet<&str>> = (0..classes.len()).map(|c| read.mail.iter().zip(&labels).filter(|(_, l)| **l == Some(c)).filter_map(|(m, _)| m.sender.as_deref()).collect()).collect();
-        for &m in &fit {
-            if labels[m].is_some() {
-                continue;
-            }
-            if let Some(c) = sure_of(previous, &read.mail[m]).and_then(|id| ids.iter().position(|i| i == id))
-                && read.mail[m].sender.as_deref().is_some_and(|s| known[c].contains(s))
-                && rng.unit() < OWN_WEIGHT
-            {
-                own[c].push(m);
-            }
-        }
-        for (c, mut chosen) in own.into_iter().enumerate() {
-            let others = labels.iter().filter(|l| **l == Some(c)).count();
-            chosen.truncate(others);
-            states[classes[c]].own = chosen.len() as u64;
-            for m in chosen {
-                labels[m] = Some(c);
-            }
-        }
-    }
+    // Your acts and rules only, never a table's own guesses (F4, review of 7
+    // November 2026): two devices holding the same corpus and the same
+    // labels make the same table at every training, whatever table each has
+    // in use; `previous` only judges whether the new one replaces it.
+    let labels: Vec<Option<usize>> = by_words.iter().map(|l| l.and_then(|t| class_of.get(&t).copied())).collect();
     // The guards, on the part learned from: one sender's and one conversation's share.
     let mut dropped: HashSet<usize> = HashSet::new();
     for (c, &t) in classes.iter().enumerate() {
@@ -305,9 +281,9 @@ pub fn train(dirs: &crate::Dirs, read: &Read, topics: &[Topic], said: &Said, pre
             }
         }
     };
-    if let Some(share) = trained.churn {
-        table.meta.metrics.insert("churn".into(), share);
-    }
+    // The churn is said in what the training did (`Trained::churn`), never in
+    // the table: the table depends on the corpus and the labels alone, not on
+    // the table in use here (T1, review of 7 November 2026).
     trained.outcome = outcome;
     trained.table = Some(table);
     trained.topics = states;
@@ -395,11 +371,11 @@ mod tests {
         // Read back from its bytes, as every device reads it.
         let again = Table::from_bytes(&table.to_bytes()).unwrap();
         assert_eq!(again.meta.topics, table.meta.topics);
-        // The same again, the first table in use: its own sure topics learned from (never more than
-        // a topic's other examples), each topic compared, the churn measured, the outcome as the rule says.
+        // The same again, the first table in use: each topic compared, the churn measured, the
+        // outcome as the rule says; nothing learned from that table's guesses.
         let second = train(&dirs, &read, &topics, &said, None, Some(&again), &options, &mut |_| {}, &Cancel::new()).unwrap();
         assert_eq!(second.compared.iter().map(|(id, _, _)| id.as_str()).collect::<Vec<_>>(), ["choir", "tax", "health"], "{second:#?}");
-        assert!(second.topics.iter().filter(|t| t.learned).all(|t| t.own <= t.examples) && second.topics.iter().any(|t| t.own > 0), "{:#?}", second.topics);
+        assert_eq!(second.topics.iter().map(|t| t.examples).collect::<Vec<_>>(), first.topics.iter().map(|t| t.examples).collect::<Vec<_>>(), "the same labels");
         let worse = second.compared.iter().find(|(_, was, now)| matches!((was, now), (Some(w), Some(n)) if n < &(w - TIE))).map(|(id, _, _)| id.clone());
         let churn = second.churn.unwrap();
         let expected = match worse {
@@ -451,6 +427,20 @@ mod tests {
         let (a, b) = (table(&dirs, &here), table(&other, &there));
         assert!(a == b, "two devices, two tables");
         assert_eq!(a, table(&dirs, &here), "and again on the same one");
+        // T1 (review of 7 November 2026): the next training, each device with
+        // another table in use (one none, one the first, dated long ago): the
+        // same table again, nothing learned from either table's guesses.
+        let mut older = Table::from_bytes(&a).unwrap();
+        older.meta.trained_at = 0;
+        let again = |dirs: &crate::Dirs, read: &Read, previous: Option<&Table>| {
+            let trained = train(dirs, read, &topics, &said, None, previous, &options, &mut |_| {}, &Cancel::new()).unwrap();
+            let mut table = trained.table.unwrap();
+            (table.meta.trained_at, table.meta.device) = (0, String::new());
+            table.to_bytes()
+        };
+        let (a2, b2) = (again(&dirs, &here, None), again(&other, &there, Some(&older)));
+        assert!(a2 == b2, "a second training, another table in use on each: the same table");
+        assert!(a2 == a, "the same corpus and labels: the same table as the first time");
         let _ = std::fs::remove_dir_all(root);
     }
 

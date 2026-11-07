@@ -866,8 +866,8 @@ Item {
                 }
 
                 // This device's training (docs/spam-filter.md, "Every device trains its own"):
-                // the first one learning, then how long it took, or the guard that turned it
-                // off with the switch to turn it back on; said once, until you put it away.
+                // the first one learning, then how long it took, or the guard that stopped one
+                // too long, with "Try again"; said once, until you put it away. Heat: never said.
                 Panel {
                     id: learnCard
 
@@ -910,9 +910,9 @@ Item {
                             spacing: 8
 
                             Button {
-                                objectName: "learnCardOn"
+                                objectName: "learnCardAgain"
                                 visible: learnCard.said !== null && learnCard.said.guarded
-                                text: page.sioul.text("spam-app-turn-on")
+                                text: page.sioul.text("spam-app-try-again")
                                 onClicked: {
                                     page.sioul.spamCardAway(true)
                                     learnCard.said = null

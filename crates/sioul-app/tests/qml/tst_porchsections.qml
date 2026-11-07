@@ -86,8 +86,8 @@ Item {
         function spamCard() {
             return mock.learn
         }
-        function spamCardAway(turnOn) {
-            mock.learnAway = mock.learnAway.concat([turnOn])
+        function spamCardAway(again) {
+            mock.learnAway = mock.learnAway.concat([again])
             mock.learn = ""
             return ""
         }
@@ -350,18 +350,18 @@ Item {
         }
 
         // This device's training, said once (docs/spam-filter.md, "Every device trains its
-        // own"): the guard that turned it off, with the switch to turn it back on; the first
+        // own"): the guard that stopped one too long, with "Try again"; the first
         // training's time, with "Leave as is" alone; nothing when there is nothing to say.
         function test_the_training_is_said_once_with_its_switch() {
             const card = all(porch, i => i.objectName === "learnCard")[0]
             verify(card !== undefined && !card.visible, "nothing to say: no card")
             mock.learnAway = []
-            mock.learn = JSON.stringify({ text: "Training on this device stopped: it ran past 30 minutes. It is off here now.", guarded: true })
+            mock.learn = JSON.stringify({ text: "Training on this device stopped: it ran past 30 minutes. It tries again once your mail has changed a lot, or when you ask.", guarded: true })
             card.look()
             wait(50)
             verify(card.visible)
-            const on = named(card, "learnCardOn")
-            compare(on.length, 1, "the switch to turn it back on")
+            const on = named(card, "learnCardAgain")
+            compare(on.length, 1, "Try again")
             mouseClick(on[0])
             wait(50)
             compare(mock.learnAway, [true])
@@ -369,7 +369,7 @@ Item {
             mock.learn = JSON.stringify({ text: "Sioul learned from your mail on this device in 5 min.", guarded: false })
             card.look()
             wait(50)
-            verify(card.visible && named(card, "learnCardOn").length === 0, "no switch after a first training")
+            verify(card.visible && named(card, "learnCardAgain").length === 0, "no Try again after a first training")
             card.said = null
             mock.learn = ""
         }

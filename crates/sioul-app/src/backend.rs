@@ -1935,14 +1935,14 @@ pub mod qobject {
 
         /// The Porch's word on this device's training (`spam::card`): the
         /// first one learning, then how long it took, or the guard that
-        /// turned it off; {text, guarded} as JSON, "" for none.
+        /// stopped one too long; {text, guarded} as JSON, "" for none.
         #[qinvokable]
         fn spam_card(self: &Sioul) -> QString;
 
-        /// That card put away, this device's training turned back on first
-        /// with `turn_on`. Returns what went wrong, else "".
+        /// That card put away; with `again` ("Try again"), the guard's mark
+        /// gone first. Returns what went wrong, else "".
         #[qinvokable]
-        fn spam_card_away(self: Pin<&mut Sioul>, turn_on: bool) -> QString;
+        fn spam_card_away(self: Pin<&mut Sioul>, again: bool) -> QString;
 
         /// Mail's topics and their senders' rules (`topics::view`), as JSON.
         #[qinvokable]
@@ -7646,6 +7646,10 @@ impl qobject::Sioul {
         if key.starts_with("mail.") {
             mail::show_mail(&qt, &shared);
         }
+        // "Train here": off stops a training by itself under way here; on, the guard's mark goes (you asked).
+        if key == "spam.train_here" {
+            crate::spam::train_here_turned(load_config().spam.trains_here());
+        }
         // GitHub: started, brought again, or stopped.
         if key.starts_with("github") {
             if load_config().github.enabled {
@@ -7972,8 +7976,8 @@ impl qobject::Sioul {
         QString::from(&crate::spam::card())
     }
 
-    fn spam_card_away(mut self: Pin<&mut Self>, turn_on: bool) -> QString {
-        let said = crate::spam::card_away(turn_on);
+    fn spam_card_away(mut self: Pin<&mut Self>, again: bool) -> QString {
+        let said = crate::spam::card_away(again);
         let status = crate::spam::status();
         self.as_mut().spam_changed(QString::from(&status));
         QString::from(&said)

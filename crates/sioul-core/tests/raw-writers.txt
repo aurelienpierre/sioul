@@ -584,6 +584,10 @@ sioul-core/src/words.rs	keep_first_once	1	std::fs::write(marker, b"")
 sioul-learn/src/auto.rs	save	1	crate::corpus::write_whole(&Run::path(dirs), text.as_bytes())
 sioul-learn/src/auto.rs	save	1	crate::corpus::write_whole(&Notice::path(dirs), text.as_bytes())
 sioul-learn/src/auto.rs	end	1	std::fs::remove_file(Notice::path(dirs))
+sioul-learn/src/auto.rs	save	1	crate::corpus::write_whole(&Guard::path(dirs), text.as_bytes())
+sioul-learn/src/auto.rs	clear	1	std::fs::remove_file(Guard::path(dirs))
+sioul-learn/src/auto.rs	ask_stop	1	std::fs::write(jobs.join(format!("{}.stop", run.job)), b"")
+sioul-learn/src/auto.rs	stop_forgotten	1	std::fs::remove_file(dirs.state.join("jobs").join(format!("{job}.stop")))
 sioul-learn/src/auto.rs	a_job_runs	1	std::fs::OpenOptions::new()
 
 # sioul-learn/src/consent.rs: the spam filter's consent: no item.

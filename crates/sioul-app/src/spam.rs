@@ -139,7 +139,7 @@ pub(crate) struct Status {
     by_itself: bool,
     /// The switch can be changed here: always, each device its own.
     by_itself_here: bool,
-    /// Under the switch: what its last run here did, or that the guard turned it off; "" for nothing yet.
+    /// Under the switch: what its last run here did, or that the guard stopped one too long; "" for nothing yet.
     by_itself_line: String,
     /// The download kept to Wi-Fi or unmetered networks (`[spam] train_network`), this device's own.
     unmetered: bool,
@@ -241,30 +241,57 @@ fn power_of(said: &serde_json::Value) -> sioul_sync::power::Power {
 
 /// The Porch's word on this device's training (`sioul_learn::auto::Notice`),
 /// said once until put away: the first training running, then how long it
-/// took; or the guard that turned it off, with the switch to turn it back
-/// on. {text, guarded}, as JSON; "" when there is nothing to say.
+/// took; or the guard that stopped a training too long, with "Try again"
+/// while its mark stands. Heat is never said. {text, guarded}, as JSON; ""
+/// when there is nothing to say.
 pub(crate) fn card() -> String {
-    use sioul_learn::auto::{Halt, Notice, NoticeKind};
+    use sioul_learn::auto::{Guard, Halt, Notice, NoticeKind};
     let dirs = sioul_learn::Dirs::standard();
     let running = sioul_learn::auto::a_job_runs(&dirs) || training::running();
     let Some(notice) = Notice::shown(&dirs, running) else { return String::new() };
     let text = match notice.kind {
         NoticeKind::FirstRunning => tr().text("spam-app-first-running", None),
         NoticeKind::FirstDone => say("spam-app-first-done", &[("minutes", minutes_of(notice.seconds))]),
-        NoticeKind::Guarded(Halt::Hot) => say("spam-app-guard-hot", &[("when", when(notice.at))]),
-        NoticeKind::Guarded(_) => say("spam-app-guard-long", &[("when", when(notice.at))]),
+        NoticeKind::Guarded(Halt::Long) => say("spam-app-guard-long", &[("when", when(notice.at))]),
+        NoticeKind::Guarded(_) => return String::new(),
     };
-    let guarded = matches!(notice.kind, NoticeKind::Guarded(_)) && !crate::backend::load_config().spam.trains_here();
+    let guarded = matches!(notice.kind, NoticeKind::Guarded(_)) && Guard::load(&dirs).is_some();
     serde_json::json!({ "text": text, "guarded": guarded }).to_string()
 }
 
-/// The Porch's card put away; with `turn_on`, this device's training turned
-/// back on first (the switch the guard turned off). What went wrong, else "".
-pub(crate) fn card_away(turn_on: bool) -> String {
-    if turn_on && let Err(e) = sioul_core::config::set_value(&crate::backend::config_path(), "spam.train_here", &sioul_core::config::SettingValue::Bool(true)) {
-        return e;
+/// The Porch's card put away; with `again` ("Try again"), the guard's mark
+/// gone first: you asked, the next chance trains (`auto::Guard::clear`).
+/// What went wrong, else "".
+pub(crate) fn card_away(again: bool) -> String {
+    let dirs = sioul_learn::Dirs::standard();
+    if again {
+        sioul_learn::auto::Guard::clear(&dirs);
+        crate::devices::learns_now();
     }
-    sioul_learn::auto::Notice::put_away(&sioul_learn::Dirs::standard()).err().unwrap_or_default()
+    sioul_learn::auto::Notice::put_away(&dirs).err().unwrap_or_default()
+}
+
+/// What this device's entry says of the tables (`sioul_sync::share::LEARNS_HERE`
+/// while it learns: its switch on, a table it made itself in use, the guard's
+/// mark not standing; else `KEEPS_TABLES`, and the tables travel to it).
+pub(crate) fn learns_level() -> u32 {
+    let config = crate::backend::load_config();
+    let learns = sioul_learn::auto::learns(&sioul_learn::Dirs::standard(), &sioul_core::topics::judging::table_path(), &config.spam, &sioul_sync::lease::host_name());
+    if learns { sioul_sync::share::LEARNS_HERE } else { sioul_sync::share::KEEPS_TABLES }
+}
+
+/// "Train here" changed (`backend::change_setting`): turned off, a training
+/// by itself under way here stops (a computer's job, a phone's background
+/// step: `auto::ask_stop`); turned on, the guard's mark goes (you asked).
+/// What the entry tells the others is said again either way.
+pub(crate) fn train_here_turned(on: bool) {
+    let dirs = sioul_learn::Dirs::standard();
+    if on {
+        sioul_learn::auto::Guard::clear(&dirs);
+    } else {
+        sioul_learn::auto::ask_stop(&dirs);
+    }
+    crate::devices::learns_now();
 }
 
 /// A duration in whole minutes, one at least: "5".
@@ -422,6 +449,16 @@ mod training {
             status.ended = run.ended.clone();
         }
         let dirs = Dirs::standard();
+        // A training by itself under way apart (a computer's job, a phone's
+        // background run): running too, with Stop, which reaches it by its
+        // stop file (`stop`, `auto::ask_stop`).
+        if !status.running
+            && let Some(run) = auto::Run::load(&dirs).filter(|r| r.ended.is_none() && (auto::a_job_runs(&dirs) || PHONE.load(Ordering::SeqCst)))
+        {
+            status.running = true;
+            status.stopping = auto::stop_asked(&dirs, &run.job);
+            status.progress = say("spam-app-by-itself-running", &[("when", when(run.started))]);
+        }
         let config = load_config();
         (status.by_itself, status.unmetered) = (config.spam.trains_here(), config.spam.unmetered_only());
         (status.by_itself_here, status.by_itself_line) = (true, by_itself_line(&dirs, &config.spam));
@@ -451,6 +488,8 @@ mod training {
             if run.cancel.is_some() {
                 return tr().text("spam-app-busy", None);
             }
+            // You asked: the guard's mark, if any, goes (`auto::Guard`).
+            auto::Guard::clear(&Dirs::standard());
             *run = Run { cancel: Some(cancel.clone()), stopping: false, stage: None, progress: tr().text("spam-app-starting", None), fraction: -1.0, ended: String::new(), said: None };
         }
         let started = std::thread::Builder::new().name("spam-training".into()).spawn(move || {
@@ -477,7 +516,8 @@ mod training {
             }
             let status = super::status();
             let _ = qt.queue(move |mut sioul| sioul.as_mut().spam_changed(QString::from(&status)));
-            // A new table: the Porch reads it at once.
+            // A new table: the Porch reads it at once, and the entry says this device learns.
+            crate::devices::learns_now();
             crate::backend::show(&qt, &shared);
         });
         match started {
@@ -492,9 +532,20 @@ mod training {
     pub(super) fn stop(qt: QtThread) {
         {
             let mut run = RUN.lock().unwrap_or_else(PoisonError::into_inner);
-            let Some(cancel) = run.cancel.as_ref() else { return };
-            cancel.cancel();
-            run.stopping = true;
+            match run.cancel.as_ref() {
+                Some(cancel) => {
+                    cancel.cancel();
+                    run.stopping = true;
+                }
+                // None in this process: the training by itself under way, a
+                // phone's background step's or a computer's job, asked to stop.
+                None => {
+                    drop(run);
+                    if !auto::ask_stop(&Dirs::standard()) {
+                        return;
+                    }
+                }
+            }
         }
         let status = super::status();
         let _ = qt.queue(move |mut sioul| sioul.as_mut().spam_changed(QString::from(&status)));
@@ -519,6 +570,8 @@ mod training {
             auto::Decision::Train { fetch } => start_apart(fetch),
             auto::Decision::Wait(_) => false,
         };
+        // What the entry tells the others, said again when it changed (a job's table, its guard).
+        crate::devices::learns_now();
         // While one runs, or just after it ended: the settings say it.
         let lately = facts.last_run.as_ref().is_some_and(|run| run.ended.is_none_or(|end| now - end < 120));
         if started || lately {
@@ -543,15 +596,13 @@ mod training {
         command.status().is_ok_and(|status| status.success())
     }
 
-    /// Under the switch: the guard's word while it holds the switch off, else
-    /// what the last run by itself here did; "" before any.
+    /// Under the switch: the guard's word while its mark stands, else what
+    /// the last run by itself here did; "" before any.
     fn by_itself_line(dirs: &Dirs, spam: &sioul_core::config::SpamSettings) -> String {
-        if !spam.trains_here()
-            && let Some(notice) = auto::Notice::load(dirs)
-            && let auto::NoticeKind::Guarded(halt) = notice.kind
+        if spam.trains_here()
+            && let Some(guard) = auto::Guard::load(dirs)
         {
-            let id = if halt == auto::Halt::Hot { "spam-app-guard-hot" } else { "spam-app-guard-long" };
-            return say(id, &[("when", when(notice.at))]);
+            return say("spam-app-guard-long", &[("when", when(guard.at))]);
         }
         let Some(run) = auto::Run::load(dirs) else { return String::new() };
         let end = run.ended.unwrap_or(run.started);
@@ -561,6 +612,7 @@ mod training {
             None if just || auto::a_job_runs(dirs) || PHONE.load(Ordering::SeqCst) => ("spam-app-by-itself-running", run.started),
             Some(auto::Outcome::Replaced) => ("spam-app-by-itself-replaced", end),
             Some(auto::Outcome::Kept) => ("spam-app-by-itself-kept", end),
+            Some(auto::Outcome::Waited) => ("spam-app-by-itself-waited", end),
             Some(auto::Outcome::Stopped) => ("spam-app-by-itself-stopped", end),
             Some(auto::Outcome::Failed) | None => ("spam-app-by-itself-failed", end),
         };
@@ -589,6 +641,8 @@ mod training {
         }
         let config = load_config();
         let (dirs, now) = (Dirs::standard(), jiff::Timestamp::now().as_second());
+        // What the entry tells the others, said again when it changed (a table that came, the switch).
+        crate::devices::learns_now();
         let focus = sioul_core::timelog::running().is_some();
         let facts = auto::facts(&dirs, &config.spam, false, focus, now, super::phone_power);
         if !matches!(auto::decide(&facts, now), auto::Decision::Train { .. }) {
@@ -601,23 +655,30 @@ mod training {
             crate::steps::java("learn-awake", "{\"on\":true}");
             let job = format!("phone-{now}");
             let _ = auto::Run { started: now, job: job.clone(), fetched: true, ended: None, outcome: None }.save(&dirs);
-            let outcome = run_here(&config, &dirs, now, super::phone_power);
+            let outcome = run_here(&config, &dirs, &job, now, super::phone_power);
             let _ = auto::Run::finish(&dirs, &job, outcome, jiff::Timestamp::now().as_second());
+            auto::stop_forgotten(&dirs, &job);
             crate::steps::java("learn-awake", "{\"on\":false}");
             PHONE.store(false, Ordering::SeqCst);
+            // What the entry tells the others: learning now, or no longer (the guard).
+            crate::devices::learns_now();
         });
         if started.is_err() {
             PHONE.store(false, Ordering::SeqCst);
         }
     }
 
-    /// One training by itself in this process (a phone's): the first one
-    /// said (`auto::begin`), the power and the guard watched every half
-    /// minute (`auto::watch_supply`: unplugged, saving power, its training
-    /// past 30 minutes, its battery above 40 °C), the spam filter on half the
-    /// cores, then the topics (`topics::model::train_here`, one thread,
-    /// deterministic); the guard's word kept (`auto::guard`); how it ended.
-    pub(super) fn run_here(config: &sioul_core::config::Config, dirs: &Dirs, now: i64, power: fn() -> sioul_sync::power::Power) -> auto::Outcome {
+    /// One training by itself in this process (a phone's), as the job `job`:
+    /// the first one said (`auto::begin`), the power and the guard watched
+    /// every half minute (`auto::watch_supply`: unplugged, saving power, its
+    /// training past 30 minutes, its battery above 40 °C), its stop file
+    /// every few tenths of a second (`auto::stop_asked`: Stop in the window,
+    /// "Train here" turned off), the spam filter on half the cores, then the
+    /// topics (`topics::model::train_here`, one thread, deterministic); its
+    /// training waiting, once downloaded, while the guard's mark stands and
+    /// the mail did not change a lot (`auto::waits_for_mail`); the guard's
+    /// word kept (`auto::guard`); how it ended.
+    pub(super) fn run_here(config: &sioul_core::config::Config, dirs: &Dirs, job: &str, now: i64, power: fn() -> sioul_sync::power::Power) -> auto::Outcome {
         let started = Instant::now();
         let first = auto::trainer(dirs, &sioul_sync::lease::host_name()) == auto::Trainer::Nobody;
         auto::begin(dirs, first, now);
@@ -625,8 +686,11 @@ mod training {
         let done = Arc::new(AtomicBool::new(false));
         let learning: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
         let halted: Arc<Mutex<Option<auto::Halt>>> = Arc::new(Mutex::new(None));
+        let waited = Arc::new(AtomicBool::new(false));
+        auto::stop_forgotten(dirs, job);
         let watcher = {
             let (cancel, done, learning, halted) = (cancel.clone(), Arc::clone(&done), Arc::clone(&learning), Arc::clone(&halted));
+            let (asked, stop_dirs, job) = (cancel.clone(), dirs.clone(), job.to_string());
             std::thread::Builder::new().name("spam-supply".into()).spawn(move || {
                 auto::watch_supply(
                     move || {
@@ -637,7 +701,13 @@ mod training {
                         *halted.lock().unwrap_or_else(PoisonError::into_inner) = Some(halt);
                         cancel.cancel();
                     },
-                    || done.load(Ordering::Relaxed),
+                    || {
+                        // Asked to stop (`auto::ask_stop`): looked at whenever the watch looks at its end.
+                        if !asked.cancelled() && auto::stop_asked(&stop_dirs, &job) {
+                            asked.cancel();
+                        }
+                        done.load(Ordering::Relaxed)
+                    },
                     || learning.lock().unwrap_or_else(PoisonError::into_inner).map(|at| at.elapsed()),
                     auto::SUPPLY_EVERY,
                 );
@@ -645,7 +715,13 @@ mod training {
         };
         let mut progress = |p: &Progress| {
             if !matches!(p.stage, Stage::Corpus | Stage::Verify) {
-                learning.lock().unwrap_or_else(PoisonError::into_inner).get_or_insert_with(Instant::now);
+                let mut learning = learning.lock().unwrap_or_else(PoisonError::into_inner);
+                // The download done, the training begins: unless the guard's mark stands and the mail did not change a lot.
+                if learning.is_none() && auto::waits_for_mail(dirs) {
+                    waited.store(true, Ordering::Relaxed);
+                    cancel.cancel();
+                }
+                learning.get_or_insert_with(Instant::now);
             }
         };
         let here = |a: &sioul_core::config::Account| load_config().every_account().any(|b| b.id == a.id && b.syncs());
@@ -662,10 +738,14 @@ mod training {
         }
         let at = jiff::Timestamp::now().as_second();
         let halt = *halted.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(halt) = halt.filter(|h| h.guards()) {
-            let _ = auto::guard(dirs, &crate::backend::config_path(), halt, at);
+        // The guard: this device no longer counts as learning, said once; heat says nothing.
+        if let Some(halt) = halt {
+            let _ = auto::guard(dirs, halt, at);
         }
         auto::end(dirs, replaced, started.elapsed().as_secs(), at);
+        if waited.load(Ordering::Relaxed) {
+            return auto::Outcome::Waited;
+        }
         match (&result, replaced) {
             (Ok(_), true) => auto::Outcome::Replaced,
             (Ok(_), false) => auto::Outcome::Kept,

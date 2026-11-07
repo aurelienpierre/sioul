@@ -450,12 +450,75 @@ struct AccountState {
     /// The corpus's format here (`FORMAT`); 0 (unsaid): 1, an older Sioul's.
     #[serde(default, skip_serializing_if = "is_zero")]
     format: u32,
+    /// Cut headers whose fields a server refused for now, or whose fetch
+    /// broke, by folder (F6, review of 7 November 2026): asked again at the
+    /// next downloads, `FIELDS_TRIES` times at most, before they count as gone.
+    #[serde(default, rename = "fields_wanted", skip_serializing_if = "BTreeMap::is_empty")]
+    fields_wanted: BTreeMap<String, FieldsWanted>,
     #[serde(default, rename = "folder")]
     folders: BTreeMap<String, FolderState>,
 }
 
 fn is_zero<T: Default + PartialEq>(n: &T) -> bool {
     *n == T::default()
+}
+
+/// A folder's cut headers whose fields are still wanted (`AccountState::fields_wanted`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct FieldsWanted {
+    uidvalidity: u32,
+    /// Their UIDs, as ranges ("1:500,502").
+    uids: String,
+    /// Downloads that tried and were refused, or broke.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    tries: u32,
+}
+
+/// The downloads that ask again for a cut header's fields a server refused
+/// or a broken stream left out, before they count as gone ("" kept).
+const FIELDS_TRIES: u32 = 3;
+
+/// What a folder's server said when asked for its cut headers' fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FieldsAsked {
+    /// The folder is no longer listed: gone, asked no more.
+    Gone,
+    /// It was renumbered (another UIDVALIDITY): gone, asked no more.
+    Renumbered,
+    /// A passing refusal (EXAMINE or FETCH refused), or a broken stream:
+    /// what came, and nothing said of the rest.
+    Refused(HashMap<u32, String>),
+    /// Answered whole: what came; a UID it did not give, it no longer has.
+    Answered(HashMap<u32, String>),
+}
+
+/// The lines to keep of `wanted` after the server said `asked`; what is
+/// still wanted stays in `wanted` (none: the folder done). A refusal counts
+/// one try; after `FIELDS_TRIES`, the rest count as gone.
+fn settle_fields(folder: &str, wanted: &mut FieldsWanted, asked: FieldsAsked) -> Vec<FieldsLine> {
+    let uids = read_ranges(&wanted.uids);
+    let line = |uid: u32, fields: String| FieldsLine { folder: folder.to_string(), uidvalidity: wanted.uidvalidity, uid, fields };
+    let (found, whole) = match asked {
+        FieldsAsked::Gone | FieldsAsked::Renumbered => (HashMap::new(), true),
+        FieldsAsked::Answered(found) => (found, true),
+        FieldsAsked::Refused(found) => {
+            wanted.tries += 1;
+            (found, wanted.tries >= FIELDS_TRIES)
+        }
+    };
+    let mut lines = Vec::new();
+    let mut left = BTreeSet::new();
+    for uid in uids {
+        match found.get(&uid) {
+            Some(fields) => lines.push(line(uid, fields.clone())),
+            None if whole => lines.push(line(uid, String::new())),
+            None => {
+                left.insert(uid);
+            }
+        }
+    }
+    wanted.uids = ranges(&left);
+    lines
 }
 
 /// One folder's download, by its server name.
@@ -721,65 +784,108 @@ fn keep_fields(state: &mut AccountState, state_path: &Path, dir: &Path, lines: &
     state.save(state_path)
 }
 
-/// Format 2's migration of an account's records (see the module): the
-/// fields of each record whose header block was cut, fetched alone by its
-/// UID (a header-only fetch, nothing changed on the server), folder after
-/// folder, appended as they come; a folder gone or renumbered, its records
-/// keep their cut header ("" kept, asked no more). Once nothing is wanted,
-/// the account's corpus is in format 2.
+/// Whether an account's download has cut headers' fields to ask for
+/// (`fill_fields`): format 2's migration not done yet, or fields still wanted.
+fn fields_due(dir: &Path) -> bool {
+    let state = AccountState::load(&dir.join("state.toml"));
+    state.format < FORMAT || !state.fields_wanted.is_empty()
+}
+
+/// Cut headers' fields kept wanted (`AccountState::fields_wanted`), by folder.
+fn want_fields(state: &mut AccountState, folder: &str, validity: u32, uids: impl IntoIterator<Item = u32>) {
+    let wanted = state.fields_wanted.entry(folder.to_string()).or_default();
+    if wanted.uidvalidity != validity {
+        *wanted = FieldsWanted { uidvalidity: validity, ..FieldsWanted::default() };
+    }
+    let mut all = read_ranges(&wanted.uids);
+    all.extend(uids);
+    wanted.uids = ranges(&all);
+    if all.is_empty() {
+        state.fields_wanted.remove(folder);
+    }
+}
+
+/// Format 2's migration of an account's records (see the module), and the
+/// fields still wanted since: the fields of each record whose header block
+/// was cut, fetched alone by its UID (a header-only fetch, nothing changed
+/// on the server), folder after folder, appended as they come. The
+/// migration reads the records once to find them (`wanted_fields`); after
+/// it, the account's state keeps those its server refused for now, or whose
+/// fetch broke (`AccountState::fields_wanted`), and so do downloads
+/// (`keep`), so that later downloads ask again without reading the corpus,
+/// `FIELDS_TRIES` times at most. A folder gone or renumbered, a UID its
+/// server answered without: "" kept, asked no more (`settle_fields`).
 async fn fill_fields(session: &mut Imap, dir: &Path, cancel: &Cancel) -> Result<(), Stop> {
     let state_path = dir.join("state.toml");
     let mut state = AccountState::load(&state_path);
-    if state.format >= FORMAT {
+    if state.format < FORMAT {
+        for ((folder, validity), uids) in wanted_fields(dir, &state)? {
+            want_fields(&mut state, &folder, validity, uids);
+        }
+        state.format = FORMAT;
+        state.save(&state_path)?;
+    }
+    if state.fields_wanted.is_empty() {
         return Ok(());
     }
-    let wanted = wanted_fields(dir, &state)?;
-    if !wanted.is_empty() {
-        let listed: HashSet<String> = sioul_sync::mailbox::list(session).await?.into_iter().map(|f| f.name).collect();
-        for ((folder, validity), uids) in wanted {
-            if cancel.cancelled() {
-                return Ok(());
-            }
-            let examined = if listed.contains(&folder) { imap::within(COMMAND, session.examine(&folder)).await?.ok() } else { None };
-            let found = match examined {
-                Some(open) if open.uid_validity.unwrap_or(0) == validity => {
-                    let mut found = HashMap::new();
-                    for group in uids.chunks(BATCH) {
-                        found.extend(fetch_fields(session, group).await?);
-                    }
-                    found
-                }
-                _ => HashMap::new(),
-            };
-            let lines: Vec<FieldsLine> = uids.iter().map(|&uid| FieldsLine { folder: folder.clone(), uidvalidity: validity, uid, fields: found.get(&uid).cloned().unwrap_or_default() }).collect();
-            keep_fields(&mut state, &state_path, dir, &lines)?;
+    let listed: HashSet<String> = sioul_sync::mailbox::list(session).await?.into_iter().map(|f| f.name).collect();
+    for folder in state.fields_wanted.keys().cloned().collect::<Vec<_>>() {
+        if cancel.cancelled() {
+            return Ok(());
         }
+        let Some(mut wanted) = state.fields_wanted.get(&folder).cloned() else { continue };
+        let asked = if !listed.contains(&folder) {
+            FieldsAsked::Gone
+        } else {
+            match imap::within(COMMAND, session.examine(&folder)).await? {
+                Ok(open) if open.uid_validity.unwrap_or(0) == wanted.uidvalidity => {
+                    let uids: Vec<u32> = read_ranges(&wanted.uids).into_iter().collect();
+                    let (mut found, mut whole) = (HashMap::new(), true);
+                    for group in uids.chunks(BATCH) {
+                        let (got, answered) = fetch_fields(session, group).await?;
+                        found.extend(got);
+                        whole &= answered;
+                    }
+                    if whole { FieldsAsked::Answered(found) } else { FieldsAsked::Refused(found) }
+                }
+                Ok(_) => FieldsAsked::Renumbered,
+                Err(_) => FieldsAsked::Refused(HashMap::new()),
+            }
+        };
+        let lines = settle_fields(&folder, &mut wanted, asked);
+        if wanted.uids.is_empty() {
+            state.fields_wanted.remove(&folder);
+        } else {
+            state.fields_wanted.insert(folder.clone(), wanted);
+        }
+        keep_fields(&mut state, &state_path, dir, &lines)?;
+        state.save(&state_path)?;
     }
-    state.format = FORMAT;
-    state.save(&state_path)?;
     Ok(())
 }
 
 /// The topic fields of messages of the folder open in `session`, by UID
 /// (`TOPIC_FIELDS`, BODY.PEEK); a UID the server does not give, absent.
-async fn fetch_fields(session: &mut Imap, uids: &[u32]) -> Result<HashMap<u32, String>, SyncError> {
+/// Whether it answered whole: false when it refused (a NO, a passing
+/// refusal) or its stream broke, so that the rest is asked again later.
+async fn fetch_fields(session: &mut Imap, uids: &[u32]) -> Result<(HashMap<u32, String>, bool), SyncError> {
     let set = uids.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
     let query = format!("(UID BODY.PEEK[HEADER.FIELDS ({TOPIC_FIELDS})])");
     let mut found = HashMap::new();
     let mut stream = match imap::within(FETCH, session.uid_fetch(&set, &query)).await?.map_err(imap::server) {
         Ok(stream) => stream,
-        // Refused: nothing known of them, kept cut.
-        Err(SyncError::Server(_)) => return Ok(found),
+        // Refused: nothing known of them, asked again later.
+        Err(SyncError::Server(_)) => return Ok((found, false)),
         Err(e) => return Err(e),
     };
     while let Some(fetch) = imap::within(FETCH, stream.next()).await? {
-        let Ok(fetch) = fetch.map_err(imap::server) else { break };
+        let Ok(fetch) = fetch.map_err(imap::server) else { return Ok((found, false)) };
         // HEADER.FIELDS is a header section, as imap-proto reads it.
         if let (Some(uid), Some(bytes)) = (fetch.uid, fetch.header()) {
             found.insert(uid, header_text(bytes).0);
         }
     }
-    Ok(found)
+    Ok((found, true))
 }
 
 /// An account's checks kept apart from its records, by (folder,
@@ -1324,7 +1430,7 @@ async fn update_account(
         return Ok(());
     }
     // Format 2's migration, once: a cut header's fields, for what was kept before.
-    if download && AccountState::load(&dir.join("state.toml")).format < FORMAT {
+    if download && fields_due(&dir) {
         let mut session = imap::open(&server, password).await?;
         let result = fill_fields(&mut session, &dir, cancel).await;
         let _ = session.logout().await;
@@ -1451,6 +1557,11 @@ fn keep(state: &mut AccountState, state_path: &Path, dir: &Path, folder: &str, r
     let mut skipped = read_ranges(&entry.skipped);
     skipped.extend(unreadable);
     entry.skipped = ranges(&skipped);
+    // A cut header whose fields did not come with it: asked again (`fill_fields`).
+    let cut: Vec<(u32, u32)> = records.iter().filter(|r| r.header_cut() && r.fields.is_none()).map(|r| (r.uidvalidity, r.uid)).collect();
+    if let Some(&(validity, _)) = cut.first() {
+        want_fields(state, folder, validity, cut.into_iter().map(|(_, uid)| uid));
+    }
     update.added += records.len() as u64;
     state.save(state_path)
 }
@@ -1953,7 +2064,8 @@ async fn fetch_batch(session: &mut Imap, account: &Account, folder: &Folder, val
         fetch_texts(session, &wanted, HTML_BYTES).await?.into_iter().map(|(uid, (at, bytes, leaf))| (uid, Text { at, text: cut(decode_text(&bytes, &leaf, true), HTML_BYTES as usize) })).collect();
     // A header block cut: the fields topics read, fetched alone (format 2).
     let cut_ones: Vec<u32> = heads.iter().filter(|h| h.cut).map(|h| h.uid).collect();
-    let fields = if cut_ones.is_empty() { HashMap::new() } else { fetch_fields(session, &cut_ones).await? };
+    // Refused or broken: those left out are kept wanted and asked again (`keep`, `fill_fields`).
+    let fields = if cut_ones.is_empty() { HashMap::new() } else { fetch_fields(session, &cut_ones).await?.0 };
     let fetched = now();
     let records = heads
         .into_iter()
@@ -2601,6 +2713,50 @@ mod tests {
         // An older Sioul reads a format 2 record, its fields passed over; this one reads an older record.
         let text = serde_json::to_string(&read[&2]).unwrap();
         assert!(text.contains("\"fields\"") && !serde_json::to_string(&read[&1]).unwrap().contains("\"fields\""));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// F6 (review of 7 November 2026): a server's passing refusal of a cut
+    /// header's fields is asked again at the next downloads, `FIELDS_TRIES`
+    /// times, before they count as gone; what came is kept at once; a folder
+    /// gone or renumbered, or a UID its server answered without, is gone at
+    /// once. A record kept without its fields is wanted from its download on.
+    #[test]
+    fn a_refused_cut_header_is_asked_again_a_few_times() {
+        let wanted = || FieldsWanted { uidvalidity: 7, uids: ranges(&BTreeSet::from([2, 3, 4])), tries: 0 };
+        let fields = |uid: u32| (uid, format!("Subject: {uid}\r\n\r\n"));
+        let said = |lines: &[FieldsLine]| lines.iter().map(|l| (l.uid, l.fields.is_empty())).collect::<Vec<_>>();
+        // Refused, then a broken stream that gave one: kept wanted, one try each.
+        let mut w = wanted();
+        assert!(settle_fields("INBOX", &mut w, FieldsAsked::Refused(HashMap::new())).is_empty());
+        assert_eq!((w.tries, read_ranges(&w.uids).len()), (1, 3));
+        assert_eq!(said(&settle_fields("INBOX", &mut w, FieldsAsked::Refused(HashMap::from([fields(3)])))), [(3, false)]);
+        assert_eq!((w.tries, read_ranges(&w.uids)), (2, BTreeSet::from([2, 4])));
+        // The third refusal: the rest counts as gone.
+        assert_eq!(said(&settle_fields("INBOX", &mut w, FieldsAsked::Refused(HashMap::new()))), [(2, true), (4, true)]);
+        assert!(w.uids.is_empty());
+        // Answered whole: a UID it did not give, it no longer has.
+        let mut w = wanted();
+        assert_eq!(said(&settle_fields("INBOX", &mut w, FieldsAsked::Answered(HashMap::from([fields(2)])))), [(2, false), (3, true), (4, true)]);
+        for asked in [FieldsAsked::Gone, FieldsAsked::Renumbered] {
+            let mut w = wanted();
+            assert_eq!(said(&settle_fields("INBOX", &mut w, asked)), [(2, true), (3, true), (4, true)]);
+        }
+        // Kept by a download without its fields (refused then): wanted, without reading the corpus again.
+        let dir = scratch("fields-wanted");
+        let dirs = Dirs::under(&dir);
+        let relays = "Received: from relay.example.net by mx.example.org; Fri, 6 Nov 2026 10:00:00 +0000\r\n".repeat(420);
+        let cut = relays[..relays[..HEADER_BYTES as usize].rfind('\n').unwrap() + 1].to_string();
+        store(&dirs, &[record(1)]).unwrap();
+        let account = dirs.corpus().join("home");
+        let state_path = account.join("state.toml");
+        let mut state = AccountState::load(&state_path);
+        state.format = FORMAT;
+        let long = Record { uid: 9, header: cut, ..record(9) };
+        keep(&mut state, &state_path, &account, "INBOX", &[long], &[], &mut Update::default()).unwrap();
+        let state = AccountState::load(&state_path);
+        assert_eq!(state.fields_wanted.get("INBOX").map(|w| (w.uidvalidity, read_ranges(&w.uids))), Some((7, BTreeSet::from([9]))));
+        assert!(fields_due(&account), "the next download asks again");
         let _ = std::fs::remove_dir_all(dir);
     }
 

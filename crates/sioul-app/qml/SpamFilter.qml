@@ -153,7 +153,7 @@ ColumnLayout {
     }
 
     // Training here by itself, once a week, charging and idle: this device's
-    // own switch; under it, what its last run did, or that the guard turned it off.
+    // own switch; under it, what its last run did, or that the guard stopped one too long.
     RowLayout {
         visible: filter.shown.trains
         Layout.fillWidth: true

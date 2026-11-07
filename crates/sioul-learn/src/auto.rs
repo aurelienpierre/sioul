@@ -16,10 +16,18 @@
 //! device is unplugged or starts saving power, to try again later.
 //!
 //! **The guard** ([`watch_supply`]): a training that runs past 30 minutes
-//! (the download aside, which goes on where it stopped), or with the battery
-//! above 40 °C, stops, and the device's training is turned off ([`guard`]):
-//! the Porch says so once ([`Notice`]), with the switch to turn it back on.
-//! A device too slow for it never needs a check beforehand.
+//! (the download aside, which goes on where it stopped) stops, and this
+//! device no longer counts as learning ([`guard`], [`Guard`]): it reads the
+//! tables of the devices that learn, as a device that never trained does,
+//! and the Porch says so once ([`Notice`]). Its switch stays on: it tries
+//! again only once its mail has changed a lot (a quarter more or less in its
+//! corpus, [`changed_a_lot`], looked at by its weekly download), or when you
+//! ask (Train now, or the Porch's "Try again"). A device too slow for it
+//! never needs a check beforehand: a phone of 2025 trains about 12,000
+//! messages in 30 minutes.
+//!
+//! **Heat** never turns training off: above 40 °C the run does not start, or
+//! stops for this time, and tries again at the next chance. Nothing is said.
 //!
 //! **The first training** on a device with no table says once that it is
 //! learning, then how long it took ([`Notice`]).
@@ -40,12 +48,13 @@ use std::time::{Duration, Instant};
 /// The least time between two trainings, by hand or by itself.
 pub const WEEK: i64 = 7 * 86_400;
 /// A training running longer than this (its download aside) stops, and the
-/// device's training is turned off (`guard`): measured, 67.5 seconds on a
-/// computer and 4.5 minutes on a slow phone (docs/research.md).
+/// device no longer counts as learning (`guard`): measured, 67.5 seconds on a
+/// computer and 4.5 minutes on a slow phone for 3,457 messages
+/// (docs/research.md), about 12,000 messages on such a phone in this time.
 pub const LONGEST: Duration = Duration::from_secs(30 * 60);
 /// A battery warmer than this, in tenths of a degree Celsius, as Android and
 /// Linux's power supplies say it: no training starts, and one running stops
-/// and turns the device's training off.
+/// for this time (`Halt::Hot`), to try again at the next chance.
 pub const HOT_TENTHS: i32 = 400;
 /// After a run by itself stopped (unplugged, saving power): the soonest it tries again.
 pub const AFTER_STOP: i64 = 15 * 60;
@@ -77,6 +86,9 @@ pub enum Outcome {
     Stopped,
     /// Failed: too few messages, the disk, an error.
     Failed,
+    /// Downloaded, then waited: the guard stopped an earlier training here,
+    /// and the mail has not changed a lot since (`Guard`).
+    Waited,
 }
 
 /// The last run by itself, as `auto.toml` keeps it.
@@ -133,6 +145,8 @@ pub struct Facts {
     pub outdated: bool,
     /// The last run by itself.
     pub last_run: Option<Run>,
+    /// The guard stopped a training here (`Guard`): read only once nothing else holds a training back.
+    pub guard: Option<Guard>,
     /// A training runs: the window's, or a job's (`a_job_runs`).
     pub running: bool,
     /// A focus session runs.
@@ -164,6 +178,9 @@ pub enum Wait {
     Hot,
     /// A metered network, the download kept to unmetered ones.
     Metered,
+    /// The guard stopped a training here, and its weekly download since
+    /// found the mail not changed a lot (`Guard`).
+    Guarded,
 }
 
 /// What to do now.
@@ -188,6 +205,12 @@ pub fn decide(f: &Facts, now: i64) -> Decision {
     }
     if !f.outdated && f.last_trained.is_some_and(|at| now - at < WEEK) {
         return wait(Wait::Recent);
+    }
+    // Guarded: one download a week, its training only once the mail changed a lot (`waits_for_mail`).
+    if let Some(guard) = &f.guard
+        && f.last_run.as_ref().is_some_and(|run| run.ended.unwrap_or(run.started) >= guard.at && now - run.started < WEEK)
+    {
+        return wait(Wait::Guarded);
     }
     // A run by itself that ended without a training since (stopped, failed, vanished): not again too soon.
     if let Some(run) = &f.last_run
@@ -236,6 +259,7 @@ pub fn facts(dirs: &Dirs, spam: &sioul_core::config::SpamSettings, window_trains
         last_trained: crate::train::last(dirs).map(|s| s.trained_at).filter(|at| *at > 0),
         outdated: crate::train::last(dirs).is_some_and(|s| s.labels.rules < crate::labels::RULES),
         last_run: Run::load(dirs),
+        guard: Guard::load(dirs),
         running: window_trains || a_job_runs(dirs),
         focus: Some(focus),
         power: Power::default(),
@@ -263,17 +287,86 @@ pub fn trainer(dirs: &Dirs, here: &str) -> Trainer {
 pub enum Halt {
     /// Unplugged, saving power, or twice unable to tell: it tries again later.
     Supply,
-    /// Its training ran past `LONGEST`: the device's training turns off.
+    /// Its training ran past `LONGEST`: the device no longer counts as learning (`guard`).
     Long,
-    /// Its battery above `HOT_TENTHS`: the device's training turns off.
+    /// Its battery above `HOT_TENTHS`: stopped for this time, tried again at
+    /// the next chance, nothing said.
     Hot,
 }
 
 impl Halt {
-    /// The guard's: the device's training turns off (`guard`).
+    /// The guard's (`guard`): only a training too long. Heat never is.
     pub fn guards(self) -> bool {
-        matches!(self, Halt::Long | Halt::Hot)
+        matches!(self, Halt::Long)
     }
+}
+
+/// The guard's mark (`guarded.toml` beside the corpus, this device's own):
+/// a training here ran past `LONGEST`, when, and how many messages the
+/// corpus held then. While it stands, this device does not count as learning
+/// (`learns`): it reads the others' tables. Its weekly download goes on; its
+/// training comes back once the mail changed a lot (`changed_a_lot`), or
+/// when you ask (`Guard::clear`: Train now, the Porch's "Try again", the
+/// switch turned on).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Guard {
+    pub at: i64,
+    pub messages: u64,
+}
+
+impl Guard {
+    fn path(dirs: &Dirs) -> PathBuf {
+        dirs.state.join("guarded.toml")
+    }
+
+    /// The mark, if the guard stopped a training here.
+    pub fn load(dirs: &Dirs) -> Option<Guard> {
+        toml::from_str(&std::fs::read_to_string(Guard::path(dirs)).ok()?).ok()
+    }
+
+    /// Kept, in place of the one before.
+    pub fn save(&self, dirs: &Dirs) -> Result<(), String> {
+        std::fs::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
+        let text = toml::to_string(self).map_err(|e| e.to_string())?;
+        crate::corpus::write_whole(&Guard::path(dirs), text.as_bytes()).map_err(|e| e.to_string())
+    }
+
+    /// Gone: you asked, or the mail changed a lot. The training comes back.
+    pub fn clear(dirs: &Dirs) {
+        let _ = std::fs::remove_file(Guard::path(dirs));
+    }
+}
+
+/// The messages the corpus holds (every folder, every UIDVALIDITY): the
+/// measure of "its mail" for the guard (`changed_a_lot`).
+pub fn messages(dirs: &Dirs) -> u64 {
+    crate::corpus::status(dirs).accounts.iter().flat_map(|a| a.folders.iter()).map(|f| f.records).sum()
+}
+
+/// A quarter more, or less, than `then`: mail changed a lot.
+pub fn changed_a_lot(then: u64, now: u64) -> bool {
+    now.abs_diff(then).saturating_mul(4) >= then.max(1)
+}
+
+/// At the start of a run by itself's training, its download done: whether
+/// it waits, the guard standing and the mail not changed a lot since
+/// (`Outcome::Waited`). Changed a lot: the mark goes, and it trains.
+pub fn waits_for_mail(dirs: &Dirs) -> bool {
+    let Some(guard) = Guard::load(dirs) else { return false };
+    if changed_a_lot(guard.messages, messages(dirs)) {
+        Guard::clear(dirs);
+        return false;
+    }
+    true
+}
+
+/// Whether this device learns, as its entry tells the others
+/// (`sioul_sync::share::LEARNS_HERE`): its switch on, the guard not
+/// standing, the spam filter's table in use made here, and the topics' table
+/// (`topics_table`) made here or none yet. Else the tables travel to it.
+pub fn learns(dirs: &Dirs, topics_table: &std::path::Path, spam: &sioul_core::config::SpamSettings, here: &str) -> bool {
+    let topics_here = || sioul_core::topics::judging::cached(topics_table).is_none_or(|(table, _)| table.meta.device == here);
+    spam.trains_here() && Guard::load(dirs).is_none() && trainer(dirs, here) == Trainer::Here && topics_here()
 }
 
 /// What the Porch says once of this device's training (`notice.toml` beside
@@ -298,7 +391,9 @@ pub enum NoticeKind {
     FirstRunning,
     /// It ended, and took this long.
     FirstDone,
-    /// The guard turned the training off: it ran too long, or too warm.
+    /// The guard stopped a training too long: this device reads the others'
+    /// tables until its mail changed a lot or you ask. (`Halt::Hot` was said
+    /// by an earlier build; heat is no longer said.)
     Guarded(Halt),
 }
 
@@ -343,18 +438,25 @@ pub fn begin(dirs: &Dirs, first: bool, now: i64) {
 }
 
 /// A training ended: the first one (its notice running) says how long it
-/// took once it made a table (`made`), and is forgotten otherwise.
+/// took once it made a table (`made`), and is forgotten otherwise. A table
+/// made here: the guard's mark, if any, goes too.
 pub fn end(dirs: &Dirs, made: bool, seconds: u64, now: i64) {
+    if made {
+        Guard::clear(dirs);
+    }
     if let Some(notice) = Notice::load(dirs).filter(|n| n.kind == NoticeKind::FirstRunning) {
         let _ = if made { Notice { kind: NoticeKind::FirstDone, at: now, seconds, put_away: notice.put_away }.save(dirs) } else { std::fs::remove_file(Notice::path(dirs)).map_err(|e| e.to_string()) };
     }
 }
 
-/// The guard (`Halt::guards`): this device's training turned off, its own
-/// setting written in `config` (`[spam] train_here = false`, never shared),
-/// and the Porch's notice kept to say so once, with the switch.
-pub fn guard(dirs: &Dirs, config: &std::path::Path, halt: Halt, now: i64) -> Result<(), String> {
-    sioul_core::config::set_value(config, "spam.train_here", &sioul_core::config::SettingValue::Bool(false))?;
+/// The guard (`Halt::guards`): the run stopped, this device marked as not
+/// learning (`Guard`, the corpus's size kept), its switch left as it is, and
+/// the Porch's notice kept to say so once. Heat: nothing.
+pub fn guard(dirs: &Dirs, halt: Halt, now: i64) -> Result<(), String> {
+    if !halt.guards() {
+        return Ok(());
+    }
+    Guard { at: now, messages: messages(dirs) }.save(dirs)?;
     Notice { kind: NoticeKind::Guarded(halt), at: now, seconds: 0, put_away: false }.save(dirs)
 }
 
@@ -372,6 +474,28 @@ pub fn a_job_runs(dirs: &Dirs) -> bool {
             Err(_) => true,
         }
     })
+}
+
+/// The run by itself under way, asked to stop (F5, review of 7 November
+/// 2026): its job's stop file (`jobs/<job>.stop`), which a computer's job
+/// reads as `sioul spam stop` writes it, and a phone's background training
+/// reads every few tenths of a second (`stop_asked`). "Train here" turned
+/// off, or Stop in the window. Whether one was under way.
+pub fn ask_stop(dirs: &Dirs) -> bool {
+    let Some(run) = Run::load(dirs).filter(|r| r.ended.is_none()) else { return false };
+    let jobs = dirs.state.join("jobs");
+    let _ = std::fs::create_dir_all(&jobs);
+    std::fs::write(jobs.join(format!("{}.stop", run.job)), b"").is_ok()
+}
+
+/// Whether the run of `job` was asked to stop (`ask_stop`).
+pub fn stop_asked(dirs: &Dirs, job: &str) -> bool {
+    dirs.state.join("jobs").join(format!("{job}.stop")).exists()
+}
+
+/// The stop file of `job` gone (its run ended, or a new one starts under its name).
+pub fn stop_forgotten(dirs: &Dirs, job: &str) {
+    let _ = std::fs::remove_file(dirs.state.join("jobs").join(format!("{job}.stop")));
 }
 
 /// fastText's threads for a run by itself: half the cores, one at least.
@@ -438,6 +562,7 @@ mod tests {
             last_trained: Some(NOW - WEEK - 1),
             outdated: false,
             last_run: None,
+            guard: None,
             running: false,
             focus: Some(false),
             power: power(Some(true), Some(false), Some(true), Some(false)),
@@ -503,14 +628,14 @@ mod tests {
         assert_eq!(decide(&with(Power::default()), NOW), Decision::Wait(Wait::Battery), "nothing known: no");
     }
 
-    /// The settings as each device keeps them: on unless said, an older
-    /// `train_by_itself` read when `train_here` is unsaid; any network unless
-    /// "unmetered".
+    /// The settings as each device keeps them: on unless said, never an
+    /// older device's shared `train_by_itself` (C1, review of 7 November
+    /// 2026); any network unless "unmetered".
     #[test]
     fn the_device_s_own_settings() {
         use sioul_core::config::SpamSettings;
         assert!(SpamSettings::default().trains_here());
-        assert!(!SpamSettings { train_by_itself: Some(false), ..SpamSettings::default() }.trains_here());
+        assert!(SpamSettings { train_by_itself: Some(false), ..SpamSettings::default() }.trains_here(), "the shared switch never decides");
         assert!(SpamSettings { train_by_itself: Some(false), train_here: Some(true), ..SpamSettings::default() }.trains_here());
         assert!(!SpamSettings { train_here: Some(false), ..SpamSettings::default() }.trains_here());
         let any = SpamSettings::default();
@@ -608,7 +733,7 @@ mod tests {
         assert_eq!(watched(vec![mains, Power { battery_tenths: Some(415), ..mains }], None), (Some(Halt::Hot), 2), "too warm");
         assert_eq!(watched(vec![mains; 3], Some(LONGEST + Duration::from_secs(1))), (Some(Halt::Long), 0), "too long");
         assert_eq!(watched(vec![mains; 3], Some(LONGEST - Duration::from_secs(1))), (None, 10), "within the time");
-        assert!(Halt::Long.guards() && Halt::Hot.guards() && !Halt::Supply.guards());
+        assert!(Halt::Long.guards() && !Halt::Hot.guards() && !Halt::Supply.guards(), "heat stops the run, never guards");
     }
 
     /// The guard turns this device's training off in its own settings, and
@@ -637,13 +762,99 @@ mod tests {
         begin(&dirs, true, NOW);
         end(&dirs, false, 30, NOW + 30);
         assert_eq!(Notice::load(&dirs), None);
-        // The guard: the device's own switch off, said once.
-        guard(&dirs, &config, Halt::Long, NOW).unwrap();
+        // Heat: nothing kept, nothing said.
+        guard(&dirs, Halt::Hot, NOW).unwrap();
+        assert_eq!((Guard::load(&dirs), Notice::load(&dirs)), (None, None));
+        // The guard: the switch left on, the device marked as not learning, said once.
+        guard(&dirs, Halt::Long, NOW).unwrap();
         let written = sioul_core::config::Config::load(&config).unwrap();
-        assert!(!written.spam.trains_here(), "{}", std::fs::read_to_string(&config).unwrap());
+        assert!(written.spam.trains_here(), "the switch stays on: {}", std::fs::read_to_string(&config).unwrap());
+        assert_eq!(Guard::load(&dirs), Some(Guard { at: NOW, messages: 0 }));
         assert_eq!(Notice::shown(&dirs, false).map(|n| n.kind), Some(NoticeKind::Guarded(Halt::Long)));
         Notice::put_away(&dirs).unwrap();
         assert_eq!(Notice::shown(&dirs, false), None);
+        // A table made here at last (Train now, or the mail changed a lot): the mark goes.
+        end(&dirs, true, 30, NOW + 30);
+        assert_eq!(Guard::load(&dirs), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// F2 (review of 7 November 2026): the guard stops a training too long
+    /// and marks the device as not learning; it tries again once a week to
+    /// download, and trains only once its mail changed a lot (a quarter more
+    /// or less), or when you ask (the mark cleared).
+    #[test]
+    fn the_guard_waits_for_the_mail_to_change_a_lot() {
+        assert!(!changed_a_lot(12_000, 12_500) && !changed_a_lot(12_000, 9_500));
+        assert!(changed_a_lot(12_000, 15_000) && changed_a_lot(12_000, 9_000) && changed_a_lot(0, 1));
+        let guard = Guard { at: NOW - 3600, messages: 12_000 };
+        let run = |started: i64, ended: i64, outcome: Outcome| Run { started, job: "j".into(), fetched: true, ended: Some(ended), outcome: Some(outcome) };
+        // The run the guard stopped ended as the guard said so: a week before the next download.
+        let stopped = Facts { guard: Some(guard), last_run: Some(run(NOW - 4000, NOW - 3600, Outcome::Stopped)), ..ready() };
+        assert_eq!(decide(&stopped, NOW), Decision::Wait(Wait::Guarded));
+        // A week on: a run by itself again; its training waits for the mail (`waits_for_mail`).
+        let week = Facts { guard: Some(guard), last_run: Some(run(NOW - WEEK - 10, NOW - WEEK, Outcome::Waited)), ..ready() };
+        assert_eq!(decide(&week, NOW), Decision::Train { fetch: true });
+        let dir = std::env::temp_dir().join(format!("sioul-auto-mail-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dirs = Dirs::under(&dir);
+        assert!(!waits_for_mail(&dirs), "no guard: it trains");
+        assert_eq!(messages(&dirs), 0, "no corpus here");
+        Guard { at: NOW, messages: 1_000 }.save(&dirs).unwrap();
+        assert!(!waits_for_mail(&dirs) && Guard::load(&dirs).is_none(), "far less mail now: changed a lot, the mark gone");
+        Guard { at: NOW, messages: messages(&dirs) }.save(&dirs).unwrap();
+        assert!(waits_for_mail(&dirs) && Guard::load(&dirs).is_some(), "the same mail: it waits");
+        Guard::clear(&dirs);
+        assert!(!waits_for_mail(&dirs), "you asked: it trains");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// F2: a device learns, as its entry says, only with its switch on, a
+    /// table it made itself in use, and the guard not standing.
+    #[test]
+    fn a_device_learns_with_a_table_of_its_own() {
+        use sioul_core::config::SpamSettings;
+        let dir = std::env::temp_dir().join(format!("sioul-auto-learns-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dirs = Dirs::under(&dir);
+        let topics = dir.join("topics-table.bin");
+        let on = SpamSettings::default();
+        assert!(!learns(&dirs, &topics, &on, "desk"), "no table: it does not learn");
+        let table = |device: &str| {
+            use sioul_core::spam::{features, table, tokenize};
+            let mut weights = vec![0.0; features::N];
+            weights[0] = 2.0;
+            let meta = table::Meta { device: device.into(), ..table::Meta::default() };
+            let mut t = table::Table { tokenizer: tokenize::TOKENIZER, features: features::FEATURES, dim: 4, minn: 3, maxn: 4, bucket: 8, words: vec![(table::word_hash("gratuit"), 3.0)], buckets: vec![0.5; 8], weights, means: vec![0.0; features::N], bias: -0.5, text_mean: 0.5, platt_a: -2.0, platt_b: 0.0, meta };
+            t.sort();
+            t
+        };
+        std::fs::create_dir_all(&dirs.data).unwrap();
+        std::fs::write(dirs.table(), table("phone").to_bytes()).unwrap();
+        assert!(!learns(&dirs, &topics, &on, "desk"), "another device's table: it does not learn");
+        std::fs::write(dirs.table(), table("desk").to_bytes()).unwrap();
+        assert!(learns(&dirs, &topics, &on, "desk"));
+        assert!(!learns(&dirs, &topics, &SpamSettings { train_here: Some(false), ..on.clone() }, "desk"), "its switch off");
+        Guard { at: NOW, messages: 1 }.save(&dirs).unwrap();
+        assert!(!learns(&dirs, &topics, &on, "desk"), "the guard standing");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// F5: Stop, or "Train here" turned off, reaches the run under way
+    /// through its job's stop file; nothing when none runs.
+    #[test]
+    fn a_run_under_way_is_asked_to_stop() {
+        let dir = std::env::temp_dir().join(format!("sioul-auto-stop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dirs = Dirs::under(&dir);
+        assert!(!ask_stop(&dirs), "none runs");
+        Run { started: NOW, job: "phone-1".into(), fetched: true, ended: None, outcome: None }.save(&dirs).unwrap();
+        assert!(!stop_asked(&dirs, "phone-1"));
+        assert!(ask_stop(&dirs) && stop_asked(&dirs, "phone-1"));
+        stop_forgotten(&dirs, "phone-1");
+        assert!(!stop_asked(&dirs, "phone-1"));
+        Run::finish(&dirs, "phone-1", Outcome::Stopped, NOW + 1).unwrap();
+        assert!(!ask_stop(&dirs), "ended: nothing to stop");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

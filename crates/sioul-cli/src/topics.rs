@@ -271,7 +271,7 @@ pub(crate) fn train(s: &Session, dirs: &Dirs, replace: bool, progress: &mut dyn 
     let mut lines = Vec::new();
     for state in &trained.topics {
         let key = if state.learned { "topics-train-learned" } else { "topics-train-waits" };
-        lines.push(s.say(key, &[("topic", name_of(&state.id)), ("examples", n(state.examples)), ("senders", n(state.senders)), ("least", n(topics::model::LEAST)), ("least_senders", n(topics::model::LEAST_SENDERS)), ("alone", n(topics::model::LEAST_ALONE)), ("own", n(state.own)), ("capped", n(state.capped))]));
+        lines.push(s.say(key, &[("topic", name_of(&state.id)), ("examples", n(state.examples)), ("senders", n(state.senders)), ("least", n(topics::model::LEAST)), ("least_senders", n(topics::model::LEAST_SENDERS)), ("alone", n(topics::model::LEAST_ALONE)), ("capped", n(state.capped))]));
     }
     for (id, was, now) in &trained.compared {
         lines.push(format!("  {}", s.say("topics-train-compared", &[("topic", name_of(id)), ("was", number(s, *was, 3)), ("now", number(s, *now, 3))])));

@@ -33,10 +33,12 @@ pub(crate) fn start(s: &Session, fetch: bool, threads: Option<u32>) -> Result<jo
 /// The run itself, as its job: the lowest priority for every thread it
 /// starts, its power asked every half minute (unplugged or saving power: its
 /// own stop file, and it stops at its next step), the guard watched (its
-/// training past 30 minutes, its battery above 40 °C: stopped, and this
-/// device's training turned off, `auto::guard`), its end kept for the
-/// settings and the next decision. The first training on a device with no
-/// table is said once, then how long it took (`auto::Notice`).
+/// training past 30 minutes: stopped, and this device marked as not
+/// learning, `auto::guard`; its battery above 40 °C: stopped for this time),
+/// its end kept for the settings and the next decision. The guard's mark
+/// standing, its training waits once the download is done, unless the mail
+/// changed a lot since (`auto::waits_for_mail`). The first training on a
+/// device with no table is said once, then how long it took (`auto::Notice`).
 pub(crate) fn run(s: &Session, dirs: &Dirs, id: &str, ask: &report::TrainAsk, json: bool) -> Result<(), String> {
     lowest_priority();
     let started = Instant::now();
@@ -46,6 +48,8 @@ pub(crate) fn run(s: &Session, dirs: &Dirs, id: &str, ask: &report::TrainAsk, js
     // When the training began, past the download (none while it downloads).
     let learning: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
     let halted: Arc<Mutex<Option<Halt>>> = Arc::new(Mutex::new(None));
+    // Its training waited for the mail to change (`auto::waits_for_mail`).
+    let waited = AtomicBool::new(false);
     let watcher = {
         let (done, id, learning, halted) = (Arc::clone(&done), id.to_string(), Arc::clone(&learning), Arc::clone(&halted));
         std::thread::Builder::new().name("spam-supply".into()).spawn(move || {
@@ -65,7 +69,13 @@ pub(crate) fn run(s: &Session, dirs: &Dirs, id: &str, ask: &report::TrainAsk, js
     let result = long(s, json, Some(id), |progress, cancel| {
         let mut progress = |p: &Progress| {
             if !matches!(p.stage, Stage::Corpus | Stage::Verify) {
-                learning.lock().unwrap_or_else(PoisonError::into_inner).get_or_insert_with(Instant::now);
+                let mut learning = learning.lock().unwrap_or_else(PoisonError::into_inner);
+                // The download done, the training begins: unless the guard's mark stands and the mail did not change a lot.
+                if learning.is_none() && auto::waits_for_mail(dirs) {
+                    waited.store(true, Ordering::Relaxed);
+                    let _ = jobs::stop(id);
+                }
+                learning.get_or_insert_with(Instant::now);
             }
             progress(p);
         };
@@ -88,10 +98,11 @@ pub(crate) fn run(s: &Session, dirs: &Dirs, id: &str, ask: &report::TrainAsk, js
     }
     let stopped = jobs::look(id).is_ok_and(|job| job.state == jobs::State::Stopped);
     let now = jiff::Timestamp::now().as_second();
-    let _ = Run::finish(dirs, id, outcome(&result, replaced, stopped), now);
-    // The guard: this device's training off, said once.
-    if let Some(halt) = halted.lock().unwrap_or_else(PoisonError::into_inner).filter(|h| h.guards()) {
-        let _ = auto::guard(dirs, &s.config_path, halt, now);
+    let ended = if waited.load(Ordering::Relaxed) { Outcome::Waited } else { outcome(&result, replaced, stopped) };
+    let _ = Run::finish(dirs, id, ended, now);
+    // The guard: this device no longer counts as learning, said once; heat says nothing.
+    if let Some(halt) = *halted.lock().unwrap_or_else(PoisonError::into_inner) {
+        let _ = auto::guard(dirs, halt, now);
     }
     auto::end(dirs, result.is_ok() && replaced == Some(true), started.elapsed().as_secs(), now);
     result

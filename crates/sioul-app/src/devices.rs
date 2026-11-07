@@ -144,8 +144,9 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.persons = sioul_sync::share::PERSONS_SHARED;
         // It has the store of your word on topics: it travels once every device says so.
         entry.topics = sioul_sync::share::TOPICS_SHARED;
-        // It trains its own spam filter and topics: the shared tables retire once every device says so.
-        entry.learns = sioul_sync::share::LEARNS_HERE;
+        // It keeps its own table whatever comes, and says whether it learns now
+        // (`spam::learns_level`): the tables travel while any device does not.
+        entry.learns = crate::spam::learns_level();
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;
@@ -164,6 +165,16 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
             eprintln!("sioul: devices: {e}");
             false
         }
+    }
+}
+
+/// What this device's entry tells the others of the tables, written again
+/// when it changed (`spam::learns_level`): a training made a table here, the
+/// guard stopped one, "Train here" turned, a table came from elsewhere.
+pub(crate) fn learns_now() {
+    let path = sioul_sync::devices::own_path(&sioul_core::config::state_dir());
+    if sioul_sync::devices::own(&path).learns != crate::spam::learns_level() {
+        let _ = write(|_| {});
     }
 }
 

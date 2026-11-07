@@ -387,8 +387,9 @@ pub struct SpamSettings {
     pub train_by_itself: Option<bool>,
     /// This device trains its own filter and topics, once a week while it
     /// charges and is idle (`sioul_learn::auto`): on when unsaid, every
-    /// device, phones included, unless an older `train_by_itself` said off.
-    /// This device's own, never shared (sioul-sync's `CONFIG_LOCAL`).
+    /// device, phones included. This device's own, never shared (sioul-sync's
+    /// `CONFIG_LOCAL`); the shared `train_by_itself` an older Sioul writes
+    /// never decides it.
     #[serde(default)]
     pub train_here: Option<bool>,
     /// The networks the training's download may use, this device's own:
@@ -415,9 +416,10 @@ impl SpamSettings {
     }
 
     /// Whether this device trains its own filter and topics: its own word,
-    /// else an older Sioul's `train_by_itself`, else on.
+    /// else on. Never the shared `train_by_itself`: an older device's switch
+    /// would turn training off on every device that never set its own.
     pub fn trains_here(&self) -> bool {
-        self.train_here.unwrap_or_else(|| self.trains_by_itself())
+        self.train_here.unwrap_or(true)
     }
 
     /// Whether the training's download may use a network the system calls
@@ -3070,5 +3072,18 @@ mod tests {
         assert_eq!(Config::load(&path).unwrap().agenda.availabilities.len(), 1);
         assert_eq!(crate::changes::heard(|| migrate_availability(&path, &en, today).unwrap()), (None, Vec::new()));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod train_here_tests {
+    /// C1 (review of 7 November 2026): an older device's "Train by itself"
+    /// switch, shared, never reaches "Train here", this device's own.
+    #[test]
+    fn an_older_device_s_switch_never_reaches_train_here() {
+        let shared_from_older: super::Config = toml::from_str("[spam]\ntrain_by_itself = false\n").unwrap();
+        assert!(shared_from_older.spam.trains_here(), "unset: on, whatever the shared switch says");
+        let off: super::Config = toml::from_str("[spam]\ntrain_by_itself = true\ntrain_here = false\n").unwrap();
+        assert!(!off.spam.trains_here());
     }
 }
