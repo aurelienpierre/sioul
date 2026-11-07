@@ -746,10 +746,13 @@ fn mail_is_read_by_its_address() {
     assert!(text(&read).contains("Subject: Quokka without an id") && text(&read).contains(&format!("Address: {uri}")), "{}", text(&read));
     // One id, two senders: the first to arrive is read, and the reuse is said.
     for (uid, from, subject) in [(2, "Bank <bank@example.org>", "Wombat statement"), (3, "Bank <bank@lookalike.example>", "Wombat look-alike")] {
-        let file = kept.join("cur").join(format!("177700000{uid}.U3-{uid}.sioul{}2,S", sioul_core::maildir::INFO));
+        // Delivered as mail is, dated in `tmp` and renamed into `cur`: the server's own passes read this folder as it goes.
+        let name = format!("177700000{uid}.U3-{uid}.sioul{}2,S", sioul_core::maildir::INFO);
+        let file = kept.join("tmp").join(&name);
         std::fs::write(&file, format!("Message-ID: <wombat-1@example.org>\r\nFrom: {from}\r\nTo: jane@example.org\r\nDate: Fri, 30 Oct 2026 09:00:00 +0100\r\nSubject: {subject}\r\n\r\nHello.\r\n")).unwrap();
         let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_777_000_000 + uid);
         std::fs::File::options().write(true).open(&file).unwrap().set_modified(time).unwrap();
+        std::fs::rename(&file, kept.join("cur").join(&name)).unwrap();
     }
     let reused = call(&mut server, "read_message", json!({ "message": "mid:wombat-1@example.org" }));
     assert!(text(&reused).starts_with("Another message carries the same id.") && text(&reused).contains("Wombat statement"), "{}", text(&reused));
