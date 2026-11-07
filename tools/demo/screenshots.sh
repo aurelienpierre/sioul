@@ -41,14 +41,16 @@ case "$language" in
 esac
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-app="$repo/target/debug/sioul-app"
+target="${CARGO_TARGET_DIR:-$repo/target}"
+app="$target/release/sioul-app"
+[[ -x "$app" ]] || app="$target/debug/sioul-app"
 screens="$repo/website/docs/assets/screens${suffix:+/$language}"
 scratch=${1:-$(mktemp -d -t sioul-demo.XXXXXX)}
 mkdir -p "$scratch"
 scratch=$(cd "$scratch" && pwd)
 
 if [[ ! -x "$app" ]]; then
-    echo "No $app: build it first (CARGO_INCREMENTAL=0 cargo build -p sioul-app)." >&2
+    echo "No $app: build it first (CARGO_INCREMENTAL=0 cargo build --release -p sioul-app)." >&2
     exit 1
 fi
 
@@ -84,7 +86,7 @@ run() {
                QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software LANG="$locale" LC_ALL="$locale" TZ="$zone")
     # Nothing reaches the desktop: no display, and a bus of its own (dbus-run-session).
     if [[ -n "$home" ]]; then
-        env -u DISPLAY -u WAYLAND_DISPLAY bwrap --dev-bind / / --tmpfs /home --ro-bind "$repo" "$repo" \
+        env -u DISPLAY -u WAYLAND_DISPLAY bwrap --dev-bind / / --tmpfs /home --ro-bind "$repo" "$repo" --ro-bind "$app" "$app" \
             --bind "$profile/config" "$home/.config" --bind "$profile/data" "$home/.local/share" \
             --bind "$profile/state" "$home/.local/state" --bind "$profile/cache" "$home/.cache" \
             --bind "$profile/notes" "$home/Notes" --bind "$out" "$out" --chdir "$home" \
