@@ -1163,6 +1163,11 @@ dav-moved-changed-untitled = { $kind ->
         [task] A task with no title changed in its old list before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
        *[event] An event with no title changed in its old calendar before your move reached its server. The move holds; what changed there is among the earlier versions (Settings ▸ Your folder and sharing ▸ Show earlier versions).
     }
+dav-moved-both = “{ $summary }” has guests in both its calendars now: its old copy gained them on its server before your move reached it, and the moved copy has its own. Both stay, since deleting either one tells its guests; you choose which goes.
+dav-moved-both-untitled = { $kind ->
+        [task] A task with no title has guests in both its lists now: its old copy gained them on its server before your move reached it, and the moved copy has its own. Both stay, since deleting either one tells its guests; you choose which goes.
+       *[event] An event with no title has guests in both its calendars now: its old copy gained them on its server before your move reached it, and the moved copy has its own. Both stay, since deleting either one tells its guests; you choose which goes.
+    }
 dav-cancel-heard = { $who } had its cancellation already: an invitation of it waits in Drafts.
 dav-answered-elsewhere = { $answer ->
         [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.

@@ -10,9 +10,11 @@
 //! that time's RECURRENCE-ID line), each line as it was written: who takes a
 //! child's event and its kind (`holders`), a block's task, one time's own
 //! margins. `$XDG_DATA_HOME/sioul/meeting-lines.toml`. The sharing carries
-//! it among your devices, sealed, each entry whole (`share::MEETING_LINES`,
-//! the part "time"), once every device says it has the store; an entry taken
-//! out travels as a removal. It never reaches a guest.
+//! it among your devices, sealed, by UID, time and line name
+//! (`share::MEETING_LINES`, the part "time"), once every device says it has
+//! the store: a kind set on one device and a holder on another both stay
+//! (review of f85f504, M1), and two holders written apart keep the later. An
+//! entry taken out travels as a removal. It never reaches a guest.
 //!
 //! Its readers take the meeting's text with these lines put back
 //! (`merged`, `read`), as an older Sioul wrote them into the file, so that
@@ -28,7 +30,13 @@
 //! leaves it and its stand-ins as they are. An entry may hold no line: the door made the
 //! meeting here from an event that held none (`ensure`). When an event is no
 //! meeting any more, its lines go back into its file and its entry goes
-//! (`forget`).
+//! (`back_into_file`, `forget`).
+//!
+//! **An entry can be ahead of its file** (review of f85f504, H1): the sharing
+//! and the calendar's sync have separate triggers, so an entry may reach a
+//! device before the meeting that made it. Each entry keeps that meeting's
+//! DTSTAMP (`Kept::stamp`), and a file no later than it says nothing of guests
+//! gone: nothing is written and nothing forgotten.
 
 use crate::lines;
 use serde::{Deserialize, Serialize};
@@ -38,16 +46,101 @@ use std::path::{Path, PathBuf};
 /// The file's name, in Sioul's data folder.
 pub const FILE: &str = "meeting-lines.toml";
 
-/// One meeting's own lines, by its times: "" the series, else that time's RECURRENCE-ID line.
+/// One meeting's own lines: by its times ("" the series, else that time's
+/// RECURRENCE-ID line), then by the line's name (`lines::raw_name`), each name
+/// its own entry in the sharing (a holder's two lines, who takes the child and
+/// who brings them back, are one name).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "KeptAsWritten")]
 pub struct Kept {
+    /// The DTSTAMP of the meeting that made this entry (`stamp_of`): a file no
+    /// later than it may simply be behind the entry (`later_than_entry`). ""
+    /// an entry of no known age. Written even then, since it is what carries
+    /// an entry of no line to your other devices. None only when another
+    /// device's removal took it while a line was added here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stamp: Option<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub times: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+}
+
+/// A time's lines as the file holds them: by name, or a plain list, as the
+/// store was written before its lines travelled one by one (6 November 2026).
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum TimeAsWritten {
+    ByName(BTreeMap<String, Vec<String>>),
+    Listed(Vec<String>),
+}
+
+/// An entry as the file holds it (`Kept`).
+#[derive(Deserialize)]
+struct KeptAsWritten {
     #[serde(default)]
-    pub times: BTreeMap<String, Vec<String>>,
+    stamp: Option<String>,
+    #[serde(default)]
+    times: Option<BTreeMap<String, TimeAsWritten>>,
+}
+
+impl From<KeptAsWritten> for Kept {
+    /// An entry of the older form has no age, and is an entry even of no line.
+    fn from(written: KeptAsWritten) -> Kept {
+        let older = written.stamp.is_none() && written.times.as_ref().is_some_and(|times| times.is_empty() || times.values().any(|t| matches!(t, TimeAsWritten::Listed(_))));
+        let mut kept = Kept { stamp: if older { Some(String::new()) } else { written.stamp }, times: BTreeMap::new() };
+        for (time, lines) in written.times.unwrap_or_default() {
+            let names = kept.times.entry(time).or_default();
+            match lines {
+                TimeAsWritten::ByName(by_name) => names.extend(by_name),
+                TimeAsWritten::Listed(listed) => {
+                    for line in listed {
+                        names.entry(lines::raw_name(&line)).or_default().push(line);
+                    }
+                }
+            }
+        }
+        kept
+    }
 }
 
 impl Kept {
+    /// An entry of no line and no known age: this device knows the meeting holds none.
+    pub fn known() -> Kept {
+        Kept { stamp: Some(String::new()), times: BTreeMap::new() }
+    }
+
+    /// An entry holding these lines, each with its time, as `Aside::lines` gives them.
+    pub fn of(given: impl IntoIterator<Item = (String, String)>) -> Kept {
+        let mut kept = Kept::known();
+        for (time, line) in given {
+            kept.times.entry(time).or_default().entry(lines::raw_name(&line)).or_default().push(line);
+        }
+        kept
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.times.values().all(Vec::is_empty)
+        self.times.values().all(|names| names.values().all(Vec::is_empty))
+    }
+
+    /// The lines kept for a time, by their names' order; none when it has none.
+    pub fn lines(&self, time: &str) -> Vec<String> {
+        self.times.get(time).map(|names| names.values().flatten().cloned().collect()).unwrap_or_default()
+    }
+
+    /// Without the names and times left empty (a removal that came leaves their tables behind).
+    fn tidied(mut self) -> Kept {
+        for names in self.times.values_mut() {
+            names.retain(|_, lines| !lines.is_empty());
+        }
+        self.times.retain(|_, names| !names.is_empty());
+        self
+    }
+
+    /// Its age raised to `stamp` ("" leaves it): a later meeting's, never an earlier one's.
+    fn stamped(&mut self, stamp: &str) {
+        match &self.stamp {
+            Some(there) if there.as_str() >= stamp => {}
+            _ => self.stamp = Some(stamp.to_string()),
+        }
     }
 }
 
@@ -79,9 +172,27 @@ pub fn path_here(path: Option<&Path>) {
     HERE.with(|here| *here.borrow_mut() = path.map(Path::to_path_buf));
 }
 
-/// The file as it is; empty when there is none, or it does not read.
+/// The file as it is; empty when there is none, or it does not read. What a
+/// removal that came left behind (the tables of the lines it took out) is no entry.
 pub fn load(path: &Path) -> MeetingLines {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    read_text(std::fs::read_to_string(path).ok().as_deref())
+}
+
+/// A text of the file (None: no file) as `load` reads it.
+fn read_text(text: Option<&str>) -> MeetingLines {
+    let mut all: MeetingLines = text.and_then(|text| toml::from_str(text).ok()).unwrap_or_default();
+    all.events = std::mem::take(&mut all.events).into_iter().map(|(uid, kept)| (uid, kept.tidied())).filter(|(_, kept)| kept.stamp.is_some() || !kept.is_empty()).collect();
+    all
+}
+
+/// The file written again in its present form, when it holds anything: what
+/// the sharing reads once the store opens is never the older form
+/// (`share::meeting_lines_shared`).
+pub fn in_present_form(path: &Path) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let all = load(path);
+        if all.events.is_empty() { Ok(()) } else { write(path, &all) }
+    })
 }
 
 /// `uid`'s entry changed by `change` over the file as it is then (None: no
@@ -93,9 +204,8 @@ fn change(path: &Path, uid: &str, change: impl FnOnce(&mut Option<Kept>)) -> Res
         let before = all.clone();
         let mut kept = all.events.remove(uid);
         change(&mut kept);
-        if let Some(mut kept) = kept {
-            kept.times.retain(|_, lines| !lines.is_empty());
-            all.events.insert(uid.to_string(), kept);
+        if let Some(kept) = kept {
+            all.events.insert(uid.to_string(), kept.tidied());
         }
         if all == before {
             return Ok(false);
@@ -123,7 +233,17 @@ pub fn ensure(path: &Path, uid: &str) -> Result<bool, String> {
         return Ok(false);
     }
     change(path, uid, |kept| {
-        kept.get_or_insert_with(Kept::default);
+        kept.get_or_insert_with(Kept::known);
+    })
+}
+
+/// `uid`'s entry, when it has one, stamped with the DTSTAMP of the meeting it
+/// is kept for (`stamp_of`, `Kept::stamp`). Whether it changed.
+pub fn stamped(path: &Path, uid: &str, stamp: &str) -> Result<bool, String> {
+    change(path, uid, |kept| {
+        if let Some(kept) = kept {
+            kept.stamped(stamp);
+        }
     })
 }
 
@@ -142,8 +262,7 @@ pub fn is_store(path: &Path) -> bool {
 /// The entries that differ between two versions of the file's text (None:
 /// no file), each as it was in `before` and in `after`.
 fn changed_entries(before: Option<&str>, after: Option<&str>) -> Vec<(String, Option<Kept>, Option<Kept>)> {
-    let read = |text: Option<&str>| text.and_then(|t| toml::from_str::<MeetingLines>(t).ok()).unwrap_or_default();
-    let (before, after) = (read(before), read(after));
+    let (before, after) = (read_text(before), read_text(after));
     let uids: std::collections::BTreeSet<&String> = before.events.keys().chain(after.events.keys()).collect();
     uids.into_iter().filter(|uid| before.events.get(*uid) != after.events.get(*uid)).map(|uid| ((*uid).clone(), before.events.get(uid).cloned(), after.events.get(uid).cloned())).collect()
 }
@@ -187,26 +306,25 @@ pub fn add(path: &Path, uid: &str, lines: &[(String, String)]) -> Result<bool, S
         return Ok(false);
     }
     change(path, uid, |entry| {
-        let kept = entry.get_or_insert_with(Kept::default);
-        let mut given: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        let kept = entry.get_or_insert_with(Kept::known);
+        let mut given: BTreeMap<&str, BTreeMap<String, Vec<String>>> = BTreeMap::new();
         for (time, line) in lines {
-            let at = given.entry(time.as_str()).or_default();
-            if !at.contains(line) {
-                at.push(line.clone());
+            let named = given.entry(time.as_str()).or_default().entry(lines::raw_name(line)).or_default();
+            if !named.contains(line) {
+                named.push(line.clone());
             }
         }
-        for (time, new) in given {
-            let names: Vec<String> = new.iter().map(|l| lines::raw_name(l)).collect();
+        for (time, names) in given {
             let there = kept.times.entry(time.to_string()).or_default();
-            let mut written: Vec<String> = there.iter().filter(|l| !names.contains(&lines::raw_name(l))).cloned().collect();
-            written.extend(new);
-            // The same lines in another order: kept as they were.
-            let sorted = |mut v: Vec<String>| {
-                v.sort();
-                v
-            };
-            if sorted(written.clone()) != sorted(there.clone()) {
-                *there = written;
+            for (name, new) in names {
+                // The same lines in another order: kept as they were.
+                let sorted = |mut v: Vec<String>| {
+                    v.sort();
+                    v
+                };
+                if there.get(&name).is_none_or(|old| sorted(old.clone()) != sorted(new.clone())) {
+                    there.insert(name, new);
+                }
             }
         }
     })
@@ -214,17 +332,63 @@ pub fn add(path: &Path, uid: &str, lines: &[(String, String)]) -> Result<bool, S
 
 /// What is kept of `uid` replaced by the Sioul lines of `text` (its file
 /// with them put back, then changed by a reader's writer: who takes it, its
-/// kind), every time of it; an entry with none left stays, known empty.
-/// Whether it changed.
+/// kind), every time of it, stamped with its DTSTAMP; an entry with none left
+/// stays, known empty. Whether it changed.
 pub fn set_from(path: &Path, uid: &str, text: &str) -> Result<bool, String> {
     let lines = crate::organizer::aside_of(text).lines;
+    let stamp = stamp_of(text);
     change(path, uid, |entry| {
-        let kept = entry.get_or_insert_with(Kept::default);
-        kept.times.clear();
-        for (time, line) in lines {
-            kept.times.entry(time).or_default().push(line);
-        }
+        let kept = entry.get_or_insert_with(Kept::known);
+        kept.times = Kept::of(lines).times;
+        kept.stamped(&stamp);
     })
+}
+
+/// A meeting's stamp: the latest DTSTAMP of its events ("" none), as a file
+/// is compared with the entry that meeting made (`later_than_entry`).
+pub fn stamp_of(text: &str) -> String {
+    let source = lines::unfold(text);
+    source.iter().filter(|l| lines::name(l) == "DTSTAMP").map(|l| lines::value(l).trim().to_string()).max().unwrap_or_default()
+}
+
+/// Whether an event's file is later than the meeting its entry was kept for:
+/// only then may its having no guest be read as its guests gone. A file no
+/// later may simply be behind the entry, the sharing having come before its
+/// calendar's sync (review of f85f504, H1); an entry of no known age says
+/// nothing of it.
+pub fn later_than_entry(text: &str, kept: &Kept) -> bool {
+    kept.stamp.as_deref().is_some_and(|stamp| !stamp.is_empty() && stamp_of(text).as_str() > stamp)
+}
+
+/// Sioul's own lines of an item that is no meeting any more, kept in the
+/// store at `at` (`store` as read from it), back into its file
+/// (`read` reads them from there meanwhile), name by name: a line its file
+/// holds of a name wins (a holder written on another device since), the entry
+/// fills the names it lacks (the kind this device kept: review of round 4,
+/// R1-a); then its entry is forgotten, never before, and that removal travels.
+/// Nothing for a meeting, an item with no entry, a file no later than its
+/// entry (`later_than_entry`), or a change here its server has not agreed on
+/// yet, which was made on what this device held and says nothing of guests
+/// gone. Whether its file was written.
+pub fn back_into_file(path: &Path, at: &Path, store: &MeetingLines) -> bool {
+    let Ok(file) = std::fs::read_to_string(path) else { return false };
+    let uid = uid_of(&file);
+    let Some(kept) = store.events.get(&uid) else { return false };
+    if crate::agenda::with_others(&file) || !later_than_entry(&file, kept) {
+        return false;
+    }
+    if crate::vdir::agreed_hash(path).is_some_and(|agreed| agreed != crate::vdir::content_hash(file.as_bytes())) {
+        return false;
+    }
+    let back = filled(&file, kept);
+    if back != file
+        && let Err(e) = crate::vdir::write_item(path, &back)
+    {
+        eprintln!("Sioul: an event kept its lines apart: {e}");
+        return false;
+    }
+    let _ = forget(at, &uid);
+    back != file
 }
 
 /// The time a VEVENT's lines are kept under: "" the series, else its RECURRENCE-ID line.
@@ -294,9 +458,8 @@ pub fn filled(text: &str, kept: &Kept) -> String {
     let mut lacking = Kept::default();
     for (t, wanted) in &kept.times {
         for (time, names) in events.iter().filter(|(time, _)| same_time(t, time)) {
-            let missing: Vec<String> = wanted.iter().filter(|l| !names.contains(&lines::raw_name(l))).cloned().collect();
-            if !missing.is_empty() {
-                lacking.times.entry(time.clone()).or_default().extend(missing);
+            for (name, lines) in wanted.iter().filter(|(name, _)| !names.contains(*name)) {
+                lacking.times.entry(time.clone()).or_default().entry(name.clone()).or_default().extend(lines.iter().cloned());
             }
         }
     }
@@ -334,7 +497,7 @@ fn put_in(text: &str, kept: &Kept, whole: bool) -> String {
             let time = time_of(&block);
             let main = time.is_empty() && !main_seen;
             main_seen |= main;
-            let wanted: Vec<String> = kept.times.iter().filter(|(t, _)| same_time(t, &time)).flat_map(|(_, l)| l.iter().cloned()).collect();
+            let wanted: Vec<String> = kept.times.iter().filter(|(t, _)| same_time(t, &time)).flat_map(|(_, names)| names.values().flatten().cloned()).collect();
             let names: Vec<String> = wanted.iter().map(|l| lines::raw_name(l)).collect();
             // The event's own level: before its first nested component (its alarms).
             let own_end = block.iter().enumerate().skip(1).find(|(_, l)| lines::name(l) == "BEGIN").map_or(block.len(), |(i, _)| i);
@@ -439,14 +602,70 @@ mod tests {
         assert_eq!(merged_with(&merged_with(meeting, &kept), &kept), merged_with(meeting, &kept), "never twice");
         let newer = held.replace("Sam", "Sam B");
         add(&path, "kept-1", &[(String::new(), newer.clone())]).unwrap();
-        let series = load(&path).events["kept-1"].times[""].clone();
+        let series = load(&path).events["kept-1"].lines("");
         assert!(series.contains(&newer) && !series.contains(&held) && series.contains(&kind), "{series:?}");
-        set_from(&path, "kept-1", &merged_with(meeting, &Kept { times: [(String::new(), vec![kind.clone()])].into() })).unwrap();
-        assert_eq!(load(&path).events["kept-1"].times, [(String::new(), vec![kind.clone()])].into(), "set from a text: the whole entry");
+        set_from(&path, "kept-1", &merged_with(meeting, &Kept::of([(String::new(), kind.clone())]))).unwrap();
+        assert!(load(&path).events["kept-1"].times.len() == 1 && load(&path).events["kept-1"].lines("") == [kind.clone()], "set from a text: the whole entry");
         set_from(&path, "kept-1", meeting).unwrap();
-        assert_eq!(load(&path).events.get("kept-1"), Some(&Kept::default()), "none left: known here, empty");
+        assert!(load(&path).events.get("kept-1").is_some_and(Kept::is_empty), "none left: known here, empty");
         assert!(forget(&path, "kept-1").unwrap() && !load(&path).events.contains_key("kept-1"), "forgotten");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The review of f85f504, H1 (`probe_a1`, turned here and in
+    /// `children`): an entry that reached this device ahead of its calendar.
+    /// The file, no later than the meeting that made the entry, says nothing
+    /// of guests gone: nothing written, nothing forgotten. An entry of no known
+    /// age, the same. Only a later file brings its lines back, and forgets it.
+    #[test]
+    fn an_entry_ahead_of_its_file_is_never_forgotten() {
+        crate::config::stand_ins_only();
+        let dir = crate::config::data_dir().join(format!("meeting-lines-h1-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (store, file) = (dir.join(FILE), dir.join("psy.ics"));
+        let kind = "X-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health".to_string();
+        let event = |stamp: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:h1-psy\r\nDTSTAMP:{stamp}\r\nDTSTART:20991110T090000Z\r\nSUMMARY:Tom: psychiatrist\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        add(&store, "h1-psy", &[(String::new(), kind.clone())]).unwrap();
+        let stale = event("20261105T090000Z");
+        std::fs::write(&file, &stale).unwrap();
+        assert!(!back_into_file(&file, &store, &load(&store)), "an entry of no known age");
+        assert!(load(&store).events.contains_key("h1-psy") && std::fs::read_to_string(&file).unwrap() == stale);
+        stamped(&store, "h1-psy", "20261106T120000Z").unwrap();
+        assert!(!stamped(&store, "h1-psy", "20261101T000000Z").unwrap(), "never an earlier one's");
+        assert!(!back_into_file(&file, &store, &load(&store)), "older than the entry");
+        std::fs::write(&file, event("20261106T120000Z")).unwrap();
+        assert!(!back_into_file(&file, &store, &load(&store)), "the meeting's own stamp: no later");
+        assert!(load(&store).events.contains_key("h1-psy") && !std::fs::read_to_string(&file).unwrap().contains(&kind));
+        std::fs::write(&file, event("20261107T080000Z")).unwrap();
+        assert!(back_into_file(&file, &store, &load(&store)), "later: its guests went");
+        assert!(!load(&store).events.contains_key("h1-psy") && std::fs::read_to_string(&file).unwrap().contains(&kind));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The store as it was written before its lines travelled one by one
+    /// reads whole, an entry of no line included, of no known age; written in
+    /// its present form it reads the same. What a removal that came leaves
+    /// behind (the tables of the lines it took out) is no entry.
+    #[test]
+    fn the_older_form_reads_and_hollow_tables_are_no_entry() {
+        crate::config::stand_ins_only();
+        let dir = crate::config::data_dir().join(format!("meeting-lines-form-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = dir.join(FILE);
+        let kind = "X-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health";
+        let held = "X-SIOUL-TAKEN-BY;CN=Alex;PARTSTAT=ACCEPTED:mailto:alex@example.org";
+        std::fs::write(&store, format!("[event.\"old-1\".times]\n\"\" = [\"{kind}\", \"{held}\"]\n\n[event.\"old-empty\".times]\n")).unwrap();
+        let read = load(&store);
+        assert_eq!(read.events["old-1"].lines("").len(), 2, "{read:?}");
+        assert_eq!(read.events["old-1"].stamp.as_deref(), Some(""), "of no known age");
+        assert!(read.events["old-empty"].is_empty() && read.events["old-empty"].stamp.is_some(), "an entry of no line: {read:?}");
+        in_present_form(&store).unwrap();
+        assert_eq!(load(&store), read, "{}", std::fs::read_to_string(&store).unwrap());
+        assert!(std::fs::read_to_string(&store).unwrap().contains("X-SIOUL-CONCEPT = ["), "by name now");
+        std::fs::write(&store, "[event.\"gone\".times.\"\"]\n\n[event.\"gone-too\"]\n\n[event.\"left\".times.\"\"]\nX-SIOUL-CONCEPT = [\"X-SIOUL-CONCEPT:x\"]\n").unwrap();
+        let read = load(&store);
+        assert_eq!(read.events.keys().map(String::as_str).collect::<Vec<_>>(), ["left"], "{read:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The third review of the organizer's door, R1 and R9. A child's
@@ -492,7 +711,7 @@ mod tests {
         assert!(as_left(&path, before.as_deref(), after.as_deref()), "another meeting's entry changed: still as left");
         assert!(put_back(&path, before.as_deref(), after.as_deref()).unwrap());
         let now = load(&path);
-        assert!(now.events["psy-1"].times[""].contains(&held) && now.events.contains_key("other-meeting"), "{now:?}");
+        assert!(now.events["psy-1"].lines("").contains(&held) && now.events.contains_key("other-meeting"), "{now:?}");
         set_from(&path, "psy-1", &merged.replace("CN=Alex;PARTSTAT=ACCEPTED", "CN=Alex;PARTSTAT=DECLINED")).unwrap();
         let after = std::fs::read_to_string(&path).ok();
         set_from(&path, "psy-1", &merged).unwrap();
@@ -531,7 +750,7 @@ mod tests {
         let [Act::Made { path: stand_in_path, text: stand_in, .. }] = acts.as_slice() else { panic!("{acts:?}") };
         let meeting = held.replace("END:VEVENT", "ORGANIZER;CN=Alex:mailto:alex@example.org\r\nATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:office@example.net\r\nEND:VEVENT");
         let (file, aside) = crate::organizer::set_aside(&meeting);
-        let store_a = MeetingLines { events: [("psy-r4".to_string(), Kept { times: [(String::new(), aside.lines.iter().map(|(_, l)| l.clone()).collect())].into() })].into() };
+        let store_a = MeetingLines { events: [("psy-r4".to_string(), Kept::of(aside.lines.clone()))].into() };
         let me = crate::organizer::Guest { address: "alex@example.org".into(), name: "Alex".into() };
         let off = crate::organizer::with_guests(&file, &me, &[], crate::organizer::Sender::Draft).unwrap();
         let b_written = holders::with_taken(&off, None, &Taken { to: Some(alex), back: None }, &zone).unwrap();

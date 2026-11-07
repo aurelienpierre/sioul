@@ -272,6 +272,12 @@ fn moved_changed_line(kind: &str, title: &str) -> String {
     if title.trim().is_empty() { say("dav-moved-changed-untitled", &[("kind", kind.to_string())]) } else { say("dav-moved-changed", &[("summary", title.to_string())]) }
 }
 
+/// An item moved here that is a meeting in both its calendars now: by its
+/// title, else by its kind ("event", "task").
+fn moved_both_line(kind: &str, title: &str) -> String {
+    if title.trim().is_empty() { say("dav-moved-both-untitled", &[("kind", kind.to_string())]) } else { say("dav-moved-both", &[("summary", title.to_string())]) }
+}
+
 /// What a sync said: the account's status, conflicts in the status line, the pages again.
 fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Result<dav::Report, SyncError>) {
     eprintln!("{}", sync_line(&result));
@@ -306,6 +312,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             // Moved here, its old copy changed there first: the move holds, what changed kept, said once (R4-F).
             for (kind, title) in &report.moved_changed {
                 tell(qt, shared, moved_changed_line(kind, title));
+            }
+            // Moved here, a meeting in both calendars by then: both stay, yours to choose, said once (M7).
+            for (kind, title) in &report.moved_both {
+                tell(qt, shared, moved_both_line(kind, title));
             }
             // An invitation you had answered otherwise on another device: its answer kept, said once.
             for (summary, kept) in report.answered {
@@ -2338,6 +2348,9 @@ mod tests {
         // No title: said by its kind, never "“”" (review of round 4, R4-B).
         let untitled = meeting_set_aside_line(&dav::MeetingSetAside { deleted: true, ..Default::default() });
         assert!(!untitled.contains("“”") && untitled == say("dav-undeleted-untitled", &[("kind", "event".into())]), "{untitled}");
+        // Moved, a meeting in both calendars by then (review of f85f504, M7): by its title, else its kind.
+        assert!(moved_both_line("event", "Planning").contains("Planning"));
+        assert_eq!(moved_both_line("task", " "), say("dav-moved-both-untitled", &[("kind", "task".into())]));
         for kind in ["event", "task", "contact"] {
             let line = undeleted_line(kind, "");
             assert!(!line.is_empty() && !line.contains("“”") && !line.contains('{'), "{kind}: {line}");

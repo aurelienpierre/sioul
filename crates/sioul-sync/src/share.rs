@@ -344,11 +344,13 @@ fn own_time_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.own_time >= OWN_TIME_SHARED))
 }
 /// Sioul's own lines of meetings with others (`sioul_core::meeting_lines`:
-/// who takes a child's event, its kind, a block's task): each meeting's entry
-/// whole, by its UID, as your own time around meetings travels, so that two
-/// devices answering the same meeting keep the later answer, and an entry
-/// taken out (its lines back in its file) is a removal that travels too.
-static MEETING_LINES_RULES: Rules = Rules { keyed: &[], whole: &["event.*"], local: &[], next: None };
+/// who takes a child's event, its kind, a block's task): each entry by its
+/// UID, each line by its time and its name, never a table whole. A kind set on
+/// one device and a holder on another both stay, as `meeting_lines::filled`
+/// reads them; two holders written apart keep the later (review of f85f504,
+/// M1). An entry taken out (its lines back in its file) is a removal of each of
+/// them that travels too, and an entry of no line travels by its stamp.
+static MEETING_LINES_RULES: Rules = Rules { keyed: &[], whole: &[], local: &[], next: None };
 
 /// The store of Sioul's own lines of meetings with others.
 pub const MEETING_LINES: &str = "data/meeting-lines.toml";
@@ -5531,7 +5533,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     }
     let meeting_lines = stores.iter().any(|s| s.name == MEETING_LINES);
     if meeting_lines && !memory.meeting_lines_open && meeting_lines_shared(sharing, &memory, now_ms) {
-        memory.meeting_lines_open = true;
+        // What opens is in its present form: an older form's file would travel as lists of a
+        // time. Not written (a disk full), it stays shut and is tried at the next exchange.
+        memory.meeting_lines_open = stores.iter().filter(|s| s.name == MEETING_LINES).all(|s| sioul_core::meeting_lines::in_present_form(&s.path).is_ok());
     }
     let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MEETING_LINES && !memory.meeting_lines_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open) || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open);
     let stores: &[Store] = if stores.iter().any(left_out) {
