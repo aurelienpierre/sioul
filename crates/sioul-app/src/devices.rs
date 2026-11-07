@@ -268,12 +268,18 @@ pub(crate) fn watch_system() {
 /// Every fact of this computer's (`sioul_sync::power::read`, through
 /// `watch_system`): may wait for a fresh reading ten seconds at most, so only
 /// on a thread of its own (the spam filter's training by itself), never in
-/// an exchange (`share::metered` reads what is kept). A computer's alone: a
-/// phone never trains.
-#[cfg(not(target_os = "android"))]
+/// an exchange (`share::metered` reads what is kept). A phone's from Android
+/// itself (`spam::phone_power`, StepService's "learn-power").
 pub(crate) fn power_now() -> sioul_sync::power::Power {
-    watch_system();
-    sioul_sync::power::read()
+    #[cfg(target_os = "android")]
+    {
+        crate::spam::phone_power()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        watch_system();
+        sioul_sync::power::read()
+    }
 }
 
 /// `active_here`, from what was read: a phone; the session's last reading
