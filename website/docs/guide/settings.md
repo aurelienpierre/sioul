@@ -114,7 +114,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | Page | Behind its ⚙ |
 |---|---|
 | [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, the calls your phones declined, how a message reads, how mail is sorted |
-| [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, how a message reads, the lists you left |
+| [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, whether saying Spam also leaves a list, how a message reads, the lists you left |
 | [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, what is work and what is yours, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on, the time zone shown |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |

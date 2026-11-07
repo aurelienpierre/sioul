@@ -102,6 +102,11 @@ pub enum Kind {
     /// list, each topic's seeds and senders' rules, Rename and Remove, the
     /// groups Sioul noticed with "Name it" (docs/topics.md). Nothing in `value`.
     Topics,
+    /// Leaving the lists of the mail you called spam, the window's own block
+    /// (`LeaveSpam.qml`): a row when there are some, found off the window's
+    /// thread (`leave_spam_look`), and its sheet (docs/client.md,
+    /// "Unsubscribing"). Nothing in `value`, nothing saved.
+    LeaveSpam,
 }
 
 /// One of a setting's choices.
@@ -368,6 +373,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("spam.proven", "spam-proven", Kind::Radios, SettingValue::Texts(vec![format!("proven:{}", config.spam.proven().as_str())]));
             s.rows = vec![Choice { value: SettingValue::Text("proven".into()), label: tr.text("set-spam-proven-row", None) }];
             s.choices = crate::spam::vouched::Proven::ALL.iter().map(|p| Choice { value: SettingValue::Text(p.as_str().into()), label: tr.text(&format!("set-spam-proven-{}", p.as_str()), None) }).collect();
+            // Saying Spam also leaves its list, when it offers one click (docs/client.md, "Unsubscribing").
+            b.push("mail.leave_on_spam", "mail-leave-on-spam", Kind::Bool, SettingValue::Bool(config.mail.leave_on_spam()));
             let (spam, unsure) = config.spam.thresholds();
             let hundredths = |t: f32| (f64::from(t) * 100.0).round() / 100.0;
             // Shown as percentages ("%"); each stops a point short of the other: unsure stays below spam.
@@ -385,6 +392,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             reading(&mut b, config);
             // The lists you left from a message, newest first: kept on this device (`unsubscribe::Record`).
             let mut left = crate::unsubscribe::Record::load(&crate::unsubscribe::Record::default_path()).lists;
+            // The lists of the mail you called spam, above them: with no list left yet the
+            // block names the section itself, and shows nothing while it has nothing to offer.
+            b.group = if left.is_empty() { String::new() } else { tr.text("unsubscribed-group", None) };
+            b.push("mail.leave_spam", "leave-spam", Kind::LeaveSpam, SettingValue::Text(String::new()));
             if !left.is_empty() {
                 left.sort_by_key(|l| std::cmp::Reverse(l.at));
                 let zone = crate::zone::current();
@@ -399,7 +410,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                         tr.text("unsubscribed-line", Some(&args))
                     })
                     .collect();
-                b.group = tr.text("unsubscribed-group", None);
                 b.note(tr.text("unsubscribed-note", None), lines);
             }
         }
@@ -1513,7 +1523,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "topics.list", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.proven", "mail.leave_on_spam", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "topics.list", "reading.family", "reading.size", "reading.spacing", "mail.leave_spam"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
@@ -1779,6 +1789,15 @@ mod tests {
         apply(&path, &config, "spam.proven.proven", &SettingValue::Text("mark".into())).unwrap();
         assert!(apply(&path, &config, "spam.proven.proven", &SettingValue::Text("move".into())).is_err());
         assert_eq!(Config::load(&path).unwrap().spam.proven(), crate::spam::vouched::Proven::Mark);
+        // Saying Spam also leaves its list: on until you say otherwise, your word kept.
+        let leaving = |config: &Config| for_view("mail", config, &Translator::new("en"), &[], None).into_iter().find(|s| s.key == "mail.leave_on_spam").unwrap();
+        assert!(config.mail.leave_on_spam());
+        assert_eq!((leaving(&config).kind, leaving(&config).value), (Kind::Bool, SettingValue::Bool(true)));
+        assert_eq!(leaving(&config).label, "When you say Spam, also leave its list if it offers one click");
+        apply(&path, &config, "mail.leave_on_spam", &SettingValue::Bool(false)).unwrap();
+        let off = Config::load(&path).unwrap();
+        assert!(!off.mail.leave_on_spam());
+        assert_eq!(leaving(&off).value, SettingValue::Bool(false));
         let matrix = for_view("mail", &config, &Translator::new("en"), &[], None).into_iter().find(|s| s.key == "spam.actions").unwrap();
         assert_eq!((matrix.kind, matrix.rows.len(), matrix.choices.len()), (Kind::Radios, 3, 3));
         assert_eq!(matrix.value, SettingValue::Texts(vec!["spam:move".into(), "unsure:flag".into(), "ham:flag".into()]));

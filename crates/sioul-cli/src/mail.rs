@@ -9,7 +9,8 @@ use crate::Session;
 use clap::{Subcommand, ValueEnum};
 use sioul_core::compose::{self, Draft, DraftKind};
 use sioul_core::config::Account;
-use sioul_core::maildir;
+use sioul_core::spam::labels;
+use sioul_core::{maildir, unsubscribe};
 use sioul_sync::mailbox::{self, Action};
 use sioul_sync::{SyncError, secret};
 use std::path::PathBuf;
@@ -33,6 +34,13 @@ pub(crate) enum MailCommand {
         /// For `move`: the folder, by its name as listed.
         #[arg(long)]
         to: Option<String>,
+    },
+    /// The lists of the mail you called spam that offer one click from a
+    /// verified sender, and how many others do not and why; nothing is contacted.
+    LeaveSpam {
+        /// Leaves them, one POST per list, one after the other.
+        #[arg(long)]
+        go: bool,
     },
     /// Writes and sends a message; the body is Markdown.
     Send {
@@ -93,6 +101,10 @@ pub(crate) fn run(s: &Session, command: MailCommand) -> Result<(), String> {
         }
         MailCommand::List { account, folder } => list(s, &account, folder.as_deref()),
         MailCommand::Act { file, action, to } => act(s, &file, action, to),
+        MailCommand::LeaveSpam { go } => {
+            leave_spam(s, go);
+            Ok(())
+        }
         MailCommand::Send { account, to, cc, subject, body, attach, reply, reply_all, forward, sign, encrypt } => {
             let account = mail_account(s, &account)?.clone();
             let own = own_addresses(s);
@@ -169,6 +181,37 @@ fn act(s: &Session, file: &std::path::Path, action: ActionArg, to: Option<String
     Ok(())
 }
 
+/// The lists of the mail you called spam (docs/client.md, "Unsubscribing"):
+/// each with its sender's domain, and with `go` what became of it, a list
+/// after another; then what was not to leave. Never reached by an agent.
+fn leave_spam(s: &Session, go: bool) {
+    let path = unsubscribe::Record::default_path();
+    let found = sioul_sync::unsubscribe::spam_lists_here(&s.config, &labels::read_all(), &unsubscribe::Record::load(&path), None);
+    for line in leave_spam_lines(s, &found, go.then_some(&path), &|list, record| sioul_sync::unsubscribe::leave(list, record)) {
+        println!("{line}");
+    }
+}
+
+/// What `leave_spam` prints: `leave` runs only with a record to write to.
+fn leave_spam_lines(s: &Session, found: &unsubscribe::SpamLists, go: Option<&std::path::PathBuf>, leave: &dyn Fn(&unsubscribe::SpamList, &std::path::Path) -> Result<sioul_sync::unsubscribe::Outcome, SyncError>) -> Vec<String> {
+    let mut lines = Vec::new();
+    for list in &found.lists {
+        // The name, the domain and the outcome came from a message: never a terminal's escape sequences.
+        let named = format!("{} · {}", crate::one_line(&list.list.name), crate::one_line(list.domain()));
+        lines.push(match go {
+            Some(record) => format!("{named} · {}", crate::one_line(&sioul_sync::unsubscribe::sentence(&list.list.name, &leave(list, record), &s.tr))),
+            None => named,
+        });
+    }
+    if found.lists.is_empty() {
+        lines.push(s.tr.text("leave-spam-none", None));
+    } else if go.is_none() {
+        lines.push(s.tr.text("leave-spam-dry", None));
+    }
+    lines.extend(found.not.lines(&s.tr));
+    lines
+}
+
 /// Sends a draft, and forgets it once sent; kept when sending failed.
 pub(crate) fn send_draft(s: &Session, account: &Account, draft: &Draft) -> Result<(), String> {
     let password = secret::password(account).map_err(|e| e.sentence(&s.tr, &account.id))?;
@@ -187,5 +230,45 @@ pub(crate) fn send_draft(s: &Session, account: &Account, draft: &Draft) -> Resul
             let _ = draft.save();
             Err(e.sentence(&s.tr, &account.id))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sioul_core::config::Config;
+    use sioul_core::i18n::Translator;
+    use sioul_sync::unsubscribe::Outcome;
+    use std::cell::RefCell;
+    use std::path::{Path, PathBuf};
+
+    fn a_list(name: &str, domain: &str) -> unsubscribe::SpamList {
+        unsubscribe::SpamList { list: unsubscribe::List { key: format!("list-id:{domain}"), name: name.into() }, url: format!("https://{domain}/u"), address: format!("news@{domain}"), message_id: format!("m@{domain}") }
+    }
+
+    /// Without `--go` nothing is contacted; with it, one POST per list, each outcome on its own line.
+    #[test]
+    fn it_lists_and_only_go_contacts() {
+        let s = Session { config: Config::default(), config_path: PathBuf::new(), tr: Translator::new("en") };
+        let found = unsubscribe::SpamLists { lists: vec![a_list("Type\x1b[31m & Pixels", "letters.example"), a_list("Old News", "old.example")], not: unsubscribe::NotLeft { not_one_click: 2, gone: 1, ..Default::default() } };
+        let posted = RefCell::new(Vec::new());
+        let leave = |list: &unsubscribe::SpamList, _: &Path| {
+            posted.borrow_mut().push(list.url.clone());
+            Ok(if list.url.contains("old") { Outcome::Refused(404) } else { Outcome::Done })
+        };
+        let lines = leave_spam_lines(&s, &found, None, &leave);
+        assert!(posted.borrow().is_empty(), "nothing contacted");
+        assert_eq!(lines[1], "Old News · old.example");
+        assert!(!lines[0].contains('\x1b') && lines[0].ends_with(" · letters.example"), "{lines:?}");
+        assert_eq!(&lines[2..], ["Nothing was contacted. `sioul mail leave-spam --go` leaves these lists.", "2 lists offer no one click.", "1 message you called spam is no longer on this device."]);
+        let record = PathBuf::from("/stand-in/unsubscribed.toml");
+        let lines = leave_spam_lines(&s, &found, Some(&record), &leave);
+        assert_eq!(*posted.borrow(), ["https://letters.example/u", "https://old.example/u"]);
+        assert!(lines[0].contains("· letters.example · Unsubscribed from") && !lines[0].contains('\x1b'), "{lines:?}");
+        assert_eq!(lines[1], "Old News · old.example · Not unsubscribed from Old News: its server answered 404.");
+        assert_eq!(&lines[2..], ["2 lists offer no one click.", "1 message you called spam is no longer on this device."]);
+        // Nothing to leave.
+        let lines = leave_spam_lines(&s, &unsubscribe::SpamLists::default(), Some(&record), &leave);
+        assert_eq!(lines, ["No list to leave among the mail you called spam."]);
     }
 }

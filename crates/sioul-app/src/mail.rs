@@ -76,7 +76,10 @@ enum Work {
     /// what went wrong, else "".
     Back { back: Box<dyn Fn(&QtThread, &Arc<Shared>) -> String + Send + Sync> },
     /// Leaving a list, in one click or by a message from `account`; the message stays where it is.
-    Unsubscribe { list: unsubscribe::List, sender: String, account: String, way: unsubscribe::Way },
+    /// `by_spam`: it came with your Spam (`leave_after_spam`), so your Not spam takes it back too.
+    Unsubscribe { list: unsubscribe::List, sender: String, account: String, way: unsubscribe::Way, by_spam: bool },
+    /// The lists of the mail you called spam (`leave`), by their keys, one after the other, under one "Undo".
+    LeaveLists { keys: Vec<String> },
     /// Your mail filters run on the inboxes, as you asked after their preview:
     /// each account's messages in one connection (`filters::perform`).
     Filters { planned: Vec<(Account, Vec<sioul_sync::filters::Job>)> },
@@ -512,7 +515,7 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
             }
             Work::Many(works) => works.iter().for_each(|w| add(w, files, drafts)),
             // Leaving its list, a message stays in view where it is.
-            Work::Act { .. } | Work::AcrossRemote { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } | Work::Unsubscribe { .. } => {}
+            Work::Act { .. } | Work::AcrossRemote { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } | Work::Unsubscribe { .. } | Work::LeaveLists { .. } => {}
         }
     }
     for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
@@ -546,6 +549,23 @@ fn waiting_words(shared: &Shared) -> Vec<(Account, PathBuf, Action)> {
     let mut said = Vec::new();
     for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
         add(&pending.work, &mut said);
+    }
+    said
+}
+
+/// What you said of messages as it stands now: every device's label log,
+/// oldest first, then the words still waiting for their Undo, as they will be written.
+pub(crate) fn said_now(shared: &Shared) -> Vec<sioul_core::spam::labels::Entry> {
+    use sioul_core::spam::labels::{self, Source};
+    let mut said = labels::read_all();
+    for (account, file, action) in waiting_words(shared) {
+        let source = match action {
+            Action::Junk => Source::Junk,
+            Action::NotJunk => Source::NotJunk,
+            _ => Source::NotSpam,
+        };
+        let folder = mailbox::folder_of(&account, &file).map(|f| f.name).unwrap_or_default();
+        said.extend(labels::Entry::of_file(&account.id, &folder, &file, source));
     }
     said
 }
@@ -693,6 +713,17 @@ pub(crate) fn schedule_cancelled_removal(qt: &QtThread, shared: &Arc<Shared>, ac
 /// seconds to undo; what they move leaves the lists meanwhile.
 pub(crate) fn schedule_filters(qt: &QtThread, shared: &Arc<Shared>, planned: Vec<(Account, Vec<sioul_sync::filters::Job>)>, line: String) {
     schedule(qt, shared, Work::Filters { planned }, line);
+}
+
+/// Leaves the lists named by `keys` (`leave`), after ten seconds to undo:
+/// asked again while they wait, the line again, not a second run.
+pub(crate) fn schedule_leave(qt: &QtThread, shared: &Arc<Shared>, keys: Vec<String>, line: String) {
+    let waiting = shared.pending.lock().is_ok_and(|p| p.iter().any(|p| !p.taken.load(Ordering::Relaxed) && matches!(p.work, Work::LeaveLists { .. })));
+    if waiting {
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().set_undo_line(QString::from(&line)));
+        return;
+    }
+    schedule(qt, shared, Work::LeaveLists { keys }, line);
 }
 
 /// Leaves one occurrence of a repeating event out, after ten seconds to undo.
@@ -920,18 +951,100 @@ pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, 
     if matches!(action, Action::NotJunk | Action::NotSpam) {
         let (qt, shared) = (qt.clone(), Arc::clone(shared));
         std::thread::spawn(move || {
+            let stays = stay_on_lists(&qt, &shared, std::slice::from_ref(&file));
             let (domain, others) = also_back(&[(account.clone(), file.clone())]);
             if others.is_empty() {
-                return schedule(&qt, &shared, Work::Act { account, file, action }, line);
+                return schedule(&qt, &shared, Work::Act { account, file, action }, line + &stays);
             }
-            let line = say("undo-not-spam-and-others", &[("n", others.len().to_string()), ("domain", domain)]);
+            let line = say("undo-not-spam-and-others", &[("n", others.len().to_string()), ("domain", domain)]) + &stays;
             let mut works = vec![Work::Act { account, file, action }];
             works.extend(others.into_iter().map(|(account, file)| Work::Act { account, file, action: Action::BroughtBack }));
             schedule(&qt, &shared, Work::Many(works), line);
         });
         return;
     }
+    let said_spam = action == Action::Junk;
+    let spam_file = file.clone();
     schedule(qt, shared, Work::Act { account, file, action }, line);
+    if said_spam {
+        leave_after_spam(qt, shared, vec![spam_file]);
+    }
+}
+
+/// What saying Spam of `files` also leaves (docs/client.md, "Unsubscribing"),
+/// the word itself waiting for its Undo: one `Work::Unsubscribe` per list,
+/// with its sentence, for the lists that meet the rule (`spam_lists_here`), as
+/// you can leave them by hand, unless you switched it off. Most spam offers
+/// no one click from a proven sender, and nothing else is read then.
+fn spam_leaves(config: &Config, shared: &Shared, files: &[PathBuf]) -> Vec<(Work, String)> {
+    if !config.mail.leave_on_spam() {
+        return Vec::new();
+    }
+    let only = sioul_sync::unsubscribe::one_click_among(config, files);
+    if only.is_empty() {
+        return Vec::new();
+    }
+    let record = unsubscribe::Record::load(&unsubscribe::Record::default_path());
+    let found = sioul_sync::unsubscribe::spam_lists_here(config, &said_now(shared), &record, Some(&only));
+    found
+        .lists
+        .into_iter()
+        .filter(|l| !unsubscribe_waits(shared, &l.list.key))
+        .map(|l| {
+            let line = say("unsubscribe-pending", &[("list", l.list.name.clone())]);
+            (Work::Unsubscribe { list: l.list, sender: l.address, account: String::new(), way: unsubscribe::Way::OneClick { url: l.url }, by_spam: true }, line)
+        })
+        .collect()
+}
+
+/// Spam said of `files`: the lists it also leaves, looked for off the
+/// window's thread (it reads mail), each then under its own ten seconds and
+/// Undo; nothing when your word was taken back meanwhile. A demo sends nothing.
+fn leave_after_spam(qt: &QtThread, shared: &Arc<Shared>, files: Vec<PathBuf>) {
+    if crate::backend::offline() {
+        return;
+    }
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        let works = spam_leaves(&load_config(), &shared, &files);
+        let waiting = waiting_words(&shared);
+        let still_said = |file: &PathBuf| waiting.iter().rev().find(|(_, f, _)| f == file).is_some_and(|(_, _, action)| *action == Action::Junk);
+        if files.iter().any(still_said) {
+            for (work, line) in works {
+                schedule(&qt, &shared, work, line);
+            }
+        }
+    });
+}
+
+/// The leaving your Spam scheduled for the lists `keys`, taken back so that
+/// nothing is sent, with each list's name; never one you asked for with Unsubscribe.
+fn take_back_leaving(shared: &Shared, keys: &BTreeSet<String>) -> Vec<(Arc<Pending>, String)> {
+    let waiting = shared.pending.lock().map(|p| p.clone()).unwrap_or_default();
+    waiting
+        .into_iter()
+        .filter_map(|pending| {
+            let Work::Unsubscribe { list, by_spam: true, .. } = &pending.work else { return None };
+            if !keys.contains(&list.key) || pending.taken.swap(true, Ordering::Relaxed) {
+                return None;
+            }
+            let name = list.name.clone();
+            Some((pending, name))
+        })
+        .collect()
+}
+
+/// Not spam said of `files`: the lists your Spam was about to leave stay. What
+/// to say of it, after the line of your Not spam; "" when none was waiting.
+fn stay_on_lists(qt: &QtThread, shared: &Arc<Shared>, files: &[PathBuf]) -> String {
+    let keys: BTreeSet<String> = files.iter().filter_map(|file| maildir::read_one(file)).map(|card| unsubscribe::list_of(&card).key).collect();
+    take_back_leaving(shared, &keys)
+        .into_iter()
+        .map(|(pending, name)| {
+            forget(qt, shared, &pending);
+            format!(" {}", say("leave-spam-stays", &[("list", name)]))
+        })
+        .collect()
 }
 
 /// How long ago proven mail may have arrived in a Junk folder to be brought
@@ -1321,14 +1434,20 @@ pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, rows: &[Vec<String>]
         })
         .collect();
     if !said {
-        return schedule(qt, shared, Work::Many(works), line);
+        schedule(qt, shared, Work::Many(works), line);
+        if first == Action::Junk {
+            leave_after_spam(qt, shared, found.into_iter().map(|(_, file)| file).collect());
+        }
+        return;
     }
     // Not spam on proven mail: the same senders' other mail in a Junk folder comes back too, under
     // the same Undo; looked for off the window's thread (`also_back`), then scheduled.
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
+        let files: Vec<PathBuf> = found.iter().map(|(_, file)| file.clone()).collect();
+        let stays = stay_on_lists(&qt, &shared, &files);
         let (domain, others) = also_back(&found);
-        let (mut works, mut line) = (works, line);
+        let (mut works, mut line) = (works, line + &stays);
         if !others.is_empty() {
             line = format!("{line} {}", say("undo-many-others-back", &[("n", others.len().to_string()), ("domain", domain)]));
             works.extend(others.into_iter().map(|(account, file)| Work::Act { account, file, action: Action::BroughtBack }));
@@ -1528,6 +1647,9 @@ fn done(qt: &QtThread, shared: &Arc<Shared>, pending: &Arc<Pending>) {
     if touches_pim(&pending.work) {
         crate::pim::show_pim(qt, shared);
         crate::work::show_work(qt, shared);
+    }
+    if matches!(pending.work, Work::LeaveLists { .. }) {
+        crate::leave::look(qt, shared, true);
     }
 }
 
@@ -1734,7 +1856,8 @@ fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBu
             }
         }
         Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } => None,
-        Work::Unsubscribe { list, sender, account, way } => Some(unsubscribe_now(list, sender, account, way, shared)),
+        Work::Unsubscribe { list, sender, account, way, .. } => Some(unsubscribe_now(list, sender, account, way, shared)),
+        Work::LeaveLists { keys } => Some(crate::leave::perform(keys, shared)),
         Work::Filters { planned } => {
             let said = crate::filters::perform(planned);
             for (account, _) in planned {
@@ -1815,23 +1938,20 @@ fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, sh
 /// What a message offers to leave its list (docs/client.md, "Unsubscribing"),
 /// judged as the Reader judges it, and the account a request by mail goes
 /// out from: the one the message came to, when it sends.
-fn unsubscribe_offer(config: &Config, triaged: &sioul_core::porch::Triaged) -> Option<(unsubscribe::Offer, Option<Account>)> {
-    let account = triaged.card.account.as_deref();
-    let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == account).map(|s| s.trusted_ids).unwrap_or_default();
-    let mut offer = unsubscribe::offer(&triaged.card, &trusted, triaged.trust, &triaged.lane, &triaged.reasons)?;
-    // In the junk: an unverified sender's is spam, answering it tells its sender your
-    // address is read; a verified sender's way out stays, the message where it is.
-    let file = triaged.card.path.as_deref();
-    if file.and_then(|f| mailbox::folder_of(config.account_of(f)?, f)).is_some_and(|f| f.role == Role::Junk) {
-        unsubscribe::in_junk(&mut offer, triaged.trust);
-    }
-    let sender = account.and_then(|id| config.account(id)).filter(|a| a.syncs() && a.address.is_some()).cloned();
+fn unsubscribe_offer(config: &Config, senders: &sioul_core::porch::Senders, triaged: &sioul_core::porch::Triaged) -> Option<(unsubscribe::Offer, Option<Account>)> {
+    let offer = sioul_sync::unsubscribe::offer_of(config, senders, triaged)?;
+    let sender = triaged.card.account.as_deref().and_then(|id| config.account(id)).filter(|a| a.syncs() && a.address.is_some()).cloned();
     Some((offer, sender))
 }
 
+/// Whether leaving the list `key` already waits for its Undo.
+fn unsubscribe_waits(shared: &Shared, key: &str) -> bool {
+    shared.pending.lock().is_ok_and(|p| p.iter().any(|p| !p.taken.load(Ordering::Relaxed) && matches!(&p.work, Work::Unsubscribe { list, .. } if list.key == key)))
+}
+
 /// The Reader's button for a message: none when it names no way out of a list.
-pub(crate) fn unsubscribe_view(config: &Config, triaged: &sioul_core::porch::Triaged) -> Option<unsubscribe::UnsubscribeView> {
-    let (offer, sender) = unsubscribe_offer(config, triaged)?;
+pub(crate) fn unsubscribe_view(config: &Config, senders: &sioul_core::porch::Senders, triaged: &sioul_core::porch::Triaged) -> Option<unsubscribe::UnsubscribeView> {
+    let (offer, sender) = unsubscribe_offer(config, senders, triaged)?;
     let record = unsubscribe::Record::load(&unsubscribe::Record::default_path());
     let from = sender.as_ref().and_then(|a| a.address.as_deref());
     Some(unsubscribe::view(&offer, &record, from, tr(), sioul_core::zone::now().date()))
@@ -1841,12 +1961,12 @@ pub(crate) fn unsubscribe_view(config: &Config, triaged: &sioul_core::porch::Tri
 /// waits ten seconds with "Undo", as sending does; a list that takes it only
 /// on its web page has the page returned, to open in the browser, at once.
 /// What cannot be done is said in the status line, the button's tip.
-pub(crate) fn unsubscribe(qt: &QtThread, shared: &Arc<Shared>, config: &Config, triaged: Option<sioul_core::porch::Triaged>) -> String {
+pub(crate) fn unsubscribe(qt: &QtThread, shared: &Arc<Shared>, config: &Config, senders: &sioul_core::porch::Senders, triaged: Option<sioul_core::porch::Triaged>) -> String {
     let Some(triaged) = triaged else {
         set_status(qt, tr().text("mail-message-gone", None));
         return String::new();
     };
-    let Some((offer, sender)) = unsubscribe_offer(config, &triaged) else { return String::new() };
+    let Some((offer, sender)) = unsubscribe_offer(config, senders, &triaged) else { return String::new() };
     let record = unsubscribe::Record::default_path();
     let shown = unsubscribe::view(&offer, &unsubscribe::Record::load(&record), sender.as_ref().and_then(|a| a.address.as_deref()), tr(), sioul_core::zone::now().date());
     if !shown.offered {
@@ -1872,13 +1992,12 @@ pub(crate) fn unsubscribe(qt: &QtThread, shared: &Arc<Shared>, config: &Config, 
         Ok(way) => {
             let line = say("unsubscribe-pending", &[("list", list.name.clone())]);
             // Asked already, still waiting: its line again, not a second request.
-            let waiting = shared.pending.lock().is_ok_and(|p| p.iter().any(|p| !p.taken.load(Ordering::Relaxed) && matches!(&p.work, Work::Unsubscribe { list: l, .. } if l.key == list.key)));
-            if waiting {
+            if unsubscribe_waits(shared, &list.key) {
                 let _ = qt.queue(move |mut sioul| sioul.as_mut().set_undo_line(QString::from(&line)));
                 return String::new();
             }
             let account = sender.map(|a| a.id).unwrap_or_default();
-            schedule(qt, shared, Work::Unsubscribe { list, sender: address, account, way }, line);
+            schedule(qt, shared, Work::Unsubscribe { list, sender: address, account, way, by_spam: false }, line);
             String::new()
         }
         Err(_) => String::new(),
@@ -1896,14 +2015,11 @@ fn unsubscribe_now(list: &unsubscribe::List, sender: &str, account: &str, way: &
         unsubscribe::Record::add(&unsubscribe::Record::default_path(), left).err()
     };
     match way {
-        unsubscribe::Way::OneClick { url } => match sioul_sync::unsubscribe::one_click(url) {
-            Ok(sioul_sync::unsubscribe::Outcome::Done) => done("one-click").unwrap_or_else(|| say("unsubscribe-done-one-click", &[("list", list.name.clone())])),
-            Ok(sioul_sync::unsubscribe::Outcome::Refused(code)) => failed(say("unsubscribe-why-status", &[("code", code.to_string())])),
-            Ok(sioul_sync::unsubscribe::Outcome::Elsewhere(host)) => failed(say("unsubscribe-why-redirect", &[("host", host)])),
-            Ok(sioul_sync::unsubscribe::Outcome::TimedOut) => failed(say("unsubscribe-why-timeout", &[("seconds", sioul_sync::unsubscribe::WAIT.as_secs().to_string())])),
-            Err(SyncError::Tls(detail)) => failed(say("unsubscribe-why-tls", &[("detail", detail)])),
-            Err(e) => failed(say("unsubscribe-why-network", &[("detail", e.detail().to_string())])),
-        },
+        unsubscribe::Way::OneClick { url } => {
+            let outcome = sioul_sync::unsubscribe::one_click(url);
+            let unwritten = matches!(outcome, Ok(sioul_sync::unsubscribe::Outcome::Done)).then(|| done("one-click")).flatten();
+            unwritten.unwrap_or_else(|| sioul_sync::unsubscribe::sentence(&list.name, &outcome, tr()))
+        }
         unsubscribe::Way::Mail { to, subject, body } => {
             let config = load_config();
             let Some(account) = config.account(account).filter(|a| a.syncs()).cloned() else {
@@ -1993,17 +2109,19 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             show(qt, shared);
             (problem.unwrap_or_else(|| tr().text("undo-done", None)), None)
         }
-        Work::Act { .. } | Work::Across { .. } | Work::Batch { .. } | Work::AcrossRemote { .. } | Work::Many(_) | Work::Unsubscribe { .. } | Work::Filters { .. } => (tr().text("undo-done", None), None),
+        Work::Act { .. } | Work::Across { .. } | Work::Batch { .. } | Work::AcrossRemote { .. } | Work::Many(_) | Work::Unsubscribe { .. } | Work::LeaveLists { .. } | Work::Filters { .. } => (tr().text("undo-done", None), None),
     };
     tell(qt, shared, line);
     draft
 }
 
-/// The window closes: what waits is done now rather than lost.
+/// The window closes: what waits is done now rather than lost. But for the
+/// lists of the mail you called spam: many servers, up to fifteen seconds
+/// each, would hold the window open; they are offered again next time.
 pub(crate) fn flush(shared: &Arc<Shared>) {
     let waiting: Vec<Arc<Pending>> = shared.pending.lock().map(|p| p.clone()).unwrap_or_default();
     for pending in waiting {
-        if !pending.taken.swap(true, Ordering::Relaxed) {
+        if !matches!(pending.work, Work::LeaveLists { .. }) && !pending.taken.swap(true, Ordering::Relaxed) {
             let _ = perform(&pending.work, shared);
         }
     }
@@ -2487,6 +2605,110 @@ mod tests {
         let left = folder_waiting(&hidden, &waiting, &mut flags);
         assert_eq!(left, BTreeSet::from([junked, unjunked, archived]), "a folder: only Not spam where it lies stays");
         assert_eq!([Action::Junk, Action::NotJunk, Action::NotSpam, Action::Archive].map(|a| said_by(&a)), [Some(Label::Spam), Some(Label::Ham), Some(Label::Ham), None]);
+    }
+
+    /// The Reader's button reads who you blocked, as the batch does, though
+    /// its verdict is made without them: a proven sender's one click rests,
+    /// and says why; let out of the list, it is back.
+    #[test]
+    fn the_readers_button_rests_for_a_blocked_sender() {
+        sioul_core::config::stand_ins_only();
+        let id = format!("reader-blocked-{}", std::process::id());
+        let root = sioul_core::config::data_dir().join(&id);
+        let _ = std::fs::remove_dir_all(&root);
+        for sub in ["tmp", "new", "cur"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let blocked = sioul_core::config::config_dir().join(format!("{id}.txt"));
+        std::fs::create_dir_all(blocked.parent().unwrap()).unwrap();
+        std::fs::write(&blocked, "*@pest.example\n").unwrap();
+        let config: Config = toml::from_str(&format!("blocked_senders = \"{}\"\n[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"noa@home.example\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n", blocked.display(), root.display())).unwrap();
+        let file = root.join("cur").join(format!("1777000001.U7-1.sioul{}2,S", maildir::INFO));
+        std::fs::write(&file, "Authentication-Results: mx.example.org; dkim=pass header.d=pest.example header.s=s1 header.b=QUJD; dmarc=pass header.from=pest.example\r\nDKIM-Signature: v=1; d=pest.example; s=s1; h=from:to:list-unsubscribe:list-unsubscribe-post; bh=Zm9v; b=QUJDREVG\r\nMessage-ID: <1@pest.example>\r\nFrom: Pest <news@pest.example>\r\nTo: noa@home.example\r\nDate: Tue, 27 Oct 2026 09:00:00 +0100\r\nSubject: Issue\r\nList-Id: Pest <pest.example>\r\nList-Unsubscribe: <https://pest.example/u/1>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n\r\nThis week.\r\n").unwrap();
+        let sources: Vec<sioul_core::config::Source> = config.mail_sources().into_iter().map(|mut s| {
+            s.folder = s.folder.canonicalize().unwrap();
+            s
+        }).collect();
+        // As the Reader judges it (`World::judge`): nobody is blocked in its verdict.
+        let path = file.canonicalize().unwrap();
+        let judged = sioul_core::porch::judge(std::slice::from_ref(&path), &sources, None, &sioul_core::porch::KnownSenders::default(), &sioul_core::porch::Senders::default(), 1_790_000_000);
+        let triaged = judged.into_iter().next().unwrap();
+        assert_eq!(triaged.trust, sioul_core::trust::Trust::Verified);
+        let shown = unsubscribe_view(&config, &sioul_core::porch::Senders::load(&config), &triaged).unwrap();
+        assert!(!shown.offered && shown.way.is_empty(), "{shown:?}");
+        assert_eq!(shown.tip, tr().text("unsubscribe-not-blocked", None));
+        // Off the list: its one click is back.
+        std::fs::write(&blocked, "").unwrap();
+        let shown = unsubscribe_view(&config, &sioul_core::porch::Senders::load(&config), &triaged).unwrap();
+        assert!(shown.offered && shown.way == "one-click", "{shown:?}");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_file(blocked);
+    }
+
+    /// A Spam click schedules the same leaving as Unsubscribe, one per list,
+    /// only for what meets the rule and only while the switch is on; Not spam
+    /// takes back what your Spam scheduled, never what you asked for by hand.
+    #[test]
+    fn saying_spam_leaves_the_list_and_not_spam_takes_it_back() {
+        sioul_core::config::stand_ins_only();
+        use sioul_core::folders::folder;
+        let id = format!("leave-{}", std::process::id());
+        let root = sioul_core::config::data_dir().join(&id);
+        let _ = std::fs::remove_dir_all(&root);
+        let mut config: Config = toml::from_str(&format!("[[account]]\nid = \"{id}\"\nkind = \"imap\"\naddress = \"noa@home.example\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n", root.display())).unwrap();
+        let account = config.accounts[0].clone();
+        let folders = vec![folder("INBOX", Some("/"), Some(Role::Inbox))];
+        let saved: String = folders.iter().map(|f| format!("[[folder]]\nname = \"{}\"\ndisplay = \"{}\"\nrole = \"{}\"\nlocal = \"{}\"\n", f.name, f.display, serde_json::to_value(f.role).unwrap().as_str().unwrap(), f.local)).collect();
+        std::fs::create_dir_all(sioul_core::folders::saved_path(&id).parent().unwrap()).unwrap();
+        std::fs::write(sioul_core::folders::saved_path(&id), saved).unwrap();
+        for sub in ["tmp", "new", "cur"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let letter = |uid: u32, list: &str, dmarc: &str| {
+            let raw = format!("Authentication-Results: mx.example.org; dkim=pass header.d={list}.example header.s=s1 header.b=QUJD; dmarc={dmarc} header.from={list}.example\r\nDKIM-Signature: v=1; d={list}.example; s=s1; h=from:to:list-unsubscribe:list-unsubscribe-post; bh=Zm9v; b=QUJDREVG\r\nMessage-ID: <{uid}@{list}.example>\r\nFrom: Letters <news@{list}.example>\r\nTo: noa@home.example\r\nDate: Tue, 27 Oct 2026 09:00:00 +0100\r\nSubject: Issue {uid}\r\nList-Id: {list} <{list}.example>\r\nList-Unsubscribe: <https://{list}.example/u/{uid}>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n\r\nThis week.\r\n");
+            let file = root.join("cur").join(format!("17770000{uid:02}.U7-{uid}.sioul{}2,S", maildir::INFO));
+            std::fs::write(&file, raw).unwrap();
+            file
+        };
+        let (one, two, other, forged) = (letter(1, "alpha", "pass"), letter(2, "alpha", "pass"), letter(3, "beta", "pass"), letter(4, "gamma", "fail"));
+        let shared = Shared::default();
+        let wait = |work: Work| {
+            let pending = Arc::new(Pending { work, line: String::new(), taken: AtomicBool::new(false) });
+            shared.pending.lock().unwrap().push(Arc::clone(&pending));
+            pending
+        };
+        // Spam said of four messages of three lists, one of them forged: its word waits for its Undo.
+        let files = vec![one.clone(), two.clone(), other.clone(), forged.clone()];
+        let word = wait(Work::Many(files.iter().map(|file| Work::Act { account: account.clone(), file: file.clone(), action: Action::Junk }).collect()));
+        let works = spam_leaves(&config, &shared, &files);
+        let shown: Vec<(String, String)> = works.iter().map(|(work, _)| match work {
+            Work::Unsubscribe { list, way: unsubscribe::Way::OneClick { url }, by_spam: true, .. } => (list.key.clone(), url.clone()),
+            _ => panic!("the same pending work"),
+        }).collect();
+        // One per list, the newest of a list: its two messages have one Date, the later Message-ID wins.
+        assert_eq!(shown, [("list-id:alpha.example".to_string(), "https://alpha.example/u/2".to_string()), ("list-id:beta.example".to_string(), "https://beta.example/u/3".to_string())]);
+        assert_eq!(works[0].1, say("unsubscribe-pending", &[("list", "alpha".to_string())]), "its usual sentence");
+        // The switch off: nothing.
+        config.mail.leave_on_spam = Some(false);
+        assert!(spam_leaves(&config, &shared, &files).is_empty());
+        config.mail.leave_on_spam = None;
+        // Their leaving waits, one by your Spam, one by your own click on Unsubscribe.
+        let mut scheduled: Vec<Arc<Pending>> = Vec::new();
+        for (work, _) in works {
+            scheduled.push(wait(work));
+        }
+        assert!(spam_leaves(&config, &shared, &files).is_empty(), "never asked twice while it waits");
+        let by_hand = wait(Work::Unsubscribe { list: unsubscribe::List { key: "list-id:hand.example".into(), name: "Hand".into() }, sender: String::new(), account: String::new(), way: unsubscribe::Way::OneClick { url: "https://hand.example/u".into() }, by_spam: false });
+        // Not spam within the ten seconds: that list's leaving taken back, the others' still waiting.
+        let taken = take_back_leaving(&shared, &BTreeSet::from(["list-id:alpha.example".to_string(), "list-id:hand.example".to_string()]));
+        assert_eq!(taken.iter().map(|(_, name)| name.as_str()).collect::<Vec<_>>(), ["alpha"]);
+        assert!(scheduled[0].taken.load(Ordering::Relaxed), "its timer now finds it taken: nothing is sent");
+        assert!(!scheduled[1].taken.load(Ordering::Relaxed) && !by_hand.taken.load(Ordering::Relaxed));
+        // Your Undo of the word itself: asked again, no word, nothing to leave.
+        word.taken.store(true, Ordering::Relaxed);
+        shared.pending.lock().unwrap().clear();
+        assert!(spam_leaves(&config, &shared, &files).is_empty(), "no word of yours: nothing");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Proven mail your provider put in Spam (part 2 of 4 November 2026): the

@@ -2008,6 +2008,16 @@ pub mod qobject {
         #[qinvokable]
         fn mail_filters_run(self: Pin<&mut Sioul>) -> QString;
 
+        /// The lists of the mail you called spam, looked for off the window's
+        /// thread; `leave_spam_found` brings them.
+        #[qinvokable]
+        fn leave_spam_look(self: Pin<&mut Sioul>);
+
+        /// "Leave these lists": the lists named (JSON, their keys) left after
+        /// ten seconds to undo, those that still meet the rule then.
+        #[qinvokable]
+        fn leave_spam_run(self: Pin<&mut Sioul>, keys: &QString);
+
         /// A new mail filter from a search's conditions ({conditions, match},
         /// MailSearch.qml's "Make it a filter…"), last in the list and opened
         /// in the editor the next time Mail ▸ ⚙ shows it; returns what went wrong, else "".
@@ -2703,6 +2713,10 @@ pub mod qobject {
         /// What "Try it" or the mail filters' preview found, as JSON {kind, text, lines, count}.
         #[qsignal]
         fn mail_filters_found(self: Pin<&mut Sioul>, found: QString);
+
+        /// The lists of the mail you called spam, as JSON (`leave::Found`).
+        #[qsignal]
+        fn leave_spam_found(self: Pin<&mut Sioul>, found: QString);
 
         /// A message read for the reading pane (`read_message`): its key, the
         /// message laid out for reading as JSON (`view::MessageView`; empty
@@ -4288,7 +4302,7 @@ fn message_json(key: &str) -> String {
         };
         let mut shown = view::message_from(opened.as_deref().unwrap_or(&raw), &path, &triaged, &own, tr(), protection)?;
         shown.role = mail::locate(key).and_then(|(account, file)| sioul_sync::mailbox::folder_of(&account, &file)).map(|f| f.role);
-        shown.unsubscribe = mail::unsubscribe_view(&world.config, &triaged);
+        shown.unsubscribe = mail::unsubscribe_view(&world.config, &world.senders, &triaged);
         Some(shown)
     });
     shown.map_or_else(String::new, |m| json(&m))
@@ -5019,7 +5033,7 @@ impl qobject::Sioul {
     fn unsubscribe(self: Pin<&mut Self>, key: &QString) -> QString {
         let world = World::load();
         let triaged = world.judge(&key.to_string()).map(|(_, triaged)| triaged);
-        QString::from(&mail::unsubscribe(&self.qt_thread(), &self.shared(), &world.config, triaged))
+        QString::from(&mail::unsubscribe(&self.qt_thread(), &self.shared(), &world.config, &world.senders, triaged))
     }
 
     fn undo(mut self: Pin<&mut Self>) {
@@ -7765,7 +7779,7 @@ impl qobject::Sioul {
         // alone; docs/client.md), "invite" a meeting you organize, its form's guests and what Save says first
         // (pictures alone, nothing saved; docs/client.md), "contact-address" a contact's card with its postal
         // address and Directions (a picture alone), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -7997,6 +8011,14 @@ impl qobject::Sioul {
 
     fn mail_filters_run(self: Pin<&mut Self>) -> QString {
         QString::from(&crate::filters::run(&self.qt_thread(), &self.shared()))
+    }
+
+    fn leave_spam_look(self: Pin<&mut Self>) {
+        crate::leave::look(&self.qt_thread(), &self.shared(), false);
+    }
+
+    fn leave_spam_run(self: Pin<&mut Self>, keys: &QString) {
+        crate::leave::run(&self.qt_thread(), &self.shared(), &keys.to_string());
     }
 
     fn new_mail_filter(self: Pin<&mut Self>, given: &QString) -> QString {

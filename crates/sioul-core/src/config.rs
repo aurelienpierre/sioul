@@ -436,6 +436,17 @@ pub struct MailSettings {
     /// out alone (`rules::lenient`); written whole by `set_filters`.
     #[serde(default, rename = "filter", deserialize_with = "crate::rules::lenient")]
     pub filters: Vec<crate::rules::Filter>,
+    /// When you say Spam, its list is left too if it offers one click
+    /// (docs/client.md, "Unsubscribing"); unset, it is: `leave_on_spam`.
+    #[serde(default)]
+    pub leave_on_spam: Option<bool>,
+}
+
+impl MailSettings {
+    /// Whether saying Spam also leaves the message's list: on unless you said otherwise.
+    pub fn leave_on_spam(&self) -> bool {
+        self.leave_on_spam.unwrap_or(true)
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]

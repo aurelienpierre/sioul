@@ -169,6 +169,7 @@ mod organized;
 mod nfc;
 mod notices;
 mod ledger;
+mod leave;
 mod letters;
 mod map;
 // Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).

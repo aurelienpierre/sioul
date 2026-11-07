@@ -5743,6 +5743,64 @@ unsubscribed-group = Listes quittées
 unsubscribed-note = Chaque liste quittée depuis un courriel, quand et comment ; gardé sur cet appareil seulement.
 unsubscribed-line = { $list } : { $date }, { $way }
 
+# Quitter les listes des courriels dits indésirables (LeaveSpam.qml, unsubscribe::spam_lists) : la règle dans docs/client.md, « Unsubscribing ».
+set-leave-spam = Quitter les listes des courriels que vous dites indésirables
+set-leave-spam-help = Seulement les listes de courriels que vous avez dits indésirables vous-même, qui proposent le désabonnement en un clic, d’un expéditeur vérifié par Sioul. Sioul prévient le serveur de chaque liste, l’une après l’autre, sans rien de vous que ce que la liste a écrit dans son adresse.
+set-mail-leave-on-spam = Quand vous dites Indésirable, quitter aussi sa liste si elle propose le désabonnement en un clic
+set-mail-leave-on-spam-help = D’un expéditeur vérifié par Sioul, avec dix secondes pour annuler ; dire Pas indésirable pendant ces dix secondes l’annule aussi.
+leave-spam-row = { $n ->
+        [one] Quitter la liste des courriels que vous dites indésirables : 1 liste
+       *[other] Quitter les listes des courriels que vous dites indésirables : { $n } listes
+    }
+leave-spam-go = { $n ->
+        [one] Quitter cette liste
+       *[other] Quitter ces { $n } listes
+    }
+leave-spam-pending = { $n ->
+        [one] Départ de 1 liste dans dix secondes.
+       *[other] Départ de { $n } listes dans dix secondes.
+    }
+leave-spam-ended = { $left ->
+        [0] Aucune liste quittée
+        [one] 1 liste quittée
+       *[other] { $left } listes quittées
+    }{ $silent ->
+        [0] {""}
+        [one]  ; 1 n’a pas répondu
+       *[other]  ; { $silent } n’ont pas répondu
+    }{ $refused ->
+        [0] {""}
+        [one]  ; 1 a refusé
+       *[other]  ; { $refused } ont refusé
+    }.
+leave-spam-stays = Vous restez sur { $list } : vous avez dit Pas indésirable.
+leave-spam-none = Aucune liste à quitter parmi les courriels que vous dites indésirables.
+leave-spam-dry = Rien n’a été contacté. `sioul mail leave-spam --go` quitte ces listes.
+leave-spam-not-one-click = { $n ->
+        [one] 1 liste ne propose pas le désabonnement en un clic.
+       *[other] { $n } listes ne proposent pas le désabonnement en un clic.
+    }
+leave-spam-not-unverified = { $n ->
+        [one] L’expéditeur de 1 liste n’est pas vérifié.
+       *[other] Les expéditeurs de { $n } listes ne sont pas vérifiés.
+    }
+leave-spam-not-refused = { $n ->
+        [one] 1 liste est refusée : falsifiée, un nom emprunté, un expéditeur bloqué, un courriel hostile, ou une adresse que Sioul ne peut pas utiliser.
+       *[other] { $n } listes sont refusées : falsifiées, un nom emprunté, un expéditeur bloqué, un courriel hostile, ou une adresse que Sioul ne peut pas utiliser.
+    }
+leave-spam-not-gone = { $n ->
+        [one] 1 courriel que vous dites indésirable n’est plus sur cet appareil.
+       *[other] { $n } courriels que vous dites indésirables ne sont plus sur cet appareil.
+    }
+leave-spam-not-left = { $n ->
+        [one] 1 liste est déjà parmi les listes quittées.
+       *[other] { $n } listes sont déjà parmi les listes quittées.
+    }
+leave-spam-not-said = { $n ->
+        [one] Vous avez dit Pas indésirable à 1 liste.
+       *[other] Vous avez dit Pas indésirable à { $n } listes.
+    }
+
 ## Notifications des autres applications, sur un téléphone (crates/sioul-core/src/appnotes.rs, docs/android.md)
 appnotes-others = { $n ->
     [one] une autre application

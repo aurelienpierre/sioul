@@ -135,6 +135,10 @@ Se désabonner suit la preuve, pas le verdict. D’un expéditeur que Sioul a v�
 
 Une liste quittée montre **Abonnement arrêté**, et depuis quand. Si ses courriels continuent d’arriver, bloquez l’expéditeur : ⋮ ▸ **Comment cette personne vous joint…** ▸ **Bloqué**. Les listes quittées sont dans le ⚙ de la page Courriels, sous **Listes quittées**, sur cet appareil.
 
+**Quitter les listes des courriels que vous dites indésirables.** Quand vous dites **Indésirable** sur un courriel dont la liste propose le désabonnement en un clic, Sioul quitte aussi cette liste, avec les mêmes dix secondes et **Annuler** ; dire **Pas indésirable** pendant ces dix secondes l’annule. Pour arrêter cela, décochez « Quand vous dites Indésirable, quitter aussi sa liste si elle propose le désabonnement en un clic » dans le ⚙ de la page Courriels. Pour les courriels que vous avez dits indésirables auparavant, le même ⚙ a une ligne sous **Listes quittées**, « Quitter les listes des courriels que vous dites indésirables », quand il y en a : elle les nomme, et **Quitter ces listes** les fait l’une après l’autre, avec **Annuler** pendant dix secondes, puis une ligne pour la fin (« 2 listes quittées ; 1 n’a pas répondu. »). Une liste qui n’a pas répondu y reste pour un autre essai.
+
+Sioul ne prévient un serveur que pour un expéditeur prouvé : un courriel que vous avez dit indésirable vous-même (le dossier des indésirables ou le verdict d’un filtre n’est pas votre parole), un expéditeur vérifié, le désabonnement en un clic et aucune autre façon, une liste que vous n’avez pas déjà quittée et à laquelle vous n’avez pas dit **Pas indésirable**. Une demande à quelqu’un d’autre dirait seulement à celui qui a falsifié le courriel que votre adresse est lue. Sur un ordinateur, `sioul mail leave-spam` les liste sans contacter personne ; `sioul mail leave-spam --go` les quitte.
+
 ### Les invitations {#invitations}
 
 Un courriel qui apporte une invitation la montre au-dessus du texte : **Accepter**, **Peut-être**, **Décliner**. L’événement va dans votre agenda et votre réponse part vers la personne qui organise. Un événement publié a **Ajouter à mon agenda** ; un événement annulé, **Le retirer de mon agenda**.
@@ -268,7 +272,8 @@ Le ⚙ en haut de la page Courriels :
 - **Par conversation** : les courriels groupés avec leurs réponses.
 - **Relever toutes les** : la fréquence à laquelle les dossiers autres que la boîte de réception sont relevés. La boîte de réception arrive dès que le serveur signale du nouveau.
 - **Police**, **Taille**, **Interligne** : la lecture des courriels. Les trois mêmes sont dans le ⚙ du Porche, et derrière **Aa** dans les Notes.
-- **Listes quittées** : chaque liste quittée depuis un courriel, quand et comment, dès qu’il y en a une.
+- **Listes quittées** : chaque liste quittée depuis un courriel, quand et comment, dès qu’il y en a une ; et la ligne qui quitte les listes des courriels que vous dites indésirables, quand il y en a ([plus haut](#unsubscribing)).
+- **Quand vous dites Indésirable, quitter aussi sa liste si elle propose le désabonnement en un clic** : activé tant que vous ne le décochez pas ([plus haut](#unsubscribing)).
 - **Filtres** : ce qui est fait aux courriels qui arrivent, sur leur serveur, selon des conditions ([plus haut](#filters)).
 - **Votre filtre à indésirables** : plus bas.
 
@@ -616,6 +621,8 @@ Un classifieur fastText, entraîné sur un ordinateur à partir de vos propres c
 ### Se désabonner en un clic {#unsubscribing-in-one-click}
 
 Le « en un clic » (RFC 8058) ne sert que si une signature DKIM valide couvre à la fois `List-Unsubscribe` et `List-Unsubscribe-Post`, et appartient au domaine de De ou à celui de l’adresse elle-même ; il envoie le seul formulaire en HTTPS, vers un nom sur Internet, sans cookie ni rien de vous, ne suit les redirections qu’au sein du même site, et abandonne au bout de quinze secondes. Sinon, Sioul envoie le courriel que la liste demande (RFC 2369), depuis votre adresse, ou ouvre la page de la liste. Deux en-têtes `List-Unsubscribe`, ou une adresse inutilisable, et il ne fait rien.
+
+Quitter les listes des courriels que vous dites indésirables n’utilise que ce clic, jamais le courriel ni la page, et ne l’envoie que si le journal des étiquettes de chaque appareil donne Indésirable comme votre dernier mot sur le courriel, si chaque copie ici obtient le clic d’un expéditeur en `Trust::Verified`, et si la liste n’est ni déjà quittée ni porteuse d’un courriel que vous avez dit pas indésirable. Un seul POST part vers chaque liste, à l’adresse de son plus récent courriel retenu ; seule une réponse 2xx inscrit la liste comme quittée.
 
 ### La recherche et les filtres sur le serveur {#search-and-filters-on-the-server}
 

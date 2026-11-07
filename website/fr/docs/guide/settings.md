@@ -114,7 +114,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | Page | Derrière son ⚙ |
 |---|---|
 | [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, les appels refusés par vos téléphones, la lecture d’un courriel, comment les courriels sont triés |
-| [Courriels](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, vos filtres, votre propre filtre à indésirables, la lecture d’un courriel, les listes quittées |
+| [Courriels](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, vos filtres, votre propre filtre à indésirables, si dire Indésirable quitte aussi une liste, la lecture d’un courriel, les listes quittées |
 | [Tâches](tasks.md#the-tasks-settings) | heures de bureau, types, catégories, listes de tâches, où vont les nouvelles tâches, ce qui est du travail et ce qui est à vous, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée, le fuseau horaire montré |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |

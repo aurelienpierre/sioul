@@ -5713,6 +5713,62 @@ unsubscribed-group = Lists you left
 unsubscribed-note = Each list you left from a message, when and how; kept on this device only.
 unsubscribed-line = { $list }: { $date }, { $way }
 
+# Leaving the lists of the mail you called spam (LeaveSpam.qml, unsubscribe::spam_lists): the rule in docs/client.md, "Unsubscribing".
+set-leave-spam = Leave the lists of the mail you called spam
+set-leave-spam-help = Only the lists of mail you said is spam yourself, that offer one click, from a sender Sioul verified. Sioul tells each list's server, one after the other, with nothing of yours but what the list wrote in its address.
+set-mail-leave-on-spam = When you say Spam, also leave its list if it offers one click
+set-mail-leave-on-spam-help = From a sender Sioul verified, with ten seconds to undo; saying Not spam in those ten seconds cancels it too.
+leave-spam-row = { $n ->
+        [one] Leave the list of the mail you called spam: 1 list
+       *[other] Leave the lists of the mail you called spam: { $n } lists
+    }
+leave-spam-go = { $n ->
+        [one] Leave this list
+       *[other] Leave these { $n } lists
+    }
+leave-spam-pending = { $n ->
+        [one] Leaving 1 list in ten seconds.
+       *[other] Leaving { $n } lists in ten seconds.
+    }
+leave-spam-ended = { $left ->
+        [0] No list left
+        [one] Left 1 list
+       *[other] Left { $left } lists
+    }{ $silent ->
+        [0] {""}
+       *[other] ; { $silent } did not answer
+    }{ $refused ->
+        [0] {""}
+       *[other] ; { $refused } refused
+    }.
+leave-spam-stays = You stay on { $list }: you said Not spam.
+leave-spam-none = No list to leave among the mail you called spam.
+leave-spam-dry = Nothing was contacted. `sioul mail leave-spam --go` leaves these lists.
+leave-spam-not-one-click = { $n ->
+        [one] 1 list offers no one click.
+       *[other] { $n } lists offer no one click.
+    }
+leave-spam-not-unverified = { $n ->
+        [one] 1 list's sender is not verified.
+       *[other] { $n } lists' senders are not verified.
+    }
+leave-spam-not-refused = { $n ->
+        [one] 1 list is refused: forged, a borrowed name, a blocked sender, hostile mail, or an address Sioul cannot use.
+       *[other] { $n } lists are refused: forged, a borrowed name, a blocked sender, hostile mail, or an address Sioul cannot use.
+    }
+leave-spam-not-gone = { $n ->
+        [one] 1 message you called spam is no longer on this device.
+       *[other] { $n } messages you called spam are no longer on this device.
+    }
+leave-spam-not-left = { $n ->
+        [one] 1 list is among the lists you left already.
+       *[other] { $n } lists are among the lists you left already.
+    }
+leave-spam-not-said = { $n ->
+        [one] You said Not spam to 1 list.
+       *[other] You said Not spam to { $n } lists.
+    }
+
 ## Notifications from other apps, on a phone (crates/sioul-core/src/appnotes.rs, docs/android.md)
 appnotes-others = { $n ->
     [one] one other app

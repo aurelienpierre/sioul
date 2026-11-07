@@ -135,6 +135,10 @@ Leaving follows proof, not the verdict. From a sender Sioul verified (its domain
 
 A list you left shows **Unsubscribed**, and when. If its mail keeps coming, block the sender: ⋮ ▸ **How they reach you…** ▸ **Blocked**. The lists you left are in the Mail page's ⚙, under **Lists you left**, on this device.
 
+**Leaving the lists of the mail you called spam.** When you say **Spam** on a message whose list offers one click, Sioul leaves that list too, with the same ten seconds and **Undo**; saying **Not spam** in those ten seconds cancels it. To stop this, switch off "When you say Spam, also leave its list if it offers one click" in the Mail page's ⚙. For the mail you called spam before, the same ⚙ has a row under **Lists you left**, "Leave the lists of the mail you called spam", when there are some: it names them, and **Leave these lists** does them one after another, with **Undo** for ten seconds, then one line for the end ("Left 2 lists; 1 did not answer."). A list that did not answer stays there for another try.
+
+Sioul only tells a server this for a proven sender: mail you yourself said is spam (a junk folder or a filter's verdict is not your word), a sender it verified, one click and no other way, a list you have not left already and have not said **Not spam** to. A request to anyone else would only tell whoever forged the message that your address is read. On a computer, `sioul mail leave-spam` lists them and contacts nobody; `sioul mail leave-spam --go` leaves them.
+
 ### Invitations {#invitations}
 
 A message that brings an invitation shows it above the text: **Accept**, **Maybe**, **Decline**. The event goes into your calendar and your answer goes to the organiser. A published event has **Add to my calendar**; a cancelled one, **Take it out of my calendar**.
@@ -268,7 +272,8 @@ The ⚙ at the top of the Mail page:
 - **By conversation**: messages grouped with their answers.
 - **Fetch every**: how often the folders other than the inbox are fetched. The inbox comes as soon as the server says something arrived.
 - **Font**, **Size**, **Line spacing**: how messages read. The same three are in the Porch's ⚙, and behind **Aa** in Notes.
-- **Lists you left**: each list you left from a message, when and how, once there is one.
+- **Lists you left**: each list you left from a message, when and how, once there is one; and the row that leaves the lists of the mail you called spam, when there are some ([above](#unsubscribing)).
+- **When you say Spam, also leave its list if it offers one click**: on unless you switch it off ([above](#unsubscribing)).
 - **Filters**: what is done to new mail on its server, by conditions ([above](#filters)).
 - **Your own spam filter**: below.
 
@@ -616,6 +621,8 @@ A fastText classifier, trained on a computer on your own mail: the words, and fa
 ### Unsubscribing in one click {#unsubscribing-in-one-click}
 
 One click (RFC 8058) is used only when a DKIM signature that passed covers both `List-Unsubscribe` and `List-Unsubscribe-Post`, and belongs to the domain in From or to the address's own; it posts the form alone over HTTPS, to a name on the Internet, without cookies or anything of yours, follows redirects only within the same site, and gives up after fifteen seconds. Otherwise Sioul sends the message the list asks for (RFC 2369), from your address, or opens the list's page. Two `List-Unsubscribe` headers, or an address it cannot use, and it does nothing.
+
+Leaving the lists of the mail you called spam uses that one click alone, never the message or the page, and sends it only when every device's label log has Spam as your newest word on the message, every copy here gets one click from a sender with `Trust::Verified`, and the list is neither left already nor has a message you said is not spam. One POST goes to each list, at its newest such message's address; only a 2xx answer writes the list as left.
 
 ### Search and filters on the server {#search-and-filters-on-the-server}
 

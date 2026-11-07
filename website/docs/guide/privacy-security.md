@@ -198,7 +198,7 @@ Fetching changes nothing on the server: no message is marked read by being fetch
 | The sites you pin | what any browser sends them | when they are open |
 | Your provider's own settings page, and Thunderbird's list of providers | your address's domain, to find the server | when you add an account |
 | Your system's DNS resolver | lookups of senders' domains, to check them | when mail arrives, and when your spam filter's training downloads your mail |
-| A mailing list's own unsubscribe address | a one-click request, with nothing of yours but what the list wrote in it; or a short message to that address, from yours; or its page, in your browser | only when you choose **Unsubscribe** |
+| A mailing list's own unsubscribe address | a one-click request, with nothing of yours but what the list wrote in it; or a short message to that address, from yours; or its page, in your browser | only when you choose **Unsubscribe**; the one-click request alone also when you say **Spam** on a message from a proven sender (a switch in the Mail page's ⚙), or choose to [leave the lists of the mail you called spam](mail.md#unsubscribing), each with ten seconds to undo |
 | Open-Meteo | the coordinates of the place you chose, rounded to two decimals, or the name of a town you search | only if you choose a place for the weather; every half hour at most |
 | OpenStreetMap's geocoder (Nominatim) | your contacts' postal addresses, once each, nothing else | only after you choose **Place them** |
 | OpenStreetMap's geocoder (Nominatim) | an event's place, once, nothing else | only when you press **Map** in its card, and only when the event has no point of its own and the place was never looked up |

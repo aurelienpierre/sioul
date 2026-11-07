@@ -399,6 +399,205 @@ impl Record {
     }
 }
 
+/// One copy on this device of a message you said something of, as
+/// `spam_lists` reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaidCopy {
+    /// Its Message-ID, bare (`mailindex::bare_id`).
+    pub id: String,
+    pub list: List,
+    /// What it offers, judged as the Reader judges it (`offer`, then
+    /// `in_junk`); none when it names no way out, or nobody needs to know
+    /// (its list is out of the question already).
+    pub way: Option<Result<Way, Refusal>>,
+    /// How far its sender is proven, wherever the copy lies.
+    pub trust: Trust,
+    /// Its Date, Unix seconds; 0 without one.
+    pub date: i64,
+    /// Its sender's address.
+    pub address: String,
+    /// `$NotJunk` without `$Junk` on it: Not spam said in another mail client (`labels::said_ham`).
+    pub not_junk: bool,
+}
+
+impl SaidCopy {
+    /// The address this copy may be left by: one click, from a verified sender.
+    pub fn leaves_by(&self) -> Option<&str> {
+        fit(self).ok()
+    }
+}
+
+/// A list to leave because you called its mail spam: one POST, to the address
+/// its newest message names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpamList {
+    pub list: List,
+    pub url: String,
+    /// The sender's address, for the record.
+    pub address: String,
+    /// The message whose address this is.
+    pub message_id: String,
+}
+
+impl SpamList {
+    /// The sender's domain, as the command line says it.
+    pub fn domain(&self) -> &str {
+        self.address.rsplit_once('@').map_or(self.address.as_str(), |(_, domain)| domain)
+    }
+
+    /// The record's entry once its server took the request.
+    pub fn left(&self, at: i64) -> Left {
+        Left { key: self.list.key.clone(), name: self.list.name.clone(), address: self.address.clone(), way: Way::OneClick { url: String::new() }.id().to_string(), at }
+    }
+}
+
+/// What was not to leave, and why: lists, but for `gone`, whose list nobody can read any more.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NotLeft {
+    /// Lists that offer no one click: another way out, or none.
+    pub not_one_click: usize,
+    /// Lists whose sender is not proven.
+    pub unverified: usize,
+    /// Lists refused for what they are: forged, a borrowed name, a blocked sender, hostile, ambiguous, unusable.
+    pub refused: usize,
+    /// Messages you called spam with no copy left on this device.
+    pub gone: usize,
+    /// Lists in the record already.
+    pub left: usize,
+    /// Lists with mail you called spam and a message you said is not.
+    pub said_not_spam: usize,
+}
+
+impl NotLeft {
+    /// Each count that is not zero, in a sentence.
+    pub fn lines(&self, tr: &Translator) -> Vec<String> {
+        [
+            ("leave-spam-not-one-click", self.not_one_click),
+            ("leave-spam-not-unverified", self.unverified),
+            ("leave-spam-not-refused", self.refused),
+            ("leave-spam-not-gone", self.gone),
+            ("leave-spam-not-left", self.left),
+            ("leave-spam-not-said", self.said_not_spam),
+        ]
+        .into_iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(id, n)| tr.text(id, Some(&tr.counted(n))))
+        .collect()
+    }
+}
+
+/// `spam_lists`'s answer: what to leave, by name, and what was not.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SpamLists {
+    pub lists: Vec<SpamList>,
+    pub not: NotLeft,
+}
+
+/// Why a message gives its list no way out, the worst last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Unfit {
+    NotOneClick,
+    Unverified,
+    Refused,
+}
+
+/// The address one copy may be left by: one click, from a verified sender.
+/// A signature aligned only with the address's host passes `offer`; a POST
+/// then tells whoever forged the rest that the address is read, so the sender
+/// must be proven here too.
+fn fit(copy: &SaidCopy) -> Result<&str, Unfit> {
+    match &copy.way {
+        Some(Ok(Way::OneClick { url })) if copy.trust == Trust::Verified => Ok(url),
+        Some(Ok(Way::OneClick { .. })) | Some(Err(Refusal::Spam | Refusal::Doubt | Refusal::Unproven)) => Err(Unfit::Unverified),
+        Some(Err(_)) => Err(Unfit::Refused),
+        Some(Ok(_)) | None => Err(Unfit::NotOneClick),
+    }
+}
+
+/// The address a message may be left by: every copy here says it. A copy
+/// that proves less, or another message under the same Message-ID (anyone who
+/// knows one can reuse it), takes it away: a POST not sent costs nothing.
+fn agreed<'a>(copies: &[&'a SaidCopy]) -> Result<&'a str, Unfit> {
+    let fits: Vec<Result<&str, Unfit>> = copies.iter().map(|copy| fit(copy)).collect();
+    if let Some(worst) = fits.iter().filter_map(|f| f.err()).max() {
+        return Err(worst);
+    }
+    let url = fits.first().and_then(|f| f.ok()).ok_or(Unfit::NotOneClick)?;
+    let same = copies.iter().all(|c| c.list.key == copies[0].list.key) && fits.iter().all(|f| *f == Ok(url));
+    if same { Ok(url) } else { Err(Unfit::Refused) }
+}
+
+/// The lists to leave because you called their mail spam, and how many were
+/// not and why (docs/client.md, "Unsubscribing"). A list is left when:
+///
+/// 1. your word: the newest entry of `said` (every device's label log, oldest
+///    first) about a message is Spam; a Junk folder, a filter's verdict or a
+///    provider's keyword is no word of yours;
+/// 2. one click: its copies here (`copies`, one per copy of each message
+///    named in `said`) offer one, as the Reader judges them;
+/// 3. a verified sender, wherever the copy lies;
+/// 4. nothing against it: the list is not in `record`, and you said Not spam
+///    to no message of it.
+///
+/// One POST per list, to the newest such message's address. A list that does
+/// not qualify counts once, for its newest message's reason.
+pub fn spam_lists(said: &[crate::spam::labels::Entry], copies: &[SaidCopy], record: &Record) -> SpamLists {
+    use crate::spam::labels::{self, Label};
+    use std::collections::{BTreeMap, BTreeSet};
+    let newest = labels::newest_by_message_id(said);
+    let mut by_id: BTreeMap<&str, Vec<&SaidCopy>> = BTreeMap::new();
+    for copy in copies {
+        by_id.entry(copy.id.as_str()).or_default().push(copy);
+    }
+    // Your word on each message, Not spam from another mail client too.
+    let word = |id: &str, label: Label| if by_id.get(id).is_some_and(|c| c.iter().any(|c| c.not_junk)) { Label::Ham } else { label };
+    let said_ham: BTreeSet<&str> = newest.iter().filter(|(id, entry)| word(id, entry.label) == Label::Ham).flat_map(|(id, _)| by_id.get(id).into_iter().flatten().map(|copy| copy.list.key.as_str())).collect();
+
+    /// A list's messages you called spam: the newest that gives a way out, and the newest of those that do not.
+    #[derive(Default)]
+    struct Messages<'a> {
+        fit: Option<(i64, &'a str, &'a str, &'a SaidCopy)>,
+        unfit: Option<(i64, Unfit)>,
+    }
+    let mut found = SpamLists::default();
+    let mut by_list: BTreeMap<&str, Messages> = BTreeMap::new();
+    for (id, entry) in &newest {
+        if word(id, entry.label) != Label::Spam {
+            continue;
+        }
+        let Some(copies) = by_id.get(id) else {
+            found.not.gone += 1;
+            continue;
+        };
+        let front = copies[0];
+        let list = by_list.entry(front.list.key.as_str()).or_default();
+        match agreed(copies) {
+            // The later Date, then the Message-ID: the same answer whatever the order of the logs.
+            Ok(url) if list.fit.is_none_or(|(date, other, _, _)| (front.date, *id) > (date, other)) => list.fit = Some((front.date, id, url, front)),
+            Ok(_) => {}
+            Err(unfit) if list.unfit.is_none_or(|(date, _)| front.date >= date) => list.unfit = Some((front.date, unfit)),
+            Err(_) => {}
+        }
+    }
+    for (key, messages) in by_list {
+        if record.find(key).is_some() {
+            found.not.left += 1;
+        } else if said_ham.contains(key) {
+            found.not.said_not_spam += 1;
+        } else if let Some((_, id, url, copy)) = messages.fit {
+            found.lists.push(SpamList { list: copy.list.clone(), url: url.to_string(), address: copy.address.clone(), message_id: id.to_string() });
+        } else {
+            match messages.unfit.map(|(_, unfit)| unfit) {
+                Some(Unfit::Refused) => found.not.refused += 1,
+                Some(Unfit::Unverified) => found.not.unverified += 1,
+                Some(Unfit::NotOneClick) | None => found.not.not_one_click += 1,
+            }
+        }
+    }
+    found.lists.sort_by_key(|l| (l.list.name.to_lowercase(), l.list.key.clone()));
+    found
+}
+
 /// The Reader's button, as the window shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnsubscribeView {
@@ -650,6 +849,150 @@ mod tests {
         let shown = view(&found, &Record::default(), Some("you@example.org"), &tr, today);
         assert!(shown.offered && shown.way == "page" && shown.tip.contains("letters.example"), "{shown:?}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A label, `at` a given moment on some device.
+    fn word(id: &str, at: i64, source: crate::spam::labels::Source) -> crate::spam::labels::Entry {
+        crate::spam::labels::Entry { at, account: "home".into(), folder: "INBOX".into(), uidvalidity: 7, uid: 1, message_id: Some(id.into()), label: source.label(), source }
+    }
+
+    /// A copy that offers one click from a verified sender.
+    fn fine(id: &str, key: &str, date: i64) -> SaidCopy {
+        SaidCopy {
+            id: id.into(),
+            list: List { key: key.into(), name: format!("List {key}") },
+            way: Some(Ok(Way::OneClick { url: format!("https://{key}.example/u/{id}") })),
+            trust: Trust::Verified,
+            date,
+            address: format!("news@{key}.example"),
+            not_junk: false,
+        }
+    }
+
+    const NONE_LEFT: NotLeft = NotLeft { not_one_click: 0, unverified: 0, refused: 0, gone: 0, left: 0, said_not_spam: 0 };
+
+    /// Rule 1: the newest word across every device's log wins; a copy with no
+    /// word, a Junk folder's or a filter's, is not asked at all.
+    #[test]
+    fn your_newest_word_decides() {
+        use crate::spam::labels::Source;
+        let copies = [fine("m1", "a", 10)];
+        // Spam said on one device, Not spam later on another: your newest word.
+        let said = [word("m1", 100, Source::Junk), word("m1", 200, Source::NotSpam)];
+        let found = spam_lists(&said, &copies, &Record::default());
+        assert_eq!(found, SpamLists::default(), "no mail of it said spam: nothing to leave, nothing to count");
+        // As two devices' logs hold it, read together: the later word wins, whichever log it is in.
+        let root = std::env::temp_dir().join(format!("sioul-leave-logs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let log = |device: &str| root.join(crate::spam::labels::FOLDER).join(format!("{device}.jsonl"));
+        crate::spam::labels::append_to(&log("zz-phone"), &word("m1", 100, Source::Junk)).unwrap();
+        crate::spam::labels::append_to(&log("aa-desk"), &word("m1", 200, Source::NotSpam)).unwrap();
+        assert_eq!(spam_lists(&crate::spam::labels::read_all_in(&root), &copies, &Record::default()), SpamLists::default(), "Not spam, later, on the other device");
+        crate::spam::labels::append_to(&log("zz-phone"), &word("m1", 300, Source::Junk)).unwrap();
+        assert_eq!(spam_lists(&crate::spam::labels::read_all_in(&root), &copies, &Record::default()).lists.len(), 1, "Spam again, later still");
+        let _ = std::fs::remove_dir_all(&root);
+        // The other way round: Spam it is.
+        let said = [word("m1", 100, Source::NotSpam), word("m1", 200, Source::Junk)];
+        let found = spam_lists(&said, &copies, &Record::default());
+        assert_eq!(found.lists.iter().map(|l| l.url.as_str()).collect::<Vec<_>>(), ["https://a.example/u/m1"]);
+        assert_eq!(found.not, NONE_LEFT);
+        // A sender blocked from the message says it too.
+        assert_eq!(spam_lists(&[word("m1", 100, Source::Block)], &copies, &Record::default()).lists.len(), 1);
+        // In a Junk folder, or flagged, with no word of yours: not left, not even counted.
+        let found = spam_lists(&[], &copies, &Record::default());
+        assert_eq!(found, SpamLists::default());
+        // Not spam said since in another mail client: `$NotJunk` on its copy.
+        let retracted = SaidCopy { not_junk: true, ..fine("m1", "a", 10) };
+        let found = spam_lists(&[word("m1", 100, Source::Junk)], &[retracted.clone()], &Record::default());
+        assert_eq!(found, SpamLists::default());
+        // And it speaks for its list: another message of it, said spam, is not left.
+        let found = spam_lists(&[word("m1", 100, Source::Junk), word("m2", 110, Source::Junk)], &[retracted, fine("m2", "a", 20)], &Record::default());
+        assert_eq!((found.lists.len(), found.not), (0, NotLeft { said_not_spam: 1, ..NONE_LEFT }));
+        // A message whose copies are gone: counted, no POST.
+        let found = spam_lists(&[word("gone", 100, Source::Junk)], &[], &Record::default());
+        assert_eq!((found.lists.len(), found.not), (0, NotLeft { gone: 1, ..NONE_LEFT }));
+    }
+
+    /// Rule 2: every refusal, and every other way, is only counted.
+    #[test]
+    fn only_one_click_is_left() {
+        use crate::spam::labels::Source;
+        let said = [word("m1", 100, Source::Junk)];
+        let counted = |copy: SaidCopy| {
+            let found = spam_lists(&said, &[copy], &Record::default());
+            assert!(found.lists.is_empty());
+            found.not
+        };
+        for refusal in [Refusal::Forged, Refusal::Borrowed, Refusal::Blocked, Refusal::Hostile, Refusal::Ambiguous, Refusal::Unusable] {
+            assert_eq!(counted(SaidCopy { way: Some(Err(refusal)), ..fine("m1", "a", 10) }), NotLeft { refused: 1, ..NONE_LEFT }, "{refusal:?}");
+        }
+        for refusal in [Refusal::Spam, Refusal::Doubt, Refusal::Unproven] {
+            assert_eq!(counted(SaidCopy { way: Some(Err(refusal)), trust: Trust::Unverified, ..fine("m1", "a", 10) }), NotLeft { unverified: 1, ..NONE_LEFT }, "{refusal:?}");
+        }
+        let by_mail = Way::Mail { to: "leave@a.example".into(), subject: "stop".into(), body: "stop".into() };
+        assert_eq!(counted(SaidCopy { way: Some(Ok(by_mail)), ..fine("m1", "a", 10) }), NotLeft { not_one_click: 1, ..NONE_LEFT });
+        assert_eq!(counted(SaidCopy { way: Some(Ok(Way::Page { url: "https://a.example/p".into() })), ..fine("m1", "a", 10) }), NotLeft { not_one_click: 1, ..NONE_LEFT });
+        assert_eq!(counted(SaidCopy { way: None, ..fine("m1", "a", 10) }), NotLeft { not_one_click: 1, ..NONE_LEFT });
+    }
+
+    /// Rule 3, on a real `offer`: a signature aligned only with the address's
+    /// host passes it, from a sender nothing proves; the batch does not.
+    #[test]
+    fn an_unverified_sender_whose_host_is_aligned_is_not_left() {
+        use crate::spam::labels::Source;
+        let ids = vec![SIOUL.to_string()];
+        let card = letter(&format!("List-Unsubscribe: <https://unsub.mailer.example/u/a1b2>\r\n{POST}"), "mailer.example", BOTH, "fail");
+        let way = offer(&card, &ids, Trust::Unverified, &Lane::Filed, &[Reason::Newsletter]).unwrap().way;
+        assert_eq!(way, Ok(Way::OneClick { url: "https://unsub.mailer.example/u/a1b2".into() }), "the Reader's one click");
+        let copy = SaidCopy { way: Some(way), trust: Trust::Unverified, ..fine("m1", "a", 10) };
+        let found = spam_lists(&[word("m1", 100, Source::Junk)], &[copy.clone()], &Record::default());
+        assert_eq!((found.lists.len(), found.not), (0, NotLeft { unverified: 1, ..NONE_LEFT }));
+        // Wherever the copy lies: one proven copy does not vouch for another that is not.
+        let found = spam_lists(&[word("m1", 100, Source::Junk)], &[fine("m1", "a", 10), copy], &Record::default());
+        assert_eq!((found.lists.len(), found.not), (0, NotLeft { unverified: 1, ..NONE_LEFT }));
+        // Another message under the same Message-ID, another address: nothing either.
+        let reused = fine("m1", "b", 10);
+        let found = spam_lists(&[word("m1", 100, Source::Junk)], &[fine("m1", "a", 10), reused], &Record::default());
+        assert_eq!((found.lists.len(), found.not), (0, NotLeft { refused: 1, ..NONE_LEFT }));
+    }
+
+    /// One POST per list, the newest message's address; rule 4's two skips.
+    #[test]
+    fn one_post_per_list_and_nothing_against_it() {
+        use crate::spam::labels::Source;
+        let said = [word("old", 100, Source::Junk), word("new", 90, Source::Junk), word("other", 100, Source::Junk)];
+        let copies = [fine("old", "a", 10), fine("new", "a", 20), fine("other", "b", 5)];
+        let found = spam_lists(&said, &copies, &Record::default());
+        assert_eq!(found.lists.iter().map(|l| (l.url.as_str(), l.message_id.as_str(), l.domain())).collect::<Vec<_>>(), [("https://a.example/u/new", "new", "a.example"), ("https://b.example/u/other", "other", "b.example")]);
+        // A newer message that does not qualify takes nothing from an older, proven one.
+        let forged = SaidCopy { way: Some(Err(Refusal::Forged)), trust: Trust::Forged, ..fine("new", "a", 30) };
+        let found = spam_lists(&said[..2], &[fine("old", "a", 10), forged], &Record::default());
+        assert_eq!(found.lists.iter().map(|l| l.message_id.as_str()).collect::<Vec<_>>(), ["old"]);
+        assert_eq!(found.not, NONE_LEFT);
+        // A list with one message you said is not spam: skipped, the other messages' words whatever.
+        let said = [word("old", 100, Source::Junk), word("new", 110, Source::NotSpam), word("other", 100, Source::Junk)];
+        let found = spam_lists(&said, &copies, &Record::default());
+        assert_eq!(found.lists.iter().map(|l| l.list.key.as_str()).collect::<Vec<_>>(), ["b"]);
+        assert_eq!(found.not, NotLeft { said_not_spam: 1, ..NONE_LEFT });
+        // In the record, left or its page opened: skipped.
+        let said = [word("old", 100, Source::Junk), word("other", 100, Source::Junk)];
+        let left = |key: &str, way: &str| Left { key: key.into(), name: String::new(), address: String::new(), way: way.into(), at: 1 };
+        let found = spam_lists(&said, &copies, &Record { lists: vec![left("a", "one-click"), left("b", "page")] });
+        assert_eq!((found.lists.len(), found.not), (0, NotLeft { left: 2, ..NONE_LEFT }));
+        // What the counts say, in both languages, each number in its own sentence.
+        let all = NotLeft { not_one_click: 1, unverified: 2, refused: 3, gone: 4, left: 5, said_not_spam: 6 };
+        for language in ["en", "fr"] {
+            let lines = all.lines(&Translator::new(language));
+            assert_eq!(lines.len(), 6);
+            for (n, line) in lines.iter().enumerate() {
+                let shown = line.replace(['\u{2068}', '\u{2069}'], "");
+                assert!(shown.contains(&(n + 1).to_string()) && !shown.contains("leave-spam"), "{line}");
+            }
+        }
+        assert!(NONE_LEFT.lines(&Translator::new("en")).is_empty());
+        let chosen = fine("m1", "a", 10);
+        let list = SpamList { list: chosen.list.clone(), url: "https://a.example/u".into(), address: chosen.address.clone(), message_id: "m1".into() };
+        assert_eq!(list.left(42), Left { key: "a".into(), name: "List a".into(), address: "news@a.example".into(), way: "one-click".into(), at: 42 });
     }
 
     #[test]

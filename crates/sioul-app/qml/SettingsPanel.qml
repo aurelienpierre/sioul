@@ -144,6 +144,7 @@ SafePopup {
                         theme: panel.theme
                         onSave: (key, value, shown) => panel.save(key, value, shown)
                         onGoTo: key => panel.scrollTo(key)
+                        onChangedElsewhere: panel.reload()
                     }
                 }
             }

@@ -126,6 +126,7 @@ sioul mail list <account> [folder]
 sioul mail act <file> read|unread|flag|unflag|archive|trash|junk|not-junk|move --to <folder>
 sioul mail send --account <account> --to <address> --subject <subject> --body <markdown> [--attach <file>]
 sioul mail send --account <account> --reply <file> --body <markdown>     # also --reply-all, --forward
+sioul mail leave-spam [--go]    # the lists of the mail you called spam: says them; with --go, leaves them (docs/client.md, "Unsubscribing")
 ```
 
 ## Working on the window

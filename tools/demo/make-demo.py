@@ -28,6 +28,9 @@ mounts it elsewhere (tools/demo/screenshots.sh mounts it at /home/demo/Notes).
 --spam (or SIOUL_DEMO_SPAM=1 in the environment) adds Sioul's own spam filter:
 a table made by hand, two strangers' messages it flags and one it moved into
 the Junk folder, waiting in the Porch's review queue (docs/spam-filter.md).
+--leave-spam (or SIOUL_DEMO_LEAVE_SPAM=1) adds two letters from proven senders
+offering one click, in the Junk folder, that you said are spam, with the label
+log that says it: Mail's ⚙ offers to leave their lists (docs/client.md, "Unsubscribing").
 --calls (or SIOUL_DEMO_CALLS=1) adds the calls a phone of yours screened, as
 the sharing brings its log to a computer: the Porch lists those it declined,
 and the doctor's sheet her calls of the month (docs/porch.md, "Calls declined").
@@ -1077,6 +1080,30 @@ def spam_table(clock: Clock) -> bytes:
     out += b"".join(struct.pack("<f", x) for x in buckets + weights + [0.0] * features)
     out += meta
     return out + struct.pack("<Q", fnv64(out))
+
+
+def leave_spam_mail(clock: Clock) -> list[Mail]:
+    """Two letters you said are spam, from proven senders, offering one click
+    (`leave_spam_log`): older than the mailbox's two weeks, in the Junk folder."""
+    c = clock
+    def letter(days, name, domain, key):
+        signed = "from:to:subject:date:list-unsubscribe:list-unsubscribe-post"
+        return Mail("work", c.ago(hours=24 * days), (name, f"news@{domain}"), t(f"{name}: this month", f"{name} : ce mois-ci"),
+                    t("News you did not ask for.", "Des nouvelles que vous n'avez pas demandées."), folder=".Junk", key=key,
+                    extra=[f"Authentication-Results: {SIOUL}; dkim=pass header.d={domain}; spf=pass smtp.mailfrom={domain}; dmarc=pass header.from={domain}",
+                           f"DKIM-Signature: v=1; a=rsa-sha256; d={domain}; s=s1; h={signed}; bh=Zm9v; b=QUJDREVG", f"List-Id: {name} <letter.{domain}>",
+                           f"List-Unsubscribe: <https://unsub.{domain}/u/{key}>", "List-Unsubscribe-Post: List-Unsubscribe=One-Click"])
+    return [letter(30, "Solar Deals", "solar-deals.example", "leave-solar"), letter(32, "Garden Weekly", "garden-weekly.example", "leave-garden")]
+
+
+def leave_spam_log(p: Profile, mails: list[Mail]):
+    """What you said of those letters, as a device's label log keeps it
+    (crates/sioul-core/src/spam/labels.rs, `Entry`): a line each."""
+    lines = "".join(json.dumps({
+        "at": unix(m.when) + 3600, "account": account_id(m.account), "folder": "INBOX", "uidvalidity": VALIDITY[m.account], "uid": 1,
+        "message_id": m.message_id.strip("<>"), "label": "spam", "source": "junk",
+    }, separators=(",", ":")) + "\n" for m in mails)
+    p.write(p.state / "spam" / "labels" / "demo-device.jsonl", lines)
 
 
 def moved_log(p: Profile, mails: list[Mail]):
@@ -3052,6 +3079,8 @@ def main():
                         help="the messages a phone's notifications brought, as the sharing brings them, and their part on here (SIOUL_DEMO_PHONE_MESSAGES=1 too)")
     parser.add_argument("--texts", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_TEXTS")),
                         help="texts: the texts a phone read and those written here for it, as the part Texts brings them (SIOUL_DEMO_TEXTS=1 too)")
+    parser.add_argument("--leave-spam", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_LEAVE_SPAM")),
+                        help="two letters you said are spam, from proven senders offering one click (SIOUL_DEMO_LEAVE_SPAM=1 too)")
     parser.add_argument("--compose", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_COMPOSE")),
                         help="a message to answer on a phone's width: a long subject, replies to two addresses, a copy to a third (SIOUL_DEMO_COMPOSE=1 too)")
     parser.add_argument("--old-projects", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_OLD_PROJECTS")),
@@ -3081,7 +3110,8 @@ def main():
     prepare(root)
     clock = Clock(now)
     profile = Profile(root, clock, args.notes_at or str(root / "notes"), not args.no_hours)
-    mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else [])
+    letters = leave_spam_mail(clock) if args.leave_spam else []
+    mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else []) + letters
     write_config(profile)
     write_mail(profile, mails)
     write_topics(profile, mails)
@@ -3091,6 +3121,8 @@ def main():
     if args.spam:
         profile.write(profile.data / "spam" / "table.bin", spam_table(clock), clock.ago(hours=26))
         moved_log(profile, [m for m in mails if m.key == "moved"])
+    if letters:
+        leave_spam_log(profile, letters)
     write_contacts(profile)
     if args.calls:
         write_calls(profile)

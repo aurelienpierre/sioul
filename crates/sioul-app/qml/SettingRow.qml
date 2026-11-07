@@ -32,6 +32,8 @@ ColumnLayout {
     signal save(string key, var value, var shown)
     // Another row of the panel asked for (a calendar of busy blocks opens Your availability).
     signal goTo(string key)
+    // What the panel shows changed behind its back (lists left): its rows read again.
+    signal changedElsewhere()
 
     // Whether two values are the same, compared as JSON.
     function same(a, b) {
@@ -41,7 +43,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -279,6 +281,24 @@ ColumnLayout {
                 sioul: field.sioul
                 theme: field.theme
                 about: field.setting.help
+            }
+        }
+    }
+
+    // Leaving the lists of the mail you called spam (LeaveSpam.qml): a row when there are
+    // some, and with no list left yet the section's title, which the panel then shows none of.
+    Loader {
+        active: field.setting.kind === "leavespam"
+        visible: active && item !== null && item.found.count > 0
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            LeaveSpam {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+                title: field.setting.group === "" ? field.sioul.text("unsubscribed-group") : ""
+                onEnded: field.changedElsewhere()
             }
         }
     }
@@ -1280,7 +1300,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

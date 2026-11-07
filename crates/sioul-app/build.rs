@@ -87,6 +87,7 @@ fn main() {
         "qml/SettingsButton.qml",
         "qml/SettingRow.qml",
         "qml/SpamFilter.qml",
+        "qml/LeaveSpam.qml",
         "qml/MailFilters.qml",
         "qml/AttentionGrid.qml",
         "qml/LevelMark.qml",
