@@ -388,7 +388,15 @@ jobs:
           tag=${{ needs.version.outputs.tag }}
           version=${{ needs.version.outputs.version }}
           ls -la dist
-          sed "s/<version>/${version}/g" packaging/release-notes.md > notes.md
+          # What this version brings, as its annotated tag says it, above how to install it.
+          ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" --jq '.object.type + " " + .object.sha')
+          if [ "${ref%% *}" = "tag" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/git/tags/${ref#* }" --jq .message | sed '/^-----BEGIN PGP/,$d' > notes.md
+            printf '\n---\n\n' >> notes.md
+          else
+            : > notes.md
+          fi
+          sed "s/<version>/${version}/g" packaging/release-notes.md >> notes.md
           prerelease=""
           case "$version" in 0.*) prerelease="--prerelease" ;; esac
           gh release create "$tag" dist/* --title "Sioul ${version}" --notes-file notes.md $prerelease --verify-tag
