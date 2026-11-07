@@ -1092,7 +1092,8 @@ fn put_back_on_slow_storage_never_keeps_a_dose_waiting() {
     assert_eq!(putting.join().unwrap(), Ok(PutBack { back: 120, held: 120 }));
     assert_eq!(names_in(&dn.join("bulk")).len(), 120, "every note back");
     println!("put back of 120 notes at 10 ms each: a dose's exchange waited {longest:?} at most, {taken} times");
-    assert!(taken > 3 && longest < std::time::Duration::from_millis(300), "a dose's exchange waited {longest:?} at most, {taken} times");
+    // Below what one lock held through the whole would cost (1.2 s), above a Windows runner's pauses (330 ms on 7 November 2026).
+    assert!(taken > 3 && longest < std::time::Duration::from_millis(700), "a dose's exchange waited {longest:?} at most, {taken} times");
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -1130,7 +1131,8 @@ fn put_back_never_keeps_a_slow_waking_dose_waiting() {
     SLOW_WAKE.with(|slow| slow.set(std::time::Duration::ZERO));
     assert_eq!(putting.join().unwrap(), Ok(PutBack { back: 120, held: 120 }));
     println!("put back of 120 notes at 10 ms each, a dose slow to wake: it waited {longest:?} at most, {taken} times");
-    assert!(taken > 3 && longest < std::time::Duration::from_millis(300), "a dose's exchange waited {longest:?} at most, {taken} times");
+    // Below what one lock held through the whole would cost (1.2 s), above a Windows runner's pauses (330 ms on 7 November 2026).
+    assert!(taken > 3 && longest < std::time::Duration::from_millis(700), "a dose's exchange waited {longest:?} at most, {taken} times");
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -1215,7 +1217,8 @@ fn removing_a_device_s_many_files_never_keeps_a_dose_waiting() {
     assert!((0..150).all(|n| !sealed(&o.folder, &content_name(&o.base, &o.key, format!("# the old one's note {n}\n").as_bytes()))) && !sealed(&o.folder, &o.last_word));
     assert!(sealed(&o.folder, &content_name(&o.base, &o.key, b"# The desk's note\n")), "another device's: never");
     println!("removal of a device's {} files at 10 ms each: a dose's exchange waited {longest:?} at most, {taken} times", said.rounds + said.small + said.sealed);
-    assert!(taken > 3 && longest < std::time::Duration::from_millis(300), "a dose's exchange waited {longest:?} at most, {taken} times");
+    // Below what one lock held through the whole would cost (1.56 s), above a Windows runner's pauses (330 ms on 7 November 2026).
+    assert!(taken > 3 && longest < std::time::Duration::from_millis(800), "a dose's exchange waited {longest:?} at most, {taken} times");
     let _ = std::fs::remove_dir_all(&o.base);
 }
 
@@ -1268,8 +1271,9 @@ fn removing_a_device_plans_outside_the_lock() {
 
 /// Re-check of part 3, R-6: "Remove its files" plans again outside the lock
 /// when an exchange wrote the memory meanwhile, never under it: each plan
-/// 300 ms slower here (`AFTER_PLAN`), the first one met by a memory written
-/// anew, a dose's exchange waits a quarter of a second at most; and an
+/// 900 ms slower here (`AFTER_PLAN`), the first one met by a memory written
+/// anew, a dose's exchange waits 0.6 s at most, clear of the plan and of a
+/// Windows runner's pauses (330 ms on 7 November 2026); and an
 /// exchange writing it each time makes it say busy, nothing taken out.
 #[test]
 fn removing_a_device_plans_again_outside_the_lock() {
@@ -1296,7 +1300,7 @@ fn removing_a_device_plans_again_outside_the_lock() {
             let beside = memory.clone();
             AFTER_PLAN.with(|hook| {
                 *hook.borrow_mut() = Some(Box::new(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    std::thread::sleep(std::time::Duration::from_millis(900));
                     if left > 0 {
                         left -= 1;
                         rewrite(&beside);
@@ -1309,13 +1313,13 @@ fn removing_a_device_plans_again_outside_the_lock() {
     let busy = remove(usize::MAX);
     let (longest, _) = waits_beside(&o.desk.memory, &busy, std::time::Duration::from_millis(20));
     assert_eq!(busy.join().unwrap(), Err("share-busy".to_string()));
-    assert!(longest < std::time::Duration::from_millis(250), "{longest:?}");
+    assert!(longest < std::time::Duration::from_millis(600), "{longest:?}");
     assert!(rounds(&o.folder).get(&o.old.id).is_some_and(|r| !r.is_empty()), "nothing taken out");
     let once = remove(1);
     let (longest, taken) = waits_beside(&o.desk.memory, &once, std::time::Duration::from_millis(20));
     assert_eq!(once.join().unwrap(), Ok(said));
-    println!("a removal planned again outside the lock, each plan 300 ms: a dose's exchange waited {longest:?} at most, {taken} times");
-    assert!(longest < std::time::Duration::from_millis(250), "a dose's exchange waited {longest:?} at most");
+    println!("a removal planned again outside the lock, each plan 900 ms: a dose's exchange waited {longest:?} at most, {taken} times");
+    assert!(longest < std::time::Duration::from_millis(600), "a dose's exchange waited {longest:?} at most");
     assert!(rounds(&o.folder).get(&o.old.id).is_none_or(|r| r.is_empty()));
     let _ = std::fs::remove_dir_all(&o.base);
 }
