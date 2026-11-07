@@ -1257,6 +1257,19 @@ event-where = Where
 event-repeat = Repeats
 event-calendar = Calendar
 event-pick-day = Pick the day
+clock-pick = Pick the time
+clock-hours = Hour
+clock-minutes = Minutes
+clock-earlier = One minute earlier
+clock-later = One minute later
+clock-hour-name = { $n ->
+        [one] { $n } hour
+       *[other] { $n } hours
+    }
+clock-minute-name = { $n ->
+        [one] { $n } minute
+       *[other] { $n } minutes
+    }
 date-month-previous = Previous month: { $month }
 date-month-next = Next month: { $month }
 # Before the number of "Every 2 days" (the unit says which: $unit).

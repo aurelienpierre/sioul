@@ -227,6 +227,7 @@ While you sleep ([Hours](hours.md#sleep): the night from winding down to waking,
 - **The plan lays the task in its block**, whatever else is there, and what else fits around it. The block counts once, as the task: never as an event besides.
 - **Move it** with **Change…**, by dragging the step in [the day](#the-day), or by dragging the block in the [Agenda](agenda.md#tasks-pinned-to-a-time) or in any other calendar program: the task follows, at the next sync for another program. Delete the block anywhere, and the plan places the task again.
 - **Let the plan place it** takes the block away; **Undo** waits ten seconds.
+- **Its day and its hour** are set as an event's are, with the keyboard alone or the pointer alone ([A day and an hour](agenda.md#a-day-and-an-hour)).
 - **The block passes and the task is not done**: the plan places it again. The block stays in your calendar as it was; nothing is said, nothing counted.
 - **Done or dropped**: a block still to come goes, its time freed; one under way ends then; one over stays, the record of when the work was done. A task deleted takes its blocks to come with it, and **Undo** brings both back.
 - **A repeating task**: a block pins one turn; the next turn is planned as usual.
@@ -362,8 +363,9 @@ The ⚙ at the top of the page:
 - One next step, small, with a when: "When X, I do Y" plans raise follow-through (Gollwitzer & Sheeran 2006). Too many options weigh most when choosing is hard (Chernev, Böckenholt & Goodman 2015).
 - Nothing overdue: forgiving oneself for procrastinating lowered later procrastination (Wohl, Pychyl & Bennett 2010).
 - Splitting a task makes it startable and its estimate truer (Kruger & Evans 2004).
-- Time made visible, without a ticking clock: visual timers helped children with ADHD manage time (Wennberg et al. 2018).
+- Time made visible, without a ticking clock: training with visual timers and day schedules helped children with ADHD manage time, tested together (Wennberg et al. 2018).
 - A line for where you stopped frees the mind for the next thing (Leroy & Glomb 2018).
+- A day and an hour by keyboard alone or by pointer alone: no study compares ways of setting a time, so the panel is an inference, resting on what WCAG 2.2 asks ([finding 70](../dev/research.md)).
 - Capacity is lower on some days, and only you know which (Raymaker et al. 2020; Chen, Meng & Nie 2026).
 - Closing work with a place for what remains helps leave it in the evening (Smit 2016), and a list for tomorrow written at bedtime helped people fall asleep sooner (Scullin et al. 2018). One answer a day on how it went is what a plan needs to learn what a day can hold, rather than what you usually do.
 

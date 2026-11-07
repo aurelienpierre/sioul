@@ -61,6 +61,15 @@ An event opens in its card: beside the page on a computer (over its right part w
 - **A meeting someone else organises**, an event with guests that another person invited you to: its time, title, place, notes and calendar are its organiser's, since its server tells every guest of a change. Sioul neither drags nor deletes it, and its form changes only what is yours: the time kept before and after it, its costs and what it gives back, your reminder. An event that names only an organiser, as Google writes into your own events, stays yours to change.
 - **A meeting you organise**, one you invited people to: every field is yours, and its guests too ([Inviting people](#inviting-people)).
 
+### A day and an hour {#a-day-and-an-hour}
+
+Every form that asks for a time takes it with the keyboard alone or with the pointer alone.
+
+- **With the pointer**: the clock button at the end of an hour opens a panel, as the calendar button beside a day opens its month. The panel shows the 24 hours and the minutes by fives, with **−1** and **+1** for those between. Each click applies at once, and an hour clicked with no minutes yet gives :00. A click outside keeps the time, Escape gives back the one before, and nothing asks for OK. A day picked moves on to the hour beside it, with its panel open.
+- **With the keyboard**: Tab goes from the day to the hour, past the buttons. Type `1430`, `14:30` or `14h30`, `930` for 09:30, or `14` then Tab for 14:00. Up and Down change the time by five minutes, Page Up and Page Down by an hour, and Alt+Down opens the panel beside what you type.
+- **On a phone**: the buttons open a sheet at the foot of the screen, with cells a fingertip wide. The keyboard comes only when you tap the field itself.
+- **Moving the start** moves the end with it, and the event stays as long as it was. Changing the end changes how long it lasts.
+
 ### Its status, its map and the way there {#status-map-directions}
 
 - **Its status**: on an event of your own, a button under its place says it, **Confirmed**, **To be confirmed** or **Cancelled**, and changes it, with **Undo**. On the timeline, an event to be confirmed has a dashed outline, and a cancelled one is struck through; a cancelled one keeps no time from your plan. A meeting with others says its status when it is not confirmed, never changed here, and your own answer to its invitation ("You have not answered yet."); you answer with **Answer…**, as before.
@@ -322,7 +331,9 @@ An invitation is sent by your calendar's server or by you, never by both. A serv
 
 A meal or a nap had early moves, and that is all Sioul keeps of it. Recording whether a meal was eaten helps within a treatment that a clinician guides, but is linked to harm as general tracking, and counts or "missed" messages feed the shame and the all-or-nothing thinking that keep eating difficulties going (the [meal and sleep prompts research](../dev/research/meal-prompts.md), criteria 17, 18 and 20). So **Had it** keeps a time, never a tick, and no day says what it lacked.
 
-More in [what the research says](../dev/research.md), findings 46 to 54 and 66.
+A day picked with the pointer no longer leaves an hour to type, and a day typed needs no pointer for its hour. The field stays for whoever types, and one click away the hours and the minutes by fives are all in view, with nothing to drag or scroll on a computer. No study compares ways of setting a time, so this arrangement is an inference: it rests on WCAG 2.2, which asks that nothing need dragging (2.5.7) and that targets measure 24 pixels at least (2.5.8), and which is a floor, not a measure of speed. No evidence supports an analog clock face for time blindness either: the one trial near the question tested training and devices together, in children, and never set analog against digital (Wennberg et al. 2018).
+
+More in [what the research says](../dev/research.md), findings 46 to 54, 66 and 70.
 
 ## Compared with other apps {#compared-with-other-apps}
 
@@ -409,6 +420,17 @@ As of November 2026, from each app's own documentation.
     14. The title, description, place and guests are encrypted on your device; the start and end, time zone, repetition and alarms are only signed, and Proton's servers read them.
     15. The web client's code is under GPL-3.0; Proton says all its apps are open source.
 
+=== "Setting a time"
+
+    | | How a time is set | By pointer alone | By keyboard alone |
+    |---|---|---|---|
+    | Sioul | A typed field, and a panel of 24 hours and the minutes by fives, both in view | ✓ no dragging: two clicks for a whole hour, five at most for any minute | ✓ typed, nothing to open |
+    | iOS date picker | A label that opens an editor, an editor in place, or wheels, as the app chooses | ✓ | ? |
+    | Apple Calendar (Mac) | An event's edges dragged; Control-Option-Up or Down moves it by 15 minutes | ✓ by dragging | partly: 15-minute moves; the event's form not confirmed |
+    | Outlook (Android, iOS) | The handles of a time block dragged; **More Options** opens a second screen | ✓ by dragging | ? |
+
+    Only apps whose own pages say how a time is set are listed.
+
 === "Shared agendas"
 
     | | Sioul | OurFamilyWizard | AppClose | TalkingParents | TimeTree | Google | Fantastical |
@@ -454,6 +476,10 @@ As of November 2026, from each app's own documentation.
 **Families and shared agendas.** Cozi and FamCal give each family member a colour, and Cozi sends an event's reminders to the members you choose; 2houses keeps the custody days and the requests to change them. Apple's shared reminder lists assign a reminder to one person. Outlook ("Can view when I'm busy") and Proton ("Limited view", by link) also share a calendar as busy times only, Nextcloud event by event, and iCloud not at all.
 
 ??? info "Sources"
+    - Microsoft: Outlook's time picker, <https://support.microsoft.com/en-us/outlook/how-does-the-new-time-picker-work>, read 6 November 2026.
+    - Apple: UIDatePicker's styles, <https://developer.apple.com/documentation/uikit/uidatepickerstyle.md>, a search summary of the page, 6 November 2026.
+    - Calendar for Mac: events, <https://support.apple.com/en-sa/guide/calendar/icalwr13-events/mac>, and keyboard shortcuts, <https://support.apple.com/en-gb/guide/calendar/ical002/mac>, search summaries of the pages, 6 November 2026.
+    - W3C: Understanding WCAG 2.2, Dragging Movements, <https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html>, read 6 November 2026.
     - Google Calendar: settings on Android, <https://support.google.com/calendar/answer/6084644?co=GENIE.Platform%3DAndroid>, read 8 October 2026.
     - Waze: calendar events and when to leave, <https://support.google.com/waze/answer/6341187>, read 8 October 2026.
     - Google Workspace Updates: meeting suggestions with Gemini in Calendar (January 2026), <https://workspaceupdates.googleblog.com/2026/01/improved-meeting-suggestions-gemini-calendar.html>, read 8 October 2026.

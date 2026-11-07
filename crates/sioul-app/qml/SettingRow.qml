@@ -857,7 +857,8 @@ ColumnLayout {
                                     ClockField {
                                         id: from
 
-                                        width: 70
+                                        theme: field.theme
+                                        sioul: field.sioul
                                         text: range.modelData.start
                                         Accessible.name: field.sioul.text("weekday-" + (weekday.index + 1))
                                         onEditingFinished: if (from.text !== range.modelData.start) week.setRange(range.modelData.at, from.text, to.text)
@@ -872,7 +873,8 @@ ColumnLayout {
                                         // An end: Up stops at 23:55 (ClockField's `end`).
                                         end: true
 
-                                        width: 70
+                                        theme: field.theme
+                                        sioul: field.sioul
                                         text: range.modelData.end
                                         Accessible.name: field.sioul.text("weekday-" + (weekday.index + 1))
                                         onEditingFinished: if (to.text !== range.modelData.end) week.setRange(range.modelData.at, from.text, to.text)

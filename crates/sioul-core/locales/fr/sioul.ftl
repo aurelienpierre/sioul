@@ -1287,6 +1287,19 @@ event-where = Lieu
 event-repeat = Se répète
 event-calendar = Agenda
 event-pick-day = Choisir le jour
+clock-pick = Choisir l’heure
+clock-hours = Heure
+clock-minutes = Minutes
+clock-earlier = Une minute plus tôt
+clock-later = Une minute plus tard
+clock-hour-name = { $n ->
+        [one] { $n } heure
+       *[other] { $n } heures
+    }
+clock-minute-name = { $n ->
+        [one] { $n } minute
+       *[other] { $n } minutes
+    }
 date-month-previous = Mois précédent : { $month }
 date-month-next = Mois suivant : { $month }
 # Avant le nombre de « Tous les 2 jours » ($unit dit l’unité).
