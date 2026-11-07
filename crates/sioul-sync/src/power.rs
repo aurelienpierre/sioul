@@ -30,7 +30,9 @@
 //!   `org.freedesktop.ScreenSaver`, in milliseconds as KDE gives it, GNOME's
 //!   `org.gnome.Mutter.IdleMonitor`) and whether it is locked (both screen
 //!   savers, logind's `LockedHint`; logind's `IdleHint` only as a word for
-//!   idle, since some desktops never set it); NetworkManager's `Metered`.
+//!   idle, since some desktops never set it); NetworkManager's `Metered`;
+//!   the battery's temperature where its power supply says it
+//!   (`/sys/class/power_supply/*/temp`, `battery_tenths_in`).
 //! - **Windows**: `GetSystemPowerStatus` (its AC line, its battery saver),
 //!   `GetLastInputInfo`, and whether the session is locked
 //!   (`WTSQuerySessionInformationW`'s `WTSSessionInfoEx`). The connection's
@@ -39,8 +41,10 @@
 //!   it), `CGEventSourceSecondsSinceLastEventType`, and whether the screen is
 //!   locked (`CGSessionCopyCurrentDictionary`'s `CGSSessionScreenIsLocked`).
 //!   The connection's cost is not read: unknown.
-//! - **Android**: nothing; a phone never trains, and its own entry says it
-//!   is in use while Sioul is on its screen.
+//! - **Android**: nothing here: Sioul's Java side reads the battery, the
+//!   power saver, the screen and the network's cost for the training by
+//!   itself (sioul-app's `spam::phone_power`), and a phone's own entry says
+//!   it is in use while Sioul is on its screen.
 
 use std::sync::{Condvar, Mutex, Once};
 use std::time::{Duration, Instant};
@@ -56,6 +60,10 @@ pub struct Power {
     pub idle: Option<bool>,
     /// Its connection metered (NetworkManager: yes, or guessed yes).
     pub metered: Option<bool>,
+    /// Its battery's temperature, in tenths of a degree Celsius, where the
+    /// system tells it (Linux's power supplies, `battery_tenths_in`; Android's
+    /// battery, read by Sioul's Java side); none without a battery, or unsaid.
+    pub battery_tenths: Option<i32>,
 }
 
 impl Power {
@@ -91,7 +99,21 @@ pub fn read() -> Power {
 /// training running asks every half minute.
 pub fn supply() -> Power {
     let power = read();
-    Power { on_mains: power.on_mains, power_saver: power.power_saver, ..Power::default() }
+    Power { on_mains: power.on_mains, power_saver: power.power_saver, battery_tenths: power.battery_tenths, ..Power::default() }
+}
+
+/// The warmest battery among a power-supply folder's (Linux's
+/// `/sys/class/power_supply`): each entry whose `type` is "Battery" and that
+/// says its `temp`, in tenths of a degree Celsius; none says it, none.
+pub fn battery_tenths_in(folder: &std::path::Path) -> Option<i32> {
+    let read = |path: std::path::PathBuf| std::fs::read_to_string(path).ok().map(|t| t.trim().to_string());
+    std::fs::read_dir(folder)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|supply| read(supply.join("type")).is_some_and(|t| t.eq_ignore_ascii_case("battery")))
+        .filter_map(|supply| read(supply.join("temp"))?.parse::<i32>().ok())
+        .max()
 }
 
 /// NetworkManager's `Metered` (`NMMetered`): yes or guessed yes, metered; no
@@ -428,7 +450,8 @@ mod imp {
         /// questions each given up after `ASK`.
         pub(super) fn read(&mut self) -> (Session, Power) {
             let system = held(&mut self.system, self.system_at.as_deref());
-            let mut power = Power { on_mains: system.and_then(on_mains), power_saver: system.and_then(power_saver), metered: system.and_then(metered), idle: None };
+            let battery_tenths = super::battery_tenths_in(std::path::Path::new("/sys/class/power_supply"));
+            let mut power = Power { on_mains: system.and_then(on_mains), power_saver: system.and_then(power_saver), metered: system.and_then(metered), idle: None, battery_tenths };
             let bus = held(&mut self.session, self.session_at.as_deref());
             let session = session_of(bus, system);
             power.idle = idle_of(session.locked, session.since_input);
@@ -697,7 +720,7 @@ mod imp {
                 }
             };
             let session = session();
-            let power = Power { on_mains: on_mains(), power_saver, idle: idle_of(session.locked, session.since_input), metered: None };
+            let power = Power { on_mains: on_mains(), power_saver, idle: idle_of(session.locked, session.since_input), metered: None, battery_tenths: None };
             (session, power)
         }
     }
@@ -791,6 +814,29 @@ mod tests {
     #[test]
     fn metered_as_networkmanager_says() {
         assert_eq!([0, 1, 2, 3, 4, 9].map(metered_of), [None, Some(true), Some(false), Some(true), Some(false), None]);
+    }
+
+    /// The warmest battery a power-supply folder says; a mains supply, or a
+    /// battery that says no temperature, says nothing.
+    #[test]
+    fn the_battery_s_temperature_as_its_power_supply_says() {
+        let dir = std::env::temp_dir().join(format!("sioul-power-supply-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(battery_tenths_in(&dir), None, "no such folder");
+        let supply = |name: &str, kind: &str, temp: Option<&str>| {
+            std::fs::create_dir_all(dir.join(name)).unwrap();
+            std::fs::write(dir.join(name).join("type"), format!("{kind}\n")).unwrap();
+            if let Some(t) = temp {
+                std::fs::write(dir.join(name).join("temp"), format!("{t}\n")).unwrap();
+            }
+        };
+        supply("AC", "Mains", Some("900"));
+        supply("BAT0", "Battery", None);
+        assert_eq!(battery_tenths_in(&dir), None, "mains and a silent battery");
+        supply("BAT1", "Battery", Some("312"));
+        supply("BAT2", "Battery", Some("405"));
+        assert_eq!(battery_tenths_in(&dir), Some(405));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Locked is idle; else the newest touch says it; nothing heard, unknown.

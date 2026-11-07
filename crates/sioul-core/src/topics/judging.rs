@@ -5,9 +5,10 @@
 //! table where this device keeps it, a message judged by it, and what it
 //! judged, kept per table.
 //!
-//! - **The table**, `$XDG_DATA_HOME/sioul/topics/table.bin`: the computer
-//!   that trains writes it (`write_table`), the sharing carries it to the
-//!   others, and every device reads it (`cached`). Its last eight bytes,
+//! - **The table**, `$XDG_DATA_HOME/sioul/topics/table.bin`: this device's
+//!   own training writes it (`write_table`; docs/spam-filter.md, "Every
+//!   device trains its own"), the sharing carries it only while a device's
+//!   Sioul does not train its own, and every device reads its own (`cached`). Its last eight bytes,
 //!   its checksum, name it (`Judgments::table`).
 //! - **A message judged** (`judge_card`): one line, its proven sender's
 //!   words then the spam filter's words of its subject and its start

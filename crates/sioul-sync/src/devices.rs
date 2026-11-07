@@ -131,6 +131,15 @@ pub struct Entry {
     /// unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub topics: u32,
+    /// Whether its Sioul trains its own spam filter and topics
+    /// (`share::LEARNS_HERE`, docs/spam-filter.md, "Every device trains its
+    /// own"): 1 from a build that does, its own switch on or off, 0 from an
+    /// older one, which reads only a table another device made. Once every
+    /// other device that counts says 1, the shared tables are retired
+    /// (`share::tables_retired`). An older Sioul reads the entry as before,
+    /// the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub learns: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]

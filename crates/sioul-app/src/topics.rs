@@ -250,7 +250,6 @@ static GROUPS: Mutex<Vec<sioul_learn_groups::Found>> = Mutex::new(Vec::new());
 /// The senders offered last ("Always a topic…"), by address, in their order.
 static SENDERS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-#[cfg(not(target_os = "android"))]
 mod sioul_learn_groups {
     /// One group the page shows: its senders' names, its size, two subjects
     /// (masked), the name proposed and how it was found; its ids kept here.
@@ -267,20 +266,11 @@ mod sioul_learn_groups {
     }
 }
 
-#[cfg(target_os = "android")]
-mod sioul_learn_groups {
-    #[derive(Clone, serde::Serialize)]
-    pub(crate) struct Found {
-        #[serde(skip)]
-        pub ids: Vec<String>,
-    }
-}
-
 /// Looks for groups of the mail kept here that no word of yours names (NMF on
 /// their words: `sioul_learn::groups`), off the window's thread; `topicGroups`
 /// says where it stands ({"state": "looking"}), then what it found
-/// ({"state": "done", "groups": […]}). On a phone, none.
-#[cfg(not(target_os = "android"))]
+/// ({"state": "done", "groups": […]}). Mail ▸ ⚙ ▸ Topics offers it on a
+/// computer, whose mail kept here makes groups worth naming.
 pub(crate) fn find_groups(qt: &QtThread) {
     let _ = qt.queue(|mut sioul| sioul.as_mut().set_topic_groups(cxx_qt_lib::QString::from("{\"state\":\"looking\"}")));
     let qt = qt.clone();
@@ -326,11 +316,6 @@ pub(crate) fn find_groups(qt: &QtThread) {
         };
         let _ = qt.queue(move |mut sioul| sioul.as_mut().set_topic_groups(cxx_qt_lib::QString::from(&text)));
     });
-}
-
-#[cfg(target_os = "android")]
-pub(crate) fn find_groups(qt: &QtThread) {
-    let _ = qt.queue(|mut sioul| sioul.as_mut().set_topic_groups(cxx_qt_lib::QString::from("{\"state\":\"done\",\"groups\":[],\"senders\":[]}")));
 }
 
 /// "Name it": the group at `index` of those found last becomes a topic named

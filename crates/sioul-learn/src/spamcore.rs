@@ -27,7 +27,11 @@ use sioul_core::card::Card;
 /// message made again (see the module); its headers are the record's own,
 /// MIME fields included.
 pub(crate) fn card_of(record: &Record) -> Option<Card> {
-    let header = record.header_bytes();
+    card_with(record, record.header_bytes())
+}
+
+/// `card_of`, its headers given: topics read a cut header's fields first (`Record::topic_header`).
+pub(crate) fn card_with(record: &Record, header: Vec<u8>) -> Option<Card> {
     let raw = rebuild(&header, record.structure.as_ref(), record.plain.as_ref(), record.html.as_ref());
     let mut card = Card::from_bytes(&raw)?;
     card.headers = sioul_core::headers::RawHeaders::parse(&[header.as_slice(), b"\r\n\r\n"].concat());
@@ -203,6 +207,7 @@ mod tests {
             html: html.map(text),
             checked: None,
             fetched: 0,
+            fields: None,
         }
     }
 

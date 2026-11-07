@@ -59,13 +59,9 @@ pub struct Tool {
     pub run: fn(&Session, &Args) -> Result<Answer, String>,
 }
 
-/// Every tool: the general ones, then the spam filter's (computers only).
+/// Every tool: the general ones, then the spam filter's.
 pub fn all() -> impl Iterator<Item = &'static Tool> {
-    #[cfg(not(target_os = "android"))]
-    let spam = super::spam::TOOLS.iter();
-    #[cfg(target_os = "android")]
-    let spam = <&'static [Tool]>::default().iter();
-    TOOLS.iter().chain(spam)
+    TOOLS.iter().chain(super::spam::TOOLS.iter())
 }
 
 /// Whether a tool is one of the spam filter's, which `[mcp] spam = false` keeps from agents.

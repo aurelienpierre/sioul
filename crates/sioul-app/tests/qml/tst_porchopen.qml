@@ -59,6 +59,9 @@ Item {
         function textArgs(key, args) {
             return key
         }
+        function spamCard() {
+            return ""
+        }
         function settings() {
             return "{}"
         }

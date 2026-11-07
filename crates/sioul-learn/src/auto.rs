@@ -1,24 +1,35 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Training again by itself (docs/spam-filter.md, "Training by itself"): on
-//! the computer that made the table in use, once a week at most after the
-//! last training (by hand or by itself), when it is on mains power, not
-//! saving power, idle for 15 minutes or locked, and no focus session runs;
-//! on a metered connection, without downloading first. A job run apart
-//! (`sioul spam train --by-itself`), at the lowest priority, on half the
-//! cores, with the usual rule for replacing the table; stopped through its
-//! stop file when the computer is unplugged or starts saving power, to try
-//! again later. Never a notification: the settings say when it last trained
-//! by itself, and whether its table replaced the one in use.
+//! Training by itself (docs/spam-filter.md, "Every device trains its own"):
+//! on every device whose switch is on ("Train here", `[spam] train_here`,
+//! this device's own, on unless said), phones included, once a week at most
+//! after the last training (by hand or by itself), when it is on mains
+//! power, not saving power, idle for 15 minutes or locked (a phone: its
+//! screen off), no focus session runs, its battery not above 40 °C where
+//! the system tells it, and on a network the download setting allows (any,
+//! unless kept to unmetered ones; a network the system does not call metered
+//! counts as unmetered). It downloads first, then learns, with the usual
+//! rule for replacing the table. On a computer, a job run apart (`sioul spam
+//! train --by-itself`), at the lowest priority, on half the cores; on a
+//! phone, a thread of the background service's process. Stopped when the
+//! device is unplugged or starts saving power, to try again later.
+//!
+//! **The guard** ([`watch_supply`]): a training that runs past 30 minutes
+//! (the download aside, which goes on where it stopped), or with the battery
+//! above 40 °C, stops, and the device's training is turned off ([`guard`]):
+//! the Porch says so once ([`Notice`]), with the switch to turn it back on.
+//! A device too slow for it never needs a check beforehand.
+//!
+//! **The first training** on a device with no table says once that it is
+//! learning, then how long it took ([`Notice`]).
 //!
 //! [`decide`] is the rule, a pure function of what is known ([`Facts`]); an
 //! unknown fact counts as not holding. [`facts`] reads them, the cheap ones
 //! first: the system is asked about its power and its session only when
 //! nothing else holds a training back. What the last run by itself did is
-//! kept beside the last training's summary ([`Run`], `auto.toml`). The
-//! window asks at its minute, `sioul watch` at its own; the command line
-//! starts the job.
+//! kept beside the last training's summary ([`Run`], `auto.toml`). Never a
+//! notification.
 
 use crate::Dirs;
 use serde::{Deserialize, Serialize};
@@ -28,6 +39,14 @@ use std::time::{Duration, Instant};
 
 /// The least time between two trainings, by hand or by itself.
 pub const WEEK: i64 = 7 * 86_400;
+/// A training running longer than this (its download aside) stops, and the
+/// device's training is turned off (`guard`): measured, 67.5 seconds on a
+/// computer and 4.5 minutes on a slow phone (docs/research.md).
+pub const LONGEST: Duration = Duration::from_secs(30 * 60);
+/// A battery warmer than this, in tenths of a degree Celsius, as Android and
+/// Linux's power supplies say it: no training starts, and one running stops
+/// and turns the device's training off.
+pub const HOT_TENTHS: i32 = 400;
 /// After a run by itself stopped (unplugged, saving power): the soonest it tries again.
 pub const AFTER_STOP: i64 = 15 * 60;
 /// After one that failed, or whose process vanished: the soonest it tries again.
@@ -35,14 +54,14 @@ pub const AFTER_FAILURE: i64 = 86_400;
 /// How often a run by itself asks whether its power still allows it.
 pub const SUPPLY_EVERY: Duration = Duration::from_secs(30);
 
-/// Who made the table in use.
+/// Who made the table in use: said in the settings, never a reason to wait.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Trainer {
-    /// This computer: it trains by itself.
+    /// This device.
     Here,
-    /// Another device, by its name: that one does.
+    /// Another device, by its name (a table that came before the tables were retired).
     Elsewhere(String),
-    /// No table yet, or none this Sioul can read: a training by hand comes first.
+    /// No table yet, or none this Sioul can read: the next training here is the first.
     Nobody,
 }
 
@@ -103,10 +122,11 @@ impl Run {
 /// What is known now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Facts {
-    /// The setting: "Train again by itself" (`[spam] train_by_itself`, on unless said).
+    /// The setting: "Train here" (`[spam] train_here`, this device's own, on unless said).
     pub enabled: bool,
-    pub trainer: Trainer,
-    /// When the last training ended, by hand or by itself (`trained.toml`).
+    /// The download kept to unmetered networks (`[spam] train_network`).
+    pub unmetered_only: bool,
+    /// When the last training here ended, by hand or by itself (`trained.toml`).
     pub last_trained: Option<i64>,
     /// That training decided its labels by older rules (`labels::RULES`):
     /// the next one does not wait for the week.
@@ -117,7 +137,7 @@ pub struct Facts {
     pub running: bool,
     /// A focus session runs.
     pub focus: Option<bool>,
-    /// What the computer says of itself (`sioul_sync::power`).
+    /// What the device says of itself (`sioul_sync::power`; a phone's, from Android).
     pub power: Power,
 }
 
@@ -126,10 +146,6 @@ pub struct Facts {
 pub enum Wait {
     /// The setting is off.
     Off,
-    /// No table yet: a training by hand comes first.
-    NoTable,
-    /// Another computer made the table in use: that one trains.
-    Elsewhere,
     /// A training runs already.
     Running,
     /// Trained less than a week ago.
@@ -144,28 +160,28 @@ pub enum Wait {
     PowerSaver,
     /// Someone at it, or it cannot tell.
     InUse,
+    /// Its battery above 40 °C, as the system says.
+    Hot,
+    /// A metered network, the download kept to unmetered ones.
+    Metered,
 }
 
 /// What to do now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
-    /// Train, downloading first or not (a metered connection, or one it cannot tell).
+    /// Train, downloading first: always, on a network the setting allows.
     Train { fetch: bool },
     Wait(Wait),
 }
 
 /// The rule: every condition must hold, an unknown one counting as not
-/// holding; the cheap ones are looked at first (`facts` asks the system
-/// only when a training waits on its power alone).
+/// holding, but the network's cost and the battery's warmth, which count as
+/// fine when the system does not say them; the cheap ones are looked at first
+/// (`facts` asks the system only when a training waits on its power alone).
 pub fn decide(f: &Facts, now: i64) -> Decision {
     let wait = |why| Decision::Wait(why);
     if !f.enabled {
         return wait(Wait::Off);
-    }
-    match f.trainer {
-        Trainer::Nobody => return wait(Wait::NoTable),
-        Trainer::Elsewhere(_) => return wait(Wait::Elsewhere),
-        Trainer::Here => {}
     }
     if f.running {
         return wait(Wait::Running);
@@ -194,19 +210,29 @@ pub fn decide(f: &Facts, now: i64) -> Decision {
     if f.power.idle != Some(true) {
         return wait(Wait::InUse);
     }
-    Decision::Train { fetch: f.power.metered == Some(false) }
+    if hot(&f.power) {
+        return wait(Wait::Hot);
+    }
+    if f.unmetered_only && f.power.metered == Some(true) {
+        return wait(Wait::Metered);
+    }
+    Decision::Train { fetch: true }
 }
 
-/// What is known now: the setting (`enabled`), the table in use and the
-/// files of the last trainings, the jobs, a focus session (`focus`:
+/// The battery above `HOT_TENTHS`, as the system says it (unsaid: not).
+pub fn hot(power: &Power) -> bool {
+    power.battery_tenths.is_some_and(|t| t > HOT_TENTHS)
+}
+
+/// What is known now: the settings (`spam`), the files of the last
+/// trainings, the jobs, a focus session (`focus`:
 /// `sioul_core::timelog::running`); then, only when nothing else holds a
-/// training back, what the system says (`power`, asked once). `here`: this
-/// computer's name, as a table records it (`sioul_sync::lease::host_name`);
+/// training back, what the system says (`power`, asked once).
 /// `window_trains`: the window's own training runs ("Train now").
-pub fn facts(dirs: &Dirs, enabled: bool, here: &str, window_trains: bool, focus: bool, now: i64, power: impl FnOnce() -> Power) -> Facts {
+pub fn facts(dirs: &Dirs, spam: &sioul_core::config::SpamSettings, window_trains: bool, focus: bool, now: i64, power: impl FnOnce() -> Power) -> Facts {
     let mut facts = Facts {
-        enabled,
-        trainer: trainer(dirs, here),
+        enabled: spam.trains_here(),
+        unmetered_only: spam.unmetered_only(),
         last_trained: crate::train::last(dirs).map(|s| s.trained_at).filter(|at| *at > 0),
         outdated: crate::train::last(dirs).is_some_and(|s| s.labels.rules < crate::labels::RULES),
         last_run: Run::load(dirs),
@@ -231,6 +257,107 @@ pub fn trainer(dirs: &Dirs, here: &str) -> Trainer {
     }
 }
 
+/// Why a training running was stopped (`watch_supply`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Halt {
+    /// Unplugged, saving power, or twice unable to tell: it tries again later.
+    Supply,
+    /// Its training ran past `LONGEST`: the device's training turns off.
+    Long,
+    /// Its battery above `HOT_TENTHS`: the device's training turns off.
+    Hot,
+}
+
+impl Halt {
+    /// The guard's: the device's training turns off (`guard`).
+    pub fn guards(self) -> bool {
+        matches!(self, Halt::Long | Halt::Hot)
+    }
+}
+
+/// What the Porch says once of this device's training (`notice.toml` beside
+/// the corpus, this device's own), until you put it away.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notice {
+    pub kind: NoticeKind,
+    /// When it happened (Unix seconds).
+    pub at: i64,
+    /// How long the first training took, in seconds (`NoticeKind::FirstDone`).
+    #[serde(default)]
+    pub seconds: u64,
+    /// You put it away: said no more.
+    #[serde(default)]
+    pub put_away: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NoticeKind {
+    /// The first training on this device runs: "Sioul is learning from your mail…".
+    FirstRunning,
+    /// It ended, and took this long.
+    FirstDone,
+    /// The guard turned the training off: it ran too long, or too warm.
+    Guarded(Halt),
+}
+
+impl Notice {
+    fn path(dirs: &Dirs) -> PathBuf {
+        dirs.state.join("notice.toml")
+    }
+
+    /// The notice kept, if any.
+    pub fn load(dirs: &Dirs) -> Option<Notice> {
+        toml::from_str(&std::fs::read_to_string(Notice::path(dirs)).ok()?).ok()
+    }
+
+    /// Kept, in place of the one before.
+    pub fn save(&self, dirs: &Dirs) -> Result<(), String> {
+        std::fs::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
+        let text = toml::to_string(self).map_err(|e| e.to_string())?;
+        crate::corpus::write_whole(&Notice::path(dirs), text.as_bytes()).map_err(|e| e.to_string())
+    }
+
+    /// What the Porch shows now: a notice not put away (a first training
+    /// still running only while one runs, else it vanished: nothing).
+    pub fn shown(dirs: &Dirs, running: bool) -> Option<Notice> {
+        Notice::load(dirs).filter(|n| !n.put_away && (n.kind != NoticeKind::FirstRunning || running))
+    }
+
+    /// Put away: said no more.
+    pub fn put_away(dirs: &Dirs) -> Result<(), String> {
+        match Notice::load(dirs) {
+            Some(notice) => Notice { put_away: true, ..notice }.save(dirs),
+            None => Ok(()),
+        }
+    }
+}
+
+/// A training begins: on a device with no table yet (`first`), the Porch
+/// says once that it is learning. What it said before stays otherwise.
+pub fn begin(dirs: &Dirs, first: bool, now: i64) {
+    if first {
+        let _ = Notice { kind: NoticeKind::FirstRunning, at: now, seconds: 0, put_away: false }.save(dirs);
+    }
+}
+
+/// A training ended: the first one (its notice running) says how long it
+/// took once it made a table (`made`), and is forgotten otherwise.
+pub fn end(dirs: &Dirs, made: bool, seconds: u64, now: i64) {
+    if let Some(notice) = Notice::load(dirs).filter(|n| n.kind == NoticeKind::FirstRunning) {
+        let _ = if made { Notice { kind: NoticeKind::FirstDone, at: now, seconds, put_away: notice.put_away }.save(dirs) } else { std::fs::remove_file(Notice::path(dirs)).map_err(|e| e.to_string()) };
+    }
+}
+
+/// The guard (`Halt::guards`): this device's training turned off, its own
+/// setting written in `config` (`[spam] train_here = false`, never shared),
+/// and the Porch's notice kept to say so once, with the switch.
+pub fn guard(dirs: &Dirs, config: &std::path::Path, halt: Halt, now: i64) -> Result<(), String> {
+    sioul_core::config::set_value(config, "spam.train_here", &sioul_core::config::SettingValue::Bool(false))?;
+    Notice { kind: NoticeKind::Guarded(halt), at: now, seconds: 0, put_away: false }.save(dirs)
+}
+
 /// Whether a job of the spam filter runs, a download or a training: its
 /// process holds its lock (`$XDG_STATE_HOME/sioul/spam/jobs/<id>.lock`).
 pub fn a_job_runs(dirs: &Dirs) -> bool {
@@ -253,20 +380,30 @@ pub fn threads() -> u32 {
 }
 
 /// While a run by itself goes on: its power asked every `every` (`supply`);
-/// unplugged or saving power, or twice in a row unable to tell, `stop` is
-/// called once and the watch ends; it ends too as soon as `done` says the
-/// run did.
-pub fn watch_supply(supply: impl Fn() -> Power, stop: impl FnOnce(), done: impl Fn() -> bool, every: Duration) {
+/// unplugged or saving power, or twice in a row unable to tell
+/// (`Halt::Supply`), its battery above `HOT_TENTHS` (`Halt::Hot`), or its
+/// training running past `LONGEST` (`Halt::Long`; `training` says how long
+/// it has run, none while it downloads), `stop` is called once and the
+/// watch ends; it ends too as soon as `done` says the run did.
+pub fn watch_supply(supply: impl Fn() -> Power, stop: impl FnOnce(Halt), done: impl Fn() -> bool, training: impl Fn() -> Option<Duration>, every: Duration) {
     let mut unknown = false;
     loop {
         if done() {
             return;
         }
+        if training().is_some_and(|ran| ran > LONGEST) {
+            stop(Halt::Long);
+            return;
+        }
         let power = supply();
+        if hot(&power) {
+            stop(Halt::Hot);
+            return;
+        }
         let away = power.on_mains == Some(false) || power.power_saver == Some(true);
         let unsure = !away && !power.supplied();
         if away || (unsure && unknown) {
-            stop();
+            stop(Halt::Supply);
             return;
         }
         unknown = unsure;
@@ -288,16 +425,16 @@ mod tests {
     const NOW: i64 = 1_791_360_000;
 
     fn power(on_mains: Option<bool>, power_saver: Option<bool>, idle: Option<bool>, metered: Option<bool>) -> Power {
-        Power { on_mains, power_saver, idle, metered }
+        Power { on_mains, power_saver, idle, metered, battery_tenths: None }
     }
 
-    /// Everything allows it: the training computer, set on, a week and more
-    /// since the last training, nothing running, no focus, on mains power,
-    /// not saving power, idle, a connection not metered.
+    /// Everything allows it: set on, a week and more since the last training
+    /// here, nothing running, no focus, on mains power, not saving power,
+    /// idle, a connection not metered.
     fn ready() -> Facts {
         Facts {
             enabled: true,
-            trainer: Trainer::Here,
+            unmetered_only: false,
             last_trained: Some(NOW - WEEK - 1),
             outdated: false,
             last_run: None,
@@ -307,10 +444,11 @@ mod tests {
         }
     }
 
+    /// Every device whose switch is on trains, whoever made the table in
+    /// use, and one that never trained (no `trained.toml`) too: its first.
     #[test]
     fn it_trains_when_everything_allows_it() {
         assert_eq!(decide(&ready(), NOW), Decision::Train { fetch: true });
-        // Never trained here (no `trained.toml`), the table this computer's: it may.
         assert_eq!(decide(&Facts { last_trained: None, ..ready() }, NOW), Decision::Train { fetch: true });
     }
 
@@ -327,34 +465,60 @@ mod tests {
     /// Each condition alone holds it back, its reason said.
     #[test]
     fn each_condition_holds_it_back() {
+        let warm = Power { battery_tenths: Some(HOT_TENTHS + 1), ..ready().power };
         let cases: Vec<(Facts, Wait)> = vec![
             (Facts { enabled: false, ..ready() }, Wait::Off),
-            (Facts { trainer: Trainer::Nobody, ..ready() }, Wait::NoTable),
-            (Facts { trainer: Trainer::Elsewhere("desk".into()), ..ready() }, Wait::Elsewhere),
             (Facts { running: true, ..ready() }, Wait::Running),
             (Facts { last_trained: Some(NOW - WEEK + 60), ..ready() }, Wait::Recent),
             (Facts { focus: Some(true), ..ready() }, Wait::Focus),
             (Facts { power: power(Some(false), Some(false), Some(true), Some(false)), ..ready() }, Wait::Battery),
             (Facts { power: power(Some(true), Some(true), Some(true), Some(false)), ..ready() }, Wait::PowerSaver),
             (Facts { power: power(Some(true), Some(false), Some(false), Some(false)), ..ready() }, Wait::InUse),
+            (Facts { power: warm, ..ready() }, Wait::Hot),
+            (Facts { unmetered_only: true, power: power(Some(true), Some(false), Some(true), Some(true)), ..ready() }, Wait::Metered),
         ];
         for (facts, why) in cases {
             assert_eq!(decide(&facts, NOW), Decision::Wait(why), "{facts:?}");
         }
     }
 
-    /// An unknown fact counts as not holding; a metered connection, or one it
-    /// cannot tell, trains on the corpus as it is.
+    /// An unknown fact counts as not holding, but the network's cost and the
+    /// battery's warmth: unsaid, the network counts as unmetered, the battery
+    /// as cool. Any network by default; kept to unmetered ones, a metered
+    /// network waits and an unknown one does not.
     #[test]
-    fn unknown_counts_as_no() {
+    fn unknown_counts_as_no_but_for_the_network_and_the_warmth() {
         let with = |p: Power| Facts { power: p, ..ready() };
         assert_eq!(decide(&Facts { focus: None, ..ready() }, NOW), Decision::Wait(Wait::Focus));
         assert_eq!(decide(&with(power(None, Some(false), Some(true), Some(false))), NOW), Decision::Wait(Wait::Battery));
         assert_eq!(decide(&with(power(Some(true), None, Some(true), Some(false))), NOW), Decision::Wait(Wait::PowerSaver));
         assert_eq!(decide(&with(power(Some(true), Some(false), None, Some(false))), NOW), Decision::Wait(Wait::InUse));
-        assert_eq!(decide(&with(power(Some(true), Some(false), Some(true), Some(true))), NOW), Decision::Train { fetch: false });
-        assert_eq!(decide(&with(power(Some(true), Some(false), Some(true), None)), NOW), Decision::Train { fetch: false });
+        assert_eq!(decide(&with(power(Some(true), Some(false), Some(true), Some(true))), NOW), Decision::Train { fetch: true }, "any network: metered too");
+        assert_eq!(decide(&with(power(Some(true), Some(false), Some(true), None)), NOW), Decision::Train { fetch: true });
+        let unmetered = |p: Power| Facts { unmetered_only: true, power: p, ..ready() };
+        assert_eq!(decide(&unmetered(power(Some(true), Some(false), Some(true), Some(true))), NOW), Decision::Wait(Wait::Metered));
+        assert_eq!(decide(&unmetered(power(Some(true), Some(false), Some(true), None)), NOW), Decision::Train { fetch: true }, "unsaid: unmetered");
+        assert_eq!(decide(&unmetered(power(Some(true), Some(false), Some(true), Some(false))), NOW), Decision::Train { fetch: true });
+        assert_eq!(decide(&with(Power { battery_tenths: Some(HOT_TENTHS), ..ready().power }), NOW), Decision::Train { fetch: true }, "40 °C is not above");
         assert_eq!(decide(&with(Power::default()), NOW), Decision::Wait(Wait::Battery), "nothing known: no");
+    }
+
+    /// The settings as each device keeps them: on unless said, an older
+    /// `train_by_itself` read when `train_here` is unsaid; any network unless
+    /// "unmetered".
+    #[test]
+    fn the_device_s_own_settings() {
+        use sioul_core::config::SpamSettings;
+        assert!(SpamSettings::default().trains_here());
+        assert!(!SpamSettings { train_by_itself: Some(false), ..SpamSettings::default() }.trains_here());
+        assert!(SpamSettings { train_by_itself: Some(false), train_here: Some(true), ..SpamSettings::default() }.trains_here());
+        assert!(!SpamSettings { train_here: Some(false), ..SpamSettings::default() }.trains_here());
+        let any = SpamSettings::default();
+        assert!(any.downloads_on(Some(true)) && any.downloads_on(None) && !any.unmetered_only());
+        let unmetered = SpamSettings { train_network: Some("unmetered".into()), ..SpamSettings::default() };
+        assert!(!unmetered.downloads_on(Some(true)) && unmetered.downloads_on(Some(false)) && unmetered.downloads_on(None));
+        let facts = facts(&Dirs::under(&std::env::temp_dir().join("sioul-auto-none")), &unmetered, false, false, NOW, Power::default);
+        assert!(facts.enabled && facts.unmetered_only);
     }
 
     /// Once a week at most after the last training, by hand or by itself;
@@ -384,12 +548,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let dirs = Dirs::under(&dir);
         let asked = Cell::new(0);
-        // No table here: nothing to ask.
-        let f = facts(&dirs, true, "desk", false, false, NOW, || {
+        let spam = sioul_core::config::SpamSettings::default();
+        // Switched off: nothing to ask.
+        let off = sioul_core::config::SpamSettings { train_here: Some(false), ..spam.clone() };
+        let f = facts(&dirs, &off, false, false, NOW, || {
             asked.set(asked.get() + 1);
             Power::default()
         });
-        assert_eq!((f.trainer.clone(), asked.get(), decide(&f, NOW)), (Trainer::Nobody, 0, Decision::Wait(Wait::NoTable)));
+        assert_eq!((asked.get(), decide(&f, NOW)), (0, Decision::Wait(Wait::Off)));
+        // On, no table here: the first training, the system asked once.
+        let f = facts(&dirs, &spam, false, false, NOW, || {
+            asked.set(asked.get() + 1);
+            power(Some(true), Some(false), Some(true), None)
+        });
+        assert_eq!((trainer(&dirs, "desk"), asked.get(), decide(&f, NOW)), (Trainer::Nobody, 1, Decision::Train { fetch: true }));
         // The record of a run kept and read back, its end written by its job.
         let run = Run { started: NOW - 100, job: "20261007-031200-train-abcd".into(), fetched: false, ended: None, outcome: None };
         run.save(&dirs).unwrap();
@@ -411,26 +583,67 @@ mod tests {
 
     /// A run by itself stops once unplugged or saving power, or after two
     /// readings in a row that cannot tell; never while its power allows it,
-    /// and the watch ends with the run.
+    /// and the watch ends with the run. Past `LONGEST` of training, or with
+    /// the battery above 40 °C, the guard stops it.
     #[test]
-    fn the_run_stops_when_the_power_changes() {
+    fn the_run_stops_when_the_power_changes_or_the_guard_says() {
         let mains = power(Some(true), Some(false), None, None);
-        let watched = |readings: Vec<Power>| {
+        let watched = |readings: Vec<Power>, ran: Option<Duration>| {
             let left = RefCell::new(readings);
-            let (stopped, asked) = (Cell::new(false), Cell::new(0));
+            let (stopped, asked) = (Cell::new(None), Cell::new(0));
             let next = || {
                 asked.set(asked.get() + 1);
                 let mut left = left.borrow_mut();
                 if left.is_empty() { mains } else { left.remove(0) }
             };
             // The run ends after ten readings, unless stopped before.
-            watch_supply(next, || stopped.set(true), || asked.get() >= 10, Duration::from_millis(1));
+            watch_supply(next, |halt| stopped.set(Some(halt)), || asked.get() >= 10, || ran, Duration::from_millis(1));
             (stopped.get(), asked.get())
         };
-        assert_eq!(watched(vec![mains; 3]), (false, 10), "plugged in all along");
-        assert_eq!(watched(vec![mains, mains, power(Some(false), Some(false), None, None)]), (true, 3), "unplugged");
-        assert_eq!(watched(vec![mains, power(Some(true), Some(true), None, None)]), (true, 2), "saving power");
-        assert_eq!(watched(vec![mains, Power::default(), mains, Power::default(), Power::default()]), (true, 5), "twice unknown in a row");
-        assert_eq!(watched(vec![Power::default(), mains, Power::default(), mains]), (false, 10), "once unknown, then known again");
+        assert_eq!(watched(vec![mains; 3], None), (None, 10), "plugged in all along");
+        assert_eq!(watched(vec![mains, mains, power(Some(false), Some(false), None, None)], None), (Some(Halt::Supply), 3), "unplugged");
+        assert_eq!(watched(vec![mains, power(Some(true), Some(true), None, None)], None), (Some(Halt::Supply), 2), "saving power");
+        assert_eq!(watched(vec![mains, Power::default(), mains, Power::default(), Power::default()], None), (Some(Halt::Supply), 5), "twice unknown in a row");
+        assert_eq!(watched(vec![Power::default(), mains, Power::default(), mains], None), (None, 10), "once unknown, then known again");
+        assert_eq!(watched(vec![mains, Power { battery_tenths: Some(415), ..mains }], None), (Some(Halt::Hot), 2), "too warm");
+        assert_eq!(watched(vec![mains; 3], Some(LONGEST + Duration::from_secs(1))), (Some(Halt::Long), 0), "too long");
+        assert_eq!(watched(vec![mains; 3], Some(LONGEST - Duration::from_secs(1))), (None, 10), "within the time");
+        assert!(Halt::Long.guards() && Halt::Hot.guards() && !Halt::Supply.guards());
+    }
+
+    /// The guard turns this device's training off in its own settings, and
+    /// the Porch says so once, until put away. A first training says it is
+    /// learning while it runs, then how long it took; one that made no table
+    /// says nothing after.
+    #[test]
+    fn the_guard_and_the_first_training_are_said_once() {
+        let dir = std::env::temp_dir().join(format!("sioul-auto-guard-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dirs = Dirs::under(&dir);
+        let config = dir.join("config.toml");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&config, "language = \"en\"\n").unwrap();
+        // The first training, running, then done in 270 s.
+        begin(&dirs, true, NOW);
+        assert_eq!(Notice::shown(&dirs, true).map(|n| n.kind), Some(NoticeKind::FirstRunning));
+        assert_eq!(Notice::shown(&dirs, false), None, "said only while it runs");
+        end(&dirs, true, 270, NOW + 270);
+        assert_eq!(Notice::shown(&dirs, false).map(|n| (n.kind, n.seconds)), Some((NoticeKind::FirstDone, 270)));
+        Notice::put_away(&dirs).unwrap();
+        assert_eq!(Notice::shown(&dirs, false), None, "put away: said no more");
+        // Not the first: nothing said; a first that made no table: forgotten.
+        begin(&dirs, false, NOW);
+        assert_eq!(Notice::shown(&dirs, true), None);
+        begin(&dirs, true, NOW);
+        end(&dirs, false, 30, NOW + 30);
+        assert_eq!(Notice::load(&dirs), None);
+        // The guard: the device's own switch off, said once.
+        guard(&dirs, &config, Halt::Long, NOW).unwrap();
+        let written = sioul_core::config::Config::load(&config).unwrap();
+        assert!(!written.spam.trains_here(), "{}", std::fs::read_to_string(&config).unwrap());
+        assert_eq!(Notice::shown(&dirs, false).map(|n| n.kind), Some(NoticeKind::Guarded(Halt::Long)));
+        Notice::put_away(&dirs).unwrap();
+        assert_eq!(Notice::shown(&dirs, false), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

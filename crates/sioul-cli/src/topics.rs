@@ -259,23 +259,13 @@ fn seeds(s: &Session, dirs: &Dirs, progress: &mut dyn FnMut(&Progress), cancel: 
 
 // `sioul topics train`, by hand or in the weekly run.
 
-/// Trains the topics' model (`topics::model::train`) and, when its table is
-/// no worse, writes it where every device reads it and judges the mail kept
-/// here by it; what it did, said topic by topic.
+/// Trains this device's topics' model from its own corpus
+/// (`topics::model::train_here`) and, when its table is no worse, writes it
+/// and judges the mail kept here by it; what it did, said topic by topic.
 pub(crate) fn train(s: &Session, dirs: &Dirs, replace: bool, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
-    use sioul_core::topics::judging;
-    let options = Options { compare: false, ..Options::of(&s.config) };
-    let read = read(s, dirs, &options, true, None, progress, cancel)?;
-    let said = sioul_core::topics::labels::Said::load();
-    let presets = sioul_core::topics::presets::Matcher::current();
-    let path = judging::table_path();
-    let previous = judging::cached(&path).map(|(t, _)| t);
-    let trained = topics::model::train(dirs, &read, &s.config.topics, &said, Some(&presets), previous.as_deref(), &options, progress, cancel).map_err(|e| failure(s, &e))?;
-    let written = replace && trained.replaces();
-    if written && let Some(table) = &trained.table {
-        judging::write_table(&path, table)?;
-        let _ = judging::judge_kept(&s.config, usize::MAX);
-    }
+    // From this device's own corpus since forever, deterministic (`model::train_here`).
+    let here = topics::model::train_here(dirs, &s.config, replace, usize::MAX, progress, cancel).map_err(|e| failure(s, &e))?;
+    let (trained, written) = (&here.trained, here.written);
     let name_of = |id: &str| s.config.topics.iter().find(|t| t.id == id).map_or_else(|| id.to_string(), |t| crate::one_line(&t.name));
     let n = |x: u64| x.to_string();
     let mut lines = Vec::new();
@@ -297,8 +287,7 @@ pub(crate) fn train(s: &Session, dirs: &Dirs, replace: bool, progress: &mut dyn 
     };
     lines.push(outcome);
     lines.push(s.say("topics-seconds", &[("seconds", format!("{:.0}", trained.seconds))]));
-    let mut data = serde_json::to_value(&trained).map_err(|e| e.to_string())?;
-    data["written"] = json!(written);
+    let data = serde_json::to_value(&here).map_err(|e| e.to_string())?;
     Ok(Report { lines, data })
 }
 

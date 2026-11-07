@@ -41,6 +41,11 @@
 //!    the mail, at most every quarter of an hour while you are awake and every
 //!    hour while you sleep: one token check per calendar that counts, a pull
 //!    and a rewrite of a mirror only when one changed, from the freshest view.
+//! 7. the spam filter's and the topics' training by itself
+//!    (`spam::background_step`, docs/spam-filter.md, "Every device trains its
+//!    own"), once a week at most while the phone charges with its screen off,
+//!    on a network its download setting allows: on a thread of this process,
+//!    under a wake lock of its own, never waited for by the step.
 //!
 //! On a computer nothing here runs: the window does all of it each minute.
 
@@ -462,6 +467,11 @@ fn step(reason: &str) -> serde_json::Value {
     {
         eprintln!("sioul: steps: availability stopped short");
     }
+    // 7. The spam filter's and the topics' training by itself, once a week
+    // while the phone charges with its screen off (`spam::background_step`):
+    // on a thread of this process, under a wake lock of its own, never waited for.
+    #[cfg(target_os = "android")]
+    crate::spam::background_step();
     // The sealed files waited for, twenty-five seconds more at most: a large
     // paper on a slow line goes on without holding the step (asked again
     // later if it is cut).

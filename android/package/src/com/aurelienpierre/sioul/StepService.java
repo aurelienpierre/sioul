@@ -178,6 +178,9 @@ public final class StepService extends Service
                 // A mail attachment opened in the app you choose, or saved where you choose (Attachments.java).
                 if (verb.startsWith("attachment-"))
                     return Attachments.call(context, verb, asked);
+                // The training by itself: the phone's power and network, its wake lock (Learn.java).
+                if (verb.startsWith("learn-"))
+                    return Learn.call(context, verb, asked);
                 // The calls screened (Calls.java): the role, its pages, the phone app's dial pad.
                 return verb.startsWith("calls-") ? Calls.call(context, verb, asked) : null;
             }

@@ -132,7 +132,7 @@ In the Mail page's ⚙, under **Filters**: what is done to new mail on its serve
 
 ### Your own spam filter
 
-In the Mail page's ⚙, under **Your own spam filter**: what it does with each of its verdicts on a stranger's mail (**Move to spam**, **Flag only** or **Do nothing**), how sure it must be (**Spam from**, 95% unless you change it; **Maybe spam from**, 50%), and its training, on one computer: by hand with **Train now**, then by itself once a week while that computer is plugged in and idle, unless you switch that off. Your phone never trains it: it uses the computer's table, which comes sealed with the sharing. Its settings: [Mail, Your own spam filter](mail.md#your-own-spam-filter); what it does on the Porch: [Spam, and your own filter](porch.md#spam-and-your-own-filter); what training reads and keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
+In the Mail page's ⚙, under **Your own spam filter**: what it does with each of its verdicts on a stranger's mail (**Move to spam**, **Flag only** or **Do nothing**), how sure it must be (**Spam from**, 95% unless you change it; **Maybe spam from**, 50%), and its training, on each device, your phone too: by hand with **Train now**, then by itself once a week while that device charges and is idle (**Train here**, this device's own switch), its download on any network or only on Wi-Fi and other unmetered ones, as you choose on each device. Its settings: [Mail, Your own spam filter](mail.md#your-own-spam-filter); what it does on the Porch: [Spam, and your own filter](porch.md#spam-and-your-own-filter); what training reads and keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
 
 ## What travels with you {#what-travels-with-you}
 

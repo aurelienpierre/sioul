@@ -2842,10 +2842,11 @@ fn a_run_by_itself_stops_when_unplugged() {
     let readings = std::cell::RefCell::new(vec![plugged, plugged, Power { on_mains: Some(false), ..plugged }]);
     auto::watch_supply(
         || readings.borrow_mut().remove(0),
-        || {
+        |_| {
             let _ = jobs::stop(&job.id);
         },
         || cancel.cancelled(),
+        || None,
         std::time::Duration::from_millis(5),
     );
     assert!(readings.borrow().is_empty(), "stopped at the reading unplugged");
@@ -2868,8 +2869,9 @@ fn a_run_by_itself_stops_when_unplugged() {
                 calls.set(calls.get() + 1);
                 Power { on_mains, power_saver, ..Power::default() }
             },
-            || stop.set(true),
+            |_| stop.set(true),
             || calls.get() >= 3,
+            || None,
             std::time::Duration::from_millis(1),
         );
         assert_eq!(stop.get(), stops, "{on_mains:?} {power_saver:?}");

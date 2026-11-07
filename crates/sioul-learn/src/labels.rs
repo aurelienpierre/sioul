@@ -421,6 +421,7 @@ mod tests {
             html: None,
             checked: None,
             fetched: 0,
+            fields: None,
         };
         let copies = vec![
             Copy::of(&record(1, "INBOX", Role::Inbox, &["Junk"])),

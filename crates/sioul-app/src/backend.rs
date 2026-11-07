@@ -1921,7 +1921,7 @@ pub mod qobject {
         #[qinvokable]
         fn spam_status(self: &Sioul) -> QString;
 
-        /// "Train now", on a computer: the corpus brought up to date, then a
+        /// "Train now", on any device: the corpus brought up to date, then a
         /// training, off the window's thread; `spam_changed` says how it goes.
         /// `named`: the addresses its sentence named (a JSON list,
         /// `train_named`), kept as your consent for a Microsoft address
@@ -1932,6 +1932,17 @@ pub mod qobject {
         /// The training running stops at its next step.
         #[qinvokable]
         fn spam_stop(self: Pin<&mut Sioul>);
+
+        /// The Porch's word on this device's training (`spam::card`): the
+        /// first one learning, then how long it took, or the guard that
+        /// turned it off; {text, guarded} as JSON, "" for none.
+        #[qinvokable]
+        fn spam_card(self: &Sioul) -> QString;
+
+        /// That card put away, this device's training turned back on first
+        /// with `turn_on`. Returns what went wrong, else "".
+        #[qinvokable]
+        fn spam_card_away(self: Pin<&mut Sioul>, turn_on: bool) -> QString;
 
         /// Mail's topics and their senders' rules (`topics::view`), as JSON.
         #[qinvokable]
@@ -7955,6 +7966,17 @@ impl qobject::Sioul {
 
     fn spam_stop(self: Pin<&mut Self>) {
         crate::spam::stop(self.qt_thread());
+    }
+
+    fn spam_card(&self) -> QString {
+        QString::from(&crate::spam::card())
+    }
+
+    fn spam_card_away(mut self: Pin<&mut Self>, turn_on: bool) -> QString {
+        let said = crate::spam::card_away(turn_on);
+        let status = crate::spam::status();
+        self.as_mut().spam_changed(QString::from(&status));
+        QString::from(&said)
     }
 
     fn topics(&self) -> QString {

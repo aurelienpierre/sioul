@@ -48,12 +48,10 @@ mod mcp;
 mod money;
 mod pgp;
 mod remind;
-// The spam filter learned on this computer (sioul-learn): desktops only.
-#[cfg(not(target_os = "android"))]
+// The spam filter learned on this device (sioul-learn): every device trains its own.
 mod spam;
 mod tasks;
-// Mail topics measured on this computer (sioul-learn): desktops only.
-#[cfg(not(target_os = "android"))]
+// Mail topics learned and measured on this device (sioul-learn).
 mod topics;
 
 use clap::{Parser, Subcommand};
@@ -241,12 +239,10 @@ enum Command {
     Mcp,
     /// Sioul's own spam filter, learned on this computer from your mail: the training
     /// corpus, training, its numbers, and why it judges a message as it does.
-    #[cfg(not(target_os = "android"))]
     #[command(subcommand)]
     Spam(spam::SpamCommand),
     /// Mail topics measured on this computer: the topics your folders, projects and
     /// contacts' categories would propose, and how well a model of them sorts your mail.
-    #[cfg(not(target_os = "android"))]
     #[command(subcommand)]
     Topics(topics::TopicsCommand),
 }
@@ -417,9 +413,7 @@ fn main() -> ExitCode {
         Command::Remind { watch: true } => remind::watch(&session),
         Command::Shield { account, read } => shield_command(&session, account.as_deref(), read),
         Command::Mcp => mcp::run(&session),
-        #[cfg(not(target_os = "android"))]
         Command::Spam(command) => spam::run(&session, command),
-        #[cfg(not(target_os = "android"))]
         Command::Topics(command) => topics::run(&session, command),
     };
     result.map_or_else(

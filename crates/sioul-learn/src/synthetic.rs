@@ -165,6 +165,7 @@ pub fn record_of(mail: &Mail, uidvalidity: u32, uid: u32) -> Record {
         html: None,
         checked: None,
         fetched: mail.date + 60,
+        fields: None,
     }
 }
 

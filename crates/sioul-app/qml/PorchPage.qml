@@ -865,6 +865,71 @@ Item {
                     }
                 }
 
+                // This device's training (docs/spam-filter.md, "Every device trains its own"):
+                // the first one learning, then how long it took, or the guard that turned it
+                // off with the switch to turn it back on; said once, until you put it away.
+                Panel {
+                    id: learnCard
+
+                    // `spam::card`: {text, guarded}, or null.
+                    property var said: null
+
+                    function look() {
+                        const text = page.sioul.spamCard()
+                        learnCard.said = text === "" ? null : JSON.parse(text)
+                    }
+
+                    objectName: "learnCard"
+                    visible: learnCard.said !== null
+                    Layout.fillWidth: true
+                    theme: page.theme
+                    Component.onCompleted: learnCard.look()
+
+                    Connections {
+                        target: page
+
+                        function onVisibleChanged() {
+                            if (page.visible)
+                                learnCard.look()
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: learnCard.said ? learnCard.said.text : ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Button {
+                                objectName: "learnCardOn"
+                                visible: learnCard.said !== null && learnCard.said.guarded
+                                text: page.sioul.text("spam-app-turn-on")
+                                onClicked: {
+                                    page.sioul.spamCardAway(true)
+                                    learnCard.said = null
+                                }
+                            }
+                            Button {
+                                flat: true
+                                text: page.sioul.text("porch-hours-leave")
+                                onClicked: {
+                                    page.sioul.spamCardAway(false)
+                                    learnCard.said = null
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // On a phone: what Android has not allowed Sioul yet that it needs
                 // here, said once, until you put it away (docs/android.md, "What Android withholds").
                 AccessCard {

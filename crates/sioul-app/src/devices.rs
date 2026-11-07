@@ -144,6 +144,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.persons = sioul_sync::share::PERSONS_SHARED;
         // It has the store of your word on topics: it travels once every device says so.
         entry.topics = sioul_sync::share::TOPICS_SHARED;
+        // It trains its own spam filter and topics: the shared tables retire once every device says so.
+        entry.learns = sioul_sync::share::LEARNS_HERE;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

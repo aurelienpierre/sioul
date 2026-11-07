@@ -271,7 +271,7 @@ const fn with_ids(list: &'static str, by: &'static [&'static str]) -> Keyed {
 }
 
 /// Where things are on this computer, how text reads on its screen, and the time zone it shows.
-const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "dnd.background", "agenda.time_zone"];
+const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "dnd.background", "agenda.time_zone", "spam.train_here", "spam.train_network"];
 static CONFIG_RULES: Rules = Rules { keyed: &[Keyed { list: "account", by: &["id"], local: &["maildir", "history_weeks"], also: &[], ids: false }], whole: &[], local: CONFIG_LOCAL, next: Some(&CONFIG_RULES_2) };
 /// Format 2: pinned sites, routines and task kinds one each, by their ids;
 /// days off one each; the words you added to a list and those you took
@@ -535,9 +535,10 @@ pub const TOPICS: &str = "state/topics/labels/";
 pub const TOPICS_SHARED: u32 = 1;
 
 /// The topics' model folded (`topics::judging`, docs/topics.md, "The
-/// model"), a single file the computer that trains writes and every device
-/// reads; with your word on topics, it travels once every other device says
-/// it has the topics' store (`topics_shared`).
+/// model"), a single file each device's training writes; with your word on
+/// topics, it travels once every other device says it has the topics' store
+/// (`topics_shared`), and no more once every device trains its own
+/// (`tables_retired`).
 pub const TOPICS_TABLE: &str = "files/topics/table.bin";
 
 /// Whether your word on topics travels: at least one other device counts
@@ -549,6 +550,43 @@ pub const TOPICS_TABLE: &str = "files/topics/table.bin";
 fn topics_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.topics >= TOPICS_SHARED))
+}
+
+/// What a device's entry says once its Sioul trains its own spam filter and
+/// topics (`devices::Entry::learns`, docs/spam-filter.md, "Every device
+/// trains its own"): it no longer needs the tables another device made.
+pub const LEARNS_HERE: u32 = 1;
+
+/// Whether the shared tables (`SPAM_TABLE`, `TOPICS_TABLE`) are retired: at
+/// least one other device counts (`present`), and every one of them says in
+/// its sealed entry that its Sioul trains its own (`devices::Entry::learns`).
+/// Until then they travel as before, so that an older Sioul, which only reads
+/// a table made elsewhere, still gets one. From the exchange that finds it so,
+/// for good (`Memory::tables_retired`): neither table is sent or read again,
+/// and each device takes its last copies out of the folder once, by the
+/// sharing's own removal (a take-out of each entry, its sealed file swept as
+/// any other), while every device keeps its own table where it is.
+fn tables_retired(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    #[cfg(test)]
+    if tests::BEFORE_LEARNS.with(std::cell::Cell::get) {
+        return false;
+    }
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.learns >= LEARNS_HERE))
+}
+
+/// One of the tables every device used to read from the one that trained.
+fn shared_table(store: &Store) -> bool {
+    store.name == SPAM_TABLE || store.name == TOPICS_TABLE
+}
+
+/// Whether every part whose files are sealed apart (`FILE_PARTS`) is read
+/// here, so that a sweep knows every current record naming a sealed file:
+/// each part has such a store among `stores`; the spam part, once its tables
+/// are retired (`Memory::tables_retired`), by any store of its own (its label
+/// logs), since no table's record is current any more.
+fn every_file_part(stores: &[Store], retired: bool) -> bool {
+    FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && (matches!(s.shape, Shape::Files) || (retired && *part == "spam"))))
 }
 
 /// In the notes folder, what the other parts carry: projects, budgets, the
@@ -659,8 +697,9 @@ fn ages_out(key: &str) -> bool {
     key.starts_with(CALLS) || key.starts_with(PHONE_MESSAGES) || key.starts_with(TEXTS_SEND) || key.starts_with(TEXTS_OUTCOME) || key.starts_with(NOTICES)
 }
 
-/// The spam filter's table (`sioul_core::spam::table`), made by a training
-/// on a computer, read by every device. Sealed apart, as its content's hash:
+/// The spam filter's table (`sioul_core::spam::table`), made by each
+/// device's training; it travels only while a device's Sioul does not train
+/// its own (`tables_retired`). Sealed apart, as its content's hash:
 /// a new table is sent once, and the records stay small (whole in a record,
 /// its two megabytes would go again in every round its computer starts). A
 /// single file of Sioul's own, in its private folders: read in every
@@ -2620,6 +2659,12 @@ struct Memory {
     /// older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     meeting_lines_open: bool,
+    /// The shared tables retired (`tables_retired`): from the exchange that
+    /// found every other device training its own, `SPAM_TABLE` and
+    /// `TOPICS_TABLE` are neither sent nor read here, for good. Missing: not
+    /// yet. An older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    tables_retired: bool,
     /// How far each other computer's records were read: its round and the bytes read in it.
     #[serde(default)]
     read: BTreeMap<String, (u32, u64)>,
@@ -3148,7 +3193,7 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
     let named_by_waiting = memory.pending.iter().map(|(key, (value, ..))| (key, value)).chain(memory.waiting.iter().map(|(key, (value, ..))| (key, value))).filter(|(key, value)| key.starts_with(FILES) && value.is_some());
     let waiting: BTreeSet<String> = named_by_waiting.clone().filter_map(|(key, value)| value.as_deref().map(|v| value_hash(key, v))).filter(|h| !h.is_empty()).map(|h| crate::blobs::name(sharing.key, &h)).collect();
     let untold_waiting = named_by_waiting.into_iter().any(|(key, value)| value.as_deref().is_some_and(|v| value_hash(key, v).is_empty()));
-    let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    let every_part = every_file_part(stores, memory.tables_retired);
     let blobs = sharing.folder.join("blobs");
     // Its file made fresh since: dated after a day before the take-out
     // (`USE_MARGIN`, clocks apart). This device's own also when dated after
@@ -3455,7 +3500,7 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
     let unused = days * DAY;
     let fresh = |name: &str| std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
     let due = last.iter().any(|(name, at)| !used.contains(name) && now_ms - *at >= unused && !fresh(name));
-    let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    let every_part = every_file_part(stores, memory.tables_retired);
     if due && every_part && quick(sharing) && texts_shared(stores) {
         // The texts are read at the next whole exchange, never by one that must be quick (a dose's).
     } else if due
@@ -5537,13 +5582,34 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // time. Not written (a disk full), it stays shut and is tried at the next exchange.
         memory.meeting_lines_open = stores.iter().filter(|s| s.name == MEETING_LINES).all(|s| sioul_core::meeting_lines::in_present_form(&s.path).is_ok());
     }
-    let left_out = |s: &Store| (s.name == OWN_TIME && !memory.own_time_open) || (s.name == MEETING_LINES && !memory.meeting_lines_open) || (s.name == MOVEMENTS && !memory.movements_open) || (s.name == NOTICES && !memory.notices_open) || (s.name == PERSONS && !memory.persons_open) || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open);
+    // The shared tables: retired once every other device trains its own
+    // (`tables_retired`), for good. The exchange that finds it so takes this
+    // device's last copies out of the folder: each table taken as gone here,
+    // at once (`Sealed::confirmed_files`), the file in use left where it is,
+    // and nothing of another device's written over it (`off`). Every later
+    // exchange leaves them out.
+    let retired_before = memory.tables_retired;
+    let retiring = !retired_before && stores.iter().any(shared_table) && tables_retired(sharing, &memory, now_ms);
+    if retiring {
+        memory.tables_retired = true;
+        memory.sealed.confirmed_files.extend(stores.iter().filter(|s| shared_table(s)).map(|s| s.name.clone()));
+    }
+    let left_out = |s: &Store| {
+        (s.name == OWN_TIME && !memory.own_time_open)
+            || (s.name == MEETING_LINES && !memory.meeting_lines_open)
+            || (s.name == MOVEMENTS && !memory.movements_open)
+            || (s.name == NOTICES && !memory.notices_open)
+            || (s.name == PERSONS && !memory.persons_open)
+            || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open)
+            || (shared_table(s) && retired_before)
+    };
     let stores: &[Store] = if stores.iter().any(left_out) {
         gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
         &gated
     } else {
         stores
     };
+    let retiring_table = |file: &str| retiring && (file == SPAM_TABLE || file == TOPICS_TABLE);
     // Its seal gone from a folder this device saw sealed (a sync app that made
     // the folder again, empty, or brought an empty placeholder of it), or
     // there but no longer opening with this device's key (another device's
@@ -5649,6 +5715,13 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let clock = clock_ms();
     let confirmed = memory.sealed.confirmed.clone();
     let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock, changing: &memory.sealed.changing });
+    // The tables retiring now: found as gone, so that their take-outs go (`tables_retired`).
+    if retiring {
+        found.files.retain(|file, _| !retiring_table(file));
+        found.hashes.retain(|key, _| !retiring_table(file_of(key)));
+        found.values.retain(|key, _| !retiring_table(file_of(key)));
+        found.unknown.retain(|file| !retiring_table(file));
+    }
     // Large notes and papers settling: those of the stores read now as this
     // look found them, the others' as they were (`Sealed::changing`).
     let mut changing = std::mem::take(&mut found.changing);
@@ -5942,7 +6015,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // waiting: switched on, the part joins and reads it again.
     let newer = |c: u64, w: &str, than: Option<(u64, &str)>| than.is_none_or(|(tc, tw)| (c, w) > (tc, tw));
     // Nor one for a store that left (`RETIRED`), which an older device may still send.
-    let off = |key: &str| retired(key) || (locate(stores, file_of(key)).is_none() && known_part(file_of(key)).is_some());
+    // Nor another device's table in the exchange that retires the tables here (`tables_retired`).
+    let off = |key: &str| retired(key) || retiring_table(file_of(key)) || (locate(stores, file_of(key)).is_none() && known_part(file_of(key)).is_some());
     let mut winners: BTreeMap<String, (Option<String>, u64, String)> = std::mem::take(&mut memory.pending)
         .into_iter()
         .filter(|(key, (_, c, w))| !off(key) && newer(*c, w, memory.entries.get(key).map(|k| (k.c, k.w.as_str()))))
@@ -9286,7 +9360,7 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
     // One sealed or used again lately (`fresh`, as the sweep judges it: a
     // device may have sealed the same bytes again in a record not read here
     // yet) goes later, swept as a departed device's replaced contents are.
-    let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    let every_part = every_file_part(stores, memory.tables_retired);
     let media = if every_part && let Texts::Known(media) = texts_media(sharing, stores, memory, &counts) { Some(media) } else { None };
     files.sealed_known = media.is_some();
     let (mut names, mut later) = (Vec::new(), Vec::new());
@@ -9567,6 +9641,8 @@ mod tests {
         /// Stores this thread's exchanges know nothing of, as an older Sioul's
         /// (`known_part`): their records wait, written nowhere, taken out nowhere.
         pub(super) static OLDER: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+        /// An exchange as a Sioul before the tables were retired runs it: they always travel (`tables_retired`).
+        pub(super) static BEFORE_LEARNS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
 
     /// A computer of its own: its folders, its name, its memory.
@@ -10344,7 +10420,7 @@ mod tests {
         let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
 
         // The desk shares first: its settings, its lists, a draft, a session.
-        desk.write("config/config.toml", "language = \"fr\"\ncase_store = \"~/Notes\"\n\n[tasks]\nkind = \"plan\"\n\n[agenda]\ntime_zone = \"Asia/Tokyo\"\n\n[[account]]\nid = \"perso\"\nkind = \"imap\"\nmaildir = \"/desk/mail\"\n");
+        desk.write("config/config.toml", "language = \"fr\"\ncase_store = \"~/Notes\"\n\n[tasks]\nkind = \"plan\"\n\n[agenda]\ntime_zone = \"Asia/Tokyo\"\n\n[spam]\ntrain_here = false\ntrain_network = \"unmetered\"\n\n[[account]]\nid = \"perso\"\nkind = \"imap\"\nmaildir = \"/desk/mail\"\n");
         desk.write("config/blocked-senders.txt", "spam@example.org\n");
         desk.write("data/drafts/a1.toml", "subject = \"Hello\"\n");
         desk.write("data/time/2026-10.toml", "[[session]]\ntask = \"t1\"\nstart = 100\nminutes = 25\n");
@@ -10359,6 +10435,7 @@ mod tests {
         assert!(config.contains("language = \"fr\""), "the shared settings win when joining: {config}");
         assert!(config.contains("case_store = \"~/Nextcloud/Notes\""), "where things are stays here: {config}");
         assert!(config.contains("America/New_York") && !config.contains("Asia/Tokyo"), "the time zone shown stays here: {config}");
+        assert!(!config.contains("train_here") && !config.contains("unmetered"), "whether a device trains, and on which networks, stays on it: {config}");
         assert!(config.contains("id = \"perso\"") && !config.contains("/desk/mail"), "accounts come, without this computer's paths: {config}");
         assert_eq!(laptop.read("data/drafts/a1.toml"), "subject = \"Hello\"\n");
         assert!(laptop.read("data/time/2026-10.toml").contains("task = \"t1\""));

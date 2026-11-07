@@ -130,8 +130,8 @@ sioul-app/src/share.rs	begin_on_server	1	share::write_atomically(&mirror.join("s
 # sioul-app/src/sites.rs: the password manager's login chosen (state): no item.
 sioul-app/src/sites.rs	bitwarden_login	1	std::fs::write(chosen_path(), text)
 
-# sioul-app/src/spam.rs: the spam window's lock file: no item.
-sioul-app/src/spam.rs	window_lock	1	std::fs::OpenOptions::new()
+# sioul-app/src/spam.rs: the training's lock files (the window's, a phone's run by itself): no item.
+sioul-app/src/spam.rs	lock	1	std::fs::OpenOptions::new()
 
 # sioul-app/src/texts.rs: the phone's texts: its ledgers, media sealed at rest, messages to send and their copies: no item.
 sioul-app/src/texts.rs	write_whole	1	std::fs::write(&fresh, bytes)
@@ -582,6 +582,8 @@ sioul-core/src/words.rs	keep_first_once	1	std::fs::write(marker, b"")
 
 # sioul-learn/src/auto.rs: the spam filter's automatic runs: no item.
 sioul-learn/src/auto.rs	save	1	crate::corpus::write_whole(&Run::path(dirs), text.as_bytes())
+sioul-learn/src/auto.rs	save	1	crate::corpus::write_whole(&Notice::path(dirs), text.as_bytes())
+sioul-learn/src/auto.rs	end	1	std::fs::remove_file(Notice::path(dirs))
 sioul-learn/src/auto.rs	a_job_runs	1	std::fs::OpenOptions::new()
 
 # sioul-learn/src/consent.rs: the spam filter's consent: no item.

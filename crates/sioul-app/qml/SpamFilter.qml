@@ -3,13 +3,11 @@
 
 // Sioul's own spam filter, under its settings in Settings ▸ Mail
 // (crates/sioul-app/src/spam.rs, docs/spam-filter.md): the table in use and
-// where it comes from, with what it measured; on a computer, "Train now",
-// the training's progress with "Stop", what the last training found, and
-// what the corpus and the outside material hold, and whether it trains
-// again by itself, once a week, plugged in and idle (only on the computer
-// that made the table in use: greyed on the others, which say which one
-// does). A phone never trains: it says where its table comes from, another
-// device's, brought sealed by the sharing.
+// what it measured; "Train now", the training's progress with "Stop", what
+// the last training found, and what the corpus and the outside material
+// hold; and this device's own switches, never shared: whether it trains by
+// itself, once a week while it charges and is idle, and on which networks
+// its download may go. Every device trains its own, phones included.
 
 pragma ComponentBehavior: Bound
 
@@ -22,8 +20,8 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // spam.rs's `Status`: {trains, train_about, train_named, table, measured, refused, running, stopping, progress, fraction, ended, by_itself, by_itself_here, by_itself_line, last, corpus, outside}.
-    property var shown: ({ trains: false, train_about: "", train_named: [], table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", by_itself: true, by_itself_here: false, by_itself_line: "", last: [], corpus: [], outside: [] })
+    // spam.rs's `Status`: {trains, train_about, train_named, table, measured, refused, running, stopping, progress, fraction, ended, by_itself, by_itself_here, by_itself_line, unmetered, last, corpus, outside}.
+    property var shown: ({ trains: false, train_about: "", train_named: [], table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", by_itself: true, by_itself_here: true, by_itself_line: "", unmetered: false, last: [], corpus: [], outside: [] })
     // What it is, in a sentence: the setting's own (settings.rs), said first.
     property string about: ""
     // Why "Train now" did not start, else "".
@@ -87,7 +85,7 @@ ColumnLayout {
         color: filter.theme.text
     }
 
-    // On a computer: "Train now", or the training running, with "Stop".
+    // "Train now", or the training running, with "Stop".
     Button {
         visible: filter.shown.trains
         Layout.topMargin: 4
@@ -154,9 +152,8 @@ ColumnLayout {
         color: filter.theme.text
     }
 
-    // Training again by itself, once a week, plugged in and idle: the switch
-    // where this computer is the one that does it, greyed elsewhere; under
-    // it, which computer trains, or what its last run by itself did.
+    // Training here by itself, once a week, charging and idle: this device's
+    // own switch; under it, what its last run did, or that the guard turned it off.
     RowLayout {
         visible: filter.shown.trains
         Layout.fillWidth: true
@@ -170,7 +167,7 @@ ColumnLayout {
             enabled: filter.shown.by_itself_here
             Accessible.name: byItselfLabel.text
             onToggled: {
-                filter.problem = filter.sioul.setSetting("spam.train_by_itself", JSON.stringify(checked))
+                filter.problem = filter.sioul.setSetting("spam.train_here", JSON.stringify(checked))
                 filter.read(filter.sioul.spamStatus())
                 byItself.checked = Qt.binding(() => filter.shown.by_itself)
             }
@@ -183,6 +180,43 @@ ColumnLayout {
             wrapMode: Text.Wrap
             lineHeight: 1.2
             color: byItself.enabled ? filter.theme.text : filter.theme.muted
+        }
+    }
+    // The networks its download may use, this device's own: any (unsaid), or Wi-Fi and other unmetered ones.
+    ColumnLayout {
+        visible: filter.shown.trains
+        Layout.fillWidth: true
+        spacing: 0
+
+        Repeater {
+            model: [{ key: "any", label: "spam-app-network-any" }, { key: "unmetered", label: "spam-app-network-unmetered" }]
+
+            delegate: RadioButton {
+                id: choice
+
+                required property var modelData
+
+                objectName: "spamNetwork-" + choice.modelData.key
+                Layout.fillWidth: true
+                text: filter.sioul.text(choice.modelData.label)
+                checked: filter.shown.unmetered === (choice.modelData.key === "unmetered")
+                onToggled: {
+                    if (!choice.checked)
+                        return
+                    filter.problem = filter.sioul.setSetting("spam.train_network", JSON.stringify(choice.modelData.key))
+                    filter.read(filter.sioul.spamStatus())
+                }
+
+                // Wrapped on a phone's width.
+                contentItem: Label {
+                    leftPadding: choice.indicator.width + choice.spacing
+                    text: choice.text
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    lineHeight: 1.2
+                    color: filter.theme.text
+                }
+            }
         }
     }
     Label {
@@ -223,7 +257,7 @@ ColumnLayout {
         }
     }
 
-    // What it learns from, on this computer only: your mail, and outside material (`sioul spam import`).
+    // What it learns from, on this device only: your mail, and outside material (`sioul spam import`).
     Label {
         visible: filter.shown.trains && filter.shown.corpus.length > 0
         Layout.fillWidth: true

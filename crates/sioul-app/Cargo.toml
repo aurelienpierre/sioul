@@ -50,10 +50,8 @@ jiff.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
-
-# The spam filter's training ("Train now" in the mail settings): desktops only;
-# the phone reads the table it makes, never trains (android/CMakeLists.txt builds sioul-app alone).
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# The spam filter's and the topics' training ("Train here" and "Train now" in
+# the mail settings): every device trains its own, phones included.
 sioul-learn = { path = "../sioul-learn" }
 
 # colour: Little CMS reads the screen's colour profile for the sites' colours
@@ -63,8 +61,8 @@ sioul-learn = { path = "../sioul-learn" }
 version = "6.2"
 features = ["static"]
 
-# The training's thread below the window's, on Linux (each thread its own priority there).
-[target.'cfg(target_os = "linux")'.dependencies]
+# The training's thread below the window's, on Linux and Android (each thread its own priority there).
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
 libc = "0.2"
 
 [build-dependencies]

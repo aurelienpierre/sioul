@@ -48,7 +48,6 @@ mod phone;
 mod protocol;
 pub(crate) mod read;
 mod records;
-#[cfg(not(target_os = "android"))]
 mod spam;
 mod tools;
 mod transport;

@@ -62,6 +62,9 @@ Item {
         // What the window asked of the notices, in order: [verb, args].
         property var asked: []
         property var flags: ({})
+        // This device's training on the Porch (`spam::card`), and the card put away: [turn_on].
+        property string learn: ""
+        property var learnAway: []
 
         signal shareWithheldBack(string problem)
         signal sitesChanged()
@@ -79,6 +82,14 @@ Item {
         }
         function settings() {
             return "[]"
+        }
+        function spamCard() {
+            return mock.learn
+        }
+        function spamCardAway(turnOn) {
+            mock.learnAway = mock.learnAway.concat([turnOn])
+            mock.learn = ""
+            return ""
         }
         function viewFlag(name) {
             return mock.flags[name] === true
@@ -336,6 +347,31 @@ Item {
             compare(done[0][1].ids, ["agenda:0123456789abcdef"])
             wait(50)
             verify(rowOf("Dentist") === null, "gone at once")
+        }
+
+        // This device's training, said once (docs/spam-filter.md, "Every device trains its
+        // own"): the guard that turned it off, with the switch to turn it back on; the first
+        // training's time, with "Leave as is" alone; nothing when there is nothing to say.
+        function test_the_training_is_said_once_with_its_switch() {
+            const card = all(porch, i => i.objectName === "learnCard")[0]
+            verify(card !== undefined && !card.visible, "nothing to say: no card")
+            mock.learnAway = []
+            mock.learn = JSON.stringify({ text: "Training on this device stopped: it ran past 30 minutes. It is off here now.", guarded: true })
+            card.look()
+            wait(50)
+            verify(card.visible)
+            const on = named(card, "learnCardOn")
+            compare(on.length, 1, "the switch to turn it back on")
+            mouseClick(on[0])
+            wait(50)
+            compare(mock.learnAway, [true])
+            verify(!card.visible, "said once")
+            mock.learn = JSON.stringify({ text: "Sioul learned from your mail on this device in 5 min.", guarded: false })
+            card.look()
+            wait(50)
+            verify(card.visible && named(card, "learnCardOn").length === 0, "no switch after a first training")
+            card.said = null
+            mock.learn = ""
         }
 
         // The "?": its help once, in a tooltip; pressed, in its popup.

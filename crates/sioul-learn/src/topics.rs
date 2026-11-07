@@ -621,7 +621,206 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
     progress(&Progress { stage: Stage::Tokens, done: total, total, detail: String::new() });
 
     // Folders with too few messages, or unused for a year, seed nothing.
-    let mut left_out = LeftOut { system: system.len(), ..LeftOut::default() };
+    let (seeds, left_out) = seeds_of(&mail, by_seed, system.len(), options, &mut reading);
+    Ok(Read { mail, seeds, left_out, reading })
+}
+
+/// One copy of a message in the corpus, as `read_corpus` groups them.
+struct Kept {
+    place: corpus::Place,
+    role: Role,
+    folder: String,
+}
+
+/// A server's folder name as you read it, when this device keeps no listing
+/// of its server's folders (`folders::saved`): decoded, without the
+/// "INBOX." or "INBOX/" before it ("INBOX.Chorale" → "Chorale").
+fn display_of(name: &str) -> String {
+    let delimiter = ["/", "."].into_iter().find(|d| name.get(..6).is_some_and(|head| head.eq_ignore_ascii_case(&format!("INBOX{d}"))));
+    sioul_core::folders::folder(name, delimiter, None).display
+}
+
+/// Reads the training corpus for topics (docs/topics.md, "The model"):
+/// every message this device downloaded since forever, each once (its
+/// copies in several folders or accounts, by Message-ID, are one), as
+/// [`read`] reads the mail kept here, so that the model learns from all of
+/// your mail rather than the few hundred messages a device keeps. Each
+/// device reads its own corpus; Sent is not in it, so your own mail does not
+/// teach topics. Left out: Junk, Trash and Drafts copies; what the spam
+/// filter's labels call spam (`spam_keys`) or a `$Junk` keyword marks;
+/// forged mail, by Sioul's own checks of it (`corpus::Checked`), else the
+/// stamps of the ids trusted for its account. A cut header block is read
+/// with its fields fetched alone (`corpus::Record::topic_header`). The
+/// order is fixed (by key), so that two devices holding the same corpus
+/// read the same mail in the same order (`model::train`'s determinism).
+#[allow(clippy::too_many_arguments)]
+pub fn read_corpus(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sources, options: &Options, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Read, LearnError> {
+    let check = || if cancel.cancelled() { Err(LearnError::Cancelled) } else { Ok(()) };
+    progress(&Progress { stage: Stage::Labels, done: 0, total: 0, detail: String::new() });
+    let spam = spam_keys(dirs, trusted, options)?;
+    check()?;
+    let mut reading = Reading::default();
+    // Each folder's name as you read it, by account and server name (the server's last listing).
+    let displays: HashMap<(&str, &str), &str> = sources.maildirs.iter().flat_map(|m| m.folders.iter().map(move |f| ((m.account.as_str(), f.name.as_str()), f.display.as_str()))).collect();
+    // First pass: every copy, by key; the junk keyword marks the whole message.
+    let mut copies: BTreeMap<String, Vec<Kept>> = BTreeMap::new();
+    let mut junk: HashSet<String> = HashSet::new();
+    let mut left_out_folders: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut system: BTreeSet<String> = BTreeSet::new();
+    let mut folders: BTreeSet<(String, String)> = BTreeSet::new();
+    corpus::read_all(dirs, &options.spam.microsoft, |record| {
+        let copy = Copy::of(&record);
+        reading.files += 1;
+        let display = displays.get(&(record.account.as_str(), record.folder.as_str())).map_or_else(|| display_of(&record.folder), |d| (*d).to_string());
+        if matches!(record.role, Role::Junk | Role::Trash | Role::Drafts) {
+            left_out_folders.insert((record.account.clone(), record.folder.clone()));
+            return;
+        }
+        if record.role != Role::Other && record.role != Role::Inbox || SYSTEM_PREFIXES.iter().any(|p| display.starts_with(p)) {
+            system.insert(format!("{}/{}", record.account, folded(&display)));
+        }
+        folders.insert((record.account.clone(), record.folder.clone()));
+        if copy.junk && !copy.not_junk {
+            junk.insert(copy.key.clone());
+        }
+        copies.entry(copy.key).or_default().push(Kept { place: record.place(), role: record.role, folder: display });
+    })?;
+    reading.folders = folders.len() as u64;
+    reading.folders_left_out = left_out_folders.len() as u64;
+    check()?;
+    // Each message's first copy (by its folder's rank, then its place): the one read.
+    let mut first_of: HashMap<corpus::Place, String> = HashMap::new();
+    for (key, found) in copies.iter_mut() {
+        if spam.contains(key) || junk.contains(key) {
+            reading.spam += 1;
+            continue;
+        }
+        found.sort_by(|a, b| a.role.rank().cmp(&b.role.rank()).then_with(|| a.place.cmp(&b.place)));
+        first_of.insert(found[0].place.clone(), key.clone());
+    }
+    // Second pass: each first copy read whole, by key.
+    let lexicon = Lexicon::cached(&options.spam.lexicon);
+    let noise = noise_words(&lexicon);
+    let categories = categories_of(&sources.contacts);
+    let own: HashSet<String> = sources.own.iter().map(|a| a.trim().to_lowercase()).collect();
+    let mut by_key: BTreeMap<String, Mail> = BTreeMap::new();
+    let total = first_of.len() as u64;
+    let mut done = 0u64;
+    let mut stopped = false;
+    corpus::read_all(dirs, &options.spam.microsoft, |record| {
+        if stopped {
+            return;
+        }
+        let Some(key) = first_of.get(&record.place()) else { return };
+        done += 1;
+        if done % 500 == 0 {
+            if cancel.cancelled() {
+                stopped = true;
+                return;
+            }
+            progress(&Progress { stage: Stage::Tokens, done, total, detail: String::new() });
+        }
+        let header = record.topic_header();
+        let to = recipients_in(&[header.as_slice(), b"\r\n\r\n"].concat());
+        let Some(card) = spamcore::card_with(&record, header) else { return };
+        let account_trusted = trusted.get(&record.account).map_or(&[][..], Vec::as_slice);
+        let own_checks = record.checked.as_ref().and_then(|c| c.reading(record.date, sioul_core::spam::features::signed(&card.headers)));
+        let results = own_checks.or_else(|| trust::read_auth_results(&card.headers, account_trusted));
+        let sealers = trust::sealers(account_trusted, &[]);
+        let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &sealers)).flatten();
+        let (judged, _) = trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain());
+        if judged == Trust::Forged && !card.is_list {
+            reading.forged += 1;
+            return;
+        }
+        let from = card.from_address.as_deref().map(|a| a.trim().to_lowercase());
+        let yours = from.as_ref().is_some_and(|f| own.contains(f));
+        let authenticated = judged != Trust::Forged && trust::authenticated(results.as_ref(), &card.headers, &sealers);
+        let verified_domain = (judged == Trust::Verified && !yours).then(|| card.sender_domain().map(str::to_string)).flatten();
+        let list_id = card.headers.first("List-Id").map(|v| v.rsplit_once('<').map_or(v, |(_, r)| r.split('>').next().unwrap_or(r)).trim().to_lowercase());
+        let message_words: Vec<String> = spamcore::tokens_with(&lexicon, &card.subject, &card.excerpt).words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect();
+        let grouping = grouping_words(&lexicon, &noise, &card.subject, &card.excerpt);
+        let senders = if judged == Trust::Verified && !yours { sioul_core::topics::sender_words(&card, true) } else { Vec::new() };
+        let date = match card.date {
+            Some(sent) if record.date > 0 => sent.min(record.date),
+            Some(sent) => sent,
+            None => record.date,
+        };
+        let proven = (authenticated && !yours).then(|| from.clone()).flatten();
+        let sender = if yours { to.iter().find(|a| !own.contains(*a)).cloned() } else { from };
+        let header_list = |name: &str| card.headers.all(name).map(str::to_string).collect::<Vec<String>>();
+        let (references, in_reply_to) = (header_list("References"), header_list("In-Reply-To"));
+        let conversation = sioul_core::topics::rules::conversation(&references, &in_reply_to);
+        let refs = sioul_core::topics::rules::conversation(&in_reply_to, &references);
+        let id = card.message_id.as_deref().map(sioul_core::mailindex::bare_id).filter(|id| !id.is_empty());
+        let from_name = if yours { None } else { card.from_name.clone().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) };
+        let categories_of_sender: Vec<String> = proven.as_deref().and_then(|a| categories.get(a)).map(|c| c.iter().map(|(key, _)| key.clone()).collect()).unwrap_or_default();
+        let found = copies.get(key).map(Vec::as_slice).unwrap_or_default();
+        by_key.insert(
+            key.clone(),
+            Mail {
+                date,
+                sender,
+                yours,
+                words: message_words,
+                grouping,
+                senders,
+                tokens: Vec::new(),
+                subject: card.subject.chars().take(300).collect(),
+                from_name,
+                id,
+                refs,
+                to,
+                preset: None,
+                proven,
+                verified_domain,
+                folders: found.iter().map(|c| c.folder.clone()).collect(),
+                categories: categories_of_sender,
+                conversation,
+                is_list: card.is_list,
+                list_id,
+            },
+        );
+    })?;
+    if stopped {
+        return Err(LearnError::Cancelled);
+    }
+    // In a fixed order, each message's seeds.
+    let mut mail: Vec<Mail> = Vec::new();
+    let mut by_seed: BTreeMap<(Kind, String), (String, Vec<usize>)> = BTreeMap::new();
+    for (key, mut m) in by_key {
+        let i = mail.len();
+        if let Some(matcher) = &sources.presets
+            && !m.yours
+            && let Some((p, by)) = matcher.find(m.verified_domain.as_deref(), m.list_id.as_deref(), m.is_list)
+        {
+            let preset = &matcher.presets[p];
+            reading.presets.entry(preset.id.clone()).or_default().add(by);
+            m.preset = Some(preset.id.clone());
+            by_seed.entry((Kind::Preset, preset.id.clone())).or_insert_with(|| (sioul_core::topics::presets::name_in(preset, &options.language), Vec::new())).1.push(i);
+        }
+        for copy in copies.get(&key).into_iter().flatten().filter(|c| c.role == Role::Other && !SYSTEM_PREFIXES.iter().any(|p| c.folder.starts_with(p))) {
+            by_seed.entry((Kind::Folder, folded(&copy.folder))).or_insert_with(|| (leaf(&copy.folder).to_string(), Vec::new())).1.push(i);
+        }
+        let correspondents: Vec<&str> = if m.yours { m.to.iter().map(String::as_str).collect() } else { m.proven.as_deref().into_iter().collect() };
+        for address in correspondents {
+            for (category, name) in categories.get(address).into_iter().flatten() {
+                by_seed.entry((Kind::Category, category.clone())).or_insert_with(|| (name.clone(), Vec::new())).1.push(i);
+            }
+        }
+        reading.yours += u64::from(m.yours);
+        mail.push(m);
+    }
+    reading.messages = mail.len() as u64;
+    progress(&Progress { stage: Stage::Tokens, done: total, total, detail: String::new() });
+    let (seeds, left_out) = seeds_of(&mail, by_seed, system.len(), options, &mut reading);
+    Ok(Read { mail, seeds, left_out, reading })
+}
+
+/// The seeds kept of those found (`by_seed`): folders with too few
+/// messages, or unused for a year, seed nothing; the counts said.
+fn seeds_of(mail: &[Mail], by_seed: BTreeMap<(Kind, String), (String, Vec<usize>)>, system: usize, options: &Options, reading: &mut Reading) -> (Vec<Seed>, LeftOut) {
+    let mut left_out = LeftOut { system, ..LeftOut::default() };
     let since = now() - options.unused;
     let mut seeds = Vec::new();
     for ((kind, _), (name, mut messages)) in by_seed {
@@ -646,7 +845,7 @@ pub fn read(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, sources: &Sour
         };
         seeds.push(Seed { kind, name, messages });
     }
-    Ok(Read { mail, seeds, left_out, reading })
+    (seeds, left_out)
 }
 
 /// The topics the seeds propose, with the counts said beside them.

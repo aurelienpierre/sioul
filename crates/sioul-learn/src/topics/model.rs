@@ -315,6 +315,41 @@ pub fn train(dirs: &crate::Dirs, read: &Read, topics: &[Topic], said: &Said, pre
     Ok(trained)
 }
 
+/// A training on this device (`train_here`): what it did, and whether its
+/// table was written in place of the one in use.
+#[derive(Debug, Clone, Serialize)]
+pub struct Here {
+    #[serde(flatten)]
+    pub trained: Trained,
+    pub written: bool,
+}
+
+/// Trains this device's topics from its own corpus since forever
+/// (`topics::read_corpus`), your topics and your word on them, against the
+/// table in use here; writes the new table where every view of topics reads
+/// it when it replaces that one and `replace` says so, then judges the mail
+/// kept here, `judge` messages at most (`judging::judge_kept`).
+/// Deterministic: one thread, the spam filter's fixed seed, the corpus in a
+/// fixed order, so that two devices holding the same corpus and the same
+/// labels make the same table, and guess the same topics.
+pub fn train_here(dirs: &crate::Dirs, config: &sioul_core::config::Config, replace: bool, judge: usize, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Here, LearnError> {
+    use sioul_core::topics::judging;
+    let mut options = Options { compare: false, ..Options::of(config) };
+    options.spam.threads = 1;
+    let read = super::read_corpus(dirs, &crate::train::trusted_ids(config), &super::Sources::of(config), &options, progress, cancel)?;
+    let said = Said::load();
+    let presets = Matcher::current();
+    let path = judging::table_path();
+    let previous = judging::cached(&path).map(|(t, _)| t);
+    let trained = train(dirs, &read, &config.topics, &said, Some(&presets), previous.as_deref(), &options, progress, cancel)?;
+    let written = replace && trained.replaces();
+    if written && let Some(table) = &trained.table {
+        judging::write_table(&path, table).map_err(LearnError::Io)?;
+        let _ = judging::judge_kept(config, judge);
+    }
+    Ok(Here { trained, written })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,5 +414,55 @@ mod tests {
         assert_eq!(none.outcome, Outcome::NoTopic);
         assert!(none.table.is_none() && none.topics[0].examples == small.examples);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Topics learn from the corpus since forever (`read_corpus`), and the
+    /// same way on every device: one thread, a fixed seed, the corpus in a
+    /// fixed order. Two devices holding the same corpus (copied to another
+    /// folder, as a second device downloads it) and the same labels make the
+    /// same table, byte for byte but for when and where it was made.
+    #[test]
+    fn two_devices_with_the_same_corpus_make_the_same_table() {
+        let root = std::env::temp_dir().join(format!("sioul-topics-same-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (dirs, sources) = home(&root, "same");
+        let options = Options { compare: false, ..options() };
+        let read = |dirs: &crate::Dirs| crate::topics::read_corpus(dirs, &trusted(), &sources, &options, &mut |_| {}, &Cancel::new()).unwrap();
+        let here = read(&dirs);
+        // The corpus's own mail: the Junk folder's and what the labels call spam stay out.
+        assert!(here.mail.len() > 500 && here.mail.len() < 900, "{}", here.mail.len());
+        assert!(here.mail.iter().all(|m| !m.folders.iter().any(|f| f == "Junk")));
+        assert!(here.mail.iter().any(|m| m.folders.iter().any(|f| f == "Impôts")), "the server's names as you read them");
+        assert!(here.seeds.iter().any(|s| s.name == "Chorale") && here.mail.iter().any(|m| m.proven.is_some()), "{:?}", here.seeds.iter().map(|s| &s.name).collect::<Vec<_>>());
+        // A second device, the same corpus in its own folder.
+        let other = crate::Dirs::under(&root.join("other"));
+        copy_tree(&dirs.corpus(), &other.corpus());
+        let there = read(&other);
+        assert_eq!(here.mail.iter().map(|m| (m.id.clone(), m.date)).collect::<Vec<_>>(), there.mail.iter().map(|m| (m.id.clone(), m.date)).collect::<Vec<_>>(), "the same mail, in the same order");
+        let topics = vec![topic("choir", "Chorale", "Chorale"), topic("tax", "Impôts", "Impôts"), topic("health", "Santé", "Santé")];
+        let said = Said::default();
+        let table = |dirs: &crate::Dirs, read: &Read| {
+            let trained = train(dirs, read, &topics, &said, None, None, &options, &mut |_| {}, &Cancel::new()).unwrap();
+            assert_eq!(trained.outcome, Outcome::First, "{trained:#?}");
+            let mut table = trained.table.unwrap();
+            (table.meta.trained_at, table.meta.device) = (0, String::new());
+            table.to_bytes()
+        };
+        let (a, b) = (table(&dirs, &here), table(&other, &there));
+        assert!(a == b, "two devices, two tables");
+        assert_eq!(a, table(&dirs, &here), "and again on the same one");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap().filter_map(Result::ok) {
+            let target = to.join(entry.file_name());
+            if entry.path().is_dir() {
+                copy_tree(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
     }
 }

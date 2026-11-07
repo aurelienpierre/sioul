@@ -385,6 +385,17 @@ pub struct SpamSettings {
     /// on when unsaid.
     #[serde(default)]
     pub train_by_itself: Option<bool>,
+    /// This device trains its own filter and topics, once a week while it
+    /// charges and is idle (`sioul_learn::auto`): on when unsaid, every
+    /// device, phones included, unless an older `train_by_itself` said off.
+    /// This device's own, never shared (sioul-sync's `CONFIG_LOCAL`).
+    #[serde(default)]
+    pub train_here: Option<bool>,
+    /// The networks the training's download may use, this device's own:
+    /// "any" (unsaid), or "unmetered" (Wi-Fi or another network the system
+    /// does not call metered). Never shared either.
+    #[serde(default)]
+    pub train_network: Option<String>,
     /// Proven mail your provider called spam (`spam::vouched`): "bring-back"
     /// (into the inbox as it arrives; unsaid), "mark" (left in the Junk
     /// folder, marked), "nothing".
@@ -401,6 +412,24 @@ impl SpamSettings {
     /// Whether the filter trains again by itself (on unless said otherwise).
     pub fn trains_by_itself(&self) -> bool {
         self.train_by_itself.unwrap_or(true)
+    }
+
+    /// Whether this device trains its own filter and topics: its own word,
+    /// else an older Sioul's `train_by_itself`, else on.
+    pub fn trains_here(&self) -> bool {
+        self.train_here.unwrap_or_else(|| self.trains_by_itself())
+    }
+
+    /// Whether the training's download may use a network the system calls
+    /// metered (`Some(true)`), not (`Some(false)`), or does not say (`None`,
+    /// taken as not metered): always, unless kept to unmetered networks.
+    pub fn downloads_on(&self, metered: Option<bool>) -> bool {
+        !(self.unmetered_only() && metered == Some(true))
+    }
+
+    /// The download kept to Wi-Fi or other unmetered networks.
+    pub fn unmetered_only(&self) -> bool {
+        self.train_network.as_deref().is_some_and(|n| n.trim().eq_ignore_ascii_case("unmetered"))
     }
 
     /// The matrix: each class's action as written, else as an older `mode`

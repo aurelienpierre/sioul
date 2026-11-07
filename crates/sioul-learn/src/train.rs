@@ -364,11 +364,18 @@ pub fn last(dirs: &Dirs) -> Option<Summary> {
 /// (`corpus::update`). For the window: run it on a thread of its own;
 /// `progress` says each step, `cancel` stops it at the next.
 pub fn run(config: &Config, dirs: &Dirs, here: &dyn Fn(&sioul_core::config::Account) -> bool, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<(corpus::Update, Summary), LearnError> {
-    let update = corpus::update(&config.accounts, &|a| sioul_sync::secret::password(a), dirs, here, &corpus::free_space, progress, cancel);
-    if update.cancelled {
+    run_with(config, dirs, here, &Options::of(config), true, progress, cancel)
+}
+
+/// `run` with these options (a training by itself: half the cores), and
+/// without the download when `fetch` is false (a metered network, the
+/// download kept to unmetered ones: the corpus as it is).
+pub fn run_with(config: &Config, dirs: &Dirs, here: &dyn Fn(&sioul_core::config::Account) -> bool, options: &Options, fetch: bool, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<(corpus::Update, Summary), LearnError> {
+    let update = if fetch { corpus::update(&config.accounts, &|a| sioul_sync::secret::password(a), dirs, here, &corpus::free_space, progress, cancel) } else { corpus::Update::default() };
+    if update.cancelled || cancel.cancelled() {
         return Err(LearnError::Cancelled);
     }
-    let summary = train(dirs, &trusted_ids(config), &Options::of(config), progress, cancel)?;
+    let summary = train(dirs, &trusted_ids(config), options, progress, cancel)?;
     Ok((update, summary))
 }
 

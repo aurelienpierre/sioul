@@ -5,16 +5,16 @@
 //! (`sioul_learn::auto` decides; docs/spam-filter.md, "Training by itself"):
 //! its job started apart, at once (`start`: for the window's minute, through
 //! `sioul spam train --by-itself`, and for `sioul watch`'s own minute,
-//! `every_minute`), then run (`run`: the lowest priority, its power watched,
-//! its end kept).
+//! `every_minute`), then run (`run`: the lowest priority, its power and the
+//! guard watched, its end kept; the first training said once).
 
 use super::{jobs, long, report};
 use crate::Session;
-use sioul_learn::Dirs;
-use sioul_learn::auto::{self, Decision, Outcome, Run};
-use std::sync::Arc;
+use sioul_learn::auto::{self, Decision, Halt, Outcome, Run};
+use sioul_learn::{Dirs, Progress, Stage};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 /// A run by itself, started apart (`jobs`): downloading first or not, on
 /// `threads` (half the cores unless said), its start kept (`auto::Run`)
@@ -32,26 +32,44 @@ pub(crate) fn start(s: &Session, fetch: bool, threads: Option<u32>) -> Result<jo
 
 /// The run itself, as its job: the lowest priority for every thread it
 /// starts, its power asked every half minute (unplugged or saving power: its
-/// own stop file, and it stops at its next step), its end kept for the
-/// settings and the next decision.
+/// own stop file, and it stops at its next step), the guard watched (its
+/// training past 30 minutes, its battery above 40 °C: stopped, and this
+/// device's training turned off, `auto::guard`), its end kept for the
+/// settings and the next decision. The first training on a device with no
+/// table is said once, then how long it took (`auto::Notice`).
 pub(crate) fn run(s: &Session, dirs: &Dirs, id: &str, ask: &report::TrainAsk, json: bool) -> Result<(), String> {
     lowest_priority();
+    let started = Instant::now();
+    let first = auto::trainer(dirs, &sioul_sync::lease::host_name()) == auto::Trainer::Nobody;
+    auto::begin(dirs, first, jiff::Timestamp::now().as_second());
     let done = Arc::new(AtomicBool::new(false));
+    // When the training began, past the download (none while it downloads).
+    let learning: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let halted: Arc<Mutex<Option<Halt>>> = Arc::new(Mutex::new(None));
     let watcher = {
-        let (done, id) = (Arc::clone(&done), id.to_string());
+        let (done, id, learning, halted) = (Arc::clone(&done), id.to_string(), Arc::clone(&learning), Arc::clone(&halted));
         std::thread::Builder::new().name("spam-supply".into()).spawn(move || {
             auto::watch_supply(
                 sioul_sync::power::supply,
-                || {
+                |halt| {
+                    *halted.lock().unwrap_or_else(PoisonError::into_inner) = Some(halt);
                     let _ = jobs::stop(&id);
                 },
                 || done.load(Ordering::Relaxed),
+                || learning.lock().unwrap_or_else(PoisonError::into_inner).map(|at| at.elapsed()),
                 auto::SUPPLY_EVERY,
             );
         })
     };
     let mut replaced = None;
     let result = long(s, json, Some(id), |progress, cancel| {
+        let mut progress = |p: &Progress| {
+            if !matches!(p.stage, Stage::Corpus | Stage::Verify) {
+                learning.lock().unwrap_or_else(PoisonError::into_inner).get_or_insert_with(Instant::now);
+            }
+            progress(p);
+        };
+        let progress: &mut dyn FnMut(&Progress) = &mut progress;
         let mut report = report::train(s, dirs, ask, progress, cancel)?;
         replaced = report.data["summary"]["replaced"].as_bool();
         // Mail's topics in the same run (docs/topics.md, "The model"): what goes wrong there leaves the spam filter's training as it is.
@@ -69,7 +87,13 @@ pub(crate) fn run(s: &Session, dirs: &Dirs, id: &str, ask: &report::TrainAsk, js
         let _ = watcher.join();
     }
     let stopped = jobs::look(id).is_ok_and(|job| job.state == jobs::State::Stopped);
-    let _ = Run::finish(dirs, id, outcome(&result, replaced, stopped), jiff::Timestamp::now().as_second());
+    let now = jiff::Timestamp::now().as_second();
+    let _ = Run::finish(dirs, id, outcome(&result, replaced, stopped), now);
+    // The guard: this device's training off, said once.
+    if let Some(halt) = halted.lock().unwrap_or_else(PoisonError::into_inner).filter(|h| h.guards()) {
+        let _ = auto::guard(dirs, &s.config_path, halt, now);
+    }
+    auto::end(dirs, result.is_ok() && replaced == Some(true), started.elapsed().as_secs(), now);
     result
 }
 
@@ -97,7 +121,7 @@ pub(crate) fn every_minute(s: &Session) {
             let session = Session { config, config_path: path.clone(), tr: sioul_core::i18n::Translator::new(&language) };
             let (dirs, now) = (Dirs::standard(), jiff::Timestamp::now().as_second());
             let focus = sioul_core::timelog::running().is_some();
-            let facts = auto::facts(&dirs, session.config.spam.trains_by_itself(), &sioul_sync::lease::host_name(), false, focus, now, sioul_sync::power::read);
+            let facts = auto::facts(&dirs, &session.config.spam, false, focus, now, sioul_sync::power::read);
             if let Decision::Train { fetch } = auto::decide(&facts, now) {
                 let _ = start(&session, fetch, None);
             }

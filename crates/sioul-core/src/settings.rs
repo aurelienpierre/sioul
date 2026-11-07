@@ -382,8 +382,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, (hundredths(unsure) + 0.01).max(0.5), 0.99, 0.01, "%");
             let s = b.push("spam.threshold_unsure", "spam-unsure", Kind::Float, SettingValue::Float(hundredths(unsure)));
             Builder::range(s, 0.05, (hundredths(spam) - 0.01).min(0.95), 0.01, "%");
-            // Its training on a computer, where its table comes from on a phone.
-            b.push("spam.filter", if cfg!(target_os = "android") { "spam-filter-phone" } else { "spam-filter" }, Kind::Spam, SettingValue::Text(String::new()));
+            // Its training, on every device (docs/spam-filter.md, "Every device trains its own").
+            b.push("spam.filter", "spam-filter", Kind::Spam, SettingValue::Text(String::new()));
             // Mail's topics: the list, their seeds and rules, the groups Sioul noticed (docs/topics.md).
             b.group = tr.text("topics-settings", None);
             b.push("topics.list", "topics", Kind::Topics, SettingValue::Text(String::new()));

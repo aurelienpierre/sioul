@@ -665,3 +665,50 @@ fn every_part_whose_files_are_sealed_apart_is_named() {
     assert_eq!(parts, FILE_PARTS.into_iter().collect());
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The shared tables retired (`tables_retired`): their take-outs read by
+/// every device, the sealed file of the desk's table leaves the folder as
+/// any content taken out does, while every device sweeps as before though
+/// the spam part has no file sealed apart any more (`every_file_part`).
+#[test]
+fn a_retired_table_s_sealed_file_leaves_the_folder() {
+    let base = scratch("rounds-tables-retired");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let notes_of = |name: &str| base.join(format!("{name}-notes"));
+    let both: &[&str] = &["notes", "papers"];
+    entry(&desk, &folder, &key, crate::devices::COMPUTER, |e| {
+        e.keeping = crate::blobs::KEEPING;
+        e.learns = LEARNS_HERE;
+    });
+    entry(&laptop, &folder, &key, crate::devices::COMPUTER, |e| e.keeping = crate::blobs::KEEPING);
+    let table = b"SIOULSPM a table of the desk's, long enough to be sealed apart\n".repeat(40);
+    put(&desk.roots.data, "spam/table.bin", &table);
+    let mut now = NOW;
+    // The laptop as an older Sioul: it reads the desk's table.
+    for _ in 0..2 {
+        with_parts(&desk, &folder, &key, now, &notes_of("desk"), both);
+        now += MINUTE;
+        super::tests::BEFORE_LEARNS.with(|b| b.set(true));
+        with_parts(&laptop, &folder, &key, now, &notes_of("laptop"), both);
+        super::tests::BEFORE_LEARNS.with(|b| b.set(false));
+        now += MINUTE;
+    }
+    assert_eq!(std::fs::read(laptop.roots.data.join("spam/table.bin")).unwrap(), table);
+    let sealed = content_name(&base, &key, &table);
+    assert!(folder.join("blobs").join(&sealed).exists(), "sealed in the folder");
+    // Updated: every device trains its own. The take-outs go, are read, and the sealed file goes.
+    entry(&laptop, &folder, &key, crate::devices::COMPUTER, |e| e.learns = LEARNS_HERE);
+    for _ in 0..4 {
+        with_parts(&desk, &folder, &key, now, &notes_of("desk"), both);
+        now += MINUTE;
+        with_parts(&laptop, &folder, &key, now, &notes_of("laptop"), both);
+        now += MINUTE;
+    }
+    assert!(!folder.join("blobs").join(&sealed).exists(), "the desk's table left the folder");
+    for c in [&desk, &laptop] {
+        assert_eq!(std::fs::read(c.roots.data.join("spam/table.bin")).unwrap(), table, "each keeps its copy");
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}

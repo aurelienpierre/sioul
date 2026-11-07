@@ -53,6 +53,18 @@
 //! even that a name made up under the mail server's domain does not exist),
 //! the checks stop, and what is left waits, unknown, for the next run.
 //!
+//! **Format 2** (`FORMAT`, kept in each account's `state.toml`): what topics
+//! read of a message is always there. A header block cut at 32 KB (a long
+//! chain of relays) may have lost its From, Subject or Message-ID, which
+//! come last: such a record keeps those fields too (`Record::fields`), read
+//! by a header-only fetch (`BODY.PEEK[HEADER.FIELDS (…)]`, `TOPIC_FIELDS`)
+//! as it is downloaded. Records kept in format 1 are filled the same way
+//! once (`fill_fields`, after the next download): each cut one fetched by
+//! its UID, the fields appended beside the records (`fields.jsonl.gz`,
+//! read with them by `read_all`), so that a run stopped goes on there; one
+//! its server no longer has keeps its cut header. A header block that is
+//! whole needs nothing: its fields are in it.
+//!
 //! The corpus is private: never shared, never shown to an AI agent.
 
 use crate::consent::{Consent, MicrosoftIds};
@@ -115,6 +127,14 @@ const CHECKS_AT_ONCE: usize = 4;
 const OFFLINE_STREAK: usize = 8;
 /// The account's checks kept apart from its records (`verify`).
 const CHECKS_FILE: &str = "checks.jsonl.gz";
+/// The fields of records kept in format 1 whose header block was cut (`fill_fields`).
+const FIELDS_FILE: &str = "fields.jsonl.gz";
+/// The corpus's format (docs/spam-filter.md, "The corpus"): 1, before
+/// `Record::fields`; 2, a cut header block's topic fields kept beside it.
+pub const FORMAT: u32 = 2;
+/// The header fields topics read (`topics::read_corpus`), fetched alone for a
+/// record whose header block was cut.
+pub const TOPIC_FIELDS: &str = "FROM SENDER REPLY-TO TO CC SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES LIST-ID LIST-UNSUBSCRIBE";
 
 /// One message as training reads it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -154,6 +174,11 @@ pub struct Record {
     pub checked: Option<Checked>,
     /// When this record was written, in Unix seconds.
     pub fetched: i64,
+    /// Its header block was cut (`HEADER_BYTES`): the fields topics read,
+    /// fetched alone (`TOPIC_FIELDS`), as the server gave them; none for a
+    /// whole header block, and in format 1 until `fill_fields` (format 2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<String>,
 }
 
 /// Sioul's own checks of a message (SPF, DKIM, DMARC, ARC, the reverse DNS
@@ -295,6 +320,28 @@ impl Record {
         if self.header_latin1 { self.header.chars().map(|c| c as u32 as u8).collect() } else { self.header.as_bytes().to_vec() }
     }
 
+    /// Whether its header block was cut at `HEADER_BYTES` (`head_of` keeps
+    /// its last whole line): a whole one ends with the empty line.
+    pub fn header_cut(&self) -> bool {
+        let header = self.header.as_bytes();
+        !header.is_empty() && !header.ends_with(b"\n\r\n") && !header.ends_with(b"\n\n")
+    }
+
+    /// The header as topics read it: the fields fetched alone first, when
+    /// the block was cut (`fields`), so that they win over what the cut
+    /// block may hold of them; else the block.
+    pub fn topic_header(&self) -> Vec<u8> {
+        match self.fields.as_deref().filter(|f| !f.trim().is_empty()) {
+            Some(fields) => {
+                let mut bytes = fields.trim_end_matches(['\r', '\n']).as_bytes().to_vec();
+                bytes.extend_from_slice(b"\r\n");
+                bytes.extend_from_slice(&self.header_bytes());
+                bytes
+            }
+            None => self.header_bytes(),
+        }
+    }
+
     /// Whether it carries this keyword or flag (case aside, as IMAP compares them).
     pub fn has_flag(&self, flag: &str) -> bool {
         self.flags.iter().any(|f| f.eq_ignore_ascii_case(flag))
@@ -397,8 +444,18 @@ struct AccountState {
     /// Bytes of `checks.jsonl.gz` known whole (`verify`); anything after is a batch cut short.
     #[serde(default)]
     checks: u64,
+    /// Bytes of `fields.jsonl.gz` known whole (`fill_fields`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    fields: u64,
+    /// The corpus's format here (`FORMAT`); 0 (unsaid): 1, an older Sioul's.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    format: u32,
     #[serde(default, rename = "folder")]
     folders: BTreeMap<String, FolderState>,
+}
+
+fn is_zero<T: Default + PartialEq>(n: &T) -> bool {
+    *n == T::default()
 }
 
 /// One folder's download, by its server name.
@@ -550,6 +607,7 @@ pub fn read_all(dirs: &Dirs, microsoft: &MicrosoftIds, mut each: impl FnMut(Reco
             continue;
         }
         let checks = read_checks(&dir, state.checks);
+        let fields = read_fields(&dir, state.fields);
         let mut files: BTreeMap<String, u64> = BTreeMap::new();
         for folder in state.folders.values() {
             files.insert(folder.file.clone(), folder.committed);
@@ -564,6 +622,12 @@ pub fn read_all(dirs: &Dirs, microsoft: &MicrosoftIds, mut each: impl FnMut(Reco
                         && record.checked.as_ref().is_none_or(|c| later.at > c.at || (later.tags && !c.tags))
                     {
                         record.checked = Some(later.clone());
+                    }
+                    // A cut header's fields, fetched after it was kept (format 2's migration).
+                    if record.fields.is_none()
+                        && let Some(found) = fields.get(&(record.folder.clone(), record.uidvalidity, record.uid))
+                    {
+                        record.fields = Some(found.clone());
                     }
                     each(record);
                 })?;
@@ -581,6 +645,141 @@ struct CheckLine {
     uidvalidity: u32,
     uid: u32,
     checked: Checked,
+}
+
+/// A cut header's fields fetched after its record was kept (`fill_fields`):
+/// one line of the account's `fields.jsonl.gz`; "" when its server no
+/// longer had it (asked no more).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct FieldsLine {
+    folder: String,
+    uidvalidity: u32,
+    uid: u32,
+    fields: String,
+}
+
+/// An account's fields kept apart from its records, by (folder,
+/// UIDVALIDITY, UID), up to `committed` bytes; "" (gone) left out.
+fn read_fields(dir: &Path, committed: u64) -> HashMap<(String, u32, u32), String> {
+    let mut fields = HashMap::new();
+    if committed == 0 {
+        return fields;
+    }
+    let Ok(file) = std::fs::File::open(dir.join(FIELDS_FILE)) else { return fields };
+    let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file.take(committed))));
+    for line in reader.split(b'\n') {
+        let Ok(line) = line else { break };
+        if let Ok(line) = serde_json::from_slice::<FieldsLine>(&line) {
+            fields.insert((line.folder, line.uidvalidity, line.uid), line.fields);
+        }
+    }
+    fields
+}
+
+/// The places whose fields format 2 still wants (`fill_fields`): each
+/// record of the account whose header block was cut, without its fields
+/// and none fetched beside it (a gone one's "" counts as fetched), by
+/// folder and UIDVALIDITY.
+fn wanted_fields(dir: &Path, state: &AccountState) -> Result<BTreeMap<(String, u32), Vec<u32>>, LearnError> {
+    let done: HashSet<(String, u32, u32)> = {
+        let mut done = HashSet::new();
+        if state.fields > 0
+            && let Ok(file) = std::fs::File::open(dir.join(FIELDS_FILE))
+        {
+            let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file.take(state.fields))));
+            for line in reader.split(b'\n') {
+                let Ok(line) = line else { break };
+                if let Ok(line) = serde_json::from_slice::<FieldsLine>(&line) {
+                    done.insert((line.folder, line.uidvalidity, line.uid));
+                }
+            }
+        }
+        done
+    };
+    let mut wanted: BTreeMap<(String, u32), Vec<u32>> = BTreeMap::new();
+    let files: BTreeSet<(String, u64)> = state.folders.values().map(|f| (f.file.clone(), f.committed)).collect();
+    for (file, committed) in files {
+        let path = dir.join(&file);
+        if path.exists() {
+            read_file(&path, Some(committed), |record| {
+                if record.header_cut() && record.fields.is_none() && !done.contains(&(record.folder.clone(), record.uidvalidity, record.uid)) {
+                    wanted.entry((record.folder, record.uidvalidity)).or_default().push(record.uid);
+                }
+            })?;
+        }
+    }
+    Ok(wanted)
+}
+
+/// Fields fetched after their records were kept: appended to the account's
+/// `fields.jsonl.gz`, then committed in its state.
+fn keep_fields(state: &mut AccountState, state_path: &Path, dir: &Path, lines: &[FieldsLine]) -> Result<(), LearnError> {
+    if lines.is_empty() {
+        return Ok(());
+    }
+    state.fields = append(&dir.join(FIELDS_FILE), state.fields, lines)?;
+    state.save(state_path)
+}
+
+/// Format 2's migration of an account's records (see the module): the
+/// fields of each record whose header block was cut, fetched alone by its
+/// UID (a header-only fetch, nothing changed on the server), folder after
+/// folder, appended as they come; a folder gone or renumbered, its records
+/// keep their cut header ("" kept, asked no more). Once nothing is wanted,
+/// the account's corpus is in format 2.
+async fn fill_fields(session: &mut Imap, dir: &Path, cancel: &Cancel) -> Result<(), Stop> {
+    let state_path = dir.join("state.toml");
+    let mut state = AccountState::load(&state_path);
+    if state.format >= FORMAT {
+        return Ok(());
+    }
+    let wanted = wanted_fields(dir, &state)?;
+    if !wanted.is_empty() {
+        let listed: HashSet<String> = sioul_sync::mailbox::list(session).await?.into_iter().map(|f| f.name).collect();
+        for ((folder, validity), uids) in wanted {
+            if cancel.cancelled() {
+                return Ok(());
+            }
+            let examined = if listed.contains(&folder) { imap::within(COMMAND, session.examine(&folder)).await?.ok() } else { None };
+            let found = match examined {
+                Some(open) if open.uid_validity.unwrap_or(0) == validity => {
+                    let mut found = HashMap::new();
+                    for group in uids.chunks(BATCH) {
+                        found.extend(fetch_fields(session, group).await?);
+                    }
+                    found
+                }
+                _ => HashMap::new(),
+            };
+            let lines: Vec<FieldsLine> = uids.iter().map(|&uid| FieldsLine { folder: folder.clone(), uidvalidity: validity, uid, fields: found.get(&uid).cloned().unwrap_or_default() }).collect();
+            keep_fields(&mut state, &state_path, dir, &lines)?;
+        }
+    }
+    state.format = FORMAT;
+    state.save(&state_path)?;
+    Ok(())
+}
+
+/// The topic fields of messages of the folder open in `session`, by UID
+/// (`TOPIC_FIELDS`, BODY.PEEK); a UID the server does not give, absent.
+async fn fetch_fields(session: &mut Imap, uids: &[u32]) -> Result<HashMap<u32, String>, SyncError> {
+    let set = uids.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+    let query = format!("(UID BODY.PEEK[HEADER.FIELDS ({TOPIC_FIELDS})])");
+    let mut found = HashMap::new();
+    let mut stream = match imap::within(FETCH, session.uid_fetch(&set, &query)).await?.map_err(imap::server) {
+        Ok(stream) => stream,
+        // Refused: nothing known of them, kept cut.
+        Err(SyncError::Server(_)) => return Ok(found),
+        Err(e) => return Err(e),
+    };
+    while let Some(fetch) = imap::within(FETCH, stream.next()).await? {
+        let Ok(fetch) = fetch.map_err(imap::server) else { break };
+        // HEADER.FIELDS is a header section, as imap-proto reads it.
+        if let (Some(uid), Some(bytes)) = (fetch.uid, fetch.header()) {
+            found.insert(uid, header_text(bytes).0);
+        }
+    }
+    Ok(found)
 }
 
 /// An account's checks kept apart from its records, by (folder,
@@ -1123,6 +1322,13 @@ async fn update_account(
     }
     if update.held.is_some() || update.cancelled {
         return Ok(());
+    }
+    // Format 2's migration, once: a cut header's fields, for what was kept before.
+    if download && AccountState::load(&dir.join("state.toml")).format < FORMAT {
+        let mut session = imap::open(&server, password).await?;
+        let result = fill_fields(&mut session, &dir, cancel).await;
+        let _ = session.logout().await;
+        result?;
     }
     let Some(checker) = checker.filter(|c| !c.offline()) else { return Ok(()) };
     let mut session = imap::open(&server, password).await?;
@@ -1706,6 +1912,8 @@ struct Head {
     html: Option<Vec<u32>>,
     /// Gmail's labels, when asked for.
     labels: Vec<String>,
+    /// Its header block was cut at `HEADER_BYTES`: its topic fields are fetched alone.
+    cut: bool,
 }
 
 /// One batch: its records, and the UIDs of All Mail's messages left out (`AllMail`).
@@ -1743,6 +1951,9 @@ async fn fetch_batch(session: &mut Imap, account: &Account, folder: &Folder, val
         .collect();
     let htmls: BTreeMap<u32, Text> =
         fetch_texts(session, &wanted, HTML_BYTES).await?.into_iter().map(|(uid, (at, bytes, leaf))| (uid, Text { at, text: cut(decode_text(&bytes, &leaf, true), HTML_BYTES as usize) })).collect();
+    // A header block cut: the fields topics read, fetched alone (format 2).
+    let cut_ones: Vec<u32> = heads.iter().filter(|h| h.cut).map(|h| h.uid).collect();
+    let fields = if cut_ones.is_empty() { HashMap::new() } else { fetch_fields(session, &cut_ones).await? };
     let fetched = now();
     let records = heads
         .into_iter()
@@ -1764,6 +1975,7 @@ async fn fetch_batch(session: &mut Imap, account: &Account, folder: &Folder, val
                 html: htmls.get(&head.uid).cloned(),
                 checked: None,
                 fetched,
+                fields: fields.get(&head.uid).cloned(),
             }
         })
         .collect();
@@ -1812,7 +2024,8 @@ fn head_of(fetch: &Fetch) -> Option<Head> {
     let flags = fetch.flags().map(|f| flag_name(&f)).collect();
     let date = fetch.internal_date().map_or(0, |d| d.timestamp());
     let mut header = fetch.header().unwrap_or_default().to_vec();
-    if header.len() >= HEADER_BYTES as usize {
+    let cut = header.len() >= HEADER_BYTES as usize;
+    if cut {
         // Cut at the last whole line.
         let end = header.iter().rposition(|&b| b == b'\n').map_or(header.len(), |i| i + 1);
         header.truncate(end);
@@ -1821,7 +2034,7 @@ fn head_of(fetch: &Fetch) -> Option<Head> {
     // Which part is the text, which the HTML: mail-parser says, as it does for the Porch.
     let (plain, html) = structure.as_ref().map_or((Some(vec![1]), None), crate::spamcore::bodies);
     let labels = fetch.gmail_labels().map(|l| l.iter().map(|s| s.to_string()).collect()).unwrap_or_default();
-    Some(Head { uid, flags, date, size: fetch.size.unwrap_or(0), header, structure, plain, html, labels })
+    Some(Head { uid, flags, date, size: fetch.size.unwrap_or(0), header, structure, plain, html, labels, cut })
 }
 
 /// "\\Seen", "$Junk": a flag as the server writes it.
@@ -2034,6 +2247,7 @@ mod tests {
             html: None,
             checked: None,
             fetched: 1_700_000_100,
+            fields: None,
         }
     }
 
@@ -2346,6 +2560,47 @@ mod tests {
         .unwrap();
         assert!(sixth.is_some_and(|c| c.results.contains("dkim=none")));
         assert_eq!(AccountState::load(&state_path).checks, state.checks);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Format 2: a header block cut at 32 KB is known as cut; the topic
+    /// fields of one kept in format 1, fetched alone, are appended beside the
+    /// records, read with them, and win over what the cut block holds. A
+    /// whole block wants nothing; one its server no longer had ("") is not
+    /// asked again, and keeps its cut block.
+    #[test]
+    fn format_2_fills_a_cut_header_s_fields() {
+        let dir = scratch("fields");
+        let dirs = Dirs::under(&dir);
+        let relays = "Received: from relay.example.net by mx.example.org; Fri, 6 Nov 2026 10:00:00 +0000\r\n".repeat(420);
+        let cut = relays[..relays[..HEADER_BYTES as usize].rfind('\n').unwrap() + 1].to_string();
+        let whole = Record { uid: 1, header: "From: a@example.org\r\nSubject: Hello\r\n\r\n".into(), ..record(1) };
+        let long = |uid: u32| Record { uid, header: cut.clone(), ..record(uid) };
+        assert!(!whole.header_cut() && long(2).header_cut());
+        store(&dirs, &[whole, long(2), long(3)]).unwrap();
+        let account = dirs.corpus().join("home");
+        let state_path = account.join("state.toml");
+        let mut state = AccountState::load(&state_path);
+        assert_eq!(state.format, 0, "kept in format 1");
+        assert_eq!(wanted_fields(&account, &state).unwrap(), BTreeMap::from([(("INBOX".to_string(), 7), vec![2, 3])]));
+        let fields = "From: Choir office <office@chorale.example>\r\nSubject: Rehearsal\r\nMessage-ID: <r1@chorale.example>\r\n\r\n";
+        let line = |uid: u32, fields: &str| FieldsLine { folder: "INBOX".into(), uidvalidity: 7, uid, fields: fields.into() };
+        keep_fields(&mut state, &state_path, &account, &[line(2, fields), line(3, "")]).unwrap();
+        assert!(wanted_fields(&account, &AccountState::load(&state_path)).unwrap().is_empty(), "each asked once");
+        let mut read = BTreeMap::new();
+        read_all(&dirs, &MicrosoftIds::default(), |r| {
+            read.insert(r.uid, r);
+        })
+        .unwrap();
+        assert_eq!(read[&2].fields.as_deref(), Some(fields));
+        assert_eq!(read[&3].fields.as_deref(), Some(""), "gone: nothing more known");
+        let card = crate::spamcore::card_with(&read[&2], read[&2].topic_header()).unwrap();
+        assert_eq!((card.from_address.as_deref(), card.subject.as_str()), (Some("office@chorale.example"), "Rehearsal"));
+        assert_eq!(crate::spamcore::card_with(&read[&3], read[&3].topic_header()).unwrap().from_address, None, "its cut block alone");
+        assert_eq!(read[&1].topic_header(), read[&1].header_bytes(), "a whole block as it is");
+        // An older Sioul reads a format 2 record, its fields passed over; this one reads an older record.
+        let text = serde_json::to_string(&read[&2]).unwrap();
+        assert!(text.contains("\"fields\"") && !serde_json::to_string(&read[&1]).unwrap().contains("\"fields\""));
         let _ = std::fs::remove_dir_all(dir);
     }
 

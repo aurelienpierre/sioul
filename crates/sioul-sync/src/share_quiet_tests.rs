@@ -1339,3 +1339,77 @@ fn your_word_on_topics_waits_for_a_device_that_has_it() {
     assert_eq!(said.message("a@example.org"), Some(Some("choir")));
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// Every device trains its own spam filter and topics (docs/spam-filter.md,
+/// "Every device trains its own"). While one device's Sioul is older (its
+/// entry says nothing of `learns`), the tables travel as before, and it
+/// reads the desk's. Once every device says it trains its own, the next
+/// exchange takes each device's last copies out of the folder by the
+/// sharing's own removal: every device keeps its own table where it is, and
+/// a table trained afterwards stays on its device.
+#[test]
+fn the_shared_tables_retire_once_every_device_trains_its_own() {
+    let base = scratch("tables-retire");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.topics = TOPICS_SHARED;
+        e.learns = LEARNS_HERE;
+    });
+    entry(&phone, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.topics = TOPICS_SHARED;
+    });
+    desk.write("data/spam/table.bin", "SIOULSPM the desk's first table");
+    desk.write("data/topics/table.bin", "SIOULTOP the desk's first table");
+    let rounds = |now: &mut i64| {
+        for _ in 0..2 {
+            background(&desk, &folder, &key, *now);
+            *now += MINUTE;
+            background(&phone, &folder, &key, *now);
+            *now += MINUTE;
+        }
+    };
+    // The phone as an older Sioul: the tables always travel there.
+    super::tests::BEFORE_LEARNS.with(|b| b.set(true));
+    let older_rounds = |now: &mut i64| {
+        for _ in 0..2 {
+            background(&desk, &folder, &key, *now);
+            *now += MINUTE;
+            super::tests::BEFORE_LEARNS.with(|b| b.set(true));
+            background(&phone, &folder, &key, *now);
+            super::tests::BEFORE_LEARNS.with(|b| b.set(false));
+            *now += MINUTE;
+        }
+    };
+    super::tests::BEFORE_LEARNS.with(|b| b.set(false));
+    older_rounds(&mut now);
+    // An older phone reads the table another device made, as before.
+    assert_eq!(phone.read("data/spam/table.bin"), "SIOULSPM the desk's first table");
+    assert_eq!(phone.read("data/topics/table.bin"), "SIOULTOP the desk's first table");
+    let current = |c: &Computer, file: &str| Memory::load_all(&c.memory, &c.id).entries.iter().any(|(k, known)| file_of(k) == file && !known.h.is_empty());
+    assert!(current(&desk, SPAM_TABLE) && current(&phone, TOPICS_TABLE));
+    assert!(!Memory::load(&desk.memory, &desk.id).tables_retired, "an older device present: not retired");
+    // The phone updated: it trains its own, and so says its entry.
+    entry(&phone, &folder, &key, |e| e.learns = LEARNS_HERE);
+    rounds(&mut now);
+    for c in [&desk, &phone] {
+        let memory = Memory::load(&c.memory, &c.id);
+        assert!(memory.tables_retired, "retired on each");
+        for file in [SPAM_TABLE, TOPICS_TABLE] {
+            assert!(!current(c, file), "{file}: taken out of the sharing");
+        }
+    }
+    assert_eq!(phone.read("data/spam/table.bin"), "SIOULSPM the desk's first table", "each keeps its own copy, in use");
+    assert_eq!(desk.read("data/topics/table.bin"), "SIOULTOP the desk's first table");
+    // The phone's own training: its table stays on the phone, nothing sent of it.
+    phone.write("data/spam/table.bin", "SIOULSPM the phone's own table");
+    rounds(&mut now);
+    assert_eq!(desk.read("data/spam/table.bin"), "SIOULSPM the desk's first table", "never sent");
+    assert_eq!(phone.read("data/spam/table.bin"), "SIOULSPM the phone's own table");
+    assert!(!current(&desk, SPAM_TABLE) && !current(&phone, SPAM_TABLE));
+    let _ = std::fs::remove_dir_all(&base);
+}

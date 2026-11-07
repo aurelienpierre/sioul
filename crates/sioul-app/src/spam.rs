@@ -2,23 +2,29 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Sioul's own spam filter in the window (docs/spam-filter.md): what the mail
-//! settings say of it, under "Your own spam filter" (`SpamFilter.qml`), and on
-//! a computer its training on demand, "Train now".
+//! settings say of it, under "Your own spam filter" (`SpamFilter.qml`), its
+//! training on demand, "Train now", and this device's own switches: "Train
+//! here" and the networks its download may use.
 //!
-//! Training brings the corpus up to date from every address, then learns
-//! (crates/sioul-learn, `train::run`), on a thread of its own at a lower
-//! priority, so that the computer stays usable while fastText takes every
-//! core. Its progress is said as it goes (`spam_changed`), at most a few times
-//! a second; "Stop" stops it at its next step, what was downloaded kept. A
-//! phone never trains: it says where its table comes from (another device's,
-//! brought sealed by the sharing: docs/database.md) and what it measured.
+//! Every device trains its own filter and topics (docs/spam-filter.md,
+//! "Every device trains its own"): by hand, and by itself once a week while
+//! it charges and is idle (`sioul_learn::auto`). Training brings the corpus
+//! up to date from every address, then learns (crates/sioul-learn,
+//! `train::run`), on a thread of its own at a lower priority, so that the
+//! device stays usable while fastText takes its cores. Its progress is said
+//! as it goes (`spam_changed`), at most a few times a second; "Stop" stops it
+//! at its next step, what was downloaded kept.
+//!
+//! By itself, on a computer, a job apart (`sioul spam train --by-itself`); on
+//! a phone, a thread of the background service's process (`background_step`,
+//! from `steps::step`), awake under a wake lock of its own while it runs,
+//! its power read from Android (`phone_power`). The guard stops a training
+//! past 30 minutes or with the battery above 40 °C and turns this device's
+//! training off; the Porch says it once (`card`), and the first training on
+//! a device with no table too.
 //!
 //! Numbers only, never a message: the window shows what `sioul spam status`
 //! prints, in your language.
-//!
-//! One computer trains, by hand: two computers training tables of their own
-//! is not supported (the later one's table would win everywhere; the other,
-//! kept by the sharing as a conflict copy beside it, is read by nothing).
 //!
 //! After each fetch, on every device (the window's watchers, a phone's
 //! background step), what the filter judges as you chose "Move to spam" for
@@ -104,7 +110,7 @@ fn chosen(judged: &[porch::Triaged], filter: &sioul_core::spam::Filter, action: 
 /// What the settings show of the filter, every line said already (`SpamFilter.qml`).
 #[derive(Debug, Clone, Default, Serialize)]
 pub(crate) struct Status {
-    /// This device trains (a computer); a phone only reads its table.
+    /// This device trains: every device does, phones included.
     trains: bool,
     /// Under Train now: what it downloads, from which addresses (Microsoft's
     /// among them: pressing it is the consent its terms ask, docs/microsoft.md),
@@ -129,12 +135,14 @@ pub(crate) struct Status {
     fraction: f64,
     /// How the last run here ended when it made no table: stopped, too few messages, the disk.
     ended: String,
-    /// "Train again by itself" (`[spam] train_by_itself`, on unless said).
+    /// "Train here" (`[spam] train_here`, this device's own, on unless said).
     by_itself: bool,
-    /// This computer is the one that does it: the switch can be changed here (else greyed).
+    /// The switch can be changed here: always, each device its own.
     by_itself_here: bool,
-    /// Under the switch: which computer trains by itself, or what its last run here did; "" for nothing yet.
+    /// Under the switch: what its last run here did, or that the guard turned it off; "" for nothing yet.
     by_itself_line: String,
+    /// The download kept to Wi-Fi or unmetered networks (`[spam] train_network`), this device's own.
+    unmetered: bool,
     /// The last training here (`trained.toml`): what it did, then its numbers.
     last: Vec<String>,
     /// The corpus: what it holds, the last download, the room left, addresses it could not read.
@@ -149,14 +157,10 @@ pub(crate) fn status() -> String {
 }
 
 fn status_now() -> Status {
-    let mut status = Status { trains: cfg!(not(target_os = "android")), fraction: -1.0, ..Status::default() };
-    #[cfg(not(target_os = "android"))]
-    {
-        (status.train_about, status.train_named) = train_about(&crate::backend::load_config());
-    }
+    let mut status = Status { trains: true, fraction: -1.0, ..Status::default() };
+    (status.train_about, status.train_named) = train_about(&crate::backend::load_config());
     let (table, measured, refused) = table_lines(&sioul_core::spam::table_path(), status.trains);
     (status.table, status.measured, status.refused) = (table, measured, refused);
-    #[cfg(not(target_os = "android"))]
     training::fill(&mut status);
     status
 }
@@ -166,7 +170,6 @@ fn status_now() -> Status {
 /// with, when a Microsoft address syncs, what the press means for it, and
 /// the work or school ones it never learns from. The sentence, and the
 /// addresses it names.
-#[cfg(not(target_os = "android"))]
 fn train_about(config: &sioul_core::config::Config) -> (String, Vec<String>) {
     use sioul_learn::consent;
     let named = consent::named(config);
@@ -186,34 +189,87 @@ fn train_about(config: &sioul_core::config::Config) -> (String, Vec<String>) {
 /// (`named`), then the corpus brought up to date and a training, on a
 /// thread of its own; `spam_changed` says how it goes. Why it did not start, else "".
 pub(crate) fn train(qt: QtThread, shared: Arc<Shared>, named: Vec<String>) -> String {
-    #[cfg(not(target_os = "android"))]
-    {
-        training::start(qt, shared, named)
-    }
-    #[cfg(target_os = "android")]
-    {
-        drop((qt, shared, named));
-        tr().text("spam-app-phone-trains-not", None)
-    }
+    training::start(qt, shared, named)
 }
 
 /// The training running stops at its next step.
 pub(crate) fn stop(qt: QtThread) {
-    #[cfg(not(target_os = "android"))]
     training::stop(qt);
-    #[cfg(target_os = "android")]
-    drop(qt);
 }
 
-/// The window's minute, on a computer: training again by itself when
-/// everything allows it (`sioul_learn::auto`), as a job apart (`sioul spam
-/// train --by-itself`); the settings said again while one runs or just
-/// ended. Never a notification. Off the window's thread: it may ask the system.
+/// The window's minute, on a computer: training by itself when everything
+/// allows it (`sioul_learn::auto`), as a job apart (`sioul spam train
+/// --by-itself`); the settings said again while one runs or just ended.
+/// Never a notification. Off the window's thread: it may ask the system. On
+/// a phone the background service does it (`background_step`): the window's
+/// process ends with the window.
 pub(crate) fn by_itself(qt: QtThread) {
     #[cfg(not(target_os = "android"))]
     training::by_itself(qt);
     #[cfg(target_os = "android")]
     drop(qt);
+}
+
+/// A phone's background step (`steps::step`): training by itself, in this
+/// process (the service's), when everything allows it; nothing waits for it.
+#[cfg(target_os = "android")]
+pub(crate) fn background_step() {
+    training::on_phone();
+}
+
+/// What the phone says of itself for the training by itself (Android's
+/// battery, power saver, screen and network: `StepService`'s "learn-power"):
+/// plugged in, saving power, its screen off (idle), the network metered (as
+/// Android's network capabilities say: unsaid, unknown), the battery's
+/// temperature in tenths of a degree. Nothing said, nothing known.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn phone_power() -> sioul_sync::power::Power {
+    power_of(&crate::steps::java("learn-power", "{}"))
+}
+
+/// `phone_power`, from Java's answer.
+fn power_of(said: &serde_json::Value) -> sioul_sync::power::Power {
+    let flag = |key: &str| said.get(key).and_then(serde_json::Value::as_bool);
+    sioul_sync::power::Power {
+        on_mains: flag("plugged"),
+        power_saver: flag("saver"),
+        idle: flag("interactive").map(|on| !on),
+        metered: flag("metered"),
+        battery_tenths: said.get("temperature").and_then(serde_json::Value::as_i64).and_then(|t| i32::try_from(t).ok()),
+    }
+}
+
+/// The Porch's word on this device's training (`sioul_learn::auto::Notice`),
+/// said once until put away: the first training running, then how long it
+/// took; or the guard that turned it off, with the switch to turn it back
+/// on. {text, guarded}, as JSON; "" when there is nothing to say.
+pub(crate) fn card() -> String {
+    use sioul_learn::auto::{Halt, Notice, NoticeKind};
+    let dirs = sioul_learn::Dirs::standard();
+    let running = sioul_learn::auto::a_job_runs(&dirs) || training::running();
+    let Some(notice) = Notice::shown(&dirs, running) else { return String::new() };
+    let text = match notice.kind {
+        NoticeKind::FirstRunning => tr().text("spam-app-first-running", None),
+        NoticeKind::FirstDone => say("spam-app-first-done", &[("minutes", minutes_of(notice.seconds))]),
+        NoticeKind::Guarded(Halt::Hot) => say("spam-app-guard-hot", &[("when", when(notice.at))]),
+        NoticeKind::Guarded(_) => say("spam-app-guard-long", &[("when", when(notice.at))]),
+    };
+    let guarded = matches!(notice.kind, NoticeKind::Guarded(_)) && !crate::backend::load_config().spam.trains_here();
+    serde_json::json!({ "text": text, "guarded": guarded }).to_string()
+}
+
+/// The Porch's card put away; with `turn_on`, this device's training turned
+/// back on first (the switch the guard turned off). What went wrong, else "".
+pub(crate) fn card_away(turn_on: bool) -> String {
+    if turn_on && let Err(e) = sioul_core::config::set_value(&crate::backend::config_path(), "spam.train_here", &sioul_core::config::SettingValue::Bool(true)) {
+        return e;
+    }
+    sioul_learn::auto::Notice::put_away(&sioul_learn::Dirs::standard()).err().unwrap_or_default()
+}
+
+/// A duration in whole minutes, one at least: "5".
+fn minutes_of(seconds: u64) -> String {
+    seconds.div_ceil(60).max(1).to_string()
 }
 
 /// The table's lines, kept while its file and the one before stay as they
@@ -293,8 +349,7 @@ fn percent(fraction: f64, places: usize) -> String {
     say("spam-percent", &[("n", n)])
 }
 
-/// The training, on a computer (crates/sioul-learn is never built for a phone).
-#[cfg(not(target_os = "android"))]
+/// The training, on every device.
 mod training {
     use super::{Status, grouped, percent, say, tr, when};
     use crate::backend::{QtThread, Shared, load_config};
@@ -367,8 +422,9 @@ mod training {
             status.ended = run.ended.clone();
         }
         let dirs = Dirs::standard();
-        status.by_itself = load_config().spam.trains_by_itself();
-        (status.by_itself_here, status.by_itself_line) = by_itself_line(&dirs, &sioul_sync::lease::host_name());
+        let config = load_config();
+        (status.by_itself, status.unmetered) = (config.spam.trains_here(), config.spam.unmetered_only());
+        (status.by_itself_here, status.by_itself_line) = (true, by_itself_line(&dirs, &config.spam));
         if let Some(summary) = train::last(&dirs) {
             status.last = last_lines(&summary);
         }
@@ -386,7 +442,7 @@ mod training {
 
     pub(super) fn start(qt: QtThread, shared: Arc<Shared>, named: Vec<String>) -> String {
         // A training apart (by itself, or from the command line) ends on its own: never two at once.
-        if auto::a_job_runs(&Dirs::standard()) {
+        if auto::a_job_runs(&Dirs::standard()) || PHONE.load(Ordering::SeqCst) {
             return tr().text("spam-app-busy-job", None);
         }
         let cancel = Cancel::new();
@@ -398,7 +454,7 @@ mod training {
             *run = Run { cancel: Some(cancel.clone()), stopping: false, stage: None, progress: tr().text("spam-app-starting", None), fraction: -1.0, ended: String::new(), said: None };
         }
         let started = std::thread::Builder::new().name("spam-training".into()).spawn(move || {
-            lower_priority();
+            lower_priority(10);
             let config = load_config();
             let dirs = Dirs::standard();
             // Held while it trains: the minute of `sioul watch` sees a training runs (`auto::a_job_runs`).
@@ -406,7 +462,10 @@ mod training {
             let mut fetch = Fetch::new(&dirs);
             // The press: your consent for the addresses named under it, kept before anything is read.
             let here = |a: &sioul_core::config::Account| load_config().every_account().any(|b| b.id == a.id && b.syncs());
-            let result = Consent::given(&dirs, named).and_then(|_| train::run(&config, &dirs, &here, &mut |p: &Progress| moved(&qt, &mut fetch, p), &cancel));
+            // The download on a network this device allows (a metered one, kept to unmetered ones: the corpus as it is).
+            let metered = if cfg!(target_os = "android") { super::phone_power().metered } else { sioul_sync::power::kept_power().and_then(|p| p.metered) };
+            let fetching = config.spam.downloads_on(metered);
+            let result = Consent::given(&dirs, named).and_then(|_| train::run_with(&config, &dirs, &here, &train::Options::of(&config), fetching, &mut |p: &Progress| moved(&qt, &mut fetch, p), &cancel));
             let ended = match result {
                 Ok(_) => String::new(),
                 Err(e) => failure(&e),
@@ -444,6 +503,7 @@ mod training {
     /// The window's minute (`super::by_itself`): what is known read, the
     /// system asked only when nothing else holds a training back; the run
     /// started apart when everything allows it.
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     pub(super) fn by_itself(qt: QtThread) {
         // One look at a time: a minute's may still be asking the system when the next comes.
         static LOOKING: AtomicBool = AtomicBool::new(false);
@@ -454,7 +514,7 @@ mod training {
         let (dirs, now) = (Dirs::standard(), jiff::Timestamp::now().as_second());
         let window_trains = RUN.lock().unwrap_or_else(PoisonError::into_inner).cancel.is_some();
         let focus = sioul_core::timelog::running().is_some();
-        let facts = auto::facts(&dirs, config.spam.trains_by_itself(), &sioul_sync::lease::host_name(), window_trains, focus, now, crate::devices::power_now);
+        let facts = auto::facts(&dirs, &config.spam, window_trains, focus, now, crate::devices::power_now);
         let started = match auto::decide(&facts, now) {
             auto::Decision::Train { fetch } => start_apart(fetch),
             auto::Decision::Wait(_) => false,
@@ -470,6 +530,7 @@ mod training {
 
     /// `sioul spam train --by-itself` (`sioul`, beside this program or on
     /// the PATH): it starts the run as a job apart and leaves at once.
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     fn start_apart(fetch: bool) -> bool {
         let Some(sioul) = crate::remind::command() else { return false };
         let mut command = std::process::Command::new(sioul);
@@ -482,41 +543,154 @@ mod training {
         command.status().is_ok_and(|status| status.success())
     }
 
-    /// Who trains it again by itself, and what its last run here did: whether
-    /// this computer is the one (the switch can be changed here), and the
-    /// sentence under the switch.
-    fn by_itself_line(dirs: &Dirs, here: &str) -> (bool, String) {
-        match auto::trainer(dirs, here) {
-            auto::Trainer::Elsewhere(device) => (false, say("spam-app-by-itself-elsewhere", &[("device", device)])),
-            auto::Trainer::Nobody => (true, tr().text("spam-app-by-itself-first", None)),
-            auto::Trainer::Here => {
-                let Some(run) = auto::Run::load(dirs) else { return (true, String::new()) };
-                let end = run.ended.unwrap_or(run.started);
-                // Just started, its process may not hold its lock yet: running too.
-                let just = jiff::Timestamp::now().as_second() - run.started < 60;
-                let (id, at) = match run.outcome {
-                    None if just || auto::a_job_runs(dirs) => ("spam-app-by-itself-running", run.started),
-                    Some(auto::Outcome::Replaced) => ("spam-app-by-itself-replaced", end),
-                    Some(auto::Outcome::Kept) => ("spam-app-by-itself-kept", end),
-                    Some(auto::Outcome::Stopped) => ("spam-app-by-itself-stopped", end),
-                    Some(auto::Outcome::Failed) | None => ("spam-app-by-itself-failed", end),
-                };
-                (true, say(id, &[("when", when(at))]))
-            }
+    /// Under the switch: the guard's word while it holds the switch off, else
+    /// what the last run by itself here did; "" before any.
+    fn by_itself_line(dirs: &Dirs, spam: &sioul_core::config::SpamSettings) -> String {
+        if !spam.trains_here()
+            && let Some(notice) = auto::Notice::load(dirs)
+            && let auto::NoticeKind::Guarded(halt) = notice.kind
+        {
+            let id = if halt == auto::Halt::Hot { "spam-app-guard-hot" } else { "spam-app-guard-long" };
+            return say(id, &[("when", when(notice.at))]);
+        }
+        let Some(run) = auto::Run::load(dirs) else { return String::new() };
+        let end = run.ended.unwrap_or(run.started);
+        // Just started, its process may not hold its lock yet: running too.
+        let just = jiff::Timestamp::now().as_second() - run.started < 60;
+        let (id, at) = match run.outcome {
+            None if just || auto::a_job_runs(dirs) || PHONE.load(Ordering::SeqCst) => ("spam-app-by-itself-running", run.started),
+            Some(auto::Outcome::Replaced) => ("spam-app-by-itself-replaced", end),
+            Some(auto::Outcome::Kept) => ("spam-app-by-itself-kept", end),
+            Some(auto::Outcome::Stopped) => ("spam-app-by-itself-stopped", end),
+            Some(auto::Outcome::Failed) | None => ("spam-app-by-itself-failed", end),
+        };
+        say(id, &[("when", when(at))])
+    }
+
+    /// A training runs in this process: the window's, or the phone's by itself.
+    pub(super) fn running() -> bool {
+        RUN.lock().unwrap_or_else(PoisonError::into_inner).cancel.is_some() || PHONE.load(Ordering::SeqCst)
+    }
+
+    /// The phone's training by itself runs in this process (the background service's).
+    static PHONE: AtomicBool = AtomicBool::new(false);
+
+    /// On a phone, from the background service's step: the training by itself
+    /// when everything allows it (`auto::decide`, the phone's power read from
+    /// Android), on a thread of this process: the phone kept awake meanwhile
+    /// (`StepService`'s "learn-awake"), the corpus brought up to date and the
+    /// filter trained on half the cores, then the topics (one thread); the
+    /// guard watched; its end kept (`auto::Run`). Never two at once, here or
+    /// in the window's process (`jobs/phone.lock`).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(super) fn on_phone() {
+        if PHONE.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let config = load_config();
+        let (dirs, now) = (Dirs::standard(), jiff::Timestamp::now().as_second());
+        let focus = sioul_core::timelog::running().is_some();
+        let facts = auto::facts(&dirs, &config.spam, false, focus, now, super::phone_power);
+        if !matches!(auto::decide(&facts, now), auto::Decision::Train { .. }) {
+            PHONE.store(false, Ordering::SeqCst);
+            return;
+        }
+        let started = std::thread::Builder::new().name("spam-by-itself".into()).spawn(move || {
+            lower_priority(19);
+            let _held = lock(&dirs, "phone.lock");
+            crate::steps::java("learn-awake", "{\"on\":true}");
+            let job = format!("phone-{now}");
+            let _ = auto::Run { started: now, job: job.clone(), fetched: true, ended: None, outcome: None }.save(&dirs);
+            let outcome = run_here(&config, &dirs, now, super::phone_power);
+            let _ = auto::Run::finish(&dirs, &job, outcome, jiff::Timestamp::now().as_second());
+            crate::steps::java("learn-awake", "{\"on\":false}");
+            PHONE.store(false, Ordering::SeqCst);
+        });
+        if started.is_err() {
+            PHONE.store(false, Ordering::SeqCst);
         }
     }
 
-    /// The window's own lock while it trains, beside the jobs' (`jobs/window.lock`).
-    fn window_lock(dirs: &Dirs) -> Option<std::fs::File> {
+    /// One training by itself in this process (a phone's): the first one
+    /// said (`auto::begin`), the power and the guard watched every half
+    /// minute (`auto::watch_supply`: unplugged, saving power, its training
+    /// past 30 minutes, its battery above 40 °C), the spam filter on half the
+    /// cores, then the topics (`topics::model::train_here`, one thread,
+    /// deterministic); the guard's word kept (`auto::guard`); how it ended.
+    pub(super) fn run_here(config: &sioul_core::config::Config, dirs: &Dirs, now: i64, power: fn() -> sioul_sync::power::Power) -> auto::Outcome {
+        let started = Instant::now();
+        let first = auto::trainer(dirs, &sioul_sync::lease::host_name()) == auto::Trainer::Nobody;
+        auto::begin(dirs, first, now);
+        let cancel = Cancel::new();
+        let done = Arc::new(AtomicBool::new(false));
+        let learning: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+        let halted: Arc<Mutex<Option<auto::Halt>>> = Arc::new(Mutex::new(None));
+        let watcher = {
+            let (cancel, done, learning, halted) = (cancel.clone(), Arc::clone(&done), Arc::clone(&learning), Arc::clone(&halted));
+            std::thread::Builder::new().name("spam-supply".into()).spawn(move || {
+                auto::watch_supply(
+                    move || {
+                        let p = power();
+                        sioul_sync::power::Power { on_mains: p.on_mains, power_saver: p.power_saver, battery_tenths: p.battery_tenths, ..sioul_sync::power::Power::default() }
+                    },
+                    |halt| {
+                        *halted.lock().unwrap_or_else(PoisonError::into_inner) = Some(halt);
+                        cancel.cancel();
+                    },
+                    || done.load(Ordering::Relaxed),
+                    || learning.lock().unwrap_or_else(PoisonError::into_inner).map(|at| at.elapsed()),
+                    auto::SUPPLY_EVERY,
+                );
+            })
+        };
+        let mut progress = |p: &Progress| {
+            if !matches!(p.stage, Stage::Corpus | Stage::Verify) {
+                learning.lock().unwrap_or_else(PoisonError::into_inner).get_or_insert_with(Instant::now);
+            }
+        };
+        let here = |a: &sioul_core::config::Account| load_config().every_account().any(|b| b.id == a.id && b.syncs());
+        let options = train::Options { threads: auto::threads(), ..train::Options::of(config) };
+        let result = train::run_with(config, dirs, &here, &options, true, &mut progress, &cancel);
+        let replaced = result.as_ref().is_ok_and(|(_, summary)| summary.replaced);
+        // The topics in the same run: what goes wrong there leaves the spam filter's training as it is.
+        if result.is_ok() && !cancel.cancelled() {
+            let _ = sioul_learn::topics::model::train_here(dirs, config, true, 500, &mut progress, &cancel);
+        }
+        done.store(true, Ordering::Relaxed);
+        if let Ok(watcher) = watcher {
+            let _ = watcher.join();
+        }
+        let at = jiff::Timestamp::now().as_second();
+        let halt = *halted.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(halt) = halt.filter(|h| h.guards()) {
+            let _ = auto::guard(dirs, &crate::backend::config_path(), halt, at);
+        }
+        auto::end(dirs, replaced, started.elapsed().as_secs(), at);
+        match (&result, replaced) {
+            (Ok(_), true) => auto::Outcome::Replaced,
+            (Ok(_), false) => auto::Outcome::Kept,
+            (Err(_), _) if halt.is_some() || cancel.cancelled() => auto::Outcome::Stopped,
+            (Err(_), _) => auto::Outcome::Failed,
+        }
+    }
+
+    /// A lock of this process's in the jobs' folder (`jobs/<name>`), held
+    /// while it trains: the others see a training runs (`auto::a_job_runs`).
+    fn lock(dirs: &Dirs, name: &str) -> Option<std::fs::File> {
         let jobs = dirs.state.join("jobs");
         let mut folder = std::fs::DirBuilder::new();
         folder.recursive(true);
         #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut folder, 0o700);
         folder.create(&jobs).ok()?;
-        let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(jobs.join("window.lock")).ok()?;
+        let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(jobs.join(name)).ok()?;
         file.lock().ok()?;
         Some(file)
+    }
+
+    /// The window's own lock while it trains, beside the jobs' (`jobs/window.lock`).
+    fn window_lock(dirs: &Dirs) -> Option<std::fs::File> {
+        lock(dirs, "window.lock")
     }
 
     /// A step moved on: said, at most a few times a second, and at each new step.
@@ -649,14 +823,17 @@ mod training {
     }
 
     /// The training's thread, and fastText's threads it starts, below the
-    /// window's: the computer stays usable while every core learns. Linux
-    /// gives each thread its own priority, which the threads it starts take.
-    fn lower_priority() {
-        #[cfg(target_os = "linux")]
-        // SAFETY: setpriority only reads its arguments; 0 is this thread on Linux.
+    /// window's (`nice`: 10 for Train now, 19 by itself on a phone): the
+    /// device stays usable while its cores learn. Linux and Android give each
+    /// thread its own priority, which the threads it starts take.
+    fn lower_priority(nice: i32) {
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        // SAFETY: setpriority only reads its arguments; 0 is this thread on Linux and Android.
         unsafe {
-            libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+            libc::setpriority(libc::PRIO_PROCESS, 0, nice);
         }
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let _ = nice;
     }
 
     #[cfg(test)]
@@ -692,6 +869,21 @@ mod tests {
     use sioul_core::card::Card;
     use sioul_core::porch::Triaged;
     use sioul_core::spam::{Actions, Filter};
+
+    /// The phone's word on itself for the training by itself (`Learn.java`'s
+    /// "learn-power"): on its charger, saving power, its screen off as idle,
+    /// a metered network, the battery's warmth; what it does not say,
+    /// unknown (a network none: not known metered).
+    #[test]
+    fn the_phone_s_power_as_android_says_it() {
+        let said = serde_json::json!({ "plugged": true, "saver": false, "interactive": false, "metered": true, "temperature": 312 });
+        let power = power_of(&said);
+        assert_eq!((power.on_mains, power.power_saver, power.idle, power.metered, power.battery_tenths), (Some(true), Some(false), Some(true), Some(true), Some(312)));
+        let quiet = power_of(&serde_json::json!({ "plugged": false, "interactive": true }));
+        assert_eq!((quiet.on_mains, quiet.idle, quiet.metered, quiet.battery_tenths, quiet.power_saver), (Some(false), Some(false), None, None, None));
+        assert_eq!(power_of(&serde_json::Value::Null), sioul_sync::power::Power::default(), "a computer: nothing said");
+        assert_eq!((minutes_of(270), minutes_of(20), minutes_of(0)), ("5".to_string(), "1".to_string(), "1".to_string()));
+    }
 
     /// After a fetch, what goes into the Junk folder and what is flagged
     /// where it is: among the filter's catches, by a verdict whose class you

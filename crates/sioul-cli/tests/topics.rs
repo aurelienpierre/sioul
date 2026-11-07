@@ -114,7 +114,7 @@ fn seeds_and_eval_on_stand_in_mail() {
     println!("{lines}");
     println!("{}", run(&root, "fr", &["topics", "eval", "--quick", "--threads", "2", "--dim", "16", "--epochs", "20", "--buckets", "2000"]));
 
-    // Your topics, then the model: the first table written where every device reads it, the mail kept here judged by it.
+    // Your topics, then the model, learned from the corpus: the first table written here, the mail kept here judged by it.
     let config = root.join("config/sioul/config.toml");
     let mut text = std::fs::read_to_string(&config).unwrap();
     for (id, name, folder) in [("choir", "Chorale", "Chorale"), ("tax", "Impôts", "Impôts"), ("health", "Santé", "Santé"), ("club", "Club de lecture", "Lecture")] {
