@@ -24,10 +24,13 @@
 //!   where the message is; that address's other copies are left until their
 //!   folders' next round brings them up to date.
 //! - **Order** (decision 11): by when it was sent, never later than it
-//!   arrived (`porch::sent`), newest first; days as headers; two weeks, then
-//!   two more at each "Earlier messages" (decision 15). The rows' words are
-//!   made for the rows asked for alone (`Ask::rows`, sixty at a time: `PAGE`),
-//!   after every message of the window was sorted.
+//!   arrived (`porch::sent`), newest first; days as headers. The window's
+//!   list has no horizon (8 November 2026, in the place of decision 15's two
+//!   weeks and "Earlier messages"): everything this device keeps, read back
+//!   in two-week windows, twice as many each time, until the rows asked for
+//!   are filled (`Ask::windows` at 0); an agent asks its own days. The rows'
+//!   words are made for the rows asked for alone (`Ask::rows`, sixty at a
+//!   time: `PAGE`), after every message of the windows read was sorted.
 //! - **Read from** each folder's recent lines kept in this process
 //!   (`mailcache::recent`): nothing listed or read again while the folder is
 //!   as it was. A folder looked at for the first time has its newest
@@ -75,8 +78,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-/// Days of one window: the mailbox's two weeks.
+/// Days of one window: the weeks read at a time, two.
 pub const WINDOW_DAYS: i64 = 14;
+
+/// The most windows a list without horizon reads back (`Ask::windows` at 0): 4096 times two weeks, every message kept.
+pub const MOST_WINDOWS: u32 = 4096;
 
 /// Rows of one page: what one publish carries to the window (§6).
 pub const PAGE: usize = 60;
@@ -127,7 +133,9 @@ pub struct Ask {
     /// One address only (its id); empty: every address.
     #[serde(default)]
     pub account: String,
-    /// How many two-week windows: one at first, one more at each "Earlier messages".
+    /// How many two-week windows back (an agent's days); 0: as many as the
+    /// rows asked for need, every message kept at most (the window's list:
+    /// no horizon), read twice as far back each time (`page_with`).
     #[serde(default = "one")]
     pub windows: u32,
     /// The quick search's words: everything kept, by sender, recipients and subject.
@@ -421,7 +429,8 @@ pub struct Page {
     pub resting: Vec<Resting>,
     /// The marks at the end of the chips' row, to keep one address; none with one.
     pub addresses: Vec<Mark>,
-    /// Older mail is kept: "Earlier messages".
+    /// Mail older than the windows read is kept (an agent's days; at the
+    /// most windows only, for the window's list).
     pub earlier: bool,
     /// The window holds more rows than those given: the next page, when the list's end shows.
     pub more: bool,
@@ -613,8 +622,30 @@ pub fn page(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<P
 /// into rows, counted over the days and the address asked alone
 /// (`Page::closed`), before blocked senders, spam, the kinds and the chip,
 /// so that the count is the same whatever the chip.
+///
+/// `ask.windows` at 0 (the window's list, no horizon): two weeks read first,
+/// then twice as many each time while the rows asked for are not filled and
+/// older mail is kept, `MOST_WINDOWS` at most; the folders' indexes filled
+/// at the first look alone (`fill`), the later ones reading back what is kept.
 #[allow(clippy::too_many_arguments)]
 pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>, tr: &Translator, now: i64, zone: &jiff::tz::TimeZone, fill: usize, keep_out: &dyn Fn(&str) -> bool) -> Page {
+    if ask.windows != 0 {
+        return page_of_windows(addresses, world, ask, hidden, tr, now, zone, fill, keep_out);
+    }
+    let (mut windows, mut fill) = (1, fill);
+    loop {
+        let page = page_of_windows(addresses, world, &Ask { windows, ..ask.clone() }, hidden, tr, now, zone, fill, keep_out);
+        if page.more || !page.earlier || windows >= MOST_WINDOWS {
+            return page;
+        }
+        windows = windows.saturating_mul(2).min(MOST_WINDOWS);
+        fill = 0;
+    }
+}
+
+/// `page_with` over `ask.windows` two-week windows back (one at least).
+#[allow(clippy::too_many_arguments)]
+fn page_of_windows(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTreeSet<PathBuf>, tr: &Translator, now: i64, zone: &jiff::tz::TimeZone, fill: usize, keep_out: &dyn Fn(&str) -> bool) -> Page {
     let several = addresses.len() > 1;
     let letters = letters(&addresses.iter().map(|a| &a.account).collect::<Vec<_>>());
     let mark = |i: usize| Mark { account: addresses[i].account.id.clone(), letter: letters[i].clone(), tint: addresses[i].tint, title: addresses[i].account.address.clone().unwrap_or_else(|| addresses[i].account.id.clone()) };
@@ -913,8 +944,6 @@ pub fn page_with(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTree
         let mut args = i18n::args();
         args.set("query", ask.query.trim().to_string());
         tr.text("mail-not-found", Some(&args))
-    } else if older {
-        tr.text("mail-nothing-recent", None)
     } else {
         tr.text("mail-empty", None)
     };
@@ -1359,8 +1388,28 @@ mod tests {
         assert!(one.rows.iter().all(|r| r.marks.iter().any(|m| m.account == stand.addresses[1].account.id)));
     }
 
-    /// Two weeks, then two more at each "Earlier messages"; the quick search
-    /// looks through everything kept.
+    /// The window's list has no horizon (`windows` at 0, 8 November 2026):
+    /// everything kept, newest first, read back as far as the rows asked for
+    /// need; a crowded fortnight reads no further than it; an agent's days
+    /// stay its own (`two_weeks_then_earlier`).
+    #[test]
+    fn the_window_list_reaches_everything_kept() {
+        let stand = Stand::new("nohorizon");
+        let day = 86_400;
+        stand.put(0, "INBOX", 1, "recent@example.org", "Ana <ana@example.org>", "noa@work.example.org", "Recent", NOW - 3 * day, NOW - 3 * day, "S", "", "…");
+        stand.put(0, "Archive", 2, "older@example.org", "Ben <ben@example.org>", "noa@work.example.org", "Three weeks ago", NOW - 21 * day, NOW - 21 * day, "S", "", "…");
+        stand.put(1, "INBOX", 3, "years@example.org", "Cat <cat@example.org>", "noa@home.example.org", "Three years ago", NOW - 3 * 365 * day, NOW - 3 * 365 * day, "S", "", "…");
+        let world = world_at(crate::areas::Time::Work, "", "");
+        let all = stand.page(&world, &Ask { windows: 0, ..Ask::default() }, &BTreeSet::new());
+        assert_eq!((subjects(&all), all.more, all.earlier), (vec!["Recent", "Three weeks ago", "Three years ago"], false, false));
+        let one = stand.page(&world, &Ask { windows: 0, rows: 1, ..Ask::default() }, &BTreeSet::new());
+        assert_eq!((subjects(&one), one.more, one.windows), (vec!["Recent"], true, 2), "two weeks hold one row; four, the one more that says more follow");
+        let none = stand.page(&world, &Ask { windows: 0, query: "nothing like it".into(), ..Ask::default() }, &BTreeSet::new());
+        assert_eq!((none.rows.len(), none.sentence.as_str()), (0, "Nothing matches “nothing like it”."));
+    }
+
+    /// An agent's days: two weeks, then two more at each window; the quick
+    /// search looks through everything kept.
     #[test]
     fn two_weeks_then_earlier() {
         let stand = Stand::new("weeks");

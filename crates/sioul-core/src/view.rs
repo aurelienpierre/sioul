@@ -1490,10 +1490,12 @@ fn folder_title(display: &str) -> String {
     ["[Gmail]/", "[Google Mail]/"].iter().fold(display.to_string(), |name, prefix| name.strip_prefix(prefix).map_or(name.clone(), str::to_string))
 }
 
-/// Days a folder shows before "Earlier" when the configuration says nothing (docs/client.md, rule 7).
-pub const RECENT_DAYS: i64 = 14;
+/// Rows of a folder's list at a time (conversations count as one): one more
+/// page each time its end shows (`folder`, `rows`).
+pub const FOLDER_PAGE: usize = 60;
 
-/// A folder's messages, newest first: the last two weeks, or everything kept on request.
+/// A folder's messages, newest first: everything this device keeps, the
+/// rows asked for (`rows`), more as the list's end shows.
 #[derive(Debug, Serialize)]
 pub struct FolderView {
     pub account: String,
@@ -1503,8 +1505,8 @@ pub struct FolderView {
     /// What is there, in words, said when you open it.
     pub sentence: String,
     pub items: Vec<MailItem>,
-    /// Older messages are kept: "Earlier" shows them.
-    pub earlier: bool,
+    /// The folder holds more rows than those given: the next ones, when the list's end shows.
+    pub more: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1565,9 +1567,9 @@ pub fn provider_mark(card: &Card, role: Role, trust: Trust, tr: &Translator) -> 
 
 /// Messages by conversation: each one's newest message of the folder first, the
 /// conversations by their last message (yours included), then the rest of each,
-/// oldest first, your answers from Sent among them. A conversation shows when
-/// its first row would.
-fn conversations(cards: &[Card], sent: &[Card], shown: &dyn Fn(&Card) -> bool, item: &dyn Fn(&Card, bool) -> MailItem) -> Vec<MailItem> {
+/// oldest first, your answers from Sent among them. `rows` conversations at
+/// most, and whether more follow.
+fn conversations(cards: &[Card], sent: &[Card], item: &dyn Fn(&Card, bool) -> MailItem, rows: usize) -> (Vec<MailItem>, bool) {
     let all: Vec<&Card> = cards.iter().chain(sent.iter()).collect();
     let groups = crate::threads::group(&all);
     let own = |i: usize| i >= cards.len();
@@ -1581,10 +1583,12 @@ fn conversations(cards: &[Card], sent: &[Card], shown: &dyn Fn(&Card) -> bool, i
         .filter_map(|(_, members)| {
             // Cards are newest first: the folder's first one is the head.
             let head = *members.iter().find(|&&i| !own(i))?;
-            shown(all[head]).then(|| (members.iter().map(|&i| all[i].date.unwrap_or(0)).max().unwrap_or(0), head, members))
+            Some((members.iter().map(|&i| all[i].date.unwrap_or(0)).max().unwrap_or(0), head, members))
         })
         .collect();
     ordered.sort_by_key(|(last, head, _)| (std::cmp::Reverse(*last), *head));
+    let more = ordered.len() > rows;
+    ordered.truncate(rows);
     let mut out = Vec::new();
     for (_, head, mut members) in ordered {
         let thread = all[head].path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
@@ -1602,7 +1606,7 @@ fn conversations(cards: &[Card], sent: &[Card], shown: &dyn Fn(&Card) -> bool, i
             out.push(row);
         }
     }
-    out
+    (out, more)
 }
 
 /// One message as a list shows it, in a folder for `role`: who wrote (to whom,
@@ -1661,15 +1665,15 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
     }
 }
 
-/// What a folder shows: `all` past the last two weeks; `query` searches every
-/// message kept, by sender, recipient and subject. With `sent` (the account's
-/// Sent folder), messages are shown by conversation, your answers among them.
-/// A message your filter flagged where it lies says so (`flags`).
+/// What a folder shows: every message this device keeps, newest first, its
+/// first `rows` rows (a conversation one row), and whether more follow
+/// (`FolderView::more`); `query` keeps those found by sender, recipient and
+/// subject. How far back mail is kept is the account's setting
+/// (`history_weeks`), never a limit of the list's own. With `sent` (the
+/// account's Sent folder), messages are shown by conversation, your answers
+/// among them. A message your filter flagged where it lies says so (`flags`).
 #[allow(clippy::too_many_arguments)]
-pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], own_domains: &[String], words: &crate::words::Words, all: bool, query: &str, tr: &Translator, now: i64, sent: Option<Vec<Card>>, flags: &crate::spam::labels::Flags) -> FolderView {
-    // The account's history, two weeks unless set; everything kept when it says so.
-    let all = all || account.history_days().is_none();
-    let since = now - account.history_days().unwrap_or(RECENT_DAYS) * 86_400;
+pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], own_domains: &[String], words: &crate::words::Words, rows: usize, query: &str, tr: &Translator, sent: Option<Vec<Card>>, flags: &crate::spam::labels::Flags) -> FolderView {
     let query = query.trim().to_lowercase();
     let found = |c: &Card| {
         query.is_empty()
@@ -1680,9 +1684,7 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
     };
     let mut cards: Vec<Card> = cards.into_iter().filter(found).collect();
     cards.sort_by_key(|c| std::cmp::Reverse(c.date.unwrap_or(0)));
-    let recent = |c: &Card| c.date.unwrap_or(0) >= since;
-    let older = cards.iter().filter(|c| !recent(c)).count();
-    let shown = |c: &Card| all || !query.is_empty() || recent(c);
+    let rows = rows.max(1);
     let item = |card: &Card, own: bool| {
         let mut item = mail_item(card, folder.role, own, &maildir::flags_of(card.path.as_deref().unwrap_or(std::path::Path::new(""))), trusted_ids, own_domains, words, tr);
         if !own {
@@ -1694,17 +1696,17 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
         }
         item
     };
-    let items: Vec<MailItem> = match sent {
-        None => cards.iter().filter(|c| shown(c)).map(|c| item(c, false)).collect(),
-        Some(sent) => conversations(&cards, &sent, &shown, &item),
+    // Only the rows given are made: a folder of years reads fast.
+    let (items, more): (Vec<MailItem>, bool) = match sent {
+        None => (cards.iter().take(rows).map(|c| item(c, false)).collect(), cards.len() > rows),
+        Some(sent) => conversations(&cards, &sent, &item, rows),
     };
-    let unread = items.iter().filter(|i| i.unread).count();
+    // What waits to be read, over the whole folder (as `mail_item` says it), not the rows given alone.
+    let unread = if matches!(folder.role, Role::Inbox | Role::Other | Role::Archive) { cards.iter().filter(|c| !maildir::flags_of(c.path.as_deref().unwrap_or(std::path::Path::new(""))).contains('S')).count() } else { 0 };
     let sentence = if items.is_empty() && !query.is_empty() {
         let mut args = i18n::args();
         args.set("query", query.clone());
         tr.text("mail-not-found", Some(&args))
-    } else if items.is_empty() && older > 0 {
-        tr.text("mail-nothing-recent", None)
     } else if items.is_empty() {
         tr.text("mail-empty", None)
     } else if unread > 0 {
@@ -1723,7 +1725,7 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
         role: folder.role,
         sentence,
         items,
-        earlier: !all && query.is_empty() && older > 0,
+        more,
     }
 }
 
@@ -1937,8 +1939,11 @@ host = "imap.example.com"
         assert_eq!(login("home").as_deref(), Some("noa@example.com"));
     }
 
+    /// Everything kept, newest first, whatever its age (8 November 2026: no
+    /// two-week horizon); the rows asked for, more when the list's end shows;
+    /// what waits to be read said over the whole folder.
     #[test]
-    fn a_folder_shows_two_weeks_and_says_what_is_unread() {
+    fn a_folder_shows_everything_kept_by_pages_and_says_what_is_unread() {
         let now = 1_790_000_000;
         let card = |subject: &str, days_ago: i64, file: &str| {
             let raw = format!("From: Jane <jane@example.org>\r\nTo: Me <me@example.net>\r\nSubject: {subject}\r\n\r\nHi.\r\n");
@@ -1947,21 +1952,21 @@ host = "imap.example.com"
             card.path = Some(std::path::PathBuf::from(file));
             card
         };
-        let cards = vec![card("Lease", 1, "new/1.U1-1.sioul"), card("Old", 40, "cur/2.U1-2.sioul:2,S"), card("Read", 2, "cur/3.U1-3.sioul:2,FS")];
+        let cards = vec![card("Lease", 1, "new/1.U1-1.sioul"), card("Old", 400, "new/2.U1-2.sioul"), card("Read", 2, "cur/3.U1-3.sioul:2,FS")];
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None, &Default::default());
-        assert_eq!(view.items.iter().map(|i| i.subject.as_str()).collect::<Vec<_>>(), ["Lease", "Read"]);
-        assert!(view.earlier && view.items[0].unread && view.items[1].flagged && !view.items[1].unread);
-        assert_eq!(view.sentence, "One message you have not read.");
-        let everything = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), true, "", &tr, now, None, &Default::default());
-        assert_eq!(everything.items.len(), 3);
-        assert!(!everything.earlier);
-        let searched = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), false, "old", &tr, now, None, &Default::default());
+        let view = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &Default::default());
+        assert_eq!(view.items.iter().map(|i| i.subject.as_str()).collect::<Vec<_>>(), ["Lease", "Read", "Old"]);
+        assert!(!view.more && view.items[0].unread && view.items[1].flagged && !view.items[1].unread);
+        assert_eq!(view.sentence, "Two messages you have not read.");
+        let first = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), 2, "", &tr, None, &Default::default());
+        assert_eq!((first.items.len(), first.more), (2, true));
+        assert_eq!(first.sentence, "Two messages you have not read.", "over the whole folder");
+        let searched = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "old", &tr, None, &Default::default());
         assert_eq!(searched.items.len(), 1);
         let sent = crate::folders::folder("Sent", Some("."), Some(Role::Sent));
-        let view = folder(&account, &sent, cards, &[], &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None, &Default::default());
+        let view = folder(&account, &sent, cards, &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &Default::default());
         assert_eq!(view.items[0].who, "To Me");
         assert!(view.items.iter().all(|i| !i.unread && i.trust_level == "own"));
     }
@@ -1989,7 +1994,7 @@ host = "imap.example.com"
         flags.flagged = vec![flag(1, crate::spam::Class::Unsure), flag(2, crate::spam::Class::Ham), flag(3, crate::spam::Class::Spam), Moved { folder: "Archive".into(), ..flag(4, crate::spam::Class::Spam) }];
         flags.said = vec![Entry { at: now - 30, account: "me".into(), folder: "INBOX".into(), uidvalidity: 7, uid: 3, message_id: Some("said@example.org".into()), label: Label::Ham, source: Source::NotSpam }];
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, cards, &[], &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None, &flags);
+        let view = folder(&account, &inbox, cards, &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &flags);
         let words: Vec<(&str, &str)> = view.items.iter().map(|i| (i.subject.as_str(), i.spam.as_str())).collect();
         assert_eq!(words, [("Doubt", "maybe spam"), ("Ham", "probably not spam"), ("Said", ""), ("Plain", "")], "the same message flagged in another folder is another place");
     }
@@ -2026,7 +2031,7 @@ host = "imap.example.com"
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, vec![question, thanks, other], &[], &[], crate::words::Words::builtin_ref(), false, "", &tr, now, Some(vec![answer, unrelated]), &Default::default());
+        let view = folder(&account, &inbox, vec![question, thanks, other], &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, Some(vec![answer, unrelated]), &Default::default());
         let rows: Vec<(&str, usize, bool)> = view.items.iter().map(|i| (i.subject.as_str(), i.size, i.member)).collect();
         // The lease first (its last message is the newest), with its question and your answer under it, oldest first.
         assert_eq!(rows, [("Re: Lease", 3, false), ("Lease", 1, true), ("Re: Lease", 1, true), ("Lunch", 1, false)]);

@@ -428,15 +428,6 @@ mailbox-hidden-unticked-leisure = les courriels des loisirs, décochés dans le 
 mailbox-hidden-off = { $address }, éteinte dans cette liste (ses courriels restent dans sa boîte de réception)
 mailbox-hidden-show-area = Les afficher
 mailbox-hidden-switch-on = La rallumer
-mailbox-older =
-    { $weeks ->
-        [2] Les courriels de plus de deux semaines
-        [4] Les courriels de plus de quatre semaines
-       *[other] Les courriels de plus de { $weeks } semaines
-    }
-mailbox-show-older = Afficher les plus anciens…
-mailbox-older-end = { $older } :
-mailbox-nothing-older = Rien de plus ancien n’est gardé ici.
 area-filter-work = Travail
 area-filter-admin = Démarches
 area-filter-leisure = Loisirs
@@ -894,7 +885,6 @@ mail-to-whom = À { $names }
 mail-nobody = personne encore
 mail-no-subject = (sans objet)
 mail-empty = Rien ici.
-mail-nothing-recent = Rien ces deux dernières semaines.
 mail-not-found = Rien ne correspond à « { $query } ».
 mail-unread = { $n ->
     [one] Un courriel que vous n’avez pas lu.
@@ -940,7 +930,6 @@ ui-more-folders = Autres dossiers
 ui-no-mail-accounts = Pas encore de compte de courriel : ajoutez-en un dans Comptes.
 ui-folders = Revenir aux dossiers
 ui-search = Chercher
-ui-earlier = Courriels plus anciens
 ui-discard = Supprimer le brouillon
 
 ## Chercher dans les courriels par conditions (mailsearch.rs, MailSearch.qml) : les conditions des filtres.

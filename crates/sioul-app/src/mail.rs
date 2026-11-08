@@ -34,8 +34,8 @@ const UNDO_SECONDS: u64 = 10;
 pub(crate) struct OpenFolder {
     pub account: String,
     pub folder: String,
-    /// Past the last two weeks.
-    pub all: bool,
+    /// How many rows the list holds or wants: a page, then one more each time its end shows.
+    pub rows: usize,
     pub query: String,
 }
 
@@ -250,9 +250,10 @@ pub(crate) fn mailbox_pages(config: &Config, ask: &sioul_core::mailbox::Ask, hid
     let now = sioul_core::zone::now();
     let mode = crate::hours::mode_at(&now);
     let (filter, shown) = mailbox_filter(&mode, now.timestamp().as_second());
-    let ask = sioul_core::mailbox::Ask { filter: Some(filter), ..ask.clone() };
+    // No horizon in the window's list: everything kept, read back as far as the rows asked for need.
+    let ask = sioul_core::mailbox::Ask { filter: Some(filter), windows: 0, ..ask.clone() };
     let page = mailbox_page(config, &ask, hidden, waiting, &mode, &now);
-    let hidden = hidden_parts(config, &page, &ask, &shown);
+    let hidden = hidden_parts(config, &ask, &shown);
     MailboxPages { texts: page_texts(&page, &ask, &shown, &hidden), indexing: page.indexing, made: started.elapsed() }
 }
 
@@ -324,24 +325,20 @@ struct PageOut<'a> {
     start: usize,
     rows: Vec<RowOut<'a>>,
     more: bool,
-    earlier: bool,
     sentence: &'a str,
     resting: &'a [sioul_core::mailbox::Resting],
     /// What the list does not show now, each with what brings it back (`hidden_parts`).
     hidden: &'a [Hidden],
-    /// The list's last line: "Mail older than two weeks:", before Show older…, or that nothing older is kept.
-    end: String,
     addresses: &'a [AddressOut<'a>],
     filter: &'a sioul_core::areafilter::Shown,
     chip: sioul_core::mailbox::Chip,
     account: &'a str,
-    windows: u32,
     prefix: &'a str,
 }
 
 /// One thing the mailbox does not show now, said at the head of its list,
 /// with what brings it back: `act` `"tick:<area>"` (that area ticked too),
-/// `"on:<account>"` (that address switched on), `"earlier"` (two more weeks).
+/// `"on:<account>"` (that address switched on).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct Hidden {
     pub text: String,
@@ -351,11 +348,11 @@ pub(crate) struct Hidden {
 
 /// What the mailbox hides now, in the list's own words: an area whose mail
 /// rests as your hours say, or that you left unticked (the filter); an
-/// address switched off in this list (a view: its mail stays in its inbox);
-/// mail older than the weeks shown. The filter's rules are the hours' and
+/// address switched off in this list (a view: its mail stays in its inbox).
+/// Never older mail: the list has no horizon. The filter's rules are the hours' and
 /// each address's "What this address is for" (Accounts), a view's switch is
 /// this list's alone: each said in its own words.
-pub(crate) fn hidden_parts(config: &Config, page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, filter: &sioul_core::areafilter::Shown) -> Vec<Hidden> {
+pub(crate) fn hidden_parts(config: &Config, ask: &sioul_core::mailbox::Ask, filter: &sioul_core::areafilter::Shown) -> Vec<Hidden> {
     use sioul_core::areas::Area;
     let mut out = Vec::new();
     let syncing: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
@@ -371,17 +368,7 @@ pub(crate) fn hidden_parts(config: &Config, page: &sioul_core::mailbox::Page, as
         let address = account.address.clone().unwrap_or_else(|| account.id.clone());
         out.push(Hidden { text: say("mailbox-hidden-off", &[("address", address)]), act: format!("on:{}", account.id), button: tr().text("mailbox-hidden-switch-on", None) });
     }
-    if page.earlier {
-        out.push(Hidden { text: older_line(page.windows), act: "earlier".into(), button: tr().text("mailbox-show-older", None) });
-    }
     out
-}
-
-/// "Mail older than two weeks", the weeks the list shows.
-pub(crate) fn older_line(windows: u32) -> String {
-    let mut args = sioul_core::i18n::args();
-    args.set("weeks", i64::from(windows.max(1)) * 2);
-    tr().text("mailbox-older", Some(&args))
 }
 
 /// An address's mark as the filter shows it: switched on or off.
@@ -455,16 +442,13 @@ fn page_texts(page: &sioul_core::mailbox::Page, ask: &sioul_core::mailbox::Ask, 
                 start: n * PAGE,
                 rows,
                 more: n < last || page.more,
-                earlier: page.earlier,
                 sentence: &page.sentence,
                 resting: &page.resting,
                 hidden,
-                end: if page.earlier { say("mailbox-older-end", &[("older", older_line(page.windows))]) } else { tr().text("mailbox-nothing-older", None) },
                 addresses: &addresses,
                 filter,
                 chip: page.chip,
                 account: &page.account,
-                windows: page.windows,
                 prefix: &prefix,
             })
         })
@@ -802,8 +786,7 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
         let files = folder_waiting(&files, &waiting, &mut flags);
         let (cards, sent) = folder_cards(account, folders, folder, &files, config.mail.threads);
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
-        let now = sioul_core::zone::now().timestamp().as_second();
-        Some(json(&view::folder(account, folder, cards, &trusted, &config.own_domains(), &sioul_core::words::Words::of(&config), open.all, &open.query, tr(), now, sent, &flags)))
+        Some(json(&view::folder(account, folder, cards, &trusted, &config.own_domains(), &sioul_core::words::Words::of(&config), open.rows, &open.query, tr(), sent, &flags)))
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
@@ -2966,8 +2949,7 @@ mod tests {
         let words = sioul_core::words::current();
         let trusted = vec!["mx.example.org".to_string()];
         let hidden: BTreeSet<PathBuf> = [root.join("cur").join(format!("1777000004.U7-4.sioul{}2,FS", maildir::INFO))].into();
-        let now = 1_793_000_000;
-        let list = |folder: &Folder, (cards, sent): (Vec<Card>, Option<Vec<Card>>)| json(&view::folder(&account, folder, cards, &trusted, &[], &words, true, "", tr(), now, sent, &Default::default()));
+        let list = |folder: &Folder, (cards, sent): (Vec<Card>, Option<Vec<Card>>)| json(&view::folder(&account, folder, cards, &trusted, &[], &words, usize::MAX, "", tr(), sent, &Default::default()));
         for _ in 0..2 {
             // Made, then read from the index.
             for (folder, threads) in [(&folders[0], false), (&folders[0], true), (&folders[1], false), (&folders[1], true), (&folders[2], false), (&folders[2], true)] {
@@ -3185,6 +3167,8 @@ mod tests {
         timed("two weeks, a page, kept again", Ask::default());
         timed("two weeks, three pages", Ask { rows: 3 * sioul_core::mailbox::PAGE, ..Ask::default() });
         timed("eight weeks", Ask { windows: 4, ..Ask::default() });
+        timed("no horizon, a page", Ask { windows: 0, ..Ask::default() });
+        timed("no horizon, five pages", Ask { windows: 0, rows: 5 * sioul_core::mailbox::PAGE, ..Ask::default() });
         timed("the Unread chip", Ask { chip: Chip::Unread, ..Ask::default() });
         timed("a search", Ask { query: "matter 7".into(), ..Ask::default() });
         // A sync's report: a new message in the first inbox, then the page made and its changed pages found.
@@ -3199,7 +3183,7 @@ mod tests {
         let account = &config.accounts[0];
         let at = std::time::Instant::now();
         let (cards, sent) = folder_cards(account, &folders, &folders[0], &none, false);
-        let shown = view::folder(account, &folders[0], cards, &[], &[], &sioul_core::words::Words::of(&config), false, "", tr(), now, sent, &Default::default());
+        let shown = view::folder(account, &folders[0], cards, &[], &[], &sioul_core::words::Words::of(&config), view::FOLDER_PAGE, "", tr(), sent, &Default::default());
         let text = json(&shown);
         println!("measure: Mail's first inbox, as a folder shows it: {:.0} ms, {} rows, {} KB of JSON", at.elapsed().as_secs_f64() * 1000.0, shown.items.len(), text.len() / 1000);
         if std::env::var_os("SIOUL_MEASURE_MAILBOX").is_none() {
@@ -3270,8 +3254,8 @@ mod tests {
     /// What the mailbox does not show now, said with what brings it back:
     /// leisure's mail resting as the hours say (an address for leisure syncs),
     /// admin's left out (no address for it), an address switched off in this
-    /// list, older mail; your own ticks said as unticked; the list's end said
-    /// older, then nothing older.
+    /// list; your own ticks said as unticked; never older mail (no horizon),
+    /// and no line at the list's end.
     #[test]
     fn what_the_mailbox_hides_is_said_with_its_way_back() {
         use sioul_core::config::{Security, Config};
@@ -3280,19 +3264,16 @@ mod tests {
         home.area = Some("leisure".into());
         let work = Account::imap("work", "noa@work.example.org", "imap.example.org", 993, Security::Tls, None);
         let config = Config { accounts: vec![work, home], ..Config::default() };
-        let page = |earlier: bool, windows: u32| Page { rows: Vec::new(), resting: Vec::new(), addresses: Vec::new(), earlier, more: false, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows };
+        let page = Page { rows: Vec::new(), resting: Vec::new(), addresses: Vec::new(), earlier: true, more: false, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let ask = Ask { filter: Some(Filter { areas: sioul_core::areas::Area::WORK, off: vec!["home".into()] }), ..Ask::default() };
         let shown = sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: String::new(), own: false };
-        let parts = hidden_parts(&config, &page(true, 1), &ask, &shown);
-        assert_eq!(parts.iter().map(|p| p.act.as_str()).collect::<Vec<_>>(), ["tick:leisure", "on:home", "earlier"], "{parts:?}");
+        let parts = hidden_parts(&config, &ask, &shown);
+        assert_eq!(parts.iter().map(|p| p.act.as_str()).collect::<Vec<_>>(), ["tick:leisure", "on:home"], "{parts:?}");
         assert_eq!(parts[0].text, tr().text("mailbox-hidden-rests-leisure", None));
         assert!(parts[1].text.contains("noa@home.example.org"), "the address by its name: {}", parts[1].text);
-        assert_eq!(parts[2].text, older_line(1));
         let own = sioul_core::areafilter::Shown { own: true, ..shown.clone() };
-        assert_eq!(hidden_parts(&config, &page(false, 2), &Ask::default(), &own).iter().map(|p| p.text.clone()).collect::<Vec<_>>(), [tr().text("mailbox-hidden-unticked-leisure", None)], "your own ticks; nothing older");
-        assert_ne!(older_line(1), older_line(2), "two weeks, then four");
-        let end = |p: &Page| serde_json::from_str::<serde_json::Value>(&page_texts(p, &ask, &shown, &parts)[0]).unwrap()["end"].as_str().unwrap_or_default().to_string();
-        assert_eq!(end(&page(true, 1)), say("mailbox-older-end", &[("older", older_line(1))]));
-        assert_eq!(end(&page(false, 1)), tr().text("mailbox-nothing-older", None), "never a blank end");
+        assert_eq!(hidden_parts(&config, &Ask::default(), &own).iter().map(|p| p.text.clone()).collect::<Vec<_>>(), [tr().text("mailbox-hidden-unticked-leisure", None)], "your own ticks");
+        let head: serde_json::Value = serde_json::from_str(&page_texts(&page, &ask, &shown, &parts)[0]).unwrap();
+        assert!(head.get("end").is_none() && head.get("earlier").is_none() && head.get("windows").is_none(), "no line at the list's end: {head}");
     }
 }

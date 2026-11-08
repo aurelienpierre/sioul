@@ -107,9 +107,9 @@ Item {
             && (ask.query === "" || r.subject.toLowerCase().indexOf(ask.query.toLowerCase()) >= 0))
         const shown = rows.slice(0, ask.rows || 60)
         const marks = [root.marks.work, root.marks.home].map(m => Object.assign({ on: mock.off.indexOf(m.account) < 0 }, m))
-        // What is not shown, as `mail::hidden_parts` says it: an address switched off, older mail.
-        const hidden = mock.off.map(id => ({ text: "off:" + id, act: "on:" + id, button: "mailbox-hidden-switch-on" })).concat(ask.windows < 2 ? [{ text: "older", act: "earlier", button: "mailbox-show-older" }] : [])
-        const head = { resting: [], hidden: hidden, end: ask.windows < 2 ? "older:" : "mailbox-nothing-older", addresses: marks, filter: root.shownFilter(), earlier: ask.windows < 2, sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: "", windows: ask.windows, prefix: root.prefix }
+        // What is not shown, as `mail::hidden_parts` says it: an address switched off.
+        const hidden = mock.off.map(id => ({ text: "off:" + id, act: "on:" + id, button: "mailbox-hidden-switch-on" }))
+        const head = { resting: [], hidden: hidden, addresses: marks, filter: root.shownFilter(), sentence: rows.length === 0 ? "mail-empty" : "", chip: ask.chip, account: "", prefix: root.prefix }
         const pages = []
         for (let start = 0; start === 0 || start < shown.length; start += 60) {
             const part = shown.slice(start, start + 60)
@@ -138,6 +138,7 @@ Item {
         property var gone: []
         property var moved: []
         property var openedFolders: []
+        property var folderRowsAsked: []
         // The filter as kept: your ticks (null: as the hours say), the addresses switched off.
         property var ticked: null
         property var off: []
@@ -181,6 +182,7 @@ Item {
         }
         function openFolder(account, folder, all, query) {
             mock.openedFolders = mock.openedFolders.concat([account + "/" + folder])
+            mock.folderRowsAsked = mock.folderRowsAsked.concat([all])
         }
         function actMany(keys, action) {
             mock.acted = mock.acted.concat([{ keys: JSON.parse(keys), action: action }])
@@ -481,7 +483,7 @@ Item {
             menuItem(page, "ui-junk").triggered()
             // A folder's row your filter flagged: the same buttons.
             const flagged = { key: "/stand-in/mail/work/cur/17770008.U7-8.sioul:2,S", uri: "mid:f8@example.org", who: "Ben", address: "ben@example.org", subject: "A doubt", date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false, spam: "maybe spam" }
-            mock.mailFolder = JSON.stringify({ items: [flagged], title: "Inbox", sentence: "", role: "inbox", earlier: false })
+            mock.mailFolder = JSON.stringify({ items: [flagged], title: "Inbox", sentence: "", role: "inbox", more: false })
             page.openFolder("work", "INBOX")
             tryVerify(() => find(page, "folderList").count === 1)
             wait(50)
@@ -513,35 +515,22 @@ Item {
             mock.kept = "{}"
         }
 
-        // What is not shown now, said at the list's head, each with what brings it
-        // back: an address switched off here comes on again, older mail comes; the
-        // list's end says it too, then that nothing older is kept (5 November 2026).
+        // What is not shown now, said at the list's head, with what brings it
+        // back: an address switched off here comes on again. No horizon: no
+        // older mail said, no line at the list's end (8 November 2026).
         function test_what_is_hidden_is_said_with_what_brings_it_back() {
             const page = made()
+            verify(!find(page, "mailboxHidden").visible, "nothing hidden: no head line")
+            verify(find(page, "mailboxEnd") === null && find(page, "mailboxEarlier") === null, "no line at the list's end")
+            verify(lastAsk().windows === undefined, "the window asks no weeks")
             page.switchAddress("home", false)
             tryVerify(() => find(page, "mailboxHidden").visible)
             const acts = () => all(find(page, "mailboxHidden"), c => c.objectName === "mailboxHiddenAct" && c.visible)
-            tryCompare(acts(), "length", 2)
-            compare(acts().map(b => b.text).join(" | "), "mailbox-hidden-switch-on | mailbox-show-older")
+            tryCompare(acts(), "length", 1)
+            compare(acts()[0].text, "mailbox-hidden-switch-on")
             acts()[0].clicked()
             compare(mock.off.length, 0, "switched on again")
-            tryCompare(acts(), "length", 1)
-            const end = find(page, "mailboxEnd")
-            verify(end.visible && all(end, c => c.text === "older:").length === 1, "the end says what is older")
-            acts()[0].clicked()
-            compare(lastAsk().windows, 2)
             tryVerify(() => !find(page, "mailboxHidden").visible)
-            tryVerify(() => all(end, c => c.text === "mailbox-nothing-older" && c.visible).length === 1, 3000, "never a blank end")
-        }
-
-        // "Earlier messages": two more weeks, asked of Rust.
-        function test_earlier_adds_two_weeks() {
-            const page = made()
-            const earlier = find(page, "mailboxEarlier")
-            verify(earlier.visible)
-            earlier.clicked()
-            compare(lastAsk().windows, 2)
-            verify(!find(page, "mailboxEarlier").visible)
         }
 
         // A tap opens through the window's one opener, by its address, its file a
@@ -680,7 +669,7 @@ Item {
         // the other's rows, not even for a moment (a warning would say so).
         function test_neither_list_is_handed_the_other_s_rows() {
             const page = made()
-            mock.mailFolder = JSON.stringify({ items: [{ key: "/stand-in/mail/work/cur/17770000.U7-9.sioul:2,S", uri: "mid:f9@example.org", who: "Ben", address: "ben@example.org", subject: "In the inbox", date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false }], title: "Inbox", sentence: "", role: "inbox", earlier: false })
+            mock.mailFolder = JSON.stringify({ items: [{ key: "/stand-in/mail/work/cur/17770000.U7-9.sioul:2,S", uri: "mid:f9@example.org", who: "Ben", address: "ben@example.org", subject: "In the inbox", date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false }], title: "Inbox", sentence: "", role: "inbox", more: false })
             failOnWarning(/undefined|TypeError|ReferenceError/)
             page.openFolder("work", "INBOX")
             compare(page.listItems.map(r => r.subject), ["In the inbox"])
@@ -697,7 +686,7 @@ Item {
         function test_a_flagged_message_says_so_in_its_folder() {
             const page = made()
             const row = (n, subject, spam) => ({ key: "/stand-in/mail/work/cur/1777000" + n + ".U7-" + n + ".sioul:2,S", uri: "mid:f" + n + "@example.org", who: "Ben", address: "ben@example.org", subject: subject, date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false, spam: spam })
-            mock.mailFolder = JSON.stringify({ items: [row(1, "A doubt", "maybe spam"), row(2, "A friend", "")], title: "Inbox", sentence: "", role: "inbox", earlier: false })
+            mock.mailFolder = JSON.stringify({ items: [row(1, "A doubt", "maybe spam"), row(2, "A friend", "")], title: "Inbox", sentence: "", role: "inbox", more: false })
             page.openFolder("work", "INBOX")
             tryVerify(() => find(page, "folderList").count === 2)
             wait(50)
@@ -706,17 +695,40 @@ Item {
             mock.mailFolder = ""
         }
 
+        // A folder has no horizon either (8 November 2026): its first sixty rows,
+        // the next sixty asked as its end comes into view, no "Earlier" button.
+        function test_a_folder_comes_by_pages() {
+            const page = made()
+            const row = n => ({ key: "/stand-in/mail/work/cur/1777" + (1000 + n) + ".U7-" + n + ".sioul:2,S", uri: "mid:p" + n + "@example.org", who: "Ben", address: "ben@example.org", subject: "Note " + n, date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false })
+            const rows = n => Array.from({ length: n }, (_, i) => row(i))
+            mock.folderRowsAsked = []
+            mock.mailFolder = JSON.stringify({ items: rows(60), title: "Inbox", sentence: "", role: "inbox", more: true })
+            page.openFolder("work", "INBOX")
+            compare(mock.folderRowsAsked[0], 60)
+            const list = find(page, "folderList")
+            tryCompare(list, "count", 60)
+            list.positionViewAtEnd()
+            tryVerify(() => mock.folderRowsAsked.length === 2)
+            compare(mock.folderRowsAsked[1], 120)
+            mock.mailFolder = JSON.stringify({ items: rows(90), title: "Inbox", sentence: "", role: "inbox", more: false })
+            tryCompare(list, "count", 90)
+            tryVerify(() => list.contentY > 0, 2000, "the list where it was, not at its top: " + list.contentY)
+            list.positionViewAtEnd()
+            wait(50)
+            compare(mock.folderRowsAsked.length, 2, "nothing more asked once the folder says so")
+            mock.mailFolder = ""
+        }
+
         // The list comes by pages of sixty (§6): the first at once, the next as
-        // the list's end comes into view, never the list again; "Earlier
-        // messages" past the window's end; a page published again changes its
-        // rows in place, the list where it was.
+        // the list's end comes into view, never the list again, nothing said at
+        // its end; a page published again changes its rows in place, the list
+        // where it was.
         function test_the_list_comes_by_pages() {
             mock.bulk = 130
             const page = made()
             compare(lastAsk().rows, 60)
             verify(lastAsk().fresh, "the first page: new to the list")
             compare([page.boxRows.length, page.boxMore], [60, true])
-            verify(!find(page, "mailboxEarlier").visible, "Earlier waits for the window's end")
             const list = boxList(page)
             list.positionViewAtEnd()
             tryCompare(page.boxRows, "length", 120)
@@ -724,7 +736,6 @@ Item {
             list.positionViewAtEnd()
             // Three of the stand-in's rows (home's own left out by the filter) and the 130.
             tryVerify(() => page.boxRows.length === 133 && !page.boxMore)
-            tryVerify(() => find(page, "mailboxEarlier").visible)
             compare(boxModel(page).count, 133)
             // Page two again, one subject changed: in place, nothing else moves.
             list.positionViewAtIndex(70, ListView.Beginning)

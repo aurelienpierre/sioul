@@ -404,15 +404,6 @@ mailbox-hidden-unticked-leisure = leisure mail, left unticked in the filter
 mailbox-hidden-off = { $address }, switched off in this list (its mail stays in its inbox)
 mailbox-hidden-show-area = Show it
 mailbox-hidden-switch-on = Switch it on
-mailbox-older =
-    { $weeks ->
-        [2] Mail older than two weeks
-        [4] Mail older than four weeks
-       *[other] Mail older than { $weeks } weeks
-    }
-mailbox-show-older = Show older…
-mailbox-older-end = { $older }:
-mailbox-nothing-older = Nothing older is kept here.
 area-filter-work = Work
 area-filter-admin = Admin
 area-filter-leisure = Leisure
@@ -870,7 +861,6 @@ mail-to-whom = To { $names }
 mail-nobody = nobody yet
 mail-no-subject = (no subject)
 mail-empty = Nothing here.
-mail-nothing-recent = Nothing in the last two weeks.
 mail-not-found = Nothing matches “{ $query }”.
 mail-unread = { $n ->
     [one] One message you have not read.
@@ -913,7 +903,6 @@ ui-more-folders = More folders
 ui-no-mail-accounts = No mail account yet: add one in Accounts.
 ui-folders = Back to the folders
 ui-search = Search
-ui-earlier = Earlier messages
 ui-discard = Delete the draft
 
 ## Searching the mail by conditions (mailsearch.rs, MailSearch.qml): the mail filters' own conditions.

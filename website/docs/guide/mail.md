@@ -10,7 +10,7 @@ The Mail page keeps all your mail, from every address, for when you choose to lo
 
 <figure markdown="span">
   [![The Mail page: an address unfolded with its folders (Inbox, Sent, Drafts, Archive, Junk, Trash) and another folded below it; in the middle, the inbox: "Seven messages you have not read.", then one line per message with who, what and when, a small dot before the unread ones; a search field and the Real time box at the top.](../assets/screens/mail.png){ loading=lazy }](../assets/screens/mail.png "Open the picture at full size")
-  <figcaption>Folders on the left, the last two weeks in the middle, no counts.</figcaption>
+  <figcaption>Folders on the left, the newest mail in the middle, no counts.</figcaption>
 </figure>
 
 ## Protected by default {#what-is-protected}
@@ -36,8 +36,8 @@ Once you set them up:
 - **Chips above the list**: **All**, **Unread**, **Sent**, **Spam**, one at a time. What you chose stays on this device. Spam waits under its own chip, with its quiet word ("probably spam", "your provider: spam"); what you said is not spam stays in the list.
 - **What shows, by area and by address**: beside the chips, a button says what the list shows, "Admin · Leisure". It opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say: work's addresses in working hours, your admin's in admin hours, leisure's the rest of the time, and none while you sleep ([Hours](hours.md)). Tick another, and it shows at once; your ticks hold until the hours change (a day at most), and **As the hours say** sets them back. After them, each address's square switches it off or on; switched off, only its outline shows. The list holds the mail of the addresses switched on whose area is ticked (an address whose use you did not say counts as work: Accounts, "What this address is for"). On a phone, the filter is in the folders button's sheet, each address there by its whole name. The **?** in the filter says the same in short.
 - **Calm**: mail whose time has not come yet (your lists say later) shows without its dot. Mail from blocked senders never shows; a shielded address's hostile mail shows as "Someone at example.org", its words hidden.
-- **What is not shown now** is said at the head of the list, each with what brings it back: an area whose mail rests as your hours say, or that you left unticked (**Show it**); an address switched off in this list, which only hides it here, its mail staying in its inbox (**Switch it on**); mail older than two weeks (**Show older…**).
-- **Two weeks**, then, at the end of the list, "Mail older than two weeks:" **Show older…** adds two more each time, until "Nothing older is kept here."; a crowded fortnight comes as you scroll. The search above it looks through every address; **More…** opens the search by conditions.
+- **What is not shown now** is said at the head of the list, each with what brings it back: an area whose mail rests as your hours say, or that you left unticked (**Show it**); an address switched off in this list, which only hides it here, its mail staying in its inbox (**Switch it on**).
+- **Everything this device keeps**, newest first: scroll down until you are done, and older mail comes as you scroll. Nothing at the end of the list says more exists; how far back mail is kept is a setting of each address (Accounts). The search above it looks through every address; **More…** opens the search by conditions.
 - **A click opens a message** beside the list; Back closes it, the list where it was. Ctrl and Shift choose several, across addresses, to mark them read, archive, delete or move them at once, or drag them onto a folder. A right click offers what a folder's row offers. A message that reached two of your addresses is one row: marking it read or deleting it does so in both.
 - **Each address has its own letter** on its colour, never the same letter twice, so two addresses that start alike still read apart.
 - **On a phone**, a tap opens a message over the list, and Back brings the list back where it was. A long press on a row opens its menu; **Select** there begins a selection, a tap then adds the next. The folders button shows your addresses and their folders. When the list shows, Sioul brings the other folders at once, as **Fetch mail now** would, so that what you sent from your computer is there too.
@@ -47,7 +47,7 @@ Once you set them up:
 
 - **On the left**, each address with its main folders: Inbox, Sent, Drafts, Archive, Junk, Trash. The others are folded under **More folders**.
 - **A small dot** marks a folder with something new. How many is said in words when you open it.
-- **A folder shows its last two weeks.** **Earlier messages** opens the rest, so that no list is endless.
+- **A folder shows everything this device keeps**, newest first; older mail comes as you scroll.
 - **Search**, at the top of a folder: by sender, recipient and subject. **More…**, beside it, searches everywhere, by conditions ([below](#searching)).
 - **By conversation**, in the Mail page's ⚙: a message and its answers together, under the newest one; your own answers come from Sent.
 - **Quick to open**: each folder keeps a small index of what its messages say (who, to whom, the subject, the date), read from each message once, ever, and kept on this device alone, readable by you alone. A folder's list reads that index, never every message again; only the message you open is read whole.
