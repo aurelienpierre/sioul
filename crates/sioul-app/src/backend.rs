@@ -693,6 +693,11 @@ pub mod qobject {
         #[qinvokable]
         fn turn_agendas(self: Pin<&mut Sioul>, ids: &QString, on: bool) -> QString;
 
+        /// The same from a full list of tasks, which the hours never shape
+        /// (`agenda::turn_by_hand`); returns what went wrong, else "".
+        #[qinvokable]
+        fn turn_agendas_by_hand(self: Pin<&mut Sioul>, ids: &QString, on: bool) -> QString;
+
         /// "As the hours say": the filter's word taken back.
         #[qinvokable]
         fn agendas_as_hours(self: Pin<&mut Sioul>) -> QString;
@@ -5315,6 +5320,14 @@ impl qobject::Sioul {
 
     fn set_agenda_view(self: Pin<&mut Self>, view: &QString) -> QString {
         QString::from(&crate::agenda::set_view(&view.to_string()))
+    }
+
+    fn turn_agendas_by_hand(self: Pin<&mut Self>, ids: &QString, on: bool) -> QString {
+        let ids: Vec<String> = serde_json::from_str(&ids.to_string()).unwrap_or_default();
+        let problem = crate::agenda::turn_by_hand(&ids, on);
+        crate::agenda::show_agenda(&self.qt_thread(), &self.shared());
+        work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
     }
 
     fn turn_agendas(self: Pin<&mut Self>, ids: &QString, on: bool) -> QString {

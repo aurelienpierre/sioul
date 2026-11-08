@@ -35,6 +35,12 @@ Item {
             mock.turned = mock.turned.concat([{ ids: JSON.parse(ids), on: on }])
             return ""
         }
+        // From a full list of tasks: the hours aside (`turn_agendas_by_hand`).
+        property var byHand: []
+        function turnAgendasByHand(ids, on) {
+            mock.byHand = mock.byHand.concat([{ ids: JSON.parse(ids), on: on }])
+            return ""
+        }
         function agendasAsHours() {
             mock.hours++
             return ""
@@ -137,6 +143,21 @@ Item {
             verify(button.visible, "your word holds: the hours offered back")
             mouseClick(button)
             compare(mock.hours, 1)
+        }
+
+        // A full list's filter (the task list, 8 November 2026): its boxes ask
+        // for your word against "shown unless kept hidden", never the hours'.
+        function test_a_full_lists_filter_turns_by_hand() {
+            const filter = make(root.shown, false)
+            filter.byHand = true
+            const list = filter.open()
+            wait(50)
+            const lines = root.all(list.contentItem, c => c.objectName === "agendaLine" && c.visible)
+            const before = mock.turned.length
+            mouseClick(lines[0])
+            compare(JSON.stringify(mock.byHand[mock.byHand.length - 1]), JSON.stringify({ ids: ["a/home"], on: false }), "turned by hand")
+            compare(mock.turned.length, before, "never the hours' way")
+            filter.close()
         }
 
         // A group folds to its line, its box kept.

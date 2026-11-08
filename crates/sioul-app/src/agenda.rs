@@ -562,7 +562,20 @@ impl FilterNow {
     /// pages) or tasks (the task views), grouped by whose they are, yours
     /// first, each with whether it shows now and whether the hours would show it.
     pub(crate) fn shown(&self, tasks: bool) -> FilterShown {
+        self.shown_as(tasks, false)
+    }
+
+    /// The places of the agendas the full lists leave out: your word alone,
+    /// never the hours (`agendas::hidden_by_hand`).
+    pub(crate) fn hidden_by_hand(&self) -> std::collections::BTreeSet<String> {
+        sioul_core::agendas::hidden_by_hand(&self.agendas, self.hours, self.over.as_ref(), &self.kept, self.now)
+    }
+
+    /// The filter as the full lists show it (`full`): each agenda on unless
+    /// your word leaves it out, whatever the hours; else as `shown`.
+    pub(crate) fn shown_as(&self, tasks: bool, full: bool) -> FilterShown {
         use sioul_core::agendas::{Whose, default_on, shown};
+        let by_hand = if full { self.hidden_by_hand() } else { std::collections::BTreeSet::new() };
         let mut groups: Vec<GroupShown> = Vec::new();
         let mut sorted: Vec<&sioul_core::agendas::Agenda> = self.agendas.iter().filter(|a| if tasks { a.tasks } else { a.events }).collect();
         sorted.sort_by(|a, b| (a.whose, a.person.to_lowercase(), a.name.to_lowercase(), &a.id).cmp(&(b.whose, b.person.to_lowercase(), b.name.to_lowercase(), &b.id)));
@@ -585,8 +598,8 @@ impl FilterNow {
                     id: agenda.id.clone(),
                     name: agenda.name.clone(),
                     colour: agenda.colour.clone(),
-                    on: shown(agenda, self.hours, self.over.as_ref(), &self.out, self.now),
-                    usual: default_on(agenda, self.hours, &self.out),
+                    on: if full { !by_hand.contains(&agenda.id) } else { shown(agenda, self.hours, self.over.as_ref(), &self.out, self.now) },
+                    usual: if full { !self.kept.contains(&agenda.id) } else { default_on(agenda, self.hours, &self.out) },
                     kept: self.kept.contains(&agenda.id),
                 });
             }
@@ -663,6 +676,12 @@ struct AgendaShown {
 /// lock. Returns what went wrong, else "".
 pub(crate) fn turn(ids: &[String], on: bool) -> String {
     write_filter(|now| sioul_core::agendas::turned(now.over.as_ref(), &now.agendas, ids, on, now.hours, &now.out, now.now))
+}
+
+/// Agendas turned on or off from a full list (`agendas::turned_by_hand`):
+/// your word against "shown unless kept hidden", the hours aside.
+pub(crate) fn turn_by_hand(ids: &[String], on: bool) -> String {
+    write_filter(|now| sioul_core::agendas::turned_by_hand(now.over.as_ref(), &now.agendas, ids, on, now.hours, &now.kept, now.now))
 }
 
 /// A set chosen by hand (part 4): its agendas shown, every other left out,

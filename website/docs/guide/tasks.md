@@ -154,7 +154,9 @@ One switch away from Now:
 
 Three choices at the top of the page, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices.
 
-**Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)): a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out of every view, Now included, the plan whole. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
+**Your hours shape Now alone.** List, Board and Gantt show every task, work, admin and leisure, whatever the hour, as the mailbox and Budgets do: a work task is there in the evening too. Now stays calm and shows what the hour is for.
+
+**Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)). On Now, a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out, the plan whole. On List, Board and Gantt, only what you said leaves a list out: one you unticked there or keep hidden; the hours never do. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
 
 ## A task, open {#a-task-open}
 

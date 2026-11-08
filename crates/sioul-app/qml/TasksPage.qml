@@ -337,7 +337,9 @@ Item {
 
                     sioul: page.sioul
                     theme: page.theme
-                    shown: page.shown && page.shown.agendas ? page.shown.agendas : ({ chosen: false, groups: [] })
+                    // Now follows the hours; the full views show every task whatever the hour.
+                    byHand: page.mode !== "now"
+                    shown: page.shown && page.shown.agendas ? (tasksAgendas.byHand && page.shown.agendas_full ? page.shown.agendas_full : page.shown.agendas) : ({ chosen: false, groups: [] })
                     narrow: page.narrow
                     iconOnly: true
                 }
