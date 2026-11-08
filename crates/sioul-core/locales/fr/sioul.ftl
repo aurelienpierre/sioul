@@ -419,24 +419,8 @@ mailbox-rests = { $address } se repose jusqu’à { $until }.
 mailbox-rests-sleep = Toutes les adresses se reposent pendant votre sommeil, jusqu’à { $until }.
 mailbox-filter-help = Montre les courriels des adresses activées, pour ce qui est coché. Les cases suivent vos heures, et rien n’est coché pendant votre sommeil ; ce que vous cochez vous-même tient jusqu’au changement d’heures. Une adresse dont l’usage n’est pas dit compte comme travail.
 mailbox-hidden-head = Pas affiché pour l’instant :
-mailbox-hidden-rests-work = les courriels du travail, qui attendent comme vos heures le disent
-mailbox-hidden-rests-admin = les courriels de vos démarches, qui attendent comme vos heures le disent
-mailbox-hidden-rests-leisure = les courriels des loisirs, qui attendent comme vos heures le disent
-mailbox-hidden-unticked-work = les courriels du travail, décochés dans le filtre
-mailbox-hidden-unticked-admin = les courriels de vos démarches, décochés dans le filtre
-mailbox-hidden-unticked-leisure = les courriels des loisirs, décochés dans le filtre
 mailbox-hidden-off = { $address }, éteinte dans cette liste (ses courriels restent dans sa boîte de réception)
-mailbox-hidden-show-area = Les afficher
 mailbox-hidden-switch-on = La rallumer
-mailbox-older =
-    { $weeks ->
-        [2] Les courriels de plus de deux semaines
-        [4] Les courriels de plus de quatre semaines
-       *[other] Les courriels de plus de { $weeks } semaines
-    }
-mailbox-show-older = Afficher les plus anciens…
-mailbox-older-end = { $older } :
-mailbox-nothing-older = Rien de plus ancien n’est gardé ici.
 area-filter-work = Travail
 area-filter-admin = Démarches
 area-filter-leisure = Loisirs
@@ -894,7 +878,6 @@ mail-to-whom = À { $names }
 mail-nobody = personne encore
 mail-no-subject = (sans objet)
 mail-empty = Rien ici.
-mail-nothing-recent = Rien ces deux dernières semaines.
 mail-not-found = Rien ne correspond à « { $query } ».
 mail-unread = { $n ->
     [one] Un courriel que vous n’avez pas lu.
@@ -940,7 +923,6 @@ ui-more-folders = Autres dossiers
 ui-no-mail-accounts = Pas encore de compte de courriel : ajoutez-en un dans Comptes.
 ui-folders = Revenir aux dossiers
 ui-search = Chercher
-ui-earlier = Courriels plus anciens
 ui-discard = Supprimer le brouillon
 
 ## Chercher dans les courriels par conditions (mailsearch.rs, MailSearch.qml) : les conditions des filtres.
@@ -7909,6 +7891,8 @@ topic-none = Aucun thème
 topic-new = Nouveau thème…
 topic-new-name = Le nom du nouveau thème
 topic-make = Le créer
+topic-edit = Renommer ou retirer…
+topic-edit-done = Terminé
 topic-always = Toujours { $topic } pour cet expéditeur
 topic-never = Jamais { $topic } pour cet expéditeur
 topic-why-yours = donné par vous

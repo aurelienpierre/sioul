@@ -107,11 +107,11 @@ Item {
     // Sioul's own drafts, instead of a folder.
     property bool draftsShown: false
     // "All addresses": every address's mail in time order, instead of a folder
-    // (`mailbox::page`): its chip (all, unread, sent, spam), its two-week
-    // windows; its filter is kept by Rust (`mail::mailbox_filter`).
+    // (`mailbox::page`): its chip (all, unread, sent, spam), everything kept
+    // (no horizon), by pages as the list's end shows; its filter is kept by
+    // Rust (`mail::mailbox_filter`).
     property bool boxShown: false
-    // Its head as its last page said it (`mail::page_texts`): earlier mail
-    // kept, its sentence, the filter, the marks switched on or off; its rows in `boxModel`
+    // Its head as its last page said it (`mail::page_texts`): its sentence, the filter, the marks switched on or off; its rows in `boxModel`
     // (one ListView reusing its rows, the day as its section) and, as plain
     // rows for the menu, the selection and the opener, `boxRows`. `boxMore`:
     // the window holds more than the rows come, asked for when the list's end
@@ -126,10 +126,12 @@ Item {
     property string boxTopic: ""
     // How many topics there are: the filter shows once there is one, read again after each act.
     property int topicsCount: 0
-    property int boxWindows: 1
     // The mailbox's own list, not a search's.
     readonly property bool boxListed: page.boxShown && !page.searchOpen && !page.draftsShown
-    property bool all: false
+    // A folder's rows asked for (`view::folder`): a page, one more each time
+    // its end shows; where the list was, kept while the next page comes.
+    property int folderRows: page.boxPage
+    property real folderKeepY: -1
     property string query: ""
     // The message being read, by its file, and its row.
     property string openKey: ""
@@ -265,7 +267,7 @@ Item {
     // The mailbox as chosen, asked of Rust (`open_mailbox`): `fresh` when the
     // list holds nothing, every page then new to it.
     function boxAsk(fresh) {
-        return JSON.stringify({ chip: page.boxChip, windows: page.boxWindows, query: page.query, rows: page.boxWanted, fresh: fresh === true, topic: page.boxTopic })
+        return JSON.stringify({ chip: page.boxChip, query: page.query, rows: page.boxWanted, fresh: fresh === true, topic: page.boxTopic })
     }
 
     // Asked anew (another chip, search or filter): the list emptied, its first page asked for.
@@ -297,7 +299,7 @@ Item {
     // place, so that the list keeps where it was.
     function applyBoxPage(text) {
         const got = JSON.parse(text)
-        page.box = { earlier: got.earlier, sentence: got.sentence, hidden: got.hidden || [], end: got.end || "", addresses: got.addresses, filter: got.filter || null, chip: got.chip, windows: got.windows }
+        page.box = { sentence: got.sentence, hidden: got.hidden || [], addresses: got.addresses, filter: got.filter || null, chip: got.chip }
         const rows = got.rows.map(r => page.boxRowOf(r, got.prefix || ""))
         const start = Math.min(got.start, page.boxRows.length)
         const end = start + rows.length
@@ -343,9 +345,7 @@ Item {
         page.account = ""
         page.folder = ""
         page.draftsShown = false
-        page.all = false
         page.query = ""
-        page.boxWindows = 1
         page.foldersShown = false
         page.boxShown = true
         page.askBoxAgain()
@@ -358,10 +358,9 @@ Item {
         boxList.positionViewAtBeginning()
     }
 
-    // A chip: one at a time; the list starts again from its last two weeks.
+    // A chip: one at a time; the list starts again from its newest.
     function chooseChip(chip) {
         page.boxChip = chip
-        page.boxWindows = 1
         page.clearSelection()
         page.askBoxAgain()
     }
@@ -369,15 +368,24 @@ Item {
     // A topic's mail alone, or every message ("").
     function chooseTopic(topic) {
         page.boxTopic = topic
-        page.boxWindows = 1
         page.clearSelection()
         page.askBoxAgain()
     }
 
     // "Topic…" on rows (their keys) under `item` (null: in the middle, from a menu): one
-    // row's current topic and sender's rules, or several's.
+    // row's current topic and sender's rules, or several's; the topic they all have
+    // ticked (a doubt of Sioul's is no topic there), in the mailbox and in a folder alike.
     function askTopic(item, keys, row) {
-        topicMenu.openAt(item, JSON.stringify(page.rowsOf(keys)), keys.length === 1 ? keys[0] : "", row && keys.length === 1 ? (row.topic_id || "") : "")
+        topicMenu.openAt(item, JSON.stringify(page.rowsOf(keys)), keys.length === 1 ? keys[0] : "", page.sharedTopic(keys, row))
+    }
+
+    // The topic every row of `keys` has, sure; "" when they differ or one has none.
+    function sharedTopic(keys, row) {
+        const sure = r => r && r.topic_why !== "maybe" ? (r.topic_id || "") : ""
+        if (row && keys.length === 1)
+            return sure(row)
+        const topics = keys.map(key => sure(page.listItems.find(item => page.sameMessage(item.key, key))))
+        return topics.length > 0 && topics.every(t => t !== "" && t === topics[0]) ? topics[0] : ""
     }
 
     // "Topic…" for the first row with a topic, in the middle (the pictures' step list "topics").
@@ -423,21 +431,13 @@ Item {
         page.sioul.switchMailAddress(id, on)
         page.filterAgain()
     }
-    // What the head of the mailbox says is not shown, brought back: an area
-    // ticked with those ticked now, an address switched on, two more weeks.
+    // What the head of the mailbox says is not shown, brought back: an address
+    // switched on (an area is the filter's button's own: never said there).
     function bringBack(act) {
-        if (act === "earlier") {
-            page.boxEarlier()
-        } else if (act.indexOf("tick:") === 0) {
-            const now = page.box && page.box.filter ? page.box.filter : {}
-            const areas = ["work", "admin", "leisure"].filter(a => a === act.slice(5) || now[a] === true)
-            page.tickAreas(areas.join("+"))
-        } else if (act.indexOf("on:") === 0) {
+        if (act.indexOf("on:") === 0)
             page.switchAddress(act.slice(3), true)
-        }
     }
     function filterAgain() {
-        page.boxWindows = 1
         page.clearSelection()
         page.askBoxAgain()
     }
@@ -447,13 +447,6 @@ Item {
     // provider's word on it, or it lies in a junk folder.
     function settles(item) {
         return !!item && !item.server && (!!item.spam || !!item.flag || (item.role || page.listRole) === "junk")
-    }
-
-    // "Earlier messages": two more weeks, their first page after the rows held.
-    function boxEarlier() {
-        page.boxWindows = page.boxWindows + 1
-        page.boxWanted = page.boxRows.length + page.boxPage
-        page.sioul.openMailbox(page.boxAsk(false))
     }
 
     // A row's menu, "Select": the selection begins with it; then a tap chooses.
@@ -724,10 +717,29 @@ Item {
         page.folder = folder
         page.draftsShown = false
         page.boxShown = false
-        page.all = false
         page.query = ""
         page.foldersShown = false
-        page.sioul.openFolder(account, folder, false, "")
+        page.folderRows = page.boxPage
+        page.folderKeepY = -1
+        page.sioul.openFolder(account, folder, page.folderRows, "")
+    }
+
+    // The folder's rows given again, longer: the list where it was before the next page came.
+    function restoreFolderY() {
+        if (page.folderKeepY < 0)
+            return
+        list.forceLayout()
+        list.contentY = Math.min(page.folderKeepY, Math.max(0, list.contentHeight - list.height))
+        page.folderKeepY = -1
+    }
+
+    // A folder's list end in sight while it holds more: its next page, the list kept where it was.
+    function folderMoreRows() {
+        if (page.searchOpen || page.boxShown || !page.shown || !page.shown.more || page.folderRows > page.folderItems.length)
+            return
+        page.folderRows = page.folderItems.length + page.boxPage
+        page.folderKeepY = list.contentY
+        page.sioul.openFolder(page.account, page.folder, page.folderRows, page.query)
     }
 
     // The first account open, unless you chose; in quiet time, the first of yours.
@@ -861,10 +873,13 @@ Item {
 
         interval: 300
         onTriggered: {
-            if (page.boxShown)
+            if (page.boxShown) {
                 page.askBoxAgain()
-            else
-                page.sioul.openFolder(page.account, page.folder, page.all, page.query)
+            } else {
+                page.folderRows = page.boxPage
+                page.folderKeepY = -1
+                page.sioul.openFolder(page.account, page.folder, page.folderRows, page.query)
+            }
         }
     }
 
@@ -1399,9 +1414,8 @@ Item {
                 wrapMode: Text.Wrap
                 color: page.searchOpen ? page.theme.text : page.theme.muted
             }
-            // What the mailbox does not show now, each with what brings it back
-            // (`mail::hidden_parts`): an area resting by your hours or left unticked,
-            // an address switched off in this list, older mail. On a phone too.
+            // What the mailbox does not show now, with what brings it back
+            // (`mail::hidden_parts`): an address switched off in this list. On a phone too.
             ColumnLayout {
                 objectName: "mailboxHidden"
                 visible: !page.draftsShown && !page.searchOpen && page.boxShown && page.box !== null && (page.box.hidden || []).length > 0
@@ -1514,6 +1528,18 @@ Item {
                 // The mailbox draws its own rows (`boxList`): none made here meanwhile.
                 model: page.boxListed ? [] : page.folderItems
                 ScrollBar.vertical: ScrollBar {}
+                // The list's end in sight: the folder's next page, while it holds more;
+                // the rows come back where they were.
+                onAtYEndChanged: {
+                    if (list.atYEnd)
+                        page.folderMoreRows()
+                }
+                onCountChanged: {
+                    if (page.folderKeepY >= 0 && list.count > 0)
+                        Qt.callLater(page.restoreFolderY)
+                    else if (list.atYEnd)
+                        Qt.callLater(page.folderMoreRows)
+                }
                 Keys.onPressed: event => {
                     if (event.matches(StandardKey.SelectAll)) {
                         page.selectAll()
@@ -1719,16 +1745,6 @@ Item {
                     }
                 }
 
-                footer: Button {
-                    visible: !page.searchOpen && page.shown !== null && page.shown.earlier
-                    height: visible ? implicitHeight + 16 : 0
-                    flat: true
-                    text: page.sioul.text("ui-earlier")
-                    onClicked: {
-                        page.all = true
-                        page.sioul.openFolder(page.account, page.folder, true, page.query)
-                    }
-                }
             }
 
             // The mailbox: its rows under their days, one line each on a
@@ -1780,35 +1796,6 @@ Item {
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                     color: page.theme.muted
-                }
-
-                // The list's end, never blank: "Mail older than two weeks: Show older…",
-                // or that nothing older is kept here.
-                footer: Flow {
-                    objectName: "mailboxEnd"
-                    visible: page.box !== null && !page.boxMore
-                    width: boxList.width - 12
-                    height: visible ? implicitHeight + 16 : 0
-                    topPadding: 8
-                    leftPadding: 10
-                    spacing: 6
-
-                    Label {
-                        height: earlierButton.visible ? earlierButton.height : implicitHeight
-                        verticalAlignment: Text.AlignVCenter
-                        text: page.box ? (page.box.end || "") : ""
-                        textFormat: Text.PlainText
-                        color: page.theme.muted
-                    }
-                    Button {
-                        id: earlierButton
-
-                        objectName: "mailboxEarlier"
-                        visible: page.box !== null && page.box.earlier && !page.boxMore
-                        flat: true
-                        text: page.sioul.text("mailbox-show-older")
-                        onClicked: page.boxEarlier()
-                    }
                 }
             }
 

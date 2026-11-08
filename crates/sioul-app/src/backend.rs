@@ -367,12 +367,13 @@ pub mod qobject {
         #[qinvokable]
         fn set_priority(self: Pin<&mut Sioul>, id: &QString, priority: &QString);
 
-        /// Shows a folder of an account: the last two weeks, or `all`; `query` searches it.
+        /// Shows a folder of an account: everything kept, newest first, its first
+        /// `rows` rows (one more page as the list's end shows); `query` searches it.
         #[qinvokable]
-        fn open_folder(self: Pin<&mut Sioul>, account: &QString, folder: &QString, all: bool, query: &QString);
+        fn open_folder(self: Pin<&mut Sioul>, account: &QString, folder: &QString, rows: i32, query: &QString);
 
         /// Shows the mailbox, every address's mail in time order: `ask` as JSON
-        /// (`mailbox::Ask`: chip, windows, query, rows, fresh), through this
+        /// (`mailbox::Ask`: chip, query, rows, fresh, topic), through this
         /// device's filter (`mail::mailbox_filter`); "" while Mail does not show
         /// it (nothing is made meanwhile). Its pages come by `mailbox_page`. The
         /// chip chosen is kept on this device.
@@ -4964,10 +4965,12 @@ impl qobject::Sioul {
         show(&self.qt_thread(), &self.shared());
     }
 
-    fn open_folder(self: Pin<&mut Self>, account: &QString, folder: &QString, all: bool, query: &QString) {
+    fn open_folder(self: Pin<&mut Self>, account: &QString, folder: &QString, rows: i32, query: &QString) {
         let shared = self.shared();
         if let Ok(mut open) = shared.open_folder.lock() {
-            *open = Some(mail::OpenFolder { account: account.to_string(), folder: folder.to_string(), all, query: query.to_string() });
+            // A page at least: an older window's `false` asks for one.
+            let rows = usize::try_from(rows).unwrap_or(0).max(sioul_core::view::FOLDER_PAGE);
+            *open = Some(mail::OpenFolder { account: account.to_string(), folder: folder.to_string(), rows, query: query.to_string() });
         }
         // A folder instead of the mailbox: the mailbox is not made meanwhile.
         if let Ok(mut open) = shared.open_mailbox.lock() {

@@ -2,9 +2,11 @@
 // Copyright © 2026 Aurélien Pierre
 
 // "Topic…" (docs/topics.md, "Your word"): the topics to give one message,
-// or several chosen at once, the one it has ticked; "No topic"; "New
+// or several chosen at once, the one they have ticked; "No topic"; "New
 // topic…", which makes the topic and gives it in one act; for one message,
-// "Always <topic> for this sender" and "Never…". Each act is Rust's
+// "Always <topic> for this sender" and "Never…"; "Rename or remove…", the
+// topics themselves changed in the same place (8 November 2026), each name a
+// field, Enter renaming it, Remove beside it. Each act is Rust's
 // (crates/sioul-app/src/topics.rs), said in the status line with Undo.
 
 pragma ComponentBehavior: Bound
@@ -29,6 +31,8 @@ SafePopup {
     // Why "New topic…" did not make one, else "".
     property string problem: ""
     property bool naming: false
+    // Renaming or removing topics instead of giving one.
+    property bool editing: false
 
     // Opened under `item` (a button), or in the window's middle without one; the topics read again.
     function openAt(item, keys, key, current) {
@@ -38,6 +42,7 @@ SafePopup {
         menu.topics = JSON.parse(menu.sioul.topics() || "[]")
         menu.problem = ""
         menu.naming = false
+        menu.editing = false
         nameField.text = ""
         if (item) {
             const at = item.mapToItem(menu.parent, 0, item.height)
@@ -64,6 +69,26 @@ SafePopup {
             menu.close()
     }
 
+    // A topic renamed from its field: what went wrong said, the topics read again.
+    function rename(id, name) {
+        const topic = menu.topics.find(t => t.id === id)
+        if (!topic || name.trim() === "" || name.trim() === topic.name)
+            return
+        menu.problem = menu.sioul.renameTopic(id, name.trim())
+        menu.topics = JSON.parse(menu.sioul.topics() || "[]")
+    }
+
+    // A topic removed (its word leaves every message; Undo in the status line puts it back).
+    function remove(id) {
+        menu.sioul.removeTopic(id)
+        menu.problem = ""
+        if (menu.current === id)
+            menu.current = ""
+        menu.topics = JSON.parse(menu.sioul.topics() || "[]")
+        if (menu.topics.length === 0)
+            menu.editing = false
+    }
+
     readonly property var currentTopic: menu.topics.find(t => t.id === menu.current) || null
 
     parent: Overlay.overlay
@@ -86,7 +111,7 @@ SafePopup {
         spacing: 2
 
         Repeater {
-            model: menu.topics
+            model: menu.editing ? [] : menu.topics
 
             delegate: Button {
                 id: choice
@@ -109,23 +134,64 @@ SafePopup {
                 onClicked: menu.give(choice.modelData.id)
             }
         }
+        // Renaming or removing: each topic's name a field, Enter renames it; Remove beside it.
+        Repeater {
+            model: menu.editing ? menu.topics : []
+
+            delegate: RowLayout {
+                id: edited
+
+                required property var modelData
+
+                Layout.fillWidth: true
+                spacing: 6
+
+                TextField {
+                    objectName: "topicRename:" + edited.modelData.id
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 140
+                    text: edited.modelData.name
+                    selectByMouse: true
+                    Accessible.name: menu.sioul.text("topics-rename")
+                    onAccepted: menu.rename(edited.modelData.id, text)
+                    onEditingFinished: menu.rename(edited.modelData.id, text)
+                }
+                Button {
+                    objectName: "topicRemove:" + edited.modelData.id
+                    flat: true
+                    text: menu.sioul.text("topics-remove")
+                    onClicked: menu.remove(edited.modelData.id)
+                }
+            }
+        }
+        Button {
+            objectName: "topicEditDone"
+            visible: menu.editing
+            Layout.fillWidth: true
+            flat: true
+            text: menu.sioul.text("topic-edit-done")
+            onClicked: {
+                menu.editing = false
+                menu.problem = ""
+            }
+        }
         Button {
             objectName: "topicNone"
-            visible: menu.current !== "" || menu.key === ""
+            visible: !menu.editing && (menu.current !== "" || menu.key === "")
             Layout.fillWidth: true
             flat: true
             text: menu.sioul.text("topic-none")
             onClicked: menu.give("")
         }
         Rectangle {
-            visible: menu.topics.length > 0
+            visible: menu.topics.length > 0 && !menu.editing
             Layout.fillWidth: true
             Layout.preferredHeight: 1
             color: menu.theme.line
         }
         Button {
             objectName: "topicNew"
-            visible: !menu.naming
+            visible: !menu.naming && !menu.editing
             Layout.fillWidth: true
             flat: true
             text: menu.sioul.text("topic-new")
@@ -135,7 +201,7 @@ SafePopup {
             }
         }
         RowLayout {
-            visible: menu.naming
+            visible: menu.naming && !menu.editing
             Layout.fillWidth: true
             spacing: 6
 
@@ -164,16 +230,29 @@ SafePopup {
             font.pixelSize: 13
             color: menu.theme.warm
         }
+        // The topics themselves, renamed or removed in the same place.
+        Button {
+            objectName: "topicEdit"
+            visible: !menu.editing && menu.topics.length > 0
+            Layout.fillWidth: true
+            flat: true
+            text: menu.sioul.text("topic-edit")
+            onClicked: {
+                menu.naming = false
+                menu.problem = ""
+                menu.editing = true
+            }
+        }
         // One message with a topic: its sender's rules for it.
         Rectangle {
-            visible: menu.key !== "" && menu.currentTopic !== null
+            visible: !menu.editing && menu.key !== "" && menu.currentTopic !== null
             Layout.fillWidth: true
             Layout.preferredHeight: 1
             color: menu.theme.line
         }
         Button {
             objectName: "topicAlways"
-            visible: menu.key !== "" && menu.currentTopic !== null
+            visible: !menu.editing && menu.key !== "" && menu.currentTopic !== null
             Layout.fillWidth: true
             flat: true
             text: menu.currentTopic ? menu.theme.plain(menu.sioul.textWith("topic-always", "topic", menu.currentTopic.name)) : ""
@@ -184,7 +263,7 @@ SafePopup {
         }
         Button {
             objectName: "topicNever"
-            visible: menu.key !== "" && menu.currentTopic !== null
+            visible: !menu.editing && menu.key !== "" && menu.currentTopic !== null
             Layout.fillWidth: true
             flat: true
             text: menu.currentTopic ? menu.theme.plain(menu.sioul.textWith("topic-never", "topic", menu.currentTopic.name)) : ""
