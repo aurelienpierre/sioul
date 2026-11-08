@@ -430,7 +430,7 @@ pub fn set_sequence(text: &str, value: i64, now: &Zoned) -> Result<String, Strin
     replace_lines(text, |l| lines::name(l) == SORT_ORDER, vec![line], now)
 }
 
-fn day_of(text: &str) -> Option<Date> {
+pub(crate) fn day_of(text: &str) -> Option<Date> {
     text.get(..10)?.parse().ok()
 }
 
@@ -573,7 +573,7 @@ fn moment(line: &str, zone: &TimeZone) -> Option<String> {
 }
 
 /// A comma-separated text list (CATEGORIES), its escaped commas kept inside.
-fn split_list(value: &str) -> Vec<String> {
+pub(crate) fn split_list(value: &str) -> Vec<String> {
     let (mut out, mut current, mut escaped) = (Vec::new(), String::new(), false);
     for c in value.chars() {
         if escaped {

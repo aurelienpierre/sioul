@@ -180,10 +180,18 @@ From any thing, **Ties** (on its card, in its menu as "Its ties", "See them all"
 - **Keys**, in both views: ↓ ↑ move, → presses "+" or steps in, ← folds or steps out, Enter opens, Home goes to the entry point, the menu key (Shift+F10) or a right click or a long press opens the thing's menu (Open, Its ties, "+" or "−", undo the tie to the thing above), typing finds a title; Escape goes back. A card opens beside the page on a computer and over it on a phone; Back comes back to the same picture. Each opening starts afresh.
 - **Made in Rust, drawn in QML**: `chain::walk` gives one `ChainView` as JSON (`sioul.askChain`, answered by `chainReady`, on a worker thread); the Related panel reads the same index once it is made. Its cost goes to the log (`sioul-perf: ties: …`). `sioul links <address> --chain` prints the same chain as an outline; agents' `links` tool walks it with their consent at every step ([mcp.md](mcp.md)).
 
+## Search
+
+8 November 2026. One engine in the core, `sioul_core::thingsearch::search`, over tasks and event files (`agenda::EventRef`, which reads their notes, categories, TENTATIVE and ATTENDEE since then), reading nothing itself: the window's `thingsearch::search` gives it everything read (`work::loaded`), whatever the hour and the agenda filter, and, for a range of days, the calendars' occurrences in it (`agenda::occurrences`; an open end reads a year), which place repeating events. The query (`Query`, JSON): words (each in the title, the notes or the place, `text::fold`), which (both, tasks, events), project, kind and category, each "" for any, `NONE` (":none") for none or one (an event has no kind: "none" keeps every event), from and to (days, either open), guests (an ATTENDEE that is not one of your addresses), statuses (confirmed, tentative, cancelled), done, a date asked. Asking guests or a status leaves tasks out; asking done or a date asked leaves events out. A task falls in a range by its date asked, its day to start or its day done; an event by its time. A task's time block is its task's, never listed. Each thing once, what comes first (soonest first), then the past (newest first), then the undated (`When`). Tests: `thingsearch::tests`, `tst_thingsearch.qml`.
+
 ## Command line
 ```
 sioul tasks [now]                      the next step, why, and the one after it
 sioul tasks list [--by project|list|deadline] [--done] [words]
+sioul tasks search [words] [--which both|tasks|events] [--project <id>|none] [--kind <type>|none]
+                   [--category <name>|none] [--from <day>] [--to <day>] [--guests yes|no]
+                   [--status confirmed|tentative|cancelled]… [--done yes|no] [--dated yes|no]
+                                       tasks and events by the Search tab's engine (`thingsearch`)
 sioul tasks board | timeline [--project <id>] | show <task>
 sioul tasks add "Call the tax office tomorrow ~15m #taxes" [--list <account/id>] [--parent <task>] [--after <task>]
 sioul tasks move <step> [--before <step>]     a step in its task's order: before another, else last
