@@ -113,6 +113,31 @@ mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 
 Install right after building: running the tests (`cargo test`) in between leaves programs built for testing in `target/release/`, which keep no password. `tools/install.sh` does both builds and the installs in one go, and refuses such a program (`tools/check-test-marks.sh`).
 
+**Updating an installed Sioul on Linux**, from a checkout of `main`, keeping the previous programs beside the new ones to go back to:
+
+```
+git pull
+cp ~/.local/bin/sioul ~/.local/bin/sioul.prev; cp ~/.local/bin/sioul-app ~/.local/bin/sioul-app.prev
+tools/install.sh                      # builds each program alone, checks it, installs it into ~/.local
+```
+
+Then restart Sioul's window, and the AI clients that run `sioul mcp`. To go back: `mv ~/.local/bin/sioul.prev ~/.local/bin/sioul` and the same for `sioul-app`.
+
+**The Android phone** ([docs/android.md](docs/android.md) lists what to install first: Qt for Android 6.11, the SDK and NDK r27c, Java 17, Rust's `aarch64-linux-android` target):
+
+```
+<Qt for Android>/bin/qt-cmake -S android -B build-android -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH=<desktop Qt> \
+    -DANDROID_SDK_ROOT=<SDK> -DANDROID_NDK_ROOT=<NDK> \
+    -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON      # once
+cmake --build build-android --target apk
+apk=$(find build-android -path '*/outputs/apk/release/*.apk' | head -1)
+<SDK>/build-tools/<version>/apksigner sign --ks <your keystore> --out Sioul.apk "$apk"
+adb install -r Sioul.apk                         # the phone plugged in, USB debugging on
+```
+
+Sign with the same key every time, or Android refuses the update and the phone must uninstall Sioul first, losing what it keeps. `adb install -r` keeps the phone's data. Never install an older Sioul over a newer one.
+
 Try it on invented mail first:
 
 ```
