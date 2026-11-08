@@ -1604,6 +1604,10 @@ mod tests {
     /// month-long timed event, a dentist, an evening past midnight, a trip over
     /// three days, five at once on the Friday and the Saturday (two of them
     /// whole days). Each uid starts with "ongoing-".
+    /// The tests of `ongoing_calendar` one at a time: their events share UIDs,
+    /// and the agenda keeps one event per UID across calendars.
+    static ONGOING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn ongoing_calendar(name: &str, year: i16) -> (sioul_core::vdir::Collection, jiff::civil::Date) {
         let zone = sioul_core::zone::current();
         let base = jiff::civil::date(year, 11, 2);
@@ -1664,6 +1668,7 @@ mod tests {
     #[test]
     fn what_comes_writes_an_event_over_several_days_once() {
         sioul_core::config::stand_ins_only();
+        let _one = ONGOING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let (calendar, base) = ongoing_calendar("Ongoing comes", 2099);
         let shown = ongoing_shown(base, 15);
         let comes = ongoing_rows(&shown, &|d| d["comes"]["rows"].as_array().cloned().unwrap_or_default());
@@ -1766,6 +1771,7 @@ mod tests {
     #[test]
     fn the_grids_draw_one_bar_per_long_event() {
         sioul_core::config::stand_ins_only();
+        let _one = ONGOING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let (calendar, base) = ongoing_calendar("Ongoing grids", 2093);
         let bars = |shown: &serde_json::Value| -> Vec<(String, u64, u64, u64, u64)> {
             shown["bars"].as_array().cloned().unwrap_or_default().iter().filter_map(|b| Some((b["uid"].as_str()?.strip_prefix("ongoing-")?.to_string(), b["row"].as_u64()?, b["from_column"].as_u64()?, b["to_column"].as_u64()?, b["lane"].as_u64()?))).collect()
