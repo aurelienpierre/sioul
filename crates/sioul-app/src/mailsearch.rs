@@ -283,6 +283,7 @@ fn empty_item(path: &Path) -> view::MailItem {
         size: 1,
         member: false,
         spam: String::new(),
+        topic: view::RowTopic::default(),
     }
 }
 

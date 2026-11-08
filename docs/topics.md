@@ -38,7 +38,7 @@ A preset's rules hold only for a sender Sioul's checks verify, so forged mail ne
 
 ## Where topics show
 
-- **On a mail row**, a quiet word after the subject, when the row has no louder word (spam's, forged mail's); no colour, no count.
+- **On a mail row**, a quiet word after the subject, when the row has no louder word (spam's, forged mail's); no colour, no count. In the mailbox and, since 8 November 2026, in each address's folders too: a folder's received mail (its inbox, your own folders, the archive) is read as the mailbox reads it (`topics::rules::Lookup::tagged`, once a look, only when there are topics), never Sioul's doubt there, since a folder has no topic filter.
 - **In the reader**, the topic and why: "Chorale · given by you", "· by its sender", "· by its conversation", "· from the folder Chorale".
 - **The Topic filter**, beside the filter by area once there are topics (on a phone, in the folders' sheet): "All topics", or one topic's mail alone. A topic is a way to look at the one mailbox, never a place: nothing moves.
 - **Mail ▸ ⚙ ▸ Topics**: each topic with its seeds in words and its senders' rules (× takes one off), **Rename** and **Remove** (its word leaves every message; Undo puts it back), and **Add a topic**. On a computer, **Groups Sioul noticed**: **Look for groups** gathers the mail no word of yours names yet by its words (NMF, below), each group shown by its senders' names (the most frequent few), its size and two subjects (codes and links masked); **Name it** makes a topic and gives it to the whole group in one act. What it shows (`sioul_learn::groups::noticed`), so that a small mailbox shows nothing misleading:

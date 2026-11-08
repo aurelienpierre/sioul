@@ -713,6 +713,10 @@ Item {
             compare(page.sharedTopic([page.listItems[3].key, page.listItems[0].key], null), "", "mixed: none")
             compare(page.sharedTopic([page.listItems[2].key], page.listItems[2]), "", "one row's doubt")
             compare(page.sharedTopic([page.listItems[1].key], page.listItems[1]), "tax")
+            // A folder's row says its topic quietly after the subject, as the mailbox's does.
+            wait(50)
+            const quiet = all(page, c => c.objectName === "folderRowQuiet" && c.visible).map(c => c.text)
+            verify(quiet.filter(t => t === "Impôts").length >= 2, JSON.stringify(quiet))
             mock.mailFolder = ""
         }
 

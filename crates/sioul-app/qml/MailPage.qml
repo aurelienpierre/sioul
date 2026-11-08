@@ -1707,12 +1707,13 @@ Item {
                             }
                             // A search's row: where it is ("Inbox · noa@example.com", "… · on the server");
                             // your filter's flag where it lies, quietly, as the Porch says it ("maybe spam":
-                            // the matrix's "Flag only", decided 3 November 2026). One label for both.
+                            // the matrix's "Flag only", decided 3 November 2026), else its topic, as the
+                            // mailbox's rows say it (8 November 2026). One label for all.
                             Label {
                                 objectName: "folderRowQuiet"
-                                visible: !!(row.modelData.place || row.modelData.spam) && !page.window.compact
+                                visible: !!(row.modelData.place || row.modelData.spam || row.modelData.topic) && !page.window.compact
                                 Layout.maximumWidth: Math.round(row.width * 0.45)
-                                text: [row.modelData.place || "", row.modelData.spam || ""].filter(t => t !== "").join(" · ")
+                                text: [row.modelData.place || "", row.modelData.spam || row.modelData.topic || ""].filter(t => t !== "").join(" · ")
                                 textFormat: Text.PlainText
                                 elide: Text.ElideMiddle
                                 font.pixelSize: 12
@@ -1732,11 +1733,11 @@ Item {
                         }
                         // On a phone, where it is and the flag go under the subject, whole.
                         Label {
-                            visible: !!(row.modelData.place || row.modelData.spam) && page.window.compact
+                            visible: !!(row.modelData.place || row.modelData.spam || row.modelData.topic) && page.window.compact
                             Layout.fillWidth: true
                             Layout.preferredWidth: 0
                             Layout.leftMargin: 15
-                            text: [row.modelData.place || "", row.modelData.spam || ""].filter(t => t !== "").join(" · ")
+                            text: [row.modelData.place || "", row.modelData.spam || row.modelData.topic || ""].filter(t => t !== "").join(" · ")
                             textFormat: Text.PlainText
                             elide: Text.ElideMiddle
                             font.pixelSize: 12

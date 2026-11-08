@@ -131,9 +131,10 @@ pub fn with_model(topics: &[Topic], said: &Said, facts: &Facts, presets: Option<
 }
 
 /// What a search's "Topic is" reads (`Field::Topic`), loaded once per
-/// search: your topics and your word on them, the presets' rules, what the
-/// table judged, the stamps each address trusts, your addresses and your
-/// contacts' categories.
+/// search, and a folder's rows (`view::folder`), once per look: your topics
+/// and your word on them, the presets' rules, what the table judged, the
+/// stamps each address trusts, your addresses and your own domains (their
+/// ARC seals vouch, as the mailbox reads them), your contacts' categories.
 pub struct Lookup {
     topics: Vec<Topic>,
     said: Said,
@@ -141,6 +142,7 @@ pub struct Lookup {
     judged: super::judging::Judgments,
     trusted: std::collections::HashMap<String, Vec<String>>,
     own: std::collections::HashSet<String>,
+    own_domains: Vec<String>,
     contacts: crate::porch::Senders,
 }
 
@@ -154,6 +156,7 @@ impl Lookup {
             judged: super::judging::Judgments::load(&super::judging::table_path()),
             trusted: sources.iter().filter_map(|s| Some((s.account.clone()?, s.trusted_ids.clone()))).collect(),
             own: crate::porch::own_addresses(&sources).into_iter().map(|a| a.trim().to_lowercase()).collect(),
+            own_domains: config.own_domains(),
             contacts: crate::porch::Senders::load(config),
         }
     }
@@ -161,13 +164,21 @@ impl Lookup {
     /// A stored message's topic by name, as Mail's rows show it (sure; a
     /// doubt is none), from its card, its account and the folder it is in.
     pub fn name_of(&self, card: &crate::card::Card, account: &str, folder: &str) -> Option<String> {
+        let (topic, why) = self.tagged(card, account, folder)?;
+        (why != Why::Model(super::table::Band::Maybe)).then(|| topic.name.clone())
+    }
+
+    /// A stored message's topic and why, a doubt included, as the mailbox
+    /// reads it (`mailbox::topic_of`): from its card, its account and the
+    /// folder it is in (`folder`, as the folder's name reads).
+    pub fn tagged(&self, card: &crate::card::Card, account: &str, folder: &str) -> Option<(&Topic, Why)> {
         use crate::trust::{self, Trust};
         if self.topics.is_empty() {
             return None;
         }
         let trusted = self.trusted.get(account).map(Vec::as_slice).unwrap_or(&[]);
         let results = trust::read_auth_results(&card.headers, trusted);
-        let sealers = trust::sealers(trusted, &[]);
+        let sealers = trust::sealers(trusted, &self.own_domains);
         let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &sealers)).flatten();
         let (judged, _) = trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain());
         let from = card.from_address.as_deref().map(|a| a.trim().to_lowercase());
@@ -182,7 +193,7 @@ impl Lookup {
         let facts = Facts { id: id.as_deref(), sender: sender.as_deref(), conversation: &conversation, folders: &folders, categories: &categories, verified_domain: verified, list_id: None, is_list: card.is_list };
         let judgment = id.as_deref().and_then(|id| self.judged.of(id));
         let tagged = with_model(&self.topics, &self.said, &facts, Some(&self.presets), judgment)?;
-        (tagged.why != Why::Model(super::table::Band::Maybe)).then(|| self.topics[tagged.topic].name.clone())
+        Some((&self.topics[tagged.topic], tagged.why))
     }
 }
 
@@ -288,6 +299,7 @@ mod tests {
             judged: super::super::judging::Judgments { table: 1, topics: judged.iter().map(|(id, t, b)| (id.to_string(), (t.to_string(), *b))).collect(), judged: Default::default() },
             trusted: [("work".to_string(), vec!["mx.example.org".to_string()])].into_iter().collect(),
             own: Default::default(),
+            own_domains: Vec::new(),
             contacts: crate::porch::Senders::default(),
         };
         let card = |auth: &str| crate::card::Card::from_bytes(format!("Authentication-Results: mx.example.org; {auth}\r\nFrom: Anne <anne@choir.example>\r\nMessage-ID: <m@choir.example>\r\nSubject: Rehearsal\r\n\r\nThursday.\r\n").as_bytes()).unwrap();
@@ -299,6 +311,25 @@ mod tests {
         assert_eq!(lookup(&[], &[]).name_of(&forged, "work", "Loisirs/Chorale").as_deref(), Some("Chorale"), "its folder");
         assert_eq!(lookup(&[], &[("m@choir.example", "tax", Band::Sure)]).name_of(&proven, "work", "INBOX").as_deref(), Some("Impôts"));
         assert_eq!(lookup(&[], &[("m@choir.example", "tax", Band::Maybe)]).name_of(&proven, "work", "INBOX"), None, "a doubt is no topic for a search");
+        // A folder's rows (8 November 2026): each received message's topic as
+        // the mailbox says it, its why; a doubt none; none in Sent nor Junk.
+        let account = crate::config::Account::imap("work", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
+        let tr = crate::i18n::Translator::new("en");
+        let mut row = proven.clone();
+        row.path = Some(std::path::PathBuf::from("new/1.U1-1.sioul"));
+        let words = crate::words::Words::builtin_ref();
+        let shown = |acts: &[Act], judged: &[(&str, &str, Band)], role: Option<crate::folders::Role>| {
+            let name = match role { Some(crate::folders::Role::Sent) => "Sent", Some(crate::folders::Role::Junk) => "Junk", _ => "INBOX" };
+            let folder = crate::folders::folder(name, Some("."), role);
+            crate::view::folder(&account, &folder, vec![row.clone()], &[], &[], words, crate::view::FOLDER_PAGE, "", &tr, None, &Default::default(), Some(&lookup(acts, judged))).items.remove(0).topic
+        };
+        let given = shown(&[tagged(1, "m@choir.example", Some("tax"))], &[], None);
+        assert_eq!((given.topic.as_str(), given.topic_id.as_str(), given.topic_why), ("Impôts", "tax", "yours"));
+        assert_eq!(shown(&always, &[], None).topic_why, "sender");
+        assert!(shown(&[], &[("m@choir.example", "tax", Band::Maybe)], None).topic.is_empty(), "a doubt is no topic in a folder");
+        assert!(shown(&always, &[], Some(crate::folders::Role::Sent)).topic.is_empty() && shown(&always, &[], Some(crate::folders::Role::Junk)).topic.is_empty());
+        let json = serde_json::to_value(crate::view::folder(&account, &crate::folders::folder("INBOX", Some("."), None), vec![row.clone()], &[], &[], words, 60, "", &tr, None, &Default::default(), Some(&lookup(&always, &[])))).unwrap();
+        assert_eq!(json["items"][0]["topic_id"], "choir", "flattened into the row, as the mailbox's: {json}");
     }
 
     /// A started preset takes a verified sender's mail after your own words

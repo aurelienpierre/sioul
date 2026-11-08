@@ -777,7 +777,9 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
         let files = folder_waiting(&files, &waiting, &mut flags);
         let (cards, sent) = folder_cards(account, folders, folder, &files, config.mail.threads);
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.id.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
-        Some(json(&view::folder(account, folder, cards, &trusted, &config.own_domains(), &sioul_core::words::Words::of(&config), open.rows, &open.query, tr(), sent, &flags)))
+        // Each row's topic, as the mailbox's rows say it: read once a look, when there are topics.
+        let topics = (!config.topics.is_empty()).then(|| sioul_core::topics::rules::Lookup::load(&config));
+        Some(json(&view::folder(account, folder, cards, &trusted, &config.own_domains(), &sioul_core::words::Words::of(&config), open.rows, &open.query, tr(), sent, &flags, topics.as_ref())))
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();
@@ -2940,7 +2942,7 @@ mod tests {
         let words = sioul_core::words::current();
         let trusted = vec!["mx.example.org".to_string()];
         let hidden: BTreeSet<PathBuf> = [root.join("cur").join(format!("1777000004.U7-4.sioul{}2,FS", maildir::INFO))].into();
-        let list = |folder: &Folder, (cards, sent): (Vec<Card>, Option<Vec<Card>>)| json(&view::folder(&account, folder, cards, &trusted, &[], &words, usize::MAX, "", tr(), sent, &Default::default()));
+        let list = |folder: &Folder, (cards, sent): (Vec<Card>, Option<Vec<Card>>)| json(&view::folder(&account, folder, cards, &trusted, &[], &words, usize::MAX, "", tr(), sent, &Default::default(), None));
         for _ in 0..2 {
             // Made, then read from the index.
             for (folder, threads) in [(&folders[0], false), (&folders[0], true), (&folders[1], false), (&folders[1], true), (&folders[2], false), (&folders[2], true)] {
@@ -3174,7 +3176,7 @@ mod tests {
         let account = &config.accounts[0];
         let at = std::time::Instant::now();
         let (cards, sent) = folder_cards(account, &folders, &folders[0], &none, false);
-        let shown = view::folder(account, &folders[0], cards, &[], &[], &sioul_core::words::Words::of(&config), view::FOLDER_PAGE, "", tr(), sent, &Default::default());
+        let shown = view::folder(account, &folders[0], cards, &[], &[], &sioul_core::words::Words::of(&config), view::FOLDER_PAGE, "", tr(), sent, &Default::default(), None);
         let text = json(&shown);
         println!("measure: Mail's first inbox, as a folder shows it: {:.0} ms, {} rows, {} KB of JSON", at.elapsed().as_secs_f64() * 1000.0, shown.items.len(), text.len() / 1000);
         if std::env::var_os("SIOUL_MEASURE_MAILBOX").is_none() {
