@@ -130,6 +130,7 @@ mod attach;
 mod attachments;
 mod backend;
 mod bank;
+mod batch;
 mod blocks;
 mod calendarfile;
 mod calls;

@@ -699,6 +699,13 @@ pub mod qobject {
         #[qinvokable]
         fn find_things(self: &Sioul, query: &QString) -> QString;
 
+        /// Several tasks or events (JSON [{thing, key, uid}]) changed in one
+        /// act with Undo (`batch::apply`): `asked` JSON {project, kind,
+        /// category, date, status, list, delete}; JSON {said, left: [{title,
+        /// why}], error}: what it left out and why (a meeting with others…).
+        #[qinvokable]
+        fn change_things(self: Pin<&mut Sioul>, things: &QString, asked: &QString) -> QString;
+
         /// The same from a full list of tasks, which the hours never shape
         /// (`agenda::turn_by_hand`); returns what went wrong, else "".
         #[qinvokable]
@@ -5330,6 +5337,10 @@ impl qobject::Sioul {
 
     fn find_things(&self, query: &QString) -> QString {
         QString::from(&crate::thingsearch::search(&self.shared(), &query.to_string()))
+    }
+
+    fn change_things(self: Pin<&mut Self>, things: &QString, asked: &QString) -> QString {
+        QString::from(&crate::batch::apply(&self.qt_thread(), &self.shared(), &things.to_string(), &asked.to_string()))
     }
 
     fn turn_agendas_by_hand(self: Pin<&mut Self>, ids: &QString, on: bool) -> QString {

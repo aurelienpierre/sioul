@@ -89,6 +89,11 @@ Item {
     property bool showDone: false
     property string query: ""
     property string projectFilter: ""
+    // The list's selection for batch edits, by UID (BatchBar.qml): Ctrl or
+    // Shift with a click, a long press on a touch screen.
+    property var picked: ({})
+    property string pickAnchor: ""
+    readonly property var pickedList: Object.keys(page.picked).map(k => page.picked[k])
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
     // What the list keeps beside an open card: `listLeast` pixels, where its
@@ -165,6 +170,27 @@ Item {
 
     function apply() {
         page.sioul.showTasks(page.by, page.showDone, page.query, page.projectFilter)
+    }
+
+    // A row of the list picked or let go; with `range`, every row from the last one picked.
+    function pick(uid, range) {
+        const rows = page.shown ? page.shown.list.groups.reduce((all, g) => all.concat(g.rows), []) : []
+        const at = rows.findIndex(r => r.uid === uid)
+        if (at < 0)
+            return
+        const now = Object.assign({}, page.picked)
+        const thing = r => ({ thing: "task", key: r.key, uid: r.uid, title: r.title })
+        const from = rows.findIndex(r => r.uid === page.pickAnchor)
+        if (range && from >= 0) {
+            for (let i = Math.min(from, at); i <= Math.max(from, at); i++)
+                now[rows[i].uid] = thing(rows[i])
+        } else if (now[uid]) {
+            delete now[uid]
+        } else {
+            now[uid] = thing(rows[at])
+        }
+        page.pickAnchor = uid
+        page.picked = now
     }
 
     function tick(task) {
@@ -1015,6 +1041,22 @@ Item {
                                     }
                                 }
                             }
+                            // Several tasks picked: what changes for all of them, in one act with Undo.
+                            BatchBar {
+                                objectName: "tasksBatch"
+                                Layout.fillWidth: true
+                                sioul: page.sioul
+                                theme: page.theme
+                                things: page.pickedList
+                                projects: page.shown ? page.shown.projects.map(p => ({ id: p.id, label: p.title })) : []
+                                kinds: page.shown ? page.shown.kinds : []
+                                categories: page.shown ? page.shown.categories : []
+                                lists: page.shown ? page.shown.lists.filter(l => l.tasks).map(l => ({ id: l.id, label: l.name, tasks: true, events: false })) : []
+                                onCleared: {
+                                    page.picked = ({})
+                                    page.pickAnchor = ""
+                                }
+                            }
                             ListView {
                                 id: groups
 
@@ -1053,7 +1095,11 @@ Item {
                                             depth: modelData.depth
                                             folds: true
                                             selected: page.opened === modelData.uid
-                                            onOpen: uid => page.open(uid)
+                                            pickable: true
+                                            picked: page.picked[modelData.uid] !== undefined
+                                            onPick: (uid, range) => page.pick(uid, range)
+                                            // On a touch screen, once something is picked, a tap picks too.
+                                            onOpen: uid => page.theme.touch === true && page.pickedList.length > 0 ? page.pick(uid, false) : page.open(uid)
                                             onMenu: task => taskMenu.now().show(task)
                                             onTick: page.tick(modelData)
                                             onFold: (uid, open) => page.sioul.foldTask(uid, open)

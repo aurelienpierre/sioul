@@ -158,7 +158,7 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 
 **Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)). On Now, a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out, the plan whole. On List, Board and Gantt, only what you said leaves a list out: one you unticked there or keep hidden; the hours never do. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
 
-## Search {#search}
+## Search, and changing several at once {#search}
 
 **Search**, the last choice at the top of the Tasks page and of the Agenda, finds tasks and events together, whatever the hour:
 
@@ -169,6 +169,8 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 - for tasks: **Done** or **Not done**, **With a date asked** or **Without a date asked**.
 
 What comes is listed first, the soonest first, then the past, the newest first, then what has no date. A tap opens its card.
+
+**Changing several at once**, in the task list and in Search: **Ctrl** with a click picks a row, **Shift** with a click every row from the last one picked; on a touch screen, a long press picks, and once something is picked a tap picks too. A bar above the list then changes all of them in one act: **Project**, **Type**, **Category**, **Day…** (a task's date asked, its hour kept; an event moved to that day at its time), **Status**, **List or calendar**, **Done**, **Delete**. **Undo** on the status line puts everything back; a deletion waits ten seconds, as one does. What a batch leaves as it was is said under the bar, each with why: a meeting with others (change it from its card, which tells its guests), a calendar or a list you only read, a repeating event moved to another day (from its card), a list that would not keep all of a task.
 
 ## A task, open {#a-task-open}
 

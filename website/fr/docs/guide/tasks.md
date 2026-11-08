@@ -158,7 +158,7 @@ Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **To
 
 **Agendas**, à côté, est le filtre de l’agenda lui-même, ses listes de tâches ici ([Agenda](agenda.md#several-agendas)). Sur Maintenant, une liste qu’il laisse de côté, une liste de travail le soir ou une que vous avez décochée, garde ses tâches hors de la vue, le plan entier. Sur Liste, Tableau et Gantt, seul ce que vous avez dit laisse une liste de côté : une que vous y avez décochée ou que vous gardez cachée ; jamais les heures. Ce que vous cochez tient jusqu’à ce que vos heures de travail changent. Une liste que vous lisez seulement reste telle quelle : ses tâches s’ouvrent pour être lues.
 
-## Chercher {#search}
+## Chercher, et changer plusieurs à la fois {#search}
 
 **Chercher**, le dernier choix en haut de la page Tâches et de l’Agenda, trouve tâches et événements ensemble, quelle que soit l’heure :
 
@@ -169,6 +169,8 @@ Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **To
 - pour les tâches : **Faites** ou **Pas faites**, **Avec une date demandée** ou **Sans date demandée**.
 
 Ce qui vient est listé d’abord, le plus proche d’abord, puis le passé, le plus récent d’abord, puis ce qui n’a pas de date. Un appui ouvre sa fiche.
+
+**Changer plusieurs à la fois**, dans la liste des tâches et dans Chercher : **Ctrl** avec un clic choisit une ligne, **Maj** avec un clic chaque ligne depuis la dernière choisie ; sur un écran tactile, un appui long choisit, et dès que quelque chose est choisi un appui choisit aussi. Une barre au-dessus de la liste les change alors tous d’un seul geste : **Projet**, **Type**, **Catégorie**, **Jour…** (la date demandée d’une tâche, son heure gardée ; un événement déplacé à ce jour, à son heure), **État**, **Liste ou agenda**, **Faites**, **Supprimer**. **Annuler** sur la ligne d’état remet tout comme avant ; une suppression attend dix secondes, comme une seule. Ce qu’un changement groupé laisse tel quel est dit sous la barre, chacun avec pourquoi : une réunion avec d’autres (changez-la depuis sa fiche, qui prévient ses invités), un agenda ou une liste que vous lisez seulement, un événement qui se répète déplacé à un autre jour (depuis sa fiche), une liste qui ne garderait pas tout d’une tâche.
 
 ## Une tâche, ouverte {#a-task-open}
 

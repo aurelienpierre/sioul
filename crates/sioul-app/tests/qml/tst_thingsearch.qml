@@ -31,7 +31,14 @@ Item {
         property string tasks: ""
         property var opened: null
 
+        property var changed: null
+        property string status: ""
         function text(key) { return key }
+        function textCounted(key, n) { return key + ":" + n }
+        function changeThings(things, asked) {
+            mock.changed = { things: JSON.parse(things), asked: JSON.parse(asked) }
+            return JSON.stringify({ said: "batch-changed", left: [{ title: "Team meeting", why: "a meeting", line: "“Team meeting”: a meeting" }] })
+        }
         function textWith(key, name, value) { return key + ":" + value }
         function findThings(query) {
             mock.asked = mock.asked.concat([JSON.parse(query)])
@@ -93,6 +100,7 @@ Item {
         function init() {
             mock.asked = []
             mock.opened = null
+            mock.changed = null
         }
 
         function make(which) {
@@ -165,6 +173,33 @@ Item {
             compare(JSON.stringify(mock.opened), JSON.stringify({ kind: "task", owner: "caf" }))
             compare(search.line(search.found[0]), "Tue 10 Nov, 14:00  ·  Home  ·  Clinique du Parc  ·  things-status-tentative")
             compare(search.line(search.found[2]), "Mon 2 Nov  ·  things-row-done")
+        }
+
+        // Ctrl with a click picks a row, Shift every row from the last; the bar
+        // acts on all of them at once, says what it left out, and the selection empties.
+        function test_rows_picked_and_changed_together() {
+            const search = make("both")
+            const list = root.named(search, "thingsFound")
+            tryVerify(() => root.all(list.contentItem, c => c.objectName === "thingRow").length === 4)
+            const rows = root.all(list.contentItem, c => c.objectName === "thingRow")
+            const bar = root.named(search, "thingsBatch")
+            verify(!bar.visible, "nothing picked: no bar")
+            mouseClick(rows[0], 10, 10, Qt.LeftButton, Qt.ControlModifier)
+            compare(mock.opened, null, "picked, not opened")
+            compare(search.pickedList.length, 1)
+            mouseClick(rows[2], 10, 10, Qt.LeftButton, Qt.ShiftModifier)
+            compare(search.pickedList.length, 3, "a range")
+            verify(bar.visible)
+            compare(root.named(bar, "batchCount").text, "batch-selected:3")
+            mouseClick(rows[1], 10, 10, Qt.LeftButton, Qt.ControlModifier)
+            compare(search.pickedList.length, 2, "picked again: let go")
+            bar.change({ status: "completed" })
+            compare(mock.changed.asked.status, "completed")
+            compare(mock.changed.things.map(t => t.uid).sort(), ["dentist", "plants"])
+            compare(mock.status, "batch-changed")
+            compare(search.pickedList.length, 0, "the act done: nothing picked")
+            verify(bar.visible, "what was left out still said")
+            compare(root.all(bar, c => c.objectName === "batchLeft")[0].text, "“Team meeting”: a meeting")
         }
 
         // On a phone, every filter within the screen's width.

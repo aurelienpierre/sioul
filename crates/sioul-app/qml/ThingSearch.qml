@@ -44,6 +44,11 @@ Item {
     // What the core answered: the choices and what was found.
     property var shown: ({ projects: [], kinds: [], categories: [], found: [] })
     readonly property var found: search.shown.found || []
+    // What is selected for a batch edit, by file: Ctrl or Shift with a click,
+    // a long press on a touch screen, where a tap then adds or takes out.
+    property var picked: ({})
+    property int anchor: -1
+    readonly property var pickedList: Object.keys(search.picked).map(k => search.picked[k])
     readonly property bool asksEvents: search.which !== "tasks"
     readonly property bool asksTasks: search.which !== "events"
 
@@ -73,6 +78,13 @@ Item {
             return
         const text = search.sioul.findThings(JSON.stringify(search.query()))
         search.shown = text ? JSON.parse(text) : { projects: [], kinds: [], categories: [], found: [] }
+        // What is picked and still found stays picked, as it now is.
+        const kept = {}
+        for (const thing of search.found)
+            if (search.picked[thing.key])
+                kept[thing.key] = thing
+        search.picked = kept
+        search.anchor = -1
     }
 
     function open(thing) {
@@ -82,6 +94,25 @@ Item {
             search.window.openCard({ kind: "task", owner: thing.uid })
         else
             search.window.openCard({ kind: "event", srcKey: thing.key, srcStart: thing.at || 0, title: thing.title })
+    }
+
+    // A row picked or let go; with `range`, every row from the last one picked.
+    function pick(index, range) {
+        const now = Object.assign({}, search.picked)
+        const thing = search.found[index]
+        if (!thing)
+            return
+        if (range && search.anchor >= 0) {
+            const [from, to] = [Math.min(search.anchor, index), Math.max(search.anchor, index)]
+            for (let i = from; i <= to; i++)
+                now[search.found[i].key] = search.found[i]
+        } else if (now[thing.key]) {
+            delete now[thing.key]
+        } else {
+            now[thing.key] = thing
+        }
+        search.anchor = index
+        search.picked = now
     }
 
     function toggleStatus(status, on) {
@@ -284,6 +315,22 @@ Item {
             }
         }
 
+        BatchBar {
+            objectName: "thingsBatch"
+            Layout.fillWidth: true
+            sioul: search.sioul
+            theme: search.theme
+            things: search.pickedList
+            projects: search.shown.projects || []
+            kinds: search.shown.kinds || []
+            categories: search.shown.categories || []
+            lists: search.shown.lists || []
+            onCleared: {
+                search.picked = ({})
+                search.anchor = -1
+            }
+        }
+
         Label {
             visible: search.found.length === 0
             Layout.fillWidth: true
@@ -318,15 +365,44 @@ Item {
                 required property var modelData
                 required property int index
 
+                readonly property bool picked: search.picked[row.modelData.key] !== undefined
+                // Pressed with Ctrl ("one") or Shift ("range"): the click that follows picks.
+                property string modified: ""
+
                 objectName: "thingRow"
                 width: results.width - 12
-                onClicked: search.open(row.modelData)
+                highlighted: row.picked
+                // On a touch screen, once something is picked, a tap picks too.
+                onClicked: {
+                    // A click with Ctrl or Shift picks (its handlers below), never opens.
+                    if (row.modified !== "") {
+                        search.pick(row.index, row.modified === "range")
+                        row.modified = ""
+                        return
+                    }
+                    if (search.theme.touch && search.pickedList.length > 0)
+                        search.pick(row.index, false)
+                    else
+                        search.open(row.modelData)
+                }
+                onPressAndHold: search.pick(row.index, false)
                 Accessible.name: row.modelData.title
 
+                // Ctrl or Shift with a click: picked, never opened. The handlers only
+                // see the press; the row's own click picks.
+                TapHandler {
+                    acceptedModifiers: Qt.ControlModifier
+                    onPressedChanged: if (pressed) row.modified = "one"
+                }
+                TapHandler {
+                    acceptedModifiers: Qt.ShiftModifier
+                    onPressedChanged: if (pressed) row.modified = "range"
+                }
+
                 background: Rectangle {
-                    color: row.hovered ? search.theme.surface : "transparent"
+                    color: row.picked || row.hovered ? search.theme.surface : "transparent"
                     radius: search.theme.radius
-                    border.color: row.visualFocus ? search.theme.focus : "transparent"
+                    border.color: row.visualFocus ? search.theme.focus : row.picked ? search.theme.accent : "transparent"
                 }
                 contentItem: RowLayout {
                     spacing: 10

@@ -186,6 +186,8 @@ From any thing, **Ties** (on its card, in its menu as "Its ties", "See them all"
 
 The Search tab (`ThingSearch.qml`) is one component that the Tasks page (mode "search", tasks first) and the Agenda (mode "search", events first) both instantiate; words wait 250 ms of pause.
 
+Batch edits (`batch.rs`, `BatchBar.qml`): in the task list and the Search tab, Ctrl or Shift with a click picks rows (TaskRow's `pickable`; the row's handlers see the press, its own click picks), a long press on a touch screen, then a tap. One act changes project, kind, category (one, or none), a day (a task's date asked, its hour kept, `batch::due_on`; an event moved to that day at its time, `agenda::moved`), a status, a list or calendar (`pairs::moved_into` for a task and its steps; an event file moved), done, or deletes. Every write goes in one `composed::Change`, which `agenda::guard` checks, and one Undo puts every file back (`agentwrites::Said::put_back`); deletions wait their ten seconds (`mail::schedule_removals`, a task's blocks with it). Left out, each said with why: a meeting with others, organized by you or not (the organizer's door is its own act, from the card, which tells the guests), a calendar or list you only read, a repeating event moved to another day, a kind given to an event, a list that would lose part of a task (`capabilities::task_losses`). Done or dropped, a task's blocks not begun go, as for one task; a bigger task is not closed with its last step by a batch, and Undo does not bring back blocks taken away.
+
 ## Command line
 ```
 sioul tasks [now]                      the next step, why, and the one after it

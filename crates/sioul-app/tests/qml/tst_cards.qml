@@ -1323,6 +1323,29 @@ Item {
             compare(opened.join(","), "prep true")
         }
 
+        // In the full list (batch edits, 8 November 2026): Ctrl with a click picks the row,
+        // Shift every row from the last one picked, neither opens it; a plain click opens it;
+        // a view that picks nothing opens it whatever the keys.
+        function test_a_task_row_is_picked_with_ctrl_or_shift() {
+            const task = { uid: "form", title: "Fill the form", status: "needs-action", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: false, has_steps: false }
+            const row = createTemporaryObject(taskRowComponent, root, { task: task, width: 600, pickable: true })
+            const said = []
+            row.pick.connect((uid, range) => said.push("pick " + uid + " " + range))
+            row.open.connect(uid => said.push("open " + uid))
+            waitForRendering(row)
+            mouseClick(row, 300, 10, Qt.LeftButton, Qt.ControlModifier)
+            mouseClick(row, 300, 10, Qt.LeftButton, Qt.ShiftModifier)
+            mouseClick(row, 300, 10)
+            compare(said.join(","), "pick form false,pick form true,open form")
+            const plain = createTemporaryObject(taskRowComponent, root, { task: task, width: 600 })
+            const opened = []
+            plain.open.connect(uid => opened.push(uid))
+            plain.pick.connect(uid => opened.push("picked"))
+            waitForRendering(plain)
+            mouseClick(plain, 300, 10, Qt.LeftButton, Qt.ControlModifier)
+            compare(opened.join(","), "form")
+        }
+
         // The tasks tied to this time of a repeating event, listed on its card and opened by a tap.
         function test_an_event_s_card_lists_what_comes_before_this_time() {
             const host = makeHost()
