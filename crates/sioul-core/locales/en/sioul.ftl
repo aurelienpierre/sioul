@@ -2027,6 +2027,7 @@ task-done-week = Done this week
 task-search = Search the tasks
 task-by-project = By project
 task-by-list = By list
+task-by-deadline = With a date asked
 task-show-done = Done too
 task-title = Title
 task-steps = Steps
@@ -2177,6 +2178,7 @@ note-open-lines = Lines not ticked
 note-make-task = Make it a task
 task-group-joy = If you want
 task-group-someday = When you say so
+task-group-deadline = With a date asked, the nearest first
 task-joy = If you want
 
 ## Settings, each where it applies (one sentence each).

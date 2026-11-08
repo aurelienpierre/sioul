@@ -850,8 +850,8 @@ pub fn list_tasks(s: &Session, args: &Args) -> Result<Answer, String> {
     let done = args.flag("done")?;
     // "case", the word before the one name, reads as "project".
     let by = args.text("by")?.map(|by| if by == "case" { "project".to_string() } else { by }).unwrap_or_else(|| "project".into());
-    if !matches!(by.as_str(), "project" | "list") {
-        return Err(format!("“by” is project or list; not “{}”.", one_line(&by)));
+    if !matches!(by.as_str(), "project" | "list" | "deadline") {
+        return Err(format!("“by” is project, list or deadline; not “{}”.", one_line(&by)));
     }
     if !matches!(wanted.as_str(), "now" | "today" | "list") {
         return Err(format!("“view” is now, today or list; not “{}”.", one_line(&wanted)));

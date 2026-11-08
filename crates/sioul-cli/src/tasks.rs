@@ -30,7 +30,7 @@ pub(crate) enum TasksCommand {
     Now,
     /// Every open task, a bigger task followed by its steps, in the plan's order.
     List {
-        /// "project" (default) or "list"; "case", the word before, reads as "project".
+        /// "project" (default), "list", or "deadline" (only the tasks with a date asked, the nearest first); "case", the word before, reads as "project".
         #[arg(long, default_value = "project")]
         by: String,
         /// Also the tasks done in the last two weeks.

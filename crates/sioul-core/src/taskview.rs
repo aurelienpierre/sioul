@@ -829,7 +829,13 @@ pub struct ListView {
 /// the last two weeks come last when `done` is asked. A task with steps is one
 /// row unless opened (`folded`, composed tasks §7.2), its steps not listed but
 /// those set aside when `done` is asked; a search opens every task.
+///
+/// "deadline" (8 November 2026): only the tasks with a date asked, in one
+/// group, the nearest date first, each on its own row whatever its steps.
 pub fn list(cx: &Context, by: &str, done: bool, query: &str, folded: Fold) -> ListView {
+    if by == "deadline" {
+        return by_deadline(cx, done, query);
+    }
     let folded = if query.trim().is_empty() { folded } else { Fold::Open };
     let fold = |t: &str| crate::text::fold(t).into_iter().collect::<String>();
     let words: Vec<String> = query.split_whitespace().map(fold).collect();
@@ -927,6 +933,27 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str, folded: Fold) -> Li
         "" => 1,
         _ => 0,
     });
+    ListView { groups }
+}
+
+/// The tasks with a date asked, the nearest first (`list`'s "deadline"); the
+/// done ones of the last two weeks after them when `done` is asked.
+fn by_deadline(cx: &Context, done: bool, query: &str) -> ListView {
+    let fold = |t: &str| crate::text::fold(t).into_iter().collect::<String>();
+    let words: Vec<String> = query.split_whitespace().map(fold).collect();
+    let matches = |t: &Task| words.iter().all(|w| fold(&format!("{} {} {}", t.title, t.notes, t.categories.join(" "))).contains(w.as_str()));
+    let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(crate::zone::current()).map_or(0, |z| z.timestamp().as_second());
+    let mut dated: Vec<&Task> = cx
+        .tasks
+        .iter()
+        .filter(|t| t.due_date().is_some() && matches(t) && cx.filter.wants(t))
+        .filter(|t| t.status.is_open() || (done && t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight)))
+        .collect();
+    // "2026-11-12" before "2026-11-12T09:00": a whole day, then its hours; open before done.
+    dated.sort_by(|a, b| (!a.status.is_open(), a.due_date(), a.due.len(), &a.due, &a.title).cmp(&(!b.status.is_open(), b.due_date(), b.due.len(), &b.due, &b.title)));
+    // Each its own row: a step says its bigger task in its line ("Part of: …"), never by its place.
+    let rows: Vec<CardView> = dated.into_iter().map(|t| CardView { depth: 0, ..card(cx, t) }).collect();
+    let groups = if rows.is_empty() { Vec::new() } else { vec![GroupView { id: "\u{1}deadline".to_string(), title: cx.tr.text("task-group-deadline", None), rows }] };
     ListView { groups }
 }
 
@@ -1249,6 +1276,26 @@ mod tests {
     /// A task made on the page in hours that hide it stays in view until you
     /// leave the page, its row saying when it comes back (decided 3 November
     /// 2026); forgotten as you leave, the hours hide it again.
+    #[test]
+    fn with_a_deadline_lists_the_dated_tasks_nearest_first() {
+        let tr = Translator::new("en");
+        let tasks = vec![
+            Task { due: "2026-11-20".into(), ..task("late", "Renew the card") },
+            Task { due: "2026-11-12T17:00".into(), ..task("hour", "Send the file") },
+            Task { due: "2026-11-12".into(), ..task("day", "Fill the form") },
+            task("none", "Read the book"),
+            Task { due: "2026-11-01".into(), status: Status::Completed, completed: Some(4_102_444_800), ..task("done", "Pay the rent") },
+        ];
+        let plan = plan(&tasks, "2026-11-08".parse().unwrap(), &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
+        let filter = Filter::default();
+        let (spent, stopped, outings) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+        let cx = Context { filter: &filter, offices: Offices::always(), tasks: &tasks, plan: &plan, today: "2026-11-08".parse().unwrap(), tr: &tr, projects: &[], spent: &spent, stopped: &stopped, outings: &outings };
+        let uids = |done: bool| list(&cx, "deadline", done, "", Fold::Open).groups.iter().flat_map(|g| g.rows.iter().map(|r| r.uid.clone())).collect::<Vec<_>>();
+        assert_eq!(uids(false), ["day", "hour", "late"], "a whole day, then its hours; none without a date");
+        assert_eq!(uids(true), ["day", "hour", "late", "done"], "the done ones after");
+        assert_eq!(list(&cx, "deadline", false, "", Fold::Open).groups[0].title, "With a date asked, the nearest first");
+    }
+
     #[test]
     fn a_task_made_in_quiet_time_stays_in_view_with_its_line() {
         use crate::areas::Week;

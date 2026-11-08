@@ -121,7 +121,7 @@ Item {
             return
         page.restored = true
         // "case": the grouping's name before the one name, "project".
-        page.by = page.shown.view.by === "list" ? "list" : "project"
+        page.by = page.shown.view.by === "list" || page.shown.view.by === "deadline" ? page.shown.view.by : "project"
         page.showDone = page.shown.view.done
         page.projectFilter = page.shown.view.project || ""
     }
@@ -991,11 +991,16 @@ Item {
                                         page.apply()
                                     }
                                 }
+                                // By project, by list, or only the tasks with a date asked, the nearest first.
                                 PlainComboBox {
-                                    model: [page.sioul.text("task-by-project"), page.sioul.text("task-by-list")]
-                                    currentIndex: page.by === "list" ? 1 : 0
+                                    objectName: "taskListBy"
+
+                                    readonly property var ways: ["project", "list", "deadline"]
+
+                                    model: ways.map(w => page.sioul.text("task-by-" + w))
+                                    currentIndex: Math.max(0, ways.indexOf(page.by))
                                     onActivated: index => {
-                                        page.by = index === 1 ? "list" : "project"
+                                        page.by = ways[index]
                                         page.apply()
                                     }
                                 }

@@ -2054,6 +2054,7 @@ task-done-week = Faites cette semaine
 task-search = Chercher dans les tâches
 task-by-project = Par projet
 task-by-list = Par liste
+task-by-deadline = Avec une date demandée
 task-show-done = Faites aussi
 task-title = Titre
 task-steps = Étapes
@@ -2204,6 +2205,7 @@ note-open-lines = Lignes non cochées
 note-make-task = En faire une tâche
 task-group-joy = Si vous en avez envie
 task-group-someday = Quand vous le direz
+task-group-deadline = Avec une date demandée, la plus proche d’abord
 task-joy = Si vous en avez envie
 
 ## Réglages, chacun là où il s’applique (une phrase chacun).
