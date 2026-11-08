@@ -253,7 +253,7 @@ pub(crate) fn mailbox_pages(config: &Config, ask: &sioul_core::mailbox::Ask, hid
     // No horizon in the window's list: everything kept, read back as far as the rows asked for need.
     let ask = sioul_core::mailbox::Ask { filter: Some(filter), windows: 0, ..ask.clone() };
     let page = mailbox_page(config, &ask, hidden, waiting, &mode, &now);
-    let hidden = hidden_parts(config, &ask, &shown);
+    let hidden = hidden_parts(config, &ask);
     MailboxPages { texts: page_texts(&page, &ask, &shown, &hidden), indexing: page.indexing, made: started.elapsed() }
 }
 
@@ -346,23 +346,14 @@ pub(crate) struct Hidden {
     pub button: String,
 }
 
-/// What the mailbox hides now, in the list's own words: an area whose mail
-/// rests as your hours say, or that you left unticked (the filter); an
-/// address switched off in this list (a view: its mail stays in its inbox).
-/// Never older mail: the list has no horizon. The filter's rules are the hours' and
-/// each address's "What this address is for" (Accounts), a view's switch is
-/// this list's alone: each said in its own words.
-pub(crate) fn hidden_parts(config: &Config, ask: &sioul_core::mailbox::Ask, filter: &sioul_core::areafilter::Shown) -> Vec<Hidden> {
-    use sioul_core::areas::Area;
+/// What the mailbox hides now, in the list's own words: an address
+/// switched off in this list (a view: its mail stays in its inbox), a
+/// view's switch of this list alone. Never an area (8 November 2026): the
+/// filter's button says already what it ticks, and ticking another is its
+/// own act; never older mail: the list has no horizon.
+pub(crate) fn hidden_parts(config: &Config, ask: &sioul_core::mailbox::Ask) -> Vec<Hidden> {
     let mut out = Vec::new();
     let syncing: Vec<&Account> = config.accounts.iter().filter(|a| a.syncs()).collect();
-    for (id, shown, area) in [("work", filter.work, Area::WORK), ("admin", filter.admin, Area { admin: true, ..Area::default() }), ("leisure", filter.leisure, Area { leisure: true, ..Area::default() })] {
-        if shown || !syncing.iter().any(|a| sioul_core::mailbox::area_of(a).meets(area)) {
-            continue;
-        }
-        let words = if filter.own { format!("mailbox-hidden-unticked-{id}") } else { format!("mailbox-hidden-rests-{id}") };
-        out.push(Hidden { text: tr().text(&words, None), act: format!("tick:{id}"), button: tr().text("mailbox-hidden-show-area", None) });
-    }
     let off: &[String] = ask.filter.as_ref().map_or(&[], |f| f.off.as_slice());
     for account in syncing.iter().filter(|a| off.contains(&a.id)) {
         let address = account.address.clone().unwrap_or_else(|| account.id.clone());
@@ -3252,10 +3243,9 @@ mod tests {
     }
 
     /// What the mailbox does not show now, said with what brings it back:
-    /// leisure's mail resting as the hours say (an address for leisure syncs),
-    /// admin's left out (no address for it), an address switched off in this
-    /// list; your own ticks said as unticked; never older mail (no horizon),
-    /// and no line at the list's end.
+    /// an address switched off in this list; never an area, resting as the
+    /// hours say or left unticked (8 November 2026: the filter's button says
+    /// it); never older mail (no horizon), and no line at the list's end.
     #[test]
     fn what_the_mailbox_hides_is_said_with_its_way_back() {
         use sioul_core::config::{Security, Config};
@@ -3267,12 +3257,11 @@ mod tests {
         let page = Page { rows: Vec::new(), resting: Vec::new(), addresses: Vec::new(), earlier: true, more: false, indexing: false, closed: 0, blocked: 0, sentence: String::new(), chip: Chip::All, account: String::new(), windows: 1 };
         let ask = Ask { filter: Some(Filter { areas: sioul_core::areas::Area::WORK, off: vec!["home".into()] }), ..Ask::default() };
         let shown = sioul_core::areafilter::Shown { work: true, admin: false, leisure: false, label: String::new(), own: false };
-        let parts = hidden_parts(&config, &ask, &shown);
-        assert_eq!(parts.iter().map(|p| p.act.as_str()).collect::<Vec<_>>(), ["tick:leisure", "on:home"], "{parts:?}");
-        assert_eq!(parts[0].text, tr().text("mailbox-hidden-rests-leisure", None));
-        assert!(parts[1].text.contains("noa@home.example.org"), "the address by its name: {}", parts[1].text);
-        let own = sioul_core::areafilter::Shown { own: true, ..shown.clone() };
-        assert_eq!(hidden_parts(&config, &Ask::default(), &own).iter().map(|p| p.text.clone()).collect::<Vec<_>>(), [tr().text("mailbox-hidden-unticked-leisure", None)], "your own ticks");
+        let parts = hidden_parts(&config, &ask);
+        assert_eq!(parts.iter().map(|p| p.act.as_str()).collect::<Vec<_>>(), ["on:home"], "leisure's resting mail never said: {parts:?}");
+        assert!(parts[0].text.contains("noa@home.example.org"), "the address by its name: {}", parts[0].text);
+        let only_areas = Ask { filter: Some(Filter { areas: sioul_core::areas::Area::WORK, off: Vec::new() }), ..Ask::default() };
+        assert!(hidden_parts(&config, &only_areas).is_empty(), "an area left out by the hours or by you: nothing said");
         let head: serde_json::Value = serde_json::from_str(&page_texts(&page, &ask, &shown, &parts)[0]).unwrap();
         assert!(head.get("end").is_none() && head.get("earlier").is_none() && head.get("windows").is_none(), "no line at the list's end: {head}");
     }

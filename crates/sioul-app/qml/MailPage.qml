@@ -421,16 +421,11 @@ Item {
         page.sioul.switchMailAddress(id, on)
         page.filterAgain()
     }
-    // What the head of the mailbox says is not shown, brought back: an area
-    // ticked with those ticked now, an address switched on.
+    // What the head of the mailbox says is not shown, brought back: an address
+    // switched on (an area is the filter's button's own: never said there).
     function bringBack(act) {
-        if (act.indexOf("tick:") === 0) {
-            const now = page.box && page.box.filter ? page.box.filter : {}
-            const areas = ["work", "admin", "leisure"].filter(a => a === act.slice(5) || now[a] === true)
-            page.tickAreas(areas.join("+"))
-        } else if (act.indexOf("on:") === 0) {
+        if (act.indexOf("on:") === 0)
             page.switchAddress(act.slice(3), true)
-        }
     }
     function filterAgain() {
         page.clearSelection()
@@ -1409,9 +1404,8 @@ Item {
                 wrapMode: Text.Wrap
                 color: page.searchOpen ? page.theme.text : page.theme.muted
             }
-            // What the mailbox does not show now, each with what brings it back
-            // (`mail::hidden_parts`): an area resting by your hours or left unticked,
-            // an address switched off in this list, older mail. On a phone too.
+            // What the mailbox does not show now, with what brings it back
+            // (`mail::hidden_parts`): an address switched off in this list. On a phone too.
             ColumnLayout {
                 objectName: "mailboxHidden"
                 visible: !page.draftsShown && !page.searchOpen && page.boxShown && page.box !== null && (page.box.hidden || []).length > 0
