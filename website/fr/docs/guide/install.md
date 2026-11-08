@@ -33,6 +33,33 @@ Mesuré sur un ordinateur Linux à 8 cœurs, Sioul et tous les processus qu’i
 - **Sur un téléphone** (Android, un téléphone de 2019) : environ 200 Mo quand Sioul est à l’écran et 140 Mo une fois mis de côté, avec presque pas de processeur alors ; chaque page s’ouvre en 0,1 à 0,5 s la première fois, puis tout de suite.
 - **Ce qu’il faut prévoir** : 4 Go de mémoire pour Sioul et quelques sites à côté de vos autres programmes, 8 Go pour garder beaucoup de sites ouverts ; sans sites, Sioul demande très peu. N’importe quel processeur des dix dernières années.
 
+### Une journée à côté d’autres applications {#a-day-beside-other-apps}
+
+Mesuré les 7 et 8 novembre 2026, en usage quotidien, avec les applications qu’on laisse ouvertes à côté.
+
+**Sur un ordinateur portable à 8 cœurs**, la fenêtre de Sioul ouverte 17 heures, son temps de processeur sur toute sa vie (`ps`) :
+
+| Application | Processus | Charge moyenne | Mémoire résidente |
+|---|---|---|---|
+| **Sioul** | 1 | **3,7 % d’un cœur** (moins de 0,5 % du processeur) | **651 Mo** |
+| Signal Desktop | 9 | 2,4 % d’un cœur | 1,4 Go |
+| VS Code | 27 | 3,4 % d’un cœur | 4,3 Go |
+| Chromium | 28 | 5,1 % d’un cœur | 5,2 Go |
+
+La mémoire est additionnée sur les processus de chaque application ; les pages qu’ils partagent sont comptées dans chacun, ce qui avantage un peu le processus unique de Sioul.
+
+**Sur un téléphone** (Android 16, huit cœurs basse consommation, en 5G), 16 heures 20 hors de son chargeur, dont 14 heures 22 écran éteint, d’après l’estimation d’Android lui-même (`dumpsys batterystats`) :
+
+| Application | Batterie | Radio mobile tenue active |
+|---|---|---|
+| **Sioul** : le courriel de plusieurs adresses, les agendas, les contacts, les SMS et les appels, l’échange avec l’ordinateur | **38 mAh, 0,7 % de la batterie** | 53 minutes |
+| La synchronisation des contacts et agendas du système | 6 mAh | 14 minutes |
+| Proton Mail | 5 mAh | 2 minutes |
+| Signal | 4 mAh | 6 minutes |
+| L’écran | 234 mAh | |
+
+Sioul a consommé le plus des applications de ce téléphone, puisqu’il fait le travail de plusieurs, et il est resté sous 1 % de la batterie pour la journée. L’estimation d’Android laisse de côté la radio mobile, et c’est Sioul qui l’a tenue éveillée le plus longtemps : son étape d’arrière-plan réveillait le téléphone environ toutes les cinq minutes. Des envois moins nombreux et plus groupés sont la prochaine chose à améliorer.
+
 La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py` et `tools/measure-memory.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
 ## Ou le construire à partir de ses sources {#or-build-it-from-its-sources}

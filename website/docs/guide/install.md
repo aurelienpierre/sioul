@@ -33,6 +33,33 @@ Measured on a Linux computer with 8 cores, with Sioul and every process it start
 - **On a phone** (Android, a 2019 phone): about 200 MB while Sioul is on the screen and 140 MB once it is put away, with almost no processor then; each page opens in 0.1 to 0.5 s the first time, and at once after.
 - **What to plan for**: 4 GB of memory for Sioul and a few sites beside your other programs, 8 GB to keep many sites open; without sites, Sioul needs very little. Any processor of the last ten years.
 
+### A day beside other apps
+
+Measured on 7 and 8 November 2026, in daily use, with the apps people leave open beside it.
+
+**On a laptop with 8 cores**, Sioul's window open for 17 hours, its processor time over its whole life (`ps`):
+
+| App | Processes | Average load | Resident memory |
+|---|---|---|---|
+| **Sioul** | 1 | **3.7 % of one core** (under 0.5 % of the processor) | **651 MB** |
+| Signal Desktop | 9 | 2.4 % of one core | 1.4 GB |
+| VS Code | 27 | 3.4 % of one core | 4.3 GB |
+| Chromium | 28 | 5.1 % of one core | 5.2 GB |
+
+Memory is summed over each app's processes; pages they share are counted in each, which favours Sioul's single process a little.
+
+**On a phone** (Android 16, eight efficiency cores, on 5G), 16 hours 20 minutes off its charger, 14 hours 22 minutes of them with the screen off, Android's own estimate (`dumpsys batterystats`):
+
+| App | Battery | Mobile radio kept active |
+|---|---|---|
+| **Sioul**: mail for several addresses, calendars, contacts, texts and calls, the exchange with the computer | **38 mAh, 0.7 % of the battery** | 53 minutes |
+| The system's sync of contacts and calendars | 6 mAh | 14 minutes |
+| Proton Mail | 5 mAh | 2 minutes |
+| Signal | 4 mAh | 6 minutes |
+| The screen | 234 mAh | |
+
+Sioul used the most of the apps on that phone, since it does the work of several, and stayed under 1 % of the battery for the day. Android's estimate leaves the mobile radio out, and Sioul kept it awake longest: its background step woke the phone about every five minutes. Fewer, larger bursts are the next thing to improve.
+
 The measure can be made again on any computer: `tools/measure-load.py` and `tools/measure-memory.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
 ## Or build it from its sources

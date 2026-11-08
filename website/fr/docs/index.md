@@ -11,7 +11,7 @@ description: "Sioul est un environnement administratif personnel, sensible au tr
 
 La vie administrative moderne suppose quelqu’un de toujours disponible et toujours en pleine forme. Sioul part au contraire de ce que vous pouvez donner aujourd’hui, votre attention, votre énergie, votre santé et votre repos, et y ajuste le travail, les institutions et l’argent.
 
-<p class="sioul-quiet" markdown>[Essayer Sioul, version 0.0.7](guide/install.md) : Linux, Windows, macOS et Android. Il est jeune et change souvent ; la suite de cette page dit à quoi il sert.</p>
+<p class="sioul-quiet" markdown>[Essayer Sioul, version 0.0.9](guide/install.md) : Linux, Windows, macOS et Android. Il est jeune et change souvent ; la suite de cette page dit à quoi il sert.</p>
 
 Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document, la personne qui l’a envoyée et le paiement forment une seule affaire. Vous n’avez pas à garder en tête ce qui les relie : Sioul le garde pour vous.
 
@@ -72,6 +72,10 @@ Sioul ne chiffre pas les courriels pour le principe. OpenPGP, une clé qui reste
 ### Vos besoins d’abord, ensuite le travail {#your-needs-first-then-the-work}
 
 Vous réglez d’abord vos repas, votre repos et votre sommeil. Ils sont gardés libres dans le plan, comme le temps de vous préparer, d’y aller et de revenir autour de chaque événement. Chaque jour, vous pouvez dire comment il est : clair, brume ou brouillard ; un jour de brume ou de brouillard tient moins. En fin de journée, vous pouvez dire si c’était trop plein, juste ce qu’il faut ou trop vide, et le plan en apprend ce que tient une journée pour vous ; il ne devine jamais votre état d’après ce que vous faites. Le travail va dans les heures que vous lui avez données, sous la forme d’une seule étape suivante, avec la raison pour laquelle elle vient maintenant. Rien n’est jamais en retard : une date dans le plan n’est pas une dette.
+
+### Ouvert toute la journée {#leave-it-open-all-day}
+
+Sioul est fait pour rester ouvert jour et nuit, sur l’ordinateur comme en arrière-plan sur le téléphone, et pour s’y faire oublier. Les 7 et 8 novembre 2026, ouvert 17 heures à côté de Chromium, VS Code et Signal sur un ordinateur portable, il a pris en moyenne 3,7 % d’un cœur du processeur, entre Signal et Chromium, et 651 Mo de mémoire, quand chacun des autres en prenait de 1,4 à 5,2 Go. Sur un téléphone resté 16 heures hors de son chargeur, à tenir à jour plusieurs adresses de courriel, les agendas, les contacts, les SMS et les appels, Android lui a compté 0,7 % de la batterie. [Les mesures, et ce qu’elles laissent de côté](guide/install.md#resources-needed).
 
 ### Un porche entre le monde et votre attention {#a-porch-between-the-world-and-your-attention}
 
@@ -229,7 +233,7 @@ Le même raisonnement décide de la façon dont Sioul est construit. Vos donnée
 
 ## Où il en est {#where-it-stands}
 
-Sioul est jeune (version 0.0.7) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak) et Android (téléphones 64 bits, Android 9 et suivants) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux et sur un téléphone Android, encore peu essayés ailleurs.
+Sioul est jeune (version 0.0.9) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak) et Android (téléphones 64 bits, Android 9 et suivants) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux et sur un téléphone Android, encore peu essayés ailleurs.
 
 Il est fait par une seule personne, au grand jour : aucune assistance n’est promise. Les questions et les signalements sont les bienvenus dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues).
 

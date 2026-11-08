@@ -11,7 +11,7 @@ description: "Sioul is a personal administrative environment, trauma-informed an
 
 Modern admin assumes someone always available and always at full strength. Sioul starts instead from what you can give today, your attention, your energy, your health and your rest, and fits work, institutions and money around it.
 
-<p class="sioul-quiet" markdown>[Try Sioul, version 0.0.7](guide/install.md): Linux, Windows, macOS and Android. It is young and changes often; the rest of this page says what it is for.</p>
+<p class="sioul-quiet" markdown>[Try Sioul, version 0.0.9](guide/install.md): Linux, Windows, macOS and Android. It is young and changes often; the rest of this page says what it is for.</p>
 
 A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one matter. You do not have to keep their relationships in your head: Sioul keeps them.
 
@@ -72,6 +72,10 @@ Sioul does not encrypt mail for its own sake. OpenPGP, a key that stays on your 
 ### Your needs first, then the work
 
 You set your meals, your rest and your sleep first. They are kept free in the plan, and so is the time to get ready, get there and come back around each event. Each day, you can say how it is: clear, haze or fog; a hazy or foggy day holds less. At its end, you can say whether it was too much, about right or too empty, and from that the plan learns how much a day holds for you; it never guesses your state from what you do. The work goes in the hours you have given it, as one next step, with the reason it comes now. Nothing is ever overdue: a date in the plan is not a debt.
+
+### Leave it open, all day
+
+Sioul is made to stay open around the clock, on the computer and in the phone's background, and to go unnoticed there. On 7 and 8 November 2026, open for 17 hours beside Chromium, VS Code and Signal on a laptop, it used 3.7 % of one processor core on average, between Signal and Chromium, and 651 MB of memory, where each of the others took 1.4 to 5.2 GB. On a phone off its charger for 16 hours, keeping several mail addresses, calendars, contacts, texts and calls up to date, Android counted 0.7 % of the battery for it. [The measures, and what they leave out](guide/install.md#resources-needed).
 
 ### A porch between the world and your attention
 
@@ -229,7 +233,7 @@ The same reasoning decides how Sioul is built. Your data stays on your devices, 
 
 ## Where it stands
 
-Sioul is young (version 0.0.7) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
+Sioul is young (version 0.0.9) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
