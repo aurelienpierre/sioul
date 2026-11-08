@@ -97,13 +97,17 @@ pub const STEP_FILL: usize = 500;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Chip {
-    /// What you received and sent.
+    /// What you received (8 November 2026: what you sent alone is under
+    /// Sent, never mixed in; a message you sent and also received stays).
     #[default]
     All,
     /// What you received and have not read.
     Unread,
     Sent,
     Spam,
+    /// What you received and what you sent alike: an agent's (`mailbox`
+    /// without a kind), never the window's.
+    Every,
 }
 
 impl Chip {
@@ -112,6 +116,7 @@ impl Chip {
             "unread" => Chip::Unread,
             "sent" => Chip::Sent,
             "spam" => Chip::Spam,
+            "every" => Chip::Every,
             _ => Chip::All,
         }
     }
@@ -842,7 +847,8 @@ fn page_of_windows(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTr
         };
         let unread_here = received_kind && !read;
         let shown = match ask.chip {
-            Chip::All => spam.is_none(),
+            Chip::All => spam.is_none() && received_kind,
+            Chip::Every => spam.is_none(),
             Chip::Unread => spam.is_none() && unread_here,
             Chip::Sent => sent_kind,
             Chip::Spam => spam.is_some(),
@@ -1386,6 +1392,25 @@ mod tests {
         // One address alone, chosen: the other's mail out.
         let one = stand.page(&world, &Ask { account: stand.addresses[1].account.id.clone(), ..Ask::default() }, &BTreeSet::new());
         assert!(one.rows.iter().all(|r| r.marks.iter().any(|m| m.account == stand.addresses[1].account.id)));
+    }
+
+    /// All is what you received (8 November 2026): what you sent alone is
+    /// under Sent, never mixed in; a message you sent yourself and also
+    /// received stays; an agent's Every has both.
+    #[test]
+    fn sent_mail_is_not_mixed_into_all() {
+        let stand = Stand::new("sentout");
+        let hour = 3600;
+        stand.put(0, "INBOX", 1, "in@example.org", "Ana <ana@example.org>", "noa@work.example.org", "Received", NOW - hour, NOW - hour, "S", "", "…");
+        stand.put(0, "Sent", 2, "out@example.org", "Noa <noa@work.example.org>", "Iris <iris@example.org>", "Sent to Iris", NOW - 2 * hour, NOW - 2 * hour, "S", "", "…");
+        stand.put(0, "Sent", 3, "self@example.org", "Noa <noa@work.example.org>", "Noa <noa@work.example.org>", "To myself", NOW - 3 * hour, NOW - 3 * hour, "S", "", "…");
+        stand.put(0, "INBOX", 4, "self@example.org", "Noa <noa@work.example.org>", "Noa <noa@work.example.org>", "To myself", NOW - 3 * hour, NOW - 3 * hour + 5, "S", "", "…");
+        let world = world_at(crate::areas::Time::Work, "", "");
+        let chip = |chip: Chip| subjects(&stand.page(&world, &Ask { chip, ..Ask::default() }, &BTreeSet::new())).into_iter().map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(chip(Chip::All), ["Received", "To myself"]);
+        assert_eq!(chip(Chip::Sent), ["Sent to Iris", "To myself"]);
+        assert_eq!(chip(Chip::Every), ["Received", "Sent to Iris", "To myself"]);
+        assert_eq!(Chip::parse("every"), Chip::Every);
     }
 
     /// The window's list has no horizon (`windows` at 0, 8 November 2026):

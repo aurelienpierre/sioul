@@ -75,9 +75,12 @@ Item {
     readonly property var allRows: [
         rowOf(1, "Today", ["work", "home"], "On both lists", { unread: true, read: false }),
         rowOf(2, "Today", "work", "Quote for the cooperative", { unread: true, read: false }),
-        rowOf(3, "Yesterday", "work", "Sent to Iris", { kinds: ["sent"], who: "To Iris" }),
+        // Sent to Iris, who wrote back on the same conversation copy: received and sent, so in All.
+        rowOf(3, "Yesterday", "work", "Sent to Iris", { kinds: ["received", "sent"], who: "You, to Iris" }),
         rowOf(4, "Yesterday", "home", "Dinner on Friday"),
-        rowOf(5, "Monday 26 October", "work", "You have won", { kinds: ["spam"], spam: "your provider: spam" })
+        rowOf(5, "Monday 26 October", "work", "You have won", { kinds: ["spam"], spam: "your provider: spam" }),
+        // Sent alone: under Sent, never in All (8 November 2026).
+        rowOf(6, "Monday 26 October", "work", "Sent to Paul", { kinds: ["sent"], who: "To Paul" })
     ]
     // What each stand-in address is for, as its card says.
     readonly property var areasOf: ({ work: ["work"], home: ["admin", "leisure"] })
@@ -102,6 +105,7 @@ Item {
         const rows = every.filter(r => !root.keysOf(r).every(k => mock.gone.indexOf(k) >= 0)
             && (ask.chip === "spam" ? !!r.spam : !r.spam)
             && (ask.chip !== "sent" || r.kinds.indexOf("sent") >= 0)
+            && (ask.chip === "sent" || ask.chip === "spam" || r.kinds.indexOf("received") >= 0)
             && (ask.chip !== "unread" || !r.read)
             && r.accounts.some(a => root.addressShown(a))
             && (ask.query === "" || r.subject.toLowerCase().indexOf(ask.query.toLowerCase()) >= 0))
@@ -502,7 +506,7 @@ Item {
             compare(page.listItems.map(r => r.subject), ["You have won"])
             verify(find(page, "chip:spam").highlighted && !find(page, "chip:all").highlighted)
             find(page, "chip:sent").clicked()
-            compare(page.listItems.map(r => r.subject), ["Sent to Iris"])
+            compare(page.listItems.map(r => r.subject), ["Sent to Iris", "Sent to Paul"])
             find(page, "chip:all").clicked()
             // No chip says a number.
             for (const chip of ["all", "unread", "sent", "spam"])

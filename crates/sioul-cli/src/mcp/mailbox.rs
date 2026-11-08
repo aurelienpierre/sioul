@@ -117,7 +117,13 @@ pub fn mailbox(s: &Session, args: &Args) -> Result<Answer, String> {
     let world = mailbox::World::load(&s.config, sioul_core::attention::Now::of(&mode));
     let windows = u32::try_from(((stamp - since).max(1) + mailbox::WINDOW_DAYS * 86_400 - 1) / (mailbox::WINDOW_DAYS * 86_400)).unwrap_or(u32::MAX).max(1);
     let ask = Ask {
-        chip: if kind.as_deref() == Some("spam") { Chip::Spam } else { Chip::All },
+        // Received and sent alike unless a kind is asked (the window's All is received mail alone).
+        chip: match kind.as_deref() {
+            Some("spam") => Chip::Spam,
+            Some("sent") => Chip::Sent,
+            Some("received") => Chip::All,
+            _ => Chip::Every,
+        },
         account: account.clone().unwrap_or_default(),
         windows,
         query: String::new(),
