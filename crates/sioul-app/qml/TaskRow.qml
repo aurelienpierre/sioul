@@ -33,6 +33,12 @@ ItemDelegate {
     property bool folds: false
     // A step in its task's form (Edit): a handle drawn, by which it is dragged into its place.
     property bool handle: false
+    // The full list's selection, for batch edits (8 November 2026): Ctrl or
+    // Shift with a click, a long press on a touch screen, pick it (`pick`).
+    property bool pickable: false
+    property bool picked: false
+    // Pressed with Ctrl ("one") or Shift ("range"): the click that follows picks.
+    property string modified: ""
 
     // A click: its details asked, by its UID.
     signal open(string uid)
@@ -42,6 +48,8 @@ ItemDelegate {
     signal menu(var task)
     // Its arrow pressed: its steps shown (`open`), or folded again.
     signal fold(string uid, bool open)
+    // Picked or let go for a batch edit; `range`, every row from the last one picked.
+    signal pick(string uid, bool range)
 
     // Done or dropped: its circle filled, its title quieter.
     readonly property bool done: row.task.status === "completed" || row.task.status === "cancelled"
@@ -52,21 +60,45 @@ ItemDelegate {
 
     leftPadding: 8 + row.depth * 22
     padding: row.compact ? 4 : 8
-    highlighted: row.selected
-    onClicked: row.open(row.task.uid)
+    highlighted: row.selected || row.picked
+    onClicked: {
+        if (row.modified !== "") {
+            row.pick(row.task.uid, row.modified === "range")
+            row.modified = ""
+            return
+        }
+        row.open(row.task.uid)
+    }
     Keys.onReturnPressed: row.open(row.task.uid)
     Accessible.name: row.task.title
 
     background: Rectangle {
         color: row.highlighted || row.hovered ? row.theme.surface : "transparent"
         radius: row.theme.radius
-        border.color: row.visualFocus ? row.theme.focus : row.highlighted ? row.theme.line : "transparent"
+        border.color: row.visualFocus ? row.theme.focus : row.picked ? row.theme.accent : row.highlighted ? row.theme.line : "transparent"
     }
 
     // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+    // In the full list on a touch screen, a long press picks it instead.
     onPressAndHold: {
+        if (row.pickable && row.theme.touch === true) {
+            row.pick(row.task.uid, false)
+            return
+        }
         row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
         row.menu(row.task)
+    }
+    // Ctrl or Shift with a click: picked, never opened. The handlers only see
+    // the press; the row's own click picks.
+    TapHandler {
+        enabled: row.pickable
+        acceptedModifiers: Qt.ControlModifier
+        onPressedChanged: if (pressed) row.modified = "one"
+    }
+    TapHandler {
+        enabled: row.pickable
+        acceptedModifiers: Qt.ShiftModifier
+        onPressedChanged: if (pressed) row.modified = "range"
     }
     TapHandler {
         acceptedButtons: Qt.RightButton

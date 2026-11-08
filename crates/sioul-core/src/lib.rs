@@ -306,6 +306,7 @@ pub mod sites;
 pub mod state;
 pub mod stopped;
 pub mod taskview;
+pub mod thingsearch;
 // texts: SMS phase (b), read and sent through the phone (docs/texts.md).
 pub mod texts;
 pub mod tasks;

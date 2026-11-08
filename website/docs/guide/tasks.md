@@ -143,7 +143,7 @@ After the last step, some time is **Kept free, in case steps take longer** ([How
 
 One switch away from Now:
 
-- **List**: every open task in the plan's order, grouped **By project** or **By list**, with a search, and **Done too** on request. The optional ones come last. A task with steps is one row: "Going to the doctor · Thu 29 Oct 14:00 · next: Brush teeth" (its appointment's time, when it prepares one, then its next step); its arrow ▸ shows its steps under it, in their order, and ▾ folds them again. Sioul remembers which you opened; a search shows every step.
+- **List**: every open task in the plan's order, grouped **By project** or **By list**, with a search, and **Done too** on request. **With a date asked** lists only the tasks that have one, the nearest first, each on its own row. The optional ones come last. A task with steps is one row: "Going to the doctor · Thu 29 Oct 14:00 · next: Brush teeth" (its appointment's time, when it prepares one, then its next step); its arrow ▸ shows its steps under it, in their order, and ▾ folds them again. Sioul remembers which you opened; a search shows every step.
 - **Board**: *Free to start*, *Started*, *Waiting*, *Done* (the last two weeks). A task with steps is one card, where its step furthest on is, until its arrow shows its steps. Cards move by dragging, with a mouse or a touchpad; on a touch screen, a drag scrolls the board. "Waiting" is decided by what each task waits for, and each card says what. Past three started tasks, one line asks: "Finish or park one?"
 - **Gantt** (it was called Calendar): each open task on its days, the date asked as a small diamond, days without room shaded. A task with steps is one bar, over its steps' days, until its arrow shows them. One project, or all. A project's **Gantt** button opens this view, kept to the project.
 
@@ -154,7 +154,23 @@ One switch away from Now:
 
 Three choices at the top of the page, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices.
 
-**Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)): a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out of every view, Now included, the plan whole. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
+**Your hours shape Now alone.** List, Board and Gantt show every task, work, admin and leisure, whatever the hour, as the mailbox and Budgets do: a work task is there in the evening too. Now stays calm and shows what the hour is for.
+
+**Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)). On Now, a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out, the plan whole. On List, Board and Gantt, only what you said leaves a list out: one you unticked there or keep hidden; the hours never do. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
+
+## Search, and changing several at once {#search}
+
+**Search**, the last choice at the top of the Tasks page and of the Agenda, finds tasks and events together, whatever the hour:
+
+- **words** found in the title, the notes or the place, each word somewhere, accents and case aside;
+- **Any project**, **No project** or one; the same for the **type** and the **category**. An event has no type: **No type** keeps every event, a type none;
+- **Anytime**, or **Between two days**, either day left empty for no limit. A task falls between them by its date asked, its day to start or the day it was done; an event by its time, a repeating one by its times in between;
+- for events: **With guests** or **Without guests** (you are no guest of your own), and **Confirmed**, **To be confirmed**, **Cancelled**, as many as you tick;
+- for tasks: **Done** or **Not done**, **With a date asked** or **Without a date asked**.
+
+What comes is listed first, the soonest first, then the past, the newest first, then what has no date. A tap opens its card.
+
+**Changing several at once**, in the task list and in Search: **Ctrl** with a click picks a row, **Shift** with a click every row from the last one picked; on a touch screen, a long press picks, and once something is picked a tap picks too. A bar above the list then changes all of them in one act: **Project**, **Type**, **Category**, **Day…** (a task's date asked, its hour kept; an event moved to that day at its time), **Status**, **List or calendar**, **Done**, **Delete**. **Undo** on the status line puts everything back; a deletion waits ten seconds, as one does. What a batch leaves as it was is said under the bar, each with why: a meeting with others (change it from its card, which tells its guests), a calendar or a list you only read, a repeating event moved to another day (from its card), a list that would not keep all of a task.
 
 ## A task, open {#a-task-open}
 

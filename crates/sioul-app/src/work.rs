@@ -336,7 +336,7 @@ fn kinds_offered() -> Vec<KindChoice> {
 }
 
 /// The open tasks' categories, the most used first, each as first written.
-fn categories_of(tasks: &[Task]) -> Vec<String> {
+pub(crate) fn categories_of(tasks: &[Task]) -> Vec<String> {
     let mut counted: BTreeMap<String, (usize, String)> = BTreeMap::new();
     for task in tasks.iter().filter(|t| t.status.is_open()) {
         for category in &task.categories {
@@ -403,6 +403,9 @@ struct TasksShown {
     /// The agenda filter, as its list shows it on this page: the lists that
     /// take tasks, grouped by whose they are (`agenda::FilterNow::shown`).
     agendas: crate::agenda::FilterShown,
+    /// The same filter as the full views (list, board, timeline) show it:
+    /// your word alone, never the hours (`FilterNow::shown_as`).
+    agendas_full: crate::agenda::FilterShown,
 }
 
 /// Today, laid out: the events of today and the steps the plan gives today, those the page shows.
@@ -894,6 +897,11 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         let agendas = crate::agenda::filter_now();
         let page_filter = Filter { project: state.project.clone(), quiet: desk.filter.quiet.clone(), fresh: fresh_lines(&desk.loaded.tasks, desk.filter.quiet.as_ref()), lists_off: agendas.hidden(), ..state.filter.clone() };
         let cx = desk.context_with(&page_filter);
+        // The full views show every task, work, admin and leisure, whatever the hour, as the
+        // unified mailbox does: the hours shape Now alone (8 November 2026). What you said
+        // still holds there: one kind, a category, a project, a list you turned off.
+        let full_filter = Filter { quiet: None, fresh: BTreeMap::new(), lists_off: agendas.hidden_by_hand(), ..page_filter.clone() };
+        let full = desk.context_with(&full_filter);
         let project = Some(state.project.as_str()).filter(|c| !c.is_empty());
         let rest = desk.settings.rest_days();
         let lists = writable_lists();
@@ -912,9 +920,9 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             categories,
             weather: desk.today.weather,
             now: taskview::now(&cx, desk.today.weather, &desk.today.aside),
-            list: taskview::list(&cx, if state.by.is_empty() { "project" } else { &state.by }, state.done, &state.query, taskview::Fold::Opened(&state.opened)),
-            board: taskview::board(&cx, project, taskview::Fold::Opened(&state.opened)),
-            timeline: taskview::timeline(&cx, project, &rest, taskview::Fold::Opened(&state.opened)),
+            list: taskview::list(&full, if state.by.is_empty() { "project" } else { &state.by }, state.done, &state.query, taskview::Fold::Opened(&state.opened)),
+            board: taskview::board(&full, project, taskview::Fold::Opened(&state.opened)),
+            timeline: taskview::timeline(&full, project, &rest, taskview::Fold::Opened(&state.opened)),
             no_list: lists.is_empty(),
             lists,
             projects: projects_offered(&desk.loaded),
@@ -924,6 +932,7 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
             budget: desk.next_budget(),
             free: crate::pauses::offers(&desk.loaded.tasks, desk.filter.quiet.as_ref(), crate::hours::mode_now().free()),
             agendas: agendas.shown(true),
+            agendas_full: agendas.shown_as(true, true),
         };
         let tasks_json = crate::backend::json(&shown);
         drop(shown);

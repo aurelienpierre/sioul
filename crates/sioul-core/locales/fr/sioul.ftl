@@ -1264,6 +1264,7 @@ agenda-mode-agenda = Ce qui vient
 agenda-mode-day = Jour
 agenda-mode-week = Semaine
 agenda-mode-month = Mois
+agenda-mode-search = Chercher
 agenda-earlier = Plus tôt
 agenda-later = Plus tard
 agenda-free = Rien de prévu.
@@ -1986,6 +1987,80 @@ task-mode-now = Maintenant
 task-mode-list = Liste
 task-mode-board = Tableau
 task-mode-timeline = Gantt
+task-mode-search = Chercher
+## L’onglet Chercher des Tâches et de l’Agenda (ThingSearch.qml, docs/tasks.md « Search »).
+things-words = Des mots du titre, des notes ou du lieu
+things-which-both = Tâches et événements
+things-which-tasks = Tâches
+things-which-events = Événements
+things-any-project = Tous les projets
+things-no-project = Sans projet
+things-any-kind = Tous les types
+things-no-kind = Sans type
+things-any-category = Toutes les catégories
+things-no-category = Sans catégorie
+things-anytime = Toutes les dates
+things-range = Entre deux jours
+things-from = Du
+things-to = Au
+things-guests-any = Avec ou sans invités
+things-guests-yes = Avec des invités
+things-guests-no = Sans invités
+things-status-confirmed = Confirmé
+things-status-tentative = À confirmer
+things-status-cancelled = Annulé
+things-done-any = Faites ou non
+things-done-no = Pas faites
+things-done-yes = Faites
+things-row-done = Faite
+things-due-any = Avec ou sans date demandée
+things-due-yes = Avec une date demandée
+things-due-no = Sans date demandée
+things-coming = À venir
+things-past = Passé
+things-undated = Sans date
+things-none-found = Rien ne correspond.
+things-a-task = Une tâche
+things-an-event = Un événement
+## Les modifications groupées dans les listes complètes (batch.rs, docs/tasks.md « Search »).
+batch-selected = { $Count } { $n ->
+        [one] choisi
+       *[other] choisis
+    }
+batch-changed = { $Count } { $n ->
+        [one] changé
+       *[other] changés
+    }.
+batch-deleted = { $Count } { $n ->
+        [one] supprimé
+       *[other] supprimés
+    }.
+batch-left-title = Laissés tels quels :
+batch-left-line = « { $title } » : { $why }
+batch-left-meeting = une réunion avec d’autres : changez-la depuis sa fiche, qui prévient ses invités.
+batch-left-read-only = vous ne faites que lire son agenda ou sa liste.
+batch-left-gone = il n’est plus là.
+batch-left-repeats = il se répète : déplacez-le depuis sa fiche, une fois ou toutes.
+batch-left-event-kind = un événement n’a pas de type.
+batch-left-event-status = l’état d’une tâche n’est pas celui d’un événement.
+batch-left-task-status = l’état d’un événement n’est pas celui d’une tâche.
+batch-left-no-tasks-there = cette liste ne garde pas de tâches.
+batch-left-no-events-there = cet agenda ne garde pas d’événements.
+batch-left-list-loses = cette liste n’en garderait pas tout : déplacez-la depuis sa fiche.
+batch-project = Projet
+batch-kind = Type
+batch-category = Catégorie
+batch-date = Jour…
+batch-date-none = Sans date demandée
+batch-status = État
+batch-list = Liste ou agenda
+batch-done = Faites
+batch-delete = Supprimer
+batch-clear = Ne plus rien choisir
+batch-task-status-needs-action = À faire
+batch-task-status-in-process = Commencée
+batch-task-status-completed = Faite
+batch-task-status-cancelled = Abandonnée
 task-capture-hint = Une tâche en une ligne : « Appeler les impôts demain ~15m #projet {"{"}date demandée{"}"} »
 chip-start = à partir du
 chip-due = date demandée
@@ -2038,6 +2113,7 @@ task-done-week = Faites cette semaine
 task-search = Chercher dans les tâches
 task-by-project = Par projet
 task-by-list = Par liste
+task-by-deadline = Avec une date demandée
 task-show-done = Faites aussi
 task-title = Titre
 task-steps = Étapes
@@ -2188,6 +2264,7 @@ note-open-lines = Lignes non cochées
 note-make-task = En faire une tâche
 task-group-joy = Si vous en avez envie
 task-group-someday = Quand vous le direz
+task-group-deadline = Avec une date demandée, la plus proche d’abord
 task-joy = Si vous en avez envie
 
 ## Réglages, chacun là où il s’applique (une phrase chacun).

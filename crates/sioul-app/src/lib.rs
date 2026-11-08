@@ -130,6 +130,7 @@ mod attach;
 mod attachments;
 mod backend;
 mod bank;
+mod batch;
 mod blocks;
 mod calendarfile;
 mod calls;
@@ -182,6 +183,7 @@ mod pauses;
 mod phonemsgs;
 // texts: SMS phase (b).
 mod texts;
+mod thingsearch;
 mod pim;
 mod projects;
 // Settings ▸ What reaches you, in words, and a person's sheet (docs/attention.md).

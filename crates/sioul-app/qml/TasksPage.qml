@@ -56,7 +56,7 @@ Item {
     // The day's tab: the Agenda's Day, once made (main.qml reads and reloads the agenda shown).
     readonly property var agendaDay: dayLoader.item
     property alias routines: routinesDialog
-    // "now", "day", "list", "board", "timeline".
+    // "now", "day", "list", "board", "timeline", "search" (ThingSearch.qml).
     property string mode: "now"
     // The views made so far: each the first time it is shown; "now" not
     // while the rest cover hides it.
@@ -87,6 +87,11 @@ Item {
     property bool showDone: false
     property string query: ""
     property string projectFilter: ""
+    // The list's selection for batch edits, by UID (BatchBar.qml): Ctrl or
+    // Shift with a click, a long press on a touch screen.
+    property var picked: ({})
+    property string pickAnchor: ""
+    readonly property var pickedList: Object.keys(page.picked).map(k => page.picked[k])
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
     // What the list keeps beside an open card: `listLeast` pixels, where its
@@ -119,7 +124,7 @@ Item {
             return
         page.restored = true
         // "case": the grouping's name before the one name, "project".
-        page.by = page.shown.view.by === "list" ? "list" : "project"
+        page.by = page.shown.view.by === "list" || page.shown.view.by === "deadline" ? page.shown.view.by : "project"
         page.showDone = page.shown.view.done
         page.projectFilter = page.shown.view.project || ""
     }
@@ -163,6 +168,27 @@ Item {
 
     function apply() {
         page.sioul.showTasks(page.by, page.showDone, page.query, page.projectFilter)
+    }
+
+    // A row of the list picked or let go; with `range`, every row from the last one picked.
+    function pick(uid, range) {
+        const rows = page.shown ? page.shown.list.groups.reduce((all, g) => all.concat(g.rows), []) : []
+        const at = rows.findIndex(r => r.uid === uid)
+        if (at < 0)
+            return
+        const now = Object.assign({}, page.picked)
+        const thing = r => ({ thing: "task", key: r.key, uid: r.uid, title: r.title })
+        const from = rows.findIndex(r => r.uid === page.pickAnchor)
+        if (range && from >= 0) {
+            for (let i = Math.min(from, at); i <= Math.max(from, at); i++)
+                now[rows[i].uid] = thing(rows[i])
+        } else if (now[uid]) {
+            delete now[uid]
+        } else {
+            now[uid] = thing(rows[at])
+        }
+        page.pickAnchor = uid
+        page.picked = now
     }
 
     function tick(task) {
@@ -256,7 +282,7 @@ Item {
                 spacing: 6
 
                 Repeater {
-                    model: ["now", "day", "list", "board", "timeline"]
+                    model: ["now", "day", "list", "board", "timeline", "search"]
 
                     delegate: Button {
                         id: modeButton
@@ -331,7 +357,9 @@ Item {
 
                     sioul: page.sioul
                     theme: page.theme
-                    shown: page.shown && page.shown.agendas ? page.shown.agendas : ({ chosen: false, groups: [] })
+                    // Now follows the hours; the full views show every task whatever the hour.
+                    byHand: page.mode !== "now"
+                    shown: page.shown && page.shown.agendas ? (tasksAgendas.byHand && page.shown.agendas_full ? page.shown.agendas_full : page.shown.agendas) : ({ chosen: false, groups: [] })
                     narrow: page.narrow
                     iconOnly: true
                 }
@@ -425,7 +453,7 @@ Item {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: ["now", "day", "list", "board", "timeline"].indexOf(page.mode)
+                currentIndex: ["now", "day", "list", "board", "timeline", "search"].indexOf(page.mode)
 
                 // Now: the next step, why, and the one after it. Made when first shown
                 // outside rest: behind the rest cover it waits.
@@ -1003,11 +1031,16 @@ Item {
                                         page.apply()
                                     }
                                 }
+                                // By project, by list, or only the tasks with a date asked, the nearest first.
                                 PlainComboBox {
-                                    model: [page.sioul.text("task-by-project"), page.sioul.text("task-by-list")]
-                                    currentIndex: page.by === "list" ? 1 : 0
+                                    objectName: "taskListBy"
+
+                                    readonly property var ways: ["project", "list", "deadline"]
+
+                                    model: ways.map(w => page.sioul.text("task-by-" + w))
+                                    currentIndex: Math.max(0, ways.indexOf(page.by))
                                     onActivated: index => {
-                                        page.by = index === 1 ? "list" : "project"
+                                        page.by = ways[index]
                                         page.apply()
                                     }
                                 }
@@ -1020,6 +1053,22 @@ Item {
                                         page.showDone = checked
                                         page.apply()
                                     }
+                                }
+                            }
+                            // Several tasks picked: what changes for all of them, in one act with Undo.
+                            BatchBar {
+                                objectName: "tasksBatch"
+                                Layout.fillWidth: true
+                                sioul: page.sioul
+                                theme: page.theme
+                                things: page.pickedList
+                                projects: page.shown ? page.shown.projects.map(p => ({ id: p.id, label: p.title })) : []
+                                kinds: page.shown ? page.shown.kinds : []
+                                categories: page.shown ? page.shown.categories : []
+                                lists: page.shown ? page.shown.lists.filter(l => l.tasks).map(l => ({ id: l.id, label: l.name, tasks: true, events: false })) : []
+                                onCleared: {
+                                    page.picked = ({})
+                                    page.pickAnchor = ""
                                 }
                             }
                             ListView {
@@ -1060,7 +1109,11 @@ Item {
                                             depth: modelData.depth
                                             folds: true
                                             selected: page.opened === modelData.uid
-                                            onOpen: uid => page.open(uid)
+                                            pickable: true
+                                            picked: page.picked[modelData.uid] !== undefined
+                                            onPick: (uid, range) => page.pick(uid, range)
+                                            // On a touch screen, once something is picked, a tap picks too.
+                                            onOpen: uid => page.theme.touch === true && page.pickedList.length > 0 ? page.pick(uid, false) : page.open(uid)
                                             onMenu: task => taskMenu.now().show(task)
                                             onTick: page.tick(modelData)
                                             onFold: (uid, open) => page.sioul.foldTask(uid, open)
@@ -1241,6 +1294,22 @@ Item {
                             onOpen: uid => page.open(uid)
                             onMenu: task => taskMenu.now().show(task)
                             onFold: (uid, open) => page.sioul.foldTask(uid, open)
+                        }
+                    }
+                }
+
+                // Search (8 November 2026): tasks and events by words and filters,
+                // whatever the hour. Made the first time it is shown.
+                Loader {
+                    objectName: "tasksSearch"
+                    active: page.made["search"] === true
+
+                    sourceComponent: Component {
+                        ThingSearch {
+                            sioul: page.sioul
+                            theme: page.theme
+                            window: page.window
+                            which: "tasks"
                         }
                     }
                 }

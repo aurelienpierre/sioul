@@ -30,6 +30,9 @@ Button {
     property var shown: ({ chosen: false, groups: [] })
     // A phone: the list a sheet from the bottom, the button its icon alone.
     property bool narrow: false
+    // A full list's filter (the task list, board, timeline): the hours shape
+    // nothing there, so a tick is your word against "shown unless kept hidden".
+    property bool byHand: false
     // The button its icon alone, its name in a tip (a narrow window, a crowded line).
     property bool iconOnly: filter.narrow
     // The groups folded on this page, by key, while it lives.
@@ -70,7 +73,7 @@ Button {
 
     // Agendas turned on or off by hand: your word, kept until work's hours change.
     function turn(ids, on) {
-        const problem = filter.sioul.turnAgendas(JSON.stringify(ids), on)
+        const problem = filter.byHand ? filter.sioul.turnAgendasByHand(JSON.stringify(ids), on) : filter.sioul.turnAgendas(JSON.stringify(ids), on)
         if (problem !== "")
             filter.sioul.status = problem
     }

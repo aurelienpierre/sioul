@@ -2711,6 +2711,14 @@ pub struct EventRef {
     /// Its place (`LOCATION`), as written: the places used before, which the
     /// event form suggests from this device alone; "" for none.
     pub location: String,
+    /// Its notes (`DESCRIPTION`), as written: what the search looks in (`thingsearch`).
+    pub notes: String,
+    /// Its categories (`CATEGORIES`).
+    pub categories: Vec<String>,
+    /// To be confirmed (STATUS:TENTATIVE).
+    pub tentative: bool,
+    /// Its guests' addresses (ATTENDEE), the organizer aside.
+    pub guests: Vec<String>,
 }
 
 /// The ties of one event's text; None when it holds no event.
@@ -2728,11 +2736,21 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
             "UID" => found.uid = lines::value(line).trim().to_string(),
             "SUMMARY" => found.summary = lines::unescape(lines::value(line).trim()),
             "LOCATION" => found.location = lines::unescape(lines::value(line).trim()),
+            "DESCRIPTION" => found.notes = lines::unescape(lines::value(line).trim()),
+            "CATEGORIES" => found.categories.extend(crate::tasks::split_list(lines::value(line))),
             "LINK" => found.links.push(crate::tasks::link_of(line)),
             "RELATED-TO" => found.related.push(crate::tasks::relation_of(line)),
             "REFID" => found.projects.push(lines::unescape(lines::value(line).trim())),
-            "ATTENDEE" | "ORGANIZER" => found.people.push(address(lines::value(line))),
-            "STATUS" => found.cancelled = lines::value(line).trim().eq_ignore_ascii_case("CANCELLED"),
+            "ATTENDEE" | "ORGANIZER" => {
+                found.people.push(address(lines::value(line)));
+                if name == "ATTENDEE" {
+                    found.guests.push(address(lines::value(line)));
+                }
+            }
+            "STATUS" => {
+                found.cancelled = lines::value(line).trim().eq_ignore_ascii_case("CANCELLED");
+                found.tentative = lines::value(line).trim().eq_ignore_ascii_case("TENTATIVE");
+            }
             "RRULE" | "RDATE" => found.recurring = true,
             name if name == crate::blocks::TASK => found.task = lines::value(line).trim().to_string(),
             _ => {}

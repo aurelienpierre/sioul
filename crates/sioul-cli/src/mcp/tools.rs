@@ -384,7 +384,7 @@ pub const TOOLS: &[Tool] = &[
                     "view": { "type": "string", "enum": ["list", "now", "today"], "description": "list (default): the tasks as data; now or today: views, only when asked." },
                     "query": { "type": "string", "description": "For list: only tasks whose title, notes or tags hold these words." },
                     "done": { "type": "boolean", "description": "For list: also the tasks done in the last two weeks." },
-                    "by": { "type": "string", "enum": ["project", "list"], "description": "For list: grouped by project (default) or by task list." },
+                    "by": { "type": "string", "enum": ["project", "list", "deadline"], "description": "For list: grouped by project (default) or by task list; deadline: only the tasks with a date asked, the nearest first." },
                 }),
                 &[],
             )

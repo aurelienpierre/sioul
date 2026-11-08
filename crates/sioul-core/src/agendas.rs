@@ -1250,17 +1250,46 @@ pub fn hidden(agendas: &[Agenda], hours: Hours, over: Option<&Override>, kept: &
     agendas.iter().filter(|a| !shown(a, hours, over, kept, now)).map(|a| a.id.clone()).collect()
 }
 
+/// The places of the agendas left out by your word alone, never by the
+/// hours: turned off while your word holds, or kept hidden on this device
+/// and not turned on. The full lists (every task, whatever the hour) leave
+/// out these and nothing else.
+pub fn hidden_by_hand(agendas: &[Agenda], hours: Hours, over: Option<&Override>, kept: &BTreeSet<String>, now: i64) -> BTreeSet<String> {
+    let over = over.filter(|o| o.holds(hours, now));
+    agendas
+        .iter()
+        .filter(|a| match over {
+            Some(o) if o.on.contains(&a.id) => false,
+            Some(o) if o.off.contains(&a.id) => true,
+            _ => kept.contains(&a.id),
+        })
+        .map(|a| a.id.clone())
+        .collect()
+}
+
 /// `ids` turned on or off: the override as it becomes, made now if none
 /// holds; an agenda turned back to what it does unless you say
 /// (`default_on`) leaves it; none left, none at all (back to the hours).
 /// One kept hidden and turned on shows until work's hours change, as any.
 pub fn turned(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: bool, hours: Hours, kept: &BTreeSet<String>, now: i64) -> Option<Override> {
+    turned_against(over, agendas, ids, on, hours, now, &|agenda| default_on(agenda, hours, kept))
+}
+
+/// `ids` turned on or off from a full list, which the hours never shape
+/// (`hidden_by_hand`): your word is what differs from "kept hidden on this
+/// device, else shown", so that a work list unticked in the evening there
+/// is left out until work's hours change, as any word of yours.
+pub fn turned_by_hand(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: bool, hours: Hours, kept: &BTreeSet<String>, now: i64) -> Option<Override> {
+    turned_against(over, agendas, ids, on, hours, now, &|agenda| !kept.contains(&agenda.id))
+}
+
+fn turned_against(over: Option<&Override>, agendas: &[Agenda], ids: &[String], on: bool, hours: Hours, now: i64, usual: &dyn Fn(&Agenda) -> bool) -> Option<Override> {
     let mut over = over.filter(|o| o.holds(hours, now)).cloned().unwrap_or(Override { work: hours.work, until: hours.until, ..Override::default() });
     for id in ids {
         over.on.remove(id);
         over.off.remove(id);
         let Some(agenda) = agendas.iter().find(|a| &a.id == id) else { continue };
-        if on != default_on(agenda, hours, kept) {
+        if on != usual(agenda) {
             if on { over.on.insert(id.clone()) } else { over.off.insert(id.clone()) };
         }
     }
@@ -1472,6 +1501,32 @@ mod tests {
         assert!(over.on.contains("a/club") && hidden(&all, at_work, Some(&over), &kept, 900).is_empty(), "ticked: shown");
         assert_eq!(ids(hidden(&all, after, Some(&over), &kept, 1_500)), ["a/club"], "work's hours changed: hidden again");
         assert_eq!(turned(Some(&over), &all, &["a/club".to_string()], false, at_work, &kept, 600), None, "back to kept hidden: no word left");
+    }
+
+    /// The full lists follow your word alone, never the hours: an agenda the
+    /// hours leave out shows there; one kept hidden on this device or turned
+    /// off by hand stays out, until work's hours change for the latter; one
+    /// unticked from a full list in the evening is your word, recorded.
+    #[test]
+    fn the_full_lists_leave_out_what_you_said_and_never_what_the_hours_say() {
+        let work = agenda("work", Area::WORK, Reaches::AllDay);
+        let home = agenda("home", Area::PERSONAL, Reaches::AllDay);
+        let club = agenda("club", Area::PERSONAL, Reaches::AllDay);
+        let all = [work, home, club];
+        let kept: BTreeSet<String> = ["a/club".to_string()].into();
+        let ids = |set: BTreeSet<String>| set.into_iter().collect::<Vec<_>>();
+        let after = Hours { set: true, work: false, until: Some(2_000) };
+        assert_eq!(ids(hidden(&all, after, None, &kept, 1_500)), ["a/club", "a/work"], "the calm views: the hours and your word");
+        assert_eq!(ids(hidden_by_hand(&all, after, None, &kept, 1_500)), ["a/club"], "the full lists: your word alone");
+        // Unticked from a full list in the evening: recorded though the hours hide it too.
+        let off = turned_by_hand(None, &all, &["a/work".to_string()], false, after, &kept, 1_500).unwrap();
+        assert_eq!(ids(hidden_by_hand(&all, after, Some(&off), &kept, 1_600)), ["a/club", "a/work"]);
+        let next_day = Hours { set: true, work: true, until: Some(3_000) };
+        assert_eq!(ids(hidden_by_hand(&all, next_day, Some(&off), &kept, 2_100)), ["a/club"], "work's hours changed: your word ends");
+        // Ticked back there: nothing left of the word; the kept one ticked shows while it holds.
+        assert_eq!(turned_by_hand(Some(&off), &all, &["a/work".to_string()], true, after, &kept, 1_700), None);
+        let club_on = turned_by_hand(None, &all, &["a/club".to_string()], true, after, &kept, 1_500).unwrap();
+        assert!(hidden_by_hand(&all, after, Some(&club_on), &kept, 1_600).is_empty());
     }
 
     /// Work's hours as the agendas follow them, from the week's hours: on

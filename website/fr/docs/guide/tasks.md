@@ -143,7 +143,7 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
 
 À un clic de Maintenant :
 
-- **Liste** : chaque tâche ouverte dans l’ordre du plan, groupées **Par projet** ou **Par liste**, avec une recherche, et **Faites aussi** sur demande. Les tâches facultatives viennent en dernier. Une tâche qui a des étapes tient sur une ligne : « Aller chez le médecin · jeu. 29 oct. 14:00 · prochaine étape : Se brosser les dents » (l’heure de son rendez-vous, quand elle en prépare un, puis son étape suivante) ; sa flèche ▸ montre ses étapes dessous, dans leur ordre, et ▾ les replie. Sioul se souvient de celles que vous avez ouvertes ; une recherche montre chaque étape.
+- **Liste** : chaque tâche ouverte dans l’ordre du plan, groupées **Par projet** ou **Par liste**, avec une recherche, et **Faites aussi** sur demande. **Avec une date demandée** ne liste que les tâches qui en ont une, la plus proche d’abord, chacune sur sa ligne. Les tâches facultatives viennent en dernier. Une tâche qui a des étapes tient sur une ligne : « Aller chez le médecin · jeu. 29 oct. 14:00 · prochaine étape : Se brosser les dents » (l’heure de son rendez-vous, quand elle en prépare un, puis son étape suivante) ; sa flèche ▸ montre ses étapes dessous, dans leur ordre, et ▾ les replie. Sioul se souvient de celles que vous avez ouvertes ; une recherche montre chaque étape.
 - **Tableau** : *Libres de commencer*, *Commencées*, *En attente*, *Faites* (les deux dernières semaines). Une tâche qui a des étapes tient sur une carte, là où en est son étape la plus avancée, jusqu’à ce que sa flèche montre ses étapes. Les cartes se déplacent par glisser-déposer, à la souris ou au pavé tactile ; sur un écran tactile, glisser fait défiler le tableau. « En attente » est décidé par ce que chaque tâche attend, et chaque carte dit quoi. Au-delà de trois tâches commencées, une ligne demande : « En finir ou en garer une ? »
 - **Gantt** (elle s’appelait Calendrier) : chaque tâche ouverte sur ses jours, la date demandée en petit losange, les jours sans place grisés. Une tâche qui a des étapes tient sur une barre, sur les jours de ses étapes, jusqu’à ce que sa flèche les montre. Un projet, ou tous. Le bouton **Gantt** d’un projet ouvre cette vue, limitée au projet.
 
@@ -154,7 +154,23 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
 
 Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **Toutes les catégories**, ne montrent que les tâches d’un projet, d’un type ou d’une catégorie, dans chaque vue, Maintenant compris : « le prochain appel ». Le plan reste entier : un appel qui attend un message attend toujours. Sioul se souvient de vos choix.
 
-**Agendas**, à côté, est le filtre de l’agenda lui-même, ses listes de tâches ici ([Agenda](agenda.md#several-agendas)) : une liste qu’il laisse de côté, une liste de travail le soir ou une que vous avez décochée, garde ses tâches hors de chaque vue, Maintenant compris, le plan entier. Ce que vous cochez tient jusqu’à ce que vos heures de travail changent. Une liste que vous lisez seulement reste telle quelle : ses tâches s’ouvrent pour être lues.
+**Vos heures ne façonnent que Maintenant.** Liste, Tableau et Gantt montrent chaque tâche, travail, administratif et loisirs, quelle que soit l’heure, comme la boîte de réception et les Budgets : une tâche de travail y est aussi le soir. Maintenant reste calme et montre ce à quoi l’heure sert.
+
+**Agendas**, à côté, est le filtre de l’agenda lui-même, ses listes de tâches ici ([Agenda](agenda.md#several-agendas)). Sur Maintenant, une liste qu’il laisse de côté, une liste de travail le soir ou une que vous avez décochée, garde ses tâches hors de la vue, le plan entier. Sur Liste, Tableau et Gantt, seul ce que vous avez dit laisse une liste de côté : une que vous y avez décochée ou que vous gardez cachée ; jamais les heures. Ce que vous cochez tient jusqu’à ce que vos heures de travail changent. Une liste que vous lisez seulement reste telle quelle : ses tâches s’ouvrent pour être lues.
+
+## Chercher, et changer plusieurs à la fois {#search}
+
+**Chercher**, le dernier choix en haut de la page Tâches et de l’Agenda, trouve tâches et événements ensemble, quelle que soit l’heure :
+
+- des **mots** du titre, des notes ou du lieu, chaque mot quelque part, sans tenir compte des accents ni des majuscules ;
+- **Tous les projets**, **Sans projet** ou l’un d’eux ; de même pour le **type** et la **catégorie**. Un événement n’a pas de type : **Sans type** garde chaque événement, un type aucun ;
+- **Toutes les dates**, ou **Entre deux jours**, l’un des deux laissé vide pour ne pas borner. Une tâche y tombe par sa date demandée, son jour pour commencer ou le jour où elle a été faite ; un événement par son heure, un événement qui se répète par ses fois entre les deux ;
+- pour les événements : **Avec des invités** ou **Sans invités** (vous-même ne comptez pas parmi les invités), et **Confirmé**, **À confirmer**, **Annulé**, autant que vous en cochez ;
+- pour les tâches : **Faites** ou **Pas faites**, **Avec une date demandée** ou **Sans date demandée**.
+
+Ce qui vient est listé d’abord, le plus proche d’abord, puis le passé, le plus récent d’abord, puis ce qui n’a pas de date. Un appui ouvre sa fiche.
+
+**Changer plusieurs à la fois**, dans la liste des tâches et dans Chercher : **Ctrl** avec un clic choisit une ligne, **Maj** avec un clic chaque ligne depuis la dernière choisie ; sur un écran tactile, un appui long choisit, et dès que quelque chose est choisi un appui choisit aussi. Une barre au-dessus de la liste les change alors tous d’un seul geste : **Projet**, **Type**, **Catégorie**, **Jour…** (la date demandée d’une tâche, son heure gardée ; un événement déplacé à ce jour, à son heure), **État**, **Liste ou agenda**, **Faites**, **Supprimer**. **Annuler** sur la ligne d’état remet tout comme avant ; une suppression attend dix secondes, comme une seule. Ce qu’un changement groupé laisse tel quel est dit sous la barre, chacun avec pourquoi : une réunion avec d’autres (changez-la depuis sa fiche, qui prévient ses invités), un agenda ou une liste que vous lisez seulement, un événement qui se répète déplacé à un autre jour (depuis sa fiche), une liste qui ne garderait pas tout d’une tâche.
 
 ## Une tâche, ouverte {#a-task-open}
 

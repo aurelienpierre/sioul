@@ -30,13 +30,49 @@ pub(crate) enum TasksCommand {
     Now,
     /// Every open task, a bigger task followed by its steps, in the plan's order.
     List {
-        /// "project" (default) or "list"; "case", the word before, reads as "project".
+        /// "project" (default), "list", or "deadline" (only the tasks with a date asked, the nearest first); "case", the word before, reads as "project".
         #[arg(long, default_value = "project")]
         by: String,
         /// Also the tasks done in the last two weeks.
         #[arg(long)]
         done: bool,
         query: Option<String>,
+    },
+    /// Tasks and events by words and filters, whatever the hour (the Search
+    /// tab's engine, `thingsearch`): what comes first, then the past, then the undated.
+    Search {
+        /// Words, each in the title, the notes or the place.
+        words: Vec<String>,
+        /// "both" (default), "tasks" or "events".
+        #[arg(long, default_value = "both")]
+        which: String,
+        /// A project's id, or "none".
+        #[arg(long)]
+        project: Option<String>,
+        /// A task's type, or "none" (an event has none).
+        #[arg(long)]
+        kind: Option<String>,
+        /// A category, or "none".
+        #[arg(long)]
+        category: Option<String>,
+        /// The first day, 2026-11-01.
+        #[arg(long)]
+        from: Option<String>,
+        /// The last day, included.
+        #[arg(long)]
+        to: Option<String>,
+        /// Events with guests ("yes") or without ("no").
+        #[arg(long)]
+        guests: Option<String>,
+        /// Event statuses: confirmed, tentative, cancelled; several times for several.
+        #[arg(long)]
+        status: Vec<String>,
+        /// Tasks done ("yes") or not ("no").
+        #[arg(long)]
+        done: Option<String>,
+        /// Tasks with a date asked ("yes") or without ("no").
+        #[arg(long)]
+        dated: Option<String>,
     },
     /// Free to start, started, waiting, done.
     Board,
@@ -261,6 +297,24 @@ pub(crate) fn run(s: &Session, command: TasksCommand) -> Result<(), String> {
     match command {
         TasksCommand::Now => now(s),
         TasksCommand::List { by, done, query } => list(s, &by, done, query.as_deref().unwrap_or("")),
+        TasksCommand::Search { words, which, project, kind, category, from, to, guests, status, done, dated } => {
+            let none = |v: Option<String>| v.map(|v| if v == "none" { sioul_core::thingsearch::NONE.to_string() } else { v }).unwrap_or_default();
+            let yes_no = |v: Option<String>| v.map(|v| matches!(v.as_str(), "yes" | "true" | "oui"));
+            let query = sioul_core::thingsearch::Query {
+                words: words.join(" "),
+                which: serde_json::from_value(serde_json::Value::String(which)).unwrap_or_default(),
+                project: none(project),
+                kind: none(kind),
+                category: none(category),
+                from: from.unwrap_or_default(),
+                to: to.unwrap_or_default(),
+                guests: yes_no(guests),
+                status: status.iter().filter_map(|x| serde_json::from_value(serde_json::Value::String(x.clone())).ok()).collect(),
+                done: yes_no(done),
+                deadline: yes_no(dated),
+            };
+            search(s, &query)
+        }
         TasksCommand::Board => board(s),
         TasksCommand::Timeline { project } => timeline(s, project.as_deref()),
         TasksCommand::Show { task } => show(s, &task),
@@ -321,6 +375,22 @@ fn now(s: &Session) -> Result<(), String> {
     }
     for line in view.loops.iter().chain(std::iter::once(&view.wip)).filter(|l| !l.is_empty()) {
         println!("\n{}", one_line(line));
+    }
+    Ok(())
+}
+
+/// What `thingsearch` finds, one line each: when, what, the title, its projects and place.
+fn search(s: &Session, query: &sioul_core::thingsearch::Query) -> Result<(), String> {
+    let loaded = Loaded::read(&s.config);
+    let zone = sioul_core::zone::current();
+    let own = sioul_core::agenda::own_addresses();
+    let range = query.range(&zone).map(|(from, to)| (if from == i64::MIN { to.saturating_sub(366 * 86_400) } else { from }, if to == i64::MAX { from.saturating_add(366 * 86_400) } else { to }));
+    let occurrences = range.filter(|_| loaded.events.iter().any(|e| e.recurring)).map(|(from, to)| sioul_core::agenda::occurrences(from, to));
+    let cx = sioul_core::thingsearch::Context { own: &own, projects: &loaded.projects, zone: &zone, today: sioul_core::zone::now().date(), tr: &s.tr };
+    for found in sioul_core::thingsearch::search(&loaded.tasks, &loaded.events, occurrences.as_deref(), query, &cx) {
+        let tail: Vec<String> = [found.projects.join(", "), found.place.clone(), if found.status == "confirmed" || found.status == "needs-action" { String::new() } else { found.status.clone() }].into_iter().filter(|t| !t.is_empty()).collect();
+        let tail = if tail.is_empty() { String::new() } else { format!("  ·  {}", tail.join("  ·  ")) };
+        println!("{:<20} {:<5} {}{}  ({})", found.date, found.thing, one_line(&found.title), tail, found.uid);
     }
     Ok(())
 }
