@@ -39,12 +39,20 @@ pub(crate) fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> i
 /// prescription's end and the day its medicines run out, by their kind. An
 /// errand's date asked is health too, named by its kind (`agenda::named`).
 pub(crate) fn items(tasks: &[Task], occurrences: &[Occurrence], health: Option<&sioul_core::health::Health>, from: Date, count: i64, now: &Zoned, errand: &dyn Fn(&str) -> bool) -> Vec<timeline::Item> {
+    items_and_next(tasks, occurrences, health, from, count, now, errand).0
+}
+
+/// `items`, and the first day past the days asked that holds a date, today or after,
+/// however far: where What comes goes on to as it is scrolled (`agenda::made`'s `next`).
+pub(crate) fn items_and_next(tasks: &[Task], occurrences: &[Occurrence], health: Option<&sioul_core::health::Health>, from: Date, count: i64, now: &Zoned, errand: &dyn Fn(&str) -> bool) -> (Vec<timeline::Item>, Option<Date>) {
     let (today, zone) = (now.date(), now.time_zone().clone());
     let mut all = dated::read_all(&load_config(), tasks, &events_on(occurrences, &zone), today, &zone, tr());
     if let Some(health) = health {
         all.extend(dated::of_prescriptions(&health.prescriptions, today));
     }
-    dated::within(all, from, count, today)
+    let end = from.checked_add(jiff::Span::new().days(count)).unwrap_or(from);
+    let next = all.iter().map(|d| d.date).filter(|d| *d >= end && *d >= today).min();
+    let items = dated::within(all, from, count, today)
         .iter()
         .map(|d| {
             let mut item = dated::item(d, today, tr());
@@ -54,7 +62,8 @@ pub(crate) fn items(tasks: &[Task], occurrences: &[Occurrence], health: Option<&
             }
             item
         })
-        .collect()
+        .collect();
+    (items, next)
 }
 
 /// The kind a card is asked for ("letter", "notice"…), as `dated::Kind` writes it.

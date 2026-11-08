@@ -44,7 +44,16 @@ struct Shown {
     /// How many days were asked (`showDays`): with `from`, what a page compares with what
     /// it asked, the window's agenda being one for the Agenda and Tasks ▸ The day.
     count: i64,
-    /// "Nothing planned in the next two weeks.", when so.
+    /// What comes, the list, however many days it holds (`PimState::comes`): its days
+    /// are those that hold something, and today, never the empty ones between.
+    #[serde(skip_serializing_if = "is_false")]
+    comes: bool,
+    /// What comes: the first day past its days that holds something it shows (an
+    /// event within a year of them, a date asked however far), "" when none: where
+    /// the list goes on to as it is scrolled, never said by a line of its own.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    next: String,
+    /// "Nothing planned ahead.", when so.
     sentence: String,
     /// Whether an event can be added: a calendar that takes it exists.
     can_add: bool,
@@ -171,17 +180,28 @@ enum Mode {
 }
 
 impl Mode {
-    /// As the page asks for its days (`showDays`): one or seven, What comes'
-    /// fifteen days, the Month's six weeks.
-    fn of(days: i64) -> Mode {
+    /// As the page asks for its days (`showDays`): What comes, however many days
+    /// it holds (`PimState::comes`); else one or seven, the Month's six weeks.
+    fn of(days: i64, comes: bool) -> Mode {
         match days {
+            _ if comes => Mode::Comes,
             1 | 7 => Mode::Drawn,
-            15 => Mode::Comes,
             42 => Mode::Month,
             _ => Mode::Events,
         }
     }
 }
+
+/// The days What comes asks first, a month (the page's `comesPage`): then on as it is scrolled.
+pub(crate) const COMES_FIRST_DAYS: i64 = 31;
+
+/// The most days What comes holds, loaded on as it is scrolled: ten years.
+pub(crate) const COMES_MOST: i64 = 3_660;
+
+/// How far past its days What comes looks for the next event it would show
+/// (`Shown::next`), a year: the calendars are read once for both. A date asked
+/// is found however far it is.
+const COMES_LOOK_DAYS: i64 = 366;
 
 /// A thing of the day: the item as placed, and an event's details for its
 /// panel (until its card reads them itself).
@@ -919,7 +939,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let started = std::time::Instant::now();
     // The Day and the Week draw every kind, the day before's night too (its morning); the
     // Month its dates and appointments; What comes today in full and what differs (§4.7).
-    let mode = Mode::of(state.days);
+    let mode = Mode::of(state.days, state.comes);
     let drawn = mode == Mode::Drawn;
     let read_from = if drawn { from - 86_400 } else { from };
     // Today drawn: tomorrow read with it, for the head line (one read of the calendars).
@@ -928,11 +948,16 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     if drawn && today_start >= from && today_start < to {
         to = to.max(after_tomorrow);
     }
-    let occurrences: Vec<Occurrence> = occurrences_between(read_from, to, &removed, &skipped, &tasks)
+    // What comes reads on a year past its days, in the same read, for the next event (`next`).
+    let read_to = if mode == Mode::Comes { to + COMES_LOOK_DAYS * 86_400 } else { to };
+    let (occurrences, beyond): (Vec<Occurrence>, Vec<Occurrence>) = occurrences_between(read_from, read_to, &removed, &skipped, &tasks)
         .into_iter()
         // What comes: an event over is the past, shown only when you go back to it.
         .filter(|o| !state.upcoming || o.end.max(o.start) > stamp)
-        .collect();
+        .partition(|o| o.start < to);
+    // The days asked end at this midnight: what starts from it on is past them.
+    let days_end = state.from.checked_add(jiff::Span::new().days(state.days)).map_or(to, |d| midnight(d, &zone));
+    let mut dated_next: Option<jiff::civil::Date> = None;
     let read = started.elapsed();
     // An errand's block and steps are health's (`errand_in`, decision 7).
     let errand = errand_in(&tasks);
@@ -1000,8 +1025,11 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
             Err(_) => doses_note = tr().text("agenda-doses-unread", None),
         }
         items.extend(timeline::days_off(&load_config().time_off));
-        // The dates asked of you on their days, today and after (the unified agenda, part 4).
-        items.extend(crate::dated::items(&tasks, &occurrences, health.as_ref().ok(), state.from, state.days, &now, &errand));
+        // The dates asked of you on their days, today and after (the unified agenda, part 4),
+        // and the next one past them.
+        let (dated, next) = crate::dated::items_and_next(&tasks, &occurrences, health.as_ref().ok(), state.from, state.days, &now, &errand);
+        items.extend(dated);
+        dated_next = next;
         // A task once a day: a block that holds its step gives way to it (`timeline::merge`).
         let open = |uid: &str| tasks.iter().any(|t| t.uid == uid && t.status.is_open());
         items = timeline::merge(items, stamp, &open);
@@ -1013,6 +1041,14 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let filter = filter_now();
     let filtered = filter.hidden();
     let left_out = |source: &timeline::Source| matches!(source, timeline::Source::Calendar { collection, .. } if filtered.contains(collection));
+    // What comes' next day past its days: its next event the filter shows, or its next date asked.
+    let next = if mode == Mode::Comes {
+        let event = occurrences.iter().chain(&beyond).filter(|o| o.start >= days_end && !filtered.contains(&timeline::collection_of(&o.key))).map(|o| o.start).min();
+        let event = event.and_then(|s| jiff::Timestamp::from_second(s).ok()).map(|t| t.to_zoned(zone.clone()).date());
+        [event, dated_next].into_iter().flatten().min().map(|d| d.to_string()).unwrap_or_default()
+    } else {
+        String::new()
+    };
     // Events over several days, drawn once (`ongoing::spans`): a list writes each
     // once and draws its line; a grid draws its bars. `timeline::days` lays out
     // the rest, as it is: What comes without any of them, the grids without
@@ -1062,17 +1098,20 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
         _ => None,
     };
     let row = |placed: Placed| Row { detail: detail(&placed), spans: spans.spanning(&placed.item.id), placed };
-    let empty = days.iter().all(|d| d.head.is_empty() && d.timed.is_empty()) && comes.iter().flatten().all(timeline::Comes::is_empty) && spans.events.is_empty();
+    // What comes is empty by its own rows (its days place the usual meals and nights it does not list).
+    let empty = (mode == Mode::Comes || days.iter().all(|d| d.head.is_empty() && d.timed.is_empty())) && comes.iter().flatten().all(timeline::Comes::is_empty) && spans.events.is_empty();
     let can_add = agenda::default_calendar().is_some();
-    let sentence = match (empty, can_add || !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty()) {
+    let sentence = match (empty && next.is_empty(), can_add || !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty()) {
         (true, false) => tr().text("agenda-no-calendar", None),
-        (true, true) => tr().text("agenda-nothing", None),
+        (true, true) => tr().text(if mode == Mode::Comes { "agenda-nothing-ahead" } else { "agenda-nothing" }, None),
         _ => String::new(),
     };
     let shown = Shown {
         version: 3,
         from: state.from.to_string(),
         count: state.days,
+        comes: mode == Mode::Comes,
+        next,
         sentence,
         can_add,
         frame,
@@ -1110,6 +1149,9 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
                 through,
                 conflicts,
             })
+            // What comes: the days that hold something, and today, as its list shows them; a day
+            // an event over several days only passes through keeps its line.
+            .filter(|d| mode != Mode::Comes || d.today || d.comes.as_ref().is_some_and(|c| !c.rows.is_empty() || !c.doses.is_empty() || !c.plan.is_empty()) || !d.through.rows.is_empty() || !d.through.lines.is_empty())
             .collect(),
         spans: spans.events.iter().cloned().map(|placed| Row { detail: detail(&placed), spans: false, placed }).collect(),
         bars: spans.bars.clone(),
@@ -1576,6 +1618,7 @@ mod tests {
             state.from = from;
             state.days = days;
             state.upcoming = false;
+            state.comes = days == 15;
         }
         serde_json::from_str(&made(&shared).0).unwrap()
     }
@@ -1646,6 +1689,52 @@ mod tests {
         };
         let day = |n: i64| base.checked_add(jiff::Span::new().days(n)).unwrap();
         assert_eq!(since, [("residency".to_string(), "since".to_string(), ongoing_since(day(0), day(28))), ("exhibition".into(), "since".into(), ongoing_since(day(3), day(13)))]);
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
+
+    /// What comes, all of it (8 November 2026): never cut at two weeks; its days are
+    /// those that hold something; past them, `next` names the first day of the next
+    /// event for the list to load on to as it is scrolled, and "Nothing planned ahead"
+    /// is said only when nothing comes later either.
+    #[test]
+    fn what_comes_names_the_next_day_past_its_days() {
+        sioul_core::config::stand_ins_only();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Comes later", None, &["VEVENT"]).unwrap();
+        let base = jiff::civil::date(2091, 3, 5);
+        let zone = sioul_core::zone::current();
+        let far = base.checked_add(jiff::Span::new().days(100)).unwrap();
+        let utc = |hour: i8| far.at(hour, 0, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+        let file = calendar.dir.join("comes-later.ics");
+        std::fs::write(&file, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:comes-later\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Far appointment\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(10), utc(11))).unwrap();
+        let shown = |days: i64| {
+            let shared = Arc::new(Shared::default());
+            if let Ok(mut state) = shared.pim.lock() {
+                state.from = base;
+                state.days = days;
+                state.upcoming = false;
+                state.comes = true;
+            }
+            serde_json::from_str::<serde_json::Value>(&made(&shared).0).unwrap()
+        };
+        // A month: nothing in it, the appointment named as what comes next, nothing said empty.
+        let month = shown(31);
+        assert_eq!((month["comes"].clone(), month["count"].clone(), month["next"].clone()), (serde_json::json!(true), serde_json::json!(31), serde_json::json!(far.to_string())));
+        assert!(month["days"].as_array().unwrap().is_empty(), "no empty day: {}", month["days"]);
+        assert_eq!(month["sentence"], "", "nothing said empty while something comes later");
+        // Loaded on to a month past it: its day, alone.
+        let on = shown(131);
+        let days: Vec<String> = on["days"].as_array().unwrap().iter().map(|d| d["date"].as_str().unwrap_or_default().to_string()).collect();
+        assert_eq!(days, [far.to_string()]);
+        assert!(on["days"][0]["comes"]["rows"].as_array().is_some_and(|r| r.iter().any(|r| r["item"]["title"] == "Far appointment")));
+        // (Another test's dates asked, however far, may come next: never this appointment again.)
+        assert_ne!(on["next"], serde_json::json!(far.to_string()), "nothing past it");
+        // Nothing at all: said, and nothing next.
+        std::fs::remove_file(&file).unwrap();
+        let none = shown(31);
+        assert_ne!(none["next"], serde_json::json!(far.to_string()));
+        if none["next"].is_null() {
+            assert_eq!(none["sentence"], tr().text("agenda-nothing-ahead", None).as_str());
+        }
         let _ = std::fs::remove_dir_all(&calendar.dir);
     }
 
@@ -1980,6 +2069,7 @@ mod tests {
             state.from = now.date();
             state.days = 7;
             state.upcoming = false;
+            state.comes = false;
         }
         // What a reader of health could write: the health file's last-read and aside copies; and
         // this test's calendar. Other tests write elsewhere in the same folders meanwhile; the
@@ -2140,6 +2230,7 @@ mod tests {
             state.from = monday;
             state.days = 7;
             state.upcoming = false;
+            state.comes = false;
         }
         let began = std::time::Instant::now();
         let (shown, read) = made(&shared);
@@ -2153,13 +2244,17 @@ mod tests {
         assert!(ours >= 105, "{ours}");
         eprintln!("sioul-perf: a heavy week's agenda JSON: {} bytes, made in {} ms the first time, {} ms again, of which its calendars' read {} ms", shown.len(), first.as_millis(), took.as_millis(), read.as_millis());
         assert!(shown.len() < 150_000, "{} bytes", shown.len());
-        // The Month (six weeks from this week's Monday) and the 15-day list, said for the record.
-        for (name, days) in [("month", 42), ("list", 15)] {
+        // The Month (six weeks from this week's Monday), What comes' first month and a year
+        // of it (loaded on as it is scrolled), said for the record.
+        for (name, days, comes) in [("month", 42, false), ("list", 31, true), ("list, a year", 366, true)] {
             if let Ok(mut state) = shared.pim.lock() {
                 state.from = monday;
                 state.days = days;
+                state.comes = comes;
             }
-            eprintln!("sioul-perf: a heavy {name}'s agenda JSON ({days} days, the heavy week in it): {} bytes", made(&shared).0.len());
+            let began = std::time::Instant::now();
+            let made = made(&shared).0;
+            eprintln!("sioul-perf: a heavy {name}'s agenda JSON ({days} days, the heavy week in it): {} bytes, made in {} ms", made.len(), began.elapsed().as_millis());
         }
         let _ = std::fs::remove_dir_all(&calendar.dir);
         let _ = std::fs::remove_file(&health);
@@ -2189,6 +2284,7 @@ mod tests {
             state.from = now.date();
             state.days = 3;
             state.upcoming = false;
+            state.comes = false;
         }
         work::publish_now(&shared);
         // The block's minute of the day as the agenda shows it.
@@ -2255,6 +2351,7 @@ mod tests {
             state.from = now.date();
             state.days = 7;
             state.upcoming = false;
+            state.comes = false;
         }
         work::publish_now(&shared);
         let shown = made(&shared).0;
@@ -2341,6 +2438,7 @@ mod tests {
                 state.from = now.date();
                 state.days = days;
                 state.upcoming = days == 15;
+                state.comes = days == 15;
             }
             let text = made(&shared).0;
             (serde_json::from_str::<serde_json::Value>(&text).unwrap(), text)
@@ -2351,8 +2449,12 @@ mod tests {
         let today = &days[0]["comes"];
         let dose = tr().text("agenda-dose", None);
         assert!(today["doses"].as_array().is_some_and(|d| !d.is_empty() && d.iter().all(|l| l["title"] == dose.as_str() && l["keys"].as_array().is_some_and(|k| k.len() == 1))), "today's doses, each its minute: {today}");
-        assert!(days[1]["comes"]["doses"].as_array().is_none_or(Vec::is_empty), "another day's usual doses left out");
-        assert!(days[3]["comes"]["rows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["item"]["title"] == "Coming appointment" && r["detail"].is_object())), "{}", days[3]["comes"]);
+        assert!(days.iter().filter(|d| d["today"] != true).all(|d| d["comes"]["doses"].as_array().is_none_or(Vec::is_empty)), "another day's usual doses left out");
+        // Only the days that hold something, and today: the appointment's day by its date.
+        let coming = days.iter().find(|d| d["date"] == later.to_string()).cloned().unwrap_or_default();
+        assert!(coming["comes"]["rows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["item"]["title"] == "Coming appointment" && r["detail"].is_object())), "{}", coming["comes"]);
+        assert!(days.iter().all(|d| d["today"] == true || d["comes"]["rows"].as_array().is_some_and(|r| !r.is_empty()) || d["comes"]["doses"].as_array().is_some_and(|r| !r.is_empty()) || d["comes"]["plan"].is_string() || d["through"].is_object()), "no empty day between");
+        assert_eq!(comes["comes"], true);
         // Never a medicine's name, in any case, where a thing is said (its id is in `keys` only;
         // review of 21436bf, later 9).
         let named = |v: &serde_json::Value| said(v).iter().filter(|s| s.to_lowercase().contains("comprimel")).cloned().collect::<Vec<_>>();
@@ -2400,6 +2502,7 @@ mod tests {
                 state.from = later;
                 state.days = 1;
                 state.upcoming = false;
+                state.comes = false;
             }
             serde_json::from_str::<serde_json::Value>(&made(&shared).0).unwrap()
         };

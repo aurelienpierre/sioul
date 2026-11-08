@@ -1135,6 +1135,8 @@ agenda-bar-line = { $title }, { $span }
 agenda-lines-more = +{ $count }
 agenda-untitled = (no title)
 agenda-nothing = Nothing planned in the next two weeks.
+# What comes, the agenda's list, loaded on as it is scrolled: nothing in it, nor after.
+agenda-nothing-ahead = Nothing planned ahead.
 contacts-none = No contact yet.
 account-row-dav = Contacts and calendars
 dav-found = Contacts: { $contacts } · Calendars: { $calendars }
@@ -1243,7 +1245,7 @@ ui-add-contact = Add to contacts
 ui-add-dav = Add contacts and calendars
 ui-add-dav-note = From a CardDAV and CalDAV server: Nextcloud and Murena, Fastmail, iCloud, your host. The password goes to the system keyring.
 ui-dav-server = Server address, when it cannot be found
-agenda-next = The next two weeks
+agenda-next = From today
 agenda-from-day = From { $day }
 agenda-week-of = Week of { $day }
 agenda-mode-agenda = What comes

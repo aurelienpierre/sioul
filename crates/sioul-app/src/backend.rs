@@ -573,7 +573,7 @@ pub mod qobject {
 
         /// Shows `days` days of the agenda from `from` ("2026-10-05"; empty: today).
         #[qinvokable]
-        fn show_days(self: Pin<&mut Sioul>, from: &QString, days: i32, upcoming: bool);
+        fn show_days(self: Pin<&mut Sioul>, from: &QString, days: i32, upcoming: bool, comes: bool);
 
         /// The calendars a new event can go into, as JSON.
         #[qinvokable]
@@ -5211,12 +5211,14 @@ impl qobject::Sioul {
         QString::from(&crate::duplicates::undo(&self.qt_thread(), &self.shared(), &id.to_string()))
     }
 
-    fn show_days(self: Pin<&mut Self>, from: &QString, days: i32, upcoming: bool) {
+    fn show_days(self: Pin<&mut Self>, from: &QString, days: i32, upcoming: bool, comes: bool) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
             state.from = from.to_string().parse().unwrap_or_else(|_| sioul_core::zone::now().date());
-            state.days = i64::from(days.clamp(1, 366));
+            // What comes loads on as it is scrolled (`agenda::COMES_MOST`); the grids are a month at most.
+            state.days = i64::from(days).clamp(1, crate::agenda::COMES_MOST);
             state.upcoming = upcoming;
+            state.comes = comes;
         }
         crate::agenda::asked(&self.qt_thread(), &shared);
     }

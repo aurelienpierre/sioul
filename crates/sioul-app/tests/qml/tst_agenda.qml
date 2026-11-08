@@ -216,6 +216,35 @@ Item {
             verify(root.find(agenda, "agendaModes").visible, "the Agenda's switch")
         }
 
+        // What comes, all of it (8 November 2026): a month asked first, never two weeks; while
+        // the list does not fill the page it loads on by itself, to a month past the next thing
+        // beyond it (`next`), its days drawn meanwhile; nothing more once nothing comes next;
+        // ◂ back to a month.
+        function test_what_comes_loads_on_never_cut_at_two_weeks() {
+            const page = makePage()
+            wait(20)
+            compare(mock.asked[mock.asked.length - 1], 31, "a month first")
+            verify(page.asked.comes, "What comes asked as such")
+            const from = page.asked.from
+            const later = new Date(from + "T12:00:00")
+            later.setDate(later.getDate() + 100)
+            mock.asked = []
+            mock.agenda = JSON.stringify({ version: 3, from: from, count: 31, comes: true, next: page.iso(later), sentence: "", days: [day(0)] })
+            wait(50)
+            compare(mock.asked, [132], "on to a month past the next thing")
+            compare(page.shown.days.length, 1, "its days drawn while it loads on")
+            mock.asked = []
+            const far = day(100)
+            far.comes = { rows: [placed("Far", "event", far.start, 600, 660, { when: "10:00 – 11:00" })] }
+            mock.agenda = JSON.stringify({ version: 3, from: from, count: 132, comes: true, sentence: "", days: [day(0), far] })
+            wait(50)
+            compare(page.shown.days.length, 2)
+            verify(root.all(page, o => o.title === "Far" && o.visible).length > 0, "the far appointment listed")
+            compare(mock.asked, [], "nothing next: nothing more asked")
+            page.move(-1)
+            compare(mock.asked[mock.asked.length - 1], 31, "◂: a month again")
+        }
+
         // What comes showing today asks for the doses' reading as the Day does: when
         // shown, at each minute's turn and on coming back; and lays today again at
         // each five minutes' turn. Showing last week, it asks nothing (review of

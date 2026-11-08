@@ -40,12 +40,35 @@ Item {
             return empty
         const s = JSON.parse(page.agendaText)
         const a = page.asked
-        if (a !== null && s.count !== undefined && (s.from !== a.from || s.count !== a.count))
+        // What comes keeps its days drawn while it loads on (`more`): its list never empties.
+        if (a !== null && s.count !== undefined && (s.from !== a.from || (s.comes === true) !== a.comes || (!a.comes && s.count !== a.count)))
             return empty
         return s
     }
-    // What `load` asked last: its first day and its count.
+    // What `load` asked last: its first day, its count, and whether it is What comes.
     property var asked: null
+
+    // What comes, all of it: a month first, then on, as the list nears its end, to a month
+    // past the next thing beyond what it holds (`next`), never a line saying more exists;
+    // while the list does not fill the page, on by itself, up to a year. Back to a month
+    // when the page shows again, moves, or changes its way: never cut at two weeks.
+    readonly property int comesPage: 31
+    readonly property int comesMost: 3660
+    property int comesDays: page.comesPage
+
+    function more(filling) {
+        const next = page.shown.next || ""
+        if (page.mode !== "agenda" || next === "" || page.asked === null || page.shown.count !== page.asked.count)
+            return
+        if (filling && page.comesDays >= 366)
+            return
+        const reach = Math.round((new Date(next + "T12:00:00") - new Date(page.asked.from + "T12:00:00")) / 86400000) + 1
+        const days = Math.min(page.comesMost, Math.max(page.comesDays + page.comesPage, reach + page.comesPage))
+        if (days <= page.comesDays)
+            return
+        page.comesDays = days
+        page.load()
+    }
 
     // What comes' rows of a day (version 3's `comes`, `timeline::comes`), in time order:
     // its whole-day things first, tonight's night last; today's doses by the minute, as the
@@ -236,6 +259,7 @@ Item {
         page.takeShown()
         page.readQuestions()
         if (page.visible) {
+            page.comesDays = page.comesPage
             page.readAgain()
             if (page.dosesAsked)
                 page.sioul.refreshHealth()
@@ -337,7 +361,7 @@ Item {
     }
 
     function length(mode) {
-        return mode === "day" ? 1 : mode === "week" ? 7 : mode === "month" ? 42 : 15
+        return mode === "day" ? 1 : mode === "week" ? 7 : mode === "month" ? 42 : page.comesDays
     }
 
     property date anchor: page.wall(Date.now())
@@ -392,13 +416,15 @@ Item {
         page.followsToday = page.iso(page.anchor) === page.window.today
         // From today, the list is what comes: an event over is shown only when you go back (◂).
         const upcoming = page.mode === "agenda" && page.followsToday
-        page.asked = { from: page.iso(page.startOf(page.anchor, page.mode)), count: page.length(page.mode) }
+        page.asked = { from: page.iso(page.startOf(page.anchor, page.mode)), count: page.length(page.mode), comes: page.mode === "agenda" }
         // Out of sight, asked when shown again (`readAgain`): the agenda shown elsewhere keeps its days.
         if (page.visible)
-            page.sioul.showDays(page.asked.from, page.asked.count, upcoming)
+            page.sioul.showDays(page.asked.from, page.asked.count, upcoming, page.asked.comes)
     }
 
+    // ◂ and ▸: a day, a week, a month; What comes, fifteen days back or on, a step, never its end.
     function move(steps) {
+        page.comesDays = page.comesPage
         let d = new Date(page.anchor)
         if (page.mode === "month") {
             // The same day of the next month, or its last: from 31 January, February, never March.
@@ -616,7 +642,10 @@ Item {
         page.window.openCard({ kind: "event", srcKey: key, srcStart: 0 })
     }
 
-    onModeChanged: page.load()
+    onModeChanged: {
+        page.comesDays = page.comesPage
+        page.load()
+    }
     Component.onCompleted: {
         page.takeShown()
         page.readAgain()
@@ -646,6 +675,7 @@ Item {
                     text: page.sioul.text("agenda-today")
                     onClicked: {
                         page.anchor = new Date(page.window.today + "T12:00:00")
+                        page.comesDays = page.comesPage
                         page.load()
                         // The same days: back to now all the same.
                         timeline.scrollToStart(true)
@@ -897,11 +927,45 @@ Item {
                 spacing: 12
                 model: page.mode === "agenda" ? page.shown.days.filter(d => d.today || page.comesRows(d).length > 0 || page.comesPlan(d) !== "") : []
                 ScrollBar.vertical: ScrollBar {}
-                // Opened on today (its first day, from today).
-                onCountChanged: Qt.callLater(() => {
-                    const today = daysList.model.findIndex(d => d.today)
-                    if (today >= 0)
-                        daysList.positionViewAtIndex(today, ListView.Beginning)
+
+                // The day at the top and how far into it the list is scrolled: kept when the
+                // days come again (each five minutes, or loaded on), else opened on today.
+                property string topDate: ""
+                property real topInto: 0
+                property string keptFor: ""
+
+                function keepTop() {
+                    const at = daysList.indexAt(0, daysList.contentY + 1)
+                    const item = at >= 0 ? daysList.itemAtIndex(at) : null
+                    if (item) {
+                        daysList.topDate = daysList.model[at].date
+                        daysList.topInto = daysList.contentY - item.y
+                    }
+                }
+
+                onContentYChanged: if (daysList.moving)
+                    daysList.keepTop()
+                onMovementEnded: daysList.keepTop()
+                // Near its end, What comes loads on; while it does not fill the page, by itself.
+                onAtYEndChanged: if (daysList.atYEnd && daysList.contentHeight > daysList.height)
+                    page.more(false)
+                onModelChanged: Qt.callLater(() => {
+                    const asked = page.asked ? page.asked.from : ""
+                    const top = daysList.keptFor === asked ? daysList.model.findIndex(d => d.date === daysList.topDate) : -1
+                    if (top >= 0) {
+                        daysList.positionViewAtIndex(top, ListView.Beginning)
+                        daysList.contentY += daysList.topInto
+                    } else {
+                        // Opened on today (its first day, from today).
+                        const today = daysList.model.findIndex(d => d.today)
+                        if (today >= 0)
+                            daysList.positionViewAtIndex(today, ListView.Beginning)
+                        daysList.keptFor = asked
+                        daysList.topDate = ""
+                        daysList.topInto = 0
+                    }
+                    if (daysList.contentHeight <= daysList.height)
+                        page.more(true)
                 })
 
                 delegate: ColumnLayout {

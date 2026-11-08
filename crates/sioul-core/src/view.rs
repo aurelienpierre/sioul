@@ -1752,7 +1752,9 @@ pub fn size(tr: &Translator, bytes: usize) -> String {
     tr.text(id, Some(&args))
 }
 
-/// Days the agenda shows by default: today, then the next two weeks (docs/client.md, rule 9).
+/// Days the agents' agenda reads by default (`sioul mcp`'s `agenda`, which takes up to 92): today,
+/// then the next two weeks. The window's What comes has no such horizon: it loads on as it
+/// is scrolled (docs/client.md, rule 9).
 pub const AGENDA_DAYS: i64 = 15;
 
 /// The address book: names first, details when one is opened (docs/client.md, rule 10).

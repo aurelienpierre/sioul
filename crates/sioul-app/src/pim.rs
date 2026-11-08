@@ -41,11 +41,14 @@ pub(crate) struct PimState {
     pub days: i64,
     /// What comes only: events over already are left out (the list opened on today).
     pub upcoming: bool,
+    /// What comes, the list (`agenda::Mode::Comes`), however many days it holds: it
+    /// loads on as the list is scrolled, never cut at two weeks.
+    pub comes: bool,
 }
 
 impl Default for PimState {
     fn default() -> PimState {
-        PimState { query: String::new(), category: String::new(), from: sioul_core::zone::now().date(), days: view::AGENDA_DAYS, upcoming: true }
+        PimState { query: String::new(), category: String::new(), from: sioul_core::zone::now().date(), days: crate::agenda::COMES_FIRST_DAYS, upcoming: true, comes: true }
     }
 }
 
