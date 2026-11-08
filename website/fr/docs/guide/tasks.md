@@ -158,6 +158,18 @@ Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **To
 
 **Agendas**, à côté, est le filtre de l’agenda lui-même, ses listes de tâches ici ([Agenda](agenda.md#several-agendas)). Sur Maintenant, une liste qu’il laisse de côté, une liste de travail le soir ou une que vous avez décochée, garde ses tâches hors de la vue, le plan entier. Sur Liste, Tableau et Gantt, seul ce que vous avez dit laisse une liste de côté : une que vous y avez décochée ou que vous gardez cachée ; jamais les heures. Ce que vous cochez tient jusqu’à ce que vos heures de travail changent. Une liste que vous lisez seulement reste telle quelle : ses tâches s’ouvrent pour être lues.
 
+## Chercher {#search}
+
+**Chercher**, le dernier choix en haut de la page Tâches et de l’Agenda, trouve tâches et événements ensemble, quelle que soit l’heure :
+
+- des **mots** du titre, des notes ou du lieu, chaque mot quelque part, sans tenir compte des accents ni des majuscules ;
+- **Tous les projets**, **Sans projet** ou l’un d’eux ; de même pour le **type** et la **catégorie**. Un événement n’a pas de type : **Sans type** garde chaque événement, un type aucun ;
+- **Toutes les dates**, ou **Entre deux jours**, l’un des deux laissé vide pour ne pas borner. Une tâche y tombe par sa date demandée, son jour pour commencer ou le jour où elle a été faite ; un événement par son heure, un événement qui se répète par ses fois entre les deux ;
+- pour les événements : **Avec des invités** ou **Sans invités** (vous-même ne comptez pas parmi les invités), et **Confirmé**, **À confirmer**, **Annulé**, autant que vous en cochez ;
+- pour les tâches : **Faites** ou **Pas faites**, **Avec une date demandée** ou **Sans date demandée**.
+
+Ce qui vient est listé d’abord, le plus proche d’abord, puis le passé, le plus récent d’abord, puis ce qui n’a pas de date. Un appui ouvre sa fiche.
+
 ## Une tâche, ouverte {#a-task-open}
 
 Une tâche s’ouvre dans sa carte à droite, à côté de la liste (sur un téléphone, elle prend la page), depuis n’importe quelle vue et depuis l’[agenda](agenda.md) : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.

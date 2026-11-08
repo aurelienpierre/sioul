@@ -693,6 +693,12 @@ pub mod qobject {
         #[qinvokable]
         fn turn_agendas(self: Pin<&mut Sioul>, ids: &QString, on: bool) -> QString;
 
+        /// Tasks and events found by the Search tab of Tasks and Agenda
+        /// (`thingsearch::search`): `query` a `sioul_core::thingsearch::Query`
+        /// in JSON; the filters' choices and what was found, in JSON.
+        #[qinvokable]
+        fn find_things(self: &Sioul, query: &QString) -> QString;
+
         /// The same from a full list of tasks, which the hours never shape
         /// (`agenda::turn_by_hand`); returns what went wrong, else "".
         #[qinvokable]
@@ -5320,6 +5326,10 @@ impl qobject::Sioul {
 
     fn set_agenda_view(self: Pin<&mut Self>, view: &QString) -> QString {
         QString::from(&crate::agenda::set_view(&view.to_string()))
+    }
+
+    fn find_things(&self, query: &QString) -> QString {
+        QString::from(&crate::thingsearch::search(&self.shared(), &query.to_string()))
     }
 
     fn turn_agendas_by_hand(self: Pin<&mut Self>, ids: &QString, on: bool) -> QString {

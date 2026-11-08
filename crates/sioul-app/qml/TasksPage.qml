@@ -52,7 +52,7 @@ Item {
     // The list keeps its rows on one line beside the card (main.qml's `cardRoom`).
     readonly property real cardRoom: page.listLeast
     property alias routines: routinesDialog
-    // "now", "list", "board", "timeline". "day" (a saved view, the window's pictures)
+    // "now", "list", "board", "timeline", "search" (ThingSearch.qml). "day" (a saved view, the window's pictures)
     // opens the agenda's Day, the page on Now (the unified agenda, part 5).
     property string mode: "now"
     // The views made so far: each the first time it is shown; "now" not
@@ -258,7 +258,7 @@ Item {
                 spacing: 6
 
                 Repeater {
-                    model: ["now", "day", "list", "board", "timeline"]
+                    model: ["now", "day", "list", "board", "timeline", "search"]
 
                     delegate: Button {
                         id: modeButton
@@ -433,7 +433,7 @@ Item {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: ["now", "list", "board", "timeline"].indexOf(page.mode)
+                currentIndex: ["now", "list", "board", "timeline", "search"].indexOf(page.mode)
 
                 // Now: the next step, why, and the one after it. Made when first shown
                 // outside rest: behind the rest cover it waits.
@@ -1234,6 +1234,22 @@ Item {
                             onOpen: uid => page.open(uid)
                             onMenu: task => taskMenu.now().show(task)
                             onFold: (uid, open) => page.sioul.foldTask(uid, open)
+                        }
+                    }
+                }
+
+                // Search (8 November 2026): tasks and events by words and filters,
+                // whatever the hour. Made the first time it is shown.
+                Loader {
+                    objectName: "tasksSearch"
+                    active: page.made["search"] === true
+
+                    sourceComponent: Component {
+                        ThingSearch {
+                            sioul: page.sioul
+                            theme: page.theme
+                            window: page.window
+                            which: "tasks"
                         }
                     }
                 }

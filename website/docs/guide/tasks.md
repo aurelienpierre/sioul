@@ -158,6 +158,18 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 
 **Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)). On Now, a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out, the plan whole. On List, Board and Gantt, only what you said leaves a list out: one you unticked there or keep hidden; the hours never do. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
 
+## Search {#search}
+
+**Search**, the last choice at the top of the Tasks page and of the Agenda, finds tasks and events together, whatever the hour:
+
+- **words** found in the title, the notes or the place, each word somewhere, accents and case aside;
+- **Any project**, **No project** or one; the same for the **type** and the **category**. An event has no type: **No type** keeps every event, a type none;
+- **Anytime**, or **Between two days**, either day left empty for no limit. A task falls between them by its date asked, its day to start or the day it was done; an event by its time, a repeating one by its times in between;
+- for events: **With guests** or **Without guests** (you are no guest of your own), and **Confirmed**, **To be confirmed**, **Cancelled**, as many as you tick;
+- for tasks: **Done** or **Not done**, **With a date asked** or **Without a date asked**.
+
+What comes is listed first, the soonest first, then the past, the newest first, then what has no date. A tap opens its card.
+
 ## A task, open {#a-task-open}
 
 A task opens in its card on the right, beside the list (on a phone, it takes the page), from any view and from the [agenda](agenda.md): a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.

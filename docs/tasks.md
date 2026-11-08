@@ -184,6 +184,8 @@ From any thing, **Ties** (on its card, in its menu as "Its ties", "See them all"
 
 8 November 2026. One engine in the core, `sioul_core::thingsearch::search`, over tasks and event files (`agenda::EventRef`, which reads their notes, categories, TENTATIVE and ATTENDEE since then), reading nothing itself: the window's `thingsearch::search` gives it everything read (`work::loaded`), whatever the hour and the agenda filter, and, for a range of days, the calendars' occurrences in it (`agenda::occurrences`; an open end reads a year), which place repeating events. The query (`Query`, JSON): words (each in the title, the notes or the place, `text::fold`), which (both, tasks, events), project, kind and category, each "" for any, `NONE` (":none") for none or one (an event has no kind: "none" keeps every event), from and to (days, either open), guests (an ATTENDEE that is not one of your addresses), statuses (confirmed, tentative, cancelled), done, a date asked. Asking guests or a status leaves tasks out; asking done or a date asked leaves events out. A task falls in a range by its date asked, its day to start or its day done; an event by its time. A task's time block is its task's, never listed. Each thing once, what comes first (soonest first), then the past (newest first), then the undated (`When`). Tests: `thingsearch::tests`, `tst_thingsearch.qml`.
 
+The Search tab (`ThingSearch.qml`) is one component that the Tasks page (mode "search", tasks first) and the Agenda (mode "search", events first) both instantiate; words wait 250 ms of pause.
+
 ## Command line
 ```
 sioul tasks [now]                      the next step, why, and the one after it

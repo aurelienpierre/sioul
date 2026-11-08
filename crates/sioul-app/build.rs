@@ -74,6 +74,7 @@ fn main() {
         "qml/TaskRow.qml",
         "qml/TaskPanel.qml",
         "qml/TaskTimeline.qml",
+        "qml/ThingSearch.qml",
         "qml/CostTiles.qml",
         "qml/FeltRatings.qml",
         "qml/HowWasIt.qml",

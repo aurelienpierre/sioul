@@ -226,11 +226,14 @@ Item {
                 page.sioul.refreshHealth()
         }
     }
-    // "agenda", "day", "week", "month".
+    // "agenda", "day", "week", "month"; "search", the Search tab (ThingSearch.qml).
     property string mode: "agenda"
     // A narrow screen (a phone): the title under the arrows, events on two lines.
     readonly property bool narrow: page.width < 600
-    readonly property var modes: ["agenda", "day", "week", "month"]
+    readonly property var modes: ["agenda", "day", "week", "month", "search"]
+    readonly property bool searching: page.mode === "search"
+    // The Search tab, made the first time it is shown.
+    property bool searchMade: false
     // What the page keeps beside an open card: the Week's grid, else a list's room (main.qml).
     readonly property real cardRoom: page.mode === "week" ? 830 : 480
     // The step whose menu is open (a row of the timeline).
@@ -371,6 +374,9 @@ Item {
     }
 
     function load() {
+        // The Search tab reads no days: it asks its own engine.
+        if (page.searching)
+            return
         page.followsToday = page.iso(page.anchor) === page.window.today
         // From today, the list is what comes: an event over is shown only when you go back (◂).
         const upcoming = page.mode === "agenda" && page.followsToday
@@ -391,6 +397,8 @@ Item {
     }
 
     function title() {
+        if (page.searching)
+            return page.sioul.text("agenda-mode-search")
         // Today as the window's clock has it: the title turns with it at midnight.
         const today = page.window.today
         if (page.mode === "agenda")
@@ -595,7 +603,11 @@ Item {
         page.window.openCard({ kind: "event", srcKey: key, srcStart: 0 })
     }
 
-    onModeChanged: page.load()
+    onModeChanged: {
+        if (page.searching)
+            page.searchMade = true
+        page.load()
+    }
     Component.onCompleted: {
         page.takeShown()
         page.readAgain()
@@ -621,6 +633,7 @@ Item {
                 spacing: 6
 
                 Button {
+                    visible: !page.searching
                     text: page.sioul.text("agenda-today")
                     onClicked: {
                         page.anchor = new Date(page.window.today + "T12:00:00")
@@ -630,11 +643,13 @@ Item {
                     }
                 }
                 ToolButton {
+                    visible: !page.searching
                     text: "◂"
                     Accessible.name: page.sioul.text("agenda-earlier")
                     onClicked: page.move(-1)
                 }
                 ToolButton {
+                    visible: !page.searching
                     text: "▸"
                     Accessible.name: page.sioul.text("agenda-later")
                     onClicked: page.move(1)
@@ -1332,6 +1347,24 @@ Item {
                                 onMenu: page.menuListed(monthItem.modelData, listedDay.modelData)
                             }
                         }
+                    }
+                }
+            }
+
+            // Search (8 November 2026): events and tasks by words and filters, made when first shown.
+            Loader {
+                objectName: "agendaSearch"
+                visible: page.searching
+                active: page.searchMade
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                sourceComponent: Component {
+                    ThingSearch {
+                        sioul: page.sioul
+                        theme: page.theme
+                        window: page.window
+                        which: "events"
                     }
                 }
             }

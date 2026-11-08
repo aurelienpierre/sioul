@@ -336,7 +336,7 @@ fn kinds_offered() -> Vec<KindChoice> {
 }
 
 /// The open tasks' categories, the most used first, each as first written.
-fn categories_of(tasks: &[Task]) -> Vec<String> {
+pub(crate) fn categories_of(tasks: &[Task]) -> Vec<String> {
     let mut counted: BTreeMap<String, (usize, String)> = BTreeMap::new();
     for task in tasks.iter().filter(|t| t.status.is_open()) {
         for category in &task.categories {
