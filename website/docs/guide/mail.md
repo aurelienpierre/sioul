@@ -112,7 +112,8 @@ Opening a message marks it read, as any mail program does. Sioul never sends a r
 
 A topic is a quiet word on a message, such as Health, Tax or Choir: a way to look at your mail, never a folder. Nothing moves, and nothing asks you to tag anything.
 
-- **Topic…**, under the sender's line in the reader, in a message's menu, or in the bar above a selection, gives a topic to one message or to several at once, changes it or takes it off. **New topic…** makes it and gives it in one act.
+- **Topic…**, under the sender's line in the reader, in a message's menu, or in the bar above a selection, gives a topic to one message or to several at once, changes it or takes it off, in **All addresses** and in each address's folders alike. Choose several with Ctrl and Shift, or on a phone with **Select** in a row's menu (a long press), then a tap on each. The topic they share is ticked. **New topic…** makes it and gives it in one act.
+- **Rename or remove…**, at the end of the same menu, turns each topic's name into a field: change it and press Enter, or **Remove** it (its word leaves every message, with **Undo**). **Done** goes back.
 - **Always <topic> for this sender**, or **Never…**, in the same menu: the sender's mail takes it, or never does. A reply takes the topic you gave its conversation.
 - **The Topic filter**, beside the filter by area, shows one topic's mail alone. The topic shows quietly after the subject, and in the reader with why it has it.
 - Each act says what it did, with **Undo**. In the Mail page's ⚙, **Topics** lists them, renames and removes them, and on a computer **Groups Sioul noticed** gathers mail no topic names yet, by its words: **Name it** gives the whole group a topic, once a thousand messages are kept here, named when a topic preset or a kind of site holds most of it, and **Always a topic…** files all the mail of a sender who writes to you a lot under the topic you name.

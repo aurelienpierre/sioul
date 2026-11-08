@@ -699,6 +699,23 @@ Item {
             mock.mailFolder = ""
         }
 
+        // "Topic…" on several messages ticks the topic they all have, in a folder as in
+        // the mailbox; a doubt of Sioul's ("maybe") is no topic there; mixed: none ticked.
+        function test_the_topic_several_share_is_ticked() {
+            const page = made()
+            const row = (n, topic, why) => ({ key: "/stand-in/mail/work/cur/1778" + (1000 + n) + ".U7-" + n + ".sioul:2,S", uri: "mid:t" + n + "@example.org", who: "Ben", address: "ben@example.org", subject: "Note " + n, date: "09:00", unread: false, read: true, flagged: false, answered: false, attachments: false, trust_level: "verified", trust: "", checks: "", server: false, topic: topic ? "Impôts" : "", topic_id: topic, topic_why: why })
+            mock.mailFolder = JSON.stringify({ items: [row(1, "tax", "yours"), row(2, "tax", "sender"), row(3, "tax", "maybe"), row(4, "", "")], title: "Inbox", sentence: "", role: "inbox", more: false })
+            page.openFolder("work", "INBOX")
+            tryCompare(find(page, "folderList"), "count", 4)
+            const keys = n => page.listItems.slice(0, n).map(r => r.key)
+            compare(page.sharedTopic(keys(2), null), "tax")
+            compare(page.sharedTopic(keys(3), null), "", "a doubt is no topic")
+            compare(page.sharedTopic([page.listItems[3].key, page.listItems[0].key], null), "", "mixed: none")
+            compare(page.sharedTopic([page.listItems[2].key], page.listItems[2]), "", "one row's doubt")
+            compare(page.sharedTopic([page.listItems[1].key], page.listItems[1]), "tax")
+            mock.mailFolder = ""
+        }
+
         // A folder has no horizon either (8 November 2026): its first sixty rows,
         // the next sixty asked as its end comes into view, no "Earlier" button.
         function test_a_folder_comes_by_pages() {

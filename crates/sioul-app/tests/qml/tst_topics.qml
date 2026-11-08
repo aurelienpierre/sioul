@@ -211,6 +211,34 @@ Item {
             tryCompare(menu, "opened", false)
         }
 
+        // The topics themselves changed where mail is read (8 November 2026):
+        // "Rename or remove…" makes each name a field, Enter renames it, Remove
+        // takes it away; nothing is given meanwhile; Done goes back.
+        function test_topics_renamed_and_removed_from_the_menu() {
+            const menu = createTemporaryObject(menuComponent, root)
+            menu.openAt(anchor, "[[\"/m/1\"]]", "/m/1", "choir")
+            shown(menu)
+            mouseClick(named(menu.contentItem, "topicEdit"))
+            waitForItemPolished(menu.contentItem)
+            verify(!named(menu.contentItem, "topicNew").visible && !named(menu.contentItem, "topicAlways").visible && !named(menu.contentItem, "topicNone").visible)
+            verify(named(menu.contentItem, "topicChoice:tax") === null, "no topic given while renaming")
+            const field = named(menu.contentItem, "topicRename:tax")
+            verify(field !== null && field.text === "Impôts")
+            inside(field)
+            field.forceActiveFocus()
+            field.selectAll()
+            keyClick(Qt.Key_D)
+            keyClick(Qt.Key_Return)
+            compare(mock.asked[0], ["rename", "tax", "d"])
+            mouseClick(named(menu.contentItem, "topicRemove:choir"))
+            compare(mock.asked[mock.asked.length - 1], ["remove", "choir"])
+            verify(menu.opened, "the menu stays open for the next change")
+            mouseClick(named(menu.contentItem, "topicEditDone"))
+            waitForItemPolished(menu.contentItem)
+            verify(named(menu.contentItem, "topicChoice:tax") !== null && named(menu.contentItem, "topicNew").visible)
+            compare(mock.asked.filter(a => a[0] === "tag").length, 0, "nothing given")
+        }
+
         // The filter says which topic shows, unfolds them all, and picks one.
         function test_the_filter_picks_a_topic() {
             const filter = createTemporaryObject(filterComponent, root)

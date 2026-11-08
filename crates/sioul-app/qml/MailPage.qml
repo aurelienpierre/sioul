@@ -373,9 +373,19 @@ Item {
     }
 
     // "Topic…" on rows (their keys) under `item` (null: in the middle, from a menu): one
-    // row's current topic and sender's rules, or several's.
+    // row's current topic and sender's rules, or several's; the topic they all have
+    // ticked (a doubt of Sioul's is no topic there), in the mailbox and in a folder alike.
     function askTopic(item, keys, row) {
-        topicMenu.openAt(item, JSON.stringify(page.rowsOf(keys)), keys.length === 1 ? keys[0] : "", row && keys.length === 1 ? (row.topic_id || "") : "")
+        topicMenu.openAt(item, JSON.stringify(page.rowsOf(keys)), keys.length === 1 ? keys[0] : "", page.sharedTopic(keys, row))
+    }
+
+    // The topic every row of `keys` has, sure; "" when they differ or one has none.
+    function sharedTopic(keys, row) {
+        const sure = r => r && r.topic_why !== "maybe" ? (r.topic_id || "") : ""
+        if (row && keys.length === 1)
+            return sure(row)
+        const topics = keys.map(key => sure(page.listItems.find(item => page.sameMessage(item.key, key))))
+        return topics.length > 0 && topics.every(t => t !== "" && t === topics[0]) ? topics[0] : ""
     }
 
     // "Topic…" for the first row with a topic, in the middle (the pictures' step list "topics").
