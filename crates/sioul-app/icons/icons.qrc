@@ -12,6 +12,7 @@
     <file>sioul/16/bookmarks-organize.svg</file>
     <file>sioul/16/call-start.svg</file>
     <file>sioul/16/camera-video.svg</file>
+    <file>sioul/16/checkbox.svg</file>
     <file>sioul/16/chronometer-reset.svg</file>
     <file>sioul/16/chronometer-start.svg</file>
     <file>sioul/16/chronometer.svg</file>
@@ -34,6 +35,7 @@
     <file>sioul/16/document-sign.svg</file>
     <file>sioul/16/edit-clear.svg</file>
     <file>sioul/16/edit-copy.svg</file>
+    <file>sioul/16/edit-delete.svg</file>
     <file>sioul/16/edit-undo.svg</file>
     <file>sioul/16/emblem-favorite.svg</file>
     <file>sioul/16/folder-documents.svg</file>
@@ -137,6 +139,7 @@
     <file>sioul/22/bookmarks-organize.svg</file>
     <file>sioul/22/call-start.svg</file>
     <file>sioul/22/camera-video.svg</file>
+    <file>sioul/22/checkbox.svg</file>
     <file>sioul/22/chronometer-reset.svg</file>
     <file>sioul/22/chronometer-start.svg</file>
     <file>sioul/22/chronometer.svg</file>
@@ -159,6 +162,7 @@
     <file>sioul/22/document-sign.svg</file>
     <file>sioul/22/edit-clear.svg</file>
     <file>sioul/22/edit-copy.svg</file>
+    <file>sioul/22/edit-delete.svg</file>
     <file>sioul/22/edit-undo.svg</file>
     <file>sioul/22/emblem-favorite.svg</file>
     <file>sioul/22/flower-shape.svg</file>
@@ -271,6 +275,7 @@
     <file>sioul/32/document-open-recent.svg</file>
     <file>sioul/32/document-open.svg</file>
     <file>sioul/32/document-save.svg</file>
+    <file>sioul/32/edit-delete.svg</file>
     <file>sioul/32/edit-undo.svg</file>
     <file>sioul/32/folder-documents.svg</file>
     <file>sioul/32/folder-mail.svg</file>
@@ -360,6 +365,7 @@
     <file>sioul-dark/16/bookmarks-organize.svg</file>
     <file>sioul-dark/16/call-start.svg</file>
     <file>sioul-dark/16/camera-video.svg</file>
+    <file>sioul-dark/16/checkbox.svg</file>
     <file>sioul-dark/16/chronometer-reset.svg</file>
     <file>sioul-dark/16/chronometer-start.svg</file>
     <file>sioul-dark/16/chronometer.svg</file>
@@ -382,6 +388,7 @@
     <file>sioul-dark/16/document-sign.svg</file>
     <file>sioul-dark/16/edit-clear.svg</file>
     <file>sioul-dark/16/edit-copy.svg</file>
+    <file>sioul-dark/16/edit-delete.svg</file>
     <file>sioul-dark/16/edit-undo.svg</file>
     <file>sioul-dark/16/emblem-favorite.svg</file>
     <file>sioul-dark/16/folder-documents.svg</file>
@@ -485,6 +492,7 @@
     <file>sioul-dark/22/bookmarks-organize.svg</file>
     <file>sioul-dark/22/call-start.svg</file>
     <file>sioul-dark/22/camera-video.svg</file>
+    <file>sioul-dark/22/checkbox.svg</file>
     <file>sioul-dark/22/chronometer-reset.svg</file>
     <file>sioul-dark/22/chronometer-start.svg</file>
     <file>sioul-dark/22/chronometer.svg</file>
@@ -507,6 +515,7 @@
     <file>sioul-dark/22/document-sign.svg</file>
     <file>sioul-dark/22/edit-clear.svg</file>
     <file>sioul-dark/22/edit-copy.svg</file>
+    <file>sioul-dark/22/edit-delete.svg</file>
     <file>sioul-dark/22/edit-undo.svg</file>
     <file>sioul-dark/22/emblem-favorite.svg</file>
     <file>sioul-dark/22/flower-shape.svg</file>
@@ -619,6 +628,7 @@
     <file>sioul-dark/32/document-open-recent.svg</file>
     <file>sioul-dark/32/document-open.svg</file>
     <file>sioul-dark/32/document-save.svg</file>
+    <file>sioul-dark/32/edit-delete.svg</file>
     <file>sioul-dark/32/edit-undo.svg</file>
     <file>sioul-dark/32/folder-documents.svg</file>
     <file>sioul-dark/32/folder-mail.svg</file>

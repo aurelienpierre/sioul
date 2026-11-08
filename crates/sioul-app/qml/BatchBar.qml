@@ -66,6 +66,7 @@ ColumnLayout {
             height: clearButton.height
             verticalAlignment: Text.AlignVCenter
             text: bar.counted("batch-selected", bar.things.length)
+            textFormat: Text.PlainText
             color: bar.theme.text
             font.weight: Font.DemiBold
         }
