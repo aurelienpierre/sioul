@@ -8,6 +8,14 @@
 //! asked, and keeps the answers (`sioul_core::places`), so an address is
 //! never asked twice. Never while you type: its policy forbids it
 //! (`suggest` has the services made for that).
+//!
+//! Nominatim reads an address strictly: a word it doesn't know, such as a
+//! venue's name before its street ("La Salle, boulevard des Exemples, Exempleville"),
+//! and it finds nothing. When it finds nothing, the services that suggest
+//! addresses are asked once, as a map app's own search would: the Base Adresse
+//! Nationale for addresses in France, then Photon, each tolerant of words it
+//! doesn't know and of typos. Their first answer is the place, often the
+//! street rather than the venue.
 
 use crate::SyncError;
 use sioul_core::places::Place;
@@ -18,10 +26,31 @@ const ENDPOINT: &str = "https://nominatim.openstreetmap.org/search";
 /// How long to wait between two questions.
 pub const PAUSE: Duration = Duration::from_millis(1100);
 
-/// The place of one address; None when the geocoder knows none. Waits its turn.
-pub fn locate(address: &str, language: &str) -> Result<Option<Place>, SyncError> {
+/// The place of one address; None when no geocoder knows it. Nominatim first,
+/// waiting its turn; then `fuzzy`, the service your region suggests from
+/// (`suggest::Service::for_region`), and Photon after the Base Adresse Nationale.
+pub fn locate(address: &str, language: &str, fuzzy: crate::suggest::Service) -> Result<Option<Place>, SyncError> {
     wait_turn();
-    locate_at(ENDPOINT, address, language)
+    if let Some(place) = locate_at(ENDPOINT, address, language)? {
+        return Ok(Some(place));
+    }
+    locate_fuzzy(address, language, fuzzy, crate::suggest::BAN, crate::suggest::PHOTON)
+}
+
+/// The first answer of the services that suggest addresses, `fuzzy`'s first.
+fn locate_fuzzy(address: &str, language: &str, fuzzy: crate::suggest::Service, ban: &str, photon: &str) -> Result<Option<Place>, SyncError> {
+    use crate::suggest::Service;
+    let query = sioul_core::places::normalize(address);
+    let ways: &[(Service, &str)] = match fuzzy {
+        Service::Ban => &[(Service::Ban, ban), (Service::Photon, photon)],
+        Service::Photon => &[(Service::Photon, photon)],
+    };
+    for (service, endpoint) in ways {
+        if let Some(first) = crate::suggest::suggest_at(endpoint, *service, &query, language)?.into_iter().next() {
+            return Ok(Some(Place { lat: first.lat, lon: first.lon }));
+        }
+    }
+    Ok(None)
 }
 
 /// When Nominatim was last asked, by any caller of this program.
@@ -95,5 +124,26 @@ mod tests {
         let (url, served) = stand_in("[]");
         assert_eq!(locate_at(&url, "Nowhere", "en").unwrap(), None);
         served.join().unwrap();
+    }
+
+    /// A venue's name before its street: Nominatim finds nothing, the Base
+    /// Adresse Nationale finds the street, and Photon is not asked.
+    #[test]
+    fn a_venue_nominatim_does_not_know_is_found_by_its_street() {
+        let (ban, ban_served) = stand_in(r#"{"features":[{"geometry":{"coordinates":[6.19,48.69]},"properties":{"label":"Boulevard des Exemples 99999 Exempleville","score":0.69}}]}"#);
+        let place = locate_fuzzy("La Salle, boulevard des Exemples, Exempleville", "fr", crate::suggest::Service::Ban, &ban, "http://127.0.0.1:9/never").unwrap().unwrap();
+        assert_eq!((place.lat, place.lon), (48.69, 6.19));
+        ban_served.join().unwrap();
+        // Nothing from the first service: the next one answers.
+        let (ban, ban_served) = stand_in(r#"{"features":[]}"#);
+        let (photon, photon_served) = stand_in(r#"{"features":[{"geometry":{"coordinates":[4.25,45.5]},"properties":{"name":"Boulevard des Exemples","city":"Exempleville"}}]}"#);
+        let place = locate_fuzzy("La Salle, boulevard des Exemples, Exempleville", "fr", crate::suggest::Service::Ban, &ban, &photon).unwrap().unwrap();
+        assert_eq!((place.lat, place.lon), (45.5, 4.25));
+        ban_served.join().unwrap();
+        photon_served.join().unwrap();
+        // Nobody knows it: none.
+        let (photon, photon_served) = stand_in(r#"{"features":[]}"#);
+        assert_eq!(locate_fuzzy("Nowhere at all", "en", crate::suggest::Service::Photon, "http://127.0.0.1:9/never", &photon).unwrap(), None);
+        photon_served.join().unwrap();
     }
 }

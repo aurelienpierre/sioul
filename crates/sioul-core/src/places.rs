@@ -22,8 +22,11 @@ pub struct Place {
 pub struct Places {
     #[serde(default)]
     found: BTreeMap<String, Place>,
-    /// Asked, and not found: not asked again.
-    #[serde(default)]
+    /// Asked, and not found: not asked again. Kept as "missed" since the
+    /// services that suggest addresses are asked after Nominatim (8 November
+    /// 2026): the addresses Nominatim alone missed, kept as "unknown" before,
+    /// are asked once more.
+    #[serde(default, rename = "missed")]
     unknown: Vec<String>,
 }
 
@@ -98,5 +101,18 @@ mod tests {
         assert_eq!(read.get(address), Some(Place { lat: 45.76, lon: 4.83 }));
         assert!(read.asked("Nowhere 1") && read.get("Nowhere 1").is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The addresses Nominatim alone missed, kept as "unknown" before the
+    /// services that suggest addresses were asked too, are asked once more.
+    #[test]
+    fn an_address_missed_before_the_fuzzy_services_is_asked_again() {
+        let older: Places = toml::from_str("unknown = [\"La Salle, boulevard des Exemples, Exempleville\"]\n").unwrap();
+        assert!(!older.asked("La Salle, boulevard des Exemples, Exempleville"));
+        let mut places = Places::default();
+        places.set("Nowhere at all", None);
+        let kept = toml::to_string(&places).unwrap();
+        assert!(kept.contains("missed"), "{kept}");
+        assert!(toml::from_str::<Places>(&kept).unwrap().asked("Nowhere at all"));
     }
 }

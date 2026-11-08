@@ -70,7 +70,7 @@ pub fn suggest(service: Service, typed: &str, language: &str) -> Result<Vec<Sugg
     suggest_at(service.endpoint(), service, typed, language)
 }
 
-fn suggest_at(endpoint: &str, service: Service, typed: &str, language: &str) -> Result<Vec<Suggestion>, SyncError> {
+pub(crate) fn suggest_at(endpoint: &str, service: Service, typed: &str, language: &str) -> Result<Vec<Suggestion>, SyncError> {
     let typed = typed.split_whitespace().collect::<Vec<_>>().join(" ");
     if typed.chars().count() < 3 {
         return Ok(Vec::new());

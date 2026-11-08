@@ -92,7 +92,7 @@ pub(crate) fn locate(qt: &QtThread, shared: &Arc<Shared>) {
                 std::thread::sleep(sioul_sync::geocode::PAUSE);
             }
             asked += 1;
-            match sioul_sync::geocode::locate(&address, &language) {
+            match sioul_sync::geocode::locate(&address, &language, crate::eventplace::service()) {
                 Ok(place) => {
                     places.set(&address, place);
                     if let Err(e) = places.save(&path) {

@@ -64,7 +64,7 @@ pub(crate) fn locate(qt: &QtThread, location: &str) -> String {
     let qt = qt.clone();
     std::thread::spawn(move || {
         let language = tr().text("qt-locale", None).replace('_', "-");
-        let found = sioul_sync::geocode::locate(&location, &language);
+        let found = sioul_sync::geocode::locate(&location, &language, service());
         let said = match found {
             Ok(place) => {
                 let path = Places::default_path();
@@ -131,7 +131,7 @@ pub(crate) fn geo_handler() -> bool {
 
 /// The service your addresses are suggested from (`suggest::Service::for_region`):
 /// the Base Adresse Nationale when your region is France, else Photon.
-fn service() -> sioul_sync::suggest::Service {
+pub(crate) fn service() -> sioul_sync::suggest::Service {
     let region = sioul_core::phones::chosen(load_config().contacts.region.as_deref(), &tr().text("qt-locale", None)).map(|r| r.code);
     sioul_sync::suggest::Service::for_region(region)
 }
