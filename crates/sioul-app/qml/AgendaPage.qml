@@ -10,7 +10,8 @@
 // is outlined. A new event comes from New, at the top of the places, the
 // timeline's "+" (a click on an empty stretch, then a second one), or a
 // double tap on a day or an empty stretch; where the places fold into ☰ (a
-// phone, a narrow window), a New event button stays on the page.
+// phone, a narrow window), a New event button stays on the page. Tasks ▸ The
+// day is this page too, given the Day alone (`modes`, `embedded`).
 
 pragma ComponentBehavior: Bound
 
@@ -30,7 +31,21 @@ Item {
     // Read while shown: a page out of sight keeps what it showed, and reads
     // again when it comes back; results landing meanwhile cost nothing.
     property string agendaText: ""
-    readonly property var shown: page.agendaText ? JSON.parse(page.agendaText) : ({ days: [], sentence: "", from: "" })
+    // The window's agenda is one (`showDays`), asked by whichever page shows it now: this
+    // one, or Tasks ▸ The day. Days asked for another way or stretch are never drawn here
+    // (31 days of What comes laid as a Day's columns): nothing until its own come.
+    readonly property var shown: {
+        const empty = { days: [], sentence: "", from: "" }
+        if (!page.agendaText)
+            return empty
+        const s = JSON.parse(page.agendaText)
+        const a = page.asked
+        if (a !== null && s.count !== undefined && (s.from !== a.from || s.count !== a.count))
+            return empty
+        return s
+    }
+    // What `load` asked last: its first day and its count.
+    property var asked: null
 
     // What comes' rows of a day (version 3's `comes`, `timeline::comes`), in time order:
     // its whole-day things first, tonight's night last; today's doses by the minute, as the
@@ -230,7 +245,10 @@ Item {
     property string mode: "agenda"
     // A narrow screen (a phone): the title under the arrows, events on two lines.
     readonly property bool narrow: page.width < 600
-    readonly property var modes: ["agenda", "day", "week", "month"]
+    // The ways offered: Tasks ▸ The day gives the Day alone, without the switch.
+    property var modes: ["agenda", "day", "week", "month"]
+    // Inside another page (Tasks ▸ The day): Agenda ⚙ is the Agenda's own, not shown here.
+    property bool embedded: false
     // What the page keeps beside an open card: the Week's grid, else a list's room (main.qml).
     readonly property real cardRoom: page.mode === "week" ? 830 : 480
     // The step whose menu is open (a row of the timeline).
@@ -374,7 +392,10 @@ Item {
         page.followsToday = page.iso(page.anchor) === page.window.today
         // From today, the list is what comes: an event over is shown only when you go back (◂).
         const upcoming = page.mode === "agenda" && page.followsToday
-        page.sioul.showDays(page.iso(page.startOf(page.anchor, page.mode)), page.length(page.mode), upcoming)
+        page.asked = { from: page.iso(page.startOf(page.anchor, page.mode)), count: page.length(page.mode) }
+        // Out of sight, asked when shown again (`readAgain`): the agenda shown elsewhere keeps its days.
+        if (page.visible)
+            page.sioul.showDays(page.asked.from, page.asked.count, upcoming)
     }
 
     function move(steps) {
@@ -606,7 +627,8 @@ Item {
         id: columns
 
         anchors.fill: parent
-        anchors.margins: page.theme.gap
+        // Inside another page, within its margins already.
+        anchors.margins: page.embedded ? 0 : page.theme.gap
         spacing: page.theme.gap
 
         ColumnLayout {
@@ -653,6 +675,8 @@ Item {
                 // The day, the week and the month, one switch away; on a phone,
                 // in the title's room.
                 PlainComboBox {
+                    objectName: "agendaModes"
+                    visible: page.modes.length > 1
                     Layout.fillWidth: page.narrow
                     Layout.preferredWidth: page.narrow ? -1 : 150
                     model: page.modes.map(m => page.sioul.text("agenda-mode-" + m))
@@ -701,7 +725,7 @@ Item {
                 SettingsButton {
                     id: agendaSettings
 
-                    visible: !page.narrow
+                    visible: !page.narrow && !page.embedded
                     sioul: page.sioul
                     theme: page.theme
                     view: "agenda"
@@ -748,6 +772,7 @@ Item {
                 SettingsButton {
                     id: agendaSettingsNarrow
 
+                    visible: !page.embedded
                     sioul: page.sioul
                     theme: page.theme
                     view: "agenda"

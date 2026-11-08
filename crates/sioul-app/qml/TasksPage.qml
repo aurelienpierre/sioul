@@ -2,8 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Tasks. "Now" first: the one next step, picked by the plan, with why, and
-// the one after it; nothing else unless asked. The list, the board and the
-// timeline are one switch away. A line at the top takes a new task in one
+// the one after it; nothing else unless asked. The day, the list, the board
+// and the timeline are one switch away; the day is the Agenda's Day itself
+// (AgendaPage.qml, given the Day alone), in its own tab. A line at the top takes a new task in one
 // sentence; "New task" beside it opens the full form, as New ▸ A task and
 // Add ▾ ▸ A task do. Nothing is overdue: a date asked is time left; a day
 // that passed moves the task forward instead (docs/tasks.md).
@@ -49,11 +50,13 @@ Item {
     readonly property bool panelOpen: page.window.cardRef !== null && page.window.cardRef.card === "task"
     // A new task's form open in the card, not made yet.
     readonly property bool making: page.panelOpen && page.window.cardRef.making === true
-    // The list keeps its rows on one line beside the card (main.qml's `cardRoom`).
-    readonly property real cardRoom: page.listLeast
+    // The list keeps its rows on one line beside the card (main.qml's `cardRoom`);
+    // the day, what the Agenda's Day keeps.
+    readonly property real cardRoom: page.mode === "day" && page.agendaDay ? page.agendaDay.cardRoom : page.listLeast
+    // The day's tab: the Agenda's Day, once made (main.qml reads and reloads the agenda shown).
+    readonly property var agendaDay: dayLoader.item
     property alias routines: routinesDialog
-    // "now", "list", "board", "timeline". "day" (a saved view, the window's pictures)
-    // opens the agenda's Day, the page on Now (the unified agenda, part 5).
+    // "now", "day", "list", "board", "timeline".
     property string mode: "now"
     // The views made so far: each the first time it is shown; "now" not
     // while the rest cover hides it.
@@ -64,11 +67,6 @@ Item {
             page.nowMade = true
     }
     onModeChanged: {
-        if (page.mode === "day") {
-            page.mode = "now"
-            page.window.showAgendaDay()
-            return
-        }
         const made = Object.assign({}, page.made)
         made[page.mode] = true
         page.made = made
@@ -270,12 +268,8 @@ Item {
                         checked: page.mode === modeButton.modelData
                         flat: page.mode !== modeButton.modelData
                         // A click on the way shown unticks it: its binding ticks it again.
-                        // The day is the agenda's Day: everything with a time, in one place.
                         onClicked: {
-                            if (modeButton.modelData === "day")
-                                page.window.showAgendaDay()
-                            else
-                                page.mode = modeButton.modelData
+                            page.mode = modeButton.modelData
                             modeButton.checked = Qt.binding(() => page.mode === modeButton.modelData)
                         }
                     }
@@ -431,7 +425,7 @@ Item {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: ["now", "list", "board", "timeline"].indexOf(page.mode)
+                currentIndex: ["now", "day", "list", "board", "timeline"].indexOf(page.mode)
 
                 // Now: the next step, why, and the one after it. Made when first shown
                 // outside rest: behind the rest cover it waits.
@@ -937,7 +931,7 @@ Item {
                                     ToolTip.delay: 500
                                     onClicked: page.stopForToday()
                                 }
-                                // The day as a whole: the agenda's Day (the unified agenda, part 5).
+                                // The day as a whole: the Day's tab, the Agenda's Day.
                                 Label {
                                     objectName: "nowDayInAgenda"
                                     Layout.alignment: Qt.AlignHCenter
@@ -954,10 +948,30 @@ Item {
                                         cursorShape: Qt.PointingHandCursor
                                     }
                                     TapHandler {
-                                        onTapped: page.window.showAgendaDay()
+                                        onTapped: page.mode = "day"
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // The day: the Agenda's Day itself, everything with a time in one place:
+                // its timeline, its cards, its drags and its "+" (the unified agenda, part 5).
+                // Made the first time it is shown.
+                Loader {
+                    id: dayLoader
+
+                    active: page.made["day"] === true
+                    sourceComponent: Component {
+                        AgendaPage {
+                            objectName: "tasksDay"
+                            sioul: page.sioul
+                            theme: page.theme
+                            window: page.window
+                            modes: ["day"]
+                            mode: "day"
+                            embedded: true
                         }
                     }
                 }

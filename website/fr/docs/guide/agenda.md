@@ -294,7 +294,7 @@ Les agendas Google se créent, se renomment, changent de couleur, se suppriment 
 
 **Jusqu’où remontent les courriels et l’agenda** se règle en haut de [Comptes](accounts.md#your-accounts).
 
-Le jour et la semaine de Santé dessinés dans le temps, et **La journée** de Tâches, sont cet agenda désormais : Santé garde sa journée en liste, et son bouton **La semaine, dans l’agenda** ouvre la Semaine de l’agenda ; **La journée** de Tâches ouvre le Jour de l’agenda, et son **Maintenant** y mène par un lien.
+Le jour et la semaine de Santé dessinés dans le temps, et **La journée** de Tâches, sont cet agenda désormais : Santé garde sa journée en liste, et son bouton **La semaine, dans l’agenda** ouvre la Semaine de l’agenda ; **La journée** de Tâches est le Jour de l’agenda lui-même, dans son propre onglet (ses cartes, ses glissements et son « + » comme ici, sans le choix des autres vues), et son **Maintenant** y mène par un lien.
 
 ## Pas encore là {#not-there-yet}
 

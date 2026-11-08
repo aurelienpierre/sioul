@@ -755,10 +755,17 @@ SioulWindow {
             budgetsPage.openId = key
     }
 
+    // The agenda shown now: Tasks ▸ The day's while it is in sight (the same page,
+    // AgendaPage.qml, given the Day alone), else the Agenda's.
+    function agendaShown() {
+        const day = window.tasksPage ? window.tasksPage.agendaDay : null
+        return day && day.visible ? day : window.agendaPage
+    }
+
     // The agenda's days read again (a date asked changed in its card: its mark follows).
     function agendaAgain() {
-        if (window.agendaPage)
-            window.agendaPage.load()
+        if (window.agendaShown())
+            window.agendaShown().load()
     }
 
     function openCard(ref, fromCard) {
@@ -1238,8 +1245,8 @@ SioulWindow {
 
     // A meal or a nap had already ("Had it"): watched on the agenda's timeline, as a move is.
     function watchMoved(ref) {
-        if (window.agendaPage)
-            window.agendaPage.watchMove(ref)
+        if (window.agendaShown())
+            window.agendaShown().watchMove(ref)
     }
 
     // Free time on or off: on, the line on where you stopped when a session

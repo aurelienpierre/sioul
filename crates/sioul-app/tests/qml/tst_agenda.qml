@@ -187,6 +187,35 @@ Item {
             verify(root.find(phone, "agendaNewEvent").visible, "a phone's")
         }
 
+        // Tasks ▸ The day is this page given the Day alone: no switch to the other ways, no
+        // Agenda ⚙; it asks for its one day while in sight only, and never draws days asked
+        // for another way or stretch, the window's agenda being one (8 November 2026).
+        function test_the_tasks_day_is_this_page_given_the_day() {
+            const page = test.createTemporaryObject(pageComponent, root, { width: 1000, height: 860, modes: ["day"], mode: "day", embedded: true })
+            test.waitForRendering(page)
+            verify(!root.find(page, "agendaModes").visible, "no switch to the other ways")
+            verify(!root.all(page, o => o.view === "agenda" && o.visible).length, "no Agenda ⚙")
+            compare(mock.asked[mock.asked.length - 1], 1, "its one day asked")
+            // What comes' fifteen days, asked by the Agenda: not laid as the Day's columns.
+            const from = page.asked.from
+            mock.agenda = JSON.stringify({ version: 3, from: from, count: 15, sentence: "", days: [day(0), day(1), day(2)] })
+            wait(20)
+            compare(page.shown.days.length, 0, "another stretch's days never drawn")
+            mock.agenda = JSON.stringify({ version: 3, from: from, count: 1, sentence: "", days: [day(0)] })
+            wait(20)
+            compare(page.shown.days.length, 1, "its own drawn")
+            // Out of sight: its reading waits until it shows again.
+            page.visible = false
+            mock.asked = []
+            page.load()
+            compare(mock.asked.length, 0, "nothing asked out of sight")
+            page.visible = true
+            compare(mock.asked, [1], "asked once shown")
+            // The Agenda's own page keeps its switch.
+            const agenda = makePage()
+            verify(root.find(agenda, "agendaModes").visible, "the Agenda's switch")
+        }
+
         // What comes showing today asks for the doses' reading as the Day does: when
         // shown, at each minute's turn and on coming back; and lays today again at
         // each five minutes' turn. Showing last week, it asks nothing (review of

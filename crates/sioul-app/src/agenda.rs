@@ -41,6 +41,9 @@ struct Shown {
     version: u32,
     /// The first day shown, "2026-10-03", to move week by week or month by month.
     from: String,
+    /// How many days were asked (`showDays`): with `from`, what a page compares with what
+    /// it asked, the window's agenda being one for the Agenda and Tasks ▸ The day.
+    count: i64,
     /// "Nothing planned in the next two weeks.", when so.
     sentence: String,
     /// Whether an event can be added: a calendar that takes it exists.
@@ -1069,6 +1072,7 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let shown = Shown {
         version: 3,
         from: state.from.to_string(),
+        count: state.days,
         sentence,
         can_add,
         frame,

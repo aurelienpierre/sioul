@@ -295,7 +295,7 @@ Google calendars are made, renamed, recoloured, removed and shared from Sioul th
 
 **How far back mail and the agenda reach** is set at the top of [Accounts](accounts.md#your-accounts).
 
-Health's own day and week drawn in time, and Tasks' **The day**, are this agenda now: Health keeps its day as a list, and its **The week, in the agenda** opens the agenda's Week; Tasks' **The day** opens the agenda's Day, and its **Now** has a link to it.
+Health's own day and week drawn in time, and Tasks' **The day**, are this agenda now: Health keeps its day as a list, and its **The week, in the agenda** opens the agenda's Week; Tasks' **The day** is the agenda's Day itself, in its own tab (its cards, its drags and its "+" as here, without the switch to the other ways), and its **Now** has a link to it.
 
 ## Not there yet
 
