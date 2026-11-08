@@ -1541,6 +1541,43 @@ pub struct MailItem {
     /// a Subject's tag taken off only.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub spam: String,
+    /// Its topic, as the mailbox's rows say it (`mailbox::Row::topic`): a
+    /// folder's rows only, never a doubt of Sioul's there; none for most.
+    #[serde(flatten)]
+    pub topic: RowTopic,
+}
+
+/// A row's topic: its name and id, why it has it (`mailbox::why_word`) and,
+/// for a folder or a category, its name; all empty for none.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RowTopic {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub topic: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub topic_id: String,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub topic_why: &'static str,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub topic_from: String,
+}
+
+impl RowTopic {
+    /// A message's topic as `topics::rules::Lookup::tagged` reads it; a doubt is none.
+    pub fn of(tagged: Option<(&crate::topics::Topic, crate::topics::rules::Why)>) -> RowTopic {
+        use crate::topics::rules::Why;
+        match tagged {
+            Some((_, Why::Model(crate::topics::table::Band::Maybe))) | None => RowTopic::default(),
+            Some((topic, why)) => RowTopic {
+                topic: topic.name.clone(),
+                topic_id: topic.id.clone(),
+                topic_why: crate::mailbox::why_word(&why),
+                topic_from: match why {
+                    Why::Folder(name) | Why::Category(name) => name,
+                    _ => String::new(),
+                },
+            },
+        }
+    }
 }
 
 /// Your provider's word on a message, as one quiet mark (part 2 of 4
@@ -1662,6 +1699,7 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
         size: 1,
         member: false,
         spam: String::new(),
+        topic: RowTopic::default(),
     }
 }
 
@@ -1672,8 +1710,10 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
 /// (`history_weeks`), never a limit of the list's own. With `sent` (the
 /// account's Sent folder), messages are shown by conversation, your answers
 /// among them. A message your filter flagged where it lies says so (`flags`).
+/// With `topics`, each received message's topic, as the mailbox's rows say it
+/// (none in a Junk, Trash, Drafts or Sent folder; never a doubt of Sioul's).
 #[allow(clippy::too_many_arguments)]
-pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], own_domains: &[String], words: &crate::words::Words, rows: usize, query: &str, tr: &Translator, sent: Option<Vec<Card>>, flags: &crate::spam::labels::Flags) -> FolderView {
+pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], own_domains: &[String], words: &crate::words::Words, rows: usize, query: &str, tr: &Translator, sent: Option<Vec<Card>>, flags: &crate::spam::labels::Flags, topics: Option<&crate::topics::rules::Lookup>) -> FolderView {
     let query = query.trim().to_lowercase();
     let found = |c: &Card| {
         query.is_empty()
@@ -1692,6 +1732,9 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
             if item.spam.is_empty() {
                 let trust = if item.trust_level == "verified" { Trust::Verified } else { Trust::Unverified };
                 item.spam = provider_mark(card, folder.role, trust, tr);
+            }
+            if let Some(topics) = topics.filter(|_| matches!(folder.role, Role::Inbox | Role::Other | Role::Archive | Role::All)) {
+                item.topic = RowTopic::of(topics.tagged(card, &account.id, &folder.display));
             }
         }
         item
@@ -1958,17 +2001,17 @@ host = "imap.example.com"
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &Default::default());
+        let view = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &Default::default(), None);
         assert_eq!(view.items.iter().map(|i| i.subject.as_str()).collect::<Vec<_>>(), ["Lease", "Read", "Old"]);
         assert!(!view.more && view.items[0].unread && view.items[1].flagged && !view.items[1].unread);
         assert_eq!(view.sentence, "Two messages you have not read.");
-        let first = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), 2, "", &tr, None, &Default::default());
+        let first = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), 2, "", &tr, None, &Default::default(), None);
         assert_eq!((first.items.len(), first.more), (2, true));
         assert_eq!(first.sentence, "Two messages you have not read.", "over the whole folder");
-        let searched = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "old", &tr, None, &Default::default());
+        let searched = folder(&account, &inbox, cards.clone(), &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "old", &tr, None, &Default::default(), None);
         assert_eq!(searched.items.len(), 1);
         let sent = crate::folders::folder("Sent", Some("."), Some(Role::Sent));
-        let view = folder(&account, &sent, cards, &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &Default::default());
+        let view = folder(&account, &sent, cards, &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &Default::default(), None);
         assert_eq!(view.items[0].who, "To Me");
         assert!(view.items.iter().all(|i| !i.unread && i.trust_level == "own"));
     }
@@ -1996,7 +2039,7 @@ host = "imap.example.com"
         flags.flagged = vec![flag(1, crate::spam::Class::Unsure), flag(2, crate::spam::Class::Ham), flag(3, crate::spam::Class::Spam), Moved { folder: "Archive".into(), ..flag(4, crate::spam::Class::Spam) }];
         flags.said = vec![Entry { at: now - 30, account: "me".into(), folder: "INBOX".into(), uidvalidity: 7, uid: 3, message_id: Some("said@example.org".into()), label: Label::Ham, source: Source::NotSpam }];
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, cards, &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &flags);
+        let view = folder(&account, &inbox, cards, &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, None, &flags, None);
         let words: Vec<(&str, &str)> = view.items.iter().map(|i| (i.subject.as_str(), i.spam.as_str())).collect();
         assert_eq!(words, [("Doubt", "maybe spam"), ("Ham", "probably not spam"), ("Said", ""), ("Plain", "")], "the same message flagged in another folder is another place");
     }
@@ -2033,7 +2076,7 @@ host = "imap.example.com"
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, vec![question, thanks, other], &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, Some(vec![answer, unrelated]), &Default::default());
+        let view = folder(&account, &inbox, vec![question, thanks, other], &[], &[], crate::words::Words::builtin_ref(), FOLDER_PAGE, "", &tr, Some(vec![answer, unrelated]), &Default::default(), None);
         let rows: Vec<(&str, usize, bool)> = view.items.iter().map(|i| (i.subject.as_str(), i.size, i.member)).collect();
         // The lease first (its last message is the newest), with its question and your answer under it, oldest first.
         assert_eq!(rows, [("Re: Lease", 3, false), ("Lease", 1, true), ("Re: Lease", 1, true), ("Lunch", 1, false)]);

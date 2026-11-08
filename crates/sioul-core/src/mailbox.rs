@@ -551,7 +551,7 @@ fn topic_of(world: &World, card: &Card, copies: &[Copy], address: &Address, from
 }
 
 /// Why a row has its topic, as a word the window reads.
-fn why_word(why: &crate::topics::rules::Why) -> &'static str {
+pub(crate) fn why_word(why: &crate::topics::rules::Why) -> &'static str {
     use crate::topics::rules::Why;
     match why {
         Why::Yours => "yours",
