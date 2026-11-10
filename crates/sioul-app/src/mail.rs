@@ -1885,7 +1885,20 @@ fn send_now(id: &str, shared: &Shared) -> String {
             draft.discard();
             e.sentence(tr(), &account.id)
         }
+        Err(e @ SyncError::PartlySent { .. }) => {
+            keep_for_those_missed(draft, &e);
+            e.sentence(tr(), &account.id)
+        }
         Err(e) => say("mail-not-sent", &[("detail", e.sentence(tr(), &account.id))]),
+    }
+}
+
+/// Sent to everyone but some Bcc recipients: the draft stays, addressed to
+/// them alone (`Draft::to_those_missed`), its text kept for them.
+fn keep_for_those_missed(mut draft: Draft, sent: &SyncError) {
+    if let SyncError::PartlySent { missed, .. } = sent {
+        draft.to_those_missed(missed);
+        let _ = draft.save();
     }
 }
 
@@ -1905,6 +1918,12 @@ fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, sh
         }
         Err(e @ SyncError::NotFiled(_)) => {
             discard();
+            e.sentence(tr(), &account.id)
+        }
+        Err(e @ SyncError::PartlySent { .. }) => {
+            if let Some(draft) = Draft::by_id(id) {
+                keep_for_those_missed(draft, &e);
+            }
             e.sentence(tr(), &account.id)
         }
         Err(e) => say("mail-not-sent", &[("detail", e.sentence(tr(), &account.id))]),

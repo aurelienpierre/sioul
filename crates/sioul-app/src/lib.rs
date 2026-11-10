@@ -160,6 +160,7 @@ mod homecard;
 mod hours;
 // A device joining the others through your Nextcloud's sign-in (docs/database.md).
 mod join;
+mod languages;
 mod mail;
 mod mailsearch;
 mod mailnote;
@@ -332,6 +333,10 @@ fn process_age() -> Option<std::time::Duration> {
 pub fn run() -> i32 {
     // Before anything else: no crate logs above "info", a security key's PIN never (securitykey.rs).
     sioul_sync::securitykey::cap_logging();
+    // Nor a core file of a crash, which would hold them (SIOUL_CORE_DUMP=1 to debug one).
+    if let Err(e) = sioul_core::coredump::no_core_file() {
+        eprintln!("Sioul: a crash may leave a core file: {e}");
+    }
     steady_heap();
     STARTED.get_or_init(std::time::Instant::now);
     if let Some(age) = process_age().filter(|_| timed()) {
@@ -473,6 +478,8 @@ pub fn run() -> i32 {
     everywhere::closing();
     // What was marked goes out, and your other devices learn this one closed.
     share::closing();
+    // Attachments opened a day ago or more leave the cache, overwritten.
+    backend::forget_opened_attachments();
     // The next Sioul started opens by itself rather than knocking here.
     outside::stop_listening();
     code

@@ -1,0 +1,11 @@
+# Entries of Sioul's word packs that tools/check-word-packs.py flags, read by
+# someone other than their pack's author and kept (docs/words.md, "Three rules
+# keep shipped words from being one person's"): each one with why, so that the
+# check passes it and the next reader sees the reason. An entry no pack holds
+# any more is said by the check, to be taken out of here.
+#
+# [[kept]]
+# pack = "fr"                    # the pack's file name: "fr", "international", "FR"
+# list = "payments.fee"          # the list, as a dotted path
+# entry = "…"                    # the entry, as written in the pack
+# why = "…"                      # why it fits everyone who reads that pack

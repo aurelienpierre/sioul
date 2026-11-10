@@ -663,7 +663,7 @@ pub fn request(from: (&str, &str), to: &str, subject: &str, body: &str, date: i6
         .text_body(body)
         .write_to_vec()
         .map_err(|e| e.to_string())?;
-    Ok(crate::compose::Outgoing { raw, from: from.1.to_string(), recipients: vec![to.to_string()] })
+    Ok(crate::compose::Outgoing { raw, from: from.1.to_string(), recipients: vec![to.to_string()], apart: Vec::new() })
 }
 
 #[cfg(test)]

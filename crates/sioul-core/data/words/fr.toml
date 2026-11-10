@@ -3,7 +3,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "fr"
-checked = "2026-10-15"
+checked = "2026-11-10"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -182,7 +182,7 @@ references = [
 # A purchase paid in instalments, "#" its number of them (matching.rs).
 instalments = ["en # fois", "# fois sans frais", "#x sans frais", "# echeances"]
 # The label of a fee a processor's mail states, money in only (payments.rs): the amount on its line, or on the next.
-fee = ["frais", "commission", "frais de transaction", "frais de service", "frais paypal"]
+fee = ["frais", "commission", "frais de transaction", "frais de service"]
 # The label of what arrives after the fees.
 net = ["montant net", "net", "vous recevrez", "montant verse", "somme versee"]
 # Words in an attachment's name that make it look like an invoice (moneyindex.rs).
@@ -524,3 +524,13 @@ stop_words = [
 [ocr]
 # Tesseract's names of this language's models.
 tesseract = ["fra"]
+
+# The languages found in your mail (languages.rs): the most common words of French, none of them
+# another shipped language's, by which a message is told to be written in it. Grammar: never shown in Settings.
+[detect]
+common = [
+    "est", "et", "vous", "votre", "vos", "pour", "avec", "une", "dans", "sur", "pas", "nous", "notre", "nos", "qui",
+    "cette", "ces", "sont", "être", "avoir", "été", "merci", "au", "aux", "mais", "ou", "elle", "ils", "je", "mon",
+    "mes", "ses", "leur", "très", "aussi", "fait", "peut", "bonjour", "cordialement", "avez", "sommes", "cet",
+    "chez", "lui", "ont", "voici",
+]

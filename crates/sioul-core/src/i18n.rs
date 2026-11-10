@@ -78,6 +78,13 @@ impl Translator {
             .unwrap_or_else(|| id.to_string())
     }
 
+    /// One message in this language alone, without arguments: none when
+    /// this language lacks it, never English in its place (the command
+    /// line's help keeps the code's own English then).
+    pub fn own(&self, id: &str) -> Option<String> {
+        format(&self.bundle, id, None, None)
+    }
+
     /// One attribute of a message (`.cap`, `.plural`…); the English one if this
     /// language lacks it; none if neither has it.
     pub fn attribute(&self, id: &str, attribute: &str) -> Option<String> {

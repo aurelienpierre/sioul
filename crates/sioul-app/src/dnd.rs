@@ -1604,7 +1604,10 @@ mod desktop {
     pub(super) fn open_plasma_settings() {
         let entry = format!("--desktop-entry {DESKTOP_ENTRY}");
         for program in ["systemsettings", "kcmshell6"] {
-            let started = std::process::Command::new(program)
+            let mut command = std::process::Command::new(program);
+            // The system's settings keep the core file limit the system gave, not Sioul's.
+            sioul_core::coredump::as_before(&mut command);
+            let started = command
                 .args(["kcm_notifications", "--args", entry.as_str()])
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())

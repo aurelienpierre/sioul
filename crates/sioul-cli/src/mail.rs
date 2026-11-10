@@ -226,6 +226,15 @@ pub(crate) fn send_draft(s: &Session, account: &Account, draft: &Draft) -> Resul
             println!("{}", crate::plain_lines(&e.sentence(&s.tr, &account.id)));
             Ok(())
         }
+        // Not to everyone: the draft stays for those missed alone, and the exit says it failed.
+        Err(e @ SyncError::PartlySent { .. }) => {
+            if let SyncError::PartlySent { missed, .. } = &e {
+                let mut kept = draft.clone();
+                kept.to_those_missed(missed);
+                let _ = kept.save();
+            }
+            Err(e.sentence(&s.tr, &account.id))
+        }
         Err(e) => {
             let _ = draft.save();
             Err(e.sentence(&s.tr, &account.id))

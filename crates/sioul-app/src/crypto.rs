@@ -172,8 +172,9 @@ fn self_copy_line(keys: &Keys, address: &str, computer: bool) -> String {
     let card = keys.serving_card(address).map(|(_, cert)| cert);
     let cert = card.or_else(|| keys.own.iter().find(|c| pgp::names_address(c, address)));
     let Some(cert) = cert else { return tr().text("pgp-self-copy-none", None) };
-    // Revoked as a whole: nothing renews it (review of 19 October 2026, N3).
-    if pgp::revoked_whole(cert) {
+    // Revoked as a whole, or by its designated revoker kept here: nothing
+    // renews it (review of 19 October 2026, N3 and its re-check).
+    if keys.revoked(cert) {
         return tr().text("pgp-self-copy-revoked", None);
     }
     let mut why = securitykey::expired_parts(tr(), &securitykey::parts(cert), now);

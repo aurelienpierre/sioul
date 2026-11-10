@@ -919,6 +919,52 @@ pub fn wait_of(mode: &crate::quiet::Mode, blocks: &crate::quiet::Blocks, stamp: 
     }
 }
 
+/// Where the session is told to start `sioul remind --watch --session`
+/// (reminders with the window closed): the desktop's autostart folder, or
+/// macOS's launch agents. None on Windows, not done yet. A watcher started
+/// with `--session` leaves once it is gone.
+pub fn watcher_entry() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        return Some(crate::config::expand_home("~/Library/LaunchAgents/org.sioul.reminders.plist"));
+    }
+    if cfg!(windows) {
+        return None;
+    }
+    crate::config::config_dir().parent().map(|dir| dir.join("autostart").join("sioul-reminders.desktop"))
+}
+
+/// Whether reminders come with the window closed: the entry is there, and
+/// the desktop has not turned it off in it (`Hidden=true`, which XFCE's
+/// Session and Startup writes; `X-GNOME-Autostart-enabled=false`, which
+/// GNOME's and Cinnamon's startup applications write; systemd's generator
+/// then makes no unit of it), nor launchd's `Disabled` key on macOS
+/// (review of wt/mail, F2).
+pub fn watcher_wanted() -> bool {
+    watcher_entry().is_some_and(|entry| entry_on(&entry))
+}
+
+/// Whether the entry at `path` starts the watcher with the session (`watcher_wanted`).
+pub fn entry_on(path: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else { return false };
+    if text.contains("<plist") {
+        let squeezed: String = text.split_whitespace().collect();
+        return !squeezed.contains("<key>Disabled</key><true/>");
+    }
+    let said = |key: &str| text.lines().filter_map(|line| line.trim().strip_prefix(key)).filter_map(|rest| rest.trim_start().strip_prefix('=')).map(|v| v.trim().to_ascii_lowercase()).last();
+    said("Hidden").as_deref() != Some("true") && said("X-GNOME-Autostart-enabled").as_deref() != Some("false")
+}
+
+/// Where systemd is told to start the watcher again when it ends otherwise
+/// than by systemd (killed, crashed): a drop-in for the unit its
+/// XDG autostart generator makes of the entry (`app-sioul\x2dreminders@autostart.service`).
+/// Linux alone.
+pub fn watcher_restart() -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    crate::config::config_dir().parent().map(|dir| dir.join("systemd").join("user").join("app-sioul\\x2dreminders@autostart.service.d").join("sioul-restart.conf"))
+}
+
 /// Where reminders told are marked, one small file each.
 pub fn told_dir() -> PathBuf {
     crate::config::state_dir().join("reminded")

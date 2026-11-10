@@ -542,6 +542,17 @@ pub struct OcrWords {
     pub tesseract: Vec<String>,
 }
 
+/// Telling which language a message is written in (`languages`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DetectWords {
+    /// The language's most common words, none of them another shipped
+    /// language's: grammar, never shown in Settings. The languages found in
+    /// your mail read each shipped pack's own ([`detection_lists`]), whatever
+    /// languages you read.
+    pub common: Vec<String>,
+}
+
 /// Every list Sioul looks for, as the packs in use and your changes make them.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -567,6 +578,7 @@ pub struct Words {
     pub capture: CaptureWords,
     pub spam: SpamWords,
     pub ocr: OcrWords,
+    pub detect: DetectWords,
     /// The languages whose packs made these words.
     #[serde(skip)]
     pub languages: Vec<String>,
@@ -682,6 +694,22 @@ impl Pack {
 fn shipped() -> &'static [Pack] {
     static SHIPPED_PACKS: LazyLock<Vec<Pack>> = LazyLock::new(|| SHIPPED.iter().filter_map(|(file, text)| Pack::parse(file, text)).collect());
     &SHIPPED_PACKS
+}
+
+/// Each shipped language and its most common words (`[detect] common`),
+/// folded, from the newest copy of its pack: what tells which language a
+/// message is written in (`languages::language_of`), every shipped language
+/// at once, read or not.
+pub fn detection_lists() -> Vec<(String, Vec<String>)> {
+    newest()
+        .iter()
+        .filter(|pack| !pack.file.contains('/') && pack.file != "international.toml")
+        .filter_map(|pack| {
+            let language = pack.file.strip_suffix(".toml")?.to_string();
+            let words: Vec<String> = pack.lists.list("detect.common").iter().map(|w| folded(w)).filter(|w| !w.is_empty()).collect();
+            (!words.is_empty()).then_some((language, words))
+        })
+        .collect()
 }
 
 /// Where newer packs may be: yours first, then the system's (as `presets::places`).

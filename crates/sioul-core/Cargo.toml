@@ -46,6 +46,11 @@ sha2 = "0.10"
 # features): nothing new is compiled.
 flate2 = "1"
 
+# No core file of a crash (coredump.rs): setrlimit, on every Unix. Already
+# built for every target through the other crates: nothing new is compiled.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 fluent-syntax.workspace = true
 

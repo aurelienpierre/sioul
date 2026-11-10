@@ -102,7 +102,7 @@ Un agent peut aussi s’occuper de votre propre filtre à indésirables, comme v
 
 ## La ligne de commande {#the-command-line}
 
-Les agents et les scripts peuvent aussi se servir de la ligne de commande, comme vous : `sioul tasks now`, `sioul tasks list`, `sioul links`, `sioul notes`, et d’autres (`sioul --help`).
+Les agents et les scripts peuvent aussi se servir de la ligne de commande, comme vous : `sioul tasks now`, `sioul tasks list`, `sioul links`, `sioul notes`, et d’autres (`sioul --help`, en français quand votre session l’est, ou avec `--language fr`).
 
 `sioul tasks import plan.toml` prend un plan écrit dans un fichier : des tâches avec leurs étapes et ce qu’elles attendent, les contacts des organismes concernés, et des brouillons, qui restent dans Sioul et ne sont jamais envoyés. Importer à nouveau met à jour ce que le fichier a créé, au lieu de l’ajouter deux fois ; `--dry-run` dit ce qui changerait. Le format du fichier : [notes sur les tâches, « Importing » (en anglais)](https://sioul.aurelienpierre.com/dev/tasks.html#importing).
 

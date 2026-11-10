@@ -187,10 +187,11 @@ When you have an OpenPGP key (made or imported in [Accounts ▸ Encryption](acco
 - **Sign** lets the people you write to check that the message is yours and was not changed on the way.
 - **Encrypt** makes the message readable only by them and by you. It works when Sioul knows every recipient's key; otherwise it says whose key is missing, and **Look for their keys** asks for them. Sioul looks only when you press it, since looking tells a server to whom you write.
 - **The subject is not encrypted**: anyone who carries the message can read it. Keep it plain.
+- **Bcc stays hidden**: encrypted, each person in Bcc gets a copy of their own, encrypted to them and to you, so no one else can tell that a key was added for them. Your security key is asked once for all the copies.
 - Your messages carry your public key, so that people who write back can encrypt.
 - **Answering an encrypted message** keeps it encrypted: Sioul switches **Encrypt** on when it can, and opens the message you answer only when you press **Send**, with the same PIN as the signature. Unencrypted, your answer goes without the quote, and a forward does not go. What you type in your answer is kept as any draft is: in clear on each of your devices, and sealed between them.
 
-An encrypted message is decrypted when you open it; a signature is checked and said under the sender: "Encrypted · Signed by …", or "The signature does not match the text", in warm colours, never red.
+An encrypted message is decrypted when you open it; a signature is checked and said under the sender: "Encrypted · Signed by …"; "Signed with a key that was revoked" or "Signed with a key that was not valid on that date" when the key no longer held or had expired; "The signature does not match the text" when the text was changed. All in warm colours, never red.
 
 Your key can live on a security key, such as a YubiKey, which never gives it out, on a computer and on a phone ([below](#your-key-on-a-security-key)).
 

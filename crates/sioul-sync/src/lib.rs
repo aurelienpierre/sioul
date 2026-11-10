@@ -186,9 +186,11 @@ pub(crate) fn translator() -> Translator {
 }
 
 /// Another program (a scanner, a reader of scans), run unseen: on Windows,
-/// without a console window flashing over Sioul's (CREATE_NO_WINDOW).
+/// without a console window flashing over Sioul's (CREATE_NO_WINDOW); with
+/// the core file limit the system gave, not Sioul's (`coredump::as_before`).
 pub(crate) fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
-    let command = std::process::Command::new(program);
+    let mut command = std::process::Command::new(program);
+    sioul_core::coredump::as_before(&mut command);
     #[cfg(windows)]
     let command = {
         use std::os::windows::process::CommandExt;
@@ -305,6 +307,11 @@ pub enum SyncError {
     Refused(String),
     /// Sent, but its copy could not be filed in Sent.
     NotFiled(String),
+    /// Sent, but not to each of its Bcc recipients: an encrypted message's
+    /// copy of their own was refused. `missed`: those it did not reach, for
+    /// a draft to them alone; `detail`: whom and why; `filed`: whether its
+    /// copy went into Sent all the same.
+    PartlySent { missed: Vec<String>, detail: String, filed: bool },
     /// The message could not be written (no recipient, an attachment gone): said as is.
     Message(String),
     /// A server's answer named an address on another server (a calendar, an
@@ -346,6 +353,8 @@ impl SyncError {
             SyncError::Disk(_) => "sync-error-disk",
             SyncError::Refused(_) => "send-error-refused",
             SyncError::NotFiled(_) => "send-error-not-filed",
+            SyncError::PartlySent { filed: true, .. } => "send-error-partly-sent",
+            SyncError::PartlySent { filed: false, .. } => "send-error-partly-sent-not-filed",
             SyncError::Message(_) => "send-error-message",
             SyncError::Elsewhere(_) => "sync-error-elsewhere",
             SyncError::Said(id, _) => id,
@@ -366,6 +375,7 @@ impl SyncError {
             | SyncError::Disk(d)
             | SyncError::Refused(d)
             | SyncError::NotFiled(d)
+            | SyncError::PartlySent { detail: d, .. }
             | SyncError::Message(d)
             | SyncError::Elsewhere(d)
             | SyncError::Said(_, d) => d,

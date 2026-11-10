@@ -38,7 +38,7 @@
 //! servers (the training corpus, read-only) or trains; none moves mail.
 
 mod access;
-mod follow;
+pub(crate) mod follow;
 mod items;
 mod log;
 mod mailbox;

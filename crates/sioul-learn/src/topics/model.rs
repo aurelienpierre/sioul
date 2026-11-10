@@ -392,6 +392,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// TODO §4 (10 November 2026): on 5 November, training the same
+    /// stand-in mail again, the first table in use, changed 64 % of the
+    /// tags that table alone gave (its own guesses were learned again), and
+    /// the churn rule kept the first table. Since 7 November nothing is
+    /// learned from a table's guesses: the same mail and the same labels
+    /// make the same table, which changes no tag and replaces the one in
+    /// use. With newer mail come (the table of the older four fifths in
+    /// use), the new table changes fewer tags than the rule allows: whether
+    /// it replaces the first is the topics' F1 to say, never the churn.
+    #[test]
+    fn a_first_table_is_not_pinned_by_its_own_churn() {
+        let root = std::env::temp_dir().join(format!("sioul-topics-churn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (dirs, sources) = home(&root, "churn");
+        let options = Options { compare: false, ..options() };
+        let read = || crate::topics::read(&dirs, &trusted(), &sources, &options, true, None, &mut |_| {}, &Cancel::new()).unwrap();
+        let all = read();
+        let topics = vec![topic("choir", "Chorale", "Chorale"), topic("tax", "Impôts", "Impôts"), topic("health", "Santé", "Santé")];
+        let said = Said::default();
+        let first = train(&dirs, &all, &topics, &said, None, None, &options, &mut |_| {}, &Cancel::new()).unwrap();
+        let table = first.table.clone().unwrap();
+        let again = train(&dirs, &all, &topics, &said, None, Some(&table), &options, &mut |_| {}, &Cancel::new()).unwrap();
+        assert_eq!((again.churn, again.outcome.clone()), (Some(0.0), Outcome::Replaced), "{again:#?}");
+        assert_eq!(again.table.unwrap().to_bytes().len(), table.to_bytes().len());
+        // Newer mail: the table of the older four fifths in use.
+        let mut dates: Vec<i64> = all.mail.iter().map(|m| m.date).collect();
+        dates.sort_unstable();
+        let cut = dates[dates.len() * 4 / 5];
+        let mut older = read();
+        older.mail.retain(|m| m.date <= cut);
+        let early = train(&dirs, &older, &topics, &said, None, None, &options, &mut |_| {}, &Cancel::new()).unwrap();
+        let grown = train(&dirs, &all, &topics, &said, None, Some(&early.table.unwrap()), &options, &mut |_| {}, &Cancel::new()).unwrap();
+        // Measured on 10 November 2026: no churn (0 %); the new table, worse on
+        // the choir (F1 0.96 → 0.58) though better on taxes (0.64 → 0.97), is
+        // refused by the topic it does worse, never by its churn.
+        assert!(grown.churn.is_some_and(|churn| churn < CHURN) && grown.outcome != Outcome::Churn, "{:?} {:?} {:?}", grown.churn, grown.outcome, grown.compared);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     /// Topics learn from the corpus since forever (`read_corpus`), and the
     /// same way on every device: one thread, a fixed seed, the corpus in a
     /// fixed order. Two devices holding the same corpus (copied to another

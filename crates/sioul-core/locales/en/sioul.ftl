@@ -844,6 +844,8 @@ compose-attribution = On { $date }, { $name } wrote:
 ## Sending.
 send-error-refused = { $account }: the sending server refused the message ({ $detail }).
 send-error-not-filed = { $account }: sent, but its copy could not be filed in Sent ({ $detail }).
+send-error-partly-sent = { $account }: sent, but not to each Bcc recipient. Not reached: { $detail }. A draft to them alone waits in Drafts.
+send-error-partly-sent-not-filed = { $account }: sent, but not to each Bcc recipient, and its copy could not be filed in Sent. Not reached: { $detail }. A draft to them alone waits in Drafts, with the text.
 send-error-message = { $detail }
 
 ## The mail client.
@@ -1421,6 +1423,7 @@ pgp-not-opened = Encrypted, and no key of yours opens it
 pgp-signed-by = Signed by { $signer }
 pgp-signed-unknown = Signed with a key Sioul does not know
 pgp-signed-revoked = Signed with a key that was revoked
+pgp-signed-not-valid = Signed with a key that was not valid on that date
 pgp-signature-bad = The signature does not match the text
 pgp-no-own-key = No key of yours for { $address } to sign with: make one or import it in Accounts.
 pgp-missing-key = No key for { $address } yet: look for it, or send without encrypting.
@@ -1553,7 +1556,7 @@ pgp-read-card-here = Your security key serves { $address }, and was read on anot
 pgp-self-copy-none = No certificate of yours for this address is known here: this message is encrypted to its recipients only, and you will not be able to read it again in Sent.
 seckey-forward-not-here = The copy of the message you forward is encrypted to your security key, which this phone cannot use yet: forward it from your computer.
 seckey-open-in-window = This message quotes an encrypted message that only your security key opens now: send it from its window in Sioul, which asks for the key.
-pgp-bcc-seen = Encrypted, this message shows each recipient which keys it was encrypted to: your Bcc recipients’ too, which anyone can look up on a key server.
+pgp-bcc-seen = Encrypted, each Bcc recipient gets a copy of their own, encrypted to them and to you: no other recipient sees their key.
 pgp-quote-left-out = The copy of the message you answer is encrypted: unencrypted, your answer goes without quoting it.
 pgp-forward-needs-encryption = The copy of the message you forward is encrypted: it is forwarded only encrypted, to recipients whose keys are known.
 pgp-quote-locked = Your security key did not open the message you answer: try again, or check that this message was encrypted to it.
@@ -7129,6 +7132,13 @@ words-language-es = Spanish
 words-language-es-in = Spanish
 words-language-it = Italian
 words-language-it-in = Italian
+# The languages found in your mail (languages.rs).
+languages-decided = Your mail is read in { $languages }, as it is written: Settings ▸ Words.
+languages-offer-title = Some of your mail is in { $name }
+languages-offer-body = Read { $name } too? Sioul then finds codes, bills and dates written in it. You can change it in Settings ▸ Words.
+languages-offer-read = Read { $name } too
+languages-offer-not-now = Not now
+languages-read-now = { $name } is read too, from now on: Settings ▸ Words.
 words-family-mail = Mail
 words-family-money = Money and papers
 words-family-phone = The phone

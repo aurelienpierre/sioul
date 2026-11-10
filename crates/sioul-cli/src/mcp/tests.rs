@@ -2488,7 +2488,7 @@ fn a_new_program_waits_for_every_unread_message() {
     std::fs::write(&program, "the program that runs").unwrap();
     // The file that runs stays, as a program's does while it runs: its inode is not given to another.
     std::fs::hard_link(&program, folder.join("sioul.running")).unwrap();
-    let mut follow = Follow::of_file(&program, |_| Ok(()), exec_that_fails);
+    let mut follow = Follow::of_file(&program, |_, _| Ok(()), exec_that_fails);
     let replace = |words: &str| {
         let staged = folder.join("sioul.new");
         std::fs::write(&staged, words).unwrap();
@@ -2526,7 +2526,7 @@ fn a_new_program_waits_for_every_unread_message() {
     assert_eq!((bytes.outgoing.len(), HANDED.lock().unwrap().len()), (1, 2));
     assert_eq!(logged_for("follow tests"), ["list_projects", "kept", "kept"]);
     // Check of c792bd7, item 8: a new program whose --version fails is never run: said, and this one serves on.
-    let mut probed = Follow::of_file(&program, |_| Err("its --version ended with exit status: 1".into()), exec_that_fails);
+    let mut probed = Follow::of_file(&program, |_, _| Err("its --version ended with exit status: 1".into()), exec_that_fails);
     replace("a program that cannot start");
     let mut bytes = Bytes { input: input.as_bytes(), longest: 1 << 20, outgoing: Vec::new() };
     transport::serve(&mut serving, &mut bytes, Some(&mut probed)).unwrap();

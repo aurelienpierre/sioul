@@ -4,7 +4,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "de"
-checked = "2026-10-08"
+checked = "2026-11-10"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -169,3 +169,13 @@ net = ["nettobetrag", "sie erhalten"]
 [ocr]
 # Tesseract's names of this language's models.
 tesseract = ["deu"]
+
+# The languages found in your mail (languages.rs): the most common words of German, none of them
+# another shipped language's, by which a message is told to be written in it. Grammar: never shown in Settings.
+[detect]
+common = [
+    "der", "die", "das", "und", "ist", "nicht", "sie", "ich", "wir", "ihr", "ihre", "ihren", "ihnen", "mit", "für",
+    "auf", "ein", "eine", "einen", "einem", "dem", "den", "zu", "von", "bei", "sich", "auch", "werden", "wird",
+    "sind", "haben", "hat", "bitte", "oder", "aber", "noch", "nur", "wie", "uns", "unser", "unsere", "vielen",
+    "dank", "sehr", "geehrte", "geehrter", "freundlichen", "grüßen", "hallo", "können", "wenn",
+]

@@ -22,6 +22,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
@@ -377,8 +378,36 @@ public final class Attachments
             }
             return said("path", path, "name", name, "saved", false, "problem", e.getClass().getSimpleName());
         } finally {
+            // Overwritten before it goes, as Rust overwrites what leaves the cache
+            // (filelock::remove_wiping; review of wt/mail, F5).
+            if (source != null)
+                wipe(source);
             if (source != null && !source.delete() && source.exists())
                 Log.w(TAG, "Attachments: the copy in the cache stays until tomorrow.");
+        }
+    }
+
+    /**
+     * {@code file}'s bytes overwritten with zeros and flushed, before it is
+     * deleted: a decrypted attachment leaves no readable copy behind where
+     * the filesystem writes in place (F2FS writes elsewhere; Android's own
+     * encryption covers those blocks).
+     */
+    static void wipe(File file)
+    {
+        if (!file.isFile())
+            return;
+        try (RandomAccessFile out = new RandomAccessFile(file, "rw")) {
+            byte[] zeros = new byte[64 * 1024];
+            long left = out.length();
+            while (left > 0) {
+                int n = (int) Math.min(left, zeros.length);
+                out.write(zeros, 0, n);
+                left -= n;
+            }
+            out.getFD().sync();
+        } catch (IOException | RuntimeException e) {
+            // Deleted all the same.
         }
     }
 
