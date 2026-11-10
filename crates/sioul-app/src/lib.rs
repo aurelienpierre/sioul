@@ -478,6 +478,8 @@ pub fn run() -> i32 {
     everywhere::closing();
     // What was marked goes out, and your other devices learn this one closed.
     share::closing();
+    // Attachments opened a day ago or more leave the cache, overwritten.
+    backend::forget_opened_attachments();
     // The next Sioul started opens by itself rather than knocking here.
     outside::stop_listening();
     code

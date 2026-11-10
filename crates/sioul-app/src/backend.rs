@@ -4099,10 +4099,12 @@ fn attachment_cache(key: &str) -> PathBuf {
     config::cache_dir().join("attachments").join(format!("{:016x}", hasher.finish()))
 }
 
-/// Attachments written to be opened in an earlier session, taken out of the
-/// cache once a day old, overwritten first: a decrypted one would stay
-/// readable there otherwise (docs/client.md, "What a disk keeps").
-fn forget_opened_attachments() {
+/// Attachments written to be opened, taken out of the cache once a day old,
+/// overwritten first: a decrypted one would stay readable there otherwise
+/// (docs/client.md, "What a disk keeps"). Looked at every hour while Sioul
+/// runs, in the tray too (`keep_forgetting_opened_attachments`), and once
+/// as it quits (lib.rs).
+pub(crate) fn forget_opened_attachments() {
     let Ok(entries) = std::fs::read_dir(config::cache_dir().join("attachments")) else { return };
     let day = std::time::Duration::from_secs(86_400);
     for entry in entries.filter_map(Result::ok) {
@@ -4110,6 +4112,18 @@ fn forget_opened_attachments() {
             let _ = sioul_core::filelock::remove_dir_wiping(&entry.path());
         }
     }
+}
+
+/// `forget_opened_attachments` now and every hour, in a thread of its own:
+/// never on the window's thread, where each file overwritten and flushed
+/// would hold its first frame.
+fn keep_forgetting_opened_attachments() {
+    std::thread::spawn(|| {
+        loop {
+            forget_opened_attachments();
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
+    });
 }
 
 /// A file come by mail marked as the system marks what comes from the
@@ -4420,8 +4434,8 @@ impl qobject::Sioul {
                 let _ = antivirus::refresh_signatures();
             });
         }
-        // Attachments opened in an earlier session (decrypted ones too) leave the cache.
-        forget_opened_attachments();
+        // Attachments opened a day ago or more (decrypted ones too) leave the cache, every hour.
+        keep_forgetting_opened_attachments();
         // Reminders with the window closed: their watcher started again if it ended (remind.rs).
         crate::remind::keep_watching();
         // The languages your mail is written in: decided once, a new one offered (languages.rs).
