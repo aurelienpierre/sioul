@@ -29,28 +29,39 @@ pub(crate) fn tick(qt: &QtThread) {
         // The phone's card says the dates, waits, payments and papers due (homecard.rs).
         crate::homecard::reminders_seen(&all);
         let holds = crate::hours::with_layers(holds);
-        let phone = cfg!(target_os = "android");
-        if phone {
-            all.retain(|r| matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm));
+        // Android tells through its own notifications and alarm clock
+        // (eventalarms.rs), whatever the device is: the system's way.
+        let android = cfg!(target_os = "android");
+        // A phone, carried, tells the events' reminders alone; a tablet, as a
+        // computer, every kind (dates, waits, payments, papers, contracts, the
+        // money watch): what the device is, never its system (devicekind.rs).
+        let carried = crate::devicekind::kind().carried();
+        if carried {
+            all.retain(|r| of_events(r.kind));
         }
-        let events = if phone { all.clone() } else { Vec::new() };
+        let events: Vec<reminders::Reminder> = if android { all.iter().filter(|r| of_events(r.kind)).cloned().collect() } else { Vec::new() };
         let mut told = reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), &holds);
         // Waits over in the same minute (the start of work after a weekend):
         // one notice for them all, as new mail comes, never one each (the
         // check of ef8c0ca, low 10).
-        let waits: Vec<reminders::Reminder> = if phone { Vec::new() } else { told.iter().filter(|r| r.kind == Kind::Wait).cloned().collect() };
+        let waits: Vec<reminders::Reminder> = if carried { Vec::new() } else { told.iter().filter(|r| r.kind == Kind::Wait).cloned().collect() };
         if waits.len() > 1 {
             told.retain(|r| r.kind != Kind::Wait);
             let tasks: Vec<String> = waits.iter().map(|r| format!("“{}”", r.title)).collect();
             let title = say("reminder-waits-over", &[("n", waits.len().to_string()), ("tasks", tasks.join(", "))]);
-            let qt = qt.clone();
-            let open: Box<dyn FnOnce() + Send> = Box::new(move || {
-                let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("task"), QString::default(), QString::default()));
-            });
-            let _ = sioul_sync::notify::remind(&title, "", Some((tr().text("reminder-open", None), open)));
+            // A tablet's: in Android's notifications, a tap bringing Sioul up.
+            if android {
+                crate::eventalarms::show(&reminders::Reminder { title, body: String::new(), ..waits[0].clone() });
+            } else {
+                let qt = qt.clone();
+                let open: Box<dyn FnOnce() + Send> = Box::new(move || {
+                    let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("task"), QString::default(), QString::default()));
+                });
+                let _ = sioul_sync::notify::remind(&title, "", Some((tr().text("reminder-open", None), open)));
+            }
         }
         for reminder in told {
-            if phone {
+            if android {
                 crate::eventalarms::show(&reminder);
                 continue;
             }
@@ -61,12 +72,19 @@ pub(crate) fn tick(qt: &QtThread) {
             });
             let _ = sioul_sync::notify::remind(&reminder.title, &reminder.body, Some((tr().text("reminder-open", None), open)));
         }
-        // On a phone, the coming ones (those just told left out) given to
-        // Android's alarm clock when they changed: they come with Sioul away too.
-        if phone {
+        // On Android, the coming events' ones (those just told left out) given
+        // to its alarm clock when they changed: they come with Sioul away too.
+        if android {
             crate::eventalarms::schedule_from(&events, &holds, &now);
         }
     });
+}
+
+/// Whether a reminder is an event's (its alarms, Sioul's before it, the
+/// working day before): the only kinds a phone tells, and those Android's
+/// alarm clock is given.
+fn of_events(kind: Kind) -> bool {
+    matches!(kind, Kind::Event | Kind::Before | Kind::Alarm)
 }
 
 /// What a reminder's "Open" opens, as the window's `openThing` takes it: its

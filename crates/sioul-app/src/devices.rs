@@ -439,6 +439,14 @@ pub(crate) fn kind_and_name(id: &str) -> Option<(String, String)> {
     sioul_sync::devices::all(&folder, &key).0.into_iter().find(|e| e.id == id).map(|e| (e.kind, e.name))
 }
 
+/// What a device is for what follows the person ("phone", "tablet",
+/// "computer"), from its entry in the folder (`Entry::form_or_kind`); none
+/// when it has none.
+pub(crate) fn form_of(id: &str) -> Option<String> {
+    let (_, Some((folder, key))) = crate::share::vault()? else { return None };
+    sioul_sync::devices::all(&folder, &key).0.into_iter().find(|e| e.id == id).map(|e| e.form_or_kind().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

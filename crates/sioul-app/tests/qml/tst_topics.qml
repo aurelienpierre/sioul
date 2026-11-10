@@ -30,6 +30,8 @@ Item {
         // What the window asked of Rust, in order.
         property var asked: []
         property string topicGroups: ""
+        // What the device is (`sioul.deviceKind`): "phone", "tablet" or "computer"; "" before Sioul starts.
+        property string deviceKind: ""
         // Said in the status line with Undo; the settings read the topics again when it changes.
         property string undoLine: ""
         // Mail's topics changed (`changes`): the views read them again.
@@ -295,6 +297,19 @@ Item {
             tryCompare(named(page, "topicGroupsNone"), "text", "topics-groups-waiting")
             for (const row of all(page, i => i.objectName.indexOf("topicRow:") === 0))
                 inside(row)
+        }
+
+        // The groups are looked for where the mail is read whole: a computer or a
+        // tablet, never a phone; by what the device is, never its system.
+        function test_the_groups_are_looked_for_on_a_tablet_never_a_phone() {
+            mock.deviceKind = "phone"
+            const page = createTemporaryObject(settingsComponent, root)
+            verify(!named(page, "topicGroupsLook").visible, "a phone never reads all the mail for them")
+            mock.deviceKind = "tablet"
+            verify(named(page, "topicGroupsLook").visible, "a tablet, as a computer")
+            mock.deviceKind = "computer"
+            verify(named(page, "topicGroupsLook").visible)
+            mock.deviceKind = ""
         }
     }
 }
