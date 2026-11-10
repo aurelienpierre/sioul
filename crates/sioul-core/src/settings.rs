@@ -1032,14 +1032,20 @@ pub fn categories(tr: &Translator, names: Vec<String>) -> Setting {
 /// it; the editor's order for what it holds, then what it never showed.
 /// Nothing changed meanwhile: `value` itself.
 pub fn rebased<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T]) -> Vec<T> {
-    if shown == current {
+    rebased_as(shown, value, current, &|a: &T, b: &T| a == b)
+}
+
+/// `rebased`, elements compared by `same`.
+fn rebased_as<T: Clone>(shown: &[T], value: &[T], current: &[T], same: &dyn Fn(&T, &T) -> bool) -> Vec<T> {
+    let has = |list: &[T], x: &T| list.iter().any(|y| same(y, x));
+    if shown.len() == current.len() && shown.iter().zip(current).all(|(a, b)| same(a, b)) {
         return value.to_vec();
     }
-    let added: Vec<&T> = value.iter().filter(|v| !shown.contains(v)).collect();
-    let removed: Vec<&T> = shown.iter().filter(|s| !value.contains(s)).collect();
-    let mut out: Vec<T> = value.iter().filter(|v| added.contains(v) || current.contains(v)).cloned().collect();
+    let added: Vec<&T> = value.iter().filter(|v| !has(shown, v)).collect();
+    let removed: Vec<&T> = shown.iter().filter(|s| !has(value, s)).collect();
+    let mut out: Vec<T> = value.iter().filter(|v| added.iter().any(|a| same(a, v)) || has(current, v)).cloned().collect();
     for there in current {
-        if !out.contains(there) && !removed.contains(&there) {
+        if !has(&out, there) && !removed.iter().any(|r| same(r, there)) {
             out.push(there.clone());
         }
     }
@@ -1050,43 +1056,61 @@ pub fn rebased<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T]) ->
 /// an element the editor changed is its new version in place of the one the
 /// list holds now. Found by its id (`ids`, `real`: a day off's, a route's
 /// since 10 November 2026), whatever it holds now: two devices changing it
-/// keep one, the later change. By a key
+/// keep one, the later change; where the list now holds it without an id (an
+/// older Sioul wrote it back), by what it held. By a key
 /// (`ids`, not `real`: a day's window by its rank, which a window added
 /// elsewhere shifts) only while the element there is the one shown, else by
 /// what it held wherever it is now; not there, nothing is replaced and the
-/// other device's elements stay. Without an id (a route): at its place while
-/// it holds what was shown, else by what it held wherever it is, else at its
-/// place while the list holds as many as shown (the same element, changed
-/// elsewhere: the later change).
+/// other device's elements stay. Without an id (a route written before
+/// ids): at its place while it holds what was shown, else by what it held
+/// wherever it is, else at its place while the list holds as many as shown
+/// (the same element, changed elsewhere: the later change).
 pub fn rebased_by<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T], ids: impl Fn(&[T]) -> Vec<Option<String>>, real: bool) -> Vec<T> {
-    if shown == current {
+    rebased_by_as(shown, value, current, ids, real, &|a: &T, b: &T| a == b)
+}
+
+/// `rebased_by`, elements compared by `same`.
+fn rebased_by_as<T: Clone>(shown: &[T], value: &[T], current: &[T], ids: impl Fn(&[T]) -> Vec<Option<String>>, real: bool, same: &dyn Fn(&T, &T) -> bool) -> Vec<T> {
+    let has = |list: &[T], x: &T| list.iter().any(|y| same(y, x));
+    if shown.len() == current.len() && shown.iter().zip(current).all(|(a, b)| same(a, b)) {
         return value.to_vec();
     }
     let (shown_ids, value_ids, current_ids) = (ids(shown), ids(value), ids(current));
     let mut current = current.to_vec();
     for (at_shown, old) in shown.iter().enumerate() {
-        if value.contains(old) {
+        if has(value, old) {
             continue;
         }
         let identity = shown_ids.get(at_shown).cloned().flatten();
         // Its new version among what the editor sends: by its identity, else at its place.
         let edit = match &identity {
-            Some(key) => value.iter().zip(&value_ids).find(|(v, k)| !shown.contains(v) && k.as_ref() == Some(key)).map(|(v, _)| v),
-            None => value.get(at_shown).filter(|v| shown.len() == value.len() && !shown.contains(v) && value_ids.get(at_shown).is_some_and(Option::is_none)),
+            Some(key) => value.iter().zip(&value_ids).find(|(v, k)| !has(shown, v) && k.as_ref() == Some(key)).map(|(v, _)| v),
+            None => value.get(at_shown).filter(|v| shown.len() == value.len() && !has(shown, v) && value_ids.get(at_shown).is_some_and(Option::is_none)),
         };
         let Some(edit) = edit else { continue };
         // Where it is now.
-        let by_value = || current.iter().position(|c| c == old);
+        let by_value = || current.iter().position(|c| same(c, old));
         let at = match &identity {
-            Some(key) if real => current_ids.iter().position(|k| k.as_ref() == Some(key)),
-            Some(key) => current_ids.iter().position(|k| k.as_ref() == Some(key)).filter(|at| current.get(*at) == Some(old)).or_else(by_value),
-            None => (current.get(at_shown) == Some(old)).then_some(at_shown).or_else(by_value).or_else(|| (current.len() == shown.len()).then_some(at_shown)),
+            Some(key) if real => current_ids.iter().position(|k| k.as_ref() == Some(key)).or_else(by_value),
+            Some(key) => current_ids.iter().position(|k| k.as_ref() == Some(key)).filter(|at| current.get(*at).is_some_and(|c| same(c, old))).or_else(by_value),
+            None => (current.get(at_shown).is_some_and(|c| same(c, old))).then_some(at_shown).or_else(by_value).or_else(|| (current.len() == shown.len()).then_some(at_shown)),
         };
         if let Some(at) = at {
             current[at] = edit.clone();
         }
     }
-    rebased(shown, value, &current)
+    rebased_as(shown, value, &current, same)
+}
+
+/// Two routes the same one: by their ids when both have one, else by what
+/// they hold, whatever id one of them has (review of wt/sync, R1: a list
+/// with ids met one without, written by an older Sioul or shown before the
+/// ids came, and a delete or an edit there came out wrong).
+fn same_route(a: &crate::projects::RouteValue, b: &crate::projects::RouteValue) -> bool {
+    if !a.id.is_empty() && !b.id.is_empty() {
+        return a == b;
+    }
+    crate::projects::RouteValue { id: String::new(), ..a.clone() } == crate::projects::RouteValue { id: String::new(), ..b.clone() }
 }
 
 /// A day's windows named by their day and their rank in it ("mon#0"): a
@@ -1174,7 +1198,7 @@ pub fn rebase(shown: &SettingValue, value: &SettingValue, current: &SettingValue
         (V::Ints(s), V::Ints(v), V::Ints(c)) => V::Ints(rebased(s, v, c)),
         (V::Windows(s), V::Windows(v), V::Windows(c)) => V::Windows(rebased_by(s, v, c, window_ids, false)),
         (V::TimeOff(s), V::TimeOff(v), V::TimeOff(c)) => V::TimeOff(rebased_by(s, v, c, |days| days.iter().map(|d| Some(d.id.clone()).filter(|id| !id.is_empty())).collect(), true)),
-        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased_by(s, v, c, |routes| routes.iter().map(|r| Some(r.id.clone()).filter(|id| !id.is_empty())).collect(), true)),
+        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased_by_as(s, v, c, |routes| routes.iter().map(|r| Some(r.id.clone()).filter(|id| !id.is_empty())).collect(), true, &same_route)),
         _ => value,
     }
 }
@@ -1750,6 +1774,27 @@ mod tests {
         assert_eq!(rebase(&shown, &value, &routes(vec![route("r3", "c"), route("r2", "b"), route("r1", "a3")])), routes(vec![route("r1", "a2"), route("r2", "b"), route("r3", "c")]));
         // Taken out here, changed elsewhere meanwhile: the change kept, as for any list (nothing lost).
         assert_eq!(rebase(&shown, &routes(vec![route("r2", "b")]), &routes(vec![route("r1", "a3"), route("r2", "b")])), routes(vec![route("r2", "b"), route("r1", "a3")]));
+    }
+
+    /// Routes with ids meeting routes without (review of wt/sync, R1): a
+    /// page shown before another device gave the routes ids, or a list an
+    /// older Sioul wrote back without them. A route is the same by its id
+    /// when both have one, else by what it holds: a delete stays a delete,
+    /// an edit replaces its route, never twice.
+    #[test]
+    fn routes_with_and_without_ids_rebase_by_what_they_hold() {
+        let route = |id: &str, word: &str| crate::projects::RouteValue { id: id.into(), subject_contains: vec![word.into()], ..Default::default() };
+        let routes = |list: Vec<crate::projects::RouteValue>| SettingValue::Routes(list);
+        // Shown without ids, the file given ids meanwhile: a delete here is a delete.
+        assert_eq!(rebase(&routes(vec![route("", "a"), route("", "b")]), &routes(vec![route("", "a")]), &routes(vec![route("x1", "a"), route("x2", "b")])), routes(vec![route("", "a")]));
+        // An edit there too, shown without ids: the edited route replaced, the other kept.
+        assert_eq!(rebase(&routes(vec![route("", "a"), route("", "b")]), &routes(vec![route("", "a"), route("", "b2")]), &routes(vec![route("x1", "a"), route("x2", "b")])), routes(vec![route("", "a"), route("", "b2")]));
+        // Shown with ids, an older Sioul's list without them (its own edit of a in it): b's edit replaces b, a's edit stays.
+        let SettingValue::Routes(mut got) = rebase(&routes(vec![route("x1", "a"), route("x2", "b")]), &routes(vec![route("x1", "a"), route("x2", "b2")]), &routes(vec![route("", "a2"), route("", "b")])) else { panic!() };
+        got.sort_by(|p, q| p.subject_contains.cmp(&q.subject_contains));
+        assert_eq!(got, [route("", "a2"), route("x2", "b2")], "never twice");
+        // A delete there: out, the older Sioul's edit kept.
+        assert_eq!(rebase(&routes(vec![route("x1", "a"), route("x2", "b")]), &routes(vec![route("x1", "a")]), &routes(vec![route("", "a2"), route("", "b")])), routes(vec![route("", "a2")]));
     }
 
     /// Where scans arrive, moved from the Porch's settings to the Letters page:

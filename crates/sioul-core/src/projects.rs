@@ -589,6 +589,26 @@ impl From<&Route> for RouteValue {
 }
 
 
+/// A route's first id, from its project and what it holds (and how many
+/// routes of the same words have one already): two devices giving ids to
+/// the same routes, written before ids, give them the same (review of
+/// wt/sync, R1); never one `taken` holds.
+fn first_id(project_id: &str, lists: &[(&str, Vec<&str>)], taken: &[String]) -> String {
+    let words: String = lists.iter().map(|(key, list)| format!("{key}={}", list.join("\u{1f}"))).collect::<Vec<_>>().join("\u{1e}");
+    (0u32..)
+        .map(|n| {
+            // FNV-1a, 64 bits: the same on every device and every version.
+            let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+            for byte in format!("{project_id}\u{1d}{words}\u{1d}{n}").bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            format!("route-{hash:016x}")
+        })
+        .find(|id| !taken.contains(id))
+        .unwrap_or_default()
+}
+
 /// Takes a project out of its file, the file's comments elsewhere kept. Its
 /// tasks, notes, mail and time stay; they are no longer gathered under it.
 pub fn remove_project(file: &Path, project_id: &str) -> Result<(), String> {
@@ -620,6 +640,7 @@ pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Resul
         let mut doc = read_doc(file, false)?;
         let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
         let mut tables = ArrayOfTables::new();
+        let mut given: Vec<String> = routes.iter().map(|r| r.id.trim().to_string()).filter(|id| !id.is_empty()).collect();
         for route in routes {
             let lists: Vec<(&str, Vec<&str>)> = [
                 ("from_domains", &route.from_domains),
@@ -636,7 +657,9 @@ pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Resul
                 continue;
             }
             let mut table = Table::new();
-            table["id"] = value(if route.id.trim().is_empty() { crate::ids::new() } else { route.id.trim().to_string() });
+            let id = if route.id.trim().is_empty() { first_id(project_id, &lists, &given) } else { route.id.trim().to_string() };
+            given.push(id.clone());
+            table["id"] = value(id);
             for (key, cleaned) in lists {
                 table[key] = value(cleaned.into_iter().collect::<Array>());
             }
@@ -787,6 +810,20 @@ mod tests {
         set_routes(&path, "taxes", &[edited, RouteValue { from_addresses: vec!["impots@example.org".into()], ..RouteValue::default() }]).unwrap();
         let routes = ProjectStore::load(&dir).unwrap().projects[0].routes.clone();
         assert!(routes.len() == 2 && routes[0].id == id && routes[0].subject_contains.len() == 2 && !routes[1].id.is_empty() && routes[1].id != id, "{routes:?}");
+        // Routes written before ids take the same first ids on any device (R1); two alike, two ids.
+        let text = "[[project]]\nid = \"taxes\"\ntitle = \"Taxes\"\n[[project.route]]\nfrom_domains = [\"old.example\"]\n";
+        let ids_of = |name: &str| {
+            let d = scratch(name);
+            std::fs::write(d.join(FILE), text).unwrap();
+            let shown: Vec<RouteValue> = ProjectStore::load(&d).unwrap().projects[0].routes.iter().map(RouteValue::from).collect();
+            let twice: Vec<RouteValue> = shown.iter().chain(shown.iter()).cloned().collect();
+            set_routes(&d.join(FILE), "taxes", &twice).unwrap();
+            let ids: Vec<String> = ProjectStore::load(&d).unwrap().projects[0].routes.iter().map(|r| r.id.clone()).collect();
+            std::fs::remove_dir_all(&d).unwrap();
+            ids
+        };
+        let (one, other) = (ids_of("routes-desk"), ids_of("routes-phone"));
+        assert!(one == other && one.len() == 2 && one[0] != one[1] && one.iter().all(|id| id.starts_with("route-")), "{one:?} {other:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
