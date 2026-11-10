@@ -102,7 +102,7 @@ An agent can also look after your own spam filter, as you would from the termina
 
 ## The command line {#the-command-line}
 
-Agents and scripts can also use the command line, as you can: `sioul tasks now`, `sioul tasks list`, `sioul links`, `sioul notes`, and more (`sioul --help`).
+Agents and scripts can also use the command line, as you can: `sioul tasks now`, `sioul tasks list`, `sioul links`, `sioul notes`, and more (`sioul --help`, in your session's language when Sioul has it, or with `--language fr`).
 
 `sioul tasks import plan.toml` takes a plan written as a file: tasks with their steps and what they wait for, the contacts of the offices involved, and drafts, which stay in Sioul and are never sent. Importing again updates what the file made, instead of adding it twice; `--dry-run` says what would change. The file's format: [Tasks, "Importing"](../dev/tasks.md#importing).
 

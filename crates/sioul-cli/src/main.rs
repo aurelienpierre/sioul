@@ -44,6 +44,7 @@
 mod accounts;
 mod dav;
 mod mail;
+mod help;
 mod mcp;
 mod money;
 mod pgp;
@@ -54,7 +55,7 @@ mod tasks;
 // Mail topics learned and measured on this device (sioul-learn).
 mod topics;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use jiff::{Timestamp, Zoned};
 use sioul_core::budget::{self, Ledger};
 use sioul_core::projects::ProjectStore;
@@ -359,13 +360,10 @@ fn main() -> ExitCode {
     if let Err(e) = sioul_core::coredump::no_core_file() {
         eprintln!("sioul: a crash may leave a core file: {e}");
     }
-    let cli = Cli::parse();
-    // Mail, keys, drafts and caches are kept in folders that are yours alone.
-    config::make_private_dirs();
-    // What it changes (a task, a contact, a note for an agent) the window shows at once:
-    // it watches a stamp per kind (`changes`), this program having no window of its own.
-    sioul_core::changes::stamp_for_the_window();
-    let config_path = cli.config.clone().unwrap_or_else(config::default_path);
+    // The configuration and the language first, from the arguments as given:
+    // the help itself is written in that language (help.rs).
+    let early = help::Early::of(std::env::args_os());
+    let config_path = early.config.clone().unwrap_or_else(config::default_path);
     // No file yet: Sioul's defaults. A file that cannot be read is said, not taken for none.
     let config = Config::load(&config_path).unwrap_or_else(|e| {
         if config_path.exists() {
@@ -373,10 +371,27 @@ fn main() -> ExitCode {
         }
         Config::default()
     });
-    let language = cli.language.clone().or_else(|| config.language.clone()).unwrap_or_else(session_language);
+    let language = early.language.clone().or_else(|| config.language.clone()).unwrap_or_else(session_language);
+    let tr = Translator::new(&language);
+    let matches = help::translated(Cli::command(), &tr).get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    // Read as clap reads them, should the two ever differ.
+    let (config_path, config, tr) = if cli.config.as_ref().is_none_or(|c| *c == config_path) && cli.language == early.language {
+        (config_path, config, tr)
+    } else {
+        let config_path = cli.config.clone().unwrap_or_else(config::default_path);
+        let config = Config::load(&config_path).unwrap_or_default();
+        let language = cli.language.clone().or_else(|| config.language.clone()).unwrap_or_else(session_language);
+        (config_path, config, Translator::new(&language))
+    };
+    // Mail, keys, drafts and caches are kept in folders that are yours alone.
+    config::make_private_dirs();
+    // What it changes (a task, a contact, a note for an agent) the window shows at once:
+    // it watches a stamp per kind (`changes`), this program having no window of its own.
+    sioul_core::changes::stamp_for_the_window();
     // The words this program looks for (`words::current`: a server's folder names).
     sioul_core::words::set_current(sioul_core::words::Words::of(&config));
-    let session = Session { tr: Translator::new(&language), config, config_path };
+    let session = Session { tr, config, config_path };
     let result = match cli.command {
         Command::Porch { maildir, open, all } => porch_command(&session, &maildir, open, all),
         Command::Done => done_command(&session),
