@@ -2993,8 +2993,7 @@
    "commission",
    "frais",
    "frais de transaction",
-   "frais de service",
-   "frais paypal"
+   "frais de service"
   ],
   "payments.net": [
    "net amount",

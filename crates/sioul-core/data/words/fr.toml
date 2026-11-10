@@ -3,7 +3,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "fr"
-checked = "2026-10-15"
+checked = "2026-11-10"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -182,7 +182,7 @@ references = [
 # A purchase paid in instalments, "#" its number of them (matching.rs).
 instalments = ["en # fois", "# fois sans frais", "#x sans frais", "# echeances"]
 # The label of a fee a processor's mail states, money in only (payments.rs): the amount on its line, or on the next.
-fee = ["frais", "commission", "frais de transaction", "frais de service", "frais paypal"]
+fee = ["frais", "commission", "frais de transaction", "frais de service"]
 # The label of what arrives after the fees.
 net = ["montant net", "net", "vous recevrez", "montant verse", "somme versee"]
 # Words in an attachment's name that make it look like an invoice (moneyindex.rs).

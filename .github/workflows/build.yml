@@ -138,6 +138,11 @@ jobs:
         if: runner.os == 'Linux'
         run: python3 tools/check-messages.py
 
+      # No shipped word that looks like one person's (docs/words.md, the third rule).
+      - name: Word packs
+        if: runner.os == 'Linux'
+        run: python3 tools/check-word-packs.py --self-test && python3 tools/check-word-packs.py
+
       - name: Build the window and the command line
         run: cargo build --release --locked -p sioul-app -p sioul-cli
 
