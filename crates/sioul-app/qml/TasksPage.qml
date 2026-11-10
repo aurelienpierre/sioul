@@ -1071,6 +1071,9 @@ Item {
 
                                     Layout.row: page.narrow ? 1 : 0
                                     Layout.column: page.narrow ? 0 : 1
+                                    // On a phone it takes the room Done leaves, never more (360 points).
+                                    Layout.fillWidth: page.narrow
+                                    Layout.preferredWidth: page.narrow ? 0 : -1
                                     model: ways.map(w => page.sioul.text("task-by-" + w))
                                     currentIndex: Math.max(0, ways.indexOf(page.by))
                                     onActivated: index => {
@@ -1081,8 +1084,6 @@ Item {
                                 CheckBox {
                                     Layout.row: page.narrow ? 1 : 0
                                     Layout.column: page.narrow ? 1 : 2
-                                    // On a phone its column takes the room left, so the search above spans the width.
-                                    Layout.fillWidth: page.narrow
                                     text: page.sioul.text("task-show-done")
                                     checked: page.showDone
                                     onToggled: {

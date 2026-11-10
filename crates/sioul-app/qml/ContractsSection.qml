@@ -61,6 +61,7 @@ ColumnLayout {
         Label {
             Layout.fillWidth: true
             text: section.sioul.text("contracts")
+            elide: Text.ElideRight
             font.pixelSize: 19
             color: section.theme.text
         }

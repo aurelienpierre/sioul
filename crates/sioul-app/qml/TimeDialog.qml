@@ -181,8 +181,11 @@ SafeDialog {
             text: dialog.sioul.text("time-field-from")
             color: dialog.theme.muted
         }
-        // From, to, and how long that makes.
-        RowLayout {
+        // From, to, and how long that makes; on a phone's 360 points how long goes
+        // under, never past the dialog's edge (10 November 2026).
+        Flow {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 0
             spacing: 8
 
             ClockField {
@@ -196,6 +199,8 @@ SafeDialog {
                 onAccepted: dialog.save()
             }
             Label {
+                height: at.height
+                verticalAlignment: Text.AlignVCenter
                 text: dialog.sioul.text("time-field-to")
                 color: dialog.theme.muted
             }
@@ -215,6 +220,8 @@ SafeDialog {
                 readonly property int minutes: dialog.lengthOf(at.text, until.text)
 
                 visible: minutes > 0
+                height: at.height
+                verticalAlignment: Text.AlignVCenter
                 text: Math.floor(minutes / 60) > 0 ? Math.floor(minutes / 60) + " h " + String(minutes % 60).padStart(2, "0") : minutes + " min"
                 textFormat: Text.PlainText
                 color: dialog.theme.muted

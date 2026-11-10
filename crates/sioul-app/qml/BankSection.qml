@@ -103,6 +103,7 @@ ColumnLayout {
         Label {
             Layout.fillWidth: true
             text: section.sioul.text("bank-accounts")
+            elide: Text.ElideRight
             font.pixelSize: 19
             color: section.theme.text
         }
@@ -200,8 +201,11 @@ ColumnLayout {
                         elide: Text.ElideRight
                         color: section.theme.text
                     }
-                    RowLayout {
+                    // On more lines where the card is narrow (a phone's 360 points, in French).
+                    Flow {
                         Layout.columnSpan: section.narrow ? 2 : 1
+                        Layout.fillWidth: section.narrow
+                        Layout.preferredWidth: section.narrow ? 0 : implicitWidth
                         spacing: 8
 
                         // As wide as their names: the style's buttons are 100 pixels at least.

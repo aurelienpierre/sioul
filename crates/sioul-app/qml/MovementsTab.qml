@@ -424,9 +424,12 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
+                // Each button as wide as its name, never the style's 100 points: the row
+                // fits a phone's 360 points (10 November 2026: ⋯ was past its edge).
                 Button {
                     objectName: "movementBack"
                     flat: true
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: tab.sioul.text("ui-back")
                     icon.name: "go-previous"
                     icon.color: tab.theme.text
@@ -437,11 +440,13 @@ Item {
                 }
                 Button {
                     visible: tab.detail !== null && tab.detail.allowed.fields.length > 0 && !tab.detail.gone
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: tab.sioul.text("movement-change")
                     onClicked: actions.changeNow(tab.detail)
                 }
                 Button {
                     visible: tab.detail !== null && tab.detail.gone === true
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: tab.sioul.text("movement-put-back-button")
                     onClicked: actions.done(tab.sioul.putBackMovement(tab.detail.address))
                 }
@@ -450,6 +455,7 @@ Item {
                     objectName: "movementChain"
                     visible: tab.detail !== null && (tab.detail.address || "") !== ""
                     flat: true
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: tab.sioul.text("ui-ties")
                     onClicked: tab.window.openChain(tab.detail.address)
                 }
