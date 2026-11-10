@@ -725,6 +725,68 @@ mod tests {
         }
     }
 
+    /// TODO §4 (10 November 2026), CI's virtual card
+    /// (.github/workflows/virtual-card.yml; docs/client.md, "Your keys on a
+    /// security key"): an OpenPGP card that is none of Sioul's stand-ins,
+    /// opcard-rs, through the system's smart card service (pcscd and
+    /// vsmartcard's virtual reader), its keys made on it by `oct` with their
+    /// certificate. Read as Sioul reads a key, its certificate checked
+    /// against it, a message to yourself signed and encrypted at Send with
+    /// its PIN, then opened with the key: the transport (`smartcard.rs`) and
+    /// the card protocol (`ocard.rs`) against another card's firmware.
+    /// Ignored, and nothing done unless CI says so (`CI=true`) and names the
+    /// certificate (`SIOUL_VIRTUAL_CARD`): never a real key, whose PIN tries
+    /// a wrong PIN would spend.
+    #[test]
+    #[ignore = "CI's virtual card alone"]
+    fn a_virtual_card_through_the_system_s_smart_card_service() {
+        let (Some(certificate), Ok("true")) = (std::env::var_os("SIOUL_VIRTUAL_CARD"), std::env::var("CI").as_deref()) else {
+            eprintln!("Not CI's virtual card: nothing done.");
+            return;
+        };
+        let readers = crate::securitykey::readers();
+        let present = readers.present().unwrap();
+        assert!(!present.is_empty() && present.iter().all(|reader| reader.starts_with("Virtual PCD")), "the virtual reader alone: {present:?}");
+        let cards = sioul_core::securitykey::cards(readers).unwrap();
+        assert_eq!(cards.len(), 1, "{cards:?}");
+        let card = &cards[0];
+        let cert = pgp::certificates_in(&std::fs::read(certificate).unwrap()).remove(0);
+        let checked = sioul_core::securitykey::check(&cert, card).unwrap();
+        assert!(checked.signs && checked.decrypts, "{checked:?}");
+        let known = KnownCard {
+            ident: card.ident.clone(),
+            sign: card.sign.as_ref().unwrap().fingerprint.clone(),
+            decrypt: card.decrypt.as_ref().unwrap().fingerprint.clone(),
+            cert: cert.fingerprint().to_hex(),
+            addresses: vec!["card@example.org".into()],
+            ..KnownCard::default()
+        };
+        let keys = Keys { own: vec![cert.clone()], cards: vec![known], ..Keys::default() };
+        let account: Account = toml::from_str("id = \"me\"\naddress = \"card@example.org\"\nname = \"Card Holder\"\n").unwrap();
+        let mut draft = Draft::new("me");
+        draft.to = vec!["Card Holder <card@example.org>".into()];
+        draft.subject = "A virtual card".into();
+        draft.body = "Signed and sealed on a virtual card.".into();
+        draft.sign = true;
+        draft.encrypt = true;
+        let tr = Translator::new("en");
+        let pin = sioul_core::securitykey::Password::from("123456");
+        let access = CardAccess::new(readers, &pin, &|| {});
+        let outgoing = build_draft_with(&keys, &account, &draft, &tr, Some(&access)).unwrap();
+        assert!(String::from_utf8_lossy(&outgoing.raw).contains("multipart/encrypted"));
+        let sessions = SessionKeys::new();
+        let unlock = Unlock::new(&|_| None, &sessions).with_card(&access);
+        let (opened, view) = pgp::open(&outgoing.raw, &keys, &unlock).unwrap();
+        assert!(String::from_utf8_lossy(&opened.expect("opened with the card")).contains("on a virtual card"), "{view:?}");
+        assert!(view.encrypted && view.signatures.len() == 1 && view.signatures[0].good, "{view:?}");
+        // A wrong PIN is said with its tries left, the card read again after.
+        let wrong = sioul_core::securitykey::Password::from("654321");
+        let refused = CardAccess::new(readers, &wrong, &|| {});
+        assert!(matches!(build_draft_with(&keys, &account, &draft, &tr, Some(&refused)), Err(BuildError::Card(CardError::WrongPin { left: 2 }))));
+        let after = sioul_core::securitykey::cards(readers).unwrap();
+        assert_eq!(after[0].pin_tries, 2);
+    }
+
     const LEASE: &str = "From: Jane <jane@example.org>\r\nTo: Card Holder <me@example.org>\r\nSubject: The lease\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nMessage-ID: <lease-send@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe secret clause is on page four.\r\n";
 
     fn answer_to(copy: &Path) -> Draft {
