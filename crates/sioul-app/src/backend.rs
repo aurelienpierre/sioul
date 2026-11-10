@@ -3551,6 +3551,7 @@ fn compute(shared: &Shared) -> Views {
     }
     // Reachable opens the Porch at any hour, its rest after a pause lifted too (decision 7).
     let opened = shared.opened_anyway.load(Ordering::Relaxed) || shared.reachable.load(Ordering::Relaxed);
+    CODES_UNTIL.store(codes_until(&items), Ordering::Relaxed);
     let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, opened || mode.quiet);
     porch.all = shared.opened_anyway.load(Ordering::Relaxed);
     // Each message's notice as the words said on any device leave it: the Porch shows the new ones.
@@ -3598,7 +3599,11 @@ pub(crate) fn show(qt: &QtThread, shared: &Arc<Shared>) {
     // Porch, the budgets and the accounts are made once it shows (`set_hidden`).
     if HIDDEN.load(Ordering::SeqCst) {
         shared.views_job.deferred.store(true, Ordering::SeqCst);
-        return;
+        // Shown again meanwhile, `set_hidden` having read `deferred` before it was
+        // set here (the review of wt/perf, P2): made now, by whichever took it.
+        if HIDDEN.load(Ordering::SeqCst) || !shared.views_job.deferred.swap(false, Ordering::SeqCst) {
+            return;
+        }
     }
     let qt = qt.clone();
     coalesced(shared, |s| &s.views_job, move |shared| {
@@ -3969,9 +3974,22 @@ fn mail_as_before(account: &str, root: &Path, quiet: bool) -> bool {
     quiet && same && views_recent(VIEWS_MADE.lock().ok().and_then(|made| *made))
 }
 
-/// Whether the views were made less than `VIEWS_AGAIN` ago.
+/// Whether the views were made less than `VIEWS_AGAIN` ago, half a minute
+/// spared: an account's next report comes five minutes and its fetch after
+/// the last, and a making begun after a long mail look must not make that
+/// report the one passed over (the review of wt/perf, P3).
 fn views_recent(made: Option<std::time::Instant>) -> bool {
-    made.is_some_and(|made| made.elapsed().as_secs() < VIEWS_AGAIN)
+    made.is_some_and(|made| made.elapsed().as_secs() < VIEWS_AGAIN - 30)
+}
+
+/// When the first one-time code shown on the Porch stops being one (Unix
+/// seconds; 0: none shown), as the last making found it: the minute's tick
+/// makes the Porch again then, rather than at the next mail report.
+static CODES_UNTIL: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// The first time a code of `items` in "Right now" expires (`porch::expired`'s rule); 0: none.
+fn codes_until(items: &[Triaged]) -> i64 {
+    items.iter().filter(|t| t.lane == sioul_core::porch::Lane::RightNow).filter_map(|t| t.code.as_ref().zip(porch::sent(&t.card)).map(|(code, sent)| sent + i64::from(code.lasts_minutes()) * 60 + 1)).min().unwrap_or(0)
 }
 
 /// Whether an account's Maildir is as its last look left it; noted as it is now.
@@ -7172,14 +7190,21 @@ impl qobject::Sioul {
         let now = sioul_core::zone::now();
         let (stamp, day) = (now.timestamp().as_second(), i64::from(now.date().year()) * 1000 + i64::from(now.date().day_of_year()));
         let shared = self.shared();
+        // A one-time code on the Porch past its time: the Porch made again now.
+        let until = CODES_UNTIL.load(Ordering::Relaxed);
+        if until > 0 && stamp >= until && CODES_UNTIL.compare_exchange(until, 0, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+            show(&self.qt_thread(), &shared);
+        }
         let last = shared.planned_at.load(Ordering::Relaxed);
         if last == 0 {
             shared.planned_at.store(stamp, Ordering::Relaxed);
             shared.planned_day.store(day, Ordering::Relaxed);
         } else if stamp - last >= REPLAN_EVERY || shared.planned_day.load(Ordering::Relaxed) != day {
-            // A new day: the agenda and today's overlaps follow it too.
+            // A new day: the agenda and today's overlaps follow it too, and the
+            // Porch's words of days (no mail report makes it again by itself).
             if shared.planned_day.load(Ordering::Relaxed) != day {
                 pim::show_pim(&self.qt_thread(), &shared);
+                show(&self.qt_thread(), &shared);
             }
             shared.planned_at.store(stamp, Ordering::Relaxed);
             shared.planned_day.store(day, Ordering::Relaxed);
@@ -8305,7 +8330,27 @@ mod tests {
         assert!(!views_recent(None), "never made");
         let long_ago = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(VIEWS_AGAIN + 1));
         assert!(long_ago.is_none_or(|at| !views_recent(Some(at))), "made long ago: made again");
+        // A making begun a little less than five minutes ago (after a slow mail look): made again, not ten minutes on.
+        let nearly = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(VIEWS_AGAIN - 10));
+        assert!(nearly.is_none_or(|at| !views_recent(Some(at))), "half a minute spared");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The first code in "Right now" says when the Porch must be made again
+    /// by the clock: its message's time and how long it lasts; codes in other
+    /// lanes, and messages without a code, say nothing (`codes_until`).
+    #[test]
+    fn the_first_code_to_expire_says_when_the_porch_is_made_again() {
+        use sioul_core::codes::{CodeKind, OneTimeCode};
+        use sioul_core::porch::Lane;
+        let card = |minute: u32| sioul_core::card::Card::from_bytes(format!("From: Bank <no-reply@bank.example.org>\r\nDate: Tue, 10 Nov 2026 14:{minute:02}:00 +0000\r\nSubject: Your code\r\n\r\nYour code is 482913.\r\n").as_bytes()).unwrap();
+        let code = |minutes: u32| Some(OneTimeCode { kind: CodeKind::Code, code: Some("482913".into()), expires_minutes: Some(minutes) });
+        let item = |minute: u32, lane: Lane, code: Option<OneTimeCode>| Triaged { card: card(minute), lane, trust: sioul_core::trust::Trust::Verified, code, reasons: Vec::new(), priority: Priority::Average, checks: None, assessment: None };
+        let at = |minute: i64| 1_794_319_200 + minute * 60;
+        assert_eq!(codes_until(&[]), 0);
+        assert_eq!(codes_until(&[item(0, Lane::People, None)]), 0);
+        assert_eq!(codes_until(&[item(0, Lane::RightNow, code(10)), item(5, Lane::RightNow, code(3))]), at(8) + 1, "the first to go");
+        assert_eq!(codes_until(&[item(0, Lane::RightNow, code(10)), item(1, Lane::People, code(2))]), at(10) + 1, "a code out of Right now");
     }
 
     /// A code's notification offers Copy and Open on a computer (the
