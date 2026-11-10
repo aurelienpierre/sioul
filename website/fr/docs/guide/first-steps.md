@@ -32,7 +32,7 @@ Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arr
 
 ### Touches {#keys}
 
-Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap pour revenir. Sur un ordinateur, la ligne d’état rappelle les principales touches quand rien d’autre n’a besoin de sa place ; jamais sur un téléphone, tenu droit ou de côté.
+Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap pour revenir. Partout où un clavier est branché (un ordinateur, une tablette avec son clavier), la ligne d’état rappelle les principales touches quand rien d’autre n’a besoin de sa place ; jamais sans clavier, un téléphone tenu droit ou de côté compris.
 
 | Touches | Ce qu’elles font |
 |---|---|
@@ -46,25 +46,25 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 | ++ctrl+q++ | Quitter Sioul (fermer la fenêtre la masque dans la zone de notification) |
 | ++ctrl+enter++ | Envoyer, dans la fenêtre de rédaction |
 
-### Sur un téléphone {#on-a-phone}
+### Sur un téléphone ou une tablette {#on-a-phone}
 
-Sioul sur un téléphone : [Installer](install.md#on-android). Sur un téléphone, ou dans une fenêtre de moins de 720 pixels de large :
+Sioul sur Android : [Installer](install.md#on-android). Sur un petit écran (un téléphone, une tablette en écran partagé, toute fenêtre de moins de 720 pixels de large) :
 
 - **Les lieux** glissent depuis la gauche, derrière ☰, avec leur nom à côté de leur icône ; une barre en haut nomme la page.
-- **La ligne d’état** est en bas de l’écran d’un téléphone, chacun de ses boutons réduit à son icône : un appui long sur l’un dit ce qu’il est. Quand sa phrase est coupée, un appui dessus la montre en entier.
+- **La ligne d’état** est en bas de l’écran sur Android, chacun de ses boutons réduit à son icône : un appui long sur l’un dit ce qu’il est. Quand sa phrase est coupée, un appui dessus la montre en entier.
 - **Un volet à la fois** : une page montre sa liste, puis ce que vous ouvrez sur tout l’écran ; **Retour**, sur la barre ou celui d’Android, revient en arrière.
 - **Les menus** s’ouvrent par un appui long sur un écran tactile, là où une souris ferait un clic droit.
 
-Ce qui change sur un téléphone :
+Ce qui change sur Android :
 
 - **Les notifications** viennent pour les prises de médicaments ([La santé](health.md#reminders)), le temps qui court ([Le temps](time.md#where-time-comes-from)), les événements ([L’agenda](agenda.md#reminders)) et les nouveaux courriels à leurs heures ([Le Porche](porch.md#new-mail-told-at-its-times)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
 - **Les appels** peuvent être filtrés une fois que vous laissez Sioul être « l’appli numéro de l’appelant et spam » d’Android : qui peut sonner, et quand, comme le dit sa ligne dans Ce qui vous joint ; les autres vont sur votre messagerie ([Les appels](calls.md)).
 - **Les notifications des autres applications** peuvent être retenues jusqu’à leur heure, une fois que vous donnez à Sioul l’accès aux notifications d’Android : les messages des personnes selon qui les écrit, le reste aux heures de regroupement ([Paramètres ▸ Ce téléphone](settings.md#this-phone)).
 - **Les courriels** sont relevés tant que Sioul est ouvert : Android l’arrête en arrière-plan.
 - **Le partage** : Sioul est dans le menu de partage d’Android, et chacune de vos adresses aussi ; les liens de courriel s’ouvrent dedans ([Les courriels](mail.md#from-other-apps)).
-- **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers du téléphone, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.
+- **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers de l’appareil, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.
 - **Les sites** s’ouvrent dans votre navigateur ([Les sites](sites.md)) ; les PDF s’ouvrent dans une autre application, avec **Ouvrir avec…**.
-- **Le courrier papier** n’est pas lu, et les pièces jointes ne passent pas par un antivirus : les programmes dont Sioul se sert pour cela sur un ordinateur n’existent pas sur un téléphone.
+- **Le courrier papier** n’est pas lu, et les pièces jointes ne passent pas par un antivirus : les programmes dont Sioul se sert pour cela sur un ordinateur n’existent pas sur Android.
 - **Vos autres appareils** partagent avec lui par un dossier que l’application de synchronisation du téléphone transporte, ou que Sioul tient lui-même à jour avec votre Nextcloud ; un nouveau téléphone les rejoint par la connexion de Murena, ou d’un autre Nextcloud, depuis **Rejoindre vos autres appareils** sur le Porche ([plus bas](#join-your-other-devices)). Les mots de passe ne voyagent jamais : chaque compte demande le sien, une fois ([Les comptes](accounts.md#an-account-from-your-other-device)).
 - **Des cartes sur l’écran d’accueil** : les widgets de Sioul (un appui long sur l’écran d’accueil, **Widgets**). La carte complète, « Sioul », commence par aujourd’hui : la date, le temps qu’il fait et, sur la même ligne, celui de chacune des quatre prochaines heures, les prochains matin, après-midi, soir et nuit, puis les sept prochains jours, au lieu choisi pour la météo (touchez la météo dans la ligne d’état de Sioul pour en choisir un). En dessous, ce que le Porche a pour vous, en une courte ligne chacun : une prise prévue, jamais comme « pas prise » (« vérifiez avant de la prendre » quand un autre appareil peut savoir), un code que vous venez de demander à un site, les rappels de dates, d’attentes, de paiements et de papiers, un appel que Sioul a refusé, deux événements en même temps. Enfin, ce à quoi sert ce moment et, pendant le travail ou les démarches, la prochaine étape. Jamais de compte. Un appui sur une prise, un code ou un appel ouvre le Porche ; sur un rappel, ce qu’il concerne ; sur l’étape, **Maintenant**. Les courriels et vos événements ont leurs propres cartes, « Sioul — Courriels » et « Sioul — Agenda », dans la même liste de widgets, à placer et ordonner comme vous voulez : les derniers courriels du Porche (qui a écrit, en gras tant que vous ne l’avez pas lu, quand, l’objet, une ligne du texte ; en dehors des heures choisies pour les courriels, seulement quand le Porche ouvre), et vos prochains événements, jour par jour, chacun dans la couleur de son agenda. Sans le réglage **Détails sur l’écran d’accueil** ([Paramètres](settings.md#display)), elles ne nomment aucun expéditeur, objet, événement, code, prise, rappel, appel ni étape ; la date et la météo restent.
 
@@ -72,7 +72,7 @@ Ce qui change sur un téléphone :
 
 ## Rejoindre vos autres appareils {#join-your-other-devices}
 
-Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne partage pas encore, la première carte du Porche, **Rejoindre vos autres appareils**, amène ici ses réglages, ses comptes et vos heures : **Se connecter à Murena**, ou **Se connecter à un autre Nextcloud**, ouvre dans votre navigateur la page de connexion de votre Nextcloud ; Sioul y trouve ensuite votre dossier de partage et demande votre phrase de passe, une fois. **J’utilise une application de synchronisation** mène au dossier que votre application de synchronisation transporte. Les étapes ci-dessous sont alors en grande partie faites : il reste le mot de passe de chaque compte de courriel, listé une fois la connexion faite, avec, sur un téléphone, ce qu’Android n’a pas encore autorisé à Sioul et un bouton pour chaque chose ([Le partage](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Laisser ainsi** range la carte ; **Paramètres ▸ Votre dossier et le partage** propose la même chose à tout moment.
+Vous utilisez déjà Sioul sur un autre appareil ? Sur un appareil qui ne partage pas encore, la première carte du Porche, **Rejoindre vos autres appareils**, amène ici ses réglages, ses comptes et vos heures : **Se connecter à Murena**, ou **Se connecter à un autre Nextcloud**, ouvre dans votre navigateur la page de connexion de votre Nextcloud ; Sioul y trouve ensuite votre dossier de partage et demande votre phrase de passe, une fois. **J’utilise une application de synchronisation** mène au dossier que votre application de synchronisation transporte. Les étapes ci-dessous sont alors en grande partie faites : il reste le mot de passe de chaque compte de courriel, listé une fois la connexion faite, avec, sur Android, ce que le système n’a pas encore autorisé à Sioul et un bouton pour chaque chose ([Le partage](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Laisser ainsi** range la carte ; **Paramètres ▸ Votre dossier et le partage** propose la même chose à tout moment.
 
 ## Ajouter vos courriels {#add-your-mail}
 
@@ -97,7 +97,7 @@ Google refuse le mot de passe de votre compte dans les autres logiciels de courr
 - **Utiliser un mot de passe d’application** : créez pour Sioul un mot de passe d’application sur myaccount.google.com/apppasswords (il demande la validation en deux étapes ; **Créer un mot de passe d’application** ouvre la page dans votre navigateur), collez-le sous **Mot de passe d’application (de Google)**, puis **Se connecter et ajouter**.
 - **Se connecter avec Google** : la page de Google elle-même s’ouvre dans votre navigateur. Pour les courriels, Google n’accepte qu’une clé Google à vous, pas celle de Sioul : un projet gratuit dans Google Cloud, fait une fois (**Faire votre clé Google** déplie les étapes), celui de vos agendas Google si vous l’avez fait. Google dit ensuite que l’application n’est pas validée : c’est la vôtre ; choisissez *Paramètres avancés*, puis *Accéder à Sioul*, et laissez cochée la case de l’accès à Gmail. Publiez le projet (*Audience → Publier l’application*) : s’il reste en test, Google coupe l’accès tous les sept jours.
 
-Une fois votre clé gardée sur cet appareil, **Se connecter avec Google** est la façon choisie d’abord, et ne demande rien d’autre. Sur un téléphone, quand Google dit que Sioul a l’accès, revenez à Sioul : il termine là. Si Android a fermé Sioul entre-temps, rien n’a changé : reconnectez-vous.
+Une fois votre clé gardée sur cet appareil, **Se connecter avec Google** est la façon choisie d’abord, et ne demande rien d’autre. Sur Android, quand Google dit que Sioul a l’accès, revenez à Sioul : il termine là. Si Android a fermé Sioul entre-temps, rien n’a changé : reconnectez-vous.
 
 ### Outlook.com, Hotmail et Microsoft 365 {#outlook-and-microsoft-365}
 
@@ -113,7 +113,7 @@ Ce que chaque sorte d’adresse demande :
 - **Une adresse Microsoft 365 que Sioul ne reconnaît pas** (les courriels de votre organisation passent d’abord par un autre service) : quand **Trouver le serveur** ne trouve rien, choisissez **Cette adresse est chez Microsoft**.
 - **Votre propre application Microsoft** : dans une copie de Sioul qui n’en porte pas, le formulaire le dit et demande l’ID d’application (client) de la vôtre. Inscrivez-en une, une fois, dans Microsoft Entra (**Comment inscrire votre application** déplie les étapes) ; elle ne demande aucun secret. Dans une copie qui en porte une, **Utiliser une application à moi** est là si vous préférez la vôtre.
 
-Sur un téléphone, revenez à Sioul dès que la page de Microsoft dit que c’est fait : la réponse de Microsoft dure environ une minute. Si elle est arrivée trop tard, Sioul le dit ; se reconnecter va plus vite la deuxième fois.
+Sur Android, revenez à Sioul dès que la page de Microsoft dit que c’est fait : la réponse de Microsoft dure environ une minute. Si elle est arrivée trop tard, Sioul le dit ; se reconnecter va plus vite la deuxième fois.
 
 Sioul n’atteint pas les agendas et les contacts de Microsoft : Microsoft les propose par sa propre interface, pas par CalDAV ou CardDAV.
 

@@ -49,7 +49,7 @@ Dans [Paramètres ▸ Pauses](settings.md#pauses), prenez votre temps :
 
 **Pause** ne demande rien. Tout ce que Sioul affiche est mis en attente, sur tous vos appareils : rien de nouveau à l’écran, aucune notification, sauf les rappels de prises (si vous ne l’avez pas réglé autrement), les rappels et alarmes de vos événements, les codes demandés, et les appels et les messages des personnes qui passent toujours ([Ce qui vous joint, par moment](notifications.md#by-time)). Le temps libre, s’il était en cours, prend fin. Une séance de concentration en cours s’arrête, et compte. La fin du travail du jour reste la fin habituelle, même si le temps libre l’avait décalée : le travail des heures en pause va aux jours suivants, jamais sur votre soirée. Le téléphone lui-même reste libre : appels, autres applications, appels d’urgence.
 
-Sur un téléphone, **Pause** est aussi parmi les réglages rapides, et dans un appui long sur l’icône de Sioul : tous deux ouvrent Sioul sur la pause, et n’y mettent jamais fin. Sur un téléphone verrouillé, le réglage rapide demande d’abord de le déverrouiller.
+Sur Android, **Pause** est aussi parmi les réglages rapides, et dans un appui long sur l’icône de Sioul : tous deux ouvrent Sioul sur la pause, et n’y mettent jamais fin. Sur un appareil verrouillé, le réglage rapide demande d’abord de le déverrouiller.
 
 ### L’écran {#the-screen}
 
@@ -74,7 +74,7 @@ Sioul ne garde que le début et la fin de la dernière pause ; **Oublier la de
 | | Temps libre | Pause |
 |---|---|---|
 | Pour | un bon moment que vous choisissez | un moment de trop |
-| Qui vous joint | vos expéditeurs sûrs, ou personne | personne ; les rappels de prises ; sur un téléphone, vos contacts favoris si vous l’avez choisi |
+| Qui vous joint | vos expéditeurs sûrs, ou personne | personne ; les rappels de prises ; sur Android, vos contacts favoris si vous l’avez choisi |
 | La fenêtre | comme d’habitude, les loisirs en vue | couverte, quelques lignes |
 | Le travail | la fin de la journée se décale, dans des limites | va aux jours suivants, jamais sur la soirée |
 | Ensuite | du travail jusqu’à la fin décalée, des étapes légères seulement après la fin habituelle | le reste de la journée allégé, clos ou comme prévu ; demain allégé si vous le demandez |

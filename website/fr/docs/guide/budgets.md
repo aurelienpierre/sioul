@@ -57,7 +57,7 @@ Chaque budget dit ensuite ce qui reste, en mots : « Payé : Loyer, Énerg
 
 Chaque paiement et chaque entrée attendus sur les six semaines qui viennent, ou jusqu’à l’entrée d’après, semaine par semaine : son jour, qui, le montant ou « environ », son budget, où il en est (« prévu le… », « annoncé pour le… », « pas encore définitif », « s’il arrive d’ici le… »), et ce qui le dit, ensemble : la facture du courriel, le courrier, le contrat, la ligne de la banque. **En mois** pose les mêmes sur un calendrier, à côté de la liste, sur un ordinateur. Les dépenses inhabituelles de l’année passée (une réparation, un voyage) sont comptées dans la prévision comme une ligne à part, environ tant par mois.
 
-Un appui long sur un téléphone, un clic droit ou **⋯** sur un ordinateur : **Où il va…**, **Répartir…** entre deux budgets, **Pas le même paiement** à côté de celui que Sioul croit sans doute le même, **Le même que…**, et ce qui le dit, ouvert.
+Un appui long sur un écran tactile, un clic droit ou **⋯** à la souris : **Où il va…**, **Répartir…** entre deux budgets, **Pas le même paiement** à côté de celui que Sioul croit sans doute le même, **Le même que…**, et ce qui le dit, ouvert.
 
 ### Un budget, ouvert {#a-budget-open}
 
@@ -143,7 +143,7 @@ Un prélèvement qui s’arrête ne le dit pas. Sioul compare les mouvements de 
 - **ce qui a changé** : « Électricité a pris 71,40 € le 5 septembre, là où 62 € était attendu. » ;
 - **ce que le compte risque de ne pas tenir** : un compte qui ne tiendrait pas un paiement avant sa prochaine entrée, avec ce qui le couvre ([Renfloué à temps](#topped-up-in-time)), dit quelle que soit l’heure.
 
-**Des rappels**, une fois chacun, au début du travail : deux jours ouvrés avant un paiement que vous faites vous-même (une facture prévue, un impôt, la facture d’un courrier, un paiement régulier coché **Vous le payez vous-même**) ou une facture que vous envoyez (**Vous envoyez sa facture**), en disant si le compte le tiendra ; une semaine après un paiement qui n’est pas sorti ; cinq jours ouvrés avant un jour où le compte ne tiendrait pas un paiement, un prélèvement aussi. Un prélèvement n’a pas de rappel sinon. Ils ne viennent que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows). Un téléphone ne les dit pas.
+**Des rappels**, une fois chacun, au début du travail : deux jours ouvrés avant un paiement que vous faites vous-même (une facture prévue, un impôt, la facture d’un courrier, un paiement régulier coché **Vous le payez vous-même**) ou une facture que vous envoyez (**Vous envoyez sa facture**), en disant si le compte le tiendra ; une semaine après un paiement qui n’est pas sorti ; cinq jours ouvrés avant un jour où le compte ne tiendrait pas un paiement, un prélèvement aussi. Un prélèvement n’a pas de rappel sinon. Ils ne viennent que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows). Un téléphone ne les dit pas ; une tablette, si, comme un ordinateur.
 
 ## Contrats et abonnements {#contracts-and-subscriptions}
 

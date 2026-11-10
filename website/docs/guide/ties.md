@@ -20,17 +20,17 @@ Everything in Sioul is tied to other things: a task made from a message, a payme
 
 - **Ties** at the foot of any card (a task, an event, a note, a contact, a project), beside **Add** and **Link to…**;
 - **See them all** under what a thing is tied to;
-- **Its ties** in the menu of a thing (a right click, or a long press on a phone), in the chain itself too;
+- **Its ties** in the menu of a thing (a right click, or a long press on a touch screen), in the chain itself too;
 - **Ties** on a paper's, a contract's, a letter's, an invoice's, a budget line's or a movement's card (Budgets ▸ **Movements**), and on a person's page;
 - **Ctrl+G** on the thing open.
 
-Each opening starts afresh from that thing. **Escape**, or Back on a phone, returns where you were.
+Each opening starts afresh from that thing. **Escape**, or Back on Android, returns where you were.
 
 ## What it shows {#what-it-shows}
 
 Each thing comes by its strongest chain of ties from where you started, said in words: "Told by: Message, Rent for November · Made into: Task, Pay the rent". A tie you made by hand, a task made from a message, a reply, a step, an appointment tie strongly; being in the same project, a sender, a mention less; a project's words alone, or a client by name, least. Each step after the first counts a little less.
 
-- **At most five things under each thing**, 24 in all on a computer and 12 on a phone.
+- **At most five things under each thing**, 24 in all on a computer and 12 on Android.
 - **A collection stops the chain**: a project, a contact, a person, a budget or a site is shown with how many things it holds. Opened, it shows one of each kind first (a letter, a task, a note, a message, a payment), then the rest by date, and no more than two messages from one sender before the others, so that a weekly newsletter never hides an office's letters.
 - **Time orders, never cuts**: among equals, what is nearest in time to the thing you started from comes first.
 - **Time noted** on a task is a count on it, not a thing of its own.
@@ -41,10 +41,10 @@ Each thing comes by its strongest chain of ties from where you started, said in 
 
 ## The drawing and the outline {#the-drawing-and-the-outline}
 
-- **The drawing** reads from the left: where you started, then one column per step, the tie's words on each line. A tie between two things already shown is a thin curve. Zoom with Ctrl and the wheel, or a pinch; **Fit** shows it whole. On a phone, two columns fit across the width, and a swipe moves one column.
+- **The drawing** reads from the left: where you started, then one column per step, the tie's words on each line. A tie between two things already shown is a thin curve. Zoom with Ctrl and the wheel, or a pinch; **Fit** shows it whole. On Android, two columns fit across the width, and a swipe moves one column.
 - **The outline** lists the same things in the same order, each indented by its step, how it is tied on its second line.
 
-A computer opens on the drawing, a phone on the outline; **Chain** and **Outline** switch, staying on the same thing.
+A computer opens on the drawing, Android on the outline; **Chain** and **Outline** switch, staying on the same thing.
 
 Each thing shows its family by its shape and its colour, and its kind by its icon and in words:
 
@@ -103,7 +103,7 @@ Sioul has no graph of everything, on purpose: it answers no question of admin.
 
 **One index, in memory.** Every tie is read where it is written: a task's `LINK`, `RELATED-TO`, `CONTACT` and `REFID`; an event's guests, stand-in and `X-SIOUL-TAKEN-BY`; a note's links and front matter, and the projects whose files hold it; a draft's links and the message it answers; a budget line's links; `links.toml`; a payment as the budgets page derives it, with its line, mail, letter, invoice, contract and budget; papers, letters, contracts, invoices and persons; a message's `In-Reply-To` and `References`, its sender's card and a project's routes. Sioul gathers them in one pass into `ties::TieIndex` (each address once, each tie two numbers into the table with its kind), read from both ends. It is never written anywhere, and is made again when what it reads changes. A tie computed from a message's headers passes only through mail the Porch admits (`porch::Gate`).
 
-**The walk.** `chain::walk` takes the strongest chains first, grown best-first from where you started: a thing's score is the product of its ties' strengths (1, 0.8, 0.6 or 0.4 by kind), times 0.75 per step after the first, each tie leaving a thing with *d* ties weighed min(1, √(4/d)). Four steps, 0.1 at least, five under each thing, 24 in all (12 on a phone), eight more per "+" (`chain::Weights`). Rows come by a post-order count, so that a thing sits beside the first thing under it; the outline is the same tree in pre-order.
+**The walk.** `chain::walk` takes the strongest chains first, grown best-first from where you started: a thing's score is the product of its ties' strengths (1, 0.8, 0.6 or 0.4 by kind), times 0.75 per step after the first, each tie leaving a thing with *d* ties weighed min(1, √(4/d)). Four steps, 0.1 at least, five under each thing, 24 in all (12 on Android), eight more per "+" (`chain::Weights`). Rows come by a post-order count, so that a thing sits beside the first thing under it; the outline is the same tree in pre-order.
 
 **In the window.** Rust computes the chain on a worker thread (`askChain`, answered by `chainReady`); QML draws it: `ChainPage.qml`, one `Shape` for every edge, each thing a `ChainNode.qml` with its `ChainBadge.qml`, the outline a `ListView` of tree items (`ChainOutline.qml`). The Related panel under each card reads the same index once it is made.
 

@@ -57,7 +57,7 @@ Each budget then says what remains, in words: "Paid: Rent, Energy." "Still to co
 
 Every payment and every income expected over the next six weeks, or until the income after next, week by week: its day, who, the amount or "about", its budget, where it stands ("expected on…", "announced for…", "not final yet", "if it comes by…"), and what tells of it, together: the mail's invoice, the letter, the contract, the bank's line. **As a month** lays the same on a calendar beside the list, on a computer. The past year's unusual spending (a repair, a trip) is counted in the forecast as its own line, about so much a month.
 
-A long press on a phone, a right click or **⋯** on a computer: **Where it goes…**, **Split…** between two budgets, **Not the same payment** beside one Sioul thinks is probably the same, **The same as…**, and what tells of it, opened.
+A long press on a touch screen, a right click or **⋯** with a mouse: **Where it goes…**, **Split…** between two budgets, **Not the same payment** beside one Sioul thinks is probably the same, **The same as…**, and what tells of it, opened.
 
 ### A budget, open {#a-budget-open}
 
@@ -143,7 +143,7 @@ A debit that stops does not say so. Sioul holds your bank's movements against th
 - **what changed**: "Electricity took €71.40 on 5 September, where €62 was expected.";
 - **what may not be held**: an account that would not hold a payment before its next income, with what covers it ([Topped up in time](#topped-up-in-time)), said whatever the hour.
 
-**Reminders**, each once, when work starts: two working days before a payment you make yourself (a planned bill, a tax, a letter's bill, a recurring payment ticked **You pay it yourself**) or an invoice you send (**You send its invoice**), saying whether the account will hold it; a week after a payment that did not leave; five working days before a day the account would not hold a payment, a direct debit too. A direct debit gets no reminder otherwise. They come from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet). A phone does not tell them.
+**Reminders**, each once, when work starts: two working days before a payment you make yourself (a planned bill, a tax, a letter's bill, a recurring payment ticked **You pay it yourself**) or an invoice you send (**You send its invoice**), saying whether the account will hold it; a week after a payment that did not leave; five working days before a day the account would not hold a payment, a direct debit too. A direct debit gets no reminder otherwise. They come from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet). A phone does not tell them; a tablet does, as a computer.
 
 ## Contracts and subscriptions {#contracts-and-subscriptions}
 

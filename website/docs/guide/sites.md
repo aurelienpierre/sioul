@@ -31,7 +31,7 @@ These secure mailboxes exist because ordinary mail was not private enough for a 
 
 You log in once, on the site itself. Sioul keeps you logged in; it never stores the site's password itself.
 
-On a phone, the Sites page lists your sites and opens each in your browser: Sioul keeps no login there and gathers no notification. The sites you pinned on a computer come with the settings when you [share between your devices](sharing.md).
+On Android, the Sites page lists your sites and opens each in your browser: Sioul keeps no login there and gathers no notification. The sites you pinned on a computer come with the settings when you [share between your devices](sharing.md).
 
 ## The list
 
@@ -167,7 +167,7 @@ As of October 2026, from each app's own documentation.
     | Microphone, camera and screen sharing allowed site by site | ✓ | partly⁸ | partly⁸ | ✓ | ✓⁹ | ✓ |
     | Two accounts of one service, side by side | ✗¹⁰ | ✓ | ✓¹¹ | ✓ | ✓ | ✓ |
     | Browser extensions, ad blocking | ✗ | ✗ | ✓¹¹ | ✓ | ✓¹² | ✓ |
-    | On a phone | partly¹³ | ✗ | ✗ | ✗ | ✗ | partly¹⁴ |
+    | On Android | partly¹³ | ✗ | ✗ | ✗ | ✗ | partly¹⁴ |
 
     1. A do-not-disturb window each day, from one time to another; no gathering at set times.
     2. Work hours for each workspace, outside which its notifications are muted, and a Focus Mode; no gathering at set times.

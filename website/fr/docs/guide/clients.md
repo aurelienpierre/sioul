@@ -44,7 +44,7 @@ Avec le préfixe habituel, l’année, les numéros de facture repartent chaque 
 
 Le temps noté sur un appareil est sur les autres une minute plus tard, et les factures aussi : scellés de bout en bout, par un dossier que votre synchronisation transporte déjà (Nextcloud, Dropbox, Syncthing). Aucun serveur à nous entre les deux. Les projets voyagent avec votre dossier de notes, ou par ce même partage là où aucune synchronisation ne transporte ce dossier ; les tâches et les événements, par le serveur de votre agenda. Un seul appareil numérote les factures, pour qu’un numéro ne soit jamais donné deux fois. [Partager entre vos appareils](sharing.md)
 
-Sur un téléphone : Sioul pour Android sort avec chaque version depuis la 0.0.2, pour les téléphones 64 bits sous Android 9 ou plus récent ([Installer](install.md#on-android)). Il partage avec vos ordinateurs par le même dossier, quand l’application de synchronisation du téléphone le transporte ([Sur un téléphone](first-steps.md#on-a-phone)).
+Sur un téléphone ou une tablette : Sioul pour Android sort avec chaque version depuis la 0.0.2, pour les téléphones et tablettes 64 bits sous Android 9 ou plus récent ([Installer](install.md#on-android)). Il partage avec vos ordinateurs par le même dossier, quand son application de synchronisation le transporte ([Sur un téléphone ou une tablette](first-steps.md#on-a-phone)).
 
 ## Et puis le travail se repose {#and-then-it-rests}
 

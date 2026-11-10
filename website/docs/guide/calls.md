@@ -65,7 +65,7 @@ A person's calls of the last month, rang or declined, are on their sheet: Contac
 
 ## What Sioul never does {#what-sioul-never-does}
 
-It never answers a call, never records one, never listens, and sends no number anywhere: no server, no lookup. The list of calls your phone screened travels only to your own devices, sealed, while the part **Calls** of the sharing is on. Texts are held as other apps' messages are, by who wrote, when Sioul has Android's notification access ([Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone)); Android's own blocked numbers stop a number's calls and texts for every app.
+It never answers a call, never records one, never listens, and sends no number anywhere: no server, no lookup. The list of calls your phone screened travels only to your own devices, sealed, while the part **Calls** of the sharing is on. Texts are held as other apps' messages are, by who wrote, when Sioul has Android's notification access ([Other apps' notifications, on Android](notifications.md#other-apps-on-a-phone)); Android's own blocked numbers stop a number's calls and texts for every app.
 
 ## Why it works this way {#why-it-works-this-way}
 

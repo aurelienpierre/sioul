@@ -32,7 +32,7 @@ Each icon's name, with its key, shows when the pointer rests on it, when the key
 
 ### Keys
 
-Everything works from the keyboard: Tab to move, Enter to choose, Escape to go back. On a computer, the status line names the main keys when nothing else needs its room; never on a phone, held upright or sideways.
+Everything works from the keyboard: Tab to move, Enter to choose, Escape to go back. Wherever a keyboard is attached (a computer, a tablet with its keyboard), the status line names the main keys when nothing else needs its room; never without one, a phone held upright or sideways included.
 
 | Keys | What they do |
 |---|---|
@@ -46,16 +46,16 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 | ++ctrl+q++ | Quit Sioul (closing the window hides it in the system tray) |
 | ++ctrl+enter++ | Send, in the writing window |
 
-### On a phone
+### On a phone or a tablet {#on-a-phone}
 
-Sioul on a phone: [Install](install.md#on-android). On a phone, or in a window under 720 pixels wide:
+Sioul on Android: [Install](install.md#on-android). On a small screen (a phone, a tablet in split screen, any window under 720 pixels wide):
 
 - **The places** slide in from the left, behind ☰, with their names beside their icons; a bar on top names the page.
-- **The status line** is at the bottom of a phone's screen, each of its buttons an icon alone: a long press on one says what it is. When its sentence is cut short, a tap on it shows it whole.
+- **The status line** is at the bottom of the screen on Android, each of its buttons an icon alone: a long press on one says what it is. When its sentence is cut short, a tap on it shows it whole.
 - **One pane at a time**: a page shows its list, then what you open across the whole screen; **Back**, on the bar or Android's, comes back.
 - **Menus** open at a long press on a touch screen, where a mouse would right click.
 
-What differs on a phone:
+What differs on Android:
 
 - **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)) and new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)). A code you asked for shows on the Porch; the other reminders do not come there yet.
 - **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as their row in What reaches you says; the others go to your voicemail ([Calls](calls.md)).
@@ -64,7 +64,7 @@ What differs on a phone:
 - **Sharing**: Sioul is in Android's share sheet, and so is each of your addresses; mail links open in it ([Mail](mail.md#from-other-apps)).
 - **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
 - **Sites** open in your browser ([Sites](sites.md)); PDFs open in another app, with **Open with…**.
-- **Paper letters** are not read, and attachments are not checked by an antivirus: the programs Sioul uses for that on a computer do not exist on a phone.
+- **Paper letters** are not read, and attachments are not checked by an antivirus: the programs Sioul uses for that on a computer do not exist on Android.
 - **Your other devices** share with it through a folder your phone's sync app carries, or that Sioul keeps in step with your Nextcloud itself; a new phone joins them through Murena's sign-in, or another Nextcloud's, from the Porch's **Join your other devices** ([below](#join-your-other-devices)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
 - **Cards on the home screen**: Sioul's widgets (a long press on the home screen, **Widgets**). The full card, "Sioul", begins with today: the date, the weather now and, on the same row, each of the next four hours, the next morning, afternoon, evening and night, then the next seven days, at the place you chose for the weather (tap the weather in Sioul's status line to choose one). Under it, what the Porch has for you, one short line each: a dose due, never as "not taken" ("check before taking it" when another device may know), a code you just asked a site for, the reminders of dates, waits, payments and papers, a call Sioul declined, two events at once. Last, what now is for and, in work or admin time, the next step. Never a count. A tap on a dose, a code or a call opens the Porch; on a reminder, what it is about; on the step, **Now**. The mail and your events have cards of their own, "Sioul — Mail" and "Sioul — Agenda", in the same list of widgets, to place and order as you like: the latest messages on the Porch (who wrote, in bold while you have not read it, when, the subject, a line of the text; outside the hours chosen for mail, only when the Porch opens), and your coming events, day by day, each in its calendar's colour. With **Details on the home screen** turned off ([Settings](settings.md#display)), they name no sender, subject, event, code, dose, reminder, call or step; the date and the weather still show.
 
@@ -72,7 +72,7 @@ What differs on a phone:
 
 ## Join your other devices
 
-Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done, with, on a phone, what Android has not allowed Sioul yet and a button for each ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Your folder and sharing** offers the same at any time.
+Already using Sioul on another device? On a device that does not share yet, the Porch's first card, **Join your other devices**, brings its settings, accounts and hours here: **Sign in to Murena**, or **Sign in to another Nextcloud**, opens your Nextcloud's own sign-in page in your browser; Sioul then finds your sharing folder there and asks for your passphrase, once. **I use a sync app's folder** leads to the folder your sync app carries. Then the steps below are mostly done: what is left is each mail account's password, listed once the join is done, with, on Android, what it has not allowed Sioul yet and a button for each ([Sharing](sharing.md#a-new-device-through-your-nextclouds-sign-in)). **Leave as is** puts the card away; **Settings ▸ Your folder and sharing** offers the same at any time.
 
 ## Add your mail
 
@@ -97,7 +97,7 @@ Google refuses your account's password in other mail programs. Sioul knows Googl
 - **Use an app password**: make an app password for Sioul at myaccount.google.com/apppasswords (it needs 2-Step Verification; **Make an app password** opens the page in your browser), paste it under **App password (from Google)**, then **Connect and add**.
 - **Sign in with Google**: Google's own page opens in your browser. For mail, Google lets in only a Google key of your own, not Sioul's: a free project in Google Cloud, made once (**How to make your Google key** unfolds the steps), the one of your Google calendars if you made it. Google then says the app is not verified: it is yours; choose *Advanced*, then *Go to Sioul*, and leave Gmail's access ticked. Publish the project (*Audience → Publish app*): left in testing, Google ends the access every seven days.
 
-Once your key is kept on this device, **Sign in with Google** is the way chosen first, and asks for nothing else. On a phone, once Google says Sioul has the access, come back to Sioul: it finishes there. If Android closed Sioul meanwhile, nothing changed: sign in again.
+Once your key is kept on this device, **Sign in with Google** is the way chosen first, and asks for nothing else. On Android, once Google says Sioul has the access, come back to Sioul: it finishes there. If Android closed Sioul meanwhile, nothing changed: sign in again.
 
 ### Outlook.com, Hotmail and Microsoft 365 {#outlook-and-microsoft-365}
 
@@ -113,7 +113,7 @@ What each kind of address needs:
 - **A Microsoft 365 address Sioul does not recognise** (your organisation's mail first goes through another service): when **Find the server** finds nothing, choose **This address is at Microsoft**.
 - **Your own Microsoft application**: in a copy of Sioul without one of its own, the form says so and asks for the Application (client) ID of yours. Register one, once, in Microsoft Entra (**How to register your application** unfolds the steps); it needs no secret. In a copy that carries one, **Use an application of my own** is there if you prefer yours.
 
-On a phone, come back to Sioul as soon as Microsoft's page says it is done: Microsoft's answer lasts about a minute. If it came too late, Sioul says so; signing in again is quicker the second time.
+On Android, come back to Sioul as soon as Microsoft's page says it is done: Microsoft's answer lasts about a minute. If it came too late, Sioul says so; signing in again is quicker the second time.
 
 Sioul does not reach Microsoft's calendars and contacts: Microsoft offers them through its own interface, not CalDAV or CardDAV.
 

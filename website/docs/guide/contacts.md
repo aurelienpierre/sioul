@@ -30,7 +30,7 @@ When your cards have categories, a choice under the search field shows the conta
 
 ## Your people {#household}
 
-At the head of the page, **Your people** is a row of names: you first, then the people your admin is done for, a child, a parent you help, a partner, family, someone you help, and after a small gap a child's other parent. A name opens that person's page, in the place of a card; on a phone it takes the page. Right click, or a long press on a phone, gives **Open** and **Rename**. **Add a person** at the end of the row adds one.
+At the head of the page, **Your people** is a row of names: you first, then the people your admin is done for, a child, a parent you help, a partner, family, someone you help, and after a small gap a child's other parent. A name opens that person's page, in the place of a card; on a small screen it takes the page. Right click, or a long press on a touch screen, gives **Open** and **Rename**. **Add a person** at the end of the row adds one.
 
 When Sioul makes people from what your agendas and papers already named (a child's agenda, a paper's holder), the Porch says once who it made, and from what, in your admin hours; there is nothing to answer.
 
@@ -66,7 +66,7 @@ A contact opens on the right:
 - beside each postal address, **Directions**, which opens the way there as an event's place does ([Agenda](agenda.md#status-map-directions)): in your maps app when this system has one for `geo:` links, with the point the map placed it at when it has one, else on OpenStreetMap's page, or Apple's on a Mac;
 - what is **tied to it**: the tasks that name them, the events they are invited to, the notes that mention them, and what you tied to them by hand. A message shows there when you tied it to them, and so does each message they sent you that Sioul proved comes from them; the [mail search](mail.md#searching) finds the rest, what you sent them among it.
 
-**To change it**, **Edit**, then **Save**: it is changed in place. On a phone, **Back** leaves the form without saving. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.
+**To change it**, **Edit**, then **Save**: it is changed in place. On Android, **Back** leaves the form without saving. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.
 
 **To delete one**, **Delete**: it waits ten seconds, with **Undo**.
 
@@ -115,9 +115,9 @@ To be placed, an address has to be turned into a point on the map. Sioul does no
 
 The map images come from OpenStreetMap, fetched sparingly and kept. You can give another source in the settings.
 
-## On a phone {#on-a-phone}
+## On Android {#on-a-phone}
 
-On Android, Sioul syncs your address books itself and keeps its own copy of them, apart from the phone's contacts. With your leave, it reads the phone's contacts, and only for three things: to name a caller your address books do not know, to recognise who wrote in another app's notification, and to see which of your Always through people are starred for Android's do-not-disturb. It never writes a contact or a star: for someone who should be starred, it opens their contact in your Contacts app, or that app's own form, filled, for you to save. When the phone screens your calls ([Calls](calls.md)), a blocked person's calls are declined before the phone rings.
+On Android, Sioul syncs your address books itself and keeps its own copy of them, apart from the device's own contacts. With your leave, it reads them, and only for three things: to name a caller your address books do not know, to recognise who wrote in another app's notification, and to see which of your Always through people are starred for Android's do-not-disturb. It never writes a contact or a star: for someone who should be starred, it opens their contact in your Contacts app, or that app's own form, filled, for you to save. When the phone screens your calls ([Calls](calls.md)), a blocked person's calls are declined before the phone rings.
 
 ## The Contacts settings
 
@@ -130,7 +130,7 @@ The ⚙ at the top of the page:
 
 ## Where contacts live
 
-On your contacts server, as standard cards: your phone and other programs see them. Editing in Sioul changes only what you changed: a photo or another program's fields stay as they were. When a card was changed both here and on the server between two syncs, the server's version is kept, and yours is set aside among the earlier versions (**Settings ▸ Your folder and sharing ▸ Show earlier versions**, under **Your calendars and contacts**), on a phone too, to put back if you prefer it; the status line says so.
+On your contacts server, as standard cards: your phone and other programs see them. Editing in Sioul changes only what you changed: a photo or another program's fields stay as they were. When a card was changed both here and on the server between two syncs, the server's version is kept, and yours is set aside among the earlier versions (**Settings ▸ Your folder and sharing ▸ Show earlier versions**, under **Your calendars and contacts**), on Android too, to put back if you prefer it; the status line says so.
 
 Google contacts work the same way, with less kept: Sioul writes them as Google reads them, and says what would be lost before moving a contact there.
 
