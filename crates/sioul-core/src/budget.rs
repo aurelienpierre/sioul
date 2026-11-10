@@ -905,7 +905,11 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
         // The copies this one replaced in its folder, by the removals' log of its account.
         let replaced: Vec<(PathBuf, crate::card::ImapOrigin)> = match (crate::mailfind::Address::parse(&line.key), line.path.as_deref()) {
             (Some(crate::mailfind::Address::Digest { account, .. }), Some(path)) if !older_placed.is_empty() || !ignored_placed.is_empty() => match (folder_dir(path), crate::maildir::origin_of(path)) {
-                (Some(dir), Some(origin)) => crate::mailfind::renumbered_from(&account, origin).into_iter().map(|old| (dir.clone(), old)).collect(),
+                // Its folder by its server's name: the log's lines of that folder alone (R6).
+                (Some(dir), Some(origin)) => match crate::mailfind::folder_named(&account, &dir) {
+                    Some(folder) => crate::mailfind::renumbered_from(&account, &folder, origin).into_iter().map(|old| (dir.clone(), old)).collect(),
+                    None => Vec::new(),
+                },
                 _ => Vec::new(),
             },
             _ => Vec::new(),
@@ -2289,10 +2293,14 @@ mod tests {
         let recorded = Ledger { lines: vec![line], ..ledger.clone() };
         let state = |ledger: &Ledger, ignored: &BTreeSet<String>| mail_lines(ledger, &mail, ignored, crate::words::Words::builtin_ref())[0].state.clone();
         assert_eq!(state(&recorded, &BTreeSet::new()), MailState::Proposed, "nothing logged: another message as far as is known");
-        // The renumbering logged: the old copy replaced by this one.
+        // Another folder renumbered alike (R6): its line never counts here.
         let log = crate::config::state_dir().join("sync").join(format!("{account}.removed.log"));
         std::fs::create_dir_all(log.parent().unwrap()).unwrap();
-        std::fs::write(&log, "2026-11-01T10:00:00Z\tINBOX\tU7-1\tU9-40\n2026-11-01T10:00:00Z\tINBOX\tU7-2\t-\n").unwrap();
+        std::fs::write(crate::folders::saved_path(&account), "[[folder]]\nname = 'INBOX'\ndisplay = 'Inbox'\nrole = 'inbox'\nlocal = ''\n\n[[folder]]\nname = 'Archive'\ndisplay = 'Archive'\nrole = 'archive'\nlocal = '.Archive'\n").unwrap();
+        std::fs::write(&log, "2026-11-01T10:00:00Z\tArchive\tU7-1\tU9-40\n").unwrap();
+        assert_eq!(state(&recorded, &BTreeSet::new()), MailState::Proposed, "another folder's renumbering");
+        // This folder's renumbering logged: the old copy replaced by this one.
+        std::fs::write(&log, "2026-11-01T10:00:00Z\tArchive\tU7-1\tU9-40\n2026-11-01T10:00:00Z\tINBOX\tU7-1\tU9-40\n2026-11-01T10:00:00Z\tINBOX\tU7-2\t-\n").unwrap();
         assert_eq!(state(&recorded, &BTreeSet::new()), MailState::Recorded);
         assert_eq!(state(&ledger, &BTreeSet::from([older.clone()])), MailState::Ignored);
         // Another old numbering, or the same in another folder: not this message.
@@ -2304,6 +2312,7 @@ mod tests {
             assert_eq!(state(&Ledger { lines: vec![line], ..ledger.clone() }, &BTreeSet::new()), MailState::Proposed, "{key}");
         }
         let _ = std::fs::remove_file(&log);
+        let _ = std::fs::remove_file(crate::folders::saved_path(&account));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
