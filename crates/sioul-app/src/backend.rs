@@ -93,6 +93,8 @@ pub mod qobject {
         #[qproperty(QString, device_kind)]
         // Whether this system has calls and texts (devicekind.rs): a phone, a tablet with a SIM.
         #[qproperty(bool, telephony)]
+        // Whether a hardware keyboard is attached, followed live on Android (devicekind.rs): the keys' hint.
+        #[qproperty(bool, keyboard)]
         #[qproperty(bool, realtime)]
         // Put away on a phone (in the background): the pages' clocks and reloads stop until it is back.
         #[qproperty(bool, away)]
@@ -2960,6 +2962,7 @@ pub struct SioulRust {
     reading: QString,
     device_kind: QString,
     telephony: bool,
+    keyboard: bool,
     realtime: bool,
     away: bool,
     mode: QString,
@@ -4404,6 +4407,8 @@ impl qobject::Sioul {
         // Said again now that Android's side answers (a first sentence may have come before it).
         crate::devicekind::name_in_words();
         self.as_mut().set_telephony(crate::devicekind::telephony());
+        let keyboard = crate::devicekind::keyboard_now(&self.qt_thread());
+        self.as_mut().set_keyboard(keyboard);
         self.as_mut().set_mode(QString::from(&mode_json()));
         // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
         crate::outside::started(self.as_mut());

@@ -17,8 +17,10 @@
 //! system (`window.compact` in main.qml), nor the doses, which read the
 //! system's word in the devices' entries (`devices::kind`).
 
+use crate::backend::QtThread;
 use sioul_core::device_kind::DeviceKind;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// What Android said of this device, kept once it answered: a process asks
 /// once. Not kept while Java says nothing (its side not ready yet), so that
@@ -91,6 +93,64 @@ fn telephony_of(android: bool, said: &serde_json::Value) -> bool {
     android && said["telephony"] != false
 }
 
+/// Whether a hardware keyboard is attached, as last said (`keyboard_now`, `sioul_keyboard`).
+static KEYBOARD: AtomicBool = AtomicBool::new(true);
+
+/// The window, told when a keyboard comes or goes (Android's configuration changes).
+static WINDOW: Mutex<Option<QtThread>> = Mutex::new(None);
+
+/// Whether a hardware keyboard is attached now, for the status line's keys
+/// (KeysHint.qml), with the window to tell of each change: Android says it
+/// (its configuration's keyboard, not hidden: StepService.call "keyboard"),
+/// and then tells each change (`sioul_keyboard`); none said, none. A
+/// computer has one, but in the runner's pictures of a phone or a tablet.
+pub(crate) fn keyboard_now(qt: &QtThread) -> bool {
+    if let Ok(mut window) = WINDOW.lock() {
+        *window = Some(qt.clone());
+    }
+    let android = cfg!(target_os = "android");
+    let said = if android { crate::steps::java("keyboard", "{}") } else { serde_json::Value::Null };
+    let attached = keyboard_of(android, &said, pictured_without_keyboard());
+    KEYBOARD.store(attached, Ordering::SeqCst);
+    attached
+}
+
+/// `keyboard_now`, from the system, what Android said and whether the
+/// runner pictures a phone or a tablet.
+fn keyboard_of(android: bool, said: &serde_json::Value, pictured_without: bool) -> bool {
+    if android { said.as_bool().unwrap_or(false) } else { !pictured_without }
+}
+
+/// The runner's pictures of a phone or a tablet (SIOUL_GRAB with
+/// SIOUL_GRAB_PHONE, or the steps "phone" or "tablet"): no keyboard there.
+fn pictured_without_keyboard() -> bool {
+    std::env::var_os("SIOUL_GRAB").is_some_and(|folder| !folder.is_empty())
+        && (std::env::var_os("SIOUL_GRAB_PHONE").is_some() || matches!(std::env::var("SIOUL_GRAB_STEPS").as_deref(), Ok("phone" | "tablet")))
+}
+
+/// A keyboard came or went (Android's configuration changed): the window
+/// told when it differs from what it shows. Whether it differed.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn keyboard_changed(attached: bool) -> bool {
+    if KEYBOARD.swap(attached, Ordering::SeqCst) == attached {
+        return false;
+    }
+    let window = WINDOW.lock().ok().and_then(|w| w.clone());
+    if let Some(qt) = window {
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().set_keyboard(attached));
+    }
+    true
+}
+
+/// StepService.java's side (android/main.cpp): the configuration changed, a
+/// hardware keyboard attached or not then. On Android's main thread.
+#[cfg(target_os = "android")]
+// SAFETY: no other symbol of the program has this name.
+#[unsafe(no_mangle)]
+pub extern "C" fn sioul_keyboard(attached: bool) {
+    let _ = std::panic::catch_unwind(|| keyboard_changed(attached));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +165,22 @@ mod tests {
         assert!(telephony_of(true, &serde_json::Value::Null), "Java silent: as every Android was");
         assert!(!telephony_of(false, &serde_json::json!({ "telephony": true })), "a computer never");
         assert!(!telephony(), "this computer");
+    }
+
+    /// The keys are shown where a hardware keyboard is attached: Android
+    /// says whether one is (none when it says nothing), a computer has one
+    /// but in the runner's pictures of a phone or a tablet; a change is
+    /// told once, not again for the same.
+    #[test]
+    fn the_keys_follow_a_hardware_keyboard() {
+        assert!(keyboard_of(true, &serde_json::json!(true), false), "a tablet with its keyboard");
+        assert!(!keyboard_of(true, &serde_json::json!(false), false), "a phone, a tablet without one");
+        assert!(!keyboard_of(true, &serde_json::Value::Null, false), "Android silent: none, as before");
+        assert!(keyboard_of(false, &serde_json::Value::Null, false), "a computer");
+        assert!(!keyboard_of(false, &serde_json::Value::Null, true), "the runner's phone or tablet");
+        assert!(keyboard_changed(false), "a keyboard taken away");
+        assert!(!keyboard_changed(false), "the same again: nothing told");
+        assert!(keyboard_changed(true));
     }
 
     /// On a computer the kind is a computer unless you say otherwise, and

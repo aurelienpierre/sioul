@@ -230,7 +230,7 @@ Item {
             onChosen: line.sioul.undo()
         }
         // The keys, when nothing else needs the room; cut short before the
-        // buttons beside them are. On a computer only (KeysHint.qml).
+        // buttons beside them are. Where a keyboard is attached (KeysHint.qml).
         KeysHint {
             sioul: line.sioul
             theme: line.theme

@@ -10,11 +10,13 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.FileObserver;
@@ -168,6 +170,10 @@ public final class StepService extends Service
             case "device":
                 // What this device is (devicekind.rs): its smallest width and whether it has telephony.
                 return device(context);
+            case "keyboard":
+                // A hardware keyboard attached now; Rust told of each change from here on (devicekind.rs).
+                watchKeyboard(context);
+                return keyboard(context.getResources().getConfiguration()) ? "true" : "false";
             case "sms-app":
                 // The phone's SMS app, for Settings ▸ This phone ▸ On your computers.
                 return JSONObject.quote(PhoneMessages.smsApp(context));
@@ -207,6 +213,51 @@ public final class StepService extends Service
         said.put("smallest_dp", context.getResources().getConfiguration().smallestScreenWidthDp);
         said.put("telephony", context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY));
         return said.toString();
+    }
+
+    /** Whether the configuration's change of keyboards is followed already, in this process. */
+    private static boolean keyboardWatched;
+
+    /** Rust's side: a hardware keyboard attached or taken away (android/main.cpp, devicekind.rs). */
+    static native void nativeKeyboard(boolean attached);
+
+    /**
+     * Whether a hardware keyboard is attached and usable, as the
+     * configuration says it: a keyboard with keys, not hidden (a keyboard
+     * cover folded away, a Bluetooth keyboard gone).
+     */
+    static boolean keyboard(Configuration configuration)
+    {
+        return configuration.keyboard != Configuration.KEYBOARD_NOKEYS && configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO;
+    }
+
+    /**
+     * Each configuration change (the window keeps running through them: the
+     * manifest's configChanges) told to Rust with whether a hardware keyboard
+     * is there then, so that the status line shows the keys while one is
+     * (KeysHint.qml). Once per process, from the window's start.
+     */
+    static synchronized void watchKeyboard(Context context)
+    {
+        if (keyboardWatched)
+            return;
+        keyboardWatched = true;
+        context.getApplicationContext().registerComponentCallbacks(new ComponentCallbacks() {
+            @Override
+            public void onConfigurationChanged(Configuration changed)
+            {
+                try {
+                    nativeKeyboard(keyboard(changed));
+                } catch (UnsatisfiedLinkError e) {
+                    // Sioul's library not in this process: nobody to tell.
+                }
+            }
+
+            @Override
+            public void onLowMemory()
+            {
+            }
+        });
     }
 
     /**

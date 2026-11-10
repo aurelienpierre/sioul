@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The keys in the status line (KeysHint.qml): shown on a computer when the
-// line has room, never on a phone, held upright or sideways, however wide
-// (16 October 2026: "Ctrl+1 to Ctrl+0 places…" on a
-// phone held sideways, 2400 pixels wide). Run by tools/qml-test.sh.
+// The keys in the status line (KeysHint.qml): shown when the line has room
+// and a hardware keyboard is attached (`sioul.keyboard`): on a computer, on
+// a tablet with its keyboard, touch screen or not; never on a phone or a
+// tablet without one, held upright or sideways, however wide (16 October
+// 2026: "Ctrl+1 to Ctrl+0 places…" on a phone held sideways, 2400 pixels
+// wide). Run by tools/qml-test.sh.
 
 import QtQuick
 import QtTest
@@ -16,21 +18,38 @@ Item {
     width: 2400
     height: 200
 
-    QtObject {
-        id: mock
+    component Sioul: QtObject {
+        // Whether a hardware keyboard is attached (devicekind.rs).
+        property bool keyboard: true
 
         function text(key) {
             return key === "ui-keys" ? "Ctrl+1 to Ctrl+0 places · Ctrl+N new · Ctrl+Z undo · F5 refresh" : key
         }
     }
 
+    Sioul {
+        id: computerSioul
+    }
+
+    Sioul {
+        id: phoneSioul
+
+        keyboard: false
+    }
+
+    Sioul {
+        id: tabletSioul
+
+        keyboard: true
+    }
+
     Theme {
         id: computer
     }
 
-    // A phone (Android), or the runner's phone size: main.qml says it by the platform.
+    // A touch screen: a phone's, a tablet's (Android).
     Theme {
-        id: phone
+        id: touchScreen
 
         touch: true
     }
@@ -39,7 +58,7 @@ Item {
         id: onComputer
 
         width: root.width
-        sioul: mock
+        sioul: computerSioul
         theme: computer
     }
 
@@ -48,8 +67,16 @@ Item {
 
         // Held sideways: as wide as a computer's line.
         width: root.width
-        sioul: mock
-        theme: phone
+        sioul: phoneSioul
+        theme: touchScreen
+    }
+
+    KeysHint {
+        id: onTablet
+
+        width: root.width
+        sioul: tabletSioul
+        theme: touchScreen
     }
 
     TestCase {
@@ -71,6 +98,17 @@ Item {
             verify(!onPhone.visible)
             onPhone.room = false
             verify(!onPhone.visible)
+        }
+
+        // A tablet with its keyboard shows them, touch screen and all; taken
+        // away (the keyboard folded back, a Bluetooth one gone), they go.
+        function test_a_tablet_shows_them_while_its_keyboard_is_attached() {
+            onTablet.room = true
+            verify(onTablet.visible, "a keyboard attached")
+            tabletSioul.keyboard = false
+            verify(!onTablet.visible, "taken away")
+            tabletSioul.keyboard = true
+            verify(onTablet.visible, "back")
         }
     }
 }

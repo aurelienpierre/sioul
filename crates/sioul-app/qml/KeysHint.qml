@@ -2,10 +2,11 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The keys, in the status line (StatusLine.qml), when nothing else needs the
-// room: on a computer only. A phone has no keyboard to name, held upright or
-// sideways: decided by the platform (`theme.touch`, a phone or the runner's
-// phone size), never by the width, which a phone held sideways passes (the
-// case of a phone seen on 16 October 2026).
+// room: wherever a hardware keyboard is attached (`sioul.keyboard`): a
+// computer, a tablet with its keyboard, Android saying so and each change
+// followed (devicekind.rs). Never decided by the width, which a phone held
+// sideways passes (the case of a phone seen on 16 October 2026), nor by
+// touch, which a tablet with a keyboard has too.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -18,7 +19,7 @@ Label {
     // What the status line leaves for it: nothing else said, wide enough.
     property bool room: true
 
-    visible: hint.room && hint.theme.touch !== true
+    visible: hint.room && hint.sioul.keyboard === true
     text: hint.sioul.text("ui-keys")
     elide: Text.ElideRight
     color: hint.theme.muted
