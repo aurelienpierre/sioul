@@ -1906,19 +1906,10 @@ impl Puller<'_> {
                 done => done,
             }
         };
-        for (name, item) in root.items.iter().filter(|(_, item)| !item.dir) {
-            match kind_of(name) {
-                // A round past its time of a device that no longer counts,
-                // taken out here (`Departed`): never fetched again. Sioul
-                // keeping the folder itself takes it out there (`push`).
-                Some((Kind::Round, id)) if id != self.own && (self.departed.past_round(name) || self.departed.removed_as_known(name, item, &self.state.files)) => self.away(name, item),
-                Some((Kind::Seen, id)) if id != self.own && self.departed.removed_as_known(name, item, &self.state.files) => self.away(name, item),
-                Some((Kind::Round, id)) if id != self.own => defer(self.round(name, item), &mut failed)?,
-                Some((Kind::Seen, id)) if id != self.own => defer(self.small(name, item), &mut failed)?,
-                Some(_) if self.mirror() => defer(self.restore(name, item), &mut failed)?,
-                _ => {}
-            }
-        }
+        // The devices' entries first: a few hundred bytes each, and what a
+        // phone reads to know a computer in use. A record slow to come (a
+        // round grown by a megabyte, on a weak line) used up the pull's
+        // thirty seconds before them (review of 3273f2d, R1).
         if let Some(devices) = root.items.get("devices").filter(|item| item.dir)
             && !self.unchanged("devices/", &devices.etag)
         {
@@ -1943,7 +1934,20 @@ impl Puller<'_> {
             if devices_failed.is_none() {
                 self.looked("devices/", &listing.etag);
             }
-            failed = failed.or(devices_failed);
+            failed = devices_failed;
+        }
+        for (name, item) in root.items.iter().filter(|(_, item)| !item.dir) {
+            match kind_of(name) {
+                // A round past its time of a device that no longer counts,
+                // taken out here (`Departed`): never fetched again. Sioul
+                // keeping the folder itself takes it out there (`push`).
+                Some((Kind::Round, id)) if id != self.own && (self.departed.past_round(name) || self.departed.removed_as_known(name, item, &self.state.files)) => self.away(name, item),
+                Some((Kind::Seen, id)) if id != self.own && self.departed.removed_as_known(name, item, &self.state.files) => self.away(name, item),
+                Some((Kind::Round, id)) if id != self.own => defer(self.round(name, item), &mut failed)?,
+                Some((Kind::Seen, id)) if id != self.own => defer(self.small(name, item), &mut failed)?,
+                Some(_) if self.mirror() => defer(self.restore(name, item), &mut failed)?,
+                _ => {}
+            }
         }
         if let Some(leases) = root.items.get("leases").filter(|item| item.dir)
             && !self.unchanged("leases/", &leases.etag)
@@ -5078,6 +5082,35 @@ mod tests {
         let desk = crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
         assert!(crate::devices::others_in_use(&[desk], &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
         // Unlocked: the records come at the next pull.
+        w.fake.clear_faults();
+        assert!(w.pull(DUE + 130).problem.is_none());
+        assert!(w.cache().join(&round).exists());
+    }
+
+    /// A record slow to come, past the pull's whole time: a phone on a weak
+    /// line, the desk's round grown by a megabyte (`LIMITS`: a record may
+    /// take sixty seconds, a pull thirty). The devices' entries come first,
+    /// so that the phone sees the desk in use; its records at a later pull.
+    /// Until 10 November 2026 the record used up the pull's time and the
+    /// entries' listing was refused, out of time (review of 3273f2d, R1).
+    #[test]
+    fn a_slow_record_never_holds_back_the_devices_entries() {
+        let w = World::new("slow-round");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.desk.press(true, DUE + 30);
+        w.desk.exchange(&w.server, DUE + 60);
+        let round = w.desk_round();
+        let entry = format!("devices/{}.device", w.desk.id);
+        // The real limits' proportions, shorter: a record may take longer than the whole pull.
+        let limits = Limits { wait: Duration::from_secs(3), large: Duration::from_secs(4), pull: Duration::from_secs(1), ..TEST };
+        assert!(LIMITS.large > LIMITS.pull && limits.large > limits.pull);
+        let slow = round.clone();
+        w.fake.fault(move |request| (request.method == "GET" && request.path.ends_with(&slow)).then_some(Fault::Late(Duration::from_millis(1500))));
+        let pulled = pull_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 70, limits);
+        assert!(w.cache().join(&entry).exists(), "the entry came before the record: {pulled:?} {:?}", w.fake.seen());
+        attach(&w.phone_folder, &w.phone.memory);
+        let desk = crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
+        assert!(crate::devices::others_in_use(&[desk], &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
         w.fake.clear_faults();
         assert!(w.pull(DUE + 130).problem.is_none());
         assert!(w.cache().join(&round).exists());
