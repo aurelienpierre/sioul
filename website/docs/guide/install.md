@@ -48,6 +48,8 @@ Measured on 7 and 8 November 2026, in daily use, with the apps people leave open
 
 Memory is summed over each app's processes; pages they share are counted in each, which favours Sioul's single process a little.
 
+What took Sioul's time at rest was work made again for nothing: the Porch made anew each time any mail address checked in, every five minutes each, even with nothing new; every event of every calendar read and parsed again several times a minute; the shared files looked at every two seconds; a site left in view drawn sixty times a second while the window was hidden in the tray. Since 10 November 2026 each is done when something changed, and nothing is made for a hidden window; the figures above will be measured again on the same laptop.
+
 **On a phone** (Android 16, eight efficiency cores, on 5G), 16 hours 20 minutes off its charger, 14 hours 22 minutes of them with the screen off, Android's own estimate (`dumpsys batterystats`):
 
 | App | Battery | Mobile radio kept active |
@@ -58,9 +60,9 @@ Memory is summed over each app's processes; pages they share are counted in each
 | Signal | 4 mAh | 6 minutes |
 | The screen | 234 mAh | |
 
-Sioul used the most of the apps on that phone, since it does the work of several, and stayed under 1 % of the battery for the day. Android's estimate leaves the mobile radio out, and Sioul kept it awake longest: its background step woke the phone about every five minutes. Fewer, larger bursts are the next thing to improve.
+Sioul used the most of the apps on that phone, since it does the work of several, and stayed under 1 % of the battery for the day. Android's estimate leaves the mobile radio out, and Sioul kept it awake longest: its background step woke the phone about every five minutes. Since 10 November 2026, while nothing happens, no other device of yours is in use and no medicine dose comes within the week, its looks go to ten minutes, then fifteen, each with its mail: four wakes an hour instead of twelve, by the code's count, to be measured again on the phone.
 
-The measure can be made again on any computer: `tools/measure-load.py` and `tools/measure-memory.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
+The measure can be made again on any computer: `tools/measure-load.py`, `tools/measure-memory.py` and `tools/measure-idle.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
 ## Or build it from its sources
 

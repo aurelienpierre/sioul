@@ -48,6 +48,8 @@ Mesuré les 7 et 8 novembre 2026, en usage quotidien, avec les applications qu�
 
 La mémoire est additionnée sur les processus de chaque application ; les pages qu’ils partagent sont comptées dans chacun, ce qui avantage un peu le processus unique de Sioul.
 
+Ce qui prenait le temps de Sioul au repos, c’était du travail refait pour rien : le Porche refait chaque fois qu’une adresse de courriel faisait le point, toutes les cinq minutes chacune, même sans rien de nouveau ; chaque événement de chaque agenda relu et analysé plusieurs fois par minute ; les fichiers partagés regardés toutes les deux secondes ; un site laissé à l’écran dessiné soixante fois par seconde pendant que la fenêtre était cachée dans la zone de notification. Depuis le 10 novembre 2026, chacun se fait quand quelque chose a changé, et rien n’est fait pour une fenêtre cachée ; les chiffres ci-dessus seront mesurés à nouveau sur le même ordinateur.
+
 **Sur un téléphone** (Android 16, huit cœurs basse consommation, en 5G), 16 heures 20 hors de son chargeur, dont 14 heures 22 écran éteint, d’après l’estimation d’Android lui-même (`dumpsys batterystats`) :
 
 | Application | Batterie | Radio mobile tenue active |
@@ -58,9 +60,9 @@ La mémoire est additionnée sur les processus de chaque application ; les pages
 | Signal | 4 mAh | 6 minutes |
 | L’écran | 234 mAh | |
 
-Sioul a consommé le plus des applications de ce téléphone, puisqu’il fait le travail de plusieurs, et il est resté sous 1 % de la batterie pour la journée. L’estimation d’Android laisse de côté la radio mobile, et c’est Sioul qui l’a tenue éveillée le plus longtemps : son étape d’arrière-plan réveillait le téléphone environ toutes les cinq minutes. Des envois moins nombreux et plus groupés sont la prochaine chose à améliorer.
+Sioul a consommé le plus des applications de ce téléphone, puisqu’il fait le travail de plusieurs, et il est resté sous 1 % de la batterie pour la journée. L’estimation d’Android laisse de côté la radio mobile, et c’est Sioul qui l’a tenue éveillée le plus longtemps : son étape d’arrière-plan réveillait le téléphone environ toutes les cinq minutes. Depuis le 10 novembre 2026, tant que rien ne se passe, qu’aucun autre de vos appareils ne sert et qu’aucune prise de médicament ne vient dans la semaine, ses coups d’œil passent à dix minutes, puis quinze, chacun avec son courriel : quatre réveils par heure au lieu de douze, d’après le compte du code, à mesurer à nouveau sur le téléphone.
 
-La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py` et `tools/measure-memory.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
+La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py`, `tools/measure-memory.py` et `tools/measure-idle.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
 ## Ou le construire à partir de ses sources {#or-build-it-from-its-sources}
 
