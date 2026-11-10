@@ -87,11 +87,16 @@ Item {
     property bool showDone: false
     property string query: ""
     property string projectFilter: ""
-    // The list's selection for batch edits, by UID (BatchBar.qml): Ctrl or
-    // Shift with a click, a long press on a touch screen.
+    // The list's selection for batch edits, by UID (BatchBar.qml): its
+    // Select button, then a click or a tap on each row; Ctrl or Shift with a
+    // click, a long press on a touch screen, pick too.
     property var picked: ({})
     property string pickAnchor: ""
     readonly property var pickedList: Object.keys(page.picked).map(k => page.picked[k])
+    // Select is on; choosing, either that or something picked another way:
+    // each row has its box, a click picks, the bar shows.
+    property bool selecting: false
+    readonly property bool choosing: page.selecting || page.pickedList.length > 0
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
     // What the list keeps beside an open card: `listLeast` pixels, where its
@@ -168,6 +173,13 @@ Item {
 
     function apply() {
         page.sioul.showTasks(page.by, page.showDone, page.query, page.projectFilter)
+    }
+
+    // The selection emptied and Select off: after an act, or asked.
+    function stopChoosing() {
+        page.picked = ({})
+        page.pickAnchor = ""
+        page.selecting = false
     }
 
     // A row of the list picked or let go; with `range`, every row from the last one picked.
@@ -1012,23 +1024,43 @@ Item {
                         ColumnLayout {
                             spacing: 8
 
-                            // On a phone the search has a line of its own, the order and Done too under
-                            // it: one row was wider than the screen (468 points).
+                            // On a phone the search and Select have a line of their own, the order and
+                            // Done under it: one row was wider than the screen (468 points).
                             GridLayout {
                                 objectName: "taskSearchRow"
                                 Layout.fillWidth: true
-                                columns: page.narrow ? 2 : 3
+                                columns: page.narrow ? 2 : 4
                                 columnSpacing: 8
                                 rowSpacing: 4
 
                                 TextField {
+                                    Layout.row: 0
+                                    Layout.column: 0
                                     Layout.fillWidth: true
-                                    Layout.columnSpan: page.narrow ? 2 : 1
                                     Layout.preferredWidth: 0
                                     placeholderText: page.sioul.text("task-search")
                                     onTextEdited: {
                                         page.query = text
                                         page.apply()
+                                    }
+                                }
+                                // Choosing tasks to change together: a box on each row, the bar at once.
+                                Button {
+                                    objectName: "tasksSelect"
+                                    Layout.row: 0
+                                    Layout.column: page.narrow ? 1 : 3
+                                    checkable: true
+                                    checked: page.choosing
+                                    text: page.sioul.text("batch-select")
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 600
+                                    ToolTip.text: page.sioul.text("batch-select-tip")
+                                    onToggled: {
+                                        if (checked)
+                                            page.selecting = true
+                                        else
+                                            page.stopChoosing()
+                                        checked = Qt.binding(() => page.choosing)
                                     }
                                 }
                                 // By project, by list, or only the tasks with a date asked, the nearest first.
@@ -1037,6 +1069,8 @@ Item {
 
                                     readonly property var ways: ["project", "list", "deadline"]
 
+                                    Layout.row: page.narrow ? 1 : 0
+                                    Layout.column: page.narrow ? 0 : 1
                                     model: ways.map(w => page.sioul.text("task-by-" + w))
                                     currentIndex: Math.max(0, ways.indexOf(page.by))
                                     onActivated: index => {
@@ -1045,6 +1079,8 @@ Item {
                                     }
                                 }
                                 CheckBox {
+                                    Layout.row: page.narrow ? 1 : 0
+                                    Layout.column: page.narrow ? 1 : 2
                                     // On a phone its column takes the room left, so the search above spans the width.
                                     Layout.fillWidth: page.narrow
                                     text: page.sioul.text("task-show-done")
@@ -1055,21 +1091,20 @@ Item {
                                     }
                                 }
                             }
-                            // Several tasks picked: what changes for all of them, in one act with Undo.
+                            // Select on, or several tasks picked: what changes for all of them, in one act with Undo.
                             BatchBar {
                                 objectName: "tasksBatch"
                                 Layout.fillWidth: true
                                 sioul: page.sioul
                                 theme: page.theme
                                 things: page.pickedList
+                                selecting: page.choosing
+                                offers: "tasks"
                                 projects: page.shown ? page.shown.projects.map(p => ({ id: p.id, label: p.title })) : []
                                 kinds: page.shown ? page.shown.kinds : []
                                 categories: page.shown ? page.shown.categories : []
                                 lists: page.shown ? page.shown.lists.filter(l => l.tasks).map(l => ({ id: l.id, label: l.name, tasks: true, events: false })) : []
-                                onCleared: {
-                                    page.picked = ({})
-                                    page.pickAnchor = ""
-                                }
+                                onCleared: page.stopChoosing()
                             }
                             ListView {
                                 id: groups
@@ -1111,9 +1146,10 @@ Item {
                                             selected: page.opened === modelData.uid
                                             pickable: true
                                             picked: page.picked[modelData.uid] !== undefined
+                                            // Choosing: a click or a tap picks it, never opens it.
+                                            selecting: page.choosing
                                             onPick: (uid, range) => page.pick(uid, range)
-                                            // On a touch screen, once something is picked, a tap picks too.
-                                            onOpen: uid => page.theme.touch === true && page.pickedList.length > 0 ? page.pick(uid, false) : page.open(uid)
+                                            onOpen: uid => page.open(uid)
                                             onMenu: task => taskMenu.now().show(task)
                                             onTick: page.tick(modelData)
                                             onFold: (uid, open) => page.sioul.foldTask(uid, open)

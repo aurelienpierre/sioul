@@ -2,11 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Batch edits in the full lists (8 November 2026): above the task list and
-// the Search tab while several tasks or events are selected (Ctrl or Shift
-// with a click, a long press on a touch screen). How many, then what changes
-// for all of them in one act, with Undo on the status line: project, type,
-// category, day, status, list, Done, Delete. What a batch leaves out, a
-// meeting with others above all, is said under it, each with why (`batch.rs`).
+// the Search tab while their Select button is on (10 November 2026: nothing
+// showed that a selection existed) or tasks or events are selected (Ctrl or
+// Shift with a click, a long press on a touch screen). How many, then what
+// changes for all of them in one act, with Undo on the status line: project,
+// type, category, day, status, list, Done, Delete; each waits for a first
+// row ticked. What a batch leaves out, a meeting with others above all, is
+// said under it, each with why (`batch.rs`).
 
 pragma ComponentBehavior: Bound
 
@@ -29,15 +31,21 @@ ColumnLayout {
     property var lists: []
     // What the last act left out: [{title, why}].
     property var leftOut: []
+    // Its list's Select is on: the bar shows, nothing ticked yet.
+    property bool selecting: false
+    // What its list holds, for the acts offered before a first row is ticked:
+    // "tasks", "events" or "both".
+    property string offers: "both"
 
-    readonly property bool hasTasks: bar.things.some(t => t.thing === "task")
-    readonly property bool hasEvents: bar.things.some(t => t.thing === "event")
+    readonly property bool any: bar.things.length > 0
+    readonly property bool hasTasks: bar.any ? bar.things.some(t => t.thing === "task") : bar.offers !== "events"
+    readonly property bool hasEvents: bar.any ? bar.things.some(t => t.thing === "event") : bar.offers !== "tasks"
 
     // The selection is to be emptied: after an act, or asked.
     signal cleared
 
     spacing: 4
-    visible: bar.things.length > 0 || bar.leftOut.length > 0
+    visible: bar.any || bar.selecting || bar.leftOut.length > 0
 
     // One act on everything selected; what it left out kept to be said.
     function change(asked) {
@@ -57,7 +65,7 @@ ColumnLayout {
     }
 
     Flow {
-        visible: bar.things.length > 0
+        visible: bar.any || bar.selecting
         Layout.fillWidth: true
         spacing: 6
 
@@ -65,13 +73,14 @@ ColumnLayout {
             objectName: "batchCount"
             height: clearButton.height
             verticalAlignment: Text.AlignVCenter
-            text: bar.counted("batch-selected", bar.things.length)
+            text: bar.any ? bar.counted("batch-selected", bar.things.length) : bar.sioul.text("batch-pick")
             textFormat: Text.PlainText
-            color: bar.theme.text
-            font.weight: Font.DemiBold
+            color: bar.any ? bar.theme.text : bar.theme.muted
+            font.weight: bar.any ? Font.DemiBold : Font.Normal
         }
         Button {
             objectName: "batchProject"
+            enabled: bar.any
             text: bar.sioul.text("batch-project") + " ▾"
             onClicked: projectMenu.popup()
 
@@ -96,6 +105,7 @@ ColumnLayout {
         }
         Button {
             objectName: "batchKind"
+            enabled: bar.any
             visible: bar.hasTasks
             text: bar.sioul.text("batch-kind") + " ▾"
             onClicked: kindMenu.popup()
@@ -121,6 +131,7 @@ ColumnLayout {
         }
         Button {
             objectName: "batchCategory"
+            enabled: bar.any
             text: bar.sioul.text("batch-category") + " ▾"
             onClicked: categoryMenu.popup()
 
@@ -145,6 +156,7 @@ ColumnLayout {
         }
         Button {
             objectName: "batchDate"
+            enabled: bar.any
             text: bar.sioul.text("batch-date")
             onClicked: datePopup.open()
 
@@ -194,6 +206,7 @@ ColumnLayout {
         }
         Button {
             objectName: "batchStatus"
+            enabled: bar.any
             text: bar.sioul.text("batch-status") + " ▾"
             onClicked: statusMenu.popup()
 
@@ -228,6 +241,7 @@ ColumnLayout {
         }
         Button {
             objectName: "batchList"
+            enabled: bar.any
             visible: bar.lists.length > 0
             text: bar.sioul.text("batch-list") + " ▾"
             onClicked: listMenu.popup()
@@ -250,6 +264,7 @@ ColumnLayout {
         }
         Button {
             objectName: "batchDone"
+            enabled: bar.any
             visible: bar.hasTasks
             text: bar.sioul.text("batch-done")
             icon.name: "checkbox"
@@ -257,6 +272,7 @@ ColumnLayout {
         }
         Button {
             objectName: "batchDelete"
+            enabled: bar.any
             text: bar.sioul.text("batch-delete")
             icon.name: "edit-delete"
             onClicked: bar.change({ delete: true })

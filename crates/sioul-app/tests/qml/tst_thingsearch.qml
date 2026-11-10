@@ -202,6 +202,51 @@ Item {
             compare(root.all(bar, c => c.objectName === "batchLeft")[0].text, "“Team meeting”: a meeting")
         }
 
+        // Select (10 November 2026): the bar at once, its acts waiting for a first row ticked;
+        // a box on each row; a plain click picks and never opens; Select again, or the bar's ×,
+        // lets everything go. Something picked with Ctrl shows the boxes and turns Select on.
+        function test_select_shows_the_boxes_and_the_bar() {
+            const search = make("tasks")
+            const list = root.named(search, "thingsFound")
+            tryVerify(() => root.all(list.contentItem, c => c.objectName === "thingRow").length === 4)
+            const select = root.named(search, "thingsSelect")
+            const bar = root.named(search, "thingsBatch")
+            verify(select.visible && !select.checked && !bar.visible)
+            compare(root.all(list.contentItem, c => c.objectName === "thingPick").length, 0, "no box before Select")
+            mouseClick(select)
+            verify(select.checked && bar.visible, "Select: the bar at once")
+
+            compare(root.named(bar, "batchCount").text, "batch-pick")
+            verify(!root.named(bar, "batchDone").enabled && !root.named(bar, "batchDelete").enabled, "acts wait for a row")
+            verify(root.named(bar, "batchKind").visible && root.named(bar, "batchDone").visible, "a task's acts shown for a list of tasks")
+            tryVerify(() => root.all(list.contentItem, c => c.objectName === "thingPick" && c.visible).length === 4, 1000, "a box on each row")
+            let rows = root.all(list.contentItem, c => c.objectName === "thingRow")
+            mouseClick(rows[1])
+            compare(mock.opened, null, "picked, not opened")
+            compare(search.pickedList.map(t => t.uid), ["caf"])
+            const boxes = root.all(list.contentItem, c => c.objectName === "thingPick")
+            mouseClick(boxes[3])
+            compare(search.pickedList.map(t => t.uid).sort(), ["book", "caf"])
+            verify(boxes[1].checked && boxes[3].checked && !boxes[0].checked, "ticked as picked")
+            verify(root.named(bar, "batchDone").enabled)
+            compare(root.named(bar, "batchCount").text, "batch-selected:2")
+            mouseClick(boxes[1])
+            compare(search.pickedList.map(t => t.uid), ["book"], "ticked again: let go")
+            // Past the double-click time since the box's click just before.
+            wait(600)
+            mouseClick(select)
+            compare([select.checked, bar.visible, search.pickedList.length, search.selecting], [false, false, 0, false], "Select again: all let go")
+            tryVerify(() => root.all(list.contentItem, c => c.objectName === "thingPick" && c.visible).length === 0)
+            rows = root.all(list.contentItem, c => c.objectName === "thingRow")
+            mouseClick(rows[0], 10, 10, Qt.LeftButton, Qt.ControlModifier)
+            verify(select.checked && bar.visible, "picked with Ctrl: Select on")
+            mouseClick(root.named(bar, "batchClear"))
+            verify(!select.checked && !bar.visible && search.pickedList.length === 0, "the bar's ×: all let go")
+            mouseClick(select)
+            bar.change({ status: "completed" })
+            verify(!select.checked && search.pickedList.length === 0, "an act ends the choosing")
+        }
+
         // On a phone, every filter within the screen's width.
         function test_filters_within_a_phone() {
             const search = make("both")

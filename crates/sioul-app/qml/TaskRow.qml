@@ -33,10 +33,14 @@ ItemDelegate {
     property bool folds: false
     // A step in its task's form (Edit): a handle drawn, by which it is dragged into its place.
     property bool handle: false
-    // The full list's selection, for batch edits (8 November 2026): Ctrl or
-    // Shift with a click, a long press on a touch screen, pick it (`pick`).
+    // The full list's selection, for batch edits (8 November 2026): its
+    // Select button, then a click or a tap; Ctrl or Shift with a click, a
+    // long press on a touch screen, pick it too (`pick`).
     property bool pickable: false
     property bool picked: false
+    // Its list is choosing what to change (its Select, or something picked):
+    // a box to tick before it, and a click or a tap picks it.
+    property bool selecting: false
     // Pressed with Ctrl ("one") or Shift ("range"): the click that follows picks.
     property string modified: ""
 
@@ -67,7 +71,10 @@ ItemDelegate {
             row.modified = ""
             return
         }
-        row.open(row.task.uid)
+        if (row.selecting && row.pickable)
+            row.pick(row.task.uid, false)
+        else
+            row.open(row.task.uid)
     }
     Keys.onReturnPressed: row.open(row.task.uid)
     Accessible.name: row.task.title
@@ -110,10 +117,28 @@ ItemDelegate {
     contentItem: RowLayout {
         spacing: 10
 
-        // Ticked, it is done; a step started shows half full.
+        // Choosing what to change: its box, ticked while it is picked. Made only then.
+        Loader {
+            active: row.selecting && row.pickable
+            visible: active
+            Layout.alignment: Qt.AlignTop
+            sourceComponent: CheckBox {
+                objectName: "taskRowPick"
+                // Its tick follows the selection alone: a click asks, the list picks.
+                checkable: false
+                checked: row.picked
+                padding: 0
+                Accessible.name: row.task.title
+                onClicked: row.pick(row.task.uid, false)
+            }
+        }
+
+        // Ticked, it is done; a step started shows half full. While choosing
+        // what to change, the box above stands in its place: Done is in the bar.
         AbstractButton {
             id: circle
 
+            visible: !(row.selecting && row.pickable)
             Layout.alignment: Qt.AlignTop
             Layout.topMargin: 2
             implicitWidth: 20

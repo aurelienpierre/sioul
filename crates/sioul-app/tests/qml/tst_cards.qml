@@ -1346,6 +1346,37 @@ Item {
             compare(opened.join(","), "form")
         }
 
+        // Select on in the full list (10 November 2026): a box before the row in place of
+        // its circle, a plain click or a tap on the row or on the box picks it, never opens
+        // it; the box follows the selection; a row that picks nothing has no box.
+        function test_a_task_row_is_picked_by_its_box_while_selecting() {
+            const task = { uid: "form", title: "Fill the form", status: "needs-action", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: false, has_steps: false }
+            const row = createTemporaryObject(taskRowComponent, root, { task: task, width: 600, pickable: true, selecting: true })
+            const said = []
+            row.pick.connect((uid, range) => said.push("pick " + uid + " " + range))
+            row.open.connect(uid => said.push("open " + uid))
+            waitForRendering(row)
+            const box = root.find(row, "taskRowPick")
+            verify(box && box.visible, "its box")
+            compare(box.checked, false)
+            compare(box.Accessible.name, "Fill the form", "named by its task")
+            verify(root.all(row, c => c.Accessible.name === "task-done" && c.visible).length === 0, "no circle beside the box")
+            mouseClick(row, 300, 10)
+            mouseClick(box)
+            compare(said.join(","), "pick form false,pick form false")
+            compare(box.checked, false, "the box asks; the list picks")
+            row.picked = true
+            compare(box.checked, true, "ticked while picked")
+            row.selecting = false
+            waitForRendering(row)
+            verify(!root.find(row, "taskRowPick") || !root.find(row, "taskRowPick").visible, "Select off: no box")
+            mouseClick(row, 300, 10)
+            compare(said[said.length - 1], "open form", "Select off: a click opens it")
+            const plain = createTemporaryObject(taskRowComponent, root, { task: task, width: 600, selecting: true })
+            waitForRendering(plain)
+            verify(!root.find(plain, "taskRowPick"), "a view that picks nothing: no box")
+        }
+
         // The tasks tied to this time of a repeating event, listed on its card and opened by a tap.
         function test_an_event_s_card_lists_what_comes_before_this_time() {
             const host = makeHost()

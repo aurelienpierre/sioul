@@ -44,11 +44,16 @@ Item {
     // What the core answered: the choices and what was found.
     property var shown: ({ projects: [], kinds: [], categories: [], found: [] })
     readonly property var found: search.shown.found || []
-    // What is selected for a batch edit, by file: Ctrl or Shift with a click,
-    // a long press on a touch screen, where a tap then adds or takes out.
+    // What is selected for a batch edit, by file: its Select button, then a
+    // click or a tap on each row; Ctrl or Shift with a click, a long press on
+    // a touch screen, pick too.
     property var picked: ({})
     property int anchor: -1
     readonly property var pickedList: Object.keys(search.picked).map(k => search.picked[k])
+    // Select is on; choosing, either that or something picked another way:
+    // each row has its box, a click picks, the bar shows.
+    property bool selecting: false
+    readonly property bool choosing: search.selecting || search.pickedList.length > 0
     readonly property bool asksEvents: search.which !== "tasks"
     readonly property bool asksTasks: search.which !== "events"
 
@@ -115,6 +120,13 @@ Item {
         search.picked = now
     }
 
+    // The selection emptied and Select off: after an act, or asked.
+    function stopChoosing() {
+        search.picked = ({})
+        search.anchor = -1
+        search.selecting = false
+    }
+
     function toggleStatus(status, on) {
         const now = search.statuses.filter(s => s !== status)
         if (on)
@@ -153,14 +165,37 @@ Item {
         anchors.fill: parent
         spacing: 8
 
-        TextField {
-            objectName: "thingsWords"
+        RowLayout {
             Layout.fillWidth: true
-            placeholderText: search.sioul.text("things-words")
-            text: search.words
-            onTextEdited: {
-                search.words = text
-                typing.restart()
+            spacing: 8
+
+            TextField {
+                objectName: "thingsWords"
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                placeholderText: search.sioul.text("things-words")
+                text: search.words
+                onTextEdited: {
+                    search.words = text
+                    typing.restart()
+                }
+            }
+            // Choosing what to change together: a box on each row, the bar at once.
+            Button {
+                objectName: "thingsSelect"
+                checkable: true
+                checked: search.choosing
+                text: search.sioul.text("batch-select")
+                ToolTip.visible: hovered
+                ToolTip.delay: 600
+                ToolTip.text: search.sioul.text("batch-select-tip")
+                onToggled: {
+                    if (checked)
+                        search.selecting = true
+                    else
+                        search.stopChoosing()
+                    checked = Qt.binding(() => search.choosing)
+                }
             }
         }
 
@@ -321,14 +356,13 @@ Item {
             sioul: search.sioul
             theme: search.theme
             things: search.pickedList
+            selecting: search.choosing
+            offers: search.which
             projects: search.shown.projects || []
             kinds: search.shown.kinds || []
             categories: search.shown.categories || []
             lists: search.shown.lists || []
-            onCleared: {
-                search.picked = ({})
-                search.anchor = -1
-            }
+            onCleared: search.stopChoosing()
         }
 
         Label {
@@ -372,7 +406,6 @@ Item {
                 objectName: "thingRow"
                 width: results.width - 12
                 highlighted: row.picked
-                // On a touch screen, once something is picked, a tap picks too.
                 onClicked: {
                     // A click with Ctrl or Shift picks (its handlers below), never opens.
                     if (row.modified !== "") {
@@ -380,7 +413,8 @@ Item {
                         row.modified = ""
                         return
                     }
-                    if (search.theme.touch && search.pickedList.length > 0)
+                    // Choosing: a click or a tap picks it too.
+                    if (search.choosing)
                         search.pick(row.index, false)
                     else
                         search.open(row.modelData)
@@ -407,6 +441,21 @@ Item {
                 contentItem: RowLayout {
                     spacing: 10
 
+                    // Choosing what to change: its box, ticked while it is picked. Made only then.
+                    Loader {
+                        active: search.choosing
+                        visible: active
+                        Layout.alignment: Qt.AlignTop
+                        sourceComponent: CheckBox {
+                            objectName: "thingPick"
+                            // Its tick follows the selection alone: a click asks, the list picks.
+                            checkable: false
+                            checked: row.picked
+                            padding: 0
+                            Accessible.name: row.modelData.title
+                            onClicked: search.pick(row.index, false)
+                        }
+                    }
                     Icon {
                         Layout.alignment: Qt.AlignTop
                         iconName: row.modelData.thing === "task" ? (row.modelData.done ? "checkbox" : "view-calendar-tasks") : "view-calendar-day"
