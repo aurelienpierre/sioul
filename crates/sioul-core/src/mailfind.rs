@@ -329,6 +329,27 @@ fn renumbered_to(account: &str, folder: &str, old: ImapOrigin) -> Option<ImapOri
     })
 }
 
+/// The numberings a renumbering of `account`'s folders replaced by `new`
+/// (part 0's rule, `<account>.removed.log`), whatever the folder: each old
+/// copy's, removed once `new` came in its place. A row an older Sioul keyed
+/// by the old copy's file (`file:…`) is the same message (budget's
+/// `mail_lines`; review of mailbox part 0, L4).
+pub fn renumbered_from(account: &str, new: ImapOrigin) -> Vec<ImapOrigin> {
+    let Ok(log) = std::fs::read_to_string(crate::config::state_dir().join("sync").join(format!("{account}.removed.log"))) else { return Vec::new() };
+    let wanted = format!("U{}-{}", new.validity, new.uid);
+    log.lines()
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let [_, _, gone, now] = fields[..] else { return None };
+            if now != wanted {
+                return None;
+            }
+            let (validity, uid) = gone.strip_prefix('U')?.split_once('-')?;
+            Some(ImapOrigin { validity: validity.parse().ok()?, uid: uid.parse().ok()? })
+        })
+        .collect()
+}
+
 /// A path with its "." and ".." taken away as they are written, without
 /// asking the system (which may follow a link, or reach another computer).
 fn lexical(path: &Path) -> PathBuf {
