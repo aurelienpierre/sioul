@@ -13,10 +13,13 @@
 //! sends once, and soon.
 //!
 //! The notes and papers folders are not looked at (thousands of files, every
-//! two seconds): the minute's exchange reads them, as before.
+//! two seconds): the minute's exchange reads them, as before. Where the system
+//! tells of changes in folders (Linux's inotify, Android's), the window looks
+//! when one of the folders the shared files are in changed (`dirs_of`), and
+//! once a minute whatever, rather than every two seconds.
 
 use crate::share::{Shape, Store};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// A save is followed by an exchange this long after the last one, if none follows (milliseconds)…
@@ -129,6 +132,42 @@ impl Stamps {
                 }
             }
         }
+    }
+
+    /// The folders whose changes `Stamps::of` reads, for a watch the system
+    /// keeps (the window's, `share::watcher`): each folder store and the
+    /// folders below it (hidden ones left out), each file store's folder; a
+    /// store not made yet, the nearest folder above it that is, where it
+    /// will appear. As many as `Stamps::of` looks through, at most.
+    pub fn dirs_of(stores: &[Store]) -> BTreeSet<PathBuf> {
+        let mut out = BTreeSet::new();
+        for store in stores.iter().filter(|s| watched(s)) {
+            let mut at = store.path.as_path();
+            while !at.exists() {
+                let Some(parent) = at.parent() else { break };
+                at = parent;
+            }
+            if at != store.path || !at.is_dir() {
+                if at == store.path {
+                    at = at.parent().unwrap_or(at);
+                }
+                out.insert(at.to_path_buf());
+                continue;
+            }
+            let mut stack = vec![at.to_path_buf()];
+            while let Some(dir) = stack.pop() {
+                if out.len() >= LARGEST_WATCH {
+                    return out;
+                }
+                for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+                    if !entry.file_name().to_string_lossy().starts_with('.') && entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                        stack.push(entry.path());
+                    }
+                }
+                out.insert(dir);
+            }
+        }
+        out
     }
 
     /// The files that differ from `before`: changed, new, gone.
@@ -299,6 +338,37 @@ mod tests {
         now.refresh(&stores, &["state/health-state.toml".to_string()].into());
         assert!(Stamps::of(&stores).changed(&now).is_empty());
         assert_eq!(now.changed(&seen).len(), 1);
+        // The folders a watch told by the system keeps: every one a save above lives in; the
+        // notes folder for the projects' files at its top, never the notes' own folders below.
+        std::fs::create_dir_all(notes.join("Trips")).unwrap();
+        let dirs = Stamps::dirs_of(&stores);
+        for path in [roots.config.join("config.toml"), roots.data.join("drafts").join("draft.eml"), roots.data.join("health.toml"), roots.state.join("health-state.toml"), notes.join("sioul-cases.toml")] {
+            assert!(dirs.contains(path.parent().unwrap()), "{path:?} in {dirs:?}");
+        }
+        assert!(!dirs.contains(&notes.join("Trips")), "{dirs:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A folder store's folders, below it too, hidden ones left out; a file
+    /// store's folder; a store not made yet, the nearest folder above it.
+    #[test]
+    fn the_folders_watched_are_those_the_files_live_in() {
+        let base = std::env::temp_dir().join(format!("sioul-trigger-dirs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let calendars = base.join("data/calendars");
+        for dir in [calendars.join("cloud/work"), calendars.join("cloud/.hidden"), base.join("config")] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let store = |name: &str, path: PathBuf, folder: bool| Store { name: name.into(), path, folder, shape: Shape::Whole, skip: &[], part: "settings" };
+        let stores = [
+            store("data/calendars/", calendars.clone(), true),
+            store("config/config.toml", base.join("config/config.toml"), false),
+            store("data/later/", base.join("data/later/inner"), true),
+            Store { shape: Shape::Files, ..store("files/notes/", base.join("notes"), true) },
+        ];
+        let dirs: Vec<PathBuf> = Stamps::dirs_of(&stores).into_iter().collect();
+        let want: Vec<PathBuf> = [base.join("config"), base.join("data"), calendars.clone(), calendars.join("cloud"), calendars.join("cloud/work")].into_iter().collect::<BTreeSet<_>>().into_iter().collect();
+        assert_eq!(dirs, want);
         let _ = std::fs::remove_dir_all(&base);
     }
 }
