@@ -1881,7 +1881,7 @@ fn send_now(id: &str, shared: &Shared) -> String {
             nudge(shared, &account.id);
             tr().text("mail-sent", None)
         }
-        Err(e @ SyncError::NotFiled(_)) => {
+        Err(e @ (SyncError::NotFiled(_) | SyncError::PartlySent(_))) => {
             draft.discard();
             e.sentence(tr(), &account.id)
         }
@@ -1903,7 +1903,7 @@ fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, sh
             nudge(shared, &account.id);
             tr().text("mail-sent", None)
         }
-        Err(e @ SyncError::NotFiled(_)) => {
+        Err(e @ (SyncError::NotFiled(_) | SyncError::PartlySent(_))) => {
             discard();
             e.sentence(tr(), &account.id)
         }

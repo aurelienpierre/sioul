@@ -868,6 +868,7 @@ compose-attribution = Le { $date }, { $name } a écrit :
 ## L’envoi.
 send-error-refused = { $account } : le serveur d’envoi a refusé le courriel ({ $detail }).
 send-error-not-filed = { $account } : envoyé, mais sa copie n’a pas pu être rangée dans les Envoyés ({ $detail }).
+send-error-partly-sent = { $account } : envoyé, mais pas à chaque destinataire en Cci. Non atteints : { $detail }.
 send-error-message = { $detail }
 
 ## Le client de courriel.
@@ -1583,7 +1584,7 @@ pgp-read-card-here = Votre clé de sécurité sert { $address }, et elle a été
 pgp-self-copy-none = Aucun certificat à vous pour cette adresse n’est connu ici : ce courriel est chiffré pour ses destinataires seulement, et vous ne pourrez pas le relire dans les Envoyés.
 seckey-forward-not-here = La copie du courriel que vous transférez est chiffrée pour votre clé de sécurité, que ce téléphone ne peut pas encore utiliser : transférez-le depuis votre ordinateur.
 seckey-open-in-window = Ce courriel cite un courriel chiffré que seule votre clé de sécurité ouvre maintenant : envoyez-le depuis sa fenêtre dans Sioul, qui demande la clé.
-pgp-bcc-seen = Chiffré, ce courriel montre à chaque destinataire pour quelles clés il a été chiffré : celles de vos destinataires en Cci aussi, que n’importe qui peut chercher sur un serveur de clés.
+pgp-bcc-seen = Chiffré, chaque destinataire en Cci reçoit sa propre copie, chiffrée pour lui et pour vous : aucun autre destinataire ne voit sa clé.
 pgp-quote-left-out = La copie du courriel auquel vous répondez est chiffrée : sans chiffrement, votre réponse part sans le citer.
 pgp-forward-needs-encryption = La copie du courriel que vous transférez est chiffrée : il n’est transféré que chiffré, à des destinataires dont les clés sont connues.
 pgp-quote-locked = Votre clé de sécurité n’a pas ouvert le courriel auquel vous répondez : réessayez, ou vérifiez que ce courriel a bien été chiffré pour elle.

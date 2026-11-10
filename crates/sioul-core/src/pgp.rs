@@ -1163,9 +1163,54 @@ pub fn sign_detached(data: &[u8], signer: &mut Signing<'_>) -> Result<(String, S
 /// `data` encrypted to the recipients' keys, signed by yours when given; armored.
 pub fn encrypt(data: &[u8], recipients: &[&Cert], signer: Option<&mut Signing<'_>>) -> Result<String, String> {
     let policy = policy();
-    // Never to a certificate revoked as a whole (N3), whoever chose it.
-    let keys: Vec<_> = recipients.iter().filter(|c| usable(c)).flat_map(|c| c.keys().with_policy(&policy, None).supported().alive().revoked(false).for_transport_encryption()).collect();
-    encrypt_to(data, keys, signer)
+    encrypt_to(data, transport_keys(&policy, recipients), signer)
+}
+
+/// The keys a message to `recipients` is encrypted to: never a certificate
+/// revoked as a whole (N3), whoever chose it.
+fn transport_keys<'a>(policy: &'a StandardPolicy<'static>, recipients: &[&'a Cert]) -> Vec<ValidErasedKeyAmalgamation<'a, openpgp::packet::key::PublicParts>> {
+    recipients.iter().filter(|c| usable(c)).flat_map(|c| c.keys().with_policy(policy, None).supported().alive().revoked(false).for_transport_encryption()).collect()
+}
+
+/// `data` signed once, then encrypted apart for each group of recipients:
+/// one ciphertext per group, in their order, each naming only its own
+/// group's keys. A message's To and Cc are one group; each Bcc recipient,
+/// with you, a group of their own, so that no recipient can read which key
+/// was added for someone in Bcc. Signed once: a security key is asked
+/// once, whatever the number of copies.
+pub fn encrypt_each(data: &[u8], groups: &[Vec<&Cert>], signer: Option<&mut Signing<'_>>) -> Result<Vec<String>, String> {
+    let Some(signer) = signer else {
+        return groups.iter().map(|group| encrypt(data, group, None)).collect();
+    };
+    // The signed message (one-pass signature, literal data, signature), as
+    // an encryption that signs on its way writes it inside.
+    let mut signed = Vec::new();
+    {
+        let message = Message::new(&mut signed);
+        let message = Signer::new(message, Lent(signer)).map_err(|e| e.to_string())?.build().map_err(|e| e.to_string())?;
+        let mut literal = LiteralWriter::new(message).build().map_err(|e| e.to_string())?;
+        literal.write_all(data).map_err(|e| e.to_string())?;
+        literal.finalize().map_err(|e| e.to_string())?;
+    }
+    let policy = policy();
+    groups
+        .iter()
+        .map(|group| {
+            let keys = transport_keys(&policy, group);
+            if keys.is_empty() {
+                return Err("no encryption key".to_string());
+            }
+            let mut out = Vec::new();
+            {
+                let message = Message::new(&mut out);
+                let message = Armorer::new(message).build().map_err(|e| e.to_string())?;
+                let mut message = Encryptor::for_recipients(message, keys).build().map_err(|e| e.to_string())?;
+                message.write_all(&signed).map_err(|e| e.to_string())?;
+                message.finalize().map_err(|e| e.to_string())?;
+            }
+            Ok(String::from_utf8_lossy(&out).to_string())
+        })
+        .collect()
 }
 
 /// `data` encrypted for you alone, to `yours`: an encryption key of yours

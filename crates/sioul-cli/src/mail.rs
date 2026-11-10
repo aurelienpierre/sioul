@@ -221,7 +221,7 @@ pub(crate) fn send_draft(s: &Session, account: &Account, draft: &Draft) -> Resul
             println!("{}", s.tr.text("mail-sent", None));
             Ok(())
         }
-        Err(e @ SyncError::NotFiled(_)) => {
+        Err(e @ (SyncError::NotFiled(_) | SyncError::PartlySent(_))) => {
             draft.discard();
             println!("{}", crate::plain_lines(&e.sentence(&s.tr, &account.id)));
             Ok(())

@@ -183,9 +183,30 @@ fn build_draft_with(keys: &pgp::Keys, account: &Account, draft: &Draft, tr: &Tra
     };
     let mut protection = if draft.sign || draft.encrypt {
         let mut encrypt_to = Vec::new();
+        let mut bcc = Vec::new();
         if draft.encrypt {
-            for recipient in draft.recipients() {
-                encrypt_to.push(keys.for_address(&recipient).ok_or_else(|| say("pgp-missing-key", &[("address", recipient.clone())]))?);
+            let key_of = |recipient: &String| keys.for_address(recipient).ok_or_else(|| say("pgp-missing-key", &[("address", recipient.clone())]));
+            let to_and_cc: Vec<String> = draft.to.iter().chain(&draft.cc).filter_map(|r| compose::address_of(r)).collect();
+            for recipient in &to_and_cc {
+                encrypt_to.push(key_of(recipient)?);
+            }
+            // Each Bcc recipient gets a copy of their own, encrypted to them
+            // and to you: a key among To's and Cc's would be read by every
+            // recipient, and looked up on a key server.
+            let mut named: Vec<String> = to_and_cc.iter().map(|a| a.to_lowercase()).collect();
+            for recipient in draft.bcc.iter().filter_map(|r| compose::address_of(r)) {
+                // Also in To or Cc, or twice in Bcc: one message is enough.
+                if named.contains(&recipient.to_lowercase()) {
+                    continue;
+                }
+                named.push(recipient.to_lowercase());
+                let mut group = vec![key_of(&recipient)?];
+                if let Some(cert) = yours
+                    && group[0].fingerprint() != cert.fingerprint()
+                {
+                    group.push(cert);
+                }
+                bcc.push((recipient, group));
             }
             // Yours too, to read it again in Sent (an expired certificate of yours: the window said so first).
             if let Some(cert) = yours
@@ -194,7 +215,7 @@ fn build_draft_with(keys: &pgp::Keys, account: &Account, draft: &Draft, tr: &Tra
                 encrypt_to.push(cert);
             }
         }
-        Some(compose::Protection { sign: signer, encrypt_to })
+        Some(compose::Protection { sign: signer, encrypt_to, bcc })
     } else {
         None
     };
@@ -254,7 +275,7 @@ pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<()
     let host = account.smtp_host.clone().ok_or(SyncError::NoServer)?;
     let login = account.login().ok_or(SyncError::NoServer)?.to_string();
     let oauth = OAuth::of(account);
-    block_on(async {
+    let sent = block_on(async {
         let mut client = match oauth {
             None => smtp_builder(account, &host, Some((login.as_str(), password)))?.connect().await.map_err(smtp_error)?,
             Some(oauth) => {
@@ -264,16 +285,52 @@ pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<()
                 smtp_sign_in_with_tokens(&login, connect, |fresh| oauth.token_async(&login, fresh), oauth).await?
             }
         };
+        let sent = send_each(&mut client, outgoing).await;
+        let _ = client.quit().await;
+        sent
+    });
+    // Sent to some (a Bcc copy refused): filed all the same, then said.
+    let partly = match sent {
+        Ok(()) => None,
+        Err(e @ SyncError::PartlySent(_)) => Some(e),
+        Err(e) => return Err(e),
+    };
+    if !files_its_own_sent(account) {
+        // Sent, but its copy may not be filed: that is said, the message is not sent twice.
+        file_in_sent(account, password, &outgoing.raw).map_err(|e| partly.clone().unwrap_or_else(|| SyncError::NotFiled(e.detail().to_string())))?;
+    }
+    partly.map_or(Ok(()), Err)
+}
+
+/// The message to its recipients, then each copy of its own (an encrypted
+/// message's Bcc recipients), one after the other on one connection. Once
+/// one has gone, a copy refused is said with whom it missed
+/// (`SyncError::PartlySent`): the message is not sent twice.
+async fn send_each<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(client: &mut mail_send::SmtpClient<T>, outgoing: &Outgoing) -> Result<(), SyncError> {
+    let mut went = false;
+    if !outgoing.recipients.is_empty() {
         let message = Message::new(outgoing.from.as_str(), outgoing.recipients.iter().map(String::as_str), outgoing.raw.as_slice());
         client.send(message).await.map_err(smtp_error)?;
-        let _ = client.quit().await;
-        Ok(())
-    })?;
-    if files_its_own_sent(account) {
-        return Ok(());
+        went = true;
     }
-    // Sent, but its copy may not be filed: that is said, the message is not sent twice.
-    file_in_sent(account, password, &outgoing.raw).map_err(|e| SyncError::NotFiled(e.detail().to_string()))
+    let mut missed: Vec<(String, SyncError)> = Vec::new();
+    for copy in &outgoing.apart {
+        let message = Message::new(outgoing.from.as_str(), [copy.recipient.as_str()], copy.raw.as_slice());
+        match client.send(message).await.map_err(smtp_error) {
+            Ok(()) => went = true,
+            Err(e) => {
+                // The transaction left half-done is dropped before the next copy.
+                let _ = client.rset().await;
+                missed.push((copy.recipient.clone(), e));
+            }
+        }
+    }
+    match (went, missed.is_empty()) {
+        (_, true) => Ok(()),
+        // Nothing went: the first refusal, as a message alone would say it.
+        (false, false) => Err(missed.swap_remove(0).1),
+        (true, false) => Err(SyncError::PartlySent(missed.iter().map(|(to, e)| format!("{to}: {}", e.detail())).collect::<Vec<_>>().join("; "))),
+    }
 }
 
 /// AUTH XOAUTH2 on connections `connect` makes, with the tokens `token`
@@ -502,6 +559,170 @@ mod tests {
         // A recipient without a key: stopped and said, never sent to fewer.
         draft.to.push("Bob <bob@example.org>".into());
         assert!(build_draft_with(&keys, &account, &draft, &tr, None).is_err());
+    }
+
+    /// TODO §4 (10 November 2026): an encrypted message with recipients in
+    /// Bcc names no Bcc recipient's key to anyone. To and Cc get one
+    /// message, encrypted to their keys and yours; each Bcc recipient a copy
+    /// of their own, encrypted to their key and yours, with the same
+    /// Message-ID and no Bcc header. Your security key signs once for all
+    /// of them, and each copy opens and checks out for its reader.
+    #[test]
+    fn each_bcc_recipient_of_an_encrypted_message_gets_a_copy_of_their_own() {
+        use sequoia_openpgp::cert::prelude::*;
+        let (card, public) = SoftCard::generate("0006:12345678", &["Card Holder <me@example.org>"], "123456").unwrap();
+        let mine = pgp::certificates_in(&public);
+        let known = KnownCard {
+            ident: "0006:12345678".into(),
+            sign: card.info.sign.as_ref().unwrap().fingerprint.clone(),
+            decrypt: card.info.decrypt.as_ref().unwrap().fingerprint.clone(),
+            cert: mine[0].fingerprint().to_hex(),
+            addresses: vec!["me@example.org".into()],
+            ..KnownCard::default()
+        };
+        let make = |address: &str| CertBuilder::general_purpose(Some(format!("<{address}>"))).set_cipher_suite(CipherSuite::Cv25519).generate().unwrap().0;
+        let (jane, carol, bob, dan) = (make("jane@example.org"), make("carol@example.org"), make("bob@example.net"), make("dan@example.com"));
+        let public_of = |c: &sequoia_openpgp::Cert| c.clone().strip_secret_key_material();
+        let keys = Keys { own: mine.clone(), others: [&jane, &carol, &bob, &dan].into_iter().map(public_of).collect(), cards: vec![known.clone()], ..Keys::default() };
+        let account: Account = toml::from_str("id = \"me\"\naddress = \"me@example.org\"\nname = \"Card Holder\"\n").unwrap();
+        let mut draft = Draft::new("me");
+        draft.to = vec!["Jane <jane@example.org>".into()];
+        draft.cc = vec!["carol@example.org".into()];
+        // Bob twice, once in another case: one copy. Carol is also in Cc: none.
+        draft.bcc = vec!["Bob <bob@example.net>".into(), "dan@example.com".into(), "BOB@example.net".into(), "carol@example.org".into()];
+        draft.subject = "The minutes".into();
+        draft.body = "Here they are.".into();
+        draft.sign = true;
+        draft.encrypt = true;
+        let tr = Translator::new("en");
+        let readers = SoftReaders::with(vec![card]);
+        let pin = sioul_core::securitykey::Password::from("123456");
+        let access = CardAccess::new(&readers, &pin, &|| {});
+        let outgoing = build_draft_with(&keys, &account, &draft, &tr, Some(&access)).unwrap();
+        assert_eq!(readers.card("0006:12345678", |c| c.operations), Some(1), "signed once for every copy");
+        assert_eq!(outgoing.recipients, vec!["jane@example.org".to_string(), "carol@example.org".to_string()], "Bcc gets no copy of the message for To and Cc");
+        assert_eq!(outgoing.apart.iter().map(|a| a.recipient.as_str()).collect::<Vec<_>>(), vec!["bob@example.net", "dan@example.com"]);
+        let subkeys = |c: &sequoia_openpgp::Cert| c.keys().subkeys().map(|k| k.key().fingerprint().to_hex()).collect::<Vec<_>>();
+        let names = |raw: &[u8], cert: &sequoia_openpgp::Cert| pgp::recipients_of(raw).iter().any(|r| !r.is_empty() && subkeys(cert).iter().any(|k| k.to_ascii_uppercase().ends_with(&r.to_ascii_uppercase())));
+        let me_decrypt = known.decrypt.to_ascii_uppercase();
+        let names_me = |raw: &[u8]| pgp::recipients_of(raw).iter().any(|r| !r.is_empty() && me_decrypt.ends_with(&r.to_ascii_uppercase()));
+        // The message for To and Cc names Jane's, Carol's and your keys, never Bob's nor Dan's.
+        assert_eq!(pgp::recipients_of(&outgoing.raw).len(), 3);
+        assert!(names(&outgoing.raw, &jane) && names(&outgoing.raw, &carol) && names_me(&outgoing.raw));
+        assert!(!names(&outgoing.raw, &bob) && !names(&outgoing.raw, &dan));
+        let message_id = |raw: &[u8]| String::from_utf8_lossy(raw).lines().find(|l| l.to_ascii_lowercase().starts_with("message-id:")).map(str::to_string);
+        assert!(message_id(&outgoing.raw).is_some());
+        let none = |_: &sequoia_openpgp::Fingerprint| None;
+        let sessions = SessionKeys::new();
+        for (copy, reader, other) in [(&outgoing.apart[0], &bob, &dan), (&outgoing.apart[1], &dan, &bob)] {
+            // Their key and yours alone.
+            assert_eq!(pgp::recipients_of(&copy.raw).len(), 2, "{}", copy.recipient);
+            assert!(names(&copy.raw, reader) && names_me(&copy.raw) && !names(&copy.raw, other) && !names(&copy.raw, &jane) && !names(&copy.raw, &carol));
+            assert_eq!(message_id(&copy.raw), message_id(&outgoing.raw));
+            let text = String::from_utf8_lossy(&copy.raw).to_string();
+            assert!(text.contains("<jane@example.org>") && !text.to_ascii_lowercase().contains("\nbcc:") && !text.contains("Here they are"), "{text}");
+            // The copy opens for its reader, the signature good.
+            let theirs = Keys { own: vec![reader.clone()], others: mine.clone(), ..Keys::default() };
+            let (opened, view) = pgp::open(&copy.raw, &theirs, &Unlock::new(&none, &sessions)).unwrap();
+            assert!(String::from_utf8_lossy(&opened.unwrap()).contains("Here they are"));
+            assert!(view.encrypted && view.signatures.len() == 1 && view.signatures[0].good, "{view:?}");
+        }
+        // Jane opens hers, with the same good signature; Bob's copy does not open for her.
+        let janes = Keys { own: vec![jane.clone()], others: mine.clone(), ..Keys::default() };
+        let (opened, view) = pgp::open(&outgoing.raw, &janes, &Unlock::new(&none, &sessions)).unwrap();
+        assert!(opened.is_some() && view.signatures[0].good, "{view:?}");
+        assert!(pgp::open(&outgoing.apart[0].raw, &janes, &Unlock::new(&none, &sessions)).and_then(|(o, _)| o).is_none());
+        // Only in Bcc: nothing goes to To and Cc, the message for Sent is yours alone.
+        draft.to.clear();
+        draft.cc.clear();
+        draft.sign = false;
+        let alone = build_draft_with(&keys, &account, &draft, &tr, None).unwrap();
+        assert!(alone.recipients.is_empty() && alone.apart.len() == 3, "{:?}", alone.recipients);
+        assert_eq!(pgp::recipients_of(&alone.raw).len(), 1);
+        assert!(names_me(&alone.raw));
+        // A Bcc recipient without a key stops it, said, as one in To does.
+        draft.bcc.push("eve@example.org".into());
+        assert!(build_draft_with(&keys, &account, &draft, &tr, None).is_err());
+        // Not encrypted: one message to everyone, no copy apart.
+        draft.bcc.pop();
+        draft.encrypt = false;
+        draft.to = vec!["jane@example.org".into()];
+        let plain = build_draft_with(&keys, &account, &draft, &tr, None).unwrap();
+        assert!(plain.apart.is_empty() && plain.recipients.len() == 5, "{:?}", plain.recipients);
+    }
+
+    /// An SMTP stand-in that takes the message for To and Cc and refuses
+    /// one Bcc copy: the others go, on one connection, and what was missed
+    /// is said with its recipient (`PartlySent`), so the draft is not sent
+    /// twice. The message for To and Cc refused: that refusal, nothing more.
+    #[test]
+    fn a_bcc_copy_refused_is_said_and_the_rest_goes() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let outgoing = Outgoing {
+            raw: b"Subject: x\r\n\r\nmain\r\n".to_vec(),
+            from: "me@example.org".into(),
+            recipients: vec!["jane@example.org".into()],
+            apart: vec![
+                compose::Apart { recipient: "bob@example.net".into(), raw: b"Subject: x\r\n\r\nbob\r\n".to_vec() },
+                compose::Apart { recipient: "dan@example.com".into(), raw: b"Subject: x\r\n\r\ndan\r\n".to_vec() },
+            ],
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        for (refuse, main_refused) in [("bob@example.net", false), ("jane@example.org", true)] {
+            runtime.block_on(async {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let server = tokio::spawn(async move {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    let (read, mut write) = stream.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    write.write_all(b"220 stand-in ESMTP\r\n").await.unwrap();
+                    let mut delivered = Vec::new();
+                    let mut to = String::new();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let upper = line.to_ascii_uppercase();
+                        let answer = if upper.starts_with("EHLO") {
+                            "250-stand-in\r\n250 8BITMIME".to_string()
+                        } else if upper.starts_with("MAIL FROM") || upper.starts_with("RSET") {
+                            "250 OK".into()
+                        } else if upper.starts_with("RCPT TO:") {
+                            to = line[8..].trim().trim_matches(['<', '>']).to_string();
+                            if to == refuse { "550 5.1.1 No such user".into() } else { "250 OK".into() }
+                        } else if upper == "DATA" {
+                            write.write_all(b"354 go\r\n").await.unwrap();
+                            let mut body = String::new();
+                            while let Ok(Some(l)) = lines.next_line().await {
+                                if l == "." {
+                                    break;
+                                }
+                                body.push_str(&l);
+                            }
+                            delivered.push((to.clone(), body));
+                            "250 queued".into()
+                        } else if upper.starts_with("QUIT") {
+                            let _ = write.write_all(b"221 bye\r\n").await;
+                            break;
+                        } else {
+                            "500 what".into()
+                        };
+                        write.write_all(format!("{answer}\r\n").as_bytes()).await.unwrap();
+                    }
+                    delivered
+                });
+                let mut client = mail_send::SmtpClientBuilder::new("127.0.0.1", port).unwrap().helo_host("[127.0.0.1]").connect_plain().await.unwrap();
+                let sent = send_each(&mut client, &outgoing).await;
+                let _ = client.quit().await;
+                let delivered = server.await.unwrap();
+                if main_refused {
+                    assert!(matches!(sent, Err(SyncError::Refused(_))), "{sent:?}");
+                    assert!(delivered.is_empty(), "{delivered:?}");
+                } else {
+                    assert!(matches!(&sent, Err(SyncError::PartlySent(d)) if d.contains("bob@example.net") && !d.contains("dan@")), "{sent:?}");
+                    let went: Vec<(&str, bool)> = delivered.iter().map(|(to, body)| (to.as_str(), body.ends_with("main") || body.ends_with("dan"))).collect();
+                    assert_eq!(went, vec![("jane@example.org", true), ("dan@example.com", true)]);
+                }
+            });
+        }
     }
 
     const LEASE: &str = "From: Jane <jane@example.org>\r\nTo: Card Holder <me@example.org>\r\nSubject: The lease\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nMessage-ID: <lease-send@example.org>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe secret clause is on page four.\r\n";

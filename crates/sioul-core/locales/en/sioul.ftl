@@ -844,6 +844,7 @@ compose-attribution = On { $date }, { $name } wrote:
 ## Sending.
 send-error-refused = { $account }: the sending server refused the message ({ $detail }).
 send-error-not-filed = { $account }: sent, but its copy could not be filed in Sent ({ $detail }).
+send-error-partly-sent = { $account }: sent, but not to each Bcc recipient. Not reached: { $detail }.
 send-error-message = { $detail }
 
 ## The mail client.
@@ -1553,7 +1554,7 @@ pgp-read-card-here = Your security key serves { $address }, and was read on anot
 pgp-self-copy-none = No certificate of yours for this address is known here: this message is encrypted to its recipients only, and you will not be able to read it again in Sent.
 seckey-forward-not-here = The copy of the message you forward is encrypted to your security key, which this phone cannot use yet: forward it from your computer.
 seckey-open-in-window = This message quotes an encrypted message that only your security key opens now: send it from its window in Sioul, which asks for the key.
-pgp-bcc-seen = Encrypted, this message shows each recipient which keys it was encrypted to: your Bcc recipients’ too, which anyone can look up on a key server.
+pgp-bcc-seen = Encrypted, each Bcc recipient gets a copy of their own, encrypted to them and to you: no other recipient sees their key.
 pgp-quote-left-out = The copy of the message you answer is encrypted: unencrypted, your answer goes without quoting it.
 pgp-forward-needs-encryption = The copy of the message you forward is encrypted: it is forwarded only encrypted, to recipients whose keys are known.
 pgp-quote-locked = Your security key did not open the message you answer: try again, or check that this message was encrypted to it.

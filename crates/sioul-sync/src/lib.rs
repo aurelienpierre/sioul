@@ -305,6 +305,9 @@ pub enum SyncError {
     Refused(String),
     /// Sent, but its copy could not be filed in Sent.
     NotFiled(String),
+    /// Sent, but not to each of its Bcc recipients: an encrypted message's
+    /// copy of their own was refused (whom it missed, and why).
+    PartlySent(String),
     /// The message could not be written (no recipient, an attachment gone): said as is.
     Message(String),
     /// A server's answer named an address on another server (a calendar, an
@@ -346,6 +349,7 @@ impl SyncError {
             SyncError::Disk(_) => "sync-error-disk",
             SyncError::Refused(_) => "send-error-refused",
             SyncError::NotFiled(_) => "send-error-not-filed",
+            SyncError::PartlySent(_) => "send-error-partly-sent",
             SyncError::Message(_) => "send-error-message",
             SyncError::Elsewhere(_) => "sync-error-elsewhere",
             SyncError::Said(id, _) => id,
@@ -366,6 +370,7 @@ impl SyncError {
             | SyncError::Disk(d)
             | SyncError::Refused(d)
             | SyncError::NotFiled(d)
+            | SyncError::PartlySent(d)
             | SyncError::Message(d)
             | SyncError::Elsewhere(d)
             | SyncError::Said(_, d) => d,

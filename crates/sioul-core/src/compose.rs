@@ -582,9 +582,23 @@ fn escape_attribute(text: &str) -> String {
 /// What goes out, besides the bytes: who it is from and to whom it goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Outgoing {
+    /// The message, as it goes to `recipients` and into Sent.
     pub raw: Vec<u8>,
     pub from: String,
+    /// Its recipients: To, Cc, and Bcc unless it was encrypted; none when an
+    /// encrypted message has only Bcc recipients (then `raw` goes to Sent alone).
     pub recipients: Vec<String>,
+    /// Copies of their own, each to one recipient alone: an encrypted
+    /// message's Bcc recipients, each copy encrypted to them and to you, so
+    /// that no one reads which key was added for them. Empty otherwise.
+    pub apart: Vec<Apart>,
+}
+
+/// A copy of a message that goes to one recipient alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Apart {
+    pub recipient: String,
+    pub raw: Vec<u8>,
 }
 
 /// The message as it goes out, from a draft: your text, then what it quotes or
@@ -601,7 +615,12 @@ pub struct Protection<'a> {
     /// Your key's signer: a key here, opened with its passphrase
     /// (`pgp::here_signer`), or a security key's (`securitykey::CardSigner`).
     pub sign: Option<&'a mut (dyn sequoia_openpgp::crypto::Signer + Send + Sync)>,
+    /// The keys of To and Cc, and yours: the message that goes to them and to Sent.
     pub encrypt_to: Vec<&'a sequoia_openpgp::Cert>,
+    /// Each Bcc recipient's address and the keys its own copy is encrypted
+    /// to (theirs and yours), when the message is encrypted: never among
+    /// `encrypt_to`, which every recipient can read.
+    pub bcc: Vec<(String, Vec<&'a sequoia_openpgp::Cert>)>,
 }
 
 /// The message as it goes out, protected when asked: PGP/MIME (RFC 3156),
@@ -646,8 +665,12 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
         parts.extend(files.into_iter().map(|(name, mime, bytes)| MimePart::new(mime, bytes).attachment(name)));
         MimePart::new("multipart/mixed", parts)
     };
-    let body = match protection {
-        Some(protection) if !protection.encrypt_to.is_empty() || protection.sign.is_some() => {
+    // The bodies: one; or, encrypted with recipients in Bcc, one for To and
+    // Cc (and Sent), then one for each Bcc recipient, signed once.
+    let mut bcc_to: Vec<String> = Vec::new();
+    let mut to_and_cc_go = true;
+    let bodies: Vec<MimePart> = match protection {
+        Some(protection) if !protection.encrypt_to.is_empty() || !protection.bcc.is_empty() || protection.sign.is_some() => {
             let mut entity = Vec::new();
             inner.write_part(&mut entity);
             // The line break before the next boundary belongs to the boundary (RFC 2046 §5.1.1):
@@ -655,54 +678,83 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
             if entity.ends_with(b"\r\n") {
                 entity.truncate(entity.len() - 2);
             }
-            if !protection.encrypt_to.is_empty() {
-                let sealed = crate::pgp::encrypt(&entity, &protection.encrypt_to, protection.sign.as_deref_mut())?;
-                MimePart::new(
-                    ContentType::new("multipart/encrypted").attribute("protocol", "application/pgp-encrypted"),
-                    vec![
-                        MimePart::new("application/pgp-encrypted", "Version: 1\r\n".as_bytes()).transfer_encoding("7bit"),
-                        MimePart::new(ContentType::new("application/octet-stream").attribute("name", "encrypted.asc"), sealed.into_bytes()).inline().transfer_encoding("7bit"),
-                    ],
-                )
+            if !protection.encrypt_to.is_empty() || !protection.bcc.is_empty() {
+                let mut groups = Vec::new();
+                // No key for To, Cc and you (none of them, no key of yours): the Bcc copies alone.
+                to_and_cc_go = !protection.encrypt_to.is_empty();
+                if to_and_cc_go {
+                    groups.push(protection.encrypt_to.clone());
+                }
+                for (address, keys) in &protection.bcc {
+                    groups.push(keys.clone());
+                    bcc_to.push(address.clone());
+                }
+                let sealed = crate::pgp::encrypt_each(&entity, &groups, protection.sign.as_deref_mut())?;
+                sealed
+                    .into_iter()
+                    .map(|sealed| {
+                        MimePart::new(
+                            ContentType::new("multipart/encrypted").attribute("protocol", "application/pgp-encrypted"),
+                            vec![
+                                MimePart::new("application/pgp-encrypted", "Version: 1\r\n".as_bytes()).transfer_encoding("7bit"),
+                                MimePart::new(ContentType::new("application/octet-stream").attribute("name", "encrypted.asc"), sealed.into_bytes()).inline().transfer_encoding("7bit"),
+                            ],
+                        )
+                    })
+                    .collect()
             } else {
                 let signer = protection.sign.as_deref_mut().ok_or("no key to sign with")?;
                 let (signature, micalg) = crate::pgp::sign_detached(&entity, signer)?;
-                MimePart::new(
+                vec![MimePart::new(
                     ContentType::new("multipart/signed").attribute("micalg", micalg).attribute("protocol", "application/pgp-signature"),
                     vec![
                         MimePart::raw(entity),
                         MimePart::new(ContentType::new("application/pgp-signature").attribute("name", "signature.asc"), signature.into_bytes()).transfer_encoding("7bit"),
                     ],
-                )
+                )]
             }
         }
-        _ => inner,
+        _ => vec![inner],
     };
     let domain = from.1.rsplit_once('@').map_or("localhost", |(_, d)| d);
+    // One Message-ID for every copy: it is one message, which threads as one.
     let message_id = format!("{}@{domain}", new_id());
     let to: Vec<(String, String)> = draft.to.iter().filter_map(|e| Some((name_of(e), address_of(e)?))).collect();
     let cc: Vec<(String, String)> = draft.cc.iter().filter_map(|e| Some((name_of(e), address_of(e)?))).collect();
     fn as_pairs(list: &[(String, String)]) -> Vec<(&str, &str)> {
         list.iter().map(|(n, a)| (n.as_str(), a.as_str())).collect()
     }
-    let mut message = MessageBuilder::new().from(from).subject(draft.subject.as_str()).message_id(message_id.as_str()).date(date).body(body);
-    if !to.is_empty() {
-        message = message.to(as_pairs(&to));
+    // The same headers on each copy; Bcc on none.
+    let write = |body: MimePart<'_>| -> Result<Vec<u8>, String> {
+        let mut message = MessageBuilder::new().from(from).subject(draft.subject.as_str()).message_id(message_id.as_str()).date(date).body(body);
+        if !to.is_empty() {
+            message = message.to(as_pairs(&to));
+        }
+        if !cc.is_empty() {
+            message = message.cc(as_pairs(&cc));
+        }
+        if let Some(reply_to) = &draft.in_reply_to {
+            message = message.in_reply_to(reply_to.as_str());
+        }
+        if !draft.references.is_empty() {
+            message = message.references(draft.references.iter().map(String::as_str).collect::<Vec<_>>());
+        }
+        if let Some(autocrypt) = autocrypt {
+            message = message.header("Autocrypt", mail_builder::headers::raw::Raw::new(autocrypt));
+        }
+        message.write_to_vec().map_err(|e| e.to_string())
+    };
+    let mut written = bodies.into_iter().map(write).collect::<Result<Vec<_>, _>>()?;
+    if bcc_to.is_empty() {
+        let raw = written.pop().ok_or("nothing written")?;
+        return Ok(Outgoing { raw, from: from.1.to_string(), recipients, apart: Vec::new() });
     }
-    if !cc.is_empty() {
-        message = message.cc(as_pairs(&cc));
-    }
-    if let Some(reply_to) = &draft.in_reply_to {
-        message = message.in_reply_to(reply_to.as_str());
-    }
-    if !draft.references.is_empty() {
-        message = message.references(draft.references.iter().map(String::as_str).collect::<Vec<_>>());
-    }
-    if let Some(autocrypt) = autocrypt {
-        message = message.header("Autocrypt", mail_builder::headers::raw::Raw::new(autocrypt));
-    }
-    let raw = message.write_to_vec().map_err(|e| e.to_string())?;
-    Ok(Outgoing { raw, from: from.1.to_string(), recipients })
+    // No message for To and Cc (only Bcc, and no key of yours): Sent keeps the first Bcc copy.
+    let raw = if to_and_cc_go { written.remove(0) } else { written.first().cloned().ok_or("nothing written")? };
+    let apart = bcc_to.into_iter().zip(written).map(|(recipient, raw)| Apart { recipient, raw }).collect();
+    // To and Cc alone get the message; each Bcc recipient, their own copy.
+    let to_and_cc = to.iter().chain(&cc).map(|(_, address)| address.clone()).collect();
+    Ok(Outgoing { raw, from: from.1.to_string(), recipients: if to_and_cc_go { to_and_cc } else { Vec::new() }, apart })
 }
 
 /// Quoted-printable (RFC 2045 §6.7), lines kept, CRLF, soft breaks before 76 characters.
@@ -747,7 +799,7 @@ pub fn invitation_answer(from: (&str, &str), to: &str, subject: &str, text: &str
         .body(body)
         .write_to_vec()
         .map_err(|e| e.to_string())?;
-    Ok(Outgoing { raw, from: from.1.to_string(), recipients: vec![to.to_string()] })
+    Ok(Outgoing { raw, from: from.1.to_string(), recipients: vec![to.to_string()], apart: Vec::new() })
 }
 
 /// The name part of "Jane <jane@example.org>", else empty; a quoted name
@@ -973,13 +1025,13 @@ mod tests {
         draft.body = "Hello,\nhere it is.\n\n-- \nMe".into();
         let tr = Translator::new("en");
         let mut signer = crate::pgp::here_signer(&me, "").unwrap();
-        let signed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![] }), None, None).unwrap();
+        let signed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![], bcc: vec![] }), None, None).unwrap();
         let keys = crate::pgp::Keys { others: vec![me.clone().strip_secret_key_material()], ..crate::pgp::Keys::default() };
         let none = |_: &sequoia_openpgp::Fingerprint| None;
         let sessions = crate::pgp::SessionKeys::new();
         let (_, view) = crate::pgp::open(&signed.raw, &keys, &crate::pgp::Unlock::new(&none, &sessions)).unwrap();
         assert!(!view.encrypted && view.signatures.len() == 1 && view.signatures[0].good, "{view:?}");
-        let sealed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![&jane, &me] }), Some("addr=me@example.net; keydata=AAAA"), None).unwrap();
+        let sealed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![&jane, &me], bcc: vec![] }), Some("addr=me@example.net; keydata=AAAA"), None).unwrap();
         let text = String::from_utf8_lossy(&sealed.raw).to_string();
         assert!(text.contains("multipart/encrypted") && !text.contains("here it is") && text.contains("Autocrypt: addr=me@example.net"), "{text}");
         let jane_keys = crate::pgp::Keys { own: vec![jane.clone()], others: vec![me.clone().strip_secret_key_material()], ..crate::pgp::Keys::default() };
