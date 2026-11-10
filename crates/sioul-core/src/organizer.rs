@@ -1268,6 +1268,27 @@ pub fn replied(text: &str, reply: &str) -> Option<Reply> {
     said(Some(lines::fold(&source)), Some(&line))
 }
 
+/// An event made a meeting from `before` (guests where there were none):
+/// each event's SEQUENCE one past the highest `before` held, unless the
+/// change raised it past that already (a time moved, a place changed:
+/// `agenda::apply`), as RFC 5546 §2.1.4 has an organizer do for a
+/// significant revision; its stamps renewed. A copy from before then reads
+/// as older by its SEQUENCE too, whatever its stamps say
+/// (`meeting_lines::later_than_entry`; review of wt/sync, R4: a meeting made
+/// by the door kept its SEQUENCE, and a server writing DTSTAMP afresh at each
+/// read made a copy from before without LAST-MODIFIED read as later). Not for
+/// guests added to a meeting (`organized::plan`): the door tells only those
+/// whose times change, and a later SEQUENCE would make the others' answers
+/// to their invitation read as older (`replied`).
+pub fn sequence_past(before: &str, text: &str) -> String {
+    let highest = |t: &str| crate::meeting_lines::sequence_of(t).map_or(-1, i64::from);
+    let floor = highest(before);
+    if highest(text) > floor {
+        return text.to_string();
+    }
+    resequenced(text, |own| own.max(floor) + 1).unwrap_or_else(|| text.to_string())
+}
+
 /// A meeting's text with each event's SEQUENCE set by `next` (given its
 /// own, 0 when unsaid) and its stamps renewed. None for no event.
 fn resequenced(text: &str, next: impl Fn(i64) -> i64) -> Option<String> {
