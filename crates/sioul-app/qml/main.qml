@@ -64,6 +64,10 @@ SioulWindow {
         if (window.visibility === Window.Maximized || window.visibility === Window.Windowed || window.visibility === Window.FullScreen)
             window.shownAs = window.visibility
     }
+    // Hidden in the tray with no other window of Sioul's open: the Porch, the
+    // budgets and the accounts, shown here alone, wait until it shows (`set_hidden`).
+    readonly property bool viewsHeld: Qt.platform.os !== "android" && !window.visible && window.drafts.length === 0 && (window.focusWindow === null || !window.focusWindow.visible)
+    onViewsHeldChanged: sioul.setHidden(window.viewsHeld)
     // The system tray holds Sioul (qml-desktop/Tray.qml): closing the window hides it there.
     readonly property bool trayHolds: trayLoader.item !== null && trayLoader.item.available === true
 

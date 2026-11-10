@@ -1552,6 +1552,11 @@ pub mod qobject {
         #[qinvokable]
         fn back_here(self: Pin<&mut Sioul>);
 
+        /// A computer's window hidden in the tray, no other window of Sioul's
+        /// open, or shown again (`HIDDEN`): the Porch made once it shows.
+        #[qinvokable]
+        fn set_hidden(self: Pin<&mut Sioul>, hidden: bool);
+
         /// The pause to move, the chats' limit: "movement.minutes", "chats.enabled"…
         #[qinvokable]
         fn set_health(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
@@ -3268,6 +3273,13 @@ pub(crate) struct Job {
 /// once when it is back (`back_here`).
 pub(crate) static AWAY: AtomicBool = AtomicBool::new(false);
 
+/// A computer's window hidden in the tray, no other window of Sioul's open
+/// (main.qml's `viewsHeld`): the Porch, the budgets and the accounts, which
+/// only that window shows, are not made for nobody (`show`); asked meanwhile,
+/// made once when it shows again (`set_hidden`). Mail's reports, the minute's
+/// changes and the sharing's go on as before.
+pub(crate) static HIDDEN: AtomicBool = AtomicBool::new(false);
+
 /// Runs `work` on a thread for the job `which` picks out (see `Job`).
 pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: impl Fn(&Arc<Shared>) + Send + 'static) {
     let job = which(shared);
@@ -3497,6 +3509,9 @@ pub(crate) fn mode_json() -> String {
 }
 
 fn compute(shared: &Shared) -> Views {
+    if let Ok(mut made) = VIEWS_MADE.lock() {
+        *made = Some(std::time::Instant::now());
+    }
     // One look at the mail: the Porch, then the money lines, each message parsed once (`maildir::CardsKept`).
     let _cards = sioul_core::maildir::CardsKept::begin();
     let world = World::load();
@@ -3579,6 +3594,12 @@ fn compute(shared: &Shared) -> Views {
 /// Computes the views on a thread and shows them, unless newer ones came first.
 pub(crate) fn show(qt: &QtThread, shared: &Arc<Shared>) {
     crate::mailsearch::changed(qt, shared);
+    // The window hidden in the tray, no other window of Sioul's open: the
+    // Porch, the budgets and the accounts are made once it shows (`set_hidden`).
+    if HIDDEN.load(Ordering::SeqCst) {
+        shared.views_job.deferred.store(true, Ordering::SeqCst);
+        return;
+    }
     let qt = qt.clone();
     coalesced(shared, |s| &s.views_job, move |shared| {
         // One look at the mail for the Mail page and the Porch: the folder the
@@ -3912,7 +3933,59 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             sioul.as_mut().set_status(QString::from(&line));
         }
     });
+    let unchanged = matches!(&result, Ok(report) if !report.first && report.new.is_empty() && report.elsewhere.is_empty() && !report.held_back);
+    if mail_as_before(&account.id, &account.maildir_path(), unchanged && !problem) {
+        // The Porch as it stands: its accounts' lines alone said again ("Synced at 14:05").
+        let statuses = shared.statuses.lock().map(|s| s.clone()).unwrap_or_default();
+        let wanted = shared.password_wanted.lock().map(|w| w.clone()).unwrap_or_default();
+        let accounts = json(&view::accounts(&load_config(), tr(), &statuses, &wanted));
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().set_accounts(QString::from(&accounts)));
+        return;
+    }
     show(qt, shared);
+}
+
+/// How often the views are made again at least while mail accounts report
+/// with nothing new (seconds): each account reports every five minutes
+/// (IDLE's renewal, `sioul_sync::fetch`), which made the Porch again for each
+/// one, a second each time with some thousands of messages in the inboxes
+/// (the one-time codes that expire, the hours, read on the clock). Now once in
+/// five minutes for them all, and at once when one brought anything.
+const VIEWS_AGAIN: u64 = 5 * 60;
+
+/// When the views were last made (`compute`), and each account's mail as its
+/// last report left it (`mail_as_before`).
+static VIEWS_MADE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+static MAIL_SEEN: Mutex<BTreeMap<String, Vec<(PathBuf, Option<std::time::SystemTime>)>>> = Mutex::new(BTreeMap::new());
+
+/// Whether an account's report leaves the views as they are: it brought
+/// nothing new and nothing went wrong (`quiet`), its Maildir is as its last
+/// report left it (each folder's `new` and `cur` by their times, which move
+/// when a message comes, goes, or changes its flags: what the report's
+/// look at the server's flags did), and the views were made less than
+/// `VIEWS_AGAIN` ago. Its Maildir as now is noted whatever.
+fn mail_as_before(account: &str, root: &Path, quiet: bool) -> bool {
+    let same = mail_unchanged(account, root);
+    quiet && same && views_recent(VIEWS_MADE.lock().ok().and_then(|made| *made))
+}
+
+/// Whether the views were made less than `VIEWS_AGAIN` ago.
+fn views_recent(made: Option<std::time::Instant>) -> bool {
+    made.is_some_and(|made| made.elapsed().as_secs() < VIEWS_AGAIN)
+}
+
+/// Whether an account's Maildir is as its last look left it; noted as it is now.
+fn mail_unchanged(account: &str, root: &Path) -> bool {
+    let time = |path: PathBuf| {
+        let time = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        (path, time)
+    };
+    let mut now = vec![time(root.to_path_buf())];
+    for local in sioul_core::mailcache::folders(root) {
+        let folder = root.join(&local);
+        now.extend([time(folder.join("new")), time(folder.join("cur"))]);
+    }
+    MAIL_SEEN.lock().map(|mut seen| seen.insert(account.to_string(), now.clone()).is_some_and(|before| before == now)).unwrap_or(false)
 }
 
 /// After a fetch of `account` (`new`: its inbox's arrivals, maybe none), on a
@@ -6717,6 +6790,17 @@ impl qobject::Sioul {
         });
     }
 
+    fn set_hidden(self: Pin<&mut Self>, hidden: bool) {
+        if cfg!(target_os = "android") {
+            return;
+        }
+        HIDDEN.store(hidden, Ordering::SeqCst);
+        let shared = self.shared();
+        if !hidden && shared.views_job.deferred.swap(false, Ordering::SeqCst) {
+            show(&self.qt_thread(), &shared);
+        }
+    }
+
     fn back_here(mut self: Pin<&mut Self>) {
         self.as_mut().set_away(false);
         AWAY.store(false, Ordering::SeqCst);
@@ -8182,6 +8266,47 @@ impl qobject::Sioul {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A mail report with nothing new leaves the views as they are while the
+    /// address's Maildir stays as its last report left it: a message come,
+    /// flagged elsewhere (renamed), gone or a folder made, and they are made
+    /// again; and at least every `VIEWS_AGAIN` whatever (`mail_as_before`).
+    #[test]
+    fn a_quiet_report_leaves_the_views_while_the_mail_stays() {
+        let root = std::env::temp_dir().join(format!("sioul-mail-as-before-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for sub in ["new", "cur", "tmp", ".Archive/new", ".Archive/cur", ".Archive/tmp"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        let settle = || {
+            for dir in ["", "new", "cur", ".Archive", ".Archive/new", ".Archive/cur"] {
+                std::fs::File::open(root.join(dir)).unwrap().set_modified(past).unwrap();
+            }
+        };
+        let account = "as-before@example.org";
+        settle();
+        assert!(!mail_unchanged(account, &root), "never looked at: made");
+        assert!(mail_unchanged(account, &root), "as it was");
+        for change in [
+            &(|| std::fs::write(root.join("new/1.x"), "Subject: one\r\n\r\n").unwrap()) as &dyn Fn(),
+            &|| std::fs::rename(root.join("new/1.x"), root.join("cur/1.x:2,S")).unwrap(),
+            &|| std::fs::remove_file(root.join("cur/1.x:2,S")).unwrap(),
+            &|| std::fs::write(root.join(".Archive/cur/2.x:2,"), "Subject: two\r\n\r\n").unwrap(),
+            &|| ["new", "cur", "tmp"].iter().for_each(|sub| std::fs::create_dir_all(root.join(".Later").join(sub)).unwrap()),
+        ] {
+            settle();
+            let _ = mail_unchanged(account, &root);
+            assert!(mail_unchanged(account, &root));
+            change();
+            assert!(!mail_unchanged(account, &root), "changed: made again");
+        }
+        assert!(views_recent(Some(std::time::Instant::now())));
+        assert!(!views_recent(None), "never made");
+        let long_ago = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(VIEWS_AGAIN + 1));
+        assert!(long_ago.is_none_or(|at| !views_recent(Some(at))), "made long ago: made again");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// A code's notification offers Copy and Open on a computer (the
     /// mailbox's part 0): Open asks for the code's message; a code its
