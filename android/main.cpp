@@ -66,6 +66,7 @@ extern "C" char *sioul_wake_next(const char *zone, bool fetch);
 extern "C" void sioul_string_free(char *text);
 // Something shared to Sioul, or the files copied for it (crates/sioul-app/src/outside.rs).
 extern "C" void sioul_handed();
+extern "C" void sioul_keyboard(bool attached);
 // A mail attachment saved where you chose, or not (crates/sioul-app/src/attachments.rs): JSON.
 extern "C" void sioul_attachment_saved(const char *json);
 // At an event's reminder, and the coming ones in the phone's zone
@@ -921,6 +922,14 @@ extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_SecurityKeyLink_
 extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_ShareActivity_nativeHanded(JNIEnv *, jclass)
 {
     sioul_handed();
+}
+
+// StepService.java's side: the configuration changed, a hardware keyboard
+// attached or not then (devicekind.rs keeps it, the status line shows the
+// keys while one is). On Android's main thread.
+extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_StepService_nativeKeyboard(JNIEnv *, jclass, jboolean attached)
+{
+    sioul_keyboard(attached == JNI_TRUE);
 }
 
 // AttachmentSave.java's side: a mail attachment copied where Android's

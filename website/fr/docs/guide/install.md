@@ -169,7 +169,7 @@ Pas encore essayé. Les étapes sont dans [packaging/macos/README.md (en anglais
 
 ## Sur Android {#on-android}
 
-Pour les téléphones 64 bits sous Android 9 ou plus récent. Sioul n’est pas dans une boutique d’applications : son APK, `Sioul-<version>-android-arm64.apk`, est sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest).
+Pour les téléphones et tablettes 64 bits sous Android 9 ou plus récent. Sioul n’est pas dans une boutique d’applications : son APK, `Sioul-<version>-android-arm64.apk`, est sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest).
 
 1. Sur le téléphone, ouvrez la page des versions et téléchargez l’APK.
 2. Ouvrez-le. Android demande si votre navigateur (ou votre gestionnaire de fichiers) peut installer des applications : autorisez-le, puis **Installer**. Play Protect, si le téléphone l’a, peut dire qu’il ne connaît pas l’application.

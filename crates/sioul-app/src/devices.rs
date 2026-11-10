@@ -90,7 +90,9 @@ pub(crate) fn name() -> String {
     .clone()
 }
 
-/// A phone, or a computer.
+/// A phone, or a computer: the system's word, "phone" on every Android, a
+/// tablet's too. The doses read it (`health`); what follows the person reads
+/// `devicekind::kind`, written beside it as the entry's `form`.
 pub(crate) fn kind() -> &'static str {
     if cfg!(target_os = "android") { PHONE } else { COMPUTER }
 }
@@ -124,6 +126,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.id = id;
         entry.name = name();
         entry.kind = kind().into();
+        // A phone, a tablet or a computer, for what follows the person: how the others name it.
+        entry.form = crate::devicekind::kind().word().into();
         // The build that writes it (docs/database.md, "Devices"): which code each device runs.
         entry.version = sioul_core::build::VERSION.into();
         entry.commit = sioul_core::build::COMMIT.into();
@@ -176,6 +180,12 @@ pub(crate) fn learns_now() {
     if sioul_sync::devices::own(&path).learns != crate::spam::learns_level() {
         let _ = write(|_| {});
     }
+}
+
+/// This device's kind changed (Settings ▸ This device): its entry says so
+/// now, for the others to name it (`Entry::form`).
+pub(crate) fn form_changed() {
+    let _ = write(|_| {});
 }
 
 /// The window opened, or a phone's Sioul back on the screen: up. Found up
@@ -427,6 +437,14 @@ pub(crate) fn others_in_use(asleep: bool) -> bool {
 pub(crate) fn kind_and_name(id: &str) -> Option<(String, String)> {
     let (_, Some((folder, key))) = crate::share::vault()? else { return None };
     sioul_sync::devices::all(&folder, &key).0.into_iter().find(|e| e.id == id).map(|e| (e.kind, e.name))
+}
+
+/// What a device is for what follows the person ("phone", "tablet",
+/// "computer"), from its entry in the folder (`Entry::form_or_kind`); none
+/// when it has none.
+pub(crate) fn form_of(id: &str) -> Option<String> {
+    let (_, Some((folder, key))) = crate::share::vault()? else { return None };
+    sioul_sync::devices::all(&folder, &key).0.into_iter().find(|e| e.id == id).map(|e| e.form_or_kind().to_string())
 }
 
 #[cfg(test)]

@@ -220,6 +220,7 @@ pub mod due;
 pub mod ahead;
 pub mod dayview;
 pub mod demands;
+pub mod device_kind;
 pub mod description;
 pub mod doses;
 pub mod draftcopies;

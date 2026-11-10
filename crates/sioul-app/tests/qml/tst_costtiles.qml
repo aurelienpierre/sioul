@@ -58,6 +58,18 @@ Item {
         }
     }
 
+    // The tiles inside a control whose font changes after they are made.
+    Control {
+        id: holder
+
+        y: 1100
+        width: 600
+        contentItem: App.CostTiles {
+            sioul: words
+            theme: theme
+            values: ({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null })
+        }
+    }
     App.FeltRatings {
         id: felt
 
@@ -300,6 +312,20 @@ Item {
             compare(costs.join(","), "tile-cost-0,tile-cost-1,tile-cost-2,tile-cost-3,tile-cost-3,tile-cost-5,tile-cost-5,tile-cost-7,tile-cost-7,tile-cost-7,tile-cost-10")
             const gains = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => tiles.word("gain", v))
             compare(gains.join(","), "tile-gain-0,tile-gain-1,tile-gain-1,tile-gain-3,tile-gain-3,tile-gain-5,tile-gain-5,tile-gain-7,tile-gain-7,tile-gain-7,tile-gain-10")
+        }
+
+        // The words' room follows the font they come to have: it was measured once,
+        // in the font of when the tiles were made (FontMetrics' advanceWidth() in a
+        // binding, as the Time dialog's "0:10": 6f429ea).
+        function test_the_words_room_follows_the_font_they_come_to_have() {
+            const inner = holder.contentItem
+            const before = inner.wordRoom
+            verify(before > 2)
+            holder.font.bold = true
+            holder.font.letterSpacing = 2
+            tryVerify(() => inner.wordRoom > before, 2000, "wider in a wider font: " + before + " then " + inner.wordRoom)
+            holder.font.bold = false
+            holder.font.letterSpacing = 0
         }
     }
 }

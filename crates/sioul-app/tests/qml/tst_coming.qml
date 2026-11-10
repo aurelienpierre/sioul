@@ -108,6 +108,22 @@ Item {
         }
     }
 
+    // What is coming inside a control whose font changes after it is made, as a
+    // dialog's or a tablet's window font may.
+    Component {
+        id: comingInControl
+
+        Control {
+            width: 1000
+            contentItem: ComingSection {
+                sioul: mock
+                theme: testTheme
+                window: fakeWindow
+                view: JSON.parse(root.view)
+            }
+        }
+    }
+
     Component {
         id: comingComponent
 
@@ -322,6 +338,18 @@ Item {
             const items = all(coming.Overlay.overlay, i => i.text !== undefined && typeof i.text === "string" && i.visible).map(i => i.text)
             verify(items.indexOf("movement-not-same · a mail") >= 0, items)
             verify(items.indexOf("ui-open · a mail") >= 0, items)
+        }
+
+        // The days' column follows the font the section comes to have: its width was
+        // measured once, in the font it had when it was made (FontMetrics'
+        // advanceWidth() in a binding, as the Time dialog's "0:10": 6f429ea).
+        function test_the_days_column_follows_the_font_it_comes_to_have() {
+            const holder = createTemporaryObject(comingInControl, root)
+            const coming = holder.contentItem
+            tryVerify(() => coming.dateWidth > 4, 5000)
+            const before = coming.dateWidth
+            holder.font.pixelSize = 30
+            tryVerify(() => coming.dateWidth > before, 2000, "wider in a larger font: " + before + " then " + coming.dateWidth)
         }
 
         // On a phone: the same list, no month beside it, nothing past 412 points.

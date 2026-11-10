@@ -704,7 +704,7 @@ pub(crate) fn notices(config: &Config, admin: bool) -> Vec<String> {
 /// words ("the computer", "the phone"): from the devices' sealed entries.
 fn last_write(entries: Option<&(String, Vec<sioul_sync::devices::Entry>)>, id: &str) -> Option<(i64, String)> {
     let (_, all) = entries?;
-    all.iter().filter_map(|e| e.mirrors.get(id).map(|at| (*at, e))).max_by_key(|(at, _)| *at).map(|(at, e)| (at, tr().text(if e.kind == sioul_sync::devices::PHONE { "availability-device-phone" } else { "availability-device-computer" }, None)))
+    all.iter().filter_map(|e| e.mirrors.get(id).map(|at| (*at, e))).max_by_key(|(at, _)| *at).map(|(at, e)| (at, tr().text(match e.form_or_kind() { sioul_sync::devices::PHONE => "availability-device-phone", sioul_sync::devices::TABLET => "availability-device-tablet", _ => "availability-device-computer" }, None)))
 }
 
 /// A time as Mail's rows say it: "14:05" today, "yesterday at 18:10", else its date.

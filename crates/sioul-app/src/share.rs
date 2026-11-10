@@ -882,7 +882,9 @@ struct GoneRow {
     state: String,
 }
 
-/// A device's name as its last entry said it: "The phone (Model 7)", a computer's name, else "A device".
+/// A device's name as its last entry said it: "The phone (Model 7)", "The
+/// tablet (Model 9)", a computer's name, else "A device". `kind` is what it is
+/// for what follows the person (`Entry::form_or_kind`, `form_by_id`).
 fn device_named(name: &str, kind: &str) -> String {
     let capital = |text: String| -> String {
         let mut chars = text.chars();
@@ -890,9 +892,16 @@ fn device_named(name: &str, kind: &str) -> String {
     };
     match (kind, name) {
         (sioul_sync::devices::PHONE, name) if !name.is_empty() && name != sioul_sync::devices::PHONE => format!("{} ({name})", capital(tr().text("device-the-phone", None))),
+        (sioul_sync::devices::TABLET, name) if !name.is_empty() && name != sioul_sync::devices::PHONE => format!("{} ({name})", capital(tr().text("device-the-tablet", None))),
         (_, name) if !name.is_empty() => name.to_string(),
         _ => tr().text("share-device-unnamed", None),
     }
+}
+
+/// What a device is for what follows the person, by its id: its entry's
+/// form among `entries`, else `kind` (what the sharing kept of it).
+fn form_by_id<'a>(entries: &'a [sioul_sync::devices::Entry], id: &str, kind: &'a str) -> &'a str {
+    entries.iter().find(|e| e.id == id).map_or(kind, sioul_sync::devices::Entry::form_or_kind)
 }
 
 /// The devices that no longer count here (they left, you forgot them,
@@ -900,12 +909,13 @@ fn device_named(name: &str, kind: &str) -> String {
 fn gone_rows(folder: &Path) -> Vec<GoneRow> {
     let here = here();
     let Some(key) = key() else { return Vec::new() };
+    let entries = sioul_sync::devices::all(folder, &key).0;
     share::departed_devices(folder, &key, &memory_path(), &here.id, now_ms())
         .into_iter()
         .map(|gone| {
             let size = sioul_core::view::size(tr(), usize::try_from(gone.bytes).unwrap_or(usize::MAX));
             let state = say(&format!("share-device-gone-{}", gone.why), &[("size", size)]);
-            GoneRow { name: device_named(&gone.name, &gone.kind), id: gone.id, state }
+            GoneRow { name: device_named(&gone.name, form_by_id(&entries, &gone.id, &gone.kind)), id: gone.id, state }
         })
         .collect()
 }
@@ -935,7 +945,7 @@ fn leaving_rows(folder: &Path) -> Vec<LeavingRow> {
     let leaving = share::leaving(&memory, &here.id);
     let key = key();
     let entries = key.map(|key| sioul_sync::devices::all(folder, &key).0).unwrap_or_default();
-    let named = |id: &str| entries.iter().find(|e| e.id == id).map_or_else(|| tr().text("share-device-unnamed", None), |e| device_named(&e.name, &e.kind));
+    let named = |id: &str| entries.iter().find(|e| e.id == id).map_or_else(|| tr().text("share-device-unnamed", None), |e| device_named(&e.name, e.form_or_kind()));
     let heard = |id: &str| key.map_or(0, |key| share::heard_of(folder, &key, &memory, &here.id, id)) / 1000;
     let mut rows = rows_of(&leaving, &named, &heard, jiff::Timestamp::now().as_second());
     let (count, bytes) = still_on_the_server(folder, &memory);
@@ -1055,7 +1065,7 @@ fn removal_words(files: &share::DeviceFiles, lately: bool) -> String {
     }
     said.push(tr().text("share-remove-stays", None));
     if !files.unread_by.is_empty() {
-        let names = files.unread_by.iter().map(|(_, name, kind)| device_named(name, kind)).collect::<Vec<_>>().join(", ");
+        let names = files.unread_by.iter().map(|(id, name, kind)| device_named(name, &crate::devices::form_of(id).unwrap_or_else(|| kind.clone()))).collect::<Vec<_>>().join(", ");
         said.push(say("share-remove-unread", &[("devices", names), ("count", files.unread_by.len().to_string())]));
     }
     said.join(" ")
@@ -3865,6 +3875,12 @@ mod tests {
         assert_eq!(device_named("", ""), tr().text("share-device-unnamed", None));
         assert_eq!(device_named("desk", sioul_sync::devices::COMPUTER), "desk");
         assert!(device_named("Model 7", sioul_sync::devices::PHONE).ends_with("(Model 7)"));
+        // A tablet named so, wherever its entry says its form; an older Sioul's by its kind.
+        let tab = device_named("Tab 9", sioul_sync::devices::TABLET);
+        assert!(tab.ends_with("(Tab 9)") && tab.to_lowercase().starts_with(&tr().text("device-the-tablet", None).to_lowercase()), "{tab}");
+        let tablet = sioul_sync::devices::Entry { id: "tab".into(), kind: sioul_sync::devices::PHONE.into(), form: sioul_sync::devices::TABLET.into(), ..sioul_sync::devices::Entry::default() };
+        assert_eq!(form_by_id(std::slice::from_ref(&tablet), "tab", "phone"), sioul_sync::devices::TABLET);
+        assert_eq!(form_by_id(&[], "tab", "phone"), sioul_sync::devices::PHONE, "no entry: what the sharing kept");
     }
 
     /// On a phone, what you said of the notes folder wins over the guess,

@@ -71,6 +71,14 @@ date-long = { $weekday } { $day ->
     } { $month } à { $time }
 ```
 
+**This device, named by what it is.** Every message gets `$form`, "phone", "tablet" or "computer", unless its caller gives its own (`i18n::set_form`, said once per process by the window: `devicekind::name_in_words`; docs/android.md, "Tablets"). A sentence that names this device takes it through a few messages of its own, `device-this` ("this phone", "this tablet", "this device"), `device-this-cap`, `device-yours-cap`, `device-the`…, which a message references (`{ device-this }`: a referenced message sees the same arguments), so that no caller has to pass anything:
+
+```ftl
+seckey-no-nfc = { device-this-cap } has no NFC: plug the key into its USB-C port.
+```
+
+French agrees with the noun: where an adjective or a pronoun follows it, the whole sentence is chosen (`{ $form -> [tablet] Votre tablette n’a pas pu être mise en silence … }`). Both languages hold the same helper messages, used or not. Unsaid (a test, the command line), each such sentence reads as a phone's, as every Android did. A sentence about the system rather than the device says Android ("Android has no antivirus Sioul can call").
+
 ## How the code asks for a message
 **From QML**, through the bridge object, always by a literal name:
 - `sioul.text("stopped-done")`: a message without arguments;

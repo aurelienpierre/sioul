@@ -169,7 +169,7 @@ Not tried yet. The steps are in [packaging/macos/README.md](https://github.com/a
 
 ## On Android
 
-For 64-bit phones with Android 9 or later. Sioul is not in a store: its APK, `Sioul-<version>-android-arm64.apk`, is on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest).
+For 64-bit phones and tablets with Android 9 or later. Sioul is not in a store: its APK, `Sioul-<version>-android-arm64.apk`, is on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest).
 
 1. On the phone, open the releases page and download the APK.
 2. Open it. Android asks whether your browser (or your file manager) may install apps: allow it, then **Install**. Play Protect, where the phone has it, may say it does not know the app.

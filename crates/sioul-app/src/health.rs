@@ -3354,7 +3354,7 @@ fn device_rows_of(peers: &[Peer], kept: &Peers, now: i64, words: &Translator) ->
             let entry = seen.and_then(|s| s.entry.as_ref()).filter(|_| peer.said.is_some());
             let named = named_of(peer);
             let name = match entry {
-                Some(e) if e.kind == sioul_sync::devices::PHONE && !e.name.is_empty() && e.name != sioul_sync::devices::PHONE => format!("{} ({})", capitalized(&words.text("device-the-phone", None)), e.name),
+                Some(e) if e.kind == sioul_sync::devices::PHONE && !e.name.is_empty() && e.name != sioul_sync::devices::PHONE => format!("{} ({})", capitalized(&words.text(if e.form == sioul_sync::devices::TABLET { "device-the-tablet" } else { "device-the-phone" }, None)), e.name),
                 _ => device_start(&named, words),
             };
             let off = peer.off;

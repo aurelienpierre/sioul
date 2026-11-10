@@ -35,11 +35,17 @@ SioulWindow {
     // with SIOUL_GRAB_PHONE (or SIOUL_GRAB_STEPS=phone), a phone's: 412 by 891, its layout.
     readonly property bool phoneGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "phone" || sioul.grabPhone())
     readonly property bool demoGrab: sioul.grabFolder() !== "" && sioul.grabSteps() === "demo" && !window.phoneGrab
+    // A tablet's pictures (SIOUL_GRAB_STEPS=tablet): each page at 1280 by 800, the device a
+    // tablet, without the window's own title bar and with touch, as on Android; a
+    // computer's layout, since the room decides it, never the system.
+    readonly property bool tabletGrab: sioul.grabFolder() !== "" && sioul.grabSteps() === "tablet"
 
-    width: window.phoneGrab ? 412 : window.demoGrab ? 1280 : 1100
+    width: window.phoneGrab ? 412 : window.demoGrab || window.tabletGrab ? 1280 : 1100
     // Taller when saving images of the pages, so long pages show whole.
-    height: window.phoneGrab ? 891 : window.demoGrab ? 860 : sioul.grabFolder() ? 1500 : 760
-    // A phone's screen is the window, whatever its size.
+    height: window.phoneGrab ? 891 : window.demoGrab ? 860 : window.tabletGrab ? 800 : sioul.grabFolder() ? 1500 : 760
+    // Android's screen, or its window in split screen or free-form, is the system's
+    // to size (a phone's, a tablet's): no minimum of Sioul's there. The layout follows
+    // whatever size it is given (`compact`).
     minimumWidth: Qt.platform.os === "android" || window.phoneGrab ? 0 : 680
     minimumHeight: Qt.platform.os === "android" || window.phoneGrab ? 0 : 480
     // Shown as Sioul starts; a desktop's then maximized (Component.onCompleted). A
@@ -50,8 +56,9 @@ SioulWindow {
     theme: theme
     // On a computer, Sioul draws its own title bar (TitleBar.qml): the status
     // line at the top, the window's buttons where the system puts them; the
-    // system draws none. A phone's screen has none, nor have a phone's pictures.
-    readonly property bool ownTitleBar: Qt.platform.os !== "android" && !window.phoneGrab
+    // system draws none. Android's window has none (a phone's, a tablet's: the
+    // system's own), nor have a phone's or a tablet's pictures.
+    readonly property bool ownTitleBar: Qt.platform.os !== "android" && !window.phoneGrab && !window.tabletGrab
     flags: window.ownTitleBar ? Qt.Window | Qt.FramelessWindowHint : Qt.Window
 
     // How the window was shown before it went to the tray: shown again so.
@@ -973,7 +980,7 @@ SioulWindow {
         id: theme
 
         compact: window.compact
-        touch: Qt.platform.os === "android" || window.phoneGrab
+        touch: Qt.platform.os === "android" || window.phoneGrab || window.tabletGrab
         // SIOUL_THEME=dark or light forces one, for the window's images.
         // SIOUL_THEME for the window's images, else the setting, else the system's
         // colour scheme, followed as it changes (Windows 10's dark mode included),
@@ -1039,9 +1046,10 @@ SioulWindow {
     }
 
     // texts: the Texts page (TextsPage.qml), at a conversation by its id when
-    // one is given; a phone has its own SMS app, where the conversation opens.
+    // one is given; a device with telephony (a phone, a tablet with a SIM) has
+    // its own SMS app, where the conversation opens.
     function openTexts(id) {
-        if (Qt.platform.os === "android") {
+        if (sioul.telephony) {
             if (id !== "")
                 Qt.openUrlExternally("sms:" + id)
             return
@@ -2140,8 +2148,8 @@ SioulWindow {
                 () => {},
                 () => grabber.saveWindow("rail-tip"),
                 () => window.sayRailTip(places.shown.repeater.itemAt(2), false, 0),
-                // The agenda's place (Texts comes before it on a computer).
-                () => places.shown.repeater.itemAt(Qt.platform.os === "android" ? 4 : 5).forceActiveFocus(Qt.TabFocusReason),
+                // The agenda's place (Texts comes before it where there is no telephony).
+                () => places.shown.repeater.itemAt(sioul.telephony ? 4 : 5).forceActiveFocus(Qt.TabFocusReason),
                 () => {},
                 () => grabber.saveWindow("rail-focus"),
                 () => {
@@ -5080,8 +5088,8 @@ SioulWindow {
                 () => grabber.save("health-wide-week"),
                 () => {
                     healthPage.showDay()
-                    window.width = window.phoneGrab ? 412 : window.demoGrab ? 1280 : 1100
-                    window.height = window.phoneGrab ? 891 : window.demoGrab ? 860 : 1500
+                    window.width = window.phoneGrab ? 412 : window.demoGrab || window.tabletGrab ? 1280 : 1100
+                    window.height = window.phoneGrab ? 891 : window.demoGrab ? 860 : window.tabletGrab ? 800 : 1500
                 },
                 () => {},
                 // Lunch's question: later, at another time, not today, where you stopped.

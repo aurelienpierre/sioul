@@ -270,8 +270,9 @@ const fn with_ids(list: &'static str, by: &'static [&'static str]) -> Keyed {
     Keyed { list, by, local: &[], also: &[], ids: true }
 }
 
-/// Where things are on this computer, how text reads on its screen, and the time zone it shows.
-const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "dnd.background", "agenda.time_zone", "spam.train_here", "spam.train_network"];
+/// Where things are on this computer, how text reads on its screen, the time
+/// zone it shows, and what it is (a phone, a tablet or a computer).
+const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "dnd.background", "agenda.time_zone", "spam.train_here", "spam.train_network", "device_kind"];
 static CONFIG_RULES: Rules = Rules { keyed: &[Keyed { list: "account", by: &["id"], local: &["maildir", "history_weeks"], also: &[], ids: false }], whole: &[], local: CONFIG_LOCAL, next: Some(&CONFIG_RULES_2) };
 /// Format 2: pinned sites, routines and task kinds one each, by their ids;
 /// days off one each; the words you added to a list and those you took
@@ -10508,7 +10509,7 @@ mod tests {
         let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
 
         // The desk shares first: its settings, its lists, a draft, a session.
-        desk.write("config/config.toml", "language = \"fr\"\ncase_store = \"~/Notes\"\n\n[tasks]\nkind = \"plan\"\n\n[agenda]\ntime_zone = \"Asia/Tokyo\"\n\n[spam]\ntrain_here = false\ntrain_network = \"unmetered\"\n\n[[account]]\nid = \"perso\"\nkind = \"imap\"\nmaildir = \"/desk/mail\"\n");
+        desk.write("config/config.toml", "language = \"fr\"\ncase_store = \"~/Notes\"\ndevice_kind = \"tablet\"\n\n[tasks]\nkind = \"plan\"\n\n[agenda]\ntime_zone = \"Asia/Tokyo\"\n\n[spam]\ntrain_here = false\ntrain_network = \"unmetered\"\n\n[[account]]\nid = \"perso\"\nkind = \"imap\"\nmaildir = \"/desk/mail\"\n");
         desk.write("config/blocked-senders.txt", "spam@example.org\n");
         desk.write("data/drafts/a1.toml", "subject = \"Hello\"\n");
         desk.write("data/time/2026-10.toml", "[[session]]\ntask = \"t1\"\nstart = 100\nminutes = 25\n");
@@ -10524,6 +10525,7 @@ mod tests {
         assert!(config.contains("case_store = \"~/Nextcloud/Notes\""), "where things are stays here: {config}");
         assert!(config.contains("America/New_York") && !config.contains("Asia/Tokyo"), "the time zone shown stays here: {config}");
         assert!(!config.contains("train_here") && !config.contains("unmetered"), "whether a device trains, and on which networks, stays on it: {config}");
+        assert!(!config.contains("device_kind"), "what a device is (a tablet here) stays on it: {config}");
         assert!(config.contains("id = \"perso\"") && !config.contains("/desk/mail"), "accounts come, without this computer's paths: {config}");
         assert_eq!(laptop.read("data/drafts/a1.toml"), "subject = \"Hello\"\n");
         assert!(laptop.read("data/time/2026-10.toml").contains("task = \"t1\""));

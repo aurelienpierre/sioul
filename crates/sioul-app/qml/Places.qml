@@ -24,8 +24,8 @@ Item {
     required property var sioul
     // Names beside the icons: in a phone's drawer, else as Settings ▸ Display says.
     required property bool named
-    // A row: a finger's on a phone or a touch screen, a pointer's elsewhere.
-    readonly property int row: column.window.compact || Qt.platform.os === "android" ? 44 : 36
+    // A row: a finger's in a narrow window or on a touch screen (`theme.touch`), a pointer's elsewhere.
+    readonly property int row: column.window.compact || column.theme.touch === true ? 44 : 36
     // The buttons' margin on each side.
     readonly property int inset: column.named ? 8 : 6
     // What the window reaches: New (its menu comes under it), the button that
@@ -111,7 +111,7 @@ Item {
                     { page: 13, name: "ui-papers", iconName: "view-certificate" },
                     { page: 15, name: "ui-letters", iconName: "mail-read" },
                     { page: 10, name: "ui-health", iconName: "love" }
-                ].filter(place => place.page !== 14 || Qt.platform.os !== "android")
+                ].filter(place => place.page !== 14 || column.sioul.telephony !== true)
 
                 delegate: RailButton {
                     id: placeButton

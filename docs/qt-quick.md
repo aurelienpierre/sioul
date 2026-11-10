@@ -245,12 +245,13 @@ What a person types (a `TextField`, a `TextArea`) is plain text already, and kep
 
 **"&" in a list or a menu.** A button and a menu line read "&" as the mark of their shortcut key and leave it out ("R&D" drew "RD"), and a `ComboBox`'s list is made of such lines. Menus double each "&" of words from outside (`.replace(/&/g, "&&")`, "&&" being one). Every ComboBox of the window is a `PlainComboBox` (`PlainComboBox.qml`), whose list does it, its closed box being a text field, which shows the text as it is; a ComboBox with a list of its own doubles the "&" itself (the task lists' in `TaskPanel.qml`). `tst_plaincombobox.qml` measures what a line draws against the same words in a plain `Text`, Qt's own list included, which leaves the "&" out.
 
-## A computer and a phone
-The same files serve both. What differs:
-- **The width**: `main.qml`'s `compact` is true below 720 pixels (a phone, or a narrow window). The places then come over the pages from the left (☰), and each page shows one pane at a time; a page that opened something (a message, a task) says so with `canGoBack`, and its `back()` closes it, which Android's Back calls. `theme.compact` narrows the margins.
-- **The system**: `Qt.platform.os === "android"` where only a phone differs (the window has no title bar of its own there, nor a tray).
+## A computer, a tablet and a phone
+The same files serve all three, and three questions decide what differs, never "is it Android?" alone ([android.md](android.md#tablets)):
+- **The width**: `main.qml`'s `compact` is true below 720 pixels (a phone, a tablet in split screen, or any narrow window): the room decides the layout, on every system. The places then come over the pages from the left (☰), and each page shows one pane at a time; a page that opened something (a message, a task) says so with `canGoBack`, and its `back()` closes it, which Android's Back calls. `theme.compact` narrows the margins.
+- **The system**: `Qt.platform.os === "android"` only where Android's own ways differ (the window has no title bar of its own there, nor a tray, nor a minimum size; Sites and PDFs open in other apps); `sioul.telephony` where calls and texts need a SIM (the Texts place, an `sms:` link, the call screening's settings).
+- **The device's kind**: `sioul.deviceKind`, "phone", "tablet" or "computer" (`devicekind.rs`), for what follows the person: the Settings tab's name, where Mail's topics look for groups. Never the layout.
 - **An editing card's width** (the task panel, the event form, "How was it?"): no cap of its own. Its natural width is its fields at about 70 characters of the body font (a readable line: Bringhurst's 45 to 75 characters), or its tiles side by side (`CostTiles.naturalWidth`), whichever is wider, measured with a `FontMetrics` of the card's own font. The task panel takes it while the list beside it keeps 480 pixels, or half the room in a narrower window (`TasksPage.panelWidth`); the event form and "How was it?" take it up to the window less the usual margins (`theme.gap`). On a phone, a card takes the whole width less those margins. Over the whole window, it keeps to the window's safe area (`SafeDialog.qml`: never under a phone's system bars; [android.md](android.md#pages-and-scrolling)).
-- **Fingers**: `theme.touch` (Android, and the runner's phone size) keeps what is tapped a fingertip wide: the tiles' cells are 30 pixels at least, and the tiles stand in one column wherever two would make them narrower.
+- **Fingers**: `theme.touch` (Android, a phone's or a tablet's, and the runner's phone and tablet sizes) keeps what is tapped a fingertip wide: the tiles' cells are 30 pixels at least, and the tiles stand in one column wherever two would make them narrower.
 - **Files of their own**: Android has no Qt WebEngine and no Qt PDF, so `qml/android/SitesPage.qml` and `qml/android/PdfView.qml` replace the computer's (`build.rs` lists one or the other, and `main.qml`'s `pageFiles` picks the Sites page). The tray, `qml-desktop/Tray.qml`, is loaded on computers only, in a folder apart so that the phone's build does not carry it.
 - **Touch**: a right click opens a menu with a mouse; a finger has no buttons. Each such place has two handlers, one for the mouse and the touchpad, one for the touch screen's long press (`ReachButton.qml`):
 
@@ -272,7 +273,7 @@ The same files serve both. What differs:
     }
     ```
 
-- **Checking a phone's layout on a computer**: `SIOUL_GRAB_PHONE` lays the window out at a phone's size (412 × 891) when it saves images of the pages ([android.md](android.md#what-differs-on-android)).
+- **Checking a phone's layout on a computer**: `SIOUL_GRAB_PHONE` lays the window out at a phone's size (412 × 891) when it saves images of the pages ([android.md](android.md#what-differs-on-android)). A tablet's: `tools/demo/run.sh --release OUT en tablet`, each page at 1280 × 800, the kind a tablet, no title bar of Sioul's and touch, as on Android ([android.md](android.md#tablets)).
 
 ## Pitfalls the code's comments name
 - **Binding loops.** A binding that, through others, changes what it reads, runs again and again; Qt stops it and warns ("Binding loop detected"). `TaskPanel.qml` gives the title field a fixed `implicitWidth: 120`, since "the text's width would follow the width it sets, a binding loop". `MailPage.qml` opens the first folder in `Qt.callLater(…)`, after the bindings reading the accounts are done, because opening it at once "changes what they read (a binding loop when done at once)". `Qt.callLater` runs a function once the current changes are over.

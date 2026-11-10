@@ -144,6 +144,7 @@ mod contracts;
 mod crypto;
 mod dated;
 mod desktop;
+mod devicekind;
 mod devices;
 mod dnd;
 mod eventalarms;

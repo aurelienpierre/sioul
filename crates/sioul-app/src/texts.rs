@@ -39,9 +39,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Whether this device reads and sends texts: a phone. SIOUL_TEXTS makes a computer's step run too, to look at it.
+/// Whether this device reads and sends texts: Android with telephony (a
+/// phone, a tablet with a SIM; devicekind.rs). A tablet without one shows
+/// the phone's texts as a computer does. SIOUL_TEXTS makes a computer's step
+/// run too, to look at it.
 fn phone() -> bool {
-    cfg!(target_os = "android") || std::env::var_os("SIOUL_TEXTS").is_some()
+    crate::devicekind::telephony() || std::env::var_os("SIOUL_TEXTS").is_some()
 }
 
 /// The demo profile (`SIOUL_DEMO=1`, which tools/demo/run.sh sets in its
@@ -2818,7 +2821,8 @@ pub(crate) fn kept_words() -> String {
 /// media file brought)}.
 fn setup() -> Value {
     let here = sioul_sync::share::Here::load(&state_dir());
-    let android = cfg!(target_os = "android");
+    // Its phone's part where texts exist here: never a tablet without telephony.
+    let android = crate::devicekind::telephony();
     let state = if android { crate::steps::java("texts-state", "{}") } else { Value::Null };
     let mut reader = Reader::load();
     // Measured before the import begins; then each day, with the look for deletions.

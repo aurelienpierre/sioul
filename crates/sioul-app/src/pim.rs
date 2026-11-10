@@ -690,7 +690,7 @@ pub(crate) fn event(key: &str) -> String {
     let Some(path) = ours(key) else { return String::new() };
     let Some(calendar) = collection_of(&path) else { return String::new() };
     let config = load_config();
-    let place = if here_only(&calendar) { tr().text(if cfg!(target_os = "android") { "event-calendar-here-phone" } else { "event-calendar-here-computer" }, None) } else { String::new() };
+    let place = if here_only(&calendar) { tr().text(&format!("event-calendar-here-{}", crate::devicekind::kind().word()), None) } else { String::new() };
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let organized = agenda::organized_meeting(&text, &agenda::own_addresses());
     let others = with_others(&text) && !organized;

@@ -773,8 +773,12 @@ pub(crate) fn again() {
 /// A device named inside a sentence: "your phone", a computer's name, "another device".
 fn name_of(switch: &Switch, id: &str) -> String {
     let (kind, name) = switch.device.get(id).filter(|d| !d.kind.is_empty()).map(|d| (d.kind.clone(), d.name.clone())).or_else(|| crate::devices::kind_and_name(id)).unwrap_or_default();
+    // The switch's kind is the system's ("phone" on every Android: its modes
+    // stay while Sioul is closed); a tablet is named by its devices' entry.
+    let kind = if kind == "phone" { crate::devices::form_of(id).unwrap_or(kind) } else { kind };
     match kind.as_str() {
         "phone" => tr().text("dnd-device-phone", None),
+        "tablet" => tr().text("dnd-device-tablet", None),
         _ if !name.trim().is_empty() => name,
         _ => tr().text("dnd-device-other", None),
     }

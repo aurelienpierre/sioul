@@ -40,8 +40,9 @@ ColumnLayout {
     function how(by) {
         return page.sioul.text(by === "preset" ? "topics-named-preset" : by === "sites" ? "topics-named-sites" : "topics-named-none")
     }
-    // The groups are looked for on a computer: a phone never reads all the mail for them.
-    readonly property bool computer: Qt.platform.os !== "android"
+    // The groups are looked for on a computer or a tablet: a phone never reads all
+    // the mail for them (`sioul.deviceKind`, what the device is, never its system).
+    readonly property bool computer: page.sioul.deviceKind !== "phone"
 
     function read() {
         page.topics = JSON.parse(page.sioul.topics() || "[]")

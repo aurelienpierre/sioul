@@ -41,9 +41,18 @@ pub struct Entry {
     /// To say where: a computer's host name, a phone's model.
     #[serde(default)]
     pub name: String,
-    /// `PHONE` or `COMPUTER`.
+    /// `PHONE` or `COMPUTER`: the system's word, "phone" on every Android,
+    /// which the doses read (`Said::phone`) and an older Sioul names it by.
     #[serde(default)]
     pub kind: String,
+    /// What it is for what follows the person (`sioul_core::device_kind`):
+    /// `PHONE`, `TABLET` or `COMPUTER`, as its Settings ▸ This device says,
+    /// else as its system does (an Android from 600 dp wide a tablet). Its
+    /// name in the devices list, the sharing panel and do-not-disturb's lines;
+    /// "" from an older Sioul, read as its `kind` (`form_or_kind`). An older
+    /// Sioul reads the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub form: String,
     /// The Sioul that wrote it: its version ("0.0.3") and the commit it was
     /// built from (`sioul_core::build::COMMIT`); an older Sioul's entry says
     /// its version alone, or neither, and reads all the same.
@@ -246,8 +255,16 @@ fn is_zero(n: &u32) -> bool {
 
 pub const PHONE: &str = "phone";
 pub const COMPUTER: &str = "computer";
+/// A tablet, in `Entry::form` only: its `kind` stays `PHONE`, Android's word.
+pub const TABLET: &str = "tablet";
 
 impl Entry {
+    /// What it is for what follows the person, to name it by: its `form`,
+    /// else (an older Sioul) its `kind`: "phone" for every Android then.
+    pub fn form_or_kind(&self) -> &str {
+        if self.form.is_empty() { &self.kind } else { &self.form }
+    }
+
     /// A session begins: Sioul opened, brought back, or a receiver at work.
     pub fn start(&mut self, now: i64) {
         self.started = now;
@@ -654,6 +671,37 @@ mod tests {
         let older = serde_json::json!({ "id": id, "kind": "phone", "started": 1_000, "working": true });
         std::fs::write(file_of(&folder, &id), crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
         assert_eq!(all(&folder, &KEY).0[0].notifications, None, "an older Sioul's: unsaid");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A tablet says so in its form, its kind staying Android's "phone",
+    /// which the doses read (`Said::phone`): what follows the person names it
+    /// a tablet, the doses count it as before. An older Sioul's entry, with no
+    /// form, is named by its kind; an older Sioul reads the tablet's entry as
+    /// a phone's.
+    #[test]
+    fn a_tablet_says_its_form_and_the_doses_read_its_kind() {
+        let dir = scratch("form");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let id = uuid::Uuid::new_v4().to_string();
+        let vault = Some((folder.as_path(), &KEY));
+        change(&own_path(&state), vault, |e| {
+            e.id = id.clone();
+            e.kind = PHONE.into();
+            e.form = TABLET.into();
+            e.doses = true;
+            e.start(1_000);
+        })
+        .unwrap();
+        let read = all(&folder, &KEY).0.remove(0);
+        assert_eq!((read.kind.as_str(), read.form.as_str(), read.form_or_kind()), (PHONE, TABLET, TABLET));
+        assert!(read.said().phone, "the doses read Android's kind, unchanged");
+        let older = serde_json::json!({ "id": id, "kind": "phone", "started": 1_000, "working": true });
+        std::fs::write(file_of(&folder, &id), crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
+        assert_eq!(all(&folder, &KEY).0[0].form_or_kind(), PHONE, "an older Sioul's: its kind");
+        // A computer's entry with no form says nothing more (skipped when empty).
+        let computer = Entry { id: "desk".into(), kind: COMPUTER.into(), ..Entry::default() };
+        assert!(!serde_json::to_string(&computer).unwrap().contains("form"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

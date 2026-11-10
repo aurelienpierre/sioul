@@ -622,6 +622,17 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("screen_colours", "screen-colours", Kind::Bool, SettingValue::Bool(config.screen_colours.unwrap_or(true)));
             let s = b.push("calmer_colours", "calmer-colours", Kind::Choice, SettingValue::Text(config.calmer_colours.clone().unwrap_or_default()));
             s.choices = [("", "set-calmer-colours-off"), ("little", "set-calmer-colours-little"), ("more", "set-calmer-colours-more")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            // What this device is for what follows you (`device_kind`, docs/android.md,
+            // "Tablets"), this device's own: in its own tab on Android (Settings ▸ This
+            // phone, or This tablet), in Display elsewhere. "" as the system says, which
+            // the window names (backend.rs: Android's width is the app's to read).
+            b.section = if cfg!(target_os = "android") { "phone".into() } else { "look".into() };
+            b.group = tr.text("set-device-group", None);
+            let s = b.push("device_kind", "device-kind", Kind::Choice, SettingValue::Text(config.device_kind.clone().unwrap_or_default()));
+            let found = crate::device_kind::DeviceKind::guessed(cfg!(target_os = "android"), None);
+            s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: device_kind_found(tr, found) })
+                .chain(crate::device_kind::DeviceKind::ALL.iter().map(|kind| Choice { value: SettingValue::Text(kind.word().to_string()), label: tr.text(&format!("set-device-kind-{}", kind.word()), None) }))
+                .collect();
             // Your folder: notes, and beside them projects, budgets, letters. How far back
             // mail and calendars go is the accounts', at the top of Accounts.
             b.section = "files".into();
@@ -988,6 +999,13 @@ fn words_rows(b: &mut Builder, config: &Config) {
 
 /// The countries numbers written without one can be read as: as the system
 /// says first (its locale's, else the language's), then each one by name.
+/// The device kind's first choice, the system's guess named: "Found by itself (a tablet)".
+pub fn device_kind_found(tr: &Translator, found: crate::device_kind::DeviceKind) -> String {
+    let mut args = crate::i18n::args();
+    args.set("kind", tr.text(&format!("device-kind-{}", found.word()), None));
+    tr.text("set-device-kind-found", Some(&args))
+}
+
 fn phone_regions(tr: &Translator) -> Vec<Choice> {
     let name = |code: &str| tr.text(&format!("country-{}", code.to_ascii_lowercase()), None);
     let usual = match crate::phones::usual_region(&tr.text("qt-locale", None)) {
@@ -1547,7 +1565,7 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours", "calmer_colours".
-                "language", "theme", "places_named", "passwords_shown", "screen_colours", "calmer_colours", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing",
+                "language", "theme", "places_named", "passwords_shown", "screen_colours", "calmer_colours", "device_kind", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing",
                 "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.events", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat",
                 "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
