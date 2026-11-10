@@ -98,8 +98,9 @@ Not counted: GPU memory.
 | The same, after | 0.06 | 0.05 | 0.07 | 0.06 | 0.06, 5 wakes a second in all |
 | 2,500 more events and contacts, sharing on, before | 0.54 | 0.87 | 0.79 | 0.51 | 0.59 |
 | The same, after | 0.19 | 0.32 | 0.22 | 0.18 | 0.23 |
+| The same, with the agenda's last two changes | 0.39 | 0.24 | 0.23 | 0.19 | 0.19 |
 
-The rows after were measured before the agenda's last two changes below (its marks read once a pass, each file's occurrences found by a hash rather than a tree), which the profile then gave as over half of what was left at rest.
+The "after" rows were measured before the agenda's last two changes below (its marks read once a pass, each file's occurrences found by a hash rather than a tree), which the profile gave as over half of what was left at rest; measured again with them (the last row), the difference stays within what separates two runs here (the Porch's moment, the first, carries the start's last work).
 
 What took the time, found with `--perf`, and what was done (10 November 2026):
 - **The agenda read again and again**: the window's minute asks for the coming days several times (the reminders, the hours, the pauses, the reviews, the reach, Health), and each ask read and parsed every file of every calendar, years of past events included, about 40 µs a file. Each file's occurrences from two days before today to 62 days after are now kept while the file, the day, the time zone, your addresses and its agenda stay (`agenda::KEPT`, `file_occurrences_marked`; a file written within two seconds is read from the disk, its time not trusted yet), and a calendar's agenda marks are read once a pass, not once a file. What is left at rest is a look at each file's length and time.
