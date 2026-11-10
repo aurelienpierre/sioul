@@ -35,8 +35,14 @@
 //! **An entry can be ahead of its file** (review of f85f504, H1): the sharing
 //! and the calendar's sync have separate triggers, so an entry may reach a
 //! device before the meeting that made it. Each entry keeps that meeting's
-//! DTSTAMP (`Kept::stamp`), and a file no later than it says nothing of guests
-//! gone: nothing is written and nothing forgotten.
+//! revision (`Kept::stamp`: its LAST-MODIFIED, else its DTSTAMP) and its
+//! SEQUENCE (`Kept::sequence`), and a file no later than it, or of a lower
+//! SEQUENCE, says nothing of guests gone: nothing is written and nothing
+//! forgotten. A server may write DTSTAMP afresh at each GET (as Google's
+//! calendar feeds stamp the time they are read): an older copy fetched after
+//! the meeting was made would then seem later than it by its DTSTAMP alone,
+//! so DTSTAMP counts only for an event with no LAST-MODIFIED, and never above
+//! a lower SEQUENCE (10 November 2026; until then DTSTAMP alone).
 
 use crate::lines;
 use serde::{Deserialize, Serialize};
@@ -60,6 +66,13 @@ pub struct Kept {
     /// device's removal took it while a line was added here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stamp: Option<String>,
+    /// The SEQUENCE of the meeting that made this entry (`sequence_of`): a
+    /// file of a lower one is an older copy of it, whatever its stamps say
+    /// (`later_than_entry`). None when unknown: an entry from before 10
+    /// November 2026, or one an older Sioul wrote again (it reads past this
+    /// line and leaves it out), compared by its stamp alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub times: BTreeMap<String, BTreeMap<String, Vec<String>>>,
 }
@@ -79,6 +92,8 @@ struct KeptAsWritten {
     #[serde(default)]
     stamp: Option<String>,
     #[serde(default)]
+    sequence: Option<u32>,
+    #[serde(default)]
     times: Option<BTreeMap<String, TimeAsWritten>>,
 }
 
@@ -86,7 +101,7 @@ impl From<KeptAsWritten> for Kept {
     /// An entry of the older form has no age, and is an entry even of no line.
     fn from(written: KeptAsWritten) -> Kept {
         let older = written.stamp.is_none() && written.times.as_ref().is_some_and(|times| times.is_empty() || times.values().any(|t| matches!(t, TimeAsWritten::Listed(_))));
-        let mut kept = Kept { stamp: if older { Some(String::new()) } else { written.stamp }, times: BTreeMap::new() };
+        let mut kept = Kept { stamp: if older { Some(String::new()) } else { written.stamp }, sequence: written.sequence, times: BTreeMap::new() };
         for (time, lines) in written.times.unwrap_or_default() {
             let names = kept.times.entry(time).or_default();
             match lines {
@@ -105,7 +120,7 @@ impl From<KeptAsWritten> for Kept {
 impl Kept {
     /// An entry of no line and no known age: this device knows the meeting holds none.
     pub fn known() -> Kept {
-        Kept { stamp: Some(String::new()), times: BTreeMap::new() }
+        Kept { stamp: Some(String::new()), sequence: None, times: BTreeMap::new() }
     }
 
     /// An entry holding these lines, each with its time, as `Aside::lines` gives them.
@@ -140,6 +155,15 @@ impl Kept {
         match &self.stamp {
             Some(there) if there.as_str() >= stamp => {}
             _ => self.stamp = Some(stamp.to_string()),
+        }
+    }
+
+    /// Its age raised to the meeting `text`'s (`stamp_of`, `sequence_of`): a
+    /// later meeting's, never an earlier one's.
+    fn stamped_as(&mut self, text: &str) {
+        self.stamped(&stamp_of(text));
+        if let Some(sequence) = sequence_of(text) {
+            self.sequence = Some(self.sequence.map_or(sequence, |there| there.max(sequence)));
         }
     }
 }
@@ -237,12 +261,22 @@ pub fn ensure(path: &Path, uid: &str) -> Result<bool, String> {
     })
 }
 
-/// `uid`'s entry, when it has one, stamped with the DTSTAMP of the meeting it
-/// is kept for (`stamp_of`, `Kept::stamp`). Whether it changed.
+/// `uid`'s entry, when it has one, stamped with `stamp`, a revision as
+/// `stamp_of` gives it (`Kept::stamp`). Whether it changed.
 pub fn stamped(path: &Path, uid: &str, stamp: &str) -> Result<bool, String> {
     change(path, uid, |kept| {
         if let Some(kept) = kept {
             kept.stamped(stamp);
+        }
+    })
+}
+
+/// `uid`'s entry, when it has one, stamped as the meeting `text` it is kept
+/// for: its revision and its SEQUENCE (`stamp_of`, `sequence_of`). Whether it changed.
+pub fn stamped_as(path: &Path, uid: &str, text: &str) -> Result<bool, String> {
+    change(path, uid, |kept| {
+        if let Some(kept) = kept {
+            kept.stamped_as(text);
         }
     })
 }
@@ -336,28 +370,62 @@ pub fn add(path: &Path, uid: &str, lines: &[(String, String)]) -> Result<bool, S
 /// stays, known empty. Whether it changed.
 pub fn set_from(path: &Path, uid: &str, text: &str) -> Result<bool, String> {
     let lines = crate::organizer::aside_of(text).lines;
-    let stamp = stamp_of(text);
     change(path, uid, |entry| {
         let kept = entry.get_or_insert_with(Kept::known);
         kept.times = Kept::of(lines).times;
-        kept.stamped(&stamp);
+        kept.stamped_as(text);
     })
 }
 
-/// A meeting's stamp: the latest DTSTAMP of its events ("" none), as a file
-/// is compared with the entry that meeting made (`later_than_entry`).
+/// Each VEVENT's own lines of `text` (unfolded), its nested components'
+/// (VALARM) left out.
+fn event_blocks(text: &str) -> Vec<Vec<String>> {
+    let mut blocks: Vec<Vec<String>> = Vec::new();
+    let mut depth = 0usize;
+    let mut inside = false;
+    for line in lines::unfold(text) {
+        let (name, value) = (lines::name(&line), lines::value(&line).trim().to_ascii_uppercase());
+        match name.as_str() {
+            "BEGIN" if value == "VEVENT" && !inside => {
+                inside = true;
+                depth = 0;
+                blocks.push(Vec::new());
+            }
+            "BEGIN" if inside => depth += 1,
+            "END" if inside && depth == 0 && value == "VEVENT" => inside = false,
+            "END" if inside => depth = depth.saturating_sub(1),
+            _ if inside && depth == 0 => blocks.last_mut().expect("a block begun").push(line),
+            _ => {}
+        }
+    }
+    blocks
+}
+
+/// A meeting's revision: the latest of its events' own (each its
+/// LAST-MODIFIED, else its DTSTAMP; "" none), as a file is compared with the
+/// entry that meeting made (`later_than_entry`). LAST-MODIFIED first: a
+/// server may write DTSTAMP afresh at each GET, never LAST-MODIFIED, the time
+/// the event last changed there. Sioul writes both alike (`organizer`).
 pub fn stamp_of(text: &str) -> String {
-    let source = lines::unfold(text);
-    source.iter().filter(|l| lines::name(l) == "DTSTAMP").map(|l| lines::value(l).trim().to_string()).max().unwrap_or_default()
+    let value = |block: &[String], name: &str| block.iter().filter(|l| lines::name(l) == name).map(|l| lines::value(l).trim().to_string()).max();
+    event_blocks(text).iter().filter_map(|block| value(block, "LAST-MODIFIED").or_else(|| value(block, "DTSTAMP"))).max().unwrap_or_default()
+}
+
+/// A meeting's SEQUENCE: the highest of its events' (one with none says 0,
+/// RFC 5545); None when it holds no event.
+pub fn sequence_of(text: &str) -> Option<u32> {
+    event_blocks(text).iter().map(|block| block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse().ok()).unwrap_or(0)).max()
 }
 
 /// Whether an event's file is later than the meeting its entry was kept for:
 /// only then may its having no guest be read as its guests gone. A file no
 /// later may simply be behind the entry, the sharing having come before its
-/// calendar's sync (review of f85f504, H1); an entry of no known age says
-/// nothing of it.
+/// calendar's sync (review of f85f504, H1), and one of a lower SEQUENCE is an
+/// older copy of the meeting whatever its stamps say (a server writing
+/// DTSTAMP afresh at each GET); an entry of no known age says nothing of it.
 pub fn later_than_entry(text: &str, kept: &Kept) -> bool {
-    kept.stamp.as_deref().is_some_and(|stamp| !stamp.is_empty() && stamp_of(text).as_str() > stamp)
+    let older_sequence = kept.sequence.is_some_and(|kept| sequence_of(text).unwrap_or(0) < kept);
+    !older_sequence && kept.stamp.as_deref().is_some_and(|stamp| !stamp.is_empty() && stamp_of(text).as_str() > stamp)
 }
 
 /// Sioul's own lines of an item that is no meeting any more, kept in the
@@ -639,6 +707,51 @@ mod tests {
         std::fs::write(&file, event("20261107T080000Z")).unwrap();
         assert!(back_into_file(&file, &store, &load(&store)), "later: its guests went");
         assert!(!load(&store).events.contains_key("h1-psy") && std::fs::read_to_string(&file).unwrap().contains(&kind));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A server that writes DTSTAMP afresh at each GET (as Google's
+    /// calendar feeds stamp the time they are read): the copy from before the
+    /// meeting, fetched after the entry came, carries a DTSTAMP later than the
+    /// meeting's. Its LAST-MODIFIED, or its lower SEQUENCE where it has none,
+    /// says it is older: nothing written, nothing forgotten. A copy changed
+    /// there after the meeting (its guests gone) is later by both, whatever
+    /// its DTSTAMP, and takes the lines back. Until 10 November 2026 DTSTAMP
+    /// alone was compared, and the older copy took them back early.
+    #[test]
+    fn a_server_rewriting_dtstamp_never_makes_an_older_copy_later() {
+        crate::config::stand_ins_only();
+        let dir = crate::config::data_dir().join(format!("meeting-lines-dtstamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (store, file) = (dir.join(FILE), dir.join("psy.ics"));
+        let kind = "X-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health".to_string();
+        let event = |uid: &str, more: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\n{more}DTSTART:20991110T090000Z\r\nSUMMARY:Tom: psychiatrist\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDTSTAMP:20991231T000000Z\r\nTRIGGER:-PT1H\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        // The meeting as Sioul's door wrote it: SEQUENCE 1, both stamps alike.
+        let meeting = event("dt-psy", "SEQUENCE:1\r\nDTSTAMP:20261106T120000Z\r\nLAST-MODIFIED:20261106T120000Z\r\n");
+        assert_eq!((stamp_of(&meeting), sequence_of(&meeting)), ("20261106T120000Z".to_string(), Some(1)), "a nested component's stamp is not the event's");
+        add(&store, "dt-psy", &[(String::new(), kind.clone())]).unwrap();
+        stamped_as(&store, "dt-psy", &meeting).unwrap();
+        assert_eq!((load(&store).events["dt-psy"].stamp.as_deref(), load(&store).events["dt-psy"].sequence), (Some("20261106T120000Z"), Some(1)));
+        // The copy from before, read after: its DTSTAMP the time it was read, its LAST-MODIFIED its own.
+        let older = event("dt-psy", "SEQUENCE:0\r\nDTSTAMP:20261108T090000Z\r\nLAST-MODIFIED:20261105T090000Z\r\n");
+        std::fs::write(&file, &older).unwrap();
+        assert!(!back_into_file(&file, &store, &load(&store)), "older by its LAST-MODIFIED");
+        // The same without LAST-MODIFIED: its lower SEQUENCE says it.
+        let bare = event("dt-psy", "DTSTAMP:20261108T090000Z\r\n");
+        std::fs::write(&file, &bare).unwrap();
+        assert!(!back_into_file(&file, &store, &load(&store)), "older by its SEQUENCE");
+        assert!(load(&store).events.contains_key("dt-psy") && std::fs::read_to_string(&file).unwrap() == bare);
+        // Of the meeting's SEQUENCE and later by LAST-MODIFIED, its DTSTAMP older still: its guests went.
+        let gone = event("dt-psy", "SEQUENCE:1\r\nDTSTAMP:20261101T000000Z\r\nLAST-MODIFIED:20261107T080000Z\r\n");
+        std::fs::write(&file, &gone).unwrap();
+        assert!(back_into_file(&file, &store, &load(&store)), "later: its guests went");
+        assert!(!load(&store).events.contains_key("dt-psy") && std::fs::read_to_string(&file).unwrap().contains(&kind));
+        // An entry from before (no SEQUENCE kept), an event with no LAST-MODIFIED: DTSTAMP, as until then.
+        add(&store, "dt-old", &[(String::new(), kind.clone())]).unwrap();
+        stamped(&store, "dt-old", "20261106T120000Z").unwrap();
+        assert_eq!(load(&store).events["dt-old"].sequence, None);
+        std::fs::write(&file, event("dt-old", "DTSTAMP:20261107T080000Z\r\n")).unwrap();
+        assert!(back_into_file(&file, &store, &load(&store)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

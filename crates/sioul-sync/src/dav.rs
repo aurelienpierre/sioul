@@ -2824,6 +2824,10 @@ pub(crate) mod stand_in {
         schedules: bool,
         /// Every If-Match a PUT or a DELETE carried, in order.
         if_match: Vec<String>,
+        /// Each item's DTSTAMP said as the time it is read, at each GET or
+        /// REPORT, its ETag unchanged (as Google's calendar feeds stamp the
+        /// time they are read): `rewrites_dtstamp`.
+        rewrites_dtstamp: bool,
     }
 
     impl Dav {
@@ -2892,6 +2896,21 @@ pub(crate) mod stand_in {
         pub(crate) fn if_matches(&self) -> Vec<String> {
             self.held().if_match.clone()
         }
+
+        /// From now on, each item read says the time it is read as its DTSTAMP (`Held::rewrites_dtstamp`).
+        pub(crate) fn rewrites_dtstamp(&self) {
+            self.held().rewrites_dtstamp = true;
+        }
+    }
+
+    /// An item's text as it is read there: its DTSTAMP lines the time now
+    /// when the server rewrites them (`Held::rewrites_dtstamp`).
+    fn as_read(text: &str, rewrites: bool) -> String {
+        if !rewrites {
+            return text.to_string();
+        }
+        let now = jiff::Timestamp::now().strftime("%Y%m%dT%H%M%SZ").to_string();
+        text.split_inclusive("\r\n").map(|line| if line.starts_with("DTSTAMP:") { format!("DTSTAMP:{now}\r\n") } else { line.to_string() }).collect()
     }
 
     /// Sabre's words for a refused item (Nextcloud, Murena), with the CalDAV
@@ -3063,7 +3082,7 @@ pub(crate) mod stand_in {
                     }
                 }
                 ("GET", ["cal", calendar, item]) => match self.calendars[*calendar].get(*item) {
-                    Some((etag, text)) => Reply { status: 200, headers: vec![("ETag", etag.clone())], body: text.clone() },
+                    Some((etag, text)) => Reply { status: 200, headers: vec![("ETag", etag.clone())], body: as_read(text, self.rewrites_dtstamp) },
                     None => Reply::new(404, ""),
                 },
                 _ => Reply::new(405, ""),
@@ -3108,7 +3127,7 @@ pub(crate) mod stand_in {
                 let key = super::path_key(href);
                 let item = key.rsplit('/').next().unwrap_or("");
                 out += &match self.calendars[calendar].get(item) {
-                    Some((etag, text)) => found(href, &format!("{}<c:calendar-data>{}</c:calendar-data>", etag_prop(etag), super::xml_escape(text))),
+                    Some((etag, text)) => found(href, &format!("{}<c:calendar-data>{}</c:calendar-data>", etag_prop(etag), super::xml_escape(&as_read(text, self.rewrites_dtstamp)))),
                     None => missing(href),
                 };
             }
@@ -3293,6 +3312,53 @@ mod tests {
         assert!(dav.seen()[seen..].iter().all(|r| !r.contains("/cal/other") && !r.starts_with("PROPFIND /cal/ ")), "neither the others nor the home asked: {:?}", dav.seen());
         let checked = check_named_with(&client, "named", &["nowhere".into()]);
         assert_eq!((checked.unchanged.len(), checked.synced.len(), checked.problems.len()), (0, 0, 1));
+    }
+
+    /// A server that writes DTSTAMP afresh at each read (as Google's
+    /// calendar feeds stamp the time they are read), and Sioul's own lines
+    /// of a meeting kept apart (`sioul_core::meeting_lines`) on this device
+    /// before its calendar brought the meeting (the sharing first: review of
+    /// f85f504, H1). The copy from before the meeting, brought after, seems
+    /// later by its DTSTAMP; its LAST-MODIFIED and its SEQUENCE say it is
+    /// older, and the lines stay apart, never written into a file its server
+    /// would send the guests. The copy whose guests went later takes them
+    /// back. Until 10 November 2026 DTSTAMP alone was compared.
+    #[test]
+    fn a_server_rewriting_dtstamp_never_brings_a_meeting_s_lines_back_early() {
+        use sioul_core::meeting_lines as lines;
+        home();
+        let (dav, home) = Dav::start(&["kids"]);
+        dav.rewrites_dtstamp();
+        let client = client();
+        let kind = "X-SIOUL-CONCEPT:tag:aurelienpierre.com,2026:sioul/child-kind/health";
+        let item = |more: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//tests//EN\r\nBEGIN:VEVENT\r\nUID:dt-meeting\r\n{more}DTSTART:20991110T090000Z\r\nDTEND:20991110T100000Z\r\nSUMMARY:Tom: psychiatrist\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+        // On the server, the event as it was before it became a meeting, Sioul's kind in it.
+        dav.put("kids", "psy.ics", &item(&format!("SEQUENCE:0\r\nDTSTAMP:20261105T090000Z\r\nLAST-MODIFIED:20261105T090000Z\r\n{kind}\r\n")));
+        // Another device's door made it a meeting: its lines into the entry, which came here first.
+        let meeting = item("SEQUENCE:1\r\nDTSTAMP:20261106T120000Z\r\nLAST-MODIFIED:20261106T120000Z\r\nORGANIZER:mailto:alex@example.org\r\nATTENDEE:mailto:office@example.net\r\n");
+        let dir = sioul_core::config::data_dir().join(format!("meeting-lines-dtstamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = dir.join(lines::FILE);
+        lines::add(&store, "dt-meeting", &[(String::new(), kind.to_string())]).unwrap();
+        lines::stamped_as(&store, "dt-meeting", &meeting).unwrap();
+        // This device's calendar syncs before the meeting reaches the server: the older copy, its DTSTAMP the time it was read.
+        sync_one(&client, "dtstamp", &home, "kids").unwrap();
+        let file = folder("dtstamp", "kids").join("psy.ics");
+        let brought = std::fs::read_to_string(&file).unwrap();
+        let stamp = sioul_core::lines::unfold(&brought).into_iter().find(|l| l.starts_with("DTSTAMP:")).unwrap();
+        assert!(stamp.as_str() > "DTSTAMP:20261106T120000Z", "rewritten as read, later than the meeting's: {stamp}");
+        assert!(!lines::back_into_file(&file, &store, &lines::load(&store)), "older by its LAST-MODIFIED and its SEQUENCE");
+        assert!(std::fs::read_to_string(&file).unwrap() == brought && lines::load(&store).events.contains_key("dt-meeting"), "nothing written, nothing forgotten");
+        // The meeting reaches the server: a meeting, nothing written.
+        dav.put("kids", "psy.ics", &meeting);
+        sync_one(&client, "dtstamp", &home, "kids").unwrap();
+        assert!(!lines::back_into_file(&file, &store, &lines::load(&store)));
+        // Its guests gone there later: brought, and the lines go back into it.
+        dav.put("kids", "psy.ics", &item("SEQUENCE:2\r\nDTSTAMP:20261107T080000Z\r\nLAST-MODIFIED:20261107T080000Z\r\n"));
+        sync_one(&client, "dtstamp", &home, "kids").unwrap();
+        assert!(lines::back_into_file(&file, &store, &lines::load(&store)), "later: its guests went");
+        assert!(std::fs::read_to_string(&file).unwrap().contains(kind) && !lines::load(&store).events.contains_key("dt-meeting"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// F1: the first pull of a big calendar, cut at its second batch (Android

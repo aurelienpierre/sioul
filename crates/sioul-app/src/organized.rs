@@ -470,8 +470,8 @@ fn keep_aside(text: &str, aside: &organizer::Aside, given: bool, known: bool) ->
     if known {
         sioul_core::meeting_lines::ensure(&sioul_core::meeting_lines::default_path(), &uid)?;
     }
-    // Its entry knows the meeting it is kept for: a file older than that is behind it (H1).
-    sioul_core::meeting_lines::stamped(&sioul_core::meeting_lines::default_path(), &uid, &sioul_core::meeting_lines::stamp_of(text))?;
+    // Its entry knows the meeting it is kept for: a file older than that, or of a lower SEQUENCE, is behind it (H1).
+    sioul_core::meeting_lines::stamped_as(&sioul_core::meeting_lines::default_path(), &uid, text)?;
     Ok(())
 }
 
