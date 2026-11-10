@@ -731,7 +731,8 @@ impl Server {
         let bytes = match response.body_mut().with_config().limit(cap).read_to_vec() {
             Ok(bytes) => bytes,
             Err(ureq::Error::BodyExceedsLimit(_)) => return Ok(None),
-            Err(e) => return Err(failed(&e)),
+            // The server answered, its body did not all come: the file's failure (`of_the_file`).
+            Err(e) => return Err(SyncError::Network(format!("GET: cut: {e}"))),
         };
         if !(length == Some(bytes.len() as u64) || (length.is_none() && chunked)) {
             return Err(SyncError::Network("GET: cut".into()));
@@ -767,7 +768,8 @@ impl Server {
             match reader.read(&mut piece) {
                 Ok(0) => break None,
                 Ok(n) => bytes.extend_from_slice(&piece[..n]),
-                Err(e) => break Some(SyncError::Network(e.to_string())),
+                // The server answered, its body did not all come: the file's failure (`of_the_file`).
+                Err(e) => break Some(SyncError::Network(format!("GET: cut: {e}"))),
             }
         };
         if error.is_none() && length.is_some_and(|l| l != bytes.len() as u64) {
@@ -1851,6 +1853,21 @@ struct Puller<'a> {
     mine: BTreeSet<String>,
 }
 
+/// A failure of one file, not of the line: the server's answer about it (a
+/// status: 423 while its device's sync app writes it, 404, 500), or its body
+/// come cut. Only these let a pull's walk go on (`Puller::run`). Anything
+/// else (no answer, a timeout, a refused login, a certificate, the pull's
+/// time used up, the disk) ends it at once, as before 10 November 2026:
+/// each file left would wait for its own timeout, the radio up all the
+/// while (review of 3273f2d, R4).
+fn of_the_file(e: &SyncError) -> bool {
+    match e {
+        SyncError::Server(_) | SyncError::NotFound(_) => true,
+        SyncError::Network(said) => said.starts_with("GET: cut") || said.starts_with("GET: its end"),
+        _ => false,
+    }
+}
+
 impl Puller<'_> {
     fn url(&self, relative: &str) -> String {
         format!("{}{}", self.state.url, encode_path(relative))
@@ -1887,9 +1904,9 @@ impl Puller<'_> {
         // Looked through anew: what is left to the sync app, found again.
         self.state.left.clear();
         self.own_listed("", &root);
-        // A file that fails to come (a slow line, a file the server holds
-        // locked while its device's sync app writes it each minute: 423)
-        // stops nothing else: the others come, the walk ends, and the pull
+        // A file that fails to come (one the server holds locked while its
+        // device's sync app writes it each minute: 423; one come cut) stops
+        // nothing else (`of_the_file`): the others come, the walk ends, and the pull
         // says the first failure, its folders not taken as looked through, so
         // that the next pull asks again. Until 10 November 2026 a record that
         // failed stopped the walk before the devices' entries, and a phone kept
@@ -1899,7 +1916,7 @@ impl Puller<'_> {
         let mut failed: Option<Stop> = None;
         let defer = |done: Result<(), Stop>, failed: &mut Option<Stop>| -> Result<(), Stop> {
             match done {
-                Err(Stop::Failed(e)) => {
+                Err(Stop::Failed(e)) if of_the_file(&e) => {
                     failed.get_or_insert(Stop::Failed(e));
                     Ok(())
                 }
@@ -5126,6 +5143,33 @@ mod tests {
         w.fake.clear_faults();
         assert!(w.pull(DUE + 130).problem.is_none());
         assert!(w.cache().join(&round).exists());
+    }
+
+    /// A line that dies during a pull (no answer, a timeout, a refused
+    /// login) ends it at once: only a file's own failure (423, 404, a body
+    /// come cut) lets the walk go on to the next file, which would otherwise
+    /// wait for its own timeout, the radio up (review of 3273f2d, R4).
+    #[test]
+    fn a_line_that_dies_ends_the_pull_at_once() {
+        let w = World::new("line-dies");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.desk.press(true, DUE + 30);
+        w.desk.exchange(&w.server, DUE + 60);
+        crate::lease::renew(&w.server, &KEY, "health", &w.desk.id, DUE + 60, DUE + 60, false, crate::lease::Rule::FollowsYou, crate::share::written(&w.desk.memory, &w.desk.id)).unwrap();
+        let round = w.desk_round();
+        let dies = round.clone();
+        // From the desk's records on, nothing answers.
+        let mut dead = false;
+        w.fake.fault(move |request| {
+            dead |= request.method == "GET" && request.path.ends_with(&dies);
+            dead.then_some(Fault::Drop)
+        });
+        w.fake.forget_seen();
+        let pulled = w.pull(DUE + 70);
+        assert!(pulled.problem.as_deref().is_some_and(|p| p.starts_with("network:")), "{pulled:?}");
+        let seen = w.fake.seen();
+        let at = seen.iter().position(|l| l.starts_with("GET ") && l.contains(&round)).unwrap();
+        assert!(seen[at..].iter().all(|l| l.contains(&round)), "nothing else asked once the line died: {seen:?}");
     }
 
     #[test]
