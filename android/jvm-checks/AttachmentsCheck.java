@@ -95,6 +95,17 @@ public final class AttachmentsCheck
         expect("decode leaves a lone %", Attachments.decode("100%"), "100%");
         expect("decode reads UTF-8", Attachments.decode("%C3%A9t%C3%A9"), "été");
 
+        // A saved copy is overwritten before it goes (review of wt/mail, F5).
+        File secret = File.createTempFile("sioul-wipe", ".pdf");
+        java.nio.file.Files.write(secret.toPath(), "The secret clause.".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Attachments.wipe(secret);
+        byte[] after = java.nio.file.Files.readAllBytes(secret.toPath());
+        boolean zeros = after.length == 18;
+        for (byte b : after)
+            zeros &= b == 0;
+        expect("wiped before it goes", zeros, true);
+        secret.delete();
+
         // The type: Rust's by the extension, else Android's, else bytes; never Android's installer.
         expect("type: Rust's", Attachments.type("application/pdf", "application/x-other"), "application/pdf");
         expect("type: Android's for an unknown one", Attachments.type("application/octet-stream", "application/msword"), "application/msword");
