@@ -8,7 +8,7 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 
 **Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; a phone adds **This phone**, a computer **Texts**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)).
+The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; Android adds **This phone** (**This tablet** on a tablet), and a device without telephony of its own (a computer, a tablet without a SIM) **Texts**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)).
 
 ## Protected by default {#what-is-protected}
 
@@ -26,6 +26,7 @@ The Settings page has a tab for each of the sections below, from **Display** to 
 <!-- colour: the sites' colours (docs/colour.md). -->
 - **Colours for this screen** (on a computer): sites are shown in your screen's own colours, read from its colour profile, so that a wide-gamut screen does not make them louder than they are. A sentence under it says what this screen gets: its profile's name, or that your desktop already adapts colours (on Wayland, on macOS), or that the screen has no profile. On unless you turn it off. [Sites](sites.md#colours) says more.
 - **Calmer colours on sites** (on a computer): Off, A little, More. Loud colours on websites are softened, greys and soft tints stay as they are. Every site follows it at once.
+- **What this device is** (on a computer; on Android, at the top of **This phone** or **This tablet**): a phone, a tablet or a computer, as the system says unless you choose. A phone is carried: your other devices call it "the phone", and only the events' reminders come there. A tablet, like a computer, also reminds you of dates, waits, payments, papers and contracts, and your other devices call it "the tablet". The window's layout follows its size whatever you choose: a tablet held sideways gets a computer's layout, and narrowed in split screen, a phone's. Unless you choose, Android under 600 dp wide is a phone, Android from 600 dp a tablet, and any other system a computer. This device only.
 - **Details on the home screen** (on a phone): Sioul's cards on the phone's home screen name what they show: a dose due, a code you just asked a site for, your reminders, a call declined, the next step's title; the latest messages on the Porch, with their sender, subject and first line; the coming events of your calendars, with their titles, and the dates asked of you ([First steps](first-steps.md#on-a-phone)). Turned off, they name nothing: the date, the weather and what now is for, then that a code, a reminder or mail waits, the events' times without their titles, each date by its kind alone, and that a next step waits: for a phone whose home screen others see. This phone only.
 
 ## Hours
@@ -66,7 +67,7 @@ Each reminder comes once, as a quiet notification, without sound, never repeated
 - **With Sioul's window closed**: your session starts a small watcher that tells reminders when the window is closed; nothing else runs, no mail is fetched. It needs the `sioul` command installed next to Sioul ([Install](install.md#into-your-application-menu)). Not on Windows yet.
 - **Gathered at**: what your sites notify waits, then comes in one notification at these times: 09:00, 13:00 and 18:00 unless you set others. On a phone, other apps' notifications from automatons come back then. See [The gathered times](notifications.md#the-gathered-times).
 
-When each reminder may come, and new mail, is in [What reaches you](#what-reaches-you). Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, the doses, the events and new mail are told; the other reminders come on a computer ([On a phone](first-steps.md#on-a-phone)).
+When each reminder may come, and new mail, is in [What reaches you](#what-reaches-you). Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, the doses, the events and new mail are told; the other reminders come on a computer or a tablet ([On a phone](first-steps.md#on-a-phone)).
 
 ## Pauses
 
@@ -74,7 +75,7 @@ Free time and the pause, set up on a calm day: how far the end of work may move,
 
 ## This phone {#this-phone}
 
-On a phone, what sets it up, nothing that decides when (that is [What reaches you](#what-reaches-you)):
+On Android, what sets it up, nothing that decides when (that is [What reaches you](#what-reaches-you)); on a tablet the tab is **This tablet**. **What this device is** comes first ([Display](#display)). Calls and texts are there only where the device has telephony: a tablet without a SIM has neither, and shows your phone's texts as a computer does.
 
 - **Calls**: Sioul as Android's caller ID & spam app, so that a call whose row says later goes to your voicemail; what Sioul does with calls, what it never does, and what always rings; reading the contacts; the **Call screening**, apart from do-not-disturb, for numbers nobody knows and hidden numbers: its switch, its hours, what becomes of each kind of number, and the numbers you called ([The call screening](calls.md#the-call-screening)); where a declined call goes; texts. See [Calls](calls.md).
 - **Other apps**: Android's **Notification access** (two steps for Sioul installed from a file), **Hold other apps' notifications until their time**, the apps that rang before Sioul held them, with **Make it silent**. Each app, conversation and site's own choice is in What reaches you ▸ Exceptions. See [Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone).
@@ -85,7 +86,7 @@ On a phone, what sets it up, nothing that decides when (that is [What reaches yo
 
 ## Texts {#texts}
 
-On a computer, the multimedia messages sent from it: **Multimedia messages sent from here**, up to your carrier's limit (600 kB with French carriers) or 300 kB, for older phones and some networks abroad; under it, what your phone said its carrier takes, a line for each SIM. See [Texts](texts.md#pictures-and-files).
+On a computer, or a tablet without a SIM, the multimedia messages sent from it through your phone: **Multimedia messages sent from here**, up to your carrier's limit (600 kB with French carriers) or 300 kB, for older phones and some networks abroad; under it, what your phone said its carrier takes, a line for each SIM. See [Texts](texts.md#pictures-and-files).
 
 ## Your folder and sharing
 
@@ -122,7 +123,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Sites](sites.md#logins-from-bitwarden) | your Bitwarden account |
 | [Health](health.md#meals-rest-and-sleep) | where the errands go, the usual meals, naps and night, the pause to move, the limit on chats |
 
-The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; on a phone, over the whole screen. Escape or a click outside closes them.
+The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; in a window under 720 pixels wide (a phone's, a tablet's in split screen), over the whole window. Escape or a click outside closes them.
 
 Each address's own settings are on its card in [Accounts](accounts.md#a-mail-address). How long text reads (the font, its size and the space between lines) is in the ⚙ of the pages where messages are read, Mail and the Porch, and behind **Aa** in Notes: one setting, shown where it is used.
 
@@ -138,7 +139,7 @@ In the Mail page's ⚙, under **Your own spam filter**: what it does with each o
 
 When you [share between your devices](sharing.md), your settings go with the part **Settings and accounts**, sealed like everything there. A setting changed on two devices keeps the later change, setting by setting.
 
-What stays on each device: where its folders are (the notes folder, where scans arrive), how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, a phone's **Details on the home screen**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
+What stays on each device: where its folders are (the notes folder, where scans arrive), how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, a phone's **Details on the home screen**, **What this device is**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
 
 ## Where settings are kept
 
@@ -171,5 +172,5 @@ Every app has settings, and a table would compare nothing you choose an app for,
 - **Secrets**: account passwords, the AI shield's key and the GitHub token go to the system's keyring (the Secret Service, the macOS Keychain, the Windows Credential Manager, Android's KeyStore), never to `config.toml`.
 - **Shared entry by entry**: each setting is one entry, and each account one entry, keyed by its `id`; a list such as your pinned sites (`[[site]]`), your hours (`[[window]]`), your days off or your filters (`[[mail.filter]]`) travels whole, as one entry. The later change wins by a hybrid logical clock, so that a change made after seeing another always comes after it. Each entry is a sealed record (XChaCha20-Poly1305, under a key made from your passphrase by Argon2id), as for the rest of the [sharing](sharing.md#what-it-protects-and-what-it-cannot-hide).
 - **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, `agenda.time_zone`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
-- **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone), the whole width. The Settings page reads 720 pixels wide at most, 1,100 for What reaches you's cards.
+- **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone, a narrow window: the window's size decides, never the system), the whole width. The Settings page reads 720 pixels wide at most, 1,100 for What reaches you's cards.
 - **The words** (`[words]`): `languages` and `countries`, then a table for each list you changed, such as `[words.folders.trash]`, with `add` (your words) and `remove` (the shipped ones you took away); for a list of names, such as the brands, `add` gives each name its words and `remove` lists names. A configuration from before October 2026 gets `languages = ["fr", "en"]` and `countries = ["FR"]` at its first start, so that nothing changes until you change it. The packs are in `crates/sioul-core/data/words/`; one installed in `$XDG_DATA_HOME/sioul/words/` or `$XDG_DATA_DIRS/sioul/words/` replaces Sioul's own when its `checked` date is later. The spam filter's table keeps the words it was trained with, so that every device reads alike. How the lists are made: [the words Sioul looks for](../dev/words.md).
