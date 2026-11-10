@@ -36,13 +36,13 @@ Item {
     // sends through the phone; your folder and sharing, invoices; what AI
     // agents may use (each project closed to them until opened).
     readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(page.sioul.telephony === true ? [] : ["texts"]).concat(["files", "invoices", "ai"])
-    // A tab's name: Android's own tab named by what the device is ("This phone",
-    // "This tablet", else "This device"), never by its system.
-    function tabName(section) {
+    // A tab's name's key: Android's own tab named by what the device is ("This
+    // phone", "This tablet", else "This device"), never by its system.
+    function tabKey(section) {
         if (section !== "phone")
-            return page.sioul.text("settings-tab-" + section)
+            return "settings-tab-" + section
         const kind = page.sioul.deviceKind
-        return page.sioul.text(kind === "tablet" ? "settings-tab-tablet" : kind === "computer" ? "settings-tab-device" : "settings-tab-phone")
+        return kind === "tablet" ? "settings-tab-tablet" : kind === "computer" ? "settings-tab-device" : "settings-tab-phone"
     }
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
@@ -188,7 +188,7 @@ Item {
 
                         required property string modelData
 
-                        text: page.tabName(modelData)
+                        text: page.sioul.text(page.tabKey(modelData))
                         checkable: true
                         checked: page.section === modelData
                         flat: page.section !== modelData
