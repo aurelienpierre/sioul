@@ -638,6 +638,8 @@ pub struct Book {
     names: std::collections::BTreeMap<String, String>,
     /// The country numbers written without one were read as.
     region: Option<&'static crate::phones::Region>,
+    /// What it holds, hashed (`Book::seal`).
+    seal: u64,
 }
 
 fn push_once(slot: &mut Vec<usize>, index: usize) {
@@ -681,7 +683,24 @@ impl Book {
                 push_once(book.by_name.entry(name).or_default(), index);
             }
         }
+        book.seal = {
+            use std::hash::{Hash, Hasher};
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            let mut numbers: Vec<_> = book.by_number.iter().collect();
+            numbers.sort();
+            (format!("{:?}", book.cards), numbers, region.map(|r| r.code)).hash(&mut hash);
+            hash.finish()
+        };
         book
+    }
+
+    /// What the books hold, hashed: each card's names, addresses, numbers and
+    /// categories, and the country numbers were read in. Two books with the
+    /// same seal judge every sender alike: what a verdict kept on them rests
+    /// on (`Gate`), never the address the book sits at in memory, which
+    /// another book can take once it is freed.
+    pub fn seal(&self) -> u64 {
+        self.seal
     }
 
     /// The cards holding this address.
@@ -1576,8 +1595,8 @@ fn screener(sender: Sender) -> Option<(Lane, Reason)> {
 /// What decides a message's triage beside its file and the clock, hashed:
 /// each account's place, address, ids, priority, words and spam filter (its
 /// table by its size and time), the projects with their routes and ties,
-/// the lists and the senders you let in, the address books (the same as long
-/// as their files are, `Book::load`), the AI's readings, your addresses and
+/// the lists and the senders you let in, the address books (by what they
+/// hold, `Book::seal`), the AI's readings, your addresses and
 /// domains, the dealings your mail shows (`spam::vouched`) and your words on
 /// spam in its logs (`spam::labels`). The clock is not in it: a message whose
 /// code is still valid is never kept (`TRIAGED`).
@@ -1586,14 +1605,15 @@ fn triage_seal(sources: &[Source], projects: Option<&ProjectStore>, known: &Send
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     for src in sources {
         (&src.account, &src.address, &src.folder, &src.trusted_ids, src.shielded, format!("{:?}", src.priority)).hash(&mut hash);
-        format!("{:?}", (&*src.words, &src.spam)).hash(&mut hash);
+        words_seal(&src.words).hash(&mut hash);
+        format!("{:?}", src.spam).hash(&mut hash);
         if let Some(meta) = src.spam.as_ref().and_then(|filter| std::fs::metadata(&filter.table).ok()) {
             (meta.len(), meta.modified().ok()).hash(&mut hash);
         }
     }
     format!("{:?}", projects.map(|s| (&s.projects, &s.ties))).hash(&mut hash);
     format!("{:?}", (known, &senders.safe, &senders.neutral, &senders.restricted, &senders.blocked, &senders.known)).hash(&mut hash);
-    (std::sync::Arc::as_ptr(&senders.contacts) as usize).hash(&mut hash);
+    senders.contacts.seal().hash(&mut hash);
     format!("{:?}", (assessments, own_addresses, own_domains, &*crate::spam::vouched::current())).hash(&mut hash);
     crate::spam::labels::logs_seal().hash(&mut hash);
     hash.finish()
@@ -1880,6 +1900,27 @@ impl std::fmt::Debug for Gate {
 /// A file's verdict, by its path, size and modification time (nanoseconds).
 type FileKey = (PathBuf, u64, u128);
 
+/// The words looked for, hashed by what they hold, once for each set made
+/// (`words::Words::of` makes one for each configuration). The set is held
+/// here beside its seal, so that no other set takes its place in memory and
+/// passes for it (until 10 November 2026 the seals took the set's address,
+/// which a set made later could be given once the first was freed).
+fn words_seal(words: &std::sync::Arc<crate::words::Words>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    type Seals = std::sync::Mutex<Vec<(std::sync::Arc<crate::words::Words>, u64)>>;
+    static SEALS: Seals = std::sync::Mutex::new(Vec::new());
+    let mut seals = SEALS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((_, seal)) = seals.iter().find(|(held, _)| std::sync::Arc::ptr_eq(held, words)) {
+        return *seal;
+    }
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    format!("{:?}", **words).hash(&mut hash);
+    let seal = hash.finish();
+    seals.insert(0, (std::sync::Arc::clone(words), seal));
+    seals.truncate(8);
+    seal
+}
+
 /// The verdicts on files remembered, under one gate's seal; emptied when the seal changes.
 static VERDICTS: std::sync::Mutex<Option<(u64, std::collections::HashMap<FileKey, Option<Admission>>)>> = std::sync::Mutex::new(None);
 
@@ -1897,19 +1938,20 @@ impl Gate {
     }
 
     /// What its verdicts rest on, hashed: each account's place, address, ids
-    /// and words, the projects with their routes and ties, the lists, the
-    /// address books (the same as long as their files are, `Book::load`), the
-    /// AI's readings, and the ten minutes now falls in (a code's validity).
+    /// and words (by what they hold, `words_seal`), the projects with their
+    /// routes and ties, the lists, the address books (by what they hold,
+    /// `Book::seal`), the AI's readings, and the ten minutes now falls in (a
+    /// code's validity).
     fn seal(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         for src in &self.sources {
             (&src.account, &src.address, &src.folder, &src.trusted_ids, src.shielded, format!("{:?}", src.priority)).hash(&mut hash);
-            (std::sync::Arc::as_ptr(&src.words) as usize).hash(&mut hash);
+            words_seal(&src.words).hash(&mut hash);
         }
         format!("{:?}", self.store.as_ref().map(|s| (&s.projects, &s.ties))).hash(&mut hash);
         format!("{:?}", (&self.known, &self.senders.safe, &self.senders.neutral, &self.senders.restricted, &self.senders.blocked, &self.senders.known)).hash(&mut hash);
-        (std::sync::Arc::as_ptr(&self.senders.contacts) as usize).hash(&mut hash);
+        self.senders.contacts.seal().hash(&mut hash);
         format!("{:?}", self.assessments).hash(&mut hash);
         (self.now / 600).hash(&mut hash);
         hash.finish()
@@ -2508,6 +2550,20 @@ mod tests {
         let said = vec![Entry { at: at + 100, account: "home".into(), folder: "Junk".into(), uidvalidity: 3, uid: 1, message_id: Some("moved@lottery.test".into()), label: Label::Spam, source: Said::Junk }];
         assert!(moved_items(&src, &ctx, &[junk], &log, &said).is_empty());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The address books are sealed by what they hold (review of 1a2c6a2,
+    /// C2): the same cards give the same seal wherever the book sits in
+    /// memory; a card added, or an address changed, another.
+    #[test]
+    fn a_book_is_sealed_by_what_it_holds() {
+        let card = |uid: &str, email: &str| crate::contacts::Contact { uid: uid.into(), key: format!("/books/{uid}.vcf"), name: uid.into(), emails: vec![crate::contacts::Labeled { label: String::new(), value: email.into() }], ..Default::default() };
+        let noa = || card("Noa", "noa@example.org");
+        let first = Book::of(&[noa()], None);
+        let again = std::sync::Arc::new(Book::of(&[noa()], None));
+        assert_eq!(first.seal(), again.seal(), "the same cards");
+        assert_ne!(first.seal(), Book::of(&[noa(), card("Jane", "jane@example.org")], None).seal(), "a card added");
+        assert_ne!(first.seal(), Book::of(&[card("Noa", "noa@other.example.org")], None).seal(), "an address changed");
     }
 
     /// The Porch made again triages only what changed (`TRIAGED`): a message
