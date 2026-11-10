@@ -7172,6 +7172,13 @@ words-language-es = Espagnol
 words-language-es-in = en espagnol
 words-language-it = Italien
 words-language-it-in = en italien
+# Les langues de vos courriels (languages.rs).
+languages-decided = Vos courriels sont lus { $languages }, comme ils sont écrits : Paramètres ▸ Mots.
+languages-offer-title = Une partie de vos courriels est { $in }
+languages-offer-body = Les lire aussi { $in } ? Sioul y repère alors les codes, les factures et les dates. Vous pouvez le changer dans Paramètres ▸ Mots.
+languages-offer-read = Lire aussi { $in }
+languages-offer-not-now = Pas maintenant
+languages-read-now = Vos courriels sont aussi lus { $in }, désormais : Paramètres ▸ Mots.
 words-family-mail = Les courriels
 words-family-money = L’argent et les papiers
 words-family-phone = Le téléphone

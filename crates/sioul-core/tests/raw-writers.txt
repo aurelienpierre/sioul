@@ -303,13 +303,13 @@ sioul-core/src/filelock.rs	copy_whole	1	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	drop	1	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	save_merged_by	1	std::fs::write(&temporary, toml::to_string(&table).map_err(|e| e.to_string())?)
 sioul-core/src/filelock.rs	save_merged_by	1	std::fs::rename(&temporary, path)
-
 sioul-core/src/filelock.rs	remove_wiping	4	std::fs::remove_file(path)
 sioul-core/src/filelock.rs	remove_wiping	1	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_file(dir)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	remove_dir_wiping(&path)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	remove_wiping(&path)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_dir(dir)
+
 # sioul-core/src/handed.rs: requests handed between Sioul's programs: no item.
 sioul-core/src/handed.rs	hand	1	write_whole(&path, &serde_json::to_string(handed).map_err(|e| e.to_string())?)
 sioul-core/src/handed.rs	waiting	1	std::fs::rename(&path, path.with_extension("unread"))
@@ -338,6 +338,9 @@ sioul-core/src/holders.rs	save	1	crate::filelock::replace(path, text.as_bytes())
 # sioul-core/src/invoice.rs: invoices (a folder of their own): no item.
 sioul-core/src/invoice.rs	save_in	1	std::fs::write(&temporary, toml::to_string(invoice).map_err(|e| e.to_string())?)
 sioul-core/src/invoice.rs	save_in	1	std::fs::rename(&temporary, &path)
+
+# sioul-core/src/languages.rs: the languages found in your mail offered on this device (state): no item.
+sioul-core/src/languages.rs	mark_offered	1	crate::filelock::replace(path, text.as_bytes())
 
 # sioul-core/src/letters.rs: letters' texts and their filing: no item.
 sioul-core/src/letters.rs	save_text	1	std::fs::write(folder.join(format!("{id}.txt")), text)

@@ -4424,6 +4424,8 @@ impl qobject::Sioul {
         forget_opened_attachments();
         // Reminders with the window closed: their watcher started again if it ended (remind.rs).
         crate::remind::keep_watching();
+        // The languages your mail is written in: decided once, a new one offered (languages.rs).
+        crate::languages::start(&qt);
         // Mail fetched before Sioul checked senders itself is checked once,
         // quietly; the checks ask DNS, so not in a demo.
         if offline() {

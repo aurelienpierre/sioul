@@ -524,3 +524,13 @@ stop_words = [
 [ocr]
 # Tesseract's names of this language's models.
 tesseract = ["fra"]
+
+# The languages found in your mail (languages.rs): the most common words of French, none of them
+# another shipped language's, by which a message is told to be written in it. Grammar: never shown in Settings.
+[detect]
+common = [
+    "est", "et", "vous", "votre", "vos", "pour", "avec", "une", "dans", "sur", "pas", "nous", "notre", "nos", "qui",
+    "cette", "ces", "sont", "être", "avoir", "été", "merci", "au", "aux", "mais", "ou", "elle", "ils", "je", "mon",
+    "mes", "ses", "leur", "très", "aussi", "fait", "peut", "bonjour", "cordialement", "avez", "sommes", "cet",
+    "chez", "lui", "ont", "voici",
+]

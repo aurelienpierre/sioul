@@ -4,7 +4,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "es"
-checked = "2026-10-08"
+checked = "2026-11-10"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -178,3 +178,13 @@ net = ["importe neto", "recibirás"]
 [ocr]
 # Tesseract's names of this language's models.
 tesseract = ["spa"]
+
+# The languages found in your mail (languages.rs): the most common words of Spanish, none of them
+# another shipped language's, by which a message is told to be written in it. Grammar: never shown in Settings.
+[detect]
+common = [
+    "el", "los", "las", "del", "y", "por", "para", "su", "sus", "usted", "ustedes", "esta", "este", "esto", "estos",
+    "como", "pero", "muy", "también", "gracias", "hay", "han", "puede", "cuando", "estamos", "saludos", "hola",
+    "atentamente", "nuestro", "nuestra", "ya", "más", "sobre", "tiene", "tienes", "aquí", "está", "qué", "porque",
+    "desde",
+]

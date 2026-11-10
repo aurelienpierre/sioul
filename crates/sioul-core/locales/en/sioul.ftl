@@ -7130,6 +7130,13 @@ words-language-es = Spanish
 words-language-es-in = Spanish
 words-language-it = Italian
 words-language-it-in = Italian
+# The languages found in your mail (languages.rs).
+languages-decided = Your mail is read in { $languages }, as it is written: Settings ▸ Words.
+languages-offer-title = Some of your mail is in { $name }
+languages-offer-body = Read { $name } too? Sioul then finds codes, bills and dates written in it. You can change it in Settings ▸ Words.
+languages-offer-read = Read { $name } too
+languages-offer-not-now = Not now
+languages-read-now = { $name } is read too, from now on: Settings ▸ Words.
 words-family-mail = Mail
 words-family-money = Money and papers
 words-family-phone = The phone

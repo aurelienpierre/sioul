@@ -240,6 +240,7 @@ pub mod i18n;
 pub mod ids;
 pub mod interop;
 pub mod invoice;
+pub mod languages;
 pub mod lines;
 pub mod letters;
 pub mod links;

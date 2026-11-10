@@ -4,7 +4,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "it"
-checked = "2026-10-08"
+checked = "2026-11-10"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -173,3 +173,13 @@ net = ["importo netto", "riceverai"]
 [ocr]
 # Tesseract's names of this language's models.
 tesseract = ["ita"]
+
+# The languages found in your mail (languages.rs): the most common words of Italian, none of them
+# another shipped language's, by which a message is told to be written in it. Grammar: never shown in Settings.
+[detect]
+common = [
+    "il", "gli", "della", "delle", "dei", "degli", "che", "e", "per", "sono", "alla", "nel", "nella", "questo",
+    "questa", "anche", "come", "ma", "più", "grazie", "suo", "sua", "vostro", "vostra", "ci", "di", "essere",
+    "stato", "ho", "hai", "abbiamo", "cordiali", "saluti", "buongiorno", "ciao", "sei", "siamo", "molto", "dal",
+    "dalla",
+]
