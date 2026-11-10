@@ -379,7 +379,7 @@ A date asked is a day, and it can have an hour: the field beside **Date asked** 
 
 ### A task before an event {#a-task-before-an-event}
 
-In a task's form, **Its appointment…** finds an event by a few words of its title, in every agenda, a person's too. Each row says its agenda. A repeating event comes by its next three times, each saying "Tue 10 Nov 11:00": a click ties the task to that time.
+In a task's form, **Its appointment…** finds an event by a few words of its title, in every agenda, a person's too. Each row says its agenda. A repeating event comes by its next three times, each saying "Tue 10 Nov 11:00": a click ties the task to that time. So does an invitation to only some times of someone else's meeting.
 
 - The task then reads "Before: Team meeting, Tue 10 Nov 11:00", and that time's card lists it under **To do before**, that time alone. Several tasks can come before one time.
 - Its date asked becomes that time's start, and follows it if it moves. A date you give it yourself holds, and the tie stays.

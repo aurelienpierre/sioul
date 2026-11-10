@@ -1557,4 +1557,32 @@ mod tests {
         let cut = world.search("budget", None, "", 40);
         assert_eq!((cut.len(), cut[0].uri.as_str()), (40, "sioul:event/coming"));
     }
+
+    /// An event whose file holds changed times alone, its series kept on
+    /// the organizer's side (10 November 2026: the pickers never found it):
+    /// the task form's field offers its times to come, each named by its
+    /// RECURRENCE-ID; the link picker the event once, by its next time.
+    #[test]
+    fn an_event_of_changed_times_alone_is_found() {
+        crate::config::stand_ins_only();
+        use crate::vdir;
+        let calendar = vdir::create(vdir::Kind::Calendars, "search-times", "Search times", None, &["VEVENT"]).unwrap();
+        let now = crate::zone::now().timestamp().as_second();
+        let utc = crate::moves::utc;
+        // Two times of a weekly meeting, the second moved an hour later; its first a week ago.
+        let first = now - now.rem_euclid(86_400) - 7 * 86_400 + 9 * 3_600;
+        let (coming, moved) = (first + 14 * 86_400, first + 14 * 86_400 + 3_600);
+        let time = |rid: i64, start: i64| format!("BEGIN:VEVENT\r\nUID:search-times\r\nDTSTAMP:20261101T080000Z\r\nRECURRENCE-ID:{}\r\nDTSTART:{}\r\nDURATION:PT45M\r\nSUMMARY:Quarterly planning\r\nORGANIZER:mailto:camille@example.org\r\nATTENDEE:mailto:you@example.org\r\nEND:VEVENT\r\n", utc(rid), utc(start));
+        let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{}{}END:VCALENDAR\r\n", time(first, first), time(coming, moved));
+        std::fs::write(calendar.dir.join("times.ics"), &text).unwrap();
+        let events: Vec<_> = crate::agenda::event_refs().into_iter().filter(|e| std::path::Path::new(&e.key).parent() == Some(calendar.dir.as_path())).collect();
+        assert_eq!(events.len(), 1, "{events:?}");
+        let loaded = Loaded { events, ..Loaded::default() };
+        let world = loaded.world();
+        let rows = world.search_events("planning", "", 40, 3);
+        assert_eq!(rows.iter().map(|r| (r.uri.as_str(), r.when, r.rid.as_str())).collect::<Vec<_>>(), [("sioul:event/search-times", Some(moved), utc(coming).as_str())], "its time to come, where it is now, named as it was");
+        let plain = world.search("planning", Some(Kind::Event), "", 40);
+        assert_eq!(plain.iter().map(|r| (r.uri.as_str(), r.when, r.rid.as_str())).collect::<Vec<_>>(), [("sioul:event/search-times", Some(moved), "")]);
+        assert_eq!(world.describe("sioul:event/search-times").title, "Quarterly planning");
+    }
 }

@@ -379,7 +379,7 @@ Une date demandée est un jour, et elle peut avoir une heure : le champ à cô
 
 ### Une tâche avant un événement {#a-task-before-an-event}
 
-Dans le formulaire d’une tâche, **Son rendez-vous…** trouve un événement par quelques mots de son titre, dans tous les agendas, celui d’une personne aussi. Chaque ligne dit son agenda. Un événement qui se répète vient par ses trois prochaines dates, chacune disant « mar. 10 nov. 11:00 » : un clic lie la tâche à cette date.
+Dans le formulaire d’une tâche, **Son rendez-vous…** trouve un événement par quelques mots de son titre, dans tous les agendas, celui d’une personne aussi. Chaque ligne dit son agenda. Un événement qui se répète vient par ses trois prochaines dates, chacune disant « mar. 10 nov. 11:00 » : un clic lie la tâche à cette date. Une invitation à quelques dates seulement de la réunion de quelqu’un d’autre aussi.
 
 - La tâche se lit alors « Avant : Réunion d’équipe, mar. 10 nov. 11:00 », et la carte de cette date la range sous **À faire avant**, cette date seule. Plusieurs tâches peuvent venir avant une même date.
 - Sa date demandée devient le début de cette date, et la suit si elle bouge. Une date que vous lui donnez vous-même tient, et le lien reste.

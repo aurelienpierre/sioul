@@ -2721,11 +2721,20 @@ pub struct EventRef {
     pub guests: Vec<String>,
 }
 
-/// The ties of one event's text; None when it holds no event.
+/// The ties of one event's text; None when it holds no event. A file of
+/// changed times alone, without their series (an invitation to one time of
+/// someone else's meeting, the series left on the organizer's side), is read
+/// from its first VEVENT and counted as repeating: its times are found as a
+/// series' are, each by its RECURRENCE-ID (`turns`), and its start is its
+/// first time. Before 10 November 2026 it was no event, and the pickers
+/// never found it.
 pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
     let source = lines::unfold(text);
-    let master = master_range(&source)?;
-    let mut found = EventRef { key: key.to_string(), ..EventRef::default() };
+    let (master, times_alone) = match master_range(&source) {
+        Some(master) => (master, false),
+        None => (event_ranges(&source).into_iter().next()?, true),
+    };
+    let mut found = EventRef { key: key.to_string(), recurring: times_alone, ..EventRef::default() };
     let mut nested = 0usize;
     for line in &source[master.start + 1..master.end - 1] {
         let name = lines::name(line);
@@ -2757,6 +2766,12 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
         }
     }
     found.anchor = crate::anchors::parse(text);
+    if times_alone {
+        if let Some(first) = turns(text, i64::MIN, i64::MAX, zone).into_iter().next() {
+            (found.start, found.end, found.all_day) = (first.start, first.end, first.all_day);
+        }
+        return Some(found);
+    }
     let edit = edit_of_text(text, zone);
     found.all_day = edit.as_ref().is_some_and(|e| e.all_day);
     found.start = edit.as_ref().and_then(|e| {
@@ -4062,6 +4077,27 @@ mod tests {
             assert_eq!(found[0].demands.costs(), [Some(3), None, None, Some(5)], "{cost}");
             assert_eq!(edit_of_text(&rated(cost), &paris()).unwrap().demands.costs(), [Some(3), None, None, Some(5)], "{cost}");
         }
+    }
+
+    /// A file of two changed times alone, their series kept elsewhere (an
+    /// invitation to some times of someone else's meeting): an event, found
+    /// by its times, its first time its start; each time named by its own
+    /// RECURRENCE-ID, as a tie to one time asks (`turn_named`). A file with
+    /// no VEVENT at all is still none.
+    #[test]
+    fn changed_times_alone_are_an_event() {
+        let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:team-sync\r\nDTSTAMP:20261101T080000Z\r\nRECURRENCE-ID;TZID=Europe/Paris:20261124T100000\r\nDTSTART;TZID=Europe/Paris:20261124T110000\r\nDTEND;TZID=Europe/Paris:20261124T113000\r\nSUMMARY:Team sync\r\nLOCATION:Room 2\r\nORGANIZER:mailto:camille@example.org\r\nATTENDEE:mailto:you@example.org\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:team-sync\r\nDTSTAMP:20261101T080000Z\r\nRECURRENCE-ID;TZID=Europe/Paris:20261117T100000\r\nDTSTART;TZID=Europe/Paris:20261117T100000\r\nDTEND;TZID=Europe/Paris:20261117T103000\r\nSUMMARY:Team sync\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let found = event_ref(text, "/stand-in/cal/team-sync.ics", &paris()).expect("an event");
+        assert_eq!((found.uid.as_str(), found.summary.as_str(), found.location.as_str()), ("team-sync", "Team sync", "Room 2"));
+        assert!(found.recurring, "found by its times, as a series is");
+        assert_eq!((found.start, found.end, found.all_day), (at("2026-11-17T10:00"), at("2026-11-17T10:30"), false), "its first time");
+        assert_eq!(found.guests, ["you@example.org"]);
+        let times = turns(text, at("2026-11-01T00:00"), at("2026-12-01T00:00"), &paris());
+        assert_eq!(times.iter().map(|t| t.start).collect::<Vec<_>>(), [at("2026-11-17T10:00"), at("2026-11-24T11:00")]);
+        let moved = &times[1].rid;
+        assert_eq!(turn_named(text, moved, &paris()).map(|t| t.start), Some(at("2026-11-24T11:00")), "named by its RECURRENCE-ID, where it is now");
+        assert_eq!(next_turns(text, at("2026-11-20T00:00"), 3, &paris()).iter().map(|t| t.start).collect::<Vec<_>>(), [at("2026-11-24T11:00")]);
+        assert_eq!(event_ref("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:t\r\nEND:VTODO\r\nEND:VCALENDAR\r\n", "/t.ics", &paris()), None);
     }
 
     #[test]
