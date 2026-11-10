@@ -50,9 +50,13 @@ public final class CallScreen extends CallScreeningService
         }
         if (!"outgoing".equals(decision.why))
             Log.i(Calls.TAG, "Calls: " + (decision.refuse ? "refused" : "rings") + " (" + decision.why + (decision.who.isEmpty() ? "" : ", " + decision.who) + (decision.column.isEmpty() ? "" : ", " + decision.column) + ").");
-        // Declined or let ring, listed (never an outgoing call, nor one Sioul could not decide).
+        // Declined or let ring, listed (never an outgoing call, nor one Sioul could not decide),
+        // and carried to your computers by a step soon, as a message for them is: the
+        // background service's looks may be a quarter of an hour apart while nothing happens.
         try {
             Calls.held(this, decision);
+            if (!"outgoing".equals(decision.why))
+                StepService.soon(getApplicationContext());
         } catch (RuntimeException e) {
             Log.w(Calls.TAG, "Calls: a call screened not listed: " + e);
         }

@@ -2379,34 +2379,179 @@ fn give_back_memory() {
     }
 }
 
-/// Every two seconds, the shared files looked at (their size and time, the
-/// notes and papers folders left out): one changed since, by whatever wrote
-/// it, wants an exchange after a pause. Not while an exchange runs (what it
-/// writes is taken in after it, `exchange_now`); on a phone, only while Sioul
-/// is on its screen: in the background, what writes exchanges itself
-/// (`exchange_here`).
+/// The shared files looked at (their size and time, the notes and papers
+/// folders left out): one changed since, by whatever wrote it, wants an
+/// exchange after a pause. Where the system tells of changes in their
+/// folders (`Told`), when one of them changed and once a minute whatever;
+/// elsewhere, or a folder it could not watch, every two seconds; never two
+/// looks within two seconds. Not while an exchange runs (what it writes is
+/// taken in after it, `exchange_now`): looked again two seconds later; on a
+/// phone, only while Sioul is on its screen: in the background, what writes
+/// exchanges itself (`exchange_here`).
 fn watcher() {
+    const EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+    let mut told = Told::new();
+    // Every folder watched after the last look: the next waits to be told.
+    let mut all_told = false;
+    let mut looked = std::time::Instant::now();
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        if all_told && let Some(told) = told.as_mut() {
+            told.wait(std::time::Duration::from_secs(60));
+        }
+        let since = looked.elapsed();
+        if since < EVERY {
+            std::thread::sleep(EVERY - since);
+        }
+        all_told = false;
         let shown = SHOWN.load(std::sync::atomic::Ordering::Relaxed);
         let here = share::Here::load(&state_dir());
         if !shown || here.folder_path().is_none() || key().is_none() {
             if let Ok(mut watched) = WATCHED.lock() {
                 *watched = None;
             }
+            looked = std::time::Instant::now();
             continue;
         }
         let _quiet = match BUSY.try_lock() {
             Ok(held) => held,
             Err(std::sync::TryLockError::Poisoned(held)) => held.into_inner(),
-            Err(std::sync::TryLockError::WouldBlock) => continue,
+            Err(std::sync::TryLockError::WouldBlock) => {
+                looked = std::time::Instant::now();
+                continue;
+            }
         };
-        let now = sioul_sync::trigger::Stamps::of(&stores_here(&here));
+        let stores = stores_here(&here);
+        // The folders watched before the files are looked at: a change after the look is told.
+        if let Some(told) = told.as_mut() {
+            all_told = told.watch(&sioul_sync::trigger::Stamps::dirs_of(&stores));
+        }
+        let now = sioul_sync::trigger::Stamps::of(&stores);
+        looked = std::time::Instant::now();
         let Ok(mut watched) = WATCHED.lock() else { continue };
         if watched.as_ref().is_some_and(|before| !now.changed(before).is_empty()) {
             want(|soon, at| soon.saved(at));
         }
         *watched = Some(now);
+    }
+}
+
+/// What the system tells of changes in the shared files' folders (Linux's
+/// inotify, Android's too): the watcher looks at the files when one of
+/// their folders changed, and once a minute whatever, rather than every two
+/// seconds. Each look stats every shared file (thousands, with years of
+/// events and an address book): some 4 µs each, 18 ms for 5,000 files, which
+/// every two seconds made close to one percent of a core at rest.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub(crate) struct Told {
+    fd: std::os::fd::OwnedFd,
+    /// Each folder watched, by its watch.
+    watched: std::collections::BTreeMap<PathBuf, i32>,
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+impl Told {
+    /// What a folder's watch hears: a file made, written, closed, moved in or
+    /// out, its times or rights changed, gone; the folder itself gone or moved.
+    const HEARS: u32 = libc::IN_CREATE | libc::IN_DELETE | libc::IN_MODIFY | libc::IN_CLOSE_WRITE | libc::IN_MOVED_FROM | libc::IN_MOVED_TO | libc::IN_ATTRIB | libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_ONLYDIR;
+
+    /// None when the system refuses (no inotify, too many instances).
+    pub(crate) fn new() -> Option<Told> {
+        use std::os::fd::FromRawFd;
+        // SAFETY: no pointer; the flags are inotify's.
+        let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+        // SAFETY: a descriptor just made, owned here alone from now on.
+        (fd >= 0).then(|| Told { fd: unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) }, watched: std::collections::BTreeMap::new() })
+    }
+
+    /// Watches exactly `dirs`, those no longer wanted let go; whether each is watched.
+    pub(crate) fn watch(&mut self, dirs: &std::collections::BTreeSet<PathBuf>) -> bool {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::ffi::OsStrExt;
+        let fd = self.fd.as_raw_fd();
+        let gone: Vec<PathBuf> = self.watched.keys().filter(|dir| !dirs.contains(*dir)).cloned().collect();
+        for dir in gone {
+            if let Some(wd) = self.watched.remove(&dir) {
+                // SAFETY: this instance's own descriptor and one of its watches.
+                unsafe { libc::inotify_rm_watch(fd, wd) };
+            }
+        }
+        let mut all = true;
+        let new: Vec<&PathBuf> = dirs.iter().filter(|dir| !self.watched.contains_key(*dir)).collect();
+        for dir in new {
+            let Ok(path) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else {
+                all = false;
+                continue;
+            };
+            // SAFETY: a zero-terminated path valid for the call, this instance's descriptor.
+            let wd = unsafe { libc::inotify_add_watch(fd, path.as_ptr(), Told::HEARS) };
+            if wd < 0 {
+                all = false;
+            } else {
+                self.watched.insert(dir.clone(), wd);
+            }
+        }
+        all
+    }
+
+    /// Waits for a change in a folder watched, `most` at most: whether one
+    /// came (or the wait was cut short: a look then costs nothing wrong).
+    /// What came is read whole, so that many changes make one look; a folder
+    /// gone, or moved away (its watch would follow it wherever it went, a
+    /// trash or a backup's name: the review of wt/perf, P4), lets its watch
+    /// go, for the next `watch` to make it again on whatever has its name.
+    pub(crate) fn wait(&mut self, most: std::time::Duration) -> bool {
+        use std::os::fd::AsRawFd;
+        let fd = self.fd.as_raw_fd();
+        let mut poll = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
+        let ms = i32::try_from(most.as_millis()).unwrap_or(i32::MAX);
+        // SAFETY: one pollfd, valid for the call.
+        let ready = unsafe { libc::poll(&mut poll, 1, ms) };
+        if ready == 0 {
+            return false;
+        }
+        let header = std::mem::size_of::<libc::inotify_event>();
+        let mut buffer = [0u8; 8192];
+        loop {
+            // SAFETY: a buffer of its own length, this instance's descriptor (non-blocking).
+            let read = unsafe { libc::read(fd, buffer.as_mut_ptr().cast(), buffer.len()) };
+            let Ok(read) = usize::try_from(read) else { break };
+            if read == 0 {
+                break;
+            }
+            let mut at = 0;
+            while at + header <= read {
+                // SAFETY: the kernel writes whole events; read unaligned, within the bytes read.
+                let event: libc::inotify_event = unsafe { std::ptr::read_unaligned(buffer[at..].as_ptr().cast()) };
+                if event.mask & (libc::IN_IGNORED | libc::IN_MOVE_SELF | libc::IN_DELETE_SELF) != 0 {
+                    if event.mask & libc::IN_IGNORED == 0 {
+                        // SAFETY: this instance's own descriptor and one of its watches.
+                        unsafe { libc::inotify_rm_watch(fd, event.wd) };
+                    }
+                    self.watched.retain(|_, wd| *wd != event.wd);
+                }
+                at += header + event.len as usize;
+            }
+        }
+        true
+    }
+}
+
+/// Nothing told elsewhere: the files looked at every two seconds, as before.
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+pub(crate) struct Told;
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+impl Told {
+    pub(crate) fn new() -> Option<Told> {
+        None
+    }
+
+    pub(crate) fn watch(&mut self, _: &std::collections::BTreeSet<PathBuf>) -> bool {
+        false
+    }
+
+    pub(crate) fn wait(&mut self, _: std::time::Duration) -> bool {
+        true
     }
 }
 
@@ -3787,6 +3932,70 @@ mod tests {
         assert_eq!(listed["readable"], true);
         let missing: serde_json::Value = serde_json::from_str(&folders_in(&base.join("nowhere").display().to_string())).unwrap();
         assert_eq!(missing["readable"], false);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The system tells of each change in a folder watched (a file made,
+    /// written in place, renamed in, removed; a folder made below, watched
+    /// once asked), nothing while nothing changes, many changes as one; a
+    /// folder let go tells nothing more, and one removed is watched again
+    /// once made again (Linux and Android: `Told`, the shared files' watcher).
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[test]
+    fn the_system_tells_of_changes_in_the_folders_watched() {
+        use std::time::Duration;
+        let base = std::env::temp_dir().join(format!("sioul-told-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (a, below) = (base.join("a"), base.join("a/below"));
+        std::fs::create_dir_all(&a).unwrap();
+        let mut told = Told::new().expect("inotify");
+        let quiet = Duration::from_millis(150);
+        let soon = Duration::from_secs(2);
+        assert!(told.watch(&[a.clone()].into()));
+        assert!(!told.wait(quiet), "nothing changed");
+        std::fs::write(a.join("event.ics"), "one").unwrap();
+        std::fs::write(a.join("other.ics"), "two").unwrap();
+        assert!(told.wait(soon));
+        assert!(!told.wait(quiet), "read whole: one look for many changes");
+        {
+            use std::io::Write;
+            std::fs::OpenOptions::new().append(true).open(a.join("event.ics")).unwrap().write_all(b" more").unwrap();
+        }
+        assert!(told.wait(soon), "written in place");
+        std::fs::write(base.join("draft.tmp"), "new").unwrap();
+        std::fs::rename(base.join("draft.tmp"), a.join("event.ics")).unwrap();
+        assert!(told.wait(soon), "renamed in");
+        std::fs::remove_file(a.join("other.ics")).unwrap();
+        assert!(told.wait(soon), "removed");
+        std::fs::create_dir(&below).unwrap();
+        assert!(told.wait(soon), "a folder made below");
+        assert!(told.watch(&[a.clone(), below.clone()].into()));
+        std::fs::write(below.join("contact.vcf"), "three").unwrap();
+        assert!(told.wait(soon), "in the folder below, watched");
+        std::fs::remove_dir_all(&below).unwrap();
+        assert!(told.wait(soon));
+        let _ = told.wait(quiet);
+        std::fs::create_dir(&below).unwrap();
+        let _ = told.wait(soon);
+        assert!(told.watch(&[a.clone(), below.clone()].into()), "made again, watched again");
+        std::fs::write(below.join("contact.vcf"), "four").unwrap();
+        assert!(told.wait(soon), "in the folder made again");
+        // Moved away (to a trash, a backup's name) and made again: the new one watched, not the old.
+        std::fs::rename(&below, base.join("below.bak")).unwrap();
+        assert!(told.wait(soon));
+        let _ = told.wait(quiet);
+        std::fs::create_dir(&below).unwrap();
+        let _ = told.wait(soon);
+        assert!(told.watch(&[a.clone(), below.clone()].into()));
+        std::fs::write(base.join("below.bak/contact.vcf"), "five").unwrap();
+        let _ = told.wait(quiet);
+        std::fs::write(below.join("contact.vcf"), "six").unwrap();
+        assert!(told.wait(soon), "the folder made again under the name");
+        assert!(told.watch(&std::collections::BTreeSet::new()));
+        // Letting a watch go says so once (IN_IGNORED); then nothing more from it.
+        let _ = told.wait(quiet);
+        std::fs::write(a.join("event.ics"), "seven").unwrap();
+        assert!(!told.wait(quiet), "let go: nothing told");
         let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -230,20 +230,70 @@ pub fn judge_files(config: &crate::config::Config, account: &str, files: &[PathB
     n
 }
 
+/// A folder's or a file's time, as `MailStamp` holds it.
+type Stamped = (PathBuf, Option<std::time::SystemTime>, u64);
+
+/// The mail kept here as a walk found it, cheaply: each address's folder,
+/// and each of its folders with its `new` and `cur`, by their times (a
+/// folder's time moves whenever a message comes into it, goes, or changes
+/// its flags, which renames it), and the table's judgments file by its time
+/// and length.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MailStamp {
+    table: u64,
+    places: Vec<Stamped>,
+}
+
+fn stamped(path: PathBuf) -> Stamped {
+    let meta = std::fs::metadata(&path).ok();
+    let (time, len) = (meta.as_ref().and_then(|m| m.modified().ok()), meta.map_or(0, |m| m.len()));
+    (path, time, len)
+}
+
+fn mail_stamp(addresses: &[(String, PathBuf)], dir: &Path, table: u64) -> MailStamp {
+    let mut places = Vec::new();
+    for (_, root) in addresses {
+        places.push(stamped(root.clone()));
+        for local in crate::mailcache::folders(root) {
+            let folder = root.join(&local);
+            places.extend([stamped(folder.join("new")), stamped(folder.join("cur"))]);
+            if !local.is_empty() {
+                places.push(stamped(folder));
+            }
+        }
+    }
+    places.push(stamped(file_of(dir, table)));
+    MailStamp { table, places }
+}
+
+/// The mail kept here as the last walk of this process left it with nothing
+/// more to judge (`judge_kept`): while it stays so, the next walk is passed
+/// over. The window looks each minute, a phone's step at each of its own:
+/// each walk lists every message of every folder, and a mailbox of tens of
+/// thousands of messages costs a fraction of a second each time, for nothing
+/// once all of it is judged.
+static SETTLED: Mutex<Option<MailStamp>> = Mutex::new(None);
+
 /// The mail kept here that the table in use has not judged yet, `limit`
 /// messages at most (Junk, Trash and Drafts left out); how many judged, and
-/// whether some wait still.
+/// whether some wait still. Nothing is walked while the mail kept here and
+/// what was judged stay as the last walk that left nothing to judge found
+/// them (`SETTLED`).
 pub fn judge_kept(config: &crate::config::Config, limit: usize) -> (usize, bool) {
     use crate::folders::Role;
     let Some((table, id)) = cached(&table_path()) else { return (0, false) };
     let dir = judged_dir();
+    let addresses: Vec<(String, std::path::PathBuf)> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| (a.id.clone(), a.maildir_path())).collect();
+    let before = mail_stamp(&addresses, &dir, id);
+    if SETTLED.lock().is_ok_and(|settled| settled.as_ref() == Some(&before)) {
+        return (0, false);
+    }
     let done = Judgments::read(&dir, id);
     let sources = config.mail_sources();
     let own = own_addresses(config);
     let mut judged: Vec<(String, Option<(String, Band)>)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     let mut more = false;
-    let addresses: Vec<(String, std::path::PathBuf)> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| (a.id.clone(), a.maildir_path())).collect();
     let saved: Vec<_> = addresses.iter().map(|(id, _)| crate::folders::saved(id)).collect();
     'folders: for (a, local) in crate::mailpass::folders(&addresses) {
         let (account, root) = &addresses[a];
@@ -267,7 +317,13 @@ pub fn judge_kept(config: &crate::config::Config, limit: usize) -> (usize, bool)
         }
     }
     let n = judged.len();
-    let _ = keep(&dir, id, &judged);
+    let kept = keep(&dir, id, &judged).is_ok();
+    // Nothing more to judge: settled as found before the walk (mail come
+    // meanwhile moved a folder's time since, and the next walk reads it),
+    // the judgments file as this walk left it.
+    if let Ok(mut settled) = SETTLED.lock() {
+        *settled = (!more && kept).then(|| MailStamp { places: before.places.iter().take(before.places.len() - 1).cloned().chain([stamped(file_of(&dir, id))]).collect(), ..before });
+    }
     (n, more)
 }
 
@@ -293,5 +349,46 @@ mod tests {
         assert!(Judgments::read(&dir, 8).of("a@example.org").is_none());
         assert_eq!(table_id(&[0, 0, 1, 0, 0, 0, 0, 0, 0, 0]), 1);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The mail kept here, stamped cheaply for the walk of what is left to
+    /// judge (`judge_kept`): the same while nothing moves; another as soon as
+    /// a message comes, changes its flags or goes, a folder is made, or the
+    /// judgments file changes. Folder times are set back between changes, as
+    /// a coarse clock would leave them, so that only the change itself moves them.
+    #[test]
+    fn the_mail_s_stamp_moves_with_any_change_and_only_then() {
+        let base = std::env::temp_dir().join(format!("sioul-topics-stamp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (root, judged) = (base.join("mail"), base.join("judged"));
+        for sub in ["new", "cur", "tmp", ".Archive/new", ".Archive/cur", ".Archive/tmp"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let addresses = [("a".to_string(), root.clone())];
+        let past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        let settle = || {
+            for dir in ["", "new", "cur", ".Archive", ".Archive/new", ".Archive/cur"] {
+                std::fs::File::open(root.join(dir)).unwrap().set_modified(past).unwrap();
+            }
+        };
+        settle();
+        let first = mail_stamp(&addresses, &judged, 7);
+        assert_eq!(first, mail_stamp(&addresses, &judged, 7), "nothing moved");
+        assert_ne!(first, mail_stamp(&addresses, &judged, 8), "another table");
+        let mut seen = vec![first];
+        let mut changed = |change: &dyn Fn()| {
+            settle();
+            change();
+            let now = mail_stamp(&addresses, &judged, 7);
+            assert!(!seen.contains(&now), "{:?}", now.places);
+            seen.push(now);
+        };
+        changed(&|| std::fs::write(root.join("new/1.a"), "Subject: one\r\n\r\n").unwrap());
+        changed(&|| std::fs::rename(root.join("new/1.a"), root.join("cur/1.a:2,S")).unwrap());
+        changed(&|| std::fs::write(root.join(".Archive/cur/2.a:2,"), "Subject: two\r\n\r\n").unwrap());
+        changed(&|| std::fs::remove_file(root.join("cur/1.a:2,S")).unwrap());
+        changed(&|| ["new", "cur", "tmp"].iter().for_each(|sub| std::fs::create_dir_all(root.join(".Later").join(sub)).unwrap()));
+        changed(&|| keep(&judged, 7, &[("c@example.org".into(), None)]).unwrap());
+        let _ = std::fs::remove_dir_all(base);
     }
 }

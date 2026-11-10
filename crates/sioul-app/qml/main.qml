@@ -64,6 +64,10 @@ SioulWindow {
         if (window.visibility === Window.Maximized || window.visibility === Window.Windowed || window.visibility === Window.FullScreen)
             window.shownAs = window.visibility
     }
+    // Hidden in the tray with no other window of Sioul's open: the Porch, the
+    // budgets and the accounts, shown here alone, wait until it shows (`set_hidden`).
+    readonly property bool viewsHeld: Qt.platform.os !== "android" && !window.visible && window.drafts.length === 0 && (window.focusWindow === null || !window.focusWindow.visible)
+    onViewsHeldChanged: sioul.setHidden(window.viewsHeld)
     // The system tray holds Sioul (qml-desktop/Tray.qml): closing the window hides it there.
     readonly property bool trayHolds: trayLoader.item !== null && trayLoader.item.available === true
 
@@ -186,7 +190,7 @@ SioulWindow {
     // Each page is made when it is first shown, then kept: the window opens
     // with the Porch alone, and a page asked for (a link, "New") is made
     // before it is used, as the page is set first.
-    property var made: sioul.grabFolder() !== "" && sioul.grabSteps() !== "memory" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 15: true, 16: true }) : ({ 0: true })
+    property var made: sioul.grabFolder() !== "" && !["memory", "rest", "rest-shared"].includes(sioul.grabSteps()) ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 15: true, 16: true }) : ({ 0: true })
     onPageChanged: {
         window.placesOpen = false
         // On a phone the card covers the page: the page asked for shows (review of 590eb18, M3).
@@ -1307,7 +1311,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "ties": grabber.tiesSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2353,10 +2357,42 @@ SioulWindow {
             // same once the scripts' garbage is collected, then the profile's sites
             // shown one by one. "sioul-memory: <moment>" in the log at each moment
             // measured, then half a minute held for the measure.
-            readonly property bool pictures: sioul.grabSteps() !== "memory"
+            readonly property bool pictures: !["memory", "rest", "rest-shared"].includes(sioul.grabSteps())
             function held(steps) {
                 return Array(steps).fill(() => {})
             }
+            // Rest (SIOUL_GRAB_STEPS=rest, tools/measure-idle.py, on a demo profile):
+            // the window left alone, as through a day beside other apps: the Porch
+            // shown, the window hidden as to the tray, then the profile's sites
+            // opened and kept behind the Porch, then hidden too, then hidden
+            // with a site in view, three minutes each. "sioul-rest: <moment>"
+            // in the log as each begins; meanwhile nothing is done, the steps'
+            // own timer stopped until the moment's end.
+            function rested(moment) {
+                return [() => {
+                    console.info("sioul-rest: " + moment)
+                    grabber.interval = 180000
+                }, () => grabber.interval = 1500]
+            }
+            readonly property var restSteps: grabber.held(20).concat(
+                grabber.rested("porch"),
+                [() => window.hide()], grabber.rested("hidden"),
+                [() => window.bringBack(), () => window.page = 3], grabber.held(2),
+                [0, 1, 2, 3, 4].reduce((all, i) => all.concat([() => {
+                    if (sitesPage.sites.length > i)
+                        sitesPage.open(sitesPage.sites[i].id)
+                }], grabber.held(4)), []),
+                [() => window.page = 0], grabber.held(2), grabber.rested("sites"),
+                [() => window.hide()], grabber.rested("sites-hidden"),
+                [() => window.bringBack(), () => window.page = 3, () => {
+                    if (sitesPage.sites.length > 0)
+                        sitesPage.open(sitesPage.sites[0].id)
+                }, () => window.hide()], grabber.rested("site-hidden"),
+                [() => console.info("sioul-rest: end"), () => window.close()])
+            // "rest-shared": the same, sharing started first in a folder of the
+            // run's own (as "share" starts it), so that its watch and its minute's
+            // exchange run too.
+            readonly property var restSharedSteps: [() => sioul.status = sioul.startSharing(grabber.folder + "/shared", "quiet harbour at dawn", "quiet harbour at dawn"), () => console.info("sioul-sharing: " + sioul.status)].concat(grabber.restSteps)
             readonly property var memorySteps: grabber.held(40).concat(
                 [() => console.info("sioul-memory: rest")], grabber.held(20),
                 grabber.pages.slice(0, -1), grabber.held(4),

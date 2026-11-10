@@ -541,13 +541,94 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
     file_occurrences_as(path, calendar, from, to, zone, &own_addresses())
 }
 
+/// The stretch around today whose occurrences each file keeps (`KEPT`):
+/// from two days before today to 62 days after, which holds what the
+/// window's minute, the reminders, the hours, the pauses, the plan and the
+/// reach ask for (60 days at most, from the day before).
+const KEPT_BEFORE: i64 = 2 * 86_400;
+const KEPT_AFTER: i64 = 62 * 86_400;
+
+/// What a calendar file gave for the stretch around today, and what it was
+/// read with: the file (its length and time), the day, the time zone, your
+/// addresses, its calendar and its agenda's marks.
+struct Kept {
+    file: (u64, Option<std::time::SystemTime>),
+    day: i64,
+    zone: String,
+    own: Vec<String>,
+    calendar: Collection,
+    marks: crate::agendas::Marks,
+    found: Vec<Occurrence>,
+}
+
+/// Each calendar file's occurrences around today, kept in this process
+/// while none of what they were read with changed (`file_occurrences_as`).
+/// The window's minute asks for the coming days several times (the
+/// reminders, the hours, the pauses, the reviews, the reach), and each ask
+/// read and parsed every file of every calendar, years of past events
+/// included: some 40 µs a file each time, a second a minute for ten thousand
+/// events. A file is now read again only once it changed, or the next day.
+/// By path in a hash: a tree's lookups compared paths part by part, a tenth
+/// of the time left at rest.
+static KEPT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Kept>>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// Files kept at most (`KEPT`): past it, the whole is let go and read again.
+const KEPT_FILES: usize = 100_000;
+
 /// `file_occurrences`, you being `own` (`own_addresses`, asked once for a
 /// whole pass over the calendars, never once a file: review of 36002ea,
-/// can-wait 13).
+/// can-wait 13). Within the stretch around today (`KEPT_BEFORE`,
+/// `KEPT_AFTER`), what the file gave for the whole stretch, kept while it
+/// stands (`KEPT`), cut to what is asked; your own time around a meeting
+/// (`own_time`) laid over it at each ask.
 pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i64, zone: &TimeZone, own: &[String]) -> Vec<Occurrence> {
+    file_occurrences_marked(path, calendar, &crate::agendas::marks_of(calendar), from, to, zone, own)
+}
+
+/// `file_occurrences_as`, its calendar's agenda marks read once for all its
+/// files (`agendas::marks_of`, which reads the configuration and the
+/// calendar's own state: a third of what a pass over a calendar cost once
+/// each file's occurrences were kept).
+pub fn file_occurrences_marked(path: &Path, calendar: &Collection, marks: &crate::agendas::Marks, from: i64, to: i64, zone: &TimeZone, own: &[String]) -> Vec<Occurrence> {
+    let now = Timestamp::now().as_second();
+    let day = now - now.rem_euclid(86_400);
+    let (first, last) = (day - KEPT_BEFORE, day + KEPT_AFTER);
+    let Ok(meta) = std::fs::metadata(path) else { return Vec::new() };
+    let file = (meta.len(), meta.modified().ok());
+    // A file written within two seconds is not trusted to have a time of its
+    // own: two writings of one length within a tick of the clock look alike.
+    let settled = file.1.is_some_and(|time| time.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(2)));
+    if from < first || to > last || !settled {
+        let mut found = read_occurrences(path, calendar, marks, from, to, zone, own);
+        crate::own_time::apply(&mut found, &crate::own_time::current());
+        return found;
+    }
+    let zone_name = crate::zone::name_of(zone, Timestamp::now());
+    let kept = |k: &Kept| k.file == file && k.day == day && k.zone == zone_name && k.own == own && k.calendar == *calendar && k.marks == *marks;
+    let mut found: Vec<Occurrence> = {
+        let all = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        all.get(path).filter(|k| kept(k)).map(|k| k.found.iter().filter(|o| o.end > from && o.start < to).cloned().collect())
+    }
+    .unwrap_or_else(|| {
+        let whole = read_occurrences(path, calendar, marks, first, last, zone, own);
+        let asked = whole.iter().filter(|o| o.end > from && o.start < to).cloned().collect();
+        let mut all = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if all.len() >= KEPT_FILES {
+            all.clear();
+        }
+        all.insert(path.to_path_buf(), Kept { file, day, zone: zone_name, own: own.to_vec(), calendar: calendar.clone(), marks: marks.clone(), found: whole });
+        asked
+    });
+    // Your own time around a meeting, kept in your own file, wins over the
+    // meeting's lines (decision 18): every reader expands through here.
+    crate::own_time::apply(&mut found, &crate::own_time::current());
+    found
+}
+
+/// `file_occurrences_as` from the file itself, read and parsed now, without your own time laid over it.
+fn read_occurrences(path: &Path, calendar: &Collection, marks: &crate::agendas::Marks, from: i64, to: i64, zone: &TimeZone, own: &[String]) -> Vec<Occurrence> {
     let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
     // What its agenda is to you (`agendas`): for its availability only, nothing but its times.
-    let marks = crate::agendas::marks_of(calendar);
     let busy = marks.busy;
     let with_others = !busy && meeting_with_others(&text, own);
     let organized = with_others && organized_by_you(&text, own);
@@ -646,9 +727,6 @@ pub fn file_occurrences_as(path: &Path, calendar: &Collection, from: i64, to: i6
         let rid = if component.is_recurrent_or_override() { changed.get(&event.comp_id).cloned().unwrap_or_else(|| rid_of_start(start, all_day, zone)) } else { String::new() };
         found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, stands_for: stands_for.clone(), opaque, rid, ..occurrence });
     }
-    // Your own time around a meeting, kept in your own file, wins over the
-    // meeting's lines (decision 18): every reader expands through here.
-    crate::own_time::apply(&mut found, &crate::own_time::current());
     found
 }
 
@@ -805,7 +883,10 @@ pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
     let mut all: Vec<Occurrence> = vdir::collections(Kind::Calendars)
         .iter()
         .filter(|c| c.holds("VEVENT") && !mirrors.iter().any(|(account, id)| c.account == *account && c.id == *id))
-        .flat_map(|calendar| calendar.items().into_iter().flat_map(|path| file_occurrences_as(&path, calendar, from, to, &zone, &own)).collect::<Vec<_>>())
+        .flat_map(|calendar| {
+            let marks = crate::agendas::marks_of(calendar);
+            calendar.items().into_iter().flat_map(|path| file_occurrences_marked(&path, calendar, &marks, from, to, &zone, &own)).collect::<Vec<_>>()
+        })
         .collect();
     // Your answers, by your accounts' addresses: an invitation needs you once accepted, none once declined.
     if all.iter().any(|e| !e.attendees.is_empty()) {
@@ -5374,5 +5455,54 @@ mod tests {
         // Another frequency: a rule of its own.
         let monthly = apply(&rich, &EventEdit { repeat: "monthly".into(), every: 2, ..edit_of_text(&rich, &paris).unwrap() }, &paris).unwrap();
         assert!(monthly.contains("RRULE:FREQ=MONTHLY;INTERVAL=2\r\n") && !monthly.contains("BYDAY=MO,WE"), "{monthly}");
+    }
+
+    /// A calendar file's occurrences around today are kept while it stands
+    /// (`KEPT`): each ask within the stretch gives what reading the file
+    /// itself gives (a weekly event, one tomorrow, one gone by years ago), cut
+    /// to what is asked; the file changed, read again; a file just written,
+    /// and an ask beyond the stretch, read from the file itself.
+    #[test]
+    fn a_file_s_days_around_today_are_kept_while_it_stands() {
+        let now = Timestamp::now().as_second();
+        let stamp = |t: i64| Timestamp::from_second(t).unwrap().strftime("%Y%m%dT%H%M%SZ").to_string();
+        let text = |summary: &str, start: i64| {
+            format!(
+                "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:weekly\r\nDTSTAMP:20200101T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:{summary}\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:tomorrow\r\nDTSTAMP:20200101T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Tomorrow\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+                stamp(start - 30 * 86_400),
+                stamp(start - 30 * 86_400 + 3_600),
+                stamp(start + 86_400),
+                stamp(start + 86_400 + 1_800)
+            )
+        };
+        let old = |path: &Path, seconds: i64| std::fs::File::options().write(true).open(path).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(seconds as u64)).unwrap();
+        let path = write_temp("kept.ics", &text("Choir", now));
+        old(&path, 3_600);
+        let own: Vec<String> = Vec::new();
+        let asks = [(now - 86_400, now + 9 * 86_400), (now, now + 60 * 86_400), (now - 3_600, now + 6 * 86_400)];
+        let summaries = |found: Vec<Occurrence>| found.into_iter().map(|o| (o.start, o.summary)).collect::<Vec<_>>();
+        for (from, to) in asks {
+            let kept = summaries(file_occurrences_as(&path, &calendar(), from, to, &paris(), &own));
+            assert_eq!(kept, summaries(read_occurrences(&path, &calendar(), &crate::agendas::marks_of(&calendar()), from, to, &paris(), &own)), "{from}..{to}");
+            assert!(kept.iter().any(|(_, s)| s == "Tomorrow") && kept.iter().any(|(_, s)| s == "Choir"), "{kept:?}");
+        }
+        assert!(KEPT.lock().unwrap().get(&path).is_some_and(|k| k.found.len() >= 9), "the whole stretch kept");
+        // Changed: read again.
+        std::fs::write(&path, text("Orchestra", now)).unwrap();
+        old(&path, 1_800);
+        let found = summaries(file_occurrences_as(&path, &calendar(), now, now + 9 * 86_400, &paris(), &own));
+        assert!(found.iter().any(|(_, s)| s == "Orchestra") && !found.iter().any(|(_, s)| s == "Choir"), "{found:?}");
+        // Just written, whatever its length and time: from the file itself, nothing kept from it.
+        let before = KEPT.lock().unwrap().get(&path).map(|k| k.file);
+        std::fs::write(&path, text("Quartet!!", now)).unwrap();
+        let found = summaries(file_occurrences_as(&path, &calendar(), now, now + 9 * 86_400, &paris(), &own));
+        assert!(found.iter().any(|(_, s)| s == "Quartet!!"), "{found:?}");
+        assert_eq!(KEPT.lock().unwrap().get(&path).map(|k| k.file), before);
+        // Beyond the stretch (a month browsed a year ago): from the file itself.
+        old(&path, 3_600);
+        let year_ago = summaries(file_occurrences_as(&path, &calendar(), now - 365 * 86_400, now - 300 * 86_400, &paris(), &own));
+        assert_eq!(year_ago, summaries(read_occurrences(&path, &calendar(), &crate::agendas::marks_of(&calendar()), now - 365 * 86_400, now - 300 * 86_400, &paris(), &own)));
+        assert!(year_ago.is_empty());
+        let _ = std::fs::remove_file(path);
     }
 }

@@ -480,6 +480,17 @@ fn seal_of(files: &[PathBuf]) -> Seal {
 /// `f` on every device's label log, read again when one of the files
 /// changed (its size or its time) or came: the folder is looked at again
 /// after two seconds at most.
+/// The logs of your words on spam as they stand (each file by its length and
+/// time), hashed: what `said_ham` reads changed when this did (the Porch's
+/// kept triages, `porch::TRIAGED`).
+pub fn logs_seal() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let root = state();
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    seal_of(&logs_in(&root.join(FOLDER), Some(&root.join(FILE)))).hash(&mut hash);
+    hash.finish()
+}
+
 fn kept<T>(f: impl FnOnce(&[Entry]) -> T) -> T {
     type Kept = Option<(PathBuf, std::time::Instant, Seal, Vec<Entry>)>;
     static KEPT: std::sync::Mutex<Kept> = std::sync::Mutex::new(None);

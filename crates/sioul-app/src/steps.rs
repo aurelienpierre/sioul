@@ -37,6 +37,9 @@
 //!    (`keeps_close`, read again after the step's pull: another device in
 //!    use; while you sleep, a computer only with someone at it, or any while
 //!    a dose is due and not marked), five otherwise, fifteen while you sleep;
+//!    while you are awake and no dose comes within the week, ten after a look
+//!    that found nothing new and fifteen after two, mail's own rhythm, so that
+//!    each wake carries the mail (`next_step`, `spaced`);
 //! 6. your availabilities' calendars (`mirrors::background_step`), beside
 //!    the mail, at most every quarter of an hour while you are awake and every
 //!    hour while you sleep: one token check per calendar that counts, a pull
@@ -53,7 +56,7 @@ use crate::backend::{load_config, tr};
 use sioul_core::config::Config;
 use std::path::Path;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
 
 /// In the background service's own process: set by Java before each step.
 static IN_SERVICE: AtomicBool = AtomicBool::new(false);
@@ -67,6 +70,18 @@ pub(crate) const AVAILABILITY_ASLEEP: i64 = 60 * 60;
 pub(crate) const STEP_IN_USE: i64 = 2 * 60;
 pub(crate) const STEP_AWAKE: i64 = 5 * 60;
 pub(crate) const STEP_ASLEEP: i64 = 15 * 60;
+/// Steps while awake, nobody's device in use, no dose within the week
+/// (`spaced`), after as many looks in a row that found nothing new: five
+/// minutes after news, ten after one quiet look, then fifteen, mail's own
+/// rhythm (seconds). Each wake of the modem keeps it at high power some
+/// seconds past its last packet: twelve wakes an hour while nothing happens
+/// become four, each with its mail.
+pub(crate) const STEP_QUIET: [i64; 3] = [STEP_AWAKE, 10 * 60, MAIL_EVERY];
+/// How far ahead a dose keeps the steps at five minutes (`spaced`): the
+/// doses know how late the news of a computer's opening comes here from its
+/// last ten openings (`Peer::wake`, a few days' worth), and slower looks
+/// would make that wait longer.
+const DOSES_AHEAD: i64 = 7;
 
 /// Whether this process is the background service's.
 pub(crate) fn in_service() -> bool {
@@ -202,19 +217,69 @@ static POKED: Mutex<(String, String)> = Mutex::new((String::new(), String::new()
 static MAILED: AtomicI64 = AtomicI64::new(0);
 /// When the availabilities' calendars were last looked at in the background.
 static CHECKED: AtomicI64 = AtomicI64::new(0);
+/// The alarm steps in a row that found nothing new, spaced (`spaced`).
+static QUIET: AtomicU32 = AtomicU32::new(0);
 
 /// How long until the next step (seconds): two minutes while the phone keeps
 /// close (`keeps_close`: another device in use, its news fresh, the doses'
 /// too, and do-not-disturb pressed there comes within them), fifteen while
-/// you sleep, five otherwise.
-fn next_step(in_use: bool, asleep: bool) -> i64 {
+/// you sleep, five otherwise; `quiet` looks in a row that found nothing new
+/// (`spaced`: only while you are awake, nobody's device in use) make it ten,
+/// then fifteen.
+fn next_step(in_use: bool, asleep: bool, quiet: u32) -> i64 {
     if in_use {
         STEP_IN_USE
     } else if asleep {
         STEP_ASLEEP
     } else {
-        STEP_AWAKE
+        STEP_QUIET[(quiet as usize).min(STEP_QUIET.len() - 1)]
     }
+}
+
+/// Whether an alarm step's look counts as quiet, for the next one's spacing:
+/// you are awake, the phone keeps close neither before nor after its pull
+/// (nobody's device in use: do-not-disturb pressed at a computer, a dose
+/// marked there keep their two minutes), no dose comes within the week
+/// (`doses_ahead`), and nothing came or went (`news`): the exchange read and
+/// wrote nothing (`Outcome::quiet`, nothing received nor sent), no texts nor
+/// replies to hand over. Any other step (a file the sync app wrote, a
+/// message or a call for your computers, a press, a start) is news itself.
+/// Mail is not news here: it comes at its own rhythm either way (`mail_cap`).
+/// Never while this phone screens calls (`calls`): its table holds switches
+/// other devices set ("Expecting a call" pressed at a computer just opened),
+/// which must reach it within five minutes, before the call they wait for.
+fn spaced(reason: &str, asleep: bool, close: bool, news: bool, calls: bool, doses_ahead: impl FnOnce() -> bool) -> bool {
+    reason == "alarm" && !asleep && !close && !news && !calls && !doses_ahead()
+}
+
+/// A spaced step never later than mail's next round (`mail_on`: mail would
+/// be fetched then, `mail_due`), five minutes on at the soonest: a news step
+/// starts the spacing again at five minutes, and a ten-minute look after it
+/// would fall short of the round and push it a quarter of an hour on (the
+/// review of wt/perf, P1: 1,510 s between two rounds at worst). Mail comes at
+/// most five minutes past its time.
+fn mail_cap(after: i64, now: i64, mailed: i64, mail_on: bool) -> i64 {
+    if mail_on { after.min((mailed + MAIL_EVERY - now).max(STEP_AWAKE)) } else { after }
+}
+
+/// An exchange that found nothing to read nor to write (`Outcome::quiet`), or none ran.
+fn quiet_exchange(exchanged: &Option<Result<sioul_sync::share::Outcome, String>>) -> bool {
+    match exchanged {
+        None => true,
+        Some(Ok(outcome)) => outcome.quiet && outcome.received == 0 && outcome.sent == 0,
+        Some(Err(_)) => false,
+    }
+}
+
+/// Whether a dose of a medicine taken comes within `DOSES_AHEAD` days, as
+/// the health file reads now; one that does not read counts as some. Read
+/// only: the doses themselves are not touched.
+fn doses_ahead() -> bool {
+    use sioul_core::health::Health;
+    let Ok(health) = Health::read(&Health::default_path()) else { return true };
+    let now = jiff::Zoned::now();
+    let until = now.checked_add(jiff::Span::new().days(DOSES_AHEAD)).unwrap_or_else(|_| now.clone());
+    !health.doses(&now, &until).is_empty()
 }
 
 /// Whether mail is fetched at this step: at its rhythm, not while you sleep
@@ -423,11 +488,15 @@ fn step(reason: &str) -> serde_json::Value {
     // a message's line for your computers (`phonemsgs`, the listener's "messages").
     let fetch_first = reason != "folder" && reason != "heard" && reason != "messages" && !pressed && (in_use || !asleep);
     rounds_wait();
-    rearm_after(crate::share::exchange_here(fetch_first));
+    let exchanged = crate::share::exchange_here(fetch_first);
+    // Whether anything came or went, for the next step's spacing (`spaced`).
+    let mut news = !quiet_exchange(&exchanged);
+    rearm_after(exchanged);
     // texts and replies: the requests this exchange brought, decided and handed over now, their
     // outcomes shared at once; a batch of the import too, the full rounds waiting while it goes on.
     let replied = crate::replies::phone_step();
     if crate::texts::phone_step() || replied {
+        news = true;
         rounds_wait();
         rearm_after(crate::share::exchange_here(false));
     }
@@ -483,11 +552,21 @@ fn step(reason: &str) -> serde_json::Value {
     // the others' entries: someone back at a computer, a dose marked there, seen
     // from this step on, not one slow step later (review of battery part C, F1).
     let close = keeps_close(asleep);
+    // Looks in a row that found nothing new, while you are awake and nobody's
+    // device is in use: the next one spaced (`spaced`); anything else, five minutes again.
+    let screening = calls["screening"] == true || calls["through"] == true;
+    let quiet = if spaced(reason, asleep, in_use || close, news, screening, doses_ahead) { QUIET.fetch_add(1, Ordering::Relaxed).saturating_add(1) } else {
+        QUIET.store(0, Ordering::Relaxed);
+        0
+    };
     // The notification's words now; the next step no later than the end of what now is for,
     // so that its title changes with the time.
     let now = jiff::Timestamp::now().as_second();
     let (note, until) = note();
-    let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(next_step(close, asleep), |s| s.min(next_step(close, asleep)));
+    let mailed = MAILED.load(Ordering::Relaxed);
+    let after = next_step(close, asleep, quiet);
+    let after = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused)) } else { after };
+    let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(after, |s| s.min(after));
     let words = words();
     serde_json::json!({
         "next": next,
@@ -608,10 +687,42 @@ mod tests {
 
     #[test]
     fn the_rhythm_follows_the_other_devices_and_the_night() {
-        assert_eq!(next_step(true, false), 120);
-        assert_eq!(next_step(true, true), 120, "a device in use at night: its news stays fresh");
-        assert_eq!(next_step(false, true), 900);
-        assert_eq!(next_step(false, false), 300);
+        assert_eq!(next_step(true, false, 0), 120);
+        assert_eq!(next_step(true, true, 0), 120, "a device in use at night: its news stays fresh");
+        assert_eq!(next_step(false, true, 0), 900);
+        assert_eq!(next_step(false, false, 0), 300);
+        // Quiet looks in a row, awake: ten minutes, then fifteen, mail's own rhythm, and no further.
+        assert_eq!([1, 2, 3, 40].map(|quiet| next_step(false, false, quiet)), [600, 900, 900, 900]);
+        assert_eq!(STEP_QUIET[2], MAIL_EVERY, "each spaced wake carries the mail");
+        // Never while another device is in use, nor at night, whose fifteen minutes stay.
+        assert_eq!(next_step(true, false, 5), 120);
+        assert_eq!(next_step(false, true, 5), 900);
+    }
+
+    /// Only an alarm's look that found nothing, while you are awake, nobody's
+    /// device in use and no dose within the week, counts as quiet; anything
+    /// else brings the five minutes back.
+    #[test]
+    fn only_a_quiet_look_spaces_the_next() {
+        let no_dose = || false;
+        assert!(spaced("alarm", false, false, false, false, no_dose));
+        assert!(!spaced("alarm", true, false, false, false, no_dose), "asleep: the night's fifteen minutes, as before");
+        assert!(!spaced("alarm", false, true, false, false, no_dose), "another device in use: two minutes, as before");
+        assert!(!spaced("alarm", false, false, true, false, no_dose), "something came or went");
+        assert!(!spaced("alarm", false, false, false, true, no_dose), "calls screened here: a computer's Expecting a call within five minutes");
+        assert!(!spaced("alarm", false, false, false, false, || true), "a dose within the week");
+        for reason in ["folder", "messages", "heard", "calls", "start", "restart"] {
+            assert!(!spaced(reason, false, false, false, false, no_dose), "{reason}: news itself");
+        }
+        // The doses are asked last, and only when the rest would space the step.
+        assert!(!spaced("alarm", false, true, false, false, || panic!("asked")));
+        use sioul_sync::share::Outcome;
+        let quiet = || Outcome { quiet: true, ..Outcome::default() };
+        assert!(quiet_exchange(&None) && quiet_exchange(&Some(Ok(quiet()))));
+        assert!(!quiet_exchange(&Some(Ok(Outcome { received: 1, ..quiet() }))));
+        assert!(!quiet_exchange(&Some(Ok(Outcome { sent: 1, ..quiet() }))));
+        assert!(!quiet_exchange(&Some(Ok(Outcome::default()))), "read and written");
+        assert!(!quiet_exchange(&Some(Err("share-busy".into()))));
     }
 
     use sioul_sync::devices::{COMPUTER, Entry};
@@ -647,7 +758,10 @@ mod tests {
     /// keeps close is read from the entry the last pull brought, before the
     /// step's pull (whether it pulls at once), and again after it (when the
     /// next step comes).
-    fn an_hour(desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool, dose: bool, heard: &[i64]) -> Hour {
+    /// `ahead`: a dose within the week (`doses_ahead`), which keeps the
+    /// awake steps at five minutes; without one, quiet looks are spaced
+    /// (`spaced`): with no computer running, nothing comes, every look quiet.
+    fn an_hour(desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool, dose: bool, ahead: bool, heard: &[i64]) -> Hour {
         use sioul_sync::remote::{Pace, State, due};
         let config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
         let start = 1_800_000_000;
@@ -655,15 +769,21 @@ mod tests {
         let mut state = State { confirmed: warm - 86_400, tried: warm - 3_600, last: warm - 3_600, ..State::default() };
         let (mut hour, mut mailed, mut at) = (Hour::default(), warm - 3_600, warm);
         let (mut known, mut pulls, mut alarms): (Vec<Entry>, Vec<i64>, Vec<i64>) = (Vec::new(), Vec::new(), Vec::new());
+        let mut quiet = 0;
         while at < start + 3_600 {
             let close = keeps_close_of(&known, PHONE_ID, at, asleep, || dose);
             let fetch_first = close || !asleep;
             let in_use = sioul_sync::devices::others_in_use(&known, PHONE_ID, at, asleep);
             let pace = Pace { phone: true, shown: false, in_use, urgent: fetch_first, step: if asleep { STEP_ASLEEP } else { STEP_AWAKE } };
             let pulled = due(&state, at, pace);
+            // What the desk says, its exchanges' times aside: changed, news (an exchange that reads it).
+            let steady = |entries: &[Entry]| entries.iter().map(|e| (e.id.clone(), e.started, e.closed, e.working, e.active)).collect::<Vec<_>>();
+            let mut news = false;
             if pulled {
                 (state.tried, state.last) = (at, at);
-                known = desk(at).into_iter().collect();
+                let fresh: Vec<Entry> = desk(at).into_iter().collect();
+                news = steady(&fresh) != steady(&known);
+                known = fresh;
                 pulls.push(at);
             }
             let mail = mail_due(&config, at, mailed, asleep, false);
@@ -677,7 +797,10 @@ mod tests {
                 hour.wakes += u32::from(pulled || mail);
                 alarms.push(at);
             }
-            at += next_step(keeps_close_of(&known, PHONE_ID, at, asleep, || dose), asleep);
+            let after = keeps_close_of(&known, PHONE_ID, at, asleep, || dose);
+            quiet = if spaced("alarm", asleep, close || after, news, false, || ahead) { quiet + 1 } else { 0 };
+            let spaced_after = next_step(after, asleep, quiet);
+            at += if quiet > 0 { mail_cap(spaced_after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, false)) } else { spaced_after };
         }
         // The longest wait between two pulls in the hour, the wait from its last one to the next step included.
         pulls.push(at);
@@ -713,12 +836,14 @@ mod tests {
     /// and a dose due and not marked. "Before" is the desk's entry as it was,
     /// saying nothing of anyone at it (as an older Sioul's still does): Sioul
     /// running counted. Only the sleep column changed: awake, a computer whose
-    /// Sioul runs counts, as before.
+    /// Sioul runs counts, as before. Each with a dose within the week, which
+    /// keeps the awake steps at five minutes (`spaced`): as all of these were
+    /// counted then; the steps spaced without one, below.
     #[test]
     fn the_phone_wakes_as_often_as_someone_may_be_at_a_computer() {
         let none = |_: i64| None;
         let (before, nobody, someone) = (desk(None), desk(Some(false)), desk(Some(true)));
-        let wakes = |desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool| an_hour(desk, asleep, false, &[]);
+        let wakes = |desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool| an_hour(desk, asleep, false, true, &[]);
         // No computer running: unchanged, every five minutes awake, every fifteen asleep.
         assert_eq!(wakes(&none, false), Hour { steps: 12, pulls: 12, mail: 4, messages: 0, wakes: 12, longest: 300 });
         assert_eq!(wakes(&none, true), Hour { steps: 4, pulls: 4, mail: 0, messages: 0, wakes: 4, longest: 900 });
@@ -730,15 +855,113 @@ mod tests {
         assert_eq!(wakes(&nobody, true), wakes(&none, true), "asleep: as with no computer running");
         // A dose due and not marked, a computer running: two-minute steps, while you sleep too;
         // with no other device, nothing to keep close to.
-        assert_eq!(an_hour(&nobody, true, true, &[]), wakes(&before, true));
-        assert_eq!(an_hour(&none, true, true, &[]), wakes(&none, true));
+        assert_eq!(an_hour(&nobody, true, true, true, &[]), wakes(&before, true));
+        assert_eq!(an_hour(&none, true, true, true, &[]), wakes(&none, true));
         // Someone at a computer: as before, every two minutes, asleep too.
         assert_eq!(wakes(&someone, false), wakes(&before, false));
         assert_eq!(wakes(&someone, true), wakes(&before, true));
         // A message for your computers (or a text) brings a step twenty seconds on, a burst of
         // its own unless an alarm step comes within them; two heard together go as one.
-        assert_eq!(an_hour(&none, true, false, &[100, 110, 1_000]).wakes, 4 + 2);
-        assert_eq!(an_hour(&someone, true, false, &[100, 110]).wakes, 30, "taken along by the alarm step at 120 s");
+        assert_eq!(an_hour(&none, true, false, true, &[100, 110, 1_000]).wakes, 4 + 2);
+        assert_eq!(an_hour(&someone, true, false, true, &[100, 110]).wakes, 30, "taken along by the alarm step at 120 s");
+    }
+
+    /// The phone's network wakes in an hour with no dose within the week
+    /// (10 November 2026): while you are awake and no computer runs Sioul,
+    /// nothing comes, and the looks go from five minutes to fifteen, mail's
+    /// rhythm, each wake carrying its round: twelve wakes an hour become four.
+    /// Every other column as with a dose ahead: two minutes beside a computer
+    /// in use, fifteen at night. Over a day of eight hours asleep and eight
+    /// awake with no computer running (the phone's on 7 and 8 November 2026,
+    /// off the charger for 16 h 20): 128 wakes before, 64 now.
+    #[test]
+    fn quiet_looks_wake_the_phone_with_the_mail_only() {
+        let none = |_: i64| None;
+        let (nobody, someone) = (desk(Some(false)), desk(Some(true)));
+        let spaced = |desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool| an_hour(desk, asleep, false, false, &[]);
+        let ahead = |desk: &dyn Fn(i64) -> Option<Entry>, asleep: bool| an_hour(desk, asleep, false, true, &[]);
+        assert_eq!(ahead(&none, false), Hour { steps: 12, pulls: 12, mail: 4, messages: 0, wakes: 12, longest: 300 }, "before");
+        assert_eq!(spaced(&none, false), Hour { steps: 4, pulls: 4, mail: 4, messages: 0, wakes: 4, longest: 900 });
+        for asleep in [false, true] {
+            for desk in [&nobody as &dyn Fn(i64) -> Option<Entry>, &someone] {
+                assert_eq!(spaced(desk, asleep), ahead(desk, asleep), "a computer running: as before");
+            }
+        }
+        assert_eq!(spaced(&none, true), ahead(&none, true), "the night's fifteen minutes, as before");
+        assert_eq!(8 * ahead(&none, true).wakes + 8 * ahead(&none, false).wakes, 128);
+        assert_eq!(8 * spaced(&none, true).wakes + 8 * spaced(&none, false).wakes, 64);
+    }
+
+    /// News at any moment between two mail rounds (a file the sync app wrote,
+    /// a message for your computers: a step out of the spacing, which starts it
+    /// again at five minutes) never makes mail wait more than five minutes past
+    /// its round: the spaced look is cut at the round's time (`mail_cap`).
+    /// Before the cut, news 600 s after a round put the next one 1,510 s
+    /// after it (the review of wt/perf, P1). No warm-up hides it: the news
+    /// comes right after a round of the settled spacing.
+    #[test]
+    fn news_between_two_rounds_never_holds_the_mail_back() {
+        let config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
+        let rounds = |news: i64, capped: bool| {
+            // Settled: a mail round at 0 at the third quiet look; the news step at `news`, then alarm steps.
+            let (mut mailed, mut quiet, mut at, mut reason) = (0i64, 2u32, news, "folder");
+            let mut times = vec![0];
+            while at < 4 * 3_600 {
+                if mail_due(&config, at, mailed, false, false) {
+                    mailed = at;
+                    times.push(at);
+                }
+                quiet = if spaced(reason, false, false, reason != "alarm", false, || false) { quiet + 1 } else { 0 };
+                let after = next_step(false, false, quiet);
+                at += if capped && quiet > 0 { mail_cap(after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, false, false)) } else { after };
+                reason = "alarm";
+            }
+            times.windows(2).map(|w| w[1] - w[0]).max().unwrap()
+        };
+        assert_eq!(rounds(600, false), 1_500, "without the cut");
+        assert!(rounds(600, true) <= MAIL_EVERY + STEP_AWAKE, "{}", rounds(600, true));
+        let worst = (1..MAIL_EVERY).map(|news| rounds(news, true)).max().unwrap();
+        assert!(worst <= MAIL_EVERY + STEP_AWAKE, "{worst}");
+        // Without mail to fetch, nothing cut.
+        assert_eq!(mail_cap(MAIL_EVERY, 100, 0, false), MAIL_EVERY);
+        assert_eq!(mail_cap(MAIL_EVERY, 600, 0, true), STEP_AWAKE);
+        assert_eq!(mail_cap(600, 1_500, 900, true), 300);
+    }
+
+    /// A computer opened while the phone's looks are spaced: the look that
+    /// reads its entry brings the two-minute steps, within fifteen minutes of
+    /// its first export reaching the server (five with a dose within the
+    /// week, as before). Opened at each second of an hour.
+    #[test]
+    fn a_computer_opened_is_noticed_within_the_spaced_look() {
+        use sioul_sync::remote::{Pace, State, due};
+        let noticed = |opened: i64, ahead: bool| {
+            let server = |t: i64| (t >= opened).then(|| Entry { id: DESK_ID.into(), kind: COMPUTER.into(), working: true, started: opened, exported: t - (t - opened).rem_euclid(60), active: Some(true), ..Entry::default() });
+            let mut state = State { confirmed: -86_400, tried: -3_600, last: -3_600, ..State::default() };
+            let (mut known, mut quiet, mut at): (Vec<Entry>, u32, i64) = (Vec::new(), 0, 0);
+            loop {
+                let close = keeps_close_of(&known, PHONE_ID, at, false, || false);
+                let pace = Pace { phone: true, shown: false, in_use: close, urgent: true, step: STEP_AWAKE };
+                let mut news = false;
+                if due(&state, at, pace) {
+                    (state.tried, state.last) = (at, at);
+                    let fresh: Vec<Entry> = server(at).into_iter().collect();
+                    news = fresh.len() != known.len();
+                    known = fresh;
+                }
+                let after = keeps_close_of(&known, PHONE_ID, at, false, || false);
+                if after {
+                    return (at - opened, next_step(after, false, 0));
+                }
+                quiet = if spaced("alarm", false, close || after, news, false, || ahead) { quiet + 1 } else { 0 };
+                at += next_step(after, false, quiet);
+            }
+        };
+        for (ahead, within) in [(false, MAIL_EVERY), (true, STEP_AWAKE)] {
+            let worst = (2 * 3_600..3 * 3_600).map(|opened| noticed(opened, ahead)).max_by_key(|(late, _)| *late).unwrap();
+            assert!(worst.0 <= within && worst.0 > within - 60, "{ahead}: {worst:?}");
+            assert_eq!(worst.1, STEP_IN_USE);
+        }
     }
 
     /// One press at the desk at `press` (do-not-disturb's switch, or a dose
@@ -796,7 +1019,7 @@ mod tests {
                         brought = true;
                     }
                 }
-                let next = next_step(keeps_close_of(&known, PHONE_ID, t, asleep, || dose && out.came < 0), asleep);
+                let next = next_step(keeps_close_of(&known, PHONE_ID, t, asleep, || dose && out.came < 0), asleep, 0);
                 if brought {
                     out.then = next;
                 }
@@ -848,7 +1071,7 @@ mod tests {
         // The step reads them again after its pull, for its next (read from the source).
         let source = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/steps.rs")).unwrap();
         let body = source.split("\nfn step(reason: &str)").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
-        let (pull, again, next) = (body.find("exchange_here(fetch_first)").unwrap(), body.find("let close = keeps_close(asleep);").unwrap(), body.find("next_step(close, asleep)").unwrap());
+        let (pull, again, next) = (body.find("exchange_here(fetch_first)").unwrap(), body.find("let close = keeps_close(asleep);").unwrap(), body.find("next_step(close, asleep, quiet)").unwrap());
         assert!(pull < again && again < next, "the next step from what this step's pull brought");
     }
 

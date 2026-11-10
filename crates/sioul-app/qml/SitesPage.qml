@@ -1024,7 +1024,11 @@ Item {
                         readonly property bool covered: page.chatsCovered && holder.modelData.kind === "chat"
 
                         anchors.fill: parent
-                        visible: page.openId === holder.siteId
+                        // The site in view, while the window shows or a call goes on there:
+                        // hidden in the tray, its page is hidden as the others are (Chromium
+                        // stops drawing it, sixty frames a second for nobody), its sockets
+                        // and its notifications going on.
+                        visible: page.openId === holder.siteId && (page.window.visible || page.calling(holder.siteId))
                         // Covered: blurred, and nothing under it takes a click.
                         layer.enabled: holder.covered
                         layer.effect: MultiEffect {
