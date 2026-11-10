@@ -7152,10 +7152,6 @@ impl qobject::Sioul {
         // The spam filter trains again by itself, plugged in and idle, on the computer that made its table.
         let qt_spam = self.qt_thread();
         std::thread::spawn(move || crate::spam::by_itself(qt_spam));
-        // Mail's topic presets start once, when the mail kept here is enough to judge (docs/topics.md).
-        crate::topics::day_one_by_itself(&self.qt_thread(), &self.shared());
-        // The mail kept here judged by the topics' table, a table that arrived the rest at the next looks.
-        crate::topics::judge_by_itself(&self.qt_thread(), &self.shared());
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
         // The Bitwarden vault locked once unused as long as you chose, away or not (Sites ⚙).
@@ -7166,13 +7162,24 @@ impl qobject::Sioul {
         }
         // Put away on a phone: the reminders only, and an exchange every five
         // minutes; the rest waits until it is back (Android stops an app that
-        // works in the background, and nobody looks at its pages then).
+        // works in the background, and nobody looks at its pages then). Until
+        // 10 November 2026 the topics' jobs below ran before this, put away
+        // too: day one's walk over every message kept here, and the judging
+        // of two thousand messages a minute once a table arrived (the
+        // background step judges five hundred at each of its own). With the
+        // Porch's making, a second or more each time on a phone, they could
+        // keep the window's process above a core in the back, where Android
+        // stops an app that does so.
         if *self.as_ref().away() {
             if sioul_core::zone::now().minute() % 5 == 0 {
                 crate::share::exchange_tick(&self.qt_thread(), &self.shared());
             }
             return;
         }
+        // Mail's topic presets start once, when the mail kept here is enough to judge (docs/topics.md).
+        crate::topics::day_one_by_itself(&self.qt_thread(), &self.shared());
+        // The mail kept here judged by the topics' table, a table that arrived the rest at the next looks.
+        crate::topics::judge_by_itself(&self.qt_thread(), &self.shared());
         // The home screen's card: written again when its first frame ended, or five minutes went by.
         crate::homecard::tick();
         // The time zone shown changed (Settings, or the system's own while
