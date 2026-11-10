@@ -13,6 +13,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -164,6 +165,9 @@ public final class StepService extends Service
                 return DndContacts.add(context, asked) ? "true" : "false";
             case "contacts-allowed":
                 return DndContacts.allowed(context) ? "true" : "false";
+            case "device":
+                // What this device is (devicekind.rs): its smallest width and whether it has telephony.
+                return device(context);
             case "sms-app":
                 // The phone's SMS app, for Settings ▸ This phone ▸ On your computers.
                 return JSONObject.quote(PhoneMessages.smsApp(context));
@@ -188,6 +192,21 @@ public final class StepService extends Service
             Log.e(TAG, "Steps: " + verb + " failed: " + e);
             return null;
         }
+    }
+
+    /**
+     * What this device is, for Rust's devicekind.rs, as
+     * {"smallest_dp": n, "telephony": bool}: its smallest screen width in
+     * density-independent pixels, as Android's resources choose a tablet's
+     * layout from (sw600dp and up), and whether it has telephony at all (a
+     * tablet without a SIM has none: no calls to screen, no texts to read).
+     */
+    static String device(Context context) throws JSONException
+    {
+        JSONObject said = new JSONObject();
+        said.put("smallest_dp", context.getResources().getConfiguration().smallestScreenWidthDp);
+        said.put("telephony", context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY));
+        return said.toString();
     }
 
     /**

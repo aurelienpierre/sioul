@@ -39,6 +39,11 @@ pub struct Config {
     /// colour: loud colours on sites softened: "little", "more"; off if unset.
     #[serde(default)]
     pub calmer_colours: Option<String>,
+    /// What this device is for what follows you: "phone", "tablet" or
+    /// "computer"; as the system says when unset (`device_kind::DeviceKind::guessed`).
+    /// This device's own, never shared (sioul-sync's `CONFIG_LOCAL`).
+    #[serde(default)]
+    pub device_kind: Option<String>,
     /// The notes folder: your Markdown files, with beside them your projects,
     /// budgets and papers. Its key in the file, `case_store`, is its first
     /// name, kept so that every configuration reads as before.
@@ -305,6 +310,13 @@ pub struct QuietSettings {
     /// languages' own (`words.tasks.work`: "work", "travail", "pro"…) when unsaid.
     #[serde(default)]
     pub work: Option<Vec<String>>,
+}
+
+impl Config {
+    /// Your word on this device's kind (Settings ▸ This device), when it names one.
+    pub fn device_kind(&self) -> Option<crate::device_kind::DeviceKind> {
+        self.device_kind.as_deref().and_then(crate::device_kind::DeviceKind::read)
+    }
 }
 
 impl Config {

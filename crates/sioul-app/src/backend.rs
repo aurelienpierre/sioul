@@ -88,6 +88,11 @@ pub mod qobject {
         #[qproperty(QString, notes)]
         #[qproperty(QString, focus_session)]
         #[qproperty(QString, reading)]
+        // What this device is for what follows you: "phone", "tablet" or "computer" (devicekind.rs).
+        // Never the layout, which follows the window's size (main.qml's `compact`).
+        #[qproperty(QString, device_kind)]
+        // Whether this system has calls and texts (devicekind.rs): a phone, a tablet with a SIM.
+        #[qproperty(bool, telephony)]
         #[qproperty(bool, realtime)]
         // Put away on a phone (in the background): the pages' clocks and reloads stop until it is back.
         #[qproperty(bool, away)]
@@ -2953,6 +2958,8 @@ pub struct SioulRust {
     notes: QString,
     focus_session: QString,
     reading: QString,
+    device_kind: QString,
+    telephony: bool,
     realtime: bool,
     away: bool,
     mode: QString,
@@ -4389,6 +4396,8 @@ impl qobject::Sioul {
         // The single share of your availability of before, read once as an availability of the list.
         crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
+        self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
+        self.as_mut().set_telephony(crate::devicekind::telephony());
         self.as_mut().set_mode(QString::from(&mode_json()));
         // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
         crate::outside::started(self.as_mut());
@@ -7592,6 +7601,12 @@ impl qobject::Sioul {
                 row.help = format!("{} {}", row.help, say("letters-reader-missing", &[("hint", hint)]));
             }
         }
+        // What this device is found to be, named in its first choice: Android's width is read here.
+        for row in rows.iter_mut().filter(|r| r.key == "device_kind") {
+            if let Some(first) = row.choices.first_mut() {
+                first.label = sioul_core::settings::device_kind_found(tr(), crate::devicekind::guessed());
+            }
+        }
         // colour: what this screen gets, said under its switch; neither line on a
         // phone, whose sites open in the browser (docs/colour.md).
         if cfg!(target_os = "android") {
@@ -7684,6 +7699,11 @@ impl qobject::Sioul {
         }
         if key.starts_with("mail.") {
             mail::show_mail(&qt, &shared);
+        }
+        // What this device is: the window's, and the others' at the next exchange (its devices' entry).
+        if key == "device_kind" {
+            self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
+            crate::devices::form_changed();
         }
         // "Train here": off stops a training by itself under way here; on, the guard's mark goes (you asked).
         if key == "spam.train_here" {
