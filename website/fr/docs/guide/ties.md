@@ -20,17 +20,17 @@ Tout dans Sioul est lié à d’autres choses : une tâche faite à partir d�
 
 - **Liens** au pied de chaque carte (une tâche, un événement, une note, un contact, un projet), à côté de **Ajouter** et **Lier à…** ;
 - **Les voir tous** sous ce à quoi une chose est liée ;
-- **Ses liens** dans le menu d’une chose (un clic droit, ou un appui long sur un téléphone), dans la chaîne elle-même aussi ;
+- **Ses liens** dans le menu d’une chose (un clic droit, ou un appui long sur un écran tactile), dans la chaîne elle-même aussi ;
 - **Liens** sur la carte d’un papier, d’un contrat, d’une lettre, d’une facture, d’une ligne de budget ou d’un mouvement (Budgets ▸ **Mouvements**), et sur la page d’une personne ;
 - **Ctrl+G** sur la chose ouverte.
 
-Chaque ouverture repart de cette chose. **Échap**, ou Retour sur un téléphone, ramène là où vous étiez.
+Chaque ouverture repart de cette chose. **Échap**, ou Retour sur Android, ramène là où vous étiez.
 
 ## Ce qu’elle montre {#what-it-shows}
 
 Chaque chose vient par sa chaîne de liens la plus forte depuis votre point de départ, dite en mots : « Annoncé par : Message, Loyer de novembre · A donné : Tâche, Payer le loyer ». Un lien fait à la main, une tâche faite à partir d’un courriel, une réponse, une étape, un rendez-vous lient fortement ; être dans le même projet, un expéditeur, une mention un peu moins ; les seuls mots d’un projet, ou un client par son nom, le moins. Chaque étape après la première compte un peu moins.
 
-- **Au plus cinq choses sous chaque chose**, 24 en tout sur un ordinateur et 12 sur un téléphone.
+- **Au plus cinq choses sous chaque chose**, 24 en tout sur un ordinateur et 12 sur Android.
 - **Une collection arrête la chaîne** : un projet, un contact, une personne, un budget ou un site montre combien de choses il tient. Ouvert, il montre d’abord une chose de chaque type (une lettre, une tâche, une note, un message, un paiement), puis le reste par date, et pas plus de deux messages d’un même expéditeur avant les autres, pour qu’une lettre d’information hebdomadaire ne cache jamais les lettres d’une administration.
 - **Le temps ordonne, il ne coupe jamais** : entre égaux, ce qui est le plus proche dans le temps de la chose de départ vient d’abord.
 - **Le temps noté** sur une tâche est un compte sur elle, pas une chose à part.
@@ -41,10 +41,10 @@ Chaque chose vient par sa chaîne de liens la plus forte depuis votre point de d
 
 ## Le dessin et la liste {#the-drawing-and-the-outline}
 
-- **Le dessin** se lit depuis la gauche : votre point de départ, puis une colonne par étape, les mots du lien sur chaque trait. Un lien entre deux choses déjà montrées est une fine courbe. On zoome avec Ctrl et la molette, ou en pinçant ; **Ajuster** le montre en entier. Sur un téléphone, deux colonnes tiennent dans la largeur, et un glissement passe à la colonne suivante.
+- **Le dessin** se lit depuis la gauche : votre point de départ, puis une colonne par étape, les mots du lien sur chaque trait. Un lien entre deux choses déjà montrées est une fine courbe. On zoome avec Ctrl et la molette, ou en pinçant ; **Ajuster** le montre en entier. Sur Android, deux colonnes tiennent dans la largeur, et un glissement passe à la colonne suivante.
 - **La liste** donne les mêmes choses dans le même ordre, chacune décalée selon son étape, la façon dont elle est liée sur sa deuxième ligne.
 
-Un ordinateur ouvre sur le dessin, un téléphone sur la liste ; **Chaîne** et **Liste** passent de l’un à l’autre, sur la même chose.
+Un ordinateur ouvre sur le dessin, Android sur la liste ; **Chaîne** et **Liste** passent de l’un à l’autre, sur la même chose.
 
 Chaque chose montre sa famille par sa forme et sa couleur, et son type par son icône et en mots :
 
@@ -103,7 +103,7 @@ Sioul n’a pas de graphe de tout, exprès : il ne répond à aucune question 
 
 **Un index, en mémoire.** Chaque lien est lu là où il est écrit : les `LINK`, `RELATED-TO`, `CONTACT` et `REFID` d’une tâche ; les invités d’un événement, son double et `X-SIOUL-TAKEN-BY` ; les liens et l’en-tête d’une note, et les projets dont les fichiers la tiennent ; les liens d’un brouillon et le message auquel il répond ; les liens d’une ligne de budget ; `links.toml` ; un paiement tel que la page des budgets le déduit, avec sa ligne, son courriel, sa lettre, sa facture, son contrat et son budget ; les papiers, les lettres, les contrats, les factures et les personnes ; les `In-Reply-To` et `References` d’un message, la fiche de son expéditeur et les routes d’un projet. Sioul les réunit en un passage dans `ties::TieIndex` (chaque adresse une fois, chaque lien deux nombres vers la table avec son type), lu par ses deux bouts. Il n’est jamais écrit nulle part, et il est refait quand ce qu’il lit change. Un lien calculé d’après les en-têtes d’un message ne passe que par les courriels que le Porche admet (`porch::Gate`).
 
-**La marche.** `chain::walk` prend les chaînes les plus fortes d’abord, de proche en proche depuis votre point de départ : le score d’une chose est le produit des forces de ses liens (1, 0,8, 0,6 ou 0,4 selon le type), multiplié par 0,75 à chaque étape après la première, chaque lien quittant une chose qui en a *d* pesant min(1, √(4/d)). Quatre étapes, 0,1 au moins, cinq sous chaque chose, 24 en tout (12 sur un téléphone), huit de plus par « + » (`chain::Weights`). Les lignes viennent d’un compte en ordre postfixe, pour qu’une chose soit à côté de la première chose sous elle ; la liste est le même arbre en ordre préfixe.
+**La marche.** `chain::walk` prend les chaînes les plus fortes d’abord, de proche en proche depuis votre point de départ : le score d’une chose est le produit des forces de ses liens (1, 0,8, 0,6 ou 0,4 selon le type), multiplié par 0,75 à chaque étape après la première, chaque lien quittant une chose qui en a *d* pesant min(1, √(4/d)). Quatre étapes, 0,1 au moins, cinq sous chaque chose, 24 en tout (12 sur Android), huit de plus par « + » (`chain::Weights`). Les lignes viennent d’un compte en ordre postfixe, pour qu’une chose soit à côté de la première chose sous elle ; la liste est le même arbre en ordre préfixe.
 
 **Dans la fenêtre.** Rust calcule la chaîne sur un fil de travail (`askChain`, avec la réponse `chainReady`) ; QML la dessine : `ChainPage.qml`, une seule `Shape` pour tous les traits, chaque chose un `ChainNode.qml` avec son `ChainBadge.qml`, la liste une `ListView` d’éléments d’arbre (`ChainOutline.qml`). Le panneau des liens sous chaque carte lit le même index dès qu’il est fait.
 

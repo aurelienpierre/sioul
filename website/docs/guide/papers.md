@@ -12,7 +12,7 @@ Papers keeps the documents you are asked for again and again (an identity card, 
 
 - Your papers and your letters stay in your notes folder, on your devices. There is no server of Sioul's.
 - Letters are read on your own computer, by programs of your system: no scan is sent anywhere to be read.
-- An attachment becomes a paper only after your antivirus checked it (a phone has none Sioul can call: there it is kept unchecked, and Sioul says so), and a program never does.
+- An attachment becomes a paper only after your antivirus checked it (Android has none Sioul can call: there it is kept unchecked, and Sioul says so), and a program never does.
 - Between your devices, papers travel by your folder's own sync, or through Sioul's sharing once you switch **Papers** on: each file sealed apart, so that the folder and its server see neither names nor contents ([Sharing](sharing.md)).
 - The tasks made from a letter or a renewal go to your task list: if that list is on your calendar server, their titles are there too. Choose a list kept on this device if you would rather not.
 - An AI agent, only if you connect one, can read the letters' texts with codes and account numbers masked; it sees your papers' files by their names only, never what they hold. Papers for one of your people reach it only once you open that person, and nobody's health papers but yours ever do.
@@ -66,7 +66,7 @@ To send one, the writing window has **A paper**, beside **Attach**. One that has
 
 Rent receipts, payslips and attestations have no end: they are said older than three months. A tax notice is usually asked as the last one.
 
-**A reminder** comes once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper you added after renewing began (you have just seen it), nor once its renewal is planned. It comes from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet): a phone does not tell it.
+**A reminder** comes once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper you added after renewing began (you have just seen it), nor once its renewal is planned. It comes from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet): a phone does not tell it; a tablet does, as a computer.
 
 **Plan the renewal** makes a task in your usual list, so your phone has it, from when renewing starts to the day the paper ends, tied to the paper, with the steps known for its kind.
 
@@ -76,7 +76,7 @@ Rent receipts, payslips and attestations have no end: they are said older than t
 
 ## Paper letters {#paper-letters}
 
-The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, by you, a scanner, or someone who opens the post for you, is read by Sioul on a computer (a phone does not read them) and waits for your hours as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a delay written "within two months" is remembered by no one: the card says it as a date.
+The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, by you, a scanner, or someone who opens the post for you, is read by Sioul on a computer (Android does not read them) and waits for your hours as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a delay written "within two months" is remembered by no one: the card says it as a date.
 
 The letters have their own page, **Letters** in the sidebar. It opens on the letters waiting, each a card, then those filed, by year, the newest first. A new letter also comes on the Porch, as mail does, and opens here.
 
@@ -86,7 +86,7 @@ The letters have their own page, **Letters** in the sidebar. It opens on the let
 2. Sioul reads scans with two programs of your system. Without them, the scans wait, unread, and the page says how to install them, under its bar and in its ⚙ ([Install](install.md#the-packages)).
 3. On the page's bar, **Add a scan…** copies a PDF or a picture into that folder; **Link scans…** links scans you keep elsewhere, where they are: they are read like the others and never copied, and if one is later moved or deleted, its card says so; **Open the folder** opens it. The **New** menu's **A paper letter (scan)…** adds a scan from any page.
 
-PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your device. A phone shows the letters a computer read, without adding or linking.
+PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your device. Sioul on Android shows the letters a computer read, without adding or linking.
 
 ### The card {#the-card}
 
@@ -109,7 +109,7 @@ Then:
 
 ### Not there yet {#not-there-yet}
 
-Planned: an AI that reads a letter line by line; a check that a letter is genuine (the office's domain, its bank details); an address where a helper could send scans by mail; searching the text of every letter at once; reading scans on a phone.
+Planned: an AI that reads a letter line by line; a check that a letter is genuine (the office's domain, its bank details); an address where a helper could send scans by mail; searching the text of every letter at once; reading scans on Android.
 
 ## Going further {#going-further}
 
@@ -225,10 +225,10 @@ Others do more in places: all five search the text of every document, Adobe Scan
 
 **Sealed between devices.** With **Papers** on in Sioul's sharing, `sioul-papers.toml` travels sealed like every record, and each file of the `papers` folder compressed and sealed apart, in pieces of 1 MiB, each sealed with XChaCha20-Poly1305 with the file's name, its index and an end flag as associated data, so that pieces cannot be swapped, cut or added. Their names in the folder are HMAC-SHA-256 of the content's hash, under a sub-key derived by HKDF-SHA-256 from the sharing key: the folder sees neither the files' names nor their contents. Files over 64 MiB stay on the device that has them ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)). Letters travel with the notes.
 
-**The antivirus.** **Keep in papers** goes through your system's antivirus first: ClamAV on Linux and macOS (`clamdscan`, else `clamscan`), Microsoft Defender through AMSI on Windows ([Attachments and the antivirus](privacy-security.md#attachments-and-the-antivirus)). Without one, Sioul asks you first; a phone has none Sioul can call, and there the file is kept unchecked. A program (`.exe`, `.js`, `.lnk`, `.desktop`…) is never kept as a paper, and mail set aside never has its attachments opened.
+**The antivirus.** **Keep in papers** goes through your system's antivirus first: ClamAV on Linux and macOS (`clamdscan`, else `clamscan`), Microsoft Defender through AMSI on Windows ([Attachments and the antivirus](privacy-security.md#attachments-and-the-antivirus)). Without one, Sioul asks you first; Android has none Sioul can call, and there the file is kept unchecked. A program (`.exe`, `.js`, `.lnk`, `.desktop`…) is never kept as a paper, and mail set aside never has its attachments opened.
 
 **Whom a paper is for.** Each person a paper is for is a tie in Sioul's own `links.toml` (`sioul:paper/<id>` to `sioul:person/<id>`), and the paper's `holder` keeps their names, joined by ", ", which an older Sioul shows; a paper with neither is yours. A name written by an older Sioul is matched to a person by name, case and accents aside ([Your people](contacts.md#household)).
 
 **An AI agent.** Its `read_note` tool reads text notes only (`.md`, `.txt`), masked; a PDF or a picture is named, never read; `sioul-papers.toml` is not a note. Its `papers` tool leaves out, and counts, the papers of a person not opened to agents and every health paper of anyone but you.
 
-**What is not built.** Searching inside every letter from the window (notes are searched by title, path and tags); reading scans on a phone, which has no text-recognition programs; a check that a letter is genuine.
+**What is not built.** Searching inside every letter from the window (notes are searched by title, path and tags); reading scans on Android, which has no text-recognition programs; a check that a letter is genuine.

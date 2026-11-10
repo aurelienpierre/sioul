@@ -31,7 +31,7 @@ Ces messageries sécurisées existent parce que le courriel ordinaire n’était
 
 Vous vous connectez une fois, sur le site lui-même. Sioul garde la connexion ; il ne garde jamais lui-même le mot de passe du site.
 
-Sur un téléphone, la page Sites liste vos sites et ouvre chacun dans votre navigateur : Sioul n’y garde aucune connexion et n’y regroupe aucune notification. Les sites épinglés sur un ordinateur viennent avec les réglages quand vous [partagez entre vos appareils](sharing.md).
+Sur Android, la page Sites liste vos sites et ouvre chacun dans votre navigateur : Sioul n’y garde aucune connexion et n’y regroupe aucune notification. Les sites épinglés sur un ordinateur viennent avec les réglages quand vous [partagez entre vos appareils](sharing.md).
 
 ## La liste {#the-list}
 
@@ -167,7 +167,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Micro, caméra et partage de l’écran permis site par site | ✓ | en partie⁸ | en partie⁸ | ✓ | ✓⁹ | ✓ |
     | Deux comptes d’un même service, côte à côte | ✗¹⁰ | ✓ | ✓¹¹ | ✓ | ✓ | ✓ |
     | Extensions de navigateur, blocage des publicités | ✗ | ✗ | ✓¹¹ | ✓ | ✓¹² | ✓ |
-    | Sur un téléphone | en partie¹³ | ✗ | ✗ | ✗ | ✗ | en partie¹⁴ |
+    | Sur Android | en partie¹³ | ✗ | ✗ | ✗ | ✗ | en partie¹⁴ |
 
     1. Une plage « ne pas déranger » chaque jour, d’une heure à une autre ; pas de regroupement à heures fixes.
     2. Des heures de travail pour chaque espace de travail, en dehors desquelles ses notifications sont coupées, et un mode Focus ; pas de regroupement à heures fixes.

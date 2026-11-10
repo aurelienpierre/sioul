@@ -38,7 +38,7 @@ Pendant tout ce temps, les courriels continuent d’arriver en arrière-plan. Le
 Les codes à usage unique, les mots de passe temporaires, les réinitialisations de mot de passe, les liens de connexion et les liens pour confirmer une adresse viennent de quelque chose que vous venez de demander à un site, et ils expirent. Sioul les montre donc tout de suite, à n’importe quelle heure, même quand ils viennent d’une adresse automatique de site (no-reply…) :
 
 - sur un ordinateur, une seule notification, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ; aucune pendant le sommeil : la carte attend ici ;
-- sa ligne en haut du Porche, dans **Tout de suite**, avec **Copier** ; sur un téléphone, sur le Porche et sur la carte de Sioul sur votre écran d’accueil, puisqu’un téléphone ne notifie pas encore les codes.
+- sa ligne en haut du Porche, dans **Tout de suite**, avec **Copier** ; sur Android, sur le Porche et sur la carte de Sioul sur votre écran d’accueil, puisque Sioul n’y notifie pas encore les codes.
 
 Rien d’autre ne s’ouvre avec. Une fois expiré, le code est masqué, et le courriel va dans sa file. Il expire quand le courriel le dit, sinon quand son type expire d’habitude : un code après 30 minutes, un lien de connexion après une heure, une réinitialisation de mot de passe après deux heures, un lien pour confirmer une adresse après un jour, un mot de passe temporaire après une semaine.
 
@@ -52,7 +52,7 @@ Quand arrivent des courriels que vos listes laissent passer maintenant, une seul
 
 - **Ce qui attendait** (les courriels arrivés hors des heures de leur liste, pendant votre sommeil ou une pause) est dit une fois, quand son heure vient : « Le Porche ouvre : trois courriels vous attendent. »
 - **Jamais** pour les codes (ils ont la leur, plus haut), les courriels mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « Retenu par votre filtre à indésirables », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les infolettres sauf si vous les incluez, ni les courriels déjà lus ailleurs. Rien pendant le sommeil ni une pause.
-- **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit. Sur l’écran verrouillé d’un téléphone, la notification dit combien de courriels sont arrivés, pas qui a écrit.
+- **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit. Sur l’écran verrouillé d’Android, la notification dit combien de courriels sont arrivés, pas qui a écrit.
 
 Paramètres ▸ Ce qui vous joint ▸ Par personne ▸ Courriels : **Me dire les nouveaux courriels**, et **Avec les infolettres** ([Ce qui vous joint, et quand](notifications.md#by-person)).
 
@@ -77,7 +77,7 @@ Chaque courriel va dans la première file qui le prend, dans cet ordre. Trois d�
 
 Les courriels que vous vous envoyez vous-même, d’une de vos adresses à une autre (un fichier envoyé depuis votre téléphone), viennent dans leur propre section, **De vous-même**, à toute heure, sans jamais passer par le filtre d’accueil, quand ils sont vérifiés : falsifier votre propre adresse est une ruse classique.
 
-Chaque file est une section du Porche, sans rien d’écrit sous son titre. Son **?** dit ce qu’elle contient et comment les courriels y arrivent ; pressé (ou touché sur un téléphone), il montre aussi ce qui le change, et où changer le reste.
+Chaque file est une section du Porche, sans rien d’écrit sous son titre. Son **?** dit ce qu’elle contient et comment les courriels y arrivent ; pressé (ou touché sur un écran tactile), il montre aussi ce qui le change, et où changer le reste.
 
 ### Laisser entrer quelqu’un {#letting-someone-in}
 
@@ -128,7 +128,7 @@ Puis le texte, rendu sûr :
 - Les courriels HTML gardent leurs paragraphes, leurs listes, leur texte en gras et leurs liens. Rien d’autre n’est montré : pas d’images, pas de styles, pas de scripts. Rien ne se charge depuis le réseau, rien ne s’exécute.
 - Les courriels précédents qu’une réponse cite sont repliés sous **Afficher les courriels précédents**. Une signature est atténuée.
 - Chaque lien montre son adresse complète sous le courriel avant de s’ouvrir : tant que le pointeur est dessus, ou après un premier toucher sur un écran tactile.
-- Les **Pièces jointes** sont repliées, une ligne chacune, avec leur type, leur nom et leur taille. En ouvrir ou en enregistrer une lance d’abord l’antivirus ; si l’ordinateur n’en a pas, Sioul le dit et demande avant d’ouvrir. Un téléphone n’en a pas que Sioul puisse appeler : là, Sioul dit que le fichier n’est pas vérifié. Un programme n’est jamais lancé depuis un courriel. Voir [Courriels, Les pièces jointes](mail.md#attachments).
+- Les **Pièces jointes** sont repliées, une ligne chacune, avec leur type, leur nom et leur taille. En ouvrir ou en enregistrer une lance d’abord l’antivirus ; si l’ordinateur n’en a pas, Sioul le dit et demande avant d’ouvrir. Android n’en a pas que Sioul puisse appeler : là, Sioul dit que le fichier n’est pas vérifié. Un programme n’est jamais lancé depuis un courriel. Voir [Courriels, Les pièces jointes](mail.md#attachments).
 
 Depuis le courriel : répondre, transférer, archiver, supprimer, et le reste, comme sur la page [Courriels](mail.md). Une infolettre a aussi **Se désabonner** ([Courriels](mail.md#unsubscribing)).
 
@@ -173,18 +173,18 @@ Après ces cartes, le Porche montre ce qui est arrivé en sections, toutes dessi
 9. **Courrier papier**, seulement quand une lettre attend ([plus bas](#paper-letters)). Pas pendant votre sommeil.
 10. **Rangé**, replié ; **Nouveaux expéditeurs** ; **Comptes moins importants**, replié ; **Retenu par votre filtre à indésirables**, replié ; **Mis de côté**, replié.
 
-Chaque ligne dit qui, quoi et quand sur une ligne (deux sur un téléphone), avec son action principale : **Ouvrir**, **Répondre**, **Répondre par SMS**, **Voir le scan**, **Ouvrir dans Budgets**. À côté, deux boutons discrets :
+Chaque ligne dit qui, quoi et quand sur une ligne (deux sur un petit écran), avec son action principale : **Ouvrir**, **Répondre**, **Répondre par SMS**, **Voir le scan**, **Ouvrir dans Budgets**. À côté, deux boutons discrets :
 
 - **Marquer comme lu** : la ligne s’en va, et ce dont elle parle est lu aussi. Un courriel est marqué comme lu ici et sur son serveur, comme le lire le ferait ; un SMS est marqué comme lu sur la page SMS. Les appels et les lettres n’ont pas d’état lu : seulement Écarter.
 - **Écarter** : la ligne quitte le Porche, et rien d’autre ne change : le courriel reste non lu dans votre boîte, la lettre attend.
 
-Les deux agissent tout de suite sur tous vos appareils, avec dix secondes pour changer d’avis : **Annuler**, au pied de la liste. Sur un téléphone, les deux sont dans le menu de la ligne, d’un appui long ; sur un ordinateur, le menu (**⋮**, un clic droit) contient le reste de ce qui peut être fait, et quelque chose de nouveau fait à partir d’elle, comme une tâche. Un courriel lu ailleurs, sur votre téléphone ou dans un autre logiciel de courrier, quitte le Porche de lui-même ; sa notification aussi, là où Sioul en a montré une.
+Les deux agissent tout de suite sur tous vos appareils, avec dix secondes pour changer d’avis : **Annuler**, au pied de la liste. Sur un petit écran, les deux sont dans le menu de la ligne, d’un appui long ; sur un ordinateur, le menu (**⋮**, un clic droit) contient le reste de ce qui peut être fait, et quelque chose de nouveau fait à partir d’elle, comme une tâche. Un courriel lu ailleurs, sur votre téléphone ou dans un autre logiciel de courrier, quitte le Porche de lui-même ; sa notification aussi, là où Sioul en a montré une.
 
 ## Le courrier papier {#paper-letters}
 
 Le courrier papier a sa propre page, **Courrier**, où se règlent son dossier et les deux programmes qui le lisent ([Les papiers et les lettres](papers.md#paper-letters)). D’ici une minute ou deux après son scan, chaque lettre qui attend est aussi une ligne de **Courrier papier** ici, ce qu’elle demande en dessous : la ligne l’ouvre sur la page Courrier, **Voir le scan** ouvre le scan, et son menu fait une tâche pour sa date, met son rendez-vous dans l’agenda, ou la range quand vous en avez fini.
 
-Un téléphone ne lit aucun scan : il montre les lettres lues par votre ordinateur.
+Sioul sur Android ne lit aucun scan : il montre les lettres lues par votre ordinateur.
 
 ## Pourquoi il fonctionne ainsi {#why-it-works-this-way}
 
@@ -278,7 +278,7 @@ HEY porte l’idée la plus proche sur qui peut entrer, avec son Screener et son
 22. Outlook : sur un téléphone, tous les courriels, Prioritaire seulement, ou rien, et des heures de calme.
 23. Apple Mail : les VIP et les boîtes choisies ; les heures par le mode de concentration du système.
 24. Superhuman : la priorité haute seulement, ou les découpages choisis sur un téléphone ; pas d’horaire dans sa documentation.
-25. Sioul : une notification avec **Copier** sur un ordinateur ; sur un téléphone, sur le Porche et la carte de l’écran d’accueil, sans notification pour l’instant.
+25. Sioul : une notification avec **Copier** sur un ordinateur ; sur Android, sur le Porche et la carte de l’écran d’accueil, sans notification pour l’instant.
 26. Gmail : pas dans la documentation de Google ; seule la presse rapporte une carte « Copier le code » dans ses applications.
 27. Apple : les codes reçus dans Mail se remplissent d’eux-mêmes dans Safari, depuis iOS 17 et macOS Sonoma.
 28. Sioul n’en montre aucun ; sur Android, un lanceur peut quand même mettre un point sur l’icône de Sioul pendant qu’une notification de courriel attend.

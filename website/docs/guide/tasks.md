@@ -41,7 +41,7 @@ Finishing says what it changed, once, in the status line: "Done. This frees: Sen
 
 ## A new task {#a-new-task}
 
-**New task**, beside the line at the top of the page, opens a new task's whole form on the right (on a phone, it takes the page), its title first. **New ▾ ▸ A task** does the same from anywhere, and so does **Add ▾ ▸ A task** on a message, an event, a note, a contact or a project, its title and its tie already given.
+**New task**, beside the line at the top of the page, opens a new task's whole form on the right (on a small screen, it takes the page), its title first. **New ▾ ▸ A task** does the same from anywhere, and so does **Add ▾ ▸ A task** on a message, an event, a note, a contact or a project, its title and its tie already given.
 
 - Every field is there at once: the list, the dates, how long it takes, what it waits for, the time before and after, what it costs and what it gives back, the notes.
 - The task is made as soon as it has a title: press Enter, or go on to another field. From then on, each field is kept as you change it, as for any task.
@@ -94,7 +94,7 @@ A task can also say **what it takes**, in its panel: *light*, *the usual*, *heav
 
 Starting is the hard part, so it is helped. **Start** offers **Just two minutes** first, then 15, 25 or 45 minutes, or **Without an end**.
 
-The focus window stays on top while you work elsewhere. A disc drains, in a neutral colour, without ticking and without sound. On Linux and on a phone, a notification also shows the time running, with **Pause** and **Stop** ([Time](time.md#where-time-comes-from)).
+The focus window stays on top while you work elsewhere. A disc drains, in a neutral colour, without ticking and without sound. On Linux and on Android, a notification also shows the time running, with **Pause** and **Stop** ([Time](time.md#where-time-comes-from)).
 
 - While it runs: **Pause** (**Go on** once paused), **Five more minutes** when the session has an end, and **Stop**.
 - Two minutes before the end: "Two minutes left: time to find a stopping point."
@@ -174,7 +174,7 @@ What comes is listed first, the soonest first, then the past, the newest first, 
 
 ## A task, open {#a-task-open}
 
-A task opens in its card on the right, beside the list (on a phone, it takes the page), from any view and from the [agenda](agenda.md): a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
+A task opens in its card on the right, beside the list (on a small screen, it takes the page), from any view and from the [agenda](agenda.md): a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
 
 - **Start**, **Done**, **Not now**, **Do at…** ([pinned to a time](#pinned-to-a-time)) and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
 - at the top, the appointment it prepares, with when to leave under it ("Leave at 13:10 · Bus 24");
@@ -212,9 +212,9 @@ Then a short screen, read in ten seconds, says:
 
 There is no count of what was not done. The next working day opens on that first step. Until then, work rests ([quiet time](hours.md#quiet-time)). A thought that comes in the evening can be noted in one line; it waits, out of sight, for work to come back.
 
-**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. On Linux, on a Mac and on a phone, the notification has **Close the work day** too; on Windows it has no button, and a click on it opens the same sheet. Pressed once the day turned (05:00), it opens nothing. On a phone it comes on time only with Android's "Alarms & reminders" allowed (Settings ▸ This phone): without it, it mostly does not come. A day that ends without the button closes as usual; its review stays offered until the evening.
+**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. On Linux, on a Mac and on Android, the notification has **Close the work day** too; on Windows it has no button, and a click on it opens the same sheet. Pressed once the day turned (05:00), it opens nothing. On Android it comes on time only with "Alarms & reminders" allowed (Settings ▸ This phone, or This tablet): without it, it mostly does not come. A day that ends without the button closes as usual; its review stays offered until the evening.
 
-**At any hour**, two buttons at the bottom of the places close the work day, **Close the work day** (a ticked list), and the whole day, **Close the whole day** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a phone in the places' drawer. On a computer, the menu of Sioul's icon in the system tray (on a Mac, in the menu bar) has the same two.
+**At any hour**, two buttons at the bottom of the places close the work day, **Close the work day** (a ticked list), and the whole day, **Close the whole day** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a small screen in the places' drawer. On a computer, the menu of Sioul's icon in the system tray (on a Mac, in the menu bar) has the same two.
 
 **Before sleep**, **Close the whole day** looks back over the whole day: work, admin and leisure ([Health](health.md#before-sleep)).
 
@@ -265,7 +265,7 @@ A task's notes, or an event's, can hold a list: what to bring, what to check. Wr
 
 ### What it costs, and what it gives back {#what-it-costs-and-what-it-gives-back}
 
-Four tiles, in a task's form and in an event's, two by two (one under the other on a phone): **Thinking**, **Feelings**, **Worry** and **Body and senses**, then **Gives back** under them. Each takes a number from 0 to 10, as you feel it, and asks a question in small print about what counts:
+Four tiles, in a task's form and in an event's, two by two (one under the other when narrow): **Thinking**, **Feelings**, **Worry** and **Body and senses**, then **Gives back** under them. Each takes a number from 0 to 10, as you feel it, and asks a question in small print about what counts:
 
 | Tile | What it asks |
 |---|---|
@@ -306,7 +306,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 - **Always up to date**: the plan is made again at once whenever something it depends on changes (a task, its estimate or the time noted for it, an event, a meal or the night, your hours or days off, the day's weather, **Done for today**, what your other devices or a sync bring), as well as when Sioul starts, every twelve hours and at midnight.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
-A reminder comes, once, two working days before a date asked, and when a wait is over. These two come from a computer, while Sioul is open or, if you ask, with its window closed; a phone does not tell them ([Settings](settings.md#reminders)).
+A reminder comes, once, two working days before a date asked, and when a wait is over. These two come from a computer, while Sioul is open or, if you ask, with its window closed; a phone does not tell them, a tablet does ([Settings](settings.md#reminders)).
 
 ### What a day holds {#what-a-day-holds}
 
@@ -586,7 +586,7 @@ Each task is a `VTODO` (RFC 5545 §3.6.2) in a CalDAV task list, one file each, 
 | A list to tick | lines of a GitHub task list in its notes (`DESCRIPTION`): `- [ ]`, `- [x]`, and `- [-]` for not needed this time |
 | Waits for another task | `X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5's type), in the task that waits |
 | Waits, with a gap ("the answer comes within two weeks") | `X-SIOUL-RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, in the task that comes first (RFC 9253 §4). Written by `sioul tasks import`, and by the form's **Then wait**. Read from any program in RFC 9253's own form too (`RELATED-TO`), `NEXT` too |
-| Can start from; the date asked | `DTSTART` (kept in `X-SIOUL-START` too where a phone would drop it: the same day as its date asked); `DUE` |
+| Can start from; the date asked | `DTSTART` (kept in `X-SIOUL-START` too where Android's account managers would drop it: the same day as its date asked); `DUE` |
 | How long it takes | `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks) |
 | Its kind; "needs an open office" | `X-SIOUL-CONCEPT;VALUE=URI` with a tag URI (RFC 9253 §8.1's `CONCEPT`, RFC 4151) |
 | Its project | `X-SIOUL-REFID` (RFC 9253 §8.3's `REFID`) |
@@ -603,7 +603,7 @@ New lists are made with `MKCALENDAR` (RFC 4791 §5.3.1) and renamed with `PROPPA
 
 ### Waits in other CalDAV programs {#waits-in-other-caldav-programs}
 
-RFC 9253 (August 2022) added `DEPENDS-ON` and four temporal relation types (`FINISHTOSTART` and its kin, with an optional `GAP`) to iCalendar's `RELATED-TO`, and three new properties: `LINK`, `CONCEPT` and `REFID`. Few task programs use them yet. cfait, free software for the terminal, the desktop and Android, has written `DEPENDS-ON` since November 2025. None of the seventeen established CalDAV task apps checked has waits between tasks, and requests have stayed open for years: Thunderbird's since 2003, Nextcloud Tasks' since 2017, Tasks.org's since 2020. What was found only in Sioul, among the projects searched, is the combination: `DEPENDS-ON` and `FINISHTOSTART` with `GAP`, each in the direction RFC 9253 gives it; `LINK`, `CONCEPT` and `REFID`; and a planner that schedules around waits. Since 27 October 2026 Sioul writes them under its own names, so that a phone's account manager can send them back (above), and reads RFC 9253's own lines from other programs.
+RFC 9253 (August 2022) added `DEPENDS-ON` and four temporal relation types (`FINISHTOSTART` and its kin, with an optional `GAP`) to iCalendar's `RELATED-TO`, and three new properties: `LINK`, `CONCEPT` and `REFID`. Few task programs use them yet. cfait, free software for the terminal, the desktop and Android, has written `DEPENDS-ON` since November 2025. None of the seventeen established CalDAV task apps checked has waits between tasks, and requests have stayed open for years: Thunderbird's since 2003, Nextcloud Tasks' since 2017, Tasks.org's since 2020. What was found only in Sioul, among the projects searched, is the combination: `DEPENDS-ON` and `FINISHTOSTART` with `GAP`, each in the direction RFC 9253 gives it; `LINK`, `CONCEPT` and `REFID`; and a planner that schedules around waits. Since 27 October 2026 Sioul writes them under its own names, so that Android's account managers can send them back (above), and reads RFC 9253's own lines from other programs.
 
 As of October 2026, from each program's own code and issue tracker, not tried with Sioul:
 

@@ -20,10 +20,10 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | [Mail](#mail) | any IMAP and SMTP server that takes a password over an encrypted connection; Gmail and Google Workspace with an app password, or by signing in with Google with a key of your own; Outlook.com, Hotmail, Live, MSN and Microsoft 365 by signing in with Microsoft | **Tested** with a test server, and a real mailbox in daily use; **expected** elsewhere. Microsoft: **expected**, tried against stand-ins only. **Limit**: a work or school Microsoft address may need its organisation's approval |
 | [Calendars, tasks and contacts](#calendars-tasks-and-contacts) | any CalDAV and CardDAV server over HTTPS: Nextcloud (Murena's too), Radicale, Fastmail, Posteo, mailbox.org, iCloud, your host's | **Tested** with Radicale, and in daily use with Murena (Nextcloud) since 4 October 2026; **expected** with the others; sharing agendas and your availability, a child's events and inviting people tried against stand-ins only. **Limits**: iCloud's reminders; Baïkal must be set to Basic sign-in |
 | [Google](#google) | calendars, contacts and Google Tasks, signed in on Google's page | **Expected**: tried only against stand-ins of Google Tasks and of Google's Calendar API |
-| [Other apps on the same accounts](#other-apps-on-the-same-accounts) | Thunderbird and phone mail apps; Nextcloud Tasks, Tasks.org; DAVx⁵ with OpenTasks or jtx Board | **Expected**, from their code. **Limit**: a wait another app wrote in RFC 9253's own form, changed on a phone through DAVx⁵ |
+| [Other apps on the same accounts](#other-apps-on-the-same-accounts) | Thunderbird and phone mail apps; Nextcloud Tasks, Tasks.org; DAVx⁵ with OpenTasks or jtx Board | **Expected**, from their code. **Limit**: a wait another app wrote in RFC 9253's own form, changed on Android through DAVx⁵ |
 | [Notes](#notes) | Obsidian, Nextcloud Notes, any Markdown editor | **Tested** on files written as each writes them |
 | [Sharing between your devices](#sharing-between-your-devices) | Nextcloud first ([where to get one](#where-to-get-a-nextcloud)); any app that keeps a folder in step: Nextcloud, Murena's eDrive, Syncthing, Dropbox, Google Drive, OneDrive… | **Tested** with a simulator of how sync apps behave, and with eDrive on a phone; **expected** with the others |
-| [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: on a phone, sites open in your browser |
+| [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: on Android, sites open in your browser |
 | [Logins and keys](#logins-and-keys) | Bitwarden (its cloud, your own server, Vaultwarden); OpenPGP with GnuPG and other mail programs | GnuPG **tested** both ways; Bitwarden **tested** with a real vault, in daily use (6 October 2026) |
 | [Antivirus and scanned letters](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract and Poppler | **Tested** on Linux; Defender **expected** |
 | [AI agents](#ai-agents) | Claude Code, Claude Desktop, other MCP clients that start a program | **Tested** on its own, and inside Claude Code (10 November 2026); not yet inside Claude Desktop |
@@ -108,11 +108,11 @@ Your tasks, events and contacts are standard: every app on the same server shows
 | Thunderbird, Apple's Calendar and Reminders, Evolution, KOrganizer | not checked | not checked | not checked | an app that rewrites a task from only what it understands drops the rest |
 | Google Tasks | one level | not kept | not kept | **limit**: greyed in Sioul, with why |
 
-!!! warning "Waits on a phone, through DAVx⁵"
-    With OpenTasks, Tasks.org or jtx Board through DAVx⁵, changing on the phone a task tied to another by a wait in RFC 9253's own form (as another app writes it), even ticking it done, turns the wait into a step, or drops it. Sioul's own waits, as it writes them since 27 October 2026 (and rewrote once those it wrote before), stay as they are.
+!!! warning "Waits on Android, through DAVx⁵"
+    With OpenTasks, Tasks.org or jtx Board through DAVx⁵, changing on Android a task tied to another by a wait in RFC 9253's own form (as another app writes it), even ticking it done, turns the wait into a step, or drops it. Sioul's own waits, as it writes them since 27 October 2026 (and rewrote once those it wrote before), stay as they are.
 
 !!! note "Murena's account manager, on /e/OS"
-    Its version of October 2026 (on ical4j 3.2.13) crashed uploading a task that held a link, a kind or a project as RFC 9253 writes them, then synced that list neither way. Since 27 October 2026 Sioul writes those under its own names, and rewrote once, in its own form, the tasks and events already on your server; they read the same here. Checked with a replay of the account manager's own code on stand-ins of a real list (every task passes, twice), not yet on the phone itself. If a change made on the phone before was stuck there, untick the list in the account manager and tick it again: the list comes down whole, that change lost, so note which task it was and mark it again.
+    Its version of October 2026 (on ical4j 3.2.13) crashed uploading a task that held a link, a kind or a project as RFC 9253 writes them, then synced that list neither way. Since 27 October 2026 Sioul writes those under its own names, and rewrote once, in its own form, the tasks and events already on your server; they read the same here. Checked with a replay of the account manager's own code on stand-ins of a real list (every task passes, twice), not yet on a device itself. If a change made on Android before was stuck there, untick the list in the account manager and tick it again: the list comes down whole, that change lost, so note which task it was and mark it again.
 
 ## Notes
 
@@ -131,13 +131,13 @@ Sharing needs only a folder that a sync app keeps in step between your devices: 
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
 | The sharing folder, on a computer | a folder your sync app keeps in step | a simulator of how sync apps carry files: every change both ways (as Nextcloud's client, Dropbox, Google Drive and OneDrive do), late and out of order, older copies put back, files kept online only | Nextcloud's client (Murena's too), ownCloud, Syncthing, Dropbox, Google Drive, OneDrive, iCloud Drive, pCloud, Seafile | files kept online only: set the sharing folder to stay "always on this device" |
-| The sharing folder, on a phone | Android's access to all files; a folder the sync app keeps on the phone | Murena's eDrive 1.9.2, on /e/OS: the folder came at its next full scan | Nextcloud's app, Syncthing, FolderSync, Autosync | eDrive carries only Documents, Pictures, Music…: share through `Documents/Sioul`. It never deletes what was deleted elsewhere: count on room twice over. Only eDrive is asked to look at once; other apps bring changes at their own pace, often each half hour |
+| The sharing folder, on Android | Android's access to all files; a folder the sync app keeps on the device | Murena's eDrive 1.9.2, on /e/OS: the folder came at its next full scan | Nextcloud's app, Syncthing, FolderSync, Autosync | eDrive carries only Documents, Pictures, Music…: share through `Documents/Sioul`. It never deletes what was deleted elsewhere: count on room twice over. Only eDrive is asked to look at once; other apps bring changes at their own pace, often each half hour |
 | Notes and papers, carried by Sioul | a notes folder that no sync app carries | the simulator | — | refused where a sync app already carries the notes folder. Recognised: Nextcloud, Dropbox, Syncthing, and folders named ownCloud, Sync, OneDrive, pCloudDrive or Seafile. **Not recognised**: Google Drive, Insync, rclone, MEGA: leave Notes off where they carry your notes |
 | Changed on two devices | — | the simulator | — | both versions are kept, one named "(conflict …)"; the sync apps' own conflicted copies are never read |
 
 ### Where to get a Nextcloud {#where-to-get-a-nextcloud}
 
-Nextcloud is the sync backend Sioul is tested with, and the only one Sioul reaches itself, over WebDAV: as a backup when a phone's sync app is late, or with no sync app at all, Sioul keeping the folder in step itself ([why](sharing.md#when-the-sync-app-is-late)). Any Nextcloud account does; the same account can also hold your calendars, tasks and contacts. Sioul's own files are small: a few megabytes, more if you share your notes and papers.
+Nextcloud is the sync backend Sioul is tested with, and the only one Sioul reaches itself, over WebDAV: as a backup when a sync app on Android is late, or with no sync app at all, Sioul keeping the folder in step itself ([why](sharing.md#when-the-sync-app-is-late)). Any Nextcloud account does; the same account can also hold your calendars, tasks and contacts. Sioul's own files are small: a few megabytes, more if you share your notes and papers.
 
 | Where | Free | Paid | Notes |
 |---|---|---|---|
@@ -163,23 +163,23 @@ Sites run in Qt WebEngine, the engine of Chromium, in a profile of their own, ap
 | Security keys (FIDO2, WebAuthn) | a USB key such as a YubiKey; on Linux, Qt WebEngine built with udev (Fedora's is) | — | GitHub, Google, Proton, Bitwarden | passkeys kept in a phone or in the system: not on Linux and macOS. On Windows, Windows' own dialog asks. A plain touch shows nothing in Sioul |
 | Downloads and PDFs | — | — | — | downloads go to your downloads folder; a PDF opens in the site's view |
 | Logins from Bitwarden | see [Logins and keys](#logins-and-keys) | | | |
-| On a phone | — | — | — | sites open in your browser: no login kept by Sioul, no notifications gathered |
+| On Android | — | — | — | sites open in your browser: no login kept by Sioul, no notifications gathered |
 
 ## Logins and keys
 
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
-| Logins from Bitwarden | your Bitwarden account: bitwarden.com, bitwarden.eu, your own server or Vaultwarden, over HTTPS | a real vault on Bitwarden's cloud, in daily use (6 October 2026); its decryption checked on Bitwarden's own test values | your own server or Vaultwarden | read only: nothing is written to your vault. Duo as a second step: not supported. On a phone: no security key |
+| Logins from Bitwarden | your Bitwarden account: bitwarden.com, bitwarden.eu, your own server or Vaultwarden, over HTTPS | a real vault on Bitwarden's cloud, in daily use (6 October 2026); its decryption checked on Bitwarden's own test values | your own server or Vaultwarden | read only: nothing is written to your vault. Duo as a second step: not supported. On Android: no security key |
 | Your accounts' passwords | your system's keyring | Linux, in daily use | Windows' Credential Manager, macOS' Keychain, Android's KeyStore | passwords never travel between your devices |
-| Encrypted mail (OpenPGP) | your key, made in Sioul or imported from GnuPG | GnuPG 2.4, both ways: signed, encrypted, tampered; a YubiKey 5 holding the key (8 October 2026): renewed, signed, encrypted, opened | Thunderbird, Proton, any program that reads PGP/MIME; the Web Key Directory of their domain, keys.openpgp.org | Sioul keeps its own keys and never reads or writes GnuPG's. Keys on a security key (an OpenPGP card: YubiKey, Nitrokey): on computers, through the system's smart card service (pcscd on Linux); tried with a real key on Linux, not yet on Windows or macOS; on phones, held against them (NFC) or plugged into their USB-C port, tested against a stand-in card, not yet with a real key. Your secret keys stay on their device |
+| Encrypted mail (OpenPGP) | your key, made in Sioul or imported from GnuPG | GnuPG 2.4, both ways: signed, encrypted, tampered; a YubiKey 5 holding the key (8 October 2026): renewed, signed, encrypted, opened | Thunderbird, Proton, any program that reads PGP/MIME; the Web Key Directory of their domain, keys.openpgp.org | Sioul keeps its own keys and never reads or writes GnuPG's. Keys on a security key (an OpenPGP card: YubiKey, Nitrokey): on computers, through the system's smart card service (pcscd on Linux); tried with a real key on Linux, not yet on Windows or macOS; on phones and tablets, held against them (NFC) or plugged into their USB-C port, tested against a stand-in card, not yet with a real key. Your secret keys stay on their device |
 
 ## Antivirus and scanned letters
 
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
-| Attachments checked, on Linux and macOS | ClamAV, from your system's packages or Homebrew | Linux without ClamAV: Sioul asks first, and gives the command that installs it | ClamAV, its daemon or its scanner | the Flatpak does not reach your system's ClamAV: there, Sioul asks first. No antivirus on a phone |
+| Attachments checked, on Linux and macOS | ClamAV, from your system's packages or Homebrew | Linux without ClamAV: Sioul asks first, and gives the command that installs it | ClamAV, its daemon or its scanner | the Flatpak does not reach your system's ClamAV: there, Sioul asks first. No antivirus on Android |
 | Attachments checked, on Windows | Microsoft Defender, or another antivirus that answers Windows' scan interface (AMSI) | — | Windows' antivirus | built, never run on Windows yet |
-| Scanned letters read | Tesseract and Poppler | Tesseract, by hand, on a French letter drawn as a picture | Linux, Windows and macOS with both installed | the Flatpak carries neither: whether it reads scans is not checked. Not on a phone |
+| Scanned letters read | Tesseract and Poppler | Tesseract, by hand, on a French letter drawn as a picture | Linux, Windows and macOS with both installed | the Flatpak carries neither: whether it reads scans is not checked. Not on Android |
 
 ## AI agents
 
@@ -219,7 +219,7 @@ On Ubuntu 24.04 and later, the AppImage runs sites without Chromium's sandbox: p
 Worth trying, and welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) once tried:
 
 - A full sync of tasks with steps, waits and links on Fastmail, iCloud, or Baïkal set to Basic (Murena's Nextcloud is in daily use); contact categories and lists made or renamed, on any server.
-- Waits changed on a phone through DAVx⁵, to confirm what its code says; what Thunderbird and Apple's apps keep.
+- Waits changed on Android through DAVx⁵, to confirm what its code says; what Thunderbird and Apple's apps keep.
 - An invitation accepted on a server that sends invitations itself (Nextcloud, Google, iCloud).
 - Inviting people from a calendar on Nextcloud, and on Google: who sent the invitation, and that it came once.
 - Sharing an agenda and your availability on a real Nextcloud (two users, and a second Nextcloud) and at Google, Google's public free/busy link included.

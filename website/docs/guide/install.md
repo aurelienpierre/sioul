@@ -171,12 +171,12 @@ Not tried yet. The steps are in [packaging/macos/README.md](https://github.com/a
 
 For 64-bit phones and tablets with Android 9 or later. Sioul is not in a store: its APK, `Sioul-<version>-android-arm64.apk`, is on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest).
 
-1. On the phone, open the releases page and download the APK.
+1. On the phone or the tablet, open the releases page and download the APK.
 2. Open it. Android asks whether your browser (or your file manager) may install apps: allow it, then **Install**. Play Protect, where the phone has it, may say it does not know the app.
 3. Each version is signed with the same key, Sioul's: the next one installs over it, your data kept.
 4. **Restricted settings**: Android 13 and later keep some settings from an app installed from a file: notification access, and from Android 15 the texts' permissions. The first time Sioul asks for them, Android may answer "Restricted setting"; only then does Sioul's app info offer, under ⋮ (at the top), **Allow restricted settings**, confirmed with your PIN; then ask again in Sioul. Sioul says these steps, in their order, where it asks for them, in the join's result and on the Porch, with **Sioul's app info**.
 
-What Sioul then asks for, and what changes in use: [On a phone](first-steps.md#on-a-phone). How the APK is built, by GitHub or by hand, and what differs on Android: the [notes on Android](../dev/android.md).
+What Sioul then asks for, and what changes in use: [On a phone or a tablet](first-steps.md#on-a-phone). How the APK is built, by GitHub or by hand, and what differs on Android: the [notes on Android](../dev/android.md).
 
 ## Next
 

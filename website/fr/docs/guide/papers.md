@@ -12,7 +12,7 @@ La page Papiers garde les documents qu’on vous demande encore et encore (une c
 
 - Vos papiers et vos lettres restent dans votre dossier de notes, sur vos appareils. Il n’y a pas de serveur de Sioul.
 - Les lettres sont lues sur votre propre ordinateur, par des programmes de votre système : aucun scan n’est envoyé nulle part pour être lu.
-- Une pièce jointe ne devient un papier qu’après la vérification de votre antivirus (un téléphone n’en a pas que Sioul puisse appeler : là, elle est gardée sans vérification, et Sioul le dit), et un programme ne le devient jamais.
+- Une pièce jointe ne devient un papier qu’après la vérification de votre antivirus (Android n’en a pas que Sioul puisse appeler : là, elle est gardée sans vérification, et Sioul le dit), et un programme ne le devient jamais.
 - Entre vos appareils, les papiers voyagent par la synchronisation de votre dossier, ou par le partage de Sioul une fois **Papiers** activé : chaque fichier scellé à part, pour que le dossier et son serveur n’en voient ni les noms ni le contenu ([Le partage](sharing.md)).
 - Les tâches faites à partir d’une lettre ou d’un renouvellement vont dans votre liste de tâches : si cette liste est sur votre serveur d’agenda, leurs titres y sont aussi. Choisissez une liste gardée sur cet appareil si vous préférez que non.
 - Un agent d’IA, seulement si vous en connectez un, peut lire le texte des lettres avec les codes et les numéros de compte masqués ; il ne voit les fichiers de vos papiers que par leurs noms, jamais ce qu’ils contiennent. Les papiers d’une personne de vos proches ne lui parviennent qu’une fois cette personne ouverte, et jamais les papiers de santé de personne d’autre que vous.
@@ -66,7 +66,7 @@ Pour en envoyer un, la fenêtre d’écriture a **Un papier**, à côté de **Jo
 
 Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : passé trois mois, ils sont dits plus vieux que ce qui est demandé d’habitude. Pour un avis d’impôt, c’est d’habitude le dernier qui est demandé.
 
-**Un rappel** vient une fois, quand le renouvellement commence, aux prochaines heures de travail : « Passeport : valable jusqu’au dimanche 20 décembre », avec ce que demande le renouvellement. Pas pour un papier ajouté une fois le renouvellement commencé (vous venez de le voir), ni une fois son renouvellement prévu. Il ne vient que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows) : un téléphone ne le dit pas.
+**Un rappel** vient une fois, quand le renouvellement commence, aux prochaines heures de travail : « Passeport : valable jusqu’au dimanche 20 décembre », avec ce que demande le renouvellement. Pas pour un papier ajouté une fois le renouvellement commencé (vous venez de le voir), ni une fois son renouvellement prévu. Il ne vient que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows) : un téléphone ne le dit pas ; une tablette, si, comme un ordinateur.
 
 **Prévoir le renouvellement** crée une tâche dans votre liste habituelle, pour que votre téléphone l’ait, du début du renouvellement au jour où le papier finit, liée au papier, avec les étapes connues pour son type.
 
@@ -76,7 +76,7 @@ Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : pa
 
 ## Le courrier papier {#paper-letters}
 
-L’enveloppe reste dehors. Un scan, une photo prise au téléphone ou un PDF déposé dans un dossier, par vous, par un scanner, ou par une personne qui ouvre le courrier pour vous, est lu par Sioul sur un ordinateur (un téléphone ne les lit pas) et attend vos heures sous forme de carte, comme un courriel. Ouvrir le courrier fait partie de l’angoisse administrative (Money and Mental Health 2018), et un délai écrit « dans un délai de deux mois » n’est retenu par personne : la carte le dit sous forme de date.
+L’enveloppe reste dehors. Un scan, une photo prise au téléphone ou un PDF déposé dans un dossier, par vous, par un scanner, ou par une personne qui ouvre le courrier pour vous, est lu par Sioul sur un ordinateur (Android ne les lit pas) et attend vos heures sous forme de carte, comme un courriel. Ouvrir le courrier fait partie de l’angoisse administrative (Money and Mental Health 2018), et un délai écrit « dans un délai de deux mois » n’est retenu par personne : la carte le dit sous forme de date.
 
 Les lettres ont leur propre page, **Courrier** dans la barre latérale. Elle s’ouvre sur les lettres qui attendent, chacune une carte, puis sur celles classées, par année, la plus récente d’abord. Une nouvelle lettre vient aussi sur le Porche, comme un courriel, et s’ouvre ici.
 
@@ -86,7 +86,7 @@ Les lettres ont leur propre page, **Courrier** dans la barre latérale. Elle s�
 2. Sioul lit les scans avec deux programmes de votre système. Sans eux, les scans attendent, non lus, et la page dit comment les installer, sous sa barre et dans son ⚙ ([Installer](install.md#the-packages)).
 3. Sur la barre de la page, **Ajouter un scan…** copie un PDF ou une image dans ce dossier ; **Lier des scans…** lie des scans que vous gardez ailleurs, là où ils sont : ils sont lus comme les autres et jamais copiés, et si l’un est ensuite déplacé ou supprimé, sa carte le dit ; **Ouvrir le dossier** l’ouvre. Dans le menu **Nouveau**, **Une lettre papier (scan)…** ajoute un scan depuis n’importe quelle page.
 
-Les fichiers PDF, PNG, JPEG, TIFF et WebP sont lus. Un fichier encore en cours d’écriture est lu la minute suivante. Rien ne quitte votre appareil. Un téléphone montre les lettres qu’un ordinateur a lues, sans ajouter ni lier.
+Les fichiers PDF, PNG, JPEG, TIFF et WebP sont lus. Un fichier encore en cours d’écriture est lu la minute suivante. Rien ne quitte votre appareil. Sioul sur Android montre les lettres qu’un ordinateur a lues, sans ajouter ni lier.
 
 ### La carte {#the-card}
 
@@ -109,7 +109,7 @@ Puis :
 
 ### Pas encore là {#not-there-yet}
 
-Sont prévus : une IA qui lit une lettre ligne à ligne, la vérification qu’une lettre est authentique (le domaine de l’organisme, ses coordonnées bancaires), une adresse où une personne qui vous aide pourrait envoyer les scans par courriel, la recherche dans le texte de toutes les lettres à la fois, et la lecture des scans sur un téléphone.
+Sont prévus : une IA qui lit une lettre ligne à ligne, la vérification qu’une lettre est authentique (le domaine de l’organisme, ses coordonnées bancaires), une adresse où une personne qui vous aide pourrait envoyer les scans par courriel, la recherche dans le texte de toutes les lettres à la fois, et la lecture des scans sur Android.
 
 ## Pour aller plus loin {#going-further}
 
@@ -225,10 +225,10 @@ D’autres en font plus par endroits : les cinq cherchent dans le texte de cha
 
 **Scellés entre vos appareils.** Avec **Papiers** activé dans le partage de Sioul, `sioul-papers.toml` voyage scellé comme tout enregistrement, et chaque fichier du dossier `papers` compressé et scellé à part, en morceaux de 1 Mio, chacun scellé avec XChaCha20-Poly1305 avec le nom du fichier, son rang et une marque de fin comme données associées, pour qu’on ne puisse ni échanger, ni couper, ni ajouter de morceaux. Leurs noms dans le dossier sont un HMAC-SHA-256 de l’empreinte du contenu, sous une sous-clé tirée de la clé du partage par HKDF-SHA-256 : le dossier ne voit ni le nom des fichiers ni leur contenu. Les fichiers de plus de 64 Mio restent sur l’appareil qui les a ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)). Les lettres voyagent avec les notes.
 
-**L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord ; un téléphone n’en a pas que Sioul puisse appeler, et là le fichier est gardé sans vérification. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et les courriels mis de côté n’ont jamais leurs pièces jointes ouvertes.
+**L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord ; Android n’en a pas que Sioul puisse appeler, et là le fichier est gardé sans vérification. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et les courriels mis de côté n’ont jamais leurs pièces jointes ouvertes.
 
 **Pour qui est un papier.** Chaque personne pour qui est un papier est un lien dans le `links.toml` de Sioul (`sioul:paper/<id>` vers `sioul:person/<id>`), et le `holder` du papier garde leurs noms, joints par des virgules, qu’un Sioul plus ancien montre ; un papier sans l’un ni l’autre est le vôtre. Un nom écrit par un Sioul plus ancien est rapproché d’une personne par son nom, sans tenir compte de la casse ni des accents ([Vos proches](contacts.md#household)).
 
 **Un agent d’IA.** Son outil `read_note` ne lit que les notes en texte (`.md`, `.txt`), masquées ; un PDF ou une image est nommé, jamais lu ; `sioul-papers.toml` n’est pas une note. Son outil `papers` laisse de côté, en les comptant, les papiers d’une personne qui ne lui est pas ouverte et tout papier de santé d’une autre personne que vous.
 
-**Ce qui n’est pas fait.** Chercher dans toutes les lettres depuis la fenêtre (les notes se cherchent par titre, chemin et étiquettes) ; lire les scans sur un téléphone, qui n’a pas de programmes de reconnaissance de texte ; vérifier qu’une lettre est authentique.
+**Ce qui n’est pas fait.** Chercher dans toutes les lettres depuis la fenêtre (les notes se cherchent par titre, chemin et étiquettes) ; lire les scans sur Android, qui n’a pas de programmes de reconnaissance de texte ; vérifier qu’une lettre est authentique.

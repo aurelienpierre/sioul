@@ -49,7 +49,7 @@ In [Settings ▸ Pauses](settings.md#pauses), take your time:
 
 **Pause** asks nothing. Everything Sioul shows is held, on all your devices: nothing new on screen, no notification but dose reminders (unless you chose otherwise), your events' own reminders and alarms, the codes you asked for, and your Always through people's calls and messages ([What reaches you, by time](notifications.md#by-time)). Free time, if it was on, ends there. A focus session running stops and counts. Today's end of work stays your usual one, even if Free time had moved it: the work of the paused hours goes to later days, never into your evening. The phone itself stays free: calls, other apps, emergency calls.
 
-On a phone, **Pause** is also among the quick settings, and at a long press on Sioul's icon: both open Sioul on the pause, and never end it. On a locked phone, the quick setting asks to unlock first.
+On Android, **Pause** is also among the quick settings, and at a long press on Sioul's icon: both open Sioul on the pause, and never end it. On a locked phone, the quick setting asks to unlock first.
 
 ### The screen {#the-screen}
 
@@ -74,7 +74,7 @@ Sioul keeps only when the last pause began and ended; **Forget the last pause**,
 | | Free time | Pause |
 |---|---|---|
 | For | a good moment you choose | a moment that is too much |
-| Who reaches you | your safe senders, or no one | no one; dose reminders; on a phone, your starred contacts if you chose so |
+| Who reaches you | your safe senders, or no one | no one; dose reminders; on Android, your starred contacts if you chose so |
 | The window | as usual, leisure in view | covered, a few lines |
 | Work | the end of the day moves later, within limits | goes to later days, never into the evening |
 | After | work until the moved end, light steps only past the usual one | the rest of today lighter, closed or as planned; tomorrow lighter if you ask |

@@ -38,7 +38,7 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…):
 
 - on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; none while you sleep: the card waits here;
-- its row on top of the Porch, in **Right now**, with **Copy**; on a phone, on the Porch and on Sioul's card on your home screen, since a phone does not notify codes yet.
+- its row on top of the Porch, in **Right now**, with **Copy**; on Android, on the Porch and on Sioul's card on your home screen, since Sioul does not notify codes there yet.
 
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
 
@@ -52,7 +52,7 @@ When mail your lists let through now arrives, one quiet notification says it, fo
 
 - **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three e-mails wait for you."
 - **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "Caught by your own spam filter", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
-- **No sound.** With a phone and a computer, only the one you used last tells. On a phone's lock screen, the notification says how many e-mails came, not who wrote.
+- **No sound.** With a phone and a computer, only the one you used last tells. On Android's lock screen, the notification says how many e-mails came, not who wrote.
 
 Settings ▸ What reaches you ▸ By person ▸ Mail: **Tell me of new mail**, and **Include newsletters** ([What reaches you, and when](notifications.md#by-person)).
 
@@ -77,7 +77,7 @@ Each message goes to the first lane that takes it, in this order. Three of them 
 
 Mail you send yourself, from one of your addresses to another (a file sent from your phone), comes in its own section, **From yourself**, at any hour, never screened, when it is verified: a forged own address is a classic trick.
 
-Each lane is a section of the Porch, with nothing written under its title. Its **?** says what it holds and how mail lands there; pressed (or tapped on a phone), it also shows what changes it, and where to change the rest.
+Each lane is a section of the Porch, with nothing written under its title. Its **?** says what it holds and how mail lands there; pressed (or tapped on a touch screen), it also shows what changes it, and where to change the rest.
 
 ### Letting someone in {#letting-someone-in}
 
@@ -99,7 +99,7 @@ Only a stranger's mail is ever judged. Whoever judges it, your provider or Sioul
 
     Until you choose, it flags what is probably spam or maybe spam, and does nothing with the rest.
 
-What it flags or moves waits in **Caught by your own spam filter**, folded near the bottom of the Porch, without a count: never a notification for it, on any device, nor on your phone's home screen. Nothing there asks for your time: Sioul learns from what the filter caught as it is (what it moved or found probably spam, as spam; a maybe spam, not until you say), and you step in only when one is not spam.
+What it flags or moves waits in **Caught by your own spam filter**, folded near the bottom of the Porch, without a count: never a notification for it, on any device, nor on the home screen on Android. Nothing there asks for your time: Sioul learns from what the filter caught as it is (what it moved or found probably spam, as spam; a maybe spam, not until you say), and you step in only when one is not spam.
 
 <figure markdown="span">
   [![The Porch. On the left, "Caught by your own spam filter" opened, without a count, with its sentence under the title: what your own filter caught waits there, never notified; Sioul learns from it as it is, and "Not spam" puts one back and teaches the filter. Then strangers' messages, each with its quiet word, "probably spam" or "maybe spam", and Not spam and Spam under it; above them, Not spam for all and Spam for all. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
@@ -128,7 +128,7 @@ Then the text, made safe:
 - HTML mail keeps its paragraphs, lists, bold text and links. Nothing else is shown: no images, no styles, no scripts. Nothing loads from the network, nothing runs.
 - Earlier messages that a reply quotes are folded under **Show the earlier messages**. A signature is dimmed.
 - Every link shows its full address under the message before it opens: while the pointer is on it, or after a first tap on a touch screen.
-- **Attachments** are folded, one line each with their kind, name and size. Opening or saving one runs the antivirus first; if the computer has none, Sioul says so and asks before opening. A phone has none Sioul can call: there Sioul says the file is not checked. A program is never started from a mail. See [Mail, Attachments](mail.md#attachments).
+- **Attachments** are folded, one line each with their kind, name and size. Opening or saving one runs the antivirus first; if the computer has none, Sioul says so and asks before opening. Android has none Sioul can call: there Sioul says the file is not checked. A program is never started from a mail. See [Mail, Attachments](mail.md#attachments).
 
 From the message: reply, forward, archive, delete, and the rest, as on the [Mail](mail.md) page. A newsletter has **Unsubscribe** too ([Mail](mail.md#unsubscribing)).
 
@@ -173,18 +173,18 @@ After those cards, the Porch shows what came in sections, each drawn the same wa
 9. **Paper letters**, only while one waits ([below](#paper-letters)). Not while you sleep.
 10. **Filed**, folded; **Someone new**; **Less important accounts**, folded; **Caught by your own spam filter**, folded; **Set aside**, folded.
 
-Each row says who, what and when on one line (two on a phone), with its main action: **Open**, **Reply**, **Text back**, **See the scan**, **Open in Budgets**. Beside it, two quiet buttons:
+Each row says who, what and when on one line (two on a small screen), with its main action: **Open**, **Reply**, **Text back**, **See the scan**, **Open in Budgets**. Beside it, two quiet buttons:
 
 - **Mark read**: the row goes, and what it is about is read too. A message is marked read here and on its server, as reading it would; a text is marked read on the Texts page. Calls and letters have no read state: only Dismiss.
 - **Dismiss**: the row goes from the Porch, and nothing else changes: the message stays unread in your mailbox, the letter waits.
 
-Both act at once on all your devices, with ten seconds to change your mind: **Undo**, at the foot of the list. On a phone, both are in the row's menu, at a long press; on a computer the menu (**⋮**, a right click) holds the rest of what can be done, and something new made from it, such as a task. A message read elsewhere, on your phone or in another mail program, leaves the Porch by itself; so does its notification, where Sioul showed one.
+Both act at once on all your devices, with ten seconds to change your mind: **Undo**, at the foot of the list. On a small screen, both are in the row's menu, at a long press; on a computer the menu (**⋮**, a right click) holds the rest of what can be done, and something new made from it, such as a task. A message read elsewhere, on your phone or in another mail program, leaves the Porch by itself; so does its notification, where Sioul showed one.
 
 ## Paper letters {#paper-letters}
 
 Paper letters have their own page, **Letters**, where their folder and the two programs that read them are set up ([Papers and letters](papers.md#paper-letters)). Within a minute or two of its scan, each letter waiting is also a row of **Paper letters** here, what it asks under it: the row opens it on the Letters page, **See the scan** opens the scan, and its menu makes a task for its date, puts its appointment in the agenda, or files it when you are done.
 
-A phone reads no scans: it shows the letters your computer read.
+Sioul on Android reads no scans: it shows the letters your computer read.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -278,7 +278,7 @@ HEY holds the closest idea on who may enter, its Screener and Imbox; Gmail, Outl
 22. Outlook: on a phone, all mail, Focused only, or none, and quiet times.
 23. Apple Mail: VIPs and chosen mailboxes; times through the system's Focus.
 24. Superhuman: high priority only, or chosen splits on a phone; no schedule in its documentation.
-25. Sioul: a notification with **Copy** on a computer; on a phone, on the Porch and the home-screen card, without a notification yet.
+25. Sioul: a notification with **Copy** on a computer; on Android, on the Porch and the home-screen card, without a notification yet.
 26. Gmail: not in Google's documentation; only the press reports a "Copy code" card in its apps.
 27. Apple: codes received in Mail fill in by themselves in Safari, since iOS 17 and macOS Sonoma.
 28. Sioul shows none; on Android, a launcher may still put a dot on Sioul's icon while a mail notification waits.

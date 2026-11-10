@@ -30,7 +30,7 @@ Quand vos fiches ont des catégories, un choix sous le champ de recherche montre
 
 ## Vos proches {#household}
 
-En tête de la page, **Proches** est une rangée de noms : vous d’abord, puis les personnes pour qui vous faites des démarches, un enfant, un parent que vous aidez, un ou une partenaire, de la famille, une personne que vous aidez, et après un petit espace l’autre parent d’un enfant. Un nom ouvre la page de cette personne, à la place d’une fiche ; sur un téléphone, elle prend la page. Un clic droit, ou un appui long sur un téléphone, propose **Ouvrir** et **Renommer**. **Ajouter une personne**, au bout de la rangée, en ajoute une.
+En tête de la page, **Proches** est une rangée de noms : vous d’abord, puis les personnes pour qui vous faites des démarches, un enfant, un parent que vous aidez, un ou une partenaire, de la famille, une personne que vous aidez, et après un petit espace l’autre parent d’un enfant. Un nom ouvre la page de cette personne, à la place d’une fiche ; sur un petit écran, elle prend la page. Un clic droit, ou un appui long sur un écran tactile, propose **Ouvrir** et **Renommer**. **Ajouter une personne**, au bout de la rangée, en ajoute une.
 
 Quand Sioul ajoute des proches d’après ce que nommaient déjà vos agendas et vos papiers (l’agenda d’un enfant, le titulaire d’un papier), le Porche dit une fois qui, et d’après quoi, pendant vos heures de démarches ; il n’y a rien à répondre.
 
@@ -66,7 +66,7 @@ Un contact s’ouvre à droite :
 - à côté de chaque adresse postale, **Itinéraire**, qui ouvre le chemin comme le fait le lieu d’un événement ([Agenda](agenda.md#status-map-directions)) : dans votre application de cartes quand ce système en a une pour les liens `geo:`, avec le point où la carte l’a placée quand elle l’a, sinon sur la page d’OpenStreetMap, ou celle d’Apple sur un Mac ;
 - **Lié à cela** : les tâches qui la nomment, les événements où elle est invitée, les notes qui la mentionnent, et ce que vous lui avez lié à la main. Un courriel s’y montre quand vous le lui avez lié, de même que chaque courriel qu’elle vous a envoyé et dont Sioul a prouvé qu’il vient d’elle ; la [recherche des courriels](mail.md#searching) trouve le reste, dont ce que vous lui avez envoyé.
 
-**Pour le changer**, **Modifier**, puis **Enregistrer** : il est modifié sur place. Sur un téléphone, **Retour** quitte le formulaire sans enregistrer. **Pour en ajouter un**, le **+** au-dessus de la liste, ou **Nouveau ▾ ▸ Un contact**. Depuis un courriel, **Ajouter aux contacts** fait de l’expéditeur un contact en un clic.
+**Pour le changer**, **Modifier**, puis **Enregistrer** : il est modifié sur place. Sur Android, **Retour** quitte le formulaire sans enregistrer. **Pour en ajouter un**, le **+** au-dessus de la liste, ou **Nouveau ▾ ▸ Un contact**. Depuis un courriel, **Ajouter aux contacts** fait de l’expéditeur un contact en un clic.
 
 **Pour en supprimer un**, **Supprimer** : la suppression attend dix secondes, avec **Annuler**.
 
@@ -115,9 +115,9 @@ Pour être placée, une adresse doit être transformée en un point sur la carte
 
 Les images de la carte viennent d’OpenStreetMap, demandées avec mesure et gardées. Vous pouvez donner une autre source dans les réglages.
 
-## Sur un téléphone {#on-a-phone}
+## Sur Android {#on-a-phone}
 
-Sous Android, Sioul synchronise lui-même vos carnets d’adresses et en garde sa propre copie, à part des contacts du téléphone. Avec votre accord, il lit les contacts du téléphone, et seulement pour trois choses : nommer un appelant que vos carnets d’adresses ne connaissent pas, reconnaître qui a écrit dans la notification d’une autre application, et voir lesquelles des personnes qui passent toujours sont en favori pour le mode « Ne pas déranger » d’Android. Il n’écrit jamais un contact ni un favori : pour une personne qui devrait être en favori, il ouvre son contact dans votre application Contacts, ou le propre formulaire de cette application, rempli, pour que vous l’enregistriez. Quand le téléphone filtre vos appels ([Les appels](calls.md)), les appels d’une personne bloquée sont refusés avant que le téléphone sonne.
+Sous Android, Sioul synchronise lui-même vos carnets d’adresses et en garde sa propre copie, à part des contacts de l’appareil. Avec votre accord, il les lit, et seulement pour trois choses : nommer un appelant que vos carnets d’adresses ne connaissent pas, reconnaître qui a écrit dans la notification d’une autre application, et voir lesquelles des personnes qui passent toujours sont en favori pour le mode « Ne pas déranger » d’Android. Il n’écrit jamais un contact ni un favori : pour une personne qui devrait être en favori, il ouvre son contact dans votre application Contacts, ou le propre formulaire de cette application, rempli, pour que vous l’enregistriez. Quand le téléphone filtre vos appels ([Les appels](calls.md)), les appels d’une personne bloquée sont refusés avant que le téléphone sonne.
 
 ## Les réglages des contacts {#the-contacts-settings}
 
@@ -130,7 +130,7 @@ Le ⚙ en haut de la page :
 
 ## Où vivent les contacts {#where-contacts-live}
 
-Sur votre serveur de contacts, en fiches standard : votre téléphone et les autres programmes les voient. Modifier un contact dans Sioul ne change que ce que vous avez changé : une photo ou les champs d’un autre programme restent tels qu’ils étaient. Quand une fiche a été modifiée ici et sur le serveur entre deux synchronisations, la version du serveur est gardée, et la vôtre est mise de côté parmi les versions précédentes (**Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes**, sous **Vos agendas et contacts**), sur un téléphone aussi, à remettre si vous la préférez ; la ligne d’état le dit.
+Sur votre serveur de contacts, en fiches standard : votre téléphone et les autres programmes les voient. Modifier un contact dans Sioul ne change que ce que vous avez changé : une photo ou les champs d’un autre programme restent tels qu’ils étaient. Quand une fiche a été modifiée ici et sur le serveur entre deux synchronisations, la version du serveur est gardée, et la vôtre est mise de côté parmi les versions précédentes (**Paramètres ▸ Votre dossier et le partage ▸ Voir les versions précédentes**, sous **Vos agendas et contacts**), sur Android aussi, à remettre si vous la préférez ; la ligne d’état le dit.
 
 Les contacts Google marchent de la même façon, en gardant moins : Sioul les écrit comme Google les lit, et dit ce qui serait perdu avant d’y déplacer un contact.
 

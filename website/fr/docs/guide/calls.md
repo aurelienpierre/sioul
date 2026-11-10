@@ -65,7 +65,7 @@ Les appels d’une personne depuis un mois, sonnés ou refusés, sont sur sa fic
 
 ## Ce que Sioul ne fait jamais {#what-sioul-never-does}
 
-Il ne décroche jamais, n’enregistre jamais un appel, n’écoute jamais, et n’envoie aucun numéro nulle part : aucun serveur, aucune recherche. La liste des appels filtrés par votre téléphone ne voyage que vers vos propres appareils, scellée, tant que la partie **Appels** du partage est activée. Les SMS sont retenus comme les messages des autres applications, selon qui écrit, quand Sioul a l’accès aux notifications d’Android ([Les notifications des autres applications, sur un téléphone](notifications.md#other-apps-on-a-phone)) ; les numéros bloqués d’Android arrêtent les appels et les SMS d’un numéro dans toutes les applications.
+Il ne décroche jamais, n’enregistre jamais un appel, n’écoute jamais, et n’envoie aucun numéro nulle part : aucun serveur, aucune recherche. La liste des appels filtrés par votre téléphone ne voyage que vers vos propres appareils, scellée, tant que la partie **Appels** du partage est activée. Les SMS sont retenus comme les messages des autres applications, selon qui écrit, quand Sioul a l’accès aux notifications d’Android ([Les notifications des autres applications, sur Android](notifications.md#other-apps-on-a-phone)) ; les numéros bloqués d’Android arrêtent les appels et les SMS d’un numéro dans toutes les applications.
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
 

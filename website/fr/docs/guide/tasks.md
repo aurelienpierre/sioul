@@ -41,7 +41,7 @@ Finir dit ce que cela a changé, une fois, dans la ligne d’état : « Fait
 
 ## Une nouvelle tâche {#a-new-task}
 
-**Nouvelle tâche**, à côté de la ligne en haut de la page, ouvre à droite le formulaire complet d’une nouvelle tâche (sur un téléphone, il prend la page), son titre d’abord. **Nouveau ▾ ▸ Une tâche** fait de même où que vous soyez, tout comme **Ajouter ▾ ▸ Une tâche** sur un courriel, un événement, une note, un contact ou un projet, son titre et son lien déjà donnés.
+**Nouvelle tâche**, à côté de la ligne en haut de la page, ouvre à droite le formulaire complet d’une nouvelle tâche (sur un petit écran, il prend la page), son titre d’abord. **Nouveau ▾ ▸ Une tâche** fait de même où que vous soyez, tout comme **Ajouter ▾ ▸ Une tâche** sur un courriel, un événement, une note, un contact ou un projet, son titre et son lien déjà donnés.
 
 - Tous les champs sont là d’un coup : la liste, les dates, le temps qu’elle prend, ce qu’elle attend, le temps avant et après, ce qu’elle demande et ce qu’elle apporte, les notes.
 - La tâche est créée dès qu’elle a un titre : Entrée, ou un autre champ. Ensuite, chaque champ est gardé au fur et à mesure, comme pour toute tâche.
@@ -94,7 +94,7 @@ Une tâche peut aussi dire **ce que ça coûte**, dans son panneau : *léger*,
 
 Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**.
 
-La fenêtre de concentration reste au premier plan pendant que vous travaillez ailleurs. Un disque se vide, d’une couleur neutre, sans tic-tac et sans son. Sous Linux et sur un téléphone, une notification montre aussi le temps qui court, avec **Pause** et **Arrêter** ([Temps](time.md#where-time-comes-from)).
+La fenêtre de concentration reste au premier plan pendant que vous travaillez ailleurs. Un disque se vide, d’une couleur neutre, sans tic-tac et sans son. Sous Linux et sur Android, une notification montre aussi le temps qui court, avec **Pause** et **Arrêter** ([Temps](time.md#where-time-comes-from)).
 
 - Pendant qu’elle tourne : **Pause** (**Reprendre** une fois en pause), **Cinq minutes de plus** quand la séance a une fin, et **Arrêter**.
 - Deux minutes avant la fin : « Encore deux minutes : le moment de trouver où s’arrêter. »
@@ -174,7 +174,7 @@ Ce qui vient est listé d’abord, le plus proche d’abord, puis le passé, le 
 
 ## Une tâche, ouverte {#a-task-open}
 
-Une tâche s’ouvre dans sa carte à droite, à côté de la liste (sur un téléphone, elle prend la page), depuis n’importe quelle vue et depuis l’[agenda](agenda.md) : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.
+Une tâche s’ouvre dans sa carte à droite, à côté de la liste (sur un petit écran, elle prend la page), depuis n’importe quelle vue et depuis l’[agenda](agenda.md) : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.
 
 - **Commencer**, **Fait**, **Pas maintenant**, **Faire à…** ([fixée à une heure](#pinned-to-a-time)) et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations ;
 - en haut, le rendez-vous qu’elle prépare, avec dessous l’heure de partir (« Partir à 13:10 · Bus 24 ») ;
@@ -212,9 +212,9 @@ Puis un écran court, lu en dix secondes, dit :
 
 Ce qui n’a pas été fait n’est pas compté. Le jour travaillé suivant s’ouvre sur cette première étape. D’ici là, le travail se repose ([le calme](hours.md#quiet-time)). Une pensée qui vient le soir peut se noter en une ligne ; elle attend, hors de vue, le retour du travail.
 
-**À la fin de vos heures**, la ligne d’état propose **Clore la journée de travail**, et une notification discrète dit « Les heures de travail sont finies », une fois, jamais pendant le sommeil ni pendant une réunion. Sous Linux, sur un Mac et sur un téléphone, la notification a aussi **Clore la journée de travail** ; sous Windows elle n’a pas de bouton, et un clic dessus ouvre la même feuille. Pressée une fois la journée tournée (5 h), elle n’ouvre rien. Sur un téléphone, elle ne vient à l’heure qu’avec « Alarmes et rappels » autorisé dans Android (Paramètres ▸ Ce téléphone) ; sans cela, le plus souvent elle ne vient pas. Une journée finie sans le bouton se clôt comme d’habitude ; sa revue reste proposée jusqu’au soir.
+**À la fin de vos heures**, la ligne d’état propose **Clore la journée de travail**, et une notification discrète dit « Les heures de travail sont finies », une fois, jamais pendant le sommeil ni pendant une réunion. Sous Linux, sur un Mac et sur Android, la notification a aussi **Clore la journée de travail** ; sous Windows elle n’a pas de bouton, et un clic dessus ouvre la même feuille. Pressée une fois la journée tournée (5 h), elle n’ouvre rien. Sur Android, elle ne vient à l’heure qu’avec « Alarmes et rappels » autorisé (Paramètres ▸ Ce téléphone, ou Cette tablette) ; sans cela, le plus souvent elle ne vient pas. Une journée finie sans le bouton se clôt comme d’habitude ; sa revue reste proposée jusqu’au soir.
 
-**À toute heure**, deux boutons en bas des lieux closent la journée de travail, **Clore la journée de travail** (une liste cochée), et toute la journée, **Clore toute la journée** (une lune), l’un sous l’autre. La ligne d’état ne propose chacun qu’à son heure ; ces boutons sont toujours là, sur un téléphone dans le tiroir des lieux. Sur un ordinateur, le menu de l’icône de Sioul dans la zone de notification (sur un Mac, dans la barre des menus) a les deux mêmes.
+**À toute heure**, deux boutons en bas des lieux closent la journée de travail, **Clore la journée de travail** (une liste cochée), et toute la journée, **Clore toute la journée** (une lune), l’un sous l’autre. La ligne d’état ne propose chacun qu’à son heure ; ces boutons sont toujours là, sur un petit écran dans le tiroir des lieux. Sur un ordinateur, le menu de l’icône de Sioul dans la zone de notification (sur un Mac, dans la barre des menus) a les deux mêmes.
 
 **Avant de dormir**, **Clore toute la journée** revient sur toute la journée : travail, démarches et loisirs ([Santé](health.md#before-sleep)).
 
@@ -265,7 +265,7 @@ Les notes d’une tâche, ou d’un événement, peuvent tenir une liste : ce 
 
 ### Ce qu’elle demande, et ce qu’elle apporte {#what-it-costs-and-what-it-gives-back}
 
-Quatre tuiles, dans le formulaire d’une tâche et dans celui d’un événement, deux par deux (l’une sous l’autre sur un téléphone) : **Réflexion**, **Émotions**, **Inquiétude** et **Corps et sens**, puis **Ce que ça apporte** en dessous. Chacune prend un nombre de 0 à 10, comme vous le ressentez, et pose en petit une question sur ce qui compte :
+Quatre tuiles, dans le formulaire d’une tâche et dans celui d’un événement, deux par deux (l’une sous l’autre quand la place manque) : **Réflexion**, **Émotions**, **Inquiétude** et **Corps et sens**, puis **Ce que ça apporte** en dessous. Chacune prend un nombre de 0 à 10, comme vous le ressentez, et pose en petit une question sur ce qui compte :
 
 | Tuile | Ce qu’elle demande |
 |---|---|
@@ -306,7 +306,7 @@ Une tâche étiquetée `joy` (ce mot anglais, tel quel) est offerte sous **Si vo
 - **Toujours à jour** : le plan est refait aussitôt que quelque chose dont il dépend change (une tâche, sa durée estimée ou le temps noté pour elle, un événement, un repas ou la nuit, vos heures ou vos jours de repos, la météo du jour, **Fini pour aujourd’hui**, ce qu’apportent vos autres appareils ou une synchronisation), ainsi qu’au démarrage de Sioul, toutes les douze heures et à minuit.
 - **Quand une date ne tiendra pas**, la tâche le dit une fois : « À ce rythme, le plan finit après le 30 octobre. La faire plus tôt, la réduire ou la confier garderait la date. » Près d’une date demandée, Maintenant dit ce qui tient : « Jusqu’au mercredi 7 octobre : environ 30 min d’étapes, 3 h de place. »
 
-Un rappel vient, une fois, deux jours travaillés avant une date demandée, et quand une attente est finie. Ces deux rappels viennent d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée ; un téléphone ne les dit pas ([Paramètres](settings.md#reminders)).
+Un rappel vient, une fois, deux jours travaillés avant une date demandée, et quand une attente est finie. Ces deux rappels viennent d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée ; un téléphone ne les dit pas, une tablette si ([Paramètres](settings.md#reminders)).
 
 ### Ce que tient une journée {#what-a-day-holds}
 
@@ -586,7 +586,7 @@ Chaque tâche est un `VTODO` (RFC 5545 §3.6.2) dans une liste de tâches CalDAV
 | Une liste à cocher | des lignes d’une liste de tâches GitHub dans ses notes (`DESCRIPTION`) : `- [ ]`, `- [x]`, et `- [-]` pour pas besoin cette fois |
 | Attend une autre tâche | `X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (le type de la RFC 9253 §5), dans la tâche qui attend |
 | Attend, avec un délai (« la réponse vient sous deux semaines ») | `X-SIOUL-RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, dans la tâche qui vient d’abord (RFC 9253 §4). Écrit par `sioul tasks import`, et par **Puis attendre** dans le formulaire. Lu de tout programme sous la forme propre à la RFC 9253 aussi (`RELATED-TO`), `NEXT` aussi |
-| Peut commencer le ; la date demandée | `DTSTART` (gardé aussi dans `X-SIOUL-START` là où un téléphone le perdrait : le même jour que sa date demandée) ; `DUE` |
+| Peut commencer le ; la date demandée | `DTSTART` (gardé aussi dans `X-SIOUL-START` là où les gestionnaires de comptes d’Android le perdraient : le même jour que sa date demandée) ; `DUE` |
 | Le temps qu’elle prend | `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks) |
 | Son type ; « demande un bureau ouvert » | `X-SIOUL-CONCEPT;VALUE=URI` avec une URI tag (le `CONCEPT` de la RFC 9253 §8.1, RFC 4151) |
 | Son projet | `X-SIOUL-REFID` (le `REFID` de la RFC 9253 §8.3) |
@@ -603,7 +603,7 @@ Les nouvelles listes se créent avec `MKCALENDAR` (RFC 4791 §5.3.1) et se renom
 
 ### Les attentes dans les autres programmes CalDAV {#waits-in-other-caldav-programs}
 
-La RFC 9253 (août 2022) a ajouté au `RELATED-TO` d’iCalendar le type `DEPENDS-ON` et quatre types de relations temporelles (`FINISHTOSTART` et ses semblables, avec un `GAP` facultatif), ainsi que trois nouvelles propriétés : `LINK`, `CONCEPT` et `REFID`. Peu de programmes de tâches s’en servent encore. cfait, un logiciel libre pour le terminal, le bureau et Android, écrit `DEPENDS-ON` depuis novembre 2025. Aucune des dix-sept applications de tâches CalDAV établies qui ont été vérifiées n’a d’attentes entre tâches, et des demandes restent ouvertes depuis des années : depuis 2003 pour Thunderbird, 2017 pour Nextcloud Tasks, 2020 pour Tasks.org. Ce qui n’a été trouvé que dans Sioul, parmi les projets examinés, c’est l’ensemble : `DEPENDS-ON` et `FINISHTOSTART` avec `GAP`, chacun dans le sens que lui donne la RFC 9253 ; `LINK`, `CONCEPT` et `REFID` ; et un plan qui s’organise autour des attentes. Depuis le 27 octobre 2026, Sioul les écrit sous ses propres noms, pour qu’un gestionnaire de comptes de téléphone puisse les renvoyer (plus haut), et lit les lignes propres à la RFC 9253 des autres programmes.
+La RFC 9253 (août 2022) a ajouté au `RELATED-TO` d’iCalendar le type `DEPENDS-ON` et quatre types de relations temporelles (`FINISHTOSTART` et ses semblables, avec un `GAP` facultatif), ainsi que trois nouvelles propriétés : `LINK`, `CONCEPT` et `REFID`. Peu de programmes de tâches s’en servent encore. cfait, un logiciel libre pour le terminal, le bureau et Android, écrit `DEPENDS-ON` depuis novembre 2025. Aucune des dix-sept applications de tâches CalDAV établies qui ont été vérifiées n’a d’attentes entre tâches, et des demandes restent ouvertes depuis des années : depuis 2003 pour Thunderbird, 2017 pour Nextcloud Tasks, 2020 pour Tasks.org. Ce qui n’a été trouvé que dans Sioul, parmi les projets examinés, c’est l’ensemble : `DEPENDS-ON` et `FINISHTOSTART` avec `GAP`, chacun dans le sens que lui donne la RFC 9253 ; `LINK`, `CONCEPT` et `REFID` ; et un plan qui s’organise autour des attentes. Depuis le 27 octobre 2026, Sioul les écrit sous ses propres noms, pour que les gestionnaires de comptes d’Android puissent les renvoyer (plus haut), et lit les lignes propres à la RFC 9253 des autres programmes.
 
 En octobre 2026, d’après le code et l’outil de suivi de chaque programme, sans essai avec Sioul :
 
