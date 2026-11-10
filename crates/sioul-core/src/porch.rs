@@ -1673,15 +1673,18 @@ struct Verdict {
 /// its lane moving with the clock.
 static TRIAGED: std::sync::Mutex<Option<(u64, std::collections::HashMap<FileKey, Verdict>)>> = std::sync::Mutex::new(None);
 
-/// Messages' triages kept at most (`TRIAGED`): past them, the memory starts again.
+/// Messages' triages kept at most (`TRIAGED`): past them, the memory starts
+/// again. Each making keeps only the messages it met (`gather`): the
+/// inboxes' as they stand, never a file renamed, moved or closed on since.
 const TRIAGED_KEPT: usize = 200_000;
 
 /// The messages of a folder (its `new` and `cur`, else the folder itself)
 /// whose origin passes `keep` and whose card passes `take`, oldest first,
 /// each with its triage: kept from an earlier making while its file, its
 /// own inputs and the seal stay (`TRIAGED`), else made now. As `maildir::read_messages_where`
-/// then `triage` would give them, the card's account set first.
-fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64) -> Vec<Triaged> {
+/// then `triage` would give them, the card's account set first. Each
+/// message's file is added to `met`.
+fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64, met: &mut std::collections::HashSet<FileKey>) -> Vec<Triaged> {
     let maildir = [dir.join("new"), dir.join("cur")];
     let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.is_dir()) { maildir.into_iter().filter(|d| d.is_dir()).collect() } else { vec![dir.to_path_buf()] };
     let mut out = Vec::new();
@@ -1698,6 +1701,7 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
             if !take(&card) {
                 continue;
             }
+            met.insert(key.clone());
             let own = own_inputs(&card, ctx);
             let kept = TRIAGED.lock().ok().and_then(|kept| kept.as_ref().filter(|(at, _)| *at == seal).and_then(|(_, all)| all.get(&key).filter(|v| v.own == own).cloned()));
             if let Some(v) = kept {
@@ -1744,6 +1748,7 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
     let root = crate::spam::labels::state();
     let moved = crate::spam::labels::read_moved_in(&root);
     let said = if moved.is_empty() { Vec::new() } else { crate::spam::labels::read_all_in(&root) };
+    let mut met = std::collections::HashSet::new();
     let mut items: Vec<Triaged> = sources
         .iter()
         .flat_map(|src| {
@@ -1754,13 +1759,22 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
             let fresh = account.is_some_and(|a| !state.done.contains_key(a));
             let since = now - i64::from(crate::config::DEFAULT_SYNC_DAYS) * 86_400;
             let take = |card: &Card| (!fresh || card.date.is_none_or(|d| d >= since)) && senders.who_of(card) != crate::reach::Who::Blocked;
-            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal)
+            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal, &mut met)
                 .into_iter()
                 .chain(flagged_since(src, &ctx, state, senders, now))
                 .chain(account.filter(|_| !moved.is_empty()).map_or_else(Vec::new, |a| moved_items(src, &ctx, &crate::folders::saved(a), &moved, &said)))
                 .collect::<Vec<_>>()
         })
         .collect();
+    // What this making did not meet is not kept (review of 1a2c6a2, C5): a
+    // message read or flagged elsewhere leaves its old name behind, one moved
+    // or closed on leaves for good.
+    if let Ok(mut kept) = TRIAGED.lock()
+        && let Some((at, all)) = kept.as_mut()
+        && *at == seal
+    {
+        all.retain(|key, _| met.contains(key));
+    }
     follow_conversations(&mut items);
     items.sort_by_key(|t| t.card.date.unwrap_or(0));
     items
@@ -2668,6 +2682,8 @@ mod tests {
         let news = root.join("cur").join(format!("{}.U1-2.sioul{}2,S", now - 60, maildir::INFO));
         std::fs::rename(read(2), &news).unwrap();
         assert_eq!(made(&none, &store).1, 2);
+        // Its old name no longer kept: only the two met, the code never (review of 1a2c6a2, C5).
+        assert_eq!(TRIAGED.lock().unwrap().as_ref().map(|(_, all)| all.len()), Some(2));
         // Rewritten in place, its name, size and time kept (`sioul verify
         // --again`): another file, triaged again (review of 1a2c6a2, C6).
         let lunch = read(1);
