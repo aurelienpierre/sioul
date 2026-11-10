@@ -2374,15 +2374,14 @@ impl Puller<'_> {
     /// A file still locked there after the waits of `Server::put_file`
     /// (`423`: another program writing or reading that very file): left for
     /// the next step, nothing here lost (records after it wait, as they go in
-    /// order); once it was so `LOCKED_SAID` steps in a row, the step stops
-    /// on it and says the server's answer, as any other.
+    /// order), the other files still going; once it was so `LOCKED_SAID`
+    /// steps in a row, the step says the server's answer (`step_with`), as
+    /// the sending beside a sync app does (`Sender::locked`). Until the
+    /// review of wt/sync (R3) it then stopped every step on that file, its
+    /// entry and sealed files never going while the lock lasted.
     fn locked(&mut self, relative: &str) -> Result<(), Stop> {
-        let tries = self.state.locked.entry(relative.to_string()).or_default();
-        *tries += 1;
+        *self.state.locked.entry(relative.to_string()).or_default() += 1;
         self.pulled.locked.push(file_kind(relative).to_string());
-        if *tries >= LOCKED_SAID {
-            return Err(Stop::Failed(SyncError::Server(format!("PUT: 423, {tries} steps in a row"))));
-        }
         Ok(())
     }
 
@@ -2736,6 +2735,10 @@ pub(crate) fn step_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
                 }
                 state.pushed = now;
                 state.said.clear();
+                // A file of its own locked there that many steps in a row: said, the rest gone (`Puller::locked`).
+                if state.locked.values().any(|tries| *tries >= LOCKED_SAID) {
+                    state.said = format!("server:{host}");
+                }
             }
             Err(Stop::Unconfirmed(why)) => {
                 state.confirmed = 0;
@@ -6965,8 +6968,13 @@ mod tests {
             assert!(left.problem.is_none() && left.locked == ["records"], "{step}: {left:?}");
             assert_eq!(State::load(&lone.memory).locked.values().copied().collect::<Vec<_>>(), [step]);
         }
+        // Said once it keeps failing, the other files going all the same (R3): its notes changed now go.
+        lone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000050\n\"levo@1800086400\" = 1800086460\n\"levo@1800172800\" = 1800172860\n");
+        lone.exchange(&folder, DUE + 39);
         let said = step_with(&lone.memory, &folder, &lone.id, &login, DUE + 40, false, TEST);
-        assert!(said.problem.as_deref().is_some_and(|p| p.starts_with("server:")), "{said:?}");
+        assert!(said.problem.as_deref().is_some_and(|p| p.starts_with("server:")) && said.locked == ["records"], "{said:?}");
+        let notes = format!("{}.toml", lone.id);
+        assert_eq!(std::fs::read(w.server.join(&notes)).unwrap(), std::fs::read(folder.join(&notes)).unwrap(), "its notes went all the same");
         w.fake.clear_faults();
         let went = step_with(&lone.memory, &folder, &lone.id, &login, DUE + 50, false, TEST);
         assert!(went.problem.is_none() && went.locked.is_empty() && went.sent > 0, "{went:?}");
