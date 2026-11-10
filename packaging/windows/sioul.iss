@@ -58,5 +58,12 @@ Name: "{autodesktop}\Sioul"; Filename: "{app}\sioul-app.exe"; IconFilename: "{ap
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+; Windows Error Reporting leaves Sioul's two programs out, for you alone: each
+; writes this at its start (crates/sioul-core/src/coredump.rs); the uninstall
+; takes it away.
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\Windows Error Reporting\ExcludedApplications"; ValueType: dword; ValueName: "sioul-app.exe"; ValueData: 1; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\Windows Error Reporting\ExcludedApplications"; ValueType: dword; ValueName: "sioul.exe"; ValueData: 1; Flags: uninsdeletevalue
+
 [Run]
 Filename: "{app}\sioul-app.exe"; Description: "{cm:LaunchProgram,Sioul}"; Flags: nowait postinstall skipifsilent

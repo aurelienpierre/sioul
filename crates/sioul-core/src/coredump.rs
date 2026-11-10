@@ -50,16 +50,52 @@ fn keep_memory_off_disk(allowed: bool) -> Result<(), String> {
             if libc::getrlimit(libc::RLIMIT_CORE, &mut limit) != 0 {
                 return Err(std::io::Error::last_os_error().to_string());
             }
+            // Kept, for the programs Sioul starts (`as_before`).
+            let _ = BEFORE.set((limit.rlim_cur, limit.rlim_max));
             // The soft limit alone: a program Sioul starts may raise it again.
             limit.rlim_cur = SOFT.min(limit.rlim_max);
             if libc::setrlimit(libc::RLIMIT_CORE, &limit) != 0 {
                 return Err(std::io::Error::last_os_error().to_string());
             }
+            // A hard limit of 0 leaves 0, which a collector a pipe reaches ignores (review of wt/mail, F6).
+            if limit.rlim_cur < SOFT {
+                return Err(format!("the system's hard limit of a core file is {}: a crash collector still receives the memory", limit.rlim_max));
+            }
+        }
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if std::fs::read_to_string("/proc/sys/kernel/core_pattern").is_ok_and(|pattern| pattern.starts_with('@')) {
+            return Err("the system hands core files to a socket, whatever their limit: a crash collector still receives the memory".into());
         }
     }
     #[cfg(windows)]
     windows::exclude()?;
     Ok(())
+}
+
+/// The core file limit Sioul had before it lowered its own: soft, hard.
+#[cfg(unix)]
+static BEFORE: std::sync::OnceLock<(libc::rlim_t, libc::rlim_t)> = std::sync::OnceLock::new();
+
+/// `command`, another program Sioul starts (a scanner, the system's
+/// settings), given back the core file limit Sioul had before it lowered
+/// its own, rather than inheriting it (review of wt/mail, F6). Programs the
+/// window opens through Qt (a file's viewer) inherit Sioul's own.
+pub fn as_before(command: &mut std::process::Command) {
+    #[cfg(unix)]
+    if let Some(&(soft, hard)) = BEFORE.get() {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: the closure runs in the child between fork and exec, and
+        // calls setrlimit alone, which is async-signal-safe.
+        unsafe {
+            command.pre_exec(move || {
+                let limit = libc::rlimit { rlim_cur: soft, rlim_max: hard };
+                libc::setrlimit(libc::RLIMIT_CORE, &limit);
+                Ok(())
+            });
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = command;
 }
 
 /// One byte on Linux and Android, where the kernel then hands nothing to a
@@ -122,9 +158,19 @@ mod tests {
         let before = core_limit().unwrap();
         keep_memory_off_disk(true).unwrap();
         assert_eq!(core_limit(), Some(before), "allowed: as the system has it");
-        keep_memory_off_disk(false).unwrap();
+        // Off a socket pattern, and with a hard limit above a byte, said all right.
+        let socket = std::fs::read_to_string("/proc/sys/kernel/core_pattern").is_ok_and(|p| p.starts_with('@'));
+        let set = keep_memory_off_disk(false);
+        assert!(set.is_ok() || socket || before == 0, "{set:?}");
         let most = if cfg!(any(target_os = "linux", target_os = "android")) { 1 } else { 0 };
         assert!(core_limit().is_some_and(|limit| limit <= most), "{:?}", core_limit());
+        // A program Sioul starts gets the limit back (F6).
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", "ulimit -c"]);
+        as_before(&mut command);
+        let said = String::from_utf8(command.output().unwrap().stdout).unwrap();
+        let expected = match BEFORE.get().unwrap().0 { libc::RLIM_INFINITY => "unlimited".to_string(), blocks => (blocks / 512).to_string() };
+        assert_eq!(said.trim(), expected, "the limit before, in the shell's 512-byte blocks");
         // Each program asks it first thing.
         for (crate_dir, file) in [("sioul-app", "src/lib.rs"), ("sioul-cli", "src/main.rs")] {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(crate_dir).join(file);

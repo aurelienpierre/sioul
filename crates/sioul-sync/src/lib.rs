@@ -186,9 +186,11 @@ pub(crate) fn translator() -> Translator {
 }
 
 /// Another program (a scanner, a reader of scans), run unseen: on Windows,
-/// without a console window flashing over Sioul's (CREATE_NO_WINDOW).
+/// without a console window flashing over Sioul's (CREATE_NO_WINDOW); with
+/// the core file limit the system gave, not Sioul's (`coredump::as_before`).
 pub(crate) fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
-    let command = std::process::Command::new(program);
+    let mut command = std::process::Command::new(program);
+    sioul_core::coredump::as_before(&mut command);
     #[cfg(windows)]
     let command = {
         use std::os::windows::process::CommandExt;
