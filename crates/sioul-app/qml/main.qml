@@ -1035,9 +1035,10 @@ SioulWindow {
     }
 
     // texts: the Texts page (TextsPage.qml), at a conversation by its id when
-    // one is given; a phone has its own SMS app, where the conversation opens.
+    // one is given; a device with telephony (a phone, a tablet with a SIM) has
+    // its own SMS app, where the conversation opens.
     function openTexts(id) {
-        if (Qt.platform.os === "android") {
+        if (sioul.telephony) {
             if (id !== "")
                 Qt.openUrlExternally("sms:" + id)
             return
@@ -2136,8 +2137,8 @@ SioulWindow {
                 () => {},
                 () => grabber.saveWindow("rail-tip"),
                 () => window.sayRailTip(places.shown.repeater.itemAt(2), false, 0),
-                // The agenda's place (Texts comes before it on a computer).
-                () => places.shown.repeater.itemAt(Qt.platform.os === "android" ? 4 : 5).forceActiveFocus(Qt.TabFocusReason),
+                // The agenda's place (Texts comes before it where there is no telephony).
+                () => places.shown.repeater.itemAt(sioul.telephony ? 4 : 5).forceActiveFocus(Qt.TabFocusReason),
                 () => {},
                 () => grabber.saveWindow("rail-focus"),
                 () => {

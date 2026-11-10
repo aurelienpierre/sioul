@@ -69,6 +69,11 @@
          of yours that did not reach them, for the Porch of each of your
          devices and the call-back tasks (docs/android.md, "Calls"). -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- The permissions for texts and calls would make telephony required, and
+         a store hide Sioul from a tablet without a SIM: telephony is asked of
+         the device instead (StepService.device, devicekind.rs), and the parts
+         for calls and texts are not offered where it has none. -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <!-- The sync apps asked to look for changes now rather than at their next
          round (crates/sioul-app/src/share.rs, android/main.cpp): Murena's
          eDrive, which carries the sharing folder on /e/OS, every half hour. -->

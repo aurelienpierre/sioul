@@ -66,10 +66,12 @@ fn here_id() -> String {
     sioul_sync::share::Here::load(&sioul_core::config::state_dir()).id
 }
 
-/// Whether this device has calls to screen: a phone. SIOUL_CALLS makes a
-/// computer write its table and read its list too, to look at them.
+/// Whether this device has calls to screen: Android with telephony (a
+/// phone, a tablet with a SIM; devicekind.rs). A tablet without one reads
+/// the phone's calls as a computer does. SIOUL_CALLS makes a computer write
+/// its table and read its list too, to look at them.
 fn phone() -> bool {
-    cfg!(target_os = "android") || std::env::var_os("SIOUL_CALLS").is_some()
+    crate::devicekind::telephony() || std::env::var_os("SIOUL_CALLS").is_some()
 }
 
 fn path(name: &str) -> PathBuf {
@@ -893,7 +895,8 @@ pub(crate) fn setup() -> String {
         std::thread::spawn(|| refresh(true));
     }
     json!({
-        "android": cfg!(target_os = "android"),
+        // Its phone's parts where calls exist here: never a tablet without telephony.
+        "android": crate::devicekind::telephony(),
         "state": state,
         "moment": moment(),
         "screening": screening_rows(&load_config(), &sioul_core::zone::now()),

@@ -31,10 +31,11 @@ Item {
             page.shareMade = true
     }
     // One tab at a time: how it looks, the hours, what reaches you, the words,
-    // reminders, the pauses; on a phone, what sets it up; on a computer, the
-    // texts it sends; your folder and sharing, invoices; what AI agents may
-    // use (each project closed to them until opened).
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : ["texts"]).concat(["files", "invoices", "ai"])
+    // reminders, the pauses; on Android, what sets it up (its system's); where
+    // there is no telephony (a computer, a tablet without a SIM), the texts it
+    // sends through the phone; your folder and sharing, invoices; what AI
+    // agents may use (each project closed to them until opened).
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(page.sioul.telephony === true ? [] : ["texts"]).concat(["files", "invoices", "ai"])
     // A tab's name: Android's own tab named by what the device is ("This phone",
     // "This tablet", else "This device"), never by its system.
     function tabName(section) {
@@ -108,8 +109,9 @@ Item {
     // One setting in view: where the Porch sends you for the hours. Once the
     // page is laid out, which takes a moment after it shows.
     function showSetting(key) {
+        // Calls are set up where they are screened (telephony); other apps' notifications on Android.
         const android = Qt.platform.os === "android"
-        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": android ? "phone" : "attention.calls", "apps": android ? "phone" : "attention.exceptions" }
+        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": page.sioul.telephony === true ? "phone" : "attention.calls", "apps": android ? "phone" : "attention.exceptions" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
             page.showReaches(key)

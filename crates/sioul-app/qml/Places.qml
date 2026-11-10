@@ -111,7 +111,7 @@ Item {
                     { page: 13, name: "ui-papers", iconName: "view-certificate" },
                     { page: 15, name: "ui-letters", iconName: "mail-read" },
                     { page: 10, name: "ui-health", iconName: "love" }
-                ].filter(place => place.page !== 14 || Qt.platform.os !== "android")
+                ].filter(place => place.page !== 14 || column.sioul.telephony !== true)
 
                 delegate: RailButton {
                     id: placeButton

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ This phone (« Ce téléphone »), on a phone: what sets this phone
-// up, nothing that decides when (that is What reaches you). Call screening
+// Settings ▸ This phone (« Ce téléphone »; This tablet on a tablet), on
+// Android: what sets this device up, nothing that decides when (that is
+// What reaches you). Above it, what this device is (`device_kind`). Call screening
 // (Sioul as Android's caller ID & spam app, the contacts, where a declined
-// call goes, texts; CallsSetup.qml); other apps' notifications (the access
+// call goes, texts; CallsSetup.qml, TextsSetup.qml: with telephony only); other apps' notifications (the access
 // in two steps, holding, the apps that rang before Sioul held them;
 // AppNotesSetup.qml); what they send to your computers
 // (PhoneMessagesSetup.qml); Do Not Disturb's access and its modes, who of your
@@ -52,7 +53,9 @@ ColumnLayout {
         onClicked: phone.sioul.reminderOpened("settings:attention", "", "")
     }
 
+    // Calls are screened where there is telephony (a phone, a tablet with a SIM).
     CallsSetup {
+        visible: phone.sioul.telephony === true
         Layout.fillWidth: true
         sioul: phone.sioul
         theme: phone.theme
