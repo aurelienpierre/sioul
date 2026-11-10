@@ -68,7 +68,7 @@ Qt is LGPL-3.0. Every licence above is compatible with Sioul's, GPL-3.0-or-later
 - **Linux first**: a Flatpak and an AppImage, made for each version by `.github/workflows/release.yml`.
 - **Windows**: an installer, Qt beside the program. Maildir puts `:` in file names, which Windows forbids: there Sioul writes `!` instead, as mbsync does, and reads both (`sioul_core::maildir::INFO`).
 - **macOS**: one `.dmg` for Apple silicon and Intel, signed ad hoc, not notarised.
-- **Android**, an experiment, packaged since version 0.0.2: an APK for 64-bit phones, Android 9 and later. Qt for Android, with the same window; sites open in the browser and PDFs in another app, since Qt WebEngine and Qt PDF do not exist there; Java for what Android starts without the window ([android-basics.md](android-basics.md), [android.md](android.md)).
+- **Android**, packaged with each version since 0.0.2 and used daily on a phone (README, "Where it stands"), some parts of Sioul still missing there: an APK for 64-bit phones, Android 9 and later. Qt for Android, with the same window; sites open in the browser and PDFs in another app, since Qt WebEngine and Qt PDF do not exist there; Java for what Android starts without the window ([android-basics.md](android-basics.md), [android.md](android.md)).
 - **Built on each push to `main`** that changes the code: `.github/workflows/build.yml` builds and tests on Linux, Windows and macOS (and checks the code's rustdoc on Linux), `.github/workflows/android.yml` builds the APK.
 
 ## Known hurdles

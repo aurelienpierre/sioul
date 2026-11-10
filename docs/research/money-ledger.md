@@ -159,7 +159,8 @@ The design asked for on 5 November 2026: **home** (overview and what is coming, 
 
 ## 6. The history of money mail
 
-### 6.1 What Sioul reads today, and the gap (code, 5 November 2026)
+### 6.1 What Sioul read, and the gap (code, 5 November 2026)
+The gap was closed the same day by phase 3 (8eb9736): every message kept on the device is read once by a shared reader into the money index, and From mail is the history of money mail, Sent included, closed Porch or not ([accounting.md](../accounting.md), "From mail"). As it was before:
 - The budgets page's "From mail" section is built from `Backend::gather`, the Porch's own items: the messages the Porch has not been closed on, and, for an account never closed, its first fourteen days (`porch::gather`, `DEFAULT_SYNC_DAYS = 14`). **Once the person closes the Porch on a message, it leaves the money section**; a mail about money from March is no longer listed in November, unless it was recorded as a line (its `mid:` kept in the line's links) or joined to a movement (its link kept in the store). So there is no history today: the request names a real gap.
 - Each listed message is detected again on each reading (`budget::mail_lines` → `payments::detect` over the subject and the first 2,500 characters, plus `payments::invoice_of`, which opens attached PDFs and XML).
 - The per-folder mail cache (`mailcache.rs`) reads every message once, ever, and keeps a line of its headers per message, with one settings-dependent column (a list's one-time code) under a stamp of the words it depends on. It keeps no money column.

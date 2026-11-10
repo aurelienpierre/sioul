@@ -432,7 +432,7 @@ Things 3 et OmniFocus, qui ne tournent que sur les appareils d’Apple (OmniFocu
 | Rien de compté contre vous : ni retard en rouge, ni points | ✓ | ✗¹⁴ | ✗¹⁵ | ? | ✗¹⁶ |
 | Une revue de fin de journée | ✓ | ✗ | en partie¹⁷ | ✗¹⁸ | ✗ |
 | Des rappels selon le lieu | ✗ | ✓¹⁹ | ✓²⁰ | ✗²¹ | ✓ |
-| Listes partagées, tâches confiées à d’autres | ✗²² | ✓ | ✓ | ✓ | en partie²³ |
+| Listes partagées, tâches confiées à d’autres | en partie²² | ✓ | ✓ | ✓ | en partie²³ |
 | Des tâches standard sur un serveur que vous choisissez (CalDAV) ; logiciel libre | ✓ | ✗ | ✗²⁴ | ✗²⁵ | ✓ |
 | Des tâches chiffrées de bout en bout quand elles se synchronisent | en partie²⁶ | ✗²⁷ | ✗²⁷ | ? | en partie²⁸ |
 | Des étapes dans une tâche | ✓²⁹ | ✓³⁰ | ✓³¹ | ✓³² | ✓³³ |
@@ -459,7 +459,7 @@ Things 3 et OmniFocus, qui ne tournent que sur les appareils d’Apple (OmniFocu
 19. Dans l’offre Pro, sur téléphone.
 20. Sur téléphone (son aide dit iOS et Android ; sa page de fonctions dit iOS seulement).
 21. Demandé sur le forum de Microsoft lui-même depuis 2019.
-22. Sioul n’a pas de partage ni de répartition des tâches à lui.
+22. Les tâches d’un enfant, chacune prise par vous ou par l’autre parent, à qui Sioul le demande ([Agenda, Les événements des enfants](agenda.md#childrens-events)) ; pas d’autre liste partagée, ni de répartition.
 23. Des listes partagées par son nuage, ou par un serveur Nextcloud, ownCloud ou sabre/dav ; pas de répartition.
 24. Il peut montrer des agendas CalDAV ; ses propres tâches ne sont pas offertes en CalDAV.
 25. Les tâches vivent dans Exchange Online.

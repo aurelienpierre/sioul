@@ -64,7 +64,7 @@ A contact opens on the right:
 - a small map with a pin at their address, once it is placed ([The map](#the-map));
 - folded under **More**: their postal addresses, organisation and role, birthday, notes, web sites, and the address book the card is in;
 - beside each postal address, **Directions**, which opens the way there as an event's place does ([Agenda](agenda.md#status-map-directions)): in your maps app when this system has one for `geo:` links, with the point the map placed it at when it has one, else on OpenStreetMap's page, or Apple's on a Mac;
-- what is **tied to it**: the tasks that name them, the events they are invited to, the notes that mention them, and what you tied to them by hand. A message shows there when you tied it to them; the [mail search](mail.md#searching) finds the rest of their mail.
+- what is **tied to it**: the tasks that name them, the events they are invited to, the notes that mention them, and what you tied to them by hand. A message shows there when you tied it to them, and so does each message they sent you that Sioul proved comes from them; the [mail search](mail.md#searching) finds the rest, what you sent them among it.
 
 **To change it**, **Edit**, then **Save**: it is changed in place. On a phone, **Back** leaves the form without saving. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.
 
@@ -111,7 +111,7 @@ The map button above the list shows everyone with a postal address on one map, a
 To be placed, an address has to be turned into a point on the map. Sioul does not do it by itself: the first time, it asks.
 
 !!! note "Placing your contacts"
-    **Place them** sends your contacts' postal addresses to OpenStreetMap's geocoder (Nominatim), once each, one a second. Nothing else goes with them. The places found are kept on this device, and each address is asked only once.
+    **Place them** sends your contacts' postal addresses to OpenStreetMap's geocoder (Nominatim), once each, one a second. An address it cannot read (a venue's name before its street) is asked once of the Base Adresse Nationale when your region is France, then of Photon, which tolerate words they don't know. Nothing else goes with them. The places found are kept on this device, and each address is asked only once.
 
 The map images come from OpenStreetMap, fetched sparingly and kept. You can give another source in the settings.
 
@@ -183,7 +183,7 @@ As of October 2026, from each app's own documentation.
     | Blocks someone on every channel at once | ✓¹⁸ | partly¹⁹ | ✓²⁰ | partly²¹ | partly²¹ | partly²² |
     | Lets chosen people through at chosen times | ✓²³ | partly²⁴ | ✓ | partly²⁵ | ✗ | partly²⁶ |
     | Lists the tasks, events and notes tied to the person | ✓ | partly²⁷ | ? | partly²⁸ | ✗²⁹ | ✗ |
-    | Lists the mail you exchanged with them | ✗³⁰ | partly²⁷ | ? | ✓ | partly²⁹ | ✗ |
+    | Lists the mail you exchanged with them | partly³⁰ | partly²⁷ | ? | ✓ | partly²⁹ | ✗ |
     | Gets a deleted contact back | partly³¹ | ✓ | partly⁹ | ✓ | ✗ | ✗ |
     | Imports and exports vCard files | ✗³² | ✓ | ✓ | partly³³ | ✓ | ✓ |
     | Puts your contacts' birthdays in your calendar | ✗³⁴ | ✓ | ✓ | ✓ | ✗ | ✓³⁵ |
@@ -218,7 +218,7 @@ As of October 2026, from each app's own documentation.
     27. For work and school accounts only: mail conversations and meetings with people of your organisation.
     28. The profile card in Outlook's phone app shows the events you share.
     29. A button searches the contact's mail, another makes an event with them; the card lists nothing.
-    30. Only a message you tied to them; the mail search finds the rest.
+    30. The messages they sent you that Sioul proved are theirs, and those you tied to them; what you sent them, through the mail search.
     31. **Undo** for ten seconds after **Delete**; no bin after that.
     32. No button yet; your cards are plain `.vcf` files that other programs read.
     33. Classic Outlook opens and saves single vCards; new Outlook and the web import and export CSV only.
@@ -333,7 +333,7 @@ As of October 2026, from each app's own documentation.
 - **Duplicates**: names are compared with case, accents, ligatures (ß, æ, œ) and punctuation folded and their words sorted; a name, number or e-mail address shared by two to four cards makes pairs, ranked by how many kinds of evidence they share. "Not the same" is kept by UID in `$XDG_STATE_HOME/sioul/contacts-not-the-same.toml`. A merge keeps the kept card's single-valued properties (`ORG`, `TITLE`, `BDAY`, `PHOTO`, `TZ`, `GEO`…) and adds the multi-valued ones it lacks (`ADR`, `URL`, `IMPP`, `RELATED`, `NICKNAME`, `KEY`, `CALURI`…); a vCard 4.0 line going into a 3.0 card is converted. Every change is first recorded, with the cards before and after, in `$XDG_STATE_HOME/sioul/contacts-undo`, for thirty days; a failed write rolls back the ones before it.
 - **Who someone is**: their own address or number on a list, then their card (`contact:<UID>`), then their categories, then the most precise pattern (`*@example.org`, `tel:+3319900*`), then neutral when they are in an address book or were let in, else a stranger; at the same precision, blocked before restricted, neutral and safe. The lists are plain text files; numbers are matched by their E.164 key.
 - **Proof before lists**: a message whose SPF and DKIM both fail, with no DMARC pass, is judged a stranger's whatever list its address is on, unless an ARC seal (RFC 8617) from your own provider or domain vouches for it once forwarded. A DMARC failure under a `quarantine` or `reject` policy is judged forged and set aside before that. Blocked is checked first and always holds. A name read in another app's notification can only lower someone's standing, never raise it, since anyone can pick any name in a chat.
-- **Geocoding** follows Nominatim's usage policy: a User-Agent that names Sioul, one request every 1.1 seconds, over HTTPS, the address alone (its lines joined); the answers, found or not, are kept in `$XDG_CACHE_HOME/sioul/places.toml`. The map is Qt Location's OpenStreetMap plugin, with Qt's online lookup of providers turned off; the full map loads tiles only once at least one address is placed. The tile server, as with any web map, sees which areas you look at.
+- **Geocoding** follows Nominatim's usage policy: a User-Agent that names Sioul, one request every 1.1 seconds, over HTTPS, the address alone (its lines joined); an address it finds nothing for is asked once of the Base Adresse Nationale (region France), then of Photon, their first answer kept (`sioul_sync::geocode::locate`); the answers, found or not, are kept in `$XDG_CACHE_HOME/sioul/places.toml`. The map is Qt Location's OpenStreetMap plugin, with Qt's online lookup of providers turned off; the full map loads tiles only once at least one address is placed. The tile server, as with any web map, sees which areas you look at.
 - **Showing a card**: a card comes from a server or from anyone's vCard, so it is shown without markup: notes as plain text, web sites as links only when they are `http` or `https`, their text escaped. An embedded photo is kept in the cache, named by its content.
 - **Storage**: one `.vcf` file per card in vdir folders (`~/.local/share/sioul/contacts`), which khard and vdirsyncer read too; the sync's state is kept apart. Sioul does not encrypt them on the disk: your disk encryption does. Sioul's data, state and cache folders are made, or narrowed, to mode 0700 at each start on Linux and macOS, so that other accounts on the computer cannot read them; on Android, they are in the app's private storage.
 - **Your people**: `persons.toml` in Sioul's data folder (`~/.local/share/sioul/`), beside the ties, never in the notes folder, a card or a contacts server ([the design note](../dev/persons.md)).

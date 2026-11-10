@@ -254,7 +254,7 @@ In `crates/sioul-core`, `crates/sioul-sync`, `crates/sioul-cli` and `crates/siou
 ## Next, in this slice
 1. **Trust, the rest**: Spamhaus DQS for the sending address; lookalike domains (the names are done).
 2. **The screener's memory, continued**: known senders learned from your Sent folders.
-3. **The background service on its own**: a user service that watches with the window closed, and a tray icon.
+3. **The background service on its own**: a user service that watches once Sioul has quit. The tray icon is built: on a desktop with a tray, closing the window hides it and Sioul goes on behind it, reminders, medicines, mail at its hours and the sharing (`qml-desktop/Tray.qml`); without a tray, closing the window quits.
 4. **Mail deleted or moved on the server, found faster** (CONDSTORE/QRESYNC). It leaves the Porch already: each fetch of the inbox that is not quiet asks the flags of every message kept here and takes out those gone (`mailbox::reconcile`); the two extensions would ask only what changed.
 5. **One card at a time**, the safe-opening card of the design; paper letters already come as cards (above).
 6. **Portals as accounts**: web-only mailboxes (Proton without Bridge among them) opening in sealed profiles inside Sioul; their notification emails become "a letter waits".

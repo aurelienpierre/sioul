@@ -432,7 +432,7 @@ Things 3 and OmniFocus, which run on Apple's devices only (OmniFocus also on the
 | Nothing counted against you: no red overdue, no points | ✓ | ✗¹⁴ | ✗¹⁵ | ? | ✗¹⁶ |
 | An end-of-day review | ✓ | ✗ | partly¹⁷ | ✗¹⁸ | ✗ |
 | Reminders at a place | ✗ | ✓¹⁹ | ✓²⁰ | ✗²¹ | ✓ |
-| Shared lists, tasks given to others | ✗²² | ✓ | ✓ | ✓ | partly²³ |
+| Shared lists, tasks given to others | partly²² | ✓ | ✓ | ✓ | partly²³ |
 | Standard tasks on a server you choose (CalDAV); free software | ✓ | ✗ | ✗²⁴ | ✗²⁵ | ✓ |
 | Tasks encrypted end to end when they sync | partly²⁶ | ✗²⁷ | ✗²⁷ | ? | partly²⁸ |
 | Steps inside a task | ✓²⁹ | ✓³⁰ | ✓³¹ | ✓³² | ✓³³ |
@@ -459,7 +459,7 @@ Things 3 and OmniFocus, which run on Apple's devices only (OmniFocus also on the
 19. On the Pro plan, on phones.
 20. On phones (its help says iOS and Android; its feature page says iOS only).
 21. Requested on Microsoft's own forum since 2019.
-22. Sioul has no sharing or assigning of its own.
+22. A child's tasks, each taken by you or by the other parent, whom Sioul asks ([Agenda, Children's events](agenda.md#childrens-events)); no other shared list, and no assigning.
 23. Shared lists through its cloud, or a Nextcloud, ownCloud or sabre/dav server; no assigning.
 24. It can show CalDAV calendars; its own tasks are not offered over CalDAV.
 25. Tasks live in Exchange Online.

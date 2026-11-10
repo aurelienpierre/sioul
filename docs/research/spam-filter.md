@@ -118,13 +118,13 @@ The research's recommendations of 7 October 2026, each with what Sioul does on 8
    - An adjudicated test set: **not built** (section 3).
    - A shadow mode until 3,000 checked ham show no loss: **decided otherwise**. Until the person chooses, the filter moves nothing: it flags spam and doubts on the Porch ("flag only"), and `sioul spam dry-run` says what "Move to spam" would move before it is chosen.
 7. **Retraining.**
-   - The linear model daily or as it goes, fastText monthly: **decided otherwise**. The whole model learns again by itself once a week at most, on the computer that made the table, on mains power and idle, and by hand at any time.
+   - The linear model daily or as it goes, fastText monthly: **decided otherwise**. The whole model learns again by itself once a week at most, on the computer that made the table, on mains power and idle, and by hand at any time. Since 7 November 2026 every device trains its own, a phone included, while it charges and is idle, and keeps its table to itself ([spam-filter.md](../spam-filter.md), "Every device trains its own").
    - The language model and the classifier versioned as a pair: **built**. The table carries the tokenizer's and the features' versions, and is replaced whole.
 8. **Privacy of what travels.**
    - Sealed with a key held on the devices: **built** (the sharing's seal).
    - A minCount of 5 or more: **built**. Only words seen from two or three senders or more: **not built**.
    - Placeholders for addresses, links, numbers, IBANs and phone numbers: **built** (Virtual Secretary's 36, with `_PHONE_` and `_IBAN_`).
-   - Only weights stored, never examples: **built**. The folded table holds 64-bit hashes of words with their scores, never a word, and the language model stays on the computer that made it.
+   - Only weights stored, never examples: **built**. The folded table holds 64-bit hashes of words with their scores, never a word, and the language model stays on the computer that made it (since 7 November 2026, the table too stays on the device that made it).
 9. **Robust reading.**
    - NFKC, lookalike letters folded, invisible characters out, visible text read from the HTML, French elisions split: **built** (`spam::tokenize`).
    - The share of hidden text as a feature: **not built**.
@@ -137,7 +137,7 @@ The research's recommendations of 7 October 2026, each with what Sioul does on 8
 - **The shape of the HTML** as features: hidden or off-screen text, forms, the share of links on the sender's own domain (Rspamd's metatokens; Gmail's gains on image-based mail and hidden content).
 - **A French evaluation**: the literature has none, and Sioul's own numbers come from one mailbox mixing French and English.
 - **A fallback for the `fasttext` crate**, which has one maintainer and no commit since April 2026 (Appendix A): the archived C++ fastText on computers, or a reader of Sioul's own. The table that devices read depends on no crate.
-- **Old tables on a phone synced by eDrive**: eDrive never deletes a file deleted elsewhere, so each sealed table, one or two megabytes a week, stays on the phone for good ([database.md](../database.md), "What the sync app must do").
+- **Old tables on a phone synced by eDrive**: eDrive never deletes a file deleted elsewhere, so each sealed table, one or two megabytes a week, stays on the phone for good ([database.md](../database.md), "What the sync app must do"). Since 7 November 2026 a table travels only while a device that does not train its own still counts ([spam-filter.md](../spam-filter.md), "Every device trains its own").
 
 ## 4. Gaps in the evidence
 - No time-ordered study, at low false-positive rates, of an unsupervised fastText centroid with an SVM for mail. Sioul measured it against fastText's own classifier on one real mailbox (section 2); a plain hashed n-gram model remains unmeasured.

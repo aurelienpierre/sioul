@@ -128,7 +128,7 @@ As of October 2026, from each app's own documentation.
     7. With Outlook, in OneNote for Windows: a meeting's details copied into a page, and words made an Outlook task, ticked off in either.
     8. Pictures and files; no audio recording.
     9. Files with the Professional plan only; no audio recording.
-    10. Sioul finds a note by its title, its folder and its tags.
+    10. Sioul's window finds a note by its title, its folder and its tags; an [AI agent](ai-agent.md) connected to Sioul can also look in their text.
     11. A vault shared through Obsidian Sync, paid by each member; no writing in one note at the same moment.
     12. A notebook shared through Joplin Cloud's paid plans.
     13. By sharing the Notes folder in Nextcloud's Files.

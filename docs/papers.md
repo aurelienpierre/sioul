@@ -46,7 +46,7 @@ A paper is yours, or for persons of your household, several at once (a joint tax
 ## How papers come in
 - **From a mail**: "Keep in papers" beside an attachment: the antivirus checks it (or, without one, you are asked, as for opening), it is copied into `papers/`, and the form opens with a name and a kind guessed from the file's name and the subject ("avis_impot_2026.pdf": a tax notice; "quittance": a rent receipt); you say the dates.
 - **From a file**: "Add a paper" (or New ▸ A paper), then its file: a scan, a photo.
-- Nothing is typed twice: the form asks only what cannot be guessed. Reading the dates on a scan comes with letters read by OCR (next).
+- Nothing is typed twice: the form asks only what cannot be guessed. Reading the dates on a paper's scan is not built: paper letters are read by OCR already ([porch.md](porch.md), "Paper letters"), a paper's scan is only kept.
 
 ## Going out
 - **In a mail**: "A paper" beside "Attach" in the writing window: the papers with a file; one older than what is usually asked, or ended, says so in the list.

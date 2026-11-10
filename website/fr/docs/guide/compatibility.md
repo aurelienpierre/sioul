@@ -26,7 +26,7 @@ Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque lig
 | [Les sites](#sites) | les sites web qui fonctionnent dans Chrome ou Chromium : messageries sécurisées, discussions, appels ; clés de sécurité | **Attendu** ; vu fonctionner avec Proton Mail. **Limites** : sur un téléphone, les sites s’ouvrent dans votre navigateur |
 | [Identifiants et clés](#logins-and-keys) | Bitwarden (son cloud, votre propre serveur, Vaultwarden) ; OpenPGP avec GnuPG et les autres logiciels de courriel | GnuPG **testé** dans les deux sens ; Bitwarden **testé** avec un vrai coffre, utilisé chaque jour (6 octobre 2026) |
 | [Antivirus et courrier scanné](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract et Poppler | **Testé** sur Linux ; Defender **attendu** |
-| [Agents d’IA](#ai-agents) | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme | **Testé** seul, pas encore dans ces clients |
+| [Agents d’IA](#ai-agents) | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme | **Testé** seul, et dans Claude Code (10 novembre 2026) ; pas encore dans Claude Desktop |
 | [GitHub](#github) | vos tickets et pull requests, lus avec un jeton | **Testé** face à une imitation de GitHub |
 | [Systèmes](#systems) | Linux (AppImage, Flatpak), Windows 10 et 11, macOS 13 et suivants ; Android 9 et suivants (un APK) | Linux utilisé chaque jour ; Windows et macOS construits et testés par GitHub, pas encore lancés par une personne ; Android utilisé chaque jour sur un téléphone |
 
@@ -185,7 +185,7 @@ Les sites tournent dans Qt WebEngine, le moteur de Chromium, dans un profil à e
 
 | Fonction | Ce qu’il faut | Testé avec | Attendu avec | Limites |
 |---|---|---|---|---|
-| Un agent sur cet ordinateur | un client MCP qui lance `sioul mcp` | le serveur seul, dans ses tests et à la main | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme ; des modèles locaux par un tel client | pas encore essayé dans Claude Code ni Claude Desktop |
+| Un agent sur cet ordinateur | un client MCP qui lance `sioul mcp` | le serveur seul, dans ses tests et à la main | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme ; des modèles locaux par un tel client | essayé dans Claude Code le 10 novembre 2026 (ses outils listés, l’un lu) ; pas encore dans Claude Desktop |
 | Un agent sur Internet | — | — | — | **non pris en charge** : ChatGPT n’atteint les serveurs que par Internet |
 | La lecture par l’IA d’une adresse protégée | votre clé Anthropic | une imitation du service d’Anthropic | Anthropic | seulement pour une adresse que vous protégez, quand vous le permettez ([Le Porche](porch.md#a-public-address-protected)) |
 
@@ -204,8 +204,8 @@ Comment en connecter un, et ce qu’il peut voir : [Avec un agent d’IA](ai-a
 | Paquet | AppImage, Flatpak, ou depuis les sources | un installateur, Windows 10 et 11 (64 bits) | une image disque, macOS 13 et suivants | un APK de la page des versions, installé à la main (Android 9 et suivants, 64 bits) |
 | À quel point c’est sûr | utilisé chaque jour, sur Fedora | construit et testé par GitHub à chaque changement, pas encore lancé par une personne | de même | utilisé chaque jour sur un téléphone (Android 12) |
 | Les mots de passe sont gardés dans | votre trousseau (GNOME Keyring, KWallet) | le Gestionnaire d’identification | le Trousseau d’accès | le KeyStore d’Android |
-| Les rappels, fenêtre fermée | oui | pas encore | oui | les prises et le réveil |
-| Les notifications | oui, avec des boutons ; le temps qui court | oui | oui | les prises, le temps qui court, le réveil |
+| Les rappels, fenêtre fermée | oui | tant que Sioul tourne dans la zone de notification ; aucun une fois quitté | oui | les prises et le réveil |
+| Les notifications | oui, avec des boutons ; le temps qui court | oui | oui | les prises, le temps qui court, le réveil, les rappels des événements, les nouveaux courriels, la fin de la journée |
 | Les pièces jointes vérifiées | ClamAV, s’il est installé (pas dans le Flatpak) | Microsoft Defender | ClamAV, de Homebrew | non |
 | Le courrier scanné, lu | Tesseract et Poppler, s’ils sont installés | de même | de même, de Homebrew | non |
 | Les sites | dans Sioul | dans Sioul | dans Sioul | dans votre navigateur |

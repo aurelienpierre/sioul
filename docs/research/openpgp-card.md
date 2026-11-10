@@ -59,7 +59,7 @@ The card specification: Achim Pietig, *Functional Specification of the OpenPGP a
 - **Shared, one operation at a time, reset after**: Sioul connects each reader itself in shared mode, since `card-backend-pcsc` skips, without saying so, a reader it cannot connect to: a key that GnuPG holds would read as no key at all. A sharing violation counts as a key held by another program. One transaction serves one operation; the connection is then dropped, which resets the card: **built**.
 - **What a card says without its PIN**: its identifier, holder and URL; the fingerprints, dates, algorithms, touch policies and public parts of its two keys; its three retry counters; whether it asks for the PIN at each signature; its signature counter: **built**. `sioul pgp cards` prints it, for diagnosis (`crates/sioul-cli/src/pgp.rs`).
 - **Signing at Send, opening on a click**: a message the card signs is built and signed in the writing window when Send is pressed (its PIN, maybe a touch), before the ten seconds of "Undo", which throws the signed copy away; a message encrypted to the card opens only on **Open with your security key**: **built** (`crates/sioul-sync/src/send.rs`, `build_draft` and `send_built`; `crates/sioul-app/src/mail.rs`, `Work::SendSigned`; [client.md](../client.md)).
-- **Not yet tried with a real key**: everything above the transport is tested against `SoftCard`, a software key behind the same traits; the transport itself has a unit test of its status words, and a test that reads a real key without its PIN is ignored in every run, to be run by hand with a key plugged in ([client.md](../client.md), "As built").
+- **Not yet tried with a real key** when this was written (7 October 2026; a YubiKey 5 was tried on Linux the next day, [client.md](../client.md)): everything above the transport is tested against `SoftCard`, a software key behind the same traits; the transport itself has a unit test of its status words, and a test that reads a real key without its PIN is ignored in every run, to be run by hand with a key plugged in ([client.md](../client.md), "As built").
 
 ## 2. Through GnuPG, or Sequoia's key store
 
@@ -152,7 +152,7 @@ The third way: no app to install, one implementation of the OpenPGP card protoco
 - **The build**: `card-backend-pcsc` (and so `pcsc-sys`, which looks for `libpcsclite` with pkg-config on every system but Windows and macOS) only for computer targets, `[target.'cfg(not(target_os = "android"))'.dependencies]`. `jni` 0.21 and 0.22 are already in Sioul's lock file.
 
 ### What Sioul does
-**Not built** on 8 October 2026: on a phone, Sioul finds no security key (`securitykey::readers()` gives `NoReaders` on Android, `crates/sioul-sync/src/securitykey.rs`); the PC/SC crates are left out of the Android build (`crates/sioul-sync/Cargo.toml`); and the manifest asks for no NFC or USB permission (`android/package/AndroidManifest.xml`). **Next**, once a real key has been tried on a computer: NFC, then USB-C, by the third way ([client.md](../client.md), "As built").
+**Not built** on 8 October 2026: on a phone, Sioul finds no security key (`securitykey::readers()` gives `NoReaders` on Android, `crates/sioul-sync/src/securitykey.rs`); the PC/SC crates are left out of the Android build (`crates/sioul-sync/Cargo.toml`); and the manifest asks for no NFC or USB permission (`android/package/AndroidManifest.xml`). **Next**, once a real key has been tried on a computer: NFC, then USB-C, by the third way ([client.md](../client.md), "As built"). **Built since**: a real key tried on Linux on 8 October 2026; on a phone, NFC and USB-C by that third way, Sioul's own transport over Android's `IsoDep` and USB host API, on 23 October 2026 (`sioul_sync::securitykey::phone`; [client.md](../client.md), "Your keys on a security key").
 
 ## 5. Packaging, permissions, tests
 
@@ -214,9 +214,9 @@ The private key never comes out of the card, not even for a moment: the program 
 ### What Sioul does
 | | Linux | Windows | macOS | Android |
 |---|---|---|---|---|
-| The card through the system's smart card service | **built**: native, Flatpak, AppImage | **built** | **built** | **not built**; NFC, then USB-C, next |
-| Signing at Send, opening on a click, the PIN and touch | **built** | **built** | **built** | **not built** |
+| The card through the system's smart card service | **built**: native, Flatpak, AppImage | **built** | **built** | none on Android: Sioul's own transport, NFC and USB-C, **built** (23 October 2026) |
+| Signing at Send, opening on a click, the PIN and touch | **built** | **built** | **built** | **built**, the PIN typed for each use, never kept |
 | "Let GnuPG release it" | **built**; in the Flatpak, GnuPG said to be out of reach | **built** (Gpg4win) | **built** (Homebrew, GPG Suite) | — |
-| Tried with a real key | not yet | not yet | not yet | not yet |
+| Tried with a real key | **yes**: a YubiKey 5, native build, 8 October 2026 | not yet | not yet | not yet: a stand-in card in the tests (`securitykey::phone_tests`) |
 
-"Not yet" follows [client.md](../client.md) ("As built"), which records the tests run: a software key on 7 October 2026, the window's states on a demo profile, and no real key.
+As of 10 November 2026, from [client.md](../client.md) ("Your keys on a security key"), which records the tests run: a software key on 7 October 2026, the window's states on a demo profile, a YubiKey 5 on Linux on 8 October 2026, and the phone's transport against a stand-in card.

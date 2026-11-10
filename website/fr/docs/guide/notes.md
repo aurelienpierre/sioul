@@ -128,7 +128,7 @@ En octobre 2026, d’après la documentation de chaque application.
     7. Avec Outlook, dans OneNote pour Windows : les détails d’une réunion copiés dans une page, et des mots transformés en tâche Outlook, cochée dans l’un ou l’autre.
     8. Images et fichiers ; pas d’enregistrement de son.
     9. Des fichiers avec la formule Professional seulement ; pas d’enregistrement de son.
-    10. Sioul trouve une note par son titre, son dossier et ses étiquettes.
+    10. La fenêtre de Sioul trouve une note par son titre, son dossier et ses étiquettes ; un [agent d’IA](ai-agent.md) relié à Sioul peut aussi chercher dans leur texte.
     11. Un coffre partagé par Obsidian Sync, payé par chaque membre ; pas d’écriture à plusieurs dans une note au même moment.
     12. Un carnet partagé par les formules payantes de Joplin Cloud.
     13. En partageant le dossier Notes dans les Fichiers de Nextcloud.

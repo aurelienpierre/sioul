@@ -26,7 +26,7 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: on a phone, sites open in your browser |
 | [Logins and keys](#logins-and-keys) | Bitwarden (its cloud, your own server, Vaultwarden); OpenPGP with GnuPG and other mail programs | GnuPG **tested** both ways; Bitwarden **tested** with a real vault, in daily use (6 October 2026) |
 | [Antivirus and scanned letters](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract and Poppler | **Tested** on Linux; Defender **expected** |
-| [AI agents](#ai-agents) | Claude Code, Claude Desktop, other MCP clients that start a program | **Tested** on its own, not yet inside those clients |
+| [AI agents](#ai-agents) | Claude Code, Claude Desktop, other MCP clients that start a program | **Tested** on its own, and inside Claude Code (10 November 2026); not yet inside Claude Desktop |
 | [GitHub](#github) | your issues and pull requests, read with a token | **Tested** against a stand-in of GitHub |
 | [Systems](#systems) | Linux (AppImage, Flatpak), Windows 10 and 11, macOS 13 and later; Android 9 and later (an APK) | Linux in daily use; Windows and macOS built and tested by GitHub, not yet run by a person; Android in daily use on one phone |
 
@@ -185,7 +185,7 @@ Sites run in Qt WebEngine, the engine of Chromium, in a profile of their own, ap
 
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
-| An agent on this computer | an MCP client that starts `sioul mcp` | the server on its own, in its tests and by hand | Claude Code, Claude Desktop, other MCP clients that start a program; local models through such a client | not yet tried inside Claude Code or Claude Desktop |
+| An agent on this computer | an MCP client that starts `sioul mcp` | the server on its own, in its tests and by hand | Claude Code, Claude Desktop, other MCP clients that start a program; local models through such a client | tried inside Claude Code on 10 November 2026 (its tools listed, one read); not yet inside Claude Desktop |
 | An agent on the Internet | — | — | — | **not supported**: ChatGPT reaches servers over the Internet only |
 | The AI reading of a protected address | your Anthropic key | a stand-in of Anthropic's service | Anthropic | only for an address you protect, when you allow it ([the Porch](porch.md#a-public-address-protected)) |
 
@@ -204,8 +204,8 @@ How to connect one, and what it may see: [Using an AI agent](ai-agent.md).
 | Package | AppImage, Flatpak, or from the sources | an installer, Windows 10 and 11 (64-bit) | a disk image, macOS 13 and later | an APK from the releases page, installed by hand (Android 9 and later, 64-bit) |
 | How sure | in daily use, on Fedora | built and tested by GitHub at each change, not yet run by a person | the same | in daily use on one phone (Android 12) |
 | Passwords kept in | your keyring (GNOME Keyring, KWallet) | the Credential Manager | the Keychain | Android's KeyStore |
-| Reminders with the window closed | yes | not yet | yes | doses and the wake-up alarm |
-| Notifications | yes, with buttons; the time running | yes | yes | doses, the time running, the alarm |
+| Reminders with the window closed | yes | while Sioul runs in the tray; none once it has quit | yes | doses and the wake-up alarm |
+| Notifications | yes, with buttons; the time running | yes | yes | doses, the time running, the alarm, events' reminders, new mail, the end of the day |
 | Attachments checked | ClamAV, when installed (not in the Flatpak) | Microsoft Defender | ClamAV, from Homebrew | no |
 | Scanned letters read | Tesseract and Poppler, when installed | the same | the same, from Homebrew | no |
 | Sites | inside Sioul | inside Sioul | inside Sioul | in your browser |

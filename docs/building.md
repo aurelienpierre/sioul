@@ -39,7 +39,7 @@ A build without them asks each person for a Google key, or a Microsoft applicati
 ## Windows and macOS
 - **Windows**: Rust (rustup, MSVC), Qt 6.9 or newer from Qt's online installer (MSVC 2022 64-bit, with the modules above), with Qt's `bin` folder in `PATH`; then the same `cargo build --release -p sioul-app`. `windeployqt --release --qmldir crates\sioul-app\qml target\release\sioul-app.exe` gathers Qt beside the program, Qt's SVG plugins among it (`iconengines\qsvgicon.dll`, `imageformats\qsvg.dll`: Sioul's icons are SVG, and the packages' builds check that they are there), and `packaging\windows\sioul.iss` makes an installer with Inno Setup. Attachments are checked by Microsoft Defender through AMSI.
 - **macOS**: see [packaging/macos/README.md](../packaging/macos/README.md).
-- **Android**, an experiment: see [android.md](android.md).
+- **Android**, shipped with each version since 0.0.2: see [android.md](android.md) and the README's steps.
 - **Checking both from Linux** is done by the workflow `.github/workflows/build.yml`: on each push to `main` that touches code it builds and tests Sioul on Linux, Windows and macOS with Qt 6.11 ([below](#the-tests-on-github)), and on Linux reads the code's comments with rustdoc, private items included, its warnings as errors (as the website's API reference does); started by hand (Actions, "Build on three systems", "Run workflow"), it also makes a Windows folder with Qt beside the program and a macOS `.dmg`.
 
 ## The tests on GitHub

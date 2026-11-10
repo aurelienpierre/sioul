@@ -241,7 +241,7 @@ Code: `crates/sioul-sync/src/antivirus.rs`, `ocr.rs`.
 ## AI agents
 Code: `crates/sioul-cli/src/mcp.rs`, `mcp/`; details: [mcp.md](mcp.md).
 - MCP 2025-06-18, and 2025-03-26 and 2024-11-05 for older clients; JSON-RPC 2.0 over standard input and output, one message a line. **Not supported**: Streamable HTTP and MCP's OAuth, so no client that reaches servers over the Internet (ChatGPT).
-- **Tested**: `cargo test -p sioul-cli mcp`, and by hand on standard input. Not inside Claude Code or Claude Desktop yet.
+- **Tested**: `cargo test -p sioul-cli mcp`, and by hand on standard input; inside Claude Code on 10 November 2026 (its tools listed, `now` answered, read-only). Not inside Claude Desktop yet.
 - Anthropic's Messages API (`anthropic-version: 2023-06-01`), for an address protected against harassment, with the person's key: tested against a stand-in (`shield_ai` tests).
 
 ## Other web services
@@ -259,7 +259,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Packages | AppImage (x86-64), Flatpak (KDE runtime 6.10), sources (Qt 6.9 or newer) | installer (Inno Setup), Windows 10 and 11, 64-bit | one disk image, Apple silicon and Intel, macOS 13 and later; signed ad hoc, not notarised | an APK, 64-bit ARM, Android 9 and later; by hand, in no store |
 | Tested | developed and used on Fedora (Qt 6.11.2); the CI's tests on Ubuntu 24.04, the sharing's simulations with every seed | built, and the core, sync and command line tested, on GitHub's Windows Server 2022 at each change, the sharing's simulations with fewer seeds ([building.md](building.md#the-tests-on-github)); every icon the window names read from the bundled themes alone; not run by a person | the same on GitHub's macOS 15; not run by a person | a 2019 phone, /e/OS 4.0, Android 12 ([android.md](android.md)) |
 | Keyring | Secret Service (GNOME Keyring, KWallet) | Credential Manager | Keychain | KeyStore (`android-keyring`) |
-| Reminders with the window closed | `sioul remind --watch`, started with the session (XDG autostart) | not yet | a launch agent | doses and the wake alarm, by Android's alarms |
+| Reminders with the window closed | `sioul remind --watch`, started with the session (XDG autostart); and Sioul itself, in the tray, while its window is closed | while Sioul runs in the tray (closing the window hides it there); none once it has quit | a launch agent; and Sioul itself, in the menu bar | doses and the wake alarm, by Android's alarms |
 | Notifications | the desktop's, with buttons; the time running | Windows' toasts, without buttons, shown as Windows PowerShell's (Sioul registers no AppUserModelID yet); the end of work's and the night's as messages of Sioul's icon in the tray, a click opening their sheet | macOS', given as Sioul's by its bundle id (`notify::BUNDLE_ID`); the end of work's and the night's with their buttons | doses, the time running, the wake alarm, events, new mail, the end of work's and the night's with their buttons |
 | Closing the day ([reviews.md](reviews.md)) | the places' two buttons, the tray's menu, the notices' buttons | the places' two buttons, the tray's menu, a click on its notice | the places' two buttons, the menu bar's menu, the notices' buttons | the places' drawer, the notices' buttons |
 | Light or dark | the desktop's colour scheme (KDE's; GNOME's through its portal), else its colours | the system's colour scheme, followed as it changes, Windows 10's dark mode included; with high contrast, its colours' lightness | the system's appearance | the phone's night mode |
@@ -285,7 +285,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Sharing | a simulator of five sync behaviours; eDrive 1.9.2 on a phone | [database.md](database.md), "Tested"; [android.md](android.md) |
 | Notes | files as Obsidian and Nextcloud Notes write them | `notes` tests |
 | Antivirus, scans | Linux without ClamAV; Tesseract on a drawn letter | [client.md](client.md), "Antivirus"; `ocr::a_letter_as_an_image` |
-| MCP | the server on its own | [mcp.md](mcp.md), "Tested" |
+| MCP | the server on its own; inside Claude Code on 10 November 2026 (its tools listed, `now` read) | [mcp.md](mcp.md), "Tested" |
 | Android | one phone | [android.md](android.md) |
 
 ## Not checked yet, worth testing
@@ -300,6 +300,6 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 - Bitwarden on a self-hosted server or Vaultwarden.
 - Windows and macOS run by a person: the keyring, notifications (on Windows the tray's messages and a click on them, on macOS the closing notices' buttons), the window turning dark with the system, AMSI, ClamAV from Homebrew, security keys.
 - The Flatpak: whether scanned letters can be read there at all.
-- Claude Code and Claude Desktop with `sioul mcp`.
+- Claude Desktop with `sioul mcp`; Claude Code beyond a first read-only call (10 November 2026).
 - Proton Mail Bridge, once its certificate is trusted by the system.
 - Sync apps on a computer other than through the simulator: Nextcloud's client, Syncthing, Dropbox, Google Drive, OneDrive.

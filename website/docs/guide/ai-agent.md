@@ -1,12 +1,12 @@
 ---
-description: Letting an AI agent such as Claude Code or Claude Desktop read what Sioul keeps and prepare tasks, events, notes and drafts, through MCP, and change your events and tasks when you ask; it never sends, pays or reads a password.
+description: Letting an AI agent such as Claude Code or Claude Desktop read what Sioul keeps and prepare tasks, events, notes and drafts, through MCP, and change your events, tasks and money records when you ask; it never sends, pays or reads a password.
 ---
 
 # Using an AI agent
 
 ## In short {#in-short}
 
-An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on this device and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review, and you send. It never sends, never moves money and never reads a password, and deletes nothing but an event or a task you asked it to, which the window lets you undo; and one-time codes and account numbers are hidden from it. Sioul connects none by itself: this page is for when you want to.
+An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on this device and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review, and you send. It never sends, never moves money and never reads a password, and deletes nothing but an event, a task or a money record of your own you asked it to, which the window lets you undo; and one-time codes and account numbers are hidden from it. Sioul connects none by itself: this page is for when you want to.
 
 ## Before you connect one {#before-you-connect-one}
 
@@ -44,7 +44,7 @@ Sioul serves agents through the Model Context Protocol (MCP), with the command `
 
     Claude Desktop needs the full path of `sioul`: `command -v sioul`, in a terminal, prints it. For French: `"args": ["--language", "fr", "mcp"]`.
 
-`sioul mcp` has been tested on its own; it has not yet been tried inside Claude Code or Claude Desktop themselves. If something does not work, a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
+`sioul mcp` has been tested on its own, and runs inside Claude Code: on 10 November 2026 a session there listed its tools and a read-only one answered. It has not yet been tried inside Claude Desktop. If something does not work, a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
 
 ## Choosing what an agent sees {#choosing-what-an-agent-sees}
 
@@ -83,6 +83,8 @@ On this device only:
 - **a reply**, or **a new message**: saved in Drafts, never sent. You read it, and send it from the window, or delete it;
 - **a tie** between two things;
 - **a change to an event or a task**, when you ask for it: its time, title, place, calendar or list, reminder, the time kept before and after it, its status; deleting it; or making a task an appointment, or an appointment a task, as the agenda does. Each change is said in the window's status line, with **Undo**. A meeting with others (an event with guests) is never moved nor deleted, and only what is yours of it changes: the time kept before and after it, your reminder.
+- **a task's steps and its list to tick**, when you ask for it: steps added in their order or moved, an item ticked or the list written, an item made a step or a task of its own, a task tied to the appointment it prepares (one time of a repeating one too), each said in the window with **Undo**;
+- **a money movement** of your own, when you ask for it: written, changed or removed as the window's Budgets does, or said to be one payment with another; a record, never a payment, said in the window with **Undo** ([Budgets](budgets.md)).
 
 ## Your spam filter's tools {#the-spam-filters-tools}
 
@@ -90,11 +92,11 @@ An agent can also look after your own spam filter, as you would from the termina
 
 ## What does not move {#what-does-not-move}
 
-- **Nothing is sent or paid, and no mail is deleted.** No tool sends mail, deletes or moves a message, or moves money; an event or a task is deleted only when you ask, and the window lets you undo it. The spam filter's tools are the only ones that reach your mail servers, and only to read ([above](#the-spam-filters-tools)).
+- **Nothing is sent or paid, and no mail is deleted.** No tool sends mail, deletes or moves a message, or moves money; an event, a task or a money movement of your own is deleted only when you ask, and the window lets you undo it. The spam filter's tools are the only ones that reach your mail servers, and only to read ([above](#the-spam-filters-tools)).
 - **Nothing secret.** No password, key or token is read. One-time codes are hidden wherever they are written, and so are sign-in, reset and confirmation links; a message that gives a password is withheld whole. Bank account numbers (IBAN), card numbers and French social security numbers are masked in mail, notes and budgets: an IBAN or a card number keeps its last four characters, to tell two accounts apart; a social security number is hidden whole. Your medicines and doses, your meals, naps and nights, and the pharmacy and renewal errands Health makes for you are not given to an agent, whatever their projects; what now is for says a meal or a nap by its kind and when it ends, never by its name.
 - **Mail is data.** A message's text comes marked as its sender's words, not as instructions, and the agent is told so when it connects. Forged mail is said forged. Hostile mail to a protected address, and encrypted mail, are not given.
 - **What you keep closed stays closed.** A project you have not opened, and things in no project once you close them, are in no answer; asked for by name, they are refused.
-- **Writing only adds.** A note never replaces another; a tie is made once.
+- **Writing adds, or changes what you asked.** Beyond the changes you ask for (above), a note never replaces another; a tie is made once.
 - **Your hours hold.** The agent is asked to respect them, unless you ask otherwise.
 - **A log.** Each call is written down on this device, in a file only you can read, one a month in Sioul's own folders: which agent asked, what for, and the addresses of what it was given and how long it was, never its words. The log stays here; the agent's model received the text itself.
 

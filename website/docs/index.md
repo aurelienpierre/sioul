@@ -46,7 +46,7 @@ Calls follow the same rules. On an Android phone, Sioul screens them: a call fro
 
 ### A filter that learns what can wait
 
-Most spam filters keep an inbox tidy. Sioul's protects your attention: it decides what can wait. It learns from your own mail, on your computer: from your junk folders, and from every message you mark as spam or not spam, on any of your devices. Sioul sends your mail to no filtering service.
+Most spam filters keep an inbox tidy. Sioul's protects your attention: it decides what can wait. It learns from your own mail, on each of your devices, your phone too: from your junk folders, and from every message you mark as spam or not spam, on any of them. Sioul sends your mail to no filtering service.
 
 It judges strangers' mail only, never that of someone you know, a code you asked for or a project's mail. It does not pretend to be sure either: what looks like spam, or might be, waits in a folded queue on the Porch, without a count or a notification, until you have time to look. You choose what it does with each verdict; until you do, it moves nothing. [Spam, and your own filter](guide/porch.md#spam-and-your-own-filter)
 
@@ -118,7 +118,7 @@ Freelancers, consultants, the self-employed: the work you sell and the admin it 
 No time tracker, timesheet or invoicing service beside it, and no subscription: your clients and your invoices stay in your own files. [Working for clients](guide/clients.md)
 
 <figure markdown="span">
-  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Calendar, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](assets/screens/projects.png){ loading=lazy }](assets/screens/projects.png "Open the picture at full size")
+  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Gantt, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](assets/screens/projects.png){ loading=lazy }](assets/screens/projects.png "Open the picture at full size")
   <figcaption>A client's project: its tasks, its time, its mail and its invoices, on one line of time.</figcaption>
 </figure>
 
@@ -197,8 +197,8 @@ People with a disability or a long-term health condition work for themselves mor
 </figure>
 
 <figure markdown="span">
-  [![The Budgets page: three budgets (work, household duties, leisure), each a card with "On track" on its own line, how much of the month is gone, then one figure per line.](assets/screens/budgets.png){ loading=lazy }](assets/screens/budgets.png "Open the picture at full size")
-  <figcaption>Budgets: on track or not, said in words.</figcaption>
+  [![The Budgets page on its Overview: each account in sentences until its next income (whether it holds every payment, what is left for everyday spending, about how much a day, the lowest point), the balance ahead as a step line, then each budget in words: what is paid, what is left until the end of its period, and whether it should end as planned.](assets/screens/budgets.png){ loading=lazy }](assets/screens/budgets.png "Open the picture at full size")
+  <figcaption>Budgets: each account until its next income, said in words.</figcaption>
 </figure>
 
 <figure markdown="span">
@@ -249,7 +249,7 @@ It is made by one person, in the open: no support is promised. Questions and rep
 
 - **Security by default, with nothing to set up**: no server of ours, no telemetry, no update check; encrypted connections only (TLS through rustls, with no clear-text option); Sioul's folders closed to the computer's other accounts ([Privacy and security](guide/privacy-security.md)). Nothing goes to an outside AI service unless you turn it on: the AI shield of one public address, or an agent you connect yourself ([AI agents](guide/ai-agent.md)).
 - **Every message checked on arrival**: SPF, DKIM, DMARC, ARC and reverse DNS, by Sioul itself. Forged mail is set aside with the reason, and a sender that nothing authenticates counts as a stranger, whatever address it shows. Names borrowed from brands and public services are caught, even when written with look-alike letters ([How a sender is checked](guide/mail.md#how-a-sender-is-checked)).
-- **A spam filter of your own**: a fastText classifier trained on your computer from your own mail (the headers and the start of each text, never attachments), first when you ask, then again by itself once a week while that computer is plugged in and idle; only its compact table travels to your phone, sealed ([Your own spam filter](guide/settings.md#your-own-spam-filter)).
+- **A spam filter of your own**: a fastText classifier trained from your own mail on each of your devices, a phone included (the headers and the start of each text, never attachments), first when you ask, then again by itself once a week while that device charges and is idle; its compact table stays on the device that made it, and travels, sealed, only to a device of yours that does not learn ([Your own spam filter](guide/settings.md#your-own-spam-filter)).
 - **Attachments scanned before they open**, by your system's antivirus: ClamAV on Linux and macOS, Microsoft Defender (through AMSI) on Windows. Programs never open from a mail, and on Windows and macOS the files you open or save carry the system's mark that they came from the Internet.
 - **HTML mail made safe**: nothing remote loads, ever, and nothing runs; links show their address before they open.
 - **Hard authentication**, so that letters can come back to mail, sealed, and logins stop living in your memory:
@@ -258,7 +258,7 @@ It is made by one person, in the open: no support is promised. Questions and rep
     - Bitwarden, read by Sioul's own client and never written; on a computer, unlocked with a security key as the second step, or alone as a passkey.
 - **OpenPGP**: Sequoia, signing and encrypting as you send, with Autocrypt (keys taken from verified mail only) and the Web Key Directory.
 - **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id and kept in each device's keyring). Notes and papers travel file by file; earlier versions are kept on each device. No server of ours. [How it works, and what it protects](guide/sharing.md).
-- **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this device, through the Model Context Protocol. It never sends or pays, and deletes nothing but an event or a task you asked it to, with Undo in the window; one-time codes and bank, card and social security numbers are masked, your health and each person you did not open kept from it; each call is logged by the addresses of what was given, never its words ([Using an AI agent](guide/ai-agent.md)).
+- **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this device, through the Model Context Protocol. It never sends or pays, and deletes nothing but an event, a task or a money record of your own that you asked it to, with Undo in the window; one-time codes and bank, card and social security numbers are masked, your health and each person you did not open kept from it; each call is logged by the addresses of what was given, never its words ([Using an AI agent](guide/ai-agent.md)).
 - **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, fully compatible with Obsidian vaults (wikilinks, embeds, tags, front matter, aliases) and with Nextcloud Notes (`.txt` or `.md`, categories as folders). What works with what, feature by feature, and how far each was tested: [Works with](guide/compatibility.md).
 - **Free software**, under the GPL-3.0-or-later licence, written in Rust, with a Qt 6 window.
 

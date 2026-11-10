@@ -1,6 +1,6 @@
 # AI providers and agents
 
-Sioul works with AI in two ways today: the agents you connect yourself, through `sioul mcp` and the command line (below), and one reading of its own, the shield's, which asks Anthropic's API, with your key, for the tone of the mail that reaches a shielded address ([porch.md](porch.md)). The companion this page describes next, with remote models (Claude, from Anthropic, and ChatGPT, from OpenAI) through your own keys kept in the system keyring, is not built yet; local models may come later, heavier and less accurate today. Whatever the AI does, **it never sends and never deletes.**
+Sioul works with AI in two ways today: the agents you connect yourself, through `sioul mcp` and the command line (below), and one reading of its own, the shield's, which asks Anthropic's API, with your key, for the tone of the mail that reaches a shielded address ([porch.md](porch.md)). The companion this page describes next, with remote models (Claude, from Anthropic, and ChatGPT, from OpenAI) through your own keys kept in the system keyring, is not built yet; local models may come later, heavier and less accurate today. Whatever the AI does, **it never sends, never deletes mail and never moves money**: an agent changes or deletes an event, a task or a record of money only when you ask it to, each change said in the window with Undo ([mcp.md](mcp.md)).
 
 ## What the companion is to do (not built)
 - **"Open with the companion"**: explains a letter in plain language (what it is, what it asks, by when, what happens if nothing is done), line by line if needed.
@@ -15,16 +15,17 @@ Sioul works with AI in two ways today: the agents you connect yourself, through 
   - search;
   - propose a triage;
   - create tasks and links;
+  - change, move and delete events and tasks, and record, change or remove money movements, when you ask it to (never a meeting with others, never a payment), each said in the window with Undo;
   - write drafts.
 - **The drafts an agent writes are ordinary `.md` files** ([design.md](design.md), "Notes and drafts"). Strategy notes written with an agent become emails without copying and pasting.
 
 ## Limits that do not move
-- **No sending, no deleting**, by any agent or model. Sending is your keypress.
+- **No sending, no deleting mail, no moving money**, by any agent or model. Sending is your keypress. What an agent changes or deletes at your request (an event, a task, a record of money) is said in the window with Undo, and a meeting with others is never written by it.
 - **Per-project consent**: you open a project to AI; the others stay closed. Built for the agents connected with `sioul mcp` (below); the companion will keep to it too.
 - **Least data**: a request carries the message and the project's summary, not the notes folder.
 - **Masking**: IBANs, card numbers, one-time codes and identifiers are masked unless you allow them for that request.
 - **A log** shows each request: for `sioul mcp`, what was asked and the addresses of what was handed over, never their words (`$XDG_STATE_HOME/sioul/mcp/`, yours alone); what the agent's provider then does with it is between you and that provider.
-- **Everything an AI proposed is marked as such**, until you accept it: planned with the companion. What an agent adds through `sioul mcp` (tasks, events, notes, ties, drafts) carries no such mark yet; its drafts wait in Drafts, and nothing is sent.
+- **Everything an AI proposed is marked as such**, until you accept it: planned with the companion. What an agent adds through `sioul mcp` carries no such mark in its file yet (tasks, events, notes, ties), but each change of an event or a task is said in the window with Undo; a money movement it writes says "Written by an AI agent" with its day, and a text it drafts waits under "Drafted by an AI agent, not sent"; its mail drafts wait in Drafts, and nothing is sent.
 
 ## Configuration, planned
 Not read yet: the companion's settings would look like this. Today the only key Sioul uses is the shield's, for Anthropic's API, typed in the settings and kept in the keyring.
