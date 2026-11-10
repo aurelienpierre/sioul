@@ -144,8 +144,21 @@ const _: () = assert!(
         && AGED_TOMBSTONE_DAYS > sioul_core::phonemsgs::KEPT_DAYS + sioul_core::phonemsgs::LATE_DAYS
         && AGED_TOMBSTONE_DAYS > sioul_core::texts::KEPT_DAYS + sioul_core::texts::LATE_DAYS
 );
-/// A computer silent this long no longer holds back the removal of old rounds.
+/// A device silent this long by sealed facts no longer counts (`counted`,
+/// `present`): the two-week keeping of replaced contents, format 2 and the
+/// rest stop waiting for it.
 const SILENT_DAYS: i64 = 180;
+/// A device silent this long by sealed facts, though it still counts, no
+/// longer holds back the removal of the others' old rounds (`readers`):
+/// back later, it reads from the oldest round kept, a full one or one
+/// continuing it, and finds every entry there, every one taken out within
+/// `TOMBSTONE_DAYS` too (`share::rounds_tests`). Until 10 November 2026 it was
+/// `SILENT_DAYS`, and a phone dead without being forgotten kept every round
+/// the others wrote since in the folder for half a year (a dead phone's 16
+/// MB full round in October 2026); 30 days lets a phone switched off for a
+/// two-week holiday come back without reading a whole full round again.
+const ROUNDS_SILENT_DAYS: i64 = 30;
+const _: () = assert!(ROUNDS_SILENT_DAYS <= SILENT_DAYS && TOMBSTONE_DAYS >= SILENT_DAYS);
 /// How long a file must stay empty, or gone, before its entries count as taken
 /// out: one being written, a full disk or a crash never takes everything out
 /// everywhere at once.
@@ -2823,12 +2836,14 @@ struct Memory {
     /// stops counting 180 days later.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     unclocked: BTreeMap<String, i64>,
-    /// The other devices that count, as the last exchange found them by
-    /// sealed facts (`counted`), and those sealed facts say no longer count
-    /// (they left, you forgot them, another replaces them, silent
-    /// `SILENT_DAYS`): who holds this device's rounds back, as the sending
-    /// reads it without the key (`rounds_past`). None in a memory saved
-    /// before 16 October 2026: the rule as it was, until the next exchange.
+    /// The other devices that hold this device's rounds back, as the last
+    /// exchange found them by sealed facts (`readers`: they count, heard of
+    /// within `ROUNDS_SILENT_DAYS`), and those sealed facts say hold nothing
+    /// back (they left, you forgot them, another replaces them, silent
+    /// `ROUNDS_SILENT_DAYS`): as the sending reads it without the key
+    /// (`rounds_past`). None in a memory saved before 16 October 2026: the
+    /// rule as it was, until the next exchange. Until 10 November 2026 the
+    /// first held every device that counts, the second those that do not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     counting: Option<BTreeSet<String>>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -4443,6 +4458,14 @@ fn last_heard(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) 
     entry.max(memory.heard_at.get(id).copied().unwrap_or(0))
 }
 
+/// From when a device's silence counts (milliseconds, this device's clock):
+/// when it was last heard of (`last_heard`), or, no clock known at all, when
+/// this device first found it so (`Memory::unclocked`); 0 when neither.
+fn silent_since(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) -> i64 {
+    let last = last_heard(entry, memory, id);
+    if last > 0 { last } else { memory.unclocked.get(id).copied().unwrap_or(0) }
+}
+
 /// The other devices of the sharing that count, and what each says of
 /// itself (its latest sealed entry seen here, `Memory::seen`, a replayed
 /// older copy never lowering it): every device known here by a sealed fact
@@ -4543,7 +4566,7 @@ fn counted(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
                 Counted::Forgotten
             } else {
                 // No clock known at all: aged from when this device first found it so.
-                let aged = if last > 0 { last } else { memory.unclocked.get(&id).copied().unwrap_or(0) };
+                let aged = silent_since(entry.as_ref(), memory, &id);
                 if aged > 0 && now_ms - aged > SILENT_DAYS * DAY {
                     Counted::Silent
                 } else {
@@ -4557,22 +4580,27 @@ fn counted(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
 }
 
 /// The devices whose reading holds back the removal of a device's rounds
-/// (`past_below`): every device that counts (`counted`), whose notes say how
-/// far it read (none in the folder: nothing read, everything held back; a
-/// hostile folder hiding them never makes a round go), and a file of notes
-/// alone whose notes say it read within `SILENT_DAYS` (a device whose entry
-/// has not come yet: plain notes only ever hold more back). Never a device
-/// that left, that you forgot, that another replaces, or silent for
-/// `SILENT_DAYS` by sealed facts, whatever its notes say: until 16 October
-/// 2026 every device whose plain notes were heard within 180 days held them
-/// back, a phone dead for good among them, and nothing of the others' left
-/// the folder for half a year.
-fn readers(folder: &Path, counted: &[(String, Counted)], now_ms: i64) -> BTreeSet<String> {
+/// (`past_below`): every device that counts (`counted`) heard of within
+/// `ROUNDS_SILENT_DAYS` by sealed facts, whose notes say how far it read
+/// (none in the folder: nothing read, everything held back; a hostile folder
+/// hiding them never makes a round go), and a file of notes alone whose
+/// notes say it read within `ROUNDS_SILENT_DAYS` (a device whose entry has
+/// not come yet: plain notes only ever hold more back). Never a device that
+/// left, that you forgot, that another replaces, or silent for
+/// `ROUNDS_SILENT_DAYS` by sealed facts, whatever its notes say: until 16
+/// October 2026 every device whose plain notes were heard within 180 days
+/// held them back, a phone dead for good among them, and nothing of the
+/// others' left the folder for half a year; until 10 November 2026 a device
+/// that counts held them back until silent `SILENT_DAYS`.
+fn readers(folder: &Path, counted: &[(String, Counted)], memory: &Memory, now_ms: i64) -> BTreeSet<String> {
     counted
         .iter()
         .filter(|(id, counted)| match counted {
-            Counted::Yes(..) => true,
-            Counted::Stray => read_seen(folder, id).is_some_and(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400),
+            Counted::Yes(entry, _) => {
+                let aged = silent_since(entry.as_ref(), memory, id);
+                aged == 0 || now_ms - aged <= ROUNDS_SILENT_DAYS * DAY
+            }
+            Counted::Stray => read_seen(folder, id).is_some_and(|s| now_ms / 1000 - s.at < ROUNDS_SILENT_DAYS * 86_400),
             _ => false,
         })
         .map(|(id, _)| id.clone())
@@ -6820,7 +6848,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // Where each other device stands (`counted`): who holds rounds back
     // (`readers`), and whose past files are another device's to take out.
     let counts = counted(sharing.folder, sharing.key, sharing.computer, &memory, now_ms);
-    let reading = readers(sharing.folder, &counts, now_ms);
+    let reading = readers(sharing.folder, &counts, &memory, now_ms);
     // The contents replaced lately, by name, for `history::SEALED_DAYS` and a day.
     for h in replaced_now {
         memory.sealed.replaced.insert(crate::blobs::name(sharing.key, &h), now_ms);
@@ -7007,8 +7035,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // Who holds rounds back, by sealed facts, kept for the sending, which
     // has no key (`rounds_past`); the past rounds of the devices that no
     // longer count (`departed_rounds`); then the rounds past their time go.
-    memory.counting = Some(counts.iter().filter(|(_, counted)| matches!(counted, Counted::Yes(..))).map(|(id, _)| id.clone()).collect());
-    memory.uncounted = counts.iter().filter(|(_, counted)| !matches!(counted, Counted::Yes(..) | Counted::Stray)).map(|(id, _)| id.clone()).collect();
+    memory.counting = Some(counts.iter().filter(|(id, counted)| matches!(counted, Counted::Yes(..)) && reading.contains(id)).map(|(id, _)| id.clone()).collect());
+    memory.uncounted = counts.iter().filter(|(id, counted)| !matches!(counted, Counted::Stray) && !(matches!(counted, Counted::Yes(..)) && reading.contains(id))).map(|(id, _)| id.clone()).collect();
     memory.departed = departed_rounds(sharing, &memory, &counts, &reading);
     // Devices whose files you removed (`remove_device_files`): none of their
     // rounds is kept, nor a file of theirs a sync app brought back; one that
@@ -7055,12 +7083,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         && memory.waiting_for.is_empty()
         && !memory.owed
         && memory.pending.keys().all(|key| locate(stores, file_of(key)).is_some_and(|(store, _)| !reads(store)));
-    // Nothing new until a device that counts turns silent, at the latest
-    // (`SILENT_DAYS`): the gates (`present`, `Tables`) judged again then.
+    // Nothing new until a device that counts turns silent, at the latest:
+    // for the rounds (`ROUNDS_SILENT_DAYS`, `readers`), then for the gates
+    // (`SILENT_DAYS`, `present`, `Tables`), judged again then.
     let silent_at = counts.iter().filter(|(_, c)| matches!(c, Counted::Yes(..))).filter_map(|(id, _)| {
-        let last = last_heard(memory.seen.get(id), &memory, id);
-        let aged = if last > 0 { last } else { memory.unclocked.get(id).copied().unwrap_or(0) };
-        (aged > 0).then_some(aged + SILENT_DAYS * DAY + 1)
+        let aged = silent_since(memory.seen.get(id), &memory, id);
+        (aged > 0).then(|| [aged + ROUNDS_SILENT_DAYS * DAY + 1, aged + SILENT_DAYS * DAY + 1].into_iter().find(|at| *at > now_ms).unwrap_or(aged + SILENT_DAYS * DAY + 1))
     });
     let until = (now_ms + HOUR).min(memory.tidied + HOUR).min(memory.cleaned + DAY).min(seen_due).min(silent_at.min().unwrap_or(i64::MAX));
     let (round, own_size) = (memory.round, memory.own_size);
@@ -9128,12 +9156,13 @@ fn past_below(folder: &Path, computer: &str, round: u32, full_round: u32, reader
     full.min(read_up_to)
 }
 
-/// The readers as the rule was until 16 October 2026: every other computer
-/// whose plain notes were heard within `SILENT_DAYS`. For a memory that does
-/// not say who counts yet (`Memory::counting`: one saved by an older Sioul,
-/// before its first exchange since).
-fn readers_by_notes(folder: &Path, computer: &str, now_ms: i64) -> BTreeSet<String> {
-    computers(folder).into_iter().filter(|c| c != computer).filter(|c| read_seen(folder, c).is_some_and(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400)).collect()
+/// Every other computer whose plain notes were heard within `days`: the
+/// readers as the rule was until 16 October 2026 (`SILENT_DAYS`), for a
+/// memory that does not say who counts yet (`Memory::counting`: one saved by
+/// an older Sioul, before its first exchange since); and the files of notes
+/// alone that memory did not know of (`ROUNDS_SILENT_DAYS`, as `readers`).
+fn readers_by_notes(folder: &Path, computer: &str, now_ms: i64, days: i64) -> BTreeSet<String> {
+    computers(folder).into_iter().filter(|c| c != computer).filter(|c| read_seen(folder, c).is_some_and(|s| now_ms / 1000 - s.at < days * 86_400)).collect()
 }
 
 /// This computer's rounds below the one returned are past their time, as
@@ -9165,10 +9194,10 @@ pub fn rounds_past(folder: &Path, memory: &Path, computer: &str, now_ms: i64) ->
     }
     let readers = match part.counting {
         Some(counting) => {
-            let strays: Vec<String> = readers_by_notes(folder, computer, now_ms).into_iter().filter(|id| !counting.contains(id) && !part.uncounted.contains(id)).collect();
+            let strays: Vec<String> = readers_by_notes(folder, computer, now_ms, ROUNDS_SILENT_DAYS).into_iter().filter(|id| !counting.contains(id) && !part.uncounted.contains(id)).collect();
             counting.into_iter().chain(strays).collect()
         }
-        None => readers_by_notes(folder, computer, now_ms),
+        None => readers_by_notes(folder, computer, now_ms, SILENT_DAYS),
     };
     Some(past_below(folder, computer, part.round, part.full_round, &readers))
 }
@@ -9425,7 +9454,7 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
         files.small_bytes += std::fs::metadata(&path).map_or(0, |m| m.len()) * u64::from(path.starts_with(sharing.folder));
         paths.push(path);
     }
-    let reading = readers(sharing.folder, &counts, now_ms);
+    let reading = readers(sharing.folder, &counts, memory, now_ms);
     files.unread_by = reading
         .iter()
         .filter(|r| *r != device)

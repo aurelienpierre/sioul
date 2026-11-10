@@ -184,6 +184,51 @@ fn a_silent_device_holds_nothing_back_whatever_its_notes_say() {
     let _ = std::fs::remove_dir_all(&s.base);
 }
 
+/// A device that counts but has been silent for `ROUNDS_SILENT_DAYS` by
+/// sealed facts no longer holds the others' rounds back (a phone dead in a
+/// drawer, never forgotten), while it still counts for everything else
+/// (`present`); within that time it still holds them. Back later, it reads
+/// from the oldest round kept and finds every entry, nothing said lost, and
+/// holds them back again. Until 10 November 2026 it held them for
+/// `SILENT_DAYS` (half a year).
+#[test]
+fn a_device_silent_a_month_holds_no_round_back_and_finds_every_entry_back() {
+    let s = scene("rounds-month");
+    // Within the month: the old phone still holds the desk's rounds back.
+    let within = s.now + (ROUNDS_SILENT_DAYS - 1) * DAY_MS;
+    s.phone.write("config/known-senders.txt", "shop@example.org\n");
+    s.phone.exchange(&s.folder, &s.key, within - MINUTE);
+    s.desk.exchange(&s.folder, &s.key, within);
+    assert_eq!(kept(&s.folder, &s.desk.id)[0], 1, "within the month, the old phone holds the desk's rounds back");
+    assert_eq!(crate::share::rounds_past(&s.folder, &s.desk.memory, &s.desk.id, within), Some(1));
+    // Past it: they go, and the old phone still counts for the rest.
+    let later = s.now + (ROUNDS_SILENT_DAYS + 1) * DAY_MS;
+    s.desk.write("config/safe-senders.txt", "friend@example.org\nbaker@example.org\n");
+    s.phone.write("config/known-senders.txt", "shop@example.org\ngrocer@example.org\n");
+    s.phone.exchange(&s.folder, &s.key, later - MINUTE);
+    the_desk_s_past_rounds_go(&s, later, "silent a month");
+    let memory = Memory::load(&s.desk.memory, &s.desk.id);
+    assert!(present(&s.folder, &s.key, &s.desk.id, &memory, later).iter().any(|(id, ..)| *id == s.old.id), "it still counts for the rest");
+    // Back: it reads from the oldest kept, finds every entry, and says nothing lost.
+    let outcome = s.old.exchange(&s.folder, &s.key, later + MINUTE);
+    assert!(!outcome.problems.iter().any(|p| p.starts_with("share-other")), "nothing said lost: {:?}", outcome.problems);
+    // Lists by their lines, whatever their order.
+    let lines = |text: String| text.lines().map(str::to_string).collect::<BTreeSet<String>>();
+    for file in ["config/safe-senders.txt", "config/known-senders.txt"] {
+        assert_eq!(lines(s.old.read(file)), lines(s.desk.read(file)), "{file}");
+    }
+    assert_eq!(s.old.read("data/drafts/2026-10-01.json"), s.desk.read("data/drafts/2026-10-01.json"));
+    assert!(s.old.read("config/safe-senders.txt").contains("baker@example.org") && s.old.read("config/known-senders.txt").contains("grocer@example.org"));
+    assert!(heard(&s.old.memory, &s.old.id).complete(&s.desk.id, written(&s.desk.memory, &s.desk.id).unwrap()), "everything the desk wrote is known there");
+    // Its entry, as its window writes it after each exchange: it holds the desk's rounds back again.
+    entry(&s.old, &s.folder, &s.key, crate::devices::PHONE, |e| e.exported(later + MINUTE, outcome.wrote, (later + MINUTE) / 1000));
+    s.desk.exchange(&s.folder, &s.key, later + 2 * MINUTE);
+    let memory = Memory::load(&s.desk.memory, &s.desk.id);
+    assert!(memory.counting.as_ref().is_some_and(|c| c.contains(&s.old.id)), "{:?}", memory.counting);
+    assert!(!memory.uncounted.contains(&s.old.id), "{:?}", memory.uncounted);
+    let _ = std::fs::remove_dir_all(&s.base);
+}
+
 /// A live phone's rounds wait for every device that counts: one that read
 /// less holds the rest back, and one whose notes the folder does not show
 /// (a sync app late, a hostile server hiding them) holds them all back.
@@ -482,7 +527,9 @@ fn among_computers_a_dead_one_s_replaced_contents_go_when_forgotten() {
 /// (`TOMBSTONE_DAYS`, `SILENT_DAYS`). Until 17 October 2026 it restated 90
 /// days of it, and such a device kept a sender and a draft taken out
 /// elsewhere, for good (review of 17 October 2026, M1). Not forgotten, the
-/// same: its notes held every round back, and it read each deletion.
+/// same: silent past `ROUNDS_SILENT_DAYS`, it holds no round back either
+/// (until 10 November 2026 its notes held every round back for half a
+/// year), and it reads each deletion from the full round all the same.
 #[test]
 fn a_device_back_after_ninety_days_takes_out_what_went_meanwhile() {
     for forgotten in [true, false] {
@@ -516,7 +563,7 @@ fn a_device_back_after_ninety_days_takes_out_what_went_meanwhile() {
         });
         desk.exchange(&folder, &key, now + MINUTE);
         let held = kept(&folder, &desk.id);
-        assert_eq!(held[0] == 1, !forgotten, "forgotten {forgotten}: the laptop's notes hold them back only while it counts: {held:?}");
+        assert!(held[0] > 1, "forgotten {forgotten}: silent ninety days, the laptop holds nothing back: {held:?}");
         // The laptop comes back: what went meanwhile goes there too.
         let outcome = laptop.exchange(&folder, &key, now + 2 * MINUTE);
         assert!(!outcome.problems.iter().any(|p| p.starts_with("share-other")), "{:?}", outcome.problems);
