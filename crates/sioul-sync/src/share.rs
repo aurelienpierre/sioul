@@ -144,8 +144,21 @@ const _: () = assert!(
         && AGED_TOMBSTONE_DAYS > sioul_core::phonemsgs::KEPT_DAYS + sioul_core::phonemsgs::LATE_DAYS
         && AGED_TOMBSTONE_DAYS > sioul_core::texts::KEPT_DAYS + sioul_core::texts::LATE_DAYS
 );
-/// A computer silent this long no longer holds back the removal of old rounds.
+/// A device silent this long by sealed facts no longer counts (`counted`,
+/// `present`): the two-week keeping of replaced contents, format 2 and the
+/// rest stop waiting for it.
 const SILENT_DAYS: i64 = 180;
+/// A device silent this long by sealed facts, though it still counts, no
+/// longer holds back the removal of the others' old rounds (`readers`):
+/// back later, it reads from the oldest round kept, a full one or one
+/// continuing it, and finds every entry there, every one taken out within
+/// `TOMBSTONE_DAYS` too (`share::rounds_tests`). Until 10 November 2026 it was
+/// `SILENT_DAYS`, and a phone dead without being forgotten kept every round
+/// the others wrote since in the folder for half a year (a dead phone's 16
+/// MB full round in October 2026); 30 days lets a phone switched off for a
+/// two-week holiday come back without reading a whole full round again.
+const ROUNDS_SILENT_DAYS: i64 = 30;
+const _: () = assert!(ROUNDS_SILENT_DAYS <= SILENT_DAYS && TOMBSTONE_DAYS >= SILENT_DAYS);
 /// How long a file must stay empty, or gone, before its entries count as taken
 /// out: one being written, a full disk or a crash never takes everything out
 /// everywhere at once.
@@ -986,7 +999,7 @@ pub fn shaped(stores: &[Store], format: u32) -> Vec<Store> {
 pub fn estimate(stores: &[Store]) -> (usize, u64, usize) {
     let (mut found, mut files, known, confirmed) = (Found::default(), Vec::new(), BTreeMap::new(), BTreeSet::new());
     for store in stores.iter().filter(|s| matches!(s.shape, Shape::Files) && s.path.is_dir()) {
-        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false }.list(&store.path);
+        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false, listed: None, carried: &mut Vec::new(), clock: 0 }.list(&store.path);
     }
     files.iter().filter_map(|(_, path)| std::fs::metadata(path).ok()).fold((0, 0, 0), |(count, bytes, big), meta| if meta.len() > crate::blobs::LARGEST { (count, bytes, big + 1) } else { (count + 1, bytes + meta.len(), big) })
 }
@@ -1128,6 +1141,75 @@ struct Look<'a> {
     clock: i64,
     /// Large notes and papers found changed since they were last read, and since when (`Sealed::changing`).
     changing: &'a BTreeMap<String, i64>,
+    /// An exchange's look: the folders of notes and papers that did not
+    /// change since this process last listed them are taken as listed then
+    /// (`Listed`), every one listed whole again each `RELIST_MS`.
+    quiet: bool,
+}
+
+/// How the folders of notes and papers were last listed by this process, by
+/// the folder's place (`Listed`).
+static LISTED: std::sync::Mutex<BTreeMap<PathBuf, Listed>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// A folder of notes or papers as this process last listed it: when it was
+/// last listed whole, and each of its folders as listed (`ListedDir`). Until
+/// 10 November 2026 every exchange listed the whole notes folder and asked
+/// the time of each file in it, every minute (review of 13 October 2026,
+/// §4.8), which costs more as the folder grows. A folder's own time changes
+/// when a name in it is made, removed or renamed (and a note saved by
+/// Sioul, by most editors, or received is written beside and renamed into
+/// place), never when a file in it is written in place: a folder whose time
+/// did not change is taken as listed then, its files as last read, without
+/// asking the disk, and the whole folder is listed again each `RELIST_MS`,
+/// so that a note written in place by another program goes within that time.
+/// What came meanwhile is never written over such a change (`receive` looks at
+/// the file itself before it writes), and nothing is taken for gone without
+/// its folder's time changing.
+#[derive(Debug, Default)]
+struct Listed {
+    /// When it was last listed whole (milliseconds, this computer's clock).
+    whole_at: i64,
+    dirs: BTreeMap<PathBuf, ListedDir>,
+}
+
+/// One folder as listed: its time then (nanoseconds, read before it was
+/// read), when it was listed (milliseconds), the names of its files and of
+/// the folders listed below it. Only a folder whose listing had nothing to
+/// say (no name that is not text, no link, nothing left half written, read
+/// whole) is ever taken as listed.
+#[derive(Debug, Clone)]
+struct ListedDir {
+    modified: u64,
+    listed: i64,
+    files: Vec<String>,
+    dirs: Vec<String>,
+}
+
+/// How often the folders of notes and papers are listed whole all the same
+/// (`Listed`), milliseconds.
+fn relist_ms() -> i64 {
+    #[cfg(test)]
+    return RELIST.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    RELIST_MS
+}
+
+/// Ten minutes: a note written in place by another program waits that long
+/// at most; one saved by Sioul, by most editors, or made, removed or renamed
+/// goes at the next exchange.
+#[cfg_attr(test, allow(dead_code))]
+const RELIST_MS: i64 = 10 * MINUTE;
+
+/// A folder's time this close to its listing (milliseconds) is not trusted:
+/// a change in the same tick of its clock would not show.
+const RACY_MS: i64 = 2_000;
+
+#[cfg(test)]
+thread_local! {
+    /// How often a folder of notes is listed whole in this test's thread: at each exchange, unless a test says.
+    pub(super) static RELIST: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+    /// The notes and papers whose time this test's thread asked of the disk (`read_file`).
+    pub(super) static ASKED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// This computer's clock, in milliseconds.
@@ -1206,14 +1288,27 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
                 continue;
             }
             let mut files = Vec::new();
+            let mut carried = Vec::new();
             if matches!(store.shape, Shape::Files) {
-                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed, files: &mut files, found: &mut found, sweep: true };
+                // An exchange's look: what this process listed of it last (`Listed`), listed whole again when due.
+                let mut listed = look.quiet.then(|| LISTED.lock().ok().and_then(|mut all| all.remove(&store.path)).unwrap_or_default());
+                let whole = listed.as_ref().is_some_and(|l| look.clock - l.whole_at >= relist_ms() || look.clock < l.whole_at);
+                if let Some(l) = listed.as_mut().filter(|_| whole) {
+                    *l = Listed { whole_at: look.clock, dirs: BTreeMap::new() };
+                }
+                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed, files: &mut files, found: &mut found, sweep: true, listed: listed.as_mut(), carried: &mut carried, clock: look.clock };
                 listing.list(&store.path);
+                if let (Some(listed), Ok(mut all)) = (listed, LISTED.lock()) {
+                    all.insert(store.path.clone(), listed);
+                }
             } else {
                 list_files(&store.path, &store.path, store.skip, &mut files);
             }
             for (relative, path) in files {
                 read_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
+            }
+            for (relative, path) in carried {
+                carry_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
             }
         } else if store.path.is_file() {
             read_file(store, &store.name, &store.path, known, look, &mut found);
@@ -1265,6 +1360,13 @@ struct Listing<'a> {
     /// exchange, under its lock; never in a look from outside it
     /// (`estimate`), which removes nothing (review of 18 October 2026, I-2).
     sweep: bool,
+    /// An exchange's: how this process listed each folder last (`Listed`),
+    /// written as each is listed now.
+    listed: Option<&'a mut Listed>,
+    /// The files of the folders taken as listed (`Listed`): taken as last
+    /// read, without asking the disk (`carry_file`).
+    carried: &'a mut Vec<(String, PathBuf)>,
+    clock: i64,
 }
 
 impl Listing<'_> {
@@ -1280,8 +1382,43 @@ impl Listing<'_> {
         let relative = dir.strip_prefix(self.root).map(|r| r.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")).unwrap_or_default();
         let within = if relative.is_empty() { String::new() } else { format!("{relative}/") };
         let prefix = format!("{}{within}", self.store);
+        // A folder shared through (it holds a seal) is none of the notes, whichever way it is reached:
+        // a folder taken as listed checks it too (review of wt/sync, R5: a sync app making the folder
+        // first and its seal after, the folder was read as notes until the whole listing).
+        if dir != self.root && dir.join("seal.toml").is_file() {
+            if let Some(listed) = self.listed.as_deref_mut() {
+                listed.dirs.remove(dir);
+                if let Some(parent) = dir.parent() {
+                    listed.dirs.remove(parent);
+                }
+            }
+            return 0;
+        }
+        // Its time before it is read: a change while it is read shows next time.
+        let modified = std::fs::metadata(dir).map_or(0, |m| modified_ns(&m));
+        // Unchanged since this process listed it (`Listed`): as listed then.
+        let unchanged = self.listed.as_deref().and_then(|l| l.dirs.get(dir)).filter(|seen| modified > 0 && seen.modified == modified && seen.listed - (modified / 1_000_000) as i64 > RACY_MS).cloned();
+        if let Some(seen) = unchanged {
+            let mut count = 0;
+            for name in &seen.files {
+                self.carried.push((format!("{within}{name}"), dir.join(name)));
+                count += 1;
+            }
+            for name in &seen.dirs {
+                count += self.list(&dir.join(name));
+            }
+            let held = self.known.range(prefix.clone()..).take_while(|(file, _)| file.starts_with(&prefix)).count();
+            if count == 0 && held > 0 && !self.confirmed.iter().any(|said| confirms(said, &prefix)) {
+                self.found.emptied.push((prefix.clone(), held));
+                self.found.unknown.insert(prefix);
+            }
+            return count;
+        }
         let mut whole = true;
         let mut count = 0;
+        // What this folder holds, for the next look (`Listed`), while it has nothing to say.
+        let mut clean = true;
+        let (mut own_files, mut own_dirs): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
         match std::fs::read_dir(dir) {
             Err(_) => whole = false,
             Ok(entries) => {
@@ -1297,6 +1434,7 @@ impl Listing<'_> {
                     let name = entry.file_name();
                     let Some(name) = name.to_str() else {
                         self.found.said.push(format!("share-not-text:{prefix}{}", name.to_string_lossy()));
+                        clean = false;
                         continue;
                     };
                     let path = entry.path();
@@ -1304,9 +1442,11 @@ impl Listing<'_> {
                         if self.sweep {
                             remove_if_old(&path);
                         }
+                        clean = false;
                         continue;
                     }
                     if kind.is_symlink() {
+                        clean = false;
                         // A folder or a file put back as a link (moved out of
                         // the notes, and linked back): links are never
                         // followed, and what was there is unknown, said as a
@@ -1330,9 +1470,11 @@ impl Listing<'_> {
                     if kind.is_dir() {
                         if !matches!(name, "node_modules" | "target") && !path.join("seal.toml").is_file() {
                             count += self.list(&path);
+                            own_dirs.push(name.to_string());
                         }
                     } else if kind.is_file() {
                         self.files.push((format!("{within}{name}"), path));
+                        own_files.push(name.to_string());
                         count += 1;
                     }
                 }
@@ -1345,6 +1487,14 @@ impl Listing<'_> {
                 self.found.emptied.push((prefix.clone(), held));
             }
             self.found.unknown.insert(prefix);
+            clean = false;
+        }
+        if let Some(listed) = self.listed.as_deref_mut() {
+            if clean && whole && modified > 0 {
+                listed.dirs.insert(dir.to_path_buf(), ListedDir { modified, listed: self.clock, files: own_files, dirs: own_dirs });
+            } else {
+                listed.dirs.remove(dir);
+            }
         }
         count
     }
@@ -1429,12 +1579,33 @@ fn value_hash(key: &str, value: &str) -> String {
     if key.starts_with(FILES) { serde_json::from_str::<Reference>(value).map(|r| r.h).unwrap_or_default() } else { hash(value) }
 }
 
+/// A file of a folder taken as listed (`Listed`): as last read, as
+/// `read_file` takes one of the same size and time, without asking the
+/// disk; one read within its settling, or a large one changing, is read as
+/// any (`read_file`).
+fn carry_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, look: &Look, found: &mut Found) {
+    let settled = |s: &&Stat| s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen;
+    let Some(stat) = known.get(file).filter(settled).filter(|_| !look.changing.contains_key(file)) else {
+        return read_file(store, file, path, known, look, found);
+    };
+    found.changed.insert(file.to_string(), (stat.modified / 1_000_000) as i64);
+    for (entry, h) in &stat.entries {
+        found.hashes.insert(format!("{file}#{entry}"), h.clone());
+        found.values.insert(format!("{file}#{entry}"), reference(h, stat.size, stat.modified));
+    }
+    found.files.insert(file.to_string(), stat.clone());
+}
+
 fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, look: &Look, found: &mut Found) {
     let Ok(meta) = std::fs::metadata(path) else {
         found.unknown.insert(file.to_string());
         return;
     };
     let sealed_apart = matches!(store.shape, Shape::Files);
+    #[cfg(test)]
+    if sealed_apart {
+        ASKED.with(|n| n.set(n.get() + 1));
+    }
     if meta.len() > if sealed_apart { crate::blobs::LARGEST } else { LARGEST } {
         found.unknown.insert(file.to_string());
         if sealed_apart {
@@ -2824,12 +2995,14 @@ struct Memory {
     /// stops counting 180 days later.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     unclocked: BTreeMap<String, i64>,
-    /// The other devices that count, as the last exchange found them by
-    /// sealed facts (`counted`), and those sealed facts say no longer count
-    /// (they left, you forgot them, another replaces them, silent
-    /// `SILENT_DAYS`): who holds this device's rounds back, as the sending
-    /// reads it without the key (`rounds_past`). None in a memory saved
-    /// before 16 October 2026: the rule as it was, until the next exchange.
+    /// The other devices that hold this device's rounds back, as the last
+    /// exchange found them by sealed facts (`readers`: they count, heard of
+    /// within `ROUNDS_SILENT_DAYS`), and those sealed facts say hold nothing
+    /// back (they left, you forgot them, another replaces them, silent
+    /// `ROUNDS_SILENT_DAYS`): as the sending reads it without the key
+    /// (`rounds_past`). None in a memory saved before 16 October 2026: the
+    /// rule as it was, until the next exchange. Until 10 November 2026 the
+    /// first held every device that counts, the second those that do not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     counting: Option<BTreeSet<String>>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -4444,6 +4617,14 @@ fn last_heard(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) 
     entry.max(memory.heard_at.get(id).copied().unwrap_or(0))
 }
 
+/// From when a device's silence counts (milliseconds, this device's clock):
+/// when it was last heard of (`last_heard`), or, no clock known at all, when
+/// this device first found it so (`Memory::unclocked`); 0 when neither.
+fn silent_since(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) -> i64 {
+    let last = last_heard(entry, memory, id);
+    if last > 0 { last } else { memory.unclocked.get(id).copied().unwrap_or(0) }
+}
+
 /// The other devices of the sharing that count, and what each says of
 /// itself (its latest sealed entry seen here, `Memory::seen`, a replayed
 /// older copy never lowering it): every device known here by a sealed fact
@@ -4544,7 +4725,7 @@ fn counted(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
                 Counted::Forgotten
             } else {
                 // No clock known at all: aged from when this device first found it so.
-                let aged = if last > 0 { last } else { memory.unclocked.get(&id).copied().unwrap_or(0) };
+                let aged = silent_since(entry.as_ref(), memory, &id);
                 if aged > 0 && now_ms - aged > SILENT_DAYS * DAY {
                     Counted::Silent
                 } else {
@@ -4558,26 +4739,75 @@ fn counted(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
 }
 
 /// The devices whose reading holds back the removal of a device's rounds
-/// (`past_below`): every device that counts (`counted`), whose notes say how
-/// far it read (none in the folder: nothing read, everything held back; a
-/// hostile folder hiding them never makes a round go), and a file of notes
-/// alone whose notes say it read within `SILENT_DAYS` (a device whose entry
-/// has not come yet: plain notes only ever hold more back). Never a device
-/// that left, that you forgot, that another replaces, or silent for
-/// `SILENT_DAYS` by sealed facts, whatever its notes say: until 16 October
-/// 2026 every device whose plain notes were heard within 180 days held them
-/// back, a phone dead for good among them, and nothing of the others' left
-/// the folder for half a year.
-fn readers(folder: &Path, counted: &[(String, Counted)], now_ms: i64) -> BTreeSet<String> {
+/// (`past_below`): every device that counts (`counted`) heard of within
+/// `ROUNDS_SILENT_DAYS` by sealed facts (`SILENT_DAYS` for one of a Sioul
+/// before 0.0.7, or of no known version: `rounds_silent_days`), whose notes
+/// say how far it read (none in the folder: nothing read, everything held
+/// back; a hostile folder hiding them never makes a round go), and a file of
+/// notes alone whose notes say it read within `SILENT_DAYS` (a device whose
+/// entry has not come yet: plain notes only ever hold more back). Never a
+/// device that left, that you forgot, that another replaces, or silent that
+/// long by sealed facts, whatever its notes say: until 16
+/// October 2026 every device whose plain notes were heard within 180 days
+/// held them back, a phone dead for good among them, and nothing of the
+/// others' left the folder for half a year; until 10 November 2026 a device
+/// that counts held them back until silent `SILENT_DAYS`.
+fn readers(folder: &Path, counted: &[(String, Counted)], memory: &Memory, now_ms: i64) -> BTreeSet<String> {
+    heard_within(folder, counted, memory, now_ms, rounds_silent_days)
+}
+
+/// Every device that counts heard of within the days `days` gives for its
+/// entry, by sealed facts, and a file of notes alone whose notes say it read
+/// within `SILENT_DAYS` (no sealed fact says its version): the readers of
+/// rounds (`readers`, `rounds_silent_days`), or every device that counts
+/// (`SILENT_DAYS`: none that counts is silent longer), which "Remove its
+/// files" names when it has not read all of a device's records
+/// (`plan_removal`: such a device never gets them once removed).
+fn heard_within(folder: &Path, counted: &[(String, Counted)], memory: &Memory, now_ms: i64, days: fn(Option<&crate::devices::Entry>) -> i64) -> BTreeSet<String> {
     counted
         .iter()
         .filter(|(id, counted)| match counted {
-            Counted::Yes(..) => true,
+            Counted::Yes(entry, _) => {
+                let aged = silent_since(entry.as_ref(), memory, id);
+                aged == 0 || now_ms - aged <= days(entry.as_ref()) * DAY
+            }
             Counted::Stray => read_seen(folder, id).is_some_and(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400),
             _ => false,
         })
         .map(|(id, _)| id.clone())
         .collect()
+}
+
+/// How long a device that counts may be silent and still hold the others'
+/// rounds back: `ROUNDS_SILENT_DAYS` for one whose latest sealed entry says
+/// a Sioul that reads a return after its rounds went as it should
+/// (`READS_GAPS`); `SILENT_DAYS` for an older one, or one whose version is
+/// not known (review of wt/sync, R7: an older Sioul back after its rounds
+/// went makes a conflicted copy of every note changed twice meanwhile, which
+/// then travels everywhere).
+fn rounds_silent_days(entry: Option<&crate::devices::Entry>) -> i64 {
+    if entry.is_some_and(|e| reads_gaps(&e.version)) { ROUNDS_SILENT_DAYS } else { SILENT_DAYS }
+}
+
+/// The first version whose sharing reads only what a full round restates
+/// without a conflicted copy of a note changed twice while it was away
+/// (`receive`'s `received`, 16 October 2026: released in 0.0.7).
+const READS_GAPS: (u32, u32, u32) = (0, 0, 7);
+
+/// Whether a version ("0.0.9", "0.1.0-beta") is `READS_GAPS` or later; an
+/// unreadable one is not.
+fn reads_gaps(version: &str) -> bool {
+    let core = version.trim().split(['-', '+']).next().unwrap_or("");
+    let parts: Vec<u32> = core.split('.').map_while(|p| p.parse().ok()).collect();
+    match parts[..] {
+        [major, minor, patch, ..] => (major, minor, patch) >= READS_GAPS,
+        _ => false,
+    }
+}
+
+/// Every device that counts, whatever its silence (`plan_removal`).
+fn any_silence(_: Option<&crate::devices::Entry>) -> i64 {
+    SILENT_DAYS
 }
 
 /// The devices that hold back format 2 (`FORMAT`), and why: of the devices
@@ -5112,7 +5342,7 @@ fn flush(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64) 
     let joining = |store: &Store| !memory.places.is_empty() && memory.places.get(&store.name) != Some(&place_of(store));
     let subset: Vec<Store> = stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some()) && !joining(s) && !memory.newer.contains_key(s.part)).cloned().collect();
     let confirmed = BTreeSet::new();
-    let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms(), changing: &BTreeMap::new() });
+    let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms(), changing: &BTreeMap::new(), quiet: false });
     let mut out: Vec<(String, Option<String>, u64, String)> = Vec::new();
     for (key, h) in &found.hashes {
         if memory.entries.get(key).is_some_and(|k| k.h == *h) {
@@ -5748,7 +5978,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let holds = |key: &str| known_part(file_of(key)).is_some_and(|part| held.contains(part));
     let clock = clock_ms();
     let confirmed = memory.sealed.confirmed.clone();
-    let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock, changing: &memory.sealed.changing });
+    let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock, changing: &memory.sealed.changing, quiet: true });
     // Large notes and papers settling: those of the stores read now as this
     // look found them, the others' as they were (`Sealed::changing`).
     let mut changing = std::mem::take(&mut found.changing);
@@ -6821,7 +7051,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // Where each other device stands (`counted`): who holds rounds back
     // (`readers`), and whose past files are another device's to take out.
     let counts = counted(sharing.folder, sharing.key, sharing.computer, &memory, now_ms);
-    let reading = readers(sharing.folder, &counts, now_ms);
+    let reading = readers(sharing.folder, &counts, &memory, now_ms);
     // The contents replaced lately, by name, for `history::SEALED_DAYS` and a day.
     for h in replaced_now {
         memory.sealed.replaced.insert(crate::blobs::name(sharing.key, &h), now_ms);
@@ -7008,8 +7238,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // Who holds rounds back, by sealed facts, kept for the sending, which
     // has no key (`rounds_past`); the past rounds of the devices that no
     // longer count (`departed_rounds`); then the rounds past their time go.
-    memory.counting = Some(counts.iter().filter(|(_, counted)| matches!(counted, Counted::Yes(..))).map(|(id, _)| id.clone()).collect());
-    memory.uncounted = counts.iter().filter(|(_, counted)| !matches!(counted, Counted::Yes(..) | Counted::Stray)).map(|(id, _)| id.clone()).collect();
+    memory.counting = Some(counts.iter().filter(|(id, counted)| matches!(counted, Counted::Yes(..)) && reading.contains(id)).map(|(id, _)| id.clone()).collect());
+    memory.uncounted = counts.iter().filter(|(id, counted)| !matches!(counted, Counted::Stray) && !(matches!(counted, Counted::Yes(..)) && reading.contains(id))).map(|(id, _)| id.clone()).collect();
     memory.departed = departed_rounds(sharing, &memory, &counts, &reading);
     // Devices whose files you removed (`remove_device_files`): none of their
     // rounds is kept, nor a file of theirs a sync app brought back; one that
@@ -7056,12 +7286,15 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         && memory.waiting_for.is_empty()
         && !memory.owed
         && memory.pending.keys().all(|key| locate(stores, file_of(key)).is_some_and(|(store, _)| !reads(store)));
-    // Nothing new until a device that counts turns silent, at the latest
-    // (`SILENT_DAYS`): the gates (`present`, `Tables`) judged again then.
-    let silent_at = counts.iter().filter(|(_, c)| matches!(c, Counted::Yes(..))).filter_map(|(id, _)| {
-        let last = last_heard(memory.seen.get(id), &memory, id);
-        let aged = if last > 0 { last } else { memory.unclocked.get(id).copied().unwrap_or(0) };
-        (aged > 0).then_some(aged + SILENT_DAYS * DAY + 1)
+    // Nothing new until a device that counts turns silent, at the latest:
+    // for the rounds (`ROUNDS_SILENT_DAYS`, `readers`), then for the gates
+    // (`SILENT_DAYS`, `present`, `Tables`), judged again then.
+    let silent_at = counts.iter().filter_map(|(id, c)| match c {
+        Counted::Yes(entry, _) => Some((id, entry)),
+        _ => None,
+    }).filter_map(|(id, entry)| {
+        let aged = silent_since(entry.as_ref(), &memory, id);
+        (aged > 0).then(|| [aged + rounds_silent_days(entry.as_ref()) * DAY + 1, aged + SILENT_DAYS * DAY + 1].into_iter().find(|at| *at > now_ms).unwrap_or(aged + SILENT_DAYS * DAY + 1))
     });
     let until = (now_ms + HOUR).min(memory.tidied + HOUR).min(memory.cleaned + DAY).min(seen_due).min(silent_at.min().unwrap_or(i64::MAX));
     let (round, own_size) = (memory.round, memory.own_size);
@@ -9129,12 +9362,13 @@ fn past_below(folder: &Path, computer: &str, round: u32, full_round: u32, reader
     full.min(read_up_to)
 }
 
-/// The readers as the rule was until 16 October 2026: every other computer
-/// whose plain notes were heard within `SILENT_DAYS`. For a memory that does
-/// not say who counts yet (`Memory::counting`: one saved by an older Sioul,
-/// before its first exchange since).
-fn readers_by_notes(folder: &Path, computer: &str, now_ms: i64) -> BTreeSet<String> {
-    computers(folder).into_iter().filter(|c| c != computer).filter(|c| read_seen(folder, c).is_some_and(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400)).collect()
+/// Every other computer whose plain notes were heard within `days`: the
+/// readers as the rule was until 16 October 2026 (`SILENT_DAYS`), for a
+/// memory that does not say who counts yet (`Memory::counting`: one saved by
+/// an older Sioul, before its first exchange since); and the files of notes
+/// alone that memory did not know of (`SILENT_DAYS`, as `readers`).
+fn readers_by_notes(folder: &Path, computer: &str, now_ms: i64, days: i64) -> BTreeSet<String> {
+    computers(folder).into_iter().filter(|c| c != computer).filter(|c| read_seen(folder, c).is_some_and(|s| now_ms / 1000 - s.at < days * 86_400)).collect()
 }
 
 /// This computer's rounds below the one returned are past their time, as
@@ -9166,10 +9400,10 @@ pub fn rounds_past(folder: &Path, memory: &Path, computer: &str, now_ms: i64) ->
     }
     let readers = match part.counting {
         Some(counting) => {
-            let strays: Vec<String> = readers_by_notes(folder, computer, now_ms).into_iter().filter(|id| !counting.contains(id) && !part.uncounted.contains(id)).collect();
+            let strays: Vec<String> = readers_by_notes(folder, computer, now_ms, SILENT_DAYS).into_iter().filter(|id| !counting.contains(id) && !part.uncounted.contains(id)).collect();
             counting.into_iter().chain(strays).collect()
         }
-        None => readers_by_notes(folder, computer, now_ms),
+        None => readers_by_notes(folder, computer, now_ms, SILENT_DAYS),
     };
     Some(past_below(folder, computer, part.round, part.full_round, &readers))
 }
@@ -9426,11 +9660,23 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
         files.small_bytes += std::fs::metadata(&path).map_or(0, |m| m.len()) * u64::from(path.starts_with(sharing.folder));
         paths.push(path);
     }
-    let reading = readers(sharing.folder, &counts, now_ms);
+    // Every device that counts, one silent for weeks too: its rounds no
+    // longer wait for it (`readers`), but removed, what it has not read never
+    // reaches it (review of wt/sync, R8: until then a device silent past
+    // `ROUNDS_SILENT_DAYS` was no longer named here).
+    let reading = heard_within(sharing.folder, &counts, memory, now_ms, any_silence);
+    // How far each read it: by line where its notes say it (`Seen::lines`), against all this
+    // device read of it (`Memory::read_n`), so that one still in its last round, short of its
+    // end, is named too; else by round, as an older Sioul's notes say it.
+    let all_read = memory.read_n.get(device).copied();
+    let unread = |seen: Option<Seen>| match (seen.as_ref().and_then(|s| s.lines.get(device).copied()), all_read) {
+        (Some(at), Some(all)) => at < all,
+        _ => seen.and_then(|s| s.read.get(device).copied()).unwrap_or(0) < last_round,
+    };
     files.unread_by = reading
         .iter()
         .filter(|r| *r != device)
-        .filter(|r| read_seen(sharing.folder, r).and_then(|s| s.read.get(device).copied()).unwrap_or(0) < last_round)
+        .filter(|r| unread(read_seen(sharing.folder, r)))
         .map(|r| {
             let entry = memory.seen.get(r);
             (r.clone(), entry.map(|e| e.name.clone()).unwrap_or_default(), entry.map(|e| e.kind.clone()).unwrap_or_default())
@@ -13078,7 +13324,7 @@ mod probe {
         let roots = super::Roots { config: base.join("config"), data: base.join("data"), state: base.join("state") };
         let config: sioul_core::config::Config = std::fs::read_to_string(roots.config.join("config.toml")).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         let stores = super::stores(&config, &roots);
-        let look = super::Look { reads: &|_| true, hurry: &|| false, confirmed: &Default::default(), clock: super::clock_ms(), changing: &Default::default() };
+        let look = super::Look { reads: &|_| true, hurry: &|| false, confirmed: &Default::default(), clock: super::clock_ms(), changing: &Default::default(), quiet: false };
         let found = super::gather(&stores, &Default::default(), &look);
         for store in &stores {
             let count = found.hashes.keys().filter(|k| super::file_of(k).starts_with(store.name.as_str()) && (store.folder || super::file_of(k) == store.name)).count();

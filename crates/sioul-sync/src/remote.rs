@@ -65,9 +65,28 @@ pub(crate) struct Limits {
     /// it takes at `floor` bytes a second; cut when nothing moved for `stall`.
     pub(crate) floor: u64,
     pub(crate) stall: Duration,
+    /// A file found locked there (`423`), asked again after this, twice as
+    /// long each time (`Server::put_file`, `LOCKED_WAITS`).
+    pub(crate) locked: Duration,
 }
 
-pub(crate) const LIMITS: Limits = Limits { wait: Duration::from_secs(10), small: Duration::from_secs(10), large: Duration::from_secs(60), pull: Duration::from_secs(30), blob: Duration::from_secs(15 * 60), floor: FLOOR, stall: Duration::from_secs(30) };
+pub(crate) const LIMITS: Limits = Limits { wait: Duration::from_secs(10), small: Duration::from_secs(10), large: Duration::from_secs(60), pull: Duration::from_secs(30), blob: Duration::from_secs(15 * 60), floor: FLOOR, stall: Duration::from_secs(30), locked: LOCKED_WAIT };
+
+/// A file sent that the server says locked (`423 Locked`: Nextcloud's own
+/// lock on a file while another request writes or reads it, as the desktop's
+/// sync app sending that very file a few seconds after Sioul wrote it, or
+/// another device's sync app fetching it) is asked again within the send,
+/// after a second, two, then four (`Server::put_file`); still locked, it is
+/// held back (`Sender::locked`) and said only once it was so `LOCKED_SAID`
+/// sends in a row. Until 10 November 2026 a single `423` stopped the whole
+/// send, said as the server's error: 143 times in a desktop's journal from 5
+/// to 7 November 2026.
+const LOCKED_WAIT: Duration = Duration::from_secs(1);
+const LOCKED_WAITS: u32 = 3;
+/// At most this long waited for locked files in all within one send.
+const LOCKED_WITHIN: Duration = Duration::from_secs(15);
+/// Sends in a row that found the same file locked before it is said.
+const LOCKED_SAID: u32 = 3;
 
 /// The slowest upload Sioul waits for (bytes a second): a phone's mobile
 /// data on 3G sends faster. A 2.5 MB file is given 60 s and 156 s more.
@@ -76,7 +95,7 @@ pub const FLOOR: u64 = 16 << 10;
 /// Sending this device's files (`send`): a step that sends a large file on a
 /// slow line is not cut after thirty seconds, as a pull is; each file is
 /// given the time its size asks (`FLOOR`).
-pub(crate) const SEND_LIMITS: Limits = Limits { wait: Duration::from_secs(20), small: Duration::from_secs(30), large: Duration::from_secs(60), pull: Duration::from_secs(20 * 60), blob: Duration::from_secs(15 * 60), floor: FLOOR, stall: Duration::from_secs(30) };
+pub(crate) const SEND_LIMITS: Limits = Limits { wait: Duration::from_secs(20), small: Duration::from_secs(30), large: Duration::from_secs(60), pull: Duration::from_secs(20 * 60), blob: Duration::from_secs(15 * 60), floor: FLOOR, stall: Duration::from_secs(30), locked: LOCKED_WAIT };
 
 /// Looked for again this long after the last look, when not found (seconds).
 pub const LOOK_AGAIN: i64 = 6 * 3600;
@@ -226,6 +245,11 @@ pub struct State {
     /// This device's own files as they last went up (`MIRROR`), by their path in the folder.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub sent: BTreeMap<String, Sent>,
+    /// This device's own files found locked there (`423`) after the waits
+    /// (`MIRROR`), by their path, and in how many steps in a row: left for
+    /// the next step, said once `LOCKED_SAID` (`Puller::locked`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub locked: BTreeMap<String, u32>,
     /// When the sealed files swept here as written by a device that no
     /// longer counts were last looked for there (`MIRROR`, `Departed`, Unix
     /// seconds): every six hours at most.
@@ -493,6 +517,11 @@ pub(crate) struct Server {
     limits: Limits,
     /// Bytes the listings of this step read, for the log (`Pulled::listed_bytes`).
     listed_bytes: std::sync::atomic::AtomicU64,
+    /// Milliseconds waited in this step for files locked there (`put_file`, `LOCKED_WITHIN`).
+    locked_waited: std::sync::atomic::AtomicU64,
+    /// How long the last `PUT` took (milliseconds), its own request alone:
+    /// never the waits after a `423` nor the tries before it (`last_put`).
+    last_put: std::sync::atomic::AtomicU64,
 }
 
 /// A folder of the server, as listed: its own ETag, and what it holds by name.
@@ -570,6 +599,8 @@ impl Server {
             started: Instant::now(),
             limits,
             listed_bytes: std::sync::atomic::AtomicU64::new(0),
+            locked_waited: std::sync::atomic::AtomicU64::new(0),
+            last_put: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -656,7 +687,36 @@ impl Server {
     /// takes at `limits.floor` bytes a second (a file still moving is not cut
     /// at a flat minute); cut when nothing moved for `limits.stall`. Failed:
     /// why, how long it lasted and how many of its bytes went (`PutFailed`).
+    ///
+    /// Locked there (`423`: another program writes or reads that very file
+    /// at that moment), asked again after `limits.locked`, twice as long each
+    /// time, `LOCKED_WAITS` times at most, never past `LOCKED_WITHIN` waited in
+    /// this step nor past its time: the last answer returned, `423` when still
+    /// locked.
     pub(crate) fn put_file(&self, url: &str, body: Vec<u8>, seen: Option<&str>, modified_s: u64, sha1: &str) -> Result<(u16, Option<String>), PutFailed> {
+        let mut wait = self.limits.locked;
+        for _ in 0..LOCKED_WAITS {
+            let answer = self.put_once(url, body.clone(), seen, modified_s, sha1)?;
+            let waited = Duration::from_millis(self.locked_waited.load(std::sync::atomic::Ordering::Relaxed));
+            if answer.0 != 423 || waited + wait > LOCKED_WITHIN || self.started.elapsed() + wait > self.limits.pull {
+                return Ok(answer);
+            }
+            std::thread::sleep(wait);
+            self.locked_waited.fetch_add(wait.as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+            wait *= 2;
+        }
+        self.put_once(url, body, seen, modified_s, sha1)
+    }
+
+    /// How long the last `PUT` took, its own request alone (`put_once`): what
+    /// a line's rate is measured by, never the waits after a `423` (review of
+    /// wt/sync, R2: the waits counted made a records file of 300 KiB read as a
+    /// slow line, and every large file then waited ten minutes).
+    pub(crate) fn last_put(&self) -> Duration {
+        Duration::from_millis(self.last_put.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    fn put_once(&self, url: &str, body: Vec<u8>, seen: Option<&str>, modified_s: u64, sha1: &str) -> Result<(u16, Option<String>), PutFailed> {
         let total = body.len() as u64;
         let started = Instant::now();
         let gave_up = |error: SyncError, kind: &'static str, sent: u64| PutFailed { words: error.to_string(), error, kind, seconds: started.elapsed().as_millis().div_ceil(1000) as u64, sent, total };
@@ -688,7 +748,9 @@ impl Server {
         // buffers on a slow uplink.
         let request = self.agent.configure_request(request).timeout_connect(Some(self.limits.wait)).timeout_global(Some(whole)).build();
         crate::stalls::ask(self.limits.stall, true);
-        match self.agent.run(request) {
+        let ran = self.agent.run(request);
+        self.last_put.store(started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+        match ran {
             Ok(response) if response.status().as_u16() == 401 => Err(gave_up(SyncError::Login("PUT: 401".into()), "login", moved.load(std::sync::atomic::Ordering::Relaxed))),
             Ok(response) => Ok((response.status().as_u16(), header(&response, "ETag").or_else(|| header(&response, "OC-ETag")))),
             Err(e) => {
@@ -1467,6 +1529,10 @@ pub struct Pulled {
     /// Files that did not go (too slow, cut), held back until their backoff
     /// (`send`); sealed files fetched that did not open whole (`fetch_wanted`).
     pub held: usize,
+    /// This device's files found locked there (`423`) after the waits, by
+    /// kind ("records", "entry"…), held back or left for the next step: for
+    /// the log, never said in the window before `LOCKED_SAID` in a row.
+    pub locked: Vec<String>,
     /// The last failure, in detail (`send`).
     pub failure: Option<Failure>,
     /// Bytes that came down.
@@ -2157,7 +2223,15 @@ impl Puller<'_> {
     /// sealed files it swept.
     fn push(&mut self) -> Result<(), Stop> {
         let mut stopped: Option<Stop> = None;
+        // A records file left locked there holds the next ones: records go in order.
+        let mut records_left = false;
+        let folder = self.folder;
+        self.state.locked.retain(|relative, _| folder.join(relative).is_file());
         for relative in own_files(self.folder, self.own, self.state, &self.mine) {
+            let records = matches!(kind_of(&relative), Some((Kind::Round, _)));
+            if records && records_left {
+                continue;
+            }
             let Ok(meta) = std::fs::metadata(self.folder.join(&relative)) else { continue };
             let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
             let sent = self.state.sent.get(&relative).cloned();
@@ -2195,10 +2269,12 @@ impl Puller<'_> {
             let seen = if covered { there } else { sent.map(|s| s.etag).filter(|e| !e.is_empty()) };
             // One that fails (a large sealed file on a slow line, the space
             // there full) stops the uploads, never what is taken out after.
+            let locked_before = self.pulled.locked.len();
             if let Err(stop) = self.send(&relative, size, modified, seen) {
                 stopped = Some(stop);
                 break;
             }
+            records_left |= records && self.pulled.locked.len() > locked_before;
         }
         let taken = self.take_out_own();
         self.take_out_departed();
@@ -2283,6 +2359,9 @@ impl Puller<'_> {
         for attempt in 0..3 {
             // Given the time its size asks on a slow line (`put_file`).
             let (status, etag) = self.server.put_file(&url, bytes.clone(), seen.as_deref(), modified / 1_000_000_000, &sha1).map_err(|failed| Stop::Failed(failed.error))?;
+            if status != 423 {
+                self.state.locked.remove(relative);
+            }
             match status {
                 200 | 201 | 204 => {
                     self.state.sent.insert(relative.to_string(), Sent { size, modified, etag: etag.unwrap_or_default() });
@@ -2296,6 +2375,7 @@ impl Puller<'_> {
                 }
                 412 => seen = self.server.etag(&url)?,
                 409 if attempt == 0 => self.make_folders(relative)?,
+                423 => return self.locked(relative),
                 507 => return Err(Stop::Failed(SyncError::Server("quota".into()))),
                 status => return Err(Stop::Failed(SyncError::Server(format!("PUT: {status}")))),
             }
@@ -2314,6 +2394,20 @@ impl Puller<'_> {
                 status => return Err(Stop::Failed(SyncError::Server(format!("MKCOL: {status}")))),
             }
         }
+        Ok(())
+    }
+
+    /// A file still locked there after the waits of `Server::put_file`
+    /// (`423`: another program writing or reading that very file): left for
+    /// the next step, nothing here lost (records after it wait, as they go in
+    /// order), the other files still going; once it was so `LOCKED_SAID`
+    /// steps in a row, the step says the server's answer (`step_with`), as
+    /// the sending beside a sync app does (`Sender::locked`). Until the
+    /// review of wt/sync (R3) it then stopped every step on that file, its
+    /// entry and sealed files never going while the lock lasted.
+    fn locked(&mut self, relative: &str) -> Result<(), Stop> {
+        *self.state.locked.entry(relative.to_string()).or_default() += 1;
+        self.pulled.locked.push(file_kind(relative).to_string());
         Ok(())
     }
 
@@ -2535,9 +2629,6 @@ fn begin_as(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: i
 /// sharing folder first (`seek`): Sioul's own place, then the top of the files.
 pub const SOUGHT: [&str; 2] = ["Documents/Sioul", "Sioul"];
 
-/// The folders one level under `Documents` looked at, at most (by name).
-const SOUGHT_UNDER: usize = 40;
-
 /// What the look for the sharing folder found (`seek`): the places holding a
 /// seal of Sioul's, in the order looked at, and whether every place it looks
 /// at was looked at (`complete`): a listing or a seal that could not be read,
@@ -2559,9 +2650,14 @@ pub fn sought(place: &str) -> bool {
 /// Where the sharing folder is among `login`'s files, for a device joining
 /// with nothing set up (docs/database.md, "Joining through your Nextcloud's
 /// sign-in"): each of `SOUGHT` first, then each folder one level under
-/// `Documents` (the first 40 by name, hidden ones left out), that holds a
-/// seal of Sioul's (`share::is_seal`), in that order. Only `PROPFIND` and
-/// `GET` of `seal.toml` files, on the account's own server. A listing of
+/// `Documents` (by name, hidden ones left out), that holds a seal of
+/// Sioul's (`share::is_seal`), in that order: every one of them within the
+/// look's time, which running out leaves the look incomplete. Until 10
+/// November 2026 only the first 40 were looked at, and the look said
+/// complete all the same: a seal in a later folder gave "none found" and
+/// offered a second, separate sharing (the review of the join's fixes, N3).
+/// Only `PROPFIND` and `GET` of `seal.toml` files, on the account's own
+/// server. A listing of
 /// `Documents` that fails only ends the extra places; one place that cannot
 /// be read leaves the others looked at; the time running out ends the look
 /// with what was found: each makes the look incomplete (`Sought`). Why it
@@ -2601,7 +2697,7 @@ pub(crate) fn seek_with(login: &Login, limits: Limits) -> Result<Sought, String>
         }
     }
     let extra: Vec<String> = match server.list(&format!("{root}Documents/")) {
-        Ok(listing) => listing.items.iter().filter(|(name, item)| item.dir && !name.starts_with('.') && name.as_str() != "Sioul").take(SOUGHT_UNDER).map(|(name, _)| format!("Documents/{name}")).collect(),
+        Ok(listing) => listing.items.iter().filter(|(name, item)| item.dir && !name.starts_with('.') && name.as_str() != "Sioul").map(|(name, _)| format!("Documents/{name}")).collect(),
         Err(SyncError::NotFound(_)) => Vec::new(),
         Err(e) if e.is_lasting() || out_of_time(&e) => return ended(e, sought),
         Err(_) => {
@@ -2665,6 +2761,10 @@ pub(crate) fn step_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
                 }
                 state.pushed = now;
                 state.said.clear();
+                // A file of its own locked there that many steps in a row: said, the rest gone (`Puller::locked`).
+                if state.locked.values().any(|tries| *tries >= LOCKED_SAID) {
+                    state.said = format!("server:{host}");
+                }
             }
             Err(Stop::Unconfirmed(why)) => {
                 state.confirmed = 0;
@@ -3175,6 +3275,9 @@ pub struct Held {
     pub tries: u32,
     #[serde(default)]
     pub until: i64,
+    /// Held because it was locked there (`Sender::locked`), not too slow.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
 }
 
 /// What "Send everything again" did: when (Unix seconds), how many files
@@ -3367,8 +3470,13 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
                     sending.last = now;
                     sending.said.clear();
                     sending.failure = None;
+                } else if sending.held.values().all(|held| held.locked && held.tries < LOCKED_SAID) {
+                    // Only files locked there a moment: nothing said yet (`Sender::locked`).
+                    sending.said.clear();
+                    sending.failure = None;
                 } else if let Some(failure) = &sending.failure {
-                    sending.said = format!("network:{host}");
+                    // A file locked there keeps failing: the server's answer, not the network.
+                    sending.said = format!("{}:{host}", if failure.kind == "locked" { "server" } else { "network" });
                     pulled.failure = Some(failure.clone());
                 }
                 if check {
@@ -3840,7 +3948,6 @@ impl Sender<'_> {
             if large {
                 self.sending.large_at = self.now;
             }
-            let started = Instant::now();
             let (status, etag) = match self.server.put_file(&url, bytes.clone(), seen.as_deref(), modified_s, &sha1) {
                 Ok(answer) => answer,
                 Err(failed) => return self.failed(relative, failed),
@@ -3851,19 +3958,41 @@ impl Sender<'_> {
                     self.sending.held.remove(relative);
                     self.pulled.sent += 1;
                     self.pulled.bytes += size;
+                    // The rate of the PUT that went, never the waits after a `423` (R2).
                     if size >= 64 << 10 {
-                        self.sending.rate = size * 1000 / (started.elapsed().as_millis() as u64).max(1);
+                        self.sending.rate = size * 1000 / (self.server.last_put().as_millis() as u64).max(1);
                     }
                     return Ok(Went::Done);
                 }
                 // Changed there meanwhile, or gone: looked at again.
                 412 | 404 => there = Some(self.server.stat(&url)?),
                 409 if attempt == 0 => self.make_folders(relative)?,
+                423 => return Ok(self.locked(relative)),
                 507 => return Err(Stop::Failed(SyncError::Server("quota".into()))),
                 status => return Err(Stop::Failed(SyncError::Server(format!("PUT: {status}")))),
             }
         }
         Err(Stop::Failed(SyncError::Server("PUT: 412".into())))
+    }
+
+    /// A file still locked there after the waits of `Server::put_file`
+    /// (`423`: another program writing or reading that very file, the
+    /// desktop's sync app sending it too): held back as a file too slow is
+    /// (`backoff`), the others still going (records after it wait, as they go
+    /// in order), and said (`Sending::failure`, kind "locked") only once it
+    /// was so `LOCKED_SAID` sends in a row. Until 10 November 2026 it stopped
+    /// the whole send, said as the server's error.
+    fn locked(&mut self, relative: &str) -> Went {
+        let held = self.sending.held.entry(relative.to_string()).or_default();
+        held.tries += 1;
+        held.until = self.now + backoff(held.tries);
+        held.locked = true;
+        if held.tries >= LOCKED_SAID {
+            self.sending.failure = Some(Failure { kind: "locked".into(), file: file_kind(relative).into(), words: format!("PUT: 423, {} sends in a row", held.tries), at: self.now, ..Failure::default() });
+        }
+        self.pulled.held += 1;
+        self.pulled.locked.push(file_kind(relative).to_string());
+        Went::Held
     }
 
     /// A file that did not go, said in detail (`Sending::failure`). Too slow
@@ -3879,6 +4008,7 @@ impl Sender<'_> {
             let held = self.sending.held.entry(relative.to_string()).or_default();
             held.tries += 1;
             held.until = self.now + backoff(held.tries);
+            held.locked = false;
             self.pulled.held += 1;
             return Ok(Went::Held);
         }
@@ -4542,7 +4672,7 @@ mod tests {
     const SEAL: &str = "# Sioul: how your devices' shared records are sealed (docs/database.md).\nversion = 1\nsalt = \"AAAAAAAAAAAAAAAAAAAAAA==\"\nmemory_kib = 65536\npasses = 3\ncheck = \"one\"\n";
     const OTHER_SEAL: &str = "# Sioul: how your devices' shared records are sealed (docs/database.md).\nversion = 1\nsalt = \"BBBBBBBBBBBBBBBBBBBBBB==\"\nmemory_kib = 65536\npasses = 3\ncheck = \"two\"\n";
     /// The network's limits, short: a test does not wait ten seconds.
-    const TEST: Limits = Limits { wait: Duration::from_millis(700), small: Duration::from_secs(3), large: Duration::from_secs(5), pull: Duration::from_secs(30), blob: Duration::from_secs(5), floor: 1 << 30, stall: Duration::from_millis(700) };
+    const TEST: Limits = Limits { wait: Duration::from_millis(700), small: Duration::from_secs(3), large: Duration::from_secs(5), pull: Duration::from_secs(30), blob: Duration::from_secs(5), floor: 1 << 30, stall: Duration::from_millis(700), locked: Duration::from_millis(20) };
     thread_local! {
         /// The longest round a pull brings, in this test's thread (`round_cap`).
         pub(super) static ROUND_CAP: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
@@ -6762,6 +6892,156 @@ mod tests {
         assert!(sending.held.is_empty() && sending.failure.is_none() && sending.last == DUE + 10 + backoff(1), "{sending:?}");
     }
 
+    /// The requests of a send that put a records file of `id`.
+    fn records_puts(w: &World, id: &str) -> usize {
+        w.fake.seen().iter().filter(|line| line.starts_with("PUT ") && line.split(' ').nth(1).and_then(|path| path.rsplit('/').next()).is_some_and(|name| name.starts_with(id) && name.ends_with(".jsonl"))).count()
+    }
+
+    /// A stand-in server answering `423 Locked` to a device's records (a
+    /// Nextcloud while another program writes or reads that very file), the
+    /// first `times` times, or always.
+    fn lock_records(w: &World, id: &str, times: Option<u32>) {
+        let (id, mut left) = (id.to_string(), times);
+        w.fake.fault(move |r| {
+            let records = r.method == "PUT" && r.path.rsplit('/').next().is_some_and(|name| name.starts_with(&id) && name.ends_with(".jsonl"));
+            let locked = records && left.is_none_or(|n| n > 0);
+            if locked && let Some(n) = left.as_mut() {
+                *n -= 1;
+            }
+            locked.then_some(Fault::Status(423))
+        });
+    }
+
+    /// Murena answered "423 Locked" to a desk's sends beside its sync app
+    /// (the Nextcloud client carrying the same folder), 143 times from 5 to
+    /// 7 November 2026, and each stopped the whole send, said as the
+    /// server's error. Now a file locked a moment is asked again within the
+    /// send (`LOCKED_WAITS`, a bounded wait) and goes, nothing said; one
+    /// still locked is held back, the other files going, and said only once
+    /// it was so `LOCKED_SAID` sends in a row; free again, it goes and all
+    /// is clear.
+    #[test]
+    fn a_file_locked_there_is_asked_again_and_said_only_when_it_keeps_failing() {
+        let w = World::new("locked");
+        let desk_folder = desk_beside(&w);
+        let id = w.desk.id.clone();
+        w.desk.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n");
+        w.desk.exchange(&desk_folder, DUE + 40);
+        // Locked twice, then free: it goes within the send.
+        lock_records(&w, &id, Some(2));
+        w.fake.forget_seen();
+        let started = Instant::now();
+        let went = send_with(&w.desk.memory, &desk_folder, &id, &w.fake.login(), &BTreeMap::new(), DUE + 41, false, TEST);
+        assert!(went.problem.is_none() && went.held == 0 && went.locked.is_empty() && went.failure.is_none() && went.sent > 0, "{went:?}");
+        let refused = w.fake.seen().iter().filter(|line| line.starts_with("PUT ") && line.ends_with(" 423")).count();
+        assert!(refused == 2 && records_puts(&w, &id) >= 3, "asked twice more: {:?}", w.fake.seen());
+        assert!(started.elapsed() >= TEST.locked * 3, "waited between the tries");
+        for (round, bytes) in desk_records(&desk_folder, &id) {
+            assert_eq!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()), bytes, "{round}");
+        }
+        // Locked for good: held back, the others going, nothing said for two sends.
+        w.fake.clear_faults();
+        lock_records(&w, &id, None);
+        w.desk.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n\"levo@1800086400\" = 1800086460\n");
+        w.desk.exchange(&desk_folder, DUE + 100);
+        let notes = format!("{id}.toml");
+        let mut at = DUE + 101;
+        for tries in 1..LOCKED_SAID {
+            w.fake.forget_seen();
+            let held = send_with(&w.desk.memory, &desk_folder, &id, &w.fake.login(), &BTreeMap::new(), at, false, TEST);
+            assert!(held.problem.is_none() && held.held == 1 && held.locked == ["records"] && held.failure.is_none(), "{tries}: {held:?}");
+            assert_eq!(records_puts(&w, &id), 1 + LOCKED_WAITS as usize, "{tries}: bounded");
+            let sending = Sending::load(&w.desk.memory);
+            assert!(sending.said.is_empty() && sending.failure.is_none() && sending.held.values().all(|h| h.locked && h.tries == tries), "{tries}: {sending:?}");
+            assert_eq!(std::fs::read(w.server.join(&notes)).unwrap(), std::fs::read(desk_folder.join(&notes)).unwrap(), "{tries}: the notes went all the same");
+            // Before its backoff: not tried again.
+            w.fake.forget_seen();
+            send_with(&w.desk.memory, &desk_folder, &id, &w.fake.login(), &BTreeMap::new(), at + backoff(tries) - 1, false, TEST);
+            assert_eq!(records_puts(&w, &id), 0, "{tries}: held until its backoff");
+            at += backoff(tries);
+        }
+        let said = send_with(&w.desk.memory, &desk_folder, &id, &w.fake.login(), &BTreeMap::new(), at, false, TEST);
+        let failure = said.failure.clone().expect("said once it keeps failing");
+        assert!(failure.kind == "locked" && failure.file == "records" && failure.words.contains("423"), "{failure:?}");
+        assert!(said.problem.as_deref().is_some_and(|p| p.starts_with("server:")), "{said:?}");
+        // Free again: it goes, and all is clear.
+        w.fake.clear_faults();
+        let went = send_with(&w.desk.memory, &desk_folder, &id, &w.fake.login(), &BTreeMap::new(), at + backoff(LOCKED_SAID), false, TEST);
+        assert!(went.problem.is_none() && went.held == 0 && went.locked.is_empty(), "{went:?}");
+        let sending = Sending::load(&w.desk.memory);
+        assert!(sending.held.is_empty() && sending.failure.is_none() && sending.said.is_empty(), "{sending:?}");
+        for (round, bytes) in desk_records(&desk_folder, &id) {
+            assert_eq!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()), bytes, "{round}");
+        }
+    }
+
+    /// The waits after a `423` never count in the line's rate (review of
+    /// wt/sync, R2): a large records file locked twice, then sent, is timed
+    /// by its own PUT alone, so the device never reads as on a slow line, and
+    /// its large files are not paced for it.
+    #[test]
+    fn a_lock_s_waits_never_count_in_the_line_s_rate() {
+        let w = World::new("locked-rate");
+        let desk_folder = desk_beside(&w);
+        a_desk_holding_much(&w, &desk_folder, DUE);
+        let (round, size) = desk_records(&desk_folder, &w.desk.id).into_iter().find(|(_, s)| *s > 1 << 20).unwrap();
+        lock_records(&w, &w.desk.id, Some(2));
+        let waits = Limits { locked: Duration::from_millis(500), ..TEST };
+        let went = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 10, false, waits);
+        assert!(went.problem.is_none() && went.locked.is_empty(), "{went:?}");
+        assert_eq!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()), size);
+        let sending = Sending::load(&w.desk.memory);
+        // Timed with the waits (1.5 s), the rate would be below the size a second and a half.
+        assert!(sending.rate * 3 / 2 > size && !sending.slow(), "rate {} for {size} bytes", sending.rate);
+    }
+
+    /// The same where Sioul keeps the folder itself (`MIRROR`): a records
+    /// file locked a moment goes within the step; still locked, it is left
+    /// for the next step, the step going through, and said only once it was
+    /// so `LOCKED_SAID` steps in a row.
+    #[test]
+    fn a_file_locked_there_waits_for_the_next_step_where_sioul_keeps_the_folder() {
+        let w = World::new("locked-mirror");
+        let lone = Device::new(&w.base, "lone", PHONE);
+        let folder = mirror_of(&lone.memory);
+        let login = w.fake.login();
+        let opened = open_with(&login, "Documents/Sioul", TEST).unwrap();
+        put_bytes(&folder, "seal.toml", opened.seal.as_deref().expect("sealed by the desk"));
+        begin(&lone.memory, &folder, &login, &opened, DUE).unwrap();
+        lone.session(&folder, |e| e.start(DUE));
+        assert!(step_with(&lone.memory, &folder, &lone.id, &login, DUE + 10, true, TEST).problem.is_none());
+        lone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000050\n");
+        lone.exchange(&folder, DUE + 20);
+        lock_records(&w, &lone.id, Some(1));
+        w.fake.forget_seen();
+        let stepped = step_with(&lone.memory, &folder, &lone.id, &login, DUE + 21, false, TEST);
+        assert!(stepped.problem.is_none() && stepped.locked.is_empty() && stepped.sent > 0, "{stepped:?}");
+        assert_eq!(records_puts(&w, &lone.id), 2);
+        w.fake.clear_faults();
+        lock_records(&w, &lone.id, None);
+        lone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000050\n\"levo@1800086400\" = 1800086460\n");
+        lone.exchange(&folder, DUE + 30);
+        for step in 1..LOCKED_SAID {
+            let left = step_with(&lone.memory, &folder, &lone.id, &login, DUE + 30 + i64::from(step), false, TEST);
+            assert!(left.problem.is_none() && left.locked == ["records"], "{step}: {left:?}");
+            assert_eq!(State::load(&lone.memory).locked.values().copied().collect::<Vec<_>>(), [step]);
+        }
+        // Said once it keeps failing, the other files going all the same (R3): its notes changed now go.
+        lone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000050\n\"levo@1800086400\" = 1800086460\n\"levo@1800172800\" = 1800172860\n");
+        lone.exchange(&folder, DUE + 39);
+        let said = step_with(&lone.memory, &folder, &lone.id, &login, DUE + 40, false, TEST);
+        assert!(said.problem.as_deref().is_some_and(|p| p.starts_with("server:")) && said.locked == ["records"], "{said:?}");
+        let notes = format!("{}.toml", lone.id);
+        assert_eq!(std::fs::read(w.server.join(&notes)).unwrap(), std::fs::read(folder.join(&notes)).unwrap(), "its notes went all the same");
+        w.fake.clear_faults();
+        let went = step_with(&lone.memory, &folder, &lone.id, &login, DUE + 50, false, TEST);
+        assert!(went.problem.is_none() && went.locked.is_empty() && went.sent > 0, "{went:?}");
+        assert!(State::load(&lone.memory).locked.is_empty());
+        for (round, bytes) in desk_records(&folder, &lone.id) {
+            assert_eq!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()), bytes, "{round}");
+        }
+    }
+
     /// The server unreachable, or refusing: nothing tried again before the backoff.
     #[test]
     fn a_failed_send_waits_for_its_backoff() {
@@ -7768,6 +8048,12 @@ mod tests {
         // No Documents folder at all: the top still looked at.
         std::fs::remove_dir_all(files.join("Documents")).unwrap();
         assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: vec!["Sioul".into()], complete: true });
+        // Every folder of Documents looked at, the forty-first and later too (N3): found, the look complete.
+        for folder in 0..45 {
+            std::fs::create_dir_all(files.join(format!("Documents/Dossier {folder:02}"))).unwrap();
+        }
+        put(&files, "Documents/Zz partagé/seal.toml", SEAL);
+        assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: vec!["Sioul".into(), "Documents/Zz partagé".into()], complete: true });
         // A refused login said, as `open` says it.
         let refused = Login { password: Some("wrong".into()), ..login };
         assert!(seek_with(&refused, TEST).unwrap_err().starts_with("login:"));

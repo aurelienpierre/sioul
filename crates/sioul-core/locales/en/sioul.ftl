@@ -3964,6 +3964,7 @@ share-send-detail-stalled = nothing moved for half a minute ({ $total }).
 share-send-detail-cut = the connection broke on the way ({ $total }).
 share-send-detail-out-of-time = the send ran out of time.
 share-send-detail-unreachable = the server could not be reached.
+share-send-detail-locked = the server said another program was writing or reading it at that moment (a sync app sending the same file), several sends in a row.
 share-send-next = Tried again at { $when }.
 share-send-again = Send everything again
 share-send-again-help = Sends each of this device's files the server lacks or holds otherwise, whatever was sent before, then fetches the others'. For a sync app that was late, or a server that lost files.

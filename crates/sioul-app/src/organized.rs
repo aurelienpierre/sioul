@@ -350,6 +350,13 @@ pub(crate) fn plan(path: &Path, before: Option<&str>, applied: &str, guests: Opt
     let is_in = |list: &[Guest], g: &Guest| list.iter().any(|h| h.address.eq_ignore_ascii_case(&g.address));
     let added: Vec<Guest> = guests.iter().filter(|g| !is_in(&had, g)).cloned().collect();
     let removed: Vec<Guest> = had.iter().filter(|g| !is_in(&guests, g)).cloned().collect();
+    // Made a meeting (guests where there were none): its SEQUENCE past what it was (RFC 5546
+    // §2.1.4; review of wt/sync, R4). Never for guests added to a meeting: the door tells only
+    // those whose times change, and the others' answers to their invitation would read as older.
+    let text = match before {
+        Some(b) if meeting && !was => organizer::sequence_past(b, &text),
+        _ => text,
+    };
     // Who must hear of it: each guest kept whose times of it changed, the series' and those of one time alone (N10).
     let told_of = |g: &Guest| before.is_some_and(|b| organizer::told_guest(b, &text, &g.address));
     let kept: Vec<Guest> = guests.iter().filter(|g| is_in(&had, g) && told_of(g)).cloned().collect();
@@ -470,8 +477,8 @@ fn keep_aside(text: &str, aside: &organizer::Aside, given: bool, known: bool) ->
     if known {
         sioul_core::meeting_lines::ensure(&sioul_core::meeting_lines::default_path(), &uid)?;
     }
-    // Its entry knows the meeting it is kept for: a file older than that is behind it (H1).
-    sioul_core::meeting_lines::stamped(&sioul_core::meeting_lines::default_path(), &uid, &sioul_core::meeting_lines::stamp_of(text))?;
+    // Its entry knows the meeting it is kept for: a file older than that, or of a lower SEQUENCE, is behind it (H1).
+    sioul_core::meeting_lines::stamped_as(&sioul_core::meeting_lines::default_path(), &uid, text)?;
     Ok(())
 }
 
@@ -1065,6 +1072,8 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         let unfolded = sioul_core::lines::unfold(&text).join("\n");
         assert!(unfolded.contains("ORGANIZER;CN=Camille:mailto:camille@example.org") && unfolded.contains("SCHEDULE-AGENT=CLIENT:mailto:anne@example.net"), "{unfolded}");
+        // Made a meeting: a later SEQUENCE (R4), a copy from before reading as older.
+        assert!(unfolded.contains("\nSEQUENCE:1\n"), "{unfolded}");
         let draft = Draft::by_id(&written.drafts[0]).expect("the invitation drafted");
         assert!(draft.to[0].contains("anne@example.net") && draft.calendar.as_deref().is_some_and(|ics| ics.contains("METHOD:REQUEST")), "{draft:?}");
         assert_eq!(draft.account, "camille");
@@ -1083,7 +1092,7 @@ mod tests {
         assert!(move_plan.told && move_plan.asked().contains("Anne"), "{}", move_plan.asked());
         let move_written = write(&move_plan).unwrap();
         assert_eq!(move_written.drafts.len(), 1, "the change drafted for Anne");
-        assert!(sioul_core::lines::unfold(&std::fs::read_to_string(&path).unwrap()).iter().any(|l| l == "SEQUENCE:1"), "a later SEQUENCE");
+        assert!(sioul_core::lines::unfold(&std::fs::read_to_string(&path).unwrap()).iter().any(|l| l == "SEQUENCE:2"), "a later SEQUENCE");
         // Deleted, its cancellation drafted; undone.
         let gone = delete(&path).unwrap();
         assert!(!path.exists());
@@ -1192,17 +1201,18 @@ mod tests {
         // Sent from Mail: no longer in Drafts.
         Draft::by_id(&gone.drafts[0]).unwrap().discard();
         assert_eq!(undelete(&gone).as_deref(), Some(tr().text("invite-undeleted-draft", None).as_str()));
-        assert_eq!(sequence(&path), "SEQUENCE:2", "one past the cancellation's (1)");
+        // Made a meeting at SEQUENCE 1 (its guest added, R4), cancelled at 2: one past it.
+        assert_eq!(sequence(&path), "SEQUENCE:3", "one past the cancellation's (2)");
         let again: Vec<Draft> = Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("UID:undeleted-1") && ics.contains("METHOD:REQUEST"))).collect();
         assert_eq!(again.len(), 1, "invited again");
-        assert!(again[0].to[0].contains("anne@example.net") && again[0].calendar.as_deref().unwrap().contains("SEQUENCE:2"));
+        assert!(again[0].to[0].contains("anne@example.net") && again[0].calendar.as_deref().unwrap().contains("SEQUENCE:3"));
         again.iter().for_each(Draft::discard);
         // The server's to tell: written back so too, and said.
         let gone = delete(&path).unwrap();
         gone.drafts.iter().filter_map(|id| Draft::by_id(id)).for_each(|d| d.discard());
         let served = Written { served: anne(), drafts: Vec::new(), ..gone };
         assert_eq!(undelete(&served).as_deref(), Some(tr().text("invite-undeleted-server", None).as_str()));
-        assert_eq!(sequence(&path), "SEQUENCE:4");
+        assert_eq!(sequence(&path), "SEQUENCE:5");
     }
 
     /// A colleague's event in a shared calendar, naming them as its organizer
@@ -1239,7 +1249,7 @@ mod tests {
         let written = write(&asked).unwrap();
         let invitation = Draft::by_id(&written.drafts[0]).unwrap().calendar.unwrap();
         let flat_invitation = flat(&invitation);
-        assert!(flat_invitation.contains("METHOD:REQUEST") && flat_invitation.contains("STATUS:TENTATIVE") && flat_invitation.contains("SEQUENCE:1"), "{flat_invitation}");
+        assert!(flat_invitation.contains("METHOD:REQUEST") && flat_invitation.contains("STATUS:TENTATIVE") && flat_invitation.contains("SEQUENCE:2"), "{flat_invitation}");
         assert!(flat(&std::fs::read_to_string(&path).unwrap()).contains("SCHEDULE-AGENT=CLIENT:mailto:anne@example.net"), "Anne's mark as it was");
         assert_eq!(put_back(&written), Ok(()));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), before, "as it was");
@@ -1249,20 +1259,20 @@ mod tests {
         let written = write(&cancelling).unwrap();
         assert_eq!(written.drafts.len(), 1, "one message");
         let cancel = flat(&Draft::by_id(&written.drafts[0]).unwrap().calendar.unwrap());
-        assert!(cancel.contains("METHOD:CANCEL") && cancel.contains("STATUS:CANCELLED") && cancel.contains("SEQUENCE:1") && cancel.contains("mailto:anne@example.net"), "{cancel}");
+        assert!(cancel.contains("METHOD:CANCEL") && cancel.contains("STATUS:CANCELLED") && cancel.contains("SEQUENCE:2") && cancel.contains("mailto:anne@example.net"), "{cancel}");
         let cancelled = std::fs::read_to_string(&path).unwrap();
         assert_eq!(agenda::status_of(&cancelled), "cancelled");
-        assert!(flat(&cancelled).contains("SEQUENCE:1"));
+        assert!(flat(&cancelled).contains("SEQUENCE:2"));
         // Sent: Undo tells Anne back, one past it.
         Draft::by_id(&written.drafts[0]).unwrap().discard();
         assert_eq!(put_back(&written), Ok(()));
         let back = std::fs::read_to_string(&path).unwrap();
         assert_ne!(agenda::status_of(&back), "cancelled");
-        assert!(flat(&back).contains("SEQUENCE:2"), "{back}");
+        assert!(flat(&back).contains("SEQUENCE:3"), "{back}");
         let told_back = drafts_of_uid("status-1");
         assert_eq!(told_back.len(), 1);
         let told = flat(told_back[0].calendar.as_deref().unwrap());
-        assert!(told.contains("METHOD:REQUEST") && told.contains("SEQUENCE:2") && told_back[0].to[0].contains("anne@example.net"), "{told}");
+        assert!(told.contains("METHOD:REQUEST") && told.contains("SEQUENCE:3") && told_back[0].to[0].contains("anne@example.net"), "{told}");
         told_back.iter().for_each(Draft::discard);
         // Cancelled again: no change its guests would see, until another status.
         let written = write(&status_plan(&path, &back, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
@@ -1353,7 +1363,7 @@ mod tests {
         assert_eq!(written.drafts.len(), 1, "one message");
         let draft = Draft::by_id(&written.drafts[0]).unwrap();
         let said = flat(draft.calendar.as_deref().unwrap());
-        assert!(said.contains("METHOD:CANCEL") && said.contains("RECURRENCE-ID") && !said.contains("RRULE") && said.contains("SEQUENCE:1") && draft.to[0].contains("anne@example.net"), "{said}");
+        assert!(said.contains("METHOD:CANCEL") && said.contains("RECURRENCE-ID") && !said.contains("RRULE") && said.contains("SEQUENCE:2") && draft.to[0].contains("anne@example.net"), "{said}");
         let without = flat(&std::fs::read_to_string(&path).unwrap());
         assert!(without.contains("EXDATE") && without.contains("RRULE") && without.contains("SCHEDULE-AGENT=CLIENT:mailto:anne@example.net"), "{without}");
         assert_eq!(put_back(&written), Ok(()));
@@ -1364,7 +1374,7 @@ mod tests {
         Draft::by_id(&written.drafts[0]).unwrap().discard();
         assert_eq!(put_back(&written), Ok(()));
         let back = flat(&std::fs::read_to_string(&path).unwrap());
-        assert!(!back.contains("EXDATE") && back.contains("SEQUENCE:2"), "{back}");
+        assert!(!back.contains("EXDATE") && back.contains("SEQUENCE:3"), "{back}");
         let told = drafts_of_uid("off-1");
         assert!(told.len() == 1 && flat(told[0].calendar.as_deref().unwrap()).contains("METHOD:REQUEST") && told[0].to[0].contains("anne@example.net"), "{told:?}");
         told.iter().for_each(Draft::discard);
@@ -1489,14 +1499,14 @@ mod tests {
         let on = status_plan(&path, &off, "confirmed", &here.calendar).unwrap().unwrap();
         assert!(on.asked().contains("Anne"), "{}", on.asked());
         write(&on).unwrap();
-        assert_eq!(request_of("m6-sent"), ["METHOD:REQUEST SEQUENCE:2"], "past the cancellation (1)");
+        assert_eq!(request_of("m6-sent"), ["METHOD:REQUEST SEQUENCE:3"], "past the cancellation (2)");
         // Unsent, another status than they last heard.
         let path = here.meeting("other.ics", &planning("m6-other", ""), &anne());
         let before = std::fs::read_to_string(&path).unwrap();
         write(&status_plan(&path, &before, "cancelled", &here.calendar).unwrap().unwrap()).unwrap();
         let off = std::fs::read_to_string(&path).unwrap();
         write(&status_plan(&path, &off, "tentative", &here.calendar).unwrap().unwrap()).unwrap();
-        assert_eq!(request_of("m6-other"), ["METHOD:REQUEST SEQUENCE:2"], "one message, no cancellation");
+        assert_eq!(request_of("m6-other"), ["METHOD:REQUEST SEQUENCE:3"], "one message, no cancellation");
         // Unsent, drafted elsewhere: no note here.
         let path = here.meeting("there.ics", &planning("m6-there", ""), &anne());
         let before = std::fs::read_to_string(&path).unwrap();
@@ -1504,7 +1514,7 @@ mod tests {
         organizer::cancellations_settled(&before);
         let off = std::fs::read_to_string(&path).unwrap();
         write(&status_plan(&path, &off, "confirmed", &here.calendar).unwrap().unwrap()).unwrap();
-        assert_eq!(request_of("m6-there"), ["METHOD:REQUEST SEQUENCE:2"], "one message, no cancellation");
+        assert_eq!(request_of("m6-there"), ["METHOD:REQUEST SEQUENCE:3"], "one message, no cancellation");
     }
 
     /// M5: what the door drafts is noted, its deletion and one time left out
@@ -1597,7 +1607,7 @@ mod tests {
     fn a_guest_s_answer_for_one_time_is_kept_and_said() {
         let here = Here::new("one-time", "camille.once@example.org");
         let path = here.meeting("weekly.ics", &planning("once-1", "RRULE:FREQ=WEEKLY\r\n"), &anne());
-        let reply = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:once-1\r\nRECURRENCE-ID:20991117T090000Z\r\nSEQUENCE:0\r\nDTSTAMP:20991101T090000Z\r\nORGANIZER:mailto:camille.once@example.org\r\nATTENDEE;PARTSTAT=DECLINED:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let reply = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:once-1\r\nRECURRENCE-ID:20991117T090000Z\r\nSEQUENCE:1\r\nDTSTAMP:20991101T090000Z\r\nORGANIZER:mailto:camille.once@example.org\r\nATTENDEE;PARTSTAT=DECLINED:mailto:anne@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         let message = sioul_core::card::Card::from_bytes(b"From: Anne <anne@example.net>\r\nTo: camille.once@example.org\r\nSubject: Declined: Planning\r\nMessage-ID: <once-reply@example.net>\r\n\r\nDeclined.\r\n").unwrap();
         let said = replied(reply, &message, &[], &[]).unwrap();
         assert!(said.starts_with(&say("invite-replied-no", &[("who", "Anne".into()), ("title", "Planning".into())])) && said.contains(&tr().text("invite-replied-time", None).split('{').next().unwrap().trim().to_string()), "{said}");

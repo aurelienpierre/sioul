@@ -329,6 +329,40 @@ fn renumbered_to(account: &str, folder: &str, old: ImapOrigin) -> Option<ImapOri
     })
 }
 
+/// The numberings a renumbering of `account`'s folder `folder` (its server
+/// name) replaced by `new` (part 0's rule, `<account>.removed.log`): each old
+/// copy's in that folder, removed once `new` came in its place. A row an
+/// older Sioul keyed by the old copy's file (`file:…`) is the same message
+/// (budget's `mail_lines`; review of mailbox part 0, L4). Another folder's
+/// lines never count (review of wt/sync, R6: two folders renumbered alike
+/// share their old numberings).
+pub fn renumbered_from(account: &str, folder: &str, new: ImapOrigin) -> Vec<ImapOrigin> {
+    let Ok(log) = std::fs::read_to_string(crate::config::state_dir().join("sync").join(format!("{account}.removed.log"))) else { return Vec::new() };
+    // The folder as the log writes it (`renumbered::remove`).
+    let folder = folder.replace(['\t', '\n', '\r'], " ");
+    let wanted = format!("U{}-{}", new.validity, new.uid);
+    log.lines()
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let [_, logged, gone, now] = fields[..] else { return None };
+            if logged != folder || now != wanted {
+                return None;
+            }
+            let (validity, uid) = gone.strip_prefix('U')?.split_once('-')?;
+            Some(ImapOrigin { validity: validity.parse().ok()?, uid: uid.parse().ok()? })
+        })
+        .collect()
+}
+
+/// The server's name of the folder of `account` whose Maildir++ directory is
+/// `dir` (`<Maildir>` for the inbox, `<Maildir>/.Sent`), as its last sync
+/// saved its folders (`folders::saved`); none when not known.
+pub fn folder_named(account: &str, dir: &Path) -> Option<String> {
+    let name = dir.file_name()?.to_str()?;
+    let local = if name.starts_with('.') { name } else { "" };
+    crate::folders::saved(account).into_iter().find(|f| f.local == local).map(|f| f.name)
+}
+
 /// A path with its "." and ".." taken away as they are written, without
 /// asking the system (which may follow a link, or reach another computer).
 fn lexical(path: &Path) -> PathBuf {

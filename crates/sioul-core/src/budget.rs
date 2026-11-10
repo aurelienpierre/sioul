@@ -873,6 +873,11 @@ impl MailLine {
     }
 }
 
+/// The folder a message file is in (`<folder>/cur/<name>`, `<folder>/new/<name>`).
+fn folder_dir(path: &Path) -> Option<PathBuf> {
+    path.parent().filter(|sub| sub.file_name().is_some_and(|n| n == "cur" || n == "new")).and_then(Path::parent).map(Path::to_path_buf)
+}
+
 /// Every message about money among `items`, newest first, with what becomes of
 /// it. Mail set aside (forged, spam) and the review queue's (what your own spam
 /// filter flagged or moved) are never read; a rule gives the budget and
@@ -883,16 +888,37 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
     let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t, words, &index)).collect();
     lines.sort_by_key(|l| l.date);
     // A message without a Message-ID that an older Sioul keyed by its file
-    // ("file:<path>"): the same message while its name's unique part is.
+    // ("file:<path>"): the same message while its name's unique part is, or
+    // once a renumbering of its folder replaced that copy by this one (part
+    // 0's rule: the old copy's folder, and its numbering, which the removals'
+    // log says this one replaced; review of mailbox part 0, L4: until 10
+    // November 2026 such a row was proposed again, as if never recorded).
     let unique = |key: &str| key.strip_prefix("file:").and_then(|p| Path::new(p).file_name()).map(|n| crate::maildir::unique_part(&n.to_string_lossy()).to_string());
     let older: BTreeSet<String> = recorded.iter().filter_map(|k| unique(k)).collect();
     let older_ignored: BTreeSet<String> = ignored.iter().filter_map(|k| unique(k)).collect();
+    // Each older key's folder and numbering.
+    let placed = |key: &str| key.strip_prefix("file:").map(Path::new).and_then(|p| Some((folder_dir(p)?, crate::maildir::origin_of(p)?)));
+    let older_placed: Vec<(PathBuf, crate::card::ImapOrigin)> = recorded.iter().filter_map(|k| placed(k)).collect();
+    let ignored_placed: Vec<(PathBuf, crate::card::ImapOrigin)> = ignored.iter().filter_map(|k| placed(k)).collect();
     for line in &mut lines {
         let file = line.path.as_ref().and_then(|p| p.file_name()).map(|n| crate::maildir::unique_part(&n.to_string_lossy()).to_string());
-        let old = |known: &BTreeSet<String>| !line.key.starts_with("mid:") && file.as_ref().is_some_and(|f| known.contains(f));
-        line.state = if recorded.contains(line.key.as_str()) || old(&older) {
+        // The copies this one replaced in its folder, by the removals' log of its account.
+        let replaced: Vec<(PathBuf, crate::card::ImapOrigin)> = match (crate::mailfind::Address::parse(&line.key), line.path.as_deref()) {
+            (Some(crate::mailfind::Address::Digest { account, .. }), Some(path)) if !older_placed.is_empty() || !ignored_placed.is_empty() => match (folder_dir(path), crate::maildir::origin_of(path)) {
+                // Its folder by its server's name: the log's lines of that folder alone (R6).
+                (Some(dir), Some(origin)) => match crate::mailfind::folder_named(&account, &dir) {
+                    Some(folder) => crate::mailfind::renumbered_from(&account, &folder, origin).into_iter().map(|old| (dir.clone(), old)).collect(),
+                    None => Vec::new(),
+                },
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        };
+        let renumbered = |placed: &[(PathBuf, crate::card::ImapOrigin)]| replaced.iter().any(|r| placed.contains(r));
+        let old = |known: &BTreeSet<String>, placed: &[(PathBuf, crate::card::ImapOrigin)]| !line.key.starts_with("mid:") && (file.as_ref().is_some_and(|f| known.contains(f)) || renumbered(placed));
+        line.state = if recorded.contains(line.key.as_str()) || old(&older, &older_placed) {
             MailState::Recorded
-        } else if crate::moneyindex::ignored(ignored, line).is_some() || old(&older_ignored) {
+        } else if crate::moneyindex::ignored(ignored, line).is_some() || old(&older_ignored, &ignored_placed) {
             MailState::Ignored
         } else {
             MailState::Proposed
@@ -2234,6 +2260,59 @@ mod tests {
         line.links = vec![older.clone()];
         assert_eq!(mail_lines(&Ledger { lines: vec![line], ..ledger.clone() }, &mail, &BTreeSet::new(), crate::words::Words::builtin_ref())[0].state, MailState::Recorded);
         assert_eq!(mail_lines(&ledger, &mail, &BTreeSet::from([older]), crate::words::Words::builtin_ref())[0].state, MailState::Ignored);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A row an older Sioul recorded, or set aside, by the file of a message
+    /// without a Message-ID, whose folder was renumbered since: the old copy
+    /// removed, the new one in its place (part 0's rule, its removals' log).
+    /// The same message, still recorded; another numbering, or the same in
+    /// another folder, is not (review of mailbox part 0, L4: until 10
+    /// November 2026 it was proposed again).
+    #[test]
+    fn a_row_kept_by_its_file_survives_a_renumbering() {
+        crate::config::stand_ins_only();
+        let ledger: Ledger = toml::from_str("[[mail_rule]]\nbudget = 'projects'\ndirection = 'credit'\nfrom_domains = ['pay.example']\nsubject_contains = ['paiement reçu']").unwrap();
+        let account = format!("renumbered-{}", std::process::id());
+        let dir = std::env::temp_dir().join(format!("sioul-budget-renumbered-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("cur")).unwrap();
+        let raw = format!("From: {PAY}\r\nSubject: Notification de paiement reçu\r\nDate: Fri, 02 Oct 2026 10:00:00 +0200\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nVous avez reçu un paiement de 25,00 € EUR de Jean Exemple (jean@example.org).\r\n");
+        // The copy now: the folder's new numbering (UIDVALIDITY 9, UID 40).
+        let path = dir.join("cur").join(format!("1777000000.U9-40.sioul{}2,S", crate::maildir::INFO));
+        std::fs::write(&path, &raw).unwrap();
+        let mut t = triaged(PAY, "x", "Fri, 02 Oct 2026 10:00:00 +0200", "x@example.org", "x");
+        t.card = crate::card::Card::from_bytes(raw.as_bytes()).unwrap();
+        t.card.path = Some(path.clone());
+        t.card.account = Some(account.clone());
+        let mail = [t];
+        let lines = mail_lines(&ledger, &mail, &BTreeSet::new(), crate::words::Words::builtin_ref());
+        // Recorded and set aside by an older Sioul under the old copy's file (UIDVALIDITY 7, UID 1).
+        let older = format!("file:{}", dir.join("cur").join(format!("1777000000.U7-1.sioul{}2,S", crate::maildir::INFO)).display());
+        let mut line = lines[0].line("projects").unwrap();
+        line.links = vec![older.clone()];
+        let recorded = Ledger { lines: vec![line], ..ledger.clone() };
+        let state = |ledger: &Ledger, ignored: &BTreeSet<String>| mail_lines(ledger, &mail, ignored, crate::words::Words::builtin_ref())[0].state.clone();
+        assert_eq!(state(&recorded, &BTreeSet::new()), MailState::Proposed, "nothing logged: another message as far as is known");
+        // Another folder renumbered alike (R6): its line never counts here.
+        let log = crate::config::state_dir().join("sync").join(format!("{account}.removed.log"));
+        std::fs::create_dir_all(log.parent().unwrap()).unwrap();
+        std::fs::write(crate::folders::saved_path(&account), "[[folder]]\nname = 'INBOX'\ndisplay = 'Inbox'\nrole = 'inbox'\nlocal = ''\n\n[[folder]]\nname = 'Archive'\ndisplay = 'Archive'\nrole = 'archive'\nlocal = '.Archive'\n").unwrap();
+        std::fs::write(&log, "2026-11-01T10:00:00Z\tArchive\tU7-1\tU9-40\n").unwrap();
+        assert_eq!(state(&recorded, &BTreeSet::new()), MailState::Proposed, "another folder's renumbering");
+        // This folder's renumbering logged: the old copy replaced by this one.
+        std::fs::write(&log, "2026-11-01T10:00:00Z\tArchive\tU7-1\tU9-40\n2026-11-01T10:00:00Z\tINBOX\tU7-1\tU9-40\n2026-11-01T10:00:00Z\tINBOX\tU7-2\t-\n").unwrap();
+        assert_eq!(state(&recorded, &BTreeSet::new()), MailState::Recorded);
+        assert_eq!(state(&ledger, &BTreeSet::from([older.clone()])), MailState::Ignored);
+        // Another old numbering, or the same in another folder: not this message.
+        let other = format!("file:{}", dir.join("cur").join(format!("1777000000.U7-2.sioul{}2,S", crate::maildir::INFO)).display());
+        let elsewhere = format!("file:{}", dir.join("Archive").join("cur").join(format!("1777000000.U7-1.sioul{}2,S", crate::maildir::INFO)).display());
+        for key in [other, elsewhere] {
+            let mut line = lines[0].line("projects").unwrap();
+            line.links = vec![key.clone()];
+            assert_eq!(state(&Ledger { lines: vec![line], ..ledger.clone() }, &BTreeSet::new()), MailState::Proposed, "{key}");
+        }
+        let _ = std::fs::remove_file(&log);
+        let _ = std::fs::remove_file(crate::folders::saved_path(&account));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

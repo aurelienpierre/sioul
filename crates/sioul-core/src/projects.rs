@@ -356,6 +356,12 @@ pub fn rename_file(root: &Path) -> Result<PathBuf, String> {
 /// A route matches when every list it fills has at least one match.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Route {
+    /// Its id, given when it is written (`set_routes`, `ids::new`): an edit
+    /// of it names it so, and one route changed on two devices stays one
+    /// (`settings::rebased_by`). "" for one written before 10 November 2026,
+    /// by an older Sioul or by hand, which takes one at its next edit.
+    #[serde(default)]
+    pub id: String,
     /// The sender's domain or any of its subdomains: "finances.example" covers "dgfip.finances.example".
     #[serde(default)]
     pub from_domains: Vec<String>,
@@ -553,6 +559,10 @@ impl ProjectStore {
 /// A route as the settings edit it: each list may be empty.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub struct RouteValue {
+    /// Its id, when it has one (`Route::id`): the window sends it back with
+    /// the route's new words, so that the edit names it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
     #[serde(default)]
     pub from_domains: Vec<String>,
     #[serde(default)]
@@ -568,6 +578,7 @@ pub struct RouteValue {
 impl From<&Route> for RouteValue {
     fn from(route: &Route) -> RouteValue {
         RouteValue {
+            id: route.id.clone(),
             from_domains: route.from_domains.clone(),
             from_addresses: route.from_addresses.clone(),
             subject_contains: route.subject_contains.clone(),
@@ -577,6 +588,26 @@ impl From<&Route> for RouteValue {
     }
 }
 
+
+/// A route's first id, from its project and what it holds (and how many
+/// routes of the same words have one already): two devices giving ids to
+/// the same routes, written before ids, give them the same (review of
+/// wt/sync, R1); never one `taken` holds.
+fn first_id(project_id: &str, lists: &[(&str, Vec<&str>)], taken: &[String]) -> String {
+    let words: String = lists.iter().map(|(key, list)| format!("{key}={}", list.join("\u{1f}"))).collect::<Vec<_>>().join("\u{1e}");
+    (0u32..)
+        .map(|n| {
+            // FNV-1a, 64 bits: the same on every device and every version.
+            let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+            for byte in format!("{project_id}\u{1d}{words}\u{1d}{n}").bytes() {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            format!("route-{hash:016x}")
+        })
+        .find(|id| !taken.contains(id))
+        .unwrap_or_default()
+}
 
 /// Takes a project out of its file, the file's comments elsewhere kept. Its
 /// tasks, notes, mail and time stay; they are no longer gathered under it.
@@ -600,7 +631,8 @@ pub fn remove_project(file: &Path, project_id: &str) -> Result<(), String> {
 }
 
 /// Replaces a project's routes in its file, in place: its other fields and
-/// the file's comments stay. Routes left empty are dropped.
+/// the file's comments stay. Routes left empty are dropped. Each keeps its
+/// id, and one without (new, or written before routes had ids) takes one.
 pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(file, || {
@@ -608,23 +640,30 @@ pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Resul
         let mut doc = read_doc(file, false)?;
         let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
         let mut tables = ArrayOfTables::new();
+        let mut given: Vec<String> = routes.iter().map(|r| r.id.trim().to_string()).filter(|id| !id.is_empty()).collect();
         for route in routes {
-            let mut table = Table::new();
-            for (key, list) in [
+            let lists: Vec<(&str, Vec<&str>)> = [
                 ("from_domains", &route.from_domains),
                 ("from_addresses", &route.from_addresses),
                 ("subject_contains", &route.subject_contains),
                 ("text_contains", &route.text_contains),
                 ("attachment_contains", &route.attachment_contains),
-            ] {
-                let cleaned: Vec<&str> = list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-                if !cleaned.is_empty() {
-                    table[key] = value(cleaned.into_iter().collect::<Array>());
-                }
+            ]
+            .into_iter()
+            .map(|(key, list)| (key, list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<&str>>()))
+            .filter(|(_, cleaned)| !cleaned.is_empty())
+            .collect();
+            if lists.is_empty() {
+                continue;
             }
-            if !table.is_empty() {
-                tables.push(table);
+            let mut table = Table::new();
+            let id = if route.id.trim().is_empty() { first_id(project_id, &lists, &given) } else { route.id.trim().to_string() };
+            given.push(id.clone());
+            table["id"] = value(id);
+            for (key, cleaned) in lists {
+                table[key] = value(cleaned.into_iter().collect::<Array>());
             }
+            tables.push(table);
         }
         if tables.is_empty() {
             project.remove("route");
@@ -764,6 +803,27 @@ mod tests {
         assert_eq!((store.projects[0].routes[0].from_domains.clone(), store.projects[0].routes[0].subject_contains.clone()), (vec!["finances.example".to_string()], vec!["avis".to_string()]));
         assert_eq!(store.projects[1].title, "Bill");
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# My projects."));
+        // Each route written takes an id, and keeps it when it is edited; a new one takes its own.
+        let id = store.projects[0].routes[0].id.clone();
+        assert!(!id.is_empty());
+        let edited = RouteValue { subject_contains: vec!["avis".into(), "taxe".into()], ..RouteValue::from(&store.projects[0].routes[0]) };
+        set_routes(&path, "taxes", &[edited, RouteValue { from_addresses: vec!["impots@example.org".into()], ..RouteValue::default() }]).unwrap();
+        let routes = ProjectStore::load(&dir).unwrap().projects[0].routes.clone();
+        assert!(routes.len() == 2 && routes[0].id == id && routes[0].subject_contains.len() == 2 && !routes[1].id.is_empty() && routes[1].id != id, "{routes:?}");
+        // Routes written before ids take the same first ids on any device (R1); two alike, two ids.
+        let text = "[[project]]\nid = \"taxes\"\ntitle = \"Taxes\"\n[[project.route]]\nfrom_domains = [\"old.example\"]\n";
+        let ids_of = |name: &str| {
+            let d = scratch(name);
+            std::fs::write(d.join(FILE), text).unwrap();
+            let shown: Vec<RouteValue> = ProjectStore::load(&d).unwrap().projects[0].routes.iter().map(RouteValue::from).collect();
+            let twice: Vec<RouteValue> = shown.iter().chain(shown.iter()).cloned().collect();
+            set_routes(&d.join(FILE), "taxes", &twice).unwrap();
+            let ids: Vec<String> = ProjectStore::load(&d).unwrap().projects[0].routes.iter().map(|r| r.id.clone()).collect();
+            std::fs::remove_dir_all(&d).unwrap();
+            ids
+        };
+        let (one, other) = (ids_of("routes-desk"), ids_of("routes-phone"));
+        assert!(one == other && one.len() == 2 && one[0] != one[1] && one.iter().all(|id| id.starts_with("route-")), "{one:?} {other:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
