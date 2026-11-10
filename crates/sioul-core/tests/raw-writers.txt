@@ -72,8 +72,8 @@ sioul-app/src/homecard.rs	write	1	std::fs::write(&beside, text)
 sioul-app/src/homecard.rs	opened	1	std::fs::remove_file(&path)
 
 # sioul-app/src/join.rs: the calendars waiting to be chosen and the phones asked about (state): no item.
-sioul-app/src/join.rs	defer_agenda	1	sioul_sync::share::write_atomically(&pending_path(), format!("# Sioul: the contacts and calendars of the server signed in to, decided once your other devices' settings came (docs/database.md). Never shared.\n{text}").as_bytes())
-sioul-app/src/join.rs	agenda_later	2	std::fs::remove_file(&path)
+sioul-app/src/join.rs	write_pending	1	sioul_sync::share::write_atomically(&pending_path(), format!("# Sioul: the contacts and calendars of the server signed in to, decided once your other devices' settings came (docs/database.md). Never shared.\n{text}").as_bytes())
+sioul-app/src/join.rs	agenda_later	1	std::fs::remove_file(&path)
 sioul-app/src/join.rs	replace	1	sioul_sync::share::write_atomically(&asked_path(), format!("# Sioul: the phones this one was asked whether it replaces (docs/database.md). Never shared.\n{text}").as_bytes())
 
 # sioul-app/src/ledger.rs: the receipts register exported as a spreadsheet where you choose (Save the receipts register…): no item.
