@@ -2590,9 +2590,6 @@ fn begin_as(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: i
 /// sharing folder first (`seek`): Sioul's own place, then the top of the files.
 pub const SOUGHT: [&str; 2] = ["Documents/Sioul", "Sioul"];
 
-/// The folders one level under `Documents` looked at, at most (by name).
-const SOUGHT_UNDER: usize = 40;
-
 /// What the look for the sharing folder found (`seek`): the places holding a
 /// seal of Sioul's, in the order looked at, and whether every place it looks
 /// at was looked at (`complete`): a listing or a seal that could not be read,
@@ -2614,9 +2611,14 @@ pub fn sought(place: &str) -> bool {
 /// Where the sharing folder is among `login`'s files, for a device joining
 /// with nothing set up (docs/database.md, "Joining through your Nextcloud's
 /// sign-in"): each of `SOUGHT` first, then each folder one level under
-/// `Documents` (the first 40 by name, hidden ones left out), that holds a
-/// seal of Sioul's (`share::is_seal`), in that order. Only `PROPFIND` and
-/// `GET` of `seal.toml` files, on the account's own server. A listing of
+/// `Documents` (by name, hidden ones left out), that holds a seal of
+/// Sioul's (`share::is_seal`), in that order: every one of them within the
+/// look's time, which running out leaves the look incomplete. Until 10
+/// November 2026 only the first 40 were looked at, and the look said
+/// complete all the same: a seal in a later folder gave "none found" and
+/// offered a second, separate sharing (the review of the join's fixes, N3).
+/// Only `PROPFIND` and `GET` of `seal.toml` files, on the account's own
+/// server. A listing of
 /// `Documents` that fails only ends the extra places; one place that cannot
 /// be read leaves the others looked at; the time running out ends the look
 /// with what was found: each makes the look incomplete (`Sought`). Why it
@@ -2656,7 +2658,7 @@ pub(crate) fn seek_with(login: &Login, limits: Limits) -> Result<Sought, String>
         }
     }
     let extra: Vec<String> = match server.list(&format!("{root}Documents/")) {
-        Ok(listing) => listing.items.iter().filter(|(name, item)| item.dir && !name.starts_with('.') && name.as_str() != "Sioul").take(SOUGHT_UNDER).map(|(name, _)| format!("Documents/{name}")).collect(),
+        Ok(listing) => listing.items.iter().filter(|(name, item)| item.dir && !name.starts_with('.') && name.as_str() != "Sioul").map(|(name, _)| format!("Documents/{name}")).collect(),
         Err(SyncError::NotFound(_)) => Vec::new(),
         Err(e) if e.is_lasting() || out_of_time(&e) => return ended(e, sought),
         Err(_) => {
@@ -7946,6 +7948,12 @@ mod tests {
         // No Documents folder at all: the top still looked at.
         std::fs::remove_dir_all(files.join("Documents")).unwrap();
         assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: vec!["Sioul".into()], complete: true });
+        // Every folder of Documents looked at, the forty-first and later too (N3): found, the look complete.
+        for folder in 0..45 {
+            std::fs::create_dir_all(files.join(format!("Documents/Dossier {folder:02}"))).unwrap();
+        }
+        put(&files, "Documents/Zz partagé/seal.toml", SEAL);
+        assert_eq!(seek_with(&login, TEST).unwrap(), Sought { found: vec!["Sioul".into(), "Documents/Zz partagé".into()], complete: true });
         // A refused login said, as `open` says it.
         let refused = Login { password: Some("wrong".into()), ..login };
         assert!(seek_with(&refused, TEST).unwrap_err().starts_with("login:"));

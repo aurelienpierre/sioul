@@ -252,11 +252,17 @@ fn looked(stand: &mut Stand, host: &str, sought: Result<remote::Sought, String>)
 /// "Look again", the look having found nothing it could trust (`unchecked`)
 /// or not the place you expected: the server looked through again with the
 /// sign-in held, off the window's thread.
+/// Cancel pressed while it looked, or as it ended: the app password given
+/// back and nothing said, as `sign_in` does (the review of the join's fixes,
+/// N1: until 10 November 2026 the look's result replaced the step as if
+/// nothing was pressed, and the app password stayed held until a second Cancel).
 pub(crate) fn look_again(qt: &QtThread) {
     let Some(held) = grant().as_ref().map(|g| Grant::of(&g.server, &g.login, g.password())) else { return };
     if RUNNING.swap(true, Ordering::SeqCst) {
         return;
     }
+    // A Cancel pressed before is spent: this look starts afresh.
+    STOP.store(false, Ordering::SeqCst);
     set(|s| {
         s.step = "looking".into();
         s.problem.clear();
@@ -266,10 +272,26 @@ pub(crate) fn look_again(qt: &QtThread) {
     std::thread::spawn(move || {
         let running = Running;
         let sought = remote::seek(&held.login_for(""));
-        set(|s| looked(s, &held.host(), sought));
+        set(|s| looked_unless_stopped(s, &held.host(), sought, STOP.load(Ordering::SeqCst)));
         drop(running);
+        if STOP.load(Ordering::SeqCst) {
+            if let Some(late) = grant().take() {
+                give_back(&late);
+            }
+            set(|s| *s = Stand::default());
+        }
         told(&qt);
     });
+}
+
+/// What a look found, said (`looked`), unless Cancel was pressed meanwhile:
+/// then nothing is said, the panel back where it began (N1).
+fn looked_unless_stopped(stand: &mut Stand, host: &str, sought: Result<remote::Sought, String>, stopped: bool) {
+    if stopped {
+        *stand = Stand::default();
+    } else {
+        looked(stand, host, sought);
+    }
 }
 
 /// The sign-in's page opened again in the browser (closed by mistake).
@@ -372,11 +394,14 @@ fn joined(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant, place: &str, pass
         }
     };
     // The contacts and calendars once everything the others shared came, never on half of it (M2).
-    let agenda = if begun == crate::share::Begun::Started || complete_since(since) {
-        bind_agenda(qt, shared, signed).and_then(|bound| line_of(bound, &host))
-    } else {
-        defer_agenda(signed, since);
-        Some(say("join-agenda-later", &[("host", host.clone())]))
+    // A passing failure deciding them: left for a later exchange too (N2).
+    let bound = (begun == crate::share::Begun::Started || complete_since(since)).then(|| bind_agenda(qt, shared, signed));
+    let agenda = match bound {
+        Some(Binding::Done(bound)) => bound.and_then(|bound| line_of(bound, &host)),
+        Some(Binding::Again) | None => {
+            defer_agenda(signed, since);
+            Some(say("join-agenda-later", &[("host", host.clone())]))
+        }
     };
     lines.extend(agenda);
     let needs = still_to_sign_in(&load_config());
@@ -409,15 +434,25 @@ struct Pending {
     server: String,
     login: String,
     since: i64,
+    /// When a passing failure last left them undecided (Unix seconds; 0 none): `due`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    tried: i64,
 }
 
 fn pending_path() -> std::path::PathBuf {
     state_dir().join("share").join("agenda-pending.toml")
 }
 
+fn is_zero(n: &i64) -> bool {
+    *n == 0
+}
+
 fn defer_agenda(signed: &Grant, since: i64) {
-    let pending = Pending { server: signed.server.clone(), login: signed.login.clone(), since };
-    if let Ok(text) = toml::to_string(&pending) {
+    write_pending(&Pending { server: signed.server.clone(), login: signed.login.clone(), since, tried: 0 });
+}
+
+fn write_pending(pending: &Pending) {
+    if let Ok(text) = toml::to_string(pending) {
         let _ = sioul_sync::share::write_atomically(&pending_path(), format!("# Sioul: the contacts and calendars of the server signed in to, decided once your other devices' settings came (docs/database.md). Never shared.\n{text}").as_bytes());
     }
 }
@@ -426,23 +461,47 @@ fn defer_agenda(signed: &Grant, since: i64) {
 /// later (`defer_agenda`) decided once a whole look and an exchange went
 /// through, with the app password the keyring keeps; said in the status
 /// line. Nothing while none is left. Off the window's thread.
+///
+/// A passing failure (the network, the server a moment, the keyring not
+/// answering) decides nothing: the marker stays, and it is tried again after
+/// a later exchange, `AGAIN_AFTER` at the soonest (the review of the join's
+/// fixes, N2: until 10 November 2026 it was removed whatever came of it, and
+/// the sign-in's app password never went to the account that came with the
+/// settings, which then asked for its own, unexplained). It goes once
+/// decided, or when there is nothing to decide with (no app password kept,
+/// no contacts nor calendars there, the app password refused there).
 pub(crate) fn agenda_later(qt: &QtThread, shared: &Arc<Shared>) {
     let path = pending_path();
     let Some(pending) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Pending>(&t).ok()) else { return };
-    if !complete_since(pending.since) {
+    let now = jiff::Timestamp::now().as_second();
+    if !due(&pending, now) || !complete_since(pending.since) {
         return;
     }
     let host = remote::host_of(&pending.server);
-    let Some(password) = loginflow::kept(&pending.login, &host) else {
-        let _ = std::fs::remove_file(&path);
-        return;
+    let binding = match loginflow::kept_checked(&pending.login, &host) {
+        Ok(Some(password)) => bind_agenda(qt, shared, &Grant::of(&pending.server, &pending.login, &password)),
+        Ok(None) => Binding::Done(None),
+        Err(_) => Binding::Again,
     };
-    let signed = Grant::of(&pending.server, &pending.login, &password);
-    let line = bind_agenda(qt, shared, &signed).and_then(|bound| line_of(bound, &host));
-    let _ = std::fs::remove_file(&path);
-    if let Some(line) = line {
-        crate::backend::set_status(qt, line);
+    match binding {
+        Binding::Again => write_pending(&Pending { tried: now, ..pending }),
+        Binding::Done(bound) => {
+            let _ = std::fs::remove_file(&path);
+            if let Some(line) = bound.and_then(|bound| line_of(bound, &host)) {
+                crate::backend::set_status(qt, line);
+            }
+        }
     }
+}
+
+/// A passing failure tried again this long after it, at the soonest (seconds).
+const AGAIN_AFTER: i64 = 10 * 60;
+
+/// Whether the contacts and calendars left for later may be tried now: never
+/// within `AGAIN_AFTER` of a passing failure (a server failing for an hour is
+/// not asked each minute).
+fn due(pending: &Pending, now: i64) -> bool {
+    pending.tried == 0 || now - pending.tried >= AGAIN_AFTER || now < pending.tried
 }
 
 // ---------------------------------------------------------------- the contacts and calendars
@@ -577,36 +636,69 @@ fn line_of(bound: Bound, host: &str) -> Option<String> {
 /// exchange brought your accounts: yours used, given the homes found there
 /// when it has none here (its first sync then never looks for them
 /// elsewhere with the app password: L1) and the app password when it has
-/// none here and opens it there; else one made and synced. None when nothing
-/// could be found there.
-fn bind_agenda(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant) -> Option<Bound> {
-    let homes = loginflow::homes(signed).ok()?;
+/// none here and opens it there; else one made and synced. Nothing to bind
+/// when nothing could be found there, or the app password is refused there;
+/// a passing failure (the network, the keyring, the disk) decides nothing
+/// (`Binding::Again`).
+fn bind_agenda(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant) -> Binding {
+    let homes = match loginflow::homes(signed) {
+        Ok(homes) => homes,
+        Err(e) if passing(&e) => return Binding::Again,
+        Err(_) => return Binding::Done(None),
+    };
     let config = load_config();
     match agenda_for(&config, &signed.server, &signed.login, &homes) {
         Agenda::Use { id, same } => {
-            let account = config.every_account().find(|a| a.id == id).cloned()?;
+            let Some(account) = config.every_account().find(|a| a.id == id).cloned() else { return Binding::Done(None) };
             if sioul_sync::dav::Homes::load(&account.id).is_empty() {
                 let _ = homes.save(&account.id);
             }
             if secret::password(&account).is_ok() {
-                return Some(Bound::Own);
+                return Binding::Done(Some(Bound::Own));
             }
             let login = account.login().unwrap_or_default().to_string();
-            if (same || loginflow::opens(signed, &login).unwrap_or(false)) && secret::save(&account, signed.password()).is_ok() {
-                crate::pim::start_dav_watcher(qt, shared, account);
-                return Some(Bound::Kept);
+            let opens = same
+                || match loginflow::opens(signed, &login) {
+                    Ok(opens) => opens,
+                    Err(e) if passing(&e) => return Binding::Again,
+                    Err(_) => false,
+                };
+            if !opens {
+                return Binding::Done(Some(Bound::Needs));
             }
-            Some(Bound::Needs)
+            if secret::save(&account, signed.password()).is_err() {
+                return Binding::Again;
+            }
+            crate::pim::start_dav_watcher(qt, shared, account);
+            Binding::Done(Some(Bound::Kept))
         }
         Agenda::Make(account) => {
-            secret::save(&account, signed.password()).ok()?;
-            config::add_dav_account(&crate::backend::config_path(), &account).ok()?;
+            if secret::save(&account, signed.password()).is_err() || config::add_dav_account(&crate::backend::config_path(), &account).is_err() {
+                return Binding::Again;
+            }
             let _ = homes.save(&account.id);
             crate::pim::start_dav_watcher(qt, shared, account);
             crate::pim::show_pim(qt, shared);
-            Some(Bound::Made)
+            Binding::Done(Some(Bound::Made))
         }
     }
+}
+
+/// What `bind_agenda` came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Binding {
+    /// Decided: what became of the contacts and calendars, or nothing to
+    /// bind (none there, the app password refused there, no account).
+    Done(Option<Bound>),
+    /// A passing failure: decided again after a later exchange (N2).
+    Again,
+}
+
+/// Whether a failure may pass by itself: the network, the server for a
+/// moment, the keyring not answering, the disk; never a refused password nor
+/// a server that has no contacts nor calendars.
+fn passing(e: &sioul_sync::SyncError) -> bool {
+    !e.is_lasting() && !matches!(e, sioul_sync::SyncError::NotFound(_))
 }
 
 // ---------------------------------------------------------------- what came
@@ -943,6 +1035,41 @@ mod tests {
         let own = add_device(Some(("murena.io".into(), "Documents/Sioul".into())));
         assert_ne!(deep[2], own[2]);
         assert!(deep[2].contains("Documents/Partage/Sioul") && own[2].contains("Documents/Sioul"));
+    }
+
+    /// Cancel pressed during "Look again" (the review of the join's fixes,
+    /// N1): what the look found is not said, the panel back where it began.
+    #[test]
+    fn a_look_cancelled_says_nothing() {
+        let found = || Ok(remote::Sought { found: vec!["Documents/Sioul".into()], complete: true });
+        let mut stand = Stand { step: "looking".into(), host: "murena.io".into(), ..Stand::default() };
+        looked_unless_stopped(&mut stand, "murena.io", found(), true);
+        assert!(stand.step.is_empty() && stand.places.is_empty() && stand.host.is_empty(), "{stand:?}");
+        looked_unless_stopped(&mut stand, "murena.io", found(), false);
+        assert_eq!((stand.step.as_str(), stand.places.as_slice()), ("found", ["Documents/Sioul".to_string()].as_slice()));
+    }
+
+    /// A passing failure deciding the contacts and calendars (N2): the
+    /// network, the server a moment, the keyring not answering decide
+    /// nothing, and the marker stays, tried again ten minutes later at the
+    /// soonest; a refused password or a server with no contacts nor
+    /// calendars is a decision. The marker reads as written before `tried`.
+    #[test]
+    fn a_passing_failure_leaves_the_contacts_and_calendars_for_later() {
+        use sioul_sync::SyncError;
+        for e in [SyncError::Network("timed out".into()), SyncError::Server("PROPFIND: 503".into()), SyncError::Keyring("locked".into()), SyncError::Disk("full".into())] {
+            assert!(passing(&e), "{e:?}");
+        }
+        for e in [SyncError::Login("401".into()), SyncError::NotFound("murena.io".into()), SyncError::Tls("certificate".into())] {
+            assert!(!passing(&e), "{e:?}");
+        }
+        let now: i64 = 1_791_360_000;
+        let pending: Pending = toml::from_str("server = \"https://murena.io\"\nlogin = \"jane\"\nsince = 1791350000\n").unwrap();
+        assert!(due(&pending, now), "never tried: due");
+        let tried = Pending { tried: now, ..pending.clone() };
+        assert!(!due(&tried, now + AGAIN_AFTER - 1) && due(&tried, now + AGAIN_AFTER) && due(&tried, now - 3_600), "ten minutes after, or a clock set back");
+        assert!(toml::to_string(&pending).unwrap().lines().all(|l| !l.starts_with("tried")), "not written while never tried");
+        assert_eq!(toml::from_str::<Pending>(&toml::to_string(&tried).unwrap()).unwrap(), tried);
     }
 
     /// "Does this phone replace …?", asked once (since 16 October

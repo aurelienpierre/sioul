@@ -151,6 +151,20 @@ pub fn named(name: &str) -> Option<String> {
     Entry::new(SERVICE, name).ok()?.get_password().ok()
 }
 
+/// A secret kept under a name of Sioul's, told apart from none kept: an
+/// error when the keyring did not answer (locked, its service not running
+/// for a moment), never taken for none.
+pub fn named_checked(name: &str) -> Result<Option<String>, SyncError> {
+    if testing() {
+        return Ok(None);
+    }
+    match Entry::new(SERVICE, name).and_then(|e| e.get_password()) {
+        Ok(secret) => Ok(Some(secret)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(SyncError::Keyring(e.to_string())),
+    }
+}
+
 /// Keeps a secret under a name of Sioul's.
 pub fn save_named(name: &str, secret: &str) -> Result<(), SyncError> {
     if testing() {

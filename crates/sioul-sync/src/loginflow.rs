@@ -404,6 +404,12 @@ pub fn kept(login: &str, host: &str) -> Option<String> {
     crate::secret::named(&keyring_name(login, host))
 }
 
+/// The same, told apart: none kept (Ok(None)), or the keyring not answering
+/// (an error: a passing failure, asked again later).
+pub fn kept_checked(login: &str, host: &str) -> Result<Option<String>, crate::SyncError> {
+    crate::secret::named_checked(&keyring_name(login, host))
+}
+
 /// The app password kept for that login and server, forgotten here.
 pub fn forget(login: &str, host: &str) -> Result<(), crate::SyncError> {
     crate::secret::forget_named(&keyring_name(login, host))
