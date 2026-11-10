@@ -150,6 +150,13 @@ impl Stamps {
             if at != store.path || !at.is_dir() {
                 if at == store.path {
                     at = at.parent().unwrap_or(at);
+                    // A file reached through a link (dotfiles kept elsewhere): its own folder too,
+                    // where an editor writes it (the review of wt/perf, P5).
+                    if std::fs::symlink_metadata(&store.path).is_ok_and(|m| m.file_type().is_symlink())
+                        && let Some(folder) = std::fs::canonicalize(&store.path).ok().and_then(|real| real.parent().map(Path::to_path_buf))
+                    {
+                        out.insert(folder);
+                    }
                 }
                 out.insert(at.to_path_buf());
                 continue;
@@ -369,6 +376,15 @@ mod tests {
         let dirs: Vec<PathBuf> = Stamps::dirs_of(&stores).into_iter().collect();
         let want: Vec<PathBuf> = [base.join("config"), base.join("data"), calendars.clone(), calendars.join("cloud"), calendars.join("cloud/work")].into_iter().collect::<BTreeSet<_>>().into_iter().collect();
         assert_eq!(dirs, want);
+        // A file store that is a link (dotfiles kept elsewhere): its link's folder and its own.
+        #[cfg(unix)]
+        {
+            std::fs::create_dir_all(base.join("dotfiles/sioul")).unwrap();
+            std::fs::write(base.join("dotfiles/sioul/config.toml"), "").unwrap();
+            std::os::unix::fs::symlink(base.join("dotfiles/sioul/config.toml"), base.join("config/config.toml")).unwrap();
+            let dirs = Stamps::dirs_of(&stores);
+            assert!(dirs.contains(&base.join("config")) && dirs.contains(&std::fs::canonicalize(base.join("dotfiles/sioul")).unwrap()), "{dirs:?}");
+        }
         let _ = std::fs::remove_dir_all(&base);
     }
 }

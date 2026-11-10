@@ -2496,7 +2496,9 @@ impl Told {
     /// Waits for a change in a folder watched, `most` at most: whether one
     /// came (or the wait was cut short: a look then costs nothing wrong).
     /// What came is read whole, so that many changes make one look; a folder
-    /// gone lets its watch go, for the next `watch` to make it again.
+    /// gone, or moved away (its watch would follow it wherever it went, a
+    /// trash or a backup's name: the review of wt/perf, P4), lets its watch
+    /// go, for the next `watch` to make it again on whatever has its name.
     pub(crate) fn wait(&mut self, most: std::time::Duration) -> bool {
         use std::os::fd::AsRawFd;
         let fd = self.fd.as_raw_fd();
@@ -2520,7 +2522,11 @@ impl Told {
             while at + header <= read {
                 // SAFETY: the kernel writes whole events; read unaligned, within the bytes read.
                 let event: libc::inotify_event = unsafe { std::ptr::read_unaligned(buffer[at..].as_ptr().cast()) };
-                if event.mask & libc::IN_IGNORED != 0 {
+                if event.mask & (libc::IN_IGNORED | libc::IN_MOVE_SELF | libc::IN_DELETE_SELF) != 0 {
+                    if event.mask & libc::IN_IGNORED == 0 {
+                        // SAFETY: this instance's own descriptor and one of its watches.
+                        unsafe { libc::inotify_rm_watch(fd, event.wd) };
+                    }
                     self.watched.retain(|_, wd| *wd != event.wd);
                 }
                 at += header + event.len as usize;
@@ -3974,10 +3980,21 @@ mod tests {
         assert!(told.watch(&[a.clone(), below.clone()].into()), "made again, watched again");
         std::fs::write(below.join("contact.vcf"), "four").unwrap();
         assert!(told.wait(soon), "in the folder made again");
+        // Moved away (to a trash, a backup's name) and made again: the new one watched, not the old.
+        std::fs::rename(&below, base.join("below.bak")).unwrap();
+        assert!(told.wait(soon));
+        let _ = told.wait(quiet);
+        std::fs::create_dir(&below).unwrap();
+        let _ = told.wait(soon);
+        assert!(told.watch(&[a.clone(), below.clone()].into()));
+        std::fs::write(base.join("below.bak/contact.vcf"), "five").unwrap();
+        let _ = told.wait(quiet);
+        std::fs::write(below.join("contact.vcf"), "six").unwrap();
+        assert!(told.wait(soon), "the folder made again under the name");
         assert!(told.watch(&std::collections::BTreeSet::new()));
         // Letting a watch go says so once (IN_IGNORED); then nothing more from it.
         let _ = told.wait(quiet);
-        std::fs::write(a.join("event.ics"), "five").unwrap();
+        std::fs::write(a.join("event.ics"), "seven").unwrap();
         assert!(!told.wait(quiet), "let go: nothing told");
         let _ = std::fs::remove_dir_all(&base);
     }
