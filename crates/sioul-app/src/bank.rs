@@ -25,8 +25,6 @@ struct View {
     findings: Vec<String>,
     /// The week's payments: "Thursday 8 October · EDF · €62.00".
     coming: Vec<String>,
-    /// For the Porch: the week's payments in one line, and whether the account holds them.
-    week: String,
     /// What the watch found, for the Porch to point at the Budgets page.
     attention: usize,
     problem: String,
@@ -146,11 +144,6 @@ pub(crate) fn view() -> String {
     let week = today.checked_add(jiff::Span::new().days(7)).unwrap_or(today);
     let coming: Vec<&sioul_core::ahead::Flow> = aheads.iter().flat_map(|a| a.flows.iter()).filter(|f| f.day <= week && f.amount.is_negative()).collect();
     view.coming = coming.iter().map(|f| format!("{} · {} · {}", tr().day_in(f.day, today), f.label, tr().money(Money(-f.amount.cents())))).collect();
-    if !coming.is_empty() {
-        let list = coming.iter().take(4).map(|f| format!("{} {} ({})", f.label, tr().money(Money(-f.amount.cents())), tr().weekday_short(f.day))).collect::<Vec<_>>().join(", ");
-        let held = aheads.iter().all(|a| a.short.as_ref().is_none_or(|s| s.day > week));
-        view.week = say(if held { "bank-week-held" } else { "bank-week-short" }, &[("list", list)]);
-    }
     accounts_into(&mut view, &books, &aheads, today);
     json(&view)
 }

@@ -4871,8 +4871,6 @@ bank-imported = { $read ->
 }
 bank-unreadable = { $file } ne se lit pas comme un export bancaire (OFX, CAMT.053 ou CSV).
 money-changed = { $label } a pris { $actual } le { $date }, là où { $expected } était attendu.
-bank-week-held = Cette semaine : { $list }. Le compte les tient.
-bank-week-short = Cette semaine : { $list }. Le compte risque de ne pas tous les tenir.
 bank-attention = { $count ->
     [one] Une chose d’argent à regarder.
    *[other] Quelques choses d’argent à regarder.
