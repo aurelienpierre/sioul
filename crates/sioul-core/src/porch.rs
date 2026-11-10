@@ -1637,7 +1637,8 @@ struct Verdict {
 }
 
 /// Each inbox message's triage as the Porch last made it, by its file (its
-/// path, which holds its flags, its size and its time), under one seal of
+/// path, which holds its flags, its size, its time and its inode:
+/// `file_key`), under one seal of
 /// what else decides it (`triage_seal`); emptied when the seal changes. The
 /// Porch is made again at each mail report, each change made here or come
 /// from another device, and each triage reads a message's text for its
@@ -1667,8 +1668,7 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
             if !meta.is_file() || hidden || !keep(maildir::origin_of(&path)) {
                 continue;
             }
-            let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-            let key: FileKey = (path.clone(), meta.len(), time);
+            let key = file_key(&path, &meta);
             let Some(mut card) = maildir::read_one(&path) else { continue };
             card.account = account.cloned();
             if !take(&card) {
@@ -1873,7 +1873,7 @@ pub fn judge(paths: &[PathBuf], sources: &[Source], projects: Option<&ProjectSto
 /// `list_projects` ask it before a project takes a message.
 ///
 /// What it says of a file is remembered for the life of the process
-/// (`VERDICTS`), by the file's path, size and time, under the seal of what
+/// (`VERDICTS`), by the file's path, size, time and inode, under the seal of what
 /// the gate read (`Gate::seal`): an agent's tools make a gate at each call,
 /// and each message is read once, until a list, a project, a tie, the words,
 /// an AI reading or the ten minutes now falls in change.
@@ -1897,8 +1897,26 @@ impl std::fmt::Debug for Gate {
     }
 }
 
-/// A file's verdict, by its path, size and modification time (nanoseconds).
-type FileKey = (PathBuf, u64, u128);
+/// A file's verdict, by its path, size and modification time (nanoseconds),
+/// and on Unix its inode and the time its inode last changed (`file_key`).
+type FileKey = (PathBuf, u64, u128, u64, i128);
+
+/// The key of the file at `path` (`meta`, its metadata): a message rewritten
+/// in place under the same name, size and time (`sioul verify --again`
+/// writes it through `tmp/` and a rename, then sets its time back) is
+/// another file, its inode another; one rewritten without a rename changed
+/// its inode's time.
+fn file_key(path: &Path, meta: &std::fs::Metadata) -> FileKey {
+    let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+    #[cfg(unix)]
+    let inode = {
+        use std::os::unix::fs::MetadataExt;
+        (meta.ino(), i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()))
+    };
+    #[cfg(not(unix))]
+    let inode = (0, 0);
+    (path.to_path_buf(), meta.len(), time, inode.0, inode.1)
+}
 
 /// The words looked for, hashed by what they hold, once for each set made
 /// (`words::Words::of` makes one for each configuration). The set is held
@@ -1998,11 +2016,10 @@ impl Gate {
 
     /// Whether a project may take the message stored in this file; none
     /// when it cannot be read, or is in none of the accounts' folders.
-    /// Remembered by the file's path, size and time (`VERDICTS`).
+    /// Remembered by the file's path, size, time and inode (`VERDICTS`).
     pub fn admission_of_file(&self, path: &Path) -> Option<Admission> {
         let meta = std::fs::metadata(path).ok()?;
-        let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-        let key: FileKey = (path.to_path_buf(), meta.len(), time);
+        let key = file_key(path, &meta);
         if let Ok(kept) = VERDICTS.lock()
             && let Some((seal, verdicts)) = kept.as_ref()
             && *seal == self.seal
@@ -2610,6 +2627,17 @@ mod tests {
         let read = |uid: u32| root.join("cur").join(format!("{}.U1-{uid}.sioul{}2,", now - 60, maildir::INFO));
         std::fs::rename(read(2), root.join("cur").join(format!("{}.U1-2.sioul{}2,S", now - 60, maildir::INFO))).unwrap();
         assert_eq!(made(&none).1, 2);
+        // Rewritten in place, its name, size and time kept (`sioul verify
+        // --again`): another file, triaged again (review of 1a2c6a2, C6).
+        let lunch = read(1);
+        let before = std::fs::metadata(&lunch).unwrap();
+        let aside = root.join("tmp").join("lunch");
+        std::fs::write(&aside, std::fs::read_to_string(&lunch).unwrap().replace("Friday", "Monday")).unwrap();
+        std::fs::File::options().write(true).open(&aside).unwrap().set_modified(before.modified().unwrap()).unwrap();
+        std::fs::rename(&aside, &lunch).unwrap();
+        let after = std::fs::metadata(&lunch).unwrap();
+        assert_eq!((after.len(), after.modified().unwrap()), (before.len(), before.modified().unwrap()));
+        assert_eq!(made(&none).1, 2, "the message rewritten, and the code");
         // Jane let in through the screener: every message triaged again, hers where it now belongs.
         let jane = SenderList::parse("jane@kept.example.org");
         let (after, triaged) = made(&jane);
