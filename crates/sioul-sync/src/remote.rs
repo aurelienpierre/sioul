@@ -793,7 +793,8 @@ impl Server {
         let bytes = match response.body_mut().with_config().limit(cap).read_to_vec() {
             Ok(bytes) => bytes,
             Err(ureq::Error::BodyExceedsLimit(_)) => return Ok(None),
-            Err(e) => return Err(failed(&e)),
+            // The server answered, its body did not all come: the file's failure (`of_the_file`).
+            Err(e) => return Err(SyncError::Network(format!("GET: cut: {e}"))),
         };
         if !(length == Some(bytes.len() as u64) || (length.is_none() && chunked)) {
             return Err(SyncError::Network("GET: cut".into()));
@@ -829,7 +830,8 @@ impl Server {
             match reader.read(&mut piece) {
                 Ok(0) => break None,
                 Ok(n) => bytes.extend_from_slice(&piece[..n]),
-                Err(e) => break Some(SyncError::Network(e.to_string())),
+                // The server answered, its body did not all come: the file's failure (`of_the_file`).
+                Err(e) => break Some(SyncError::Network(format!("GET: cut: {e}"))),
             }
         };
         if error.is_none() && length.is_some_and(|l| l != bytes.len() as u64) {
@@ -1917,6 +1919,21 @@ struct Puller<'a> {
     mine: BTreeSet<String>,
 }
 
+/// A failure of one file, not of the line: the server's answer about it (a
+/// status: 423 while its device's sync app writes it, 404, 500), or its body
+/// come cut. Only these let a pull's walk go on (`Puller::run`). Anything
+/// else (no answer, a timeout, a refused login, a certificate, the pull's
+/// time used up, the disk) ends it at once, as before 10 November 2026:
+/// each file left would wait for its own timeout, the radio up all the
+/// while (review of 3273f2d, R4).
+fn of_the_file(e: &SyncError) -> bool {
+    match e {
+        SyncError::Server(_) | SyncError::NotFound(_) => true,
+        SyncError::Network(said) => said.starts_with("GET: cut") || said.starts_with("GET: its end"),
+        _ => false,
+    }
+}
+
 impl Puller<'_> {
     fn url(&self, relative: &str) -> String {
         format!("{}{}", self.state.url, encode_path(relative))
@@ -1953,9 +1970,9 @@ impl Puller<'_> {
         // Looked through anew: what is left to the sync app, found again.
         self.state.left.clear();
         self.own_listed("", &root);
-        // A file that fails to come (a slow line, a file the server holds
-        // locked while its device's sync app writes it each minute: 423)
-        // stops nothing else: the others come, the walk ends, and the pull
+        // A file that fails to come (one the server holds locked while its
+        // device's sync app writes it each minute: 423; one come cut) stops
+        // nothing else (`of_the_file`): the others come, the walk ends, and the pull
         // says the first failure, its folders not taken as looked through, so
         // that the next pull asks again. Until 10 November 2026 a record that
         // failed stopped the walk before the devices' entries, and a phone kept
@@ -1965,26 +1982,17 @@ impl Puller<'_> {
         let mut failed: Option<Stop> = None;
         let defer = |done: Result<(), Stop>, failed: &mut Option<Stop>| -> Result<(), Stop> {
             match done {
-                Err(Stop::Failed(e)) => {
+                Err(Stop::Failed(e)) if of_the_file(&e) => {
                     failed.get_or_insert(Stop::Failed(e));
                     Ok(())
                 }
                 done => done,
             }
         };
-        for (name, item) in root.items.iter().filter(|(_, item)| !item.dir) {
-            match kind_of(name) {
-                // A round past its time of a device that no longer counts,
-                // taken out here (`Departed`): never fetched again. Sioul
-                // keeping the folder itself takes it out there (`push`).
-                Some((Kind::Round, id)) if id != self.own && (self.departed.past_round(name) || self.departed.removed_as_known(name, item, &self.state.files)) => self.away(name, item),
-                Some((Kind::Seen, id)) if id != self.own && self.departed.removed_as_known(name, item, &self.state.files) => self.away(name, item),
-                Some((Kind::Round, id)) if id != self.own => defer(self.round(name, item), &mut failed)?,
-                Some((Kind::Seen, id)) if id != self.own => defer(self.small(name, item), &mut failed)?,
-                Some(_) if self.mirror() => defer(self.restore(name, item), &mut failed)?,
-                _ => {}
-            }
-        }
+        // The devices' entries first: a few hundred bytes each, and what a
+        // phone reads to know a computer in use. A record slow to come (a
+        // round grown by a megabyte, on a weak line) used up the pull's
+        // thirty seconds before them (review of 3273f2d, R1).
         if let Some(devices) = root.items.get("devices").filter(|item| item.dir)
             && !self.unchanged("devices/", &devices.etag)
         {
@@ -2009,7 +2017,20 @@ impl Puller<'_> {
             if devices_failed.is_none() {
                 self.looked("devices/", &listing.etag);
             }
-            failed = failed.or(devices_failed);
+            failed = devices_failed;
+        }
+        for (name, item) in root.items.iter().filter(|(_, item)| !item.dir) {
+            match kind_of(name) {
+                // A round past its time of a device that no longer counts,
+                // taken out here (`Departed`): never fetched again. Sioul
+                // keeping the folder itself takes it out there (`push`).
+                Some((Kind::Round, id)) if id != self.own && (self.departed.past_round(name) || self.departed.removed_as_known(name, item, &self.state.files)) => self.away(name, item),
+                Some((Kind::Seen, id)) if id != self.own && self.departed.removed_as_known(name, item, &self.state.files) => self.away(name, item),
+                Some((Kind::Round, id)) if id != self.own => defer(self.round(name, item), &mut failed)?,
+                Some((Kind::Seen, id)) if id != self.own => defer(self.small(name, item), &mut failed)?,
+                Some(_) if self.mirror() => defer(self.restore(name, item), &mut failed)?,
+                _ => {}
+            }
         }
         if let Some(leases) = root.items.get("leases").filter(|item| item.dir)
             && !self.unchanged("leases/", &leases.etag)
@@ -5094,24 +5115,32 @@ mod tests {
         assert!(arrived.is_empty() || (arrived.ends_with(b"\n") && whole.starts_with(&arrived) && arrived.len() < whole.len()), "whole lines only: {} of {}", arrived.len(), whole.len());
         let first = w.phone.exchange(&w.phone_folder, DUE + 130);
         assert!(first.problems.iter().all(|p| !p.starts_with("share-other")), "{:?}", first.problems);
-        // Then the desk's entry, written again there, comes cut: never kept,
-        // never read. The one the first pull brought (the walk goes on past
-        // the records cut, since 10 November 2026) stays.
+        // The desk's entry came whole, ahead of its records (the devices
+        // first since 10 November 2026): not all it says it wrote is read
+        // here, so the doses doubt, never know wrongly (review of 3273f2d, R3).
         let entry = format!("devices/{}.device", w.desk.id);
-        let before = std::fs::read(w.cache().join(&entry)).ok();
+        let desk = || crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
+        assert!(w.cache().join(&entry).exists());
+        let heard = crate::share::heard(&w.phone.memory, &w.phone.id);
+        assert!(!heard.complete(&w.desk.id, desk().wrote.unwrap()), "an entry ahead of its records: {heard:?}");
+        // Then the desk's entry, written again there, comes cut: never kept,
+        // never read. With no copy fetched before, the folder's is read meanwhile.
+        std::fs::remove_file(w.cache().join(&entry)).unwrap();
+        let folder_copy = desk();
         w.desk.session(&w.server, |e| e.active = Some(true));
         let name = entry.clone();
         w.fake.fault(once(move |r| r.method == "GET" && r.path.ends_with(&name), Fault::Cut(40)));
         let pulled = w.pull(DUE + 140);
         assert!(pulled.problem.as_deref().is_some_and(|p| p.starts_with("network:")), "{pulled:?}");
         assert_eq!(std::fs::read(&cached).unwrap(), whole, "the records whole now");
-        assert_eq!(std::fs::read(w.cache().join(&entry)).ok(), before, "an entry cut is not kept");
+        assert!(!w.cache().join(&entry).exists(), "an entry cut is not kept");
         let (entries, unread) = crate::devices::all(&w.phone_folder, &KEY);
-        assert!(entries.iter().any(|e| e.id == w.desk.id) && !unread.contains(&w.desk.id), "the folder's copy read meanwhile");
+        let read = entries.into_iter().find(|e| e.id == w.desk.id).unwrap();
+        assert!(!unread.contains(&w.desk.id) && read.exported == folder_copy.exported, "the folder's copy read meanwhile");
         let second = w.phone.exchange(&w.phone_folder, DUE + 150);
         assert!(second.problems.iter().all(|p| !p.starts_with("share-other")), "{:?}", second.problems);
         assert!(w.pull(DUE + 160).problem.is_none());
-        assert!(w.cache().join(&entry).exists());
+        assert_eq!(std::fs::read(w.cache().join(&entry)).unwrap(), std::fs::read(w.server.join(&entry)).unwrap(), "the entry whole at the next pull");
         // Every dose came, each line read once, as far as the desk wrote.
         let record = w.phone.read("health-state.toml");
         for n in 0..40 {
@@ -5206,11 +5235,71 @@ mod tests {
         assert!(w.cache().join(&entry).exists() && !w.cache().join(&round).exists(), "the entry came, its records not");
         attach(&w.phone_folder, &w.phone.memory);
         let desk = crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
-        assert!(crate::devices::others_in_use(&[desk], &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
+        assert!(crate::devices::others_in_use(std::slice::from_ref(&desk), &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
+        // An entry ahead of its records: not all it wrote is read here, so the doses doubt (review of 3273f2d, R3).
+        w.phone.exchange(&w.phone_folder, DUE + 80);
+        let heard = crate::share::heard(&w.phone.memory, &w.phone.id);
+        assert!(!heard.complete(&w.desk.id, desk.wrote.unwrap()), "{heard:?}");
         // Unlocked: the records come at the next pull.
         w.fake.clear_faults();
         assert!(w.pull(DUE + 130).problem.is_none());
         assert!(w.cache().join(&round).exists());
+    }
+
+    /// A record slow to come, past the pull's whole time: a phone on a weak
+    /// line, the desk's round grown by a megabyte (`LIMITS`: a record may
+    /// take sixty seconds, a pull thirty). The devices' entries come first,
+    /// so that the phone sees the desk in use; its records at a later pull.
+    /// Until 10 November 2026 the record used up the pull's time and the
+    /// entries' listing was refused, out of time (review of 3273f2d, R1).
+    #[test]
+    fn a_slow_record_never_holds_back_the_devices_entries() {
+        let w = World::new("slow-round");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.desk.press(true, DUE + 30);
+        w.desk.exchange(&w.server, DUE + 60);
+        let round = w.desk_round();
+        let entry = format!("devices/{}.device", w.desk.id);
+        // The real limits' proportions, shorter: a record may take longer than the whole pull.
+        let limits = Limits { wait: Duration::from_secs(3), large: Duration::from_secs(4), pull: Duration::from_secs(1), ..TEST };
+        assert!(LIMITS.large > LIMITS.pull && limits.large > limits.pull);
+        let slow = round.clone();
+        w.fake.fault(move |request| (request.method == "GET" && request.path.ends_with(&slow)).then_some(Fault::Late(Duration::from_millis(1500))));
+        let pulled = pull_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 70, limits);
+        assert!(w.cache().join(&entry).exists(), "the entry came before the record: {pulled:?} {:?}", w.fake.seen());
+        attach(&w.phone_folder, &w.phone.memory);
+        let desk = crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
+        assert!(crate::devices::others_in_use(&[desk], &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
+        w.fake.clear_faults();
+        assert!(w.pull(DUE + 130).problem.is_none());
+        assert!(w.cache().join(&round).exists());
+    }
+
+    /// A line that dies during a pull (no answer, a timeout, a refused
+    /// login) ends it at once: only a file's own failure (423, 404, a body
+    /// come cut) lets the walk go on to the next file, which would otherwise
+    /// wait for its own timeout, the radio up (review of 3273f2d, R4).
+    #[test]
+    fn a_line_that_dies_ends_the_pull_at_once() {
+        let w = World::new("line-dies");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.desk.press(true, DUE + 30);
+        w.desk.exchange(&w.server, DUE + 60);
+        crate::lease::renew(&w.server, &KEY, "health", &w.desk.id, DUE + 60, DUE + 60, false, crate::lease::Rule::FollowsYou, crate::share::written(&w.desk.memory, &w.desk.id)).unwrap();
+        let round = w.desk_round();
+        let dies = round.clone();
+        // From the desk's records on, nothing answers.
+        let mut dead = false;
+        w.fake.fault(move |request| {
+            dead |= request.method == "GET" && request.path.ends_with(&dies);
+            dead.then_some(Fault::Drop)
+        });
+        w.fake.forget_seen();
+        let pulled = w.pull(DUE + 70);
+        assert!(pulled.problem.as_deref().is_some_and(|p| p.starts_with("network:")), "{pulled:?}");
+        let seen = w.fake.seen();
+        let at = seen.iter().position(|l| l.starts_with("GET ") && l.contains(&round)).unwrap();
+        assert!(seen[at..].iter().all(|l| l.contains(&round)), "nothing else asked once the line died: {seen:?}");
     }
 
     #[test]

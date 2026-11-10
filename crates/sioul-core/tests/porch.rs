@@ -17,6 +17,8 @@ fn fixtures() -> PathBuf {
 
 #[test]
 fn the_porch_sorts_a_morning() {
+    // A triage reads your words on spam where Sioul keeps them: never the person's own here.
+    sioul_core::config::stand_ins_only();
     let root = fixtures();
     let store = ProjectStore::load(&root).unwrap();
     assert!(store.missing_files().is_empty());
@@ -59,6 +61,8 @@ fn the_porch_sorts_a_morning() {
 
 #[test]
 fn what_you_send_yourself_comes_in() {
+    // A triage reads your words on spam where Sioul keeps them: never the person's own here.
+    sioul_core::config::stand_ins_only();
     let known = KnownSenders::default();
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];
@@ -85,6 +89,8 @@ fn what_you_send_yourself_comes_in() {
 /// aside, list headers or not; a code whose sender is not verified keeps its warning.
 #[test]
 fn codes_sent_with_bulk_headers_come_at_once() {
+    // A triage reads your words on spam where Sioul keeps them: never the person's own here.
+    sioul_core::config::stand_ins_only();
     let known = KnownSenders::default();
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];
@@ -125,6 +131,8 @@ fn codes_sent_with_bulk_headers_come_at_once() {
 /// the lane it would have had; `$Junk` beside it says nothing either way.
 #[test]
 fn mail_said_not_spam_leaves_set_aside() {
+    // A triage reads your words on spam where Sioul keeps them: never the person's own here.
+    sioul_core::config::stand_ins_only();
     let known = KnownSenders::default();
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];

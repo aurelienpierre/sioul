@@ -560,7 +560,7 @@ impl Standing {
 }
 
 /// What decided who someone is, the most precise first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum By {
     /// Their own address, on a list.
@@ -638,6 +638,8 @@ pub struct Book {
     names: std::collections::BTreeMap<String, String>,
     /// The country numbers written without one were read as.
     region: Option<&'static crate::phones::Region>,
+    /// What it holds, hashed (`Book::seal`).
+    seal: u64,
 }
 
 fn push_once(slot: &mut Vec<usize>, index: usize) {
@@ -681,7 +683,24 @@ impl Book {
                 push_once(book.by_name.entry(name).or_default(), index);
             }
         }
+        book.seal = {
+            use std::hash::{Hash, Hasher};
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            let mut numbers: Vec<_> = book.by_number.iter().collect();
+            numbers.sort();
+            (format!("{:?}", book.cards), numbers, region.map(|r| r.code)).hash(&mut hash);
+            hash.finish()
+        };
         book
+    }
+
+    /// What the books hold, hashed: each card's names, addresses, numbers and
+    /// categories, and the country numbers were read in. Two books with the
+    /// same seal judge every sender alike: what a verdict kept on them rests
+    /// on (`Gate`), never the address the book sits at in memory, which
+    /// another book can take once it is freed.
+    pub fn seal(&self) -> u64 {
+        self.seal
     }
 
     /// The cards holding this address.
@@ -1325,6 +1344,10 @@ fn checks(card: &Card, ctx: &Context) -> Checks {
 
 /// `checks`, the results and the code already read (`detected`).
 fn checks_with(card: &Card, ctx: &Context, auth: Option<trust::AuthResults>, detected: Option<OneTimeCode>) -> Checks {
+    // A triage reads your words on spam and your dealings where Sioul keeps
+    // them: a test's never are the person's own (review of 1a2c6a2, C4).
+    #[cfg(test)]
+    crate::config::stand_ins_only();
     // A proof counts for the domain of the address shown, never for another one.
     // A mailing list excuses a DMARC failure (it rewrites what it relays) when a
     // trusted seal or its own signature answers for it (`trust::list_excused`), but
@@ -1566,32 +1589,54 @@ fn screener(sender: Sender) -> Option<(Lane, Reason)> {
     (!sender.knows).then_some((Lane::Screener, Reason::FirstMessage))
 }
 
-/// Everything waiting in the Porch, from every source, minus what you closed it on.
-/// Messages already done are skipped by their file name, without being read.
-/// Mail from senders you blocked is left out: never shown, never counted.
-/// What decides a message's triage beside its file and the clock, hashed:
-/// each account's place, address, ids, priority, words and spam filter (its
-/// table by its size and time), the projects with their routes and ties,
-/// the lists and the senders you let in, the address books (the same as long
-/// as their files are, `Book::load`), the AI's readings, your addresses and
-/// domains, the dealings your mail shows (`spam::vouched`) and your words on
-/// spam in its logs (`spam::labels`). The clock is not in it: a message whose
-/// code is still valid is never kept (`TRIAGED`).
-fn triage_seal(sources: &[Source], projects: Option<&ProjectStore>, known: &SenderList, senders: &Senders, assessments: &std::collections::BTreeMap<String, crate::shield::Assessment>, own_addresses: &[String], own_domains: &[String]) -> u64 {
+/// What decides every message's triage beside its file and the clock,
+/// hashed: each account's place, address, ids, priority, words (by what
+/// they hold, `words_seal`) and spam filter (its table by its size and
+/// time), the projects with their routes, your addresses and domains. What
+/// decides one message only is its own (`own_inputs`). The clock is in
+/// neither: a message whose code is still valid is never kept (`TRIAGED`).
+fn triage_seal(sources: &[Source], projects: Option<&ProjectStore>, own_addresses: &[String], own_domains: &[String]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     for src in sources {
         (&src.account, &src.address, &src.folder, &src.trusted_ids, src.shielded, format!("{:?}", src.priority)).hash(&mut hash);
-        format!("{:?}", (&*src.words, &src.spam)).hash(&mut hash);
+        words_seal(&src.words).hash(&mut hash);
+        format!("{:?}", src.spam).hash(&mut hash);
         if let Some(meta) = src.spam.as_ref().and_then(|filter| std::fs::metadata(&filter.table).ok()) {
             (meta.len(), meta.modified().ok()).hash(&mut hash);
         }
     }
-    format!("{:?}", projects.map(|s| (&s.projects, &s.ties))).hash(&mut hash);
-    format!("{:?}", (known, &senders.safe, &senders.neutral, &senders.restricted, &senders.blocked, &senders.known)).hash(&mut hash);
-    (std::sync::Arc::as_ptr(&senders.contacts) as usize).hash(&mut hash);
-    format!("{:?}", (assessments, own_addresses, own_domains, &*crate::spam::vouched::current())).hash(&mut hash);
-    crate::spam::labels::logs_seal().hash(&mut hash);
+    format!("{:?}", projects.map(|s| &s.projects)).hash(&mut hash);
+    (own_addresses, own_domains).hash(&mut hash);
+    hash.finish()
+}
+
+/// What decides one message's triage beside the seal (`triage_seal`), as
+/// it stands now, hashed: how your lists and address books judge its
+/// sender and whether you let them in (`Context::sender`), the project a tie
+/// gives its conversation (`ProjectStore::route`), the AI's reading of it at
+/// a shielded address, your word on it as spam, here, on another device or
+/// in another mail client (`spam::labels::said_ham`), and, for mail your
+/// provider calls spam only, whether you deal with its sender
+/// (`spam::vouched`). A sender let in, a tie, a reading, a word, a dealing
+/// triages again only the messages it is about (review of 1a2c6a2, C3:
+/// until 10 November 2026 each of them emptied every message's triage, and
+/// every making gathered the dealings).
+fn own_inputs(card: &Card, ctx: &Context) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    let judged = card.from_address.as_deref().map(|address| ctx.senders.judge(address));
+    (judged.map(|j| (j.who, j.by)), ctx.known.knows(card)).hash(&mut hash);
+    let tie = ctx.projects.filter(|store| !store.ties.is_empty()).and_then(|store| crate::threads::ids_of(card).into_iter().find_map(|id| store.ties.get(&id).cloned()));
+    tie.hash(&mut hash);
+    if ctx.shielded {
+        let reading = crate::shield::ai_key(card).and_then(|key| ctx.assessments?.get(&key));
+        format!("{reading:?}").hash(&mut hash);
+    }
+    crate::spam::labels::said_ham(card).hash(&mut hash);
+    if trust::read_spam_verdict(&card.headers).is_some_and(|s| s.flagged) {
+        card.from_address.as_deref().is_some_and(|from| crate::spam::vouched::current().of(from).is_some()).hash(&mut hash);
+    }
     hash.finish()
 }
 
@@ -1610,29 +1655,36 @@ struct Verdict {
     priority: Priority,
     checks: Option<trust::AuthResults>,
     assessment: Option<crate::shield::Assessment>,
+    /// What decided it of the message's own, as it stood (`own_inputs`).
+    own: u64,
 }
 
 /// Each inbox message's triage as the Porch last made it, by its file (its
-/// path, which holds its flags, its size and its time), under one seal of
-/// what else decides it (`triage_seal`); emptied when the seal changes. The
-/// Porch is made again at each mail report, each change made here or come
-/// from another device, and each triage reads a message's text for its
-/// codes and its sender against every lookalike: with some thousands of
-/// messages in the inboxes, a second or two each time. A message is read
-/// again (its card, never its triage) while it stays as it was; one whose
-/// file, flags or seal changed is triaged again, and one with a one-time
-/// code still valid is never kept, its lane moving with the clock.
+/// path, which holds its flags, its size, its time and its inode:
+/// `file_key`), under one seal of what decides every message
+/// (`triage_seal`), emptied when the seal changes, and beside what decides
+/// it alone (`own_inputs`). The Porch is made again at each mail report,
+/// each change made here or come from another device, and each triage reads
+/// a message's text for its codes and its sender against every lookalike:
+/// with some thousands of messages in the inboxes, a second or two each
+/// time. A message is read again (its card, never its triage) while it
+/// stays as it was; one whose file, flags, own inputs or seal changed is
+/// triaged again, and one with a one-time code still valid is never kept,
+/// its lane moving with the clock.
 static TRIAGED: std::sync::Mutex<Option<(u64, std::collections::HashMap<FileKey, Verdict>)>> = std::sync::Mutex::new(None);
 
-/// Messages' triages kept at most (`TRIAGED`): past them, the memory starts again.
+/// Messages' triages kept at most (`TRIAGED`): past them, the memory starts
+/// again. Each making keeps only the messages it met (`gather`): the
+/// inboxes' as they stand, never a file renamed, moved or closed on since.
 const TRIAGED_KEPT: usize = 200_000;
 
 /// The messages of a folder (its `new` and `cur`, else the folder itself)
 /// whose origin passes `keep` and whose card passes `take`, oldest first,
-/// each with its triage: kept from an earlier making while its file and the
-/// seal stay (`TRIAGED`), else made now. As `maildir::read_messages_where`
-/// then `triage` would give them, the card's account set first.
-fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64) -> Vec<Triaged> {
+/// each with its triage: kept from an earlier making while its file, its
+/// own inputs and the seal stay (`TRIAGED`), else made now. As `maildir::read_messages_where`
+/// then `triage` would give them, the card's account set first. Each
+/// message's file is added to `met`.
+fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64, met: &mut std::collections::HashSet<FileKey>) -> Vec<Triaged> {
     let maildir = [dir.join("new"), dir.join("cur")];
     let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.is_dir()) { maildir.into_iter().filter(|d| d.is_dir()).collect() } else { vec![dir.to_path_buf()] };
     let mut out = Vec::new();
@@ -1643,20 +1695,27 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
             if !meta.is_file() || hidden || !keep(maildir::origin_of(&path)) {
                 continue;
             }
-            let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-            let key: FileKey = (path.clone(), meta.len(), time);
+            let key = file_key(&path, &meta);
             let Some(mut card) = maildir::read_one(&path) else { continue };
             card.account = account.cloned();
             if !take(&card) {
                 continue;
             }
-            let kept = TRIAGED.lock().ok().and_then(|kept| kept.as_ref().filter(|(at, _)| *at == seal).and_then(|(_, all)| all.get(&key).cloned()));
+            met.insert(key.clone());
+            let own = own_inputs(&card, ctx);
+            let kept = TRIAGED.lock().ok().and_then(|kept| kept.as_ref().filter(|(at, _)| *at == seal).and_then(|(_, all)| all.get(&key).filter(|v| v.own == own).cloned()));
             if let Some(v) = kept {
                 out.push(Triaged { card, lane: v.lane, trust: v.trust, code: None, reasons: v.reasons, priority: v.priority, checks: v.checks, assessment: v.assessment });
                 continue;
             }
             let triaged = triage(card, ctx);
+            // Kept only when what decided it was what its stamp says: your
+            // words on spam are read again every two seconds at most
+            // (`spam::labels::kept`), and a log come between the stamp and
+            // the triage would keep a verdict made on what the stamp does not
+            // say (review of 1a2c6a2, C1).
             if triaged.code.is_none()
+                && own_inputs(&triaged.card, ctx) == own
                 && let Ok(mut kept) = TRIAGED.lock()
             {
                 if kept.as_ref().is_none_or(|(at, all)| *at != seal || all.len() >= TRIAGED_KEPT) {
@@ -1664,7 +1723,7 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
                 }
                 if let Some((_, all)) = kept.as_mut() {
                     let t = &triaged;
-                    all.insert(key, Verdict { lane: t.lane.clone(), trust: t.trust, reasons: t.reasons.clone(), priority: t.priority, checks: t.checks.clone(), assessment: t.assessment.clone() });
+                    all.insert(key, Verdict { lane: t.lane.clone(), trust: t.trust, reasons: t.reasons.clone(), priority: t.priority, checks: t.checks.clone(), assessment: t.assessment.clone(), own });
                 }
             }
             out.push(triaged);
@@ -1674,16 +1733,22 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
     out
 }
 
+/// Everything waiting in the Porch, from every source, minus what you closed it on.
+/// Messages already done are skipped by their file name, without being read.
+/// Mail from senders you blocked is left out: never shown, never counted.
 pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &SenderList, senders: &Senders, state: &PorchState, now: i64) -> Vec<Triaged> {
+    #[cfg(test)]
+    crate::config::stand_ins_only();
     let own = own_domains(sources);
     let own_addresses = own_addresses(sources);
     let own_domains = own.as_slice();
     let assessments = crate::shield::AiCache::load_all();
-    let seal = triage_seal(sources, projects, known, senders, &assessments, &own_addresses, own_domains);
+    let seal = triage_seal(sources, projects, &own_addresses, own_domains);
     // What your filter moved, here or on another device, waiting for your word: read once.
     let root = crate::spam::labels::state();
     let moved = crate::spam::labels::read_moved_in(&root);
     let said = if moved.is_empty() { Vec::new() } else { crate::spam::labels::read_all_in(&root) };
+    let mut met = std::collections::HashSet::new();
     let mut items: Vec<Triaged> = sources
         .iter()
         .flat_map(|src| {
@@ -1694,13 +1759,22 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
             let fresh = account.is_some_and(|a| !state.done.contains_key(a));
             let since = now - i64::from(crate::config::DEFAULT_SYNC_DAYS) * 86_400;
             let take = |card: &Card| (!fresh || card.date.is_none_or(|d| d >= since)) && senders.who_of(card) != crate::reach::Who::Blocked;
-            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal)
+            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal, &mut met)
                 .into_iter()
                 .chain(flagged_since(src, &ctx, state, senders, now))
                 .chain(account.filter(|_| !moved.is_empty()).map_or_else(Vec::new, |a| moved_items(src, &ctx, &crate::folders::saved(a), &moved, &said)))
                 .collect::<Vec<_>>()
         })
         .collect();
+    // What this making did not meet is not kept (review of 1a2c6a2, C5): a
+    // message read or flagged elsewhere leaves its old name behind, one moved
+    // or closed on leaves for good.
+    if let Ok(mut kept) = TRIAGED.lock()
+        && let Some((at, all)) = kept.as_mut()
+        && *at == seal
+    {
+        all.retain(|key, _| met.contains(key));
+    }
     follow_conversations(&mut items);
     items.sort_by_key(|t| t.card.date.unwrap_or(0));
     items
@@ -1847,7 +1921,7 @@ pub fn judge(paths: &[PathBuf], sources: &[Source], projects: Option<&ProjectSto
 /// `list_projects` ask it before a project takes a message.
 ///
 /// What it says of a file is remembered for the life of the process
-/// (`VERDICTS`), by the file's path, size and time, under the seal of what
+/// (`VERDICTS`), by the file's path, size, time and inode, under the seal of what
 /// the gate read (`Gate::seal`): an agent's tools make a gate at each call,
 /// and each message is read once, until a list, a project, a tie, the words,
 /// an AI reading or the ten minutes now falls in change.
@@ -1871,8 +1945,47 @@ impl std::fmt::Debug for Gate {
     }
 }
 
-/// A file's verdict, by its path, size and modification time (nanoseconds).
-type FileKey = (PathBuf, u64, u128);
+/// A file's verdict, by its path, size and modification time (nanoseconds),
+/// and on Unix its inode and the time its inode last changed (`file_key`).
+type FileKey = (PathBuf, u64, u128, u64, i128);
+
+/// The key of the file at `path` (`meta`, its metadata): a message rewritten
+/// in place under the same name, size and time (`sioul verify --again`
+/// writes it through `tmp/` and a rename, then sets its time back) is
+/// another file, its inode another; one rewritten without a rename changed
+/// its inode's time.
+fn file_key(path: &Path, meta: &std::fs::Metadata) -> FileKey {
+    let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+    #[cfg(unix)]
+    let inode = {
+        use std::os::unix::fs::MetadataExt;
+        (meta.ino(), i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()))
+    };
+    #[cfg(not(unix))]
+    let inode = (0, 0);
+    (path.to_path_buf(), meta.len(), time, inode.0, inode.1)
+}
+
+/// The words looked for, hashed by what they hold, once for each set made
+/// (`words::Words::of` makes one for each configuration). The set is held
+/// here beside its seal, so that no other set takes its place in memory and
+/// passes for it (until 10 November 2026 the seals took the set's address,
+/// which a set made later could be given once the first was freed).
+fn words_seal(words: &std::sync::Arc<crate::words::Words>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    type Seals = std::sync::Mutex<Vec<(std::sync::Arc<crate::words::Words>, u64)>>;
+    static SEALS: Seals = std::sync::Mutex::new(Vec::new());
+    let mut seals = SEALS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((_, seal)) = seals.iter().find(|(held, _)| std::sync::Arc::ptr_eq(held, words)) {
+        return *seal;
+    }
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    format!("{:?}", **words).hash(&mut hash);
+    let seal = hash.finish();
+    seals.insert(0, (std::sync::Arc::clone(words), seal));
+    seals.truncate(8);
+    seal
+}
 
 /// The verdicts on files remembered, under one gate's seal; emptied when the seal changes.
 static VERDICTS: std::sync::Mutex<Option<(u64, std::collections::HashMap<FileKey, Option<Admission>>)>> = std::sync::Mutex::new(None);
@@ -1891,19 +2004,20 @@ impl Gate {
     }
 
     /// What its verdicts rest on, hashed: each account's place, address, ids
-    /// and words, the projects with their routes and ties, the lists, the
-    /// address books (the same as long as their files are, `Book::load`), the
-    /// AI's readings, and the ten minutes now falls in (a code's validity).
+    /// and words (by what they hold, `words_seal`), the projects with their
+    /// routes and ties, the lists, the address books (by what they hold,
+    /// `Book::seal`), the AI's readings, and the ten minutes now falls in (a
+    /// code's validity).
     fn seal(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         for src in &self.sources {
             (&src.account, &src.address, &src.folder, &src.trusted_ids, src.shielded, format!("{:?}", src.priority)).hash(&mut hash);
-            (std::sync::Arc::as_ptr(&src.words) as usize).hash(&mut hash);
+            words_seal(&src.words).hash(&mut hash);
         }
         format!("{:?}", self.store.as_ref().map(|s| (&s.projects, &s.ties))).hash(&mut hash);
         format!("{:?}", (&self.known, &self.senders.safe, &self.senders.neutral, &self.senders.restricted, &self.senders.blocked, &self.senders.known)).hash(&mut hash);
-        (std::sync::Arc::as_ptr(&self.senders.contacts) as usize).hash(&mut hash);
+        self.senders.contacts.seal().hash(&mut hash);
         format!("{:?}", self.assessments).hash(&mut hash);
         (self.now / 600).hash(&mut hash);
         hash.finish()
@@ -1950,11 +2064,10 @@ impl Gate {
 
     /// Whether a project may take the message stored in this file; none
     /// when it cannot be read, or is in none of the accounts' folders.
-    /// Remembered by the file's path, size and time (`VERDICTS`).
+    /// Remembered by the file's path, size, time and inode (`VERDICTS`).
     pub fn admission_of_file(&self, path: &Path) -> Option<Admission> {
         let meta = std::fs::metadata(path).ok()?;
-        let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-        let key: FileKey = (path.to_path_buf(), meta.len(), time);
+        let key = file_key(path, &meta);
         if let Ok(kept) = VERDICTS.lock()
             && let Some((seal, verdicts)) = kept.as_ref()
             && *seal == self.seal
@@ -2504,13 +2617,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The address books are sealed by what they hold (review of 1a2c6a2,
+    /// C2): the same cards give the same seal wherever the book sits in
+    /// memory; a card added, or an address changed, another.
+    #[test]
+    fn a_book_is_sealed_by_what_it_holds() {
+        let card = |uid: &str, email: &str| crate::contacts::Contact { uid: uid.into(), key: format!("/books/{uid}.vcf"), name: uid.into(), emails: vec![crate::contacts::Labeled { label: String::new(), value: email.into() }], ..Default::default() };
+        let noa = || card("Noa", "noa@example.org");
+        let first = Book::of(&[noa()], None);
+        let again = std::sync::Arc::new(Book::of(&[noa()], None));
+        assert_eq!(first.seal(), again.seal(), "the same cards");
+        assert_ne!(first.seal(), Book::of(&[noa(), card("Jane", "jane@example.org")], None).seal(), "a card added");
+        assert_ne!(first.seal(), Book::of(&[card("Noa", "noa@other.example.org")], None).seal(), "an address changed");
+    }
+
     /// The Porch made again triages only what changed (`TRIAGED`): a message
-    /// as it was gives its kept triage, the same as a new one; one whose flags
-    /// changed (its file renamed), and every one once what decides them
-    /// changed (a sender let in), is triaged again; one with a code still
-    /// valid always is, its lane moving with the clock.
+    /// as it was gives its kept triage, the same as a new one; one whose file
+    /// changed (its flags, its text rewritten in place) is triaged again, and
+    /// so is one whose own inputs changed (its sender let in, a tie, your
+    /// word on it, an AI's reading), and only that one (review of 1a2c6a2,
+    /// C3); one with a code still valid always is, its lane moving with the
+    /// clock.
     #[test]
     fn a_message_is_triaged_again_only_once_it_or_what_decides_it_changed() {
+        crate::config::stand_ins_only();
         let root = std::env::temp_dir().join(format!("sioul-porch-kept-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for sub in ["new", "cur", "tmp"] {
@@ -2527,59 +2657,131 @@ mod tests {
         put(1, "Jane <jane@kept.example.org>", "Lunch", "Lunch on Friday?");
         put(2, "News <news@letters.example.org>", "This week", "Our news of the week.");
         put(3, "Bank <no-reply@bank.example.org>", "Your code", "Your code is 482913. It is valid for 10 minutes.");
-        let src = Source { account: Some("home".into()), address: Some("you@home.example.org".into()), folder: root.clone(), trusted_ids: vec!["mx.kept.example.org".into()], priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
+        // A shielded address, so that an AI's reading counts.
+        let src = Source { account: Some("home".into()), address: Some("you@home.example.org".into()), folder: root.clone(), trusted_ids: vec!["mx.kept.example.org".into()], priority: Priority::Average, shielded: true, words: crate::words::Words::builtin(), spam: None };
         let senders = Senders::default();
         let state = PorchState::default();
-        let made = |known: &SenderList| {
+        let garden = crate::projects::Project { id: "garden".into(), title: "Garden".into(), ..Default::default() };
+        let mut store = ProjectStore { root: PathBuf::from("."), projects: vec![garden], ties: Default::default() };
+        let made = |known: &SenderList, store: &ProjectStore| {
             TRIAGES.with(|n| n.set(0));
-            let mut items: Vec<(String, Lane, Vec<Reason>)> = gather(std::slice::from_ref(&src), None, known, &senders, &state, now).into_iter().map(|t| (t.card.subject.clone(), t.lane, t.reasons)).collect();
+            let mut items: Vec<(String, Lane, Vec<Reason>)> = gather(std::slice::from_ref(&src), Some(store), known, &senders, &state, now).into_iter().map(|t| (t.card.subject.clone(), t.lane, t.reasons)).collect();
             items.sort_by(|a, b| a.0.cmp(&b.0));
             (items, TRIAGES.with(std::cell::Cell::get))
         };
+        let lane = |items: &Vec<(String, Lane, Vec<Reason>)>, subject: &str| items.iter().find(|t| t.0 == subject).map(|t| t.1.clone());
         let none = SenderList::default();
-        let (first, triaged) = made(&none);
+        let (first, triaged) = made(&none, &store);
         assert_eq!(triaged, 3);
-        assert_eq!(first.iter().find(|t| t.0 == "Your code").map(|t| t.1.clone()), Some(Lane::RightNow), "{first:?}");
-        let (again, triaged) = made(&none);
+        assert_eq!(lane(&first, "Your code"), Some(Lane::RightNow), "{first:?}");
+        let (again, triaged) = made(&none, &store);
         assert_eq!(again, first, "kept: the same triages");
         assert_eq!(triaged, 1, "only the code, still valid");
         // Its flags changed elsewhere: renamed, triaged again.
         let read = |uid: u32| root.join("cur").join(format!("{}.U1-{uid}.sioul{}2,", now - 60, maildir::INFO));
-        std::fs::rename(read(2), root.join("cur").join(format!("{}.U1-2.sioul{}2,S", now - 60, maildir::INFO))).unwrap();
-        assert_eq!(made(&none).1, 2);
-        // Jane let in through the screener: every message triaged again, hers where it now belongs.
+        let news = root.join("cur").join(format!("{}.U1-2.sioul{}2,S", now - 60, maildir::INFO));
+        std::fs::rename(read(2), &news).unwrap();
+        assert_eq!(made(&none, &store).1, 2);
+        // Its old name no longer kept: only the two met, the code never (review of 1a2c6a2, C5).
+        assert_eq!(TRIAGED.lock().unwrap().as_ref().map(|(_, all)| all.len()), Some(2));
+        // Rewritten in place, its name, size and time kept (`sioul verify
+        // --again`): another file, triaged again (review of 1a2c6a2, C6).
+        let lunch = read(1);
+        let before = std::fs::metadata(&lunch).unwrap();
+        let aside = root.join("tmp").join("lunch");
+        std::fs::write(&aside, std::fs::read_to_string(&lunch).unwrap().replace("Friday", "Monday")).unwrap();
+        std::fs::File::options().write(true).open(&aside).unwrap().set_modified(before.modified().unwrap()).unwrap();
+        std::fs::rename(&aside, &lunch).unwrap();
+        let after = std::fs::metadata(&lunch).unwrap();
+        assert_eq!((after.len(), after.modified().unwrap()), (before.len(), before.modified().unwrap()));
+        assert_eq!(made(&none, &store).1, 2, "the message rewritten, and the code");
+        // Jane let in through the screener: her message triaged again, where it now belongs; the others kept.
         let jane = SenderList::parse("jane@kept.example.org");
-        let (after, triaged) = made(&jane);
-        assert_eq!(triaged, 3);
-        let lane = |items: &Vec<(String, Lane, Vec<Reason>)>, subject: &str| items.iter().find(|t| t.0 == subject).map(|t| t.1.clone());
-        assert_ne!(lane(&after, "Lunch"), lane(&first, "Lunch"), "{:?}", after);
+        let (after, triaged) = made(&jane, &store);
+        assert_eq!(triaged, 2, "hers, and the code");
+        assert_ne!(lane(&after, "Lunch"), lane(&first, "Lunch"), "{after:?}");
+        // The news tied to a project: that message alone triaged again, into it.
+        store.ties.insert("m2@kept.example.org".into(), "garden".into());
+        let (tied, triaged) = made(&jane, &store);
+        assert_eq!(triaged, 2, "the news, and the code");
+        assert_eq!(lane(&tied, "This week"), Some(Lane::Project("garden".into())), "{tied:?}");
+        // Your word on Jane's message, from another device: hers alone.
+        let log = crate::spam::labels::own_log(&crate::spam::labels::state(), "porch-kept");
+        let said = crate::spam::labels::Entry { at: now, account: "home".into(), folder: "INBOX".into(), uidvalidity: 1, uid: 1, message_id: Some("m1@kept.example.org".into()), label: crate::spam::labels::Label::Ham, source: crate::spam::labels::Source::NotSpam };
+        crate::spam::labels::append_to(&log, &said).unwrap();
+        // The logs' folder is looked at again after two seconds at most (`spam::labels::kept`).
+        std::thread::sleep(std::time::Duration::from_millis(2100));
+        assert_eq!(made(&jane, &store).1, 2, "Jane's, and the code");
+        // An AI's reading of the news, hostile: that message alone, set aside.
+        let card = Card { account: Some("home".into()), ..maildir::read_one(&news).unwrap() };
+        let hostile = crate::shield::Assessment { tone: crate::shield::Tone::Hostile, by_ai: true, ..Default::default() };
+        let readings = crate::shield::AiCache { messages: [(crate::shield::ai_key(&card).unwrap(), hostile)].into_iter().collect(), ..Default::default() };
+        readings.save("porch-kept").unwrap();
+        let (read_by_ai, triaged) = made(&jane, &store);
+        assert_eq!(triaged, 2, "the news, and the code");
+        assert_eq!(lane(&read_by_ai, "This week"), Some(Lane::Hostile), "{read_by_ai:?}");
+        let _ = std::fs::remove_file(crate::shield::AiCache::path("porch-kept"));
+        let _ = std::fs::remove_file(&log);
         let _ = std::fs::remove_dir_all(&root);
     }
 
     /// What the Porch's triage costs on a large mailbox, made anew then kept
-    /// (`TRIAGED`): each Maildir under `SIOUL_PORCH_BENCH` (a demo profile's
-    /// mail made with `make-demo.py --bulk 20000`, its inboxes) gathered three
-    /// times, the CPU time of each (Linux's `schedstat`). Ignored: run it with
+    /// (`TRIAGED`), then with what decides one message or one sender
+    /// changing: each Maildir under `SIOUL_PORCH_BENCH` (a demo profile's
+    /// mail made with `make-demo.py --bulk 20000`, its inboxes, shielded so
+    /// that an AI's reading counts) gathered, the CPU time of each making
+    /// (Linux's `schedstat`). Ignored: run it with stand-in folders and
     /// `SIOUL_PORCH_BENCH=<profile>/data/sioul/mail cargo test --release -p sioul-core porch_triage_bench -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn porch_triage_bench() {
         let Some(base) = std::env::var_os("SIOUL_PORCH_BENCH").map(PathBuf::from) else { return };
+        crate::config::stand_ins_only();
         let cpu_ns = || std::fs::read_to_string("/proc/thread-self/schedstat").ok().and_then(|t| t.split_whitespace().next().and_then(|n| n.parse::<u64>().ok())).unwrap_or(0);
         let sources: Vec<Source> = std::fs::read_dir(&base)
             .unwrap()
             .filter_map(Result::ok)
             .filter(|e| e.path().join("cur").is_dir())
-            .map(|e| Source { account: Some(e.file_name().to_string_lossy().into()), address: None, folder: e.path(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None })
+            .map(|e| Source { account: Some(e.file_name().to_string_lossy().into()), address: None, folder: e.path(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: true, words: crate::words::Words::builtin(), spam: None })
             .collect();
-        let (none, senders, state) = (SenderList::default(), Senders::default(), PorchState::default());
+        let state = PorchState::default();
         let now = jiff::Timestamp::now().as_second();
-        for run in ["made anew", "kept", "kept again"] {
+        let bench = crate::projects::Project { id: "bench".into(), title: "Bench".into(), ..Default::default() };
+        let mut store = ProjectStore { root: PathBuf::from("."), projects: vec![bench], ties: Default::default() };
+        let (mut known, mut senders) = (SenderList::default(), Senders::default());
+        let run = |what: &str, store: &ProjectStore, known: &SenderList, senders: &Senders| {
             let (cpu, wall) = (cpu_ns(), std::time::Instant::now());
             TRIAGES.with(|n| n.set(0));
-            let items = gather(&sources, None, &none, &senders, &state, now);
-            println!("porch: {run}: {} messages, {} triaged, {:.0} ms of CPU, {:.0} ms", items.len(), TRIAGES.with(std::cell::Cell::get), (cpu_ns() - cpu) as f64 / 1e6, wall.elapsed().as_secs_f64() * 1e3);
-        }
+            let items = gather(&sources, Some(store), known, senders, &state, now);
+            println!("porch: {what}: {} messages, {} triaged, {:.0} ms of CPU, {:.0} ms", items.len(), TRIAGES.with(std::cell::Cell::get), (cpu_ns() - cpu) as f64 / 1e6, wall.elapsed().as_secs_f64() * 1e3);
+            items
+        };
+        let items = run("made anew", &store, &known, &senders);
+        run("kept", &store, &known, &senders);
+        run("kept again", &store, &known, &senders);
+        let flagged = items.iter().filter(|t| trust::read_spam_verdict(&t.card.headers).is_some_and(|s| s.flagged)).count();
+        println!("porch: {flagged} messages your provider calls spam");
+        let Some(one) = items.iter().find(|t| t.card.message_id.is_some() && t.card.from_address.is_some() && t.code.is_none()) else { return };
+        let (id, from) = (crate::threads::ids_of(&one.card)[0].clone(), one.card.from_address.clone().unwrap_or_default());
+        store.ties.insert(id.clone(), "bench".into());
+        run("one message tied", &store, &known, &senders);
+        let log = crate::spam::labels::own_log(&crate::spam::labels::state(), "porch-bench");
+        let said = crate::spam::labels::Entry { at: now, account: one.card.account.clone().unwrap_or_default(), folder: "INBOX".into(), uidvalidity: 1, uid: 1, message_id: Some(id), label: crate::spam::labels::Label::Ham, source: crate::spam::labels::Source::NotSpam };
+        crate::spam::labels::append_to(&log, &said).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2100));
+        run("a label line on one message", &store, &known, &senders);
+        let reading = crate::shield::Assessment { tone: crate::shield::Tone::Rude, by_ai: true, ..Default::default() };
+        crate::shield::AiCache { messages: [(crate::shield::ai_key(&one.card).unwrap(), reading)].into_iter().collect(), ..Default::default() }.save("porch-bench").unwrap();
+        run("an AI reading of one message", &store, &known, &senders);
+        known = SenderList::parse(&from);
+        run("one sender let in", &store, &known, &senders);
+        let contact = crate::contacts::Contact { uid: "bench-1".into(), name: "Bench".into(), emails: vec![crate::contacts::Labeled { label: String::new(), value: from.clone() }], ..Default::default() };
+        senders = Senders { contacts: std::sync::Arc::new(Book::of(&[contact], None)), ..Senders::default() };
+        run("one sender added to the address books", &store, &known, &senders);
+        crate::spam::vouched::forget();
+        run("the dealings gathered again", &store, &known, &senders);
+        let _ = std::fs::remove_file(crate::shield::AiCache::path("porch-bench"));
+        let _ = std::fs::remove_file(&log);
     }
 
     /// Mail failing SPF and DKIM is not authenticated: its sender counts as

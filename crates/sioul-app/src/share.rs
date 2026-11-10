@@ -1509,6 +1509,16 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
     }
 }
 
+/// Whether another computer closed its claim on `part` with records not
+/// all read here yet (`lease::closed_unread`); sharing off, none.
+pub(crate) fn closed_unread(part: &str) -> bool {
+    let here = share::Here::load(&state_dir());
+    let Some((folder, key)) = sealed(attached(&here)) else { return false };
+    let heard = share::heard(&memory_path(), &here.id);
+    let claims = sioul_sync::lease::claims(&folder, &key, part);
+    sioul_sync::lease::closed_unread(&claims, &here.id, jiff::Timestamp::now().as_second(), |computer, wrote| heard.complete(computer, wrote)).is_some()
+}
+
 /// Whether this device's claims are renewed now: always, but on a phone with Sioul put away.
 fn renews(phone: bool, away: bool) -> bool {
     !(phone && away)
