@@ -309,6 +309,7 @@ sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_file(dir)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	remove_dir_wiping(&path)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	remove_wiping(&path)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_dir(dir)
+sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_dir_all(dir)
 
 # sioul-core/src/handed.rs: requests handed between Sioul's programs: no item.
 sioul-core/src/handed.rs	hand	1	write_whole(&path, &serde_json::to_string(handed).map_err(|e| e.to_string())?)

@@ -223,29 +223,109 @@ pub fn remove_wiping(path: &Path) -> std::io::Result<()> {
 }
 
 /// A folder taken away, each file in it overwritten first ([`remove_wiping`]).
+/// On Unix the files are reached through the folders' own descriptors, each
+/// opened without following a link (`openat`, `O_NOFOLLOW`): a folder
+/// swapped for a link meanwhile leads nowhere else; then the folder goes
+/// through the standard library's `remove_dir_all`, which is safe against
+/// the same swap (review of wt/mail, F9). A file with another name is left
+/// whole for that name.
 pub fn remove_dir_wiping(dir: &Path) -> std::io::Result<()> {
     if !std::fs::symlink_metadata(dir)?.file_type().is_dir() {
         return std::fs::remove_file(dir);
     }
-    for entry in std::fs::read_dir(dir)?.filter_map(Result::ok) {
-        let path = entry.path();
-        match entry.file_type() {
-            Ok(kind) if kind.is_dir() => remove_dir_wiping(&path)?,
-            _ => remove_wiping(&path)?,
+    #[cfg(unix)]
+    {
+        if let Some(folder) = beneath::open_folder(None, dir.as_os_str()) {
+            beneath::wipe(&folder, dir, 0);
+        }
+        std::fs::remove_dir_all(dir)
+    }
+    #[cfg(not(unix))]
+    {
+        for entry in std::fs::read_dir(dir)?.filter_map(Result::ok) {
+            let path = entry.path();
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() => remove_dir_wiping(&path)?,
+                _ => remove_wiping(&path)?,
+            }
+        }
+        std::fs::remove_dir(dir)
+    }
+}
+
+/// Files under a folder reached by descriptors (`remove_dir_wiping`).
+#[cfg(unix)]
+mod beneath {
+    use std::ffi::{CString, OsStr};
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    /// How deep folders are followed.
+    const DEEPEST: usize = 16;
+
+    fn at(parent: Option<&OwnedFd>, name: &OsStr, flags: libc::c_int) -> Option<OwnedFd> {
+        let name = CString::new(name.as_bytes()).ok()?;
+        let base = parent.map_or(libc::AT_FDCWD, AsRawFd::as_raw_fd);
+        // SAFETY: a valid descriptor or AT_FDCWD, and a zero-terminated name living through the call.
+        let fd = unsafe { libc::openat(base, name.as_ptr(), flags | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+        // SAFETY: a descriptor openat just gave, owned by nothing else.
+        (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+
+    /// A folder, opened without following a link.
+    pub(super) fn open_folder(parent: Option<&OwnedFd>, name: &OsStr) -> Option<OwnedFd> {
+        at(parent, name, libc::O_RDONLY | libc::O_DIRECTORY)
+    }
+
+    /// Each file under `folder` overwritten where it has no other name; the
+    /// names read at `path`, every file and folder opened from `folder` itself.
+    pub(super) fn wipe(folder: &OwnedFd, path: &Path, depth: usize) {
+        let Ok(entries) = std::fs::read_dir(path) else { return };
+        for entry in entries.filter_map(Result::ok) {
+            let name = entry.file_name();
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() => {
+                    if depth < DEEPEST
+                        && let Some(inner) = open_folder(Some(folder), &name)
+                    {
+                        wipe(&inner, &path.join(&name), depth + 1);
+                    }
+                }
+                Ok(kind) if kind.is_file() => {
+                    if let Some(fd) = at(Some(folder), &name, libc::O_WRONLY) {
+                        let mut file = std::fs::File::from(fd);
+                        super::overwrite_with_links(&mut file, 1);
+                    }
+                }
+                // A link, a socket: taken away whole by remove_dir_all, never followed.
+                _ => {}
+            }
         }
     }
-    std::fs::remove_dir(dir)
 }
 
 /// A file without a name left, its bytes overwritten with zeros, on the disk.
 fn overwrite(file: &mut std::fs::File) {
+    overwrite_with_links(file, 0);
+}
+
+/// A file with `links` names (0: none left; 1: the one it is reached by),
+/// its bytes overwritten with zeros, on the disk; one with more names is
+/// left whole for the others.
+fn overwrite_with_links(file: &mut std::fs::File, links: u64) {
     use std::io::{Seek, Write};
     let Ok(meta) = file.metadata() else { return };
-    // Another name still holds it: left whole for that name.
-    #[cfg(unix)]
-    if std::os::unix::fs::MetadataExt::nlink(&meta) > 0 {
+    if !meta.is_file() {
         return;
     }
+    // Another name still holds it: left whole for that name.
+    #[cfg(unix)]
+    if std::os::unix::fs::MetadataExt::nlink(&meta) > links {
+        return;
+    }
+    #[cfg(not(unix))]
+    let _ = links;
     let zeros = [0u8; 64 * 1024];
     let mut left = meta.len();
     if file.seek(std::io::SeekFrom::Start(0)).is_err() {
