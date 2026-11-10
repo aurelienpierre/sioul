@@ -4968,24 +4968,32 @@ mod tests {
         assert!(arrived.is_empty() || (arrived.ends_with(b"\n") && whole.starts_with(&arrived) && arrived.len() < whole.len()), "whole lines only: {} of {}", arrived.len(), whole.len());
         let first = w.phone.exchange(&w.phone_folder, DUE + 130);
         assert!(first.problems.iter().all(|p| !p.starts_with("share-other")), "{:?}", first.problems);
-        // Then the desk's entry, written again there, comes cut: never kept,
-        // never read. The one the first pull brought (the walk goes on past
-        // the records cut, since 10 November 2026) stays.
+        // The desk's entry came whole, ahead of its records (the devices
+        // first since 10 November 2026): not all it says it wrote is read
+        // here, so the doses doubt, never know wrongly (review of 3273f2d, R3).
         let entry = format!("devices/{}.device", w.desk.id);
-        let before = std::fs::read(w.cache().join(&entry)).ok();
+        let desk = || crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
+        assert!(w.cache().join(&entry).exists());
+        let heard = crate::share::heard(&w.phone.memory, &w.phone.id);
+        assert!(!heard.complete(&w.desk.id, desk().wrote.unwrap()), "an entry ahead of its records: {heard:?}");
+        // Then the desk's entry, written again there, comes cut: never kept,
+        // never read. With no copy fetched before, the folder's is read meanwhile.
+        std::fs::remove_file(w.cache().join(&entry)).unwrap();
+        let folder_copy = desk();
         w.desk.session(&w.server, |e| e.active = Some(true));
         let name = entry.clone();
         w.fake.fault(once(move |r| r.method == "GET" && r.path.ends_with(&name), Fault::Cut(40)));
         let pulled = w.pull(DUE + 140);
         assert!(pulled.problem.as_deref().is_some_and(|p| p.starts_with("network:")), "{pulled:?}");
         assert_eq!(std::fs::read(&cached).unwrap(), whole, "the records whole now");
-        assert_eq!(std::fs::read(w.cache().join(&entry)).ok(), before, "an entry cut is not kept");
+        assert!(!w.cache().join(&entry).exists(), "an entry cut is not kept");
         let (entries, unread) = crate::devices::all(&w.phone_folder, &KEY);
-        assert!(entries.iter().any(|e| e.id == w.desk.id) && !unread.contains(&w.desk.id), "the folder's copy read meanwhile");
+        let read = entries.into_iter().find(|e| e.id == w.desk.id).unwrap();
+        assert!(!unread.contains(&w.desk.id) && read.exported == folder_copy.exported, "the folder's copy read meanwhile");
         let second = w.phone.exchange(&w.phone_folder, DUE + 150);
         assert!(second.problems.iter().all(|p| !p.starts_with("share-other")), "{:?}", second.problems);
         assert!(w.pull(DUE + 160).problem.is_none());
-        assert!(w.cache().join(&entry).exists());
+        assert_eq!(std::fs::read(w.cache().join(&entry)).unwrap(), std::fs::read(w.server.join(&entry)).unwrap(), "the entry whole at the next pull");
         // Every dose came, each line read once, as far as the desk wrote.
         let record = w.phone.read("health-state.toml");
         for n in 0..40 {
@@ -5080,7 +5088,11 @@ mod tests {
         assert!(w.cache().join(&entry).exists() && !w.cache().join(&round).exists(), "the entry came, its records not");
         attach(&w.phone_folder, &w.phone.memory);
         let desk = crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
-        assert!(crate::devices::others_in_use(&[desk], &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
+        assert!(crate::devices::others_in_use(std::slice::from_ref(&desk), &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
+        // An entry ahead of its records: not all it wrote is read here, so the doses doubt (review of 3273f2d, R3).
+        w.phone.exchange(&w.phone_folder, DUE + 80);
+        let heard = crate::share::heard(&w.phone.memory, &w.phone.id);
+        assert!(!heard.complete(&w.desk.id, desk.wrote.unwrap()), "{heard:?}");
         // Unlocked: the records come at the next pull.
         w.fake.clear_faults();
         assert!(w.pull(DUE + 130).problem.is_none());
