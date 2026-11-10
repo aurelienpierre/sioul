@@ -519,6 +519,9 @@ pub(crate) struct Server {
     listed_bytes: std::sync::atomic::AtomicU64,
     /// Milliseconds waited in this step for files locked there (`put_file`, `LOCKED_WITHIN`).
     locked_waited: std::sync::atomic::AtomicU64,
+    /// How long the last `PUT` took (milliseconds), its own request alone:
+    /// never the waits after a `423` nor the tries before it (`last_put`).
+    last_put: std::sync::atomic::AtomicU64,
 }
 
 /// A folder of the server, as listed: its own ETag, and what it holds by name.
@@ -597,6 +600,7 @@ impl Server {
             limits,
             listed_bytes: std::sync::atomic::AtomicU64::new(0),
             locked_waited: std::sync::atomic::AtomicU64::new(0),
+            last_put: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -704,6 +708,14 @@ impl Server {
         self.put_once(url, body, seen, modified_s, sha1)
     }
 
+    /// How long the last `PUT` took, its own request alone (`put_once`): what
+    /// a line's rate is measured by, never the waits after a `423` (review of
+    /// wt/sync, R2: the waits counted made a records file of 300 KiB read as a
+    /// slow line, and every large file then waited ten minutes).
+    pub(crate) fn last_put(&self) -> Duration {
+        Duration::from_millis(self.last_put.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
     fn put_once(&self, url: &str, body: Vec<u8>, seen: Option<&str>, modified_s: u64, sha1: &str) -> Result<(u16, Option<String>), PutFailed> {
         let total = body.len() as u64;
         let started = Instant::now();
@@ -736,7 +748,9 @@ impl Server {
         // buffers on a slow uplink.
         let request = self.agent.configure_request(request).timeout_connect(Some(self.limits.wait)).timeout_global(Some(whole)).build();
         crate::stalls::ask(self.limits.stall, true);
-        match self.agent.run(request) {
+        let ran = self.agent.run(request);
+        self.last_put.store(started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+        match ran {
             Ok(response) if response.status().as_u16() == 401 => Err(gave_up(SyncError::Login("PUT: 401".into()), "login", moved.load(std::sync::atomic::Ordering::Relaxed))),
             Ok(response) => Ok((response.status().as_u16(), header(&response, "ETag").or_else(|| header(&response, "OC-ETag")))),
             Err(e) => {
@@ -3905,7 +3919,6 @@ impl Sender<'_> {
             if large {
                 self.sending.large_at = self.now;
             }
-            let started = Instant::now();
             let (status, etag) = match self.server.put_file(&url, bytes.clone(), seen.as_deref(), modified_s, &sha1) {
                 Ok(answer) => answer,
                 Err(failed) => return self.failed(relative, failed),
@@ -3916,8 +3929,9 @@ impl Sender<'_> {
                     self.sending.held.remove(relative);
                     self.pulled.sent += 1;
                     self.pulled.bytes += size;
+                    // The rate of the PUT that went, never the waits after a `423` (R2).
                     if size >= 64 << 10 {
-                        self.sending.rate = size * 1000 / (started.elapsed().as_millis() as u64).max(1);
+                        self.sending.rate = size * 1000 / (self.server.last_put().as_millis() as u64).max(1);
                     }
                     return Ok(Went::Done);
                 }
@@ -6898,6 +6912,26 @@ mod tests {
         for (round, bytes) in desk_records(&desk_folder, &id) {
             assert_eq!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()), bytes, "{round}");
         }
+    }
+
+    /// The waits after a `423` never count in the line's rate (review of
+    /// wt/sync, R2): a large records file locked twice, then sent, is timed
+    /// by its own PUT alone, so the device never reads as on a slow line, and
+    /// its large files are not paced for it.
+    #[test]
+    fn a_lock_s_waits_never_count_in_the_line_s_rate() {
+        let w = World::new("locked-rate");
+        let desk_folder = desk_beside(&w);
+        a_desk_holding_much(&w, &desk_folder, DUE);
+        let (round, size) = desk_records(&desk_folder, &w.desk.id).into_iter().find(|(_, s)| *s > 1 << 20).unwrap();
+        lock_records(&w, &w.desk.id, Some(2));
+        let waits = Limits { locked: Duration::from_millis(500), ..TEST };
+        let went = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 10, false, waits);
+        assert!(went.problem.is_none() && went.locked.is_empty(), "{went:?}");
+        assert_eq!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()), size);
+        let sending = Sending::load(&w.desk.memory);
+        // Timed with the waits (1.5 s), the rate would be below the size a second and a half.
+        assert!(sending.rate * 3 / 2 > size && !sending.slow(), "rate {} for {size} bytes", sending.rate);
     }
 
     /// The same where Sioul keeps the folder itself (`MIRROR`): a records
