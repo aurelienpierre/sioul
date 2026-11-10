@@ -1673,3 +1673,91 @@ fn the_tables_are_judged_in_a_quiet_exchange_too() {
     assert!(!shared_now(&desk, SPAM_TABLE), "retired and taken out at once");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// Each `paths` dated a minute back: a folder's time then no longer "this
+/// very moment" (`RACY_MS`), as between two exchanges a minute apart.
+#[cfg(unix)]
+fn a_minute_back(paths: &[&Path]) {
+    let then = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
+    for path in paths {
+        std::fs::File::open(path).unwrap().set_modified(then).unwrap();
+    }
+}
+
+fn asked() -> usize {
+    ASKED.with(|n| n.replace(0))
+}
+
+/// The notes folder is listed only where it changed (review of 13 October
+/// 2026, §4.8: the whole folder was listed every minute, each note's time
+/// asked of the disk, which costs more as the folder grows). A folder whose
+/// time did not change is taken as listed, its notes as last read: nothing
+/// asked. A note made, renamed or removed changes its folder's time: that
+/// folder alone is listed again, and the change goes at once. A note written
+/// in place (no folder's time changes) goes at the next whole listing
+/// (`RELIST_MS`). A folder's time is a Unix test's to set back (`a_minute_back`).
+#[cfg(unix)]
+#[test]
+fn the_notes_folder_is_listed_only_where_it_changed() {
+    let base = scratch("listed-notes");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    let (admin, old) = (notes.join("admin"), notes.join("admin").join("old"));
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::create_dir_all(&phone_notes).unwrap();
+    for (path, text) in [(notes.join("plan.md"), "the plan\n"), (admin.join("lease.md"), "the lease\n"), (old.join("2020.md"), "an old year\n")] {
+        std::fs::write(&path, text).unwrap();
+        a_minute_back(&[&path]);
+    }
+    a_minute_back(&[&notes, &admin, &old]);
+    RELIST.with(|r| r.set(10 * MINUTE));
+    let mut now = NOW;
+    // The notes shared, as with the part "Notes" switched on.
+    let mut turn = |c: &Computer, notes: &Path| {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+        let stores = stores_of(&config, &c.roots, &|part| part == "notes" || shared_by_default(part, &config));
+        exchange(&Sharing { folder: &folder, computer: &c.id, key: &key, memory: &c.memory, files: true, hurry: None }, &stores, now).unwrap()
+    };
+    turn(&desk, &notes);
+    assert_eq!(asked(), 3, "listed whole the first time");
+    turn(&phone, &phone_notes);
+    assert_eq!(std::fs::read_to_string(phone_notes.join("admin/old/2020.md")).unwrap(), "an old year\n");
+    asked();
+    // Nothing changed: nothing asked.
+    turn(&desk, &notes);
+    assert_eq!(asked(), 0, "every folder as listed");
+    // A note made in admin/: that folder alone listed again, and it goes at once.
+    std::fs::write(admin.join("deposit.md"), "the deposit\n").unwrap();
+    turn(&desk, &notes);
+    assert_eq!(asked(), 2, "admin/'s two notes, nothing of the others");
+    turn(&phone, &phone_notes);
+    assert_eq!(std::fs::read_to_string(phone_notes.join("admin/deposit.md")).unwrap(), "the deposit\n");
+    // Written in place: no folder's time changes; it goes at the next whole listing.
+    a_minute_back(&[&admin, &admin.join("deposit.md")]);
+    turn(&desk, &notes);
+    asked();
+    std::fs::write(notes.join("plan.md"), "the plan, changed in place\n").unwrap();
+    turn(&desk, &notes);
+    assert_eq!(asked(), 0, "taken as last read");
+    turn(&phone, &phone_notes);
+    assert_eq!(std::fs::read_to_string(phone_notes.join("plan.md")).unwrap(), "the plan\n", "not yet");
+    RELIST.with(|r| r.set(0));
+    asked();
+    turn(&desk, &notes);
+    assert_eq!(asked(), 4, "listed whole");
+    turn(&phone, &phone_notes);
+    assert_eq!(std::fs::read_to_string(phone_notes.join("plan.md")).unwrap(), "the plan, changed in place\n");
+    // A note removed: its folder's time changes, and it is taken out at once.
+    RELIST.with(|r| r.set(10 * MINUTE));
+    turn(&desk, &notes);
+    std::fs::remove_file(admin.join("lease.md")).unwrap();
+    turn(&desk, &notes);
+    let files = Memory::load_all(&desk.memory, &desk.id).files;
+    assert!(!files.keys().any(|f| f.ends_with("admin/lease.md")) && files.keys().any(|f| f.ends_with("admin/deposit.md")), "{:?}", files.keys().collect::<Vec<_>>());
+    RELIST.with(|r| r.set(0));
+    let _ = std::fs::remove_dir_all(&base);
+}

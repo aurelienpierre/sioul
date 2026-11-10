@@ -998,7 +998,7 @@ pub fn shaped(stores: &[Store], format: u32) -> Vec<Store> {
 pub fn estimate(stores: &[Store]) -> (usize, u64, usize) {
     let (mut found, mut files, known, confirmed) = (Found::default(), Vec::new(), BTreeMap::new(), BTreeSet::new());
     for store in stores.iter().filter(|s| matches!(s.shape, Shape::Files) && s.path.is_dir()) {
-        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false }.list(&store.path);
+        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false, listed: None, carried: &mut Vec::new(), clock: 0 }.list(&store.path);
     }
     files.iter().filter_map(|(_, path)| std::fs::metadata(path).ok()).fold((0, 0, 0), |(count, bytes, big), meta| if meta.len() > crate::blobs::LARGEST { (count, bytes, big + 1) } else { (count + 1, bytes + meta.len(), big) })
 }
@@ -1140,6 +1140,75 @@ struct Look<'a> {
     clock: i64,
     /// Large notes and papers found changed since they were last read, and since when (`Sealed::changing`).
     changing: &'a BTreeMap<String, i64>,
+    /// An exchange's look: the folders of notes and papers that did not
+    /// change since this process last listed them are taken as listed then
+    /// (`Listed`), every one listed whole again each `RELIST_MS`.
+    quiet: bool,
+}
+
+/// How the folders of notes and papers were last listed by this process, by
+/// the folder's place (`Listed`).
+static LISTED: std::sync::Mutex<BTreeMap<PathBuf, Listed>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// A folder of notes or papers as this process last listed it: when it was
+/// last listed whole, and each of its folders as listed (`ListedDir`). Until
+/// 10 November 2026 every exchange listed the whole notes folder and asked
+/// the time of each file in it, every minute (review of 13 October 2026,
+/// §4.8), which costs more as the folder grows. A folder's own time changes
+/// when a name in it is made, removed or renamed (and a note saved by
+/// Sioul, by most editors, or received is written beside and renamed into
+/// place), never when a file in it is written in place: a folder whose time
+/// did not change is taken as listed then, its files as last read, without
+/// asking the disk, and the whole folder is listed again each `RELIST_MS`,
+/// so that a note written in place by another program goes within that time.
+/// What came meanwhile is never written over such a change (`receive` looks at
+/// the file itself before it writes), and nothing is taken for gone without
+/// its folder's time changing.
+#[derive(Debug, Default)]
+struct Listed {
+    /// When it was last listed whole (milliseconds, this computer's clock).
+    whole_at: i64,
+    dirs: BTreeMap<PathBuf, ListedDir>,
+}
+
+/// One folder as listed: its time then (nanoseconds, read before it was
+/// read), when it was listed (milliseconds), the names of its files and of
+/// the folders listed below it. Only a folder whose listing had nothing to
+/// say (no name that is not text, no link, nothing left half written, read
+/// whole) is ever taken as listed.
+#[derive(Debug, Clone)]
+struct ListedDir {
+    modified: u64,
+    listed: i64,
+    files: Vec<String>,
+    dirs: Vec<String>,
+}
+
+/// How often the folders of notes and papers are listed whole all the same
+/// (`Listed`), milliseconds.
+fn relist_ms() -> i64 {
+    #[cfg(test)]
+    return RELIST.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    RELIST_MS
+}
+
+/// Ten minutes: a note written in place by another program waits that long
+/// at most; one saved by Sioul, by most editors, or made, removed or renamed
+/// goes at the next exchange.
+#[cfg_attr(test, allow(dead_code))]
+const RELIST_MS: i64 = 10 * MINUTE;
+
+/// A folder's time this close to its listing (milliseconds) is not trusted:
+/// a change in the same tick of its clock would not show.
+const RACY_MS: i64 = 2_000;
+
+#[cfg(test)]
+thread_local! {
+    /// How often a folder of notes is listed whole in this test's thread: at each exchange, unless a test says.
+    pub(super) static RELIST: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+    /// The notes and papers whose time this test's thread asked of the disk (`read_file`).
+    pub(super) static ASKED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// This computer's clock, in milliseconds.
@@ -1218,14 +1287,27 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
                 continue;
             }
             let mut files = Vec::new();
+            let mut carried = Vec::new();
             if matches!(store.shape, Shape::Files) {
-                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed, files: &mut files, found: &mut found, sweep: true };
+                // An exchange's look: what this process listed of it last (`Listed`), listed whole again when due.
+                let mut listed = look.quiet.then(|| LISTED.lock().ok().and_then(|mut all| all.remove(&store.path)).unwrap_or_default());
+                let whole = listed.as_ref().is_some_and(|l| look.clock - l.whole_at >= relist_ms() || look.clock < l.whole_at);
+                if let Some(l) = listed.as_mut().filter(|_| whole) {
+                    *l = Listed { whole_at: look.clock, dirs: BTreeMap::new() };
+                }
+                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed, files: &mut files, found: &mut found, sweep: true, listed: listed.as_mut(), carried: &mut carried, clock: look.clock };
                 listing.list(&store.path);
+                if let (Some(listed), Ok(mut all)) = (listed, LISTED.lock()) {
+                    all.insert(store.path.clone(), listed);
+                }
             } else {
                 list_files(&store.path, &store.path, store.skip, &mut files);
             }
             for (relative, path) in files {
                 read_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
+            }
+            for (relative, path) in carried {
+                carry_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
             }
         } else if store.path.is_file() {
             read_file(store, &store.name, &store.path, known, look, &mut found);
@@ -1277,6 +1359,13 @@ struct Listing<'a> {
     /// exchange, under its lock; never in a look from outside it
     /// (`estimate`), which removes nothing (review of 18 October 2026, I-2).
     sweep: bool,
+    /// An exchange's: how this process listed each folder last (`Listed`),
+    /// written as each is listed now.
+    listed: Option<&'a mut Listed>,
+    /// The files of the folders taken as listed (`Listed`): taken as last
+    /// read, without asking the disk (`carry_file`).
+    carried: &'a mut Vec<(String, PathBuf)>,
+    clock: i64,
 }
 
 impl Listing<'_> {
@@ -1292,8 +1381,31 @@ impl Listing<'_> {
         let relative = dir.strip_prefix(self.root).map(|r| r.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")).unwrap_or_default();
         let within = if relative.is_empty() { String::new() } else { format!("{relative}/") };
         let prefix = format!("{}{within}", self.store);
+        // Its time before it is read: a change while it is read shows next time.
+        let modified = std::fs::metadata(dir).map_or(0, |m| modified_ns(&m));
+        // Unchanged since this process listed it (`Listed`): as listed then.
+        let unchanged = self.listed.as_deref().and_then(|l| l.dirs.get(dir)).filter(|seen| modified > 0 && seen.modified == modified && seen.listed - (modified / 1_000_000) as i64 > RACY_MS).cloned();
+        if let Some(seen) = unchanged {
+            let mut count = 0;
+            for name in &seen.files {
+                self.carried.push((format!("{within}{name}"), dir.join(name)));
+                count += 1;
+            }
+            for name in &seen.dirs {
+                count += self.list(&dir.join(name));
+            }
+            let held = self.known.range(prefix.clone()..).take_while(|(file, _)| file.starts_with(&prefix)).count();
+            if count == 0 && held > 0 && !self.confirmed.iter().any(|said| confirms(said, &prefix)) {
+                self.found.emptied.push((prefix.clone(), held));
+                self.found.unknown.insert(prefix);
+            }
+            return count;
+        }
         let mut whole = true;
         let mut count = 0;
+        // What this folder holds, for the next look (`Listed`), while it has nothing to say.
+        let mut clean = true;
+        let (mut own_files, mut own_dirs): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
         match std::fs::read_dir(dir) {
             Err(_) => whole = false,
             Ok(entries) => {
@@ -1309,6 +1421,7 @@ impl Listing<'_> {
                     let name = entry.file_name();
                     let Some(name) = name.to_str() else {
                         self.found.said.push(format!("share-not-text:{prefix}{}", name.to_string_lossy()));
+                        clean = false;
                         continue;
                     };
                     let path = entry.path();
@@ -1316,9 +1429,11 @@ impl Listing<'_> {
                         if self.sweep {
                             remove_if_old(&path);
                         }
+                        clean = false;
                         continue;
                     }
                     if kind.is_symlink() {
+                        clean = false;
                         // A folder or a file put back as a link (moved out of
                         // the notes, and linked back): links are never
                         // followed, and what was there is unknown, said as a
@@ -1342,9 +1457,11 @@ impl Listing<'_> {
                     if kind.is_dir() {
                         if !matches!(name, "node_modules" | "target") && !path.join("seal.toml").is_file() {
                             count += self.list(&path);
+                            own_dirs.push(name.to_string());
                         }
                     } else if kind.is_file() {
                         self.files.push((format!("{within}{name}"), path));
+                        own_files.push(name.to_string());
                         count += 1;
                     }
                 }
@@ -1357,6 +1474,14 @@ impl Listing<'_> {
                 self.found.emptied.push((prefix.clone(), held));
             }
             self.found.unknown.insert(prefix);
+            clean = false;
+        }
+        if let Some(listed) = self.listed.as_deref_mut() {
+            if clean && whole && modified > 0 {
+                listed.dirs.insert(dir.to_path_buf(), ListedDir { modified, listed: self.clock, files: own_files, dirs: own_dirs });
+            } else {
+                listed.dirs.remove(dir);
+            }
         }
         count
     }
@@ -1441,12 +1566,33 @@ fn value_hash(key: &str, value: &str) -> String {
     if key.starts_with(FILES) { serde_json::from_str::<Reference>(value).map(|r| r.h).unwrap_or_default() } else { hash(value) }
 }
 
+/// A file of a folder taken as listed (`Listed`): as last read, as
+/// `read_file` takes one of the same size and time, without asking the
+/// disk; one read within its settling, or a large one changing, is read as
+/// any (`read_file`).
+fn carry_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, look: &Look, found: &mut Found) {
+    let settled = |s: &&Stat| s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen;
+    let Some(stat) = known.get(file).filter(settled).filter(|_| !look.changing.contains_key(file)) else {
+        return read_file(store, file, path, known, look, found);
+    };
+    found.changed.insert(file.to_string(), (stat.modified / 1_000_000) as i64);
+    for (entry, h) in &stat.entries {
+        found.hashes.insert(format!("{file}#{entry}"), h.clone());
+        found.values.insert(format!("{file}#{entry}"), reference(h, stat.size, stat.modified));
+    }
+    found.files.insert(file.to_string(), stat.clone());
+}
+
 fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, look: &Look, found: &mut Found) {
     let Ok(meta) = std::fs::metadata(path) else {
         found.unknown.insert(file.to_string());
         return;
     };
     let sealed_apart = matches!(store.shape, Shape::Files);
+    #[cfg(test)]
+    if sealed_apart {
+        ASKED.with(|n| n.set(n.get() + 1));
+    }
     if meta.len() > if sealed_apart { crate::blobs::LARGEST } else { LARGEST } {
         found.unknown.insert(file.to_string());
         if sealed_apart {
@@ -5139,7 +5285,7 @@ fn flush(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64) 
     let joining = |store: &Store| !memory.places.is_empty() && memory.places.get(&store.name) != Some(&place_of(store));
     let subset: Vec<Store> = stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some()) && !joining(s) && !memory.newer.contains_key(s.part)).cloned().collect();
     let confirmed = BTreeSet::new();
-    let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms(), changing: &BTreeMap::new() });
+    let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms(), changing: &BTreeMap::new(), quiet: false });
     let mut out: Vec<(String, Option<String>, u64, String)> = Vec::new();
     for (key, h) in &found.hashes {
         if memory.entries.get(key).is_some_and(|k| k.h == *h) {
@@ -5775,7 +5921,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let holds = |key: &str| known_part(file_of(key)).is_some_and(|part| held.contains(part));
     let clock = clock_ms();
     let confirmed = memory.sealed.confirmed.clone();
-    let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock, changing: &memory.sealed.changing });
+    let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock, changing: &memory.sealed.changing, quiet: true });
     // Large notes and papers settling: those of the stores read now as this
     // look found them, the others' as they were (`Sealed::changing`).
     let mut changing = std::mem::take(&mut found.changing);
@@ -13105,7 +13251,7 @@ mod probe {
         let roots = super::Roots { config: base.join("config"), data: base.join("data"), state: base.join("state") };
         let config: sioul_core::config::Config = std::fs::read_to_string(roots.config.join("config.toml")).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         let stores = super::stores(&config, &roots);
-        let look = super::Look { reads: &|_| true, hurry: &|| false, confirmed: &Default::default(), clock: super::clock_ms(), changing: &Default::default() };
+        let look = super::Look { reads: &|_| true, hurry: &|| false, confirmed: &Default::default(), clock: super::clock_ms(), changing: &Default::default(), quiet: false };
         let found = super::gather(&stores, &Default::default(), &look);
         for store in &stores {
             let count = found.hashes.keys().filter(|k| super::file_of(k).starts_with(store.name.as_str()) && (store.folder || super::file_of(k) == store.name)).count();
