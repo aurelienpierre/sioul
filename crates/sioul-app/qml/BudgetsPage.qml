@@ -10,8 +10,9 @@
 // A notice or a link opens the tab and the row it names. Overview is made
 // with the page; Budgets without holding the window, just after it on a
 // computer, the first time it shows on a phone, where each object counts
-// (tst_coming.qml); the other two the first time they show. A budget opened
-// shows its ledger and its balance in place of the tabs.
+// (tst_coming.qml), and there only what is in sight (MoneyBudgets.qml); the
+// other two the first time they show. A budget opened shows its ledger and
+// its balance in place of the tabs.
 
 pragma ComponentBehavior: Bound
 
@@ -119,13 +120,16 @@ Item {
     }
 
     function bankNow() {
-        return page.budgetsNow().bank
+        return page.budgetsNow().bankNow()
     }
 
     function contractsNow() {
-        return page.budgetsNow().contracts
+        return page.budgetsNow().contractsNow()
     }
 
+    // The Budgets tab, its bank accounts and its contracts once made (on a phone, each
+    // when it comes in sight: MoneyBudgets.qml); null until then.
+    readonly property var budgetsShown: budgetsTab.item
     readonly property var contracts: budgetsTab.item ? (budgetsTab.item as MoneyBudgets).contracts : null
     readonly property var bank: budgetsTab.item ? (budgetsTab.item as MoneyBudgets).bank : null
     readonly property var movements: movementsTab.item
@@ -135,7 +139,7 @@ Item {
     function showBank() {
         page.showTab(1)
         const made = page.budgetsNow()
-        made.showItem(made.bank)
+        made.showItem(made.bankNow())
     }
 
     // What is coming in view, the month beside it on a computer: for the window's images.
@@ -153,8 +157,9 @@ Item {
     function openContract(id) {
         page.showTab(1)
         const made = page.budgetsNow()
-        made.contracts.open(id)
-        made.showItem(made.contracts)
+        const contracts = made.contractsNow()
+        contracts.open(id)
+        made.showItem(contracts)
     }
 
     function startContract(prefill) {
@@ -252,7 +257,8 @@ Item {
                 sioul: page.sioul
                 theme: page.theme
                 window: page.window
-                view: page.view
+                // On a phone a tab out of sight lets its rows go, made again when it shows.
+                view: page.window.compact && page.tab !== 0 ? null : page.view
                 onOpenBudget: id => page.openId = id
                 onActed: (text, ask) => page.acted(text, ask)
                 onNewBudget: newBudget.now().edit("", null)
@@ -267,7 +273,7 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     window: page.window
-                    view: page.view
+                    view: page.window.compact && page.tab !== 1 ? null : page.view
                     onOpenBudget: id => page.openId = id
                 }
             }

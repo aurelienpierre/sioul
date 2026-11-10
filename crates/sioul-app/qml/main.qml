@@ -3335,7 +3335,7 @@ SioulWindow {
                 () => budgetsPage.showTab(1),
                 () => {},
                 () => {},
-                () => grabber.saveCounted("money-budgets", budgetsPage.bank.parent),
+                () => grabber.saveCounted("money-budgets", budgetsPage.budgetsShown),
                 () => grabber.saveCounted("money-page-with-budgets", budgetsPage),
                 () => budgetsPage.showBank(),
                 () => {},

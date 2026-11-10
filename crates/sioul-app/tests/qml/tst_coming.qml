@@ -70,8 +70,15 @@ Item {
         function bank() {
             return JSON.stringify({ store: true, any: false, balance: "", findings: [], coming: [], problem: "", accounts: mock.bankAccounts, budgets: [], reserves: [] })
         }
+        // Contracts asked for: how many times the section read them.
+        property int contractsRead: 0
+        property var contractRows: []
         function contracts() {
-            return JSON.stringify({ store: true, problem: "", kinds: [], contracts: [], suggestions: [], presets: [] })
+            mock.contractsRead += 1
+            return JSON.stringify({ store: true, problem: "", kinds: [], contracts: mock.contractRows, suggestions: [], presets: [] })
+        }
+        function textCounted(key, n) {
+            return key + ":" + n
         }
         function linkTarget(source, href) {
             return "null"
@@ -141,6 +148,7 @@ Item {
             fakeWindow.compact = false
             mock.ticked = []
             mock.bankAccounts = []
+            mock.contractRows = []
             mock.budgets = root.view
         }
 
@@ -173,19 +181,92 @@ Item {
             const opening = count(page)
             verify(opening <= 400, "the whole page: " + opening)
             named(page, "moneyTab1")[0].clicked()
-            tryVerify(() => page.bank !== null, 5000, "made at first show")
-            verify(page.bank.visible)
-            console.warn("sioul-objects: a phone's budgets page " + opening + ", the Budgets tab shown too " + count(page))
+            tryVerify(() => page.budgetsShown !== null, 5000, "made at first show")
+            wait(100)
+            const shown = count(page)
+            console.warn("sioul-objects: a phone's budgets page " + opening + ", the Budgets tab shown " + shown)
+            verify(shown <= 400, "the page with its Budgets tab: " + shown)
+            named(page, "moneyTab0")[0].clicked()
+            tryVerify(() => named(page, "aheadAccount").length === 3, 5000, "Overview's rows made again")
+            wait(100)
+            const back = count(page)
+            console.warn("sioul-objects: back on Overview " + back)
+            verify(back <= 400, "back on Overview, the Budgets tab's parts let go: " + back)
             // Asked for from elsewhere, before it showed: there at once.
             const asked = createTemporaryObject(pageComponent, root, { width: 412, height: 891 })
             tryVerify(() => named(asked, "aheadAccount").length === 3, 5000)
             compare(asked.bank, null)
             verify(asked.contractsNow() !== null)
-            verify(asked.bank !== null)
+            verify(asked.bankNow() !== null && asked.bank !== null)
             fakeWindow.compact = false
             const computer = createTemporaryObject(pageComponent, root)
             tryVerify(() => computer.bank !== null, 5000, "just after the page")
             compare(computer.tab, 0)
+        }
+
+        // The Budgets tab of a fuller view still: three areas of fifteen budgets each, two
+        // reserves, three bank accounts and three contracts.
+        function budgetsTabView() {
+            const view = JSON.parse(fullView())
+            view.groups = ["Admin", "Leisure", "Work"].map(area => ({ title: area, budgets: Array.from({ length: 15 }, (_, i) => i + 1).map(n => ({ id: area + n, title: area + " budget " + n, period: "November", mood: "as-planned", verdict: "It should end as planned, with €40 still to come." })) }))
+            view.reserves = [1, 2].map(n => ({ id: "reserve" + n, title: "Reserve " + n, figures: [{ label: "Balance", value: "€1,200" }, { label: "Floor", value: "€500" }] }))
+            return JSON.stringify(view)
+        }
+
+        function bankAccounts() {
+            return [1, 2, 3].map(n => ({ id: "account" + n, title: "Account " + n, kind: "bank", balance: "€845.10 on Saturday 3 October", fresh: ["Its bank's file was read on Monday."], payout: "", two_accounts: false, fills: [{ id: "home", title: "Home" }], floor: 0, floor_text: "", topped_up_by: [], top_ups: [], movements: [], unplaced: 0, rules: [] }))
+        }
+
+        // On a phone the Budgets tab makes only what is in sight (10 November 2026: 532
+        // objects once it was opened on the demo, against Mail's budget of 400): its
+        // budgets' rows as they come into view, then the reserves, the bank accounts and
+        // the contracts in their turn, kept while it shows and let go when it is left;
+        // asked for, there at once. On a computer the lower parts come with the tab, as before.
+        function test_the_budgets_tab_makes_what_is_in_sight() {
+            mock.budgets = budgetsTabView()
+            mock.bankAccounts = bankAccounts()
+            mock.contractRows = [1, 2, 3].map(n => ({ id: "c" + n, title: "Contract " + n, party: "", kind_label: "Insurance", cost: "€20 a month", line: "Renews on 1 January.", covers: "", ended: "", cancel: "", cancel_is_page: false }))
+            fakeWindow.compact = true
+            const page = createTemporaryObject(pageComponent, root, { width: 412, height: 891 })
+            tryVerify(() => named(page, "aheadAccount").length === 3, 5000)
+            named(page, "moneyTab1")[0].clicked()
+            tryVerify(() => page.budgetsShown !== null, 5000, "made at first show")
+            const tab = page.budgetsShown
+            tryVerify(() => named(tab, "budgetLine").length > 0, 5000)
+            wait(100)
+            const lines = named(tab, "budgetLine").length
+            verify(lines < 30, "only the budgets in sight, of 45: " + lines)
+            compare(page.bank, null, "the bank accounts wait, out of sight")
+            compare(page.contracts, null, "the contracts too")
+            const shown = count(page)
+            console.warn("sioul-objects: a phone's budgets page with the Budgets tab shown, 45 budgets " + shown)
+            verify(shown <= 400, "the page with its Budgets tab: " + shown)
+            // Scrolled to its end: each part in its turn, then kept.
+            for (let i = 0; i < 40 && (page.bank === null || page.contracts === null); ++i) {
+                tab.positionViewAtEnd()
+                wait(50)
+            }
+            verify(page.bank !== null && page.contracts !== null, "made once in sight")
+            tryVerify(() => named(page.bank, "bankFresh").length === 3, 5000, "the bank's accounts")
+            tab.positionViewAtBeginning()
+            wait(50)
+            verify(page.bank !== null && page.contracts !== null, "kept while the tab shows")
+            named(page, "moneyTab0")[0].clicked()
+            wait(50)
+            verify(page.bank === null && page.contracts === null && named(tab, "budgetLine").length === 0, "let go with the tab")
+            named(page, "moneyTab1")[0].clicked()
+            tryVerify(() => named(tab, "budgetLine").length > 0, 5000, "its rows again")
+            // Asked for before it showed: there at once.
+            const asked = createTemporaryObject(pageComponent, root, { width: 412, height: 891 })
+            tryVerify(() => named(asked, "aheadAccount").length === 3, 5000)
+            const bank = asked.bankNow()
+            verify(bank !== null && asked.bank === bank, "the bank asked for")
+            verify(asked.contractsNow() !== null, "the contracts asked for")
+            // A computer: every part with the tab.
+            fakeWindow.compact = false
+            const computer = createTemporaryObject(pageComponent, root)
+            tryVerify(() => computer.budgetsShown !== null, 5000)
+            tryVerify(() => computer.bank !== null && computer.contracts !== null, 5000, "a computer's, with the tab")
         }
 
         // A new movement names its bank account though the Budgets tab was never made.
