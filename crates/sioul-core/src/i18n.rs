@@ -46,6 +46,42 @@ pub struct Translator {
     fallback: std::sync::OnceLock<Bundle>,
 }
 
+/// What a device can be, as `$form` says it (`device_kind::DeviceKind::word`).
+const FORMS: [&str; 3] = ["phone", "tablet", "computer"];
+
+/// What this device is (`set_form`), for every translator of the process:
+/// 0 unsaid, else its place in `FORMS` and one.
+static FORM: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// What this device is, "phone", "tablet" or "computer" (docs/android.md,
+/// "Tablets"), said once for the process: every message of every translator
+/// gets it as `$form` unless its caller gives its own, so that a sentence
+/// naming this device follows it ("this tablet", through `device-this` and
+/// its kin) with no argument at each call. Unsaid, or a word it does not
+/// know, each such sentence's default: a phone's, as every Android was.
+pub fn set_form(form: &str) {
+    let at = FORMS.iter().position(|f| *f == form).map_or(0, |i| i as u8 + 1);
+    FORM.store(at, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// `args` with `$form` added, when this device's is said and the caller gave none.
+fn with_form(args: Option<&FluentArgs>) -> Option<FluentArgs<'static>> {
+    formed(FORM.load(std::sync::atomic::Ordering::Relaxed), args)
+}
+
+/// `with_form`, the form said being `at` (0 unsaid, else its place in `FORMS` and one).
+fn formed(at: u8, args: Option<&FluentArgs>) -> Option<FluentArgs<'static>> {
+    if at == 0 || usize::from(at) > FORMS.len() || args.is_some_and(|a| a.get("form").is_some()) {
+        return None;
+    }
+    let mut out = FluentArgs::new();
+    for (key, value) in args.into_iter().flat_map(FluentArgs::iter) {
+        out.set(key.to_string(), value.into_owned());
+    }
+    out.set("form", FORMS[usize::from(at - 1)]);
+    Some(out)
+}
+
 impl Translator {
     /// A translator for a language code ("fr", "fr_FR.UTF-8", "en-GB"); English if Sioul lacks it.
     pub fn new(requested: &str) -> Translator {
@@ -73,6 +109,11 @@ impl Translator {
 
     /// One message with its arguments; the English one if this language lacks it.
     pub fn text(&self, id: &str, args: Option<&FluentArgs>) -> String {
+        let formed = with_form(args);
+        let args: Option<&FluentArgs> = match &formed {
+            Some(formed) => Some(formed),
+            None => args,
+        };
         format(&self.bundle, id, None, args)
             .or_else(|| self.fallback(id).and_then(|english| format(english, id, None, args)))
             .unwrap_or_else(|| id.to_string())
@@ -558,6 +599,64 @@ fn format(bundle: &Bundle, id: &str, attribute: Option<&str>, args: Option<&Flue
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A sentence that names this device follows what it is (`$form`):
+    /// "this tablet", « cette tablette », its agreement too; with no form
+    /// said, a phone's words, as every Android had. The process's form is
+    /// given to every message by `formed`, never over a caller's own.
+    #[test]
+    fn a_sentence_names_this_device_by_what_it_is() {
+        let said = |tr: &Translator, id: &str, form: Option<&str>| {
+            let mut args = args();
+            if let Some(form) = form {
+                args.set("form", form);
+            }
+            tr.text(id, Some(&args))
+        };
+        let (en, fr) = (Translator::new("en"), Translator::new("fr"));
+        assert_eq!(said(&en, "seckey-no-nfc", Some("tablet")), "This tablet has no NFC: plug the key into its USB-C port.");
+        assert_eq!(said(&en, "seckey-no-nfc", None), "This phone has no NFC: plug the key into its USB-C port.", "unsaid: a phone's, as before");
+        assert_eq!(said(&en, "dnd-phone-starred", Some("computer")), "This device's calls and messages are silenced, except starred contacts and repeat callers.");
+        assert_eq!(said(&en, "seckey-hold", Some("tablet")), "Hold your security key flat against the back of the tablet, or plug it into the USB-C port. Keep it there until Sioul says it is done.");
+        assert_eq!(said(&fr, "dnd-phone-failed", Some("tablet")).split('\u{202f}').next(), Some("Votre tablette n’a pas pu être mise en silence"), "French agrees");
+        assert_eq!(said(&fr, "dnd-phone-held", Some("phone")).split(',').next(), Some("Ce téléphone est mis en silence par son propre mode Ne pas déranger"));
+        assert!(said(&fr, "seckey-hold", Some("tablet")).contains("contre le dos de la tablette"));
+        assert!(said(&fr, "ui-phone-account", Some("computer")).ends_with("les comptes de l’appareil…"));
+        // Every message naming this device reads whole in every form, in both languages.
+        for language in ["en", "fr"] {
+            let tr = Translator::new(language);
+            let source = LANGUAGES.iter().find(|(l, _)| *l == language).unwrap().1;
+            // The messages that name it: those holding `{ device-…}`, and those helpers themselves.
+            let mut ids: Vec<&str> = Vec::new();
+            let mut current = "";
+            for line in source.lines() {
+                if !line.starts_with([' ', '#', '}']) && line.contains(" = ") {
+                    current = line.split(" = ").next().unwrap_or("");
+                }
+                if !current.is_empty() && (line.contains("{ device-") || line.contains("{ $form ->")) && ids.last() != Some(&current) {
+                    ids.push(current);
+                }
+            }
+            assert!(ids.len() > 60, "{language}: {}", ids.len());
+            for id in ids {
+                for form in ["phone", "tablet", "computer"] {
+                    let text = said(&tr, id, Some(form));
+                    assert!(!text.contains("{device-") && !text.contains("$form") && !text.is_empty(), "{language} {id} {form}: {text}");
+                }
+            }
+        }
+        // The process's form, given to a message whose caller gave none, never over its own.
+        assert!(formed(0, None).is_none(), "unsaid: nothing added");
+        assert_eq!(formed(2, None).and_then(|a| a.get("form").map(|v| format!("{v:?}"))), Some(format!("{:?}", fluent_bundle::FluentValue::from("tablet"))));
+        let mut own = args();
+        own.set("form", "computer");
+        own.set("name", "x");
+        assert!(formed(2, Some(&own)).is_none(), "the caller's own wins");
+        let mut other = args();
+        other.set("name", "x");
+        let merged = formed(1, Some(&other)).unwrap();
+        assert!(merged.get("name").is_some() && merged.get("form").is_some(), "its arguments kept beside");
+    }
 
     #[test]
     fn every_language_parses_and_has_every_message() {

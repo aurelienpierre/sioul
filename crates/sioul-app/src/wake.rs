@@ -377,7 +377,7 @@ mod tests {
         assert_eq!(*GIVEN.lock().unwrap(), given, "the wakings handed, untouched");
         assert_eq!(coming(&needs, &Days::default(), &now, &english), before);
         assert_eq!(before["rings"][0], "2026-10-07T07:00[Europe/Paris]".parse::<Zoned>().unwrap().timestamp().as_millisecond());
-        assert_eq!(tried(answer, &english)["line"], "The alarm rings on a phone only.");
+        assert_eq!(tried(answer, &english)["line"], "The alarm rings on Android only.");
     }
 
     #[test]

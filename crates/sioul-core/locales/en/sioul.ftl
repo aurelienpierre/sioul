@@ -1488,12 +1488,12 @@ seckey-removed-sign = The key went away before it finished. Nothing was sent; th
 seckey-removed = The key went away before it finished.
 seckey-not-openpgp = The key plugged in holds no OpenPGP keys.
 seckey-not-yours = This is not your security key: hold the one Sioul knows for this.
-seckey-no-nfc = This phone has no NFC: plug the key into its USB-C port.
-seckey-nfc-off = NFC is off on this phone. Switch it on to use your key, or plug the key into the USB-C port.
+seckey-no-nfc = { device-this-cap } has no NFC: plug the key into its USB-C port.
+seckey-nfc-off = NFC is off on { device-this }. Switch it on to use your key, or plug the key into the USB-C port.
 seckey-nfc-settings = Open NFC settings
-seckey-hold = Hold your security key flat against the back of the phone, or plug it into the USB-C port. Keep it there until Sioul says it is done.
-seckey-plug-phone = Plug your security key into the phone’s USB-C port, and leave it there until Sioul says it is done.
-seckey-plug-nfc-off = NFC is off on this phone: plug your security key into the USB-C port, or switch NFC on and hold the key against the back of the phone.
+seckey-hold = Hold your security key flat against the back of { device-the }, or plug it into the USB-C port. Keep it there until Sioul says it is done.
+seckey-plug-phone = Plug your security key into { device-the-s } USB-C port, and leave it there until Sioul says it is done.
+seckey-plug-nfc-off = NFC is off on { device-this }: plug your security key into the USB-C port, or switch NFC on and hold the key against the back of { device-the }.
 seckey-done-unplug = Done: you can unplug the key.
 seckey-unplugged = The key was unplugged before it finished. Plug it in again, and leave it until Sioul says it is done.
 seckey-unplugged-sign = The key was unplugged before it finished. Nothing was sent; the message is in Drafts. Plug it in again, and leave it until Sioul says it is done.
@@ -1509,9 +1509,9 @@ seckey-moved-away = The key moved away before it finished. Hold it again, and ke
 seckey-moved-away-sign = The key moved away before it finished. Nothing was sent; the message is in Drafts. Hold it again, and keep it still until Sioul says it is done.
 seckey-nfc-touch = Your security key would not do this over NFC, as its touch setting asks: plug it into the USB-C port instead, and touch it when Sioul says so.
 seckey-blocked-phone = Your security key is locked after three wrong PINs. Sioul never asks for the Admin PIN: unblock it on your computer, in YubiKey Manager or GnuPG.
-seckey-sign-read-here-phone = Your security key was read on another device of yours: to sign here, read it once on this phone, in Accounts ▸ Encryption, held against its back or plugged in.
-seckey-source-shared-phone = Read on another device of yours. To sign with it here, read it once on this phone, held against its back or plugged in.
-pgp-read-card-here-phone = Your security key serves { $address }, and was read on another device of yours: to sign here, read it once on this phone, held against its back or plugged in.
+seckey-sign-read-here-phone = Your security key was read on another device of yours: to sign here, read it once on { device-this }, in Accounts ▸ Encryption, held against its back or plugged in.
+seckey-source-shared-phone = Read on another device of yours. To sign with it here, read it once on { device-this }, held against its back or plugged in.
+pgp-read-card-here-phone = Your security key serves { $address }, and was read on another device of yours: to sign here, read it once on { device-this }, held against its back or plugged in.
 seckey-other-keys = Your security key now holds other keys than those Sioul knows: look for its certificate again in Accounts ▸ Encryption.
 seckey-bad-signature = Your security key signed with another key than the one its certificate names, so nothing was sent.
 seckey-algorithm = Sioul cannot use this key’s algorithm ({ $algorithm }) with a security key.
@@ -1541,7 +1541,7 @@ seckey-subkeys-renew = Renew for two years renews them with its primary key. By 
 seckey-renew-incomplete = GnuPG renewed the key, but not all of it. { $parts } It was not kept as renewed: renew it again, or by hand.
 seckey-sign-in-window = This message is signed with your security key: send it from its window in Sioul, which asks for the key’s PIN.
 seckey-cannot-sign = Your security key cannot sign for this address now.
-seckey-sign-not-here = This phone cannot sign with your security key yet: send it from your computer, or without a signature.
+seckey-sign-not-here = { device-this-cap } cannot sign with your security key yet: send it from your computer, or without a signature.
 seckey-sign-read-here = Your security key was read on another computer of yours: to sign here, plug it in and read it here, in Accounts ▸ Encryption.
 pgp-self-copy-why = Your certificate for this address: { $why } This message is encrypted to its recipients only, and you will not be able to read it again in Sent. { $renew }
 pgp-self-copy-renew = Renew it in Accounts ▸ Encryption to keep a copy you can read.
@@ -1551,7 +1551,7 @@ pgp-self-copy-revoked = Your certificate for this address was revoked: this mess
 pgp-self-copy-renew-read-here = Plug in your security key and read it in Accounts ▸ Encryption, then renew it there, to keep a copy you can read.
 pgp-read-card-here = Your security key serves { $address }, and was read on another computer of yours: to sign here, plug it in and read it here.
 pgp-self-copy-none = No certificate of yours for this address is known here: this message is encrypted to its recipients only, and you will not be able to read it again in Sent.
-seckey-forward-not-here = The copy of the message you forward is encrypted to your security key, which this phone cannot use yet: forward it from your computer.
+seckey-forward-not-here = The copy of the message you forward is encrypted to your security key, which { device-this } cannot use yet: forward it from your computer.
 seckey-open-in-window = This message quotes an encrypted message that only your security key opens now: send it from its window in Sioul, which asks for the key.
 pgp-bcc-seen = Encrypted, this message shows each recipient which keys it was encrypted to: your Bcc recipients’ too, which anyone can look up on a key server.
 pgp-quote-left-out = The copy of the message you answer is encrypted: unencrypted, your answer goes without quoting it.
@@ -1631,7 +1631,7 @@ seckey-stopped = Sioul no longer uses this security key on this device; its cert
 seckey-source-shared = Read on another device of yours; this one cannot use it yet.
 seckey-source-shared-computer = Read on another computer of yours. To sign with it here, plug it in and read it here.
 seckey-stopped-shared = Sioul no longer uses this security key here. It was read on another computer of yours, which still uses it: stop it there too. To use it here again, plug it in and read it here.
-seckey-stop-on-computer = This phone cannot read your security key: stop using it on a computer that read it.
+seckey-stop-on-computer = { device-this-cap } cannot read your security key: stop using it on a computer that read it.
 seckey-cli-signs = signs: { $fingerprint } · { $algorithm } · made on { $date } · touch: { $touch }
 seckey-cli-decrypts = decrypts: { $fingerprint } · { $algorithm } · made on { $date } · touch: { $touch }
 seckey-cli-codes = Tries left for the reset code: { $reset }; for the Admin PIN: { $admin }.
@@ -2393,7 +2393,7 @@ set-spam-threshold-help = How sure it must be to call a stranger's message proba
 set-spam-unsure = Maybe spam from
 set-spam-unsure-help = From here up to the spam threshold, a stranger's message is maybe spam; below, probably not spam. Always below the spam threshold.
 set-spam-filter = Its training
-set-spam-filter-help = Each of your devices learns on its own, phones included: when you ask, and by itself once a week while it charges and is idle, from all your mail since forever, downloaded on that device: every folder of every address, your Junk folders, what it caught itself, as it is (a maybe spam only once you say), and what you said is spam or not on any of your devices, which always wins. The mail it reads, the words it learns and its table stay on that device.
+set-spam-filter-help = Each of your devices learns on its own, phones and tablets included: when you ask, and by itself once a week while it charges and is idle, from all your mail since forever, downloaded on that device: every folder of every address, your Junk folders, what it caught itself, as it is (a maybe spam only once you say), and what you said is spam or not on any of your devices, which always wins. The mail it reads, the words it learns and its table stay on that device.
 
 ## Mail filters (crates/sioul-core/src/rules.rs; docs/client.md, "Filters").
 filter-field-from = From
@@ -2813,7 +2813,7 @@ budget-back = Budgets
 ui-sites = Sites
 ui-menu = Menu
 ui-back = Back
-ui-phone-account = From this phone's accounts…
+ui-phone-account = From { device-this-s } accounts…
 ui-phone-account-note = Android lends an account's address, never its password: Sioul finds its servers and asks the password once.
 account-password = Password…
 account-password-title = Password for { $account }
@@ -2864,7 +2864,7 @@ bitwarden-factor-3 = YubiKey
 bitwarden-factor-8 = Recovery code
 bitwarden-factor-unsupported = Your account asks for Duo, which Sioul cannot take yet: add a security key or an authenticator app as a second step in Bitwarden.
 bitwarden-factor-key-sites = Your account's second step is your security key, which this dialog cannot ask for. Open Bitwarden once from the Sites page, where the key is asked: the vault then stays open here too until Sioul closes. Or add an authenticator app as a second step in Bitwarden.
-bitwarden-factor-key-phone = Your account's second step is your security key, which Sioul cannot ask for on a phone. Add an authenticator app or codes by e-mail as a second step in Bitwarden, or type the password yourself.
+bitwarden-factor-key-phone = Your account's second step is your security key, which Sioul cannot ask for on Android. Add an authenticator app or codes by e-mail as a second step in Bitwarden, or type the password yourself.
 bitwarden-waiting = Waiting for Bitwarden…
 bitwarden-new-device = A new device: Bitwarden sent a code to your e-mail.
 set-bitwarden-email = Bitwarden account
@@ -3540,7 +3540,7 @@ task-billable-no = Not billed
 health-errands-list = Errands go to
 health-list-here = on this device only
 scan-ask = No antivirus is installed on this device, so { $name } will not be checked. Open it only if you trust it. To have files checked: { $hint }
-scan-ask-phone = A phone has no antivirus that Sioul can call, so { $name } will not be checked. Open it only if you trust it. To have it checked: { $hint }
+scan-ask-phone = Android has no antivirus that Sioul can call, so { $name } will not be checked. Open it only if you trust it. To have it checked: { $hint }
 scan-open-anyway = Open it unchecked
 scan-save-anyway = Save it unchecked
 scan-unavailable-short = No antivirus answered ({ $detail }).
@@ -3586,7 +3586,7 @@ share-device-future = Its clock runs more than ten minutes ahead of this one's: 
 share-device-count-again = Count it again
 share-device-forget = Forget this device
 share-outside = Your notes and projects ({ $store }) do not seem to be in a folder your sync carries: the other device would not see them. Switch Notes, and Projects and money, on below to carry them through this folder, sealed; or move them into a synced folder (and choose it again in Settings ▸ Your folder and sharing).
-share-phones = A phone sees this folder only if its sync app carries it, and some carry only a few folders: Murena's eDrive carries Documents (with Pictures, Music…), not the rest of your cloud. To reach such a phone, share through a folder inside Documents: stop sharing, then choose one there.
+share-phones = A phone or a tablet sees this folder only if its sync app carries it, and some carry only a few folders: Murena's eDrive carries Documents (with Pictures, Music…), not the rest of your cloud. To reach such a device, share through a folder inside Documents: stop sharing, then choose one there.
 folder-not-on-device = This folder is not on this device: choose one your sync app keeps its files in (Documents, with Murena's eDrive).
 folder-browser-title = Choose a folder
 folder-browser-up = Up
@@ -3705,10 +3705,10 @@ share-estimate = { $count ->
 } Switch on?
 share-estimating = Counting what would travel…
 share-switch-on = Switch on
-share-carried-ask = Does a sync app on this phone carry your notes folder ({ $store })? Sioul cannot read its settings to tell. Carried by both, the sync app and the sharing would undo each other's changes.
+share-carried-ask = Does a sync app on { device-this } carry your notes folder ({ $store })? Sioul cannot read its settings to tell. Carried by both, the sync app and the sharing would undo each other's changes.
 share-carried-not = No sync app carries it: switch on
 share-carried-yes = A sync app carries it
-share-carried-wrong = No sync app carries it on this phone
+share-carried-wrong = No sync app carries it on { device-this }
 share-vanished = { $count ->
     [one] One file
    *[other] { $count } files
@@ -4032,8 +4032,8 @@ remind-lead = { $minutes ->
 set-reminders-before = Before an event
 set-reminders-before-help = A quiet reminder this long before each event, counted before its time to get ready and get there: an event at 14:00 with 30 minutes to get there is reminded at 13:15. Each event may say its own (Remind, in its form). Not for whole days, nor for calendars you only read.
 set-reminders-before-none = None
-set-reminders-before-exact = On this phone they come on time, Sioul open or not.
-set-reminders-before-inexact = On this phone, Android does not let Sioul set exact alarms: these reminders may come up to an hour late. Settings ▸ Apps ▸ Sioul ▸ Alarms & reminders.
+set-reminders-before-exact = On { device-this } they come on time, Sioul open or not.
+set-reminders-before-inexact = On { device-this }, Android does not let Sioul set exact alarms: these reminders may come up to an hour late. Settings ▸ Apps ▸ Sioul ▸ Alarms & reminders.
 event-remind = Remind
 event-remind-usual = As usual ({ $lead })
 event-remind-none = Not this one
@@ -5029,6 +5029,64 @@ dose-doubt-reminders = what your other devices did to remind it could not be rea
 dose-doubt-untold = this computer could not tell your other devices it was open, and one of them may remind you of it too
 device-the-phone = the phone
 device-the-tablet = the tablet
+# This device, named by what it is: a phone, a tablet, or a computer said so on
+# Android (`$form`, which every message gets: i18n::set_form, devicekind.rs).
+device-this = { $form ->
+    [tablet] this tablet
+    [computer] this device
+   *[phone] this phone
+}
+device-this-cap = { $form ->
+    [tablet] This tablet
+    [computer] This device
+   *[phone] This phone
+}
+device-this-s = { $form ->
+    [tablet] this tablet's
+    [computer] this device's
+   *[phone] this phone's
+}
+device-this-s-cap = { $form ->
+    [tablet] This tablet's
+    [computer] This device's
+   *[phone] This phone's
+}
+device-yours-cap = { $form ->
+    [tablet] Your tablet
+    [computer] This device
+   *[phone] Your phone
+}
+device-yours-s-cap = { $form ->
+    [tablet] Your tablet's
+    [computer] This device's
+   *[phone] Your phone's
+}
+device-the = { $form ->
+    [tablet] the tablet
+    [computer] the device
+   *[phone] the phone
+}
+device-the-s = { $form ->
+    [tablet] the tablet’s
+    [computer] the device’s
+   *[phone] the phone’s
+}
+# Unused in English, kept so that both languages hold the same messages (the French build its "de …" with them).
+device-of-this = { $form ->
+    [tablet] of this tablet
+    [computer] of this device
+   *[phone] of this phone
+}
+device-of-yours = { $form ->
+    [tablet] of your tablet
+    [computer] of this device
+   *[phone] of your phone
+}
+device-of-the = { $form ->
+    [tablet] of the tablet
+    [computer] of the device
+   *[phone] of the phone
+}
 when-at = at { $time }
 device-off = This device is off
 device-off-named = { $name } is off
@@ -5156,7 +5214,7 @@ set-windows-admin-help = Your own admin comes forward then: offices, bills, lett
 set-reminders-gather = Sites' notifications gathered
 set-reminders-gather-help = What your sites notify waits, then comes in one notification at the gathered times, for the sites of those hours. A site in real time, and a call, come at once, at the times their rows let them.
 set-reminders-gathered = Gathered at
-set-reminders-gathered-help = Times of the day, as 09:00: three a day helped most in a field trial. On a phone, other apps' notifications from automatons come back at these times too.
+set-reminders-gathered-help = Times of the day, as 09:00: three a day helped most in a field trial. On Android, other apps' notifications from automatons come back at these times too.
 sites-gathered = Your sites have news
 sites-gathered-open = Open the Porch
 site-microphone = Microphone, for calls
@@ -5205,7 +5263,7 @@ wake-stop = Stop
 wake-later = { $minutes } min later
 wake-again = Rings again at { $time }
 wake-title = Wake-up alarm
-wake-help = Rings on your phone (Sioul for Android) when the night ends, on the mornings ticked; a night changed on the page rings at its own waking. Android's do-not-disturb lets alarms through.
+wake-help = Rings on your phone or tablet (Sioul for Android) when the night ends, on the mornings ticked; a night changed on the page rings at its own waking. Android's do-not-disturb lets alarms through.
 wake-next = Next: { $when }.
 wake-exact-off = Android does not let Sioul ring on time: the alarm cannot ring until “Alarms & reminders” is allowed.
 wake-allow-exact = Allow alarms…
@@ -5220,7 +5278,7 @@ wake-unskip = Alarm at { $time } after all
 wake-try = Try the alarm
 wake-try-rings = Rings in about ten seconds, as a waking would; nothing else changes.
 wake-try-screen-off = Android does not let Sioul show the alarm over the lock screen: allow the full screen to try it.
-wake-try-phone = The alarm rings on a phone only.
+wake-try-phone = The alarm rings on Android only.
 wake-try-failed = Android did not answer: nothing was set. Try again in a moment.
 
 ## How long a reserve lasts at this pace, by its number of months (0: at its floor already).
@@ -5251,14 +5309,14 @@ import-bad-key = “{ $key }” cannot be a key: keys name files, so no “/”,
 antivirus-hint-windows = Windows Security ▸ Virus & threat protection
 antivirus-hint-packages = ClamAV, from your system's packages
 antivirus-hint-phone = open it on a computer that has one
-ui-attachments-phone = A phone has no antivirus Sioul can call, so attachments are not checked here. Each opens in the app you choose, which can read that file and nothing else of Sioul's. Programs and installers never open from a mail.
+ui-attachments-phone = Android has no antivirus Sioul can call, so attachments are not checked here. Each opens in the app you choose, which can read that file and nothing else of Sioul's. Programs and installers never open from a mail.
 ui-save-as = Save…
-papers-keep-help-phone = Kept in the papers wallet without a check: a phone has no antivirus Sioul can call. You say what it is.
-attachment-phone-opened = { $name } opens in the app you choose. It was not checked: a phone has no antivirus Sioul can call.
-attachment-phone-no-app = No app on this phone opens { $name }. You can save it with your files.
+papers-keep-help-phone = Kept in the papers wallet without a check: Android has no antivirus Sioul can call. You say what it is.
+attachment-phone-opened = { $name } opens in the app you choose. It was not checked: Android has no antivirus Sioul can call.
+attachment-phone-no-app = No app on { device-this } opens { $name }. You can save it with your files.
 attachment-phone-not-opened = { $name } could not be handed to another app ({ $detail }).
 attachment-phone-where = Choose where to save { $name }.
-attachment-phone-saved = { $name } is saved. It was not checked: a phone has no antivirus Sioul can call.
+attachment-phone-saved = { $name } is saved. It was not checked: Android has no antivirus Sioul can call.
 attachment-phone-not-saved = { $name } was not saved.
 attachment-phone-save-failed = { $name } could not be saved ({ $detail }).
 ocr-hint-windows = Tesseract (github.com/UB-Mannheim/tesseract) and Poppler
@@ -5529,15 +5587,15 @@ dnd-own-held-doses = Sioul holds its own notifications, except dose reminders.
 dnd-offer-access = Open Android's page
 dnd-offer-starred = Starred contacts
 dnd-offer-plasma = Plasma's notification settings
-dnd-phone-can = Sioul can silence this phone with do-not-disturb modes of its own.
-dnd-phone-needs-access = To silence this phone, Sioul needs Android's “Do Not Disturb access”.
-dnd-phone-no-access = Your phone is not silenced: Sioul does not have Android's “Do Not Disturb access”.
-dnd-phone-too-old = This phone's Android is too old for Sioul to silence it: it takes Android 10 or later.
+dnd-phone-can = Sioul can silence { device-this } with do-not-disturb modes of its own.
+dnd-phone-needs-access = To silence { device-this }, Sioul needs Android's “Do Not Disturb access”.
+dnd-phone-no-access = { device-yours-cap } is not silenced: Sioul does not have Android's “Do Not Disturb access”.
+dnd-phone-too-old = { device-this-s-cap } Android is too old for Sioul to silence it: it takes Android 10 or later.
 dnd-phone-callback = Emergency services may call back from a number you do not know ({ $number }): a second call within 15 minutes gets through, and you can star that number in your contacts.
 dnd-phone-callback-unknown = Emergency services may call back from a number you do not know: a second call within 15 minutes gets through.
-dnd-phone-starred = Your phone's calls and messages are silenced, except starred contacts and repeat callers.
-dnd-phone-nobody = Your phone's calls and messages are silenced, from everyone.
-dnd-phone-as-set = Your phone is silenced as its “{ $name }” mode is set in Android's settings.
+dnd-phone-starred = { device-yours-s-cap } calls and messages are silenced, except starred contacts and repeat callers.
+dnd-phone-nobody = { device-yours-s-cap } calls and messages are silenced, from everyone.
+dnd-phone-as-set = { device-yours-cap } is silenced as its “{ $name }” mode is set in Android's settings.
 dnd-phone-set-there = That mode is set otherwise in Android's settings, which win.
 dnd-phone-alarms-doses = Alarms and dose reminders still come.
 dnd-phone-alarms = Alarms still ring.
@@ -5546,14 +5604,14 @@ dnd-phone-doses = Dose reminders still show.
 dnd-phone-doses-shade = Dose reminders wait in the notification shade, without a sound.
 dnd-phone-doses-blocked = Dose reminders are silenced too: their channel was changed in Android's settings.
 dnd-phone-already = A do-not-disturb was already on; Sioul leaves it as it was.
-dnd-phone-failed = Your phone could not be silenced: { $why }
-dnd-phone-no-answer = Your phone could not be silenced: Android did not answer.
-dnd-phone-disabled = Your phone is not silenced: its “{ $name }” mode is turned off in Android's settings.
-dnd-phone-turned-off = You turned do-not-disturb off on this phone; Sioul leaves it off until it turns it on again.
-dnd-phone-off = Your phone is no longer silenced by Sioul.
+dnd-phone-failed = { device-yours-cap } could not be silenced: { $why }
+dnd-phone-no-answer = { device-yours-cap } could not be silenced: Android did not answer.
+dnd-phone-disabled = { device-yours-cap } is not silenced: its “{ $name }” mode is turned off in Android's settings.
+dnd-phone-turned-off = You turned do-not-disturb off on { device-this }; Sioul leaves it off until it turns it on again.
+dnd-phone-off = { device-yours-cap } is no longer silenced by Sioul.
 dnd-phone-still = A do-not-disturb is still on, as it was before.
 # What a phone's mode lets through, as the matrix of what reaches you asks it: "Your phone is silenced, except calls from your contacts, messages from starred contacts, repeat callers and priority conversations."
-dnd-phone-lets = Your phone is silenced, except { $what }.
+dnd-phone-lets = { device-yours-cap } is silenced, except { $what }.
 dnd-phone-lets-both = calls and messages { $from }
 dnd-phone-lets-calls = calls { $from }
 dnd-phone-lets-messages = messages { $from }
@@ -5562,7 +5620,7 @@ dnd-phone-from-contacts = from your contacts
 dnd-phone-from-anyone = from anyone
 dnd-phone-lets-repeat = repeat callers
 dnd-phone-lets-conversations = priority conversations
-dnd-phone-no-conversations = This phone's Android has no priority conversations (they came with Android 11): the conversations that always get through come here as messages do.
+dnd-phone-no-conversations = { device-this-s-cap } Android has no priority conversations (they came with Android 11): the conversations that always get through come here as messages do.
 dnd-phone-events = Your events' alarms ring too.
 dnd-phone-events-blocked = Your events' alarms are silenced too: their channel was changed in Android's settings.
 dnd-plasma-can = Sioul can silence this desktop's notifications, with Plasma's do-not-disturb.
@@ -5612,10 +5670,10 @@ dnd-again = Silence this device again
 dnd-offer-modes = Open Android's do-not-disturb settings
 dnd-plasma-turned-off = You turned Plasma's do-not-disturb off on this computer; Sioul leaves it off until it turns it on again.
 dnd-gnome-turned-off = You turned GNOME's Do Not Disturb off on this computer; Sioul leaves it off until it turns it on again.
-dnd-phone-held = This phone is silenced by its own do-not-disturb, as set in Android's settings, which turned Sioul's on.
+dnd-phone-held = { device-this-cap } is silenced by its own do-not-disturb, as set in Android's settings, which turned Sioul's on.
 dnd-plasma-held = This computer is silenced by Plasma's own do-not-disturb, which turned Sioul's on.
 dnd-gnome-held = This computer is silenced by GNOME's own Do Not Disturb, which turned Sioul's on.
-dnd-phone-stays-on = This phone's own do-not-disturb stays on: turn it off in its quick settings.
+dnd-phone-stays-on = { device-this-s-cap } own do-not-disturb stays on: turn it off in its quick settings.
 dnd-plasma-stays-on = Plasma keeps this computer's notifications back for another application or a full-screen window; it ends with them.
 dnd-plasma-own-stays-on = Plasma's own do-not-disturb stays on: turn it off in its notifications.
 dnd-gnome-stays-on = GNOME's Do Not Disturb stays on: turn it off in the top bar.
@@ -5654,8 +5712,8 @@ set-dnd-pauses = During the pauses
 set-dnd-pauses-help = Free time and the pause silence your devices too, as their own settings say. Unticked, they hold Sioul's own notifications only.
 set-dnd-sleep = While I sleep
 set-dnd-sleep-help = Do-not-disturb holds from winding down to waking, and during naps, on every device. Alarms and dose reminders still come.
-set-dnd-background = Keep this phone in step in the background
-set-dnd-background-help = With Sioul closed, a quiet notification stays in the shade while Sioul follows your other devices: do-not-disturb within a few minutes, mail at its times. Unticked, changes come when you open Sioul. This phone only.
+set-dnd-background = Keep { device-this } in step in the background
+set-dnd-background-help = With Sioul closed, a quiet notification stays in the shade while Sioul follows your other devices: do-not-disturb within a few minutes, mail at its times. Unticked, changes come when you open Sioul. { device-this-cap } only.
 dnd-setup-here = On this device
 dnd-setup-critical = During do-not-disturb, Sioul's notifications for your Always through people go out as critical, which this desktop shows.
 dnd-setup-plasma-mail = Plasma is set to hide even critical notifications in do-not-disturb: mail from your Always through people cannot show here meanwhile, unless Sioul may “Show in do not disturb mode” in Plasma's notification settings.
@@ -5686,20 +5744,20 @@ dnd-setup-patterns = { $n ->
 dnd-setup-no-number = No number: their calls and messages cannot ring through.
 dnd-setup-no-email = No address: their mail is not notified during do-not-disturb.
 dnd-setup-unreadable = The list could not be read, so nothing was changed: { $why }
-dnd-stars-title = Starred on this phone
-dnd-stars-all = Everyone on your list with a number is starred on this phone: their calls and messages ring during do-not-disturb.
+dnd-stars-title = Starred on { device-this }
+dnd-stars-all = Everyone on your list with a number is starred on { device-this }: their calls and messages ring during do-not-disturb.
 dnd-stars-missing = { $n ->
-    [one] One person on your list is not starred on this phone.
-   *[other] { $Count } people on your list are not starred on this phone.
+    [one] One person on your list is not starred on { device-this }.
+   *[other] { $Count } people on your list are not starred on { device-this }.
 }
 dnd-stars-why = Android lets through only the contacts starred in your Contacts app: star them there. Sioul never changes your contacts.
 dnd-stars-starred = Starred
 dnd-stars-not-starred = Not starred
-dnd-stars-unknown = Not among this phone's contacts
+dnd-stars-unknown = Not among { device-this-s } contacts
 dnd-stars-no-number = No number
 dnd-stars-open = Open their contact
 dnd-stars-add = Add to contacts
-dnd-stars-permission = To say who on your list is starred on this phone, Sioul needs to read your contacts. It never changes them.
+dnd-stars-permission = To say who on your list is starred on { device-this }, Sioul needs to read your contacts. It never changes them.
 dnd-stars-allow = Allow reading contacts
 dnd-stars-again = Look again
 dnd-stars-repeat = A second call from the same number within 15 minutes rings too, whoever calls: emergency services may call back from a number you do not know.
@@ -5767,7 +5825,7 @@ home-card-overlap-plain = Today, two events at once.
 home-card-stopped = Where you stopped: { $text }
 home-card-stopped-plain = Your line on where you stopped waits in Sioul.
 set-home-card-details = Details on the home screen
-set-home-card-details-help = Sioul's cards on this phone's home screen name what they show: a dose due, a code you just asked a site for, your reminders, a call declined, the next step's title; the latest messages on the Porch, with their sender, subject and first line; the coming events, with their titles. Unticked, they name nothing: the date, the weather and what now is for, then that a code, a reminder or mail waits, the events' times without their titles, and that a next step waits: for a phone whose home screen others see. This phone only.
+set-home-card-details-help = Sioul's cards on { device-this-s } home screen name what they show: a dose due, a code you just asked a site for, your reminders, a call declined, the next step's title; the latest messages on the Porch, with their sender, subject and first line; the coming events, with their titles. Unticked, they name nothing: the date, the weather and what now is for, then that a code, a reminder or mail waits, the events' times without their titles, and that a next step waits: for a phone whose home screen others see. This phone only.
 
 # Leaving a mailing list from a message (Reader.qml, unsubscribe.rs): one click, ten seconds to undo.
 unsubscribe-label = Unsubscribe
@@ -5915,7 +5973,7 @@ appnotes-apps-help = An app whose notifications cannot wait (a ride, a delivery 
 # Other apps by time: each app and conversation a row of the matrix of what reaches you.
 appnotes-by-time = Other apps, by time
 appnotes-by-time-help = Each app and conversation comes as usual at each time, or at once, at the gathered times, or is held until a time lets it through. A conversation's choice wins over its app's. Nothing changes for an app until you choose for it.
-appnotes-by-time-limits = What Android allows: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ This phone, Make it silent). During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what is let through then shows without a sound, unless it is a priority conversation or from a starred contact.
+appnotes-by-time-limits = What Android allows: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ { device-this-cap }, Make it silent). During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what is let through then shows without a sound, unless it is a priority conversation or from a starred contact.
 appnotes-by-time-computer = Set on your phone, where other apps' notifications are held. Changed here, it reaches your phone with your settings.
 appnotes-by-time-more = The conversations you chose for, and the ten seen last, show here; the others as they come.
 appnotes-kind-usual = Notification by notification
@@ -5938,11 +5996,11 @@ appnotes-sites = Sites, from your browser
 appnotes-site-gathered = Gathered
 appnotes-site-at-once = At once
 appnotes-always = Always come, whatever the time: calls and alarms; what runs (music, a call in progress, navigation, a download); the reminders and events you set in other apps; codes, and sign-ins or payments to approve; Sioul's own.
-appnotes-privacy = Sioul reads the words of every notification of the apps you let it see, on this phone only, to decide. It keeps the names of the apps, conversations and sites it saw, and when what it held comes back; never what they said. Nothing of it reaches your other devices, but the messages of the apps you send to your computers, below, while that part of your sharing is on.
+appnotes-privacy = Sioul reads the words of every notification of the apps you let it see, on { device-this } only, to decide. It keeps the names of the apps, conversations and sites it saw, and when what it held comes back; never what they said. Nothing of it reaches your other devices, but the messages of the apps you send to your computers, below, while that part of your sharing is on.
 appnotes-contacts-off = To know who wrote when an app gives a number or a contact, Sioul reads your contacts (it never writes them).
 appnotes-contacts-ask = Read contacts
 appnotes-heard = Android last handed Sioul a notification { $when }.
-appnotes-computer = On a phone, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own.
+appnotes-computer = On Android, a phone or a tablet, Sioul holds other apps' notifications until their time (Android's notification access). On a computer, your sites' notifications are gathered instead: Settings ▸ What reaches you ▸ Sioul's own.
 
 ## Calls screened on a phone (docs/android.md, "Calls"; crates/sioul-core/src/calls.rs, crates/sioul-app/src/calls.rs)
 calls-who-hidden = a hidden number
@@ -5975,7 +6033,7 @@ calls-row-more-on = { $context }, on { $phone }, { $count } times
 calls-phone-yours = your phone
 calls-phone-other = your other phone
 calls-phone-named = your phone ({ $name })
-calls-phone-this = this phone
+calls-phone-this = { device-this }
 calls-again-rang = The same number called again at { $time }, and that call rang.
 calls-day-today = today
 calls-history-title = Their calls in the last month
@@ -6062,18 +6120,18 @@ calls-setup-always-title = What Sioul always lets ring
 calls-setup-always = Emergency numbers, and emergency services calling back (in France from 0 800 112 112); every call for a day after you call an emergency number; a second call from the same number within 15 minutes, unless you blocked it or the call screening keeps it out (an automated caller, a number that cannot be a caller's, a failed verification); your Always through people, unless you blocked them. A call Sioul cannot decide in time rings too.
 calls-setup-emergency-doubt = Sioul knows you called an emergency number only if Android shows it your outgoing call, which cannot be tried without calling one. The other rules hold either way.
 calls-setup-dnd = Do-not-disturb's modes follow the same rows for the people you know: while a pause, Free time or its switch holds, Sioul's mode lets ring the calls those rows let through, and a second call within 15 minutes. Numbers nobody knows never ring through it, unless you expect a call. Your own do-not-disturb, set in Android, lets through whom you set there.
-calls-setup-here = On this phone
-calls-setup-on = Sioul screens this phone's calls.
-calls-setup-off = Sioul does not screen this phone's calls yet.
+calls-setup-here = On { device-this }
+calls-setup-on = Sioul screens { device-this-s } calls.
+calls-setup-off = Sioul does not screen { device-this-s } calls yet.
 calls-setup-too-old = Android 9 lets no app screen calls, nor set a do-not-disturb mode of its own: Sioul needs Android 10 or later for both. Android's own do-not-disturb, set in the phone's settings, still keeps calls quiet.
-calls-setup-unavailable = This phone offers no “Caller ID & spam app” to choose: Sioul cannot screen its calls. Do-not-disturb keeps calls quiet at the times you set.
-calls-setup-no-table = Sioul has not written this phone's rules yet: calls ring until it does, a moment after Sioul opens.
+calls-setup-unavailable = { device-this-cap } offers no “Caller ID & spam app” to choose: Sioul cannot screen its calls. Do-not-disturb keeps calls quiet at the times you set.
+calls-setup-no-table = Sioul has not written { device-this-s } rules yet: calls ring until it does, a moment after Sioul opens.
 calls-setup-ask = Let Sioul screen calls
 calls-setup-ask-help = Android asks: “Set Sioul as your default caller ID & spam app?” It gives Sioul no other permission.
 calls-setup-replaces = One app at a time screens calls: if your phone app filters spam itself, Sioul takes its place.
-calls-setup-contacts-off = Sioul may not read this phone's contacts: Android then rings their calls without asking Sioul. Sioul screens the others.
+calls-setup-contacts-off = Sioul may not read { device-this-s } contacts: Android then rings their calls without asking Sioul. Sioul screens the others.
 calls-setup-contacts-allow = Allow reading contacts
-calls-setup-history-off = Sioul does not read this phone's call history: it cannot say which calls you missed, nor which of yours did not reach them, nor make their tasks.
+calls-setup-history-off = Sioul does not read { device-this-s } call history: it cannot say which calls you missed, nor which of yours did not reach them, nor make their tasks.
 calls-setup-history-allow = Let Sioul read the call history
 calls-setup-android-block = Your phone app's own “Block numbers not in contacts” acts before Sioul is asked: while it is on, a second call or Expecting a call cannot help those numbers.
 calls-setup-change = Android's default apps
@@ -6100,8 +6158,8 @@ screening-hours-help = Only outside your work and admin hours: in them, numbers 
 screening-hours-always = At all hours
 screening-hours-outside-work = Only outside your work and admin hours
 screening-unknown = Numbers not in your contacts
-screening-unknown-help = In none of your address books, Sioul's or this phone's. A number from a block ARCEP had given to no operator on { $date } is one of them: it may be a new line. Its line says so until { $until }, when that list grows too old.
-screening-unknown-help-old = In none of your address books, Sioul's or this phone's. ARCEP's list of { $date }, of the blocks it had given to no operator, is too old to be said on a call's line; Sioul's next version reads it again.
+screening-unknown-help = In none of your address books, Sioul's or the phone's own. A number from a block ARCEP had given to no operator on { $date } is one of them: it may be a new line. Its line says so until { $until }, when that list grows too old.
+screening-unknown-help-old = In none of your address books, Sioul's or the phone's own. ARCEP's list of { $date }, of the blocks it had given to no operator, is too old to be said on a call's line; Sioul's next version reads it again.
 screening-hidden = Hidden numbers
 screening-hidden-help = Someone who hides their number, a hospital's switchboard, or, since 2026, a number from abroad the network could not check.
 screening-rule-voicemail = To your voicemail
@@ -6116,7 +6174,7 @@ screening-unverified-help = Few networks say it yet; when yours does, a failed c
 screening-spam-voicemail = To your voicemail, even when you expect a call
 screening-spam-unknown = As other numbers nobody knows
 screening-called = Numbers you called in the last 14 days ring as your contacts do
-screening-called-help = So that someone you called can call you back: such a number rings when your contacts may, and while you expect a call. The numbers you call are kept 14 days on this phone, only while this is on.
+screening-called-help = So that someone you called can call you back: such a number rings when your contacts may, and while you expect a call. The numbers you call are kept 14 days on { device-this }, only while this is on.
 screening-hears = A declined caller hears what they hear when you decline a call by hand: your operator sends them to your voicemail at once.
 screening-expecting = While you expect a call (the status line, or the notification that keeps your devices in step), numbers nobody knows, hidden numbers and numbers you called lately ring, even where your contacts wait; never your blocked numbers, automated callers, numbers that cannot be a caller's or failed verifications. The people you know ring as their rows say.
 
@@ -6393,7 +6451,7 @@ attention-group-asked = What you set or asked for
 attention-group-reminders = Reminders
 attention-group-day = Your day
 attention-group-sites = Sites, on a computer
-attention-group-apps = Other apps, on a phone
+attention-group-apps = Other apps, on Android
 attention-person-always = Always through
 attention-person-always-help = The people on your Always through list, the same on every device, and the conversations you set so. The blocked never, even on the list.
 attention-person-safe = Safe
@@ -6415,7 +6473,7 @@ attention-row-codes-help = A one-time code or a sign-in link from a site you jus
 attention-row-doses = Doses
 attention-row-doses-help = A dose's reminder at its time, and the question on doses due while Sioul was closed. Held in sleep or a pause, it comes when you wake or come back.
 attention-row-wake = The alarm at waking
-attention-row-wake-help = The alarm at waking set on the Health page, on a phone.
+attention-row-wake-help = The alarm at waking set on the Health page, on Android.
 attention-row-alarms = An event's alarms
 attention-row-alarms-help = The alarms an event carries, set by you or by whoever invited you.
 attention-row-before = Reminders before an event
@@ -6490,7 +6548,7 @@ phonemsgs-send-off = Not on your computers
 phonemsgs-send-who = Who and when
 phonemsgs-send-words = Who, when and the words
 phonemsgs-setup-title = On your computers
-phonemsgs-setup-help = With this part of the sharing on, this phone sends your computers the messages its notifications bring, sealed, for the apps you choose: who wrote, when, and the words, cut at 1,000 characters. A computer shows them on its Porch once you turn the part on there too, at the times their sender may reach you, never as a notification. They are kept a week.
+phonemsgs-setup-help = With this part of the sharing on, { device-this } sends your computers the messages its notifications bring, sealed, for the apps you choose: who wrote, when, and the words, cut at 1,000 characters. A computer shows them on its Porch once you turn the part on there too, at the times their sender may reach you, never as a notification. They are kept a week.
 phonemsgs-setup-never = Never sent: codes and approvals (a line says a code came, and that it stays on your phone), pictures (said as “a picture”), a blocked sender's messages, notifications an app marks secret, ongoing ones, Sioul's own. Seen on a computer takes the line away everywhere; it never touches your phone's notification and never marks anything read.
 phonemsgs-setup-part = Messages from your phone
 phonemsgs-setup-no-sharing = Set up your sharing first (Settings ▸ Your folder and sharing): the messages travel through it.
@@ -6652,7 +6710,7 @@ texts-parts-unicode = { $count ->
    *[other] { $count } texts ({ $characters } characters; accents or signs that take more room)
 }
 texts-setup-title = Texts
-texts-setup-help = With the sharing's part Texts on, this phone reads all its texts for your computers, sealed, a batch at a time, and sends the texts you write there. Your phone's messages app stays their record: Sioul never becomes your SMS app, never marks a text as read, and never deletes one.
+texts-setup-help = With the sharing's part Texts on, { device-this } reads all its texts for your computers, sealed, a batch at a time, and sends the texts you write there. { device-yours-s-cap } messages app stays their record: Sioul never becomes your SMS app, never marks a text as read, and never deletes one.
 texts-setup-why-read = Read your texts: so that your computers show them.
 texts-setup-why-receive = Hear a new text: so that it reaches your computers within a minute or two.
 texts-setup-why-send = Send texts: those you write on a computer, each once.
@@ -6697,10 +6755,10 @@ texts-setup-cap-help = A picture, sound or video over this size stays on your ph
 texts-setup-cap-value = { $size }
 # What Android withholds from Sioul on a phone (access.rs): the join's result and the Porch's card.
 access-title = Android has not allowed all that Sioul needs here
-access-texts = Texts: Android has not allowed Sioul to read and send them yet, so your computers get none of this phone's texts. Allow in Android… asks again.
-access-texts-guarded = Texts: Android has not allowed Sioul to read and send them yet, so your computers get none of this phone's texts. On Android 15 and later, an app installed from a file gets them only once you allow its restricted settings: press Allow in Android… once (Android may answer "Restricted setting"); then open Sioul's app info, ⋮ (at the top) ▸ Allow restricted settings, confirm with your PIN, and press Allow in Android… again. If ⋮ offers nothing, allow them under Permissions there.
-access-texts-at-once = Texts: Android answered without asking you, as it does once Don't allow was chosen twice, so your computers get none of this phone's texts: open Sioul's app info and allow them under Permissions there.
-access-texts-off = Texts: the part Texts is off on this phone, so your computers get none of its texts. Turn it on here; Sioul then asks Android to read them.
+access-texts = Texts: Android has not allowed Sioul to read and send them yet, so your computers get none of { device-this-s } texts. Allow in Android… asks again.
+access-texts-guarded = Texts: Android has not allowed Sioul to read and send them yet, so your computers get none of { device-this-s } texts. On Android 15 and later, an app installed from a file gets them only once you allow its restricted settings: press Allow in Android… once (Android may answer "Restricted setting"); then open Sioul's app info, ⋮ (at the top) ▸ Allow restricted settings, confirm with your PIN, and press Allow in Android… again. If ⋮ offers nothing, allow them under Permissions there.
+access-texts-at-once = Texts: Android answered without asking you, as it does once Don't allow was chosen twice, so your computers get none of { device-this-s } texts: open Sioul's app info and allow them under Permissions there.
+access-texts-off = Texts: the part Texts is off on { device-this }, so your computers get none of its texts. Turn it on here; Sioul then asks Android to read them.
 access-notifications = Other apps' notifications: Android has not given Sioul notification access yet, so they are neither held until their time nor told to your computers. Allow in Android… opens its page.
 access-notifications-guarded = Other apps' notifications: Android has not given Sioul notification access yet, so they are neither held until their time nor told to your computers. An app installed from a file gets it only once you allow its restricted settings: press Allow in Android… and tap Sioul once in Notification access (Android may answer "Restricted setting"); then open Sioul's app info, ⋮ (at the top) ▸ Allow restricted settings, confirm with your PIN, and turn Sioul on in Notification access.
 access-contacts = Contacts: Android has not allowed Sioul to read them, so calls and messages show numbers where your contacts would give names. Allow in Android… asks.
@@ -6961,7 +7019,7 @@ attention-during-meals = meals
 attention-during-sleep = sleep
 attention-during-pause = a pause
 attention-during-free = free time
-attention-phone-intro = What sets this phone up. When each thing reaches you is in What reaches you.
+attention-phone-intro = What sets { device-this } up. When each thing reaches you is in What reaches you.
 attention-phone-open-tab = What reaches you
 attention-phone-alarms-title = Alarms and notifications
 attention-phone-alarms = Reminders, doses and the alarm at waking need two of Android's permissions: exact alarms, so that they come on time, and Sioul's own notifications, so that they show.

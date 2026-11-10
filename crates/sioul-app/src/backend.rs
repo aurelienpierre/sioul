@@ -3132,7 +3132,11 @@ pub(crate) fn load_config() -> Config {
 /// One translator for the session: the configuration's language, else the session's.
 pub(crate) fn tr() -> &'static Translator {
     static TRANSLATOR: OnceLock<Translator> = OnceLock::new();
-    TRANSLATOR.get_or_init(|| Translator::new(&load_config().language.unwrap_or_else(session_language)))
+    let tr = TRANSLATOR.get_or_init(|| Translator::new(&load_config().language.unwrap_or_else(session_language)));
+    // What this device is, named in its sentences ("this tablet"), said once per
+    // process, the background service's too (devicekind.rs).
+    crate::devicekind::name_in_words_once();
+    tr
 }
 
 /// The session's language: its variables (LC_ALL, LC_MESSAGES, LANG) when it
@@ -4397,6 +4401,8 @@ impl qobject::Sioul {
         crate::mirrors::migrate_at_start();
         self.as_mut().set_reading(QString::from(&reading_json()));
         self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
+        // Said again now that Android's side answers (a first sentence may have come before it).
+        crate::devicekind::name_in_words();
         self.as_mut().set_telephony(crate::devicekind::telephony());
         self.as_mut().set_mode(QString::from(&mode_json()));
         // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
@@ -7703,6 +7709,7 @@ impl qobject::Sioul {
         // What this device is: the window's, and the others' at the next exchange (its devices' entry).
         if key == "device_kind" {
             self.as_mut().set_device_kind(QString::from(crate::devicekind::kind().word()));
+            crate::devicekind::name_in_words();
             crate::devices::form_changed();
         }
         // "Train here": off stops a training by itself under way here; on, the guard's mark goes (you asked).

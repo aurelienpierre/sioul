@@ -61,6 +61,24 @@ pub(crate) fn kind() -> DeviceKind {
     forced().unwrap_or_else(|| DeviceKind::of(crate::backend::load_config().device_kind.as_deref(), cfg!(target_os = "android"), smallest_dp()))
 }
 
+/// What this device is, said to every translator of the process, so that the
+/// sentences naming it say "this tablet" (`sioul_core::i18n::set_form`):
+/// again when Settings ▸ This device changes it.
+pub(crate) fn name_in_words() {
+    sioul_core::i18n::set_form(kind().word());
+}
+
+/// `name_in_words`, the first time a sentence is asked for in this process
+/// (`backend::tr`), the background service's too. Never in this crate's
+/// tests, whose sentences stay the phone's defaults whatever runs them.
+pub(crate) fn name_in_words_once() {
+    static NAMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if cfg!(test) || NAMED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    name_in_words();
+}
+
 /// Whether this device has calls and texts: Android with telephony (a
 /// phone, a tablet with a SIM). Android's answer missing, yes, as every
 /// Android was until it could say; never elsewhere.
