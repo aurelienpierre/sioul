@@ -10,7 +10,9 @@
 # message at Send with its PIN, and opens it with the card
 # (`send::tests::a_virtual_card_through_the_system_s_smart_card_service`).
 # Never a real key: the test does nothing unless CI says so and names the
-# certificate, and checks that the virtual reader is the only one.
+# certificate, and checks that the virtual reader is the only one. pcscd
+# runs without --auto-exit for the whole job, every build done before the
+# card starts (review of wt/mail, F1).
 #
 # Runs on each push to main that touches the security keys or the mail's
 # protection, and by hand. Linux alone: vsmartcard's reader is a pcsc-lite
@@ -54,26 +56,39 @@ jobs:
 
       # pcsc-lite's service and its client library, vsmartcard's virtual
       # reader (a pcsc-lite driver, listening on localhost:35963), D-Bus for
-      # sioul-sync's notifications.
-      - name: The smart card service and its virtual reader
+      # sioul-sync's notifications, netcat to see the reader listen.
+      - name: Packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev pcscd vsmartcard-vpcd
-          sudo systemctl restart pcscd.socket pcscd.service || sudo systemctl restart pcscd
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev pcscd vsmartcard-vpcd netcat-openbsd
 
-      - name: opcard-rs and oct
+      # Everything built before the card starts: the builds take minutes, and
+      # nothing may wait on the card meanwhile.
+      - name: opcard-rs, oct, and the test
         run: |
           git clone --depth 1 --branch v1.11.0 https://github.com/Nitrokey/opcard-rs "$RUNNER_TEMP/opcard-rs"
           cargo build --release --example vpicc --manifest-path "$RUNNER_TEMP/opcard-rs/Cargo.toml"
           cargo install --locked openpgp-card-tools@0.11.13
+          cargo test --release --locked -p sioul-sync --lib --no-run
 
-      # The card in its reader, as long as the job runs; its PINs the
-      # specification's defaults (123456, and 12345678 to administer it).
-      - name: The virtual card, its keys and their certificate
+      # Ubuntu's pcscd quits 60 seconds after its last client (--auto-exit),
+      # and vpcd's reader with it: run without, for the whole job. The card
+      # starts once vpcd listens; its PINs are the specification's defaults
+      # (123456, and 12345678 to administer it).
+      - name: The smart card service, the virtual card, its keys and their certificate
         run: |
+          sudo systemctl stop pcscd.socket pcscd.service || true
+          sudo sh -c 'pcscd --foreground > /tmp/pcscd.log 2>&1 &'
+          for i in $(seq 30); do nc -z 127.0.0.1 35963 && break; sleep 1; done
+          nc -z 127.0.0.1 35963
           "$RUNNER_TEMP/opcard-rs/target/release/examples/vpicc" > "$RUNNER_TEMP/vpicc.log" 2>&1 &
-          for i in $(seq 30); do oct list --idents-only 2>/dev/null | grep -q . && break; sleep 1; done
-          ident=$(oct list --idents-only | head -n 1)
+          ident=
+          for i in $(seq 30); do
+            ident=$(oct list --idents-only 2>/dev/null | grep -E '^[0-9A-F]{4}:[0-9A-F]{8}$' | head -n 1 || true)
+            [ -n "$ident" ] && break
+            sleep 1
+          done
+          test -n "$ident"
           echo "The card: $ident"
           printf '123456' > "$RUNNER_TEMP/user.pin"
           printf '12345678' > "$RUNNER_TEMP/admin.pin"
@@ -95,6 +110,8 @@ jobs:
           XDG_CACHE_HOME: ${{ runner.temp }}/xdg/cache
         run: cargo test --release --locked -p sioul-sync --lib -- --ignored --exact send::tests::a_virtual_card_through_the_system_s_smart_card_service --nocapture
 
-      - name: The card's log, when something failed
+      - name: The card's and the service's logs, when something failed
         if: failure()
-        run: cat "$RUNNER_TEMP/vpicc.log" || true
+        run: |
+          cat "$RUNNER_TEMP/vpicc.log" || true
+          cat /tmp/pcscd.log || true
