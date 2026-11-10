@@ -3994,6 +3994,7 @@ share-send-detail-stalled = plus rien n’a bougé pendant une demi-minute ({ $t
 share-send-detail-cut = la connexion a lâché en chemin ({ $total }).
 share-send-detail-out-of-time = l’envoi a manqué de temps.
 share-send-detail-unreachable = le serveur n’a pas pu être joint.
+share-send-detail-locked = le serveur disait qu’un autre programme l’écrivait ou le lisait à ce moment-là (une application de synchronisation qui envoie le même fichier), plusieurs envois de suite.
 share-send-next = Nouvel essai à { $when }.
 share-send-again = Tout renvoyer
 share-send-again-help = Envoie chaque fichier de cet appareil que le serveur n’a pas, ou a autrement, quoi qu’il ait été envoyé avant, puis va chercher ceux des autres. Pour une application de synchronisation en retard, ou un serveur qui a perdu des fichiers.

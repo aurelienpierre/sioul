@@ -2454,7 +2454,19 @@ fn send_to_server(here: &share::Here, again: bool) -> Option<sioul_sync::remote:
         let at = jiff::Timestamp::now().to_zoned(sioul_core::zone::current()).strftime("%H:%M:%S").to_string();
         let detail = sent.failure.as_ref().map(|f| format!("; {}", failure_words(f))).unwrap_or_default();
         log_send(match &sent.problem {
-            None => format!("{at} sent to {}: {} sent, {} there already, {} records longer there left as they are, {} paced, {} taken out, {} bytes{}", state.host(), sent.sent, sent.same, sent.longer, sent.paced, sent.taken_out, sent.bytes, if sent.differ.is_empty() { String::new() } else { format!("; otherwise there: {}", sent.differ.join("; ")) }),
+            None => format!(
+                "{at} sent to {}: {} sent, {} there already, {} records longer there left as they are, {} paced, {} taken out, {} bytes{}{}",
+                state.host(),
+                sent.sent,
+                sent.same,
+                sent.longer,
+                sent.paced,
+                sent.taken_out,
+                sent.bytes,
+                if sent.differ.is_empty() { String::new() } else { format!("; otherwise there: {}", sent.differ.join("; ")) },
+                // Found locked there (`423`) after the waits: held back, tried again after their backoff.
+                if sent.locked.is_empty() { String::new() } else { format!("; locked there, tried again later: {}", sent.locked.join(", ")) }
+            ),
             Some(why) => format!("{at} send to {} stopped: {}{detail}", state.host(), backup_words(why)),
         });
     }
@@ -3174,6 +3186,7 @@ fn failure_line(failure: &sioul_sync::remote::Failure, next: i64) -> String {
         "network" if failure.sent > 0 => say("share-send-detail-cut", &[("total", size(failure.total))]),
         "out-of-time" => tr().text("share-send-detail-out-of-time", None),
         "unreachable" | "network" => tr().text("share-send-detail-unreachable", None),
+        "locked" => tr().text("share-send-detail-locked", None),
         kind => format!("{}.", why_words(kind)),
     };
     let file = match failure.file.as_str() {
@@ -3458,7 +3471,7 @@ mod tests {
         let timeout = Failure { kind: "timeout".into(), file: "records".into(), seconds: 216, sent: 1_081_344, total: 2_530_934, words: "timeout: global".into(), at };
         let line = failure_line(&timeout, at + 60);
         assert!(line.contains("216") && !line.contains("share-"), "{line}");
-        for kind in ["stalled", "network", "unreachable", "out-of-time", "tls", "login", "quota", "server"] {
+        for kind in ["stalled", "network", "unreachable", "out-of-time", "tls", "login", "quota", "server", "locked"] {
             for file in ["records", "entry", "notes", "claim", "texts", "sealed", ""] {
                 let line = failure_line(&Failure { kind: kind.into(), file: file.into(), ..timeout.clone() }, 0);
                 assert!(!line.is_empty() && !line.contains("share-"), "{kind} {file}: {line}");
