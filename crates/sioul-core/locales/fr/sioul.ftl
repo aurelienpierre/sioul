@@ -1452,6 +1452,7 @@ pgp-not-opened = Chiffré, et aucune de vos clés ne l’ouvre
 pgp-signed-by = Signé par { $signer }
 pgp-signed-unknown = Signé avec une clé que Sioul ne connaît pas
 pgp-signed-revoked = Signé avec une clé révoquée
+pgp-signed-not-valid = Signé avec une clé qui n’était pas valide à cette date
 pgp-signature-bad = La signature ne correspond pas au texte
 pgp-no-own-key = Aucune clé à vous pour { $address } pour signer : créez-en une ou importez-la dans Comptes.
 pgp-missing-key = Pas encore de clé pour { $address } : cherchez-la, ou envoyez sans chiffrer.

@@ -1400,6 +1400,9 @@ fn protection_line(p: &crate::pgp::PgpView, tr: &Translator) -> ProtectionView {
         } else if signature.problem == "revoked key" {
             fine = false;
             parts.push(tr.text("pgp-signed-revoked", None));
+        } else if signature.problem == "key not valid then" {
+            fine = false;
+            parts.push(tr.text("pgp-signed-not-valid", None));
         } else {
             fine = false;
             parts.push(tr.text("pgp-signature-bad", None));
@@ -2134,5 +2137,22 @@ host = "imap.example.com"
         // Nothing said of it: nothing offered.
         let plain = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage]), None, &tr, &Config::default(), "");
         assert_eq!((plain.spam, plain.review, plain.spam_word.as_str()), (false, false, ""));
+    }
+
+    /// TODO §4 (10 November 2026): a signature by a key revoked, or not
+    /// valid when it signed, is said so; only a signature that does not
+    /// check reads "does not match the text".
+    #[test]
+    fn a_signature_says_what_was_wrong() {
+        let tr = Translator::new("en");
+        let line = |problem: &str| {
+            let checked = crate::pgp::Checked { good: false, signer: String::new(), fingerprint: String::new(), problem: problem.into() };
+            protection_line(&crate::pgp::PgpView { signatures: vec![checked], ..Default::default() }, &tr)
+        };
+        for (problem, said) in [("revoked key", "pgp-signed-revoked"), ("key not valid then", "pgp-signed-not-valid"), ("bad signature", "pgp-signature-bad")] {
+            let view = line(problem);
+            assert!(!view.fine && view.line == tr.text(said, None), "{problem}: {}", view.line);
+        }
+        assert_eq!(line("unknown key").line, tr.text("pgp-signed-unknown", None));
     }
 }

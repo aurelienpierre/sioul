@@ -74,6 +74,11 @@ pub struct Keys {
     /// them; never taken from a certificate's user IDs (review of 19 October
     /// 2026, F1).
     pub addresses: Vec<String>,
+    /// Others' keys kept on the disk that serve no address (`read_others`
+    /// leaves them out of every use): consulted only as a designated
+    /// revoker, whose revocation checks against its key whatever address it
+    /// serves ([`Keys::usable`]; review of 19 October 2026, R3).
+    pub revokers_only: Vec<Cert>,
 }
 
 /// Where the private part of one of your keys is.
@@ -243,16 +248,21 @@ fn only_for(cert: Cert, addresses: &[String]) -> Cert {
 /// Others' keys in `dir`, each cut to the addresses it serves (`served_by`);
 /// one that serves none is left out of every use, its signatures said as a
 /// key's Sioul does not know (kept on the disk, it comes back once learned
-/// again for an address).
-fn read_others(dir: &std::path::Path) -> Vec<Cert> {
-    read_certs(dir)
-        .into_iter()
-        .filter_map(|cert| {
-            let served = served_by(dir, &cert);
-            let cut = only_for(cert, &served);
-            cut.userids().next().is_some().then_some(cut)
-        })
-        .collect()
+/// again for an address). Those left out, whole, apart: they are still
+/// consulted as designated revokers (`Keys::revokers_only`).
+fn read_others(dir: &std::path::Path) -> (Vec<Cert>, Vec<Cert>) {
+    let mut serving = Vec::new();
+    let mut left_out = Vec::new();
+    for cert in read_certs(dir) {
+        let served = served_by(dir, &cert);
+        let cut = only_for(cert.clone(), &served);
+        if cut.userids().next().is_some() {
+            serving.push(cut);
+        } else {
+            left_out.push(cert);
+        }
+    }
+    (serving, left_out)
 }
 
 /// Writes what someone's key serves beside it.
@@ -323,7 +333,8 @@ impl Keys {
     /// this device read itself says what it is; its certificate is merged
     /// with the shared one (a renewal made on another computer).
     pub fn load_at(root: &std::path::Path) -> Keys {
-        let mut keys = Keys { own: read_certs(&root.join("own")), others: read_others(&root.join("others")), cards: securitykey::known_cards_in(&root.join("cards.toml")), ..Keys::default() };
+        let (others, revokers_only) = read_others(&root.join("others"));
+        let mut keys = Keys { own: read_certs(&root.join("own")), others, revokers_only, cards: securitykey::known_cards_in(&root.join("cards.toml")), ..Keys::default() };
         let stopped = securitykey::stopped_in(root);
         for (card, cert) in securitykey::shared_cards_in(&root.join(securitykey::SHARED_CARDS)) {
             let read_here = keys.cards.iter().any(|known| known.ident.eq_ignore_ascii_case(&card.ident));
@@ -453,10 +464,11 @@ impl Keys {
     /// Whether `cert` may serve: valid, not revoked as a whole (`usable`),
     /// and not revoked by its designated revoker (a Revocation Key, GnuPG's
     /// `addrevoker`) whose own certificate is kept here, yours or someone's,
-    /// the revocation checked against it (review of 19 October 2026, R2).
-    /// Sequoia says such a revocation "could be", leaving that check to
-    /// whoever holds the revoker's certificate; one that does not check is
-    /// passed over, since anyone can attach one.
+    /// serving an address or none (`revokers_only`), the revocation checked
+    /// against it (review of 19 October 2026, R2 and R3). Sequoia says such
+    /// a revocation "could be", leaving that check to whoever holds the
+    /// revoker's certificate; one that does not check is passed over, since
+    /// anyone can attach one.
     pub fn usable(&self, cert: &Cert) -> bool {
         let policy = policy();
         let Ok(valid) = cert.with_policy(&policy, None) else { return false };
@@ -465,10 +477,16 @@ impl Keys {
             openpgp::types::RevocationStatus::NotAsFarAsWeKnow => true,
             openpgp::types::RevocationStatus::CouldBe(revocations) => {
                 let revokers: Vec<&Fingerprint> = cert.revocation_keys(&policy).map(|key| key.revoker().1).collect();
-                let kept = self.own.iter().chain(&self.others).filter(|kept| revokers.contains(&&kept.fingerprint()));
+                let kept = self.own.iter().chain(&self.others).chain(&self.revokers_only).filter(|kept| revokers.contains(&&kept.fingerprint()));
                 !kept.into_iter().any(|revoker| revocations.iter().any(|revocation| revocation.verify_primary_key_revocation(revoker.primary_key().key(), cert.primary_key().key()).is_ok()))
             }
         }
+    }
+
+    /// Whether `cert` is valid but revoked, as a whole or by its designated
+    /// revoker kept here ([`Keys::usable`]): for the window's words.
+    pub fn revoked(&self, cert: &Cert) -> bool {
+        !self.usable(cert) && cert.with_policy(&policy(), None).is_ok()
     }
 
     /// Whether `cert` serves `address`: bound to it and usable here (`names`,
@@ -1370,6 +1388,11 @@ impl VerificationHelper for Helper<'_> {
                         let (fingerprint, problem) = match &error {
                             E::MissingKey { sig } => (sig.issuer_fingerprints().next().map(|f| f.to_hex()).unwrap_or_default(), "unknown key"),
                             E::BadSignature { .. } => (String::new(), "bad signature"),
+                            // The key or its certificate revoked by its owner: the text
+                            // matched, the key did not hold (review of 19 October 2026).
+                            E::BadKey { ka, .. } if matches!(ka.valid_cert().revocation_status(), openpgp::types::RevocationStatus::Revoked(_)) || matches!(ka.revocation_status(), openpgp::types::RevocationStatus::Revoked(_)) => (ka.cert().fingerprint().to_hex(), "revoked key"),
+                            // Expired, or not yet made, when it signed.
+                            E::BadKey { ka, .. } if ka.valid_cert().alive().is_err() || ka.alive().is_err() => (ka.cert().fingerprint().to_hex(), "key not valid then"),
                             E::BadKey { .. } => (String::new(), "bad key"),
                             E::MalformedSignature { .. } => (String::new(), "malformed signature"),
                             E::UnboundKey { .. } => (String::new(), "unbound key"),
@@ -2746,6 +2769,85 @@ mod tests {
         assert_eq!((checked[0].good, checked[0].problem.as_str()), (false, "revoked key"));
         let without = Keys { own: vec![noa.clone()], others: vec![revoked.clone()], ..Keys::default() };
         assert!(decrypt(signed.as_bytes(), &without, &Unlock::new(&none, &sessions)).unwrap().signatures[0].good, "its revoker unknown here");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// TODO §4 (10 November 2026): the three leftovers of the OpenPGP
+    /// reviews (`review-pgp-small.md`). R3: Jane's backup key, kept before
+    /// with two addresses, serves none, yet is consulted as her designated
+    /// revoker, so her certificate it revoked serves no more. A certificate
+    /// its owner revoked, or one expired when it signed, makes its signature
+    /// read so, never "does not match the text". Your own certificate
+    /// revoked by its designated revoker kept here is said revoked
+    /// (`Keys::revoked`), not unknown.
+    #[test]
+    fn the_three_leftovers_of_the_openpgp_reviews() {
+        use openpgp::types::{ReasonForRevocation, RevocationKey};
+        let root = temporary().join("pgp-leftovers");
+        let _ = std::fs::remove_dir_all(&root);
+        let signing = |userid: &str, revoker: Option<&Cert>, made: std::time::SystemTime| {
+            let builder = CertBuilder::new().set_cipher_suite(CipherSuite::Cv25519).add_userid(userid).add_transport_encryption_subkey().add_signing_subkey().set_creation_time(made);
+            let builder = match revoker {
+                Some(revoker) => builder.set_revocation_keys(vec![RevocationKey::new(revoker.primary_key().key().pk_algo(), revoker.fingerprint(), false)]),
+                None => builder,
+            };
+            builder.generate().unwrap().0
+        };
+        let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        let revoke = |cert: &Cert, by: &Cert| {
+            let revocation = CertRevocationBuilder::new().set_reason_for_revocation(ReasonForRevocation::KeyCompromised, b"stolen").unwrap().build(&mut signer_of(by), cert, None).unwrap();
+            cert.clone().insert_packets(vec![openpgp::Packet::from(revocation)]).unwrap().0
+        };
+        // R3: the backup, kept before with two addresses, on the disk alone.
+        let backup = open_key(&["Jane's backup <jane-backup@example.org>", "Jane at work <jane@work.example>"], std::time::Duration::ZERO);
+        let jane = signing("Jane <jane@example.org>", Some(&backup), hour_ago);
+        std::fs::create_dir_all(root.join("others")).unwrap();
+        std::fs::write(root.join("others").join(format!("{}.asc", backup.fingerprint().to_hex())), public(&backup)).unwrap();
+        learn_autocrypt_at(&root, &header_of(&jane, "jane@example.org"), "jane@example.org").unwrap();
+        assert!(Keys::load_at(&root).for_address("jane@example.org").is_some(), "not revoked yet");
+        learn_autocrypt_at(&root, &header_of(&revoke(&jane, &backup), "jane@example.org"), "jane@example.org").unwrap();
+        let keys = Keys::load_at(&root);
+        assert!(keys.others.iter().all(|c| c.fingerprint() != backup.fingerprint()) && keys.revokers_only.len() == 1, "the backup serves no address");
+        assert!(keys.for_address("jane@example.org").is_none(), "her revocation checks against the backup kept on the disk");
+        assert!(keys.for_address("jane-backup@example.org").is_none() && keys.for_address("jane@work.example").is_none(), "and the backup still serves none");
+        let stored = keys.others.iter().find(|c| c.fingerprint() == jane.fingerprint()).unwrap();
+        assert!(!keys.usable(stored) && keys.revoked(stored), "Accounts says it cannot encrypt");
+        // A forged revocation, by a key kept on the disk that Jane's does not name, changes nothing.
+        let other = open_key(&["Someone <someone@example.net>", "Someone else <else@example.net>"], std::time::Duration::ZERO);
+        let forged = revoke(&jane, &other);
+        assert!(Keys { revokers_only: vec![other.clone()], ..Keys::default() }.usable(&forged));
+        // A key its owner revoked: its signature reads revoked, the text matched.
+        let ana = signing("Ana <ana@example.org>", None, hour_ago);
+        let noa = signing("Noa <noa@example.org>", None, hour_ago);
+        let mut ana_signs = here_signer(&ana, "").unwrap();
+        let sealed = encrypt(b"The lease.", &[&noa], Some(&mut ana_signs)).unwrap();
+        let none = |_: &Fingerprint| None;
+        let sessions = SessionKeys::new();
+        let reading = |ana: &Cert| Keys { own: vec![noa.clone()], others: vec![ana.clone()], ..Keys::default() };
+        let checked = decrypt(sealed.as_bytes(), &reading(&ana), &Unlock::new(&none, &sessions)).unwrap().signatures;
+        assert!(checked[0].good, "{checked:?}");
+        let checked = decrypt(sealed.as_bytes(), &reading(&revoke(&ana, &ana)), &Unlock::new(&none, &sessions)).unwrap().signatures;
+        assert_eq!((checked[0].good, checked[0].problem.as_str(), checked[0].fingerprint.as_str()), (false, "revoked key", ana.fingerprint().to_hex().as_str()));
+        // Its signing subkey alone revoked: the same.
+        let subkey = ana.keys().subkeys().find(|k| k.key().fingerprint() != ana.keys().with_policy(&policy(), None).for_transport_encryption().next().unwrap().key().fingerprint()).unwrap();
+        let sub_revocation = SubkeyRevocationBuilder::new().set_reason_for_revocation(ReasonForRevocation::KeyCompromised, b"lost").unwrap().build(&mut signer_of(&ana), &ana, subkey.key(), None).unwrap();
+        let ana_sub = ana.clone().insert_packets(vec![openpgp::Packet::from(sub_revocation)]).unwrap().0;
+        let checked = decrypt(sealed.as_bytes(), &reading(&ana_sub), &Unlock::new(&none, &sessions)).unwrap().signatures;
+        assert_eq!((checked[0].good, checked[0].problem.as_str()), (false, "revoked key"));
+        // A signature made once its key had expired: said so.
+        let made = std::time::SystemTime::now() - std::time::Duration::from_secs(10 * 86_400);
+        let lou = CertBuilder::new().set_cipher_suite(CipherSuite::Cv25519).add_userid("Lou <lou@example.org>").add_signing_subkey().set_creation_time(made).set_validity_period(std::time::Duration::from_secs(86_400)).generate().unwrap().0;
+        let mut lou_signs = lou.keys().secret().with_policy(&policy(), Some(made + std::time::Duration::from_secs(3600))).for_signing().next().unwrap().key().clone().into_keypair().unwrap();
+        let text = b"Signed once the key had expired.";
+        let (signature, _) = sign_detached(text, &mut lou_signs).unwrap();
+        let checked = verify_detached(text, signature.as_bytes(), &Keys { others: vec![lou.clone()], ..Keys::default() });
+        assert_eq!(checked.iter().map(|c| (c.good, c.problem.as_str())).collect::<Vec<_>>(), vec![(false, "key not valid then")], "{checked:?}");
+        // Your own certificate, revoked by your designated revoker kept here: revoked, for the window's words.
+        let mine = open_key(&["Me backup <me-backup@example.org>"], std::time::Duration::ZERO);
+        let me = revoke(&signing("Me <me@example.org>", Some(&mine), hour_ago), &mine);
+        let yours = Keys { own: vec![me.clone(), mine.clone()], addresses: vec!["me@example.org".into()], ..Keys::default() };
+        assert!(yours.revoked(&me) && !revoked_whole(&me), "Sequoia alone says it could be");
+        assert!(!Keys { own: vec![me.clone()], ..Keys::default() }.revoked(&me), "its revoker not kept: nothing checks it");
         let _ = std::fs::remove_dir_all(&root);
     }
 

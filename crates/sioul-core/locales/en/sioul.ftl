@@ -1422,6 +1422,7 @@ pgp-not-opened = Encrypted, and no key of yours opens it
 pgp-signed-by = Signed by { $signer }
 pgp-signed-unknown = Signed with a key Sioul does not know
 pgp-signed-revoked = Signed with a key that was revoked
+pgp-signed-not-valid = Signed with a key that was not valid on that date
 pgp-signature-bad = The signature does not match the text
 pgp-no-own-key = No key of yours for { $address } to sign with: make one or import it in Accounts.
 pgp-missing-key = No key for { $address } yet: look for it, or send without encrypting.
