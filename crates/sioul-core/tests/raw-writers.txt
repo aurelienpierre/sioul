@@ -111,10 +111,11 @@ sioul-app/src/persons.rs	keeps	1	std::fs::copy(&file, papers_dir.join(&name))
 # sioul-app/src/projects.rs: a time sheet exported where you choose: no item.
 sioul-app/src/projects.rs	export_time_csv	1	std::fs::write(&path, csv)
 
-# sioul-app/src/remind.rs: the reminders' autostart entry and their watcher's own files: no item.
+# sioul-app/src/remind.rs: the reminders' autostart entry, systemd's word to start their watcher again, and the watcher's own files: no item.
 sioul-app/src/remind.rs	set_background	1	std::fs::remove_file(&entry)
-sioul-app/src/remind.rs	set_background	1	std::fs::write(&entry, text)
-sioul-app/src/remind.rs	stop	1	std::fs::OpenOptions::new()
+sioul-app/src/remind.rs	set_background	1	std::fs::remove_file(&restart)
+sioul-app/src/remind.rs	write_entries	1	std::fs::write(&path, text)
+sioul-app/src/remind.rs	watching	1	std::fs::OpenOptions::new()
 sioul-app/src/remind.rs	stop	1	std::fs::remove_file(path)
 
 # sioul-app/src/reviews.rs: the weekly review's mark of being said: no item.

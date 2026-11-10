@@ -919,6 +919,31 @@ pub fn wait_of(mode: &crate::quiet::Mode, blocks: &crate::quiet::Blocks, stamp: 
     }
 }
 
+/// Where the session is told to start `sioul remind --watch --session`
+/// (reminders with the window closed): the desktop's autostart folder, or
+/// macOS's launch agents. None on Windows, not done yet. A watcher started
+/// with `--session` leaves once it is gone.
+pub fn watcher_entry() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        return Some(crate::config::expand_home("~/Library/LaunchAgents/org.sioul.reminders.plist"));
+    }
+    if cfg!(windows) {
+        return None;
+    }
+    crate::config::config_dir().parent().map(|dir| dir.join("autostart").join("sioul-reminders.desktop"))
+}
+
+/// Where systemd is told to start the watcher again when it ends otherwise
+/// than by systemd (killed, crashed): a drop-in for the unit its
+/// XDG autostart generator makes of the entry (`app-sioul\x2dreminders@autostart.service`).
+/// Linux alone.
+pub fn watcher_restart() -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    crate::config::config_dir().parent().map(|dir| dir.join("systemd").join("user").join("app-sioul\\x2dreminders@autostart.service.d").join("sioul-restart.conf"))
+}
+
 /// Where reminders told are marked, one small file each.
 pub fn told_dir() -> PathBuf {
     crate::config::state_dir().join("reminded")

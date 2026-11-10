@@ -4422,6 +4422,8 @@ impl qobject::Sioul {
         }
         // Attachments opened in an earlier session (decrypted ones too) leave the cache.
         forget_opened_attachments();
+        // Reminders with the window closed: their watcher started again if it ended (remind.rs).
+        crate::remind::keep_watching();
         // Mail fetched before Sioul checked senders itself is checked once,
         // quietly; the checks ask DNS, so not in a demo.
         if offline() {

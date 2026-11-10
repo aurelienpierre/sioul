@@ -30,12 +30,21 @@ pub(crate) fn list(s: &Session) -> Result<(), String> {
 }
 
 /// Stays open: each minute, what is due becomes one quiet notification. One
-/// at a time: a second `sioul remind --watch` leaves at once.
-pub(crate) fn watch(s: &Session) -> Result<(), String> {
+/// at a time: a second `sioul remind --watch` leaves at once. Started for
+/// the session (`--session`: the entry of reminders with the window closed),
+/// it leaves once that entry is gone, with 0, which nothing starts again.
+/// Its program followed (mcp/follow.rs): an install's new program takes its
+/// place within a minute, the same process going on (TODO §4, 10 November
+/// 2026: an install left the old program running until the session ended).
+pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
+    if for_session && !wanted() {
+        return Ok(());
+    }
     let lock_path = config::state_dir().join("remind.lock");
     std::fs::create_dir_all(config::state_dir()).map_err(|e| e.to_string())?;
     let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(|e| format!("{}: {e}", lock_path.display()))?;
-    // Held as long as the process lives.
+    // Held as long as the process lives; let go when it runs a new program
+    // in its place (the descriptor closes on exec), which takes it again.
     if lock.try_lock().is_err() {
         println!("{}", s.tr.text("remind-running", None));
         return Ok(());
@@ -45,6 +54,7 @@ pub(crate) fn watch(s: &Session) -> Result<(), String> {
     println!("{}", s.tr.text("remind-watching", None));
     let dir = reminders::told_dir();
     let mut forgotten_on = None;
+    let mut follow = crate::mcp::follow::Follow::start();
     loop {
         // Read again each time: settings, tasks and events change while it runs.
         let config = Config::load(&s.config_path).unwrap_or_default();
@@ -61,6 +71,20 @@ pub(crate) fn watch(s: &Session) -> Result<(), String> {
                 eprintln!("{e}");
             }
         }
-        std::thread::sleep(std::time::Duration::from_secs(60));
+        // A minute, its program and its entry looked at every five seconds.
+        for _ in 0..12 {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            if for_session && !wanted() {
+                return Ok(());
+            }
+            if let Some(follow) = follow.as_mut() {
+                follow.step(None, |said| eprintln!("sioul remind: {said}."));
+            }
+        }
     }
+}
+
+/// Whether reminders still come with the window closed: their entry is there.
+fn wanted() -> bool {
+    reminders::watcher_entry().is_some_and(|entry| entry.is_file())
 }

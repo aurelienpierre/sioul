@@ -21,6 +21,10 @@
 //! replaces it at the next start, and Windows has no exec, to run another
 //! program in the same process with the same input and output. The client
 //! starts the new one the next time it starts `sioul mcp`.
+//!
+//! `sioul remind --watch` follows its program the same way (remind.rs), with
+//! no connection to hand over: an install that leaves it running the old
+//! program would leave reminders to the old code until the session ends.
 
 use super::protocol::Server;
 use std::time::Duration;
@@ -47,6 +51,8 @@ impl Follow {
     }
 
     pub fn between(&mut self, _server: &Server) {}
+
+    pub fn step(&mut self, _handover: Option<&str>, _kept: impl FnOnce(&str)) {}
 }
 
 #[cfg(unix)]
@@ -146,6 +152,16 @@ mod unix {
         /// that cannot run is said on standard error and in the log, then left
         /// alone until the path holds another file: this program goes on serving.
         pub fn between(&mut self, server: &Server) {
+            self.step(server.handover().as_deref(), |said| {
+                eprintln!("sioul mcp: {said}.");
+                log::event(server.client(), "kept", said);
+            });
+        }
+
+        /// `between`, for any program that follows its own: `handover` goes
+        /// to the new program in its environment when there is one; `kept`
+        /// says why a new program could not run, this one going on.
+        pub fn step(&mut self, handover: Option<&str>, kept: impl FnOnce(&str)) {
             let Some(new) = self.replacement() else {
                 self.seen = None;
                 return;
@@ -169,14 +185,12 @@ mod unix {
             // Tried first: a program that cannot start (its arguments refused, a library
             // missing, a file cut short) never takes the connection, which would end.
             let error = match (self.probe)(&self.path) {
-                Ok(()) => (self.exec)(&self.path, &self.arguments, server.handover().as_deref()).to_string(),
+                Ok(()) => (self.exec)(&self.path, &self.arguments, handover).to_string(),
                 Err(why) => why,
             };
             self.seen = None;
             self.failed = Some(new);
-            let said = format!("its program was replaced, but the new one could not run ({error}); this one goes on serving");
-            eprintln!("sioul mcp: {said}.");
-            log::event(server.client(), "kept", &said);
+            kept(&format!("its program was replaced, but the new one could not run ({error}); this one goes on serving"));
         }
 
         /// The file now at the program's path, when it is another than the one that runs.

@@ -223,6 +223,10 @@ enum Command {
         /// quiet notification, never repeated (the window marks the same ones).
         #[arg(long)]
         watch: bool,
+        /// With --watch: started for the session, when reminders come with the window
+        /// closed (Settings); leaves once that is turned off.
+        #[arg(long, requires = "watch")]
+        session: bool,
     },
     /// What the shield of a public address makes of its mail: tone, topic, and the words
     /// that weighed. Hostile mail shows neither its sender's name nor its subject.
@@ -413,8 +417,8 @@ fn main() -> ExitCode {
         Command::Notes { query, path } => tasks::notes_command(&session, &query.join(" "), path.as_deref()),
         Command::Sync { account } => accounts::sync_command(&session, account.as_deref()),
         Command::Watch => accounts::watch_command(&session),
-        Command::Remind { watch: false } => remind::list(&session),
-        Command::Remind { watch: true } => remind::watch(&session),
+        Command::Remind { watch: false, .. } => remind::list(&session),
+        Command::Remind { watch: true, session: for_session } => remind::watch(&session, for_session),
         Command::Shield { account, read } => shield_command(&session, account.as_deref(), read),
         Command::Mcp => mcp::run(&session),
         Command::Spam(command) => spam::run(&session, command),
