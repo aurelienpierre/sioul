@@ -6,6 +6,7 @@
 # its step lists: the one way to start the window for a check.
 #
 #     tools/demo/run.sh [--release] OUT en|fr STEPS [phone]
+#     tools/demo/run.sh [--release] OUT en|fr tablet
 #
 # OUT receives the demo profile, made anew by make-demo.py (OUT/profile), and
 # the pictures and the window's log (OUT/shots/, OUT/shots/log): those two are
@@ -14,7 +15,10 @@
 # page, others act in the window, take their pictures and say what they did
 # in the log. Which lists this build allows is `grab_steps` in
 # crates/sioul-app/src/backend.rs; any other runs "pages". "phone" gives the
-# window a phone's size and layout (SIOUL_GRAB_PHONE). --release runs
+# window a phone's size and layout (SIOUL_GRAB_PHONE). "tablet" as STEPS takes
+# each page at a tablet's 1280 by 800, the device a tablet (SIOUL_DEVICE_KIND),
+# without the window's own title bar and with touch, as on Android: a
+# computer's layout, since the room decides it (docs/android.md, "Tablets"). --release runs
 # target/release/sioul-app rather than target/debug/sioul-app; build it first.
 # RUN_HOUR=19 shows 19:xx on a weekday rather than the afternoon (moment.py).
 #
@@ -102,6 +106,9 @@ env=(XDG_RUNTIME_DIR="$runtime" SIOUL_DEMO=1 SIOUL_GRAB="$shots" SIOUL_GRAB_STEP
      LANG="$locale" LC_ALL="$locale" TZ="$zone")
 if [[ -n "$phone" ]]; then
     env+=(SIOUL_GRAB_PHONE=1)
+fi
+if [[ "$steps" == "tablet" ]]; then
+    env+=(SIOUL_DEVICE_KIND=tablet)
 fi
 # The session's runtime folder (/run/user/<uid>) hidden: its D-Bus, Wayland and audio sockets;
 # and the system's bus (/run/dbus): the sandbox's own session bus stands in for it.

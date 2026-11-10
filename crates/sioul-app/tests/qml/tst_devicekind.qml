@@ -4,8 +4,9 @@
 // Android is not necessarily a phone (docs/android.md, "Tablets"), on a
 // stand-in for Sioul: the places (Places.qml) list Texts wherever the device
 // has no telephony of its own (a computer, a tablet without a SIM), and leave
-// it to the device's SMS app where it has (`sioul.telephony`). Run by
-// tools/qml-test.sh.
+// it to the device's SMS app where it has (`sioul.telephony`); their rows are a
+// finger's on a touch screen or in a narrow window, a pointer's elsewhere,
+// whatever the system. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -96,5 +97,16 @@ Item {
             compare(names(places)[3], "ui-sites", "the places after it move up")
         }
 
+        // A row is a finger's on a touch screen (a tablet's, wide as it is) or in
+        // a narrow window, a pointer's otherwise: never decided by the system.
+        function test_a_row_follows_touch_and_room() {
+            const places = createTemporaryObject(placesComponent, root)
+            compare(places.row, 36, "a pointer's, wide and without touch")
+            testTheme.touch = true
+            compare(places.row, 44, "a tablet's touch screen, wide")
+            testTheme.touch = false
+            fakeWindow.compact = true
+            compare(places.row, 44, "a narrow window")
+        }
     }
 }

@@ -113,8 +113,9 @@ Popup {
 
     parent: card.overlay
     width: Math.min(420, card.room - 2 * card.theme.gap)
-    // A phone: across its width; a computer: at the title bar's end.
-    x: card.android || card.room < 600 ? Math.round((card.room - card.width) / 2) : card.room - card.width - card.theme.gap
+    // A narrow window (a phone's): across its width; a wide one (a computer's, a
+    // tablet's): at its end, under the button that opened it. The room decides, never the system.
+    x: card.room < 600 ? Math.round((card.room - card.width) / 2) : card.room - card.width - card.theme.gap
     y: {
         if (!card.overlay)
             return 0

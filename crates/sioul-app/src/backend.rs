@@ -7800,6 +7800,12 @@ impl qobject::Sioul {
 
     fn grab_steps(&self) -> QString {
         let steps = std::env::var("SIOUL_GRAB_STEPS").unwrap_or_else(|_| "pages".into());
+        // "tablet": the pages at a tablet's 1280 by 800, its kind a tablet (tools/demo/run.sh sets
+        // SIOUL_DEVICE_KIND), Android's lack of a title bar and its touch stood in for (main.qml's
+        // `tabletGrab`): pictures alone, to see that a tablet gets a computer's layout.
+        if steps == "tablet" {
+            return QString::from(&steps);
+        }
         // The other steps archive, delete and send mail, answer invitations:
         // against test servers, from the test build only. "demo", "phone" and
         // "drag" take pictures alone; "taskform" makes tasks and rates them, "review"

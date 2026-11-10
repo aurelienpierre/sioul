@@ -105,11 +105,15 @@
             android:authorities="com.aurelienpierre.sioul.start"
             android:exported="false"
             android:initOrder="100" />
+        <!-- Any orientation, and resized live (split screen, a free-form window,
+             a tablet turned): the layout follows the window's size, never the
+             device (docs/android.md, "Tablets"). -->
         <activity
             android:name="org.qtproject.qt.android.bindings.QtActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:label="Sioul"
             android:launchMode="singleTop"
+            android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
