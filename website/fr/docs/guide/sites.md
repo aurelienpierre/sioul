@@ -119,7 +119,7 @@ Sioul remplit tout de suite l’identifiant fait pour le site devant vous, quand
 
 L’identifiant choisi en dernier sur un site vient en premier la fois suivante, son domaine dans Site quand il a été fait pour un autre. Tab passe d’un champ à l’autre, Entrée prend le premier identifiant (ou celui où vous êtes allé avec les flèches), Échap ferme.
 
-Pour le mot de passe d’un compte de courriel (**Mot de passe…** ▸ **Depuis Bitwarden…**, dans la page Comptes), Nom d’utilisateur porte l’adresse du compte et Site reste vide : l’adresse d’un serveur de courriel (imap.gmail.com) est rarement celle où votre fournisseur garde l’identifiant (accounts.google.com).
+Pour le mot de passe d’un compte de courriel (**Mot de passe…** ▸ **Depuis Bitwarden…**, dans la page Comptes), Nom d’utilisateur porte l’adresse du compte et Site reste vide : l’adresse d’un serveur de courriel (imap.gmail.com) est rarement celle où votre fournisseur garde l’identifiant (accounts.google.com). Les identifiants faits pour le domaine même de l’adresse sont listés aussi, quel que soit leur nom d’utilisateur : l’identifiant de votre fournisseur gardé sous un numéro de client ou une autre adresse est trouvé quand même, après ceux dont le nom d’utilisateur est l’adresse.
 
 Sur une page qui demande un code à usage unique, **Remplir l’identifiant** écrit le code que donne en ce moment le secret gardé dans votre coffre.
 

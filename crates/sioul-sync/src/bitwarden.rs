@@ -732,6 +732,19 @@ fn domain(host: &str) -> String {
     if numbers || host.starts_with('[') || !host.contains('.') { host.to_string() } else { sioul_core::sites::domain_of(host) }
 }
 
+/// The registrable domain of a whole mail address, folded ("operator.example"
+/// for "jane@mail.operator.example"); `None` for anything else: words, a part
+/// of an address, a site.
+fn mail_domain(text: &str) -> Option<String> {
+    let (local, host) = text.rsplit_once('@')?;
+    let plain = |part: &str| !part.is_empty() && !part.contains(|c: char| c.is_whitespace() || c == '@');
+    if !plain(local) || !plain(host) || !host.contains('.') || host.starts_with('.') || host.ends_with('.') {
+        return None;
+    }
+    let host = folded(host);
+    (sioul_core::sites::host_of(&format!("https://{host}")) == host).then(|| domain(&host))
+}
+
 /// The registrable domain of an address or a host, as the search reads it:
 /// `ameli.fr` for `https://assure.ameli.fr/…`.
 pub fn domain_of_address(address: &str) -> String {
@@ -965,7 +978,11 @@ impl Logins {
     ///   typed ("ameli": ameli.fr, assure.ameli.fr, not camelia.com), then the
     ///   login's name (an address's own name, "ameli" for ameli.fr). Never its
     ///   user name: "gmail" finds Gmail, not the logins with a Gmail address.
-    /// - `user` matches the user name only, holding every word typed.
+    /// - `user` matches the user name, holding every word typed. A whole mail
+    ///   address (an account's, as the chooser opens for it) also finds the
+    ///   logins made for its domain, whatever their user name: the provider's
+    ///   own login kept under a customer number or another address
+    ///   (`mail_domain`). Those whose user name it is come first.
     ///
     /// Case and accents aside. The best `limit` of them, the best first:
     /// `first` (the login chosen last for the page), then by how the site
@@ -980,6 +997,7 @@ impl Logins {
         if asked.is_none() && words.is_empty() {
             return (Vec::new(), 0);
         }
+        let provider = mail_domain(&whole);
         let page = Page::of(page);
         let mut hits: Vec<Hit> = Vec::new();
         for (at, (item, login)) in self.items.iter().zip(&self.searched).enumerate() {
@@ -990,12 +1008,19 @@ impl Logins {
                 },
                 None => None,
             };
-            if !words.iter().all(|w| login.user.contains(w)) {
-                continue;
-            }
+            // By its user name, else, for a mail address, by a site at the address's domain.
+            let by_provider = if words.iter().all(|w| login.user.contains(w)) {
+                None
+            } else {
+                match provider.as_ref().and_then(|d| login.domains.iter().position(|x| x == d)) {
+                    Some(at) => Some(at),
+                    None => continue,
+                }
+            };
             let (near, at_page) = login.nearness(&page);
             let by = matched.map(|(by, _)| by);
-            hits.push(Hit { key: (first != Some(item.id.as_str()), by, near, words.is_empty() || login.user != whole), login: at, by, site: matched.and_then(|(_, site)| site).or(at_page).unwrap_or(0) });
+            let site = matched.and_then(|(_, site)| site).or(by_provider).or(at_page).unwrap_or(0);
+            hits.push(Hit { key: (first != Some(item.id.as_str()), by, near, words.is_empty() || login.user != whole), login: at, by, site });
         }
         let total = hits.len();
         let order = |a: &Hit, b: &Hit| {
@@ -1432,6 +1457,43 @@ mod tests {
         assert!(search(&vault, "ameli", "aurore", "", None).is_empty());
         let found = search(&vault, "photo", "@gmail.example", "", None);
         assert_eq!(found.iter().map(|f| (f.item.id.as_str(), f.site.as_str())).collect::<Vec<_>>(), [("forum", "forum.photo.test")]);
+    }
+
+    /// Opened for a mail account, User name holds its address: the provider's
+    /// login kept under another user name (a customer number, another
+    /// address) is found by its site at the address's domain, after the
+    /// logins whose user name the address is. Only a whole address does so.
+    #[test]
+    fn an_address_finds_its_providers_login() {
+        let login = |id: &str, name: &str, user: &str, uris: &[&str]| {
+            let mut item = Item::default();
+            item.id = id.into();
+            item.name = name.into();
+            item.username = user.into();
+            item.uris = uris.iter().map(|u| u.to_string()).collect();
+            item
+        };
+        let vault = Logins::new(vec![
+            login("operator", "Opérateur mobile", "aurore.exemple@gmail.example", &["androidapp://example.operator", "https://espace-client.operator.example/connexion"]),
+            login("number", "Opérateur, ligne fixe", "0123456789", &["https://www.operator.example"]),
+            login("mail", "Opérateur, courriel", "aurore@operator.example", &["https://webmail.operator.example"]),
+            login("elsewhere", "Forum", "aurore@operator.example", &["https://forum.photo.test"]),
+            login("other", "Autre opérateur", "aurore@autre.example.net", &["https://operator.example.net"]),
+        ]);
+        let found = search(&vault, "", "aurore@operator.example", "https://imap.operator.example", None);
+        let shown: Vec<(&str, &str)> = found.iter().map(|f| (f.item.id.as_str(), f.site.as_str())).collect();
+        assert_eq!(shown, [("mail", "webmail.operator.example"), ("operator", "espace-client.operator.example"), ("number", "www.operator.example"), ("elsewhere", "forum.photo.test")], "the server's domain first, its user name whole first; then elsewhere");
+        // Case aside, and a subdomain's address stands for its domain.
+        assert_eq!(ids(search(&vault, "", "Aurore@Mail.Operator.Example", "", None)), ["operator", "mail", "number"], "by name, none the user name typed whole");
+        // A part of an address, a domain alone or words find by the user name only.
+        for user in ["@operator.example", "aurore@", "operator.example", "aurore operator", "aurore@operator"] {
+            assert!(!ids(search(&vault, "", user, "", None)).contains(&"number".to_string()), "{user:?}");
+        }
+        // Both fields: the site still narrows.
+        assert_eq!(ids(search(&vault, "forum", "aurore@operator.example", "", None)), ["elsewhere"]);
+        assert_eq!(mail_domain("a@b.example"), Some("b.example".into()));
+        assert_eq!(mail_domain("a b@c.example"), None);
+        assert_eq!(mail_domain("a@c.example/x"), None);
     }
 
     #[test]

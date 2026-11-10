@@ -62,7 +62,7 @@ Below the cards, **The AI shield** holds the key for Anthropic's service, used o
 
 ### An account from your other device
 
-[Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…**. The logins whose user name is this address are listed, the server's own first; choose one, or type a site to narrow them ([Sites](sites.md#logins-from-bitwarden)). The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
+[Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…**. The logins whose user name is this address are listed, then those made for its domain under another user name (a customer number, another address), the server's own first; choose one, or type a site to narrow them ([Sites](sites.md#logins-from-bitwarden)). The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
 
 From this page, your Bitwarden vault opens with its master password and a second step other than a security key: an app's code, an e-mail's, a YubiKey's code, a recovery code. To open it with your security key, open it from the Sites page first (**Fill the login**, or ⋮ ▸ **Choose a login…**): it then stays open until Sioul closes, here too. On a phone, a security key cannot open the vault yet: use another second step of your Bitwarden account.
 

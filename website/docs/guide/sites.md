@@ -119,7 +119,7 @@ Sioul fills at once the login made for the site in front of you, when it is the 
 
 The login you chose last on a site comes first the next time, its domain in Site when it was made for another one. Tab goes from one field to the other, Enter takes the first login (or the one you moved to with the arrows), Escape closes.
 
-For a mail account's password (**Password…** ▸ **From Bitwarden…**, on the Accounts page), User name holds the account's address and Site stays empty: a mail server's address (imap.gmail.com) is seldom the one where your provider's login is kept (accounts.google.com).
+For a mail account's password (**Password…** ▸ **From Bitwarden…**, on the Accounts page), User name holds the account's address and Site stays empty: a mail server's address (imap.gmail.com) is seldom the one where your provider's login is kept (accounts.google.com). The logins made for the address's own domain are listed too, whatever their user name: your provider's login kept under a customer number or another address is found all the same, after the logins whose user name is the address.
 
 On a page asking for a one-time code, **Fill the login** writes the code your vault's secret gives now.
 
