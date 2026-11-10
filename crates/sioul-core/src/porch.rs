@@ -1705,7 +1705,13 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
                 continue;
             }
             let triaged = triage(card, ctx);
+            // Kept only when what decided it was what its stamp says: your
+            // words on spam are read again every two seconds at most
+            // (`spam::labels::kept`), and a log come between the stamp and
+            // the triage would keep a verdict made on what the stamp does not
+            // say (review of 1a2c6a2, C1).
             if triaged.code.is_none()
+                && own_inputs(&triaged.card, ctx) == own
                 && let Ok(mut kept) = TRIAGED.lock()
             {
                 if kept.as_ref().is_none_or(|(at, all)| *at != seal || all.len() >= TRIAGED_KEPT) {
