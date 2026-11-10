@@ -145,9 +145,11 @@ ColumnLayout {
     // A phone's Day: an hour of 56 points at least (§4.9).
     readonly property real hourLeast: planning.narrow && planning.single ? 56 : 30
 
-    // The lines `text` takes at `width`, as a card's title wraps it.
+    // The lines `text` takes at `width`, as a card's title wraps it, in the titles' font
+    // as it is now: `titleFont.font` is read so that a binding calling this is computed
+    // again when it changes (a call to advanceWidth() alone is read once: 6f429ea).
     function linesOf(text, width) {
-        if (width <= 0)
+        if (width <= 0 || !titleFont.font)
             return 1
         const space = titleFont.advanceWidth(" ")
         let lines = 1
@@ -1408,12 +1410,14 @@ ColumnLayout {
 
         font: timeType.font
     }
-    // The list's times (`listed`), measured as they are drawn.
-    FontMetrics {
-        id: listTimeFont
+    // The list's times (`listed`), measured as they are drawn: a property that follows
+    // the font, never a call to advanceWidth(), which a binding reads once (6f429ea).
+    TextMetrics {
+        id: listTimeWidth
 
         font.pixelSize: 13
         font.features: { "tnum": 1 }
+        text: "00:00 – 00:00"
     }
 
     // The days' titles (the Week): a tap opens that day.
@@ -2045,7 +2049,7 @@ ColumnLayout {
                         Label {
                             readonly property string beside: card.location !== "" ? card.location : card.list !== "" ? planning.sioul.textWith("agenda-task-of", "list", card.list) : ""
 
-                            visible: beside !== "" && card.edge === "" && !card.isQuiet && !card.isBand && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine && timeFont.advanceWidth(beside) <= card.width - 8
+                            visible: beside !== "" && card.edge === "" && !card.isQuiet && !card.isBand && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine && !!timeFont.font && timeFont.advanceWidth(beside) <= card.width - 8
                             Layout.fillWidth: true
                             text: beside
                             textFormat: Text.PlainText
@@ -2577,7 +2581,7 @@ ColumnLayout {
                     }
                     Label {
                         visible: line.kind !== "dated"
-                        Layout.preferredWidth: listTimeFont.advanceWidth("00:00 – 00:00") + 4
+                        Layout.preferredWidth: listTimeWidth.advanceWidth + 4
                         Layout.alignment: Qt.AlignTop
                         text: line.when
                         textFormat: Text.PlainText

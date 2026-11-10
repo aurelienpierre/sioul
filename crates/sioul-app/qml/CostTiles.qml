@@ -80,8 +80,13 @@ ColumnLayout {
     // The band of each value of the gain, 0 to 10: which of `gainWords` it takes.
     readonly property var gainBands: [0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5]
 
-    // The widest word, for the gauges beside it to line up from tile to tile.
-    readonly property real wordRoom: Math.ceil(Math.max(...tiles.costWords.concat(tiles.gainWords, [tiles.sioul.text("tile-unsaid")]).map(w => small.advanceWidth(w)))) + 2
+    // The widest word, for the gauges beside it to line up from tile to tile, in the
+    // font the words have now: `small.font` is read so that it is measured again when it
+    // changes (a call to advanceWidth() alone is read once: 6f429ea).
+    readonly property real wordRoom: {
+        const font = small.font
+        return font ? Math.ceil(Math.max(...tiles.costWords.concat(tiles.gainWords, [tiles.sioul.text("tile-unsaid")]).map(w => small.advanceWidth(w)))) + 2 : 0
+    }
     // A tile's inside, in one column or two.
     readonly property real tileInside: (tiles.width - (tiles.columns - 1) * tiles.gap) / tiles.columns - 2 * tiles.pad - 2
     // The word beside the gauge where the cells keep their size, else above it, beside the number.
@@ -190,10 +195,17 @@ ColumnLayout {
 
     spacing: tiles.gap
 
+    // The words' font, as their labels inherit it (its family from the window).
+    Label {
+        id: smallProbe
+
+        visible: false
+        font.pixelSize: 13
+    }
     FontMetrics {
         id: small
 
-        font.pixelSize: 13
+        font: smallProbe.font
     }
 
     GridLayout {

@@ -29,8 +29,14 @@ ColumnLayout {
     property date monthShown: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
     readonly property bool compact: section.window.compact === true
     readonly property var rows: section.view && section.view.coming ? section.view.coming.reduce((all, w) => all.concat(w.rows), []) : []
-    // The days' column: as wide as its widest day, in this language ("Wed 18 Nov", "mer. 18 nov.").
-    readonly property real dateWidth: Math.ceil(section.rows.reduce((widest, r) => Math.max(widest, dateFont.advanceWidth(r.date)), 0)) + 4
+    // The days' column: as wide as its widest day, in this language ("Wed 18 Nov", "mer. 18 nov."),
+    // in the font the section has now. `dateFont.font` is read so that the width is measured
+    // again when it changes: a call to advanceWidth() alone is read once, in the font the
+    // section had when it was made (6f429ea), and a tablet's font and size may change later.
+    readonly property real dateWidth: {
+        const font = dateFont.font
+        return font ? Math.ceil(section.rows.reduce((widest, r) => Math.max(widest, dateFont.advanceWidth(r.date)), 0)) + 4 : 0
+    }
 
     // Its effect said by the page; asked once there too.
     signal said(string text, var ask)
