@@ -664,5 +664,18 @@ Item {
             verify(field.Layout.minimumWidth >= field.contentWidth + field.leftPadding + field.rightPadding, "room for the text: " + field.Layout.minimumWidth)
             verify(field.rightPadding >= find(field, "clockButton").width, "the button beside the text, not over it")
         }
+
+        // Nor once its font changes after it is made: a dialog's fields take the
+        // window's font only when the dialog is placed in the window, after their
+        // width was measured (10 November 2026: "10:10" read "0:10" in the Time
+        // dialog and Health's change of a meal, on a phone).
+        function test_as_wide_as_a_time_in_the_font_it_comes_to_have() {
+            const field = createTemporaryObject(panelComponent, root, { text: "10:10" })
+            const before = field.implicitWidth
+            field.font.pixelSize = 26
+            waitForRendering(field)
+            verify(field.implicitWidth > before, "wider in a larger font: " + before + " then " + field.implicitWidth)
+            verify(field.width >= field.contentWidth + field.leftPadding + field.rightPadding, "room for the text: " + field.width + " for " + field.contentWidth)
+        }
     }
 }

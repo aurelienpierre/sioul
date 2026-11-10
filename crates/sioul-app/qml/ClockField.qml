@@ -256,8 +256,10 @@ TextField {
             field.openPanel()
     }
 
-    // As wide as a time and the button, whatever a form's old width said: "23:59" is never cut.
-    implicitWidth: Math.ceil(digits.advanceWidth("00:00")) + leftPadding + rightPadding + 2
+    // As wide as a time and the button, whatever a form's old width said: "23:59" is never cut,
+    // in the font the field has now (`digits` follows it; a dialog's fields take the window's
+    // font after they are made).
+    implicitWidth: Math.ceil(digits.advanceWidth) + leftPadding + rightPadding + 2
     Layout.minimumWidth: implicitWidth
     leftPadding: 8
     rightPadding: field.theme !== null ? clockButton.width + 2 : 8
@@ -324,10 +326,14 @@ TextField {
         event.accepted = true
     }
 
-    FontMetrics {
+    // A time's width in the field's font, a property that follows it: a call to
+    // FontMetrics' advanceWidth() in a binding was read once, in the font the field
+    // had when it was made (10 November 2026: "10:10" read "0:10" in dialogs).
+    TextMetrics {
         id: digits
 
         font: field.font
+        text: "00:00"
     }
 
     ToolButton {
