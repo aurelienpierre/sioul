@@ -87,34 +87,42 @@ pub fn found_in(texts: impl IntoIterator<Item = String>, lists: &[(String, HashS
 }
 
 /// The newest `last` messages received, on every mail account here, as
-/// `found_in` reads them: subject and the start of their text. Spam and the
-/// Junk, Trash, Sent and Drafts folders are left out: what others write to
-/// you, not what spam is written in.
+/// `found_in` reads them: subject and the start of their text. Each message
+/// once, by its Message-ID (a Gmail label is another copy of it); spam, the
+/// Junk, Trash, Sent and Drafts folders and Gmail's All Mail (which holds
+/// your own sent mail too) left out, and what your own addresses sent:
+/// what others write to you, not what spam or you are written in (review
+/// of wt/mail, F12).
 pub fn mail_texts(config: &Config, last: usize) -> Vec<String> {
     use crate::folders::Role;
-    let mut lines: Vec<(i64, PathBuf)> = Vec::new();
+    let own: Vec<String> = config.accounts.iter().filter_map(|a| a.address.as_deref()).map(|a| a.trim().to_lowercase()).collect();
+    let mut lines: Vec<(i64, String, PathBuf)> = Vec::new();
     for account in config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap) {
         let root = account.maildir_path();
         let saved = crate::folders::saved(&account.id);
         let locals: Vec<String> = if saved.is_empty() {
             vec![String::new()]
         } else {
-            saved.iter().filter(|f| !matches!(f.role, Role::Junk | Role::Trash | Role::Sent | Role::Drafts)).map(|f| f.local.clone()).collect()
+            saved.iter().filter(|f| !matches!(f.role, Role::Junk | Role::Trash | Role::Sent | Role::Drafts | Role::All)).map(|f| f.local.clone()).collect()
         };
         for local in locals {
             for (path, line) in crate::mailcache::folder(&account.id, &root, &local) {
-                if !line.spam {
-                    lines.push((crate::mailcache::sent_at(&line), path));
+                let yours = line.from_address.as_deref().is_some_and(|from| own.iter().any(|a| a == from));
+                if line.spam || yours {
+                    continue;
                 }
+                let id = line.message_id.clone().or_else(|| line.digest.clone()).unwrap_or_else(|| path.display().to_string());
+                lines.push((crate::mailcache::sent_at(&line), id, path));
             }
         }
     }
-    lines.sort_by(|a, b| b.0.cmp(&a.0));
-    lines.dedup_by(|a, b| a.1 == b.1);
+    lines.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let mut seen = std::collections::HashSet::new();
     lines
         .into_iter()
+        .filter(|(_, id, _)| seen.insert(id.clone()))
         .take(last)
-        .filter_map(|(_, path)| {
+        .filter_map(|(_, _, path)| {
             let raw = crate::filelock::read_whole(&path).ok()?;
             let card = crate::card::Card::from_bytes(&raw)?;
             Some(format!("{}\n{}", card.subject, card.excerpt))
@@ -246,6 +254,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// Review of wt/mail, F12: the mail read is what others sent you, each
+    /// message once: a second copy of one message (a Gmail label) and a
+    /// message from one of your own addresses are left out.
+    #[test]
+    fn the_mail_read_is_received_mail_each_message_once() {
+        let dir = scratch("received");
+        let maildir = dir.join("maildir");
+        for sub in ["cur", "new", "tmp"] {
+            std::fs::create_dir_all(maildir.join(sub)).unwrap();
+        }
+        let message = |id: &str, from: &str, text: &str| format!("From: {from}\r\nTo: me@example.org\r\nSubject: Hallo\r\nMessage-ID: <{id}>\r\nDate: Tue, 10 Nov 2026 09:00:00 +0100\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{text}\r\n");
+        let files = [
+            ("1794300000.M1P1.stand-in:2,S", message("a@example.de", "Ute <ute@example.de>", GERMAN)),
+            ("1794300001.M2P1.stand-in:2,S", message("a@example.de", "Ute <ute@example.de>", GERMAN)),
+            ("1794300002.M3P1.stand-in:2,S", message("b@example.org", "Me <me@example.org>", GERMAN)),
+            ("1794300003.M4P1.stand-in:2,S", message("c@example.com", "Ann <ann@example.com>", ENGLISH)),
+        ];
+        for (name, text) in &files {
+            std::fs::write(maildir.join("cur").join(name), text).unwrap();
+        }
+        let config: Config = toml::from_str(&format!("[[account]]\nid = \"languages-{}\"\nkind = \"imap\"\naddress = \"me@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", std::process::id(), maildir.display())).unwrap();
+        let texts = mail_texts(&config, LAST);
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        let found = found_in(texts, &lists());
+        assert_eq!(found.languages.iter().map(|(l, n)| (l.as_str(), *n)).collect::<Vec<_>>(), [("de", 1), ("en", 1)]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A new configuration gets its interface's language, English and the
