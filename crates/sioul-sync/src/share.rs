@@ -1381,6 +1381,18 @@ impl Listing<'_> {
         let relative = dir.strip_prefix(self.root).map(|r| r.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")).unwrap_or_default();
         let within = if relative.is_empty() { String::new() } else { format!("{relative}/") };
         let prefix = format!("{}{within}", self.store);
+        // A folder shared through (it holds a seal) is none of the notes, whichever way it is reached:
+        // a folder taken as listed checks it too (review of wt/sync, R5: a sync app making the folder
+        // first and its seal after, the folder was read as notes until the whole listing).
+        if dir != self.root && dir.join("seal.toml").is_file() {
+            if let Some(listed) = self.listed.as_deref_mut() {
+                listed.dirs.remove(dir);
+                if let Some(parent) = dir.parent() {
+                    listed.dirs.remove(parent);
+                }
+            }
+            return 0;
+        }
         // Its time before it is read: a change while it is read shows next time.
         let modified = std::fs::metadata(dir).map_or(0, |m| modified_ns(&m));
         // Unchanged since this process listed it (`Listed`): as listed then.

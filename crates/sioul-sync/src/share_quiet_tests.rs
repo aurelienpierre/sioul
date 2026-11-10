@@ -1751,8 +1751,20 @@ fn the_notes_folder_is_listed_only_where_it_changed() {
     assert_eq!(asked(), 4, "listed whole");
     turn(&phone, &phone_notes);
     assert_eq!(std::fs::read_to_string(phone_notes.join("plan.md")).unwrap(), "the plan, changed in place\n");
-    // A note removed: its folder's time changes, and it is taken out at once.
+    // A folder shared through, made first and sealed after, its parent taken
+    // as listed (review of wt/sync, R5): never read as notes.
     RELIST.with(|r| r.set(10 * MINUTE));
+    let shared = admin.join("shared");
+    std::fs::create_dir_all(&shared).unwrap();
+    turn(&desk, &notes);
+    a_minute_back(&[&admin, &shared]);
+    turn(&desk, &notes);
+    std::fs::write(shared.join("seal.toml"), "a seal of another sharing\n").unwrap();
+    std::fs::write(shared.join("other-1.jsonl"), "a record of another sharing\n").unwrap();
+    turn(&desk, &notes);
+    let files = Memory::load_all(&desk.memory, &desk.id).files;
+    assert!(!files.keys().any(|f| f.contains("admin/shared/")), "{:?}", files.keys().collect::<Vec<_>>());
+    // A note removed: its folder's time changes, and it is taken out at once.
     turn(&desk, &notes);
     std::fs::remove_file(admin.join("lease.md")).unwrap();
     turn(&desk, &notes);
