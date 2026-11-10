@@ -1985,6 +1985,8 @@ mod tests {
     fn every_agenda_reads_the_same_items() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
         sioul_core::config::stand_ins_only();
+        // Reads every agenda twice: no child's stand-in written into one between the two.
+        let _turn = crate::children::TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         use sioul_core::vdir::{self, Kind};
         let now = Zoned::now();
         let zone = now.time_zone().clone();

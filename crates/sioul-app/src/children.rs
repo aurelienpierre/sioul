@@ -969,6 +969,14 @@ pub(crate) fn child_key(uid: &str) -> Option<String> {
 }
 
 
+/// The tests that write children's stand-ins take turns with those that read
+/// every agenda (`homecard::tests::every_agenda_reads_the_same_items`): the
+/// upkeep writes a stand-in into whichever of your agendas comes first, which
+/// in the shared stand-in folders may be another test's own, between its two
+/// reads (10 November 2026).
+#[cfg(test)]
+pub(crate) static TEST_STAND_INS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -983,6 +991,7 @@ mod tests {
     #[test]
     fn a_child_s_event_taken_then_asked_of_the_other_parent() {
         sioul_core::config::stand_ins_only();
+        let _turn = TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let config = crate::backend::config_path();
         let tom = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, "Tom, part 3", None, &["VEVENT", "VTODO"]).unwrap();
         let mine = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, "Mine, part 3", None, &["VEVENT"]).unwrap();
@@ -1060,6 +1069,7 @@ mod tests {
     #[test]
     fn a_child_s_meeting_keeps_who_takes_it_apart() {
         sioul_core::config::stand_ins_only();
+        let _turn = TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let config = crate::backend::config_path();
         let tom = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, "Tom, a meeting", None, &["VEVENT", "VTODO"]).unwrap();
         let mine = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, "Mine, a meeting", None, &["VEVENT"]).unwrap();
@@ -1120,6 +1130,7 @@ mod tests {
     #[test]
     fn a_child_s_meeting_kept_on_another_device_stays_as_it_is() {
         sioul_core::config::stand_ins_only();
+        let _turn = TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = sioul_core::config::data_dir().join(format!("r1-children-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let config = dir.join("config.toml");
@@ -1250,6 +1261,7 @@ mod tests {
     #[test]
     fn an_unproven_reply_changes_nothing() {
         sioul_core::config::stand_ins_only();
+        let _turn = TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let config = crate::backend::config_path();
         let lea = vdir::create(vdir::Kind::Calendars, vdir::LOCAL, "Léa, a reply", None, &["VEVENT"]).unwrap();
         for (field, value) in [("whose", "child"), ("name", "Léa"), ("parent", "Sam"), ("parent_address", "sam@example.org")] {
