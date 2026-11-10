@@ -182,9 +182,10 @@ pub(crate) fn command() -> Option<PathBuf> {
     beside.or_else(|| std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(&name)).find(|p| p.is_file())))
 }
 
-/// Whether reminders come with the window closed.
+/// Whether reminders come with the window closed: the entry is there and
+/// the desktop did not turn it off (`reminders::watcher_wanted`).
 pub(crate) fn background() -> bool {
-    reminders::watcher_entry().is_some_and(|e| e.is_file())
+    reminders::watcher_wanted()
 }
 
 /// Reminders with the window closed, or not: the entry written or taken out, the watcher started or stopped now.
@@ -200,17 +201,27 @@ pub(crate) fn set_background(on: bool) -> Result<(), String> {
         return Ok(());
     }
     let sioul = command().ok_or_else(|| tr().text("reminders-closed-no-command", None))?;
-    write_entries(&entry, &sioul)?;
+    // Turned on here: the whole entry, any "off" a desktop wrote in it gone.
+    write_entries(&entry, &sioul, true)?;
     // Now too, not only from the next session; a second one leaves at once.
     start_watcher(&sioul)
 }
 
 /// The session's entry for the watcher, and on Linux systemd's word to start
-/// it again: each written when it says otherwise (a Sioul before 10 November
-/// 2026 wrote no `--session` and no restart; the program moved).
-fn write_entries(entry: &std::path::Path, sioul: &std::path::Path) -> Result<(), String> {
+/// it again. `whole` (the setting turned on here): the entry as Sioul writes
+/// it. Else (the window's start) an entry is changed only where its program
+/// or its arguments say otherwise (a Sioul before 10 November 2026 wrote no
+/// `--session`; the program moved): its `Exec=` line alone, or its
+/// `ProgramArguments`, every other line kept, a desktop's "off" among them
+/// (review of wt/mail, F2).
+fn write_entries(entry: &std::path::Path, sioul: &std::path::Path, whole: bool) -> Result<(), String> {
     let line = |id: &str| tr().text(id, None).replace(['\n', '\r'], " ");
-    let mut files = vec![(entry.to_path_buf(), entry_text(sioul, &line("reminders-entry-name"), &line("reminders-entry-comment")))];
+    let made = entry_text(sioul, &line("reminders-entry-name"), &line("reminders-entry-comment"));
+    let text = match std::fs::read_to_string(entry) {
+        Ok(kept) if !whole => with_program_of(&kept, &made),
+        _ => made,
+    };
+    let mut files = vec![(entry.to_path_buf(), text)];
     files.extend(reminders::watcher_restart().map(|restart| (restart, RESTART.to_string())));
     for (path, text) in files {
         if std::fs::read_to_string(&path).is_ok_and(|kept| kept == text) {
@@ -224,14 +235,50 @@ fn write_entries(entry: &std::path::Path, sioul: &std::path::Path) -> Result<(),
     Ok(())
 }
 
+/// `kept`, an entry as it is, with the program and arguments of `made`, the
+/// entry Sioul would write: its `Exec=` line (or its `ProgramArguments`
+/// array) taken from `made`, nothing else changed.
+fn with_program_of(kept: &str, made: &str) -> String {
+    if kept.contains("<plist") {
+        let array = |text: &str| -> Option<(usize, usize)> {
+            let key = text.find("<key>ProgramArguments</key>")?;
+            let start = key + text[key..].find("<array>")?;
+            let end = start + text[start..].find("</array>")? + "</array>".len();
+            Some((start, end))
+        };
+        return match (array(kept), array(made)) {
+            (Some((a, b)), Some((c, d))) => format!("{}{}{}", &kept[..a], &made[c..d], &kept[b..]),
+            _ => kept.to_string(),
+        };
+    }
+    let Some(exec) = made.lines().find(|line| line.starts_with("Exec=")) else { return kept.to_string() };
+    let mut replaced = false;
+    let mut lines: Vec<&str> = kept
+        .lines()
+        .map(|line| {
+            if line.starts_with("Exec=") && !replaced {
+                replaced = true;
+                exec
+            } else {
+                line
+            }
+        })
+        .collect();
+    if !replaced {
+        lines.push(exec);
+    }
+    lines.join("\n") + "\n"
+}
+
 /// The entry that starts `sioul remind --watch --session` with the session:
-/// a launch agent kept alive on macOS (started again when it ends otherwise
-/// than by its own choice), an XDG autostart entry elsewhere, whose name and
+/// a launch agent on macOS, started again after a crash (`Crashed`: never
+/// after an exit of its own, so an older program refusing `--session` does
+/// not loop), an XDG autostart entry elsewhere, whose name and
 /// comment show in the desktop's list of what starts with the session.
 fn entry_text(sioul: &std::path::Path, name: &str, comment: &str) -> String {
     if cfg!(target_os = "macos") {
         format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>org.sioul.reminders</string>\n  <key>ProgramArguments</key>\n  <array><string>{}</string><string>remind</string><string>--watch</string><string>--session</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n  <key>ThrottleInterval</key><integer>10</integer>\n</dict>\n</plist>\n",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>org.sioul.reminders</string>\n  <key>ProgramArguments</key>\n  <array><string>{}</string><string>remind</string><string>--watch</string><string>--session</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><dict><key>Crashed</key><true/></dict>\n  <key>ThrottleInterval</key><integer>60</integer>\n</dict>\n</plist>\n",
             xml_escaped(&sioul.display().to_string())
         )
     } else {
@@ -249,7 +296,11 @@ fn xml_escaped(text: &str) -> String {
 /// (docs/reminders.md, "It keeps running"). A watcher that leaves on its own (one
 /// runs already; reminders with the window closed turned off) exits with 0,
 /// which is not started again; the session's end stops it through systemd.
-const RESTART: &str = "# Sioul: the reminders' watcher started again when it ends otherwise than by systemd or by its own choice (docs/reminders.md).\n[Service]\nRestart=on-failure\nRestartForceExitStatus=SIGTERM SIGINT SIGHUP SIGPIPE\nRestartSec=10\n";
+/// Five starts in ten minutes at most (`StartLimitBurst`, `StartLimitIntervalSec`):
+/// a program that cannot run (an older one, rolled back to, refusing
+/// `--session`; one removed) is tried five times, then left until the next
+/// session, rather than every ten seconds (review of wt/mail, F3).
+const RESTART: &str = "# Sioul: the reminders' watcher started again when it ends otherwise than by systemd or by its own choice, five times in ten minutes at most (docs/reminders.md).\n[Unit]\nStartLimitIntervalSec=600\nStartLimitBurst=5\n[Service]\nRestart=on-failure\nRestartForceExitStatus=SIGTERM SIGINT SIGHUP SIGPIPE\nRestartSec=10\n";
 
 /// The watcher started now, apart from the window: its own process group,
 /// so that the end of a terminal the window was started from does not end it.
@@ -262,9 +313,11 @@ fn start_watcher(sioul: &std::path::Path) -> Result<(), String> {
 }
 
 /// At the window's start, with reminders with the window closed on: the
-/// entries brought up to date, and the watcher started when none runs (it
-/// ended with the session before, was killed, or an install came): an install
-/// is followed by a window started again.
+/// entries brought up to date (their program and arguments alone), and the
+/// watcher started when none runs, only where no service manager runs it:
+/// a unit systemd made of the entry, stopped or masked by you, and a
+/// launch agent you turned off, stay so (review of wt/mail, F2); an XDG
+/// autostart run by the desktop itself has no one else to start it again.
 pub(crate) fn keep_watching() {
     if !background() || cfg!(target_os = "android") {
         return;
@@ -274,14 +327,31 @@ pub(crate) fn keep_watching() {
         // The program the entry names while it is there: a window started from
         // elsewhere (a build tried) never moves the session's watcher to it.
         let Some(sioul) = named_program(&entry).filter(|p| p.is_file()).or_else(command) else { return };
-        if let Err(e) = write_entries(&entry, &sioul) {
+        if let Err(e) = write_entries(&entry, &sioul, false) {
             eprintln!("Sioul: the reminders' watcher: {e}");
         }
-        if !watching() && let Err(e) = start_watcher(&sioul) {
+        if !managed() && !watching() && let Err(e) = start_watcher(&sioul) {
             eprintln!("Sioul: the reminders' watcher: {e}");
         }
     });
 }
+
+/// Whether a service manager runs the watcher, and so decides alone when it
+/// starts: launchd on macOS; systemd where its XDG autostart generator made
+/// a unit of the entry (loaded, or masked by you).
+fn managed() -> bool {
+    if cfg!(target_os = "macos") {
+        return true;
+    }
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+    let out = std::process::Command::new("systemctl").args(["--user", "show", "--property=LoadState", "--value", UNIT]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
+    out.is_ok_and(|out| out.status.success() && matches!(String::from_utf8_lossy(&out.stdout).trim(), "loaded" | "masked"))
+}
+
+/// The unit systemd's XDG autostart generator makes of the entry.
+const UNIT: &str = "app-sioul\\x2dreminders@autostart.service";
 
 /// The program an entry starts: its `Exec`'s first word, quoted as Sioul
 /// writes it; on macOS, the first of its `ProgramArguments`.
@@ -344,6 +414,19 @@ mod tests {
             assert_eq!(named_program(&entry), Some(PathBuf::from("/usr/bin/sioul")), "an entry from before");
         }
         assert!(RESTART.contains("\nRestart=on-failure\n") && RESTART.contains("RestartForceExitStatus=SIGTERM SIGINT SIGHUP SIGPIPE\n"));
+        // Review of wt/mail, F3: five starts in ten minutes at most.
+        assert!(RESTART.contains("[Unit]\nStartLimitIntervalSec=600\nStartLimitBurst=5\n[Service]"));
+        // F2: a desktop's "off" kept; only the program and its arguments brought up to date.
+        if !cfg!(target_os = "macos") {
+            let kept = "[Desktop Entry]\nType=Application\nName=Sioul reminders\nExec=\"/usr/bin/sioul\" remind --watch\nHidden=true\nX-GNOME-Autostart-enabled=false\n";
+            let made = entry_text(&PathBuf::from("/opt/sioul/bin/sioul"), "Sioul reminders", "Reminders");
+            let changed = with_program_of(kept, &made);
+            assert_eq!(changed, "[Desktop Entry]\nType=Application\nName=Sioul reminders\nExec=\"/opt/sioul/bin/sioul\" remind --watch --session\nHidden=true\nX-GNOME-Autostart-enabled=false\n");
+            std::fs::write(&entry, &changed).unwrap();
+            assert!(!reminders::entry_on(&entry), "turned off by the desktop: off");
+            std::fs::write(&entry, &made).unwrap();
+            assert!(reminders::entry_on(&entry));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

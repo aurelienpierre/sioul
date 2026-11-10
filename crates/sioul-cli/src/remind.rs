@@ -84,7 +84,8 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
     }
 }
 
-/// Whether reminders still come with the window closed: their entry is there.
+/// Whether reminders still come with the window closed: their entry is
+/// there, and the desktop did not turn it off (`reminders::watcher_wanted`).
 fn wanted() -> bool {
-    reminders::watcher_entry().is_some_and(|entry| entry.is_file())
+    reminders::watcher_wanted()
 }

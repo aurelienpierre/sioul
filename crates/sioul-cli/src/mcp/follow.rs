@@ -73,8 +73,9 @@ mod unix {
     pub type Exec = fn(&Path, &[OsString], Option<&str>) -> std::io::Error;
 
     /// How a new program is tried before it takes the connection (`try_it`),
-    /// or a test's stand-in: why it cannot serve, when it cannot.
-    pub type Probe = fn(&Path) -> Result<(), String>;
+    /// with the arguments it would be given, or a test's stand-in: why it
+    /// cannot serve, when it cannot.
+    pub type Probe = fn(&Path, &[OsString]) -> Result<(), String>;
 
     /// The longest a new program's `--version` may take.
     const PROBE: Duration = Duration::from_secs(5);
@@ -182,9 +183,11 @@ mod unix {
                     }
                 }
             }
+            // A file anyone else could have put or changed there is never run as you.
             // Tried first: a program that cannot start (its arguments refused, a library
-            // missing, a file cut short) never takes the connection, which would end.
-            let error = match (self.probe)(&self.path) {
+            // missing, a file cut short, an older version) never takes the connection,
+            // which would end.
+            let error = match yours_alone(&self.path).and_then(|()| (self.probe)(&self.path, &self.arguments)) {
                 Ok(()) => (self.exec)(&self.path, &self.arguments, handover).to_string(),
                 Err(why) => why,
             };
@@ -252,25 +255,85 @@ mod unix {
         candidates.into_iter().find(|path| Stat::of(path).is_some_and(|stat| stat.same_file(running)))
     }
 
-    /// The new program tried once, before it takes the connection: `--version`,
-    /// standard input from /dev/null, its output captured, five seconds at
-    /// most (`PROBE`). Why it cannot serve, when it cannot.
-    fn try_it(path: &Path) -> Result<(), String> {
+    /// Whether the file at `path`, and the folders that hold it (its link's
+    /// and its own), are yours or the system's, and nobody else can write
+    /// them: a file someone else put there is never run as you (review of
+    /// wt/mail, F8). A folder others may write is accepted when it keeps
+    /// what each one put there (the sticky bit, as /tmp).
+    pub(super) fn yours_alone(path: &Path) -> Result<(), String> {
+        use std::os::unix::fs::MetadataExt;
+        // SAFETY: getuid cannot fail.
+        let me = unsafe { libc::getuid() };
+        let owned = |m: &std::fs::Metadata| m.uid() == me || m.uid() == 0;
+        let real = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
+        let file = std::fs::metadata(&real).map_err(|e| e.to_string())?;
+        if !owned(&file) || file.mode() & 0o022 != 0 {
+            return Err(format!("{} belongs to another account, or another account may change it", real.display()));
+        }
+        for folder in [path.parent(), real.parent()].into_iter().flatten() {
+            let held = std::fs::metadata(folder).map_err(|e| e.to_string())?;
+            if !owned(&held) || (held.mode() & 0o022 != 0 && held.mode() & 0o1000 == 0) {
+                return Err(format!("{} belongs to another account, or another account may write in it", folder.display()));
+            }
+        }
+        Ok(())
+    }
+
+    /// The new program tried before it takes the connection, standard input
+    /// from /dev/null, its output captured, five seconds at most each
+    /// (`PROBE`): `--version`, never older than this program's; then the
+    /// arguments it would be given, with `--help`, which an older program
+    /// refusing one of them (`remind --watch --session`) fails (review of
+    /// wt/mail, F3). Why it cannot serve, when it cannot.
+    fn try_it(path: &Path, arguments: &[OsString]) -> Result<(), String> {
+        let said = run(path, &[OsString::from("--version")], true)?;
+        if let Some(theirs) = version_in(&said)
+            && theirs < version_in(&format!("sioul {}", env!("CARGO_PKG_VERSION"))).unwrap_or_default()
+        {
+            return Err(format!("it is an older version ({})", said.trim()));
+        }
+        // After `--`, `--help` would be a word: the arguments are not tried then.
+        let given = arguments.get(1..).unwrap_or_default();
+        if given.iter().any(|a| a == "--") {
+            return Ok(());
+        }
+        let mut asked: Vec<OsString> = given.to_vec();
+        asked.push("--help".into());
+        run(path, &asked, false).map(drop).map_err(|why| format!("it refuses the arguments it would be given ({why})"))
+    }
+
+    /// `path` run with `arguments`: what it printed (with `kept`; a short
+    /// answer alone, which the pipe holds), when it ended well.
+    fn run(path: &Path, arguments: &[OsString], kept: bool) -> Result<String, String> {
         use std::process::{Command, Stdio};
-        let mut child = Command::new(path).arg("--version").env_remove(HANDOVER).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+        let out = if kept { Stdio::piped() } else { Stdio::null() };
+        let mut child = Command::new(path).args(arguments).env_remove(HANDOVER).stdin(Stdio::null()).stdout(out).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
         let deadline = Instant::now() + PROBE;
         loop {
             match child.try_wait().map_err(|e| e.to_string())? {
-                Some(status) if status.success() => return Ok(()),
-                Some(status) => return Err(format!("its --version ended with {status}")),
+                Some(status) if status.success() => {
+                    let mut out = String::new();
+                    if let Some(mut stdout) = child.stdout.take() {
+                        let _ = std::io::Read::read_to_string(&mut stdout, &mut out);
+                    }
+                    return Ok(out);
+                }
+                Some(status) => return Err(format!("{} ended with {status}", arguments.first().map_or(String::new(), |a| a.to_string_lossy().into_owned()))),
                 None if Instant::now() >= deadline => {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err("its --version did not answer within five seconds".into());
+                    return Err("it did not answer within five seconds".into());
                 }
                 None => std::thread::sleep(Duration::from_millis(20)),
             }
         }
+    }
+
+    /// The version a `--version` line says ("sioul 0.0.9 …" → [0, 0, 9]); none when it says none.
+    pub(super) fn version_in(said: &str) -> Option<Vec<u64>> {
+        let word = said.split_whitespace().nth(1)?;
+        let numbers: Vec<u64> = word.split(['-', '+', ' ']).next()?.split('.').map(|n| n.parse().ok()).collect::<Option<_>>()?;
+        (!numbers.is_empty()).then_some(numbers)
     }
 
     /// Runs `path` in this process's place with `arguments`, the environment
@@ -303,5 +366,39 @@ mod unix {
         // 1 and 2 go on to the new program, the others close (CLOEXEC).
         unsafe { libc::execve(program.as_ptr(), argv.as_ptr(), envp.as_ptr()) };
         std::io::Error::last_os_error()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Review of wt/mail, F3 and F8: versions read from `--version`; a
+    /// program others may change, or in a folder others may write, is
+    /// never followed.
+    #[cfg(unix)]
+    #[test]
+    fn a_new_program_is_followed_only_when_yours_alone_and_not_older() {
+        use super::unix::{version_in, yours_alone};
+        assert_eq!(version_in("sioul 0.0.9 (a1b2c3d, 2026-11-10)"), Some(vec![0, 0, 9]));
+        assert_eq!(version_in("sioul 0.0.10-3-gabcdef"), Some(vec![0, 0, 10]));
+        assert!(version_in("sioul 0.0.9").unwrap() < version_in("sioul 0.0.10").unwrap());
+        assert_eq!(version_in("nonsense"), None);
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("sioul-follow-owner-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let program = dir.join("sioul");
+        std::fs::write(&program, "a program").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(yours_alone(&program).is_ok());
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o775)).unwrap();
+        assert!(yours_alone(&program).is_err(), "a group may change it");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(yours_alone(&program).is_err(), "anyone may put another there");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o1777)).unwrap();
+        assert!(yours_alone(&program).is_ok(), "sticky: what you put there stays yours");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
