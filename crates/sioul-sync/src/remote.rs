@@ -1887,6 +1887,25 @@ impl Puller<'_> {
         // Looked through anew: what is left to the sync app, found again.
         self.state.left.clear();
         self.own_listed("", &root);
+        // A file that fails to come (a slow line, a file the server holds
+        // locked while its device's sync app writes it each minute: 423)
+        // stops nothing else: the others come, the walk ends, and the pull
+        // says the first failure, its folders not taken as looked through, so
+        // that the next pull asks again. Until 10 November 2026 a record that
+        // failed stopped the walk before the devices' entries, and a phone kept
+        // a computer's entry from before, taking it for closed (an entry ahead
+        // of its records reads as not wholly read: the doses doubt, never know
+        // wrongly).
+        let mut failed: Option<Stop> = None;
+        let defer = |done: Result<(), Stop>, failed: &mut Option<Stop>| -> Result<(), Stop> {
+            match done {
+                Err(Stop::Failed(e)) => {
+                    failed.get_or_insert(Stop::Failed(e));
+                    Ok(())
+                }
+                done => done,
+            }
+        };
         for (name, item) in root.items.iter().filter(|(_, item)| !item.dir) {
             match kind_of(name) {
                 // A round past its time of a device that no longer counts,
@@ -1894,9 +1913,9 @@ impl Puller<'_> {
                 // keeping the folder itself takes it out there (`push`).
                 Some((Kind::Round, id)) if id != self.own && (self.departed.past_round(name) || self.departed.removed_as_known(name, item, &self.state.files)) => self.away(name, item),
                 Some((Kind::Seen, id)) if id != self.own && self.departed.removed_as_known(name, item, &self.state.files) => self.away(name, item),
-                Some((Kind::Round, id)) if id != self.own => self.round(name, item)?,
-                Some((Kind::Seen, id)) if id != self.own => self.small(name, item)?,
-                Some(_) if self.mirror() => self.restore(name, item)?,
+                Some((Kind::Round, id)) if id != self.own => defer(self.round(name, item), &mut failed)?,
+                Some((Kind::Seen, id)) if id != self.own => defer(self.small(name, item), &mut failed)?,
+                Some(_) if self.mirror() => defer(self.restore(name, item), &mut failed)?,
                 _ => {}
             }
         }
@@ -1910,17 +1929,21 @@ impl Puller<'_> {
             if let Some(item) = listing.items.get(&format!("{}.device", self.own)).filter(|item| !item.dir) {
                 self.state.own_entry = Some((item.size, self.now));
             }
+            let mut devices_failed: Option<Stop> = None;
             for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                 let relative = format!("devices/{name}");
                 match kind_of(&relative) {
                     Some((_, id)) if id != self.own && self.departed.removed_as_known(&relative, item, &self.state.files) => self.away(&relative, item),
-                    Some((_, id)) if id != self.own => self.small(&relative, item)?,
-                    Some(_) if self.mirror() => self.restore(&relative, item)?,
+                    Some((_, id)) if id != self.own => defer(self.small(&relative, item), &mut devices_failed)?,
+                    Some(_) if self.mirror() => defer(self.restore(&relative, item), &mut devices_failed)?,
                     _ => {}
                 }
             }
             self.forget_gone("devices/", &listing);
-            self.looked("devices/", &listing.etag);
+            if devices_failed.is_none() {
+                self.looked("devices/", &listing.etag);
+            }
+            failed = failed.or(devices_failed);
         }
         if let Some(leases) = root.items.get("leases").filter(|item| item.dir)
             && !self.unchanged("leases/", &leases.etag)
@@ -1990,6 +2013,9 @@ impl Puller<'_> {
             self.state.blobs_seen = root.items.get("blobs").filter(|item| item.dir).map(|item| if item.etag.is_empty() { "-".to_string() } else { item.etag.clone() }).unwrap_or_default();
         }
         self.forget_gone("", &root);
+        if let Some(failed) = failed {
+            return Err(failed);
+        }
         self.looked("", &root.etag);
         Ok(())
     }
@@ -4938,14 +4964,18 @@ mod tests {
         assert!(arrived.is_empty() || (arrived.ends_with(b"\n") && whole.starts_with(&arrived) && arrived.len() < whole.len()), "whole lines only: {} of {}", arrived.len(), whole.len());
         let first = w.phone.exchange(&w.phone_folder, DUE + 130);
         assert!(first.problems.iter().all(|p| !p.starts_with("share-other")), "{:?}", first.problems);
-        // Then the desk's entry comes cut: never kept, never read.
+        // Then the desk's entry, written again there, comes cut: never kept,
+        // never read. The one the first pull brought (the walk goes on past
+        // the records cut, since 10 November 2026) stays.
         let entry = format!("devices/{}.device", w.desk.id);
+        let before = std::fs::read(w.cache().join(&entry)).ok();
+        w.desk.session(&w.server, |e| e.active = Some(true));
         let name = entry.clone();
         w.fake.fault(once(move |r| r.method == "GET" && r.path.ends_with(&name), Fault::Cut(40)));
         let pulled = w.pull(DUE + 140);
         assert!(pulled.problem.as_deref().is_some_and(|p| p.starts_with("network:")), "{pulled:?}");
         assert_eq!(std::fs::read(&cached).unwrap(), whole, "the records whole now");
-        assert!(!w.cache().join(&entry).exists(), "an entry cut is not kept");
+        assert_eq!(std::fs::read(w.cache().join(&entry)).ok(), before, "an entry cut is not kept");
         let (entries, unread) = crate::devices::all(&w.phone_folder, &KEY);
         assert!(entries.iter().any(|e| e.id == w.desk.id) && !unread.contains(&w.desk.id), "the folder's copy read meanwhile");
         let second = w.phone.exchange(&w.phone_folder, DUE + 150);
@@ -5023,6 +5053,34 @@ mod tests {
         let without = w.phone.exchange(&w.phone_folder, DUE + 200);
         assert_eq!((with.received, &with.problems), (without.received, &without.problems));
         assert_eq!(w.phone.kept(), kept_with);
+    }
+
+    /// The desk's records held locked on the server (its sync app writing
+    /// them each minute: 423), or too slow to come: the pull goes on past
+    /// them and brings its entry, so that a phone sees the desk in use, and
+    /// says the failure; the records come at the next pull. Until 10 November
+    /// 2026 the walk stopped at the records, before the entries, and the
+    /// phone kept the desk's entry from before.
+    #[test]
+    fn a_locked_record_never_holds_back_the_devices_entries() {
+        let w = World::new("locked-round");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.desk.press(true, DUE + 30);
+        w.desk.exchange(&w.server, DUE + 60);
+        let round = w.desk_round();
+        let entry = format!("devices/{}.device", w.desk.id);
+        let locked = round.clone();
+        w.fake.fault(move |request| (request.method == "GET" && request.path.ends_with(&locked)).then_some(Fault::Status(423)));
+        let pulled = w.pull(DUE + 70);
+        assert!(pulled.problem.is_some(), "the record did not come: {pulled:?}");
+        assert!(w.cache().join(&entry).exists() && !w.cache().join(&round).exists(), "the entry came, its records not");
+        attach(&w.phone_folder, &w.phone.memory);
+        let desk = crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id).unwrap();
+        assert!(crate::devices::others_in_use(&[desk], &w.phone.id, DUE + 70, false), "the desk in use, as its entry says");
+        // Unlocked: the records come at the next pull.
+        w.fake.clear_faults();
+        assert!(w.pull(DUE + 130).problem.is_none());
+        assert!(w.cache().join(&round).exists());
     }
 
     #[test]
