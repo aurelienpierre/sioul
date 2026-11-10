@@ -1325,6 +1325,10 @@ fn checks(card: &Card, ctx: &Context) -> Checks {
 
 /// `checks`, the results and the code already read (`detected`).
 fn checks_with(card: &Card, ctx: &Context, auth: Option<trust::AuthResults>, detected: Option<OneTimeCode>) -> Checks {
+    // A triage reads your words on spam and your dealings where Sioul keeps
+    // them: a test's never are the person's own (review of 1a2c6a2, C4).
+    #[cfg(test)]
+    crate::config::stand_ins_only();
     // A proof counts for the domain of the address shown, never for another one.
     // A mailing list excuses a DMARC failure (it rewrites what it relays) when a
     // trusted seal or its own signature answers for it (`trust::list_excused`), but
@@ -1675,6 +1679,8 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
 }
 
 pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &SenderList, senders: &Senders, state: &PorchState, now: i64) -> Vec<Triaged> {
+    #[cfg(test)]
+    crate::config::stand_ins_only();
     let own = own_domains(sources);
     let own_addresses = own_addresses(sources);
     let own_domains = own.as_slice();
@@ -2511,6 +2517,7 @@ mod tests {
     /// valid always is, its lane moving with the clock.
     #[test]
     fn a_message_is_triaged_again_only_once_it_or_what_decides_it_changed() {
+        crate::config::stand_ins_only();
         let root = std::env::temp_dir().join(format!("sioul-porch-kept-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for sub in ["new", "cur", "tmp"] {
@@ -2565,6 +2572,7 @@ mod tests {
     #[ignore]
     fn porch_triage_bench() {
         let Some(base) = std::env::var_os("SIOUL_PORCH_BENCH").map(PathBuf::from) else { return };
+        crate::config::stand_ins_only();
         let cpu_ns = || std::fs::read_to_string("/proc/thread-self/schedstat").ok().and_then(|t| t.split_whitespace().next().and_then(|n| n.parse::<u64>().ok())).unwrap_or(0);
         let sources: Vec<Source> = std::fs::read_dir(&base)
             .unwrap()
