@@ -1048,8 +1048,9 @@ pub fn rebased<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T]) ->
 
 /// `rebased`, for a list of structured elements (days off, hours, routes):
 /// an element the editor changed is its new version in place of the one the
-/// list holds now. Found by its id (`ids`, `real`: a day off's), whatever it
-/// holds now: two devices changing it keep one, the later change. By a key
+/// list holds now. Found by its id (`ids`, `real`: a day off's, a route's
+/// since 10 November 2026), whatever it holds now: two devices changing it
+/// keep one, the later change. By a key
 /// (`ids`, not `real`: a day's window by its rank, which a window added
 /// elsewhere shifts) only while the element there is the one shown, else by
 /// what it held wherever it is now; not there, nothing is replaced and the
@@ -1173,7 +1174,7 @@ pub fn rebase(shown: &SettingValue, value: &SettingValue, current: &SettingValue
         (V::Ints(s), V::Ints(v), V::Ints(c)) => V::Ints(rebased(s, v, c)),
         (V::Windows(s), V::Windows(v), V::Windows(c)) => V::Windows(rebased_by(s, v, c, window_ids, false)),
         (V::TimeOff(s), V::TimeOff(v), V::TimeOff(c)) => V::TimeOff(rebased_by(s, v, c, |days| days.iter().map(|d| Some(d.id.clone()).filter(|id| !id.is_empty())).collect(), true)),
-        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased_by(s, v, c, |routes| vec![None; routes.len()], false)),
+        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased_by(s, v, c, |routes| routes.iter().map(|r| Some(r.id.clone()).filter(|id| !id.is_empty())).collect(), true)),
         _ => value,
     }
 }
@@ -1719,8 +1720,8 @@ mod tests {
         assert_eq!(got, [("07:00", "08:00"), ("09:00", "12:00"), ("14:00", "18:00")]);
     }
 
-    /// One route changed on two devices at once (routes have no id): one
-    /// route, the later change; the others stay (fifth review).
+    /// One route changed on two devices at once, written before routes had
+    /// ids: one route, the later change; the others stay (fifth review).
     #[test]
     fn one_route_changed_on_two_devices_stays_one() {
         let route = |word: &str| crate::projects::RouteValue { subject_contains: vec![word.into()], ..Default::default() };
@@ -1728,6 +1729,27 @@ mod tests {
         assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("a3"), route("b")])), routes(vec![route("a2"), route("b")]));
         // Moved by another device: found by what it held.
         assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("b"), route("c"), route("a")])), routes(vec![route("a2"), route("b"), route("c")]));
+    }
+
+    /// One route changed on two devices within one exchange while the other
+    /// device also added or took out another (the list no longer as long as
+    /// shown): by its id, one route, the later change, and the other
+    /// device's change to the rest stays. Until 10 November 2026 routes had
+    /// no id, and it came out twice (review of 13 October 2026, §4.8).
+    #[test]
+    fn a_route_changed_on_two_devices_stays_one_by_its_id() {
+        let route = |id: &str, word: &str| crate::projects::RouteValue { id: id.into(), subject_contains: vec![word.into()], ..Default::default() };
+        let routes = |list: Vec<crate::projects::RouteValue>| SettingValue::Routes(list);
+        let shown = routes(vec![route("r1", "a"), route("r2", "b")]);
+        let value = routes(vec![route("r1", "a2"), route("r2", "b")]);
+        // Elsewhere: the same route changed, another added.
+        assert_eq!(rebase(&shown, &value, &routes(vec![route("r1", "a3"), route("r2", "b"), route("r3", "c")])), routes(vec![route("r1", "a2"), route("r2", "b"), route("r3", "c")]));
+        // Elsewhere: the same route changed, the other taken out.
+        assert_eq!(rebase(&shown, &value, &routes(vec![route("r1", "a3")])), routes(vec![route("r1", "a2")]));
+        // Elsewhere: the same route changed and moved after a new one.
+        assert_eq!(rebase(&shown, &value, &routes(vec![route("r3", "c"), route("r2", "b"), route("r1", "a3")])), routes(vec![route("r1", "a2"), route("r2", "b"), route("r3", "c")]));
+        // Taken out here, changed elsewhere meanwhile: the change kept, as for any list (nothing lost).
+        assert_eq!(rebase(&shown, &routes(vec![route("r2", "b")]), &routes(vec![route("r1", "a3"), route("r2", "b")])), routes(vec![route("r2", "b"), route("r1", "a3")]));
     }
 
     /// Where scans arrive, moved from the Porch's settings to the Letters page:

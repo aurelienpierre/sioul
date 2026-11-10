@@ -356,6 +356,12 @@ pub fn rename_file(root: &Path) -> Result<PathBuf, String> {
 /// A route matches when every list it fills has at least one match.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct Route {
+    /// Its id, given when it is written (`set_routes`, `ids::new`): an edit
+    /// of it names it so, and one route changed on two devices stays one
+    /// (`settings::rebased_by`). "" for one written before 10 November 2026,
+    /// by an older Sioul or by hand, which takes one at its next edit.
+    #[serde(default)]
+    pub id: String,
     /// The sender's domain or any of its subdomains: "finances.example" covers "dgfip.finances.example".
     #[serde(default)]
     pub from_domains: Vec<String>,
@@ -553,6 +559,10 @@ impl ProjectStore {
 /// A route as the settings edit it: each list may be empty.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub struct RouteValue {
+    /// Its id, when it has one (`Route::id`): the window sends it back with
+    /// the route's new words, so that the edit names it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
     #[serde(default)]
     pub from_domains: Vec<String>,
     #[serde(default)]
@@ -568,6 +578,7 @@ pub struct RouteValue {
 impl From<&Route> for RouteValue {
     fn from(route: &Route) -> RouteValue {
         RouteValue {
+            id: route.id.clone(),
             from_domains: route.from_domains.clone(),
             from_addresses: route.from_addresses.clone(),
             subject_contains: route.subject_contains.clone(),
@@ -600,7 +611,8 @@ pub fn remove_project(file: &Path, project_id: &str) -> Result<(), String> {
 }
 
 /// Replaces a project's routes in its file, in place: its other fields and
-/// the file's comments stay. Routes left empty are dropped.
+/// the file's comments stay. Routes left empty are dropped. Each keeps its
+/// id, and one without (new, or written before routes had ids) takes one.
 pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(file, || {
@@ -609,22 +621,26 @@ pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Resul
         let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
         let mut tables = ArrayOfTables::new();
         for route in routes {
-            let mut table = Table::new();
-            for (key, list) in [
+            let lists: Vec<(&str, Vec<&str>)> = [
                 ("from_domains", &route.from_domains),
                 ("from_addresses", &route.from_addresses),
                 ("subject_contains", &route.subject_contains),
                 ("text_contains", &route.text_contains),
                 ("attachment_contains", &route.attachment_contains),
-            ] {
-                let cleaned: Vec<&str> = list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-                if !cleaned.is_empty() {
-                    table[key] = value(cleaned.into_iter().collect::<Array>());
-                }
+            ]
+            .into_iter()
+            .map(|(key, list)| (key, list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<&str>>()))
+            .filter(|(_, cleaned)| !cleaned.is_empty())
+            .collect();
+            if lists.is_empty() {
+                continue;
             }
-            if !table.is_empty() {
-                tables.push(table);
+            let mut table = Table::new();
+            table["id"] = value(if route.id.trim().is_empty() { crate::ids::new() } else { route.id.trim().to_string() });
+            for (key, cleaned) in lists {
+                table[key] = value(cleaned.into_iter().collect::<Array>());
             }
+            tables.push(table);
         }
         if tables.is_empty() {
             project.remove("route");
@@ -764,6 +780,13 @@ mod tests {
         assert_eq!((store.projects[0].routes[0].from_domains.clone(), store.projects[0].routes[0].subject_contains.clone()), (vec!["finances.example".to_string()], vec!["avis".to_string()]));
         assert_eq!(store.projects[1].title, "Bill");
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# My projects."));
+        // Each route written takes an id, and keeps it when it is edited; a new one takes its own.
+        let id = store.projects[0].routes[0].id.clone();
+        assert!(!id.is_empty());
+        let edited = RouteValue { subject_contains: vec!["avis".into(), "taxe".into()], ..RouteValue::from(&store.projects[0].routes[0]) };
+        set_routes(&path, "taxes", &[edited, RouteValue { from_addresses: vec!["impots@example.org".into()], ..RouteValue::default() }]).unwrap();
+        let routes = ProjectStore::load(&dir).unwrap().projects[0].routes.clone();
+        assert!(routes.len() == 2 && routes[0].id == id && routes[0].subject_contains.len() == 2 && !routes[1].id.is_empty() && routes[1].id != id, "{routes:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
