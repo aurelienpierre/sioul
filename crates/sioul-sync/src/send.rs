@@ -289,15 +289,21 @@ pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<()
         let _ = client.quit().await;
         sent
     });
-    // Sent to some (a Bcc copy refused): filed all the same, then said.
-    let partly = match sent {
+    // Sent to some (a Bcc copy refused): filed all the same, then said, with
+    // whether Sent has its copy (the caller keeps a draft to those missed).
+    let mut partly = match sent {
         Ok(()) => None,
-        Err(e @ SyncError::PartlySent(_)) => Some(e),
+        Err(e @ SyncError::PartlySent { .. }) => Some(e),
         Err(e) => return Err(e),
     };
-    if !files_its_own_sent(account) {
-        // Sent, but its copy may not be filed: that is said, the message is not sent twice.
-        file_in_sent(account, password, &outgoing.raw).map_err(|e| partly.clone().unwrap_or_else(|| SyncError::NotFiled(e.detail().to_string())))?;
+    if !files_its_own_sent(account)
+        && let Err(e) = file_in_sent(account, password, &outgoing.raw)
+    {
+        match partly.as_mut() {
+            Some(SyncError::PartlySent { filed, .. }) => *filed = false,
+            // Sent, but its copy may not be filed: that is said, the message is not sent twice.
+            _ => return Err(SyncError::NotFiled(e.detail().to_string())),
+        }
     }
     partly.map_or(Ok(()), Err)
 }
@@ -329,7 +335,11 @@ async fn send_each<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(clie
         (_, true) => Ok(()),
         // Nothing went: the first refusal, as a message alone would say it.
         (false, false) => Err(missed.swap_remove(0).1),
-        (true, false) => Err(SyncError::PartlySent(missed.iter().map(|(to, e)| format!("{to}: {}", e.detail())).collect::<Vec<_>>().join("; "))),
+        (true, false) => Err(SyncError::PartlySent {
+            detail: missed.iter().map(|(to, e)| format!("{to}: {}", e.detail())).collect::<Vec<_>>().join("; "),
+            missed: missed.into_iter().map(|(to, _)| to).collect(),
+            filed: true,
+        }),
     }
 }
 
@@ -717,7 +727,7 @@ mod tests {
                     assert!(matches!(sent, Err(SyncError::Refused(_))), "{sent:?}");
                     assert!(delivered.is_empty(), "{delivered:?}");
                 } else {
-                    assert!(matches!(&sent, Err(SyncError::PartlySent(d)) if d.contains("bob@example.net") && !d.contains("dan@")), "{sent:?}");
+                    assert!(matches!(&sent, Err(SyncError::PartlySent { detail, missed, filed: true }) if detail.contains("bob@example.net") && !detail.contains("dan@") && *missed == ["bob@example.net"]), "{sent:?}");
                     let went: Vec<(&str, bool)> = delivered.iter().map(|(to, body)| (to.as_str(), body.ends_with("main") || body.ends_with("dan"))).collect();
                     assert_eq!(went, vec![("jane@example.org", true), ("dan@example.com", true)]);
                 }

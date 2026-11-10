@@ -306,8 +306,10 @@ pub enum SyncError {
     /// Sent, but its copy could not be filed in Sent.
     NotFiled(String),
     /// Sent, but not to each of its Bcc recipients: an encrypted message's
-    /// copy of their own was refused (whom it missed, and why).
-    PartlySent(String),
+    /// copy of their own was refused. `missed`: those it did not reach, for
+    /// a draft to them alone; `detail`: whom and why; `filed`: whether its
+    /// copy went into Sent all the same.
+    PartlySent { missed: Vec<String>, detail: String, filed: bool },
     /// The message could not be written (no recipient, an attachment gone): said as is.
     Message(String),
     /// A server's answer named an address on another server (a calendar, an
@@ -349,7 +351,8 @@ impl SyncError {
             SyncError::Disk(_) => "sync-error-disk",
             SyncError::Refused(_) => "send-error-refused",
             SyncError::NotFiled(_) => "send-error-not-filed",
-            SyncError::PartlySent(_) => "send-error-partly-sent",
+            SyncError::PartlySent { filed: true, .. } => "send-error-partly-sent",
+            SyncError::PartlySent { filed: false, .. } => "send-error-partly-sent-not-filed",
             SyncError::Message(_) => "send-error-message",
             SyncError::Elsewhere(_) => "sync-error-elsewhere",
             SyncError::Said(id, _) => id,
@@ -370,7 +373,7 @@ impl SyncError {
             | SyncError::Disk(d)
             | SyncError::Refused(d)
             | SyncError::NotFiled(d)
-            | SyncError::PartlySent(d)
+            | SyncError::PartlySent { detail: d, .. }
             | SyncError::Message(d)
             | SyncError::Elsewhere(d)
             | SyncError::Said(_, d) => d,

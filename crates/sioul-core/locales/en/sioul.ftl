@@ -844,7 +844,8 @@ compose-attribution = On { $date }, { $name } wrote:
 ## Sending.
 send-error-refused = { $account }: the sending server refused the message ({ $detail }).
 send-error-not-filed = { $account }: sent, but its copy could not be filed in Sent ({ $detail }).
-send-error-partly-sent = { $account }: sent, but not to each Bcc recipient. Not reached: { $detail }.
+send-error-partly-sent = { $account }: sent, but not to each Bcc recipient. Not reached: { $detail }. A draft to them alone waits in Drafts.
+send-error-partly-sent-not-filed = { $account }: sent, but not to each Bcc recipient, and its copy could not be filed in Sent. Not reached: { $detail }. A draft to them alone waits in Drafts, with the text.
 send-error-message = { $detail }
 
 ## The mail client.

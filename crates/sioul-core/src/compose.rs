@@ -187,6 +187,17 @@ impl Draft {
         Draft::load(&Draft::folder().join(format!("{id}.toml")))
     }
 
+    /// The draft left after an encrypted message went to everyone but some
+    /// of its Bcc recipients (`missed`, their copies refused): addressed to
+    /// them alone, in Bcc as before, so that sending it again reaches only
+    /// them and its text is not lost.
+    pub fn to_those_missed(&mut self, missed: &[String]) {
+        let missed_one = |entry: &String| address_of(entry).is_some_and(|a| missed.iter().any(|m| m.eq_ignore_ascii_case(&a)));
+        self.bcc.retain(missed_one);
+        self.to.clear();
+        self.cc.clear();
+    }
+
     /// Every recipient, for the envelope: To, Cc and Bcc.
     pub fn recipients(&self) -> Vec<String> {
         self.to.iter().chain(&self.cc).chain(&self.bcc).filter_map(|r| address_of(r)).collect()
@@ -1043,6 +1054,20 @@ mod tests {
         assert!(parsed.body_text(0).unwrap().replace("\r\n", "\n").contains("here it is.\n\n-- \nMe"), "{:?}", parsed.body_text(0));
         assert!(view.encrypted && view.opened && view.signatures[0].good, "{view:?}");
         assert_eq!(quoted_printable("a = b \nnext"), b"a =3D b=20\r\nnext".to_vec());
+    }
+
+    /// Review of wt/mail, F7: an encrypted message sent to everyone but a
+    /// Bcc recipient leaves a draft to that recipient alone, in Bcc.
+    #[test]
+    fn a_draft_for_those_missed_names_them_alone() {
+        let mut draft = Draft::new("me");
+        draft.to = vec!["Jane <jane@example.org>".into()];
+        draft.cc = vec!["carol@example.org".into()];
+        draft.bcc = vec!["Bob <bob@example.net>".into(), "dan@example.com".into()];
+        draft.body = "The minutes.".into();
+        draft.to_those_missed(&["BOB@example.net".into()]);
+        assert!(draft.to.is_empty() && draft.cc.is_empty() && draft.body == "The minutes.");
+        assert_eq!(draft.bcc, ["Bob <bob@example.net>"]);
     }
 
     #[test]

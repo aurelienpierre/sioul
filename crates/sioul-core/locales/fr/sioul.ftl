@@ -868,7 +868,8 @@ compose-attribution = Le { $date }, { $name } a écrit :
 ## L’envoi.
 send-error-refused = { $account } : le serveur d’envoi a refusé le courriel ({ $detail }).
 send-error-not-filed = { $account } : envoyé, mais sa copie n’a pas pu être rangée dans les Envoyés ({ $detail }).
-send-error-partly-sent = { $account } : envoyé, mais pas à chaque destinataire en Cci. Non atteints : { $detail }.
+send-error-partly-sent = { $account } : envoyé, mais pas à chaque destinataire en Cci. Non atteints : { $detail }. Un brouillon pour eux seuls attend dans les Brouillons.
+send-error-partly-sent-not-filed = { $account } : envoyé, mais pas à chaque destinataire en Cci, et sa copie n’a pas pu être rangée dans les Envoyés. Non atteints : { $detail }. Un brouillon pour eux seuls attend dans les Brouillons, avec le texte.
 send-error-message = { $detail }
 
 ## Le client de courriel.
