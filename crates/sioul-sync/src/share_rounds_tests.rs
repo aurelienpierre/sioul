@@ -194,6 +194,8 @@ fn a_silent_device_holds_nothing_back_whatever_its_notes_say() {
 #[test]
 fn a_device_silent_a_month_holds_no_round_back_and_finds_every_entry_back() {
     let s = scene("rounds-month");
+    // Its last entry says a Sioul that reads a return after its rounds went (R7).
+    entry(&s.old, &s.folder, &s.key, crate::devices::PHONE, |e| e.version = sioul_core::build::VERSION.into());
     // Within the month: the old phone still holds the desk's rounds back.
     let within = s.now + (ROUNDS_SILENT_DAYS - 1) * DAY_MS;
     s.phone.write("config/known-senders.txt", "shop@example.org\n");
@@ -227,6 +229,27 @@ fn a_device_silent_a_month_holds_no_round_back_and_finds_every_entry_back() {
     assert!(memory.counting.as_ref().is_some_and(|c| c.contains(&s.old.id)), "{:?}", memory.counting);
     assert!(!memory.uncounted.contains(&s.old.id), "{:?}", memory.uncounted);
     let _ = std::fs::remove_dir_all(&s.base);
+}
+
+/// A device silent a month whose last entry says a Sioul before 0.0.7, or
+/// no version at all, still holds the others' rounds back until silent
+/// `SILENT_DAYS`: back after its rounds went, such a Sioul makes a
+/// conflicted copy of every note changed twice meanwhile (review of
+/// wt/sync, R7).
+#[test]
+fn an_older_sioul_silent_a_month_still_holds_rounds_back() {
+    for version in ["0.0.6", ""] {
+        let s = scene(&format!("rounds-month-older{version}"));
+        entry(&s.old, &s.folder, &s.key, crate::devices::PHONE, |e| e.version = version.into());
+        let later = s.now + (ROUNDS_SILENT_DAYS + 1) * DAY_MS;
+        s.phone.write("config/known-senders.txt", "shop@example.org\n");
+        s.phone.exchange(&s.folder, &s.key, later - MINUTE);
+        s.desk.exchange(&s.folder, &s.key, later);
+        assert_eq!(kept(&s.folder, &s.desk.id)[0], 1, "{version:?}: held back");
+        assert_eq!(crate::share::rounds_past(&s.folder, &s.desk.memory, &s.desk.id, later), Some(1), "{version:?}: the sending agrees");
+        let _ = std::fs::remove_dir_all(&s.base);
+    }
+    assert!(reads_gaps("0.0.7") && reads_gaps("0.0.9") && reads_gaps("0.1.0-beta") && !reads_gaps("1.0") && !reads_gaps("0.0.6") && !reads_gaps("") && !reads_gaps("next"));
 }
 
 /// A live phone's rounds wait for every device that counts: one that read
@@ -544,6 +567,8 @@ fn a_device_back_after_ninety_days_takes_out_what_went_meanwhile() {
         phone.exchange(&folder, &key, NOW + MINUTE);
         laptop.write("data/drafts/2026-09-30.json", "{\"steps\": 1}");
         laptop.exchange(&folder, &key, NOW + 2 * MINUTE);
+        // Of a Sioul that reads a return after its rounds went (R7).
+        entry(&laptop, &folder, &key, crate::devices::COMPUTER, |e| e.version = sioul_core::build::VERSION.into());
         assert!(laptop.read("config/safe-senders.txt").contains("neighbour@") && !laptop.read("data/drafts/2026-09-15.json").is_empty());
         desk.exchange(&folder, &key, NOW + 3 * MINUTE);
         phone.exchange(&folder, &key, NOW + 4 * MINUTE);

@@ -468,6 +468,40 @@ fn device_paths(o: &Old) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
     (o.folder.join("devices").join(format!("{id}.device")), seen_path(&o.folder, id), o.folder.join("leases").join("health").join(format!("{id}.lease")), o.folder.join("texts").join("send").join(format!("{id}.jsonl")))
 }
 
+/// "Remove its files" names every device that counts and has not read all
+/// of the device's records, one switched off for weeks too: past
+/// `ROUNDS_SILENT_DAYS` its rounds no longer wait for it, but once removed,
+/// what it had not read would never reach it (review of wt/sync, R8: a
+/// laptop off for 40 days was no longer named).
+#[test]
+fn remove_its_files_names_a_device_off_for_weeks_that_has_not_read_it() {
+    let o = old_one("gc-remove-unread-weeks");
+    let stores = stores_with(&o.desk, &o.dn, false);
+    // The laptop's entry, as its window writes it: its Sioul reads a return after its rounds went
+    // (R7), and it was last at work a couple of minutes ago.
+    crate::devices::change(&crate::devices::own_path(&o.laptop.roots.state), Some((&o.folder, &o.key)), |e| {
+        e.version = sioul_core::build::VERSION.into();
+        e.started = (o.now - 2 * MINUTE) / 1000;
+    })
+    .unwrap();
+    // The old one writes once more after the laptop's last look, then leaves.
+    put(&o.on, "plans.md", b"# Plans, third\n");
+    with_notes(&o.old, &o.folder, &o.key, o.now, &o.on);
+    crate::devices::change(&crate::devices::own_path(&o.old.roots.state), Some((&o.folder, &o.key)), |e| {
+        e.close(o.now / 1000);
+        e.left = true;
+    })
+    .unwrap();
+    // Forty days on: the laptop, off since, still counts, and no longer holds rounds back.
+    let later = o.now + 40 * DAY_MS;
+    with_notes(&o.desk, &o.folder, &o.key, later, &o.dn);
+    let memory = Memory::load(&o.desk.memory, &o.desk.id);
+    assert!(memory.counting.as_ref().is_some_and(|c| !c.contains(&o.laptop.id)) && memory.uncounted.contains(&o.laptop.id), "{:?} {:?}", memory.counting, memory.uncounted);
+    let said = device_files(&o.folder, &o.key, &o.desk.memory, &o.desk.id, &stores, &o.old.id, later + 1_000).unwrap();
+    assert!(said.unread_by.iter().any(|(id, ..)| *id == o.laptop.id), "{said:?}");
+    let _ = std::fs::remove_dir_all(&o.base);
+}
+
 /// "Remove its files" for a computer that left: every round of its goes,
 /// its last full round too, its claims, its texts to send, its note of how
 /// far it read (no device counts it), and the content of its last word that
