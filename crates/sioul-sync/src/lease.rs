@@ -181,6 +181,19 @@ fn holds(claim: &Claim, rule: Rule, now: i64) -> bool {
     claim.until > now || (rule == Rule::StaysPut && !claim.closed && now - claim.renewed <= UNCLOSED)
 }
 
+/// Another computer's claim on a part that stays put (invoices), closed
+/// with records it wrote not all read here yet (`read`: whether everything
+/// a computer wrote up to its round and number is read here,
+/// `share::Heard::complete`): what it numbered last may be in them, and
+/// numbering here before they come could give one number twice. A pull
+/// brings a claim ahead of a record it could not fetch (a round the server
+/// holds locked: review of 3273f2d, R2), and a phone's sync app may too. A
+/// day after its last renewal it no longer counts (`UNCLOSED`): records not
+/// come by then were lost, never read.
+pub fn closed_unread<'a>(claims: &'a [Claim], computer: &str, now: i64, read: impl Fn(&str, (u32, u64)) -> bool) -> Option<&'a Claim> {
+    claims.iter().find(|c| c.computer != computer && c.closed && now - c.renewed <= UNCLOSED && c.wrote.is_some_and(|wrote| !read(&c.computer, wrote)))
+}
+
 /// The keeper among the claims that hold the part (`holds`), by the part's
 /// rule; ties go to the smaller id.
 fn choose<'a>(claims: &'a [Claim], rule: Rule, now: i64) -> Option<&'a Claim> {
@@ -316,6 +329,31 @@ mod tests {
         assert!(look(&dir, &key, "invoices", "desktop", 1200 + UNCLOSED + 1, Rule::StaysPut).mine, "a day without news: it keeps nothing");
         // Another key reads nothing: a stranger's claims do not count.
         assert!(look(&dir, &[1u8; 32], "invoices", "desktop", 1210, Rule::StaysPut).mine);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The review of 3273f2d, R2: the desk makes an invoice and quits; its
+    /// closed claim comes to the laptop ahead of the record holding the
+    /// invoice. The laptop keeps the invoices, settled, but numbers nothing
+    /// until that record is read here, or a day went by.
+    #[test]
+    fn a_closed_claim_holds_the_numbers_until_its_records_are_read() {
+        let dir = folder("closed-unread");
+        let key = [3u8; 32];
+        // A part of its own name: who keeps a part, as seen here, is kept by its name for every test (`KEPT`).
+        renew(&dir, &key, "invoices-r2", "desk", 1000, 1000, true, Rule::StaysPut, Some((1, 12))).unwrap();
+        close(&dir, &key, "invoices-r2", "desk", 1100, Some((1, 14))).unwrap();
+        let laptop = renew(&dir, &key, "invoices-r2", "laptop", 1130, 1130, false, Rule::StaysPut, None).unwrap();
+        assert!(laptop.mine && laptop.settled, "a closed claim keeps nothing");
+        let claims = claims(&dir, &key, "invoices-r2");
+        // The desk's records read here up to its record `n`.
+        fn read_to(n: u64) -> impl Fn(&str, (u32, u64)) -> bool {
+            move |computer, wrote| computer == "desk" && (1, n) >= wrote
+        }
+        assert_eq!(closed_unread(&claims, "laptop", 1130, read_to(13)).map(|c| c.computer.as_str()), Some("desk"), "the desk's last record not read here");
+        assert!(closed_unread(&claims, "laptop", 1130, read_to(14)).is_none(), "read as far as it wrote");
+        assert!(closed_unread(&claims, "desk", 1130, read_to(0)).is_none(), "its own claim");
+        assert!(closed_unread(&claims, "laptop", 1100 + UNCLOSED + 1, read_to(13)).is_none(), "a day later: lost, never read");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

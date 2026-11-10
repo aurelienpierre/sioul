@@ -336,7 +336,9 @@ fn invoices_held_elsewhere(shared: &Shared) -> Option<String> {
     if !keeper.mine {
         return refused(say("invoice-elsewhere", &[("computer", keeper.name)]), true);
     }
-    if !keeper.settled {
+    // Another computer closed with records not read here yet: its last
+    // invoice may be in them (review of 3273f2d, R2).
+    if !keeper.settled || crate::share::closed_unread(INVOICES) {
         return refused(tr().text("invoice-settling", None), false);
     }
     // Another computer alive but not heard from lately: the sync may hold its claim back.
