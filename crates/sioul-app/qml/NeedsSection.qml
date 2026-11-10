@@ -361,7 +361,8 @@ ColumnLayout {
         }
     }
 
-    // Minutes, chosen.
+    // Minutes, chosen. Its words wrap beside the box rather than run past the
+    // line it sits on (a phone's 360 points, in French: 10 November 2026).
     component LabeledMinutes: RowLayout {
         id: minutesField
 
@@ -373,11 +374,15 @@ ColumnLayout {
         spacing: 6
 
         Label {
+            Layout.maximumWidth: minutesField.parent && minutesField.parent.width > 0 ? Math.max(60, minutesField.parent.width - minutes.implicitWidth - minutesField.spacing) : Number.POSITIVE_INFINITY
             text: minutesField.label
             textFormat: Text.PlainText
+            wrapMode: Text.Wrap
             color: section.theme.muted
         }
         SpinBox {
+            id: minutes
+
             from: 0
             to: 180
             stepSize: 5
