@@ -60,7 +60,7 @@ What took Sioul's time at rest was work made again for nothing: the Porch made a
 | Signal | 4 mAh | 6 minutes |
 | The screen | 234 mAh | |
 
-Sioul used the most of the apps on that phone, since it does the work of several, and stayed under 1 % of the battery for the day. Android's estimate leaves the mobile radio out, and Sioul kept it awake longest: its background step woke the phone about every five minutes. Since 10 November 2026, while nothing happens, no other device of yours is in use and no medicine dose comes within the week, its looks go to ten minutes, then fifteen, each with its mail: four wakes an hour instead of twelve, by the code's count, to be measured again on the phone.
+Sioul used the most of the apps on that phone, since it does the work of several, and stayed under 1 % of the battery for the day. Android's estimate leaves the mobile radio out, and Sioul kept it awake longest: its background step woke the phone about every five minutes. Since 10 November 2026, while nothing happens, no other device of yours is in use, no medicine dose comes within the week and the phone does not screen calls, its looks go to ten minutes, then fifteen, each with its mail: four wakes an hour instead of twelve, by the code's count, to be measured again on the phone.
 
 The measure can be made again on any computer: `tools/measure-load.py`, `tools/measure-memory.py` and `tools/measure-idle.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 

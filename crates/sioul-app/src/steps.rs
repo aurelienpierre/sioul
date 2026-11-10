@@ -244,9 +244,22 @@ fn next_step(in_use: bool, asleep: bool, quiet: u32) -> i64 {
 /// wrote nothing (`Outcome::quiet`, nothing received nor sent), no texts nor
 /// replies to hand over. Any other step (a file the sync app wrote, a
 /// message or a call for your computers, a press, a start) is news itself.
-/// Mail is not news here: it comes at its own rhythm either way.
-fn spaced(reason: &str, asleep: bool, close: bool, news: bool, doses_ahead: impl FnOnce() -> bool) -> bool {
-    reason == "alarm" && !asleep && !close && !news && !doses_ahead()
+/// Mail is not news here: it comes at its own rhythm either way (`mail_cap`).
+/// Never while this phone screens calls (`calls`): its table holds switches
+/// other devices set ("Expecting a call" pressed at a computer just opened),
+/// which must reach it within five minutes, before the call they wait for.
+fn spaced(reason: &str, asleep: bool, close: bool, news: bool, calls: bool, doses_ahead: impl FnOnce() -> bool) -> bool {
+    reason == "alarm" && !asleep && !close && !news && !calls && !doses_ahead()
+}
+
+/// A spaced step never later than mail's next round (`mail_on`: mail would
+/// be fetched then, `mail_due`), five minutes on at the soonest: a news step
+/// starts the spacing again at five minutes, and a ten-minute look after it
+/// would fall short of the round and push it a quarter of an hour on (the
+/// review of wt/perf, P1: 1,510 s between two rounds at worst). Mail comes at
+/// most five minutes past its time.
+fn mail_cap(after: i64, now: i64, mailed: i64, mail_on: bool) -> i64 {
+    if mail_on { after.min((mailed + MAIL_EVERY - now).max(STEP_AWAKE)) } else { after }
 }
 
 /// An exchange that found nothing to read nor to write (`Outcome::quiet`), or none ran.
@@ -541,7 +554,8 @@ fn step(reason: &str) -> serde_json::Value {
     let close = keeps_close(asleep);
     // Looks in a row that found nothing new, while you are awake and nobody's
     // device is in use: the next one spaced (`spaced`); anything else, five minutes again.
-    let quiet = if spaced(reason, asleep, in_use || close, news, doses_ahead) { QUIET.fetch_add(1, Ordering::Relaxed).saturating_add(1) } else {
+    let screening = calls["screening"] == true || calls["through"] == true;
+    let quiet = if spaced(reason, asleep, in_use || close, news, screening, doses_ahead) { QUIET.fetch_add(1, Ordering::Relaxed).saturating_add(1) } else {
         QUIET.store(0, Ordering::Relaxed);
         0
     };
@@ -549,7 +563,9 @@ fn step(reason: &str) -> serde_json::Value {
     // so that its title changes with the time.
     let now = jiff::Timestamp::now().as_second();
     let (note, until) = note();
+    let mailed = MAILED.load(Ordering::Relaxed);
     let after = next_step(close, asleep, quiet);
+    let after = if quiet > 0 { mail_cap(after, now, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, paused)) } else { after };
     let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(after, |s| s.min(after));
     let words = words();
     serde_json::json!({
@@ -689,16 +705,17 @@ mod tests {
     #[test]
     fn only_a_quiet_look_spaces_the_next() {
         let no_dose = || false;
-        assert!(spaced("alarm", false, false, false, no_dose));
-        assert!(!spaced("alarm", true, false, false, no_dose), "asleep: the night's fifteen minutes, as before");
-        assert!(!spaced("alarm", false, true, false, no_dose), "another device in use: two minutes, as before");
-        assert!(!spaced("alarm", false, false, true, no_dose), "something came or went");
-        assert!(!spaced("alarm", false, false, false, || true), "a dose within the week");
+        assert!(spaced("alarm", false, false, false, false, no_dose));
+        assert!(!spaced("alarm", true, false, false, false, no_dose), "asleep: the night's fifteen minutes, as before");
+        assert!(!spaced("alarm", false, true, false, false, no_dose), "another device in use: two minutes, as before");
+        assert!(!spaced("alarm", false, false, true, false, no_dose), "something came or went");
+        assert!(!spaced("alarm", false, false, false, true, no_dose), "calls screened here: a computer's Expecting a call within five minutes");
+        assert!(!spaced("alarm", false, false, false, false, || true), "a dose within the week");
         for reason in ["folder", "messages", "heard", "calls", "start", "restart"] {
-            assert!(!spaced(reason, false, false, false, no_dose), "{reason}: news itself");
+            assert!(!spaced(reason, false, false, false, false, no_dose), "{reason}: news itself");
         }
         // The doses are asked last, and only when the rest would space the step.
-        assert!(!spaced("alarm", false, true, false, || panic!("asked")));
+        assert!(!spaced("alarm", false, true, false, false, || panic!("asked")));
         use sioul_sync::share::Outcome;
         let quiet = || Outcome { quiet: true, ..Outcome::default() };
         assert!(quiet_exchange(&None) && quiet_exchange(&Some(Ok(quiet()))));
@@ -781,8 +798,9 @@ mod tests {
                 alarms.push(at);
             }
             let after = keeps_close_of(&known, PHONE_ID, at, asleep, || dose);
-            quiet = if spaced("alarm", asleep, close || after, news, || ahead) { quiet + 1 } else { 0 };
-            at += next_step(after, asleep, quiet);
+            quiet = if spaced("alarm", asleep, close || after, news, false, || ahead) { quiet + 1 } else { 0 };
+            let spaced_after = next_step(after, asleep, quiet);
+            at += if quiet > 0 { mail_cap(spaced_after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, asleep, false)) } else { spaced_after };
         }
         // The longest wait between two pulls in the hour, the wait from its last one to the next step included.
         pulls.push(at);
@@ -874,6 +892,42 @@ mod tests {
         assert_eq!(8 * spaced(&none, true).wakes + 8 * spaced(&none, false).wakes, 64);
     }
 
+    /// News at any moment between two mail rounds (a file the sync app wrote,
+    /// a message for your computers: a step out of the spacing, which starts it
+    /// again at five minutes) never makes mail wait more than five minutes past
+    /// its round: the spaced look is cut at the round's time (`mail_cap`).
+    /// Before the cut, news 600 s after a round put the next one 1,510 s
+    /// after it (the review of wt/perf, P1). No warm-up hides it: the news
+    /// comes right after a round of the settled spacing.
+    #[test]
+    fn news_between_two_rounds_never_holds_the_mail_back() {
+        let config: Config = toml::from_str("[reminders]\nmail = true\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
+        let rounds = |news: i64, capped: bool| {
+            // Settled: a mail round at 0 at the third quiet look; the news step at `news`, then alarm steps.
+            let (mut mailed, mut quiet, mut at, mut reason) = (0i64, 2u32, news, "folder");
+            let mut times = vec![0];
+            while at < 4 * 3_600 {
+                if mail_due(&config, at, mailed, false, false) {
+                    mailed = at;
+                    times.push(at);
+                }
+                quiet = if spaced(reason, false, false, reason != "alarm", false, || false) { quiet + 1 } else { 0 };
+                let after = next_step(false, false, quiet);
+                at += if capped && quiet > 0 { mail_cap(after, at, mailed, mail_due(&config, mailed + MAIL_EVERY, mailed, false, false)) } else { after };
+                reason = "alarm";
+            }
+            times.windows(2).map(|w| w[1] - w[0]).max().unwrap()
+        };
+        assert_eq!(rounds(600, false), 1_500, "without the cut");
+        assert!(rounds(600, true) <= MAIL_EVERY + STEP_AWAKE, "{}", rounds(600, true));
+        let worst = (1..MAIL_EVERY).map(|news| rounds(news, true)).max().unwrap();
+        assert!(worst <= MAIL_EVERY + STEP_AWAKE, "{worst}");
+        // Without mail to fetch, nothing cut.
+        assert_eq!(mail_cap(MAIL_EVERY, 100, 0, false), MAIL_EVERY);
+        assert_eq!(mail_cap(MAIL_EVERY, 600, 0, true), STEP_AWAKE);
+        assert_eq!(mail_cap(600, 1_500, 900, true), 300);
+    }
+
     /// A computer opened while the phone's looks are spaced: the look that
     /// reads its entry brings the two-minute steps, within fifteen minutes of
     /// its first export reaching the server (five with a dose within the
@@ -899,7 +953,7 @@ mod tests {
                 if after {
                     return (at - opened, next_step(after, false, 0));
                 }
-                quiet = if spaced("alarm", false, close || after, news, || ahead) { quiet + 1 } else { 0 };
+                quiet = if spaced("alarm", false, close || after, news, false, || ahead) { quiet + 1 } else { 0 };
                 at += next_step(after, false, quiet);
             }
         };
