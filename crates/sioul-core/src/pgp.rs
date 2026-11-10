@@ -1388,12 +1388,24 @@ impl VerificationHelper for Helper<'_> {
                         let (fingerprint, problem) = match &error {
                             E::MissingKey { sig } => (sig.issuer_fingerprints().next().map(|f| f.to_hex()).unwrap_or_default(), "unknown key"),
                             E::BadSignature { .. } => (String::new(), "bad signature"),
-                            // The key or its certificate revoked by its owner: the text
-                            // matched, the key did not hold (review of 19 October 2026).
-                            E::BadKey { ka, .. } if matches!(ka.valid_cert().revocation_status(), openpgp::types::RevocationStatus::Revoked(_)) || matches!(ka.revocation_status(), openpgp::types::RevocationStatus::Revoked(_)) => (ka.cert().fingerprint().to_hex(), "revoked key"),
-                            // Expired, or not yet made, when it signed.
-                            E::BadKey { ka, .. } if ka.valid_cert().alive().is_err() || ka.alive().is_err() => (ka.cert().fingerprint().to_hex(), "key not valid then"),
-                            E::BadKey { .. } => (String::new(), "bad key"),
+                            // Sequoia judges the key before the signature: a revoked or
+                            // expired key's signature is never checked there. Checked
+                            // here against that key and the text's digest as computed:
+                            // only a signature that matches says its key was revoked (by
+                            // its owner, as a whole or its signing subkey) or not valid
+                            // when it signed; one that does not match says so (review of
+                            // wt/mail, F4).
+                            E::BadKey { sig, ka, .. } => {
+                                let matches_text = sig.computed_digest().is_some_and(|digest| sig.verify_digest(ka.key(), digest).is_ok());
+                                let revoked = matches!(ka.valid_cert().revocation_status(), openpgp::types::RevocationStatus::Revoked(_)) || matches!(ka.revocation_status(), openpgp::types::RevocationStatus::Revoked(_));
+                                let not_alive = ka.valid_cert().alive().is_err() || ka.alive().is_err();
+                                match (matches_text, revoked, not_alive) {
+                                    (false, _, _) => (String::new(), "bad signature"),
+                                    (true, true, _) => (ka.cert().fingerprint().to_hex(), "revoked key"),
+                                    (true, false, true) => (ka.cert().fingerprint().to_hex(), "key not valid then"),
+                                    (true, false, false) => (String::new(), "bad key"),
+                                }
+                            }
                             E::MalformedSignature { .. } => (String::new(), "malformed signature"),
                             E::UnboundKey { .. } => (String::new(), "unbound key"),
                             _ => (String::new(), "unknown"),
@@ -2816,7 +2828,7 @@ mod tests {
         let other = open_key(&["Someone <someone@example.net>", "Someone else <else@example.net>"], std::time::Duration::ZERO);
         let forged = revoke(&jane, &other);
         assert!(Keys { revokers_only: vec![other.clone()], ..Keys::default() }.usable(&forged));
-        // A key its owner revoked: its signature reads revoked, the text matched.
+        // A key its owner revoked: its signature, checked against the text, reads revoked.
         let ana = signing("Ana <ana@example.org>", None, hour_ago);
         let noa = signing("Noa <noa@example.org>", None, hour_ago);
         let mut ana_signs = here_signer(&ana, "").unwrap();
@@ -2826,8 +2838,15 @@ mod tests {
         let reading = |ana: &Cert| Keys { own: vec![noa.clone()], others: vec![ana.clone()], ..Keys::default() };
         let checked = decrypt(sealed.as_bytes(), &reading(&ana), &Unlock::new(&none, &sessions)).unwrap().signatures;
         assert!(checked[0].good, "{checked:?}");
-        let checked = decrypt(sealed.as_bytes(), &reading(&revoke(&ana, &ana)), &Unlock::new(&none, &sessions)).unwrap().signatures;
+        let ana_revoked = revoke(&ana, &ana);
+        let checked = decrypt(sealed.as_bytes(), &reading(&ana_revoked), &Unlock::new(&none, &sessions)).unwrap().signatures;
         assert_eq!((checked[0].good, checked[0].problem.as_str(), checked[0].fingerprint.as_str()), (false, "revoked key", ana.fingerprint().to_hex().as_str()));
+        // A signature of the revoked key over another text: checked here, it does not match (F4).
+        let (detached, _) = sign_detached(b"The lease.", &mut ana_signs).unwrap();
+        let wrong = verify_detached(b"Another lease.", detached.as_bytes(), &Keys { others: vec![ana_revoked.clone()], ..Keys::default() });
+        assert_eq!(wrong.iter().map(|c| (c.good, c.problem.as_str())).collect::<Vec<_>>(), vec![(false, "bad signature")]);
+        let right = verify_detached(b"The lease.", detached.as_bytes(), &Keys { others: vec![ana_revoked.clone()], ..Keys::default() });
+        assert_eq!(right.iter().map(|c| (c.good, c.problem.as_str())).collect::<Vec<_>>(), vec![(false, "revoked key")]);
         // Its signing subkey alone revoked: the same.
         let subkey = ana.keys().subkeys().find(|k| k.key().fingerprint() != ana.keys().with_policy(&policy(), None).for_transport_encryption().next().unwrap().key().fingerprint()).unwrap();
         let sub_revocation = SubkeyRevocationBuilder::new().set_reason_for_revocation(ReasonForRevocation::KeyCompromised, b"lost").unwrap().build(&mut signer_of(&ana), &ana, subkey.key(), None).unwrap();
@@ -2842,6 +2861,8 @@ mod tests {
         let (signature, _) = sign_detached(text, &mut lou_signs).unwrap();
         let checked = verify_detached(text, signature.as_bytes(), &Keys { others: vec![lou.clone()], ..Keys::default() });
         assert_eq!(checked.iter().map(|c| (c.good, c.problem.as_str())).collect::<Vec<_>>(), vec![(false, "key not valid then")], "{checked:?}");
+        let other = verify_detached(b"Another text.", signature.as_bytes(), &Keys { others: vec![lou.clone()], ..Keys::default() });
+        assert_eq!(other.iter().map(|c| (c.good, c.problem.as_str())).collect::<Vec<_>>(), vec![(false, "bad signature")], "{other:?}");
         // Your own certificate, revoked by your designated revoker kept here: revoked, for the window's words.
         let mine = open_key(&["Me backup <me-backup@example.org>"], std::time::Duration::ZERO);
         let me = revoke(&signing("Me <me@example.org>", Some(&mine), hour_ago), &mine);
