@@ -187,7 +187,7 @@ fn fresh_lines(tasks: &[Task], quiet: Option<&sioul_core::quiet::QuietTasks>) ->
             let config = load_config();
             let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
             let horizon = now.checked_add(jiff::Span::new().days(7)).unwrap_or_else(|_| now.clone());
-            sioul_core::quiet::frames(&config.week_hours(), &config.time_off, &overrides, &crate::hours::blocks(&now), &config.windows, &now, &horizon, &[], 400)
+            sioul_core::quiet::frames(&config.week_hours(), &config.time_off, &overrides, &crate::hours::blocks(&now), &config.porch_windows(), &now, &horizon, &[], 400)
         }
         _ => Vec::new(),
     };

@@ -25,8 +25,8 @@ Without any setting:
 
 ## When it opens {#when-it-opens}
 
-- **In your hours**, the Porch says until when it is open ("Open until 17:00."), then shows what came, sorted into lanes.
-- **Outside your hours**, the Porch says when it opens next, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Show all mail now** stays possible, quietly ([below](#real-time)). Meanwhile, what comes is checked and sorted.
+- **In your hours** (your working hours and your hours for your admin; leisure never opens it), the Porch says until when it is open ("Open until 17:00."), then shows what came, sorted into lanes.
+- **Outside your hours**, the Porch says when it opens next, at the start of your next working or admin hours, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Show all mail now** stays possible, quietly ([below](#real-time)). Meanwhile, what comes is checked and sorted.
 - **Without any hours set**, the Porch is always open.
 
 Which mail comes when follows who wrote, as each list's row says at each time (safe, neutral, restricted, strangers, your Always through people; the blocked never), and what each address is for: work, your admin, leisure. See [What reaches you, and when](notifications.md#by-person) and [Hours](hours.md).

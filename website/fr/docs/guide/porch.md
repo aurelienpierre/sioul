@@ -25,8 +25,8 @@ Sans rien régler :
 
 ## Quand il ouvre {#when-it-opens}
 
-- **À vos heures**, le Porche dit jusqu’à quand il est ouvert (« Ouvert jusqu’à 12:00. »), puis montre ce qui est arrivé, réparti en files.
-- **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre de vos courriels : aucun nombre, aucun nom. Vos prises du jour s’affichent quand même (plus bas). **Montrer tous les courriels maintenant** reste possible, discrètement ([plus bas](#real-time)). D’ici là, ce qui arrive est vérifié et trié.
+- **À vos heures** (vos heures de travail et vos heures pour vos démarches ; les loisirs ne l’ouvrent jamais), le Porche dit jusqu’à quand il est ouvert (« Ouvert jusqu’à 12:00. »), puis montre ce qui est arrivé, réparti en files.
+- **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, au début de vos prochaines heures de travail ou de démarches, et rien d’autre de vos courriels : aucun nombre, aucun nom. Vos prises du jour s’affichent quand même (plus bas). **Montrer tous les courriels maintenant** reste possible, discrètement ([plus bas](#real-time)). D’ici là, ce qui arrive est vérifié et trié.
 - **Sans aucune heure réglée**, le Porche est toujours ouvert.
 
 Quels courriels viennent quand dépend de qui écrit, comme le dit la ligne de chaque liste à chaque moment (sûrs, neutres, restreints, inconnus, les personnes qui passent toujours ; les bloqués jamais), et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Ce qui vous joint, et quand](notifications.md#by-person) et [Les heures](hours.md).

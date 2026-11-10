@@ -136,21 +136,22 @@ pub struct ItemView {
 /// outside a window; codes show either way.
 pub fn porch(items: &[Triaged], config: &Config, store: Option<&ProjectStore>, tr: &Translator, now: &Zoned, opened_anyway: bool) -> PorchView {
     let right_now = codes(items, tr);
-    let open = opened_anyway || config.windows.is_empty() || window::current(&config.windows, now).is_some();
+    let windows = config.porch_windows();
+    let open = opened_anyway || windows.is_empty() || window::current(&windows, now).is_some();
     if !open {
         let mut args = i18n::args();
-        let next = window::next_opening(&config.windows, now);
+        let next = window::next_opening(&windows, now);
         args.set("when", next.map_or_else(String::new, |z| tr.when(&z)));
         let closed = Some(tr.text("porch-closed", Some(&args)));
         return PorchView { open, closed, right_now, summary: String::new(), status: String::new(), lanes: Vec::new(), all: false };
     }
-    let status = match window::current(&config.windows, now) {
+    let status = match window::current(&windows, now) {
         Some((_, closing)) => {
             let mut args = i18n::args();
             args.set("time", closing.strftime("%H:%M").to_string());
             tr.text("porch-open-until", Some(&args))
         }
-        None if !config.windows.is_empty() => tr.text("porch-opened-anyway", None),
+        None if !windows.is_empty() => tr.text("porch-opened-anyway", None),
         None => String::new(),
     };
     let order = tr.text("rule-order", None);
@@ -2134,5 +2135,43 @@ host = "imap.example.com"
         // Nothing said of it: nothing offered.
         let plain = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage]), None, &tr, &Config::default(), "");
         assert_eq!((plain.spam, plain.review, plain.spam_word.as_str()), (false, false, ""));
+    }
+
+    /// The closed Porch names its next opening among work's and admin's
+    /// hours, never a leisure window's, and leisure's hours leave it closed.
+    /// Leisure hours alone open it all the time, as no hours at all do.
+    #[test]
+    fn leisure_hours_never_open_the_porch() {
+        let config: Config = toml::from_str(
+            r#"
+[[window]]
+day = "saturday"
+start = "10:00"
+end = "12:00"
+kind = "leisure"
+
+[[window]]
+day = "monday"
+start = "09:00"
+end = "10:00"
+kind = "admin"
+"#,
+        )
+        .unwrap();
+        let tr = Translator::new("en");
+        // Saturday 7 November 2026, before and during the leisure window.
+        for time in ["2026-11-07T09:00[Europe/Paris]", "2026-11-07T11:00[Europe/Paris]"] {
+            let now: Zoned = time.parse().unwrap();
+            let view = porch(&[], &config, None, &tr, &now, false);
+            assert!(!view.open, "{time}: leisure never opens the Porch");
+            let mut args = i18n::args();
+            args.set("when", tr.when(&"2026-11-09T09:00[Europe/Paris]".parse::<Zoned>().unwrap()));
+            assert_eq!(view.closed, Some(tr.text("porch-closed", Some(&args))), "{time}: Monday's admin hours, not Saturday's leisure");
+        }
+        let monday: Zoned = "2026-11-09T09:30[Europe/Paris]".parse().unwrap();
+        assert!(porch(&[], &config, None, &tr, &monday, false).open);
+        let leisure: Config = toml::from_str("[[window]]\nday = \"saturday\"\nstart = \"10:00\"\nend = \"12:00\"\nkind = \"leisure\"\n").unwrap();
+        let view = porch(&[], &leisure, None, &tr, &"2026-11-07T09:00[Europe/Paris]".parse().unwrap(), false);
+        assert!(view.open && view.status.is_empty(), "leisure hours alone: open, and not said opened anyway");
     }
 }

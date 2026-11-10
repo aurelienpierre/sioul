@@ -454,7 +454,8 @@ fn porch_command(s: &Session, maildirs: &[PathBuf], open: bool, all: bool) -> Re
     let now = sioul_core::zone::now();
     let triaged = porch::gather(&sources, store.as_ref(), &known, &senders, &state, now.timestamp().as_second());
     print_right_now(s, &triaged);
-    let is_open = open || s.config.windows.is_empty() || window::current(&s.config.windows, &now).is_some();
+    let windows = s.config.porch_windows();
+    let is_open = open || windows.is_empty() || window::current(&windows, &now).is_some();
     if is_open {
         print_open_porch(s, &triaged, store.as_ref());
     } else {
@@ -528,7 +529,7 @@ pub(crate) fn print_right_now(s: &Session, triaged: &[Triaged]) {
 }
 
 fn print_closed_porch(s: &Session, now: &Zoned) {
-    let next = window::next_opening(&s.config.windows, now);
+    let next = window::next_opening(&s.config.porch_windows(), now);
     let mut args = sioul_core::i18n::args();
     args.set("when", next.map_or_else(String::new, |z| s.tr.when(&z)));
     println!("{}", s.tr.text("porch-closed", Some(&args)));
@@ -623,18 +624,19 @@ fn projects_command(s: &Session, store: Option<PathBuf>) -> Result<(), String> {
 }
 
 fn window_command(s: &Session) -> Result<(), String> {
-    if s.config.windows.is_empty() {
+    let windows = s.config.porch_windows();
+    if windows.is_empty() {
         return Err(s.tr.text("error-no-windows", None));
     }
     let now = sioul_core::zone::now();
     let mut args = sioul_core::i18n::args();
-    let id = match window::current(&s.config.windows, &now) {
+    let id = match window::current(&windows, &now) {
         Some((_, closing)) => {
             args.set("time", closing.strftime("%H:%M").to_string());
             "window-open-until"
         }
         None => {
-            let next = window::next_opening(&s.config.windows, &now).ok_or_else(|| s.tr.text("window-none", None))?;
+            let next = window::next_opening(&windows, &now).ok_or_else(|| s.tr.text("window-none", None))?;
             args.set("when", s.tr.when(&next));
             "window-next"
         }

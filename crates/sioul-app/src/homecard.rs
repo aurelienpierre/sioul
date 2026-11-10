@@ -741,7 +741,7 @@ fn timeline(m: &Moment, hours: &[(Zoned, sioul_core::agendas::Hours)]) -> Vec<(Z
     let quiet_end = m.dnd.and_then(|d| d.until).filter(|until| *until > 0).and_then(instant);
     let ends: Vec<Zoned> = rests.into_iter().chain(quiet_end).chain(hours.iter().skip(1).map(|(at, _)| at.clone())).collect();
     // One way of cutting the time ahead, for the card and the agenda's head line (`quiet::frames`).
-    quiet::frames(&m.config.week_hours(), &m.config.time_off, m.overrides, m.blocks, &m.config.windows, m.now, &horizon, &ends, FRAMES)
+    quiet::frames(&m.config.week_hours(), &m.config.time_off, m.overrides, m.blocks, &m.config.porch_windows(), m.now, &horizon, &ends, FRAMES)
 }
 
 /// What a frame is, for Java's colours and tests: the time's word, or the pause's.
@@ -858,7 +858,7 @@ fn porch_at(m: &Moment, input: &PorchInput, mode: &Mode, at: &Zoned) -> PorchMad
     let mail: Vec<Triaged> = input.items.iter().filter(|t| attention.mail(t, &input.senders, &always, area_of(t), &moment).shown).cloned().collect();
     let shown = view::porch(&mail, m.config, input.store.as_ref(), m.tr, at, mode.quiet);
     if !shown.open {
-        return PorchMade::said(match window::next_opening(&m.config.windows, at) {
+        return PorchMade::said(match window::next_opening(&m.config.porch_windows(), at) {
             Some(next) => said(m.tr, "home-card-porch-opens", &[("when", when(m.tr, &next, at))]),
             None => m.tr.text("home-card-porch-closed", None),
         });
@@ -1213,8 +1213,9 @@ fn labels(tr: &Translator, made: &Zoned) -> Vec<Label> {
 /// when it opens, from which day; resting after a pause.
 fn porch_key(m: &Moment, mode: &Mode, at: &Zoned) -> String {
     let stamp = at.timestamp().as_second();
-    let open = mode.quiet || m.config.windows.is_empty() || window::current(&m.config.windows, at).is_some();
-    let opens = if open { 0 } else { window::next_opening(&m.config.windows, at).map_or(-1, |z| z.timestamp().as_second()) };
+    let windows = m.config.porch_windows();
+    let open = mode.quiet || windows.is_empty() || window::current(&windows, at).is_some();
+    let opens = if open { 0 } else { window::next_opening(&windows, at).map_or(-1, |z| z.timestamp().as_second()) };
     format!("{}|{open}|{opens}|{}|{}", mode.time.id(), m.overrides.porch_rests(stamp), at.date())
 }
 

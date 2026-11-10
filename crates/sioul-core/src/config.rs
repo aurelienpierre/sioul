@@ -322,6 +322,13 @@ impl Config {
         self.windows.iter().filter(|w| w.end.is_some() && w.kind() != "leisure").cloned().collect()
     }
 
+    /// The hours that open the Porch: work's and admin's, older admin
+    /// windows (a start and minutes) among them. Leisure never opens it, as it
+    /// is never among the week's hours (`week_hours`).
+    pub fn porch_windows(&self) -> Vec<AdminWindow> {
+        self.windows.iter().filter(|w| w.kind() != "leisure").cloned().collect()
+    }
+
     /// When offices are open: the configuration's, else Monday to Friday 9:00–17:00.
     pub fn office_hours(&self) -> Vec<AdminWindow> {
         if self.office_hours.is_empty() { crate::window::default_office_hours() } else { self.office_hours.clone() }

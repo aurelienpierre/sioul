@@ -95,7 +95,7 @@ The Porch keeps mail until you look; you are also told when mail your lists let 
 - **On a phone**: while Sioul runs, as above; while it is away, as Android lets it fetch ([android.md](android.md), "New mail").
 
 ## Working hours, and quiet time
-- **Working hours**: the seven days of the week, each on or off, from a start to an end (Settings, at the bottom of the left column; `[[window]]` with `day`, `start`, `end` in the configuration). Older windows written as a start and a length still open the Porch, but only hours with an end bring quiet time.
+- **Working hours**: the seven days of the week, each on or off, from a start to an end (Settings, at the bottom of the left column; `[[window]]` with `day`, `start`, `end` in the configuration). Older windows written as a start and a length still open the Porch, but only hours with an end bring quiet time. Work's and admin's hours open it; leisure's (`kind = "leisure"`, written by an older Sioul) never do, and the closed Porch never names one as its next opening (`Config::porch_windows`, read by the window, its home card and `sioul porch`/`sioul window`).
 - **Outside them**, the Porch says when it opens next, and nothing else of the mail: no counts, no names. Today's doses still show: they are not mail ([health.md](health.md), "On the Porch"). "Show all mail now" stays possible, quietly, and Reachable opens it ([do-not-disturb.md](do-not-disturb.md#the-three-states)).
 - **Inside them**: the sections, in their order (above, "Sections").
 - **With no hours configured**, the Porch is always open and nothing is ever quiet.

@@ -509,7 +509,7 @@ fn take_files(key: &str, start: i64, who: &str, me: &Me) -> Result<Option<(Vec<s
     let asked_path = Asked::path();
     if who == "later" {
         let mut asked = Asked::load(&asked_path);
-        let from = sioul_core::window::next_opening(&config.windows, &sioul_core::zone::now()).map_or(now + 86_400, |z| z.timestamp().as_second());
+        let from = sioul_core::window::next_opening(&config.porch_windows(), &sioul_core::zone::now()).map_or(now + 86_400, |z| z.timestamp().as_second());
         asked.put_off(&uid, from);
         asked.save(&asked_path)?;
         return Ok(None);
