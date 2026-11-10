@@ -255,7 +255,14 @@ Item {
             page.readQuestions()
         }
     }
+    // Whole: its handlers act from here on. A way given as a literal (Tasks ▸ The day's
+    // `mode: "day"`) is set before the bindings that give the page its window, and its
+    // change read the window's day before there was one (10 November 2026); the page
+    // reads its days once made (`Component.onCompleted`).
+    property bool whole: false
     onVisibleChanged: {
+        if (!page.whole)
+            return
         page.takeShown()
         page.readQuestions()
         if (page.visible) {
@@ -654,10 +661,13 @@ Item {
         page.comesDays = page.comesPage
         if (page.searching)
             page.searchMade = true
-        page.load()
+        if (page.whole)
+            page.load()
     }
     Component.onCompleted: {
+        page.whole = true
         page.takeShown()
+        page.readQuestions()
         page.readAgain()
     }
 

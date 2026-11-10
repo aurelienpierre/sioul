@@ -95,6 +95,27 @@ Item {
         }
     }
 
+    // Tasks ▸ The day's own declaration (TasksPage.qml): its window through a
+    // binding, its way given as a literal, which Qt sets first.
+    QtObject {
+        id: tasksPage
+
+        property var window: shell
+    }
+
+    Component {
+        id: embeddedComponent
+
+        AgendaPage {
+            sioul: mock
+            theme: testTheme
+            window: tasksPage.window
+            modes: ["day"]
+            mode: "day"
+            embedded: true
+        }
+    }
+
     function find(item, name) {
         if (!item)
             return null
@@ -185,6 +206,19 @@ Item {
             const phone = makePage(412)
             wait(50)
             verify(root.find(phone, "agendaNewEvent").visible, "a phone's")
+        }
+
+        // Tasks ▸ The day as TasksPage.qml declares it: its way, a literal, is set before
+        // the binding that gives its window, and the change of way read nothing before the
+        // page was whole (10 November 2026: "Cannot read property 'today' of undefined"
+        // in the phone demo). It asks for its one day once made, without an error.
+        function test_the_tasks_day_made_as_tasks_declares_it() {
+            failOnWarning(/TypeError|ReferenceError/)
+            mock.asked = []
+            const page = test.createTemporaryObject(embeddedComponent, root, { width: 1000, height: 860 })
+            test.waitForRendering(page)
+            compare(page.mode, "day")
+            compare(mock.asked, [1], "its one day asked, once")
         }
 
         // Tasks ▸ The day is this page given the Day alone: no switch to the other ways, no
