@@ -4404,6 +4404,7 @@ dependencies = [
  "fluent-syntax",
  "icu_normalizer",
  "jiff",
+ "libc",
  "mail-builder",
  "mail-parser",
  "psl",

@@ -193,6 +193,50 @@ impl Placed {
     }
 }
 
+/// A file taken away, its bytes overwritten with zeros first, where the
+/// filesystem lets them be (what [`Placed::finish`] says of copy on write
+/// and flash disks holds here too): a decrypted attachment leaving the cache
+/// (docs/client.md, "What a disk keeps"). A link is taken away alone, never
+/// what it points to; a file with another name is left whole for that name.
+pub fn remove_wiping(path: &Path) -> std::io::Result<()> {
+    if !std::fs::symlink_metadata(path)?.file_type().is_file() {
+        return std::fs::remove_file(path);
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NOFOLLOW);
+    let Ok(mut file) = options.open(path) else { return std::fs::remove_file(path) };
+    // Its name first where a file lives on without one (Unix): no reader finds the zeros.
+    #[cfg(unix)]
+    {
+        std::fs::remove_file(path)?;
+        overwrite(&mut file);
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        overwrite(&mut file);
+        drop(file);
+        std::fs::remove_file(path)
+    }
+}
+
+/// A folder taken away, each file in it overwritten first ([`remove_wiping`]).
+pub fn remove_dir_wiping(dir: &Path) -> std::io::Result<()> {
+    if !std::fs::symlink_metadata(dir)?.file_type().is_dir() {
+        return std::fs::remove_file(dir);
+    }
+    for entry in std::fs::read_dir(dir)?.filter_map(Result::ok) {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => remove_dir_wiping(&path)?,
+            _ => remove_wiping(&path)?,
+        }
+    }
+    std::fs::remove_dir(dir)
+}
+
 /// A file without a name left, its bytes overwritten with zeros, on the disk.
 fn overwrite(file: &mut std::fs::File) {
     use std::io::{Seek, Write};
@@ -484,6 +528,47 @@ fn merge(current: &mut toml::Table, base: &toml::Table, new: &toml::Table, known
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// TODO §4 (10 November 2026): a decrypted attachment leaving the cache
+    /// is overwritten first. A reader that held it open reads zeros; a link
+    /// goes alone, what it named left whole; a file with another name stays
+    /// whole for it; a folder goes with each file in it overwritten.
+    #[cfg(unix)]
+    #[test]
+    fn a_file_taken_away_is_overwritten_first() {
+        use std::io::Read;
+        let base = std::env::temp_dir().join(format!("sioul-remove-wiping-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let cache = base.join("cache").join("0123");
+        std::fs::create_dir_all(cache.join("inner")).unwrap();
+        let (file, inner) = (cache.join("lease.pdf"), cache.join("inner").join("scan.png"));
+        std::fs::write(&file, "The secret clause is on page four.").unwrap();
+        std::fs::write(&inner, "The second secret.").unwrap();
+        let mut held = std::fs::File::open(&file).unwrap();
+        let mut held_inner = std::fs::File::open(&inner).unwrap();
+        // A link to a file of yours elsewhere, and a file with a second name.
+        let yours = base.join("yours.txt");
+        std::fs::write(&yours, "Yours, untouched.").unwrap();
+        std::os::unix::fs::symlink(&yours, cache.join("link.txt")).unwrap();
+        let kept = base.join("kept.txt");
+        std::fs::write(&kept, "Kept by its other name.").unwrap();
+        std::fs::hard_link(&kept, cache.join("twice.txt")).unwrap();
+        remove_dir_wiping(&base.join("cache").join("0123")).unwrap();
+        assert!(!cache.exists());
+        let mut read = String::new();
+        held.read_to_string(&mut read).unwrap();
+        assert!(!read.is_empty() && read.bytes().all(|b| b == 0), "{read:?}");
+        let mut read = String::new();
+        held_inner.read_to_string(&mut read).unwrap();
+        assert!(read.bytes().all(|b| b == 0), "{read:?}");
+        assert_eq!(std::fs::read_to_string(&yours).unwrap(), "Yours, untouched.");
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "Kept by its other name.");
+        // One file alone, and one already gone: said.
+        std::fs::write(base.join("one.txt"), "x").unwrap();
+        remove_wiping(&base.join("one.txt")).unwrap();
+        assert!(!base.join("one.txt").exists() && remove_wiping(&base.join("one.txt")).is_err());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
 
     /// The race main's final pass met (19 October 2026), made to happen: a
     /// reader opens a copy, the copy is replaced and its old bytes overwritten

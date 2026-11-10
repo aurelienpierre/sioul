@@ -4100,13 +4100,14 @@ fn attachment_cache(key: &str) -> PathBuf {
 }
 
 /// Attachments written to be opened in an earlier session, taken out of the
-/// cache once a day old: a decrypted one would stay readable there otherwise.
+/// cache once a day old, overwritten first: a decrypted one would stay
+/// readable there otherwise (docs/client.md, "What a disk keeps").
 fn forget_opened_attachments() {
     let Ok(entries) = std::fs::read_dir(config::cache_dir().join("attachments")) else { return };
     let day = std::time::Duration::from_secs(86_400);
     for entry in entries.filter_map(Result::ok) {
         if entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > day) {
-            let _ = std::fs::remove_dir_all(entry.path());
+            let _ = sioul_core::filelock::remove_dir_wiping(&entry.path());
         }
     }
 }
@@ -4250,7 +4251,7 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
                     }
                     Afterwards::Paper => {
                         let kept = crate::papers::keep_checked(&file, &name, &subject);
-                        let _ = std::fs::remove_file(&file);
+                        let _ = sioul_core::filelock::remove_wiping(&file);
                         match kept {
                             Ok((path, title, kind)) => {
                                 let _ = qt.queue(move |mut sioul| sioul.as_mut().paper_kept(QString::from(&path), QString::from(&title), QString::from(kind)));
@@ -4264,7 +4265,7 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
                     Afterwards::Save => {
                         let target = free_path(&downloads(), &name);
                         let saved = std::fs::create_dir_all(downloads()).and_then(|()| std::fs::copy(&file, &target));
-                        let _ = std::fs::remove_file(&file);
+                        let _ = sioul_core::filelock::remove_wiping(&file);
                         match saved {
                             Ok(_) => {
                                 mark_from_mail(&target);
@@ -4276,13 +4277,13 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
                 }
             }
             Verdict::Infected(threat) => {
-                let _ = std::fs::remove_file(&file);
+                let _ = sioul_core::filelock::remove_wiping(&file);
                 say("scan-infected", &[("name", name), ("threat", threat)])
             }
             // No antivirus here, or a file larger than it scans: asked before
             // anything opens, with how to install one, or why it was not scanned.
             Verdict::Unavailable(_) | Verdict::TooBig => {
-                let _ = std::fs::remove_file(&file);
+                let _ = sioul_core::filelock::remove_wiping(&file);
                 let what = match afterwards {
                     Afterwards::Open => 0,
                     Afterwards::Save => 1,

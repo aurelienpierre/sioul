@@ -4313,6 +4313,9 @@ mod tests {
             "write_synced(",
             "write_witnessed(",
             "write_whole(",
+            // Removers that overwrite first (a decrypted attachment leaving the cache).
+            "remove_wiping(",
+            "remove_dir_wiping(",
         ];
         // Named: file, function, how many of its lines, the words they hold; `#` lines say why.
         let list = include_str!("../tests/raw-writers.txt");

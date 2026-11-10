@@ -214,6 +214,7 @@ pub mod compose;
 pub mod composed;
 pub mod config;
 pub mod contracts;
+pub mod coredump;
 pub mod dated;
 pub mod due;
 pub mod ahead;

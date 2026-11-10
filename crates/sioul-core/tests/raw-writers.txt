@@ -24,16 +24,16 @@ sioul-app/src/attach.rs	make	1	std::fs::write(&out, &bytes)
 sioul-app/src/attach.rs	make	1	std::fs::remove_file(&out)
 
 # sioul-app/src/attachments.rs: an attachment opened or saved, a temporary file of its own: no item.
-sioul-app/src/attachments.rs	open	1	std::fs::remove_file(file)
-sioul-app/src/attachments.rs	save	1	std::fs::remove_file(file)
-sioul-app/src/attachments.rs	saved	1	std::fs::remove_file(path)
+sioul-app/src/attachments.rs	open	1	sioul_core::filelock::remove_wiping(file)
+sioul-app/src/attachments.rs	save	1	sioul_core::filelock::remove_wiping(file)
+sioul-app/src/attachments.rs	saved	1	sioul_core::filelock::remove_wiping(path)
 
 # sioul-app/src/backend.rs: the weather's cache, attachments opened or checked (a temporary file of their own, then copied where you choose), Windows' mark of a file from mail: no item.
 sioul-app/src/backend.rs	update_weather	1	std::fs::write(weather_cache(), text)
-sioul-app/src/backend.rs	forget_opened_attachments	1	std::fs::remove_dir_all(entry.path())
+sioul-app/src/backend.rs	forget_opened_attachments	1	sioul_core::filelock::remove_dir_wiping(&entry.path())
 sioul-app/src/backend.rs	mark_from_mail	1	std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n")
 sioul-app/src/backend.rs	checked_attachment	1	std::fs::write(&file, &bytes)
-sioul-app/src/backend.rs	checked_attachment	4	std::fs::remove_file(&file)
+sioul-app/src/backend.rs	checked_attachment	4	sioul_core::filelock::remove_wiping(&file)
 sioul-app/src/backend.rs	checked_attachment	1	std::fs::copy(&file, &target)
 sioul-app/src/backend.rs	set_weather_place	1	std::fs::remove_file(weather_cache())
 
@@ -290,7 +290,7 @@ sioul-core/src/everywhere.rs	write_whole	1	std::fs::write(&fresh, text)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::rename(&fresh, path)
 sioul-core/src/everywhere.rs	write_whole	1	std::fs::remove_file(&fresh)
 
-# sioul-core/src/filelock.rs: Sioul's own writers themselves (`replace`, `save_merged`): their callers are named where they write.
+# sioul-core/src/filelock.rs: Sioul's own writers and removers themselves (`replace`, `save_merged`, `remove_wiping`): their callers are named where they write.
 sioul-core/src/filelock.rs	replace	1	std::fs::write(&temporary, bytes)
 sioul-core/src/filelock.rs	replace	1	std::fs::remove_file(&temporary)
 sioul-core/src/filelock.rs	rename_over	1	std::fs::rename(from, to)
@@ -303,6 +303,12 @@ sioul-core/src/filelock.rs	drop	1	std::fs::OpenOptions::new()
 sioul-core/src/filelock.rs	save_merged_by	1	std::fs::write(&temporary, toml::to_string(&table).map_err(|e| e.to_string())?)
 sioul-core/src/filelock.rs	save_merged_by	1	std::fs::rename(&temporary, path)
 
+sioul-core/src/filelock.rs	remove_wiping	4	std::fs::remove_file(path)
+sioul-core/src/filelock.rs	remove_wiping	1	std::fs::OpenOptions::new()
+sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_file(dir)
+sioul-core/src/filelock.rs	remove_dir_wiping	1	remove_dir_wiping(&path)
+sioul-core/src/filelock.rs	remove_dir_wiping	1	remove_wiping(&path)
+sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_dir(dir)
 # sioul-core/src/handed.rs: requests handed between Sioul's programs: no item.
 sioul-core/src/handed.rs	hand	1	write_whole(&path, &serde_json::to_string(handed).map_err(|e| e.to_string())?)
 sioul-core/src/handed.rs	waiting	1	std::fs::rename(&path, path.with_extension("unread"))

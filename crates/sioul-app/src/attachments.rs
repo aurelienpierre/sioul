@@ -109,7 +109,7 @@ pub(crate) fn open(file: &Path, name: &str) -> String {
     let asked = serde_json::json!({ "path": file.display().to_string(), "type": type_of(name) });
     let answer = crate::steps::java("attachment-open", &asked.to_string());
     if answer["opened"] != true {
-        let _ = std::fs::remove_file(file);
+        let _ = sioul_core::filelock::remove_wiping(file);
     }
     opened_line(&answer, name)
 }
@@ -129,7 +129,7 @@ pub(crate) fn save(qt: &QtThread, file: &Path, name: &str) -> String {
     if answer["asked"] == true {
         return say("attachment-phone-where", &[("name", name.to_string())]);
     }
-    let _ = std::fs::remove_file(file);
+    let _ = sioul_core::filelock::remove_wiping(file);
     let detail = answer["detail"].as_str().or_else(|| answer["problem"].as_str()).unwrap_or("no answer");
     say("attachment-phone-save-failed", &[("name", name.to_string()), ("detail", detail.to_string())])
 }
@@ -144,7 +144,7 @@ fn saved(text: &str) {
     if let Some(path) = answer["path"].as_str().map(Path::new)
         && path.starts_with(folder())
     {
-        let _ = std::fs::remove_file(path);
+        let _ = sioul_core::filelock::remove_wiping(path);
     }
     let waiting = SAVING.lock().ok().and_then(|w| w.clone());
     if let Some(qt) = waiting {

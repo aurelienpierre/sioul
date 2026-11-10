@@ -351,6 +351,10 @@ fn system_locale() -> Option<String> {
 fn main() -> ExitCode {
     // Before anything else: no crate logs above "info", a security key's PIN never.
     sioul_sync::securitykey::cap_logging();
+    // Nor a core file of a crash, which would hold them (SIOUL_CORE_DUMP=1 to debug one).
+    if let Err(e) = sioul_core::coredump::no_core_file() {
+        eprintln!("sioul: a crash may leave a core file: {e}");
+    }
     let cli = Cli::parse();
     // Mail, keys, drafts and caches are kept in folders that are yours alone.
     config::make_private_dirs();

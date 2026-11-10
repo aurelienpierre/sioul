@@ -333,6 +333,10 @@ pub fn run() -> i32 {
     // Before anything else: no crate logs above "info", a security key's PIN never (securitykey.rs).
     sioul_sync::securitykey::cap_logging();
     steady_heap();
+    // Nor a core file of a crash, which would hold them (SIOUL_CORE_DUMP=1 to debug one).
+    if let Err(e) = sioul_core::coredump::no_core_file() {
+        eprintln!("Sioul: a crash may leave a core file: {e}");
+    }
     STARTED.get_or_init(std::time::Instant::now);
     if let Some(age) = process_age().filter(|_| timed()) {
         eprintln!("Sioul: the process started {} ms before Sioul did", age.as_millis());
