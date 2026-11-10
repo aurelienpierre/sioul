@@ -9,7 +9,7 @@ Cette page traduit les conditions d’utilisation de Sioul ; en cas de doute, 
 
 *Dernière mise à jour le 14 octobre 2026 (2026-10-14).*
 
-Sioul est un logiciel libre, fait et publié par Aurélien Pierre. Ces conditions disent, simplement, à quelles conditions vous l’utilisez : la fenêtre, la ligne de commande et l’application du téléphone, et ce site.
+Sioul est un logiciel libre, fait et publié par Aurélien Pierre. Ces conditions disent, simplement, à quelles conditions vous l’utilisez : la fenêtre, la ligne de commande et l’application Android (pour téléphones et tablettes), et ce site.
 
 ## La licence {#the-licence}
 

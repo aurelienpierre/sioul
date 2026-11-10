@@ -26,7 +26,7 @@ A few words in the notes are older than the window: a *project* was once also a 
 | `crates/sioul-cli` | `sioul`, the command line, first because agents and scripts use it too; `sioul mcp` serves agents. |
 | `crates/sioul-app` | The window: Qt Quick (QML) through CXX-Qt. Its Rust side in `src/`, its pages in `qml/`, a little C++ in `cpp/` (Qt WebEngine's set-up, the PDF writer, line spacing), the Breeze icons it bundles in `icons/`. The window holds no logic. |
 | `crates/sioul-learn` | The spam filter's training, on computers only: it learns from your own mail and writes the table every device reads. Still being built. |
-| `android/` | The phone's app: Qt for Android builds the window into it; Java classes run what Android starts while the window is away, and talk to Rust through `main.cpp` ([Android, the basics](android-basics.md)). |
+| `android/` | The Android app, for phones and tablets: Qt for Android builds the window into it; Java classes run what Android starts while the window is away, and talk to Rust through `main.cpp` ([Android, the basics](android-basics.md)). |
 
 Storage is plain files wherever possible: Maildir for mail; one `.ics` or `.vcf` file per event, task or contact (vdir), tasks tied together as RFC 9253 says; Markdown for notes; TOML for the configuration, projects and budgets; sealed JSON lines for sharing. The whole picture, with each library and its licence: [Architecture](architecture.md).
 
@@ -63,7 +63,7 @@ The rules of the code ([Architecture](architecture.md#code-style)): one task per
 | `crates/sioul-cli/src/` | the command line; `mcp/`, the server for agents |
 | `crates/sioul-app/` | the window: `src/`, `qml/`, `cpp/`, `icons/` |
 | `crates/sioul-learn/` | the spam filter's training, on computers |
-| `android/` | the phone's app: `CMakeLists.txt`, `main.cpp`, the manifest and the Java classes in `package/` |
+| `android/` | the Android app (phones and tablets): `CMakeLists.txt`, `main.cpp`, the manifest and the Java classes in `package/` |
 | `docs/` | the design notes, shown in this section; `docs/research/`, the research behind them |
 | `examples/` | a configuration, projects and budgets, and `demo.toml` for trying the command line on invented mail |
 | `presets/sites.json` | the usual sites; `tools/check-presets.py` checks every address |

@@ -7,7 +7,7 @@ description: Sioul's terms of use - free software under the GPL-3.0-or-later lic
 
 *Last updated on 14 October 2026 (2026-10-14).*
 
-Sioul is free software, made and published by Aurélien Pierre. These terms say, in plain words, on what terms you use it: the window, the command line and the phone's app, and this website.
+Sioul is free software, made and published by Aurélien Pierre. These terms say, in plain words, on what terms you use it: the window, the command line and the Android app (for phones and tablets), and this website.
 
 ## The licence
 
