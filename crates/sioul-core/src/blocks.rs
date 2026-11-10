@@ -178,7 +178,14 @@ pub fn calendars(chosen: &str) -> Vec<Collection> {
 /// without a zone in `zone`.
 pub fn read(calendars: &[Collection], from: i64, to: i64, zone: &TimeZone) -> Vec<Occurrence> {
     let own = agenda::own_addresses();
-    calendars.iter().flat_map(|c| c.items().into_iter().flat_map(|path| agenda::file_occurrences_as(&path, c, from, to, zone, &own)).collect::<Vec<_>>()).filter(|o| !o.task.is_empty()).collect()
+    calendars
+        .iter()
+        .flat_map(|c| {
+            let marks = crate::agendas::marks_of(c);
+            c.items().into_iter().flat_map(|path| agenda::file_occurrences_marked(&path, c, &marks, from, to, zone, &own)).collect::<Vec<_>>()
+        })
+        .filter(|o| !o.task.is_empty())
+        .collect()
 }
 
 /// A value written as it is: no line break nor other control character.
