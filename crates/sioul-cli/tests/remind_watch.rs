@@ -7,9 +7,10 @@
 //! new program in its place is followed, the same process running the new
 //! file; a second watcher leaves at once; one started for the session leaves
 //! with 0 once reminders with the window closed are turned off (their entry
-//! gone), or at once when they are off. A home made in the system's
-//! temporary folder, its XDG folders and HOME there: the person's own files
-//! are never read.
+//! gone), or at once when they are off. A home made in Cargo's own folder
+//! for tests' files, its XDG folders and HOME there, and a session bus that
+//! is none: the person's own files and desktop are never reached. Every
+//! watcher started is killed and the home removed however the test ends.
 
 #![cfg(target_os = "linux")]
 
@@ -29,8 +30,25 @@ const BUILT: &str = env!("CARGO_BIN_EXE_sioul");
 /// is, its `--version` tried, and room for a loaded machine.
 const WITHIN: Duration = Duration::from_secs(40);
 
+/// A home of the test's own, removed however the test ends, and the watchers
+/// started in it, killed then.
+struct Home {
+    root: PathBuf,
+    children: Vec<Child>,
+}
+
+impl Drop for Home {
+    fn drop(&mut self) {
+        for child in &mut self.children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
 fn home() -> PathBuf {
-    let root = std::env::temp_dir().join(format!("sioul-remind-watch-{}", std::process::id()));
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("sioul-remind-watch-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     for (_, folder) in FOLDERS {
         std::fs::create_dir_all(root.join(folder)).unwrap();
@@ -53,6 +71,8 @@ fn watcher(root: &Path, program: &Path) -> (Child, Receiver<String>) {
     for (variable, folder) in FOLDERS {
         command.env(variable, root.join(folder));
     }
+    // No session bus: a reminder it told would reach no desktop.
+    command.env("DBUS_SESSION_BUS_ADDRESS", format!("unix:path={}", root.join("no-bus").display()));
     let mut child = command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
     let stdout = child.stdout.take().unwrap();
     let (sender, lines) = channel();
@@ -85,23 +105,34 @@ fn until(mut done: impl FnMut() -> bool) -> bool {
 
 #[test]
 fn the_watcher_follows_an_install_and_leaves_when_turned_off() {
-    let root = home();
+    let mut kept = Home { root: home(), children: Vec::new() };
+    let root = kept.root.clone();
     let program = root.join("bin/sioul");
     std::fs::copy(BUILT, &program).unwrap();
     // Off: a watcher for the session leaves at once, saying nothing.
-    let (mut off, lines) = watcher(&root, &program);
-    assert!(off.wait().unwrap().success());
+    let (off, lines) = watcher(&root, &program);
+    kept.children.push(off);
+    assert!(kept.children[0].wait().unwrap().success());
+    assert!(lines.recv_timeout(Duration::from_secs(1)).is_err(), "nothing said");
+    // Turned off by the desktop (XFCE writes Hidden=true): off too.
+    std::fs::create_dir_all(entry(&root).parent().unwrap()).unwrap();
+    std::fs::write(entry(&root), "[Desktop Entry]\nType=Application\nName=Sioul reminders\nExec=sioul remind --watch --session\nHidden=true\n").unwrap();
+    let (hidden, lines) = watcher(&root, &program);
+    kept.children.push(hidden);
+    assert!(kept.children[1].wait().unwrap().success());
     assert!(lines.recv_timeout(Duration::from_secs(1)).is_err(), "nothing said");
     // On: it watches.
-    std::fs::create_dir_all(entry(&root).parent().unwrap()).unwrap();
     std::fs::write(entry(&root), "[Desktop Entry]\nType=Application\nName=Sioul reminders\nExec=sioul remind --watch --session\n").unwrap();
-    let (mut child, lines) = watcher(&root, &program);
+    let (child, lines) = watcher(&root, &program);
+    kept.children.push(child);
+    let watching = 2;
     assert_eq!(lines.recv_timeout(WITHIN).unwrap(), "Reminders watched: each one comes once, as a quiet notification. Ctrl+C stops.");
-    let first = running(&child);
+    let first = running(&kept.children[watching]);
     assert_eq!(first, std::fs::metadata(&program).unwrap().ino());
     // A second one leaves at once: one runs.
-    let (mut second, second_lines) = watcher(&root, &program);
-    assert!(second.wait().unwrap().success());
+    let (second, second_lines) = watcher(&root, &program);
+    kept.children.push(second);
+    assert!(kept.children[3].wait().unwrap().success());
     assert!(second_lines.recv_timeout(WITHIN).unwrap().contains("already"), "it says one runs");
     // An install: a new file moved over the program, as tools/install.sh does.
     let staged = root.join("bin/.sioul.new");
@@ -109,16 +140,15 @@ fn the_watcher_follows_an_install_and_leaves_when_turned_off() {
     std::fs::rename(&staged, &program).unwrap();
     let installed = std::fs::metadata(&program).unwrap().ino();
     assert_ne!(installed, first);
-    assert!(until(|| running(&child) == installed), "the same process runs the new program");
+    assert!(until(|| running(&kept.children[watching]) == installed), "the same process runs the new program");
     assert_eq!(lines.recv_timeout(WITHIN).unwrap(), "Reminders watched: each one comes once, as a quiet notification. Ctrl+C stops.", "the new program watches, the lock taken again");
-    assert!(child.try_wait().unwrap().is_none());
+    assert!(kept.children[watching].try_wait().unwrap().is_none());
     // Turned off: its entry gone, it leaves with 0, which nothing starts again.
     std::fs::remove_file(entry(&root)).unwrap();
     let mut status = None;
     assert!(until(|| {
-        status = child.try_wait().unwrap();
+        status = kept.children[watching].try_wait().unwrap();
         status.is_some()
     }));
     assert!(status.unwrap().success(), "{status:?}");
-    let _ = std::fs::remove_dir_all(&root);
 }
