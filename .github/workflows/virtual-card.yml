@@ -74,13 +74,16 @@ jobs:
           cargo test --release --locked -p sioul-sync --lib --no-run
 
       # Ubuntu's pcscd quits 60 seconds after its last client (--auto-exit),
-      # and vpcd's reader with it: run without, for the whole job. The card
+      # and vpcd's reader with it: run without, for the whole job. Its polkit
+      # rules let in only a desktop session's user, never the runner's (its
+      # second run, 11 November 2026, was refused each time): without them
+      # on this throwaway machine, whose one reader is the virtual one. The card
       # starts once vpcd listens; its PINs are the specification's defaults
       # (123456, and 12345678 to administer it).
       - name: The smart card service, the virtual card, its keys and their certificate
         run: |
           sudo systemctl stop pcscd.socket pcscd.service || true
-          sudo sh -c 'pcscd --foreground > /tmp/pcscd.log 2>&1 &'
+          sudo sh -c 'pcscd --foreground --disable-polkit > /tmp/pcscd.log 2>&1 &'
           for i in $(seq 30); do nc -z 127.0.0.1 35963 && break; sleep 1; done
           nc -z 127.0.0.1 35963
           "$RUNNER_TEMP/opcard-rs/target/release/examples/vpicc" > "$RUNNER_TEMP/vpicc.log" 2>&1 &
