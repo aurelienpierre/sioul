@@ -132,14 +132,17 @@ pub fn tidy_file(root: &Path, part: &str, file: &str, now_ms: i64) {
     }
 }
 
-/// A file as it stands, to tell whether it changed: its size, its time and,
-/// on Unix, its inode (a file written anew and renamed into place is another).
+/// A file as it stands, to tell whether it changed: its size, its time and
+/// its inode, on Windows its file index (a file written anew and renamed into
+/// place is another). Windows dates two writes within one tick of its clock
+/// alike: a note of the same size written again meanwhile was seen only by
+/// its index (CI's Windows job of 11 November 2026 kept the text before it).
 fn standing(path: &Path) -> Option<(u64, Option<std::time::SystemTime>, u64)> {
     let meta = std::fs::metadata(path).ok()?;
     #[cfg(unix)]
     let inode = std::os::unix::fs::MetadataExt::ino(&meta);
     #[cfg(not(unix))]
-    let inode = 0;
+    let inode = sioul_core::filelock::identity(path, &meta).0;
     Some((meta.len(), meta.modified().ok(), inode))
 }
 
