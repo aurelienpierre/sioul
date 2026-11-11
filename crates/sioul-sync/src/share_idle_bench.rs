@@ -295,3 +295,99 @@ fn an_idle_exchange_on_a_phone_the_size_of_a_real_one() {
     println!("{}", report.join("\n"));
     let _ = std::fs::write(base.join("idle-bench.txt"), report.join("\n") + "\n");
 }
+
+/// What the window's exchange costs at rest, each minute, on a computer the
+/// size of a real one, all of it invented: 2,000 notes and 50 papers sealed
+/// apart, a phone's texts log of 10 MB and its calls log received, so that
+/// `files.json` weighs about 15 MB. The window's exchange reads the notes and
+/// papers (`files: true`), unlike a phone's background step. Ignored: run it
+/// with a folder of its own, outside a RAM disk:
+///
+/// `SIOUL_IDLE_BENCH=<an empty folder> cargo test --release -p sioul-sync window_idle_bench -- --ignored --nocapture`
+///
+/// It prints the median CPU time of an exchange with nothing changed, as a
+/// window keeping nothing between its exchanges and as one keeping its
+/// memory (`set_keeping`), and what is kept.
+#[test]
+#[ignore]
+fn window_idle_bench() {
+    let Some(base) = std::env::var_os("SIOUL_IDLE_BENCH").map(PathBuf::from) else { return };
+    let _ = std::fs::remove_dir_all(&base);
+    let folder = base.join("folder");
+    std::fs::create_dir_all(folder.join("blobs")).unwrap();
+    let mut noise = Noise(0x2545_f491_4f6c_dd1d);
+    let desk = Dev::new(&base, "desk", COMPUTER, "1b2c3d4e-0c4e-4b8e-9a51-2f7c8d9e0a22");
+    let phone = Dev::new(&base, "phone", PHONE, "2c3d4e5f-5b2a-4c3d-8e6f-1a2b3c4d5e70");
+    let notes = base.join("desk").join("notes");
+    let config = Config { notes_root: Some(notes.to_string_lossy().to_string()), ..Config::default() };
+    let desk_stores = || stores_of(&config, &desk.roots, &|_| true);
+    std::fs::write(desk.roots.config.join("config.toml"), "theme = \"light\"\nnotes_view = \"list\"\n").unwrap();
+    // 2,000 notes in 20 folders, 50 papers.
+    for d in 0..20 {
+        let dir = notes.join(format!("folder {d}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        for n in 0..100 {
+            std::fs::write(dir.join(format!("note {n}.md")), noise.line(3_000)).unwrap();
+        }
+    }
+    let papers = notes.join(sioul_core::papers::FOLDER);
+    std::fs::create_dir_all(&papers).unwrap();
+    for n in 0..50 {
+        std::fs::write(papers.join(format!("paper {n}.pdf")), noise.bytes(150_000)).unwrap();
+    }
+    // The phone's texts log and calls log, as in the phone's bench.
+    let texts = phone.path_of(TEXTS_LOG);
+    std::fs::create_dir_all(&texts).unwrap();
+    let lines: Vec<String> = (0..9_100).map(|_| noise.line(822)).collect();
+    std::fs::write(texts.join(format!("{}.jsonl", phone.id)), lines.join("\n") + "\n").unwrap();
+    let calls = phone.path_of(CALLS_LOG);
+    std::fs::create_dir_all(&calls).unwrap();
+    let lines: Vec<String> = (0..8_500).map(|_| noise.line(225)).collect();
+    std::fs::write(calls.join(format!("{}.jsonl", phone.id)), lines.join("\n") + "\n").unwrap();
+
+    let window = |now: i64| exchange(&Sharing { folder: &folder, computer: &desk.id, key: &KEY, memory: &desk.memory, files: true, hurry: None }, &desk_stores(), now).unwrap();
+    let mut now = clock_ms();
+    desk.session(&folder, true, now);
+    phone.session(&folder, true, now);
+    let joined = std::time::Instant::now();
+    desk.exported(&folder, &window(now), now);
+    println!("the desk joined in {:.1} s", joined.elapsed().as_secs_f64());
+    now += MINUTE_MS;
+    phone.exchange(&folder, now);
+    for _ in 0..3 {
+        now += MINUTE_MS;
+        desk.exported(&folder, &window(now), now);
+        now += MINUTE_MS;
+        phone.exchange(&folder, now);
+    }
+    let sizes = |name: &str| std::fs::metadata(desk.memory.with_file_name(name)).map_or(0, |m| m.len());
+    println!("the desk's files.json {:.1} MB, memory.json {:.1} kB", sizes("files.json") as f64 / 1e6, sizes("memory.json") as f64 / 1e3);
+
+    let mut cases = Vec::new();
+    for (name, keep) in [("W. the window at rest, nothing kept between exchanges", false), ("K. the window at rest, its memory kept", true)] {
+        set_keeping(keep);
+        let mut case = Case::new(name);
+        // One exchange first, which reads what the next ones keep.
+        now += MINUTE_MS;
+        desk.exported(&folder, &window(now), now);
+        for _ in 0..10 {
+            now += MINUTE_MS;
+            let before = listing(&folder);
+            let outcome = case.time(|| window(now));
+            assert_eq!(outcome.received, 0, "{outcome:?}");
+            desk.exported(&folder, &outcome, now);
+            case.writes += written(&before, &listing(&folder));
+        }
+        cases.push(case);
+    }
+    let kept: usize = KEPT.lock().unwrap().get(&desk.memory).map_or(0, |k| {
+        let m = &k.memory;
+        m.entries.iter().map(|(key, known)| key.len() + known.w.len() + known.h.len() + known.b.len() + 120).sum::<usize>() + m.files.keys().map(|f| f.len() + 120).sum::<usize>() + m.sealed.mine.len() * 120 + k.text.len()
+    });
+    let lines: usize = LINES.lock().unwrap().iter().filter(|(path, _)| path.starts_with(base.join("desk"))).map(|(_, (_, _, lines))| lines.iter().map(|l| l.len() + 40).sum::<usize>()).sum();
+    set_keeping(true);
+    let mut report: Vec<String> = cases.iter().map(Case::line).collect();
+    report.push(format!("kept in the window's process between exchanges: the memory {:.1} MB, the logs of lines {:.1} MB", kept as f64 / 1e6, lines as f64 / 1e6));
+    println!("{}", report.join("\n"));
+    let _ = std::fs::write(base.join("window-bench.txt"), report.join("\n") + "\n");
+}

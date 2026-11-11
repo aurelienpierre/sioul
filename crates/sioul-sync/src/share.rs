@@ -1057,7 +1057,7 @@ struct Found {
 
 /// A file as last read: its size, when it changed (nanoseconds), its entries'
 /// hashes, and when it was read (milliseconds, this computer's clock).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Hash)]
 struct Stat {
     size: u64,
     modified: u64,
@@ -2921,10 +2921,10 @@ struct Memory {
     rejoin: BTreeSet<String>,
     /// Others' changes not written yet (their file could not be read, or is
     /// one this version does not know): tried again at each exchange.
-    #[serde(default)]
+    #[serde(default, serialize_with = "here_only")]
     pending: BTreeMap<String, (Option<String>, u64, String)>,
     /// Each entry's last change: its clock, the computer that made it, its value's hash ("" once taken out).
-    #[serde(default)]
+    #[serde(default, serialize_with = "here_only")]
     entries: BTreeMap<String, Known>,
     /// Where each store was read (its path): a store new here, or moved (another
     /// notes folder), joins as a new computer would (`exchange`).
@@ -2935,7 +2935,7 @@ struct Memory {
     #[serde(default)]
     emptied: BTreeMap<String, i64>,
     /// The files as last read.
-    #[serde(default)]
+    #[serde(default, serialize_with = "here_only")]
     files: BTreeMap<String, Stat>,
     /// When each part last sent a change, and last received one here (Unix seconds).
     #[serde(default)]
@@ -3075,12 +3075,36 @@ struct Memory {
     /// process (`Memory::keep`); never written itself.
     #[serde(skip)]
     saved: Vec<u8>,
+    /// What `files.json` holds, hashed (`sealed_digest`), when this process
+    /// wrote it or found it as it would write it: the next save writes it
+    /// only when the memory's part for it hashes otherwise. None for a memory
+    /// read from the files: that save writes it whenever its bytes differ.
+    #[serde(skip)]
+    sealed_digest: Option<u128>,
+    /// Both files' stamps as the last save left them, taken under the lock
+    /// that save held (`SavePrepared::commit`), for `keep`.
+    #[serde(skip)]
+    written: Option<(Option<FileStamp>, Option<FileStamp>)>,
+}
+
+/// Whether an entry, a file or a change waiting is remembered in `files.json`
+/// rather than `memory.json`: notes and papers (files sealed apart) and the
+/// logs of lines (`calls_store`).
+fn apart(key: &str) -> bool {
+    key.starts_with(FILES) || calls_store(key)
+}
+
+/// One of the memory's maps as `memory.json` holds it: what is not `apart`.
+/// Between exchanges the memory keeps both parts in one map (`Memory::keep`);
+/// written, `memory.json` holds the same bytes as when they were split.
+fn here_only<V: Serialize, S: serde::Serializer>(map: &BTreeMap<String, V>, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_map(map.iter().filter(|(key, _)| !apart(key)))
 }
 
 /// What this computer remembers of files sealed apart (notes, papers), beside
 /// its memory (`files.json`). Their entries, their files as last read and the
 /// changes waiting for them are kept here too, out of `memory.json`.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Hash)]
 struct Sealed {
     #[serde(default)]
     computer: String,
@@ -3883,7 +3907,7 @@ fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[
     if phones { Texts::Off } else { Texts::Known(BTreeSet::new()) }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
 struct Known {
     c: u64,
     w: String,
@@ -3908,7 +3932,19 @@ impl Memory {
         if let Some(kept) = Memory::kept(path, computer) {
             return kept;
         }
-        let mut memory = Memory::load(path, computer);
+        Memory::read_all(path, computer)
+    }
+
+    /// The whole memory read from its two files, for a look that writes
+    /// nothing: the memory kept for the next exchange (`Kept`) stays kept,
+    /// where `load_all` would take it.
+    fn read_all(path: &Path, computer: &str) -> Memory {
+        // `memory.json`'s bytes kept with it (`saved`): the next save compares with them rather than reading it again.
+        let text = std::fs::read(path).ok();
+        let mut memory = match text.as_deref().and_then(|t| std::str::from_utf8(t).ok()).and_then(|t| serde_json::from_str::<Memory>(t).ok()) {
+            Some(memory) if memory.computer == computer => Memory { saved: text.unwrap_or_default(), ..memory },
+            _ => Memory { computer: computer.to_string(), round: 1, ..Memory::default() },
+        };
         match std::fs::read_to_string(sealed_path(path)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer) {
             Some(sealed) => {
                 // An older Sioul's times, kept in this file then.
@@ -3933,7 +3969,8 @@ impl Memory {
     /// line, and `memory.json`, written at every exchange and read by the
     /// doses' knowing, stays small.
     fn save(&mut self, path: &Path) -> Result<(), String> {
-        self.prepare_save(path)?.commit()
+        self.written = Some(self.prepare_save(path)?.commit()?);
+        Ok(())
     }
 
     /// What `save` writes, written ahead under hidden names, synced and
@@ -3943,17 +3980,27 @@ impl Memory {
     /// the exchanges' lock, however large the memory (review of part 3, R-6;
     /// CI's Windows job of 20 October 2026: 0.79 s under the lock).
     fn prepare_save(&mut self, path: &Path) -> Result<SavePrepared, String> {
-        let apart = |key: &String| key.starts_with(FILES) || calls_store(key);
-        let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.entries).into_iter().partition(|(key, _)| apart(key));
-        (self.sealed.entries, self.entries) = (sealed, kept);
-        let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.files).into_iter().partition(|(file, _)| apart(file));
-        (self.sealed.files, self.files) = (sealed, kept);
-        let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.pending).into_iter().partition(|(key, _)| apart(key));
-        (self.sealed.pending, self.pending) = (sealed, kept);
         self.sealed.computer = self.computer.clone();
-        let mut prepared = SavePrepared { renames: Vec::new() };
-        let mut write = |target: PathBuf, text: &[u8]| -> Result<(), String> {
-            if std::fs::read(&target).is_ok_and(|old| old == text) {
+        // `files.json` as this process last wrote it or found it, and the
+        // memory's part for it the same (its hash): neither split off,
+        // serialized nor compared with the file. Kept between exchanges, the
+        // memory is taken only while both files are as it left them
+        // (`Memory::kept`, under the exchanges' lock, as this save is).
+        let digest = self.sealed_digest_now();
+        let sealed_same = self.sealed_digest == Some(digest);
+        if !sealed_same {
+            let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.entries).into_iter().partition(|(key, _)| apart(key));
+            (self.sealed.entries, self.entries) = (sealed, kept);
+            let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.files).into_iter().partition(|(file, _)| apart(file));
+            (self.sealed.files, self.files) = (sealed, kept);
+            let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.pending).into_iter().partition(|(key, _)| apart(key));
+            (self.sealed.pending, self.pending) = (sealed, kept);
+        }
+        let mut prepared = SavePrepared { path: path.to_path_buf(), renames: Vec::new() };
+        // Each file written when its bytes differ from what it holds: `known`,
+        // the bytes this memory knows it holds, else read from it.
+        let mut write = |target: PathBuf, text: &[u8], known: Option<&[u8]>| -> Result<(), String> {
+            if known.map_or_else(|| std::fs::read(&target).is_ok_and(|old| old == text), |known| known == text) {
                 return Ok(());
             }
             let fail = |e: std::io::Error| format!("{}: {e}", target.display());
@@ -3974,11 +4021,43 @@ impl Memory {
             prepared.renames.push((temporary, target));
             Ok(())
         };
-        write(sealed_path(path), serde_json::to_string(&self.sealed).map_err(|e| e.to_string())?.as_bytes())?;
+        if !sealed_same {
+            #[cfg(test)]
+            SEALED_MADE.with(|n| n.set(n.get() + 1));
+            write(sealed_path(path), serde_json::to_string(&self.sealed).map_err(|e| e.to_string())?.as_bytes(), None)?;
+        }
         let text = serde_json::to_string(self).map_err(|e| e.to_string())?;
-        write(path.to_path_buf(), text.as_bytes())?;
+        write(path.to_path_buf(), text.as_bytes(), (!self.saved.is_empty()).then_some(self.saved.as_slice()))?;
         self.saved = text.into_bytes();
+        self.sealed_digest = Some(digest);
         Ok(prepared)
+    }
+
+    /// What `files.json` would hold, hashed without being written: this
+    /// computer's name, the memory's entries, files and changes waiting that
+    /// it keeps (`apart`), and the rest of `Sealed`, each list counted. XXH3,
+    /// 128 bits, seeded anew in each process (`digest_seed`): two contents
+    /// that differ hash alike once in 2^128, and nothing written outside can
+    /// aim at a seed it never sees. With 10 MB of texts shared, some 20,000
+    /// entries: a few milliseconds where serializing and comparing took tens.
+    fn sealed_digest_now(&self) -> u128 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = xxhash_rust::xxh3::Xxh3::with_seed(digest_seed());
+        self.computer.hash(&mut hasher);
+        fn part<V: Hash>(map: &BTreeMap<String, V>, hasher: &mut xxhash_rust::xxh3::Xxh3) {
+            let mut count = 0usize;
+            for (key, value) in map.iter().filter(|(key, _)| apart(key)) {
+                key.hash(hasher);
+                value.hash(hasher);
+                count += 1;
+            }
+            hasher.write_usize(count);
+        }
+        part(&self.entries, &mut hasher);
+        part(&self.files, &mut hasher);
+        part(&self.pending, &mut hasher);
+        self.sealed.hash(&mut hasher);
+        hasher.digest128()
     }
 
     /// Kept in this process once saved, for the next exchange or send to take
@@ -3988,7 +4067,8 @@ impl Memory {
         if text.is_empty() {
             return;
         }
-        let sealed = stamp_at(&sealed_path(path));
+        // The stamps the save left, under its lock: a file written since by another process is not this memory's.
+        let (own, sealed) = self.written.take().unwrap_or_else(|| (stamp_at(path), stamp_at(&sealed_path(path))));
         if let Ok(mut mine) = MINE.lock() {
             mine.insert(path.to_path_buf(), (sealed, self.computer.clone(), self.sealed.mine.iter().map(|(name, (_, size))| (name.clone(), *size)).collect()));
         }
@@ -3998,7 +4078,7 @@ impl Memory {
         self.entries.append(&mut self.sealed.entries);
         self.files.append(&mut self.sealed.files);
         self.pending.append(&mut self.sealed.pending);
-        let kept = Kept { own: stamp_at(path), sealed, text, memory: self };
+        let kept = Kept { own, sealed, text, memory: self };
         if let Ok(mut all) = KEPT.lock() {
             all.insert(path.to_path_buf(), kept);
         }
@@ -4013,7 +4093,8 @@ impl Memory {
         }
         let kept = KEPT.lock().ok()?.remove(path)?;
         let same = kept.memory.computer == computer && kept.own.is_some() && stamp_at(path) == kept.own && stamp_at(&sealed_path(path)) == kept.sealed && std::fs::read(path).is_ok_and(|text| text == kept.text);
-        same.then_some(kept.memory)
+        // `memory.json`'s bytes, as on the disk: the next save compares with them rather than reading it.
+        same.then(|| Memory { saved: kept.text, ..kept.memory })
     }
 
     /// A new clock: after every clock given or read, and not before `physical` (milliseconds).
@@ -4029,20 +4110,26 @@ fn sealed_path(memory: &Path) -> PathBuf {
 }
 
 /// A file as it stands: its inode (on Unix; a file written anew and renamed
-/// into place is another), its size and its time (nanoseconds).
+/// into place is another), its size, its time and, on Unix, its inode's
+/// change time (nanoseconds; any write moves it, whatever the file's own time
+/// is set back to).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct FileStamp {
     ino: u64,
     size: u64,
     modified: u64,
+    changed: u64,
 }
 
 fn file_stamp(meta: &std::fs::Metadata) -> FileStamp {
     #[cfg(unix)]
-    let ino = std::os::unix::fs::MetadataExt::ino(meta);
+    let (ino, changed) = {
+        use std::os::unix::fs::MetadataExt;
+        (meta.ino(), (meta.ctime().max(0) as u64).saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec().max(0) as u64))
+    };
     #[cfg(not(unix))]
-    let ino = 0;
-    FileStamp { ino, size: meta.len(), modified: modified_ns(meta) }
+    let (ino, changed) = (0, 0);
+    FileStamp { ino, size: meta.len(), modified: modified_ns(meta), changed }
 }
 
 fn stamp_at(path: &Path) -> Option<FileStamp> {
@@ -4067,6 +4154,8 @@ thread_local! {
     /// Tests only: how long each file of the memory written takes more on
     /// this thread, as the antivirus' read at its close on Windows. Never in a build.
     pub(crate) static SLOW_MEMORY_WRITE: std::cell::Cell<std::time::Duration> = const { std::cell::Cell::new(std::time::Duration::ZERO) };
+    /// Tests only: how many times this thread's saves made `files.json`'s bytes anew (`prepare_save`).
+    pub(crate) static SEALED_MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 fn slow_memory_write() {
@@ -4078,19 +4167,23 @@ fn slow_memory_write() {
 /// and closed, each beside the file it replaces; taken away unless put in
 /// place.
 struct SavePrepared {
+    /// `memory.json`'s path.
+    path: PathBuf,
     renames: Vec<(PathBuf, PathBuf)>,
 }
 
 impl SavePrepared {
-    /// Each put in place, `files.json` first, by a rename alone.
-    fn commit(mut self) -> Result<(), String> {
+    /// Each put in place, `files.json` first, by a rename alone; both files'
+    /// stamps then (`memory.json`'s, `files.json`'s), taken under the lock
+    /// the commit is made under (`Memory::written`).
+    fn commit(mut self) -> Result<(Option<FileStamp>, Option<FileStamp>), String> {
         for (temporary, target) in std::mem::take(&mut self.renames) {
             if let Err(e) = std::fs::rename(&temporary, &target) {
                 let _ = std::fs::remove_file(&temporary);
                 return Err(format!("{}: {e}", target.display()));
             }
         }
-        Ok(())
+        Ok((stamp_at(&self.path), stamp_at(&sealed_path(&self.path))))
     }
 }
 
@@ -4105,16 +4198,24 @@ impl Drop for SavePrepared {
 /// The memories kept in this process, by the path of their `memory.json`.
 static KEPT: std::sync::Mutex<BTreeMap<PathBuf, Kept>> = std::sync::Mutex::new(BTreeMap::new());
 
+/// The seed of `Memory::sealed_digest_now`, drawn once in each process (the
+/// system's randomness, through `RandomState`).
+fn digest_seed() -> u64 {
+    use std::hash::BuildHasher;
+    static SEED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *SEED.get_or_init(|| std::collections::hash_map::RandomState::new().hash_one(0x5e10_u64))
+}
+
 /// Whether this process keeps the memory and the logs of lines between its
 /// exchanges (`set_keeping`); always in tests, which run the sharing through it.
 static KEEPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(cfg!(test));
 
 /// Said once by a process that exchanges every few minutes for a long time
-/// (a phone's background service): the memory and the logs of lines are kept
-/// between its exchanges (`Kept`, `LINES`), rather than read again at each.
-/// They weigh some tens of megabytes with many texts shared (about 30 MB for
-/// 10 MB of texts): a window's process, which holds little between its
-/// minutes, reads them again at each (docs/android.md, "In the background").
+/// (a phone's background service, and since 11 November 2026 the window,
+/// whose exchange runs each minute): the memory and the logs of lines are
+/// kept between its exchanges (`Kept`, `LINES`), rather than read again at
+/// each. They weigh some tens of megabytes with many texts shared (about
+/// 30 MB for 10 MB of texts; docs/database.md, "Kept between exchanges").
 pub fn set_keeping(on: bool) {
     KEEPING.store(on, std::sync::atomic::Ordering::Relaxed);
     if !on {
@@ -4859,7 +4960,7 @@ fn format_open(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
 /// milliseconds; 0 when nothing is known. What a replacement says of it
 /// (`devices::Replaced::heard`).
 pub fn heard_of(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, device: &str) -> i64 {
-    let state = Memory::load_all(memory, computer);
+    let state = Memory::read_all(memory, computer);
     let (entries, _) = crate::devices::all(folder, key);
     let here = entries.iter().find(|e| e.id == device);
     let entry = match (here, state.seen.get(device)) {
@@ -8823,7 +8924,7 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
     // What there is to put back, and its date: read once; how many are held from that folder.
     let (held, count) = {
         let _running = exchange_lock(memory, true)?;
-        let state = Memory::load_all(memory, computer);
+        let state = Memory::read_all(memory, computer);
         let gone: Vec<&String> = state.sealed.gone.keys().filter(|file| file.starts_with(store) && state.sealed.bulk.contains(*file)).collect();
         let held: Vec<(String, String, std::time::SystemTime, Option<u64>)> = gone
             .iter()
@@ -9738,7 +9839,7 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
 /// What "Remove its files" would take out for `device`, and what stays, for
 /// the window to say before you press; None for a device not known here.
 pub fn device_files(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, stores: &[Store], device: &str, now_ms: i64) -> Option<DeviceFiles> {
-    let state = Memory::load_all(memory, computer);
+    let state = Memory::read_all(memory, computer);
     let sharing = Sharing { folder, computer, key, memory, files: false, hurry: None };
     plan_removal(&sharing, stores, &state, device, now_ms).map(|(files, ..)| files)
 }
@@ -9793,7 +9894,7 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
         let prepared = state.prepare_save(memory)?;
         let running = exchange_lock(memory, true)?;
         if (stamp_at(memory), stamp_at(&sealed_path(memory))) == read_from {
-            prepared.commit()?;
+            state.written = Some(prepared.commit()?);
             drop(running);
             break (files, going, state);
         }

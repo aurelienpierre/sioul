@@ -38,6 +38,9 @@ hkdf = "0.12"
 argon2 = "0.5"
 rsa = "0.9"
 zeroize = "1"
+# The sharing memory's part in files.json hashed, not serialized, to tell
+# whether it changed (share.rs, `sealed_digest_now`): XXH3, in the lock already (Sequoia's).
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # Only to cap the level of what crates log, at the start of each program: a
 # security key's PIN goes through `openpgp-card`, which traces whole APDUs.
 log = "0.4"

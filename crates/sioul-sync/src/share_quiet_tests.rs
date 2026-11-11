@@ -198,6 +198,94 @@ fn the_memory_kept_between_exchanges_is_never_older_than_its_files() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// The window keeps its memory between its exchanges, each minute
+/// (`set_keeping`): `files.json` is made anew and written only when what it
+/// holds changed (its part of the memory hashed, `sealed_digest_now`), never
+/// at an exchange with nothing new, and `memory.json` holds what it held
+/// when both parts were split at each save.
+#[test]
+fn the_window_writes_the_memory_s_files_part_only_when_it_changed() {
+    let base = scratch("kept-window");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let log = format!("state/calls/log/{}.jsonl", desk.id);
+    desk.write(&log, "a call\nanother call\n");
+    dated(&desk.path(&log), std::time::Duration::from_secs(60));
+    desk.exchange(&folder, &key, NOW);
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    let made = || SEALED_MADE.with(std::cell::Cell::get);
+    let (before, files_json) = (made(), stamp_at(&sealed_path(&desk.memory)));
+    for n in 2..5 {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        desk.exchange(&folder, &key, NOW + n * MINUTE);
+    }
+    assert_eq!(made(), before, "nothing new: files.json neither made nor written");
+    assert_eq!(stamp_at(&sealed_path(&desk.memory)), files_json);
+    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(&desk.memory).unwrap()).unwrap();
+    assert!(written["entries"].as_object().unwrap().keys().all(|key| !apart(key)), "memory.json holds no entry of files.json's");
+    let sealed: Sealed = serde_json::from_slice(&std::fs::read(sealed_path(&desk.memory)).unwrap()).unwrap();
+    assert_eq!(sealed.entries.keys().filter(|key| key.starts_with(&log)).count(), 2, "the calls' entries in files.json");
+    // A call more: made and written once.
+    desk.write(&log, "a call\nanother call\na third call\n");
+    dated(&desk.path(&log), std::time::Duration::from_secs(30));
+    desk.exchange(&folder, &key, NOW + 6 * MINUTE);
+    assert_eq!(made(), before + 1);
+    assert_ne!(stamp_at(&sealed_path(&desk.memory)), files_json);
+    let sealed: Sealed = serde_json::from_slice(&std::fs::read(sealed_path(&desk.memory)).unwrap()).unwrap();
+    assert_eq!(sealed.entries.keys().filter(|key| key.starts_with(&log)).count(), 3);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The memory kept between exchanges is taken only while both its files are
+/// as this process left them (`Memory::kept`): written by another process
+/// (`files.json` alone, renamed into place), or `files.json` rewritten in
+/// place at the same size with its time set back (its inode's change time
+/// moved), the next exchange reads them again and keeps what the other
+/// wrote.
+#[test]
+fn the_memory_kept_is_read_again_once_another_process_wrote_it() {
+    let base = scratch("kept-other");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    assert!(KEPT.lock().unwrap().contains_key(&desk.memory), "kept after its exchange");
+    // Another process adds to files.json alone (memory.json's bytes stay).
+    let other_memory = std::fs::read(&desk.memory).unwrap();
+    let mut other = Memory::read_all(&desk.memory, &desk.id);
+    other.sealed.adopted.insert("files/notes/from-another-process.md".into());
+    other.save(&desk.memory).unwrap();
+    assert_eq!(std::fs::read(&desk.memory).unwrap(), other_memory, "memory.json as it was");
+    let seen = Memory::load_all(&desk.memory, &desk.id);
+    assert!(seen.sealed.adopted.contains("files/notes/from-another-process.md"), "read again, not the memory kept");
+    seen.keep(&desk.memory);
+    // Kept again as read; then files.json rewritten in place, its time set back.
+    Memory::kept(&desk.memory, &desk.id).expect("as left: taken").keep(&desk.memory);
+    let path = sealed_path(&desk.memory);
+    let meta = std::fs::metadata(&path).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    let changed = text.replacen("from-another-process", "from-another-PROCESS", 1);
+    assert_eq!((changed.len(), changed != text), (text.len(), true));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.write_all(changed.as_bytes()).unwrap();
+        file.set_modified(meta.modified().unwrap()).unwrap();
+    }
+    let after = std::fs::metadata(&path).unwrap();
+    assert_eq!((after.len(), after.modified().unwrap()), (meta.len(), meta.modified().unwrap()), "the same size and time");
+    let seen = Memory::load_all(&desk.memory, &desk.id);
+    assert!(seen.sealed.adopted.contains("files/notes/from-another-PROCESS.md"), "rewritten in place: read again");
+    // And the next exchange goes on from what was read.
+    seen.keep(&desk.memory);
+    desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// A log of lines (the senders' lists here; on a phone, the texts' log of
 /// megabytes) is read through once, then again only once it changed.
 #[test]

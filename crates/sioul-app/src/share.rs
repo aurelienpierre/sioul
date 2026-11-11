@@ -2349,6 +2349,10 @@ fn want(change: impl FnOnce(&mut sioul_sync::trigger::Soon, i64)) {
 /// The worker and the watcher, started once, with the window's handles.
 fn start_worker(qt: &QtThread, shared: &Arc<Shared>) {
     if WORKER.set((qt.clone(), Arc::clone(shared))).is_ok() {
+        // The exchange runs each minute: its memory and the logs of lines are
+        // kept between exchanges, read again only once their files changed
+        // under them (`share::set_keeping`; tens of megabytes with many texts).
+        sioul_sync::share::set_keeping(true);
         std::thread::spawn(worker);
         std::thread::spawn(watcher);
     }

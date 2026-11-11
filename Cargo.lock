@@ -4492,6 +4492,7 @@ dependencies = [
  "webpki-roots",
  "windows",
  "x25519-dalek",
+ "xxhash-rust",
  "zeroize",
 ]
 
