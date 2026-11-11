@@ -22,12 +22,9 @@ fn key_entry() -> Result<keyring::Entry, SyncError> {
     keyring::Entry::new("sioul", "Anthropic API key").map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
-/// The key kept for Anthropic's API, if any.
+/// The key kept for Anthropic's API, if any (read as `secret` reads, through its session kept).
 pub fn api_key() -> Option<String> {
-    if crate::secret::testing() {
-        return None;
-    }
-    key_entry().ok()?.get_password().ok().filter(|k| !k.trim().is_empty())
+    crate::secret::named("Anthropic API key").filter(|k| !k.trim().is_empty())
 }
 
 /// Keeps the key, replacing any older one; an empty key forgets it.

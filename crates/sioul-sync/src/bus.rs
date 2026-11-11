@@ -311,13 +311,14 @@ mod tests {
     /// `new_system`, `new_address`, `get_private`, `open_private` or calls a
     /// `register`, nor libdbus's own functions, nor the older `ffidisp` side,
     /// nor another way to a bus (`zbus`, the Secret Service's crates: the
-    /// keyring reaches it inside the `keyring` crate alone, as it does until
-    /// a review decides: docs/android.md), nor notify-rust (which registers
+    /// keyring reaches it through the `keyring` crate, and through its own
+    /// library, `dbus-secret-service`, in secret.rs alone, for the session
+    /// kept for reads, until a review decides: docs/android.md), nor notify-rust (which registers
     /// so) but notify.rs, in any way of writing them; no C or C++ uses Qt's
     /// D-Bus, and no build script asks for its module. The manifests, read
     /// as TOML (tables, renamed packages, targets): notify-rust for Windows
-    /// and macOS alone, the `dbus` crate in sioul-sync alone, no other D-Bus
-    /// crate; and the lock has no other crate reaching libdbus than those and
+    /// and macOS alone, the `dbus` crate and `dbus-secret-service` in
+    /// sioul-sync alone, for Linux and the BSDs, no other D-Bus crate; and the lock has no other crate reaching libdbus than those and
     /// the keyring's (review of battery part C, L2 of the third and fourth
     /// reviews).
     #[test]
@@ -350,6 +351,10 @@ mod tests {
             let bytes = std::fs::read(file).unwrap();
             let text = String::from_utf8_lossy(&bytes);
             for word in words {
+                // The session kept for the keyring's reads (secret.rs, `kept`), through the keyring's own library.
+                if word == "dbus_secret_service" && file.ends_with("sioul-sync/src/secret.rs") {
+                    continue;
+                }
                 assert!(!named(&text, word), "{}: {word} (connections through sioul_sync::bus alone)", file.display());
             }
             assert!(!reached(&text, "register"), "{}: a register call (libdbus's own registration)", file.display());
@@ -397,7 +402,8 @@ mod tests {
                 match package.as_str() {
                     "notify-rust" => assert!((own && section == "[target.'cfg(any(windows, target_os = \"macos\"))'.dependencies]") || (workspace && section == "[workspace.dependencies]"), "{}: notify-rust under {section}", manifest.display()),
                     "dbus" => assert!(own && section.contains("not(any(target_os = \"macos\", target_os = \"android\"))"), "{}: dbus under {section}", manifest.display()),
-                    "zbus" | "secret-service" | "dbus-secret-service" | "libdbus-sys" | "dbus-tokio" | "dbus-crossroads" | "zbus_names" | "ashpd" => panic!("{}: {package} under {section} (connections through sioul_sync::bus alone)", manifest.display()),
+                    "dbus-secret-service" => assert!(own && section == "[target.'cfg(all(unix, not(any(target_os = \"macos\", target_os = \"android\"))))'.dependencies]", "{}: dbus-secret-service under {section}", manifest.display()),
+                    "zbus" | "secret-service" | "libdbus-sys" | "dbus-tokio" | "dbus-crossroads" | "zbus_names" | "ashpd" => panic!("{}: {package} under {section} (connections through sioul_sync::bus alone)", manifest.display()),
                     _ => {}
                 }
             }

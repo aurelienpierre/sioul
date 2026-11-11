@@ -82,6 +82,9 @@ pcsc = "=2.9.0"
 # Windows Credential Manager, the macOS Keychain, Android's KeyStore.
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))'.dependencies]
 keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] }
+# The keyring's own Secret Service library, for reads through one session kept
+# for the process (secret.rs, `kept`): the same version and encryption.
+dbus-secret-service = { version = "4.1", features = ["crypto-rust"] }
 # Every D-Bus connection (bus.rs: never libdbus's own registration): the notifications
 # (notify.rs), the desktop's do-not-disturb (dnd.rs), the system's reading (power.rs), colord.
 dbus = "0.9"
