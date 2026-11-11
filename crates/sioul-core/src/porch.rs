@@ -1699,16 +1699,71 @@ const TRIAGED_KEPT: usize = 200_000;
 /// coarse clock as the look would not show. A card is kept while one of the
 /// last `CARDS_MAKINGS` makings read its file (each look at the mail makes
 /// the Porch, then the money lines with every message kept, closed on or
-/// not: each reads files the other does not), `TRIAGED_KEPT` at most.
+/// not: each reads files the other does not), `TRIAGED_KEPT` at most and
+/// `CARDS_BYTES` in weight at most.
 static CARDS: std::sync::Mutex<Option<CardsKept>> = std::sync::Mutex::new(None);
 
-/// The cards kept (`CARDS`), each with the last making that read its file,
-/// the makings counted, and the id of Sioul's own checks they were read under
+/// The cards kept (`CARDS`), each with the last making that read its file
+/// and what it weighs (`card_weight`), their weight together, the makings
+/// counted, and the id of Sioul's own checks they were read under
 /// (`trust::own_stamp_id`, which a card's subject depends on).
 struct CardsKept {
     stamp_id: Option<String>,
     making: u64,
-    cards: std::collections::HashMap<FileKey, (Card, u64)>,
+    cards: std::collections::HashMap<FileKey, (Card, u64, usize)>,
+    bytes: usize,
+}
+
+impl CardsKept {
+    fn new(stamp_id: Option<String>, making: u64) -> CardsKept {
+        CardsKept { stamp_id, making, cards: std::collections::HashMap::new(), bytes: 0 }
+    }
+
+    /// Within `limit` bytes, at `making`: the cards no later making read go
+    /// first; still over, all of them, as `TRIAGED` starts again when full.
+    fn fit(&mut self, making: u64, limit: usize) {
+        if self.bytes <= limit {
+            return;
+        }
+        self.cards.retain(|_, (_, read, _)| *read >= making);
+        self.bytes = self.cards.values().map(|(_, _, weight)| weight).sum();
+        if self.bytes > limit {
+            self.cards.clear();
+            self.bytes = 0;
+        }
+    }
+}
+
+/// What the cards kept may weigh at most (`card_weight`), beside their count
+/// (`TRIAGED_KEPT`): 32 MB on a computer, 8 MB on a phone. A real message's
+/// card weighs some 5 to 15 kB (docs/building.md, "Each message's triage
+/// kept"): some 2,000 to 6,000 messages' cards on a computer.
+const CARDS_BYTES: usize = if cfg!(target_os = "android") { 8 << 20 } else { 32 << 20 };
+
+#[cfg(test)]
+thread_local! {
+    /// Tests only: another weight than `CARDS_BYTES` for the cards kept, in this test's thread; 0: `CARDS_BYTES`.
+    static CARDS_BYTES_HERE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn cards_bytes() -> usize {
+    #[cfg(test)]
+    if let n @ 1.. = CARDS_BYTES_HERE.with(std::cell::Cell::get) {
+        return n;
+    }
+    CARDS_BYTES
+}
+
+/// What a card weighs in memory, roughly: its headers, the start of its text
+/// and its other words, each with what a string and a list cost beside, and
+/// a fixed part for the rest.
+fn card_weight(card: &Card) -> usize {
+    const STRING: usize = 24;
+    let text = |s: &str| s.len() + STRING;
+    let optional = |s: &Option<String>| s.as_deref().map_or(0, text);
+    let headers: usize = card.headers.fields().map(|(name, value)| text(name) + text(value)).sum();
+    let lists: usize = card.to.iter().chain(&card.attachments).map(|s| text(s)).sum::<usize>() + card.shape.parts.iter().map(|(a, b)| text(a) + text(b)).sum::<usize>();
+    headers + lists + text(&card.excerpt) + text(&card.subject) + optional(&card.from_name) + optional(&card.from_address) + optional(&card.message_id) + optional(&card.account) + card.path.as_ref().map_or(0, |p| p.as_os_str().len() + STRING) + 256
 }
 
 /// How many makings a card is kept after the last that read its file (`CARDS`).
@@ -1717,7 +1772,7 @@ const CARDS_MAKINGS: u64 = 4;
 /// A making begins (`CARDS`): its number.
 fn cards_making() -> u64 {
     let Ok(mut kept) = CARDS.lock() else { return 0 };
-    let kept = kept.get_or_insert_with(|| CardsKept { stamp_id: None, making: 0, cards: std::collections::HashMap::new() });
+    let kept = kept.get_or_insert_with(|| CardsKept::new(None, 0));
     kept.making += 1;
     kept.making
 }
@@ -1727,7 +1782,8 @@ fn cards_made(making: u64) {
     if let Ok(mut kept) = CARDS.lock()
         && let Some(k) = kept.as_mut()
     {
-        k.cards.retain(|_, (_, read)| making.saturating_sub(*read) < CARDS_MAKINGS);
+        k.cards.retain(|_, (_, read, _)| making.saturating_sub(*read) < CARDS_MAKINGS);
+        k.bytes = k.cards.values().map(|(_, _, weight)| weight).sum();
     }
 }
 
@@ -1738,7 +1794,7 @@ const CARD_SETTLES: std::time::Duration = std::time::Duration::from_secs(2);
 /// (`CARDS`), else read now, and kept once its file has settled.
 fn kept_card(path: &Path, key: &FileKey, stamp_id: &Option<String>, making: u64) -> Option<Card> {
     let kept = CARDS.lock().ok().and_then(|mut kept| {
-        let (card, read) = kept.as_mut().filter(|k| k.stamp_id == *stamp_id)?.cards.get_mut(key)?;
+        let (card, read, _) = kept.as_mut().filter(|k| k.stamp_id == *stamp_id)?.cards.get_mut(key)?;
         *read = (*read).max(making);
         Some(card.clone())
     });
@@ -1754,10 +1810,15 @@ fn kept_card(path: &Path, key: &FileKey, stamp_id: &Option<String>, making: u64)
     {
         let at = kept.as_ref().map_or(0, |k| k.making);
         if kept.as_ref().is_none_or(|k| k.stamp_id != *stamp_id || k.cards.len() >= TRIAGED_KEPT) {
-            *kept = Some(CardsKept { stamp_id: stamp_id.clone(), making: at, cards: std::collections::HashMap::new() });
+            *kept = Some(CardsKept::new(stamp_id.clone(), at));
         }
         if let Some(k) = kept.as_mut() {
-            k.cards.insert(key.clone(), (card.clone(), making));
+            let weight = card_weight(&card);
+            if let Some((_, _, before)) = k.cards.insert(key.clone(), (card.clone(), making, weight)) {
+                k.bytes -= before;
+            }
+            k.bytes += weight;
+            k.fit(making, cards_bytes());
         }
     }
     Some(card)
@@ -2932,6 +2993,83 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The cards kept weigh at most their limit (`cards_bytes`): past it,
+    /// those no later making read go first, then all of them; the Porch is
+    /// the same, card for card, whatever was dropped and read again.
+    #[test]
+    fn the_cards_kept_stay_within_their_weight() {
+        crate::config::stand_ins_only();
+        let _turn = GATHERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let root = std::env::temp_dir().join(format!("sioul-porch-cards-weight-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for sub in ["new", "cur", "tmp"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let now = jiff::Timestamp::now().as_second();
+        let date = jiff::Timestamp::from_second(now - 60).unwrap().strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
+        for uid in 1..=6 {
+            let name = format!("{}.U1-{uid}.sioul{}2,S", now - 60, maildir::INFO);
+            let body = format!("Notes from the garden, part {uid}. ").repeat(100);
+            std::fs::write(root.join("cur").join(name), format!("From: Jane <jane@weight.example.org>\r\nMessage-ID: <w{uid}@weight.example.org>\r\nDate: {date}\r\nSubject: Garden {uid}\r\n\r\n{body}\r\n")).unwrap();
+        }
+        let src = Source { account: Some("home".into()), address: Some("you@home.example.org".into()), folder: root.clone(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
+        let (senders, known, state) = (Senders::default(), SenderList::default(), PorchState::default());
+        let made = || {
+            maildir::parses_reset();
+            let mut shown: Vec<String> = gather(std::slice::from_ref(&src), None, &known, &senders, &state, now).iter().map(|t| format!("{t:?}")).collect();
+            shown.sort();
+            (shown, maildir::parses())
+        };
+        let weight = || CARDS.lock().unwrap().as_ref().map_or(0, |k| k.bytes);
+        let kept = || CARDS.lock().unwrap().as_ref().map_or(0, |k| k.cards.len());
+        std::thread::sleep(CARD_SETTLES + std::time::Duration::from_millis(100));
+        if let Some(k) = CARDS.lock().unwrap().as_mut() {
+            k.cards.clear();
+            k.bytes = 0;
+        }
+        let (whole, parsed) = made();
+        assert_eq!((whole.len(), parsed, kept()), (6, 6, 6), "every card kept under the usual weight");
+        let one = weight() / 6;
+        assert!(one > 3_000, "a card weighs its text: {one}");
+        assert_eq!(made().1, 0, "kept");
+        // Room for four and a half cards: past the fourth, this making's own are over the limit, all go.
+        let limit = one * 9 / 2;
+        CARDS_BYTES_HERE.with(|n| n.set(limit));
+        if let Some(k) = CARDS.lock().unwrap().as_mut() {
+            k.cards.clear();
+            k.bytes = 0;
+        }
+        for _ in 0..3 {
+            let (shown, parsed) = made();
+            assert_eq!(shown, whole, "the same Porch, card for card");
+            assert!(parsed > 0, "some cards read again");
+            assert!(weight() <= limit, "within the weight: {} of {limit}", weight());
+        }
+        CARDS_BYTES_HERE.with(|n| n.set(0));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Over its weight, the cards kept lose first those no later making read,
+    /// then, still over, all of them.
+    #[test]
+    fn over_their_weight_the_cards_no_later_making_read_go_first() {
+        let card = Card::from_bytes(b"From: a@example.org\r\nSubject: A card\r\n\r\nIts text.\r\n").unwrap();
+        let key = |n: u64| (PathBuf::from(format!("cur/{n}")), n, 0u128, n, 0i128);
+        let mut kept = CardsKept::new(None, 2);
+        for (n, read) in [(1, 1), (2, 1), (3, 2), (4, 2)] {
+            kept.cards.insert(key(n), (card.clone(), read, 10));
+        }
+        kept.bytes = 40;
+        kept.fit(2, 40);
+        assert_eq!(kept.cards.len(), 4, "within the weight: all kept");
+        kept.fit(2, 25);
+        assert_eq!((kept.cards.len(), kept.bytes), (2, 20), "those of the earlier making went");
+        assert!(kept.cards.values().all(|(_, read, _)| *read == 2));
+        kept.fit(2, 15);
+        assert_eq!((kept.cards.len(), kept.bytes), (0, 0), "still over: all went");
+        assert!(card_weight(&card) > 256);
+    }
+
     /// What the Porch's triage costs on a large mailbox, made anew then kept
     /// (`TRIAGED`), then with what decides one message or one sender
     /// changing: each Maildir under `SIOUL_PORCH_BENCH` (a demo profile's
@@ -2969,14 +3107,7 @@ mod tests {
         run("kept again", &store, &known, &senders);
         // What the cards kept hold (`CARDS`), counted from their strings (about: allocations rounded).
         if let Some(kept) = CARDS.lock().unwrap().as_ref() {
-            let size = |card: &Card| {
-                let strings = card.from_name.as_ref().map_or(0, String::len) + card.from_address.as_ref().map_or(0, String::len) + card.subject.len() + card.message_id.as_ref().map_or(0, String::len) + card.excerpt.len();
-                let lists = card.to.iter().chain(&card.attachments).map(|s| s.len() + 24).sum::<usize>() + card.shape.parts.iter().map(|(a, b)| a.len() + b.len() + 48).sum::<usize>();
-                let headers = card.headers.fields().map(|(n, v)| n.len() + v.len() + 48).sum::<usize>();
-                strings + lists + headers + card.path.as_ref().map_or(0, |p| p.as_os_str().len()) + 400
-            };
-            let bytes: usize = kept.cards.values().map(|(card, _)| size(card)).sum();
-            println!("porch: {} cards kept, about {:.1} MB", kept.cards.len(), bytes as f64 / 1e6);
+            println!("porch: {} cards kept, about {:.1} MB (`card_weight`)", kept.cards.len(), kept.bytes as f64 / 1e6);
         }
         let flagged = items.iter().filter(|t| trust::read_spam_verdict(&t.card.headers).is_some_and(|s| s.flagged)).count();
         println!("porch: {flagged} messages your provider calls spam");
