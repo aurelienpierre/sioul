@@ -48,7 +48,30 @@ Mesuré les 7 et 8 novembre 2026, en usage quotidien, avec les applications qu�
 
 La mémoire est additionnée sur les processus de chaque application ; les pages qu’ils partagent sont comptées dans chacun, ce qui avantage un peu le processus unique de Sioul.
 
-Ce qui prenait le temps de Sioul au repos, c’était du travail refait pour rien : le Porche refait chaque fois qu’une adresse de courriel faisait le point, toutes les cinq minutes chacune, même sans rien de nouveau ; chaque événement de chaque agenda relu et analysé plusieurs fois par minute ; les fichiers partagés regardés toutes les deux secondes ; un site laissé à l’écran dessiné soixante fois par seconde pendant que la fenêtre était cachée dans la zone de notification. Depuis le 10 novembre 2026, chacun se fait quand quelque chose a changé, et rien n’est fait pour une fenêtre cachée ; les chiffres ci-dessus seront mesurés à nouveau sur le même ordinateur.
+Ce qui prenait le temps de Sioul au repos, c’était du travail refait pour rien :
+- le Porche refait chaque fois qu’une adresse de courriel faisait le point, toutes les cinq minutes chacune, même sans rien de nouveau ;
+- chaque événement de chaque agenda relu et analysé plusieurs fois par minute ;
+- les fichiers partagés regardés toutes les deux secondes ;
+- un site laissé à l’écran dessiné soixante fois par seconde pendant que la fenêtre était cachée dans la zone de notification ;
+- et, dans l’échange de chaque minute avec vos autres appareils, une nouvelle session chiffrée avec le trousseau du système, toute la mémoire de ce qui est partagé relue et réécrite, et chaque fichier partagé haché à nouveau.
+
+Depuis les 10 et 11 novembre 2026, chacun ne se fait que quand quelque chose a changé, et rien n’est dessiné pour une fenêtre cachée.
+
+### Au repos, avant et après ce travail {#at-rest-before-and-after-that-work}
+
+Mesuré le 11 novembre 2026 sur le même ordinateur portable, avec le même vrai profil : plusieurs adresses de courriel, des agendas, des contacts, des notes, des sites gardés ouverts, et le partage avec un téléphone. La fenêtre de chaque version a été ouverte, puis laissée tranquille. Ses processus ont été lus toutes les cinq secondes (`/proc`) pendant dix minutes, à partir de deux minutes après son ouverture. La charge est en % d’un cœur :
+
+| Version | La fenêtre en tout | Son propre processus | Les pages de ses sites | Le veilleur des rappels |
+|---|---|---|---|---|
+| 8 novembre | 2,95 % | environ 1,2 % | environ 1,8 % | 0,17 % |
+| 11 novembre, matin | 1,24 % | 1,09 % | 0,15 % | 0,03 % |
+| **11 novembre, soir** | **1,1 %** | **0,9 %** | **0,2 %** | **0,05 %** |
+
+- **Les pages des sites ont le plus baissé.** Un site ne dessine plus quand la fenêtre n’est pas en vue.
+- **Le propre processus de la fenêtre** varie d’une minute à l’autre : de 0,2 % à 1,4 % d’un cœur dans la dernière mesure. Avant ce travail, l’échange de chaque minute avec les autres appareils en faisait plus de la moitié. Sur des données inventées, cet échange prend maintenant 63 ms du processeur là où il en prenait 155, et un Porche sans rien de nouveau 10 ms là où il en prenait environ 40.
+- **Le téléphone**, le même soir, en charge et écran allumé, se tenait au pas de l’ordinateur toutes les deux minutes, son rythme le plus soutenu. Les trois processus de Sioul y ont pris 0,8 % d’un cœur, presque tout dans l’étape d’arrière-plan ; sa fenêtre, mise de côté, 0,02 %.
+
+Une moyenne sur toute une journée, à mettre à côté de celle de Signal dans le tableau ci-dessus, sera mesurée à nouveau en usage quotidien.
 
 **Sur un téléphone** (Android 16, huit cœurs basse consommation, en 5G), 16 heures 20 hors de son chargeur, dont 14 heures 22 écran éteint, d’après l’estimation d’Android lui-même (`dumpsys batterystats`) :
 

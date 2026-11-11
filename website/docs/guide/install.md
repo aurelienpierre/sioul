@@ -48,7 +48,30 @@ Measured on 7 and 8 November 2026, in daily use, with the apps people leave open
 
 Memory is summed over each app's processes; pages they share are counted in each, which favours Sioul's single process a little.
 
-What took Sioul's time at rest was work made again for nothing: the Porch made anew each time any mail address checked in, every five minutes each, even with nothing new; every event of every calendar read and parsed again several times a minute; the shared files looked at every two seconds; a site left in view drawn sixty times a second while the window was hidden in the tray. Since 10 November 2026 each is done when something changed, and nothing is made for a hidden window; the figures above will be measured again on the same laptop.
+What took Sioul's time at rest was work made again for nothing:
+- the Porch made anew each time any mail address checked in, every five minutes each, even with nothing new;
+- every event of every calendar read and parsed again several times a minute;
+- the shared files looked at every two seconds;
+- a site left in view drawn sixty times a second while the window was hidden in the tray;
+- and, in the exchange with your other devices every minute, a new encrypted session with the system's keyring, the whole memory of what is shared read and written back, and every shared file hashed again.
+
+Since 10 and 11 November 2026 each is done only when something changed, and nothing is drawn for a hidden window.
+
+### At rest, before and after that work
+
+Measured on 11 November 2026 on the same laptop, with the same real profile: several mail addresses, calendars, contacts, notes, sites kept open, and sharing with a phone. Each version's window was opened, then left alone. Its processes were read every five seconds (`/proc`) for ten minutes, starting two minutes after it opened. The load is in % of one core:
+
+| Version | The window in all | Its own process | Its sites' pages | The reminder watcher |
+|---|---|---|---|---|
+| 8 November | 2.95 % | about 1.2 % | about 1.8 % | 0.17 % |
+| 11 November, morning | 1.24 % | 1.09 % | 0.15 % | 0.03 % |
+| **11 November, evening** | **1.1 %** | **0.9 %** | **0.2 %** | **0.05 %** |
+
+- **The sites' pages fell the most.** A site no longer draws while the window is out of sight.
+- **The window's own process** varies from minute to minute: from 0.2 % to 1.4 % of one core in the last measure. Before this work, the minute's exchange with the other devices was more than half of it. On invented stand-ins, that exchange now takes 63 ms of the processor where it took 155 ms, and a Porch with nothing new 10 ms where it took about 40.
+- **The phone**, the same evening, charging with its screen on, kept in step with the computer every two minutes, its busiest rhythm. Sioul's three processes took 0.8 % of one core, nearly all of it in the background step; its window, put away, took 0.02 %.
+
+A whole day's average, to set beside Signal's in the table above, will be measured again in daily use.
 
 **On a phone** (Android 16, eight efficiency cores, on 5G), 16 hours 20 minutes off its charger, 14 hours 22 minutes of them with the screen off, Android's own estimate (`dumpsys batterystats`):
 

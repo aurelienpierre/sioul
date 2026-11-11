@@ -75,7 +75,9 @@ You set your meals, your rest and your sleep first. They are kept free in the pl
 
 ### Leave it open, all day
 
-Sioul is made to stay open around the clock, on the computer and in the background on a phone or a tablet, and to go unnoticed there. On 7 and 8 November 2026, open for 17 hours beside Chromium, VS Code and Signal on a laptop, it used 3.7 % of one processor core on average, between Signal and Chromium, and 651 MB of memory, where each of the others took 1.4 to 5.2 GB. On a phone off its charger for 16 hours, keeping several mail addresses, calendars, contacts, texts and calls up to date, Android counted 0.7 % of the battery for it. [The measures, and what they leave out](guide/install.md#resources-needed).
+Sioul is made to stay open around the clock, on the computer and in the background on a phone or a tablet, and to go unnoticed there, on the battery too. It works only when something changed. The Porch isn't made again when no mail came, and a calendar or a shared file is read again only once it has changed. A window put away draws nothing. The phone gathers its network work into one short step, and spaces its looks out while nothing happens. Work that can wait, such as training the spam filter, waits until the device is charging and idle.
+
+On 11 November 2026, on a laptop in daily use (several mail addresses, calendars, sites kept open, sharing with a phone), Sioul's window at rest took 1.1 % of one processor core, against 3 % with the version of 8 November. Its phone, in step with that computer every two minutes, took 0.8 % of one core. Before this work, on 7 and 8 November, Android counted 0.7 % of the battery for Sioul over 16 hours off the charger, and the laptop's window averaged 3.7 % of one core over 17 hours, between Signal and Chromium, with 651 MB of memory where each of the others took 1.4 to 5.2 GB. [The measures, and what they leave out](guide/install.md#resources-needed).
 
 ### A porch between the world and your attention
 
