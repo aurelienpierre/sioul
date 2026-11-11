@@ -1435,6 +1435,8 @@ pub(crate) fn stop() -> String {
                 sioul_sync::remote::forget(&memory_path(), &folder);
             }
         }
+        // What this process held of the sharing (its memory, the logs read, the files' stamps, the contents' names) let go.
+        sioul_sync::share::forget_held(&memory_path(), &share::stores_of(&load_config(), &share::Roots::here(), &|_| true));
         here.folder = None;
         // Starting again later reads the others first, as the first time.
         let memory = memory_path();
@@ -2349,10 +2351,14 @@ fn want(change: impl FnOnce(&mut sioul_sync::trigger::Soon, i64)) {
 /// The worker and the watcher, started once, with the window's handles.
 fn start_worker(qt: &QtThread, shared: &Arc<Shared>) {
     if WORKER.set((qt.clone(), Arc::clone(shared))).is_ok() {
-        // The exchange runs each minute: its memory and the logs of lines are
-        // kept between exchanges, read again only once their files changed
-        // under them (`share::set_keeping`; tens of megabytes with many texts).
-        sioul_sync::share::set_keeping(true);
+        // The exchange runs each minute: on a computer its memory and the logs
+        // of lines are kept between exchanges, read again only once their files
+        // changed under them (`share::set_keeping`; tens of megabytes with many
+        // texts). A phone's window reads them at each, as before: the phone's
+        // memory is short, and its background service keeps them already.
+        if !cfg!(target_os = "android") {
+            sioul_sync::share::set_keeping(true);
+        }
         std::thread::spawn(worker);
         std::thread::spawn(watcher);
     }

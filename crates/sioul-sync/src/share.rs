@@ -1603,34 +1603,50 @@ fn carry_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, S
 /// the same when its inode or its change time moved since (another file put
 /// in its place by a rename, a write that set its time back), and when that
 /// stamp was taken within `settling_ms` of the file's last change, the same
-/// tick of a coarse clock maybe as a write that followed it. Not kept between
-/// runs: the first look of a process trusts the size and the time, as before.
-static STAMPED: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (FileStamp, i64)>>> = std::sync::Mutex::new(None);
+/// tick of a coarse clock maybe as a write that followed it. Each stamp goes
+/// with the look it was taken at (the `Stat::seen` that look wrote): a look
+/// whose result was never saved (an exchange that failed after it read)
+/// vouches for nothing, and the memory's older look at the file is read
+/// through again. Not kept between runs: the first look of a process trusts
+/// the size and the time, as before.
+static STAMPED: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Stamped>>> = std::sync::Mutex::new(None);
+
+/// A file's stamp as a look took it (`STAMPED`): the stamp, when it was taken
+/// (milliseconds, this computer's clock), and the `Stat::seen` of that look.
+#[derive(Debug, Clone, Copy)]
+struct Stamped {
+    stamp: FileStamp,
+    taken: i64,
+    seen: i64,
+}
 
 /// Files' stamps kept at most (`STAMPED`): past them, kept anew.
 const STAMPED_KEPT: usize = 200_000;
 
 /// Whether the file at `path`, stamped `stamp` now, is as this process last
-/// read it (`STAMPED`): its stamp the same, taken once the file had settled.
-/// A file this process never read counts as the same (its `Stat` says so).
-fn stamped_as_read(path: &Path, stamp: FileStamp) -> bool {
-    let Some((was, taken)) = STAMPED.lock().ok().and_then(|all| all.as_ref()?.get(path).copied()) else { return true };
-    let changed_ms = (was.modified.max(was.changed) / 1_000_000) as i64;
-    was == stamp && changed_ms + settling_ms() < taken
+/// read it (`STAMPED`) at the look its `Stat` says (`seen`): its stamp the
+/// same, taken at that look, once the file had settled. A file this process
+/// never read counts as the same (its `Stat` says so).
+fn stamped_as_read(path: &Path, stamp: FileStamp, seen: i64) -> bool {
+    let Some(was) = STAMPED.lock().ok().and_then(|all| all.as_ref()?.get(path).copied()) else { return true };
+    let changed_ms = (was.stamp.modified.max(was.stamp.changed) / 1_000_000) as i64;
+    was.stamp == stamp && was.seen == seen && changed_ms + settling_ms() < was.taken
 }
 
-/// The stamp of the file at `path` as read at `clock` (`STAMPED`): `fresh`, read
-/// through now; else taken as last read, its first stamp kept.
-fn note_stamp(path: &Path, stamp: FileStamp, clock: i64, fresh: bool) {
+/// The stamp of the file at `path` as read at `clock` (`STAMPED`), for the
+/// look whose `Stat::seen` is `seen`: `fresh`, read through now; else taken
+/// as last read, its first stamp kept.
+fn note_stamp(path: &Path, stamp: FileStamp, clock: i64, seen: i64, fresh: bool) {
     let Ok(mut all) = STAMPED.lock() else { return };
     let all = all.get_or_insert_with(std::collections::HashMap::new);
     if all.len() >= STAMPED_KEPT && !all.contains_key(path) {
         all.clear();
     }
+    let stamped = Stamped { stamp, taken: clock, seen };
     if fresh {
-        all.insert(path.to_path_buf(), (stamp, clock));
+        all.insert(path.to_path_buf(), stamped);
     } else {
-        all.entry(path.to_path_buf()).or_insert((stamp, clock));
+        all.entry(path.to_path_buf()).or_insert(stamped);
     }
 }
 
@@ -1658,8 +1674,8 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
     // in the memory (its lines are its entries' names), it is read again.
     let lines = matches!(store.shape, Shape::Lines);
     let stamp = file_stamp(&meta);
-    if let Some(stat) = known.get(file).filter(|s| !lines && s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen) && stamped_as_read(path, stamp)) {
-        note_stamp(path, stamp, look.clock, false);
+    if let Some(stat) = known.get(file).filter(|s| !lines && s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen) && stamped_as_read(path, stamp, s.seen)) {
+        note_stamp(path, stamp, look.clock, stat.seen, false);
         for (entry, h) in &stat.entries {
             found.hashes.insert(format!("{file}#{entry}"), h.clone());
             // A file sealed apart: its record made from what was kept, the file not read again.
@@ -1694,7 +1710,7 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
             }
             return;
         };
-        note_stamp(path, stamp, look.clock, true);
+        note_stamp(path, stamp, look.clock, look.clock, true);
         let key = format!("{file}#");
         found.hashes.insert(key.clone(), h.clone());
         found.values.insert(key, reference(&h, meta.len(), modified));
@@ -1729,7 +1745,7 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
         found.unknown.insert(file.to_string());
         return;
     };
-    note_stamp(path, file_stamp(&held), look.clock, true);
+    note_stamp(path, file_stamp(&held), look.clock, look.clock, true);
     let mut stat = Stat { size: held.len(), modified: modified_ns(&held), entries: Vec::with_capacity(entries.len()), seen: look.clock };
     for (entry, value) in entries {
         let key = format!("{file}#{entry}");
@@ -1754,7 +1770,7 @@ static LINES: std::sync::Mutex<Lines> = std::sync::Mutex::new(BTreeMap::new());
 /// the one read there, else read now (`clock`: this computer's, milliseconds) and kept.
 fn lines_of(path: &Path, meta: &std::fs::Metadata, clock: i64) -> Option<std::sync::Arc<Vec<String>>> {
     let stamp = file_stamp(meta);
-    let settled = |read: i64| (stamp.modified / 1_000_000) as i64 + settling_ms() < read;
+    let settled = |read: i64| (stamp.modified.max(stamp.changed) / 1_000_000) as i64 + settling_ms() < read;
     if let Some((_, _, lines)) = keeping().then(|| LINES.lock().ok().and_then(|all| all.get(path).filter(|(was, read, _)| *was == stamp && settled(*read)).cloned())).flatten() {
         return Some(lines);
     }
@@ -4028,8 +4044,9 @@ impl Memory {
         // serialized nor compared with the file. Kept between exchanges, the
         // memory is taken only while both files are as it left them
         // (`Memory::kept`, under the exchanges' lock, as this save is).
+        // `files.json` gone from under it (taken away from outside): written again now.
         let digest = self.sealed_digest_now();
-        let sealed_same = self.sealed_digest == Some(digest);
+        let sealed_same = self.sealed_digest == Some(digest) && sealed_path(path).exists();
         if !sealed_same {
             let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.entries).into_iter().partition(|(key, _)| apart(key));
             (self.sealed.entries, self.entries) = (sealed, kept);
@@ -4109,8 +4126,9 @@ impl Memory {
         if text.is_empty() {
             return;
         }
-        // The stamps the save left, under its lock: a file written since by another process is not this memory's.
-        let (own, sealed) = self.written.take().unwrap_or_else(|| (stamp_at(path), stamp_at(&sealed_path(path))));
+        // The stamps the save left, under its lock: a file written since by
+        // another process is not this memory's. A memory not saved is not kept.
+        let Some((own, sealed)) = self.written.take() else { return };
         if let Ok(mut mine) = MINE.lock() {
             mine.insert(path.to_path_buf(), (sealed, self.computer.clone(), self.sealed.mine.iter().map(|(name, (_, size))| (name.clone(), *size)).collect()));
         }
@@ -4134,7 +4152,7 @@ impl Memory {
             return None;
         }
         let kept = KEPT.lock().ok()?.remove(path)?;
-        let same = kept.memory.computer == computer && kept.own.is_some() && stamp_at(path) == kept.own && stamp_at(&sealed_path(path)) == kept.sealed && std::fs::read(path).is_ok_and(|text| text == kept.text);
+        let same = kept.memory.computer == computer && kept.own.is_some() && kept.sealed.is_some() && stamp_at(path) == kept.own && stamp_at(&sealed_path(path)) == kept.sealed && std::fs::read(path).is_ok_and(|text| text == kept.text);
         // `memory.json`'s bytes, as on the disk: the next save compares with them rather than reading it.
         same.then(|| Memory { saved: kept.text, ..kept.memory })
     }
@@ -4253,10 +4271,11 @@ fn digest_seed() -> u64 {
 static KEEPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(cfg!(test));
 
 /// Said once by a process that exchanges every few minutes for a long time
-/// (a phone's background service, and since 11 November 2026 the window,
-/// whose exchange runs each minute): the memory and the logs of lines are
-/// kept between its exchanges (`Kept`, `LINES`), rather than read again at
-/// each. They weigh some tens of megabytes with many texts shared (about
+/// (a phone's background service, and since 11 November 2026 a computer's
+/// window, whose exchange runs each minute; a phone's window reads them again
+/// at each, its memory being the phone's): the memory and the logs of lines
+/// are kept between its exchanges (`Kept`, `LINES`), rather than read again
+/// at each. They weigh some tens of megabytes with many texts shared (about
 /// 30 MB for 10 MB of texts; docs/database.md, "Kept between exchanges").
 pub fn set_keeping(on: bool) {
     KEEPING.store(on, std::sync::atomic::Ordering::Relaxed);
@@ -4264,6 +4283,38 @@ pub fn set_keeping(on: bool) {
         KEPT.lock().map(|mut all| all.clear()).ok();
         LINES.lock().map(|mut all| all.clear()).ok();
     }
+}
+
+/// Sharing stopped here (`memory`, the memory's path; `stores`, what it
+/// shared): what this process held of it is let go, whether or not it keeps
+/// the memory between exchanges. The memory kept (`KEPT`), what this device
+/// sealed (`MINE`) and the last quiet look (`QUIET`), by the memory's path;
+/// the logs of lines read (`LINES`), the files' stamps (`STAMPED`) and the
+/// folders as listed (`LISTED`), below the stores' places; and the contents'
+/// names made with the sharing's key (`blobs::forget_names`).
+pub fn forget_held(memory: &Path, stores: &[Store]) {
+    let below = |path: &Path| stores.iter().any(|store| path.starts_with(&store.path));
+    if let Ok(mut all) = KEPT.lock() {
+        all.remove(memory);
+    }
+    if let Ok(mut all) = MINE.lock() {
+        all.remove(memory);
+    }
+    if let Ok(mut all) = QUIET.lock() {
+        all.remove(memory);
+    }
+    if let Ok(mut all) = LINES.lock() {
+        all.retain(|path, _| !below(path));
+    }
+    if let Ok(mut all) = STAMPED.lock()
+        && let Some(all) = all.as_mut()
+    {
+        all.retain(|path, _| !below(path));
+    }
+    if let Ok(mut all) = LISTED.lock() {
+        all.retain(|path, _| !below(path));
+    }
+    crate::blobs::forget_names();
 }
 
 fn keeping() -> bool {

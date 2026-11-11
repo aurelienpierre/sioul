@@ -146,6 +146,18 @@ struct Naming {
 
 static NAMING: std::sync::Mutex<Option<Naming>> = std::sync::Mutex::new(None);
 
+/// The names kept and the naming key's MAC let go (`NAMING`): sharing stopped here.
+pub fn forget_names() {
+    *NAMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+}
+
+/// Whether names made with `key` are kept (`NAMING`), for tests.
+#[cfg(test)]
+pub(crate) fn names_kept_for(key: &[u8; 32]) -> bool {
+    let fingerprint: [u8; 32] = Sha256::digest(key).into();
+    NAMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().is_some_and(|n| n.fingerprint == fingerprint)
+}
+
 /// Names kept at most (`Naming`): past them, they are made anew. Some
 /// 200 bytes each.
 const NAMES_KEPT: usize = 100_000;

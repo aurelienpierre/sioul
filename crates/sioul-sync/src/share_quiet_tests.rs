@@ -261,9 +261,13 @@ fn the_memory_kept_is_read_again_once_another_process_wrote_it() {
     assert_eq!(std::fs::read(&desk.memory).unwrap(), other_memory, "memory.json as it was");
     let seen = Memory::load_all(&desk.memory, &desk.id);
     assert!(seen.sealed.adopted.contains("files/notes/from-another-process.md"), "read again, not the memory kept");
+    // Kept again once saved (nothing to write); then files.json rewritten in place, its time set back.
+    let mut seen = seen;
+    seen.save(&desk.memory).unwrap();
     seen.keep(&desk.memory);
-    // Kept again as read; then files.json rewritten in place, its time set back.
-    Memory::kept(&desk.memory, &desk.id).expect("as left: taken").keep(&desk.memory);
+    let mut again = Memory::kept(&desk.memory, &desk.id).expect("as left: taken");
+    again.save(&desk.memory).unwrap();
+    again.keep(&desk.memory);
     let path = sealed_path(&desk.memory);
     let meta = std::fs::metadata(&path).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
@@ -281,7 +285,7 @@ fn the_memory_kept_is_read_again_once_another_process_wrote_it() {
     let seen = Memory::load_all(&desk.memory, &desk.id);
     assert!(seen.sealed.adopted.contains("files/notes/from-another-PROCESS.md"), "rewritten in place: read again");
     // And the next exchange goes on from what was read.
-    seen.keep(&desk.memory);
+    drop(seen);
     desk.exchange(&folder, &key, NOW + 2 * MINUTE);
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -1939,5 +1943,123 @@ fn a_note_changed_at_the_same_size_and_time_is_read_through_again() {
     SETTLE.with(|s| s.set(0));
     turn(&phone, &phone_notes);
     assert_eq!(phone_plan(), "the plan, forth\n");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// `files.json` taken away from outside: the next save writes it again from
+/// the memory, though its part did not change, and a memory kept whose
+/// `files.json` has no stamp (gone when its save ended) is never taken.
+#[test]
+fn a_memory_whose_files_json_is_gone_is_never_taken_and_writes_it_again() {
+    let base = scratch("kept-gone");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    desk.exchange(&folder, &key, NOW + MINUTE);
+    let files_json = sealed_path(&desk.memory);
+    let written = std::fs::read(&files_json).unwrap();
+    // Taken away between a load and a save: written again by that save.
+    let mut memory = Memory::load_all(&desk.memory, &desk.id);
+    assert!(memory.sealed_digest.is_some(), "the memory kept");
+    std::fs::remove_file(&files_json).unwrap();
+    memory.save(&desk.memory).unwrap();
+    assert_eq!(std::fs::read(&files_json).unwrap(), written, "written again, whole");
+    // Kept with no stamp for files.json (gone once its save ended): not taken.
+    std::fs::remove_file(&files_json).unwrap();
+    memory.written = Some((stamp_at(&desk.memory), None));
+    memory.keep(&desk.memory);
+    assert!(KEPT.lock().unwrap().contains_key(&desk.memory));
+    assert!(Memory::kept(&desk.memory, &desk.id).is_none(), "no files.json: read from the disk");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A look whose result is never saved (an exchange failing after it read the
+/// files) vouches for nothing: the file's stamp the process keeps goes with
+/// that look (`Stat::seen`), so the memory's older look at a note rewritten
+/// in place, its size and time as they were, is read through again by the
+/// next exchange, which sends it.
+#[test]
+fn a_look_never_saved_leaves_the_note_to_be_read_again() {
+    let base = scratch("stamped-unsaved");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    std::fs::create_dir_all(&notes).unwrap();
+    std::fs::create_dir_all(&phone_notes).unwrap();
+    let plan = notes.join("plan.md");
+    std::fs::write(&plan, "the plan, first\n").unwrap();
+    a_minute_back(&[&plan]);
+    let then = std::fs::metadata(&plan).unwrap().modified().unwrap();
+    let stores_of_notes = |c: &Computer, notes: &Path| {
+        let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+        stores_of(&config, &c.roots, &|part| part == "notes" || shared_by_default(part, &config))
+    };
+    let mut now = NOW;
+    let mut turn = |c: &Computer, notes: &Path| {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        exchange(&Sharing { folder: &folder, computer: &c.id, key: &key, memory: &c.memory, files: true, hurry: None }, &stores_of_notes(c, notes), now).unwrap()
+    };
+    let hashed = || crate::blobs::HASHED.with(std::cell::Cell::get);
+    turn(&desk, &notes);
+    turn(&phone, &phone_notes);
+    assert_eq!(std::fs::read_to_string(phone_notes.join("plan.md")).unwrap(), "the plan, first\n");
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::options().write(true).open(&plan).unwrap();
+        file.write_all(b"the plan, again\n").unwrap();
+        file.set_modified(then).unwrap();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    // A look whose result goes nowhere, as an exchange failing after its look.
+    let memory = Memory::read_all(&desk.memory, &desk.id);
+    let (confirmed, changing) = (BTreeSet::new(), BTreeMap::new());
+    let before = hashed();
+    let _dropped = gather(&stores_of_notes(&desk, &notes), &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms(), changing: &changing, quiet: true });
+    assert_eq!(hashed(), before + 1, "its change time moved: read through");
+    // The next exchange's memory holds the older look: read through again, and sent.
+    turn(&desk, &notes);
+    assert_eq!(hashed(), before + 2, "the stamp kept went with a look never saved");
+    turn(&phone, &phone_notes);
+    assert_eq!(std::fs::read_to_string(phone_notes.join("plan.md")).unwrap(), "the plan, again\n");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Sharing stopped (`forget_held`): the memory kept, the logs of lines, the
+/// files' stamps and listings of its stores, and the names made with its key
+/// are let go from the process.
+#[test]
+fn sharing_stopped_lets_go_of_what_the_process_held() {
+    let base = scratch("forget-held");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let notes = base.join("desk-notes");
+    std::fs::create_dir_all(&notes).unwrap();
+    std::fs::write(notes.join("plan.md"), "the plan\n").unwrap();
+    a_minute_back(&[&notes.join("plan.md")]);
+    desk.write("config/safe-senders.txt", "a@example.org\n");
+    a_minute_back(&[&desk.path("config/safe-senders.txt")]);
+    let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+    let stores = stores_of(&config, &desk.roots, &|part| part == "notes" || shared_by_default(part, &config));
+    for n in 0..2 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        exchange(&Sharing { folder: &folder, computer: &desk.id, key: &key, memory: &desk.memory, files: true, hurry: None }, &stores, NOW + n * MINUTE).unwrap();
+    }
+    let below = |path: &Path| path.starts_with(&base);
+    let held = || {
+        let kept = KEPT.lock().unwrap().contains_key(&desk.memory);
+        let lines = LINES.lock().unwrap().keys().any(|p| below(p));
+        let stamped = STAMPED.lock().unwrap().as_ref().is_some_and(|all| all.keys().any(|p| below(p)));
+        (kept, lines, stamped)
+    };
+    assert_eq!(held(), (true, true, true), "held after the exchanges");
+    assert!(crate::blobs::names_kept_for(&key) || { crate::blobs::name(&key, &"0".repeat(64)); crate::blobs::names_kept_for(&key) });
+    forget_held(&desk.memory, &stores);
+    assert_eq!(held(), (false, false, false), "let go");
+    assert!(!crate::blobs::names_kept_for(&key), "the names made with its key let go");
     let _ = std::fs::remove_dir_all(&base);
 }
