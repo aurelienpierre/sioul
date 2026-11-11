@@ -56,11 +56,13 @@ jobs:
 
       # pcsc-lite's service and its client library, vsmartcard's virtual
       # reader (a pcsc-lite driver, listening on localhost:35963), D-Bus for
-      # sioul-sync's notifications, netcat to see the reader listen.
+      # sioul-sync's notifications, netcat to see the reader listen, and
+      # Nettle with clang and LLVM for its bindings, which Sequoia needs in
+      # openpgp-card-tools (its first run, 11 November 2026, stopped there).
       - name: Packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev pcscd vsmartcard-vpcd netcat-openbsd
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev pcscd vsmartcard-vpcd netcat-openbsd nettle-dev clang llvm
 
       # Everything built before the card starts: the builds take minutes, and
       # nothing may wait on the card meanwhile.
