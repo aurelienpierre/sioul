@@ -11,7 +11,10 @@ profile made anew in OUT/profile, offscreen, software rendering, SIOUL_DEMO=1:
 nothing fetched nor sent by itself) with the step list "rest" (main.qml): the
 Porch shown, the window hidden as to the tray, then the profile's sites opened
 and kept behind the Porch, then the window hidden again with them, then
-hidden with a site in view, three minutes each, nothing done meanwhile. The log
+hidden with a site in view, three minutes each, nothing done meanwhile, after
+three minutes of the Porch that are not measured, the window then hidden and
+brought back once ("warm": the start's last work done before them, the first
+minutes' writes and the views made again after them). The log
 says "sioul-rest: <moment>" as each begins; from 15 seconds after it to 175,
 /proc is read: the CPU of the window's process (all its threads, as `ps`
 counts it) and of the processes under it (Qt WebEngine's), its wakes (context
@@ -200,7 +203,7 @@ def main():
             sys.exit(f"measure-idle.py: the window did not start (see {log_path}).")
         while launcher.poll() is None:
             for moment in re.findall(r"sioul-rest: (\S+)", log_path.read_text(errors="replace")):
-                if moment not in marks and moment != "end":
+                if moment not in marks and moment not in ("end", "warm"):
                     marks[moment] = time.time()
                     pending[moment] = None
             for moment in list(pending):

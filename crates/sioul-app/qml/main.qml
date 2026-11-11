@@ -2375,7 +2375,11 @@ SioulWindow {
             // opened and kept behind the Porch, then hidden too, then hidden
             // with a site in view, three minutes each. "sioul-rest: <moment>"
             // in the log as each begins; meanwhile nothing is done, the steps'
-            // own timer stopped until the moment's end.
+            // own timer stopped until the moment's end. Three minutes of the
+            // Porch first ("warm", not measured), then the window hidden and
+            // brought back once: the start's last work done before the moments
+            // (the first minutes' writes, and the views made again after them,
+            // every message triaged again when they changed what decides it).
             function rested(moment) {
                 return [() => {
                     console.info("sioul-rest: " + moment)
@@ -2383,7 +2387,7 @@ SioulWindow {
                 }, () => grabber.interval = 1500]
             }
             readonly property var restSteps: grabber.held(20).concat(
-                grabber.rested("porch"),
+                grabber.rested("warm"), [() => window.hide()], grabber.held(4), [() => window.bringBack()], grabber.held(10), grabber.rested("porch"),
                 [() => window.hide()], grabber.rested("hidden"),
                 [() => window.bringBack(), () => window.page = 3], grabber.held(2),
                 [0, 1, 2, 3, 4].reduce((all, i) => all.concat([() => {
