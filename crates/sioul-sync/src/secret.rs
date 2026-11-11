@@ -608,6 +608,7 @@ mod kept_tests {
     /// crate. What the session finds is what the `keyring` crate wrote and
     /// reads, under the same items and attributes.
     #[test]
+    #[ignore = "starts a GNOME keyring of its own, whose calls would fail the final pass's keyring count: tools/final-pass.sh runs it apart, on a bus of its own"]
     fn one_session_serves_every_read_and_is_made_again_once_the_service_went() {
         let _turn = KEYRINGS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if !a_test_bus() {

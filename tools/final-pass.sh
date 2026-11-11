@@ -20,7 +20,9 @@
 #    `dbus-monitor`: a single call to the keyring's service
 #    (`org.freedesktop.secrets`) fails the pass (review of 19 October 2026,
 #    F11); sioul-core's reads the JVM's lines of the calls' log
-#    (SIOUL_CALLS_SAMPLE, calls::tests::java_s_lines_read_here);
+#    (SIOUL_CALLS_SAMPLE, calls::tests::java_s_lines_read_here); then the
+#    kept keyring session's own test apart, on a bus nobody counts, since it
+#    starts a GNOME keyring of its own (step 2b);
 # 3. the two programs, in release, after every test run, and no test hook in
 #    them (tools/check-test-marks.sh: no SIOUL_TEST_ name at all; a test run
 #    leaves them built with the tests' features, which keep no password:
@@ -165,6 +167,19 @@ for crate in "${crates[@]}"; do
     secrets=$(grep -c "destination=org.freedesktop.secrets" "$out/bus-$crate.log")
     [[ $secrets -eq 0 ]] || { echo "  $secrets call(s) to the keyring's service"; failed+=("keyring-$crate"); }
 done
+
+# 2b. The kept keyring session's own test (sioul-sync, secret.rs, kept_tests),
+# apart, on a bus of its own that nobody counts: it starts a GNOME keyring of
+# its own there, and checks itself that the service it reads is the one it
+# started (ignored in the crate's runs above, where any call to a keyring's
+# service fails the pass). It says "skipped" without gnome-keyring-daemon.
+room
+echo "$(date +%H:%M:%S) the kept keyring session, apart"
+fresh || exit 1
+env "${apart[@]}" timeout 600 dbus-run-session --config-file="$bus_conf" -- cargo test --release -p sioul-sync --lib secret::kept_tests::one_session_serves_every_read_and_is_made_again_once_the_service_went -- --ignored --exact --nocapture > "$out/test-kept-keyring.log" 2>&1
+status=$?
+grep -E "^test result:|FAILED|panicked|skipped" "$out/test-kept-keyring.log" | head -4 | sed 's/^/  /'
+[[ $status -eq 0 ]] || { echo "  exit $status"; failed+=(kept-keyring); }
 
 # 3. The programs, and no test hook in them.
 for crate in sioul-app sioul-cli; do

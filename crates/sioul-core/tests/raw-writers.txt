@@ -311,6 +311,9 @@ sioul-core/src/filelock.rs	remove_dir_wiping	1	remove_wiping(&path)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_dir(dir)
 sioul-core/src/filelock.rs	remove_dir_wiping	1	std::fs::remove_dir_all(dir)
 
+# sioul-core/src/filelock.rs: a file's identity on Windows (its index and change time), the file opened for its attributes alone and shared for every use: it writes nothing.
+sioul-core/src/filelock.rs	windows_identity	1	std::fs::OpenOptions::new()
+
 # sioul-core/src/handed.rs: requests handed between Sioul's programs: no item.
 sioul-core/src/handed.rs	hand	1	write_whole(&path, &serde_json::to_string(handed).map_err(|e| e.to_string())?)
 sioul-core/src/handed.rs	waiting	1	std::fs::rename(&path, path.with_extension("unread"))
@@ -780,6 +783,9 @@ sioul-sync/src/renumbered.rs	save	1	std::fs::rename(&temporary, path)
 
 # sioul-sync/src/scheduling.rs: what a calendar server says of its scheduling (state, no item).
 sioul-sync/src/scheduling.rs	save	1	sioul_core::filelock::replace(&path, text.as_bytes())
+
+# sioul-sync/src/secret.rs: the scratch folder of the kept session's own test (kept_tests), with the keyring it started, removed when the test ends: no item.
+sioul-sync/src/secret.rs	drop	1	std::fs::remove_dir_all(&self.0)
 
 # sioul-sync/src/share.rs:
 #   remove_if_old: the sharing's leftovers.
