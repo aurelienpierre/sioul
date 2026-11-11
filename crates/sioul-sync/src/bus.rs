@@ -304,6 +304,43 @@ mod tests {
         })
     }
 
+    /// secret.rs split: its `kept` module and `kept_tests` together, and the
+    /// rest. Each module from its line to its closing brace, braces counted.
+    fn kept_parts(text: &str) -> (String, String) {
+        let mut ranges = Vec::new();
+        for header in ["mod kept {", "mod kept_tests {"] {
+            let start = text.find(header).unwrap_or_else(|| panic!("secret.rs: {header} not found"));
+            let open = start + header.len() - 1;
+            let mut depth = 0usize;
+            let end = text[open..]
+                .char_indices()
+                .find_map(|(at, c)| {
+                    match c {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(open + at + 1);
+                            }
+                        }
+                        _ => {}
+                    }
+                    None
+                })
+                .unwrap_or_else(|| panic!("secret.rs: {header} not closed"));
+            ranges.push((start, end));
+        }
+        ranges.sort();
+        let (mut kept, mut outside, mut at) = (String::new(), String::new(), 0);
+        for (start, end) in ranges {
+            outside.push_str(&text[at..start]);
+            kept.push_str(&text[start..end]);
+            at = end;
+        }
+        outside.push_str(&text[at..]);
+        (kept, outside)
+    }
+
     /// No source of Sioul's outside this file reaches a bus through libdbus's
     /// own registration, nor opens a connection itself: no file under crates/
     /// (whatever its kind, folders named "target" there included; Qt's
@@ -312,13 +349,18 @@ mod tests {
     /// `register`, nor libdbus's own functions, nor the older `ffidisp` side,
     /// nor another way to a bus (`zbus`, the Secret Service's crates: the
     /// keyring reaches it through the `keyring` crate, and through its own
-    /// library, `dbus-secret-service`, in secret.rs alone, for the session
-    /// kept for reads, until a review decides: docs/android.md), nor notify-rust (which registers
+    /// library, `dbus-secret-service`, in secret.rs's `kept` module and its
+    /// tests alone, for the session kept for reads, until a review decides:
+    /// docs/android.md; there, nothing but a read: no plain session, no unlock,
+    /// no item or collection made, written or deleted, and one session made,
+    /// encrypted, in one place), nor notify-rust (which registers
     /// so) but notify.rs, in any way of writing them; no C or C++ uses Qt's
     /// D-Bus, and no build script asks for its module. The manifests, read
     /// as TOML (tables, renamed packages, targets): notify-rust for Windows
     /// and macOS alone, the `dbus` crate and `dbus-secret-service` in
-    /// sioul-sync alone, for Linux and the BSDs, no other D-Bus crate; and the lock has no other crate reaching libdbus than those and
+    /// sioul-sync alone, `dbus-secret-service` for Linux, FreeBSD and OpenBSD
+    /// (where the keyring crate's Secret Service store is), no other D-Bus
+    /// crate; and the lock has no other crate reaching libdbus than those and
     /// the keyring's (review of battery part C, L2 of the third and fourth
     /// reviews).
     #[test]
@@ -339,7 +381,22 @@ mod tests {
             }
         }
         assert!(files.len() > 500 && manifests.len() >= 5, "{} files, {} manifests", files.len(), manifests.len());
+        // The session kept for the keyring's reads (secret.rs, `kept`): the
+        // keyring's own library named there alone, in that module and its
+        // tests, and only to read.
+        let secret = std::fs::read_to_string(root.join("crates/sioul-sync/src/secret.rs")).unwrap();
+        let (kept, outside) = kept_parts(&secret);
+        for word in ["unlock", "unlock_all", "set_secret", "delete", "set_label", "set_attributes", "create_item", "create_collection"] {
+            assert!(!reached(&kept, word), "secret.rs's kept session: {word} (it only reads)");
+        }
+        assert!(!named(&kept, "Plain"), "secret.rs's kept session: a plain session");
+        assert!(!secret.contains("connect_with"), "secret.rs: another way to make a session");
+        assert_eq!((secret.matches("SecretService::connect(").count(), secret.matches("SecretService::connect(EncryptionType::Dh)").count()), (1, 1), "secret.rs: one session made, encrypted");
+        assert!(!named(&outside, "dbus_secret_service") && !outside.contains("SecretService"), "secret.rs: the keyring's own library outside its kept session");
         let words = ["new_session", "new_system", "new_address", "get_private", "open_private", "dbus_bus_get", "dbus_bus_get_private", "dbus_bus_register", "dbus_connection_open", "dbus_connection_open_private", "ffidisp", "libdbus_sys", "dbus_secret_service", "secret_service", "zbus"];
+        for word in words.iter().filter(|word| **word != "dbus_secret_service") {
+            assert!(!named(&kept, word), "secret.rs's kept session: {word} (connections through sioul_sync::bus alone)");
+        }
         // Pictures and fonts: no code. Everything else read as bytes, so that a
         // file not in UTF-8 (a C file with a Latin-1 comment) is read all the
         // same (the fifth review's L5).
@@ -350,11 +407,9 @@ mod tests {
             }
             let bytes = std::fs::read(file).unwrap();
             let text = String::from_utf8_lossy(&bytes);
+            // secret.rs's kept session is looked at above, the rest of that file here.
+            let text = if file.ends_with("sioul-sync/src/secret.rs") { std::borrow::Cow::Owned(kept_parts(&text).1) } else { text };
             for word in words {
-                // The session kept for the keyring's reads (secret.rs, `kept`), through the keyring's own library.
-                if word == "dbus_secret_service" && file.ends_with("sioul-sync/src/secret.rs") {
-                    continue;
-                }
                 assert!(!named(&text, word), "{}: {word} (connections through sioul_sync::bus alone)", file.display());
             }
             assert!(!reached(&text, "register"), "{}: a register call (libdbus's own registration)", file.display());
@@ -402,7 +457,7 @@ mod tests {
                 match package.as_str() {
                     "notify-rust" => assert!((own && section == "[target.'cfg(any(windows, target_os = \"macos\"))'.dependencies]") || (workspace && section == "[workspace.dependencies]"), "{}: notify-rust under {section}", manifest.display()),
                     "dbus" => assert!(own && section.contains("not(any(target_os = \"macos\", target_os = \"android\"))"), "{}: dbus under {section}", manifest.display()),
-                    "dbus-secret-service" => assert!(own && section == "[target.'cfg(all(unix, not(any(target_os = \"macos\", target_os = \"android\"))))'.dependencies]", "{}: dbus-secret-service under {section}", manifest.display()),
+                    "dbus-secret-service" => assert!(own && section == "[target.'cfg(any(target_os = \"linux\", target_os = \"freebsd\", target_os = \"openbsd\"))'.dependencies]", "{}: dbus-secret-service under {section}", manifest.display()),
                     "zbus" | "secret-service" | "libdbus-sys" | "dbus-tokio" | "dbus-crossroads" | "zbus_names" | "ashpd" => panic!("{}: {package} under {section} (connections through sioul_sync::bus alone)", manifest.display()),
                     _ => {}
                 }

@@ -7,7 +7,8 @@
 //! system). Each is filed under the service `sioul` and `<login> on
 //! <server>`, so it is easy to find, check or remove there.
 //!
-//! On Linux and the BSDs a read goes through one encrypted session with the
+//! On Linux, FreeBSD and OpenBSD (where the `keyring` crate keeps passwords in
+//! the Secret Service) a read goes through one encrypted session with the
 //! Secret Service kept for the process (`kept`), rather than a new one, its
 //! Diffie–Hellman exchange included, at each read as the `keyring` crate
 //! makes: the window's sharing reads a password every minute. Writes, and
@@ -35,7 +36,7 @@ fn entry(account: &Account) -> Result<Entry, SyncError> {
 /// which also gives every case that session leaves aside (an item locked,
 /// two alike, one of the keyring's first version) as it always did.
 fn read_secret(user: &str) -> Result<Vec<u8>, keyring::Error> {
-    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
     match kept::read(user) {
         kept::Read::Found(secret) => return Ok(secret),
         kept::Read::None => return Err(keyring::Error::NoEntry),
@@ -47,7 +48,7 @@ fn read_secret(user: &str) -> Result<Vec<u8>, keyring::Error> {
 /// The secret kept under `user`, as text (`read_secret`); one that is not
 /// UTF-8 is refused by the `keyring` crate's own read, as before.
 fn read_password(user: &str) -> Result<String, keyring::Error> {
-    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
     match kept::read(user) {
         kept::Read::Found(secret) => {
             if let Ok(text) = String::from_utf8(secret) {
@@ -272,17 +273,20 @@ pub fn forget(account: &Account) -> Result<(), SyncError> {
     }
 }
 
-/// One session with the Secret Service, kept for the process (Linux and the
-/// BSDs): reading a secret then costs a search and the secret's own message,
-/// not a new connection and a new Diffie–Hellman exchange each time (the
-/// `keyring` crate opens both at every read: the window's sharing read one a
-/// minute, a tenth of its exchange's time, measured on 11 November 2026).
+/// One session with the Secret Service, kept for the process (Linux, FreeBSD
+/// and OpenBSD): reading a secret then costs a search and the secret's own
+/// message, not a new connection and a new Diffie–Hellman exchange each time
+/// (the `keyring` crate opens both at every read: the window's sharing read
+/// one a minute, a tenth of its exchange's time, measured on 11 November 2026).
 ///
 /// The session stays encrypted (`EncryptionType::Dh`), never plain; no
-/// secret is held: each is asked anew, as before, only the session's key
-/// stays, which the library zeroes when it is dropped. Its connection is
-/// made by `dbus-secret-service`, the library the `keyring` crate reads
-/// through, the same as before: through libdbus's own registration, once
+/// secret is held: each is asked anew, as before. The session's AES key stays
+/// as long as the session, so for the process's life now (zeroed by the
+/// library once dropped), where it lived one read: whoever could record this
+/// process's messages to the keyring's service could read them with it, and
+/// that is someone who can already ask the unlocked keyring itself. Its
+/// connection is made by `dbus-secret-service`, the library the `keyring`
+/// crate reads through, as before: through libdbus's own registration, once
 /// for the process now rather than at each read (docs/android.md, "the
 /// keyring is the exposure left").
 ///
@@ -292,24 +296,53 @@ pub fn forget(account: &Account) -> Result<(), SyncError> {
 /// kept is found as before. This session answers two cases alone, one item
 /// found unlocked (its secret) and none found anywhere (none kept); every
 /// other case (an item locked, which the keyring's service may ask to unlock,
-/// two items alike, an item of the first version, an error that a new
-/// session did not mend) goes the `keyring` crate's own way, as it always did,
-/// with its own session. So does a read while another thread holds this one:
-/// none waits behind another's unlocking.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+/// two items alike, an item of the first version, a secret that is not text
+/// where text is asked, an error) goes the `keyring` crate's own way, as it
+/// always did, with its own session. So does a read while another thread
+/// holds this one: none waits behind another's unlocking.
+///
+/// The session is used only while the service that made it still has its
+/// name on the bus (its owner's unique name, asked through `crate::bus` before
+/// each read): a keyring service started again is never sent the session of
+/// the one before, whatever it does with a session it does not know. A
+/// session that fails is dropped, and made again once at once when the
+/// failure was the service's (it forgot the session); a call the bus or the
+/// service did not answer in time is left to the `keyring` crate's own way,
+/// the session made again at the next read, never at once on a bus that may be
+/// stuck.
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 mod kept {
-    pub(super) use dbus_secret_service::SecretService;
-    use dbus_secret_service::{EncryptionType, Error};
+    use dbus_secret_service::{EncryptionType, Error, SecretService};
     use std::collections::HashMap;
     use std::sync::{Mutex, TryLockError};
+    use std::time::Duration;
+
+    /// The Secret Service's name on the bus.
+    const SECRETS: &str = "org.freedesktop.secrets";
+
+    /// The session kept, with the connection its owner is asked through.
+    pub(super) struct Session {
+        service: SecretService,
+        /// A connection of Sioul's own (`crate::bus`), to ask who has the name.
+        bus: dbus::channel::Channel,
+        /// The unique name of the service the session was made with.
+        owner: String,
+    }
+
+    /// Where a session is kept.
+    pub(super) type Slot = Mutex<Option<Session>>;
 
     /// The session kept, once one was made.
-    static SESSION: Mutex<Option<SecretService>> = Mutex::new(None);
+    static SESSION: Slot = Mutex::new(None);
 
     #[cfg(test)]
     thread_local! {
         /// Tests only: how many sessions this thread made.
         pub(super) static MADE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        /// Tests only: how many sessions this thread dropped because the service's owner changed.
+        pub(super) static OWNER_CHANGED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        /// Tests only: `look` panics on this thread, as a service sending what the library cannot read.
+        pub(super) static PANICS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
 
     /// What the kept session found for a name.
@@ -322,43 +355,91 @@ mod kept {
         Elsewhere,
     }
 
-    /// The secret kept under `user` (service `sioul`), through the session
-    /// kept; the session made first when there is none, and made again once
-    /// when the one kept fails (the keyring's service started again, which
-    /// forgets its sessions, or the bus closed the connection).
+    /// The secret kept under `user` (service `sioul`), through the session kept.
     pub(super) fn read(user: &str) -> Read {
         read_in(&SESSION, user)
     }
 
     /// `read`, with the session kept in `slot` (the process's, or a test's own).
-    pub(super) fn read_in(slot: &Mutex<Option<SecretService>>, user: &str) -> Read {
+    pub(super) fn read_in(slot: &Slot, user: &str) -> Read {
         let mut held = match slot.try_lock() {
             Ok(held) => held,
             Err(TryLockError::Poisoned(held)) => held.into_inner(),
             Err(TryLockError::WouldBlock) => return Read::Elsewhere,
         };
         for attempt in 0..2 {
-            if held.is_none() {
-                match SecretService::connect(EncryptionType::Dh) {
-                    Ok(made) => *held = Some(made),
-                    Err(_) => return Read::Elsewhere,
-                }
-                #[cfg(test)]
-                MADE.with(|n| n.set(n.get() + 1));
-            }
-            let Some(session) = held.as_ref() else { return Read::Elsewhere };
-            match look(session, user) {
-                Ok(read) => return read,
-                Err(e) => {
-                    // Never used again: the next read makes another.
-                    *held = None;
-                    if attempt > 0 || !matches!(e, Error::Dbus(_)) {
+            // The session kept, while the service that made it has the name.
+            if let Some(session) = held.as_ref() {
+                match owner(&session.bus) {
+                    Some(now) if now == session.owner => {}
+                    Some(_) => {
+                        *held = None;
+                        #[cfg(test)]
+                        OWNER_CHANGED.with(|n| n.set(n.get() + 1));
+                    }
+                    // The bus or the name not answering: none made now.
+                    None => {
+                        *held = None;
                         return Read::Elsewhere;
                     }
                 }
             }
+            if held.is_none() {
+                let Some(made) = make() else { return Read::Elsewhere };
+                *held = Some(made);
+                #[cfg(test)]
+                MADE.with(|n| n.set(n.get() + 1));
+            }
+            let Some(session) = held.as_ref() else { return Read::Elsewhere };
+            let looked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(test)]
+                if PANICS.with(std::cell::Cell::get) {
+                    panic!("a stand-in for a reply the library cannot read");
+                }
+                look(&session.service, user)
+            }));
+            match looked {
+                Ok(Ok(read)) => return read,
+                Ok(Err(e)) => {
+                    // Never used again: the next read makes another.
+                    *held = None;
+                    if attempt > 0 || !made_again(&e) {
+                        return Read::Elsewhere;
+                    }
+                }
+                Err(_) => {
+                    *held = None;
+                    return Read::Elsewhere;
+                }
+            }
         }
         Read::Elsewhere
+    }
+
+    /// A session, its connection to ask the owner, and the owner's unique name.
+    fn make() -> Option<Session> {
+        let service = SecretService::connect(EncryptionType::Dh).ok()?;
+        let bus = crate::bus::session().ok()?;
+        let owner = owner(&bus)?;
+        Some(Session { service, bus, owner })
+    }
+
+    /// Who has the Secret Service's name on the bus now (its unique name),
+    /// asked of the bus itself, two seconds at most; none, nobody or no answer.
+    fn owner(bus: &dbus::channel::Channel) -> Option<String> {
+        let ask = dbus::Message::new_method_call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner").ok()?.append1(SECRETS);
+        bus.send_with_reply_and_block(ask, Duration::from_secs(2)).ok()?.read1::<String>().ok()
+    }
+
+    /// Whether a failure is mended by a new session at once: the service's
+    /// answer that it does not know the session (it started again, or closed
+    /// it), never a call the bus or the service did not answer in time, which a
+    /// new connection would wait for too.
+    pub(super) fn made_again(e: &Error) -> bool {
+        match e {
+            Error::Dbus(e) => !matches!(e.name(), Some("org.freedesktop.DBus.Error.NoReply" | "org.freedesktop.DBus.Error.Timeout" | "org.freedesktop.DBus.Error.TimedOut")),
+            _ => false,
+        }
     }
 
     /// `user`'s item where the `keyring` crate looks for it (its
@@ -408,7 +489,7 @@ mod tests {
 /// (no such bus, no gnome-keyring-daemon) it says so and passes. Never the
 /// person's keyring: on the person's session bus a Secret Service is there or
 /// can be started, and the test goes no further.
-#[cfg(all(test, unix, not(any(target_os = "macos", target_os = "android"))))]
+#[cfg(all(test, any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
 mod kept_tests {
     use super::*;
     use std::io::Write;
@@ -519,10 +600,13 @@ mod kept_tests {
     }
 
     /// Three reads take one session; a name with nothing kept is told from
-    /// the same session; the keyring's service started again (which forgets
-    /// every session), the next read makes one new session, once, and the
-    /// reads after it keep that one. What the session finds is what the
-    /// `keyring` crate wrote and reads, under the same items and attributes.
+    /// the same session; the keyring's service started again, another process
+    /// with another unique name on the bus, the next read sees its owner
+    /// changed and makes one new session before it asks anything, and the
+    /// reads after it keep that one. A read whose look panics (a reply the
+    /// library cannot read) drops the session and is left to the `keyring`
+    /// crate. What the session finds is what the `keyring` crate wrote and
+    /// reads, under the same items and attributes.
     #[test]
     fn one_session_serves_every_read_and_is_made_again_once_the_service_went() {
         let _turn = KEYRINGS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -537,9 +621,10 @@ mod kept_tests {
         };
         let user = "kept-session-test on example.org";
         keyring::Entry::new(SERVICE, user).unwrap().set_password("first secret").unwrap();
-        let slot = Mutex::new(None::<kept::SecretService>);
+        let slot: kept::Slot = Mutex::new(None);
         let made = || kept::MADE.with(std::cell::Cell::get);
-        let before = made();
+        let changed = || kept::OWNER_CHANGED.with(std::cell::Cell::get);
+        let (before, changed_before) = (made(), changed());
         for _ in 0..3 {
             assert_eq!(found(kept::read_in(&slot, user)).as_deref(), Some(&b"first secret"[..]));
         }
@@ -553,14 +638,35 @@ mod kept_tests {
         let stand_in = StandInKeyring::start(&scratch.0).expect("the keyring started again");
         keyring::Entry::new(SERVICE, user).unwrap().set_password("second secret").unwrap();
         assert_eq!(found(kept::read_in(&slot, user)).as_deref(), Some(&b"second secret"[..]), "read through a new session");
-        assert_eq!(made() - before, 2, "made again once");
+        assert_eq!((made() - before, changed() - changed_before), (2, 1), "made again once, its owner having changed");
         assert_eq!(found(kept::read_in(&slot, user)).as_deref(), Some(&b"second secret"[..]));
-        assert_eq!(made() - before, 2, "and kept again");
+        assert_eq!((made() - before, changed() - changed_before), (2, 1), "and kept again");
+
+        // A look that panics: the session dropped, the read left to the keyring crate; the next makes another.
+        kept::PANICS.with(|p| p.set(true));
+        assert!(matches!(kept::read_in(&slot, user), kept::Read::Elsewhere));
+        kept::PANICS.with(|p| p.set(false));
+        assert!(slot.lock().unwrap().is_none(), "dropped after the panic");
+        assert_eq!(found(kept::read_in(&slot, user)).as_deref(), Some(&b"second secret"[..]));
+        assert_eq!(made() - before, 3);
 
         // No service at all: left to the keyring's own read, which says why.
         drop(stand_in);
         assert!(matches!(kept::read_in(&slot, user), kept::Read::Elsewhere));
         assert!(slot.lock().unwrap().is_none(), "no session kept with no service");
+    }
+
+    /// A call the bus or the service did not answer in time is never made
+    /// again at once (a new connection would wait on the same bus, without
+    /// limit); a service that answers it does not know the session is.
+    #[test]
+    fn a_call_not_answered_in_time_is_not_made_again_at_once() {
+        let error = |name: &str| dbus_secret_service::Error::Dbus(dbus::Error::new_custom(name, "a stand-in"));
+        assert!(!kept::made_again(&error("org.freedesktop.DBus.Error.NoReply")));
+        assert!(!kept::made_again(&error("org.freedesktop.DBus.Error.Timeout")));
+        assert!(kept::made_again(&error("org.freedesktop.Secret.Error.NoSession")));
+        assert!(kept::made_again(&error("org.freedesktop.DBus.Error.UnknownObject")));
+        assert!(!kept::made_again(&dbus_secret_service::Error::Locked));
     }
 
     /// What a read costs, through the `keyring` crate (a connection and a
@@ -590,7 +696,7 @@ mod kept_tests {
             println!("{what}: {:.2} ms of CPU, {:.2} ms per read", (cpu_ns() - cpu) as f64 / 1e6 / f64::from(READS), wall.elapsed().as_secs_f64() * 1e3 / f64::from(READS));
         };
         time("the keyring crate", &|| keyring::Entry::new(SERVICE, user).unwrap().get_password().unwrap());
-        let slot = Mutex::new(None::<kept::SecretService>);
+        let slot: kept::Slot = Mutex::new(None);
         time("the session kept", &|| String::from_utf8(found(kept::read_in(&slot, user)).unwrap()).unwrap());
     }
 }
