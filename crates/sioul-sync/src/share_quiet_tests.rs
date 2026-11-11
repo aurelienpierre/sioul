@@ -1872,6 +1872,7 @@ fn the_notes_folder_is_listed_only_where_it_changed() {
 /// same size and time), and goes; a look made within a moment of a note's
 /// change is unsure of it, and the next look reads it through again, until
 /// one comes once it has settled; then it is no longer read (`STAMPED`).
+#[cfg(unix)]
 #[test]
 fn a_note_changed_at_the_same_size_and_time_is_read_through_again() {
     let base = scratch("stamped-notes");
@@ -1980,6 +1981,7 @@ fn a_memory_whose_files_json_is_gone_is_never_taken_and_writes_it_again() {
 /// that look (`Stat::seen`), so the memory's older look at a note rewritten
 /// in place, its size and time as they were, is read through again by the
 /// next exchange, which sends it.
+#[cfg(unix)]
 #[test]
 fn a_look_never_saved_leaves_the_note_to_be_read_again() {
     let base = scratch("stamped-unsaved");
@@ -2031,6 +2033,7 @@ fn a_look_never_saved_leaves_the_note_to_be_read_again() {
 /// Sharing stopped (`forget_held`): the memory kept, the logs of lines, the
 /// files' stamps and listings of its stores, and the names made with its key
 /// are let go from the process.
+#[cfg(unix)]
 #[test]
 fn sharing_stopped_lets_go_of_what_the_process_held() {
     let base = scratch("forget-held");
