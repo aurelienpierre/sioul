@@ -1678,13 +1678,98 @@ static TRIAGED: std::sync::Mutex<Option<(u64, std::collections::HashMap<FileKey,
 /// inboxes' as they stand, never a file renamed, moved or closed on since.
 const TRIAGED_KEPT: usize = 200_000;
 
+/// Each inbox message's card as the Porch last read it (`maildir::read_one`),
+/// by its file (`file_key`: its path, size, time, inode and the inode's change
+/// time), under the id Sioul's own checks are written under (`CardsKept`): a
+/// message whose file did not change is not read and parsed again at each
+/// making (its quoted-printable and base64 decoded, its HTML turned to text),
+/// which made most of a making whose triages were all kept (10 November
+/// 2026: 34 ms of 2,000 inbox messages' cards for each making, the triages
+/// kept). A card holds the message's headers and the start of its text
+/// (`card::EXCERPT_LIMIT`), never its whole body. Only a file whose time and
+/// change time are `CARD_SETTLES` old is kept: a write in the same tick of a
+/// coarse clock as the look would not show. A card is kept while one of the
+/// last `CARDS_MAKINGS` makings read its file (each look at the mail makes
+/// the Porch, then the money lines with every message kept, closed on or
+/// not: each reads files the other does not), `TRIAGED_KEPT` at most.
+static CARDS: std::sync::Mutex<Option<CardsKept>> = std::sync::Mutex::new(None);
+
+/// The cards kept (`CARDS`), each with the last making that read its file,
+/// the makings counted, and the id of Sioul's own checks they were read under
+/// (`trust::own_stamp_id`, which a card's subject depends on).
+struct CardsKept {
+    stamp_id: Option<String>,
+    making: u64,
+    cards: std::collections::HashMap<FileKey, (Card, u64)>,
+}
+
+/// How many makings a card is kept after the last that read its file (`CARDS`).
+const CARDS_MAKINGS: u64 = 4;
+
+/// A making begins (`CARDS`): its number.
+fn cards_making() -> u64 {
+    let Ok(mut kept) = CARDS.lock() else { return 0 };
+    let kept = kept.get_or_insert_with(|| CardsKept { stamp_id: None, making: 0, cards: std::collections::HashMap::new() });
+    kept.making += 1;
+    kept.making
+}
+
+/// A making ended (`CARDS`): the cards that none of the last makings read go.
+fn cards_made(making: u64) {
+    if let Ok(mut kept) = CARDS.lock()
+        && let Some(k) = kept.as_mut()
+    {
+        k.cards.retain(|_, (_, read)| making.saturating_sub(*read) < CARDS_MAKINGS);
+    }
+}
+
+/// How old a message file's time and change time are before its card is kept (`CARDS`).
+const CARD_SETTLES: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// The card of the message at `path` (`meta`, its metadata; `key`, its
+/// `file_key`): as kept (`CARDS`), else read now, and kept once its file has
+/// settled.
+fn kept_card(path: &Path, meta: &std::fs::Metadata, key: &FileKey, stamp_id: &Option<String>, making: u64) -> Option<Card> {
+    let kept = CARDS.lock().ok().and_then(|mut kept| {
+        let (card, read) = kept.as_mut().filter(|k| k.stamp_id == *stamp_id)?.cards.get_mut(key)?;
+        *read = (*read).max(making);
+        Some(card.clone())
+    });
+    if kept.is_some() {
+        return kept;
+    }
+    let card = maildir::read_one(path)?;
+    let settled = |time: Option<std::time::SystemTime>| time.and_then(|t| t.elapsed().ok()).is_some_and(|age| age >= CARD_SETTLES);
+    #[cfg(unix)]
+    let changed = {
+        use std::os::unix::fs::MetadataExt;
+        u64::try_from(meta.ctime()).ok().map(|seconds| std::time::UNIX_EPOCH + std::time::Duration::new(seconds, u32::try_from(meta.ctime_nsec()).unwrap_or(0)))
+    };
+    #[cfg(not(unix))]
+    let changed = meta.modified().ok();
+    if settled(meta.modified().ok()) && settled(changed)
+        && let Ok(mut kept) = CARDS.lock()
+    {
+        let at = kept.as_ref().map_or(0, |k| k.making);
+        if kept.as_ref().is_none_or(|k| k.stamp_id != *stamp_id || k.cards.len() >= TRIAGED_KEPT) {
+            *kept = Some(CardsKept { stamp_id: stamp_id.clone(), making: at, cards: std::collections::HashMap::new() });
+        }
+        if let Some(k) = kept.as_mut() {
+            k.cards.insert(key.clone(), (card.clone(), making));
+        }
+    }
+    Some(card)
+}
+
 /// The messages of a folder (its `new` and `cur`, else the folder itself)
 /// whose origin passes `keep` and whose card passes `take`, oldest first,
 /// each with its triage: kept from an earlier making while its file, its
 /// own inputs and the seal stay (`TRIAGED`), else made now. As `maildir::read_messages_where`
 /// then `triage` would give them, the card's account set first. Each
-/// message's file is added to `met`.
-fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64, met: &mut std::collections::HashSet<FileKey>) -> Vec<Triaged> {
+/// message's file is added to `met`. `making`: this making's number (`CARDS`).
+#[allow(clippy::too_many_arguments)]
+fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64, met: &mut std::collections::HashSet<FileKey>, making: u64) -> Vec<Triaged> {
+    let stamp_id = trust::own_stamp_id();
     let maildir = [dir.join("new"), dir.join("cur")];
     let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.is_dir()) { maildir.into_iter().filter(|d| d.is_dir()).collect() } else { vec![dir.to_path_buf()] };
     let mut out = Vec::new();
@@ -1696,7 +1781,7 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
                 continue;
             }
             let key = file_key(&path, &meta);
-            let Some(mut card) = maildir::read_one(&path) else { continue };
+            let Some(mut card) = kept_card(&path, &meta, &key, &stamp_id, making) else { continue };
             card.account = account.cloned();
             if !take(&card) {
                 continue;
@@ -1749,6 +1834,7 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
     let moved = crate::spam::labels::read_moved_in(&root);
     let said = if moved.is_empty() { Vec::new() } else { crate::spam::labels::read_all_in(&root) };
     let mut met = std::collections::HashSet::new();
+    let making = cards_making();
     let mut items: Vec<Triaged> = sources
         .iter()
         .flat_map(|src| {
@@ -1759,7 +1845,7 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
             let fresh = account.is_some_and(|a| !state.done.contains_key(a));
             let since = now - i64::from(crate::config::DEFAULT_SYNC_DAYS) * 86_400;
             let take = |card: &Card| (!fresh || card.date.is_none_or(|d| d >= since)) && senders.who_of(card) != crate::reach::Who::Blocked;
-            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal, &mut met)
+            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal, &mut met, making)
                 .into_iter()
                 .chain(flagged_since(src, &ctx, state, senders, now))
                 .chain(account.filter(|_| !moved.is_empty()).map_or_else(Vec::new, |a| moved_items(src, &ctx, &crate::folders::saved(a), &moved, &said)))
@@ -1775,6 +1861,7 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
     {
         all.retain(|key, _| met.contains(key));
     }
+    cards_made(making);
     follow_conversations(&mut items);
     items.sort_by_key(|t| t.card.date.unwrap_or(0));
     items
@@ -2641,6 +2728,7 @@ mod tests {
     #[test]
     fn a_message_is_triaged_again_only_once_it_or_what_decides_it_changed() {
         crate::config::stand_ins_only();
+        let _turn = GATHERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!("sioul-porch-kept-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for sub in ["new", "cur", "tmp"] {
@@ -2725,6 +2813,73 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The tests that make the Porch and count what it read or triaged take
+    /// turns: the triages and the cards kept are the process's (`TRIAGED`, `CARDS`).
+    static GATHERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// A message's file read and parsed once while it stays (`CARDS`): the
+    /// Porch made again with nothing changed parses none and is the same,
+    /// card for card; a message whose flags changed (renamed), or rewritten
+    /// in its place at the same size and time, is read again; one written a
+    /// moment ago is read again at each making until it has settled; a card
+    /// is kept while one of the last makings read its file.
+    #[test]
+    fn the_porch_parses_an_unchanged_message_once() {
+        crate::config::stand_ins_only();
+        let _turn = GATHERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let root = std::env::temp_dir().join(format!("sioul-porch-cards-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for sub in ["new", "cur", "tmp"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let now = jiff::Timestamp::now().as_second();
+        let date = jiff::Timestamp::from_second(now - 60).unwrap().strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
+        let name = |uid: u32, flags: &str| format!("{}.U1-{uid}.sioul{}2,{flags}", now - 60, maildir::INFO);
+        let text = |uid: u32, from: &str, subject: &str, body: &str| format!("From: {from}\r\nMessage-ID: <c{uid}@cards.example.org>\r\nDate: {date}\r\nSubject: {subject}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n{body}\r\n");
+        std::fs::write(root.join("cur").join(name(1, "")), text(1, "Jane <jane@cards.example.org>", "Lunch", "Lunch on Friday? =C3=80 bient=C3=B4t")).unwrap();
+        std::fs::write(root.join("cur").join(name(2, "")), text(2, "News <news@letters.example.org>", "This week", "Our news of the week.")).unwrap();
+        std::fs::write(root.join("cur").join(name(3, "")), text(3, "Bank <no-reply@bank.example.org>", "Your code", "Your code is 482913. It is valid for 10 minutes.")).unwrap();
+        let src = Source { account: Some("home".into()), address: Some("you@home.example.org".into()), folder: root.clone(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
+        let (senders, state, known) = (Senders::default(), PorchState::default(), SenderList::default());
+        let made = || {
+            maildir::parses_reset();
+            let mut shown: Vec<String> = gather(std::slice::from_ref(&src), None, &known, &senders, &state, now).iter().map(|t| format!("{t:?}")).collect();
+            shown.sort();
+            (shown, maildir::parses())
+        };
+        let (first, parsed) = made();
+        assert_eq!((first.len(), parsed), (3, 3));
+        assert!(first.iter().any(|t| t.contains("bientôt")), "{first:?}");
+        assert_eq!(made().1, 3, "written a moment ago: read again");
+        std::thread::sleep(CARD_SETTLES + std::time::Duration::from_millis(100));
+        let (settled, parsed) = made();
+        assert_eq!((parsed, &settled), (3, &first), "settled: read once more, then kept");
+        let (again, parsed) = made();
+        assert_eq!(parsed, 0, "nothing changed: none parsed");
+        assert_eq!(again, first, "the same Porch, card for card");
+        // The news read elsewhere: its file renamed, read again; the others kept.
+        std::fs::rename(root.join("cur").join(name(2, "")), root.join("cur").join(name(2, "S"))).unwrap();
+        assert_eq!(made().1, 1);
+        // Jane's rewritten in its place, its name, size and time kept: read again.
+        let lunch = root.join("cur").join(name(1, ""));
+        let before = std::fs::metadata(&lunch).unwrap();
+        let aside = root.join("tmp").join("lunch");
+        std::fs::write(&aside, std::fs::read_to_string(&lunch).unwrap().replace("Friday", "Monday")).unwrap();
+        std::fs::File::options().write(true).open(&aside).unwrap().set_modified(before.modified().unwrap()).unwrap();
+        std::fs::rename(&aside, &lunch).unwrap();
+        let (changed, parsed) = made();
+        assert_eq!(parsed, 2, "Jane's, and the news still a moment old");
+        assert!(changed.iter().any(|t| t.contains("Monday")) && !changed.iter().any(|t| t.contains("Friday")), "{changed:?}");
+        // Kept while one of the last makings read the file: the news's old name goes.
+        std::thread::sleep(CARD_SETTLES + std::time::Duration::from_millis(100));
+        for _ in 0..CARDS_MAKINGS {
+            made();
+        }
+        assert_eq!(made().1, 0);
+        assert_eq!(CARDS.lock().unwrap().as_ref().map(|k| k.cards.len()), Some(3), "the three files there now");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// What the Porch's triage costs on a large mailbox, made anew then kept
     /// (`TRIAGED`), then with what decides one message or one sender
     /// changing: each Maildir under `SIOUL_PORCH_BENCH` (a demo profile's
@@ -2737,6 +2892,7 @@ mod tests {
     fn porch_triage_bench() {
         let Some(base) = std::env::var_os("SIOUL_PORCH_BENCH").map(PathBuf::from) else { return };
         crate::config::stand_ins_only();
+        let _turn = GATHERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let cpu_ns = || std::fs::read_to_string("/proc/thread-self/schedstat").ok().and_then(|t| t.split_whitespace().next().and_then(|n| n.parse::<u64>().ok())).unwrap_or(0);
         let sources: Vec<Source> = std::fs::read_dir(&base)
             .unwrap()
@@ -2759,6 +2915,17 @@ mod tests {
         let items = run("made anew", &store, &known, &senders);
         run("kept", &store, &known, &senders);
         run("kept again", &store, &known, &senders);
+        // What the cards kept hold (`CARDS`), counted from their strings (about: allocations rounded).
+        if let Some(kept) = CARDS.lock().unwrap().as_ref() {
+            let size = |card: &Card| {
+                let strings = card.from_name.as_ref().map_or(0, String::len) + card.from_address.as_ref().map_or(0, String::len) + card.subject.len() + card.message_id.as_ref().map_or(0, String::len) + card.excerpt.len();
+                let lists = card.to.iter().chain(&card.attachments).map(|s| s.len() + 24).sum::<usize>() + card.shape.parts.iter().map(|(a, b)| a.len() + b.len() + 48).sum::<usize>();
+                let headers = card.headers.fields().map(|(n, v)| n.len() + v.len() + 48).sum::<usize>();
+                strings + lists + headers + card.path.as_ref().map_or(0, |p| p.as_os_str().len()) + 400
+            };
+            let bytes: usize = kept.cards.values().map(|(card, _)| size(card)).sum();
+            println!("porch: {} cards kept, about {:.1} MB", kept.cards.len(), bytes as f64 / 1e6);
+        }
         let flagged = items.iter().filter(|t| trust::read_spam_verdict(&t.card.headers).is_some_and(|s| s.flagged)).count();
         println!("porch: {flagged} messages your provider calls spam");
         let Some(one) = items.iter().find(|t| t.card.message_id.is_some() && t.card.from_address.is_some() && t.code.is_none()) else { return };
