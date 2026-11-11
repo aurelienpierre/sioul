@@ -370,6 +370,7 @@ fn window_idle_bench() {
         // One exchange first, which reads what the next ones keep.
         now += MINUTE_MS;
         desk.exported(&folder, &window(now), now);
+        let made = SEALED_MADE.with(std::cell::Cell::get);
         for _ in 0..10 {
             now += MINUTE_MS;
             let before = listing(&folder);
@@ -378,6 +379,7 @@ fn window_idle_bench() {
             desk.exported(&folder, &outcome, now);
             case.writes += written(&before, &listing(&folder));
         }
+        println!("{name}: files.json made {} times in {} exchanges", SEALED_MADE.with(std::cell::Cell::get) - made, case.cpu.len());
         cases.push(case);
     }
     let kept: usize = KEPT.lock().unwrap().get(&desk.memory).map_or(0, |k| {

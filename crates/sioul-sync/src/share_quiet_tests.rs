@@ -1861,3 +1861,83 @@ fn the_notes_folder_is_listed_only_where_it_changed() {
     RELIST.with(|r| r.set(0));
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A note whose size and time say it is as last read is read through again
+/// all the same when its inode's change time moved (rewritten in place, its
+/// time set back) or it is another file (put in its place by a rename, at the
+/// same size and time), and goes; a look made within a moment of a note's
+/// change is unsure of it, and the next look reads it through again, until
+/// one comes once it has settled; then it is no longer read (`STAMPED`).
+#[test]
+fn a_note_changed_at_the_same_size_and_time_is_read_through_again() {
+    let base = scratch("stamped-notes");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    std::fs::create_dir_all(&notes).unwrap();
+    std::fs::create_dir_all(&phone_notes).unwrap();
+    let plan = notes.join("plan.md");
+    std::fs::write(&plan, "the plan, first\n").unwrap();
+    a_minute_back(&[&plan]);
+    let then = std::fs::metadata(&plan).unwrap().modified().unwrap();
+    let mut now = NOW;
+    let mut turn = |c: &Computer, notes: &Path| {
+        now += MINUTE;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+        let stores = stores_of(&config, &c.roots, &|part| part == "notes" || shared_by_default(part, &config));
+        exchange(&Sharing { folder: &folder, computer: &c.id, key: &key, memory: &c.memory, files: true, hurry: None }, &stores, now).unwrap()
+    };
+    let hashed = || crate::blobs::HASHED.with(std::cell::Cell::get);
+    let phone_plan = || std::fs::read_to_string(phone_notes.join("plan.md")).unwrap_or_default();
+    // Rewritten in place, its size and time as they were.
+    let in_place = |text: &str| {
+        use std::io::Write;
+        let mut file = std::fs::File::options().write(true).open(&plan).unwrap();
+        file.write_all(text.as_bytes()).unwrap();
+        file.set_modified(then).unwrap();
+    };
+    turn(&desk, &notes);
+    turn(&phone, &phone_notes);
+    assert_eq!(phone_plan(), "the plan, first\n");
+    let before = hashed();
+    turn(&desk, &notes);
+    assert_eq!(hashed(), before, "as last read: not read through");
+
+    in_place("the plan, again\n");
+    assert_eq!((std::fs::metadata(&plan).unwrap().len(), std::fs::metadata(&plan).unwrap().modified().unwrap()), (16, then));
+    let before = hashed();
+    turn(&desk, &notes);
+    assert_eq!(hashed(), before + 1, "its change time moved: read through");
+    turn(&phone, &phone_notes);
+    assert_eq!(phone_plan(), "the plan, again\n");
+
+    // Another file put in its place, at the same size and time.
+    let beside = base.join("plan.md");
+    std::fs::write(&beside, "the plan, third\n").unwrap();
+    std::fs::File::options().write(true).open(&beside).unwrap().set_modified(then).unwrap();
+    std::fs::rename(&beside, &plan).unwrap();
+    let before = hashed();
+    turn(&desk, &notes);
+    assert_eq!(hashed(), before + 1, "another inode: read through");
+    turn(&phone, &phone_notes);
+    assert_eq!(phone_plan(), "the plan, third\n");
+
+    // A look within a moment of the change is unsure: read again until one comes once it settled.
+    SETTLE.with(|s| s.set(1_000));
+    in_place("the plan, forth\n");
+    let before = hashed();
+    turn(&desk, &notes);
+    turn(&desk, &notes);
+    assert_eq!(hashed(), before + 2, "changed, then unsure: read through twice");
+    std::thread::sleep(std::time::Duration::from_millis(1_100));
+    turn(&desk, &notes);
+    assert_eq!(hashed(), before + 3, "the last look was within a moment of the change: read through once more");
+    turn(&desk, &notes);
+    assert_eq!(hashed(), before + 3, "settled: as last read");
+    SETTLE.with(|s| s.set(0));
+    turn(&phone, &phone_notes);
+    assert_eq!(phone_plan(), "the plan, forth\n");
+    let _ = std::fs::remove_dir_all(&base);
+}

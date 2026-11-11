@@ -1596,6 +1596,44 @@ fn carry_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, S
     found.files.insert(file.to_string(), stat.clone());
 }
 
+/// Each file read as this process last found it (`read_file`), by its path:
+/// its stamp (its inode, size, time and the inode's change time) and when
+/// that stamp was taken (milliseconds, this computer's clock). A file whose
+/// size and time say it is as last read (`Stat`) is read through again all
+/// the same when its inode or its change time moved since (another file put
+/// in its place by a rename, a write that set its time back), and when that
+/// stamp was taken within `settling_ms` of the file's last change, the same
+/// tick of a coarse clock maybe as a write that followed it. Not kept between
+/// runs: the first look of a process trusts the size and the time, as before.
+static STAMPED: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (FileStamp, i64)>>> = std::sync::Mutex::new(None);
+
+/// Files' stamps kept at most (`STAMPED`): past them, kept anew.
+const STAMPED_KEPT: usize = 200_000;
+
+/// Whether the file at `path`, stamped `stamp` now, is as this process last
+/// read it (`STAMPED`): its stamp the same, taken once the file had settled.
+/// A file this process never read counts as the same (its `Stat` says so).
+fn stamped_as_read(path: &Path, stamp: FileStamp) -> bool {
+    let Some((was, taken)) = STAMPED.lock().ok().and_then(|all| all.as_ref()?.get(path).copied()) else { return true };
+    let changed_ms = (was.modified.max(was.changed) / 1_000_000) as i64;
+    was == stamp && changed_ms + settling_ms() < taken
+}
+
+/// The stamp of the file at `path` as read at `clock` (`STAMPED`): `fresh`, read
+/// through now; else taken as last read, its first stamp kept.
+fn note_stamp(path: &Path, stamp: FileStamp, clock: i64, fresh: bool) {
+    let Ok(mut all) = STAMPED.lock() else { return };
+    let all = all.get_or_insert_with(std::collections::HashMap::new);
+    if all.len() >= STAMPED_KEPT && !all.contains_key(path) {
+        all.clear();
+    }
+    if fresh {
+        all.insert(path.to_path_buf(), (stamp, clock));
+    } else {
+        all.entry(path.to_path_buf()).or_insert((stamp, clock));
+    }
+}
+
 fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, look: &Look, found: &mut Found) {
     let Ok(meta) = std::fs::metadata(path) else {
         found.unknown.insert(file.to_string());
@@ -1619,7 +1657,9 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
     // a log of lines (calls, texts, labels): what it holds is not kept twice
     // in the memory (its lines are its entries' names), it is read again.
     let lines = matches!(store.shape, Shape::Lines);
-    if let Some(stat) = known.get(file).filter(|s| !lines && s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen)) {
+    let stamp = file_stamp(&meta);
+    if let Some(stat) = known.get(file).filter(|s| !lines && s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen) && stamped_as_read(path, stamp)) {
+        note_stamp(path, stamp, look.clock, false);
         for (entry, h) in &stat.entries {
             found.hashes.insert(format!("{file}#{entry}"), h.clone());
             // A file sealed apart: its record made from what was kept, the file not read again.
@@ -1654,6 +1694,7 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
             }
             return;
         };
+        note_stamp(path, stamp, look.clock, true);
         let key = format!("{file}#");
         found.hashes.insert(key.clone(), h.clone());
         found.values.insert(key, reference(&h, meta.len(), modified));
@@ -1688,6 +1729,7 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
         found.unknown.insert(file.to_string());
         return;
     };
+    note_stamp(path, file_stamp(&held), look.clock, true);
     let mut stat = Stat { size: held.len(), modified: modified_ns(&held), entries: Vec::with_capacity(entries.len()), seen: look.clock };
     for (entry, value) in entries {
         let key = format!("{file}#{entry}");

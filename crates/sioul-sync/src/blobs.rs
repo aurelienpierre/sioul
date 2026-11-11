@@ -110,18 +110,58 @@ fn keys(key: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
 
 /// A content's name in the folder: made with a key, so that it tells nothing
 /// of the content to whoever lacks it (not even that two folders hold the same file).
+/// Each content's name is made once for a key and kept (`NAMING`).
 pub fn name(key: &[u8; 32], hash: &str) -> String {
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&keys(key).1).expect("HMAC takes any key");
+    let fingerprint: [u8; 32] = Sha256::digest(key).into();
+    let mut naming = NAMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if naming.as_ref().is_none_or(|n| n.fingerprint != fingerprint) {
+        let mac = <Hmac<Sha256> as Mac>::new_from_slice(&keys(key).1).expect("HMAC takes any key");
+        *naming = Some(Naming { fingerprint, mac, names: std::collections::HashMap::new() });
+    }
+    let Some(naming) = naming.as_mut() else { unreachable!("set above") };
+    if let Some(name) = naming.names.get(hash) {
+        return name.clone();
+    }
+    let mut mac = naming.mac.clone();
     mac.update(hash.as_bytes());
-    hex(&mac.finalize().into_bytes())
+    let made = hex(&mac.finalize().into_bytes());
+    if naming.names.len() >= NAMES_KEPT {
+        naming.names.clear();
+    }
+    naming.names.insert(hash.to_string(), made.clone());
+    made
 }
+
+/// What `name` keeps for the key it was last given: the key's fingerprint
+/// (its SHA-256, which tells nothing of it), the naming key's MAC keyed once,
+/// and each content's name made, by its hash. An exchange names every
+/// current content several times (what is current, what leaves, what the
+/// server needs): with 2,000 notes, deriving the naming key and the MAC for
+/// each took a third of the window's exchange at rest (11 November 2026).
+struct Naming {
+    fingerprint: [u8; 32],
+    mac: Hmac<Sha256>,
+    names: std::collections::HashMap<String, String>,
+}
+
+static NAMING: std::sync::Mutex<Option<Naming>> = std::sync::Mutex::new(None);
+
+/// Names kept at most (`Naming`): past them, they are made anew. Some
+/// 200 bytes each.
+const NAMES_KEPT: usize = 100_000;
 
 pub fn path(folder: &Path, key: &[u8; 32], hash: &str) -> PathBuf {
     folder.join("blobs").join(name(key, hash))
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(char::from(DIGITS[usize::from(byte >> 4)]));
+        out.push(char::from(DIGITS[usize::from(byte & 0x0f)]));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -590,6 +630,30 @@ mod tests {
         plain.update(hash.as_bytes());
         assert_ne!(name(&key, &hash), hex(&plain.finalize().into_bytes()));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A content's name, kept once made (`NAMING`), is the one made anew from
+    /// the key (HKDF's naming key, HMAC-SHA-256, in hex), for each key alike:
+    /// another key names it otherwise, and the first key's names come back
+    /// the same after it.
+    #[test]
+    fn names_kept_are_the_names_made_for_their_key() {
+        let made = |key: &[u8; 32], hash: &str| {
+            let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&keys(key).1).unwrap();
+            mac.update(hash.as_bytes());
+            mac.finalize().into_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>()
+        };
+        let (one, two) = ([11u8; 32], [12u8; 32]);
+        let hashes: Vec<String> = (0..50).map(|n| format!("{n:064x}")).collect();
+        for _ in 0..2 {
+            for hash in &hashes {
+                assert_eq!(name(&one, hash), made(&one, hash));
+                assert_eq!(name(&one, hash), made(&one, hash), "kept");
+                assert_eq!(name(&two, hash), made(&two, hash), "another key");
+                assert_ne!(name(&one, hash), name(&two, hash));
+            }
+        }
+        assert_eq!(hex(&[0x00, 0x0f, 0xa5, 0xff]), "000fa5ff");
     }
 
     /// A copy fetched is checked as `get` checks it, nothing written: whole
