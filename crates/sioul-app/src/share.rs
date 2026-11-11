@@ -2491,8 +2491,8 @@ impl Told {
         let gone: Vec<PathBuf> = self.watched.keys().filter(|dir| !dirs.contains(*dir)).cloned().collect();
         for dir in gone {
             if let Some(wd) = self.watched.remove(&dir) {
-                // SAFETY: this instance's own descriptor and one of its watches.
-                unsafe { libc::inotify_rm_watch(fd, wd) };
+                // SAFETY: this instance's own descriptor and one of its watches (Android's libc takes the watch as u32, glibc as int).
+                unsafe { libc::inotify_rm_watch(fd, wd as _) };
             }
         }
         let mut all = true;
@@ -2545,7 +2545,7 @@ impl Told {
                 if event.mask & (libc::IN_IGNORED | libc::IN_MOVE_SELF | libc::IN_DELETE_SELF) != 0 {
                     if event.mask & libc::IN_IGNORED == 0 {
                         // SAFETY: this instance's own descriptor and one of its watches.
-                        unsafe { libc::inotify_rm_watch(fd, event.wd) };
+                        unsafe { libc::inotify_rm_watch(fd, event.wd as _) };
                     }
                     self.watched.retain(|_, wd| *wd != event.wd);
                 }
