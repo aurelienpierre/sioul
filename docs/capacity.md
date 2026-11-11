@@ -82,7 +82,7 @@ The four costs and the gain are asked as tiles (`CostTiles.qml`), in the task pa
   - A line says where they come from: this task, tasks of its kind, or both.
   - An event has none: nothing is felt after an event.
 - **"How was it?"** has the same tiles and no faint values. Each gauge shows the forecast as a thin mark across its cell, so that foreseen and felt compare at a glance. Only what you tap is kept as felt: the forecast is never copied (above).
-- **Width.** The tiles stand in two columns, or in one under 360 pixels, and on a touch screen wherever two columns would make a cell narrower than 30 pixels (a phone held upright). The word sits beside the gauge where the cells keep their size (14 pixels with a mouse, 30 with a finger), else beside the number. The cards that hold the tiles have no width cap of their own ([qt-quick.md](qt-quick.md#a-computer-and-a-phone), "An editing card's width").
+- **Width.** The tiles stand in two columns, or in one under 360 pixels, and on a touch screen wherever two columns would make a cell narrower than 30 pixels (a phone held upright). The word sits beside the gauge where the cells keep their size (14 pixels with a mouse, 30 with a finger), else beside the number. The cards that hold the tiles have no width cap of their own ([qt-quick.md](qt-quick.md#a-computer-a-tablet-and-a-phone), "An editing card's width").
 
 ## 2. Heaviness
 
