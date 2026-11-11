@@ -1657,6 +1657,8 @@ struct Verdict {
     assessment: Option<crate::shield::Assessment>,
     /// What decided it of the message's own, as it stood (`own_inputs`).
     own: u64,
+    /// The last making that met its file (`cards_making`).
+    met: u64,
 }
 
 /// Each inbox message's triage as the Porch last made it, by its file (its
@@ -1670,12 +1672,18 @@ struct Verdict {
 /// time. A message is read again (its card, never its triage) while it
 /// stays as it was; one whose file, flags, own inputs or seal changed is
 /// triaged again, and one with a one-time code still valid is never kept,
-/// its lane moving with the clock.
+/// its lane moving with the clock. A triage is kept while one of the last
+/// `CARDS_MAKINGS` makings met its file: each look at the mail makes the
+/// Porch (what you closed it on left out, every message since kept) and then
+/// the money lines (every message kept, the first fortnight of an address
+/// you never closed the Porch on), which meet different messages; until 11
+/// November 2026 each making kept the triages of the messages it met alone,
+/// and each look triaged again what the other making had taken out.
 static TRIAGED: std::sync::Mutex<Option<(u64, std::collections::HashMap<FileKey, Verdict>)>> = std::sync::Mutex::new(None);
 
 /// Messages' triages kept at most (`TRIAGED`): past them, the memory starts
-/// again. Each making keeps only the messages it met (`gather`): the
-/// inboxes' as they stand, never a file renamed, moved or closed on since.
+/// again. Each making keeps those the last makings met (`gather`): a file
+/// renamed, moved or closed on leaves within `CARDS_MAKINGS` makings.
 const TRIAGED_KEPT: usize = 200_000;
 
 /// Each inbox message's card as the Porch last read it (`maildir::read_one`),
@@ -1759,10 +1767,9 @@ fn kept_card(path: &Path, key: &FileKey, stamp_id: &Option<String>, making: u64)
 /// whose origin passes `keep` and whose card passes `take`, oldest first,
 /// each with its triage: kept from an earlier making while its file, its
 /// own inputs and the seal stay (`TRIAGED`), else made now. As `maildir::read_messages_where`
-/// then `triage` would give them, the card's account set first. Each
-/// message's file is added to `met`. `making`: this making's number (`CARDS`).
-#[allow(clippy::too_many_arguments)]
-fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64, met: &mut std::collections::HashSet<FileKey>, making: u64) -> Vec<Triaged> {
+/// then `triage` would give them, the card's account set first. `making`:
+/// this making's number (`cards_making`), said of each card and triage it meets.
+fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64, making: u64) -> Vec<Triaged> {
     let stamp_id = trust::own_stamp_id();
     let maildir = [dir.join("new"), dir.join("cur")];
     let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.is_dir()) { maildir.into_iter().filter(|d| d.is_dir()).collect() } else { vec![dir.to_path_buf()] };
@@ -1780,9 +1787,12 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
             if !take(&card) {
                 continue;
             }
-            met.insert(key.clone());
             let own = own_inputs(&card, ctx);
-            let kept = TRIAGED.lock().ok().and_then(|kept| kept.as_ref().filter(|(at, _)| *at == seal).and_then(|(_, all)| all.get(&key).filter(|v| v.own == own).cloned()));
+            let kept = TRIAGED.lock().ok().and_then(|mut kept| {
+                let v = kept.as_mut().filter(|(at, _)| *at == seal)?.1.get_mut(&key).filter(|v| v.own == own)?;
+                v.met = v.met.max(making);
+                Some(v.clone())
+            });
             if let Some(v) = kept {
                 out.push(Triaged { card, lane: v.lane, trust: v.trust, code: None, reasons: v.reasons, priority: v.priority, checks: v.checks, assessment: v.assessment });
                 continue;
@@ -1802,7 +1812,7 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
                 }
                 if let Some((_, all)) = kept.as_mut() {
                     let t = &triaged;
-                    all.insert(key, Verdict { lane: t.lane.clone(), trust: t.trust, reasons: t.reasons.clone(), priority: t.priority, checks: t.checks.clone(), assessment: t.assessment.clone(), own });
+                    all.insert(key, Verdict { lane: t.lane.clone(), trust: t.trust, reasons: t.reasons.clone(), priority: t.priority, checks: t.checks.clone(), assessment: t.assessment.clone(), own, met: making });
                 }
             }
             out.push(triaged);
@@ -1827,7 +1837,6 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
     let root = crate::spam::labels::state();
     let moved = crate::spam::labels::read_moved_in(&root);
     let said = if moved.is_empty() { Vec::new() } else { crate::spam::labels::read_all_in(&root) };
-    let mut met = std::collections::HashSet::new();
     let making = cards_making();
     let mut items: Vec<Triaged> = sources
         .iter()
@@ -1839,21 +1848,22 @@ pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &Sende
             let fresh = account.is_some_and(|a| !state.done.contains_key(a));
             let since = now - i64::from(crate::config::DEFAULT_SYNC_DAYS) * 86_400;
             let take = |card: &Card| (!fresh || card.date.is_none_or(|d| d >= since)) && senders.who_of(card) != crate::reach::Who::Blocked;
-            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal, &mut met, making)
+            triaged_in(&src.folder, src.account.as_ref(), |origin| !state.is_done(account, origin), take, &ctx, seal, making)
                 .into_iter()
                 .chain(flagged_since(src, &ctx, state, senders, now))
                 .chain(account.filter(|_| !moved.is_empty()).map_or_else(Vec::new, |a| moved_items(src, &ctx, &crate::folders::saved(a), &moved, &said)))
                 .collect::<Vec<_>>()
         })
         .collect();
-    // What this making did not meet is not kept (review of 1a2c6a2, C5): a
-    // message read or flagged elsewhere leaves its old name behind, one moved
-    // or closed on leaves for good.
+    // What none of the last makings met is not kept (review of 1a2c6a2,
+    // C5): a message read or flagged elsewhere leaves its old name behind,
+    // one moved or closed on leaves for good. The Porch's making and the money
+    // lines' meet different messages: neither takes the other's out.
     if let Ok(mut kept) = TRIAGED.lock()
         && let Some((at, all)) = kept.as_mut()
         && *at == seal
     {
-        all.retain(|key, _| met.contains(key));
+        all.retain(|_, v| making.saturating_sub(v.met) < CARDS_MAKINGS);
     }
     cards_made(making);
     follow_conversations(&mut items);
@@ -2759,7 +2769,11 @@ mod tests {
         let news = root.join("cur").join(format!("{}.U1-2.sioul{}2,S", now - 60, maildir::INFO));
         std::fs::rename(read(2), &news).unwrap();
         assert_eq!(made(&none, &store).1, 2);
-        // Its old name no longer kept: only the two met, the code never (review of 1a2c6a2, C5).
+        // Its old name kept a few makings more, then no longer: only the two met, the code never (review of 1a2c6a2, C5).
+        assert_eq!(TRIAGED.lock().unwrap().as_ref().map(|(_, all)| all.len()), Some(3));
+        for _ in 0..CARDS_MAKINGS {
+            made(&none, &store);
+        }
         assert_eq!(TRIAGED.lock().unwrap().as_ref().map(|(_, all)| all.len()), Some(2));
         // Rewritten in place, its name, size and time kept (`sioul verify
         // --again`): another file, triaged again (review of 1a2c6a2, C6).
@@ -2866,6 +2880,55 @@ mod tests {
         }
         assert_eq!(made().1, 0);
         assert_eq!(CARDS.lock().unwrap().as_ref().map(|k| k.cards.len()), Some(3), "the three files there now");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A look at the mail makes the Porch (its state: what you closed it on)
+    /// then the money lines (every message kept, a state of none): the two
+    /// meet different messages, those you closed the Porch on (the money lines
+    /// alone) and those older than the first fortnight (the Porch alone), and
+    /// neither takes the other's triages out (`TRIAGED`, kept while one of the
+    /// last makings met them): a Porch making, then a money lines' making,
+    /// then a Porch making triage nothing again, and the Porch is the same.
+    #[test]
+    fn the_porch_and_the_money_lines_keep_each_other_s_triages() {
+        crate::config::stand_ins_only();
+        let _turn = GATHERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let root = std::env::temp_dir().join(format!("sioul-porch-two-makings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for sub in ["new", "cur", "tmp"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let now = jiff::Timestamp::now().as_second();
+        let put = |uid: u32, days: i64, subject: &str| {
+            let date = jiff::Timestamp::from_second(now - days * 86_400 - 60).unwrap().strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
+            let name = format!("{}.U1-{uid}.sioul{}2,S", now - days * 86_400 - 60, maildir::INFO);
+            std::fs::write(root.join("cur").join(name), format!("From: Jane <jane@two.example.org>\r\nMessage-ID: <t{uid}@two.example.org>\r\nDate: {date}\r\nSubject: {subject}\r\n\r\nAbout {subject}.\r\n")).unwrap();
+        };
+        // Closed on up to the second: the first two are the money lines' alone; the fourth, a month old, the Porch's alone.
+        put(1, 2, "Closed on, first");
+        put(2, 1, "Closed on, second");
+        put(3, 0, "Waiting");
+        put(4, 30, "Waiting a month");
+        let src = Source { account: Some("home".into()), address: Some("you@home.example.org".into()), folder: root.clone(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
+        let (senders, known) = (Senders::default(), SenderList::default());
+        let closed = PorchState { done: [("home".to_string(), crate::card::ImapOrigin { validity: 1, uid: 2 })].into_iter().collect(), ..PorchState::default() };
+        let all_kept = PorchState::default();
+        let made = |state: &PorchState| {
+            TRIAGES.with(|n| n.set(0));
+            let mut shown: Vec<String> = gather(std::slice::from_ref(&src), None, &known, &senders, state, now).iter().map(|t| format!("{t:?}")).collect();
+            shown.sort();
+            (shown, TRIAGES.with(std::cell::Cell::get))
+        };
+        let (porch, triaged) = made(&closed);
+        assert_eq!((porch.len(), triaged), (2, 2), "the Porch: the waiting one and the month-old one");
+        let (lines, triaged) = made(&all_kept);
+        assert_eq!((lines.len(), triaged), (3, 2), "the money lines: the two closed on triaged, the waiting one kept");
+        let (again, triaged) = made(&closed);
+        assert_eq!(triaged, 0, "the Porch again: nothing triaged anew");
+        assert_eq!(again, porch, "the same Porch");
+        let (lines_again, triaged) = made(&all_kept);
+        assert_eq!((triaged, &lines_again), (0, &lines), "the money lines again: nothing anew, the same");
         let _ = std::fs::remove_dir_all(&root);
     }
 
