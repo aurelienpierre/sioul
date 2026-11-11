@@ -740,7 +740,7 @@ pub fn line_of(account: &str, local: &str, unique: &str) -> Option<Line> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A stand-in folder of a stand-in account, under the test's own cache.
@@ -951,7 +951,7 @@ mod tests {
     }
 
     /// Sets a directory's time, as a change at `at` would have left it.
-    fn set_dir_time(dir: &Path, at: std::time::SystemTime) {
+    pub(crate) fn set_dir_time(dir: &Path, at: std::time::SystemTime) {
         #[cfg(not(windows))]
         let handle = std::fs::File::open(dir).unwrap();
         // Windows opens a directory only with FILE_FLAG_BACKUP_SEMANTICS, and sets its time with write access.

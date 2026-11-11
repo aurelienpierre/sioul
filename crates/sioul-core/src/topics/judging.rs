@@ -368,7 +368,7 @@ mod tests {
         let past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
         let settle = || {
             for dir in ["", "new", "cur", ".Archive", ".Archive/new", ".Archive/cur"] {
-                std::fs::File::open(root.join(dir)).unwrap().set_modified(past).unwrap();
+                crate::mailcache::tests::set_dir_time(&root.join(dir), past);
             }
         };
         settle();
@@ -383,10 +383,12 @@ mod tests {
             assert!(!seen.contains(&now), "{:?}", now.places);
             seen.push(now);
         };
+        // Windows names the flags after "!2,", where ":" is no file name.
+        let (seen_one, two) = (format!("cur/1.a{}2,S", crate::maildir::INFO), format!(".Archive/cur/2.a{}2,", crate::maildir::INFO));
         changed(&|| std::fs::write(root.join("new/1.a"), "Subject: one\r\n\r\n").unwrap());
-        changed(&|| std::fs::rename(root.join("new/1.a"), root.join("cur/1.a:2,S")).unwrap());
-        changed(&|| std::fs::write(root.join(".Archive/cur/2.a:2,"), "Subject: two\r\n\r\n").unwrap());
-        changed(&|| std::fs::remove_file(root.join("cur/1.a:2,S")).unwrap());
+        changed(&|| std::fs::rename(root.join("new/1.a"), root.join(&seen_one)).unwrap());
+        changed(&|| std::fs::write(root.join(&two), "Subject: two\r\n\r\n").unwrap());
+        changed(&|| std::fs::remove_file(root.join(&seen_one)).unwrap());
         changed(&|| ["new", "cur", "tmp"].iter().for_each(|sub| std::fs::create_dir_all(root.join(".Later").join(sub)).unwrap()));
         changed(&|| keep(&judged, 7, &[("c@example.org".into(), None)]).unwrap());
         let _ = std::fs::remove_dir_all(base);

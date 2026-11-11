@@ -273,10 +273,12 @@ mod tests {
             ("1794300002.M3P1.stand-in:2,S", message("b@example.org", "Me <me@example.org>", GERMAN)),
             ("1794300003.M4P1.stand-in:2,S", message("c@example.com", "Ann <ann@example.com>", ENGLISH)),
         ];
+        // Windows names the flags after "!2,": a ":" there would make a stream of an empty file.
         for (name, text) in &files {
-            std::fs::write(maildir.join("cur").join(name), text).unwrap();
+            std::fs::write(maildir.join("cur").join(name.replace(':', &crate::maildir::INFO.to_string())), text).unwrap();
         }
-        let config: Config = toml::from_str(&format!("[[account]]\nid = \"languages-{}\"\nkind = \"imap\"\naddress = \"me@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", std::process::id(), maildir.display())).unwrap();
+        // "/" in the path: a Windows "\" would start an escape in the TOML string.
+        let config: Config = toml::from_str(&format!("[[account]]\nid = \"languages-{}\"\nkind = \"imap\"\naddress = \"me@example.org\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", std::process::id(), maildir.display().to_string().replace('\\', "/"))).unwrap();
         let texts = mail_texts(&config, LAST);
         assert_eq!(texts.len(), 2, "{texts:?}");
         let found = found_in(texts, &lists());
