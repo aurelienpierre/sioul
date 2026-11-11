@@ -1673,7 +1673,7 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
     // a log of lines (calls, texts, labels): what it holds is not kept twice
     // in the memory (its lines are its entries' names), it is read again.
     let lines = matches!(store.shape, Shape::Lines);
-    let stamp = file_stamp(&meta);
+    let stamp = file_stamp(path, &meta);
     if let Some(stat) = known.get(file).filter(|s| !lines && s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen) && stamped_as_read(path, stamp, s.seen)) {
         note_stamp(path, stamp, look.clock, stat.seen, false);
         for (entry, h) in &stat.entries {
@@ -1745,7 +1745,7 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
         found.unknown.insert(file.to_string());
         return;
     };
-    note_stamp(path, file_stamp(&held), look.clock, look.clock, true);
+    note_stamp(path, file_stamp(path, &held), look.clock, look.clock, true);
     let mut stat = Stat { size: held.len(), modified: modified_ns(&held), entries: Vec::with_capacity(entries.len()), seen: look.clock };
     for (entry, value) in entries {
         let key = format!("{file}#{entry}");
@@ -1769,7 +1769,7 @@ static LINES: std::sync::Mutex<Lines> = std::sync::Mutex::new(BTreeMap::new());
 /// A log's lines, as `entries_of` reads them: from `LINES` while the file is
 /// the one read there, else read now (`clock`: this computer's, milliseconds) and kept.
 fn lines_of(path: &Path, meta: &std::fs::Metadata, clock: i64) -> Option<std::sync::Arc<Vec<String>>> {
-    let stamp = file_stamp(meta);
+    let stamp = file_stamp(path, meta);
     let settled = |read: i64| (stamp.modified.max(stamp.changed) / 1_000_000) as i64 + settling_ms() < read;
     if let Some((_, _, lines)) = keeping().then(|| LINES.lock().ok().and_then(|all| all.get(path).filter(|(was, read, _)| *was == stamp && settled(*read)).cloned())).flatten() {
         return Some(lines);
@@ -4169,10 +4169,10 @@ fn sealed_path(memory: &Path) -> PathBuf {
     memory.with_file_name("files.json")
 }
 
-/// A file as it stands: its inode (on Unix; a file written anew and renamed
-/// into place is another), its size, its time and, on Unix, its inode's
-/// change time (nanoseconds; any write moves it, whatever the file's own time
-/// is set back to).
+/// A file as it stands: its inode (a file written anew and renamed into place
+/// is another), its size, its time and its inode's change time (nanoseconds;
+/// any write moves it, whatever the file's own time is set back to); on
+/// Windows its file index and its change time (`filelock::identity`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct FileStamp {
     ino: u64,
@@ -4181,19 +4181,13 @@ struct FileStamp {
     changed: u64,
 }
 
-fn file_stamp(meta: &std::fs::Metadata) -> FileStamp {
-    #[cfg(unix)]
-    let (ino, changed) = {
-        use std::os::unix::fs::MetadataExt;
-        (meta.ino(), (meta.ctime().max(0) as u64).saturating_mul(1_000_000_000).saturating_add(meta.ctime_nsec().max(0) as u64))
-    };
-    #[cfg(not(unix))]
-    let (ino, changed) = (0, 0);
-    FileStamp { ino, size: meta.len(), modified: modified_ns(meta), changed }
+fn file_stamp(path: &Path, meta: &std::fs::Metadata) -> FileStamp {
+    let (ino, changed) = sioul_core::filelock::identity(path, meta);
+    FileStamp { ino, size: meta.len(), modified: modified_ns(meta), changed: u64::try_from(changed).unwrap_or(0) }
 }
 
 fn stamp_at(path: &Path) -> Option<FileStamp> {
-    std::fs::metadata(path).ok().map(|meta| file_stamp(&meta))
+    std::fs::metadata(path).ok().map(|meta| file_stamp(path, &meta))
 }
 
 /// The memory as the last exchange in this process saved it (`Memory::keep`),
@@ -7579,7 +7573,9 @@ impl Standing {
                 }
                 // This device's own files change only by its hand (their size checked apart, `quiet`).
                 let stamped = !name.starts_with(sharing.computer) && (name.ends_with(".jsonl") || name == "seal.toml");
-                standing.folder.insert(entry.path(), if stamped { entry.metadata().ok().map(|m| file_stamp(&m)) } else { None });
+                let path = entry.path();
+                let stamp = if stamped { entry.metadata().ok().map(|m| file_stamp(&path, &m)) } else { None };
+                standing.folder.insert(path, stamp);
             }
         }
         let (entries, unread) = crate::devices::all(sharing.folder, sharing.key);
@@ -7602,7 +7598,7 @@ impl Standing {
 fn stamp_below(path: &Path, out: &mut BTreeMap<PathBuf, FileStamp>) {
     let Ok(meta) = std::fs::metadata(path) else { return };
     if meta.is_file() {
-        out.insert(path.to_path_buf(), file_stamp(&meta));
+        out.insert(path.to_path_buf(), file_stamp(path, &meta));
         return;
     }
     for entry in std::fs::read_dir(path).into_iter().flatten().filter_map(Result::ok) {

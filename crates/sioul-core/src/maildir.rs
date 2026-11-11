@@ -125,7 +125,7 @@ pub fn read_one(path: &Path) -> Option<Card> {
     Some(card)
 }
 
-type KeptCards = std::collections::HashMap<(String, u64, u64), Card>;
+type KeptCards = std::collections::HashMap<(String, u64, u64, u64), Card>;
 
 thread_local! {
     /// The cards read in this thread while a `CardsKept` lives.
@@ -153,14 +153,20 @@ pub fn parses_reset() {
     PARSED.with(|n| n.set(0));
 }
 
-/// A message file as `CardsKept` knows it: its name less its flags, its size, its time (nanoseconds).
-fn kept_key(path: &Path) -> Option<(String, u64, u64)> {
+/// A message file as `CardsKept` knows it: its name less its flags, its size,
+/// its time (nanoseconds) and its inode (on Windows its file index:
+/// `filelock::identity`). Not its inode's change time, which a change of its
+/// flags moves (a rename): a message read, its flags moved, is the same.
+fn kept_key(path: &Path) -> Option<(String, u64, u64, u64)> {
     if KEPT.with(|kept| kept.borrow().is_none()) {
         return None;
     }
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos() as u64;
-    Some((unique_part(path.file_name()?.to_str()?).to_string(), meta.len(), modified))
+    // Its inode too: a message rewritten through `tmp/` and put in its place,
+    // at the same size, its time set back (`sioul verify --again`), is another file.
+    let (inode, _) = crate::filelock::identity(path, &meta);
+    Some((unique_part(path.file_name()?.to_str()?).to_string(), meta.len(), modified, inode))
 }
 
 /// While it lives, each message file this thread reads is parsed once
@@ -572,6 +578,35 @@ mod tests {
         // As Windows names them.
         assert_eq!(origin_of(Path::new("cur/1759400000.U17-4521.sioul!2,S")), Some(ImapOrigin { validity: 17, uid: 4521 }));
         assert_eq!(flags_of(Path::new("cur/1759400000.U17-4521.sioul!2,FS")), "FS");
+    }
+
+    /// A message rewritten in its place within a look (written in `tmp/` and
+    /// renamed over it, at the same size, its time set back, as `sioul verify
+    /// --again` does) is another file: parsed again, never the card of the
+    /// one it replaced (`kept_key`'s inode).
+    #[test]
+    fn a_message_rewritten_in_its_place_is_parsed_again_in_a_look() {
+        let dir = std::env::temp_dir().join(format!("sioul-cards-rewritten-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for sub in ["new", "cur", "tmp"] {
+            std::fs::create_dir_all(dir.join(sub)).unwrap();
+        }
+        let path = dir.join("cur").join(format!("1759400000.U1700000000-1.sioul{INFO}2,S"));
+        std::fs::write(&path, "From: a@example.org\r\nSubject: Lunch on Friday\r\nMessage-ID: <1@example.org>\r\n\r\nBody\r\n").unwrap();
+        let parsed = || PARSED.with(std::cell::Cell::get);
+        let _kept = CardsKept::begin();
+        assert_eq!(read_one(&path).unwrap().subject, "Lunch on Friday");
+        let before = std::fs::metadata(&path).unwrap();
+        let aside = dir.join("tmp").join("rewritten");
+        std::fs::write(&aside, "From: a@example.org\r\nSubject: Lunch on Monday\r\nMessage-ID: <1@example.org>\r\n\r\nBody\r\n").unwrap();
+        std::fs::File::options().write(true).open(&aside).unwrap().set_modified(before.modified().unwrap()).unwrap();
+        std::fs::rename(&aside, &path).unwrap();
+        let after = std::fs::metadata(&path).unwrap();
+        assert_eq!((after.len(), after.modified().unwrap()), (before.len(), before.modified().unwrap()), "the same size and time");
+        let count = parsed();
+        assert_eq!(read_one(&path).unwrap().subject, "Lunch on Monday", "parsed again, not the card kept");
+        assert_eq!(parsed() - count, 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Whether the phone parses each message once (a question of 9

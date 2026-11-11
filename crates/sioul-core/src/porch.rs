@@ -1726,10 +1726,9 @@ fn cards_made(making: u64) {
 /// How old a message file's time and change time are before its card is kept (`CARDS`).
 const CARD_SETTLES: std::time::Duration = std::time::Duration::from_secs(2);
 
-/// The card of the message at `path` (`meta`, its metadata; `key`, its
-/// `file_key`): as kept (`CARDS`), else read now, and kept once its file has
-/// settled.
-fn kept_card(path: &Path, meta: &std::fs::Metadata, key: &FileKey, stamp_id: &Option<String>, making: u64) -> Option<Card> {
+/// The card of the message at `path` (`key`, its `file_key`): as kept
+/// (`CARDS`), else read now, and kept once its file has settled.
+fn kept_card(path: &Path, key: &FileKey, stamp_id: &Option<String>, making: u64) -> Option<Card> {
     let kept = CARDS.lock().ok().and_then(|mut kept| {
         let (card, read) = kept.as_mut().filter(|k| k.stamp_id == *stamp_id)?.cards.get_mut(key)?;
         *read = (*read).max(making);
@@ -1739,15 +1738,10 @@ fn kept_card(path: &Path, meta: &std::fs::Metadata, key: &FileKey, stamp_id: &Op
         return kept;
     }
     let card = maildir::read_one(path)?;
-    let settled = |time: Option<std::time::SystemTime>| time.and_then(|t| t.elapsed().ok()).is_some_and(|age| age >= CARD_SETTLES);
-    #[cfg(unix)]
-    let changed = {
-        use std::os::unix::fs::MetadataExt;
-        u64::try_from(meta.ctime()).ok().map(|seconds| std::time::UNIX_EPOCH + std::time::Duration::new(seconds, u32::try_from(meta.ctime_nsec()).unwrap_or(0)))
-    };
-    #[cfg(not(unix))]
-    let changed = meta.modified().ok();
-    if settled(meta.modified().ok()) && settled(changed)
+    // Both its times, the file's and its inode's change (`file_key`), old enough.
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as i128);
+    let changed = (key.2 as i128).max(key.4);
+    if now - changed >= CARD_SETTLES.as_nanos() as i128
         && let Ok(mut kept) = CARDS.lock()
     {
         let at = kept.as_ref().map_or(0, |k| k.making);
@@ -1781,7 +1775,7 @@ fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::
                 continue;
             }
             let key = file_key(&path, &meta);
-            let Some(mut card) = kept_card(&path, &meta, &key, &stamp_id, making) else { continue };
+            let Some(mut card) = kept_card(&path, &key, &stamp_id, making) else { continue };
             card.account = account.cloned();
             if !take(&card) {
                 continue;
@@ -2033,7 +2027,8 @@ impl std::fmt::Debug for Gate {
 }
 
 /// A file's verdict, by its path, size and modification time (nanoseconds),
-/// and on Unix its inode and the time its inode last changed (`file_key`).
+/// and its inode and the time its inode last changed (on Windows its file
+/// index and change time: `filelock::identity`).
 type FileKey = (PathBuf, u64, u128, u64, i128);
 
 /// The key of the file at `path` (`meta`, its metadata): a message rewritten
@@ -2043,14 +2038,8 @@ type FileKey = (PathBuf, u64, u128, u64, i128);
 /// its inode's time.
 fn file_key(path: &Path, meta: &std::fs::Metadata) -> FileKey {
     let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
-    #[cfg(unix)]
-    let inode = {
-        use std::os::unix::fs::MetadataExt;
-        (meta.ino(), i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()))
-    };
-    #[cfg(not(unix))]
-    let inode = (0, 0);
-    (path.to_path_buf(), meta.len(), time, inode.0, inode.1)
+    let (inode, changed) = crate::filelock::identity(path, meta);
+    (path.to_path_buf(), meta.len(), time, inode, changed)
 }
 
 /// The words looked for, hashed by what they hold, once for each set made

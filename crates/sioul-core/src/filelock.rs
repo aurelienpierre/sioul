@@ -10,6 +10,60 @@
 
 use std::path::{Path, PathBuf};
 
+/// What tells a file from another of the same name, size and time: on Unix
+/// its inode and its inode's change time; on Windows its file index and its
+/// change time (`GetFileInformationByHandle`, `GetFileInformationByHandleEx`),
+/// never its creation time, which NTFS gives back to a name made again within
+/// fifteen seconds; (0, 0) elsewhere, or when Windows could not be asked. The
+/// change time is in nanoseconds since 1970: any write moves it, whatever the
+/// file's own time is set back to, and a rename moves it too. On Windows the
+/// file is opened for its attributes alone, shared every way.
+pub fn identity(path: &Path, meta: &std::fs::Metadata) -> (u64, i128) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let _ = path;
+        (meta.ino(), i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()))
+    }
+    #[cfg(windows)]
+    {
+        let _ = meta;
+        windows_identity(path).unwrap_or((0, 0))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (path, meta);
+        (0, 0)
+    }
+}
+
+#[cfg(windows)]
+fn windows_identity(path: &Path) -> Option<(u64, i128)> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{BY_HANDLE_FILE_INFORMATION, FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS, FILE_READ_ATTRIBUTES, FileBasicInfo, GetFileInformationByHandle, GetFileInformationByHandleEx};
+    // Its attributes alone, shared for reading, writing and deleting: never in a writer's way.
+    let file = std::fs::OpenOptions::new().access_mode(FILE_READ_ATTRIBUTES).share_mode(7).custom_flags(FILE_FLAG_BACKUP_SEMANTICS).open(path).ok()?;
+    let handle = file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+    // SAFETY: plain C structures, zeroed, filled by the system through a handle held open here.
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: as above.
+    if unsafe { GetFileInformationByHandle(handle, &mut info) } == 0 {
+        return None;
+    }
+    // SAFETY: as above.
+    let mut basic: FILE_BASIC_INFO = unsafe { std::mem::zeroed() };
+    let size = u32::try_from(std::mem::size_of::<FILE_BASIC_INFO>()).ok()?;
+    // SAFETY: the buffer is a FILE_BASIC_INFO of the size said.
+    if unsafe { GetFileInformationByHandleEx(handle, FileBasicInfo, (&raw mut basic).cast(), size) } == 0 {
+        return None;
+    }
+    let index = (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
+    // 100-nanosecond ticks since 1601, made nanoseconds since 1970.
+    let changed = (i128::from(basic.ChangeTime) - 116_444_736_000_000_000) * 100;
+    Some((index, changed))
+}
+
 /// Bytes written beside `path` under a hidden name of their own, then renamed
 /// over it: a reader never finds the file empty or half written (the sharing
 /// reads without the lock), and a full disk leaves the file as it was rather

@@ -51,6 +51,12 @@ flate2 = "1"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# A file's index and change time on Windows (filelock.rs, `identity`), which
+# tell a file rewritten or put in place at the same size and time: in the lock
+# already, through the standard library's own dependencies.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 fluent-syntax.workspace = true
 
