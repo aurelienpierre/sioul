@@ -26,7 +26,7 @@ It runs when this folder or the workflow change, and by hand (Actions, "F-Droid"
 - **From sources**: `build.sh` as the recipe runs it. Qt (fetched, then built for the computer and for Android: 62 minutes on GitHub's runner on 12 November 2026; Sioul then took 14) is kept in the cache while `build.sh`'s Qt part does not change. The APK is the run's artifact, also signed with a key made for the run, to try on a phone (uninstall Sioul first: a phone takes it for another app).
 - **F-Droid's tools**, after it: the recipe at the run's commit, fetched and built by fdroidserver as fdroiddata's CI builds a merge request's (`fdroid fetchsrclibs`, then `fdroid build --on-server --test`), F-Droid's scanner included.
 
-By hand, on a computer: `fdroid lint` and `fdroid rewritemeta` on the recipe in a copy of fdroiddata (both passed on 12 November 2026, the recipe as `rewritemeta` writes it), and F-Droid's scanner on Sioul's sources (`scan_source`; nothing found the same day).
+On 12 November 2026, at commit 5a3b088, "F-Droid's tools" built `com.aurelienpierre.sioul_10.apk` (124 MiB) in 1 hour 42 minutes on GitHub's runner of four cores: F-Droid's scanner, with its signatures of that day, found nothing, and `fdroid build` said "Successfully built". By hand, on a computer, the same day: `fdroid lint` and `fdroid rewritemeta` on the recipe in a copy of fdroiddata both passed (the recipe as `rewritemeta` writes it).
 
 ## Sending it to F-Droid
 Once a version tag holds this folder (the recipe names 0.0.11; change it if the first is another):
