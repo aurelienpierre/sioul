@@ -14,7 +14,7 @@ The recipe is GCompris's way of building Qt (`metadata/net.gcompris.full.yml` in
 2. **prebuild**: Android's platform 36 and its build tools; Rust 1.99.1 with the phone's target, through rustup; Qt's modules fetched into its source library (`build.sh sources`, Qt's own `init-repository`).
 3. **build**: `build.sh qt apk`. F-Droid then signs `build/fdroid/sioul-unsigned.apk` with its key.
 
-What differs from the APK of the releases page, and why, is at the head of `build.sh`: Quick Controls' Basic style alone, no QML debugger, no FFmpeg (Android's own media player instead), no OpenSSL in Qt (neither APK has TLS in Qt).
+What differs from the APK of the releases page, and why, is at the head of `build.sh`: Quick Controls' Basic style alone, no QML debugger, no FFmpeg (Android's own media player instead), no OpenSSL in Qt (neither APK has TLS in Qt). Built so on 12 November 2026, the APK of 0.0.10 weighed 125 MiB and held 189 files, against 155 MiB and 233 for the releases page's, and every library in it, Qt's too, was aligned for 16 KB memory pages.
 
 ## Each version
 - **Change `version` and `version-code` in `Cargo.toml` together**: major × 10,000 + minor × 100 + patch (0.0.11 → 11). F-Droid reads both there from each new tag `v…` (`UpdateCheckMode: Tags`), and adds the version to the recipe by itself (`AutoUpdateMode: Version`), the build otherwise unchanged. `android/CMakeLists.txt` stops when the two differ, so the Android workflow says it at the first push.
@@ -23,7 +23,7 @@ What differs from the APK of the releases page, and why, is at the head of `buil
 
 ## Trying it: `.github/workflows/fdroid.yml`
 It runs when this folder or the workflow change, and by hand (Actions, "F-Droid", "Run workflow"), in F-Droid's own build image (`registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie`):
-- **From sources**: `build.sh` as the recipe runs it. Qt, about two hours on GitHub's runner, is kept in the cache while `build.sh`'s Qt part does not change. The APK is the run's artifact, also signed with a key made for the run, to try on a phone (uninstall Sioul first: a phone takes it for another app).
+- **From sources**: `build.sh` as the recipe runs it. Qt (fetched, then built for the computer and for Android: 62 minutes on GitHub's runner on 12 November 2026; Sioul then took 14) is kept in the cache while `build.sh`'s Qt part does not change. The APK is the run's artifact, also signed with a key made for the run, to try on a phone (uninstall Sioul first: a phone takes it for another app).
 - **F-Droid's tools**, after it: the recipe at the run's commit, fetched and built by fdroidserver as fdroiddata's CI builds a merge request's (`fdroid fetchsrclibs`, then `fdroid build --on-server --test`), F-Droid's scanner included.
 
 By hand, on a computer: `fdroid lint` and `fdroid rewritemeta` on the recipe in a copy of fdroiddata (both passed on 12 November 2026, the recipe as `rewritemeta` writes it), and F-Droid's scanner on Sioul's sources (`scan_source`; nothing found the same day).
