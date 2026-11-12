@@ -11,7 +11,7 @@ description: "Sioul est un environnement administratif personnel, sensible au tr
 
 La vie administrative moderne suppose quelqu’un de toujours disponible et toujours en pleine forme. Sioul part au contraire de ce que vous pouvez donner aujourd’hui, votre attention, votre énergie, votre santé et votre repos, et y ajuste le travail, les institutions et l’argent.
 
-<p class="sioul-quiet" markdown>[Essayer Sioul, version 0.0.9](guide/install.md) : Linux, Windows, macOS et Android. Il est jeune et change souvent ; la suite de cette page dit à quoi il sert.</p>
+<p class="sioul-quiet" markdown>[Essayer Sioul, version 0.0.10](guide/install.md) : Linux, Windows, macOS et Android. Il est jeune et change souvent ; la suite de cette page dit à quoi il sert.</p>
 
 Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document, la personne qui l’a envoyée et le paiement forment une seule affaire. Vous n’avez pas à garder en tête ce qui les relie : Sioul le garde pour vous.
 
@@ -235,7 +235,7 @@ Le même raisonnement décide de la façon dont Sioul est construit. Vos donnée
 
 ## Où il en est {#where-it-stands}
 
-Sioul est jeune (version 0.0.9) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak) et Android (téléphones et tablettes 64 bits, Android 9 et suivants) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux et sur un téléphone Android, encore peu essayés ailleurs.
+Sioul est jeune (version 0.0.10) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak) et Android (téléphones et tablettes 64 bits, Android 9 et suivants) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux et sur un téléphone Android, encore peu essayés ailleurs.
 
 Il est fait par une seule personne, au grand jour : aucune assistance n’est promise. Les questions et les signalements sont les bienvenus dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues).
 
