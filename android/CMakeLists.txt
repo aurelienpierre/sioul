@@ -117,6 +117,13 @@ target_link_options(sioul PRIVATE "-Wl,-z,max-page-size=16384")
 target_link_options(sioul PRIVATE "-Wl,--exclude-libs,ALL" "-Wl,--pack-dyn-relocs=android+relr" "-Wl,--use-android-relr-tags")
 
 math(EXPR SIOUL_VERSION_CODE "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
+# Cargo.toml says it too, for F-Droid, which reads no CMake (packaging/fdroid/):
+# a version changed without it would never reach F-Droid's users.
+file(STRINGS "${SIOUL_ROOT}/Cargo.toml" SIOUL_VERSION_CODE_LINE REGEX "^version-code = [0-9]+$" LIMIT_COUNT 1)
+string(REGEX REPLACE "^version-code = " "" SIOUL_VERSION_CODE_SAID "${SIOUL_VERSION_CODE_LINE}")
+if(NOT SIOUL_VERSION_CODE_SAID STREQUAL SIOUL_VERSION_CODE)
+    message(FATAL_ERROR "Cargo.toml's version-code is '${SIOUL_VERSION_CODE_SAID}'; version ${PROJECT_VERSION} needs ${SIOUL_VERSION_CODE}")
+endif()
 set_target_properties(sioul PROPERTIES
     # The manifest, the icon, the backup rules (package/).
     QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/package"

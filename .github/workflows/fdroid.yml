@@ -1,0 +1,236 @@
+# Sioul as F-Droid builds it (packaging/fdroid/README.md): from sources alone,
+# Qt included, in F-Droid's own build image.
+#
+# Two jobs, the second after the first:
+# - "From sources": packaging/fdroid/build.sh in F-Droid's image, Qt kept in
+#   the cache while the script's Qt part does not change, so that a change to
+#   Sioul's part is tried in about half an hour instead of three. Its APK is
+#   signed with a key made for the run, to try on a phone (uninstall Sioul
+#   first: a phone takes it for another app).
+# - "F-Droid's tools": the recipe itself (packaging/fdroid/com.aurelienpierre.sioul.yml),
+#   at this commit, fetched and built by fdroidserver as fdroiddata's CI
+#   builds a merge request's, its scanner included: what F-Droid will see.
+#
+# Runs when the recipe, the script or this file change, and by hand: Actions,
+# "F-Droid", "Run workflow".
+#
+# Versions checked on 12 November 2026: F-Droid's image buildserver-trixie,
+# fdroidserver at the commit fdroiddata's CI names (a35fdfdd) brought to its
+# master, actions/cache v6.1.0.
+
+name: F-Droid
+
+on:
+  push:
+    paths:
+      - 'packaging/fdroid/**'
+      - '!packaging/fdroid/README.md'
+      - '.github/workflows/fdroid.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: registry.gitlab.com/fdroid/fdroidserver:buildserver-trixie
+  NDK_VERSION: '27.2.12479018'
+  RUST_VERSION: '1.99.1'
+
+jobs:
+  sources:
+    name: From sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Qt twice and Sioul need some 20 GB; the runner's own Android SDK and
+      # toolchains are not used here.
+      - name: Room on the disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache /usr/local/share/boost
+          sudo mkdir -p /mnt/fdroid
+          sudo chown "$USER" /mnt/fdroid
+          df -h / /mnt
+
+      - uses: actions/checkout@v7
+
+      # The cache's key: Qt's version, modules and options, as build.sh says them.
+      - name: Which Qt
+        id: qt
+        run: |
+          key=$(sed -n '/^QT_VERSION=/p; /^QT_MODULES/p; /^ABI=/p; /^API=/p; /^build_qt()/,/^}/p; /^qt()/,/^}/p' packaging/fdroid/build.sh | sha256sum | cut -c1-16)
+          echo "key=fdroid-qt-$key" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v6
+        id: cache
+        with:
+          path: |
+            /mnt/fdroid/qt-host
+            /mnt/fdroid/qt-android
+          key: ${{ steps.qt.outputs.key }}
+
+      # As the recipe: its sudo, then the stages "sources" and "qt".
+      - name: Qt from its sources
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          docker run --rm -v "$PWD:/src" -v /mnt/fdroid:/work -w /src \
+            -e NDK_VERSION "$IMAGE" bash -euxo pipefail -c '
+            . /etc/profile.d/bsenv.sh
+            apt-get update -q
+            apt-get install -y -q build-essential cmake ninja-build
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION" > /dev/null
+            export ANDROID_SDK_ROOT=$ANDROID_HOME ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION
+            export SIOUL_FDROID_WORK=/work
+            qt=$(sed -n "s/^QT_VERSION=//p" packaging/fdroid/build.sh)
+            rm -rf /work/qt5
+            git clone -q --branch "v$qt" git://code.qt.io/qt/qt5.git /work/qt5
+            QT_SOURCE=/work/qt5 packaging/fdroid/build.sh sources qt
+            rm -rf /work/qt5
+            chmod -R a+rX /work
+          '
+          du -sh /mnt/fdroid/qt-host /mnt/fdroid/qt-android
+
+      # Kept at once: a failure further on keeps the three hours of Qt.
+      - uses: actions/cache/save@v6
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            /mnt/fdroid/qt-host
+            /mnt/fdroid/qt-android
+          key: ${{ steps.qt.outputs.key }}
+
+      # As the recipe: Rust from rustup, Corrosion from its sources, the stage "apk".
+      - name: Sioul
+        run: |
+          docker run --rm -v "$PWD:/src" -v /mnt/fdroid:/work -w /src \
+            -e NDK_VERSION -e RUST_VERSION "$IMAGE" bash -euxo pipefail -c '
+            . /etc/profile.d/bsenv.sh
+            apt-get update -q
+            apt-get install -y -q build-essential cmake ninja-build
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION" > /dev/null
+            export ANDROID_SDK_ROOT=$ANDROID_HOME ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION
+            curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain "$RUST_VERSION" --target aarch64-linux-android
+            . "$HOME/.cargo/env"
+            corrosion=$(sed -n "s/^    GIT_TAG \(v[0-9.]*\))$/\1/p" android/CMakeLists.txt)
+            rm -rf /work/corrosion
+            git clone -q --depth 1 --branch "$corrosion" https://github.com/corrosion-rs/corrosion.git /work/corrosion
+            export CORROSION_SOURCE=/work/corrosion SIOUL_FDROID_WORK=/work
+            packaging/fdroid/build.sh apk
+            # For a phone: signed with a key made for this run alone.
+            keytool -genkeypair -keystore /work/test.keystore -storepass fdroid-test -keypass fdroid-test \
+              -alias test -keyalg RSA -keysize 2048 -validity 30 -dname "CN=Sioul F-Droid test build" > /dev/null
+            version=$(sed -n "s/^version = \"\(.*\)\"$/\1/p" Cargo.toml | head -n 1)
+            apksigner sign --ks /work/test.keystore --ks-pass pass:fdroid-test \
+              --out "/work/Sioul-$version-fdroid-test.apk" /work/sioul-unsigned.apk
+            rm -f /work/test.keystore /work/*.idsig
+            chmod -R a+rX /work
+          '
+          ls -l /mnt/fdroid/*.apk
+
+      # As .github/workflows/android.yml: the libraries' alignment for phones
+      # with 16 KB memory pages, Qt's too since it is built here. Sioul's must be.
+      - name: 16 KB pages
+        run: |
+          apk=/mnt/fdroid/sioul-unsigned.apk
+          rm -rf apk-libs && mkdir apk-libs && unzip -q "$apk" 'lib/*' -d apk-libs
+          ours=ok
+          table="| Library | Smallest segment alignment |"$'\n'"|---|---|"
+          for library in apk-libs/lib/*/*.so; do
+            smallest=$(readelf -lW "$library" | awk '$1 == "LOAD" { print $NF }' | while read -r a; do echo $((a)); done | sort -n | head -1)
+            mark=$([ "${smallest:-0}" -ge 16384 ] && echo "${smallest}" || echo "**${smallest:-?}**")
+            table+=$'\n'"| $(basename "$library") | $mark |"
+            case "$(basename "$library")" in libsioul_*) [ "${smallest:-0}" -ge 16384 ] || ours=no ;; esac
+          done
+          echo "$table" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "APK: $(du -h "$apk" | cut -f1), $(unzip -l "$apk" | tail -1 | awk '{print $2}') files" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$ours" = ok ]
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sioul-fdroid-from-sources
+          path: /mnt/fdroid/*.apk
+          if-no-files-found: error
+
+  fdroid:
+    name: F-Droid's tools
+    needs: sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Room on the disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache /usr/local/share/boost
+          sudo mkdir -p /mnt/fdroid-build
+          df -h / /mnt
+
+      - uses: actions/checkout@v7
+
+      # fdroiddata's layout: the recipe, at this commit and this version, and
+      # the source libraries it names (Qt5 and rustup are fdroiddata's own,
+      # corrosion is Sioul's, to be added with the recipe).
+      - name: The recipe at this commit
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          code=$(sed -n 's/^version-code = \([0-9]*\)$/\1/p' Cargo.toml)
+          echo "BUILD=com.aurelienpierre.sioul:$code" >> "$GITHUB_ENV"
+          git clone -q --depth 1 --filter=blob:none --sparse https://gitlab.com/fdroid/fdroiddata.git fdroiddata
+          git -C fdroiddata sparse-checkout set srclibs
+          mkdir -p ci/metadata ci/srclibs ci/tmp ci/unsigned ci/logs
+          cp fdroiddata/srclibs/Qt5.yml fdroiddata/srclibs/rustup.yml packaging/fdroid/srclibs/*.yml ci/srclibs/
+          sed -e "s/^  - versionName: .*/  - versionName: $version/" \
+              -e "s/^    versionCode: .*/    versionCode: $code/" \
+              -e "s/^    commit: .*/    commit: $GITHUB_SHA/" \
+              -e "s/^CurrentVersion: .*/CurrentVersion: $version/" \
+              -e "s/^CurrentVersionCode: .*/CurrentVersionCode: $code/" \
+              packaging/fdroid/com.aurelienpierre.sioul.yml > ci/metadata/com.aurelienpierre.sioul.yml
+          cat ci/metadata/com.aurelienpierre.sioul.yml
+
+      # fdroiddata's job "fdroid build", step for step.
+      - name: fdroid build
+        run: |
+          docker run --rm -v "$PWD/ci:/ci" -v /mnt/fdroid-build:/home/vagrant/build \
+            -e BUILD "$IMAGE" bash -euxo pipefail -c '
+            . /etc/profile.d/bsenv.sh
+            apt-get update -q
+            sdkmanager "platform-tools" "build-tools;31.0.0" > /dev/null
+            rm -rf $fdroidserver
+            git clone -q --shallow-since=2026-07-13 https://gitlab.com/fdroid/fdroidserver.git $fdroidserver
+            git -C $fdroidserver config transfer.fsckObjects true
+            git -C $fdroidserver checkout -q -B master a35fdfddd9c66823987a410566a6101186e39c84
+            git -C $fdroidserver pull -q origin master --ff-only
+            export PATH="$fdroidserver:$PATH" PYTHONPATH="$fdroidserver:$fdroidserver/examples" PYTHONUNBUFFERED=true serverwebroot=/tmp
+            for d in $home_vagrant/.android $home_vagrant/.gradle $home_vagrant/metadata; do mkdir -p $d; done
+            cp /ci/metadata/*.yml $home_vagrant/metadata/
+            ln -s /ci/srclibs $home_vagrant/srclibs
+            ln -s /ci/tmp $home_vagrant/tmp
+            ln -s /ci/unsigned $home_vagrant/unsigned
+            ln -s /ci/logs $home_vagrant/logs
+            chown -R vagrant $home_vagrant /ci
+            export GRADLE_USER_HOME=$home_vagrant/.gradle
+            apt-get install -y -q openjdk-21-jdk-headless
+            update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
+            fdroid="sudo --preserve-env --user vagrant env PATH=$PATH PYTHONPATH=$PYTHONPATH PYTHONUNBUFFERED=true HOME=$home_vagrant fdroid"
+            cd $home_vagrant
+            $fdroid fetchsrclibs "$BUILD" --verbose
+            (unset CI; $fdroid build --verbose --test --refresh-scanner --on-server --no-tarball "$BUILD")
+            chmod -R a+rX /ci
+          ' 2>&1 | tee fdroid-build.log
+          ls -l ci/tmp
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sioul-fdroid-build
+          path: |
+            ci/tmp/*.apk
+            fdroid-build.log
+          if-no-files-found: warn

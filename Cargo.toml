@@ -14,6 +14,12 @@ repository = "https://github.com/aurelienpierre/sioul"
 license = "GPL-3.0-or-later"
 publish = false
 
+# Android's version code, changed with the version above: major × 10,000 +
+# minor × 100 + patch. F-Droid reads it here to know a new version is out
+# (packaging/fdroid/); android/CMakeLists.txt stops when the two differ.
+[workspace.metadata.android]
+version-code = 10
+
 # Builds that fit a full disk: line tables are enough for backtraces, and
 # dependencies need no debug information at all (from 13 GB down to a few).
 [profile.dev]

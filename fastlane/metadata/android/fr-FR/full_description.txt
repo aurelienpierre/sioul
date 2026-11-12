@@ -1,0 +1,22 @@
+La plupart des logiciels attendent des gens qu’ils s’adaptent à eux. Sioul adapte les exigences du monde à la personne.
+
+Sioul est un environnement administratif personnel. Il rassemble ce que la vie moderne éparpille entre les boîtes de courriel, les sites, les agendas, les listes de tâches, les fichiers et les banques, et ne met en avant que ce qui a sa place dans votre attention maintenant. Ce n’est pas un logiciel de productivité : il ne cherche pas à vous faire faire plus ou répondre plus vite, mais à ce que les démarches vous demandent moins.
+
+Il est fait pour les personnes à qui l’administratif coûte le plus : les personnes neuroatypiques, dont les personnes autistes et celles qui ont un TDAH ; les personnes touchées par un TSPT ou un traumatisme, l’anxiété, une dépression ou un épuisement ; celles qui vivent avec une EM/SFC, un covid long ou une autre maladie qui limite l’énergie ou la pensée ; et toutes celles qui connaissent l’anxiété administrative. Sa conception est sensible au trauma, et chacun de ses choix est fondé sur des études publiées.
+
+Sur votre téléphone :
+• Les appels filtrés par vos règles : l’appel de quelqu’un qui ne peut pas vous joindre maintenant part sur votre messagerie, et le Porche vous dit ensuite qui a appelé. Sioul ne répond jamais à un appel et n’écoute jamais.
+• Un seul « Ne pas déranger » pour tous vos appareils : mis sur votre ordinateur, il vaut sur votre téléphone, et inversement.
+• Les nouveaux courriels de toutes vos adresses, vérifiés (authentiques ou falsifiés) et montrés aux heures que vous avez choisies ; les codes que vous venez de demander à un site arrivent tout de suite.
+• Votre journée sur l’écran d’accueil, sans notification : l’agenda, la prochaine étape, les courriels.
+• Chaque prise de médicament rappelée une fois, et le réveil.
+• Les SMS de votre téléphone, lus et envoyés depuis vos ordinateurs.
+• OpenPGP avec une clé de sécurité tenue contre le téléphone ou branchée.
+
+Pas de compteur de non-lus, de pastille, de rouge ni de série à tenir. Rien n’est envoyé, supprimé ni payé sans vous, et dix secondes pour annuler.
+
+Vos données restent sur vos appareils, dans des fichiers simples et dans vos propres comptes. Votre téléphone et vos ordinateurs restent accordés par un dossier que votre propre application de synchronisation transporte (Nextcloud, Syncthing, eDrive…), scellé. Il n’y a pas de serveur Sioul.
+
+Sur un téléphone, Sioul est la même fenêtre que sur un ordinateur (Linux, Windows, macOS), disposée pour le téléphone ; ses cibles tactiles ont encore la taille prévue pour une souris. Sioul est jeune et change souvent : gardez une copie de vos courriels et de vos notes ailleurs.
+
+Guide, en français et en anglais : https://sioul.aurelienpierre.com/fr/

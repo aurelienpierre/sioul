@@ -1,0 +1,50 @@
+Categories:
+  - Calendar & Agenda
+  - Digital Wellbeing
+  - Email
+  - Note
+  - Task
+License: GPL-3.0-or-later
+AuthorName: Aurélien Pierre
+WebSite: https://sioul.aurelienpierre.com/
+SourceCode: https://github.com/aurelienpierre/sioul
+IssueTracker: https://github.com/aurelienpierre/sioul/issues
+Changelog: https://github.com/aurelienpierre/sioul/releases
+Donate: https://sioul.aurelienpierre.com/support.html
+
+AutoName: Sioul
+
+RepoType: git
+Repo: https://github.com/aurelienpierre/sioul.git
+
+Builds:
+  - versionName: 0.0.11
+    versionCode: 11
+    commit: v0.0.11
+    timeout: 14400
+    sudo:
+      - apt-get update
+      - apt-get install -y build-essential cmake ninja-build
+    output: build/fdroid/sioul-unsigned.apk
+    srclibs:
+      - Qt5@v6.11.3
+      - corrosion@v0.6.1
+      - rustup@1.29.3
+    prebuild:
+      - sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - $$rustup$$/rustup-init.sh -y --profile minimal --default-toolchain 
+        1.99.1 --target aarch64-linux-android
+      - QT_SOURCE=$$Qt5$$ packaging/fdroid/build.sh sources
+    build:
+      - source $HOME/.cargo/env
+      - export QT_SOURCE=$$Qt5$$ CORROSION_SOURCE=$$corrosion$$
+      - export ANDROID_SDK_ROOT=$$SDK$$ ANDROID_NDK_ROOT=$$NDK$$
+      - packaging/fdroid/build.sh qt apk
+    ndk: 27.2.12479018
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
+UpdateCheckData: Cargo.toml|(?m)^version-code = (\d+)$|.|(?m)^version = 
+  "(\d+\.\d+\.\d+)"$
+CurrentVersion: 0.0.11
+CurrentVersionCode: 11

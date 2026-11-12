@@ -1,0 +1,22 @@
+Most software expects people to adapt to it. Sioul adapts the demands of the world to the person.
+
+Sioul is a personal administrative environment. It gathers what modern life scatters across mailboxes, websites, calendars, task lists, folders and banks, and brings forward only what belongs in your attention now. It is not a productivity app: it does not try to make you do more or answer faster, but to make admin ask less of you.
+
+It is made for the people for whom admin costs most: neurodivergent people, including autistic people and people with ADHD; people affected by PTSD or trauma, anxiety, depression or burnout; people with ME/CFS, long COVID or another illness that limits energy or thinking; and everyone who knows admin anxiety. Its design is trauma-informed, and each of its decisions is grounded in published research.
+
+On your phone:
+• Calls screened by your rules: someone who may not reach you now goes to your voicemail, and the Porch tells you later who called. Sioul never answers a call and never listens.
+• One do-not-disturb for all your devices: turned on at your computer, it holds on your phone, and the other way round.
+• New mail from every address, checked (genuine or forged) and shown in the hours you chose; the codes you just asked a website for come at once.
+• Your day on the home screen, without a notification: agenda, the next step, mail.
+• Doses reminded once each, and the alarm at waking.
+• Your phone's texts, read and sent from your computers.
+• OpenPGP with a security key held against the phone or plugged in.
+
+No unread counts, badges, red or streaks. Nothing sent, deleted or paid without you, and ten seconds to undo.
+
+Your data stays on your devices, in plain files and in your own accounts. Your phone and your computers keep in step through a folder your own sync app carries (Nextcloud, Syncthing, eDrive…), sealed. There is no Sioul server.
+
+On a phone, Sioul is the same window as on a computer (Linux, Windows, macOS), laid out for the phone; its touch targets are still sized for a mouse. Sioul is young and changes often: keep a copy of your mail and your notes elsewhere.
+
+Guide, in English and French: https://sioul.aurelienpierre.com/
