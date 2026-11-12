@@ -33,8 +33,9 @@ Sioul is one Cargo *workspace* (Cargo is Rust's build tool; a workspace is a set
 | `data/` | The desktop file, the AppStream file and the icon's drawings. |
 | `examples/` | A commented `config.toml`, a notes folder's projects' and budgets' files, and `demo.toml`, the command line on invented mail. |
 | `tools/` | Checks and helpers: `final-pass.sh` (every check before a commit), `check-messages.py` (the strings), `lint-qml.sh`, `check-plain-text.py` and `qml-test.sh` (the QML; `qml-stand-in.py`, the web server one QML test asks), `check-presets.py` and `check-sites.py` (the sites), `screening-numbers.py` (the call screening's blocks attributed to nobody, from ARCEP's open data), the makers of icons and of the symbols font, stand-ins of Google's and GitHub's APIs for tests, `measure-load.py`, `demo/` (an invented profile, `run.sh`, which starts the window on it for a check, and the website's pictures) and `e2e/notifications/` (a notification end to end). |
-| `packaging/` | The Flatpak, AppImage, Windows and macOS files, used by `.github/workflows/release.yml`. |
-| `.github/workflows/` | `build.yml` (Linux, Windows, macOS), `android.yml` (the APK), `release.yml` (the packages), `pages.yml` (this website). |
+| `packaging/` | The Flatpak, AppImage, Windows and macOS files, used by `.github/workflows/release.yml`; `fdroid/`, F-Droid's recipe and its build from sources (its README). |
+| `fastlane/` | What F-Droid shows of Sioul: its name, summary, description and icon, in English and French. |
+| `.github/workflows/` | `build.yml` (Linux, Windows, macOS), `android.yml` (the APK), `fdroid.yml` (the APK as F-Droid builds it), `release.yml` (the packages), `pages.yml` (this website). |
 | `docs/` | The design notes and these guides; `docs/research/`, the research behind them. |
 | `website/` | The website: the user guide in English (`website/docs/`) and French (`website/fr/docs/`). Its "For developers" section is `docs/`, copied at each build by `website/build.sh`. |
 

@@ -333,6 +333,7 @@ Android installs only a signed APK. It installs a new version over the old one, 
 - **The key** is a keystore (a password-protected file holding the key) kept in the repository's secrets on GitHub: `ANDROID_KEYSTORE`, the keystore in base64, and `ANDROID_KEYSTORE_PASSWORD`.
 - **The workflow's "Sign" step** writes the keystore into the runner's temporary folder, finds the key's alias, its name in the keystore (`keytool -list`), signs with the SDK's `apksigner`, deletes the keystore file, and prints the certificate it signed with (`apksigner verify --print-certs`). The APK is named `Sioul-<version>-android-arm64.apk`.
 - **Without the secrets** (a fork's run, say), the step makes a key for that run alone: the APK installs, but a phone takes the next one for another app, to be uninstalled first.
+- **F-Droid** builds Sioul itself, from sources, and signs it with its own key (`packaging/fdroid/README.md`): a phone takes F-Droid's copy and the releases page's for two apps, unless F-Droid's build is made reproducible and F-Droid then publishes Sioul's own signed APK.
 - **A version**: a tag `v…` pushed starts `.github/workflows/release.yml`. Its `android` job calls the same workflow on the tag (`uses: ./.github/workflows/android.yml`, with `secrets: inherit`, so with the same key), and its `release` job puts the APK on the GitHub release beside the other packages.
 
 Android's documentation: [signing an app](https://developer.android.com/studio/publish/app-signing).
