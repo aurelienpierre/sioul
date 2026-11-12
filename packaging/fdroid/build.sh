@@ -64,10 +64,14 @@ need() {
     done
 }
 
-# Qt's modules, fetched from where qt5.git came from (code.qt.io for F-Droid).
+# Qt's modules, fetched from where qt5.git came from (code.qt.io for F-Droid):
+# those listed and what they require, not what they recommend. Configure
+# builds every module it finds that a listed one recommends: Qt Multimedia's
+# Qt Quick 3D then wanted a host tool the desktop Qt here does not build
+# (balsam; F-Droid's first run on GitHub, 12 November 2026).
 sources() {
     need QT_SOURCE
-    (cd "$QT_SOURCE" && ./init-repository -f --module-subset="$QT_MODULES_ANDROID")
+    (cd "$QT_SOURCE" && ./init-repository -f --no-optional-deps --module-subset="$QT_MODULES_ANDROID")
     found=$(sed -n 's/^set(QT_REPO_MODULE_VERSION "\(.*\)")$/\1/p' "$QT_SOURCE/qtbase/.cmake.conf")
     if [ "$found" != "$QT_VERSION" ]; then
         echo "QT_SOURCE holds Qt $found; Sioul is built with Qt $QT_VERSION" >&2
