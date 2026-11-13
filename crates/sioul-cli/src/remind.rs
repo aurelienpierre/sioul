@@ -29,7 +29,9 @@ pub(crate) fn list(s: &Session) -> Result<(), String> {
     Ok(())
 }
 
-/// Stays open: each minute, what is due becomes one quiet notification. One
+/// Stays open: each minute, what is due becomes one notice, as the window
+/// tells it (docs/notifications.md), with neither buttons nor a click of its
+/// own (a click brings Sioul's window forward, where one runs). One
 /// at a time: a second `sioul remind --watch` leaves at once. Started for
 /// the session (`--session`: the entry of reminders with the window closed),
 /// it leaves once that entry is gone, with 0, which nothing starts again.
@@ -55,6 +57,8 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
     let dir = reminders::told_dir();
     let mut forgotten_on = None;
     let mut follow = crate::mcp::follow::Follow::start();
+    // The end of relevance each reminder had when it first waited, by its notice's key.
+    let mut relevant: Vec<(String, i64)> = Vec::new();
     loop {
         // Read again each time: settings, tasks and events change while it runs.
         let config = Config::load(&s.config_path).unwrap_or_default();
@@ -66,9 +70,34 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
         // What holds now, as the matrix of what reaches you says, its layers read
         // from their files: today's slots of time for you, do-not-disturb.
         let (all, holds) = reminders::gather(&config, &s.tr, &now);
-        for reminder in reminders::to_tell(all, &dir, now.timestamp().as_second(), &holds) {
-            if let Err(e) = sioul_sync::notify::remind(&reminder.title, &reminder.body, None) {
-                eprintln!("{e}");
+        let stamp = now.timestamp().as_second();
+        let moment = sioul_core::notice::moment_from_files(&config, &now, present());
+        relevant.retain(|(_, at)| *at > stamp);
+        for reminder in reminders::due(all, &dir, stamp, &holds) {
+            // As the window tells it (docs/notifications.md), without its buttons: nothing here opens a thing.
+            let mut notice = reminder.notice("");
+            let key = notice.key();
+            notice.relevant = relevant.iter().find(|(k, _)| *k == key).map(|(_, at)| *at);
+            let told = sioul_core::notice::told(Some(reminders::row_of(reminder.kind)));
+            use sioul_core::notice::{Decision, Dropped};
+            match sioul_core::notice::decide(&notice, &told, moment, config.notices.minutes(), stamp) {
+                // Marked told as it goes: whichever of this and the window posts it, once.
+                Decision::Post(shape) => {
+                    if reminders::claim(&dir, &reminder.key) {
+                        sioul_sync::notify::teller().post(notice, shape, "", None);
+                    }
+                }
+                // Nobody at the computer, a pause, do-not-disturb: offered again each minute while worth telling.
+                Decision::Wait(at) => {
+                    if !relevant.iter().any(|(k, _)| *k == key) {
+                        relevant.push((key, at));
+                    }
+                }
+                Decision::Drop(Dropped::NotTold | Dropped::NotOurs) => {}
+                // No longer worth telling: marked so, without a word.
+                Decision::Drop(_) => {
+                    reminders::claim(&dir, &reminder.key);
+                }
             }
         }
         // A minute, its program and its entry looked at every five seconds.
@@ -82,6 +111,14 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
             }
         }
     }
+}
+
+/// Whether someone is at this computer now, as its session says (input in the
+/// last ten minutes, its session unlocked: `sioul_sync::power`), unknown
+/// counting as someone; the reading thread started at the first ask.
+pub(crate) fn present() -> bool {
+    sioul_sync::power::watch();
+    sioul_sync::power::present_since(sioul_sync::power::kept_session(), None).unwrap_or(true)
 }
 
 /// Whether reminders still come with the window closed: their entry is

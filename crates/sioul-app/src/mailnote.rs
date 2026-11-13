@@ -19,7 +19,7 @@
 //! here (docs/android.md); the ledger is written under a lock, and a letter
 //! is claimed before it is told, so that two processes never tell it twice.
 
-use crate::backend::{QtThread, load_config, tr};
+use crate::backend::{load_config, tr};
 use jiff::Zoned;
 use sioul_core::areas::Area;
 use sioul_core::attention::{Attention, Level, Now, Output};
@@ -36,13 +36,9 @@ const GATHERED: Duration = Duration::from_secs(10);
 /// A batch waits this long at most for others to join it.
 const AT_MOST: Duration = Duration::from_secs(60);
 
-/// Sioul's window, when it runs in this process: you at it (for the lease)
-/// and "Open" on a computer's notification.
+/// Sioul's window, when it runs in this process: you at it (for the lease).
 #[derive(Clone)]
 pub(crate) struct Window {
-    /// "Open" on a computer's notification; a phone's opens through Java.
-    #[cfg_attr(target_os = "android", allow(dead_code))]
-    pub(crate) qt: QtThread,
     /// When you were last at it (Unix seconds).
     pub(crate) active: i64,
 }
@@ -402,13 +398,16 @@ pub(crate) fn opens_of(one: Option<&str>) -> (&'static str, String) {
     }
 }
 
-/// The notification: the desktop's, with "Open" where it takes buttons, a
-/// click on the notice itself doing what Open does (decision 3), at critical
-/// urgency when someone Always through is in it (`through`: it passes the
-/// desktop's do-not-disturb); on Windows, through Sioul's icon in the tray
-/// (main.qml's `onTrayNotice`), whose message a click opens; on macOS its
-/// words alone; on a phone, Android's, in the quiet "New mail" channel, a
-/// tap opening it. Each opens one message (`one`, its address), else the Porch.
+/// The notification: on a computer, a notice to know (`tell`,
+/// docs/notifications.md: decision 1), about its one message (its address,
+/// its file the hint), else the mailbox at its top; "Open", and a click on
+/// it, opening it; at normal urgency, for the minutes set, while someone is
+/// at the computer, never in a pause or a do-not-disturb (the Porch keeps
+/// it); taken away where it shows once each of its messages is dismissed,
+/// read or done on any device. On Windows through Sioul's icon in the tray,
+/// whose message a click opens. On a phone, Android's, in the quiet "New
+/// mail" channel (its own when someone Always through is in it: `through`),
+/// a tap opening it.
 fn show(title: &str, body: &str, through: bool, window: Option<&Window>, mine: &[Letter]) {
     let (kind, key) = opens_of(mailnote::one_address(mine));
     // Its messages' notices, kept here until each is settled on any device
@@ -421,25 +420,15 @@ fn show(title: &str, body: &str, through: bool, window: Option<&Window>, mine: &
     }
     #[cfg(not(target_os = "android"))]
     {
-        use cxx_qt_lib::QString;
-        if cfg!(windows)
-            && let Some(w) = window
-        {
-            let (qt, title, body) = (w.qt.clone(), title.to_string(), body.to_string());
-            let _ = qt.queue(move |mut sioul| sioul.as_mut().tray_notice(QString::from(&title), QString::from(&body), QString::from(kind), QString::from(&key)));
-            return;
-        }
-        let open = window.map(|w| {
-            let qt = w.qt.clone();
-            let action: Box<dyn FnOnce() + Send> = Box::new(move || {
-                let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from(kind), QString::default(), QString::from(&key)));
-            });
-            (tr().text("reminder-open", None), action)
-        });
+        use sioul_core::notice::{Act, Kind, Notice, address};
+        let _ = window;
+        // One message: it, its file the hint; several: the mailbox at its top (phase 2 gives each its own).
+        let (about, hint) = if kind == "mail" { (key, mine.first().map(|l| l.file.clone()).unwrap_or_default()) } else { (address::MAILBOX.to_string(), String::new()) };
+        let notice = Notice::new(about.clone(), Kind::Mail, title, body).hint(hint.clone()).action(tr().text("reminder-open", None), Act::Open { address: about, hint });
+        // Someone Always through in it: piercing, as the model says; to know all the same.
+        let mut out = sioul_core::notice::told(None);
+        out.pierce = through;
         // Looked at while it shows: each of its messages dismissed, read or done on any device, taken away.
-        let settled: Box<dyn FnMut() -> bool + Send> = Box::new(move || crate::notices::settled_mail(&told));
-        if let Err(e) = sioul_sync::notify::mail_until(title, body, through, open, settled) {
-            eprintln!("{e}");
-        }
+        crate::tell::tell_as(notice, out, Some(Box::new(move || crate::notices::settled_mail(&told))));
     }
 }

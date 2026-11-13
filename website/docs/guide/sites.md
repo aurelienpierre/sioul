@@ -68,11 +68,11 @@ The ⋮ of the site open, or a right click on any site of the list:
 Every site's notifications are accepted, then kept by Sioul; the site itself never shows them.
 
 - From the site in front of you: nothing more.
-- From a site in **Real time** (its box, always in view): a desktop notification at once.
+- From a site in **Real time** (its box, always in view): a desktop notification at once, with the site's icon. A click on it opens the site at that conversation; the same conversation's next message takes its place; it goes after a few minutes, a call when the site ends it; every message stays on the Porch until you open its site, told or not ([What reaches you](notifications.md#to-know-or-to-do)).
 - **A call** ("incoming call") comes at once, unless the site is silenced. A missed call waits like the rest.
 - Everything else waits, as "*the site* has news" on [the Porch](porch.md#above-the-lanes). Opening the site clears its news.
 
-At set times (09:00, 13:00 and 18:00, unless you choose others in [Settings ▸ Reminders](settings.md#reminders)), one notification gathers which sites have news, with **Open the Porch**. Three a day helped most in a field trial (Fitz et al. 2019).
+At set times (09:00, 13:00 and 18:00, unless you choose others in [Settings ▸ Reminders](settings.md#reminders)), one notification gathers which sites have news since the last one, with **Open the Porch**: each news is named once, and waits on the Porch until you open its site. Three a day helped most in a field trial (Fitz et al. 2019).
 
 A site whose hours have not come keeps its notifications, real time and calls included, until they do.
 

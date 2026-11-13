@@ -220,6 +220,27 @@ impl Kind {
         Kind::ALL.into_iter().find(|k| k.id() == text)
     }
 
+    /// Whether, told, it passes the system's do-not-disturb (`Output::pierce`):
+    /// what you set or asked for (codes, doses, the alarm at waking, an
+    /// event's own alarms) and a call in a site, whenever its cell lets it come.
+    pub fn pierces(self) -> bool {
+        matches!(self, Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms | Kind::SiteCalls)
+    }
+
+    /// Its class of notice (docs/notifications.md, "Two classes"): what you
+    /// set or asked for and a call in a site are to do, and stay until
+    /// settled; reminders, your day's notices and sites' are to know, and
+    /// leave after a few minutes. None for the time running (a status) and
+    /// other apps' notifications on a phone (never Sioul's to post).
+    pub fn class(self) -> Option<crate::notice::Class> {
+        use crate::notice::Class;
+        match self {
+            Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms | Kind::SiteCalls => Some(Class::Actionable),
+            Kind::Before | Kind::DayBefore | Kind::Dates | Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Sites | Kind::SitesLive => Some(Class::Informative),
+            Kind::Time | Kind::AppAutomatons | Kind::AppAtOnce => None,
+        }
+    }
+
     /// The group it is shown in: what you set or asked for, reminders, your
     /// day, sites (a computer), other apps (a phone).
     pub fn group(self) -> &'static str {
@@ -1344,7 +1365,7 @@ impl Attention {
             (level, step) = (Level::Never, Step::Hold);
         }
         let told = level == Level::Now || (level == Level::Gathered && now.gathering);
-        Output { level, shown: true, told, pierce: told && matches!(kind, Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms), step }
+        Output { level, shown: true, told, pierce: told && kind.pierces(), step }
     }
 
     fn letter(&self, who: Who, always: bool, lane: Lane, event: &Event, now: &Now) -> Output {
@@ -1480,7 +1501,8 @@ impl Attention {
             (level, step) = (Level::Later, Step::Hold);
         }
         let told = level == Level::Now || (level == Level::Gathered && now.gathering);
-        Output { level, shown: level != Level::Never, told, pierce: false, step }
+        // A call, told, passes the system's do-not-disturb as what you set or asked for does (`Kind::pierces`).
+        Output { level, shown: level != Level::Never, told, pierce: told && kind.pierces(), step }
     }
 }
 
@@ -2788,6 +2810,16 @@ mod tests {
         assert!(!site(Some(Who::Neutral), &Now::time(Column::Sleep)).told, "and waits while you sleep");
         assert!(site(Some(Who::Safe), &Now::time(Column::Leisure)).told);
         assert_eq!(site(Some(Who::Blocked), &Now::time(Column::Work)).level, Level::Never);
+        // A call in a site pierces whenever its cell lets it come, as what you set or asked for does:
+        // as usual it waits under do-not-disturb; set at once there, it passes it.
+        let call = |a: &Attention, now: &Now| a.decide(&Event::of(Source::Site { call: true, live: false, named: None }), now);
+        assert!(call(&a, &Now::time(Column::Work)).pierce);
+        let dnd = Now::time(Column::Work).layers(false, true);
+        assert!(!call(&a, &dnd).told && !call(&a, &dnd).pierce);
+        let mut reachable = a.clone();
+        reachable.set(Row::Own(Kind::SiteCalls), Column::Dnd, Level::Now).unwrap();
+        assert!(call(&reachable, &dnd).told && call(&reachable, &dnd).pierce);
+        assert!(!site(None, &Now::time(Column::Leisure)).pierce, "a site's message never pierces");
     }
 
     /// A message from `from` as the Porch judges it; `headers` before the subject.

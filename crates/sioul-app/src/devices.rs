@@ -263,6 +263,13 @@ fn active_here() -> Option<bool> {
     active_of(false, sioul_sync::power::kept_session(), PRESSED.load(Ordering::SeqCst), now())
 }
 
+/// Whether someone is at this device now, for its notices
+/// (docs/notifications.md): as its entry says (`active_here`), unknown
+/// counting as someone, as Sioul running always did.
+pub(crate) fn someone_here() -> bool {
+    active_here().unwrap_or(true)
+}
+
 /// The system's reading thread started and asked for readings
 /// (`sioul_sync::power::watch`): this computer's session, its power supply,
 /// its connection's cost, read on connections of its own and kept; the one

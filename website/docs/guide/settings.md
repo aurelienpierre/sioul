@@ -60,7 +60,7 @@ Free time's **Nothing at all** is on its card. See [What reaches you, and when](
 Each reminder comes once, as a quiet notification, without sound, never repeated. Remembering "on the 30th" is what fails most, with autism and with ADHD (Landsiedel, Williams & Abbot-Smith 2017; Altgassen, Kretschmer & Kliegel 2014), and reminders help where memory is the bottleneck (Jamieson et al. 2014).
 
 - **Before an event**: a quiet reminder this long before each event: none, 5, 10, 15 (unless you change it) or 30 minutes, 1 or 2 hours. It is counted before the event's time to get ready and get there: an event at 14:00 with 30 minutes to get there is reminded at 13:15. Each event may say its own: **Remind**, in its form and in its details ([Agenda](agenda.md#reminders)). Not for whole days, nor for calendars you only read. On Android, the setting says whether the system lets these reminders come on time.
-- **Events, the working day before**: half an hour before work ends, the working day before an event: what, when, where. The alarms an event carries are told at their time too; one within five minutes of Sioul's reminder is told once.
+- **An event's own alarms** are told at their time; one within five minutes of Sioul's reminder is told once. The evening before an event, nothing: the Porch and the agenda show tomorrow.
 - **Dates asked: working days before**: when work starts, so many working days before a task's date asked (2 unless you change it); 0 for none.
 - **A wait over**: when a wait after a step done is over (an answer due), once, when work is there.
 - **Payments planned: working days before**: when work starts, so many working days before a planned payment (a bill, a tax); 0 for none. The reminder says whether the account will hold it.

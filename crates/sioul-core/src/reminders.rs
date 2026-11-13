@@ -151,7 +151,9 @@ fn declined(event: &Occurrence, own: &[String]) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
-    /// An event, the working day before.
+    /// An event, the working day before: none made since 13 November 2026
+    /// (the notifications' decision 3: the agenda leaves the notifications);
+    /// kept for what an older Sioul's reminders say.
     Event,
     /// An event, so many minutes before it and its margin.
     Before,
@@ -277,7 +279,7 @@ impl Holds {
 }
 
 /// A reminder's row in the matrix.
-fn row_of(kind: Kind) -> attention::Kind {
+pub fn row_of(kind: Kind) -> attention::Kind {
     match kind {
         Kind::Alarm => attention::Kind::Alarms,
         Kind::Before => attention::Kind::Before,
@@ -287,6 +289,34 @@ fn row_of(kind: Kind) -> attention::Kind {
 }
 
 impl Reminder {
+    /// Its notice (docs/notifications.md): about its thing (an event's
+    /// address and the time it is for, its task, its budget's line, its
+    /// paper, its contract), of its row's kind (`row_of`), "Open" (`open`,
+    /// its words) opening it; an event's file and time as the hint the window
+    /// finds its card by. The time to leave lasts until its event starts; an
+    /// event's own alarm, to do, until a quarter of an hour after it began.
+    pub fn notice(&self, open: &str) -> crate::notice::Notice {
+        use crate::notice::{Act, Kind as Of, Notice};
+        let event = matches!(self.kind, Kind::Before | Kind::Alarm | Kind::Event);
+        let (about, hint) = if self.kind == Kind::Money {
+            // The money watch's all name the budgets: each its own notice, by its key.
+            (crate::notice::address::keyed(&self.target, &self.key), String::new())
+        } else if event {
+            let at = self.starts.filter(|s| *s > 0);
+            let about = self.event.as_ref().map(|uri| at.map_or_else(|| uri.clone(), |start| format!("{uri}#{start}"))).unwrap_or_default();
+            (about, at.map_or_else(|| self.target.clone(), |start| format!("{}#{start}", self.target)))
+        } else {
+            (self.target.clone(), String::new())
+        };
+        let until = match self.kind {
+            Kind::Before => self.starts,
+            Kind::Alarm => Some(self.until),
+            _ => None,
+        };
+        let notice = Notice::new(about.clone(), Of::Own(row_of(self.kind)), self.title.clone(), self.body.clone()).hint(hint.clone()).until(until);
+        if about.is_empty() { notice } else { notice.action(open, Act::Open { address: about, hint }) }
+    }
+
     /// Whether to tell it now, the matrix as usual (`Holds::usual`).
     pub fn ready(&self, now: i64, wait: Wait) -> bool {
         self.ready_in(now, &Holds::usual(wait))
@@ -324,20 +354,6 @@ fn working_days_before(hours: &[AdminWindow], time_off: &[TimeOff], date: Date, 
             if left == 0 {
                 return crate::window::hours_on(hours, day, zone).map(|(opening, _)| opening);
             }
-        }
-    }
-    None
-}
-
-/// Half an hour before work ends, on the last working day before `date`.
-fn evening_before(hours: &[AdminWindow], time_off: &[TimeOff], date: Date, zone: &TimeZone) -> Option<Zoned> {
-    let mut day = date;
-    for _ in 0..90 {
-        day = day.yesterday().ok()?;
-        if working(hours, time_off, day) {
-            let (opening, closing) = crate::window::hours_on(hours, day, zone)?;
-            let before = closing.checked_sub(Span::new().minutes(30)).ok()?;
-            return Some(if before > opening { before } else { opening });
         }
     }
     None
@@ -459,13 +475,11 @@ fn outing_tasks(files: &[(PathBuf, crate::vdir::Collection, String)], events: &[
     out
 }
 
-/// The events' reminders (their own alarms, Sioul's before them, the working
-/// day before), from the events of the coming days; `tasks`, for what an
+/// The events' reminders (their own alarms, Sioul's before them), from the events of the coming days; `tasks`, for what an
 /// appointment's preparation says to bring (`leaving`).
 fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence], tasks: &[Task]) -> Vec<Reminder> {
     let zone = now.time_zone().clone();
     let settings = &config.reminders;
-    let hours = hours(config);
     let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()));
     let stamp = now.timestamp().as_second();
     let mut out = Vec::new();
@@ -554,29 +568,8 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
                 event: Some(crate::links::event_uri(&event.uid)),
             });
         }
-        // The working day before; not for calendars you only read (holidays, subscriptions), nor a leg of an appointment here.
-        if settings.events && !event.read_only && !leg
-            && let Some(due) = evening_before(&hours, &config.time_off, start.date(), &zone)
-            && modified(&event.key) <= due.timestamp().as_second()
-        {
-            let mut args = crate::i18n::args();
-            args.set("when", when.clone());
-            args.set("what", event.summary.clone());
-            out.push(Reminder {
-                key: format!("event:{}:{}", event.uid, event.start),
-                kind: Kind::Event,
-                at: due.timestamp().as_second(),
-                until: event.start,
-                title: tr.text("reminder-event", Some(&args)),
-                body: event.location.clone(),
-                target: event.key.clone(),
-                // A work agenda's event follows the work hours: its reminders wait while work rests (`agendas`).
-                work: event.work,
-                starts: None,
-                names: None,
-                event: Some(crate::links::event_uri(&event.uid)),
-            });
-        }
+        // The working day before: no longer told (13 November 2026, the notifications' decision 3):
+        // the agenda stays on the Porch and the widgets, never in the notifications.
     }
     out
 }
@@ -1027,11 +1020,19 @@ fn settle_waits(reminders: &[Reminder], dir: &Path, now: i64) {
     let _ = std::fs::write(&mark, "The waits ended before this Sioul first gathered reminders here: marked told, not told.\n");
 }
 
-/// What to tell now, each marked told: those ready, not told yet. The waits
-/// ended before this Sioul first ran here never among them (`settle_waits`).
-pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
+/// What is due now: those ready, not told yet, none marked. A teller marks
+/// each told (`claim`) only once it is posted, or once it is no longer worth
+/// telling, so that one not posted (nobody at the desk, a do-not-disturb)
+/// comes again (docs/notifications.md). The waits ended before this Sioul
+/// first ran here never among them (`settle_waits`).
+pub fn due(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
     settle_waits(&reminders, dir, now);
-    reminders.into_iter().filter(|r| r.ready_in(now, holds) && claim(dir, &r.key)).collect()
+    reminders.into_iter().filter(|r| r.ready_in(now, holds) && !told(dir, &r.key)).collect()
+}
+
+/// What to tell now, each marked told at once: those ready, not told yet.
+pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
+    due(reminders, dir, now, holds).into_iter().filter(|r| claim(dir, &r.key)).collect()
 }
 
 #[cfg(test)]
@@ -1205,8 +1206,8 @@ mod tests {
         let money = Money { movements: &movements, aheads: &aheads };
         let all = all(&config, &tr, &now, &events, &tasks, Some(&ledger), &[passport], &[phone], Some(&money), |_| false);
         let find = |prefix: &str| all.iter().find(|r| r.key.starts_with(prefix)).unwrap_or_else(|| panic!("{prefix}: {all:#?}"));
-        assert_eq!(find("event:").at, at("2026-10-09T15:30").timestamp().as_second());
-        assert_eq!(find("event:").title, "Mon 12 Oct 09:00 · Dentist");
+        // The working day before: none since 13 November 2026 (the notifications' decision 3).
+        assert!(!all.iter().any(|r| r.key.starts_with("event:")), "{all:#?}");
         assert_eq!(find("alarm:").at, at("2026-10-12T08:00").timestamp().as_second());
         assert_eq!(find("asked:").at, at("2026-10-06T09:00").timestamp().as_second());
         assert_eq!(find("asked:").title, "Asked for Thursday 8 October");
@@ -1448,11 +1449,11 @@ mod tests {
         assert!(!early.ready(stamp("2026-10-08T06:45"), night) && early.ready(stamp("2026-10-08T07:00"), Wait::Nothing));
         let woken = befores(&config, &en, &at("2026-10-08T07:00"), std::slice::from_ref(&train));
         assert_eq!(woken[0].title, "08:00 · Dentist, in one hour", "said at waking");
-        // The pause: an event's own reminders come (the event falls in it); the working day before waits.
+        // The pause: an event's own reminders come (the event falls in it).
         assert!(flight.ready(stamp("2026-10-08T02:45"), Wait::Paused));
+        // The working day before: never made since 13 November 2026 (the notifications' decision 3).
         let eve = all(&config, &en, &now, &[event("dentist", "2026-10-12T09:00", vec![])], &[], None, &[], &[], None, |_| true);
-        let evening = eve.iter().find(|r| r.kind == Kind::Event).unwrap();
-        assert!(!evening.ready(evening.at, Wait::Paused) && !evening.ready(evening.at, night_of(evening.at)));
+        assert!(eve.iter().all(|r| r.kind != Kind::Event), "{eve:#?}");
         // Free time: an event within it comes, one after it waits for its end.
         let dinner = &befores(&config, &en, &now, &[event("dinner", "2026-10-07T20:00", vec![])])[0];
         assert!(dinner.ready(dinner.at, Wait::Free { until: stamp("2026-10-07T22:30") }));
@@ -1493,11 +1494,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A night around `stamp` that holds nothing of the events tested.
-    fn night_of(stamp: i64) -> Wait {
-        Wait::Sleep { from: stamp - 3600, until: stamp + 3600 }
-    }
-
     #[test]
     fn what_waits_now() {
         use crate::areas::{Time, Week};
@@ -1521,6 +1517,25 @@ mod tests {
         assert_eq!((paused.now.times.clone(), paused.until), (vec![attention::Column::Pause], None));
         let evening = Holds::of(&config, &mode(Time::Leisure, Reason::Evening, Some("2026-10-08T09:00")), &Blocks::default(), now);
         assert_eq!((evening.wait, evening.until), (Wait::Work, Some(at("2026-10-08T09:00").timestamp().as_second())));
+    }
+
+    /// Two warnings of the money watch, both about the budgets, are two
+    /// notices: neither takes the other's place; a due reminder is not
+    /// marked told until a teller claims it.
+    #[test]
+    fn each_money_warning_is_a_notice_of_its_own() {
+        let warning = |key: &str| Reminder { key: key.into(), kind: Kind::Money, at: 1, until: 2, title: String::new(), body: String::new(), target: "sioul:budget/".into(), work: false, starts: None, names: None, event: None };
+        let (a, b) = (warning("missed:Water bill:2026-11-13").notice("Open"), warning("missed:Power:2026-11-13").notice("Open"));
+        assert_ne!(a.key(), b.key());
+        assert!(a.about.starts_with("sioul:budget/#missed"), "{}", a.about);
+        let dir = std::env::temp_dir().join(format!("sioul-reminders-due-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let due_now = |dir: &Path| due(vec![Reminder { at: 0, until: i64::MAX, ..warning("short:Rent") }], dir, 10, &Holds::usual(Wait::Nothing)).len();
+        assert_eq!(due_now(&dir), 1);
+        assert_eq!(due_now(&dir), 1, "not marked: due again");
+        assert!(claim(&dir, "short:Rent"));
+        assert_eq!(due_now(&dir), 0, "claimed once posted");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Reminders of each kind, due at `at` for an event (or a date) at `starts`.

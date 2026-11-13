@@ -21,7 +21,7 @@ use sioul_core::state::{MoneyState, PorchState};
 use sioul_core::{maildir, reading, view};
 use crate::{crypto, gmail, mail, outlook, pim, securitykey, work};
 use sioul_sync::antivirus::{self, Verdict};
-use sioul_sync::{Control, Learned, Report, SyncError, notify, secret};
+use sioul_sync::{Control, Learned, Report, SyncError, secret};
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -2185,9 +2185,17 @@ pub mod qobject {
         #[qinvokable]
         fn site_list(self: &Sioul) -> QString;
 
-        /// A site's notification: shown at once in real time, else kept for the Porch.
+        /// A site's notification: kept for the Porch, and told at once in
+        /// real time or for a call; `key`, the web notice's own (its tag, ""
+        /// without one). Whether a desktop notice was posted or waits: the
+        /// Sites page then keeps the web notice, to click it later.
         #[qinvokable]
-        fn site_notified(self: Pin<&mut Sioul>, id: &QString, title: &QString, text: &QString);
+        fn site_notified(self: Pin<&mut Sioul>, id: &QString, key: &QString, title: &QString, text: &QString) -> bool;
+
+        /// A site withdrew a notification: Sioul's notice of a call goes too
+        /// (answered, or over); a message's stays its minutes.
+        #[qinvokable]
+        fn site_notice_closed(self: &Sioul, id: &QString, key: &QString);
 
         /// A site opened: what it notified is seen.
         #[qinvokable]
@@ -2817,15 +2825,18 @@ pub mod qobject {
         #[qsignal]
         fn join_changed(self: Pin<&mut Sioul>);
 
-        /// A reminder's "Open" was pressed: what it is about ("task", "event", "budget"), shown.
+        /// Something to show, the window brought forward: a notice's thing, by
+        /// its address (`uri`, `kind` ""; `key` the hint where it was last
+        /// seen: main.qml's `open`, docs/notifications.md), or a link's or a
+        /// setting's by its kind ("task", "settings:attention").
         #[qsignal]
         fn reminder_opened(self: Pin<&mut Sioul>, kind: QString, uri: QString, key: QString);
 
-        /// On Windows, the end of work's or the night's notice, said through
-        /// Sioul's icon in the tray (main.qml, Tray.qml): a click on it opens
-        /// `kind` and `key` as `reminder_opened` does (reviews.rs, `show_notice`).
+        /// On Windows, a notice with something to open, said through Sioul's
+        /// icon in the tray (main.qml, Tray.qml): a click on it opens its
+        /// thing, by its address and hint, as `reminder_opened` does (tell.rs).
         #[qsignal]
-        fn tray_notice(self: Pin<&mut Sioul>, title: QString, body: QString, kind: QString, key: QString);
+        fn tray_notice(self: Pin<&mut Sioul>, title: QString, body: QString, address: QString, hint: QString);
 
         /// An attachment passed the antivirus: the desktop opens it.
         #[qsignal]
@@ -3946,12 +3957,12 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             set_status(qt, say("sync-held-back", &[("account", account.id.clone()), ("free", tr().decimal((free as f64 / f64::from(1u32 << 30)) as f32))]));
         }
         if !report.first && !report.new.is_empty() {
-            notify_codes(qt, &report.new);
+            notify_codes(&report.new);
             sort_on_server(qt, shared, account, report.new.clone());
             // New mail your lists let through now, once per batch (docs/porch.md,
             // "Notifications"); what your filter flagged or moves is never told; what
             // a mail filter would take waits for it (told after, if it could not act).
-            let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
+            let window = crate::mailnote::Window { active: shared.active.load(Ordering::Relaxed) };
             crate::mailnote::arrived_in_window(window, &account.id, &report.new, report.first);
         } else if !report.first && sioul_sync::filters::due(account) {
             // Nothing new, but a filter's failure to try again, or another device's mark to look at again.
@@ -4045,7 +4056,7 @@ fn mail_unchanged(account: &str, root: &Path) -> bool {
 /// Porch is read again when something moved.
 fn sort_on_server(qt: &QtThread, shared: &Arc<Shared>, account: &Account, new: Vec<PathBuf>) {
     let (account, qt, shared) = (account.clone(), qt.clone(), Arc::clone(shared));
-    let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
+    let window = crate::mailnote::Window { active: shared.active.load(Ordering::Relaxed) };
     std::thread::spawn(move || {
         let moved = crate::spam::after_fetch(&account, &new, false);
         // Mail's topics: the new mail judged by the topics' table (docs/topics.md, "The model").
@@ -4154,19 +4165,17 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
     }
 }
 
-/// What a code's notification's Open opens: its message, by its address, its
-/// file this device's hint (the window's one opener: the unified mailbox's part 2).
-fn code_opens(code: &view::CodeView) -> (&'static str, String, String) {
-    ("mail", code.address.clone(), code.key.clone())
-}
-
-/// One quiet notification per verified code among new mail, with a copy button.
+/// One notice per verified code among new mail (`CodeView::notice`,
+/// docs/notifications.md): to do, until the code expires; Copy (taking it
+/// away), Open the message, and a click on it opening its message; taken
+/// away too once its message is read or dismissed on any device. As the
+/// matrix of what reaches you says (as usual, at once at any time; "On the
+/// Porch only" a choice while you sleep): a code not told waits on the Porch.
 /// A phone has none yet: its codes show on the Porch and on the home screen's
 /// card (docs/android.md, "Notifications"), and nothing is tried there.
-fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
-    // As the matrix of what reaches you says (as usual, at once at any time;
-    // "On the Porch only" a choice while you sleep): a code not told waits on the Porch.
-    if cfg!(target_os = "android") || !crate::hours::comes(sioul_core::attention::Kind::Codes) {
+fn notify_codes(files: &[PathBuf]) {
+    let out = crate::tell::own(sioul_core::attention::Kind::Codes);
+    if cfg!(target_os = "android") || !out.told {
         return;
     }
     let config = load_config();
@@ -4175,42 +4184,17 @@ fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
     // Codes are decided before projects and screening: neither is needed here.
     let judged = porch::judge(files, &config.mail_sources(), None, &KnownSenders::default(), &senders, now);
     for code in view::codes(&judged, tr()) {
-        let buttons = code_actions(&code)
-            .into_iter()
-            .map(|(key, label)| {
-                let qt = qt.clone();
-                let text = code.code.clone().unwrap_or_default();
-                let (kind, address, file) = code_opens(&code);
-                let action: Box<dyn FnOnce() + Send> = match key {
-                    // Its message through the window's one opener, the window brought back.
-                    "open" => Box::new(move || {
-                        let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from(kind), QString::from(&address), QString::from(&file)));
-                    }),
-                    _ => Box::new(move || {
-                        let _ = qt.queue(move |sioul| sioul.copy_requested(QString::from(&text)));
-                    }),
-                };
-                (key.to_string(), label, action)
-            })
-            .collect();
-        if let Err(e) = notify::code(&code.title, &code.body(), buttons) {
-            set_status(qt, e);
-        }
+        let notice = code.notice(&tr().text("notify-copy", None), &tr().text("notify-open-message", None));
+        // Read or dismissed on any device, or read here: settled.
+        let told = sioul_core::notices::Told { at: 0, ids: vec![code.notice.id.clone()], items: vec![code.key.clone()] };
+        crate::tell::tell_as(notice, out, Some(Box::new(move || crate::notices::settled_mail(&told))));
     }
 }
 
-/// What a code's notification offers, by key, on a computer: "copy" (the
-/// code, when its message prints one) and "open" (its message, in Mail's
-/// reader), each with its label.
-fn code_actions(code: &view::CodeView) -> Vec<(&'static str, String)> {
-    let mut out = Vec::new();
-    if code.code.is_some() {
-        out.push(("copy", tr().text("notify-copy", None)));
-    }
-    if !code.key.is_empty() {
-        out.push(("open", tr().text("notify-open-message", None)));
-    }
-    out
+/// The codes a previous run showed, told again from their messages
+/// (`tell::start`): those still valid and not settled.
+pub(crate) fn retell_codes(files: &[PathBuf]) {
+    notify_codes(files);
 }
 
 /// Where attachments are written to be opened: `<cache>/sioul/attachments/<message>/`.
@@ -4550,6 +4534,8 @@ impl qobject::Sioul {
         start_watchers(&qt, &shared);
         // What an AI agent changes through `sioul mcp`, said with Undo (agents.rs).
         crate::agents::watch(&qt, &shared);
+        // The notices' presses heard, the previous run's taken away (tell.rs, docs/notifications.md).
+        crate::tell::start(&qt);
         // Taking pictures of your own pages syncs nothing; the test build does, for its scripted runs.
         if std::env::var_os("SIOUL_GRAB").is_none() || cfg!(feature = "insecure-test-tls") {
             pim::start_dav_watchers(&qt, &shared);
@@ -7068,8 +7054,12 @@ impl qobject::Sioul {
         QString::from(&crate::sites::list())
     }
 
-    fn site_notified(self: Pin<&mut Self>, id: &QString, title: &QString, text: &QString) {
-        crate::sites::notified(&self.qt_thread(), &self.shared(), &id.to_string(), &title.to_string(), &text.to_string());
+    fn site_notified(self: Pin<&mut Self>, id: &QString, key: &QString, title: &QString, text: &QString) -> bool {
+        crate::sites::notified(&self.qt_thread(), &self.shared(), &id.to_string(), &key.to_string(), &title.to_string(), &text.to_string())
+    }
+
+    fn site_notice_closed(&self, id: &QString, key: &QString) {
+        crate::sites::withdrawn(&id.to_string(), &key.to_string());
     }
 
     fn site_seen(self: Pin<&mut Self>, id: &QString) {
@@ -7302,11 +7292,13 @@ impl qobject::Sioul {
         // Your sites' own icons, when missing or a week old.
         crate::sites::favicon_tick(&self.qt_thread());
         // Dates coming: told once each.
-        crate::remind::tick(&self.qt_thread());
+        crate::remind::tick();
+        // What waited (nobody at the computer, a pause, do-not-disturb), told now if it may come.
+        crate::tell::again();
         // Mail that waited for its time, told when the time begins (docs/porch.md, "Notifications").
-        crate::mailnote::tick_in_window(crate::mailnote::Window { qt: self.qt_thread(), active: self.shared().active.load(Ordering::Relaxed) });
+        crate::mailnote::tick_in_window(crate::mailnote::Window { active: self.shared().active.load(Ordering::Relaxed) });
         // The end of the work day, said once (docs/reviews.md).
-        crate::reviews::tick(&self.qt_thread(), &self.shared());
+        crate::reviews::tick(&self.shared());
         // Paper letters scanned: read, to wait for the Porch.
         crate::letters::tick(&self.qt_thread(), &self.shared());
         // The weather follows the hours; fetched again when half an hour old.
@@ -7912,12 +7904,9 @@ impl qobject::Sioul {
     }
 
     fn plain_notice(&self, title: &QString, body: &QString) {
+        // A tray that shows no message: the notice it was given posted as it was decided.
         let (title, body) = (title.to_string(), body.to_string());
-        std::thread::spawn(move || {
-            if let Err(e) = sioul_sync::notify::remind(&title, &body, None) {
-                eprintln!("{e}");
-            }
-        });
+        std::thread::spawn(move || crate::tell::plain(&title, &body));
     }
 
     fn copy_text(&self, text: &QString) -> bool {
@@ -8450,17 +8439,20 @@ mod tests {
         assert_eq!(codes_until(&[item(0, Lane::RightNow, code(10)), item(1, Lane::People, code(2))]), at(10) + 1, "a code out of Right now");
     }
 
-    /// A code's notification offers Copy and Open on a computer (the
-    /// mailbox's part 0): Open asks for the code's message; a code its
-    /// message does not print, Open alone.
+    /// A code's notice (`CodeView::notice`) offers Copy and Open on a
+    /// computer (the mailbox's part 0): it is about its message, by its
+    /// address, its file a hint (the unified mailbox's part 2), a click on it
+    /// opening it too; it lasts until the code expires; a code its message
+    /// does not print, Open alone.
     #[test]
     fn a_code_s_notification_opens_its_message() {
-        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), address: "mid:code-1@example.org".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None, notice: sioul_core::notices::Notice::default() };
-        assert_eq!(code_actions(&code).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["copy", "open"]);
-        // Open names its message by its address, its file a hint (the unified mailbox's part 2).
-        assert_eq!(code_opens(&code), ("mail", "mid:code-1@example.org".to_string(), "/stand-in/mail/cur/1.U1-1.sioul".to_string()));
-        let without = view::CodeView { code: None, ..code };
-        assert_eq!(code_actions(&without).iter().map(|(key, _)| *key).collect::<Vec<_>>(), ["open"]);
+        use sioul_core::notice::Act;
+        let code = view::CodeView { key: "/stand-in/mail/cur/1.U1-1.sioul".into(), address: "mid:code-1@example.org".into(), title: "Code from example.org".into(), code: Some("482913".into()), validity: None, warning: None, notice: sioul_core::notices::Notice::default(), expires: Some(1_794_000_000) };
+        let notice = code.notice("Copy", "Open the message");
+        assert_eq!((notice.about.as_str(), notice.hint.as_str(), notice.until), ("mid:code-1@example.org", "/stand-in/mail/cur/1.U1-1.sioul", Some(1_794_000_000)));
+        assert_eq!(notice.actions.iter().map(|a| a.act.clone()).collect::<Vec<_>>(), [Act::Copy("482913".into()), Act::Open { address: "mid:code-1@example.org".into(), hint: "/stand-in/mail/cur/1.U1-1.sioul".into() }]);
+        let without = view::CodeView { code: None, ..code }.notice("Copy", "Open the message");
+        assert_eq!(without.actions.iter().map(|a| a.act.key()).collect::<Vec<_>>(), ["open"]);
     }
 
     #[test]
@@ -8479,16 +8471,23 @@ mod tests {
     }
 
     /// A phone makes its notices through Java only (docs/android.md,
-    /// "Notifications"): every caller of `sioul_sync::notify` whose error
-    /// would go to the status line (`tell`, `set_status`) stops on Android
-    /// before it tries, so that a phone's status line never says
-    /// "notifications are not made on Android yet" (seen on a phone on
+    /// "Notifications"): the notices' one call (`tell::tell_as`, `settle`)
+    /// stops on Android before anything, and every caller of the doses' own
+    /// path whose error would go to the status line (`tell`, `set_status`)
+    /// stops on Android before it tries, so that a phone's status line never
+    /// says "notifications are not made on Android yet" (seen on a phone on
     /// 16 October 2026: the pause to move, on by default, said it after 45
     /// minutes). Read in the sources, as the cfg of a phone's build cannot run here.
     #[test]
     fn no_notice_tried_on_a_phone_says_its_error_in_the_status_line() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let calls = ["notify::remind(", "notify::code(", "notify::remind_offering(", "notify::mail("];
+        let tell = std::fs::read_to_string(src.join("tell.rs")).unwrap();
+        for one in ["pub(crate) fn tell_with(", "pub(crate) fn settle(", "pub(crate) fn start(", "pub(crate) fn again("] {
+            let body = tell.split(one).nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+            let first = body.lines().nth(1).unwrap_or_default();
+            assert!(first.contains("cfg!(target_os = \"android\")"), "{one} stops first on a phone: {first}");
+        }
+        let calls = ["notify::remind("];
         let mut checked = Vec::new();
         for entry in std::fs::read_dir(&src).unwrap() {
             let path = entry.unwrap().path();
@@ -8515,8 +8514,8 @@ mod tests {
                 checked.push(name);
             }
         }
-        // The pause to move, the codes, the sites' two, the doses due while closed.
-        assert!(checked.len() >= 5, "{checked:?}");
+        // The doses due while closed.
+        assert!(!checked.is_empty(), "{checked:?}");
     }
 
     #[test]

@@ -343,7 +343,9 @@ pub(crate) fn hand_over(addresses: &[String], calendars: &[std::path::PathBuf]) 
 
 /// Calendar files an older Sioul, open, did not take: kept for the next
 /// window of this version (they wait in `calendarfile::folder`), the older
-/// window brought forward, and said in a notice: restarting Sioul shows them.
+/// window brought forward, and said in a notice to know, about nothing this
+/// process could open (it leaves: a click brings the older window forward),
+/// sent before it leaves: restarting Sioul shows them.
 #[cfg(all(unix, not(target_os = "android")))]
 pub(crate) fn to_older(calendars: &[std::path::PathBuf]) {
     crate::calendarfile::keep_all(calendars);
@@ -351,8 +353,9 @@ pub(crate) fn to_older(calendars: &[std::path::PathBuf]) {
         let _ = hand_over_at(&path, &[], &[], own_token());
     }
     let names: Vec<String> = calendars.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).collect();
-    if let Err(e) = sioul_sync::notify::remind("Sioul", &say("calendar-file-older", &[("files", names.join(", "))]), None) {
-        eprintln!("Sioul: {e}");
+    let notice = sioul_core::notice::Notice::new("", sioul_core::notice::Kind::Minor, "Sioul", say("calendar-file-older", &[("files", names.join(", "))]));
+    if crate::tell::tell(notice) == crate::tell::Fate::Posted {
+        sioul_sync::notify::teller().flush(std::time::Duration::from_secs(5));
     }
 }
 

@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The one exception to the admin windows: a quiet desktop notification for a
-//! verified code, with the code in it (docs/porch.md, "Right now"); a gentle
-//! reminder; new mail at the times it may come, once per batch
-//! (docs/porch.md, "Notifications"); and the time running, while a focus
-//! session runs (docs/tasks.md).
+//! The system's notifications: the transport of Sioul's notices
+//! (docs/notifications.md), the doses' own reminders, and the time running
+//! while a focus session runs (docs/tasks.md).
 //!
-//! On Linux and the BSDs each notification goes to the session's
-//! notification server over a D-Bus connection of its own, made by
-//! `crate::bus`: a session bus that takes it and never answers holds one
-//! thread of its own, never the caller nor libdbus's process-wide locks
-//! (review of battery part C, G1). Its call is the one notify-rust's
-//! `Notification` made before 13 October 2026, argument for argument
-//! (`notify_message`), but for its urgency, said once (notify-rust's hints
-//! are a set, where a mail's normal urgency and the critical one it started
-//! from were two, sent in no fixed order). Windows and macOS: notify-rust.
+//! **The notices** (`Teller`): every notice of a process, decided already
+//! (`sioul_core::notice::decide`), goes through one thread and, on Linux and
+//! the BSDs, one D-Bus connection to the session's notification server, made
+//! by `crate::bus`: a session bus that takes it and never answers holds that
+//! thread, never the caller nor libdbus's process-wide locks (review of
+//! battery part C, G1). There, each notice replaces the last of its kind and
+//! thing, carries its urgency, its timeout and `transient`, a click of its own
+//! and its buttons, and is taken away by Sioul at its end or once its thing is
+//! settled; presses come back with the server's activation token. Windows and
+//! macOS: notify-rust, as far as each carries it. Android: none here.
+//!
+//! **The doses' path stays its own**, as before the notices: each reminder on
+//! a thread and a connection of its own (`remind_dose`, `remind`), at critical
+//! urgency. Its call is the one notify-rust's `Notification` made before 13
+//! October 2026, argument for argument (`notify_message`), but for its
+//! urgency, said once.
 //!
 //! A dose's reminder (`remind_dose`) is built on one rule: never invite a
 //! second dose, and when this device cannot know, say the doubt (docs/health.md,
@@ -37,6 +42,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 use std::sync::mpsc::{Receiver, Sender};
+use sioul_core::notice;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
@@ -221,20 +227,11 @@ fn as_sioul() {
     });
 }
 
-/// A notification's button: its key, its label, and what it does when pressed.
-pub type Button = (String, String, Box<dyn FnOnce() + Send>);
-
-/// Shows a code: `title` says what and from whom, `body` the code and how long
-/// it lasts. No sound. With `buttons` (Copy, Open), the notification offers
-/// each, labelled with its text, and the one pressed runs; the notification
-/// then lives on its own thread, which waits for a press.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn code(title: &str, body: &str, buttons: Vec<Button>) -> Result<(), String> {
-    several_buttons(Notice::new(title, body, "dialog-password", CRITICAL), buttons)
-}
-
-/// A gentle reminder: one notification, no sound, with one button whose
-/// action runs when pressed (a dose's own: `remind_dose`).
+/// A reminder of the doses' own path (the question on doses due while Sioul
+/// was closed; `remind_dose` elsewhere than Linux): one notification, no
+/// sound, critical, with one button whose action runs when pressed, on a
+/// thread and a connection of its own. Every other notice goes through
+/// `post`.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     one_button(Notice::new(title, body, "appointment-soon", CRITICAL), action)
@@ -283,209 +280,7 @@ pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + 
     })
 }
 
-/// New mail at the times it may come (docs/porch.md, "Notifications"): one
-/// notification for the batch, no sound, with one button ("Open": its one
-/// message, else the Porch) whose action runs when pressed, a click on the
-/// notice itself doing the same (its "default" action: the unified
-/// mailbox's decision 3). At normal urgency, unlike codes and reminders: the
-/// desktop's own do-not-disturb holds it; but at critical urgency when
-/// someone Always through is in it (`through`), which passes it
-/// (docs/attention.md, Q10).
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn mail(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    let mut notice = Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL });
-    let Some((label, run)) = action else { return notify(notice, None) };
-    notice.buttons.push((CLICKED.to_string(), label.clone()));
-    notice.buttons.push(("open".to_string(), label));
-    notify(
-        notice,
-        Some(Box::new(move |key: &str| {
-            if opens_mail(key) {
-                run();
-            }
-        })),
-    )
-}
-
-/// New mail (`mail`), taken away where it shows once `settled` says each
-/// message it told was dismissed, read or done on any device (Sioul's
-/// notices), looked at each `LOOK` while it shows; its press as `mail`'s.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn mail_until(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>, settled: Box<dyn FnMut() -> bool + Send>) -> Result<(), String> {
-    let mut notice = Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL });
-    let run = action.map(|(label, run)| {
-        notice.buttons.push((CLICKED.to_string(), label.clone()));
-        notice.buttons.push(("open".to_string(), label));
-        run
-    });
-    // The D-Bus connection cannot change threads, so it is made where it waits.
-    std::thread::spawn(move || {
-        let Ok(bus) = session() else { return };
-        let heard = Rc::default();
-        if listened(&bus, &heard).is_err() {
-            return;
-        }
-        let Ok(id) = send(&bus, &notice) else { return };
-        wait_or_settled(&Shown { bus, heard, replies: Rc::default(), id, capabilities: Vec::new() }, run, settled);
-    });
-    Ok(())
-}
-
-/// New mail's notice shown, waited for: its Open runs when pressed (the
-/// wait ends then, or when it closes, or the connection goes); taken away
-/// once `settled`, looked at each `LOOK`.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn wait_or_settled(shown: &Shown, mut run: Option<Box<dyn FnOnce() + Send>>, mut settled: Box<dyn FnMut() -> bool + Send>) {
-    let mut looked = Instant::now();
-    loop {
-        for item in std::mem::take(&mut *shown.heard.borrow_mut()) {
-            match item {
-                Heard::Pressed(at, key) if at == shown.id => {
-                    if opens_mail(&key)
-                        && let Some(run) = run.take()
-                    {
-                        run();
-                    }
-                    return;
-                }
-                Heard::Closed(at) if at == shown.id => return,
-                _ => {}
-            }
-        }
-        if looked.elapsed() >= LOOK {
-            looked = Instant::now();
-            if settled() {
-                if shown.id != 0 {
-                    let _: Result<(), _> = shown.bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (shown.id,));
-                }
-                return;
-            }
-        }
-        if shown.bus.process(Duration::from_secs(1)).is_err() {
-            return;
-        }
-    }
-}
-
-/// Elsewhere: as `mail`, nothing to take away (a phone's is taken away through Java).
-#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
-pub fn mail_until(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>, _settled: Box<dyn FnMut() -> bool + Send>) -> Result<(), String> {
-    mail(title, body, through, action)
-}
-
-/// A click on a notice itself, as the desktop says it (the Desktop
-/// Notifications' "default" action: no button of its own).
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-const CLICKED: &str = "default";
-
-/// Whether a press on new mail's notification opens it: its Open, or a click on the notice.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn opens_mail(key: &str) -> bool {
-    key == "open" || key == CLICKED
-}
-
-/// Windows and macOS: the mail's words alone; their notifications carry no button here.
-#[cfg(any(windows, target_os = "macos"))]
-pub fn mail(title: &str, body: &str, _through: bool, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    as_sioul();
-    Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
-}
-
-/// Android: made on the window's side, through Java (sioul-app's `eventalarms`).
-#[cfg(target_os = "android")]
-pub fn mail(_title: &str, _body: &str, _through: bool, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    Err("notifications are made through Java on Android".to_string())
-}
-
-/// A gentle reminder with several buttons, each its label and its action:
-/// the one pressed runs (the night's notice: "Close the day" and "Options…").
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn remind_choices(title: &str, body: &str, choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    if choices.is_empty() {
-        return remind(title, body, None);
-    }
-    let mut notice = Notice::new(title, body, "appointment-soon", CRITICAL);
-    let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = Vec::new();
-    for (index, (label, run)) in choices.into_iter().enumerate() {
-        notice.buttons.push((format!("choice-{index}"), label));
-        runs.push(Some(run));
-    }
-    notify(
-        notice,
-        Some(Box::new(move |key: &str| {
-            if let Some(run) = key.strip_prefix("choice-").and_then(|n| n.parse::<usize>().ok()).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
-                run();
-            }
-        })),
-    )
-}
-
-/// Elsewhere, as a reminder without buttons (`remind`).
-#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
-pub fn remind_choices(title: &str, body: &str, _choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    remind(title, body, None)
-}
-
-/// A gentle reminder with its buttons wherever the system carries them, each
-/// its label and its action (the end of work's notice and the night's:
-/// docs/reviews.md). On Linux and the BSDs as `remind` (one button) or
-/// `remind_choices` (several) show them. On macOS with NSUserNotification's
-/// own: the action button, or "Options" and its list when there are several;
-/// a click on the notice itself is its first button's. Sent and waited for on
-/// a thread of its own, until a press or until the notice leaves the
-/// Notification Center (macOS hands the press to the main thread, which Qt's
-/// loop runs). The doses' reminders stay as `remind` shows them. On Windows,
-/// the words alone (the window shows these through Sioul's icon in the tray
-/// instead, a click opening the first button's); on Android, none (Java's).
-pub fn remind_offering(title: &str, body: &str, choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-    {
-        let mut choices = choices;
-        if choices.len() == 1 {
-            return remind(title, body, choices.pop());
-        }
-        remind_choices(title, body, choices)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        as_sioul();
-        let (title, body) = (title.to_string(), body.to_string());
-        let labels: Vec<String> = choices.iter().map(|(label, _)| label.clone()).collect();
-        let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = choices.into_iter().map(|(_, run)| Some(run)).collect();
-        // Made, sent and waited for on its own thread: notify-rust sends a
-        // macOS notice from its handle, and its wait blocks until an answer.
-        std::thread::spawn(move || {
-            let mut notification = Notification::new();
-            notification.appname("Sioul").summary(&title).body(&body).timeout(Timeout::Milliseconds(SHOWN));
-            for (index, label) in labels.iter().enumerate() {
-                notification.action(&format!("choice-{index}"), label);
-            }
-            match notification.show() {
-                Ok(handle) => handle.wait_for_action(|action| {
-                    if let Some(run) = pressed_choice(action).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
-                        run();
-                    }
-                }),
-                Err(e) => eprintln!("{e}"),
-            }
-        });
-        Ok(())
-    }
-    #[cfg(windows)]
-    {
-        drop(choices);
-        remind(title, body, None)
-    }
-    #[cfg(target_os = "android")]
-    {
-        drop(choices);
-        let _ = (title, body);
-        Err("notifications are made through Java on Android".to_string())
-    }
-}
-
-/// Which of a notice's buttons a press names (`remind_offering`): "choice-1"
+/// Which of a notice's buttons a press names, as macOS says it: "choice-1"
 /// the second; a click on the notice itself ("default") the first; none when
 /// it closed unanswered ("__closed") or for anything else.
 pub fn pressed_choice(action: &str) -> Option<usize> {
@@ -501,21 +296,6 @@ pub fn remind(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce()
     #[cfg(target_os = "macos")]
     as_sioul();
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
-}
-
-/// Windows and macOS: the code is in the text; their notifications carry no button here.
-#[cfg(any(windows, target_os = "macos"))]
-pub fn code(title: &str, body: &str, _buttons: Vec<Button>) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    as_sioul();
-    Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
-}
-
-/// Android: no notifications yet (Android's own are reached through Java);
-/// the code shows in the window only.
-#[cfg(target_os = "android")]
-pub fn code(_title: &str, _body: &str, _buttons: Vec<Button>) -> Result<(), String> {
-    Err("notifications are not made on Android yet".to_string())
 }
 
 /// Android: no notifications yet; a reminder is not shown (docs/android.md).
@@ -577,10 +357,12 @@ const _: () = assert!(
     TRY.as_millis() < FIRST_TRY.as_millis() && TRY.as_millis() > (2 * MATCH.as_millis() + ASKED.as_millis()) && TRY_AGAIN.as_millis() > (2 * MATCH_AGAIN.as_millis() + 2 * ASKED.as_millis())
 );
 
-/// Urgencies, as the specification numbers them: normal, and critical (what
-/// Sioul sends always gets through: it filters its own notifications already).
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-const NORMAL: u8 = 1;
+/// The doses' urgency, as the specification numbers it: critical, which
+/// passes the desktop's do-not-disturb. Their path stays apart and as it was
+/// (`remind_dose`, `remind`: docs/notifications.md, "Doses"). Every other
+/// notice takes its urgency from its class (`post`, decided by
+/// `sioul_core::notice::decide`): normal, and critical only for one to do
+/// that pierces a do-not-disturb holding now, Sioul's or the desktop's.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 const CRITICAL: u8 = 2;
 
@@ -616,27 +398,6 @@ fn one_button(mut notice: Notice, button: Option<(String, Box<dyn FnOnce() + Sen
         notice,
         Some(Box::new(move |key: &str| {
             if key == "copy" {
-                run();
-            }
-        })),
-    )
-}
-
-/// `notice` with these buttons, each keyed: the one pressed runs (`code`: Copy and Open).
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn several_buttons(mut notice: Notice, buttons: Vec<Button>) -> Result<(), String> {
-    if buttons.is_empty() {
-        return notify(notice, None);
-    }
-    let mut runs = Vec::new();
-    for (key, label, run) in buttons {
-        notice.buttons.push((key.clone(), label));
-        runs.push((key, run));
-    }
-    notify(
-        notice,
-        Some(Box::new(move |pressed: &str| {
-            if let Some((_, run)) = runs.into_iter().find(|(key, _)| key == pressed) {
                 run();
             }
         })),
@@ -1408,6 +1169,750 @@ impl Ongoing {
     pub fn close(self, _wait: Duration) {}
 }
 
+// ---------------------------------------------------------------- the notices
+
+/// A press on a notice (`post`), as the window hears it (`Teller::listen`):
+/// the thing the notice is about, what the press does (a button's act; a
+/// click on the notice itself opens its thing: `Act::Open` with its address
+/// and its hint), and the token the desktop gave with it, for the window to
+/// come forward (Wayland's activation: KWin keeps a window behind without one).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Press {
+    pub about: String,
+    pub act: notice::Act,
+    pub token: Option<String>,
+}
+
+/// What hears the presses, on the teller's thread.
+pub type Listener = Arc<dyn Fn(Press) + Send + Sync>;
+
+/// Whether a notice's thing is settled now (its messages read, its code
+/// read): looked at every `LOOK` while it shows, on the teller's thread.
+pub type Settled = Box<dyn FnMut() -> bool + Send>;
+
+/// One notice shown, as the previous run left it (`Teller::restart`): what
+/// it was about and what it was, never its words (a code's body is its
+/// secret), so that what is still to do is told again by its source.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Saved {
+    /// The server's number for it.
+    pub id: u32,
+    pub about: String,
+    #[serde(default)]
+    pub hint: String,
+    pub kind: notice::Kind,
+    pub class: notice::Class,
+    #[serde(default)]
+    pub until: Option<i64>,
+    /// When it was posted, Unix seconds.
+    pub at: i64,
+}
+
+/// The file of what shows (`Teller::restart`): its format, the server it was
+/// shown by (its unique name on the bus, and the bus's own id, `GetId`, which
+/// a bus started again, after a new login, never has: the numbers are the
+/// server's own, and another server, or the same one started again, numbers
+/// anew), and each notice shown.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct SavedFile {
+    format: u32,
+    #[serde(default)]
+    server: String,
+    #[serde(default)]
+    bus: String,
+    #[serde(default)]
+    shown: Vec<Saved>,
+}
+
+/// The format of the file of what shows: 1, the first (13 November 2026).
+/// A file of another format is read as showing nothing.
+const SAVED_FORMAT: u32 = 1;
+
+/// How long a notice to do is still listened to after its popup expired
+/// (the server's own timeout, `NotificationClosed` reason 1): a click in the
+/// desktop's history still opens it, until its thing is settled or this passes.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const EXPIRED_HEARD: Duration = Duration::from_secs(12 * 3600);
+
+/// How long the teller's thread waits for a word while nothing shows: what
+/// the server said meanwhile is then read and left (other programs' notices).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const IDLE: Duration = Duration::from_secs(60);
+
+/// The process's notices: one thread and one connection for all of them
+/// (docs/notifications.md, "The transport"), started at the first word. Its
+/// words go in order: a `flush` returns once all before it are done.
+#[derive(Clone)]
+pub struct Teller {
+    asks: std::sync::mpsc::Sender<Ask>,
+}
+
+/// A word to the teller's thread (elsewhere than Linux, some are not read).
+#[cfg_attr(not(all(unix, not(any(target_os = "macos", target_os = "android")))), allow(dead_code))]
+enum Ask {
+    Listen(Listener),
+    Post(Box<Posting>),
+    Settle(String),
+    Keep(std::path::PathBuf),
+    Forget(SavedFile, std::sync::mpsc::Sender<()>),
+    Flush(std::sync::mpsc::Sender<()>),
+}
+
+/// A notice to post, decided already (elsewhere than Linux, its words alone are read).
+#[cfg_attr(not(all(unix, not(any(target_os = "macos", target_os = "android")))), allow(dead_code))]
+struct Posting {
+    notice: notice::Notice,
+    shape: notice::Shape,
+    open_label: String,
+    settled: Option<Settled>,
+}
+
+/// The process's teller (`teller`).
+static TELLER: Mutex<Option<Teller>> = Mutex::new(None);
+
+/// The process's teller, started at the first word.
+pub fn teller() -> Teller {
+    let mut kept = TELLER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    kept.get_or_insert_with(Teller::start).clone()
+}
+
+impl Teller {
+    /// A teller of its own, its thread started (`teller` keeps the process's).
+    pub fn start() -> Teller {
+        let (asks, asked) = std::sync::mpsc::channel();
+        #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+        {
+            let _ = std::thread::Builder::new().name("sioul-notices".into()).spawn(move || linux::serve(&asked));
+        }
+        #[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
+        {
+            let _ = std::thread::Builder::new().name("sioul-notices".into()).spawn(move || elsewhere::serve(&asked));
+        }
+        Teller { asks }
+    }
+
+    fn ask(&self, ask: Ask) -> bool {
+        self.asks.send(ask).is_ok()
+    }
+
+    /// What hears the presses from now on: the window's. A teller without one
+    /// (the command line) posts its notices with neither buttons nor a click
+    /// of their own: a click then brings Sioul's window forward, as the
+    /// desktop does by itself.
+    pub fn listen(&self, listener: Listener) {
+        self.ask(Ask::Listen(listener));
+    }
+
+    /// Posts `notice` as `shape` says (`sioul_core::notice::decide`): in place
+    /// of the last of its key (its kind and thing), with its buttons and a
+    /// click of its own that opens its thing (`open_label`, its words where a
+    /// server shows them), at its urgency, for its timeout, leaving no trace
+    /// when transient; taken away by Sioul at `close_at`, when `settled` says
+    /// its thing is settled (looked at every `LOOK`), when its Copy is
+    /// pressed, or by `settle`. A notice to do whose popup expired is still
+    /// listened to, for twelve hours at most.
+    pub fn post(&self, notice: notice::Notice, shape: notice::Shape, open_label: &str, settled: Option<Settled>) {
+        self.ask(Ask::Post(Box::new(Posting { notice, shape, open_label: open_label.to_string(), settled })));
+    }
+
+    /// Every notice about `about` taken away: its thing is settled.
+    pub fn settle(&self, about: &str) {
+        self.ask(Ask::Settle(about.to_string()));
+    }
+
+    /// Waits until every word before this one is done, `wait` at most:
+    /// whether it was. Before a process ends (the command line).
+    pub fn flush(&self, wait: Duration) -> bool {
+        let (done, finished) = std::sync::mpsc::channel();
+        self.ask(Ask::Flush(done)) && finished.recv_timeout(wait).is_ok()
+    }
+
+    /// What shows is written to `path` from now on, each time it changes
+    /// (the window's: `$XDG_STATE_HOME/sioul/notices-shown.json`). What the
+    /// previous run left there is taken away first, where the same server
+    /// still shows it (a notice of a run gone hears nothing: its clicks would
+    /// open nothing); the notices to do among them, not over, are given back,
+    /// for their sources to tell again.
+    pub fn restart(&self, path: &std::path::Path, now: i64) -> Vec<Saved> {
+        let left = read_saved(path);
+        let (done, finished) = std::sync::mpsc::channel();
+        if self.ask(Ask::Forget(left.clone(), done)) {
+            let _ = finished.recv_timeout(Duration::from_secs(10));
+        }
+        self.ask(Ask::Keep(path.to_path_buf()));
+        left.shown.into_iter().filter(|s| s.class == notice::Class::Actionable && s.until.is_none_or(|until| until > now) && now - s.at < 12 * 3600).collect()
+    }
+}
+
+/// What a previous run left (`Teller::restart`): nothing for a file of another format.
+fn read_saved(path: &std::path::Path) -> SavedFile {
+    std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str::<SavedFile>(&text).ok()).filter(|file| file.format == SAVED_FORMAT).unwrap_or_default()
+}
+
+/// What shows, written to `path` (`Teller::restart`).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn write_saved(path: &std::path::Path, file: &SavedFile) {
+    let Ok(text) = serde_json::to_string(file) else { return };
+    if let Some(folder) = path.parent() {
+        let _ = std::fs::create_dir_all(folder);
+    }
+    if let Err(e) = sioul_core::filelock::replace(path, text.as_bytes()) {
+        eprintln!("sioul: notices: {}: {e}", path.display());
+    }
+}
+
+/// The keys of a notice's buttons, each its act's (`Act::key`), a second
+/// one of the same act keyed with its place ("open-1").
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+fn keyed(actions: &[notice::Action]) -> Vec<(String, String, notice::Act)> {
+    let mut out: Vec<(String, String, notice::Act)> = Vec::new();
+    for (place, action) in actions.iter().enumerate() {
+        let key = action.act.key();
+        let key = if out.iter().any(|(k, _, _)| k == key) { format!("{key}-{place}") } else { key.to_string() };
+        out.push((key, action.label.clone(), action.act.clone()));
+    }
+    out
+}
+
+/// A click on the notice itself, as the specification names it.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const CLICKED: &str = "default";
+
+/// Linux and the BSDs: the notification server on the session bus.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+mod linux {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// What the server said (with who said it, and its serial: the server's
+    /// own, in the order it sent them), and the bus's word that the server's
+    /// name changed hands.
+    enum Signal {
+        Pressed(u32, String),
+        Closed(u32, u32, u32),
+        Token(u32, String),
+        Owner(String),
+    }
+
+    /// One notice shown: the server's number for it (0 while no server
+    /// shows it: none yet, or the server gone or started again, until it is
+    /// posted again), the serial of the server's answer that gave it, what
+    /// was posted (kept to post it again on a server started anew), its
+    /// buttons by key, how it leaves.
+    struct Live {
+        id: u32,
+        since: u32,
+        notice: notice::Notice,
+        shape: notice::Shape,
+        open_label: String,
+        at: i64,
+        buttons: Vec<(String, notice::Act)>,
+        settled: Option<Settled>,
+        /// When its popup expired (to do only: still heard).
+        expired: Option<Instant>,
+    }
+
+    /// The thread's state: its connection (made again once lost, `backoff`
+    /// apart), what it heard, what the server reads, the server's unique
+    /// name, what shows, the tokens given before a press, where what shows is
+    /// written.
+    #[derive(Default)]
+    struct State {
+        bus: Option<LocalConnection>,
+        heard: Rc<RefCell<Vec<(String, Signal)>>>,
+        capabilities: Vec<String>,
+        server: String,
+        bus_id: String,
+        tried: Option<Instant>,
+        backoff: Duration,
+        shown: Vec<Live>,
+        tokens: HashMap<u32, String>,
+        listener: Option<Listener>,
+        saved: Option<std::path::PathBuf>,
+        looked: Option<Instant>,
+    }
+
+    /// The first wait before a connection is tried again, and the longest.
+    const RETRY_FIRST: Duration = Duration::from_secs(1);
+    const RETRY_LONGEST: Duration = Duration::from_secs(60);
+
+    /// The teller's thread: each word as it comes; while something shows,
+    /// what the server says, every `LISTENED`; the ends, the settled, each
+    /// turn. Without a connection while something shows, it tries again
+    /// `backoff` apart (doubled each time, a minute at most), waiting for a
+    /// word meanwhile, never spinning; connected again, it posts again what
+    /// still shows.
+    pub(super) fn serve(asked: &std::sync::mpsc::Receiver<Ask>) {
+        use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
+        let mut state = State::default();
+        loop {
+            let wait = if state.shown.is_empty() {
+                Some(IDLE)
+            } else if state.bus.is_none() {
+                Some(state.retry_in())
+            } else {
+                None
+            };
+            let first = match wait {
+                Some(wait) => match asked.recv_timeout(wait) {
+                    Ok(ask) => Some(ask),
+                    Err(RecvTimeoutError::Timeout) => None,
+                    Err(RecvTimeoutError::Disconnected) => return,
+                },
+                None => match asked.try_recv() {
+                    Ok(ask) => Some(ask),
+                    Err(TryRecvError::Empty) => None,
+                    Err(TryRecvError::Disconnected) => return,
+                },
+            };
+            if let Some(ask) = first {
+                state.answer(ask);
+                while let Ok(ask) = asked.try_recv() {
+                    state.answer(ask);
+                }
+            }
+            if state.bus.is_none() && !state.shown.is_empty() {
+                state.connected();
+            }
+            let wait = if state.shown.is_empty() { Duration::ZERO } else { LISTENED };
+            if let Some(bus) = &state.bus
+                && bus.process(wait).is_err()
+            {
+                state.lost();
+            }
+            state.hear();
+            state.ends();
+        }
+    }
+
+    impl State {
+        /// How long until the connection is tried again.
+        fn retry_in(&self) -> Duration {
+            let next = self.tried.map_or(Duration::ZERO, |at| self.backoff.saturating_sub(at.elapsed()));
+            next.max(Duration::from_millis(100))
+        }
+
+        /// The connection, made when there is none (`backoff` apart, doubled
+        /// at each failure, a minute at most), the server's signals and its
+        /// name's changes listened to, its unique name and the bus's id
+        /// asked; made again while something shows, what shows is posted
+        /// again (`repost`).
+        fn connected(&mut self) -> bool {
+            if self.bus.is_some() {
+                return true;
+            }
+            if self.tried.is_some_and(|at| at.elapsed() < self.backoff) {
+                return false;
+            }
+            self.tried = Some(Instant::now());
+            self.backoff = (self.backoff * 2).clamp(RETRY_FIRST, RETRY_LONGEST);
+            let Ok(bus) = session() else { return false };
+            if heard_on(&bus, &self.heard).is_err() {
+                return false;
+            }
+            self.capabilities = capabilities(&bus, ASKED);
+            self.bus_id = bus_id(Some(&bus));
+            self.bus = Some(bus);
+            self.backoff = Duration::ZERO;
+            // Its numbers may name nothing on this server: asked anew, and what shows posted again.
+            let before = std::mem::take(&mut self.server);
+            self.server = self.owner_now();
+            if !self.shown.is_empty() {
+                let same = !before.is_empty() && before == self.server;
+                self.repost(same);
+            }
+            true
+        }
+
+        /// The connection lost: what shows is kept, to be posted again once connected.
+        fn lost(&mut self) {
+            self.bus = None;
+            self.tried = Some(Instant::now());
+            self.backoff = self.backoff.max(RETRY_FIRST);
+        }
+
+        /// The server's unique name now, "" when none owns the name.
+        fn owner_now(&self) -> String {
+            let Some(bus) = &self.bus else { return String::new() };
+            bus.with_proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", ASKED).method_call("org.freedesktop.DBus", "GetNameOwner", (SERVER,)).map(|(name,): (String,)| name).unwrap_or_default()
+        }
+
+        /// The server changed hands (`owner`: "" none): the numbers kept were
+        /// the old server's, which the new one may give to another program's
+        /// notice. They are never closed nor replaced there; what shows is
+        /// posted again on the new server, or once one comes.
+        fn changed_hands(&mut self, owner: String) {
+            if owner == self.server {
+                return;
+            }
+            self.server = owner;
+            for live in &mut self.shown {
+                live.id = 0;
+            }
+            if !self.server.is_empty() {
+                self.repost(false);
+            }
+            self.save();
+        }
+
+        /// What shows, posted again: in place of its number on the same
+        /// server, else anew, for what is left of its time.
+        fn repost(&mut self, same: bool) {
+            let now = jiff::Timestamp::now().as_second();
+            let mut shown = std::mem::take(&mut self.shown);
+            shown.retain(|live| live.shape.close_at.is_none_or(|at| at > now));
+            for live in &mut shown {
+                let mut shape = live.shape.clone();
+                if let Some(at) = shape.close_at {
+                    shape.timeout_ms = shape.timeout_ms.min(i32::try_from((at - now).max(1) * 1000).unwrap_or(i32::MAX));
+                }
+                let replaces = if same { live.id } else { 0 };
+                match self.notify(&live.notice, &shape, &live.open_label, replaces) {
+                    Some((id, since)) => (live.id, live.since, live.expired) = (id, since, None),
+                    None => live.id = 0,
+                }
+            }
+            self.shown = shown;
+            self.save();
+        }
+
+        fn answer(&mut self, ask: Ask) {
+            match ask {
+                Ask::Listen(listener) => self.listener = Some(listener),
+                Ask::Post(posting) => self.post(*posting),
+                Ask::Settle(about) => {
+                    let ids: Vec<u32> = self.shown.iter().filter(|live| live.notice.about == about).map(|live| live.id).collect();
+                    self.shown.retain(|live| live.notice.about != about);
+                    for id in ids {
+                        self.close_number(id);
+                    }
+                    self.save();
+                }
+                Ask::Keep(path) => {
+                    self.saved = Some(path);
+                    self.save();
+                }
+                Ask::Forget(left, done) => {
+                    // The same server on the same bus: its numbers still name what the previous run showed.
+                    if self.connected() && !left.server.is_empty() && !left.bus.is_empty() && left.server == self.server && left.bus == self.bus_id {
+                        for saved in &left.shown {
+                            self.close_number(saved.id);
+                        }
+                    }
+                    let _ = done.send(());
+                }
+                Ask::Flush(done) => {
+                    let _ = done.send(());
+                }
+            }
+        }
+
+        /// One Notify on the connection: the server's number for it and the
+        /// serial of its answer; none when refused or unanswered.
+        fn notify(&self, notice: &notice::Notice, shape: &notice::Shape, open_label: &str, replaces: u32) -> Option<(u32, u32)> {
+            let bus = self.bus.as_ref()?;
+            let listening = self.listener.is_some();
+            let mut actions: Vec<(String, String)> = Vec::new();
+            if listening && !notice.about.is_empty() {
+                actions.push((CLICKED.to_string(), open_label.to_string()));
+            }
+            if listening {
+                actions.extend(keyed(&notice.actions).into_iter().map(|(key, label, _)| (key, label)));
+            }
+            use dbus::blocking::BlockingSender;
+            match bus.send_with_reply_and_block(told_message(notice, shape, replaces, &actions, &self.capabilities), ASKED) {
+                Ok(answer) => {
+                    let id = answer.read1::<u32>().unwrap_or(0);
+                    (id != 0).then(|| (id, answer.get_serial().unwrap_or(0)))
+                }
+                Err(e) => {
+                    eprintln!("sioul: notices: {}", said(&e));
+                    None
+                }
+            }
+        }
+
+        /// A notice posted: in place of the last of its key, its number kept.
+        /// Not posted now (no connection, no server), it is kept, and posted
+        /// once one comes, while its time lasts.
+        fn post(&mut self, posting: Posting) {
+            let Posting { notice, shape, open_label, settled } = posting;
+            self.connected();
+            if self.bus.is_some() {
+                let owner = self.owner_now();
+                self.changed_hands(owner);
+            }
+            let replaces = self.shown.iter().find(|live| live.shape.key == shape.key).map_or(0, |live| live.id);
+            let posted = self.notify(&notice, &shape, &open_label, replaces);
+            // Refused for want of a server (one starting again): its numbers are no one's now.
+            if posted.is_none() && self.bus.is_some() && self.owner_now().is_empty() {
+                self.changed_hands(String::new());
+            }
+            let (id, since) = posted.unwrap_or((0, 0));
+            // The one it replaced is gone (in place, or numbered anew: GNOME).
+            self.shown.retain(|live| live.shape.key != shape.key && (id == 0 || live.id != id));
+            let buttons = keyed(&notice.actions).into_iter().map(|(key, _, act)| (key, act)).collect();
+            self.shown.push(Live { id, since, notice, shape, open_label, at: jiff::Timestamp::now().as_second(), buttons, settled, expired: None });
+            self.save();
+        }
+
+        /// Taken away by Sioul: closed at the server, forgotten here.
+        fn close(&mut self, id: u32) {
+            self.shown.retain(|live| live.id != id);
+            self.close_number(id);
+            self.save();
+        }
+
+        /// A number closed at the server, only while it is the server that
+        /// gave it (`changed_hands` forgets the numbers of another).
+        fn close_number(&self, id: u32) {
+            if let Some(bus) = &self.bus
+                && id != 0
+                && !self.server.is_empty()
+            {
+                let _: Result<(), _> = bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (id,));
+            }
+        }
+
+        /// What the server said, from the server alone (another program
+        /// saying it is not heard): a token kept for the press after it; a
+        /// press told to the listener, a Copy then taking the notice away; a
+        /// close forgetting it, but a notice to do whose popup expired, and a
+        /// close sent before the number was given anew (a notice dismissed
+        /// just as the next took its place); the server's name changing
+        /// hands, what shows posted again on the new one.
+        fn hear(&mut self) {
+            let heard = std::mem::take(&mut *self.heard.borrow_mut());
+            for (sender, signal) in heard {
+                if let Signal::Owner(owner) = signal {
+                    self.changed_hands(owner);
+                    continue;
+                }
+                if !self.server.is_empty() && sender != self.server {
+                    continue;
+                }
+                match signal {
+                    Signal::Token(id, token) => {
+                        if self.shown.iter().any(|live| live.id == id && id != 0) {
+                            self.tokens.insert(id, token);
+                        }
+                    }
+                    Signal::Pressed(id, key) => {
+                        let token = self.tokens.remove(&id);
+                        let Some(live) = self.shown.iter().find(|live| live.id == id && id != 0) else { continue };
+                        let act = if key == CLICKED {
+                            if live.notice.about.is_empty() {
+                                continue;
+                            }
+                            notice::Act::Open { address: live.notice.about.clone(), hint: live.notice.hint.clone() }
+                        } else {
+                            let Some((_, act)) = live.buttons.iter().find(|(k, _)| *k == key) else { continue };
+                            act.clone()
+                        };
+                        let copied = matches!(act, notice::Act::Copy(_));
+                        if let Some(listener) = &self.listener {
+                            listener(Press { about: live.notice.about.clone(), act, token });
+                        }
+                        // Copied: the code did its work.
+                        if copied {
+                            self.close(id);
+                        }
+                    }
+                    Signal::Closed(id, why, serial) => {
+                        self.tokens.remove(&id);
+                        let Some(at) = self.shown.iter().position(|live| live.id == id && id != 0) else { continue };
+                        // Sent before the server gave this number anew: about the one it replaced.
+                        if serial < self.shown[at].since {
+                            continue;
+                        }
+                        // Expired at the server: a notice to do is still heard (its click in the history).
+                        if why == 1 && self.shown[at].shape.class == notice::Class::Actionable {
+                            self.shown[at].expired.get_or_insert_with(Instant::now);
+                        } else {
+                            self.shown.remove(at);
+                            self.save();
+                        }
+                    }
+                    Signal::Owner(_) => {}
+                }
+            }
+        }
+
+        /// The ends: a notice whose time is over taken away; one whose thing
+        /// is settled too, looked at every `LOOK`; one to do expired at the
+        /// server and heard long enough, forgotten.
+        fn ends(&mut self) {
+            let now = jiff::Timestamp::now().as_second();
+            let over: Vec<u32> = self.shown.iter().filter(|live| live.shape.close_at.is_some_and(|at| at <= now)).map(|live| live.id).collect();
+            if !over.is_empty() {
+                self.shown.retain(|live| live.shape.close_at.is_none_or(|at| at > now));
+                for id in over {
+                    self.close_number(id);
+                }
+                self.save();
+            }
+            let before = self.shown.len();
+            self.shown.retain(|live| live.expired.is_none_or(|at| at.elapsed() < EXPIRED_HEARD));
+            if self.shown.len() != before {
+                self.save();
+            }
+            if self.looked.is_some_and(|at| at.elapsed() < LOOK) {
+                return;
+            }
+            self.looked = Some(Instant::now());
+            let mut settled = Vec::new();
+            for (at, live) in self.shown.iter_mut().enumerate() {
+                if let Some(look) = live.settled.as_mut()
+                    && look()
+                {
+                    settled.push(at);
+                }
+            }
+            if settled.is_empty() {
+                return;
+            }
+            for at in settled.into_iter().rev() {
+                let live = self.shown.remove(at);
+                self.close_number(live.id);
+            }
+            self.save();
+        }
+
+        /// What shows, written where it is kept (`Teller::restart`).
+        fn save(&self) {
+            let Some(path) = &self.saved else { return };
+            let shown = self.shown.iter().filter(|live| live.id != 0).map(|live| Saved { id: live.id, about: live.notice.about.clone(), hint: live.notice.hint.clone(), kind: live.notice.kind, class: live.shape.class, until: live.notice.until, at: live.at }).collect();
+            write_saved(path, &SavedFile { format: SAVED_FORMAT, server: self.server.clone(), bus: self.bus_id.clone(), shown });
+        }
+    }
+
+    /// The bus's own id (`org.freedesktop.DBus.GetId`): another for each bus
+    /// started, so that a server's unique name, which may come again after a
+    /// new login, never names the same server twice with it. "" unknown.
+    fn bus_id(bus: Option<&LocalConnection>) -> String {
+        bus.and_then(|bus| bus.with_proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", ASKED).method_call("org.freedesktop.DBus", "GetId", ()).ok()).map(|(id,): (String,)| id).unwrap_or_default()
+    }
+
+    /// The server's three signals heard on `bus`, each with who sent it and
+    /// its serial (a button pressed or a click on a notice, a notice closed
+    /// and why, the token given before a press), and the bus's word that the
+    /// server's name changed hands (a server started again, or gone).
+    fn heard_on(bus: &LocalConnection, heard: &Rc<RefCell<Vec<(String, Signal)>>>) -> Result<(), dbus::Error> {
+        use dbus::message::MatchRule;
+        let sender = |m: &dbus::Message| m.sender().map(|s| s.to_string()).unwrap_or_default();
+        let (pressed, closed, tokens, owners) = (Rc::clone(heard), Rc::clone(heard), Rc::clone(heard), Rc::clone(heard));
+        bus.add_match(MatchRule::new_signal(SERVER, "ActionInvoked").with_path(SERVER_PATH), move |(id, key): (u32, String), _: &LocalConnection, m: &dbus::Message| {
+            pressed.borrow_mut().push((sender(m), Signal::Pressed(id, key)));
+            true
+        })?;
+        bus.add_match(MatchRule::new_signal(SERVER, "NotificationClosed").with_path(SERVER_PATH), move |(id, why): (u32, u32), _: &LocalConnection, m: &dbus::Message| {
+            closed.borrow_mut().push((sender(m), Signal::Closed(id, why, m.get_serial().unwrap_or(u32::MAX))));
+            true
+        })?;
+        bus.add_match(MatchRule::new_signal(SERVER, "ActivationToken").with_path(SERVER_PATH), move |(id, token): (u32, String), _: &LocalConnection, m: &dbus::Message| {
+            tokens.borrow_mut().push((sender(m), Signal::Token(id, token)));
+            true
+        })?;
+        let mut changed = MatchRule::new_signal("org.freedesktop.DBus", "NameOwnerChanged").with_sender("org.freedesktop.DBus");
+        changed.path = Some(dbus::Path::from("/org/freedesktop/DBus"));
+        bus.add_match(changed, move |(name, _old, new): (String, String, String), _: &LocalConnection, _: &dbus::Message| {
+            if name == SERVER {
+                owners.borrow_mut().push((String::new(), Signal::Owner(new)));
+            }
+            true
+        })?;
+        Ok(())
+    }
+
+    /// The icon of a kind of notice, a theme's name.
+    fn icon_of(kind: notice::Kind) -> &'static str {
+        use sioul_core::attention::Kind as Row;
+        match kind {
+            notice::Kind::Own(Row::Codes) => "dialog-password",
+            notice::Kind::Mail => "mail-unread",
+            notice::Kind::Own(Row::Sites | Row::SitesLive | Row::SiteCalls) => "internet-web-browser",
+            _ => "appointment-soon",
+        }
+    }
+
+    /// A notice's Notify: "Sioul", the one it replaces, its icon (its own
+    /// theme name, else its kind's; a picture's file as `image-path`), its
+    /// title, its body as the server reads it (`body_text`), its buttons, the
+    /// hints (no sound, Sioul's desktop file, its urgency, `transient` when
+    /// it leaves no trace, `resident` when a press leaves it), its timeout.
+    pub(super) fn told_message(notice: &notice::Notice, shape: &notice::Shape, replaces: u32, actions: &[(String, String)], capabilities: &[String]) -> dbus::Message {
+        use dbus::arg::{PropMap, RefArg, Variant};
+        let mut hints = PropMap::new();
+        hints.insert("suppress-sound".into(), Variant(Box::new(true) as Box<dyn RefArg>));
+        hints.insert("desktop-entry".into(), Variant(Box::new(DESKTOP_ENTRY.to_string()) as Box<dyn RefArg>));
+        hints.insert("urgency".into(), Variant(Box::new(shape.urgency.level()) as Box<dyn RefArg>));
+        if shape.transient {
+            hints.insert("transient".into(), Variant(Box::new(true) as Box<dyn RefArg>));
+        }
+        if shape.resident {
+            hints.insert("resident".into(), Variant(Box::new(true) as Box<dyn RefArg>));
+        }
+        let picture = notice.icon.starts_with('/');
+        if picture {
+            hints.insert("image-path".into(), Variant(Box::new(format!("file://{}", notice.icon)) as Box<dyn RefArg>));
+        }
+        let icon = if notice.icon.is_empty() || picture { icon_of(notice.kind) } else { notice.icon.as_str() };
+        let buttons: Vec<&str> = actions.iter().flat_map(|(key, label)| [key.as_str(), label.as_str()]).collect();
+        let mut call = dbus::Message::new_method_call(SERVER, SERVER_PATH, SERVER, "Notify").expect("the notification server's names");
+        call.append_all(("Sioul", replaces, icon, notice.title.as_str(), body_text(&notice.body, capabilities), buttons, hints, shape.timeout_ms));
+        call
+    }
+}
+
+/// Windows and macOS: notify-rust, as far as each carries it; Android: none
+/// here (Java's, through the window).
+#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
+mod elsewhere {
+    use super::*;
+
+    /// The teller's thread: each notice shown as it comes, its words alone,
+    /// sent without waiting, on this one thread. macOS: mac-notification-sys
+    /// hears a button only by blocking a thread and running a timer on the
+    /// main loop for each notice until it is cleared from the Notification
+    /// Center (notify-rust's `wait_for_action`), and its
+    /// UNUserNotificationCenter side is a preview; so no button there, and a
+    /// click on a notice brings Sioul forward, as macOS does by itself.
+    /// Windows: the window gives a notice with a thing to the tray's icon
+    /// instead, whose message a click opens. Nothing is taken away on
+    /// either: their notifications leave by themselves.
+    pub(super) fn serve(asked: &std::sync::mpsc::Receiver<Ask>) {
+        while let Ok(ask) = asked.recv() {
+            match ask {
+                Ask::Post(posting) => {
+                    #[cfg(any(windows, target_os = "macos"))]
+                    show(&posting);
+                    #[cfg(target_os = "android")]
+                    drop(posting);
+                }
+                Ask::Forget(_, done) | Ask::Flush(done) => {
+                    let _ = done.send(());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    fn timeout(shape: &notice::Shape) -> Timeout {
+        u32::try_from(shape.timeout_ms).ok().filter(|ms| *ms > 0).map_or(Timeout::Never, Timeout::Milliseconds)
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    fn show(posting: &Posting) {
+        #[cfg(target_os = "macos")]
+        as_sioul();
+        let notice = &posting.notice;
+        if let Err(e) = Notification::new().appname("Sioul").summary(&notice.title).body(&notice.body).timeout(timeout(&posting.shape)).show().map(drop) {
+            eprintln!("sioul: notices: {e}");
+        }
+    }
+}
+
 /// A body as the notification server reads it. Most read markup there
 /// ("body-markup": `<b>`, `<a href>`, `<img src>`), and bodies carry a mail's
 /// or a site's words: there, `&`, `<` and `>` are written as entities, so
@@ -1452,16 +1957,6 @@ mod bundle {
 #[cfg(all(test, unix, not(any(target_os = "macos", target_os = "android"))))]
 mod tests {
     use super::*;
-
-    /// New mail's notification opens on its Open and on a click on the notice
-    /// itself (the "default" action: the unified mailbox's decision 3); no
-    /// other key opens it.
-    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-    #[test]
-    fn a_click_on_new_mail_s_notice_opens_it() {
-        assert!(opens_mail("open") && opens_mail("default"));
-        assert!(!opens_mail("copy") && !opens_mail(""));
-    }
 
     #[test]
     fn bodies_are_words_not_markup() {
@@ -1890,38 +2385,6 @@ mod tests {
     /// - sent after the tick stopped waiting: the doubt first at once, one
     ///   notice, recorded shown, "Taken" counts; marked before it went: never
     ///   sent, nor tried again.
-    /// New mail's notification follows its notices (`mail_until`): shown,
-    /// then each message it told settled on some device (`settled` true):
-    /// taken away by its number within a look (`LOOK`), never before.
-    /// Sets this process's session bus address: run alone, by name:
-    /// `cargo test --release -p sioul-sync notify::tests::new_mail_is_taken_away_once_its_notices_are_settled -- --ignored --exact --nocapture`.
-    #[test]
-    #[ignore = "starts a stand-in dbus-daemon and sets the session bus address: run alone, by name"]
-    fn new_mail_is_taken_away_once_its_notices_are_settled() {
-        use crate::bus::StandIns;
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::mpsc::channel;
-        use std::sync::Arc;
-        let mut stand_ins = StandIns::new("stand-in-mail-settled");
-        let (_, address) = stand_ins.start("session");
-        // SAFETY: run alone, by name; nothing else in this process reads it meanwhile.
-        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &address) };
-        let (told, notices) = channel::<(std::time::Instant, String, u32)>();
-        let stop = Arc::new(AtomicBool::new(false));
-        assert!(notice_server(&address, "shows", told.clone(), Arc::clone(&stop)));
-        let settled = Arc::new(AtomicBool::new(false));
-        let looked = Arc::clone(&settled);
-        mail_until("Two e-mails", "Noa, The lease · Ana, Lunch", false, None, Box::new(move || looked.load(Ordering::SeqCst))).unwrap();
-        let shown = sent_within(&notices, Duration::from_secs(2));
-        assert_eq!(shown, vec![("Two e-mails".to_string(), 0)], "shown once");
-        assert!(sent_within(&notices, LOOK * 2).is_empty(), "nothing settled: left alone");
-        settled.store(true, Ordering::SeqCst);
-        let closed = sent_within(&notices, LOOK * 3);
-        assert!(closed.iter().any(|(title, id)| title == CLOSED && *id != 0), "taken away by its number: {closed:?}");
-        stop.store(true, Ordering::Relaxed);
-        std::thread::sleep(Duration::from_millis(500));
-    }
-
     /// Sets this process's session bus address: run alone, by name:
     /// `cargo test --release -p sioul-sync notify::tests::reminders_whose_fate_was_not_known_say_the_doubt_once_known_shown -- --ignored --exact --nocapture`.
     #[test]
@@ -2337,16 +2800,17 @@ mod tests {
         stop.store(true, Ordering::Relaxed);
     }
 
-    /// Codes, reminders and mail, against a notification server of the test's
-    /// own on a bus of its own (run under dbus-run-session; skipped where a
-    /// server is there already: nothing here may reach the desktop's). Each
-    /// goes as notify-rust's `Notification` sent it (`send`): "Sioul", the
-    /// icon, the title, the body as a server reading markup takes it, the
-    /// buttons, no sound, Sioul's desktop file, ten minutes; its urgency said
-    /// once (a mail at normal urgency, unless someone Always through is in
-    /// it). A button pressed at the server runs its action, here, once.
+    /// The doses' own reminder (`remind`: the question on doses due while
+    /// Sioul was closed), against a notification server of the test's own on
+    /// a bus of its own (run under dbus-run-session; skipped where a server
+    /// is there already: nothing here may reach the desktop's): as it went
+    /// before the notices' transport, unchanged (docs/notifications.md,
+    /// "Doses"): "Sioul", the icon, the title, the body as a server reading
+    /// markup takes it, the button, no sound, Sioul's desktop file, ten
+    /// minutes, critical, said once. Its button pressed at the server runs
+    /// its action, here, once.
     #[test]
-    fn notifications_go_as_before_and_hear_their_button() {
+    fn the_doses_reminder_goes_as_before_and_hears_its_button() {
         use dbus::blocking::LocalConnection;
         use dbus::channel::{MatchingReceiver, Sender as _};
         use dbus::message::MatchRule;
@@ -2442,38 +2906,16 @@ mod tests {
             urgency,
             timeout: 600_000,
         };
-        // A code with its buttons, Copy and Open: the one pressed at the server runs alone.
+        // The question on doses due while Sioul was closed, its body as markup reads it; its button heard once.
         let (pressed, presses) = channel::<&str>();
-        let other = pressed.clone();
-        code("Code from example.org", "482913 <b>now</b> & then", vec![
-            ("copy".into(), "Copy".into(), Box::new(move || {
-                let _ = other.send("copy");
-            })),
-            ("open".into(), "Open the message".into(), Box::new(move || {
-                let _ = pressed.send("open");
-            })),
-        ]).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("dialog-password", "Code from example.org", "482913 &lt;b&gt;now&lt;/b&gt; &amp; then", &["copy", "Copy", "open", "Open the message"], CRITICAL));
-        assert_eq!(presses.recv_timeout(wait), Ok("open"));
-        assert!(presses.recv_timeout(Duration::from_millis(300)).is_err(), "one button run");
-        // Mail: normal urgency, said once; critical when someone Always through is in it.
-        mail("New mail", "From Noa", false, None).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("mail-unread", "New mail", "From Noa", &[], NORMAL));
-        mail("New mail", "From Noa", true, None).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("mail-unread", "New mail", "From Noa", &[], CRITICAL));
-        // A reminder; and one with choices, the one pressed run alone.
+        remind("Did you take it?", "Magnesium <b>08:00</b> & 300 mg", Some(("Answer".into(), Box::new(move || {
+            let _ = pressed.send("answer");
+        })))).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "Did you take it?", "Magnesium &lt;b&gt;08:00&lt;/b&gt; &amp; 300 mg", &["copy", "Answer"], CRITICAL));
+        assert_eq!(presses.recv_timeout(wait), Ok("answer"));
+        assert!(presses.recv_timeout(Duration::from_millis(300)).is_err(), "one press run");
         remind("Magnesium", "300 mg", None).unwrap();
         assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "Magnesium", "300 mg", &[], CRITICAL));
-        let (chose, choices) = channel::<&str>();
-        let other = chose.clone();
-        remind_choices("The night", "Close the day?", vec![("Close the day".into(), Box::new(move || {
-                let _ = chose.send("close");
-            })), ("Options…".into(), Box::new(move || {
-                let _ = other.send("options");
-            }))]).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "The night", "Close the day?", &["choice-0", "Close the day", "choice-1", "Options…"], CRITICAL));
-        assert_eq!(choices.recv_timeout(wait), Ok("options"));
-        assert!(choices.recv_timeout(Duration::from_millis(300)).is_err(), "one choice run");
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -2581,5 +3023,373 @@ mod tests {
         shown.close(wait);
         assert_eq!(asked.recv_timeout(wait).unwrap(), Asked::Close(7));
         assert!(presses.try_recv().is_err(), "nothing else was pressed");
+    }
+
+    /// The buttons of a notice, keyed by their act; a second of the same act by its place.
+    #[test]
+    fn buttons_are_keyed_by_their_act() {
+        use sioul_core::notice::{Act, Action};
+        let open = |address: &str| Action { label: address.to_string(), act: Act::Open { address: address.to_string(), hint: String::new() } };
+        let actions = [Action { label: "Copy".into(), act: Act::Copy("1".into()) }, open("mid:a@example.org"), open("mid:b@example.org"), Action { label: "Read".into(), act: Act::Verb("read-language:de".into()) }];
+        let keys: Vec<String> = keyed(&actions).into_iter().map(|(key, _, _)| key).collect();
+        assert_eq!(keys, ["copy", "open", "open-2", "do"]);
+    }
+
+    /// The file of what shows is read in its own format alone: another, or
+    /// none, reads as nothing shown.
+    #[test]
+    fn the_file_of_what_shows_reads_its_own_format_only() {
+        let dir = std::env::temp_dir().join(format!("sioul-notices-format-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("notices-shown.json");
+        assert_eq!(read_saved(&path), SavedFile::default());
+        let saved = Saved { id: 41, about: "mid:code@example.org".into(), hint: String::new(), kind: notice::Kind::Own(sioul_core::attention::Kind::Codes), class: notice::Class::Actionable, until: Some(1_794_000_000), at: 1_793_999_000 };
+        write_saved(&path, &SavedFile { format: SAVED_FORMAT, server: ":1.7".into(), bus: "unix:path=/run/bus".into(), shown: vec![saved.clone()] });
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"kind\":\"codes\"") && text.contains("\"class\":\"actionable\"") && !text.contains("482913"), "{text}");
+        assert_eq!(read_saved(&path).shown, vec![saved]);
+        std::fs::write(&path, text.replace("\"format\":1", "\"format\":2")).unwrap();
+        assert_eq!(read_saved(&path), SavedFile::default(), "another format: nothing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What a stand-in server of the notices was asked.
+    #[derive(Debug, Clone, PartialEq)]
+    enum Served {
+        Notify(Notified),
+        Close(u32),
+    }
+
+    /// A Notify, as the stand-in read it, with the number it gave.
+    #[derive(Debug, Clone, PartialEq, Default)]
+    struct Notified {
+        id: u32,
+        replaces: u32,
+        icon: String,
+        title: String,
+        actions: Vec<String>,
+        urgency: u8,
+        transient: bool,
+        resident: bool,
+        image: String,
+        timeout: i32,
+    }
+
+    /// What the stand-in says, on the test's word, to everyone (as Plasma 6.8
+    /// does: its signals are not addressed).
+    enum Saying {
+        Token(u32, String),
+        Press(u32, String),
+        Closed(u32, u32),
+    }
+
+    /// A stand-in notification server of the notices' transport, on the
+    /// test's own bus (dbus-run-session); none where a server is there
+    /// already (the desktop's): nothing here may reach it.
+    struct NoticeServer {
+        asked: std::sync::mpsc::Receiver<Served>,
+        say: std::sync::mpsc::Sender<Saying>,
+        stop: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl NoticeServer {
+        fn start() -> Option<NoticeServer> {
+            use dbus::channel::{MatchingReceiver, Sender as _};
+            use dbus::message::MatchRule;
+            let (told, asked) = std::sync::mpsc::channel::<Served>();
+            let (say, said) = std::sync::mpsc::channel::<Saying>();
+            let (ready, started) = std::sync::mpsc::channel::<bool>();
+            let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let stopped = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                let Some(bus) = stand_in_bus() else {
+                    let _ = ready.send(false);
+                    return;
+                };
+                let mut next = 60u32;
+                bus.start_receive(
+                    MatchRule::new_method_call(),
+                    Box::new(move |call: dbus::Message, bus: &LocalConnection| {
+                        let reply = match call.member().as_deref() {
+                            Some("GetCapabilities") => call.method_return().append1(vec!["actions", "body", "body-markup", "persistence"]),
+                            Some("Notify") => {
+                                let (_, replaces, icon, title, _, actions, hints, timeout): (String, u32, String, String, String, Vec<String>, dbus::arg::PropMap, i32) = call.read_all().unwrap();
+                                let id = if replaces != 0 {
+                                    replaces
+                                } else {
+                                    next += 1;
+                                    next
+                                };
+                                let _ = told.send(Served::Notify(Notified {
+                                    id,
+                                    replaces,
+                                    icon,
+                                    title,
+                                    actions,
+                                    urgency: dbus::arg::prop_cast::<u8>(&hints, "urgency").copied().unwrap_or(9),
+                                    transient: dbus::arg::prop_cast::<bool>(&hints, "transient").copied().unwrap_or(false),
+                                    resident: dbus::arg::prop_cast::<bool>(&hints, "resident").copied().unwrap_or(false),
+                                    image: dbus::arg::prop_cast::<String>(&hints, "image-path").cloned().unwrap_or_default(),
+                                    timeout,
+                                }));
+                                call.method_return().append1(id)
+                            }
+                            Some("CloseNotification") => {
+                                let (id,): (u32,) = call.read_all().unwrap();
+                                let _ = told.send(Served::Close(id));
+                                let _ = bus.send(call.method_return());
+                                let _ = bus.send(dbus::Message::new_signal(SERVER_PATH, SERVER, "NotificationClosed").unwrap().append2(id, 3u32));
+                                return true;
+                            }
+                            _ => return true,
+                        };
+                        let _ = bus.send(reply);
+                        true
+                    }),
+                );
+                let _ = ready.send(true);
+                let until = Instant::now() + Duration::from_secs(60);
+                while !stopped.load(std::sync::atomic::Ordering::Relaxed) && Instant::now() < until {
+                    let _ = bus.process(Duration::from_millis(50));
+                    while let Ok(word) = said.try_recv() {
+                        let signal = match word {
+                            Saying::Token(id, token) => dbus::Message::new_signal(SERVER_PATH, SERVER, "ActivationToken").unwrap().append2(id, token),
+                            Saying::Press(id, key) => dbus::Message::new_signal(SERVER_PATH, SERVER, "ActionInvoked").unwrap().append2(id, key),
+                            Saying::Closed(id, why) => dbus::Message::new_signal(SERVER_PATH, SERVER, "NotificationClosed").unwrap().append2(id, why),
+                        };
+                        let _ = bus.send(signal);
+                    }
+                }
+            });
+            started.recv_timeout(Duration::from_secs(5)).unwrap_or(false).then_some(NoticeServer { asked, say, stop })
+        }
+
+        fn next(&self, wait: Duration) -> Option<Served> {
+            self.asked.recv_timeout(wait).ok()
+        }
+
+        fn notified(&self, wait: Duration) -> Notified {
+            match self.next(wait) {
+                Some(Served::Notify(notified)) => notified,
+                other => panic!("a Notify expected: {other:?}"),
+            }
+        }
+
+        fn say(&self, word: Saying) {
+            let _ = self.say.send(word);
+            std::thread::sleep(Duration::from_millis(150));
+        }
+    }
+
+    impl Drop for NoticeServer {
+        fn drop(&mut self) {
+            self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// The notices' transport against a stand-in server (run under
+    /// dbus-run-session; skipped where a server is there already):
+    /// - something to know at normal urgency, transient, for its minutes,
+    ///   with a click of its own and its button; the next of its kind and
+    ///   thing in its place;
+    /// - a click on it heard with the token given before it; a press said by
+    ///   another program not heard; expired at the server, forgotten;
+    /// - a code at normal urgency until it expires; a click on it opens its
+    ///   message and leaves its buttons alive, after its popup expired too;
+    ///   Copy takes it away;
+    /// - critical only when it pierces a do-not-disturb on now; `settle`
+    ///   takes it away;
+    /// - taken away by Sioul at its lifetime's end, and once its thing is settled;
+    /// - a site's own picture; a teller nobody listens to posts neither
+    ///   buttons nor a click;
+    /// - what shows written, and taken away by the next run, which tells
+    ///   again what is still to do.
+    #[test]
+    fn notices_go_as_their_class_says_and_hear_every_press() {
+        use sioul_core::attention::{Kind as Row, Level, Output, Step};
+        use sioul_core::notice::{Act, Decision, Kind, Moment, Notice, address};
+        let _alone = crate::bus::NOTIFICATION_SERVER.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(server) = NoticeServer::start() else {
+            eprintln!("No bus of the test's own (dbus-run-session), or a notification server on it already: skipped.");
+            return;
+        };
+        let wait = Duration::from_secs(5);
+        let (pressed, presses) = std::sync::mpsc::channel::<Press>();
+        let pressed = Mutex::new(pressed);
+        let listener: Listener = Arc::new(move |press: Press| drop(pressed.lock().map(|p| p.send(press))));
+        let dir = std::env::temp_dir().join(format!("sioul-notices-shown-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let saved = dir.join("notices-shown.json");
+        let teller = Teller::start();
+        teller.listen(Arc::clone(&listener));
+        let now = jiff::Timestamp::now().as_second();
+        assert!(teller.restart(&saved, now).is_empty(), "nothing left by a run before");
+        let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix };
+        let here = Moment { present: true, paused: false, silenced: false, day_ends: now + 36_000 };
+        let shape = |n: &Notice, pierce: bool, moment: Moment| match notice::decide(n, &told(pierce), moment, 5, jiff::Timestamp::now().as_second()) {
+            Decision::Post(shape) => shape,
+            other => panic!("{other:?}"),
+        };
+        let open = |address: &str, hint: &str| Act::Open { address: address.to_string(), hint: hint.to_string() };
+        let quiet = Duration::from_millis(600);
+
+        // Something to know: normal, transient, five minutes; a click of its own, its button.
+        let moved = Notice::new(address::MOVE, Kind::Own(Row::Move), "Time to move", "Stand up").action("Where I stopped…", open(address::MOVE, ""));
+        teller.post(moved.clone(), shape(&moved, false, here), "Open", None);
+        let first = server.notified(wait);
+        assert_eq!((first.replaces, first.urgency, first.transient, first.resident, first.timeout, first.icon.as_str()), (0, 1, true, false, 300_000, "appointment-soon"));
+        assert_eq!(first.actions, ["default", "Open", "open", "Where I stopped…"]);
+        // The next one in its place: one "Time to move" at most.
+        teller.post(moved.clone(), shape(&moved, false, here), "Open", None);
+        let second = server.notified(wait);
+        assert_eq!((second.replaces, second.id), (first.id, first.id));
+        // A click on it, its token first: its thing opened, the token with it.
+        server.say(Saying::Token(second.id, "token-1".into()));
+        server.say(Saying::Press(second.id, "default".into()));
+        assert_eq!(presses.recv_timeout(wait).unwrap(), Press { about: address::MOVE.into(), act: open(address::MOVE, ""), token: Some("token-1".into()) });
+        // Said by another program: not heard.
+        let other = session().unwrap();
+        let _ = dbus::channel::Sender::send(&other, dbus::Message::new_signal(SERVER_PATH, SERVER, "ActionInvoked").unwrap().append2(second.id, "default"));
+        other.channel().flush();
+        assert!(presses.recv_timeout(quiet).is_err(), "a forged press");
+        // Expired at the server: something to know is forgotten.
+        server.say(Saying::Closed(second.id, 1));
+        server.say(Saying::Press(second.id, "default".into()));
+        assert!(presses.recv_timeout(quiet).is_err(), "expired, forgotten");
+
+        // A code: until it expires; a click on it opens its message and leaves its buttons alive.
+        let mid = "mid:code@example.org";
+        let code = Notice::new(mid, Kind::Own(Row::Codes), "Code from example.org", "482913").hint("/mail/cur/1").until(Some(now + 1_800)).action("Copy the code", Act::Copy("482913".into())).action("Open the message", open(mid, "/mail/cur/1"));
+        teller.post(code.clone(), shape(&code, true, here), "Open", None);
+        let shown = server.notified(wait);
+        // Resident: a press leaves it and its other buttons where the server honours the hint (Plasma, GNOME).
+        assert_eq!((shown.urgency, shown.transient, shown.resident, shown.icon.as_str()), (1, false, true, "dialog-password"));
+        assert!((1_790_000..=1_800_000).contains(&shown.timeout), "{}", shown.timeout);
+        assert_eq!(shown.actions, ["default", "Open", "copy", "Copy the code", "open", "Open the message"]);
+        server.say(Saying::Press(shown.id, "default".into()));
+        assert_eq!(presses.recv_timeout(wait).unwrap().act, open(mid, "/mail/cur/1"));
+        // Its popup expired at the server: still heard, its buttons alive.
+        server.say(Saying::Closed(shown.id, 1));
+        server.say(Saying::Press(shown.id, "open".into()));
+        assert_eq!(presses.recv_timeout(wait).unwrap(), Press { about: mid.into(), act: open(mid, "/mail/cur/1"), token: None });
+        server.say(Saying::Press(shown.id, "copy".into()));
+        assert_eq!(presses.recv_timeout(wait).unwrap().act, Act::Copy("482913".into()));
+        assert_eq!(server.next(wait), Some(Served::Close(shown.id)), "copied: taken away");
+
+        // Critical only when it pierces a do-not-disturb on now; settled, taken away.
+        teller.post(code.clone(), shape(&code, true, Moment { silenced: true, ..here }), "Open", None);
+        let piercing = server.notified(wait);
+        assert_eq!(piercing.urgency, 2);
+        teller.settle(mid);
+        assert_eq!(server.next(wait), Some(Served::Close(piercing.id)));
+
+        // At its lifetime's end, taken away by Sioul.
+        let mut short = shape(&moved, false, here);
+        short.close_at = Some(jiff::Timestamp::now().as_second() + 1);
+        teller.post(moved.clone(), short, "Open", None);
+        let ending = server.notified(wait);
+        assert_eq!(server.next(Duration::from_secs(4)), Some(Served::Close(ending.id)));
+
+        // Once its thing is settled, looked at every `LOOK`.
+        let settled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let looked = Arc::clone(&settled);
+        let mail = Notice::new(address::MAILBOX, Kind::Mail, "Two e-mails", "Noa, The lease · Ana, Lunch");
+        teller.post(mail.clone(), shape(&mail, false, here), "Open", Some(Box::new(move || looked.load(std::sync::atomic::Ordering::SeqCst))));
+        let told_mail = server.notified(wait);
+        assert!(server.next(LOOK * 2).is_none(), "nothing settled: left alone");
+        settled.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(server.next(LOOK * 3), Some(Served::Close(told_mail.id)));
+
+        // A site's own picture.
+        let site = Notice::new(address::site("chat", "room-1"), Kind::Own(Row::SitesLive), "Chat · Camille", "See you").icon("/cache/favicons/chat.png");
+        teller.post(site.clone(), shape(&site, false, here), "Open", None);
+        let pictured = server.notified(wait);
+        assert_eq!((pictured.icon.as_str(), pictured.image.as_str()), ("internet-web-browser", "file:///cache/favicons/chat.png"));
+        // A teller nobody listens to: neither buttons nor a click of its own.
+        let deaf = Teller::start();
+        deaf.post(code.clone(), shape(&code, true, here), "Open", None);
+        assert!(deaf.flush(wait));
+        assert!(server.notified(wait).actions.is_empty());
+
+        // What shows is kept; the next run takes it away and gives back what is still to do.
+        teller.post(code.clone(), shape(&code, true, here), "Open", None);
+        let left_code = server.notified(wait);
+        assert!(teller.flush(wait));
+        let text = std::fs::read_to_string(&saved).unwrap();
+        assert!(!text.contains("482913") && !text.contains("Code from"), "neither the code nor the words: {text}");
+        // The run ends: its thread and its connection go with it.
+        drop(teller);
+        std::thread::sleep(Duration::from_secs(1));
+        let next_run = Teller::start();
+        next_run.listen(listener);
+        let back = next_run.restart(&saved, jiff::Timestamp::now().as_second());
+        assert_eq!(back.iter().map(|s| (s.about.as_str(), s.hint.as_str(), s.until)).collect::<Vec<_>>(), [(mid, "/mail/cur/1", Some(now + 1_800))], "the code, still to do");
+        let mut closed = Vec::new();
+        while let Some(Served::Close(id)) = server.next(Duration::from_millis(500)) {
+            closed.push(id);
+        }
+        closed.sort_unstable();
+        let mut expected = vec![pictured.id, left_code.id];
+        expected.sort_unstable();
+        assert_eq!(closed, expected, "the previous run's notices taken away");
+        assert!(std::fs::read_to_string(&saved).unwrap().contains("\"shown\":[]"), "forgotten");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The notification server started again (plasmashell replaced, or
+    /// crashed): what shows is posted again on the new one, anew, its old
+    /// numbers never closed nor replaced there (the new server may have given
+    /// them to another program); a notice posted while no server owns the
+    /// name is kept, and posted once one comes. Run under dbus-run-session;
+    /// skipped where a server is there already.
+    #[test]
+    fn what_shows_is_posted_again_on_a_server_started_anew() {
+        use sioul_core::attention::{Kind as Row, Level, Output, Step};
+        use sioul_core::notice::{Decision, Kind, Moment, Notice, address};
+        let _alone = crate::bus::NOTIFICATION_SERVER.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(first) = NoticeServer::start() else {
+            eprintln!("No bus of the test's own (dbus-run-session), or a notification server on it already: skipped.");
+            return;
+        };
+        let wait = Duration::from_secs(5);
+        let now = jiff::Timestamp::now().as_second();
+        let teller = Teller::start();
+        teller.listen(Arc::new(|_: Press| {}));
+        let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix };
+        let here = Moment { present: true, paused: false, silenced: false, day_ends: now + 36_000 };
+        let post = |n: Notice, pierce: bool| match notice::decide(&n, &told(pierce), here, 5, now) {
+            Decision::Post(shape) => teller.post(n, shape, "Open", None),
+            other => panic!("{other:?}"),
+        };
+        post(Notice::new(address::MOVE, Kind::Own(Row::Move), "Time to move", "Stand up"), false);
+        assert_eq!(first.notified(wait).title, "Time to move");
+        // The server goes, its name released.
+        drop(first);
+        std::thread::sleep(Duration::from_secs(1));
+        post(Notice::new("mid:code@example.org", Kind::Own(Row::Codes), "Code from example.org", "482913").until(Some(now + 600)), true);
+        assert!(teller.flush(wait));
+        let second = NoticeServer::start().expect("the name free again");
+        let mut again = vec![second.notified(wait), second.notified(wait)];
+        again.sort_by(|a, b| a.title.cmp(&b.title));
+        assert_eq!(again.iter().map(|n| (n.title.as_str(), n.replaces)).collect::<Vec<_>>(), [("Code from example.org", 0), ("Time to move", 0)]);
+        assert!(second.next(Duration::from_millis(800)).is_none(), "no old number closed nor replaced there");
+        // A file left by a run on another server, or another bus: its numbers are closed nowhere.
+        let dir = std::env::temp_dir().join(format!("sioul-notices-elsewhere-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("notices-shown.json");
+        let left = |server: &str, bus: &str| SavedFile { format: SAVED_FORMAT, server: server.into(), bus: bus.into(), shown: vec![Saved { id: 3, about: "mid:code@example.org".into(), hint: String::new(), kind: Kind::Own(Row::Codes), class: notice::Class::Actionable, until: None, at: now }] };
+        let id = bus_id_of_session();
+        for (server, bus) in [(":1.4242", id.as_str()), ("", id.as_str())] {
+            write_saved(&path, &left(server, bus));
+            assert_eq!(Teller::start().restart(&path, now).len(), 1, "what is to do given back all the same");
+            assert!(second.next(Duration::from_millis(500)).is_none(), "nothing closed for a run on {server:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The test bus's own id, as the teller keeps it beside what shows.
+    fn bus_id_of_session() -> String {
+        session().ok().and_then(|bus| bus.with_proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", ASKED).method_call("org.freedesktop.DBus", "GetId", ()).ok()).map(|(id,): (String,)| id).unwrap_or_default()
     }
 }

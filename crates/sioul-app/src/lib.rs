@@ -205,6 +205,8 @@ mod share;
 mod sites;
 mod spam;
 mod steps;
+// tell: the window's notices, one call about one thing (docs/notifications.md).
+mod tell;
 mod timenote;
 mod topics;
 mod wake;
