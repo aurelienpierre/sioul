@@ -269,9 +269,9 @@ struct Break {
     pan: f32,
 }
 
-/// A wave breaking, added to both ears from where it breaks: a quick rise,
-/// a crash bright at its peak that darkens as it falls, then the wash running
-/// up and back, a soft fizz of foam.
+/// A wave on a gentle slope, added to both ears from where it comes in: it
+/// swells slowly, rounds over without a crash, never bright, and slides back
+/// as slowly, the wash running up and back in a soft, dark fizz of foam.
 fn add_break(left: &mut [f32], right: &mut [f32], wave: &Break, seed: u64) {
     let rate = NATURE_RATE as f32;
     let mut random = Random(seed);
@@ -289,16 +289,23 @@ fn add_break(left: &mut [f32], right: &mut [f32], wave: &Break, seed: u64) {
     for (n, sample) in sound.iter_mut().enumerate() {
         let (white, other) = (random.next(), random.next());
         let t = n as f32 / rate;
-        // A rounded rise, then the fall: bright in the middle, narrow at both ends.
-        let crash = if t < wave.rise { (std::f32::consts::FRAC_PI_2 * t / wave.rise).sin().powi(4) } else { (-(t - wave.rise) / wave.crash).exp() };
-        let washing = if t < wave.rise { 0.0 } else { let after = t - wave.rise; (1.0 - (-after / 0.8).exp()) * (-after / wave.wash).exp() };
-        let cutoff = 260.0 + 1100.0 * crash;
+        // A gentle slope: the wave swells slowly from nothing, rounds over at its
+        // top without a corner, and slides back down as slowly.
+        let crash = if t < wave.rise {
+            let x = t / wave.rise;
+            x * x * (3.0 - 2.0 * x)
+        } else {
+            let x = (t - wave.rise) / wave.crash;
+            (1.0 + x) * (-x).exp()
+        };
+        let washing = if t < wave.rise * 0.6 { 0.0 } else { let after = t - wave.rise * 0.6; (1.0 - (-after / 1.2).exp()) * (-after / wave.wash).exp() };
+        let cutoff = 220.0 + 650.0 * crash;
         let body = floor.run(darker.run(dark.run(white, cutoff), cutoff * 1.6), 170.0);
         // The foam each ear hears is partly its own: it fizzes all along the beach.
-        let fizz = foam_top2.run(foam_top.run(foam_floor.run(white, 500.0), 2400.0), 3000.0);
-        let own = own_top2.run(own_top.run(own_floor.run(other, 500.0), 2400.0), 3000.0);
+        let fizz = foam_top2.run(foam_top.run(foam_floor.run(white, 400.0), 1600.0), 2200.0);
+        let own = own_top2.run(own_top.run(own_floor.run(other, 400.0), 1600.0), 2200.0);
         let body = wave.strength * body * crash * 1.6;
-        let foam = wave.strength * washing * 0.9;
+        let foam = wave.strength * washing * 0.5;
         *sample = (body * to_left + foam * (fizz * 0.6 * to_left + own * 0.5), body * to_right + foam * (fizz * 0.6 * to_right - own * 0.5));
     }
     for (n, (l, r)) in sound.iter().enumerate() {
@@ -330,8 +337,8 @@ fn surf(count: usize, seed: u64) -> Vec<f32> {
         .collect()
 }
 
-/// Waves on a beach (after five CC0 recordings, docs/sounds.md): a wave
-/// rolling in every 4.5 to 9 seconds, small and large, each somewhere along
+/// Waves on a gently sloping beach (after five CC0 recordings,
+/// docs/sounds.md): a wave swelling in every 6 to 11 seconds, small and large, each somewhere along
 /// the beach, over the surf of the rest of it, which both ears share in part.
 fn waves(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
     let rate = NATURE_RATE as f32;
@@ -342,10 +349,10 @@ fn waves(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
     let mut seed = 100;
     while at < count as f32 / rate {
         let strength = plan.between(0.45, 1.0);
-        let wave = Break { at, rise: plan.between(0.8, 1.6), crash: plan.between(1.0, 2.0), wash: plan.between(1.8, 3.2), strength, pan: plan.between(-0.6, 0.6) };
+        let wave = Break { at, rise: plan.between(1.8, 3.2), crash: plan.between(0.9, 1.5), wash: plan.between(2.5, 4.0), strength, pan: plan.between(-0.6, 0.6) };
         add_break(&mut left, &mut right, &wave, seed);
         seed += 1;
-        at += plan.between(4.5, 9.0);
+        at += plan.between(6.0, 11.0);
     }
     (left, right)
 }
