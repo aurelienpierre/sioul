@@ -70,13 +70,15 @@ fn look(qt: &QtThread) {
     use sioul_core::notice::{Act, Kind, Notice, address};
     let notice = Notice::new(address::settings("words.languages"), Kind::Minor, crate::backend::say("languages-offer-title", &pairs), crate::backend::say("languages-offer-body", &pairs))
         .action(crate::backend::say("languages-offer-read", &pairs), Act::Verb(format!("read-language:{code}")));
-    // Offered once on this device, taken or not; not posted (nobody at the
-    // computer, a pause, do-not-disturb), offered at the next reading.
-    if crate::tell::tell(notice)
-        && let Err(e) = languages::mark_offered(&path, &code)
-    {
-        eprintln!("Sioul: the languages of your mail: {e}");
-    }
+    // Offered once on this device, taken or not, marked once posted: one that
+    // waits (nobody at the computer, a pause, do-not-disturb) is offered then.
+    let claim: crate::tell::Claim = Box::new(move || {
+        if let Err(e) = languages::mark_offered(&path, &code) {
+            eprintln!("Sioul: the languages of your mail: {e}");
+        }
+        true
+    });
+    crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(claim), true);
 }
 
 /// "Read German too", pressed on the offer's notice (`tell`): that

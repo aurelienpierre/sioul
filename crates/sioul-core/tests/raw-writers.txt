@@ -746,6 +746,7 @@ sioul-sync/src/notify.rs	write_saved	1	sioul_core::filelock::replace(path, text.
 sioul-sync/src/notify.rs	the_file_of_what_shows_reads_its_own_format_only	2	std::fs::remove_dir_all(&dir)
 sioul-sync/src/notify.rs	the_file_of_what_shows_reads_its_own_format_only	1	std::fs::write(&path, text.replace("\"format\":1", "\"format\":2"))
 sioul-sync/src/notify.rs	notices_go_as_their_class_says_and_hear_every_press	2	std::fs::remove_dir_all(&dir)
+sioul-sync/src/notify.rs	what_shows_is_posted_again_on_a_server_started_anew	2	std::fs::remove_dir_all(&dir)
 
 # sioul-sync/src/ocr.rs: a scan's text read: no item.
 sioul-sync/src/ocr.rs	text_of	2	std::fs::remove_dir_all(work)

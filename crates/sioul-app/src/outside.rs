@@ -354,7 +354,7 @@ pub(crate) fn to_older(calendars: &[std::path::PathBuf]) {
     }
     let names: Vec<String> = calendars.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).collect();
     let notice = sioul_core::notice::Notice::new("", sioul_core::notice::Kind::Minor, "Sioul", say("calendar-file-older", &[("files", names.join(", "))]));
-    if crate::tell::tell(notice) {
+    if crate::tell::tell(notice) == crate::tell::Fate::Posted {
         sioul_sync::notify::teller().flush(std::time::Duration::from_secs(5));
     }
 }

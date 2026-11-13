@@ -38,7 +38,9 @@ pub(crate) fn tick() {
             all.retain(|r| of_events(r.kind));
         }
         let events: Vec<reminders::Reminder> = if android { all.iter().filter(|r| of_events(r.kind)).cloned().collect() } else { Vec::new() };
-        let mut told = reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), &holds);
+        // On a computer marked told only once posted (`told_now`): one that cannot come now comes again.
+        let dir = reminders::told_dir();
+        let mut told = if android { reminders::to_tell(all, &dir, now.timestamp().as_second(), &holds) } else { reminders::due(all, &dir, now.timestamp().as_second(), &holds) };
         // Waits over in the same minute (the start of work after a weekend):
         // one notice for them all, as new mail comes, never one each (the
         // check of ef8c0ca, low 10).
@@ -52,7 +54,7 @@ pub(crate) fn tick() {
                 crate::eventalarms::show(&reminders::Reminder { title, body: String::new(), ..waits[0].clone() });
             } else {
                 // About the first of them: a click opens its task.
-                told_now(reminders::Reminder { title, body: String::new(), ..waits[0].clone() });
+                told_now(reminders::Reminder { title, body: String::new(), ..waits[0].clone() }, waits.iter().map(|r| r.key.clone()).collect());
             }
         }
         for reminder in told {
@@ -60,7 +62,8 @@ pub(crate) fn tick() {
                 crate::eventalarms::show(&reminder);
                 continue;
             }
-            told_now(reminder);
+            let key = reminder.key.clone();
+            told_now(reminder, vec![key]);
         }
         // On Android, the coming events' ones (those just told left out) given
         // to its alarm clock when they changed: they come with Sioul away too.
@@ -82,9 +85,24 @@ fn of_events(kind: Kind) -> bool {
 /// to know (the time to leave until its event starts); an event's own alarm
 /// is to do, and passes a pause or a do-not-disturb as its row says. Its
 /// "Open" and a click on it open its thing.
-fn told_now(reminder: reminders::Reminder) {
+///
+/// Marked told (`keys`: its own, or each of the waits it gathers) only as it
+/// is posted, so that one that cannot come now (nobody at the computer, a
+/// pause, a do-not-disturb) is offered again at the next minute; once no
+/// longer worth telling (the end of its day, its event begun), marked so
+/// without a word.
+fn told_now(reminder: reminders::Reminder, keys: Vec<String>) {
     let row = reminders::row_of(reminder.kind);
-    crate::tell::tell_as(reminder.notice(&tr().text("reminder-open", None)), sioul_core::notice::told(Some(row)), None);
+    let dir = reminders::told_dir();
+    let claimed: crate::tell::Claim = {
+        let (dir, keys) = (dir.clone(), keys.clone());
+        Box::new(move || keys.iter().fold(false, |any, key| reminders::claim(&dir, key) | any))
+    };
+    if crate::tell::tell_with(reminder.notice(&tr().text("reminder-open", None)), sioul_core::notice::told(Some(row)), None, Some(claimed), false) == crate::tell::Fate::Over {
+        for key in &keys {
+            reminders::claim(&dir, key);
+        }
+    }
 }
 
 /// An event's alarms a previous run showed (`tell::start`), by their

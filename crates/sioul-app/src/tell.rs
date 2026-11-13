@@ -12,6 +12,13 @@
 //!   Sioul follows: `everywhere::now`).
 //! - **The decision** (`sioul_core::notice::decide`), with the lifetime set
 //!   for informative notices (`[notices]`, Settings ▸ What reaches you).
+//! - **What waits**: a notice that cannot come now (nobody at the computer,
+//!   a pause, a do-not-disturb) is never lost nor marked told: kept here, and
+//!   told again at the window's minute (`again`) while it is still worth
+//!   telling (`Notice::relevance`, the first answer of which is kept by its
+//!   key: a reminder offered again each minute keeps the end it had); its
+//!   source's mark (`Claim`: a reminder's claim, the end of work's day told,
+//!   the sites' news named) made only once it is posted.
 //! - **The posting**: `sioul_sync::notify::Teller`, one thread and one
 //!   connection for every notice of the process; on Windows, a notice with
 //!   something to open goes through Sioul's icon in the tray instead, whose
@@ -30,7 +37,7 @@
 use crate::backend::{QtThread, load_config, tr};
 use cxx_qt_lib::QString;
 use sioul_core::attention::{Event, Kind as Row, Output};
-use sioul_core::notice::{self, Act, Decision, Moment, Notice};
+use sioul_core::notice::{self, Act, Decision, Dropped, Moment, Notice};
 use std::sync::{Arc, Mutex, PoisonError};
 
 /// Whether a notice's thing is settled now, looked at while it shows.
@@ -81,13 +88,48 @@ pub(crate) fn own(kind: Row) -> Output {
 
 /// The moment, as a notice sees it on this computer.
 pub(crate) fn moment() -> Moment {
-    Moment { present: crate::devices::someone_here(), paused: crate::hours::mode_now().paused(), silenced: crate::everywhere::now().on() }
+    let now = sioul_core::zone::now();
+    Moment { present: crate::devices::someone_here(), paused: crate::hours::mode_now().paused(), silenced: crate::everywhere::now().on(), day_ends: Moment::end_of_day(&now) }
 }
+
+/// What became of a notice told (`tell_with`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Fate {
+    /// Posted (to the teller, or to the tray's icon), its source's mark made.
+    Posted,
+    /// Not now: kept, told again once someone is back or the do-not-disturb
+    /// ends, while still worth telling; nothing marked.
+    Waits,
+    /// No longer worth telling (its thing ended, or its relevance): its
+    /// source may mark it handled, so that it does not offer it again.
+    Over,
+    /// Not told: the model holds it, its thing is settled already, or it was
+    /// told elsewhere meanwhile (its claim refused).
+    Dropped,
+}
+
+/// The mark a source makes just before its notice is posted, now or once it
+/// stopped waiting (a reminder's claim, the end of work's day told, the
+/// sites' news named): false when it was told elsewhere meanwhile, and then
+/// it is not posted.
+pub(crate) type Claim = Box<dyn FnOnce() -> bool + Send>;
+
+/// A notice waiting to be told.
+struct Waiting {
+    notice: Notice,
+    out: Output,
+    settled: Option<Settled>,
+    claim: Option<Claim>,
+}
+
+/// The notices waiting (`Fate::Waits`), one per key, and the end of
+/// relevance each key had when it first waited.
+static WAITING: Mutex<Vec<Waiting>> = Mutex::new(Vec::new());
+static RELEVANT: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
 
 /// Tells `notice` as the matrix says now: of its kind's row for one of
 /// Sioul's own; as its source decided for new mail and the minor notices.
-/// Whether it was posted.
-pub(crate) fn tell(notice: Notice) -> bool {
+pub(crate) fn tell(notice: Notice) -> Fate {
     let out = match notice.kind {
         notice::Kind::Own(kind) => own(kind),
         notice::Kind::Mail | notice::Kind::Minor => notice::told(None),
@@ -95,30 +137,131 @@ pub(crate) fn tell(notice: Notice) -> bool {
     tell_as(notice, out, None)
 }
 
-/// Tells `notice` as `out` says (`sioul_core::notice::decide`), taken away
+/// Tells `notice` as `out` says, kept while it cannot come now; taken away
 /// once `settled` says its thing is settled (not posted when it is already).
-/// Whether it was posted. Nothing on a phone.
-pub(crate) fn tell_as(notice: Notice, out: Output, mut settled: Option<Settled>) -> bool {
+pub(crate) fn tell_as(notice: Notice, out: Output, settled: Option<Settled>) -> Fate {
+    tell_with(notice, out, settled, None, true)
+}
+
+/// Tells `notice` as `out` says (`sioul_core::notice::decide`): posted now,
+/// `claim` made just before; or, when it cannot come now, kept here and told
+/// again at the window's minute while it is worth telling (`keep`; without
+/// it, its source offers it again itself, as the reminders do each minute,
+/// the end of its relevance kept by its key all the same). Nothing on a phone.
+pub(crate) fn tell_with(mut notice: Notice, out: Output, mut settled: Option<Settled>, claim: Option<Claim>, keep: bool) -> Fate {
     if cfg!(target_os = "android") {
-        return false;
+        return Fate::Dropped;
     }
+    let key = notice.key();
     if settled.as_mut().is_some_and(|look| look()) {
-        return false;
+        forget(&key);
+        return Fate::Dropped;
     }
-    let shape = match notice::decide(&notice, &out, moment(), load_config().notices.minutes(), jiff::Timestamp::now().as_second()) {
-        Decision::Post(shape) => shape,
-        Decision::Drop(_) => return false,
-    };
+    let now = jiff::Timestamp::now().as_second();
+    if notice.relevant.is_none() {
+        notice.relevant = RELEVANT.lock().unwrap_or_else(PoisonError::into_inner).iter().find(|(k, _)| *k == key).map(|(_, at)| *at);
+    }
+    match notice::decide(&notice, &out, moment(), load_config().notices.minutes(), now) {
+        Decision::Post(shape) => {
+            forget(&key);
+            if let Some(claim) = claim
+                && !claim()
+            {
+                return Fate::Dropped;
+            }
+            post(notice, shape, settled);
+            Fate::Posted
+        }
+        Decision::Wait(relevant) => {
+            {
+                let mut first = RELEVANT.lock().unwrap_or_else(PoisonError::into_inner);
+                first.retain(|(_, at)| *at > now);
+                if !first.iter().any(|(k, _)| *k == key) {
+                    first.push((key.clone(), relevant));
+                }
+            }
+            if keep {
+                let mut waiting = WAITING.lock().unwrap_or_else(PoisonError::into_inner);
+                waiting.retain(|w| w.notice.key() != key);
+                waiting.push(Waiting { notice, out, settled, claim });
+            }
+            Fate::Waits
+        }
+        Decision::Drop(Dropped::NotTold | Dropped::NotOurs) => {
+            forget(&key);
+            Fate::Dropped
+        }
+        Decision::Drop(_) => {
+            forget(&key);
+            Fate::Over
+        }
+    }
+}
+
+/// A key no longer waiting.
+fn forget(key: &str) {
+    WAITING.lock().unwrap_or_else(PoisonError::into_inner).retain(|w| w.notice.key() != key);
+    RELEVANT.lock().unwrap_or_else(PoisonError::into_inner).retain(|(k, _)| k != key);
+}
+
+/// At the window's minute: what waits told again, as the moment now lets it
+/// (someone back, the do-not-disturb over), or kept, or gone once no longer
+/// worth telling. Off the window's thread.
+pub(crate) fn again() {
+    if cfg!(target_os = "android") {
+        return;
+    }
+    let waiting = std::mem::take(&mut *WAITING.lock().unwrap_or_else(PoisonError::into_inner));
+    if waiting.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        for w in waiting {
+            tell_with(w.notice, w.out, w.settled, w.claim, true);
+        }
+    });
+}
+
+/// The notices handed to the tray's icon on Windows, their shape kept: where
+/// the tray shows no message, the window asks them posted as they were
+/// decided (`plain`), never decided again.
+static TRAYED: Mutex<Vec<(Notice, notice::Shape)>> = Mutex::new(Vec::new());
+
+/// A notice decided, posted: on Windows through Sioul's icon in the tray when
+/// it has a thing to open (a click on its message opens it), else through
+/// the teller.
+fn post(notice: Notice, shape: notice::Shape, settled: Option<Settled>) {
     if cfg!(windows)
         && !notice.about.is_empty()
         && let Some(qt) = window()
     {
-        let (title, body, address, hint) = (notice.title, notice.body, notice.about, notice.hint);
+        let (title, body, address, hint) = (notice.title.clone(), notice.body.clone(), notice.about.clone(), notice.hint.clone());
+        {
+            let mut trayed = TRAYED.lock().unwrap_or_else(PoisonError::into_inner);
+            trayed.push((notice, shape));
+            let excess = trayed.len().saturating_sub(16);
+            trayed.drain(..excess);
+        }
         let _ = qt.queue(move |mut sioul| sioul.as_mut().tray_notice(QString::from(&title), QString::from(&body), QString::from(&address), QString::from(&hint)));
-        return true;
+        return;
     }
     sioul_sync::notify::teller().post(notice, shape, &tr().text("reminder-open", None), settled);
-    true
+}
+
+/// The tray shows no message (Windows): the notice it was given with these
+/// words posted through the teller as it was decided; words of none, a minor
+/// notice of their own, about nothing.
+pub(crate) fn plain(title: &str, body: &str) {
+    let kept = {
+        let mut trayed = TRAYED.lock().unwrap_or_else(PoisonError::into_inner);
+        trayed.iter().rposition(|(n, _)| n.title == title && n.body == body).map(|at| trayed.remove(at))
+    };
+    match kept {
+        Some((notice, shape)) => sioul_sync::notify::teller().post(notice, shape, &tr().text("reminder-open", None), None),
+        None => {
+            tell(Notice::new("", notice::Kind::Minor, title, body));
+        }
+    }
 }
 
 /// Every notice about `about` taken away: its thing is settled (read, done,
@@ -127,6 +270,7 @@ pub(crate) fn settle(about: &str) {
     if cfg!(target_os = "android") {
         return;
     }
+    WAITING.lock().unwrap_or_else(PoisonError::into_inner).retain(|w| w.notice.about != about);
     sioul_sync::notify::teller().settle(about);
 }
 

@@ -550,7 +550,11 @@ SioulWindow {
         // thing (tell.rs). Without a tray that shows messages, the system's
         // own notice, its words alone.
         function onTrayNotice(title, body, address, hint) {
-            window.noticed = { address: address, hint: hint, until: Date.now() + window.noticeKept }
+            // A click on a message says nothing of which one it was: with
+            // another told in the last ten minutes, a click opens neither,
+            // never the wrong thing (the window still comes forward).
+            const earlier = window.noticed !== null && Date.now() < window.noticed.at + 10 * 60 * 1000 && window.noticed.address !== address
+            window.noticed = { address: earlier ? "" : address, hint: earlier ? "" : hint, at: Date.now(), until: Date.now() + window.noticeKept }
             const tray = trayLoader.item
             if (tray !== null && tray.available && tray.supportsMessages)
                 tray.showMessage(title, body)

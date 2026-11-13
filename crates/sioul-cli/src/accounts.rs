@@ -630,7 +630,7 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 let told = sioul_core::notice::told(Some(Kind::Codes));
                 for code in view::codes(&arrived, &s.tr) {
                     let notice = code.notice("", "");
-                    if let sioul_core::notice::Decision::Post(shape) = sioul_core::notice::decide(&notice, &told, sioul_core::notice::moment_from_files(&config, &now), config.notices.minutes(), stamp) {
+                    if let sioul_core::notice::Decision::Post(shape) = sioul_core::notice::decide(&notice, &told, sioul_core::notice::moment_from_files(&config, &now, crate::remind::present()), config.notices.minutes(), stamp) {
                         notify::teller().post(notice, shape, "", None);
                     }
                 }

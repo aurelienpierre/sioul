@@ -294,7 +294,7 @@ pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
         return;
     }
     let path = Notices::default_path();
-    let mut notices = Notices::load(&path);
+    let notices = Notices::load(&path);
     let mode = crate::backend::mode_now();
     let named: Vec<(String, String)> = sites::sites(&config).iter().filter(|s| !s.muted && sioul_core::areas::in_view(s.area, mode.time, mode.week)).map(|s| (s.id.clone(), s.name.clone())).collect();
     // What is new since the last time it rang: each notification named once (the Porch keeps them all).
@@ -308,14 +308,20 @@ pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     if lines.is_empty() {
         return;
     }
-    let ids: Vec<&str> = named.iter().map(|(id, _)| id.as_str()).collect();
-    notices.mark_told(&ids);
-    if let Err(e) = notices.save(&path) {
-        crate::backend::tell(qt, shared, e);
-    }
+    let _ = (qt, shared);
+    // Named once posted: news not told (nobody at the computer, a do-not-disturb) waits for the next gathering.
+    let ids: Vec<String> = named.into_iter().map(|(id, _)| id).collect();
+    let claim: crate::tell::Claim = Box::new(move || {
+        let mut notices = Notices::load(&path);
+        notices.mark_told(&ids.iter().map(String::as_str).collect::<Vec<_>>());
+        if let Err(e) = notices.save(&path) {
+            eprintln!("{e}");
+        }
+        true
+    });
     use sioul_core::notice::{Act, Kind, Notice, address};
     let notice = Notice::new(address::PORCH, Kind::Own(sioul_core::attention::Kind::Sites), tr().text("sites-gathered", None), lines.join(" · ")).action(tr().text("sites-gathered-open", None), Act::Open { address: address::PORCH.to_string(), hint: String::new() });
-    crate::tell::tell_as(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Sites)), None);
+    crate::tell::tell_with(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Sites)), None, Some(claim), true);
 }
 
 /// The sites, for their list. In quiet time, work sites keep their news to themselves.
@@ -337,25 +343,45 @@ pub(crate) fn list() -> String {
 /// does not withdraw its own first (a ringing call ends within a minute or two).
 const CALL_RINGS: i64 = 3 * 60;
 
-/// A site's notification (`key`: the web notice's own, its tag): told at
-/// once when the site is in real time (or you asked for real time
-/// everywhere), else kept for the Porch. Told (docs/notifications.md), it is
-/// about the site and that key (`sioul:site/<id>#<key>`): the same key takes
-/// the last one's place (a conversation's next message); a click opens the
-/// site, then the web notice's own click (the site opens the conversation);
-/// the site withdrawing it takes it away (`site_notice_closed`). A chat's
-/// message is to know; a call is to do, until the site withdraws it or a
-/// few minutes pass (`CALL_RINGS`). With the site's own icon. In quiet
+/// The calls in a site told, by their notice's address: a site withdrawing
+/// one (the call answered or over) takes Sioul's away (`withdrawn`).
+static CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// A site withdrew a notification: Sioul's notice of it goes when it was a
+/// call (answered, or over). A message's stays its minutes: some sites close
+/// their own after a few seconds, which would take Sioul's away before it
+/// could be read.
+pub(crate) fn withdrawn(id: &str, key: &str) {
+    let about = sioul_core::notice::address::site(id, key);
+    let mut calls = CALLS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(at) = calls.iter().position(|a| *a == about) {
+        calls.remove(at);
+        crate::tell::settle(&about);
+    }
+}
+
+/// A site's notification (`key`: the web notice's own, its tag; "" for one
+/// without, so that the next takes its place): kept for the Porch and the
+/// next gathering whether told or not, and told at once when the site is in
+/// real time (or you asked for real time everywhere) or it is a call.
+/// Told (docs/notifications.md), it is about the site and that key
+/// (`sioul:site/<id>#<key>`): the same key takes the last one's place (a
+/// conversation's next message); a click opens the site, then the web
+/// notice's own click (the site opens the conversation). A chat's message is
+/// to know; a call is to do, until the site withdraws it (`withdrawn`) or a
+/// few minutes pass (`CALL_RINGS`). With the site's own icon. Whether a
+/// desktop notice was posted or waits, for the Sites page to keep the web
+/// notice it would click. In quiet
 /// time, a work site's waits for work to come back; at the times the matrix
 /// of what reaches you holds them (as usual: sleep, a pause, Free time,
 /// do-not-disturb, and but for a call a slot of time for you), every site's.
 /// A chat site's that names someone your cards know follows their Messages
 /// row too, which may only hold more (docs/attention.md, Q13): a blocked
 /// person's is not even kept.
-pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, key: &str, title: &str, text: &str) {
+pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, key: &str, title: &str, text: &str) -> bool {
     use sioul_core::attention::{Event, Level, Source};
     let config = load_config();
-    let Some(site) = sites::sites(&config).into_iter().find(|s| s.id == id) else { return };
+    let Some(site) = sites::sites(&config).into_iter().find(|s| s.id == id) else { return false };
     let everywhere = shared.realtime.load(std::sync::atomic::Ordering::Relaxed);
     // A call waits for nobody: shown at once, unless the site is silenced or
     // resting, or the matrix holds calls in sites now.
@@ -367,26 +393,36 @@ pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, key: &str,
     now.holds.chats = chat && crate::health::chats_covered();
     let out = crate::hours::attention().decide(&Event::of(Source::Site { call, live: site.realtime, named }).for_area(Some(site.area)), &now);
     if out.level == Level::Never {
-        return;
+        return false;
     }
-    // A phone makes no notification of its own for a site yet (docs/android.md,
-    // "Notifications"): kept for the Porch, never told to the status line.
-    if (site.realtime || everywhere || call) && out.told && !cfg!(target_os = "android") {
-        use sioul_core::notice::{Kind, Notice, address};
-        let kind = if call { sioul_core::attention::Kind::SiteCalls } else { sioul_core::attention::Kind::SitesLive };
-        let icon = sioul_sync::favicon::cached(&favicons(), &sites::host_of(&site.url)).map(|p| p.display().to_string()).unwrap_or_default();
-        let until = call.then(|| jiff::Timestamp::now().as_second() + CALL_RINGS);
-        let notice = Notice::new(address::site(&site.id, key), Kind::Own(kind), format!("{} · {}", site.name, title), text).icon(icon).until(until);
-        crate::tell::tell_as(notice, out, None);
-        return;
-    }
+    // Kept for the Porch and the next gathering, told or not.
     let path = Notices::default_path();
     let mut notices = Notices::load(&path);
-    notices.add(Notice { site: site.id, title: title.trim().to_string(), text: text.trim().chars().take(300).collect(), at: jiff::Timestamp::now().as_second(), told: false });
+    notices.add(Notice { site: site.id.clone(), title: title.trim().to_string(), text: text.trim().chars().take(300).collect(), at: jiff::Timestamp::now().as_second(), told: false });
     if let Err(e) = notices.save(&path) {
         crate::backend::tell(qt, shared, e);
     }
     let _ = qt.queue(|mut sioul| sioul.as_mut().sites_changed());
+    // A phone makes no notification of its own for a site yet (docs/android.md, "Notifications").
+    if !(site.realtime || everywhere || call) || !out.told || cfg!(target_os = "android") {
+        return false;
+    }
+    use sioul_core::notice::{Kind, Notice as Told, address};
+    let kind = if call { sioul_core::attention::Kind::SiteCalls } else { sioul_core::attention::Kind::SitesLive };
+    let icon = sioul_sync::favicon::cached(&favicons(), &sites::host_of(&site.url)).map(|p| p.display().to_string()).unwrap_or_default();
+    let until = call.then(|| jiff::Timestamp::now().as_second() + CALL_RINGS);
+    let about = address::site(&site.id, key);
+    let notice = Told::new(about.clone(), Kind::Own(kind), format!("{} · {}", site.name, title), text).icon(icon).until(until);
+    let fate = crate::tell::tell_as(notice, out, None);
+    let told = matches!(fate, crate::tell::Fate::Posted | crate::tell::Fate::Waits);
+    if told && call {
+        let mut calls = CALLS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        calls.retain(|a| *a != about);
+        calls.push(about);
+        let excess = calls.len().saturating_sub(32);
+        calls.drain(..excess);
+    }
+    told
 }
 
 /// A site opened: what it notified is seen.

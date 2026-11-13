@@ -44,13 +44,15 @@ Item {
     property string problem: ""
     // Each site's view, once made, by its id.
     property var siteViews: ({})
-    // The web notices told, kept by "<site id>#<key>" (their tag, else one
-    // made here): Qt gives them to JavaScript, which would collect them; kept,
-    // a click on Sioul's notice calls their own click() (`clickNotice`), and
-    // their `closed` takes Sioul's away (docs/notifications.md).
+    // The web notices Sioul told (`siteNotified` true), kept by "<site
+    // id>#<key>" ({ notice, at }; the key their tag, "" without one, so that
+    // the next takes its place): Qt gives them to JavaScript, which would
+    // collect them; kept, a click on Sioul's notice calls their own click()
+    // (`clickNotice`), and a call's `closed` takes Sioul's away
+    // (docs/notifications.md). Each goes once its site is opened, or after
+    // the longest a notice of Sioul's lasts (`webNoticeKept`).
     property var webNotices: ({})
-    // The keys made for web notices without a tag.
-    property int untagged: 0
+    readonly property int webNoticeKept: 60 * 60 * 1000
     // Sioul quitting: every page closed (`closeAll`), for the program to end (cpp/webengine.cpp).
     signal sitesClosed()
     // How long a page may take to close: Chromium itself gives one that does
@@ -409,6 +411,7 @@ Item {
         next[id] = true
         page.visited = next
         page.sioul.siteSeen(id)
+        page.forgetNotices(id)
     }
 
     // "https://app.element.io/#/room" → "app.element.io".
@@ -431,8 +434,18 @@ Item {
         const kept = page.webNotices[id + "#" + key]
         if (!kept)
             return false
-        kept.click()
+        kept.notice.click()
         return true
+    }
+
+    // The web notices kept no longer: a site's own once it is opened (`site`),
+    // and every one older than `webNoticeKept`.
+    function forgetNotices(site) {
+        const old = Date.now() - page.webNoticeKept
+        for (const kept of Object.keys(page.webNotices)) {
+            if ((site !== "" && kept.startsWith(site + "#")) || page.webNotices[kept].at < old)
+                delete page.webNotices[kept]
+        }
     }
 
     function alive(site) {
@@ -594,16 +607,20 @@ Item {
             const site = page.siteOf(notification.origin)
             const looking = site !== null && page.visible && site.id === page.openId
             if (site && !looking) {
-                const key = notification.tag !== "" ? notification.tag : "n" + (++page.untagged)
+                const key = notification.tag
                 const kept = site.id + "#" + key
-                page.webNotices[kept] = notification
-                notification.closed.connect(() => {
-                    if (page.webNotices[kept] !== notification)
-                        return
-                    delete page.webNotices[kept]
-                    page.sioul.siteNoticeClosed(site.id, key)
-                })
-                page.sioul.siteNotified(site.id, key, notification.title, notification.message)
+                page.forgetNotices("")
+                // Kept only when Sioul told it: what waits for the Porch alone keeps nothing here.
+                if (page.sioul.siteNotified(site.id, key, notification.title, notification.message)) {
+                    page.webNotices[kept] = { notice: notification, at: Date.now() }
+                    notification.closed.connect(() => {
+                        const held = page.webNotices[kept]
+                        if (!held || held.notice !== notification)
+                            return
+                        delete page.webNotices[kept]
+                        page.sioul.siteNoticeClosed(site.id, key)
+                    })
+                }
             }
             notification.show()
         }

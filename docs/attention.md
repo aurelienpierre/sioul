@@ -111,7 +111,7 @@ Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; 
 | 7. **The matrix** | the time and its layers, the row | a level |
 | 8. **What it is for** | the source's area (an address, an app, a site, a task) against now: what is for work waits in your evening, but your safe senders' and Always through's, and but when the row and the area never meet in your week | later |
 | 9. **Holds** | the Porch resting after a pause (mail shown, not told); a meeting (no meal's notice, no "Work hours are over"); the chat limit (chat sites wait) | later, or not at all |
-| 10. **Output** | `Output { level, shown, told, pierce, step }`; `pierce` when it is told through the system's do-not-disturb (codes, doses, alarms, Always through) | |
+| 10. **Output** | `Output { level, shown, told, pierce, step }`; `pierce` when it is told through the system's do-not-disturb (codes, doses, alarms, a call in a site, Always through) | |
 
 **A conversation answered from a computer** comes through at once for 20 minutes after your reply was handed, but in a pause, and never from the blocked nor a conversation set to never: the callers' too, on the phone (`appnotes::Decision::answered`) and on the Porch of the computer that answered (`replies::Answered`); [android.md](android.md#replies-from-your-computers).
 

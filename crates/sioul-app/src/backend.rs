@@ -2185,14 +2185,15 @@ pub mod qobject {
         #[qinvokable]
         fn site_list(self: &Sioul) -> QString;
 
-        /// A site's notification: shown at once in real time, else kept for
-        /// the Porch; `key`, the web notice's own (its tag, else one the
-        /// Sites page made), by which the page keeps it to click it later.
+        /// A site's notification: kept for the Porch, and told at once in
+        /// real time or for a call; `key`, the web notice's own (its tag, ""
+        /// without one). Whether a desktop notice was posted or waits: the
+        /// Sites page then keeps the web notice, to click it later.
         #[qinvokable]
-        fn site_notified(self: Pin<&mut Sioul>, id: &QString, key: &QString, title: &QString, text: &QString);
+        fn site_notified(self: Pin<&mut Sioul>, id: &QString, key: &QString, title: &QString, text: &QString) -> bool;
 
-        /// A site withdrew a notification (read elsewhere, a call ended):
-        /// Sioul's notice of it goes too.
+        /// A site withdrew a notification: Sioul's notice of a call goes too
+        /// (answered, or over); a message's stays its minutes.
         #[qinvokable]
         fn site_notice_closed(self: &Sioul, id: &QString, key: &QString);
 
@@ -7053,12 +7054,12 @@ impl qobject::Sioul {
         QString::from(&crate::sites::list())
     }
 
-    fn site_notified(self: Pin<&mut Self>, id: &QString, key: &QString, title: &QString, text: &QString) {
-        crate::sites::notified(&self.qt_thread(), &self.shared(), &id.to_string(), &key.to_string(), &title.to_string(), &text.to_string());
+    fn site_notified(self: Pin<&mut Self>, id: &QString, key: &QString, title: &QString, text: &QString) -> bool {
+        crate::sites::notified(&self.qt_thread(), &self.shared(), &id.to_string(), &key.to_string(), &title.to_string(), &text.to_string())
     }
 
     fn site_notice_closed(&self, id: &QString, key: &QString) {
-        crate::tell::settle(&sioul_core::notice::address::site(&id.to_string(), &key.to_string()));
+        crate::sites::withdrawn(&id.to_string(), &key.to_string());
     }
 
     fn site_seen(self: Pin<&mut Self>, id: &QString) {
@@ -7292,6 +7293,8 @@ impl qobject::Sioul {
         crate::sites::favicon_tick(&self.qt_thread());
         // Dates coming: told once each.
         crate::remind::tick();
+        // What waited (nobody at the computer, a pause, do-not-disturb), told now if it may come.
+        crate::tell::again();
         // Mail that waited for its time, told when the time begins (docs/porch.md, "Notifications").
         crate::mailnote::tick_in_window(crate::mailnote::Window { active: self.shared().active.load(Ordering::Relaxed) });
         // The end of the work day, said once (docs/reviews.md).
@@ -7901,9 +7904,9 @@ impl qobject::Sioul {
     }
 
     fn plain_notice(&self, title: &QString, body: &QString) {
-        // Its words alone, nothing to open: a click brings Sioul's window forward.
+        // A tray that shows no message: the notice it was given posted as it was decided.
         let (title, body) = (title.to_string(), body.to_string());
-        std::thread::spawn(move || crate::tell::tell(sioul_core::notice::Notice::new("", sioul_core::notice::Kind::Minor, title, body)));
+        std::thread::spawn(move || crate::tell::plain(&title, &body));
     }
 
     fn copy_text(&self, text: &QString) -> bool {
@@ -8479,7 +8482,7 @@ mod tests {
     fn no_notice_tried_on_a_phone_says_its_error_in_the_status_line() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let tell = std::fs::read_to_string(src.join("tell.rs")).unwrap();
-        for one in ["pub(crate) fn tell_as(", "pub(crate) fn settle(", "pub(crate) fn start("] {
+        for one in ["pub(crate) fn tell_with(", "pub(crate) fn settle(", "pub(crate) fn start(", "pub(crate) fn again("] {
             let body = tell.split(one).nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
             let first = body.lines().nth(1).unwrap_or_default();
             assert!(first.contains("cfg!(target_os = \"android\")"), "{one} stops first on a phone: {first}");

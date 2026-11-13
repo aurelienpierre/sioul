@@ -1363,7 +1363,7 @@ fn write_saved(path: &std::path::Path, file: &SavedFile) {
 
 /// The keys of a notice's buttons, each its act's (`Act::key`), a second
 /// one of the same act keyed with its place ("open-1").
-#[cfg(all(unix, not(target_os = "android")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn keyed(actions: &[notice::Action]) -> Vec<(String, String, notice::Act)> {
     let mut out: Vec<(String, String, notice::Act)> = Vec::new();
     for (place, action) in actions.iter().enumerate() {
@@ -1375,7 +1375,7 @@ fn keyed(actions: &[notice::Action]) -> Vec<(String, String, notice::Act)> {
 }
 
 /// A click on the notice itself, as the specification names it.
-#[cfg(all(unix, not(target_os = "android")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 const CLICKED: &str = "default";
 
 /// Linux and the BSDs: the notification server on the session bus.
@@ -1384,34 +1384,38 @@ mod linux {
     use super::*;
     use std::collections::HashMap;
 
-    /// What the server said, with who said it.
+    /// What the server said (with who said it, and its serial: the server's
+    /// own, in the order it sent them), and the bus's word that the server's
+    /// name changed hands.
     enum Signal {
         Pressed(u32, String),
-        Closed(u32, u32),
+        Closed(u32, u32, u32),
         Token(u32, String),
+        Owner(String),
     }
 
-    /// One notice shown: its number, what it is, its buttons by key, how it
-    /// leaves.
+    /// One notice shown: the server's number for it (0 while no server
+    /// shows it: none yet, or the server gone or started again, until it is
+    /// posted again), the serial of the server's answer that gave it, what
+    /// was posted (kept to post it again on a server started anew), its
+    /// buttons by key, how it leaves.
     struct Live {
         id: u32,
-        key: String,
-        about: String,
-        hint: String,
-        kind: notice::Kind,
-        class: notice::Class,
-        until: Option<i64>,
+        since: u32,
+        notice: notice::Notice,
+        shape: notice::Shape,
+        open_label: String,
         at: i64,
         buttons: Vec<(String, notice::Act)>,
-        close_at: Option<i64>,
         settled: Option<Settled>,
         /// When its popup expired (to do only: still heard).
         expired: Option<Instant>,
     }
 
-    /// The thread's state: its connection (made again once lost), what it
-    /// heard, what the server reads, the server's unique name, what shows,
-    /// the tokens given before a press, where what shows is written.
+    /// The thread's state: its connection (made again once lost, `backoff`
+    /// apart), what it heard, what the server reads, the server's unique
+    /// name, what shows, the tokens given before a press, where what shows is
+    /// written.
     #[derive(Default)]
     struct State {
         bus: Option<LocalConnection>,
@@ -1420,6 +1424,7 @@ mod linux {
         server: String,
         bus_id: String,
         tried: Option<Instant>,
+        backoff: Duration,
         shown: Vec<Live>,
         tokens: HashMap<u32, String>,
         listener: Option<Listener>,
@@ -1427,24 +1432,38 @@ mod linux {
         looked: Option<Instant>,
     }
 
+    /// The first wait before a connection is tried again, and the longest.
+    const RETRY_FIRST: Duration = Duration::from_secs(1);
+    const RETRY_LONGEST: Duration = Duration::from_secs(60);
+
     /// The teller's thread: each word as it comes; while something shows,
-    /// what the server says, every `LISTENED`; the ends, the settled, each turn.
+    /// what the server says, every `LISTENED`; the ends, the settled, each
+    /// turn. Without a connection while something shows, it tries again
+    /// `backoff` apart (doubled each time, a minute at most), waiting for a
+    /// word meanwhile, never spinning; connected again, it posts again what
+    /// still shows.
     pub(super) fn serve(asked: &std::sync::mpsc::Receiver<Ask>) {
         use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
         let mut state = State::default();
         loop {
-            let first = if state.shown.is_empty() {
-                match asked.recv_timeout(IDLE) {
+            let wait = if state.shown.is_empty() {
+                Some(IDLE)
+            } else if state.bus.is_none() {
+                Some(state.retry_in())
+            } else {
+                None
+            };
+            let first = match wait {
+                Some(wait) => match asked.recv_timeout(wait) {
                     Ok(ask) => Some(ask),
                     Err(RecvTimeoutError::Timeout) => None,
                     Err(RecvTimeoutError::Disconnected) => return,
-                }
-            } else {
-                match asked.try_recv() {
+                },
+                None => match asked.try_recv() {
                     Ok(ask) => Some(ask),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => return,
-                }
+                },
             };
             if let Some(ask) = first {
                 state.answer(ask);
@@ -1452,11 +1471,14 @@ mod linux {
                     state.answer(ask);
                 }
             }
+            if state.bus.is_none() && !state.shown.is_empty() {
+                state.connected();
+            }
             let wait = if state.shown.is_empty() { Duration::ZERO } else { LISTENED };
             if let Some(bus) = &state.bus
                 && bus.process(wait).is_err()
             {
-                state.bus = None;
+                state.lost();
             }
             state.hear();
             state.ends();
@@ -1464,41 +1486,94 @@ mod linux {
     }
 
     impl State {
-        /// The connection, made when there is none (once every `bus::SETUP`
-        /// at most), the server's three signals listened to and its unique
-        /// name asked.
+        /// How long until the connection is tried again.
+        fn retry_in(&self) -> Duration {
+            let next = self.tried.map_or(Duration::ZERO, |at| self.backoff.saturating_sub(at.elapsed()));
+            next.max(Duration::from_millis(100))
+        }
+
+        /// The connection, made when there is none (`backoff` apart, doubled
+        /// at each failure, a minute at most), the server's signals and its
+        /// name's changes listened to, its unique name and the bus's id
+        /// asked; made again while something shows, what shows is posted
+        /// again (`repost`).
         fn connected(&mut self) -> bool {
             if self.bus.is_some() {
                 return true;
             }
-            if self.tried.is_some_and(|at| at.elapsed() < crate::bus::SETUP) {
+            if self.tried.is_some_and(|at| at.elapsed() < self.backoff) {
                 return false;
             }
             self.tried = Some(Instant::now());
+            self.backoff = (self.backoff * 2).clamp(RETRY_FIRST, RETRY_LONGEST);
             let Ok(bus) = session() else { return false };
             if heard_on(&bus, &self.heard).is_err() {
                 return false;
             }
             self.capabilities = capabilities(&bus, ASKED);
+            self.bus_id = bus_id(Some(&bus));
             self.bus = Some(bus);
-            self.owner();
-            self.bus_id = bus_id(self.bus.as_ref());
+            self.backoff = Duration::ZERO;
+            // Its numbers may name nothing on this server: asked anew, and what shows posted again.
+            let before = std::mem::take(&mut self.server);
+            self.server = self.owner_now();
+            if !self.shown.is_empty() {
+                let same = !before.is_empty() && before == self.server;
+                self.repost(same);
+            }
             true
         }
 
-        /// The server's unique name now; another than before (the server
-        /// started again), what showed is forgotten: its numbers are the old
-        /// server's, which the new one may give to another program's notice.
-        fn owner(&mut self) {
-            let Some(bus) = &self.bus else { return };
-            let now: String = bus.with_proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", ASKED).method_call("org.freedesktop.DBus", "GetNameOwner", (SERVER,)).map(|(name,): (String,)| name).unwrap_or_default();
-            if now != self.server {
-                if !self.server.is_empty() && !self.shown.is_empty() {
-                    self.shown.clear();
-                    self.save();
-                }
-                self.server = now;
+        /// The connection lost: what shows is kept, to be posted again once connected.
+        fn lost(&mut self) {
+            self.bus = None;
+            self.tried = Some(Instant::now());
+            self.backoff = self.backoff.max(RETRY_FIRST);
+        }
+
+        /// The server's unique name now, "" when none owns the name.
+        fn owner_now(&self) -> String {
+            let Some(bus) = &self.bus else { return String::new() };
+            bus.with_proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", ASKED).method_call("org.freedesktop.DBus", "GetNameOwner", (SERVER,)).map(|(name,): (String,)| name).unwrap_or_default()
+        }
+
+        /// The server changed hands (`owner`: "" none): the numbers kept were
+        /// the old server's, which the new one may give to another program's
+        /// notice. They are never closed nor replaced there; what shows is
+        /// posted again on the new server, or once one comes.
+        fn changed_hands(&mut self, owner: String) {
+            if owner == self.server {
+                return;
             }
+            self.server = owner;
+            for live in &mut self.shown {
+                live.id = 0;
+            }
+            if !self.server.is_empty() {
+                self.repost(false);
+            }
+            self.save();
+        }
+
+        /// What shows, posted again: in place of its number on the same
+        /// server, else anew, for what is left of its time.
+        fn repost(&mut self, same: bool) {
+            let now = jiff::Timestamp::now().as_second();
+            let mut shown = std::mem::take(&mut self.shown);
+            shown.retain(|live| live.shape.close_at.is_none_or(|at| at > now));
+            for live in &mut shown {
+                let mut shape = live.shape.clone();
+                if let Some(at) = shape.close_at {
+                    shape.timeout_ms = shape.timeout_ms.min(i32::try_from((at - now).max(1) * 1000).unwrap_or(i32::MAX));
+                }
+                let replaces = if same { live.id } else { 0 };
+                match self.notify(&live.notice, &shape, &live.open_label, replaces) {
+                    Some((id, since)) => (live.id, live.since, live.expired) = (id, since, None),
+                    None => live.id = 0,
+                }
+            }
+            self.shown = shown;
+            self.save();
         }
 
         fn answer(&mut self, ask: Ask) {
@@ -1506,10 +1581,12 @@ mod linux {
                 Ask::Listen(listener) => self.listener = Some(listener),
                 Ask::Post(posting) => self.post(*posting),
                 Ask::Settle(about) => {
-                    let ids: Vec<u32> = self.shown.iter().filter(|live| live.about == about).map(|live| live.id).collect();
+                    let ids: Vec<u32> = self.shown.iter().filter(|live| live.notice.about == about).map(|live| live.id).collect();
+                    self.shown.retain(|live| live.notice.about != about);
                     for id in ids {
-                        self.close(id);
+                        self.close_number(id);
                     }
+                    self.save();
                 }
                 Ask::Keep(path) => {
                     self.saved = Some(path);
@@ -1530,53 +1607,52 @@ mod linux {
             }
         }
 
-        /// A notice posted: in place of the last of its key, its number kept.
-        fn post(&mut self, posting: Posting) {
-            let Posting { notice, shape, open_label, settled } = posting;
-            if !self.connected() {
-                eprintln!("sioul: notices: no notification server");
-                return;
-            }
-            self.owner();
-            let replaces = self.shown.iter().find(|live| live.key == shape.key).map_or(0, |live| live.id);
+        /// One Notify on the connection: the server's number for it and the
+        /// serial of its answer; none when refused or unanswered.
+        fn notify(&self, notice: &notice::Notice, shape: &notice::Shape, open_label: &str, replaces: u32) -> Option<(u32, u32)> {
+            let bus = self.bus.as_ref()?;
             let listening = self.listener.is_some();
-            let buttons: Vec<(String, String, notice::Act)> = if listening { keyed(&notice.actions) } else { Vec::new() };
             let mut actions: Vec<(String, String)> = Vec::new();
             if listening && !notice.about.is_empty() {
-                actions.push((CLICKED.to_string(), open_label));
+                actions.push((CLICKED.to_string(), open_label.to_string()));
             }
-            actions.extend(buttons.iter().map(|(key, label, _)| (key.clone(), label.clone())));
-            let call = told_message(&notice, &shape, replaces, &actions, &self.capabilities);
-            let Some(bus) = &self.bus else { return };
+            if listening {
+                actions.extend(keyed(&notice.actions).into_iter().map(|(key, label, _)| (key, label)));
+            }
             use dbus::blocking::BlockingSender;
-            let id = match bus.send_with_reply_and_block(call, ASKED) {
-                Ok(answer) => answer.read1::<u32>().unwrap_or(0),
+            match bus.send_with_reply_and_block(told_message(notice, shape, replaces, &actions, &self.capabilities), ASKED) {
+                Ok(answer) => {
+                    let id = answer.read1::<u32>().unwrap_or(0);
+                    (id != 0).then(|| (id, answer.get_serial().unwrap_or(0)))
+                }
                 Err(e) => {
                     eprintln!("sioul: notices: {}", said(&e));
-                    if undelivered(&e) {
-                        self.server.clear();
-                    }
-                    return;
+                    None
                 }
-            };
-            // The one it replaced is gone (in place, or numbered anew: GNOME).
-            self.shown.retain(|live| live.key != shape.key && live.id != id);
-            if id != 0 {
-                self.shown.push(Live {
-                    id,
-                    key: shape.key.clone(),
-                    about: notice.about,
-                    hint: notice.hint,
-                    kind: notice.kind,
-                    class: shape.class,
-                    until: notice.until,
-                    at: jiff::Timestamp::now().as_second(),
-                    buttons: buttons.into_iter().map(|(key, _, act)| (key, act)).collect(),
-                    close_at: shape.close_at,
-                    settled,
-                    expired: None,
-                });
             }
+        }
+
+        /// A notice posted: in place of the last of its key, its number kept.
+        /// Not posted now (no connection, no server), it is kept, and posted
+        /// once one comes, while its time lasts.
+        fn post(&mut self, posting: Posting) {
+            let Posting { notice, shape, open_label, settled } = posting;
+            self.connected();
+            if self.bus.is_some() {
+                let owner = self.owner_now();
+                self.changed_hands(owner);
+            }
+            let replaces = self.shown.iter().find(|live| live.shape.key == shape.key).map_or(0, |live| live.id);
+            let posted = self.notify(&notice, &shape, &open_label, replaces);
+            // Refused for want of a server (one starting again): its numbers are no one's now.
+            if posted.is_none() && self.bus.is_some() && self.owner_now().is_empty() {
+                self.changed_hands(String::new());
+            }
+            let (id, since) = posted.unwrap_or((0, 0));
+            // The one it replaced is gone (in place, or numbered anew: GNOME).
+            self.shown.retain(|live| live.shape.key != shape.key && (id == 0 || live.id != id));
+            let buttons = keyed(&notice.actions).into_iter().map(|(key, _, act)| (key, act)).collect();
+            self.shown.push(Live { id, since, notice, shape, open_label, at: jiff::Timestamp::now().as_second(), buttons, settled, expired: None });
             self.save();
         }
 
@@ -1587,9 +1663,12 @@ mod linux {
             self.save();
         }
 
+        /// A number closed at the server, only while it is the server that
+        /// gave it (`changed_hands` forgets the numbers of another).
         fn close_number(&self, id: u32) {
             if let Some(bus) = &self.bus
                 && id != 0
+                && !self.server.is_empty()
             {
                 let _: Result<(), _> = bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (id,));
             }
@@ -1598,51 +1677,63 @@ mod linux {
         /// What the server said, from the server alone (another program
         /// saying it is not heard): a token kept for the press after it; a
         /// press told to the listener, a Copy then taking the notice away; a
-        /// close forgetting it, but a notice to do whose popup expired.
+        /// close forgetting it, but a notice to do whose popup expired, and a
+        /// close sent before the number was given anew (a notice dismissed
+        /// just as the next took its place); the server's name changing
+        /// hands, what shows posted again on the new one.
         fn hear(&mut self) {
             let heard = std::mem::take(&mut *self.heard.borrow_mut());
             for (sender, signal) in heard {
+                if let Signal::Owner(owner) = signal {
+                    self.changed_hands(owner);
+                    continue;
+                }
                 if !self.server.is_empty() && sender != self.server {
                     continue;
                 }
                 match signal {
                     Signal::Token(id, token) => {
-                        if self.shown.iter().any(|live| live.id == id) {
+                        if self.shown.iter().any(|live| live.id == id && id != 0) {
                             self.tokens.insert(id, token);
                         }
                     }
                     Signal::Pressed(id, key) => {
                         let token = self.tokens.remove(&id);
-                        let Some(live) = self.shown.iter().find(|live| live.id == id) else { continue };
+                        let Some(live) = self.shown.iter().find(|live| live.id == id && id != 0) else { continue };
                         let act = if key == CLICKED {
-                            if live.about.is_empty() {
+                            if live.notice.about.is_empty() {
                                 continue;
                             }
-                            notice::Act::Open { address: live.about.clone(), hint: live.hint.clone() }
+                            notice::Act::Open { address: live.notice.about.clone(), hint: live.notice.hint.clone() }
                         } else {
                             let Some((_, act)) = live.buttons.iter().find(|(k, _)| *k == key) else { continue };
                             act.clone()
                         };
                         let copied = matches!(act, notice::Act::Copy(_));
                         if let Some(listener) = &self.listener {
-                            listener(Press { about: live.about.clone(), act, token });
+                            listener(Press { about: live.notice.about.clone(), act, token });
                         }
                         // Copied: the code did its work.
                         if copied {
                             self.close(id);
                         }
                     }
-                    Signal::Closed(id, why) => {
+                    Signal::Closed(id, why, serial) => {
                         self.tokens.remove(&id);
-                        let Some(at) = self.shown.iter().position(|live| live.id == id) else { continue };
+                        let Some(at) = self.shown.iter().position(|live| live.id == id && id != 0) else { continue };
+                        // Sent before the server gave this number anew: about the one it replaced.
+                        if serial < self.shown[at].since {
+                            continue;
+                        }
                         // Expired at the server: a notice to do is still heard (its click in the history).
-                        if why == 1 && self.shown[at].class == notice::Class::Actionable {
+                        if why == 1 && self.shown[at].shape.class == notice::Class::Actionable {
                             self.shown[at].expired.get_or_insert_with(Instant::now);
                         } else {
                             self.shown.remove(at);
                             self.save();
                         }
                     }
+                    Signal::Owner(_) => {}
                 }
             }
         }
@@ -1652,9 +1743,13 @@ mod linux {
         /// server and heard long enough, forgotten.
         fn ends(&mut self) {
             let now = jiff::Timestamp::now().as_second();
-            let over: Vec<u32> = self.shown.iter().filter(|live| live.close_at.is_some_and(|at| at <= now)).map(|live| live.id).collect();
-            for id in over {
-                self.close(id);
+            let over: Vec<u32> = self.shown.iter().filter(|live| live.shape.close_at.is_some_and(|at| at <= now)).map(|live| live.id).collect();
+            if !over.is_empty() {
+                self.shown.retain(|live| live.shape.close_at.is_none_or(|at| at > now));
+                for id in over {
+                    self.close_number(id);
+                }
+                self.save();
             }
             let before = self.shown.len();
             self.shown.retain(|live| live.expired.is_none_or(|at| at.elapsed() < EXPIRED_HEARD));
@@ -1666,22 +1761,27 @@ mod linux {
             }
             self.looked = Some(Instant::now());
             let mut settled = Vec::new();
-            for live in &mut self.shown {
+            for (at, live) in self.shown.iter_mut().enumerate() {
                 if let Some(look) = live.settled.as_mut()
                     && look()
                 {
-                    settled.push(live.id);
+                    settled.push(at);
                 }
             }
-            for id in settled {
-                self.close(id);
+            if settled.is_empty() {
+                return;
             }
+            for at in settled.into_iter().rev() {
+                let live = self.shown.remove(at);
+                self.close_number(live.id);
+            }
+            self.save();
         }
 
         /// What shows, written where it is kept (`Teller::restart`).
         fn save(&self) {
             let Some(path) = &self.saved else { return };
-            let shown = self.shown.iter().map(|live| Saved { id: live.id, about: live.about.clone(), hint: live.hint.clone(), kind: live.kind, class: live.class, until: live.until, at: live.at }).collect();
+            let shown = self.shown.iter().filter(|live| live.id != 0).map(|live| Saved { id: live.id, about: live.notice.about.clone(), hint: live.notice.hint.clone(), kind: live.notice.kind, class: live.shape.class, until: live.notice.until, at: live.at }).collect();
             write_saved(path, &SavedFile { format: SAVED_FORMAT, server: self.server.clone(), bus: self.bus_id.clone(), shown });
         }
     }
@@ -1693,23 +1793,32 @@ mod linux {
         bus.and_then(|bus| bus.with_proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", ASKED).method_call("org.freedesktop.DBus", "GetId", ()).ok()).map(|(id,): (String,)| id).unwrap_or_default()
     }
 
-    /// The server's three signals heard on `bus`, each with who sent it:
-    /// a button pressed or a click on a notice, a notice closed and why, the
-    /// token given before a press.
+    /// The server's three signals heard on `bus`, each with who sent it and
+    /// its serial (a button pressed or a click on a notice, a notice closed
+    /// and why, the token given before a press), and the bus's word that the
+    /// server's name changed hands (a server started again, or gone).
     fn heard_on(bus: &LocalConnection, heard: &Rc<RefCell<Vec<(String, Signal)>>>) -> Result<(), dbus::Error> {
         use dbus::message::MatchRule;
         let sender = |m: &dbus::Message| m.sender().map(|s| s.to_string()).unwrap_or_default();
-        let (pressed, closed, tokens) = (Rc::clone(heard), Rc::clone(heard), Rc::clone(heard));
+        let (pressed, closed, tokens, owners) = (Rc::clone(heard), Rc::clone(heard), Rc::clone(heard), Rc::clone(heard));
         bus.add_match(MatchRule::new_signal(SERVER, "ActionInvoked").with_path(SERVER_PATH), move |(id, key): (u32, String), _: &LocalConnection, m: &dbus::Message| {
             pressed.borrow_mut().push((sender(m), Signal::Pressed(id, key)));
             true
         })?;
         bus.add_match(MatchRule::new_signal(SERVER, "NotificationClosed").with_path(SERVER_PATH), move |(id, why): (u32, u32), _: &LocalConnection, m: &dbus::Message| {
-            closed.borrow_mut().push((sender(m), Signal::Closed(id, why)));
+            closed.borrow_mut().push((sender(m), Signal::Closed(id, why, m.get_serial().unwrap_or(u32::MAX))));
             true
         })?;
         bus.add_match(MatchRule::new_signal(SERVER, "ActivationToken").with_path(SERVER_PATH), move |(id, token): (u32, String), _: &LocalConnection, m: &dbus::Message| {
             tokens.borrow_mut().push((sender(m), Signal::Token(id, token)));
+            true
+        })?;
+        let mut changed = MatchRule::new_signal("org.freedesktop.DBus", "NameOwnerChanged").with_sender("org.freedesktop.DBus");
+        changed.path = Some(dbus::Path::from("/org/freedesktop/DBus"));
+        bus.add_match(changed, move |(name, _old, new): (String, String, String), _: &LocalConnection, _: &dbus::Message| {
+            if name == SERVER {
+                owners.borrow_mut().push((String::new(), Signal::Owner(new)));
+            }
             true
         })?;
         Ok(())
@@ -1730,7 +1839,7 @@ mod linux {
     /// theme name, else its kind's; a picture's file as `image-path`), its
     /// title, its body as the server reads it (`body_text`), its buttons, the
     /// hints (no sound, Sioul's desktop file, its urgency, `transient` when
-    /// it leaves no trace), its timeout.
+    /// it leaves no trace, `resident` when a press leaves it), its timeout.
     pub(super) fn told_message(notice: &notice::Notice, shape: &notice::Shape, replaces: u32, actions: &[(String, String)], capabilities: &[String]) -> dbus::Message {
         use dbus::arg::{PropMap, RefArg, Variant};
         let mut hints = PropMap::new();
@@ -1739,6 +1848,9 @@ mod linux {
         hints.insert("urgency".into(), Variant(Box::new(shape.urgency.level()) as Box<dyn RefArg>));
         if shape.transient {
             hints.insert("transient".into(), Variant(Box::new(true) as Box<dyn RefArg>));
+        }
+        if shape.resident {
+            hints.insert("resident".into(), Variant(Box::new(true) as Box<dyn RefArg>));
         }
         let picture = notice.icon.starts_with('/');
         if picture {
@@ -1758,24 +1870,22 @@ mod linux {
 mod elsewhere {
     use super::*;
 
-    /// The teller's thread: each notice shown as it comes. macOS waits for a
-    /// press on a thread of each notice's own (its call blocks until then); a
-    /// click on the notice opens its thing. Windows shows the words alone
-    /// (the window gives its notices to the tray's icon instead, whose
-    /// message a click opens). Nothing is taken away on either: their
-    /// notifications leave by themselves.
+    /// The teller's thread: each notice shown as it comes, its words alone,
+    /// sent without waiting, on this one thread. macOS: mac-notification-sys
+    /// hears a button only by blocking a thread and running a timer on the
+    /// main loop for each notice until it is cleared from the Notification
+    /// Center (notify-rust's `wait_for_action`), and its
+    /// UNUserNotificationCenter side is a preview; so no button there, and a
+    /// click on a notice brings Sioul forward, as macOS does by itself.
+    /// Windows: the window gives a notice with a thing to the tray's icon
+    /// instead, whose message a click opens. Nothing is taken away on
+    /// either: their notifications leave by themselves.
     pub(super) fn serve(asked: &std::sync::mpsc::Receiver<Ask>) {
-        #[cfg(target_os = "macos")]
-        let mut listener: Option<Listener> = None;
         while let Ok(ask) = asked.recv() {
             match ask {
-                #[cfg(target_os = "macos")]
-                Ask::Listen(heard) => listener = Some(heard),
                 Ask::Post(posting) => {
-                    #[cfg(target_os = "macos")]
-                    show(*posting, listener.clone());
-                    #[cfg(windows)]
-                    show(*posting);
+                    #[cfg(any(windows, target_os = "macos"))]
+                    show(&posting);
                     #[cfg(target_os = "android")]
                     drop(posting);
                 }
@@ -1792,35 +1902,14 @@ mod elsewhere {
         u32::try_from(shape.timeout_ms).ok().filter(|ms| *ms > 0).map_or(Timeout::Never, Timeout::Milliseconds)
     }
 
-    #[cfg(windows)]
-    fn show(posting: Posting) {
-        let notice = posting.notice;
-        if let Err(e) = Notification::new().appname("Sioul").summary(&notice.title).body(&notice.body).timeout(timeout(&posting.shape)).show() {
+    #[cfg(any(windows, target_os = "macos"))]
+    fn show(posting: &Posting) {
+        #[cfg(target_os = "macos")]
+        as_sioul();
+        let notice = &posting.notice;
+        if let Err(e) = Notification::new().appname("Sioul").summary(&notice.title).body(&notice.body).timeout(timeout(&posting.shape)).show().map(drop) {
             eprintln!("sioul: notices: {e}");
         }
-    }
-
-    #[cfg(target_os = "macos")]
-    fn show(posting: Posting, listener: Option<Listener>) {
-        as_sioul();
-        std::thread::spawn(move || {
-            let notice = posting.notice;
-            let buttons = if listener.is_some() { keyed(&notice.actions) } else { Vec::new() };
-            let mut notification = Notification::new();
-            notification.appname("Sioul").summary(&notice.title).body(&notice.body).timeout(timeout(&posting.shape));
-            for (key, label, _) in &buttons {
-                notification.action(key, label);
-            }
-            match notification.show() {
-                Ok(handle) => handle.wait_for_action(|key| {
-                    let act = if key == CLICKED && !notice.about.is_empty() { Some(notice::Act::Open { address: notice.about.clone(), hint: notice.hint.clone() }) } else { buttons.iter().find(|(k, _, _)| k == key).map(|(_, _, act)| act.clone()) };
-                    if let (Some(act), Some(listener)) = (act, &listener) {
-                        listener(Press { about: notice.about.clone(), act, token: None });
-                    }
-                }),
-                Err(e) => eprintln!("sioul: notices: {e}"),
-            }
-        });
     }
 }
 
@@ -2982,6 +3071,7 @@ mod tests {
         actions: Vec<String>,
         urgency: u8,
         transient: bool,
+        resident: bool,
         image: String,
         timeout: i32,
     }
@@ -3039,6 +3129,7 @@ mod tests {
                                     actions,
                                     urgency: dbus::arg::prop_cast::<u8>(&hints, "urgency").copied().unwrap_or(9),
                                     transient: dbus::arg::prop_cast::<bool>(&hints, "transient").copied().unwrap_or(false),
+                                    resident: dbus::arg::prop_cast::<bool>(&hints, "resident").copied().unwrap_or(false),
                                     image: dbus::arg::prop_cast::<String>(&hints, "image-path").cloned().unwrap_or_default(),
                                     timeout,
                                 }));
@@ -3135,7 +3226,7 @@ mod tests {
         let now = jiff::Timestamp::now().as_second();
         assert!(teller.restart(&saved, now).is_empty(), "nothing left by a run before");
         let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix };
-        let here = Moment { present: true, paused: false, silenced: false };
+        let here = Moment { present: true, paused: false, silenced: false, day_ends: now + 36_000 };
         let shape = |n: &Notice, pierce: bool, moment: Moment| match notice::decide(n, &told(pierce), moment, 5, jiff::Timestamp::now().as_second()) {
             Decision::Post(shape) => shape,
             other => panic!("{other:?}"),
@@ -3147,7 +3238,7 @@ mod tests {
         let moved = Notice::new(address::MOVE, Kind::Own(Row::Move), "Time to move", "Stand up").action("Where I stopped…", open(address::MOVE, ""));
         teller.post(moved.clone(), shape(&moved, false, here), "Open", None);
         let first = server.notified(wait);
-        assert_eq!((first.replaces, first.urgency, first.transient, first.timeout, first.icon.as_str()), (0, 1, true, 300_000, "appointment-soon"));
+        assert_eq!((first.replaces, first.urgency, first.transient, first.resident, first.timeout, first.icon.as_str()), (0, 1, true, false, 300_000, "appointment-soon"));
         assert_eq!(first.actions, ["default", "Open", "open", "Where I stopped…"]);
         // The next one in its place: one "Time to move" at most.
         teller.post(moved.clone(), shape(&moved, false, here), "Open", None);
@@ -3172,7 +3263,8 @@ mod tests {
         let code = Notice::new(mid, Kind::Own(Row::Codes), "Code from example.org", "482913").hint("/mail/cur/1").until(Some(now + 1_800)).action("Copy the code", Act::Copy("482913".into())).action("Open the message", open(mid, "/mail/cur/1"));
         teller.post(code.clone(), shape(&code, true, here), "Open", None);
         let shown = server.notified(wait);
-        assert_eq!((shown.urgency, shown.transient, shown.icon.as_str()), (1, false, "dialog-password"));
+        // Resident: a press leaves it and its other buttons where the server honours the hint (Plasma, GNOME).
+        assert_eq!((shown.urgency, shown.transient, shown.resident, shown.icon.as_str()), (1, false, true, "dialog-password"));
         assert!((1_790_000..=1_800_000).contains(&shown.timeout), "{}", shown.timeout);
         assert_eq!(shown.actions, ["default", "Open", "copy", "Copy the code", "open", "Open the message"]);
         server.say(Saying::Press(shown.id, "default".into()));
@@ -3243,5 +3335,61 @@ mod tests {
         assert_eq!(closed, expected, "the previous run's notices taken away");
         assert!(std::fs::read_to_string(&saved).unwrap().contains("\"shown\":[]"), "forgotten");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The notification server started again (plasmashell replaced, or
+    /// crashed): what shows is posted again on the new one, anew, its old
+    /// numbers never closed nor replaced there (the new server may have given
+    /// them to another program); a notice posted while no server owns the
+    /// name is kept, and posted once one comes. Run under dbus-run-session;
+    /// skipped where a server is there already.
+    #[test]
+    fn what_shows_is_posted_again_on_a_server_started_anew() {
+        use sioul_core::attention::{Kind as Row, Level, Output, Step};
+        use sioul_core::notice::{Decision, Kind, Moment, Notice, address};
+        let _alone = crate::bus::NOTIFICATION_SERVER.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(first) = NoticeServer::start() else {
+            eprintln!("No bus of the test's own (dbus-run-session), or a notification server on it already: skipped.");
+            return;
+        };
+        let wait = Duration::from_secs(5);
+        let now = jiff::Timestamp::now().as_second();
+        let teller = Teller::start();
+        teller.listen(Arc::new(|_: Press| {}));
+        let told = |pierce: bool| Output { level: Level::Now, shown: true, told: true, pierce, step: Step::Matrix };
+        let here = Moment { present: true, paused: false, silenced: false, day_ends: now + 36_000 };
+        let post = |n: Notice, pierce: bool| match notice::decide(&n, &told(pierce), here, 5, now) {
+            Decision::Post(shape) => teller.post(n, shape, "Open", None),
+            other => panic!("{other:?}"),
+        };
+        post(Notice::new(address::MOVE, Kind::Own(Row::Move), "Time to move", "Stand up"), false);
+        assert_eq!(first.notified(wait).title, "Time to move");
+        // The server goes, its name released.
+        drop(first);
+        std::thread::sleep(Duration::from_secs(1));
+        post(Notice::new("mid:code@example.org", Kind::Own(Row::Codes), "Code from example.org", "482913").until(Some(now + 600)), true);
+        assert!(teller.flush(wait));
+        let second = NoticeServer::start().expect("the name free again");
+        let mut again = vec![second.notified(wait), second.notified(wait)];
+        again.sort_by(|a, b| a.title.cmp(&b.title));
+        assert_eq!(again.iter().map(|n| (n.title.as_str(), n.replaces)).collect::<Vec<_>>(), [("Code from example.org", 0), ("Time to move", 0)]);
+        assert!(second.next(Duration::from_millis(800)).is_none(), "no old number closed nor replaced there");
+        // A file left by a run on another server, or another bus: its numbers are closed nowhere.
+        let dir = std::env::temp_dir().join(format!("sioul-notices-elsewhere-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("notices-shown.json");
+        let left = |server: &str, bus: &str| SavedFile { format: SAVED_FORMAT, server: server.into(), bus: bus.into(), shown: vec![Saved { id: 3, about: "mid:code@example.org".into(), hint: String::new(), kind: Kind::Own(Row::Codes), class: notice::Class::Actionable, until: None, at: now }] };
+        let id = bus_id_of_session();
+        for (server, bus) in [(":1.4242", id.as_str()), ("", id.as_str())] {
+            write_saved(&path, &left(server, bus));
+            assert_eq!(Teller::start().restart(&path, now).len(), 1, "what is to do given back all the same");
+            assert!(second.next(Duration::from_millis(500)).is_none(), "nothing closed for a run on {server:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The test bus's own id, as the teller keeps it beside what shows.
+    fn bus_id_of_session() -> String {
+        session().ok().and_then(|bus| bus.with_proxy("org.freedesktop.DBus", "/org/freedesktop/DBus", ASKED).method_call("org.freedesktop.DBus", "GetId", ()).ok()).map(|(id,): (String,)| id).unwrap_or_default()
     }
 }

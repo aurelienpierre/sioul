@@ -68,7 +68,7 @@ Le ⋮ du site ouvert, ou un clic droit sur n’importe quel site de la liste 
 Les notifications de chaque site sont acceptées, puis gardées par Sioul ; le site lui-même ne les montre jamais.
 
 - Du site devant vous : rien de plus.
-- D’un site en **Temps réel** (sa case, toujours en vue) : une notification sur le bureau, tout de suite, avec l’icône du site. Un clic dessus ouvre le site sur cette conversation ; le message suivant de la même conversation prend sa place ; elle s’en va quand le site la retire (lue ailleurs), ou après quelques minutes ([Ce qui vous joint](notifications.md#to-know-or-to-do)).
+- D’un site en **Temps réel** (sa case, toujours en vue) : une notification sur le bureau, tout de suite, avec l’icône du site. Un clic dessus ouvre le site sur cette conversation ; le message suivant de la même conversation prend sa place ; elle s’en va après quelques minutes, un appel quand le site y met fin ; chaque message reste sur le Porche jusqu’à ce que vous ouvriez son site, dit ou non ([Ce qui vous joint](notifications.md#to-know-or-to-do)).
 - **Un appel** (« appel entrant ») vient tout de suite, sauf si les sons du site sont coupés. Un appel manqué attend comme le reste.
 - Tout le reste attend sur [le Porche](porch.md#above-the-lanes), en une ligne « Du nouveau sur » suivie du nom du site. Ouvrir le site efface ses nouvelles.
 

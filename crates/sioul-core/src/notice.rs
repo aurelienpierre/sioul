@@ -145,11 +145,15 @@ pub struct Notice {
     /// Its picture: a theme's icon name, or a file's path (a site's own
     /// icon); "" the kind's own.
     pub icon: String,
+    /// Until when it is still worth telling when it must wait (nobody at the
+    /// device, a pause, a do-not-disturb), Unix seconds; none: its `until`,
+    /// else its kind's (`Notice::relevance`).
+    pub relevant: Option<i64>,
 }
 
 impl Notice {
     pub fn new(about: impl Into<String>, kind: Kind, title: impl Into<String>, body: impl Into<String>) -> Notice {
-        Notice { about: about.into(), hint: String::new(), kind, title: title.into(), body: body.into(), actions: Vec::new(), until: None, icon: String::new() }
+        Notice { about: about.into(), hint: String::new(), kind, title: title.into(), body: body.into(), actions: Vec::new(), until: None, icon: String::new(), relevant: None }
     }
 
     /// With a button.
@@ -174,6 +178,28 @@ impl Notice {
     pub fn icon(mut self, icon: impl Into<String>) -> Notice {
         self.icon = icon.into();
         self
+    }
+
+    /// Still worth telling until then, when it must wait (`relevant`).
+    pub fn relevant(mut self, until: Option<i64>) -> Notice {
+        self.relevant = until;
+        self
+    }
+
+    /// Until when it is still worth telling, if it must wait: as its source
+    /// says (`relevant`), else its thing's end (`until`), else its kind's: a
+    /// date, new mail, the end of work and a minor word until the day ends
+    /// (`Moment::day_ends`); the sites' gathered news an hour (the next
+    /// gathering names it anyway); the rest a minute: the pause to move, a
+    /// meal's heads-up, a site's message (kept on the Porch either way) have
+    /// no use once their moment passed.
+    pub fn relevance(&self, moment: Moment, now: i64) -> i64 {
+        use attention::Kind as Row;
+        self.relevant.or(self.until).unwrap_or(match self.kind {
+            Kind::Own(Row::Dates | Row::WorkOver) | Kind::Mail | Kind::Minor => moment.day_ends.max(now),
+            Kind::Own(Row::Sites) => now + 3600,
+            _ => now + 60,
+        })
     }
 
     /// The key of the notice it replaces: one per kind and thing ("move" and
@@ -239,6 +265,12 @@ pub mod address {
     /// The Porch: the sites' news gathered.
     pub const PORCH: &str = "sioul:porch";
 
+    /// A thing whose address several notices share (the money watch's, all
+    /// on the budgets), told apart by a key of their own.
+    pub fn keyed(address: &str, key: &str) -> String {
+        format!("{address}#{}", super::encode(key))
+    }
+
     /// A tab of Settings, by its key ("words.languages").
     pub fn settings(key: &str) -> String {
         format!("sioul:settings/{key}")
@@ -296,6 +328,15 @@ pub struct Moment {
     /// session, the pause, Free time, the night), or the system's own, which
     /// Sioul follows.
     pub silenced: bool,
+    /// When today ends here, Unix seconds (`Notice::relevance`).
+    pub day_ends: i64,
+}
+
+impl Moment {
+    /// The end of the local day of `now` (Unix seconds), for `day_ends`.
+    pub fn end_of_day(now: &jiff::Zoned) -> i64 {
+        now.date().tomorrow().ok().and_then(|day| day.to_zoned(now.time_zone().clone()).ok()).map_or(now.timestamp().as_second() + 86_400, |z| z.timestamp().as_second())
+    }
 }
 
 /// The urgency a notice is posted with, as the Desktop Notifications
@@ -326,6 +367,10 @@ pub struct Shape {
     pub timeout_ms: i32,
     /// No trace in the server's history once it goes (the hint `transient`).
     pub transient: bool,
+    /// Kept when a button or the notice itself is pressed (the hint
+    /// `resident`): a notice to do, which Sioul takes away itself once its
+    /// thing is settled, so that a click on it leaves its other buttons.
+    pub resident: bool,
     /// The key of the notice it replaces (`Notice::key`).
     pub key: String,
     /// When Sioul takes it away itself, Unix seconds (some servers keep a
@@ -353,6 +398,10 @@ pub enum Dropped {
 pub enum Decision {
     Drop(Dropped),
     Post(Shape),
+    /// Not now (nobody at the device, a pause, a do-not-disturb), still worth
+    /// telling until then (Unix seconds): asked again once someone is back or
+    /// the do-not-disturb ends, never marked told meanwhile.
+    Wait(i64),
 }
 
 /// The model's word for a notice its source decided to tell now (a reminder
@@ -364,30 +413,34 @@ pub fn told(kind: Option<attention::Kind>) -> attention::Output {
 }
 
 /// The moment of a process without the window (the command line), its
-/// files read: someone counted as present (nothing says otherwise there),
+/// files read: whether someone is at the device as that process reads it
+/// (`present`: the session's idle time, unknown counting as someone),
 /// Sioul's pause, and Sioul's do-not-disturb as every device reads it (its
 /// modes, the switch: the desktop's own heard by the window lands there).
-pub fn moment_from_files(config: &crate::config::Config, now: &jiff::Zoned) -> Moment {
+pub fn moment_from_files(config: &crate::config::Config, now: &jiff::Zoned, present: bool) -> Moment {
     use crate::{everywhere, quiet};
     let overrides = quiet::Overrides::load(&quiet::Overrides::default_path());
     let blocks = quiet::Blocks::read_now(now);
     let mode = quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, now);
     let sources = everywhere::sources_at(&overrides, &blocks, now);
     let state = everywhere::now(&config.dnd, &sources, everywhere::read_switch("").latest().as_ref(), now.timestamp().as_second());
-    Moment { present: true, paused: mode.paused(), silenced: state.on() }
+    Moment { present, paused: mode.paused(), silenced: state.on(), day_ends: Moment::end_of_day(now) }
 }
 
 /// What becomes of `notice` at `now` (Unix seconds), from what the attention
 /// model says of it (`out`: told now, piercing), the `moment`, and the
 /// lifetime of informative notices (`minutes`, `Settings::minutes`):
 /// - informative: posted only when told, someone present, no pause and no
-///   do-not-disturb holding; at normal urgency, for `minutes`, leaving no
-///   trace; the time to leave (`attention::Kind::Before`) lasts until its
-///   event starts instead; a thing that ends sooner takes it away then;
+///   do-not-disturb holding; else it waits while it is still worth telling
+///   (`Notice::relevance`), never lost meanwhile. Posted at normal urgency,
+///   for `minutes`, leaving no trace; the time to leave stays in the history
+///   until its event starts, its popup the minutes set; a thing that ends
+///   sooner takes it away then;
 /// - actionable: posted when told, at a pause or a do-not-disturb only when
-///   it pierces; at normal urgency, critical only when it pierces a
-///   do-not-disturb that holds now; until its thing ends (`until`), else
-///   until it is settled; never without someone present to see it later.
+///   it pierces (else it waits, as above); at normal urgency, critical only
+///   when it pierces a do-not-disturb that holds now; resident, until its
+///   thing ends (`until`), else until it is settled; posted with nobody at
+///   the desk, to be found there.
 pub fn decide(notice: &Notice, out: &attention::Output, moment: Moment, minutes: u32, now: i64) -> Decision {
     let Some(class) = notice.class() else { return Decision::Drop(Dropped::NotOurs) };
     if !out.told {
@@ -396,30 +449,35 @@ pub fn decide(notice: &Notice, out: &attention::Output, moment: Moment, minutes:
     if notice.until.is_some_and(|until| until <= now) {
         return Decision::Drop(Dropped::Over);
     }
+    // Not now: waits while it is worth telling, else goes.
+    let later = |why: Dropped| {
+        let relevant = notice.relevance(moment, now);
+        if relevant > now { Decision::Wait(relevant) } else { Decision::Drop(why) }
+    };
     let key = notice.key();
     match class {
         Class::Informative => {
             if !moment.present {
-                return Decision::Drop(Dropped::Away);
+                return later(Dropped::Away);
             }
             if moment.paused || moment.silenced {
-                return Decision::Drop(Dropped::Held);
+                return later(Dropped::Held);
             }
             let lifetime = i64::from(minutes.clamp(SHORTEST, LONGEST)) * 60;
-            let ends = match (notice.kind, notice.until) {
-                // The time to leave: until its event starts.
-                (Kind::Own(attention::Kind::Before), Some(until)) => until,
-                (_, Some(until)) => until.min(now + lifetime),
-                (_, None) => now + lifetime,
-            };
-            Decision::Post(Shape { class, urgency: Urgency::Normal, timeout_ms: millis(ends - now), transient: true, key, close_at: Some(ends) })
+            let shape = |popup: i64, close: i64, transient: bool| Shape { class, urgency: Urgency::Normal, timeout_ms: millis(popup - now), transient, resident: false, key: key.clone(), close_at: Some(close) };
+            Decision::Post(match (notice.kind, notice.until) {
+                // The time to leave: its popup the minutes set, in the history until its event starts.
+                (Kind::Own(attention::Kind::Before), Some(until)) => shape(until.min(now + lifetime), until, false),
+                (_, Some(until)) => shape(until.min(now + lifetime), until.min(now + lifetime), true),
+                (_, None) => shape(now + lifetime, now + lifetime, true),
+            })
         }
         Class::Actionable => {
             if (moment.paused || moment.silenced) && !out.pierce {
-                return Decision::Drop(Dropped::Held);
+                return later(Dropped::Held);
             }
             let urgency = if out.pierce && moment.silenced { Urgency::Critical } else { Urgency::Normal };
-            Decision::Post(Shape { class, urgency, timeout_ms: notice.until.map_or(0, |until| millis(until - now)), transient: false, key, close_at: notice.until })
+            Decision::Post(Shape { class, urgency, timeout_ms: notice.until.map_or(0, |until| millis(until - now)), transient: false, resident: true, key, close_at: notice.until })
         }
     }
 }
@@ -443,7 +501,7 @@ mod tests {
     }
 
     const NOW: i64 = 1_794_000_000;
-    const HERE: Moment = Moment { present: true, paused: false, silenced: false };
+    const HERE: Moment = Moment { present: true, paused: false, silenced: false, day_ends: NOW + 36_000 };
 
     /// Each kind of the matrix in its class, as decided on 13 November 2026:
     /// what is to know, what is to do, and what is no notice of Sioul's own.
@@ -487,17 +545,12 @@ mod tests {
     fn something_to_know_leaves_after_its_minutes() {
         let moved = Notice::new(address::MOVE, Kind::Own(Row::Move), "Time to move", "Stand up");
         let Decision::Post(shape) = decide(&moved, &told(false), HERE, 5, NOW) else { panic!("posted") };
-        assert_eq!(shape, Shape { class: Class::Informative, urgency: Urgency::Normal, timeout_ms: 300_000, transient: true, key: "move|sioul:move".into(), close_at: Some(NOW + 300) });
+        assert_eq!(shape, Shape { class: Class::Informative, urgency: Urgency::Normal, timeout_ms: 300_000, transient: true, resident: false, key: "move|sioul:move".into(), close_at: Some(NOW + 300) });
         // Its minutes as set, bounded.
         let Decision::Post(shape) = decide(&moved, &told(false), HERE, 12, NOW) else { panic!() };
         assert_eq!((shape.timeout_ms, shape.close_at), (720_000, Some(NOW + 720)));
         let Decision::Post(shape) = decide(&moved, &told(false), HERE, 600, NOW) else { panic!() };
         assert_eq!(shape.timeout_ms, 3_600_000);
-        // Through do-not-disturb it never goes, even piercing (Always through's mail is shown on the Porch).
-        let mail = Notice::new("mid:a@example.org", Kind::Mail, "One e-mail", "Noa, The lease");
-        assert_eq!(decide(&mail, &told(true), Moment { silenced: true, ..HERE }, 5, NOW), Decision::Drop(Dropped::Held));
-        assert_eq!(decide(&moved, &told(false), Moment { paused: true, ..HERE }, 5, NOW), Decision::Drop(Dropped::Held));
-        assert_eq!(decide(&moved, &told(false), Moment { present: false, ..HERE }, 5, NOW), Decision::Drop(Dropped::Away));
         assert_eq!(decide(&moved, &untold(), HERE, 5, NOW), Decision::Drop(Dropped::NotTold));
         // A thing that ends sooner takes it away then.
         let date = Notice::new("sioul:task/a", Kind::Own(Row::Dates), "Due Friday", "").until(Some(NOW + 60));
@@ -505,36 +558,65 @@ mod tests {
         assert_eq!(shape.close_at, Some(NOW + 60));
     }
 
-    /// The time to leave lasts until its event starts, longer than the
-    /// minutes set; once it started, nothing.
+    /// What is to know and cannot come now (nobody at the desk, a pause, a
+    /// do-not-disturb, even piercing) waits while it is worth telling,
+    /// never lost: a date and new mail until the day ends, the end of work as
+    /// its source says, the sites' news an hour; the pause to move and a
+    /// meal's heads-up a minute, then they go; its relevance past, it goes.
+    #[test]
+    fn what_cannot_come_now_waits_while_it_is_worth_telling() {
+        let away = Moment { present: false, ..HERE };
+        let date = Notice::new("sioul:budget/home/3", Kind::Own(Row::Dates), "Rent, Friday", "");
+        assert_eq!(decide(&date, &told(false), away, 5, NOW), Decision::Wait(NOW + 36_000), "until the day ends");
+        assert_eq!(decide(&date, &told(false), Moment { paused: true, ..HERE }, 5, NOW), Decision::Wait(NOW + 36_000));
+        let mail = Notice::new("mid:a@example.org", Kind::Mail, "One e-mail", "Noa, The lease");
+        assert_eq!(decide(&mail, &told(true), Moment { silenced: true, ..HERE }, 5, NOW), Decision::Wait(NOW + 36_000), "piercing or not, after the do-not-disturb");
+        let work = Notice::new(address::work_day("2026-11-13"), Kind::Own(Row::WorkOver), "Work hours are over", "").relevant(Some(NOW + 7_200));
+        assert_eq!(decide(&work, &told(false), away, 5, NOW), Decision::Wait(NOW + 7_200), "until the evening's leisure is over");
+        let news = Notice::new(address::PORCH, Kind::Own(Row::Sites), "Your sites have news", "");
+        assert_eq!(decide(&news, &told(false), away, 5, NOW), Decision::Wait(NOW + 3_600));
+        let moved = Notice::new(address::MOVE, Kind::Own(Row::Move), "Time to move", "");
+        assert_eq!(decide(&moved, &told(false), away, 5, NOW), Decision::Wait(NOW + 60), "a minute, then gone");
+        assert_eq!(decide(&moved.clone().relevant(Some(NOW)), &told(false), away, 5, NOW), Decision::Drop(Dropped::Away));
+        assert_eq!(decide(&date.clone().relevant(Some(NOW - 1)), &told(false), Moment { silenced: true, ..HERE }, 5, NOW), Decision::Drop(Dropped::Held));
+        // Back, or the do-not-disturb over: posted.
+        assert!(matches!(decide(&date, &told(false), HERE, 5, NOW + 600), Decision::Post(_)));
+    }
+
+    /// The time to leave: its popup the minutes set, then in the history
+    /// until its event starts, taken away then; once it started, nothing.
     #[test]
     fn the_time_to_leave_lasts_until_its_event() {
         let leave = Notice::new(address::event("dentist@example.org", NOW + 1_200), Kind::Own(Row::Before), "Leave in 5 min", "").until(Some(NOW + 1_200));
         let Decision::Post(shape) = decide(&leave, &told(false), HERE, 5, NOW) else { panic!() };
-        assert_eq!((shape.timeout_ms, shape.close_at, shape.transient), (1_200_000, Some(NOW + 1_200), true));
+        assert_eq!((shape.timeout_ms, shape.close_at, shape.transient), (300_000, Some(NOW + 1_200), false));
+        let Decision::Post(shape) = decide(&leave, &told(false), HERE, 5, NOW + 1_080) else { panic!() };
+        assert_eq!((shape.timeout_ms, shape.close_at), (120_000, Some(NOW + 1_200)), "an event sooner than the minutes");
         assert_eq!(decide(&leave, &told(false), HERE, 5, NOW + 1_200), Decision::Drop(Dropped::Over));
+        assert_eq!(decide(&leave, &told(false), Moment { present: false, ..HERE }, 5, NOW), Decision::Wait(NOW + 1_200), "until its event starts");
     }
 
-    /// Actionable notices: until their thing ends or is settled; at normal
-    /// urgency, critical only when they pierce a do-not-disturb that holds
-    /// now; held by a pause or a do-not-disturb unless they pierce; posted
-    /// with nobody at the desk, to be found there.
+    /// Actionable notices: resident, until their thing ends or is settled; at
+    /// normal urgency, critical only when they pierce a do-not-disturb that
+    /// holds now; waiting at a pause or under a do-not-disturb unless they
+    /// pierce; posted with nobody at the desk, to be found there.
     #[test]
     fn something_to_do_stays_and_pierces_only_when_it_must() {
         let code = Notice::new("mid:code@example.org", Kind::Own(Row::Codes), "Code from example.org", "482913").until(Some(NOW + 1_800)).action("Copy", Act::Copy("482913".into()));
         let Decision::Post(shape) = decide(&code, &told(true), HERE, 5, NOW) else { panic!() };
-        assert_eq!(shape, Shape { class: Class::Actionable, urgency: Urgency::Normal, timeout_ms: 1_800_000, transient: false, key: "codes|mid:code@example.org".into(), close_at: Some(NOW + 1_800) });
+        assert_eq!(shape, Shape { class: Class::Actionable, urgency: Urgency::Normal, timeout_ms: 1_800_000, transient: false, resident: true, key: "codes|mid:code@example.org".into(), close_at: Some(NOW + 1_800) });
         let Decision::Post(shape) = decide(&code, &told(true), Moment { silenced: true, ..HERE }, 5, NOW) else { panic!() };
         assert_eq!(shape.urgency, Urgency::Critical, "it must pass a do-not-disturb on now");
         // A pause without the system's do-not-disturb: no need to be critical.
         let Decision::Post(shape) = decide(&code, &told(true), Moment { paused: true, ..HERE }, 5, NOW) else { panic!() };
         assert_eq!(shape.urgency, Urgency::Normal);
         let Decision::Post(_) = decide(&code, &told(true), Moment { present: false, ..HERE }, 5, NOW) else { panic!("waits on the screen") };
-        // A call in a site that does not pierce waits for the do-not-disturb's end.
-        let call = Notice::new(address::site("chat", "c1"), Kind::Own(Row::SiteCalls), "Camille", "Incoming call");
-        assert_eq!(decide(&call, &told(false), Moment { silenced: true, ..HERE }, 5, NOW), Decision::Drop(Dropped::Held));
-        let Decision::Post(shape) = decide(&call, &told(false), HERE, 5, NOW) else { panic!() };
-        assert_eq!((shape.timeout_ms, shape.close_at, shape.urgency), (0, None, Urgency::Normal), "until settled");
+        // A call in a site that does not pierce waits for the do-not-disturb's end, while it rings.
+        let call = Notice::new(address::site("chat", "c1"), Kind::Own(Row::SiteCalls), "Camille", "Incoming call").until(Some(NOW + 180));
+        assert_eq!(decide(&call, &told(false), Moment { silenced: true, ..HERE }, 5, NOW), Decision::Wait(NOW + 180));
+        // Its cell at once under do-not-disturb: it pierces, critical (`attention::Attention::decide` for a site's call).
+        let Decision::Post(shape) = decide(&call, &told(true), Moment { silenced: true, ..HERE }, 5, NOW) else { panic!() };
+        assert_eq!((shape.urgency, shape.timeout_ms, shape.close_at), (Urgency::Critical, 180_000, Some(NOW + 180)));
         // An expired code, or no notice of Sioul's own: nothing.
         assert_eq!(decide(&code, &told(true), HERE, 5, NOW + 1_800), Decision::Drop(Dropped::Over));
         let time = Notice::new("sioul:task/a", Kind::Own(Row::Time), "Focus", "");
@@ -547,7 +629,8 @@ mod tests {
     fn told_pierces_as_its_kind() {
         use super::told as decided;
         assert!(decided(Some(Row::Codes)).pierce && decided(Some(Row::Alarms)).pierce && decided(Some(Row::Doses)).pierce);
-        assert!(!decided(Some(Row::Before)).pierce && !decided(Some(Row::Move)).pierce && !decided(Some(Row::SiteCalls)).pierce && !decided(None).pierce);
+        assert!(decided(Some(Row::SiteCalls)).pierce, "a call in a site, when its cell lets it come");
+        assert!(!decided(Some(Row::Before)).pierce && !decided(Some(Row::Move)).pierce && !decided(Some(Row::SitesLive)).pierce && !decided(None).pierce);
         assert!(decided(None).told);
     }
 

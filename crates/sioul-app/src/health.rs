@@ -4319,13 +4319,15 @@ fn needs_tick(health: &Health, now: &Zoned) {
         if !heads_up && block.kind == "sleep" {
             // The night's own notice: closing the day is offered beside its
             // options while that night's review is to give (docs/reviews.md).
-            crate::reviews::show_notice(&about, sioul_core::attention::Kind::Needs, &name, &hm(block.start), night_offered(&block, now));
+            crate::reviews::show_notice(&about, sioul_core::attention::Kind::Needs, &name, &hm(block.start), night_offered(&block, now), Some(block.end), None);
             continue;
         }
         let (title, body) = if heads_up { (tr().text("need-heads-up", None), say("need-at", &[("name", name), ("time", hm(block.start))])) } else { (name, hm(block.start)) };
         // One button: the window's question (later, at another time, not
         // today; a line on where you stopped).
-        let notice = Notice::new(about.clone(), Kind::Own(sioul_core::attention::Kind::Needs), title, body).action(tr().text("need-open", None), Act::Open { address: about, hint: String::new() });
+        // Its heads-up is worth a minute, then the meal's own notice comes; a meal's, nap's own, while it lasts.
+        let relevant = (!heads_up).then_some(block.end);
+        let notice = Notice::new(about.clone(), Kind::Own(sioul_core::attention::Kind::Needs), title, body).relevant(relevant).action(tr().text("need-open", None), Act::Open { address: about, hint: String::new() });
         crate::tell::tell_as(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Needs)), None);
     }
 }

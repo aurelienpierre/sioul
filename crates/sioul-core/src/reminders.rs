@@ -298,7 +298,10 @@ impl Reminder {
     pub fn notice(&self, open: &str) -> crate::notice::Notice {
         use crate::notice::{Act, Kind as Of, Notice};
         let event = matches!(self.kind, Kind::Before | Kind::Alarm | Kind::Event);
-        let (about, hint) = if event {
+        let (about, hint) = if self.kind == Kind::Money {
+            // The money watch's all name the budgets: each its own notice, by its key.
+            (crate::notice::address::keyed(&self.target, &self.key), String::new())
+        } else if event {
             let at = self.starts.filter(|s| *s > 0);
             let about = self.event.as_ref().map(|uri| at.map_or_else(|| uri.clone(), |start| format!("{uri}#{start}"))).unwrap_or_default();
             (about, at.map_or_else(|| self.target.clone(), |start| format!("{}#{start}", self.target)))
@@ -1017,11 +1020,19 @@ fn settle_waits(reminders: &[Reminder], dir: &Path, now: i64) {
     let _ = std::fs::write(&mark, "The waits ended before this Sioul first gathered reminders here: marked told, not told.\n");
 }
 
-/// What to tell now, each marked told: those ready, not told yet. The waits
-/// ended before this Sioul first ran here never among them (`settle_waits`).
-pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
+/// What is due now: those ready, not told yet, none marked. A teller marks
+/// each told (`claim`) only once it is posted, or once it is no longer worth
+/// telling, so that one not posted (nobody at the desk, a do-not-disturb)
+/// comes again (docs/notifications.md). The waits ended before this Sioul
+/// first ran here never among them (`settle_waits`).
+pub fn due(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
     settle_waits(&reminders, dir, now);
-    reminders.into_iter().filter(|r| r.ready_in(now, holds) && claim(dir, &r.key)).collect()
+    reminders.into_iter().filter(|r| r.ready_in(now, holds) && !told(dir, &r.key)).collect()
+}
+
+/// What to tell now, each marked told at once: those ready, not told yet.
+pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
+    due(reminders, dir, now, holds).into_iter().filter(|r| claim(dir, &r.key)).collect()
 }
 
 #[cfg(test)]
@@ -1506,6 +1517,25 @@ mod tests {
         assert_eq!((paused.now.times.clone(), paused.until), (vec![attention::Column::Pause], None));
         let evening = Holds::of(&config, &mode(Time::Leisure, Reason::Evening, Some("2026-10-08T09:00")), &Blocks::default(), now);
         assert_eq!((evening.wait, evening.until), (Wait::Work, Some(at("2026-10-08T09:00").timestamp().as_second())));
+    }
+
+    /// Two warnings of the money watch, both about the budgets, are two
+    /// notices: neither takes the other's place; a due reminder is not
+    /// marked told until a teller claims it.
+    #[test]
+    fn each_money_warning_is_a_notice_of_its_own() {
+        let warning = |key: &str| Reminder { key: key.into(), kind: Kind::Money, at: 1, until: 2, title: String::new(), body: String::new(), target: "sioul:budget/".into(), work: false, starts: None, names: None, event: None };
+        let (a, b) = (warning("missed:Water bill:2026-11-13").notice("Open"), warning("missed:Power:2026-11-13").notice("Open"));
+        assert_ne!(a.key(), b.key());
+        assert!(a.about.starts_with("sioul:budget/#missed"), "{}", a.about);
+        let dir = std::env::temp_dir().join(format!("sioul-reminders-due-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let due_now = |dir: &Path| due(vec![Reminder { at: 0, until: i64::MAX, ..warning("short:Rent") }], dir, 10, &Holds::usual(Wait::Nothing)).len();
+        assert_eq!(due_now(&dir), 1);
+        assert_eq!(due_now(&dir), 1, "not marked: due again");
+        assert!(claim(&dir, "short:Rent"));
+        assert_eq!(due_now(&dir), 0, "claimed once posted");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Reminders of each kind, due at `at` for an event (or a date) at `starts`.

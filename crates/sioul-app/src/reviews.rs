@@ -358,7 +358,10 @@ pub(crate) fn work_notice(now: &Zoned, keeper: impl FnOnce() -> sioul_sync::leas
     let offer = || notice_offer(now, &crate::hours::mode_at(now));
     let comes = || crate::hours::comes(sioul_core::attention::Kind::WorkOver);
     let (notice, told_for) = notice_decision(due, offer, comes, || meeting(stamp), keeper, now.date());
-    if let Some(day) = told_for {
+    // A notice that comes is marked told once posted (`tick`, `decide_work`): one that waits comes later.
+    if let Some(day) = told_for
+        && !matches!(notice, WorkNotice::Comes(_))
+    {
         mark_told(day);
     }
     notice
@@ -413,10 +416,17 @@ pub(crate) fn tick(shared: &Arc<Shared>) {
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
         let keeper = || crate::share::keeper("notices", sioul_sync::lease::Rule::FollowsYou, active, false).0;
         let now = sioul_core::zone::now();
-        if let WorkNotice::Comes(_) = work_notice(&now, keeper) {
+        if let WorkNotice::Comes(date) = work_notice(&now, keeper) {
             let day = work_day(&now).to_string();
             let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{day}") };
-            show_notice(&sioul_core::notice::address::work_day(&day), sioul_core::attention::Kind::WorkOver, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close]);
+            // Worth telling until the evening's leisure is over: the night's start, else the day's end.
+            let stamp = now.timestamp().as_second();
+            let night = crate::hours::blocks(&now).kept.iter().filter(|k| k.kind == "sleep" && k.start > stamp).map(|k| k.start).min();
+            let claim: crate::tell::Claim = Box::new(move || {
+                mark_told(date);
+                true
+            });
+            show_notice(&sioul_core::notice::address::work_day(&day), sioul_core::attention::Kind::WorkOver, &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), vec![close], night, Some(claim));
         }
     });
 }
@@ -450,19 +460,21 @@ impl Offered {
 /// A closing notice (the end of work's, the night's: docs/reviews.md, "The
 /// notices"), a notice to know about `about` (the work day's end, the
 /// night's need), told as its source decided (`work_notice`, `needs_now`):
-/// each button opens what it offers, a click on the notice its thing. On
-/// Windows through Sioul's icon in the tray (`tell`). A phone's are its
-/// alarm's (`decide_work`, `health::decide_night`). Whether it was posted.
-pub(crate) fn show_notice(about: &str, kind: sioul_core::attention::Kind, title: &str, body: &str, offered: Vec<Offered>) -> bool {
+/// each button opens what it offers, a click on the notice its thing. Not
+/// now (nobody at the computer, a pause, a do-not-disturb), it waits while
+/// worth telling (`relevant`), its source's mark (`claim`) made once it is
+/// posted. On Windows through Sioul's icon in the tray (`tell`). A phone's
+/// are its alarm's (`decide_work`, `health::decide_night`).
+pub(crate) fn show_notice(about: &str, kind: sioul_core::attention::Kind, title: &str, body: &str, offered: Vec<Offered>, relevant: Option<i64>, claim: Option<crate::tell::Claim>) -> crate::tell::Fate {
     use sioul_core::notice::{Act, Kind, Notice};
-    let mut notice = Notice::new(about, Kind::Own(kind), title, body);
+    let mut notice = Notice::new(about, Kind::Own(kind), title, body).relevant(relevant);
     for offer in offered {
         let address = offer.address();
         if !address.is_empty() {
             notice = notice.action(offer.label, Act::Open { address, hint: String::new() });
         }
     }
-    crate::tell::tell_as(notice, sioul_core::notice::told(Some(kind)), None)
+    crate::tell::tell_with(notice, sioul_core::notice::told(Some(kind)), None, claim, true)
 }
 
 /// A phone's notice stays in the shade this long after it comes at most,
@@ -532,6 +544,7 @@ pub(crate) fn decide_work(now: &Zoned) -> serde_json::Value {
             let close = Offered { label: tr().text("review-close-work", None), kind: "review", key: format!("work:{}", work_day(now)) };
             let until = end.as_ref().map_or(stamp + PHONE_NOTICE_KEPT, |end| next_turn(end).min(stamp + PHONE_NOTICE_KEPT));
             crate::eventalarms::day_note(&format!("day:work:{date}"), &tr().text("review-notice-title", None), &tr().text("review-notice-text", None), &[close], until);
+            mark_told(date);
             serde_json::json!({ "shown": true })
         }
         WorkNotice::Soon | WorkNotice::Held if end_at.is_some_and(|end| still_due(stamp + 60, end)) => serde_json::json!({ "again_at": (stamp + 60) * 1000 }),
