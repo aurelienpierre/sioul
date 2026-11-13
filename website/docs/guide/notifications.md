@@ -230,6 +230,9 @@ On Android, Sioul can hold other apps' notifications until their time, as it hol
 - **Always come**: calls and alarms; what runs (music, a call in progress, navigation, a download); the reminders and events you set in other apps; codes, and sign-ins or payments to approve; Sioul's own.
 - **A held notification comes back whole**, with its own tap and actions. Sioul deletes none and never touches typing; it answers, or marks as read, only what you ask from a computer, through the notification's own Reply or Mark as read ([below](#messages-on-your-computers)).
 - **On the Porch**, one line says what waits: "Notifications held until 13:00: Discord, Le Monde and two other apps."
+- **What Sioul gathers comes back without a sound.** From Android 13 QPR1 (December 2022) on, and on Android 10, a held notification rings again when it comes back. So at each gathered time Sioul brings the automatons' notifications back itself, under Android's own hint that silences notifications, for a few seconds at most, and never at the time of one of its own reminders. The same for what you let through yourself (Reachable, **Let what your phone holds through**). A person's message comes back at their time ringing as its app says, since they may reach you then. If Sioul's alarm never comes, Android brings them back a few minutes later, with their sound: nothing is lost.
+- **The first sound**: Android rings a notification before Sioul sees it. Linked to your computer, Sioul makes the apps it gathers silent itself: Settings ▸ This phone ▸ **Let Sioul make them silent**, then choose in Android's list of devices the computer, paired by Bluetooth, to which Sioul relays your phone's notifications. Only the channels that rang while Sioul held an automaton's notification, and those you name with **Make it silent**; chats, texts and mail keep their sound, so that the people let through still ring. Each change shows in Android's settings as yours. **Give its sound back** beside an app returns its channels as they were; **Stop, and give every sound back** returns them all and lets the link go. Without the link (a phone that does not offer it, or you prefer not), **Make it silent** opens each channel's page in Android, for you to set it silent there.
+- **Before you uninstall Sioul**, press **Stop**: Android tells no app that it is being uninstalled, so the channels Sioul made silent would stay silent. To undo it by hand: Android's settings ▸ Apps ▸ the app ▸ Notifications, then each channel's sound.
 
 In Exceptions, as each app, conversation and site shows up:
 
@@ -247,10 +250,32 @@ In Exceptions, as each app, conversation and site shows up:
 - **Under a layer**: **At once** under Do not disturb lets the app through while do-not-disturb holds, at the times its row lets it through; **As usual** holds it as do-not-disturb holds everyone else's messages.
 - **As before**: your Always through people still come; the blocked never do; codes and approvals, calls, alarms and what runs are never held.
 - **Each app's line** says its row in one sentence: "At once: Work; held: Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you and Do not disturb."
-- **What Android allows**: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ This phone, **Make it silent**). During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what a cell lets through then shows without a sound, unless it is a priority conversation or from a starred contact.
+- **What Android allows**: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ This phone, **Make it silent**), or let Sioul do it for the apps it gathers. During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what a cell lets through then shows without a sound, unless it is a priority conversation or from a starred contact.
 - **On a computer**, Exceptions shows the apps' rows set on your phone or tablet, by name, and changes them: they travel with your settings.
 
 **What Sioul keeps**, on that device only, never shared with your other devices: your choices of each app's kind, each conversation's way through and each site's, the names of the apps, conversations and sites it saw, and when what it held comes back. Never what a notification says, unless you send an app's messages to your computers ([below](#messages-on-your-computers)). The rows by time travel with your settings: an app's with its name, a conversation's by a number made from it, never its title.
+
+#### Compared with other ways to hold notifications {#other-apps-compared}
+
+As of November 2026, from Apple's and Google's own pages, and for Android itself from its source code (AOSP, read at each release from Android 10 to 16).
+
+✓ documented; **partly**, with a note; ✗ not found; ? the pages read do not say. Sioul's column was checked against its code.
+
+| | Sioul, on Android | iOS, Scheduled Summary | Android, Focus mode | Android, snoozed from the shade |
+|---|---|---|---|---|
+| Holds an app's notifications until set times | ✓¹ | ✓² | partly³ | partly⁴ |
+| A person's message comes when they may reach you | ✓ | partly⁵ | ✗ | ✗ |
+| What was held comes back without a sound | ✓⁶ | ? | ? | ✗⁷ |
+| No sound when a held app's notification arrives | partly⁸ | ✓² | ✓³ | ✗ |
+
+1. Sioul: three gathered times a day unless you set others, and each app's or conversation's own times.
+2. iOS: the notifications of the apps you put in the summary are delivered at the times you set, instead of as they arrive (Apple's support pages, read through a search's summary). iOS holds them itself, so their arrival makes no sound; Sioul, an app, cannot do as much.
+3. Focus mode (Digital Wellbeing): "When Focus mode is on, you can't use these apps and won't get notifications from them", until you end it; whether they come later is not said.
+4. One notification at a time, for a time you choose.
+5. iOS: an app's direct messages and time-sensitive notifications may be set to come at once, past the summary (third-party guides; Apple's pages read do not say it); who wrote is not looked at.
+6. Sioul: in its quiet window, for the automatons' notifications and what you let through; a person's comes back ringing, on purpose.
+7. From Android 13 QPR1 on, and on Android 10, a snoozed notification rings again when it comes back; on 11 to 13.0 it comes back silent.
+8. Sioul: linked to your computer, the apps it gathers make no sound at all; a held chat still rings once as it arrives, since its channel keeps its sound for the people let through.
 
 #### On your computers {#messages-on-your-computers}
 
@@ -433,5 +458,6 @@ On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.
 - Batching notifications three times a day improved attention, mood and stress, while people given none at all felt more anxious than controls (Fitz et al. 2019). So what can wait comes gathered, at times you can read in advance, and it does not vanish.
 - A notification left unanswered still costs attention (Stothart, Mitchum & Yehnert 2015). So each comes once, mail without a sound, and no badge counts them.
 - Work messages in the evening cost the evening, and the mere expectation of checking harms, read or not (Butts, Becker & Boswell 2015; Becker et al. 2021). So work waits for its hours, and only those you let through reach you in the rest of your day.
+- On Android, a held notification rings again when it comes back, from Android 13 QPR1 on: holding would double the noise it is meant to calm. For an automaton, both sounds are unwanted; for a person, the sound at arrival is the unwanted one, and the sound when they may reach you is the right one. So what Sioul gathers comes back in silence, and a person's comes back ringing (from Android's source code, not a study: [the research](../dev/research.md), finding 75).
 
-More in [what the research says](../dev/research.md), findings 1, 2 and 21, and in [the attention model](../dev/attention.md). How other mail apps notify is in [the Porch's tables](porch.md#compared-with-other-apps).
+More in [what the research says](../dev/research.md), findings 1, 2, 21 and 75, and in [the attention model](../dev/attention.md). How other mail apps notify is in [the Porch's tables](porch.md#compared-with-other-apps).
