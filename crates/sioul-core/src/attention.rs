@@ -220,6 +220,27 @@ impl Kind {
         Kind::ALL.into_iter().find(|k| k.id() == text)
     }
 
+    /// Whether, told, it passes the system's do-not-disturb (`Output::pierce`):
+    /// what you set or asked for (codes, doses, the alarm at waking, an
+    /// event's own alarms).
+    pub fn pierces(self) -> bool {
+        matches!(self, Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms)
+    }
+
+    /// Its class of notice (docs/notifications.md, "Two classes"): what you
+    /// set or asked for and a call in a site are to do, and stay until
+    /// settled; reminders, your day's notices and sites' are to know, and
+    /// leave after a few minutes. None for the time running (a status) and
+    /// other apps' notifications on a phone (never Sioul's to post).
+    pub fn class(self) -> Option<crate::notice::Class> {
+        use crate::notice::Class;
+        match self {
+            Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms | Kind::SiteCalls => Some(Class::Actionable),
+            Kind::Before | Kind::DayBefore | Kind::Dates | Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Sites | Kind::SitesLive => Some(Class::Informative),
+            Kind::Time | Kind::AppAutomatons | Kind::AppAtOnce => None,
+        }
+    }
+
     /// The group it is shown in: what you set or asked for, reminders, your
     /// day, sites (a computer), other apps (a phone).
     pub fn group(self) -> &'static str {
@@ -1344,7 +1365,7 @@ impl Attention {
             (level, step) = (Level::Never, Step::Hold);
         }
         let told = level == Level::Now || (level == Level::Gathered && now.gathering);
-        Output { level, shown: true, told, pierce: told && matches!(kind, Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms), step }
+        Output { level, shown: true, told, pierce: told && kind.pierces(), step }
     }
 
     fn letter(&self, who: Who, always: bool, lane: Lane, event: &Event, now: &Now) -> Output {

@@ -274,6 +274,8 @@ pub mod overlaps;
 pub mod own_time;
 pub mod pairs;
 pub mod notes;
+// notice: one notification about one thing, its class and how it is posted (docs/notifications.md).
+pub mod notice;
 pub mod notices;
 pub mod payments;
 pub mod pgp;

@@ -739,8 +739,13 @@ sioul-sync/src/mailbox.rs	act	1	std::fs::remove_file(&file)
 sioul-sync/src/mailbox.rs	follow_all_with	1	std::fs::remove_file(file)
 sioul-sync/src/mailbox.rs	act_many	1	std::fs::remove_file(&file)
 
-# sioul-sync/src/notify.rs: the notifications' relay: no item.
+# sioul-sync/src/notify.rs: the notifications' relay, and what shows (notices-shown.json, state): no item.
 sioul-sync/src/notify.rs	slow_relay	1	std::fs::remove_file(&socket)
+sioul-sync/src/notify.rs	write_saved	1	sioul_core::filelock::replace(path, text.as_bytes())
+# sioul-sync/src/notify.rs: its tests' scratch folders and a file of another format: no item.
+sioul-sync/src/notify.rs	the_file_of_what_shows_reads_its_own_format_only	2	std::fs::remove_dir_all(&dir)
+sioul-sync/src/notify.rs	the_file_of_what_shows_reads_its_own_format_only	1	std::fs::write(&path, text.replace("\"format\":1", "\"format\":2"))
+sioul-sync/src/notify.rs	notices_go_as_their_class_says_and_hear_every_press	2	std::fs::remove_dir_all(&dir)
 
 # sioul-sync/src/ocr.rs: a scan's text read: no item.
 sioul-sync/src/ocr.rs	text_of	2	std::fs::remove_dir_all(work)

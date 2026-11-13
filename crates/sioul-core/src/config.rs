@@ -102,6 +102,9 @@ pub struct Config {
     /// Reminders before dates: events, dates asked, waits, payments (docs/reminders.md).
     #[serde(default)]
     pub reminders: ReminderSettings,
+    /// How long informative notices last (`[notices]`, docs/notifications.md).
+    #[serde(default)]
+    pub notices: crate::notice::Settings,
     /// What each kind of notification did at each time, before `[attention]`
     /// (`[notify]`): read once, to seed it (`attention::seeded`).
     #[serde(default)]
