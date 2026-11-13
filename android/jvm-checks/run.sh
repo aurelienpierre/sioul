@@ -112,6 +112,24 @@
 #   path into Sioul's own folders refused as the system resolves it (written
 #   inside, "..", a link to a file or a folder of Sioul's, a root named by a
 #   link), one elsewhere taken; the manifest's VIEW of calendar files.
+# - QuietCheck: the quiet window over what Sioul gathered (QuietWindow): the
+#   hint set before anything is held again, each released key held again for
+#   a second (Android 11 and later) or left to its own time (9 and 10), the
+#   hint off once each came back or at the window's end, a stranger that
+#   would have rung held again for a second after it, never one held
+#   meanwhile, an update alerting once or a dose; the window forgotten when
+#   the listener is unbound; where a window opens, off Sioul's own
+#   reminders; the plan of what comes back quiet; read from the sources, the
+#   hint asked in one place, the alarm's receiver in the listener's process,
+#   never exported, the safety net within Rust's LATE.
+# - SilenceCheck: the channels Sioul makes silent itself (ChannelSilence),
+#   against a stand-in phone and Rust's record: each one's importance written
+#   down before it changes; one silent already or gone left; Rust or Android
+#   refusing, nothing kept wrongly; given back only while still as Sioul left
+#   it; the link gone, everything stops; read from the sources, the
+#   association asks no profile nor permission, the feature not required,
+#   the activity never exported, a Bluetooth filter, channels changed in one
+#   place, the link let go only as Rust says.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes
 #   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
 #   encoder writes now) read by Android's own parser, as Android's MMS service
@@ -137,7 +155,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

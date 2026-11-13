@@ -21,6 +21,7 @@ import org.json.JSONObject;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -385,6 +386,31 @@ final class EventAlarms
     private static SharedPreferences kept(Context context)
     {
         return context.getSharedPreferences(KEPT, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * The times of the reminders to come (ms), not done, read fresh from
+     * another of Sioul's processes, never written there: the listener's
+     * quiet window keeps off them (AppNotes), since under its hint they
+     * would come without a sound.
+     */
+    @SuppressWarnings("deprecation")
+    static long[] coming(Context context)
+    {
+        JSONArray coming;
+        try {
+            coming = new JSONArray(context.getSharedPreferences(KEPT, Context.MODE_PRIVATE | Context.MODE_MULTI_PROCESS).getString(LIST, "[]"));
+        } catch (JSONException e) {
+            return new long[0];
+        }
+        long[] times = new long[coming.length()];
+        int n = 0;
+        for (int i = 0; i < coming.length(); i++) {
+            JSONObject reminder = coming.optJSONObject(i);
+            if (reminder != null && reminder.optLong("at", 0) > 0 && !reminder.optBoolean(DONE))
+                times[n++] = reminder.optLong("at");
+        }
+        return Arrays.copyOf(times, n);
     }
 
     private static JSONArray list(Context context)
