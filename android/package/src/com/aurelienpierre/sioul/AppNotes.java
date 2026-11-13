@@ -32,6 +32,8 @@ import android.os.FileObserver;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.os.SystemClock;
 import android.os.Parcelable;
 import android.os.Process;
 import android.provider.ContactsContract;
@@ -97,12 +99,15 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * What comes back without a sound (an automaton's, gathered; one held for
  * good; what a release you asked lets through) is brought back by Sioul
- * itself, in a quiet window ({@link QuietWindow}): held a few minutes past
- * its time, Android's own timer the safety net, then at its time, from
- * Sioul's own exact alarm ({@link Asked}), released under Android's hint
- * that silences notifications, a few seconds at most, never on the time of
- * one of Sioul's own reminders. A person's comes back at their time as
- * Android brings it, ringing as its channel says.
+ * itself, in a quiet window ({@link QuietWindow}), where a held
+ * notification's return rings (Android 9 and 10, and 13 from its first
+ * quarterly release on): held a few minutes past its time, Android's own
+ * timer the safety net, then, from Sioul's own exact alarm alone
+ * ({@link Asked}), released under Android's hint that silences
+ * notifications, a few seconds at most, the phone kept awake meanwhile,
+ * moved past any of Sioul's own reminders and doses read again right
+ * before. A person's comes back at their time as Android brings it,
+ * ringing as its channel says.
  *
  * Linked to one of your devices (a companion-device association, asked once
  * by {@link Companion}), Sioul also makes the channels of the apps it
@@ -147,15 +152,19 @@ public final class AppNotes extends NotificationListenerService
     static final String RELEASE = "com.aurelienpierre.sioul.action.QUIET_RELEASE";
     /** The link to one of your devices just made ({@link Companion}): the channels worked out at once. */
     static final String LINKED = "com.aurelienpierre.sioul.action.LINKED";
+    /** The quiet window's end, by an alarm that counts sleep: the hint never outlives it. */
+    static final String CLOSE = "com.aurelienpierre.sioul.action.QUIET_CLOSE";
     /** Sioul's doses' alarms, as DoseAlarms keeps them (its RECORD, read here, never written): no window on their times. */
     private static final String DOSE_RECORD = "dose-alarms.json";
 
-    /** What comes back quiet, with when (`QuietWindow.Plan`): in memory, rebuilt at each review. */
-    private final QuietWindow.Plan plan = new QuietWindow.Plan();
-    /** The window itself, made in onCreate. */
+    /** The quiet window and what it brings back (`QuietWindow`), made in onCreate. */
     private QuietWindow window;
     /** Android's main thread: the window's end never waits behind Rust on the worker. */
     private Handler main;
+    /** The window's end on Android's main thread (one runnable, taken away as the window closes). */
+    private final Runnable ended = () -> window.close();
+    /** The phone kept awake while a window lasts, never longer than its end and a margin. */
+    private PowerManager.WakeLock awake;
     /** The alarm's broadcast, held open while its window lasts. */
     private final AtomicReference<BroadcastReceiver.PendingResult> broadcast = new AtomicReference<>();
 
@@ -548,7 +557,7 @@ public final class AppNotes extends NotificationListenerService
         thread.start();
         worker = new Handler(thread.getLooper());
         main = new Handler(Looper.getMainLooper());
-        window = new QuietWindow(new Quiet());
+        window = new QuietWindow(new Quiet(), QuietWindow.returnsRing(Build.VERSION.SDK_INT, Build.VERSION.SECURITY_PATCH), fixed());
     }
 
     /** Ended: nothing held from here on, the watches stopped, the thread let finish what it was doing. */
@@ -645,15 +654,16 @@ public final class AppNotes extends NotificationListenerService
      */
     private void heard(StatusBarNotification sbn, Notification n, Ranking ranking, boolean runs)
     {
-        if (!window.isOpen())
+        if (!window.used())
             return;
         boolean own = getPackageName().equals(sbn.getPackageName());
         String channel = n == null || n.getChannelId() == null ? "" : n.getChannelId();
         boolean dose = own && channel.startsWith("doses");
+        boolean summary = n != null && (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
         boolean rings = !dose && n != null && ranking != null
-            && QuietWindow.rings(ranking.getImportance(), ranking.matchesInterruptionFilter(), n.fullScreenIntent != null, n.category, runs);
+            && QuietWindow.rings(ranking.getImportance(), ranking.matchesInterruptionFilter(), n.fullScreenIntent != null, n.category, runs, summary);
         boolean alertOnce = n != null && (n.flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0;
-        window.posted(sbn.getKey(), rings, alertOnce);
+        window.posted(sbn.getKey(), rings, alertOnce, sbn.getPostTime());
     }
 
     /**
@@ -703,9 +713,9 @@ public final class AppNotes extends NotificationListenerService
             JSONObject decided = new JSONObject(answer);
             long hold = decided.optLong("hold", 0);
             if (hold > 0 && decided.optBoolean("quiet", false)) {
-                holdQuiet(sbn.getKey(), hold);
+                snooze(sbn.getKey(), window.hold(sbn.getKey(), hold));
             } else {
-                plan.remove(sbn.getKey());
+                window.forget(sbn.getKey());
                 if (hold > 0)
                     snooze(sbn.getKey(), hold);
             }
@@ -746,32 +756,17 @@ public final class AppNotes extends NotificationListenerService
     }
 
     /**
-     * A notification whose return comes without a sound, held `ms`: planned
-     * at its time, and held by Android a few minutes past it, the safety net
-     * when Sioul's alarm never comes; on Android 9 and 10, held exactly that
-     * long, the window opening around its return.
-     */
-    private void holdQuiet(String key, long ms)
-    {
-        snooze(key, fixed() ? ms : ms + QuietWindow.SAFETY_MS);
-        plan.put(key, System.currentTimeMillis() + ms);
-        arm();
-    }
-
-    /**
      * The quiet window's alarm rang ({@link Asked}), on the worker: what is
-     * held worked out again, which rebuilds the plan and opens the window
-     * over what is due; the alarm's broadcast held open until it closes.
+     * held worked out again, which rebuilds the plan, then the window opened
+     * over what is due, or the alarm moved; the alarm's broadcast held open
+     * until the window closes.
      */
     private void released(BroadcastReceiver.PendingResult pending)
     {
         letGo();
         broadcast.set(pending);
         review("gathered");
-        // Rust silent or failing: what the plan holds due comes all the same.
-        releaseDue();
-        arm();
-        if (!window.isOpen())
+        if (!window.rang())
             letGo();
     }
 
@@ -783,108 +778,42 @@ public final class AppNotes extends NotificationListenerService
             pending.finish();
     }
 
-    /** What is due now brought back in the quiet window; counts only in the log. */
-    private void releaseDue()
+    /** One of the quiet window's alarms (`code`: the release, the end), its intent to the listener's receiver. */
+    private PendingIntent alarmIntent(String action, int code, int flags)
     {
-        long now = System.currentTimeMillis();
-        List<String> due = plan.due(now, fixed() ? QuietWindow.LEAD_MS + QuietWindow.DUE_MS : QuietWindow.DUE_MS);
-        if (due.isEmpty())
-            return;
-        // Only what Android still holds: one gone meanwhile would keep the window open for nothing.
-        Set<String> held = new HashSet<>();
-        try {
-            StatusBarNotification[] snoozed = getSnoozedNotifications();
-            if (snoozed != null)
-                for (StatusBarNotification sbn : snoozed)
-                    held.add(sbn.getKey());
-        } catch (RuntimeException e) {
-            return;
-        }
-        due.retainAll(held);
-        long atMost = fixed() ? QuietWindow.LEAD_MS + QuietWindow.AT_MOST_MS : QuietWindow.AT_MOST_MS;
-        if (window.open(due, !fixed(), atMost, shownKeys()))
-            Log.i(TAG, "Notes: quiet window: " + due.size() + " brought back without a sound.");
+        return PendingIntent.getBroadcast(this, code, new Intent(this, Asked.class).setAction(action), PendingIntent.FLAG_IMMUTABLE | flags);
     }
 
-    /** The keys Android shows now (an update of one, alerting once, would not ring). */
-    private Set<String> shownKeys()
+    /** An exact alarm even while the phone sleeps when Sioul may ("Alarms &amp; reminders", asked for events), else as close as Android allows. */
+    private static void exactly(AlarmManager alarms, int clock, long at, PendingIntent ring)
     {
-        Set<String> keys = new HashSet<>();
-        try {
-            StatusBarNotification[] active = getActiveNotifications();
-            if (active != null)
-                for (StatusBarNotification sbn : active)
-                    keys.add(sbn.getKey());
-        } catch (RuntimeException e) {
-            // Unbound meanwhile: none.
-        }
-        return keys;
-    }
-
-    /**
-     * The quiet window's alarm set at the next window's start, or taken
-     * away when nothing is planned: off the times of Sioul's own reminders;
-     * a batch for which no window fits is let come at its own time, with
-     * its sound, rather than silence one of Sioul's.
-     */
-    private void arm()
-    {
-        long[] own = ownTimes();
-        while (true) {
-            long next = plan.next();
-            if (next < 0) {
-                alarm(-1);
-                return;
-            }
-            long start = fixed()
-                ? QuietWindow.start(next - QuietWindow.LEAD_MS, own, QuietWindow.LEAD_MS + QuietWindow.AT_MOST_MS, next - QuietWindow.LEAD_MS)
-                : QuietWindow.start(next, own, QuietWindow.AGAIN_MS + QuietWindow.AT_MOST_MS, next + QuietWindow.SAFETY_MS - 30_000);
-            if (start >= 0) {
-                alarm(start);
-                return;
-            }
-            int let = plan.due(next, 0).size();
-            Log.i(TAG, "Notes: quiet window: none fits between Sioul's own reminders; " + let + " come back with their sound.");
-        }
-    }
-
-    /**
-     * The quiet window's alarm, at `at` (ms; -1: none): exact even while the
-     * phone sleeps when Sioul may ("Alarms &amp; reminders", asked for the
-     * events), else as close as Android allows, Android's own timer then
-     * bringing back what it could not.
-     */
-    private void alarm(long at)
-    {
-        AlarmManager alarms = getSystemService(AlarmManager.class);
-        if (alarms == null)
-            return;
-        Intent ring = new Intent(this, Asked.class).setAction(RELEASE);
-        if (at < 0) {
-            PendingIntent set = PendingIntent.getBroadcast(this, 0, ring, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_NO_CREATE);
-            if (set != null) {
-                alarms.cancel(set);
-                set.cancel();
-            }
-            return;
-        }
-        PendingIntent pending = PendingIntent.getBroadcast(this, 0, ring, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms.canScheduleExactAlarms()) {
-                alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending);
+                alarms.setExactAndAllowWhileIdle(clock, at, ring);
                 return;
             }
         } catch (SecurityException e) {
             // Taken back between the question and the alarm.
         }
-        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending);
+        alarms.setAndAllowWhileIdle(clock, at, ring);
+    }
+
+    /** An alarm of the quiet window taken away. */
+    private void unset(String action, int code)
+    {
+        AlarmManager alarms = getSystemService(AlarmManager.class);
+        PendingIntent set = alarmIntent(action, code, PendingIntent.FLAG_NO_CREATE);
+        if (alarms != null && set != null) {
+            alarms.cancel(set);
+            set.cancel();
+        }
     }
 
     /**
-     * The times of Sioul's own reminders to come (ms), which a quiet window
-     * keeps away from, since under its hint they would come without a
-     * sound: the doses' alarms (DoseAlarms' record) and the events'
-     * (EventAlarms' list), read here, never written.
+     * The times of Sioul's own reminders and doses to come (ms), read now,
+     * which a quiet window keeps away from, since under its hint they would
+     * come without a sound: the doses' alarms (DoseAlarms' record) and the
+     * events' (EventAlarms' list), read here, never written.
      */
     private long[] ownTimes()
     {
@@ -900,7 +829,7 @@ public final class AppNotes extends NotificationListenerService
                 }
             }
         } catch (IOException | JSONException | RuntimeException e) {
-            // Being written: read at the next window.
+            // Being written (it is replaced whole, so this is rare): read at the next window.
         }
         try {
             for (long at : EventAlarms.coming(this))
@@ -914,7 +843,7 @@ public final class AppNotes extends NotificationListenerService
         return out;
     }
 
-    /** The window's side of Android: the listener's hint, its holds, its shade; the end on Android's main thread. */
+    /** The window's side of Android: the listener's hint, its holds, its shade, the alarms, the wake lock. */
     private final class Quiet implements QuietWindow.Host
     {
         @Override
@@ -951,15 +880,93 @@ public final class AppNotes extends NotificationListenerService
         }
 
         @Override
-        public void after(Runnable task, long ms)
+        public Set<String> active()
         {
-            main.postDelayed(task, ms);
+            Set<String> keys = new HashSet<>();
+            try {
+                StatusBarNotification[] active = getActiveNotifications();
+                if (active != null)
+                    for (StatusBarNotification sbn : active)
+                        keys.add(sbn.getKey());
+            } catch (RuntimeException e) {
+                // Unbound meanwhile: none.
+            }
+            return keys;
         }
 
         @Override
-        public void cancel(Runnable task)
+        public Set<String> held()
         {
-            main.removeCallbacks(task);
+            try {
+                StatusBarNotification[] snoozed = getSnoozedNotifications();
+                Set<String> keys = new HashSet<>();
+                if (snoozed != null)
+                    for (StatusBarNotification sbn : snoozed)
+                        keys.add(sbn.getKey());
+                return keys;
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+
+        @Override
+        public long[] own()
+        {
+            return ownTimes();
+        }
+
+        @Override
+        public long now()
+        {
+            return System.currentTimeMillis();
+        }
+
+        @Override
+        public void alarm(long at)
+        {
+            AlarmManager alarms = getSystemService(AlarmManager.class);
+            if (alarms == null)
+                return;
+            if (at < 0)
+                unset(RELEASE, 0);
+            else
+                exactly(alarms, AlarmManager.RTC_WAKEUP, at, alarmIntent(RELEASE, 0, PendingIntent.FLAG_UPDATE_CURRENT));
+        }
+
+        @Override
+        public void ending(long ms)
+        {
+            main.removeCallbacks(ended);
+            if (ms < 0) {
+                unset(CLOSE, 1);
+                return;
+            }
+            main.postDelayed(ended, ms);
+            AlarmManager alarms = getSystemService(AlarmManager.class);
+            if (alarms != null)
+                exactly(alarms, AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + ms, alarmIntent(CLOSE, 1, PendingIntent.FLAG_UPDATE_CURRENT));
+        }
+
+        @Override
+        public void awake(long ms)
+        {
+            if (awake == null) {
+                PowerManager power = getSystemService(PowerManager.class);
+                if (power == null)
+                    return;
+                awake = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "sioul:quiet-window");
+                awake.setReferenceCounted(false);
+            }
+            if (ms > 0)
+                awake.acquire(ms);
+            else if (awake.isHeld())
+                awake.release();
+        }
+
+        @Override
+        public void later(Runnable task)
+        {
+            worker.post(task);
         }
 
         @Override
@@ -974,7 +981,8 @@ public final class AppNotes extends NotificationListenerService
     /**
      * What the listener is asked from outside its thread (the manifest: in
      * the listener's own process, never exported): the quiet window's alarm,
-     * which opens the window, the broadcast held open meanwhile; the link to
+     * which opens the window, the broadcast held open meanwhile; its end, by
+     * an alarm that counts sleep; the link to
      * your computer just made ({@link Companion}), which works the channels
      * out at once. No listener bound: nothing; Android's own timer brings
      * what it holds back, with its sound, and the next review works the
@@ -993,6 +1001,8 @@ public final class AppNotes extends NotificationListenerService
                 PendingResult pending = goAsync();
                 if (!listener.worker.post(() -> listener.released(pending)))
                     pending.finish();
+            } else if (CLOSE.equals(action)) {
+                listener.window.close();
             } else if (LINKED.equals(action)) {
                 listener.worker.post(listener::channels);
             }
@@ -1013,23 +1023,31 @@ public final class AppNotes extends NotificationListenerService
             return;
         try {
             DoseAlarms.load(getApplicationContext());
-            for (int round = 0; round < 2; round++) {
-                String answer = nativeChannels("plan", new JSONObject().put("linked", linked(this)).toString());
-                if (answer == null || answer.isEmpty() || "null".equals(answer))
-                    return;
-                JSONObject plan = new JSONObject(answer);
-                if (plan.optBoolean("unlink", false)) {
-                    unlink(this);
-                    Log.i(TAG, "Notes: every sound given back; the link to your computer let go.");
-                    return;
+            ChannelSilence.Link link = new ChannelSilence.Link() {
+                @Override
+                public boolean linked()
+                {
+                    return AppNotes.linked(AppNotes.this);
                 }
-                int[] done = ChannelSilence.apply(plan, new Lister(), new Kept());
-                // Counts only, never an app nor a channel.
-                if (done[0] + done[1] > 0)
-                    Log.i(TAG, "Notes: channels: " + done[0] + " made silent, " + done[1] + " given back.");
-                if (done[1] == 0)
-                    return;
-            }
+
+                @Override
+                public void unlink()
+                {
+                    AppNotes.unlink(AppNotes.this);
+                }
+            };
+            int[] done = ChannelSilence.run(linked -> {
+                try {
+                    return nativeChannels("plan", new JSONObject().put("linked", linked).toString());
+                } catch (JSONException e) {
+                    return null;
+                }
+            }, new Lister(), new Kept(), link);
+            // Counts only, never an app nor a channel.
+            if (done[0] + done[1] > 0)
+                Log.i(TAG, "Notes: channels: " + done[0] + " made silent, " + done[1] + " given back.");
+            if (done[2] > 0)
+                Log.i(TAG, "Notes: every sound given back; the link to your computer let go.");
         } catch (Throwable e) {
             Log.w(TAG, "Notes: channels: nothing changed: " + e.getClass().getSimpleName());
         }
@@ -1093,6 +1111,8 @@ public final class AppNotes extends NotificationListenerService
             try {
                 found.setImportance(importance);
                 updateNotificationChannel(pkg, Process.myUserHandle(), found);
+                // Read again from Android next time: what it kept is what counts.
+                read.remove(pkg);
                 return true;
             } catch (RuntimeException e) {
                 Log.w(TAG, "Notes: channels: Android refused a change: " + e.getClass().getSimpleName());
@@ -1159,13 +1179,11 @@ public final class AppNotes extends NotificationListenerService
                 JSONObject one = again.optJSONObject(i);
                 if (one == null || one.optString("key", "").isEmpty())
                     continue;
-                long ms = one.optLong("ms", 1000);
-                if (!one.optBoolean("quiet", false))
+                // Quiet: a few minutes past its new time, Android's own timer the safety net; due now, nothing
+                // here: Sioul's alarm opens the window (never a review).
+                long ms = window.moved(one.optLong("ms", 1000), one.optBoolean("quiet", false));
+                if (ms > 0)
                     snooze(one.optString("key"), ms);
-                else if (ms > QuietWindow.DUE_MS)
-                    // Its new time, a few minutes past it Android's own timer: the safety net.
-                    snooze(one.optString("key"), fixed() ? ms : ms + QuietWindow.SAFETY_MS);
-                // Quiet and due now: brought back in the window below.
             }
             String line = reviewed.optString("line", "");
             if (!line.isEmpty())
@@ -1179,10 +1197,8 @@ public final class AppNotes extends NotificationListenerService
                     if (one != null && !one.optString("key", "").isEmpty())
                         times.put(one.optString("key"), one.optLong("at", 0));
                 }
-                plan.follow(times, fixed(), System.currentTimeMillis());
+                window.follow(times);
             }
-            releaseDue();
-            arm();
         } catch (Throwable e) {
             Log.e(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.", e);
         }
@@ -1513,6 +1529,9 @@ public final class AppNotes extends NotificationListenerService
         out.put("channel", channel);
         NotificationChannel given = ranking == null ? null : ranking.getChannel();
         out.put("channel_name", given == null || given.getName() == null ? "" : given.getName().toString());
+        // The channel Android ranked it on, whose importance this is: a conversation's own (Android 11 and
+        // later), not its app's, once the conversation was given one.
+        out.put("ranked_channel", given == null || given.getId() == null ? "" : given.getId());
         // Its page in Android, for the tab: where a conversation Always through is marked important.
         if (!shortcut.trim().isEmpty())
             remember(this, sbn.getPackageName(), shortcut.trim(), channel, given, conversation, System.currentTimeMillis());

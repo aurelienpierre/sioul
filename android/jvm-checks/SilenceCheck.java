@@ -51,6 +51,8 @@ public final class SilenceCheck
         final List<String> said = new ArrayList<>();
         boolean denied;
         String refuses = "";
+        /** A channel whose importance Android keeps without a word (locked). */
+        String locked = "";
 
         @Override
         public int importance(String pkg, String channel)
@@ -73,7 +75,8 @@ public final class SilenceCheck
             said.add("set " + pkg + " " + channel + " " + value);
             if (refuses.equals(pkg + " " + channel))
                 return false;
-            importance.put(pkg + " " + channel, value);
+            if (!locked.equals(pkg + " " + channel))
+                importance.put(pkg + " " + channel, value);
             return true;
         }
     }
@@ -183,6 +186,69 @@ public final class SilenceCheck
         expect("nothing done", done[0] + done[1], 0);
         expect("no plan, nothing", ChannelSilence.apply(null, new Phone(), new Record(new ArrayList<>()))[0], 0);
 
+        // A channel whose importance Android keeps (a dialer's missed calls): read again, forgotten, never counted.
+        phone = new Phone();
+        record = new Record(phone.said);
+        phone.importance.put("com.example.dialer missed", 4);
+        phone.locked = "com.example.dialer missed";
+        done = ChannelSilence.apply(new JSONObject("{\"silence\":[{\"package\":\"com.example.dialer\",\"channel\":\"missed\"}]}"), phone, record);
+        expect("not counted", done[0], 0);
+        expect("forgotten", record.kept.isEmpty(), true);
+        // Given back, but Android kept it silent: kept written down, to try again.
+        phone = new Phone();
+        record = new Record(phone.said);
+        record.kept.put("com.shop.example offers", 4);
+        phone.importance.put("com.shop.example offers", 2);
+        phone.locked = "com.shop.example offers";
+        done = ChannelSilence.apply(new JSONObject("{\"restore\":[{\"package\":\"com.shop.example\",\"channel\":\"offers\",\"importance\":4}]}"), phone, record);
+        expect("not given back yet", done[1] + " " + record.kept, "0 {com.shop.example offers=4}");
+
+        // Stop pressed while the listener was unbound (or Android refusing then): nothing changes and nothing
+        // is forgotten; at the next binding, every sound given back, then the link let go.
+        Phone stopped = new Phone();
+        Record left = new Record(stopped.said);
+        left.kept.put("com.shop.example offers", 4);
+        left.kept.put("org.example.news daily", 3);
+        stopped.importance.put("com.shop.example offers", 2);
+        stopped.importance.put("org.example.news daily", 2);
+        boolean[] link = { true, false };
+        ChannelSilence.Link android = new ChannelSilence.Link() {
+            @Override
+            public boolean linked()
+            {
+                return link[0];
+            }
+
+            @Override
+            public void unlink()
+            {
+                link[0] = false;
+                link[1] = true;
+            }
+        };
+        // Rust's plan after Stop: give back what is written down; nothing left, linked, let the link go.
+        ChannelSilence.Planner rust = linked -> {
+            if (left.kept.isEmpty())
+                return linked ? "{\"silence\":[],\"restore\":[],\"unlink\":true}" : "{\"silence\":[],\"restore\":[],\"unlink\":false}";
+            StringBuilder restore = new StringBuilder();
+            for (Map.Entry<String, Integer> one : left.kept.entrySet()) {
+                String[] parts = one.getKey().split(" ");
+                restore.append(restore.length() == 0 ? "" : ",").append("{\"package\":\"").append(parts[0]).append("\",\"channel\":\"").append(parts[1]).append("\",\"importance\":").append(one.getValue()).append("}");
+            }
+            return "{\"silence\":[],\"restore\":[" + restore + "],\"unlink\":false}";
+        };
+        stopped.denied = true;
+        int[] run = ChannelSilence.run(rust, stopped, left, android);
+        expect("unbound: nothing", run[0] + " " + run[1] + " " + run[2], "0 0 0");
+        expect("nothing forgotten", left.kept.size(), 2);
+        expect("the link kept", link[0], true);
+        stopped.denied = false;
+        run = ChannelSilence.run(rust, stopped, left, android);
+        expect("bound again: both given back, then the link let go", run[0] + " " + run[1] + " " + run[2], "0 2 1");
+        expect("as they were", stopped.importance.get("com.shop.example offers") + " " + stopped.importance.get("org.example.news daily"), "4 3");
+        expect("nothing left", left.kept.isEmpty() && link[1], true);
+        expect("Rust silent: nothing", ChannelSilence.run(linked -> null, stopped, left, android)[2], 0);
+
         // Read from the sources.
         String companion = sources("Companion.java");
         String notes = sources("AppNotes.java");
@@ -200,8 +266,10 @@ public final class SilenceCheck
         expect("written down before the change", silence.indexOf("keeper.keep(") < silence.indexOf("channels.set(pkg, channel, LOW)"), true);
         expect("channels changed in one place", notes.split("updateNotificationChannel\\(", -1).length - 1, 1);
         expect("this phone's own profile", notes.contains("updateNotificationChannel(pkg, Process.myUserHandle(), found)"), true);
-        expect("the link let go only as Rust says", notes.indexOf("unlink(this);") > notes.indexOf("plan.optBoolean(\"unlink\", false)") && notes.split("unlink\\(this\\)", -1).length - 1 == 1, true);
+        expect("the link let go only as Rust says", silence.indexOf("link.unlink();") > silence.indexOf("plan.optBoolean(\"unlink\", false)") && notes.split("AppNotes\\.unlink\\(", -1).length - 1 == 1, true);
         expect("counts only in the log", notes.contains("\"Notes: channels: \" + done[0] + \" made silent, \" + done[1] + \" given back.\""), true);
+        expect("worked out at every review, the listener's binding among them", notes.contains("        // The choices may have changed (an app's sound given back, Stop): the channels worked out again.\n        channels();"), true);
+        expect("read again after each change", silence.contains("channels.set(pkg, channel, LOW) && channels.importance(pkg, channel) == LOW"), true);
 
         System.out.println("SilenceCheck: " + (checked - failed) + " of " + checked + " held");
         if (failed > 0)

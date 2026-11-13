@@ -6,7 +6,6 @@ package com.aurelienpierre.sioul;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -20,20 +19,20 @@ import java.util.regex.Pattern;
 
 /**
  * The quiet window, on the JVM (QuietWindow; option 1 of
- * docs/research/android-holding.md): what Sioul gathered comes back under
- * Android's hint that silences notifications, a few seconds at most. The
- * hint set before anything is held again, each released key held again for
- * a second (Android 11 and later) or left to come at its own time (9 and
- * 10); the hint taken off once each came back, or at the window's end, the
- * alarm's broadcast let end then; a stranger posted inside it that would
- * have rung held again for a second after the hint is off, never one Sioul
- * held meanwhile, one that would not ring, an update alerting once, a dose;
- * a second release joining an open window; the window forgotten when the
- * listener is unbound, nothing asked of Android. Then where a window opens,
- * off Sioul's own reminders, and the plan of what comes back quiet. Then,
- * read from the sources, the listener's side: the hint asked in one place,
- * taken off on every way out, the alarm's receiver in the listener's process
- * and never exported, the doses never touched.
+ * docs/research/android-holding.md; the review of phase 4), driven as the
+ * listener drives it, against a stand-in phone with its own clock: used only
+ * where returns ring (Android 9 and 10, 13 from its December 2022 patch, 14
+ * and later), nothing changed on 11 to 13.0; a review never opens a window,
+ * only Sioul's alarm does, after reading Sioul's own reminders and doses
+ * again, moving past one due within it; Android unable to say what it holds,
+ * the alarm comes again, the plan kept; a key gone meanwhile left out; the
+ * phone kept awake from before the hint until the end, the end counted on
+ * both clocks; the hint taken off when each came back or at the end, on
+ * every way out; strangers held again for a second on the worker after the
+ * hint, never one held meanwhile, a summary, an update alerting once, a call;
+ * one posted just before the hint went caught too; Android 9 and 10 around
+ * the first time, never moved; no window before the safety net, the batch
+ * left to ring. Then, read from the sources, the listener's side.
  */
 public final class QuietCheck
 {
@@ -49,13 +48,21 @@ public final class QuietCheck
         }
     }
 
-    /** Android and the listener as the window sees them: what it asked, in order; its end, run by hand. */
+    static final long T = 1_000_000_000_000L;
+
+    /** Android and the listener as the window sees them: what it asked, in order; its clock, alarms and worker. */
     static final class Phone implements QuietWindow.Host
     {
         final List<String> said = new ArrayList<>();
         final Set<String> shade = new HashSet<>();
-        Runnable end;
-        long endIn = -1;
+        final Set<String> snoozed = new HashSet<>();
+        final List<Runnable> worker = new ArrayList<>();
+        long[] own = {};
+        boolean blind;
+        long clock = T;
+        long alarm = -1;
+        long ending = -1;
+        long awake;
         int closed = -1;
 
         @Override
@@ -79,19 +86,54 @@ public final class QuietCheck
         }
 
         @Override
-        public void after(Runnable task, long ms)
+        public Set<String> active()
         {
-            end = task;
-            endIn = ms;
+            return new HashSet<>(shade);
         }
 
         @Override
-        public void cancel(Runnable task)
+        public Set<String> held()
         {
-            if (task == end) {
-                end = null;
-                endIn = -1;
-            }
+            return blind ? null : new HashSet<>(snoozed);
+        }
+
+        @Override
+        public long[] own()
+        {
+            said.add("read own");
+            return own;
+        }
+
+        @Override
+        public long now()
+        {
+            return clock;
+        }
+
+        @Override
+        public void alarm(long at)
+        {
+            alarm = at;
+        }
+
+        @Override
+        public void ending(long ms)
+        {
+            ending = ms;
+            said.add(ms < 0 ? "end dropped" : "end in " + ms);
+        }
+
+        @Override
+        public void awake(long ms)
+        {
+            awake = ms;
+            said.add(ms > 0 ? "awake " + ms : "asleep");
+        }
+
+        @Override
+        public void later(Runnable task)
+        {
+            worker.add(task);
         }
 
         @Override
@@ -101,186 +143,244 @@ public final class QuietCheck
             said.add("closed " + left);
         }
 
-        /** The window's end comes. */
-        void time()
+        /** The worker runs what it was handed. */
+        void work()
         {
-            Runnable task = end;
-            end = null;
-            if (task != null)
+            List<Runnable> tasks = new ArrayList<>(worker);
+            worker.clear();
+            for (Runnable task : tasks)
                 task.run();
+        }
+
+        /** What was asked, without the reads of Sioul's own times. */
+        String asked()
+        {
+            List<String> out = new ArrayList<>(said);
+            out.removeIf(s -> s.equals("read own"));
+            return out.toString();
         }
     }
 
     static String sources(String name) throws IOException
     {
-        Path file = Paths.get(System.getProperty("sioul.root"), "android", "package", "src", "com", "aurelienpierre", "sioul", name);
-        return new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        return new String(Files.readAllBytes(Paths.get(System.getProperty("sioul.root"), "android", "package", "src", "com", "aurelienpierre", "sioul", name)), StandardCharsets.UTF_8);
     }
 
     public static void main(String[] args) throws IOException
     {
-        // The gathering at 13:00 on Android 11 and later: the hint first, then each held again a second.
+        // Where a held notification's return rings, by version and security patch.
+        expect("Android 9", QuietWindow.returnsRing(28, "2020-01-05"), true);
+        expect("Android 10", QuietWindow.returnsRing(29, "2021-01-05"), true);
+        expect("Android 11", QuietWindow.returnsRing(30, "2023-01-05"), false);
+        expect("Android 12", QuietWindow.returnsRing(31, "2024-03-01"), false);
+        expect("Android 12L", QuietWindow.returnsRing(32, "2024-03-01"), false);
+        expect("Android 13.0", QuietWindow.returnsRing(33, "2022-11-05"), false);
+        expect("Android 13 QPR1", QuietWindow.returnsRing(33, "2022-12-05"), true);
+        expect("Android 13 QPR3", QuietWindow.returnsRing(33, "2023-06-01"), true);
+        expect("Android 13, patch unknown", QuietWindow.returnsRing(33, ""), false);
+        expect("Android 13, patch null", QuietWindow.returnsRing(33, null), false);
+        expect("Android 14", QuietWindow.returnsRing(34, ""), true);
+        expect("Android 16", QuietWindow.returnsRing(36, "2026-10-01"), true);
+
+        // Android 12: nothing changes from before.
         Phone phone = new Phone();
-        QuietWindow window = new QuietWindow(phone);
-        expect("nothing to release, no window", window.open(List.of(), true, QuietWindow.AT_MOST_MS, List.of()), false);
-        expect("no hint for nothing", phone.said, "[]");
-        expect("opened", window.open(List.of("shop", "news"), true, QuietWindow.AT_MOST_MS, List.of()), true);
-        expect("the hint, then each held again", phone.said, "[hint, hold shop 1000, hold news 1000]");
-        expect("its end in five seconds", phone.endIn, 5000);
-        window.posted("shop", true, false);
-        expect("one came back: still open", window.isOpen(), true);
-        window.posted("news", true, false);
+        QuietWindow window = new QuietWindow(phone, false, false);
+        expect("held as asked", window.hold("shop", 120_000), 120_000);
+        expect("a review's new time as asked", window.moved(1_000, true), 1_000);
+        window.follow(Map.of("shop", T));
+        expect("no plan", window.planned(), 0);
+        expect("no alarm", phone.alarm, -1);
+        expect("no window", window.rang(), false);
+        window.posted("noa", true, false, T);
+        expect("nothing asked", phone.asked(), "[]");
+
+        // Android 14: held five minutes past its time, planned, the alarm at its time.
+        phone = new Phone();
+        window = new QuietWindow(phone, true, false);
+        expect("held past its time, the safety net", window.hold("shop", 120_000), 120_000 + QuietWindow.SAFETY_MS);
+        expect("the alarm at its time", phone.alarm, T + 120_000);
+        // A review never opens a window: a release asked now sets the alarm now.
+        expect("due now: nothing asked of Android here", window.moved(1_000, true), -1);
+        expect("moved later: past it again", window.moved(60_000, true), 60_000 + QuietWindow.SAFETY_MS);
+        expect("a person's, as asked", window.moved(60_000, false), 60_000);
+        Map<String, Long> rust = new TreeMap<>();
+        rust.put("shop", T + 120_000);
+        rust.put("noa", T);
+        window.follow(rust);
+        expect("the release's alarm at once", phone.alarm, T);
+        expect("no hint from a review", phone.asked(), "[]");
+        expect("both planned", window.planned(), 2);
+        // The alarm rings at T, but a dose was armed since at T + 3 s: Sioul's times read again, the window moves.
+        phone.own = new long[] { T + 3_000 };
+        phone.snoozed.addAll(List.of("noa", "shop"));
+        expect("no window on a dose", window.rang(), false);
+        expect("Sioul's times read right then", phone.said.contains("read own"), true);
+        expect("the alarm past the dose's minute", phone.alarm, T + 3_000 + QuietWindow.BUSY_MS);
+        expect("no hint", phone.asked(), "[]");
+        expect("the plan kept", window.planned(), 2);
+        // Then: Android cannot say what it holds: again in five seconds, the plan kept.
+        phone.clock = T + 63_000;
+        phone.blind = true;
+        expect("blind: no window", window.rang(), false);
+        expect("again soon", phone.alarm, T + 63_000 + QuietWindow.RETRY_MS);
+        expect("still planned", window.planned(), 2);
+        // Then it opens over what is due: awake before the hint, each held again, the end on both clocks.
+        phone.blind = false;
+        phone.clock = T + 68_000;
+        expect("opened", window.rang(), true);
+        expect("awake, the hint, each held again, the end",
+               phone.asked(), "[awake " + (QuietWindow.AT_MOST_MS + QuietWindow.MARGIN_MS) + ", hint, hold noa 1000, end in " + QuietWindow.AT_MOST_MS + "]");
+        expect("the shop's still to come", window.next(), T + 120_000);
+        expect("its alarm", phone.alarm, T + 120_000);
+        phone.said.clear();
+        window.posted("noa", true, false, T + 69_000);
         expect("each came back: closed", window.isOpen(), false);
-        expect("the hint taken off, the broadcast let end", phone.said, "[hint, hold shop 1000, hold news 1000, no hint, closed 0]");
-        expect("its end dropped", phone.end == null, true);
-        phone.time();
-        expect("closed once", phone.said.size(), 5);
+        expect("the end dropped, the hint off, asleep", phone.asked(), "[end dropped, no hint, asleep, closed 0]");
 
-        // One never comes back (its app took it away): the hint off at the window's end, said.
+        // The end comes (one never came back, the phone asleep but for the wake lock): the hint off all the same.
         phone = new Phone();
-        window = new QuietWindow(phone);
-        window.open(List.of("shop", "gone"), true, QuietWindow.AT_MOST_MS, List.of());
-        window.posted("shop", true, false);
-        phone.time();
-        expect("closed at its end", window.isOpen(), false);
-        expect("one not come back", phone.closed, 1);
-        expect("the hint off", phone.said.get(phone.said.size() - 2), "no hint");
-
-        // Strangers inside the window: a person's message rings after it, once the hint is off;
-        // one Sioul held meanwhile keeps its time; one that would not ring, and an update alerting
-        // once of one shown as the window opened, are left as they are.
-        phone = new Phone();
-        window = new QuietWindow(phone);
-        phone.shade.addAll(List.of("noa", "update", "sioul-mail"));
-        window.open(List.of("shop"), true, QuietWindow.AT_MOST_MS, List.of("update"));
-        window.posted("noa", QuietWindow.rings(4, true, false, "msg", false), false);
-        window.posted("held-by-rust", QuietWindow.rings(3, true, false, "msg", false), false);
-        window.posted("silent", QuietWindow.rings(2, true, false, "promo", false), false);
-        window.posted("update", QuietWindow.rings(4, true, false, "msg", false), true);
-        window.posted("sioul-mail", QuietWindow.rings(3, true, false, "email", false), false);
-        expect("still open for the shop's", window.isOpen(), true);
-        window.posted("shop", true, false);
-        expect("the hint off first, then the strangers rung again",
-               phone.said, "[hint, hold shop 1000, no hint, hold noa 1000, hold sioul-mail 1000, closed 0]");
-        window.posted("late", true, false);
-        expect("closed: nothing more heard", phone.said.size(), 6);
-
-        // What would have rung: a channel with a sound, through do-not-disturb; never what runs, a call, an alarm.
-        expect("a sound", QuietWindow.rings(3, true, false, null, false), true);
-        expect("a high one", QuietWindow.rings(4, true, false, "msg", false), true);
-        expect("a silent channel", QuietWindow.rings(2, true, false, "msg", false), false);
-        expect("held by do-not-disturb", QuietWindow.rings(4, false, false, "msg", false), false);
-        expect("a call", QuietWindow.rings(4, true, true, "call", false), false);
-        expect("an alarm", QuietWindow.rings(4, true, false, "alarm", false), false);
-        expect("a full screen", QuietWindow.rings(4, true, true, null, false), false);
-        expect("what runs", QuietWindow.rings(4, true, false, "progress", true), false);
-
-        // Android 9 and 10: nothing held again (it would do nothing there); the window waits for their own time.
-        phone = new Phone();
-        window = new QuietWindow(phone);
-        window.open(List.of("shop"), false, QuietWindow.LEAD_MS + QuietWindow.AT_MOST_MS, List.of());
-        expect("the hint alone", phone.said, "[hint]");
-        expect("its end after the lead and five seconds", phone.endIn, 7000);
-        window.posted("shop", true, false);
-        expect("closed as it came", phone.said, "[hint, no hint, closed 0]");
-
-        // A second release while open: its keys join, its end moves, the hint asked once.
-        phone = new Phone();
-        window = new QuietWindow(phone);
-        window.open(List.of("shop"), true, QuietWindow.AT_MOST_MS, List.of());
-        window.open(List.of("noa"), true, QuietWindow.AT_MOST_MS, List.of());
-        expect("one hint", phone.said, "[hint, hold shop 1000, hold noa 1000]");
-        window.posted("shop", true, false);
-        expect("waits for the second", window.isOpen(), true);
-        window.posted("noa", true, false);
-        expect("then closes", phone.said, "[hint, hold shop 1000, hold noa 1000, no hint, closed 0]");
-
-        // The listener unbound inside a window: Android dropped the hint; nothing asked of it, the broadcast let end.
-        phone = new Phone();
-        window = new QuietWindow(phone);
-        phone.shade.add("noa");
-        window.open(List.of("shop"), true, QuietWindow.AT_MOST_MS, List.of());
-        window.posted("noa", true, false);
-        window.dropped();
-        expect("forgotten, nothing asked", phone.said, "[hint, hold shop 1000, closed 1]");
-        expect("its end dropped", phone.end == null, true);
-        window.dropped();
+        window = new QuietWindow(phone, true, false);
+        phone.snoozed.addAll(List.of("shop", "news"));
+        window.hold("shop", 0);
+        window.hold("news", 0);
+        window.rang();
+        window.posted("shop", true, false, T);
+        phone.said.clear();
         window.close();
-        expect("forgotten once", phone.said.size(), 3);
+        expect("closed at its end", phone.asked(), "[end dropped, no hint, asleep, closed 1]");
+        window.close();
+        expect("closed once", phone.closed, 1);
 
-        // Where a window opens: at its time, or past one of Sioul's reminders (each may sound a minute after its time).
-        long due = 1_000_000_000L;
-        long length = QuietWindow.AGAIN_MS + QuietWindow.AT_MOST_MS;
-        long latest = due + QuietWindow.SAFETY_MS - 30_000;
-        expect("nothing of Sioul's near", QuietWindow.start(due, new long[] { due - 120_000, due + 600_000 }, length, latest), due);
-        expect("a dose at its time", QuietWindow.start(due, new long[] { due }, length, latest), due + 60_000);
-        expect("an event's reminder 3 s after", QuietWindow.start(due, new long[] { due + 3_000 }, length, latest), due + 63_000);
-        expect("one rang 30 s before, still deciding", QuietWindow.start(due, new long[] { due - 30_000 }, length, latest), due + 30_000);
-        expect("one long past", QuietWindow.start(due, new long[] { due - 61_000 }, length, latest), due);
-        expect("one after the window", QuietWindow.start(due, new long[] { due + length }, length, latest), due);
-        expect("two in a row, in any order", QuietWindow.start(due, new long[] { due + 62_000, due }, length, latest), due + 122_000);
+        // A key gone meanwhile (its app took it away): left out; none left, no window.
+        phone = new Phone();
+        window = new QuietWindow(phone, true, false);
+        window.hold("gone", 0);
+        expect("nothing Android holds: no window", window.rang(), false);
+        expect("no hint", phone.asked(), "[]");
+        expect("taken out of the plan", window.planned(), 0);
+
+        // Strangers: a person's message rings after the hint, on the worker; one Sioul held meanwhile keeps
+        // its time; a summary, an update alerting once, a silent one and a call never; Sioul's own notice is
+        // one; an alarm's notice with a sound is one (the hint mutes it too).
+        phone = new Phone();
+        window = new QuietWindow(phone, true, false);
+        phone.snoozed.add("shop");
+        phone.shade.addAll(List.of("noa", "update", "sioul-mail", "pills", "held-by-rust"));
+        window.hold("shop", 0);
+        window.rang();
+        window.posted("noa", QuietWindow.rings(4, true, false, "msg", false, false), false, T);
+        window.posted("held-by-rust", QuietWindow.rings(3, true, false, "msg", false, false), false, T);
+        window.posted("summary", QuietWindow.rings(4, true, false, "msg", false, true), false, T);
+        window.posted("silent", QuietWindow.rings(2, true, false, "promo", false, false), false, T);
+        window.posted("update", QuietWindow.rings(4, true, false, "msg", false, false), true, T);
+        window.posted("ringing", QuietWindow.rings(4, true, true, "call", false, false), false, T);
+        window.posted("sioul-mail", QuietWindow.rings(3, true, false, "email", false, false), false, T);
+        window.posted("pills", QuietWindow.rings(4, true, false, "alarm", false, false), false, T);
+        phone.said.clear();
+        window.posted("shop", true, false, T + 1_000);
+        expect("the hint off before anything else", phone.asked(), "[end dropped, no hint, asleep, closed 0]");
+        phone.shade.remove("held-by-rust");
+        phone.work();
+        expect("then, on the worker, each still shown held again",
+               phone.asked(), "[end dropped, no hint, asleep, closed 0, hold noa 1000, hold sioul-mail 1000, hold pills 1000]");
+        // One posted just before the hint went, heard just after: a stranger too; later or posted after, not.
+        phone.said.clear();
+        phone.shade.add("late");
+        window.posted("late", true, false, T - 10);
+        window.posted("after", true, false, T + 500);
+        phone.clock = T + QuietWindow.LATE_STRANGER_MS + 1;
+        window.posted("too-late", true, false, T - 10);
+        phone.work();
+        expect("the one posted under the hint", phone.asked(), "[hold late 1000]");
+
+        // What would have rung.
+        expect("a sound", QuietWindow.rings(3, true, false, null, false, false), true);
+        expect("a silent channel", QuietWindow.rings(2, true, false, "msg", false, false), false);
+        expect("held by do-not-disturb", QuietWindow.rings(4, false, false, "msg", false, false), false);
+        expect("a call", QuietWindow.rings(4, true, false, "call", false, false), false);
+        expect("full screen", QuietWindow.rings(4, true, true, "alarm", false, false), false);
+        expect("an alarm's notice with a sound", QuietWindow.rings(4, true, false, "alarm", false, false), true);
+        expect("what runs", QuietWindow.rings(4, true, false, "progress", true, false), false);
+        expect("a summary", QuietWindow.rings(4, true, false, "msg", false, true), false);
+
+        // Android 10: held exactly, the window two seconds before its own time, nothing held again; one of
+        // Sioul's reminders then: no window, the batch rings.
+        phone = new Phone();
+        window = new QuietWindow(phone, true, true);
+        expect("held exactly", window.hold("shop", 120_000), 120_000);
+        expect("the alarm before its time", phone.alarm, T + 120_000 - QuietWindow.LEAD_MS);
+        phone.snoozed.add("shop");
+        phone.clock = T + 120_000 - QuietWindow.LEAD_MS;
+        expect("opened", window.rang(), true);
+        expect("the hint alone, the end after the lead",
+               phone.asked(), "[awake " + (QuietWindow.LEAD_MS + QuietWindow.AT_MOST_MS + QuietWindow.MARGIN_MS) + ", hint, end in " + (QuietWindow.LEAD_MS + QuietWindow.AT_MOST_MS) + "]");
+        window.posted("shop", true, false, T + 120_000);
+        phone = new Phone();
+        window = new QuietWindow(phone, true, true);
+        window.hold("shop", 120_000);
+        phone.snoozed.add("shop");
+        phone.own = new long[] { T + 120_000 };
+        phone.clock = T + 120_000 - QuietWindow.LEAD_MS;
+        expect("Android 10, a reminder then: no window", window.rang(), false);
+        expect("left to ring", window.planned(), 0);
+        expect("no hint", phone.asked(), "[]");
+
+        // No window fits before the safety net: the batch left to ring, no alarm.
+        phone = new Phone();
         long[] wall = new long[6];
         for (int i = 0; i < wall.length; i++)
-            wall[i] = due + i * 60_000L;
-        expect("none fits before the safety net", QuietWindow.start(due, wall, length, latest), -1);
-        expect("Android 10: it cannot move", QuietWindow.start(due - QuietWindow.LEAD_MS, new long[] { due }, QuietWindow.LEAD_MS + QuietWindow.AT_MOST_MS, due - QuietWindow.LEAD_MS), -1);
-        expect("Android 10: nothing near", QuietWindow.start(due - QuietWindow.LEAD_MS, new long[] {}, QuietWindow.LEAD_MS + QuietWindow.AT_MOST_MS, due - QuietWindow.LEAD_MS), due - QuietWindow.LEAD_MS);
+            wall[i] = T + i * 60_000L;
+        phone.own = wall;
+        window = new QuietWindow(phone, true, false);
+        window.hold("shop", 0);
+        expect("nothing planned", window.planned(), 0);
+        expect("no alarm", phone.alarm, -1);
 
-        // The plan: each one's time; what is due, in order, taken out; the next.
-        QuietWindow.Plan plan = new QuietWindow.Plan();
-        expect("nothing planned", plan.next(), -1);
-        plan.put("news", due + 1_000);
-        plan.put("shop", due);
-        plan.put("later", due + 3_600_000);
-        expect("the soonest", plan.next(), due);
-        expect("due, in order, within a second", plan.due(due, QuietWindow.DUE_MS), "[shop, news]");
-        expect("taken out", plan.size(), 1);
-        expect("the next", plan.next(), due + 3_600_000);
-        plan.remove("later");
-        expect("came back by itself", plan.next(), -1);
-        // Rust's list at a review: Android 11 and later take its times, whatever was planned.
-        plan.put("shop", due);
-        plan.put("gone", due);
-        Map<String, Long> rust = new TreeMap<>();
-        rust.put("shop", due + 60_000);
-        rust.put("released", due - 5_000);
-        plan.follow(rust, false, due - 10_000);
-        expect("Rust's times", plan.of("shop") + " " + plan.of("released") + " " + plan.of("gone"), (due + 60_000) + " " + (due - 5_000) + " -1");
-        // Android 9 and 10: the time known stays (a held one keeps it there); one not known only when to come.
-        plan = new QuietWindow.Plan();
-        plan.put("shop", due);
-        plan.put("gone", due);
-        plan.follow(rust, true, due);
-        expect("fixed times", plan.of("shop") + " " + plan.of("released") + " " + plan.of("gone"), due + " -1 -1");
+        // Unbound inside a window: Android dropped the hint; nothing asked of it, the end and wake lock let go.
+        phone = new Phone();
+        window = new QuietWindow(phone, true, false);
+        phone.snoozed.add("shop");
+        window.hold("shop", 0);
+        window.rang();
+        phone.said.clear();
+        window.dropped();
+        expect("forgotten, nothing asked of Android", phone.asked(), "[end dropped, asleep, closed 1]");
+
+        // Where a window opens.
+        long length = QuietWindow.AGAIN_MS + QuietWindow.AT_MOST_MS;
+        long latest = T + QuietWindow.SAFETY_MS - QuietWindow.BEFORE_SAFETY_MS;
+        expect("nothing of Sioul's near", QuietWindow.start(T, new long[] { T - 120_000, T + 600_000 }, length, latest), T);
+        expect("a dose at its time", QuietWindow.start(T, new long[] { T }, length, latest), T + 60_000);
+        expect("an event 3 s after", QuietWindow.start(T, new long[] { T + 3_000 }, length, latest), T + 63_000);
+        expect("one rang 30 s before", QuietWindow.start(T, new long[] { T - 30_000 }, length, latest), T + 30_000);
+        expect("two in a row", QuietWindow.start(T, new long[] { T + 62_000, T }, length, latest), T + 122_000);
 
         // The listener's side, read from the sources.
         String notes = sources("AppNotes.java");
-        String quiet = sources("QuietWindow.java");
         String manifest = new String(Files.readAllBytes(Paths.get(System.getProperty("sioul.root"), "android", "package", "AndroidManifest.xml")), StandardCharsets.UTF_8);
         expect("the hint asked in one place", notes.split("requestListenerHints\\(", -1).length - 1, 1);
-        expect("set or taken off there", notes.contains("requestListenerHints(quiet ? HINT_HOST_DISABLE_NOTIFICATION_EFFECTS : 0)"), true);
-        expect("the hint taken off before the strangers ring again", quiet.indexOf("host.hint(false)") < quiet.indexOf("host.snooze(key, AGAIN_MS);\n            strangers.clear()"), true);
-        expect("taken off in a finally", quiet.contains("host.hint(false);\n        } finally {"), true);
+        expect("only the alarm opens a window", notes.split("window\\.rang\\(\\)", -1).length - 1, 1);
+        expect("and it is the alarm's", notes.contains("review(\"gathered\");\n        if (!window.rang())"), true);
+        expect("the version rule from the security patch", notes.contains("QuietWindow.returnsRing(Build.VERSION.SDK_INT, Build.VERSION.SECURITY_PATCH)"), true);
+        expect("a partial wake lock, with a timeout", notes.contains("PowerManager.PARTIAL_WAKE_LOCK") && notes.contains("awake.acquire(ms)"), true);
+        expect("the end on the clock that counts sleep", notes.contains("AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + ms"), true);
+        expect("the end alarm heard", notes.contains("} else if (CLOSE.equals(action)) {\n                listener.window.close();"), true);
         expect("forgotten when unbound", notes.contains("window.dropped();\n        worker.post(this::unwatch);"), true);
         expect("and when destroyed", notes.contains("window.dropped();\n        letGo();\n        unwatch();"), true);
-        expect("the window's end on Android's main thread", notes.contains("main.postDelayed(task, ms)"), true);
-        expect("a gathered one held past its time, the safety net", notes.contains("snooze(key, fixed() ? ms : ms + QuietWindow.SAFETY_MS)"), true);
         expect("Sioul's doses never touched", notes.contains("boolean dose = own && channel.startsWith(\"doses\")"), true);
-        expect("the doses' record only read", notes.contains("DOSE_RECORD") && !notes.contains("DoseAlarms.put(") && !notes.contains("dose-alarms.lock"), true);
+        expect("the doses' record only read", notes.contains("DOSE_RECORD") && !notes.contains("dose-alarms.lock"), true);
         int receiver = manifest.indexOf("com.aurelienpierre.sioul.AppNotes$Asked");
         String declared = receiver < 0 ? "" : manifest.substring(receiver, manifest.indexOf("/>", receiver));
-        expect("the alarm's receiver declared", receiver > 0, true);
-        expect("in the listener's process", declared.contains("android:process=\":listener\""), true);
+        expect("the alarm's receiver in the listener's process", declared.contains("android:process=\":listener\""), true);
         expect("never exported", declared.contains("android:exported=\"false\""), true);
-        expect("its actions checked", notes.contains("if (RELEASE.equals(action)) {") && notes.contains("} else if (LINKED.equals(action)) {"), true);
-        expect("the safety net longer than the window can move", QuietWindow.SAFETY_MS > 2 * QuietWindow.BUSY_MS, true);
+        expect("the wake lock declared", manifest.contains("android.permission.WAKE_LOCK"), true);
         // A batch Android's safety net brings back still comes with its gathering (Rust's appnotes::LATE).
         String core = new String(Files.readAllBytes(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-core", "src", "appnotes.rs")), StandardCharsets.UTF_8);
         Matcher late = Pattern.compile("pub const LATE: i64 = (\\d+) \\* 60;").matcher(core);
         boolean found = late.find();
         expect("Rust's LATE read", found, true);
         long lateMs = found ? Long.parseLong(late.group(1)) * 60_000L : 0;
-        expect("the safety net within Rust's LATE", lateMs > QuietWindow.SAFETY_MS + 30_000, true);
+        expect("the safety net within Rust's LATE", lateMs > QuietWindow.SAFETY_MS + QuietWindow.BEFORE_SAFETY_MS, true);
 
         System.out.println("QuietCheck: " + (checked - failed) + " of " + checked + " held");
         if (failed > 0)

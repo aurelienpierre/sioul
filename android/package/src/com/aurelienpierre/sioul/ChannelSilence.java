@@ -37,8 +37,24 @@ final class ChannelSilence
         /** Its name, as Android gives it; "" when none. */
         String name(String pkg, String channel);
 
-        /** Its importance set; false when Android refused. */
+        /** Its importance set; false when Android refused. {@link #importance} reads it again afterwards. */
         boolean set(String pkg, String channel, int importance);
+    }
+
+    /** Rust's plan (appnotes::channels_plan), asked with whether Android links Sioul to a device. */
+    interface Planner
+    {
+        /** {silence, restore, unlink} as JSON; null when Rust cannot say. */
+        String plan(boolean linked);
+    }
+
+    /** Android's link to one of your devices. */
+    interface Link
+    {
+        boolean linked();
+
+        /** Every one of Sioul's links let go. */
+        void unlink();
     }
 
     /** Rust's record of what Sioul made silent (appnotes::Silenced). */
@@ -59,6 +75,44 @@ final class ChannelSilence
     static final int LOW = 2;
 
     private ChannelSilence() {}
+
+    /**
+     * What Rust plans now, done (the listener's worker, at each review, each
+     * notification that rang while held, the link just made, the listener
+     * bound again): only while Android links Sioul to a device; a second
+     * round once something was given back, which lets the link go when you
+     * stopped and nothing is left. So a Stop pressed while the listener was
+     * unbound, or cut short by a restart, is finished the next time it binds:
+     * the choice and what is left to give back are on disk. How many were
+     * made silent and given back, and whether the link went:
+     * {silenced, restored, unlinked}.
+     */
+    static int[] run(Planner rust, Channels channels, Keeper keeper, Link link)
+    {
+        int[] done = { 0, 0, 0 };
+        for (int round = 0; round < 2; round++) {
+            String answer = rust.plan(link.linked());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return done;
+            JSONObject plan;
+            try {
+                plan = new JSONObject(answer);
+            } catch (org.json.JSONException e) {
+                return done;
+            }
+            if (plan.optBoolean("unlink", false)) {
+                link.unlink();
+                done[2] = 1;
+                return done;
+            }
+            int[] one = apply(plan, channels, keeper);
+            done[0] += one[0];
+            done[1] += one[1];
+            if (one[1] == 0)
+                return done;
+        }
+        return done;
+    }
 
     /**
      * Rust's plan applied: {silence: [{package, channel}], restore:
@@ -84,7 +138,8 @@ final class ChannelSilence
                 continue;
             if (!keeper.keep(pkg, channel, channels.name(pkg, channel), was))
                 continue;
-            if (channels.set(pkg, channel, LOW))
+            // Read again: Android keeps some channels' importance without a word (a locked one).
+            if (channels.set(pkg, channel, LOW) && channels.importance(pkg, channel) == LOW)
                 silenced++;
             else
                 keeper.forget(pkg, channel);
@@ -101,8 +156,8 @@ final class ChannelSilence
             if (now == DENIED)
                 return new int[] { silenced, restored };
             if (now == LOW && was > LOW) {
-                // As Sioul left it: given back; Android refusing, kept to try again.
-                if (!channels.set(pkg, channel, was))
+                // As Sioul left it: given back; Android refusing, or keeping it as it was, kept to try again.
+                if (!channels.set(pkg, channel, was) || channels.importance(pkg, channel) == LOW)
                     continue;
                 restored++;
             }
