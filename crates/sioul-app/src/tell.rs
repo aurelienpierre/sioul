@@ -309,7 +309,7 @@ fn given(token: &str) {
     let _ = token;
 }
 
-/// A verb of the window's own, pressed on a notice: "read-language:<code>",
+/// A verb of the window's own, pressed on a notice: `"read-language:<code>"`,
 /// mail in that language read too (`languages`).
 fn verb(qt: &QtThread, word: &str) {
     if let Some(code) = word.strip_prefix("read-language:") {
