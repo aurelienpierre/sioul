@@ -501,8 +501,10 @@ sioul-core/src/shield.rs	save	1	std::fs::rename(&temporary, &path)
 sioul-core/src/sites.rs	save	1	std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?)
 sioul-core/src/sites.rs	save	1	std::fs::rename(&temporary, path)
 
-# sioul-core/src/sounds.rs: sounds made for the alarms: no item.
-sioul-core/src/sounds.rs	noise_file	1	std::fs::write(&temporary, bytes(kind))
+# sioul-core/src/sounds.rs: the sounds' files, for where a sound cannot be made as it plays, and their removal: no item.
+sioul-core/src/sounds.rs	clear_files	1	std::fs::remove_file(entry.path())
+sioul-core/src/sounds.rs	noise_file	1	std::fs::remove_file(entry.path())
+sioul-core/src/sounds.rs	noise_file	1	std::fs::write(&temporary, wav_of(&samples, 2, rate))
 sioul-core/src/sounds.rs	noise_file	1	std::fs::rename(&temporary, &path)
 
 # sioul-core/src/spam/labels.rs: the spam filter's labels: no item.

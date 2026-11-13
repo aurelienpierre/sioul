@@ -8,7 +8,7 @@
 
 | System | Packages |
 |---|---|
-| Fedora | `dbus-devel`, `pcsc-lite-devel`, `qt6-qtbase-devel`, `qt6-qtdeclarative-devel`, `qt6-qtwebengine-devel`, `qt6-qtwebchannel-devel`, `qt6-qtpdf-devel`, `qt6-qtpositioning-devel`, `qt6-qtmultimedia`, `qt6-qtlocation`, `qt6-qtimageformats`; to check attachments, `clamav` and `clamav-update`; to read paper letters, `tesseract` |
+| Fedora | `dbus-devel`, `pcsc-lite-devel`, `qt6-qtbase-devel`, `qt6-qtdeclarative-devel`, `qt6-qtwebengine-devel`, `qt6-qtwebchannel-devel`, `qt6-qtpdf-devel`, `qt6-qtpositioning-devel`, `qt6-qtmultimedia-devel` (the sounds made as they play use its audio output), `qt6-qtlocation`, `qt6-qtimageformats`; to check attachments, `clamav` and `clamav-update`; to read paper letters, `tesseract` |
 | Debian, Ubuntu, Arch | the D-Bus and pcsc-lite development files (Debian, Ubuntu: `libpcsclite-dev`; Arch: `pcsclite`), and Qt 6.9 or newer with the modules above and their QML modules; distributions name them differently (Debian: `qt6-…-dev`, `qml6-module-…`; Arch: `qt6-…`) |
 
 ## The command line

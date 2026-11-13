@@ -174,6 +174,7 @@ mod notices;
 mod ledger;
 mod leave;
 mod letters;
+mod livesound;
 mod map;
 // Microsoft's mail signed in on Microsoft's page (docs/microsoft.md).
 mod outlook;

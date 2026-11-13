@@ -113,7 +113,7 @@ Optional, and installable later:
     sudo dnf install git rust cargo gcc-c++ dbus-devel \
         qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtwebengine-devel \
         qt6-qtwebchannel-devel qt6-qtpdf-devel qt6-qtpositioning-devel \
-        qt6-qtmultimedia qt6-qtlocation qt6-qtimageformats
+        qt6-qtmultimedia-devel qt6-qtlocation qt6-qtimageformats
     ```
 
     Optional: the antivirus, then its signatures, kept up to date:

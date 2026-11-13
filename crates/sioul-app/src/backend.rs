@@ -1272,9 +1272,25 @@ pub mod qobject {
         #[qinvokable]
         fn delete_folder(self: Pin<&mut Sioul>, account: &QString, folder: &QString);
 
-        /// A noise made here ("white", "pink", "brown"), as a file URL; made the first time.
+        /// A noise or a sound of nature made here ("pink", "waves"), as a file URL:
+        /// minutes of it, looping, made the first time; where it cannot be made as it plays.
         #[qinvokable]
         fn noise_url(self: &Sioul, kind: &QString) -> QString;
+
+        /// A noise or a sound of nature ("pink", "waves") played as it is made, so
+        /// that it never loops, from a new seed each time, at `volume` (0 to 1), in
+        /// place of the one playing (livesound.rs); false where the system's audio
+        /// output cannot play it, and the window plays its file (`noise_url`).
+        #[qinvokable]
+        fn live_sound_start(self: &Sioul, kind: &QString, volume: f64) -> bool;
+
+        /// The volume of the sound made as it plays, at once, 0 to 1.
+        #[qinvokable]
+        fn live_sound_volume(self: &Sioul, volume: f64);
+
+        /// The sound made as it plays stopped.
+        #[qinvokable]
+        fn live_sound_stop(self: &Sioul);
 
         /// Your recordings to rest by, from the notes' `sounds` folder, as JSON.
         #[qinvokable]
@@ -6502,6 +6518,23 @@ impl qobject::Sioul {
             Ok(path) => QString::from(&file_url(&path)),
             Err(_) => QString::default(),
         }
+    }
+
+    fn live_sound_start(&self, kind: &QString, volume: f64) -> bool {
+        let started = crate::livesound::start(&kind.to_string(), volume);
+        if started {
+            // The files made where a sound could not be made as it plays: none is needed.
+            sioul_core::sounds::clear_files(&config::cache_dir().join("sounds"));
+        }
+        started
+    }
+
+    fn live_sound_volume(&self, volume: f64) {
+        crate::livesound::volume(volume);
+    }
+
+    fn live_sound_stop(&self) {
+        crate::livesound::stop();
     }
 
     fn calm_sounds(&self) -> QString {

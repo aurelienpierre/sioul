@@ -3,7 +3,10 @@
 
 // The sounds' player, in a file of its own (SoundsApplet.qml): Qt Multimedia
 // and its decoders are loaded the first time a sound plays, not each time the
-// window opens. A sound fades in as it starts and out as it stops, over five
+// window opens. The noises and the sounds of nature are made as they play, so
+// that they never loop (Sioul.liveSoundStart, docs/sounds.md); where the
+// system's audio output cannot play them, their files loop instead, as your
+// recordings do. A sound fades in as it starts and out as it stops, over five
 // seconds; the volume slider meanwhile changes it at once.
 
 import QtQuick
@@ -12,17 +15,40 @@ import QtMultimedia
 Item {
     id: noise
 
-    // The output's volume as it is now, mid-fade too (for the tests).
-    readonly property alias level: output.volume
+    // Sioul's backend, which makes the sounds as they play; none in the tests.
+    property var sioul: null
+    // The volume as it is now, mid-fade too (for the tests): the file's or the sound's made as it plays.
+    property real level: 0
     // Fading out, before the sound stops.
     readonly property bool fadingOut: fade.running && fade.to === 0
+    // A sound made as it plays, rather than a file.
+    property bool live: false
 
-    // `url` played in a loop, faded in from silence to `volume`.
-    function play(url, volume) {
+    onLevelChanged: {
+        output.volume = noise.level
+        if (noise.live && noise.sioul)
+            noise.sioul.liveSoundVolume(noise.level)
+    }
+
+    // `source` played, faded in from silence to `volume`: "live:waves" a sound
+    // made here as it plays, else a file's URL, looping.
+    function play(source, volume) {
         fade.stop()
-        output.volume = 0
-        media.source = url
-        media.play()
+        noise.quiet()
+        noise.level = 0
+        const text = String(source)
+        if (text.startsWith("live:")) {
+            const kind = text.slice(5)
+            if (noise.sioul && noise.sioul.liveSoundStart(kind, 0)) {
+                noise.live = true
+            } else {
+                media.source = noise.sioul ? noise.sioul.noiseUrl(kind) : ""
+                media.play()
+            }
+        } else {
+            media.source = source
+            media.play()
+        }
         noise.fadeTo(volume)
     }
 
@@ -32,7 +58,7 @@ Item {
         if (noise.fadingOut)
             return
         fade.stop()
-        output.volume = volume
+        noise.level = volume
     }
 
     // Faded to silence; the sound itself stops with `stop`.
@@ -42,12 +68,20 @@ Item {
 
     function stop() {
         fade.stop()
+        noise.quiet()
+    }
+
+    // Whatever plays, stopped at once.
+    function quiet() {
         media.stop()
+        if (noise.live && noise.sioul)
+            noise.sioul.liveSoundStop()
+        noise.live = false
     }
 
     function fadeTo(volume) {
         fade.stop()
-        fade.from = output.volume
+        fade.from = noise.level
         fade.to = volume
         fade.start()
     }
@@ -55,8 +89,8 @@ Item {
     NumberAnimation {
         id: fade
 
-        target: output
-        property: "volume"
+        target: noise
+        property: "level"
         duration: 5000
     }
 

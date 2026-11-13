@@ -344,7 +344,7 @@ When a step's time is up, the next one starts by itself only if the routine says
 The sound button in the status line plays, never by itself:
 
 - **To focus**: white, pink or brown noise;
-- **Nature, made here**: waves on a beach, rain, wind in the trees, crickets at night, a distant storm, birds at dawn; the waves, the wind, the storm and the birds tuned against real recordings;
+- **Nature, made here**: waves on a beach, rain, wind in the trees, crickets at night, a distant storm, birds at dawn; the waves, the wind, the storm and the birds tuned against real recordings. Noise and nature are made as they play: they never loop, each listen is new, and each sound drifts slowly over minutes;
 - **Your recordings**: any sound in a `sounds` folder of your notes (Ogg, Opus, FLAC or WAV loop without a gap).
 
 One at a time, looping without a seam, fading in and out over five seconds. Noise helped attention a little for people with ADHD traits, and cost a little for others (Nigg et al. 2024): it is offered, not pushed. Across studies, natural sounds lowered stress and improved mood (Buxton et al. 2021).

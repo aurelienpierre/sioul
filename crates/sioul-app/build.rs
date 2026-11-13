@@ -224,8 +224,8 @@ fn main() {
     let pages: Vec<&str> = if android { pages } else { pages.into_iter().chain(["qml/ColourEffect.qml"]).collect() };
     // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's
     // icon; text and images made ready at the start; whether the palette is dark, for the icons;
-    // the clipboard, for Copy buttons.
-    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp", "cpp/palette.cpp", "cpp/clipboard.cpp"];
+    // the clipboard, for Copy buttons; the sounds made as they play, through Qt's audio output.
+    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp", "cpp/palette.cpp", "cpp/clipboard.cpp", "cpp/livesound.cpp"];
     if !android {
         cpp.push("cpp/webengine.cpp");
         // SIGTERM and its kin end Sioul as its window's close does.
@@ -244,7 +244,9 @@ fn main() {
     let builder = CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
         .files(["src/backend.rs", "src/desktop.rs"])
         .cpp_files(cpp)
-        .qt_module("Quick");
+        .qt_module("Quick")
+        // The sounds made as they play (cpp/livesound.cpp).
+        .qt_module("Multimedia");
     // Qt Widgets on computers only: Plasma's system tray makes its menu of widgets
     // (cpp/application.cpp). A phone has no tray, and its build never carries them.
     let builder = if android { builder } else { builder.qt_module("Widgets") };

@@ -2,36 +2,65 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Sounds to rest by or to focus with (docs/sounds.md), all made here, nothing
-//! downloaded, nothing to license, each looping without a seam (its end faded
-//! into its start):
-//! - **noise** for focus: white, pink, brown; a minute each, mono;
+//! downloaded, nothing to license, and made as they play, so that none ever
+//! loops:
+//! - **noise** for focus: white, pink, brown, the same in both ears;
 //! - **nature** to rest by: waves on a beach, rain, wind in the trees, crickets
-//!   at night, a distant storm, birds at dawn; one to three minutes each, in
-//!   stereo at 22 kHz (what they hold lies below 10 kHz, and the files stay
-//!   small). Filtered noise shaped by waves, gusts and drops, crickets' chirps
-//!   as pulsed tones, birds' notes as gliding whistles, each sound seeded the
-//!   same every time. The waves, the wind, the storm and the birds were tuned
-//!   against CC0 recordings, measure by measure (docs/sounds.md,
-//!   tools/sounds/): only the recipes are kept, never the recordings.
+//!   at night, a distant storm, birds at dawn, in stereo at 22 kHz (what they
+//!   hold lies below 10 kHz). Filtered noise shaped by waves, gusts and drops,
+//!   crickets' chirps as pulsed tones, birds' songs from real syllable shapes.
+//!   Each wave, strike, drop, chirp and song is drawn when its time comes, from
+//!   a new seed at each listen, and each sound drifts over minutes: the sea
+//!   calmer, then rougher; the wind softer, then gustier; the storm nearer,
+//!   then farther; birds and crickets coming and going. The waves, the wind,
+//!   the storm and the birds were tuned against CC0 recordings, measure by
+//!   measure (docs/sounds.md, tools/sounds/): only the recipes are kept, never
+//!   the recordings.
+//!
+//! `Stream` makes a sound on a thread of its own, a second ahead of what plays,
+//! and the window's audio output reads it (crates/sioul-app/src/livesound.rs).
+//! Where that output cannot play it, the window plays a file instead: minutes
+//! of the same sound, looping (`noise_file`).
 //!
 //! Recordings of your own are your files, in the notes' `sounds` folder.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 /// The noises made here.
 pub const NOISES: &[&str] = &["white", "pink", "brown"];
 /// The sounds of nature made here.
 pub const NATURE: &[&str] = &["waves", "rain", "wind", "crickets", "storm", "birds"];
 
+/// The noises' rate: white noise holds every frequency.
 const RATE: u32 = 44_100;
-const SECONDS: usize = 60;
-/// The seam's crossfade, in samples: two seconds.
-const FADE: usize = 2 * RATE as usize;
+/// The sounds of nature's rate: what they hold lies below 10 kHz.
+const NATURE_RATE: u32 = 22_050;
+/// Raised when the recipes change, so that the files made where a sound cannot
+/// be made as it plays are made again and the older ones taken away (2: the
+/// noises were offset, their random source not centred; 3: crickets held in
+/// tune; 4: warmer waves; 5: the waves, the wind and the storm tuned against
+/// recordings, and the birds; 6: made as they play, drifting over minutes).
+const NATURE_VERSION: u32 = 6;
+/// The frames made at a time: a tenth of a second of nature, a twentieth of noise.
+const BLOCK: usize = 2205;
 
-/// A small, seeded random source: the same noise each time.
+/// A small, seeded random source.
 struct Random(u64);
 
 impl Random {
+    /// A source of its own for one part of a sound, from the sound's seed:
+    /// SplitMix64's mixing, so that near seeds give unrelated sources, and
+    /// never zero, where the xorshift would stay.
+    fn part(seed: u64, part: u64) -> Random {
+        let mut z = seed ^ part.wrapping_add(1).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        Random((z ^ (z >> 31)) | 1)
+    }
+
     /// A number in [-1, 1).
     fn next(&mut self) -> f32 {
         self.0 ^= self.0 << 13;
@@ -50,199 +79,31 @@ impl Random {
     fn between(&mut self, low: f32, high: f32) -> f32 {
         low + (high - low) * self.unit()
     }
-}
 
-/// `count` samples of a noise: white (flat), pink (−3 dB per octave, Paul
-/// Kellett's filter), brown (−6 dB per octave, a leaky integration).
-fn noise(kind: &str, count: usize) -> Vec<f32> {
-    let mut random = Random(0x5105_1d00_c0ff_ee11);
-    let (mut b0, mut b1, mut b2, mut b3, mut b4, mut b5, mut b6) = (0f32, 0f32, 0f32, 0f32, 0f32, 0f32, 0f32);
-    let mut last = 0f32;
-    (0..count)
-        .map(|_| {
-            let white = random.next();
-            match kind {
-                "pink" => {
-                    b0 = 0.99886 * b0 + white * 0.0555179;
-                    b1 = 0.99332 * b1 + white * 0.0750759;
-                    b2 = 0.96900 * b2 + white * 0.1538520;
-                    b3 = 0.86650 * b3 + white * 0.3104856;
-                    b4 = 0.55000 * b4 + white * 0.5329522;
-                    b5 = -0.7616 * b5 - white * 0.0168980;
-                    let pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-                    b6 = white * 0.115926;
-                    pink * 0.11
-                }
-                "brown" => {
-                    last = (last + 0.02 * white) / 1.02;
-                    last * 3.5
-                }
-                _ => white,
-            }
-        })
-        .collect()
-}
-
-/// A noise of `seconds` that loops: its last two seconds faded into its first,
-/// with equal power, so the end flows into the start. Quiet: about −20 dBFS.
-pub fn looped(kind: &str, seconds: usize) -> Vec<i16> {
-    let length = seconds * RATE as usize;
-    let raw = noise(kind, length + FADE);
-    let mut out: Vec<f32> = raw[..length].to_vec();
-    for (i, sample) in out.iter_mut().take(FADE).enumerate() {
-        let t = i as f32 / FADE as f32;
-        *sample = raw[i] * t.sqrt() + raw[length + i] * (1.0 - t).sqrt();
+    /// Seconds until the next of events coming `rate` a second on average, at
+    /// random (a Poisson process).
+    fn wait(&mut self, rate: f32) -> f64 {
+        f64::from(-(1.0 - self.unit()).max(1e-6).ln() / rate)
     }
-    let rms = (out.iter().map(|s| s * s).sum::<f32>() / out.len() as f32).sqrt().max(1e-6);
-    let gain = 0.1 / rms;
-    out.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).map(|s| (s * f32::from(i16::MAX)) as i16).collect()
 }
 
-/// 16-bit mono WAV bytes, at the noises' rate.
-fn wav(samples: &[i16]) -> Vec<u8> {
-    wav_of(samples, 1, RATE)
-}
-
-/// 16-bit WAV bytes: `channels` interleaved, at `rate`.
-fn wav_of(samples: &[i16], channels: u16, rate: u32) -> Vec<u8> {
-    let data = u32::try_from(samples.len() * 2).unwrap_or(u32::MAX);
-    let mut out = Vec::with_capacity(44 + samples.len() * 2);
-    out.extend(b"RIFF");
-    out.extend((36 + data).to_le_bytes());
-    out.extend(b"WAVEfmt ");
-    out.extend(16u32.to_le_bytes());
-    out.extend(1u16.to_le_bytes());
-    out.extend(channels.to_le_bytes());
-    out.extend(rate.to_le_bytes());
-    out.extend((rate * 2 * u32::from(channels)).to_le_bytes());
-    out.extend((2 * channels).to_le_bytes());
-    out.extend(16u16.to_le_bytes());
-    out.extend(b"data");
-    out.extend(data.to_le_bytes());
-    for sample in samples {
-        out.extend(sample.to_le_bytes());
-    }
-    out
-}
-
-/// Whether a file of the sounds' folder was made by an older recipe:
-/// "waves-4.wav", "pink-noise-3.wav"; never another file.
-fn older_recipe(name: &str) -> bool {
-    let Some(stem) = name.strip_suffix(".wav") else { return false };
-    let Some((kind, version)) = stem.rsplit_once('-') else { return false };
-    let kind = kind.strip_suffix("-noise").filter(|kind| NOISES.contains(kind)).or_else(|| NATURE.contains(&kind).then_some(kind));
-    kind.is_some() && version.parse::<u32>().is_ok_and(|version| version < NATURE_VERSION)
-}
-
-/// The file of a noise or a sound of nature, made the first time in `folder`.
-pub fn noise_file(folder: &Path, kind: &str) -> Result<PathBuf, String> {
-    let (name, bytes): (String, fn(&str) -> Vec<u8>) = if NOISES.contains(&kind) {
-        (format!("{kind}-noise-{NATURE_VERSION}.wav"), |kind| wav(&looped(kind, SECONDS)))
-    } else if NATURE.contains(&kind) {
-        (format!("{kind}-{NATURE_VERSION}.wav"), |kind| {
-            let (left, right) = nature(kind);
-            let interleaved: Vec<i16> = left.iter().zip(&right).flat_map(|(l, r)| [*l, *r]).collect();
-            wav_of(&interleaved, 2, NATURE_RATE)
-        })
-    } else {
-        return Err(format!("{kind}: no such sound"));
-    };
-    let path = folder.join(name);
-    if !path.exists() {
-        // The files of older recipes go: each is minutes of sound.
-        if let Ok(entries) = std::fs::read_dir(folder) {
-            for entry in entries.flatten() {
-                if older_recipe(&entry.file_name().to_string_lossy()) {
-                    let _ = std::fs::remove_file(entry.path());
-                }
-            }
-        }
-        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-        let temporary = path.with_extension("wav.new");
-        std::fs::write(&temporary, bytes(kind)).map_err(|e| format!("{}: {e}", temporary.display()))?;
-        std::fs::rename(&temporary, &path).map_err(|e| format!("{}: {e}", path.display()))?;
-    }
-    Ok(path)
-}
-
-// Nature.
-
-/// The sounds of nature's rate: what they hold lies below 10 kHz.
-const NATURE_RATE: u32 = 22_050;
-/// Raised when the recipes change, so the files are made again and the older
-/// ones taken away (2: the noises were offset, their random source not
-/// centred; 3: crickets held in tune; 4: warmer waves; 5: the waves, the wind
-/// and the storm tuned against recordings, and the birds).
-const NATURE_VERSION: u32 = 5;
-
-/// A one-pole low-pass filter, its cutoff free to move each sample.
+/// A one-pole low-pass filter, its cutoff free to move each sample; its
+/// coefficient is computed again only when the cutoff moves.
 #[derive(Default, Clone, Copy)]
-struct LowPass(f32);
+struct LowPass {
+    y: f32,
+    cutoff: f32,
+    a: f32,
+}
 
 impl LowPass {
     fn run(&mut self, x: f32, cutoff: f32) -> f32 {
-        let a = 1.0 - (-2.0 * std::f32::consts::PI * cutoff / NATURE_RATE as f32).exp();
-        self.0 += a * (x - self.0);
-        self.0
-    }
-}
-
-/// A band-pass filter (RBJ's cookbook, constant peak gain), its centre free to move.
-#[derive(Default, Clone, Copy)]
-struct BandPass {
-x1: f32,
-x2: f32,
-y1: f32,
-y2: f32,
-}
-
-impl BandPass {
-fn run(&mut self, x: f32, centre: f32, q: f32) -> f32 {
-    let w = 2.0 * std::f32::consts::PI * centre / NATURE_RATE as f32;
-    let alpha = w.sin() / (2.0 * q);
-    let a0 = 1.0 + alpha;
-    let (b0, b2, a1, a2) = (alpha / a0, -alpha / a0, -2.0 * w.cos() / a0, (1.0 - alpha) / a0);
-    let y = b0 * x + b2 * self.x2 - a1 * self.y1 - a2 * self.y2;
-    (self.x2, self.x1, self.y2, self.y1) = (self.x1, x, self.y1, y);
-    y
-}
-}
-
-/// A slow, smooth random curve in [0, 1]: a new point every `every` seconds,
-/// joined by cosines; the same for every sample count.
-fn slow_curve(random: &mut Random, count: usize, every: f32) -> Vec<f32> {
-    let step = (every * NATURE_RATE as f32).max(1.0) as usize;
-    let points: Vec<f32> = (0..count / step + 3).map(|_| random.unit()).collect();
-    (0..count)
-        .map(|i| {
-            let (k, t) = (i / step, (i % step) as f32 / step as f32);
-            let w = (1.0 - (t * std::f32::consts::PI).cos()) * 0.5;
-            points[k] * (1.0 - w) + points[k + 1] * w
-        })
-        .collect()
-}
-
-/// A sound that fades out quickly: a tone of `frequency` decaying in `decay`
-/// seconds, added at `at` with `amplitude`.
-fn add_ping(out: &mut [f32], at: usize, frequency: f32, decay: f32, amplitude: f32, phase: f32) {
-    let length = (decay * 5.0 * NATURE_RATE as f32) as usize;
-    let w = 2.0 * std::f32::consts::PI * frequency / NATURE_RATE as f32;
-    for (n, sample) in out.iter_mut().skip(at).take(length).enumerate() {
-        let t = n as f32 / NATURE_RATE as f32;
-        *sample += amplitude * (-t / decay).exp() * (w * n as f32 + phase).sin();
-    }
-}
-
-/// Times of events, `rate` a second on average, at random (a Poisson process).
-fn events(random: &mut Random, count: usize, rate: f32) -> Vec<usize> {
-    let mut at = 0.0f32;
-    let mut out = Vec::new();
-    loop {
-        at += -(1.0 - random.unit()).max(1e-6).ln() / rate * NATURE_RATE as f32;
-        if at as usize >= count {
-            return out;
+        if cutoff != self.cutoff {
+            self.cutoff = cutoff;
+            self.a = 1.0 - (-2.0 * std::f32::consts::PI * cutoff / NATURE_RATE as f32).exp();
         }
-        out.push(at as usize);
+        self.y += self.a * (x - self.y);
+        self.y
     }
 }
 
@@ -256,131 +117,28 @@ impl HighPass {
     }
 }
 
-/// One wave breaking on the beach: when (seconds), how long it rises, how
-/// long its crash and its wash last, how strong it is, and where along the
-/// beach it breaks (−1 left, 1 right).
-#[derive(Clone, Copy)]
-struct Break {
-    at: f32,
-    rise: f32,
-    crash: f32,
-    wash: f32,
-    strength: f32,
-    pan: f32,
+/// A band-pass filter (RBJ's cookbook, constant peak gain), its centre free to move.
+#[derive(Default, Clone, Copy)]
+struct BandPass {
+    x1: f32,
+    x2: f32,
+    y1: f32,
+    y2: f32,
 }
 
-/// A wave on a gentle slope, added to both ears from where it comes in: it
-/// swells slowly, rounds over without a crash, never bright, and slides back
-/// as slowly, the wash running up and back in a soft, dark fizz of foam.
-fn add_break(left: &mut [f32], right: &mut [f32], wave: &Break, seed: u64) {
-    let rate = NATURE_RATE as f32;
-    let mut random = Random(seed);
-    // Where each of its samples lands: a wave that began before the loop adds only its end.
-    let first = (wave.at * rate) as isize;
-    let size = left.len();
-    let place = |n: usize| usize::try_from(first + n as isize).ok().filter(|at| *at < size);
-    let length = ((wave.rise + wave.wash * 5.0) * rate) as usize;
-    let (mut dark, mut darker, mut floor) = (LowPass::default(), LowPass::default(), HighPass::default());
-    let (mut foam_floor, mut foam_top, mut foam_top2) = (HighPass::default(), LowPass::default(), LowPass::default());
-    let (mut own_floor, mut own_top, mut own_top2) = (HighPass::default(), LowPass::default(), LowPass::default());
-    let angle = (wave.pan + 1.0) * std::f32::consts::FRAC_PI_4;
-    let (to_left, to_right) = (angle.cos(), angle.sin());
-    let mut sound = vec![(0.0f32, 0.0f32); length];
-    for (n, sample) in sound.iter_mut().enumerate() {
-        let (white, other) = (random.next(), random.next());
-        let t = n as f32 / rate;
-        // A gentle slope: the wave swells slowly from nothing, rounds over at its
-        // top without a corner, and slides back down as slowly.
-        let crash = if t < wave.rise {
-            let x = t / wave.rise;
-            x * x * (3.0 - 2.0 * x)
-        } else {
-            let x = (t - wave.rise) / wave.crash;
-            (1.0 + x) * (-x).exp()
-        };
-        let washing = if t < wave.rise * 0.6 { 0.0 } else { let after = t - wave.rise * 0.6; (1.0 - (-after / 1.2).exp()) * (-after / wave.wash).exp() };
-        let cutoff = 220.0 + 650.0 * crash;
-        let body = floor.run(darker.run(dark.run(white, cutoff), cutoff * 1.6), 170.0);
-        // The foam each ear hears is partly its own: it fizzes all along the beach.
-        let fizz = foam_top2.run(foam_top.run(foam_floor.run(white, 400.0), 1600.0), 2200.0);
-        let own = own_top2.run(own_top.run(own_floor.run(other, 400.0), 1600.0), 2200.0);
-        let body = wave.strength * body * crash * 1.6;
-        let foam = wave.strength * washing * 0.5;
-        *sample = (body * to_left + foam * (fizz * 0.6 * to_left + own * 0.5), body * to_right + foam * (fizz * 0.6 * to_right - own * 0.5));
-    }
-    for (n, (l, r)) in sound.iter().enumerate() {
-        if let Some(at) = place(n) {
-            left[at] += l;
-            right[at] += r;
-        }
+impl BandPass {
+    fn run(&mut self, x: f32, centre: f32, q: f32) -> f32 {
+        let w = 2.0 * std::f32::consts::PI * centre / NATURE_RATE as f32;
+        let alpha = w.sin() / (2.0 * q);
+        let a0 = 1.0 + alpha;
+        let (b0, b2, a1, a2) = (alpha / a0, -alpha / a0, -2.0 * w.cos() / a0, (1.0 - alpha) / a0);
+        let y = b0 * x + b2 * self.x2 - a1 * self.y1 - a2 * self.y2;
+        (self.x2, self.x1, self.y2, self.y1) = (self.x1, x, self.y1, y);
+        y
     }
 }
 
-/// The surf of the rest of the beach, under the breaks: pink noise between
-/// 140 Hz and 1.8 kHz with foam above it, steady, drifting a little over
-/// seconds (never flickering: a level jumping many times a second sounds like
-/// a radio's static).
-fn surf(count: usize, seed: u64) -> Vec<f32> {
-    let mut random = Random(seed);
-    let level = slow_curve(&mut random, count, 8.0);
-    let mut pink = Pink::default();
-    let (mut floor, mut floor2, mut top, mut top2) = (HighPass::default(), HighPass::default(), LowPass::default(), LowPass::default());
-    let (mut foam_floor, mut foam_top, mut foam_top2) = (HighPass::default(), LowPass::default(), LowPass::default());
-    (0..count)
-        .map(|i| {
-            let p = pink.next(random.next());
-            let shaped = top2.run(top.run(floor2.run(floor.run(p, 140.0), 140.0), 1800.0), 2600.0);
-            // The foam fizzing all along the beach, between the breaks too.
-            let foam = foam_top2.run(foam_top.run(foam_floor.run(random.next(), 900.0), 2800.0), 3500.0);
-            (shaped + foam * 0.08) * (0.9 + 0.1 * level[i])
-        })
-        .collect()
-}
-
-/// Waves on a gently sloping beach (after five CC0 recordings,
-/// docs/sounds.md): a wave swelling in every 6 to 11 seconds, small and large, each somewhere along
-/// the beach, over the surf of the rest of it, which both ears share in part.
-fn waves(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
-    let rate = NATURE_RATE as f32;
-    let (shared, own_left, own_right) = (surf(count, 13), surf(count, 14), surf(count, 15));
-    let mut left: Vec<f32> = shared.iter().zip(&own_left).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.3).collect();
-    let mut right: Vec<f32> = shared.iter().zip(&own_right).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.3).collect();
-    let mut at = -3.0f32;
-    let mut seed = 100;
-    while at < count as f32 / rate {
-        let strength = plan.between(0.45, 1.0);
-        let wave = Break { at, rise: plan.between(1.8, 3.2), crash: plan.between(0.9, 1.5), wash: plan.between(2.5, 4.0), strength, pan: plan.between(-0.6, 0.6) };
-        add_break(&mut left, &mut right, &wave, seed);
-        seed += 1;
-        at += plan.between(6.0, 11.0);
-    }
-    (left, right)
-}
-
-/// Rain: a soft hiss, many small drops, a few larger ones on leaves and stones.
-fn rain(count: usize, seed: u64, heavy: f32) -> Vec<f32> {
-    let mut random = Random(seed);
-    let mut out = vec![0.0f32; count];
-    let (mut low, mut high) = (LowPass::default(), LowPass::default());
-    let level = slow_curve(&mut random, count, 6.0);
-    let mut pink = Pink::default();
-    for (i, sample) in out.iter_mut().enumerate() {
-        let p = pink.next(random.next());
-        let band = high.run(p, 6500.0) - low.run(p, 450.0);
-        *sample = band * (0.75 + 0.25 * level[i]) * 0.9 * heavy;
-    }
-    for at in events(&mut random, count, 160.0 * heavy) {
-        let (frequency, decay, amplitude, phase) = (random.between(2400.0, 7000.0), random.between(0.0012, 0.004), 0.08 * -(1.0 - random.unit()).max(1e-4).ln().min(4.0), random.between(0.0, 6.28));
-        add_ping(&mut out, at, frequency, decay, amplitude, phase);
-    }
-    for at in events(&mut random, count, 5.0 * heavy) {
-        let (frequency, decay, amplitude, phase) = (random.between(700.0, 2400.0), random.between(0.008, 0.022), random.between(0.05, 0.14), random.between(0.0, 6.28));
-        add_ping(&mut out, at, frequency, decay, amplitude, phase);
-    }
-    out
-}
-
-/// Pink noise, one channel: Paul Kellett's filter, as `noise` uses it.
+/// Pink noise, one channel: Paul Kellett's filter.
 #[derive(Default)]
 struct Pink([f32; 7]);
 
@@ -399,98 +157,497 @@ impl Pink {
     }
 }
 
-/// One layer of wind, one ear: pink noise between `low` and `high` hertz
-/// (two poles at the top), its level following the gusts to the power
-/// `follow`, smoothly.
-fn wind_layer(random: &mut Random, gusts: &[f32], low: f32, high: f32, follow: f32) -> Vec<f32> {
-    let mut pink = Pink::default();
-    let (mut floor, mut top, mut top2) = (HighPass::default(), LowPass::default(), LowPass::default());
-    gusts
-        .iter()
-        .map(|gust| top2.run(top.run(floor.run(pink.next(random.next()), low), high), high * 1.4) * gust.powf(follow))
-        .collect()
+/// A slow, smooth random curve in [0, 1], made as it goes: a new point every
+/// `every` seconds, joined by cosines.
+struct Drift {
+    random: Random,
+    step: u32,
+    n: u32,
+    from: f32,
+    to: f32,
+}
+
+impl Drift {
+    fn new(mut random: Random, every: f32) -> Drift {
+        let (from, to) = (random.unit(), random.unit());
+        Drift { step: (every * NATURE_RATE as f32).max(1.0) as u32, n: 0, from, to, random }
+    }
+
+    /// Its value now.
+    fn now(&self) -> f32 {
+        let w = (1.0 - (std::f32::consts::PI * self.n as f32 / self.step as f32).cos()) * 0.5;
+        self.from * (1.0 - w) + self.to * w
+    }
+
+    /// Its value now, then a frame on.
+    fn next(&mut self) -> f32 {
+        let value = self.now();
+        self.skip(1);
+        value
+    }
+
+    /// `frames` on.
+    fn skip(&mut self, frames: usize) {
+        let mut on = frames as u64 + u64::from(self.n);
+        while on >= u64::from(self.step) {
+            on -= u64::from(self.step);
+            self.from = self.to;
+            self.to = self.random.unit();
+        }
+        self.n = on as u32;
+    }
+}
+
+/// Sound already drawn ahead of the present, both ears: an event (a wave, a
+/// strike, a song) is made whole when its time comes and added here from its
+/// first frame on; the present takes it frame by frame.
+#[derive(Default)]
+struct Ahead {
+    /// The frame `frames[0]` sounds at, counted from the sound's start.
+    start: u64,
+    frames: VecDeque<(f32, f32)>,
+}
+
+impl Ahead {
+    /// `length` frames of `sound` (each from its index) added from frame `at`
+    /// on. Frames before the present, gone by, are made all the same (a
+    /// filter's state runs through them) and left out.
+    fn add(&mut self, at: u64, length: usize, mut sound: impl FnMut(usize) -> (f32, f32)) {
+        let skip = usize::try_from(self.start.saturating_sub(at)).unwrap_or(usize::MAX);
+        let offset = usize::try_from(at.saturating_sub(self.start)).unwrap_or(usize::MAX);
+        let end = offset.saturating_add(length.saturating_sub(skip));
+        if self.frames.len() < end {
+            self.frames.resize(end, (0.0, 0.0));
+        }
+        for n in 0..length {
+            let (left, right) = sound(n);
+            if n >= skip {
+                let frame = &mut self.frames[offset + n - skip];
+                frame.0 += left;
+                frame.1 += right;
+            }
+        }
+    }
+
+    /// The present frame; the present is then a frame on.
+    fn take(&mut self) -> (f32, f32) {
+        self.start += 1;
+        self.frames.pop_front().unwrap_or((0.0, 0.0))
+    }
+}
+
+/// A sound as it is made: its next frames, both ears, from frame `now` on
+/// (counted from its start).
+trait Scene: Send {
+    fn render(&mut self, now: u64, left: &mut [f32], right: &mut [f32]);
+}
+
+/// The frame at `seconds` from a sound of nature's start.
+fn frame(seconds: f64) -> u64 {
+    (seconds.max(0.0) * f64::from(NATURE_RATE)) as u64
+}
+
+/// The second at which `frames` from frame `now` end.
+fn block_end(now: u64, frames: usize) -> f64 {
+    (now + frames as u64) as f64 / f64::from(NATURE_RATE)
+}
+
+/// Weights for each ear of a sound at `pan` (−1 left, 1 right), with equal power.
+fn panned(pan: f32) -> (f32, f32) {
+    let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
+    (angle.cos(), angle.sin())
+}
+
+// Noise.
+
+#[derive(Clone, Copy)]
+enum Colour {
+    White,
+    Pink,
+    Brown,
+}
+
+/// A noise for focus: white (flat), pink (−3 dB per octave, Paul Kellett's
+/// filter), brown (−6 dB per octave, a leaky integration); the same in both ears.
+struct Noise {
+    colour: Colour,
+    random: Random,
+    pink: Pink,
+    last: f32,
+}
+
+impl Scene for Noise {
+    fn render(&mut self, _now: u64, left: &mut [f32], right: &mut [f32]) {
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let white = self.random.next();
+            let value = match self.colour {
+                Colour::Pink => self.pink.next(white),
+                Colour::Brown => {
+                    self.last = (self.last + 0.02 * white) / 1.02;
+                    self.last * 3.5
+                }
+                Colour::White => white,
+            };
+            (*l, *r) = (value, value);
+        }
+    }
+}
+
+// Nature.
+
+/// A sound that fades out quickly: a tone (`frequency`, `decay` seconds,
+/// `amplitude`, `phase`), added from frame `at` with a weight for each ear.
+fn add_ping(ahead: &mut Ahead, at: u64, (frequency, decay, amplitude, phase): (f32, f32, f32, f32), (to_left, to_right): (f32, f32)) {
+    let rate = NATURE_RATE as f32;
+    let length = (decay * 5.0 * rate) as usize;
+    let w = 2.0 * std::f32::consts::PI * frequency / rate;
+    ahead.add(at, length, |n| {
+        let value = amplitude * (-(n as f32) / rate / decay).exp() * (w * n as f32 + phase).sin();
+        (value * to_left, value * to_right)
+    });
+}
+
+/// One wave on the beach: how long it rises, how long its crash and its wash
+/// last, how strong it is, and where along the beach it comes in (−1 left, 1
+/// right).
+#[derive(Clone, Copy)]
+struct Break {
+    rise: f32,
+    crash: f32,
+    wash: f32,
+    strength: f32,
+    pan: f32,
+}
+
+/// A wave on a gentle slope, added to both ears from frame `at`, from where it
+/// comes in: it swells slowly, rounds over without a crash, never bright, and
+/// slides back as slowly, the wash running up and back in a soft, dark fizz of
+/// foam.
+fn add_break(ahead: &mut Ahead, at: u64, wave: &Break, seed: u64) {
+    let rate = NATURE_RATE as f32;
+    let mut random = Random::part(seed, 0);
+    let length = ((wave.rise + wave.wash * 5.0) * rate) as usize;
+    let (mut dark, mut darker, mut floor) = (LowPass::default(), LowPass::default(), HighPass::default());
+    let (mut foam_floor, mut foam_top, mut foam_top2) = (HighPass::default(), LowPass::default(), LowPass::default());
+    let (mut own_floor, mut own_top, mut own_top2) = (HighPass::default(), LowPass::default(), LowPass::default());
+    let (to_left, to_right) = panned(wave.pan);
+    ahead.add(at, length, |n| {
+        let (white, other) = (random.next(), random.next());
+        let t = n as f32 / rate;
+        // A gentle slope: the wave swells slowly from nothing, rounds over at its
+        // top without a corner, and slides back down as slowly.
+        let crash = if t < wave.rise {
+            let x = t / wave.rise;
+            x * x * (3.0 - 2.0 * x)
+        } else {
+            let x = (t - wave.rise) / wave.crash;
+            (1.0 + x) * (-x).exp()
+        };
+        let washing = if t < wave.rise * 0.6 {
+            0.0
+        } else {
+            let after = t - wave.rise * 0.6;
+            (1.0 - (-after / 1.2).exp()) * (-after / wave.wash).exp()
+        };
+        let cutoff = 220.0 + 650.0 * crash;
+        let body = floor.run(darker.run(dark.run(white, cutoff), cutoff * 1.6), 170.0);
+        // The foam each ear hears is partly its own: it fizzes all along the beach.
+        let fizz = foam_top2.run(foam_top.run(foam_floor.run(white, 400.0), 1600.0), 2200.0);
+        let own = own_top2.run(own_top.run(own_floor.run(other, 400.0), 1600.0), 2200.0);
+        let body = wave.strength * body * crash * 1.6;
+        let foam = wave.strength * washing * 0.5;
+        (body * to_left + foam * (fizz * 0.6 * to_left + own * 0.5), body * to_right + foam * (fizz * 0.6 * to_right - own * 0.5))
+    });
+}
+
+/// The surf of the rest of the beach, under the waves: pink noise between
+/// 140 Hz and 1.8 kHz with foam above it, steady, drifting a little over
+/// seconds (never flickering: a level jumping many times a second sounds like
+/// a radio's static).
+struct Surf {
+    random: Random,
+    level: Drift,
+    pink: Pink,
+    floors: [HighPass; 3],
+    tops: [LowPass; 4],
+}
+
+impl Surf {
+    fn new(seed: u64, part: u64) -> Surf {
+        Surf { random: Random::part(seed, part), level: Drift::new(Random::part(seed, part + 100), 8.0), pink: Pink::default(), floors: [HighPass::default(); 3], tops: [LowPass::default(); 4] }
+    }
+
+    fn next(&mut self) -> f32 {
+        let ([floor, floor2, foam_floor], [top, top2, foam_top, foam_top2]) = (&mut self.floors, &mut self.tops);
+        let p = self.pink.next(self.random.next());
+        let shaped = top2.run(top.run(floor2.run(floor.run(p, 140.0), 140.0), 1800.0), 2600.0);
+        // The foam fizzing all along the beach, between the waves too.
+        let foam = foam_top2.run(foam_top.run(foam_floor.run(self.random.next(), 900.0), 2800.0), 3500.0);
+        (shaped + foam * 0.08) * (0.9 + 0.1 * self.level.next())
+    }
+}
+
+/// Waves on a gently sloping beach (after five CC0 recordings,
+/// docs/sounds.md): a wave swelling in every 6 to 11 seconds, small and large,
+/// each somewhere along the beach, over the surf of the rest of it, which both
+/// ears share in part. The sea calms and rises over minutes: its waves come
+/// further apart and smaller, then nearer and larger.
+struct Waves {
+    plan: Random,
+    sea: Drift,
+    shared: Surf,
+    own: [Surf; 2],
+    ahead: Ahead,
+    next: f64,
+    seed: u64,
+}
+
+impl Waves {
+    fn new(seed: u64) -> Waves {
+        let mut plan = Random::part(seed, 1);
+        let next = f64::from(plan.between(0.5, 3.0));
+        Waves { sea: Drift::new(Random::part(seed, 2), 240.0), shared: Surf::new(seed, 3), own: [Surf::new(seed, 4), Surf::new(seed, 5)], ahead: Ahead::default(), next, seed: Random::part(seed, 6).0, plan }
+    }
+}
+
+impl Scene for Waves {
+    fn render(&mut self, now: u64, left: &mut [f32], right: &mut [f32]) {
+        let end = block_end(now, left.len());
+        while self.next < end {
+            let (sea, plan) = (self.sea.now(), &mut self.plan);
+            let wave = Break { rise: plan.between(1.8, 3.2), crash: plan.between(0.9, 1.5), wash: plan.between(2.5, 4.0), strength: plan.between(0.45, 1.0) * (0.85 + 0.3 * sea), pan: plan.between(-0.6, 0.6) };
+            add_break(&mut self.ahead, frame(self.next), &wave, self.seed);
+            self.seed = self.seed.wrapping_add(1);
+            self.next += f64::from(plan.between(6.0, 11.0) * (1.1 - 0.2 * sea));
+        }
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let calm = (0.92 + 0.16 * self.sea.next()) * 0.3;
+            let shared = self.shared.next() * 0.8;
+            let (wave_left, wave_right) = self.ahead.take();
+            *l = (shared + self.own[0].next() * 0.6) * calm + wave_left;
+            *r = (shared + self.own[1].next() * 0.6) * calm + wave_right;
+        }
+    }
+}
+
+/// One ear of the rain: its hiss, its many small drops and its few larger ones.
+struct RainEar {
+    random: Random,
+    level: Drift,
+    pink: Pink,
+    low: LowPass,
+    high: LowPass,
+    small: f64,
+    large: f64,
+}
+
+/// Rain: a soft hiss, many small drops, a few larger ones on leaves and
+/// stones, each ear its own; heavier, then lighter, over minutes.
+struct Rain {
+    heavy: Drift,
+    ears: [RainEar; 2],
+    ahead: Ahead,
+}
+
+impl Rain {
+    fn new(seed: u64) -> Rain {
+        let ear = |part: u64| {
+            let mut random = Random::part(seed, part);
+            let (small, large) = (random.wait(160.0), random.wait(5.0));
+            RainEar { level: Drift::new(Random::part(seed, part + 100), 6.0), random, pink: Pink::default(), low: LowPass::default(), high: LowPass::default(), small, large }
+        };
+        Rain { heavy: Drift::new(Random::part(seed, 1), 300.0), ears: [ear(2), ear(3)], ahead: Ahead::default() }
+    }
+}
+
+impl Scene for Rain {
+    fn render(&mut self, now: u64, left: &mut [f32], right: &mut [f32]) {
+        let end = block_end(now, left.len());
+        let heavy = 0.85 + 0.3 * self.heavy.now();
+        for (side, ear) in self.ears.iter_mut().enumerate() {
+            let to = if side == 0 { (1.0, 0.0) } else { (0.0, 1.0) };
+            while ear.small < end {
+                let r = &mut ear.random;
+                let ping = (r.between(2400.0, 7000.0), r.between(0.0012, 0.004), 0.08 * -(1.0 - r.unit()).max(1e-4).ln().min(4.0), r.between(0.0, 6.28));
+                add_ping(&mut self.ahead, frame(ear.small), ping, to);
+                ear.small += ear.random.wait(160.0 * heavy);
+            }
+            while ear.large < end {
+                let r = &mut ear.random;
+                let ping = (r.between(700.0, 2400.0), r.between(0.008, 0.022), r.between(0.05, 0.14), r.between(0.0, 6.28));
+                add_ping(&mut self.ahead, frame(ear.large), ping, to);
+                ear.large += ear.random.wait(5.0 * heavy);
+            }
+        }
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let heavy = (0.85 + 0.3 * self.heavy.next()) * 0.9;
+            let [one, two] = self.ears.each_mut().map(|ear| {
+                let p = ear.pink.next(ear.random.next());
+                let band = ear.high.run(p, 6500.0) - ear.low.run(p, 450.0);
+                band * (0.75 + 0.25 * ear.level.next()) * heavy
+            });
+            let (drops_left, drops_right) = self.ahead.take();
+            (*l, *r) = (one + drops_left, two + drops_right);
+        }
+    }
+}
+
+/// One layer of wind: pink noise between `low` and `high` hertz (two poles at
+/// the top).
+struct Layer {
+    random: Random,
+    pink: Pink,
+    floor: HighPass,
+    top: LowPass,
+    top2: LowPass,
+    low: f32,
+    high: f32,
+}
+
+impl Layer {
+    fn new(random: Random, low: f32, high: f32) -> Layer {
+        Layer { random, pink: Pink::default(), floor: HighPass::default(), top: LowPass::default(), top2: LowPass::default(), low, high }
+    }
+
+    fn next(&mut self) -> f32 {
+        self.top2.run(self.top.run(self.floor.run(self.pink.next(self.random.next()), self.low), self.high), self.high * 1.4)
+    }
 }
 
 /// Wind in the trees (after six CC0 recordings, docs/sounds.md): close to pink
 /// noise from 60 Hz to 4.5 kHz, soft and dark, louder and brighter in the
-/// gusts, which rise and fall slowly, over 15 and 6 seconds, and rest between. The branches' low roar is nearly the same in both
-/// ears; the air's whoosh in part; the leaves, all around, differ in each.
-fn wind(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
-    let slow = slow_curve(plan, count, 15.0);
-    let gust = slow_curve(plan, count, 6.0);
-    let gusts: Vec<f32> = (0..count).map(|i| 0.15 + 0.85 * (0.1 + 0.3 * slow[i] + 0.45 * slow[i] * gust[i] + 0.15 * gust[i]).min(1.0).powf(1.4)).collect();
-    let mut random = Random(31);
-    let roar = wind_layer(&mut random, &gusts, 60.0, 350.0, 1.0);
-    let (roar_left, roar_right) = (wind_layer(&mut random, &gusts, 60.0, 350.0, 1.0), wind_layer(&mut random, &gusts, 60.0, 350.0, 1.0));
-    let air = wind_layer(&mut random, &gusts, 250.0, 1300.0, 1.3);
-    let (air_left, air_right) = (wind_layer(&mut random, &gusts, 250.0, 1300.0, 1.3), wind_layer(&mut random, &gusts, 250.0, 1300.0, 1.3));
-    let leaves = wind_layer(&mut random, &gusts, 1500.0, 4500.0, 1.7);
-    let (leaves_left, leaves_right) = (wind_layer(&mut random, &gusts, 1500.0, 4500.0, 1.7), wind_layer(&mut random, &gusts, 1500.0, 4500.0, 1.7));
-    let mix = |own_roar: &[f32], own_air: &[f32], own_leaves: &[f32]| -> Vec<f32> {
-        (0..count).map(|i| (roar[i] * 0.95 + own_roar[i] * 0.3) * 0.45 + (air[i] * 0.85 + own_air[i] * 0.5) * 0.8 + (leaves[i] * 0.4 + own_leaves[i] * 0.9) * 0.5).collect()
-    };
-    let (left, right) = (mix(&roar_left, &air_left, &leaves_left), mix(&roar_right, &air_right, &leaves_right));
-    (left, right)
+/// gusts, which rise and fall slowly, over 15 and 6 seconds, and rest between;
+/// softer, then gustier, over minutes. The branches' low roar is nearly the
+/// same in both ears; the air's whoosh in part; the leaves, all around, differ
+/// in each.
+struct Wind {
+    slow: Drift,
+    gust: Drift,
+    strength: Drift,
+    /// The roar, the air and the leaves, each shared, then each ear's own.
+    layers: [Layer; 9],
 }
 
-/// One cricket of a night: where it sits (its weight in this ear), its pitch,
-/// its rhythm.
+impl Wind {
+    fn new(seed: u64) -> Wind {
+        let bands = [(60.0, 350.0), (250.0, 1300.0), (1500.0, 4500.0)];
+        let layers: [Layer; 9] = std::array::from_fn(|k| Layer::new(Random::part(seed, 10 + k as u64), bands[k / 3].0, bands[k / 3].1));
+        Wind { slow: Drift::new(Random::part(seed, 1), 15.0), gust: Drift::new(Random::part(seed, 2), 6.0), strength: Drift::new(Random::part(seed, 3), 300.0), layers }
+    }
+}
+
+impl Scene for Wind {
+    fn render(&mut self, _now: u64, left: &mut [f32], right: &mut [f32]) {
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let slow = self.slow.next() * (0.6 + 0.45 * self.strength.next());
+            let gust = self.gust.next();
+            let roar = 0.15 + 0.85 * (0.1 + 0.3 * slow + 0.45 * slow * gust + 0.15 * gust).min(1.0).powf(1.4);
+            // The higher, the more a layer follows the gusts.
+            let (air, leaves) = (roar.powf(1.3), roar.powf(1.7));
+            let v = self.layers.each_mut().map(|layer| layer.next());
+            let shared = v[0] * 0.95 * roar * 0.45 + v[3] * 0.85 * air * 0.8 + v[6] * 0.4 * leaves * 0.5;
+            *l = shared + v[1] * 0.3 * roar * 0.45 + v[4] * 0.5 * air * 0.8 + v[7] * 0.9 * leaves * 0.5;
+            *r = shared + v[2] * 0.3 * roar * 0.45 + v[5] * 0.5 * air * 0.8 + v[8] * 0.9 * leaves * 0.5;
+        }
+    }
+}
+
+/// One cricket of a night: how loud, where it sits, its pitch, its rhythm,
+/// when it chirps next, and how near it sings, which changes over a minute
+/// or two.
 struct Cricket {
     gain: f32,
+    to_left: f32,
+    to_right: f32,
     pitch: f32,
     period: f32,
     pulses: usize,
-    offset: f32,
+    next: f64,
+    here: Drift,
+}
+
+/// A chirp of `cricket`, from frame `at`: a few pulses of a tone falling a
+/// little, `loud` of its full voice.
+fn add_chirp(ahead: &mut Ahead, at: u64, cricket: &Cricket, loud: f32) {
+    let rate = NATURE_RATE as f32;
+    let (pulse, gap) = ((0.014 * rate) as usize, (0.016 * rate) as usize);
+    let mut phase = 0.0f32;
+    ahead.add(at, cricket.pulses * (pulse + gap), |n| {
+        let m = n % (pulse + gap);
+        if m == 0 {
+            // The phase counted from the pulse's start: exact in single precision.
+            phase = 0.0;
+        }
+        if m >= pulse {
+            return (0.0, 0.0);
+        }
+        let t = m as f32 / pulse as f32;
+        let window = (std::f32::consts::PI * t).sin().powi(2);
+        phase += 2.0 * std::f32::consts::PI * cricket.pitch * (1.0 - 0.015 * t) / rate;
+        let value = cricket.gain * loud * window * phase.sin();
+        (value * cricket.to_left, value * cricket.to_right)
+    });
 }
 
 /// Crickets at night: a few field crickets chirping, each its pitch and
-/// rhythm, near and far, one tree cricket trilling softly; the night's air under them.
-fn crickets(count: usize, seed: u64, band: &[Cricket], trill_gain: f32) -> Vec<f32> {
-    let mut random = Random(seed);
-    let rate = NATURE_RATE as f32;
-    let mut air = LowPass::default();
-    let mut out: Vec<f32> = (0..count).map(|_| air.run(random.next(), 120.0) * 0.25).collect();
-    let pulse = 0.014f32;
-    let gap = 0.016f32;
-    for cricket in band {
-        let mut chirp = cricket.offset;
-        while ((chirp * rate) as usize) < count {
-            for k in 0..cricket.pulses {
-                let start = chirp + k as f32 * (pulse + gap);
-                let first = (start * rate) as usize;
-                let length = (pulse * rate) as usize;
-                // The phase counted from the pulse's start: exact in single precision.
-                let mut phase = 0.0f32;
-                for n in 0..length {
-                    let Some(sample) = out.get_mut(first + n) else { break };
-                    let t = n as f32 / length as f32;
-                    let window = (std::f32::consts::PI * t).sin().powi(2);
-                    let pitch = cricket.pitch * (1.0 - 0.015 * t);
-                    phase += 2.0 * std::f32::consts::PI * pitch / rate;
-                    *sample += cricket.gain * window * phase.sin();
-                }
-            }
-            chirp += cricket.period * random.between(0.95, 1.05);
-        }
-    }
-    // A tree cricket: a soft trill at 2.8 kHz, 40 pulses a second, swelling and resting.
-    let swell = slow_curve(&mut random, count, 3.5);
-    for (i, sample) in out.iter_mut().enumerate() {
-        // In double precision: a minute of a 2.8 kHz tone is a million radians.
-        let t = i as f64 / f64::from(NATURE_RATE);
-        let beat = ((2.0 * std::f64::consts::PI * 40.0 * t).sin().max(0.0).powi(2)) as f32;
-        let on = (swell[i] - 0.35).max(0.0) / 0.65;
-        *sample += trill_gain * on * beat * (2.0 * std::f64::consts::PI * 2800.0 * t).sin() as f32;
-    }
-    out
+/// rhythm, near and far, each softer, then louder again, over minutes;
+/// a tree cricket trilling softly; the night's air under them.
+struct Crickets {
+    random: Random,
+    band: Vec<Cricket>,
+    air: [LowPass; 2],
+    swell: [Drift; 2],
+    ahead: Ahead,
 }
 
-/// One strike of thunder far away, added to both ears from where it is: a
-/// few bursts within seconds, rolling, low; brighter at its start the nearer
-/// it is (`near`, 0 to 1).
-fn add_thunder(left: &mut [f32], right: &mut [f32], at: f32, near: f32, pan: f32, seed: u64) {
+impl Crickets {
+    fn new(seed: u64) -> Crickets {
+        let mut plan = Random::part(seed, 1);
+        let band = (0..6u64)
+            .map(|k| {
+                let (to_left, to_right) = panned(plan.between(-0.85, 0.85));
+                let near = plan.between(0.35, 1.0);
+                Cricket { gain: near * 0.35, to_left, to_right, pitch: plan.between(4100.0, 4900.0), period: plan.between(0.42, 0.95), pulses: if plan.unit() < 0.5 { 3 } else { 4 }, next: f64::from(plan.between(0.0, 1.0)), here: Drift::new(Random::part(seed, 10 + k), 90.0) }
+            })
+            .collect();
+        Crickets { random: Random::part(seed, 2), band, air: [LowPass::default(); 2], swell: [Drift::new(Random::part(seed, 3), 3.5), Drift::new(Random::part(seed, 4), 3.5)], ahead: Ahead::default() }
+    }
+}
+
+impl Scene for Crickets {
+    fn render(&mut self, now: u64, left: &mut [f32], right: &mut [f32]) {
+        let end = block_end(now, left.len());
+        for cricket in &mut self.band {
+            while cricket.next < end {
+                // Never quite gone: a cricket sings softer, farther, then near again.
+                let loud = 0.4 + 0.6 * ((cricket.here.now() - 0.1) / 0.3).clamp(0.0, 1.0);
+                add_chirp(&mut self.ahead, frame(cricket.next), cricket, loud);
+                cricket.next += f64::from(cricket.period * self.random.between(0.95, 1.05));
+            }
+            cricket.here.skip(left.len());
+        }
+        for (i, (l, r)) in left.iter_mut().zip(right.iter_mut()).enumerate() {
+            // A tree cricket: a soft trill at 2.8 kHz, 40 pulses a second, swelling
+            // and resting; in double precision, as hours of a 2.8 kHz tone are
+            // tens of millions of radians.
+            let t = (now + i as u64) as f64 / f64::from(NATURE_RATE);
+            let trill = ((2.0 * std::f64::consts::PI * 40.0 * t).sin().max(0.0).powi(2) * (2.0 * std::f64::consts::PI * 2800.0 * t).sin()) as f32;
+            let on = |swell: &mut Drift| (swell.next() - 0.35).max(0.0) / 0.65;
+            let air_left = self.air[0].run(self.random.next(), 120.0) * 0.25;
+            let air_right = self.air[1].run(self.random.next(), 120.0) * 0.25;
+            let (chirps_left, chirps_right) = self.ahead.take();
+            *l = air_left + 0.025 * on(&mut self.swell[0]) * trill + chirps_left;
+            *r = air_right + 0.035 * on(&mut self.swell[1]) * trill + chirps_right;
+        }
+    }
+}
+
+/// One strike of thunder far away, added to both ears from frame `at`, from
+/// where it is: a few bursts within seconds, rolling, low; brighter at its
+/// start the nearer it is (`near`, 0 to 1).
+fn add_thunder(ahead: &mut Ahead, at: u64, near: f32, pan: f32, seed: u64) {
     let rate = NATURE_RATE as f32;
-    let mut random = Random(seed);
+    let mut random = Random::part(seed, 0);
     let mut bursts = Vec::new();
     let mut offset = 0.0f32;
     let mut strength = 1.0f32;
@@ -500,16 +657,11 @@ fn add_thunder(left: &mut [f32], right: &mut [f32], at: f32, near: f32, pan: f32
         strength *= random.between(0.55, 1.05);
     }
     let length = ((offset + 12.0) * rate) as usize;
-    let rolling = slow_curve(&mut random, length, 0.2);
+    let mut rolling = Drift::new(Random::part(seed, 1), 0.2);
     let (mut brown, mut dark, mut darker, mut floor) = (0.0f32, LowPass::default(), LowPass::default(), HighPass::default());
-    let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
-    let (to_left, to_right) = (angle.cos(), angle.sin());
-    let start = (at * rate) as usize;
+    let (to_left, to_right) = panned(pan);
     let (base, bright) = (110.0 + 220.0 * near, 300.0 + 2600.0 * near * near);
-    for n in 0..length {
-        if start + n >= left.len() {
-            break;
-        }
+    ahead.add(at, length, |n| {
         let t = n as f32 / rate;
         let mut sum = 0.0f32;
         for &(begin, rise, fall, strength) in &bursts {
@@ -524,59 +676,105 @@ fn add_thunder(left: &mut [f32], right: &mut [f32], at: f32, near: f32, pan: f32
         brown = (brown + 0.02 * white) / 1.02;
         let cutoff = base + (bright - base) * (-t / 0.9).exp();
         let rumble = floor.run(darker.run(dark.run(brown * 3.5 + white * 0.15, cutoff), cutoff * 1.3), 30.0);
-        let value = rumble * level * (0.5 + 0.7 * rolling[n]) * (0.7 + 0.5 * near);
-        left[start + n] += value * to_left;
-        right[start + n] += value * to_right;
+        let value = rumble * level * (0.5 + 0.7 * rolling.next()) * (0.7 + 0.5 * near);
+        (value * to_left, value * to_right)
+    });
+}
+
+/// The rain of a storm far away: a soft, dark, steady hiss, a soft drop now
+/// and then, heard in each ear with a weight.
+struct StormRain {
+    random: Random,
+    pink: Pink,
+    floor: HighPass,
+    top: LowPass,
+    drops: f64,
+    to: (f32, f32),
+}
+
+impl StormRain {
+    fn new(seed: u64, part: u64, to: (f32, f32)) -> StormRain {
+        let mut random = Random::part(seed, part);
+        StormRain { drops: random.wait(1.0), random, pink: Pink::default(), floor: HighPass::default(), top: LowPass::default(), to }
+    }
+
+    fn next(&mut self, level: f32) -> f32 {
+        self.top.run(self.floor.run(self.pink.next(self.random.next()), 250.0), 2500.0) * (0.8 + 0.2 * level)
     }
 }
 
-/// The rain of a storm far away: a soft, dark, steady hiss, drifting a little
-/// over tens of seconds, a soft drop now and then.
-fn storm_rain(count: usize, seed: u64, level: &[f32]) -> Vec<f32> {
-    let mut random = Random(seed);
-    let mut pink = Pink::default();
-    let (mut floor, mut top) = (HighPass::default(), LowPass::default());
-    let mut out: Vec<f32> = (0..count)
-        .map(|i| {
-            let p = top.run(floor.run(pink.next(random.next()), 250.0), 2500.0);
-            p * (0.8 + 0.2 * level[i])
-        })
-        .collect();
-    for at in events(&mut random, count, 1.0) {
-        let (frequency, decay, amplitude, phase) = (random.between(500.0, 1400.0), random.between(0.01, 0.025), random.between(0.01, 0.03), random.between(0.0, 6.28));
-        add_ping(&mut out, at, frequency, decay, amplitude, phase);
-    }
-    out
+/// A distant storm (after six CC0 recordings, docs/sounds.md): soft rain, its
+/// level wandering, thunder too far to make out rolling under it, and thunder
+/// every 8 to 28 seconds, each strike rolling in a few bursts, the same in both
+/// ears from where it is. The storm comes nearer, then goes farther, over
+/// minutes: its strikes more often and brighter, its rain heavier, then less.
+struct Storm {
+    plan: Random,
+    level: Drift,
+    far: Drift,
+    near: Drift,
+    /// The rain both ears share, then each ear's own.
+    rains: [StormRain; 3],
+    random: Random,
+    brown: f32,
+    deep: LowPass,
+    deeper: LowPass,
+    ahead: Ahead,
+    next: f64,
+    seed: u64,
 }
 
-/// A distant storm (after six CC0 recordings, docs/sounds.md): soft rain,
-/// its level wandering, and thunder every 8 to 28 seconds, each strike rolling
-/// in a few bursts, the same in both ears from where it is.
-fn storm(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
-    let rate = NATURE_RATE as f32;
-    let level = slow_curve(plan, count, 15.0);
-    let (shared, own_left, own_right) = (storm_rain(count, 51, &level), storm_rain(count, 52, &level), storm_rain(count, 53, &level));
-    let mut left: Vec<f32> = shared.iter().zip(&own_left).map(|(s, o)| (s * 0.8 + o * 0.55) * 0.1).collect();
-    let mut right: Vec<f32> = shared.iter().zip(&own_right).map(|(s, o)| (s * 0.8 + o * 0.55) * 0.1).collect();
-    // Thunder too far to make out, rolling on under the rain.
-    let far = slow_curve(plan, count, 6.0);
-    let (mut deep, mut deeper) = (LowPass::default(), LowPass::default());
-    let mut random = Random(55);
-    let mut brown = 0.0f32;
-    for i in 0..count {
-        brown = (brown + 0.02 * random.next()) / 1.02;
-        let value = deeper.run(deep.run(brown * 3.5, 160.0), 220.0) * (0.35 + 0.65 * far[i]) * 0.08;
-        left[i] += value;
-        right[i] += value;
+impl Storm {
+    fn new(seed: u64) -> Storm {
+        let mut plan = Random::part(seed, 1);
+        let next = f64::from(plan.between(2.0, 10.0));
+        Storm {
+            level: Drift::new(Random::part(seed, 2), 15.0),
+            far: Drift::new(Random::part(seed, 3), 6.0),
+            near: Drift::new(Random::part(seed, 4), 240.0),
+            rains: [StormRain::new(seed, 5, (0.08, 0.08)), StormRain::new(seed, 6, (0.055, 0.0)), StormRain::new(seed, 7, (0.0, 0.055))],
+            random: Random::part(seed, 8),
+            brown: 0.0,
+            deep: LowPass::default(),
+            deeper: LowPass::default(),
+            ahead: Ahead::default(),
+            next,
+            seed: Random::part(seed, 9).0,
+            plan,
+        }
     }
-    let mut at = plan.between(-6.0, 4.0);
-    let mut seed = 200;
-    while at < count as f32 / rate {
-        add_thunder(&mut left, &mut right, at.max(0.0), plan.unit().powi(2), plan.between(-0.5, 0.5), seed);
-        seed += 1;
-        at += plan.between(8.0, 28.0);
+}
+
+impl Scene for Storm {
+    fn render(&mut self, now: u64, left: &mut [f32], right: &mut [f32]) {
+        let end = block_end(now, left.len());
+        let nearer = self.near.now();
+        for rain in &mut self.rains {
+            while rain.drops < end {
+                let r = &mut rain.random;
+                let ping = (r.between(500.0, 1400.0), r.between(0.01, 0.025), r.between(0.01, 0.03), r.between(0.0, 6.28));
+                add_ping(&mut self.ahead, frame(rain.drops), ping, rain.to);
+                rain.drops += rain.random.wait(1.0);
+            }
+        }
+        while self.next < end {
+            let plan = &mut self.plan;
+            let near = (plan.unit().powi(2) * (0.5 + 0.6 * nearer)).min(1.0);
+            add_thunder(&mut self.ahead, frame(self.next), near, plan.between(-0.5, 0.5), self.seed);
+            self.seed = self.seed.wrapping_add(1);
+            self.next += f64::from(plan.between(8.0, 28.0) * (1.3 - 0.4 * nearer));
+        }
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let (level, nearer) = (self.level.next(), self.near.next());
+            let [shared, own_left, own_right] = self.rains.each_mut().map(|rain| rain.next(level));
+            let heavier = (0.9 + 0.2 * nearer) * 0.1;
+            self.brown = (self.brown + 0.02 * self.random.next()) / 1.02;
+            let rumble = self.deeper.run(self.deep.run(self.brown * 3.5, 160.0), 220.0) * (0.35 + 0.65 * self.far.next()) * 0.08 * (0.8 + 0.4 * nearer);
+            let (strike_left, strike_right) = self.ahead.take();
+            *l = (shared * 0.8 + own_left * 0.55) * heavier + rumble + strike_left;
+            *r = (shared * 0.8 + own_right * 0.55) * heavier + rumble + strike_right;
+        }
     }
-    (left, right)
 }
 
 /// How a bird's syllable moves in pitch, in hertz, as recordings show it:
@@ -632,19 +830,19 @@ impl Contour {
     }
 }
 
-/// A syllable added to one bird's voice, from `start` seconds: a quick
-/// attack, a short release, fuller in the middle.
-fn add_syllable(voice: &mut [f32], start: f32, syllable: &Syllable) {
+/// A syllable added to a song (`song`, the frame it starts at being `at`): a
+/// quick attack, a short release, fuller in the middle.
+fn add_syllable(song: &mut [f32], at: u64, syllable: &Syllable) {
     let rate = NATURE_RATE as f32;
-    let first = ((start + syllable.at) * rate) as usize;
+    let first = (syllable.at * rate) as usize;
     let count = (syllable.length * rate) as usize;
     let breathy = syllable.breath > 0.0;
     let (attack, release) = if breathy { (0.045 * rate, (0.07 * rate).min(count as f32 * 0.4)) } else { (0.003 * rate, (0.008 * rate).min(count as f32 * 0.4)) };
-    let mut random = Random(0x0d0e ^ first as u64);
+    let mut random = Random(0x0d0e ^ (at + first as u64));
     let (mut breath, mut throat) = (BandPass::default(), LowPass::default());
     let mut phase = 0.0f32;
     for n in 0..count {
-        let Some(sample) = voice.get_mut(first + n) else { break };
+        let Some(sample) = song.get_mut(first + n) else { break };
         let t = n as f32 / rate;
         let frequency = syllable.contour.pitch(t, syllable.length).clamp(200.0, 9000.0);
         phase = (phase + std::f32::consts::TAU * frequency / rate) % std::f32::consts::TAU;
@@ -775,208 +973,503 @@ fn song_type(plan: &mut Random, singer: Singer) -> Vec<Syllable> {
     song
 }
 
-/// One bird singing through `count` samples, alone in its voice: two or
-/// three kinds of song, each sung three to six times, a little different each
-/// time, before the next; resting between songs, less while the wood is `busy`.
-fn bird_voice(plan: &mut Random, singer: Singer, busy: &[f32]) -> Vec<f32> {
-    let rate = NATURE_RATE as f32;
-    let mut voice = vec![0.0f32; busy.len()];
-    let kinds: Vec<Vec<Syllable>> = (0..2 + (plan.unit() * 2.0) as usize).map(|_| song_type(plan, singer)).collect();
-    let (rest_least, rest_most) = match singer {
-        Singer::Chaffinch => (5.0, 10.0),
-        Singer::Tit => (4.0, 9.0),
-        Singer::Robin => (2.5, 6.0),
-        Singer::Blackbird => (3.0, 7.0),
-        Singer::Wren => (8.0, 16.0),
-        Singer::Dove => (12.0, 25.0),
-    };
-    let mut at = plan.between(0.0, rest_most);
-    let mut kind = 0;
-    let mut sung = 0;
-    let mut times = 3 + (plan.unit() * 4.0) as usize;
-    while ((at * rate) as usize) < voice.len() {
-        let song = &kinds[kind];
-        let (tune, pace) = (plan.between(0.985, 1.015), plan.between(0.97, 1.03));
-        for syllable in song {
-            let varied = Syllable { at: syllable.at * pace, contour: syllable.contour.scaled(tune), ..*syllable };
-            add_syllable(&mut voice, at, &varied);
-        }
-        let length = song.last().map_or(0.0, |s| s.at * pace + s.length);
-        sung += 1;
-        if sung == times {
-            (kind, sung, times) = ((kind + 1) % kinds.len(), 0, 3 + (plan.unit() * 4.0) as usize);
-        }
-        let busy_now = busy[((at * rate) as usize).min(busy.len() - 1)];
-        at += length + plan.between(rest_least, rest_most) * (1.4 - 0.8 * busy_now);
-    }
-    voice
+/// One bird of the wood: how loud and how near (its distance darkens it), its
+/// branch, its voice ahead of the present, the two or three kinds of song it
+/// sings, each three to six times, a little different each time, before the
+/// next, and its rests. It comes and goes over minutes; one come back is
+/// another bird, with songs of its own, on another branch.
+struct Bird {
+    singer: Singer,
+    gain: f32,
+    open: f32,
+    to_left: f32,
+    to_right: f32,
+    distance: LowPass,
+    voice: Ahead,
+    kinds: Vec<Vec<Syllable>>,
+    kind: usize,
+    sung: usize,
+    times: usize,
+    next: f64,
+    rests: (f32, f32),
+    here: Drift,
+    /// How much of `here` it takes to sing: the dove sings least often.
+    stays: f32,
+    singing: bool,
 }
 
-/// A short reverberation of the forest, one ear: four damped combs and two
-/// all-passes (Schroeder's, Moorer's damping), each ear its own delays.
-fn forest_reverb(dry: &[f32], delays: [f32; 6]) -> Vec<f32> {
-    let rate = NATURE_RATE as f32;
-    let mut out = vec![0.0f32; dry.len()];
-    for &delay in &delays[..4] {
-        let d = (delay * rate) as usize;
-        let mut line = vec![0.0f32; d];
-        let mut damp = 0.0f32;
-        for (i, sample) in dry.iter().enumerate() {
-            let back = line[i % d];
-            damp += 0.45 * (back - damp);
-            line[i % d] = sample + damp * 0.72;
-            out[i] += back * 0.25;
-        }
+impl Bird {
+    /// A bird come to sing here: its songs, its branch.
+    fn arrive(&mut self, plan: &mut Random) {
+        self.kinds = (0..2 + (plan.unit() * 2.0) as usize).map(|_| song_type(plan, self.singer)).collect();
+        (self.kind, self.sung, self.times) = (0, 0, 3 + (plan.unit() * 4.0) as usize);
+        let (to_left, to_right) = panned(plan.between(-0.8, 0.8));
+        (self.to_left, self.to_right) = (to_left * self.gain, to_right * self.gain);
     }
-    for &delay in &delays[4..] {
-        let d = (delay * rate) as usize;
-        let mut line = vec![0.0f32; d];
-        for (i, sample) in out.iter_mut().enumerate() {
-            let back = line[i % d];
-            let held = *sample + 0.6 * back;
-            line[i % d] = held;
-            *sample = back - 0.6 * held;
+
+    /// Its next song, from `self.next`, put in its voice; how long it lasts.
+    fn sing(&mut self, plan: &mut Random) -> f32 {
+        let song = &self.kinds[self.kind];
+        let (tune, pace) = (plan.between(0.985, 1.015), plan.between(0.97, 1.03));
+        let length = song.last().map_or(0.0, |s| s.at * pace + s.length);
+        let at = frame(self.next);
+        let mut sound = vec![0.0f32; (length * NATURE_RATE as f32) as usize + 1];
+        for syllable in song {
+            add_syllable(&mut sound, at, &Syllable { at: syllable.at * pace, contour: syllable.contour.scaled(tune), ..*syllable });
         }
+        self.voice.add(at, sound.len(), |n| (sound[n], 0.0));
+        self.sung += 1;
+        if self.sung == self.times {
+            (self.kind, self.sung, self.times) = ((self.kind + 1) % self.kinds.len(), 0, 3 + (plan.unit() * 4.0) as usize);
+        }
+        length
     }
-    out
+}
+
+/// A short reverberation of the forest, one ear, made as it goes: four damped
+/// combs and two all-passes (Schroeder's, Moorer's damping), each ear its own
+/// delays.
+struct Reverb {
+    combs: Vec<(Vec<f32>, f32)>,
+    passes: Vec<Vec<f32>>,
+    at: usize,
+}
+
+impl Reverb {
+    fn new(delays: [f32; 6]) -> Reverb {
+        let line = |delay: f32| vec![0.0f32; ((delay * NATURE_RATE as f32) as usize).max(1)];
+        Reverb { combs: delays[..4].iter().map(|d| (line(*d), 0.0)).collect(), passes: delays[4..].iter().map(|d| line(*d)).collect(), at: 0 }
+    }
+
+    fn next(&mut self, dry: f32) -> f32 {
+        let mut out = 0.0f32;
+        for (line, damp) in &mut self.combs {
+            let k = self.at % line.len();
+            let back = line[k];
+            *damp += 0.45 * (back - *damp);
+            line[k] = dry + *damp * 0.72;
+            out += back * 0.25;
+        }
+        for line in &mut self.passes {
+            let k = self.at % line.len();
+            let back = line[k];
+            let held = out + 0.6 * back;
+            line[k] = held;
+            out = back - 0.6 * held;
+        }
+        self.at = self.at.wrapping_add(1);
+        out
+    }
 }
 
 /// Birds at dawn in a wood (after six CC0 recordings, docs/sounds.md): six
 /// birds, each singing its songs from where it sits, near or far (the far
-/// ones darker), the wood singing more, then less, over tens of seconds; the
-/// wood's short echo, and a faint, steady air under them.
-fn birds(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
-    let (mut left, mut right) = (vec![0.0f32; count], vec![0.0f32; count]);
-    let busy = slow_curve(plan, count, 18.0);
-    let band = [(Singer::Chaffinch, 0.5, 9000.0), (Singer::Tit, 0.4, 9000.0), (Singer::Robin, 0.3, 7000.0), (Singer::Blackbird, 0.45, 9000.0), (Singer::Wren, 0.22, 4500.0), (Singer::Dove, 0.12, 3000.0)];
-    for (singer, gain, open) in band {
-        let voice = bird_voice(plan, singer, &busy);
-        let pan = plan.between(-0.8, 0.8);
-        let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
-        let (to_left, to_right) = (angle.cos() * gain, angle.sin() * gain);
-        let mut distance = LowPass::default();
-        for (i, sample) in voice.iter().enumerate() {
-            let heard = distance.run(*sample, open);
-            left[i] += heard * to_left;
-            right[i] += heard * to_right;
-        }
-    }
-    let (wet_left, wet_right) = (forest_reverb(&left, [0.0297, 0.0371, 0.0411, 0.0437, 0.005, 0.0017]), forest_reverb(&right, [0.0313, 0.0353, 0.0449, 0.0479, 0.0047, 0.0019]));
-    // A faint, steady air: the wood's own quiet, low and the same in both ears.
-    let mut random = Random(61);
-    let air = wind_layer(&mut random, &vec![1.0; count], 60.0, 700.0, 1.0);
-    let mix = |dry: &[f32], wet: &[f32]| -> Vec<f32> { (0..count).map(|i| dry[i] + wet[i] * 0.45 + air[i] * 0.06).collect() };
-    (mix(&left, &wet_left), mix(&right, &wet_right))
+/// ones darker), the wood singing more, then less, over tens of seconds, birds
+/// leaving and others coming over minutes; the wood's short echo, and a faint,
+/// steady air under them.
+struct Birds {
+    plan: Random,
+    busy: Drift,
+    birds: Vec<Bird>,
+    echo: [Reverb; 2],
+    air: Layer,
 }
 
-/// A sound of nature in stereo: its two channels, each looping, about −22 dBFS,
-/// its rare loudest moments held under −6 dBFS (`limited`).
-pub fn nature(kind: &str) -> (Vec<i16>, Vec<i16>) {
-    let seconds: usize = match kind {
-        "waves" => 120,
-        "storm" => 180,
-        "wind" => 90,
-        "birds" => 90,
-        _ => 60,
-    };
-    let fade = 4 * NATURE_RATE as usize;
-    let count = seconds * NATURE_RATE as usize + fade;
-    let mut plan = Random(0x5105_7a7e_0000_0000 ^ kind.bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b))));
-    let (left, right) = match kind {
-        "waves" => waves(count, &mut plan),
-        "rain" => (rain(count, 21, 1.0), rain(count, 22, 1.0)),
-        "wind" => wind(count, &mut plan),
-        "birds" => birds(count, &mut plan),
-        "crickets" => {
-            let band: Vec<(f32, Cricket)> = (0..6)
-                .map(|_| {
-                    let pan = plan.between(-0.85, 0.85);
-                    let near = plan.between(0.15, 1.0);
-                    (pan, Cricket { gain: near * 0.35, pitch: plan.between(4100.0, 4900.0), period: plan.between(0.42, 0.95), pulses: if plan.unit() < 0.5 { 3 } else { 4 }, offset: plan.between(0.0, 1.0) })
-                })
-                .collect();
-            let side = |left: bool| -> Vec<Cricket> {
-                band.iter()
-                    .map(|(pan, c)| {
-                        let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
-                        let weight = if left { angle.cos() } else { angle.sin() };
-                        Cricket { gain: c.gain * weight, pitch: c.pitch, period: c.period, pulses: c.pulses, offset: c.offset }
-                    })
-                    .collect()
-            };
-            (crickets(count, 41, &side(true), 0.025), crickets(count, 42, &side(false), 0.035))
+impl Birds {
+    fn new(seed: u64) -> Birds {
+        let mut plan = Random::part(seed, 1);
+        // Each: how loud, how open (its distance), its rests between songs, how much it stays.
+        let band = [
+            (Singer::Chaffinch, 0.5, 9000.0, (5.0, 10.0), 0.3),
+            (Singer::Tit, 0.4, 9000.0, (4.0, 9.0), 0.3),
+            (Singer::Robin, 0.3, 7000.0, (2.5, 6.0), 0.3),
+            (Singer::Blackbird, 0.45, 9000.0, (3.0, 7.0), 0.3),
+            (Singer::Wren, 0.22, 4500.0, (8.0, 16.0), 0.35),
+            (Singer::Dove, 0.12, 3000.0, (12.0, 25.0), 0.45),
+        ];
+        let birds = band
+            .into_iter()
+            .zip(10u64..)
+            .map(|((singer, gain, open, rests, stays), part)| {
+                let next = f64::from(plan.between(0.0, rests.1));
+                let mut bird = Bird { singer, gain, open, to_left: 0.0, to_right: 0.0, distance: LowPass::default(), voice: Ahead::default(), kinds: Vec::new(), kind: 0, sung: 0, times: 0, next, rests, here: Drift::new(Random::part(seed, part), 150.0), stays, singing: true };
+                bird.arrive(&mut plan);
+                bird
+            })
+            .collect();
+        Birds {
+            plan,
+            busy: Drift::new(Random::part(seed, 2), 18.0),
+            birds,
+            echo: [Reverb::new([0.0297, 0.0371, 0.0411, 0.0437, 0.005, 0.0017]), Reverb::new([0.0313, 0.0353, 0.0449, 0.0479, 0.0047, 0.0019])],
+            air: Layer::new(Random::part(seed, 3), 60.0, 700.0),
         }
-        _ => storm(count, &mut plan),
-    };
-    // Waves and wind are backgrounds to rest or focus by: lighter than the rest.
-    let target = match kind {
-        "wind" => 0.035,
-        "waves" | "crickets" => 0.05,
-        _ => 0.08,
-    };
-    let looped = |raw: &[f32]| -> Vec<f32> {
-        let length = raw.len() - fade;
-        let mut out: Vec<f32> = raw[..length].to_vec();
-        for (i, sample) in out.iter_mut().take(fade).enumerate() {
-            let t = i as f32 / fade as f32;
-            *sample = raw[i] * t.sqrt() + raw[length + i] * (1.0 - t).sqrt();
-        }
-        out
-    };
-    let (left, right) = (looped(&left), looped(&right));
-    let rms = (left.iter().chain(&right).map(|s| s * s).sum::<f32>() / (left.len() + right.len()) as f32).sqrt().max(1e-6);
-    let gain = target / rms;
-    let held = limited(&left, &right, gain);
-    let to_pcm = |channel: &[f32]| channel.iter().zip(&held).map(|(s, g)| ((s * gain * g).clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16).collect::<Vec<i16>>();
-    (to_pcm(&left), to_pcm(&right))
+    }
 }
 
-/// How much each moment is held down so that no peak passes −6 dBFS: a gain
-/// that dips within 5 ms before a loud moment (a thunderclap, a near bird)
-/// and comes back over 0.4 s, the same for both ears. The waveform itself is
-/// never clipped nor rounded off, which would add harmonics and crackle.
-fn limited(left: &[f32], right: &[f32], gain: f32) -> Vec<f32> {
-    let rate = NATURE_RATE as f32;
-    let (attack, release) = ((-1.0 / (0.005 * rate)).exp(), (-1.0 / (0.4 * rate)).exp());
-    let mut held: Vec<f32> = left.iter().zip(right).map(|(l, r)| (0.5 / (l.abs().max(r.abs()) * gain).max(1e-9)).min(1.0)).collect();
-    // Backwards: the gain is already down when the peak comes.
-    for i in (0..held.len().saturating_sub(1)).rev() {
-        held[i] = held[i].min(1.0 - (1.0 - held[i + 1]) * attack);
+impl Scene for Birds {
+    fn render(&mut self, now: u64, left: &mut [f32], right: &mut [f32]) {
+        let end = block_end(now, left.len());
+        let busy = self.busy.now();
+        for bird in &mut self.birds {
+            while bird.next < end {
+                // Gone, or come back, a little apart, so that a bird never flickers in and out.
+                let here = bird.here.now();
+                if bird.singing && here < bird.stays - 0.05 {
+                    bird.singing = false;
+                } else if !bird.singing && here > bird.stays + 0.05 {
+                    bird.singing = true;
+                    bird.arrive(&mut self.plan);
+                }
+                let length = if bird.singing { bird.sing(&mut self.plan) } else { 0.0 };
+                bird.next += f64::from(length + self.plan.between(bird.rests.0, bird.rests.1) * (1.4 - 0.8 * busy));
+            }
+            bird.here.skip(left.len());
+        }
+        self.busy.skip(left.len());
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let (mut dry_left, mut dry_right) = (0.0f32, 0.0f32);
+            for bird in &mut self.birds {
+                let heard = bird.distance.run(bird.voice.take().0, bird.open);
+                dry_left += heard * bird.to_left;
+                dry_right += heard * bird.to_right;
+            }
+            // A faint, steady air: the wood's own quiet, low and the same in both ears.
+            let air = self.air.next() * 0.06;
+            *l = dry_left + self.echo[0].next(dry_left) * 0.45 + air;
+            *r = dry_right + self.echo[1].next(dry_right) * 0.45 + air;
+        }
     }
-    // Forwards: it comes back slowly after.
-    for i in 1..held.len() {
-        held[i] = held[i].min(1.0 - (1.0 - held[i - 1]) * release);
+}
+
+// Made as it plays.
+
+/// How much each moment is held down so that no peak passes −6 dBFS, made as
+/// it goes, 30 ms behind: a gain that dips within 5 ms before a loud moment (a
+/// thunderclap, a near bird) and comes back over 0.4 s, the same for both
+/// ears. The waveform itself is never clipped nor rounded off, which would add
+/// harmonics and crackle.
+struct Limiter {
+    attack: f32,
+    release: f32,
+    look: usize,
+    /// The frames not yet given, each with the gain it may have at most.
+    waiting: VecDeque<(f32, f32, f32)>,
+    held: f32,
+}
+
+impl Limiter {
+    fn new(rate: u32) -> Limiter {
+        let rate = rate as f32;
+        Limiter { attack: (-1.0 / (0.005 * rate)).exp(), release: (-1.0 / (0.4 * rate)).exp(), look: (0.03 * rate) as usize, waiting: VecDeque::new(), held: 1.0 }
     }
-    held
+
+    /// A frame in; the one 30 ms before it out, held down as it must be.
+    fn run(&mut self, left: f32, right: f32) -> (f32, f32) {
+        let most = (0.5 / left.abs().max(right.abs()).max(1e-9)).min(1.0);
+        if most < 1.0 {
+            // Backwards: the gain is already down when the peak comes.
+            let mut want = most;
+            for frame in self.waiting.iter_mut().rev() {
+                want = 1.0 - (1.0 - want) * self.attack;
+                if want >= frame.2 {
+                    break;
+                }
+                frame.2 = want;
+            }
+        }
+        self.waiting.push_back((left, right, most));
+        if self.waiting.len() <= self.look {
+            return (0.0, 0.0);
+        }
+        let (left, right, most) = self.waiting.pop_front().unwrap_or((0.0, 0.0, 1.0));
+        // Forwards: it comes back slowly after.
+        self.held = most.min(1.0 - (1.0 - self.held) * self.release);
+        (left * self.held, right * self.held)
+    }
+}
+
+/// A sound made as it plays (docs/sounds.md): `fill` gives its next frames.
+pub struct Live {
+    scene: Box<dyn Scene>,
+    rate: u32,
+    gain: f32,
+    limiter: Limiter,
+    now: u64,
+    left: Vec<f32>,
+    right: Vec<f32>,
+    /// The frames of `left` and `right` already given.
+    given: usize,
+}
+
+impl Live {
+    /// `kind` made from `seed`: a noise or a sound of nature; none for another name.
+    pub fn new(kind: &str, seed: u64) -> Option<Live> {
+        // Each recipe's own level over minutes (measured over five to ten minutes, three
+        // seeds), and the level wanted (`levels_hold_over_minutes`): noises
+        // −20 dBFS, birds and rain −22, the storm −23; waves, crickets and wind,
+        // backgrounds to rest or focus by, lighter: −26, −26, −29.
+        let (scene, rate, made, wanted): (Box<dyn Scene>, u32, f32, f32) = match kind {
+            "white" | "pink" | "brown" => {
+                let (colour, made) = match kind {
+                    "white" => (Colour::White, 0.577),
+                    "pink" => (Colour::Pink, 0.193),
+                    _ => (Colour::Brown, 0.198),
+                };
+                (Box::new(Noise { colour, random: Random::part(seed, 1), pink: Pink::default(), last: 0.0 }), RATE, made, 0.1)
+            }
+            "waves" => (Box::new(Waves::new(seed)), NATURE_RATE, 0.0631, 0.05),
+            "rain" => (Box::new(Rain::new(seed)), NATURE_RATE, 0.0844, 0.08),
+            "wind" => (Box::new(Wind::new(seed)), NATURE_RATE, 0.0254, 0.035),
+            "crickets" => (Box::new(Crickets::new(seed)), NATURE_RATE, 0.0419, 0.05),
+            "storm" => (Box::new(Storm::new(seed)), NATURE_RATE, 0.0222, 0.068),
+            "birds" => (Box::new(Birds::new(seed)), NATURE_RATE, 0.0974, 0.078),
+            _ => return None,
+        };
+        let mut live = Live { scene, rate, gain: wanted / made, limiter: Limiter::new(rate), now: 0, left: Vec::new(), right: Vec::new(), given: 0 };
+        // Three seconds made and left out: the filters settle, a wave is under way.
+        live.fill(&mut vec![0i16; 3 * rate as usize * 2]);
+        Some(live)
+    }
+
+    /// Its frames a second.
+    pub fn rate(&self) -> u32 {
+        self.rate
+    }
+
+    /// Its next frames, 16 bits, the two ears in turn (left, right, left…).
+    pub fn fill(&mut self, out: &mut [i16]) {
+        let pcm = |x: f32| (x.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
+        for pair in out.chunks_exact_mut(2) {
+            if self.given == self.left.len() {
+                (self.left, self.right) = (vec![0.0; BLOCK], vec![0.0; BLOCK]);
+                self.scene.render(self.now, &mut self.left, &mut self.right);
+                self.now += BLOCK as u64;
+                self.given = 0;
+            }
+            let (left, right) = self.limiter.run(self.left[self.given] * self.gain, self.right[self.given] * self.gain);
+            self.given += 1;
+            (pair[0], pair[1]) = (pcm(left), pcm(right));
+        }
+    }
+}
+
+/// What a sound's thread and its reader share: the frames made, not yet read.
+struct Shared {
+    ready: Mutex<VecDeque<i16>>,
+    wake: Condvar,
+    stop: AtomicBool,
+}
+
+/// A sound made on a thread of its own, a second ahead of what plays, and read
+/// as it plays (the window's audio output, crates/sioul-app/src/livesound.rs).
+/// Its thread ends soon after it is dropped.
+pub struct Stream {
+    shared: Arc<Shared>,
+    rate: u32,
+}
+
+impl Stream {
+    /// `kind` made from `seed`, a noise or a sound of nature; none for another
+    /// name, or when no thread can be started.
+    pub fn start(kind: &str, seed: u64) -> Option<Stream> {
+        let rate = if NOISES.contains(&kind) {
+            RATE
+        } else if NATURE.contains(&kind) {
+            NATURE_RATE
+        } else {
+            return None;
+        };
+        let shared = Arc::new(Shared { ready: Mutex::new(VecDeque::new()), wake: Condvar::new(), stop: AtomicBool::new(false) });
+        let (theirs, kind) = (Arc::clone(&shared), kind.to_owned());
+        std::thread::Builder::new().name("sioul-sound".into()).spawn(move || make(&kind, seed, &theirs)).ok()?;
+        Some(Stream { shared, rate })
+    }
+
+    /// Its frames a second, both ears.
+    pub fn rate(&self) -> u32 {
+        self.rate
+    }
+
+    /// Its next samples into `out`, the two ears in turn; silence where none
+    /// is made yet (at its start), never waiting.
+    pub fn read(&self, out: &mut [i16]) {
+        let mut ready = self.shared.ready.lock().unwrap_or_else(PoisonError::into_inner);
+        let made = out.len().min(ready.len());
+        for (sample, made) in out.iter_mut().zip(ready.drain(..made)) {
+            *sample = made;
+        }
+        out[made..].fill(0);
+        drop(ready);
+        self.shared.wake.notify_one();
+    }
+}
+
+impl Drop for Stream {
+    fn drop(&mut self) {
+        self.shared.stop.store(true, Ordering::Release);
+        self.shared.wake.notify_all();
+    }
+}
+
+/// A stream's thread: `kind` made a tenth of a second at a time, a second
+/// ahead of its reader, until the stream is dropped.
+fn make(kind: &str, seed: u64, shared: &Shared) {
+    let Some(mut live) = Live::new(kind, seed) else { return };
+    let ahead = live.rate as usize * 2;
+    let mut block = vec![0i16; live.rate as usize / 10 * 2];
+    loop {
+        {
+            let mut ready = shared.ready.lock().unwrap_or_else(PoisonError::into_inner);
+            while ready.len() >= ahead && !shared.stop.load(Ordering::Acquire) {
+                ready = shared.wake.wait(ready).unwrap_or_else(PoisonError::into_inner);
+            }
+        }
+        if shared.stop.load(Ordering::Acquire) {
+            return;
+        }
+        live.fill(&mut block);
+        shared.ready.lock().unwrap_or_else(PoisonError::into_inner).extend(&block);
+    }
+}
+
+// Files, where a sound cannot be made as it plays.
+
+/// 16-bit WAV bytes: `channels` interleaved, at `rate`.
+fn wav_of(samples: &[i16], channels: u16, rate: u32) -> Vec<u8> {
+    let data = u32::try_from(samples.len() * 2).unwrap_or(u32::MAX);
+    let mut out = Vec::with_capacity(44 + samples.len() * 2);
+    out.extend(b"RIFF");
+    out.extend((36 + data).to_le_bytes());
+    out.extend(b"WAVEfmt ");
+    out.extend(16u32.to_le_bytes());
+    out.extend(1u16.to_le_bytes());
+    out.extend(channels.to_le_bytes());
+    out.extend(rate.to_le_bytes());
+    out.extend((rate * 2 * u32::from(channels)).to_le_bytes());
+    out.extend((2 * channels).to_le_bytes());
+    out.extend(16u16.to_le_bytes());
+    out.extend(b"data");
+    out.extend(data.to_le_bytes());
+    for sample in samples {
+        out.extend(sample.to_le_bytes());
+    }
+    out
+}
+
+/// The recipe's version of a file of the sounds' folder made here
+/// ("waves-5.wav", "pink-noise-3.wav"; 1 for the noises' first files,
+/// "pink-noise.wav"); none for another file.
+fn made_here(name: &str) -> Option<u32> {
+    let stem = name.strip_suffix(".wav")?;
+    if let Some(kind) = stem.strip_suffix("-noise") {
+        return NOISES.contains(&kind).then_some(1);
+    }
+    let (kind, version) = stem.rsplit_once('-')?;
+    let ours = kind.strip_suffix("-noise").is_some_and(|kind| NOISES.contains(&kind)) || NATURE.contains(&kind);
+    ours.then(|| version.parse::<u32>().ok()).flatten()
+}
+
+/// Whether a file of the sounds' folder was made by an older recipe.
+fn older_recipe(name: &str) -> bool {
+    made_here(name).is_some_and(|version| version < NATURE_VERSION)
+}
+
+/// The files made here for where a sound cannot be made as it plays, each
+/// minutes of sound, taken away: a sound made as it plays needs none.
+pub fn clear_files(folder: &Path) {
+    if let Ok(entries) = std::fs::read_dir(folder) {
+        for entry in entries.flatten() {
+            if made_here(&entry.file_name().to_string_lossy()).is_some() {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
+/// `kind` over `seconds`, looping: its last four seconds faded into its first
+/// with equal power, so that the end flows into the start; and its rate.
+fn looped(kind: &str, seconds: usize) -> Option<(Vec<i16>, u32)> {
+    let mut live = Live::new(kind, 0x5105)?;
+    let rate = live.rate() as usize;
+    let (length, fade) = (seconds * rate * 2, 4 * rate * 2);
+    let mut raw = vec![0i16; length + fade];
+    live.fill(&mut raw);
+    let mut out = raw[..length].to_vec();
+    for (i, sample) in out.iter_mut().take(fade).enumerate() {
+        let t = (i / 2) as f32 / (fade / 2) as f32;
+        *sample = (f32::from(raw[i]) * t.sqrt() + f32::from(raw[length + i]) * (1.0 - t).sqrt()).clamp(-32768.0, 32767.0) as i16;
+    }
+    Some((out, live.rate()))
+}
+
+/// The file of a noise or a sound of nature, made the first time in `folder`,
+/// for where it cannot be made as it plays: one to three minutes, looping.
+pub fn noise_file(folder: &Path, kind: &str) -> Result<PathBuf, String> {
+    let (name, seconds) = if NOISES.contains(&kind) {
+        (format!("{kind}-noise-{NATURE_VERSION}.wav"), 60)
+    } else if NATURE.contains(&kind) {
+        let seconds = match kind {
+            "waves" => 120,
+            "storm" => 180,
+            "wind" | "birds" => 90,
+            _ => 60,
+        };
+        (format!("{kind}-{NATURE_VERSION}.wav"), seconds)
+    } else {
+        return Err(format!("{kind}: no such sound"));
+    };
+    let path = folder.join(name);
+    if !path.exists() {
+        // The files of older recipes go: each is minutes of sound.
+        if let Ok(entries) = std::fs::read_dir(folder) {
+            for entry in entries.flatten() {
+                if older_recipe(&entry.file_name().to_string_lossy()) {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        let (samples, rate) = looped(kind, seconds).ok_or_else(|| format!("{kind}: no such sound"))?;
+        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        let temporary = path.with_extension("wav.new");
+        std::fs::write(&temporary, wav_of(&samples, 2, rate)).map_err(|e| format!("{}: {e}", temporary.display()))?;
+        std::fs::rename(&temporary, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(path)
+}
+
+/// `seconds` of `kind` made from `seed`, as WAV bytes: to listen to a sound
+/// or to measure it (tools/sounds/).
+pub fn recording(kind: &str, seed: u64, seconds: usize) -> Option<Vec<u8>> {
+    let mut live = Live::new(kind, seed)?;
+    let mut samples = vec![0i16; seconds * live.rate() as usize * 2];
+    live.fill(&mut samples);
+    Some(wav_of(&samples, 2, live.rate()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_random_source_is_centred() {
-        let mut random = Random(7);
-        let values: Vec<f32> = (0..100_000).map(|_| random.next()).collect();
-        let mean = values.iter().sum::<f32>() / values.len() as f32;
-        assert!(mean.abs() < 0.01, "mean {mean}");
-        assert!(values.iter().all(|v| (-1.0..1.0).contains(v)));
+    /// `seconds` of `kind` from `seed`, each ear apart.
+    fn made(kind: &str, seed: u64, seconds: usize) -> (Vec<i16>, Vec<i16>) {
+        let mut live = Live::new(kind, seed).unwrap();
+        let mut out = vec![0i16; seconds * live.rate() as usize * 2];
+        live.fill(&mut out);
+        out.chunks_exact(2).map(|pair| (pair[0], pair[1])).unzip()
     }
 
-    #[test]
-    fn noises_loop_without_a_seam() {
-        for kind in NOISES {
-            let samples = looped(kind, 3);
-            assert_eq!(samples.len(), 3 * RATE as usize);
-            // The jump from the end to the start is no larger than the noise's own steps.
-            let step = |a: i16, b: i16| (i32::from(a) - i32::from(b)).abs();
-            let seam = step(samples[samples.len() - 1], samples[0]);
-            let typical = samples.windows(2).map(|w| step(w[0], w[1])).max().unwrap_or(0);
-            assert!(seam <= typical, "{kind}: seam {seam}, steps up to {typical}");
-        }
-        // Brown is darker than white: smaller steps between samples.
-        let mean_step = |s: &[i16]| s.windows(2).map(|w| (i32::from(w[0]) - i32::from(w[1])).abs() as i64).sum::<i64>() / s.len() as i64;
-        assert!(mean_step(&looped("brown", 1)) * 4 < mean_step(&looped("white", 1)));
+    fn rms(samples: &[i16]) -> f64 {
+        (samples.iter().map(|s| f64::from(*s).powi(2)).sum::<f64>() / samples.len() as f64).sqrt() / 32767.0
+    }
+
+    fn correlation(left: &[i16], right: &[i16]) -> f64 {
+        let (l, r): (Vec<f64>, Vec<f64>) = left.iter().zip(right).map(|(l, r)| (f64::from(*l), f64::from(*r))).unzip();
+        let mean = |x: &[f64]| x.iter().sum::<f64>() / x.len() as f64;
+        let (ml, mr) = (mean(&l), mean(&r));
+        let cov = l.iter().zip(&r).map(|(a, b)| (a - ml) * (b - mr)).sum::<f64>();
+        let var = |x: &[f64], m: f64| x.iter().map(|a| (a - m).powi(2)).sum::<f64>();
+        cov / (var(&l, ml) * var(&r, mr)).sqrt()
     }
 
     /// Energy around a frequency, per sample and per hertz of the band (Q = 2).
@@ -987,32 +1480,82 @@ mod tests {
     }
 
     #[test]
-    fn nature_loops_and_sounds_like_itself() {
-        for kind in NATURE {
-            let (left, right) = nature(kind);
-            assert_eq!(left.len(), right.len());
-            assert!(left.len() >= 60 * NATURE_RATE as usize, "{kind}: a minute at least");
-            // The jump from the end to the start is no larger than the sound's own steps.
-            let step = |a: i16, b: i16| (i32::from(a) - i32::from(b)).abs();
-            let seam = step(left[left.len() - 1], left[0]);
-            let largest = left.windows(2).map(|w| step(w[0], w[1])).max().unwrap_or(0);
-            assert!(seam <= largest, "{kind}: seam {seam}, steps up to {largest}");
-            // Quiet, never clipped.
-            assert!(left.iter().all(|s| s.unsigned_abs() < 32000), "{kind}: clipped");
-        }
-        // Crickets sing near 4.5 kHz, far above their night's air; waves rumble low.
-        let (crickets, _) = nature("crickets");
-        if let Some(folder) = std::env::var_os("SIOUL_SOUNDS_OUT") {
-            for kind in NATURE {
-                let _ = noise_file(std::path::Path::new(&folder), kind);
+    fn the_random_source_is_centred() {
+        let mut random = Random(7);
+        let values: Vec<f32> = (0..100_000).map(|_| random.next()).collect();
+        let mean = values.iter().sum::<f32>() / values.len() as f32;
+        assert!(mean.abs() < 0.01, "mean {mean}");
+        assert!(values.iter().all(|v| (-1.0..1.0).contains(v)));
+    }
+
+    /// A sound is the same however its reader reads it: made a block at a
+    /// time, never where the reader stops.
+    #[test]
+    fn a_sound_is_the_same_however_it_is_read() {
+        for kind in ["waves", "birds", "storm", "pink"] {
+            let mut whole = Live::new(kind, 3).unwrap();
+            let mut one = vec![0i16; 8 * whole.rate() as usize * 2];
+            whole.fill(&mut one);
+            let mut pieces = Live::new(kind, 3).unwrap();
+            let mut other = vec![0i16; one.len()];
+            let (mut at, mut size) = (0, 2);
+            while at < other.len() {
+                let end = (at + size).min(other.len());
+                pieces.fill(&mut other[at..end]);
+                at = end;
+                size = ((size * 7 + 2) % 9000).max(2) & !1;
             }
+            assert!(one == other, "{kind}");
         }
+    }
+
+    /// Where one block ends and the next begins, a sound steps no more than
+    /// within a block: no click every tenth of a second.
+    #[test]
+    fn a_sound_flows_on_without_a_seam() {
+        for kind in NATURE.iter().chain(NOISES) {
+            let (left, _) = made(kind, 5, 20);
+            let rate = if NOISES.contains(kind) { RATE } else { NATURE_RATE } as usize;
+            // The frames given lag the frames made by the limiter's look ahead, after the three seconds left out.
+            let shift = 3 * rate - (0.03 * rate as f32) as usize;
+            let (mut seams, mut within) = ((0f64, 0usize), (0f64, 0usize));
+            for (i, pair) in left.windows(2).enumerate() {
+                let step = (f64::from(pair[1]) - f64::from(pair[0])).abs();
+                let sum = if (i + 1 + shift) % BLOCK == 0 { &mut seams } else { &mut within };
+                (sum.0, sum.1) = (sum.0 + step, sum.1 + 1);
+            }
+            let (seam, usual) = (seams.0 / seams.1 as f64, within.0 / within.1 as f64);
+            assert!(seams.1 > 50 && seam < 2.0 * usual, "{kind}: {seam} at seams, {usual} within");
+        }
+    }
+
+    /// Each sound sits near its level, never above −6 dBFS, and is quiet: each
+    /// recipe's own level was measured over an hour and is what `Live::new`
+    /// brings to the level wanted.
+    #[test]
+    fn levels_hold_over_minutes() {
+        for (kind, wanted) in [("white", 0.1), ("pink", 0.1), ("brown", 0.1), ("waves", 0.05), ("rain", 0.08), ("wind", 0.035), ("crickets", 0.05), ("storm", 0.068), ("birds", 0.078)] {
+            let (left, right) = made(kind, 11, 90);
+            let both: Vec<i16> = left.iter().chain(&right).copied().collect();
+            let db = 20.0 * (rms(&both) / wanted).log10();
+            assert!(db.abs() < 3.0, "{kind}: {db:.1} dB from its level");
+            assert!(both.iter().all(|s| s.unsigned_abs() <= 16_400), "{kind}: a peak above −6 dBFS");
+        }
+    }
+
+    #[test]
+    fn sounds_sound_like_themselves() {
+        // Crickets sing near 4.5 kHz, far above their night's air; waves rumble low.
+        let (crickets, _) = made("crickets", 1, 40);
         assert!(energy(&crickets, 4500.0) > 5.0 * energy(&crickets, 1000.0));
-        let (waves, _) = nature("waves");
+        let (waves, _) = made("waves", 1, 60);
         assert!(energy(&waves, 150.0) > energy(&waves, 5000.0));
         // Birds sing between 2 and 5 kHz, above the wood's own air.
-        let (birds, _) = nature("birds");
+        let (birds, _) = made("birds", 1, 60);
         assert!(energy(&birds, 3500.0) > 2.0 * energy(&birds, 800.0));
+        // Brown is darker than white: smaller steps between samples.
+        let mean_step = |s: &[i16]| s.windows(2).map(|w| (i32::from(w[0]) - i32::from(w[1])).abs() as i64).sum::<i64>() / s.len() as i64;
+        assert!(mean_step(&made("brown", 1, 1).0) * 4 < mean_step(&made("white", 1, 1).0));
     }
 
     /// The two ears hear one beach, one wood, one storm: partly alike, as the
@@ -1021,30 +1564,72 @@ mod tests {
     #[test]
     fn the_two_ears_are_partly_alike() {
         for kind in ["waves", "wind", "storm", "birds"] {
-            let (left, right) = nature(kind);
-            let (l, r): (Vec<f64>, Vec<f64>) = left.iter().zip(&right).map(|(l, r)| (f64::from(*l), f64::from(*r))).unzip();
-            let mean = |x: &[f64]| x.iter().sum::<f64>() / x.len() as f64;
-            let (ml, mr) = (mean(&l), mean(&r));
-            let cov = l.iter().zip(&r).map(|(a, b)| (a - ml) * (b - mr)).sum::<f64>();
-            let var = |x: &[f64], m: f64| x.iter().map(|a| (a - m).powi(2)).sum::<f64>();
-            let correlation = cov / (var(&l, ml) * var(&r, mr)).sqrt();
+            let (left, right) = made(kind, 2, 60);
+            let correlation = correlation(&left, &right);
             assert!((0.3..0.99).contains(&correlation), "{kind}: {correlation}");
         }
     }
 
+    /// Each listen is another: two seeds, two unrelated sounds.
     #[test]
-    fn only_older_recipes_files_are_taken_away() {
+    fn each_listen_is_another() {
+        for kind in ["waves", "rain", "birds", "pink"] {
+            let (one, _) = made(kind, 1, 20);
+            let (other, _) = made(kind, 2, 20);
+            let correlation = correlation(&one, &other);
+            assert!(correlation.abs() < 0.2, "{kind}: {correlation}");
+        }
+    }
+
+    /// A stream is read as its thread makes it: silence at first, then sound.
+    #[test]
+    fn a_stream_is_made_ahead_of_its_reader() {
+        let stream = Stream::start("pink", 9).unwrap();
+        assert_eq!(stream.rate(), RATE);
+        let mut out = vec![0i16; 4410];
+        let started = std::time::Instant::now();
+        while out.iter().all(|s| *s == 0) && started.elapsed() < std::time::Duration::from_secs(20) {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            stream.read(&mut out);
+        }
+        assert!(out.iter().any(|s| *s != 0), "no sound within 20 s");
+        assert!(Stream::start("thunder", 9).is_none());
+    }
+
+    /// A file of a sound loops without a seam: its end flows into its start.
+    #[test]
+    fn a_file_loops_without_a_seam() {
+        let (samples, rate) = looped("pink", 5).unwrap();
+        assert_eq!((samples.len(), rate), (5 * RATE as usize * 2, RATE));
+        let step = |a: i16, b: i16| (i32::from(a) - i32::from(b)).abs();
+        let seam = step(samples[samples.len() - 2], samples[0]);
+        let typical = samples.chunks_exact(2).collect::<Vec<_>>().windows(2).map(|w| step(w[0][0], w[1][0])).max().unwrap_or(0);
+        assert!(seam <= typical, "seam {seam}, steps up to {typical}");
+    }
+
+    #[test]
+    fn only_files_made_here_are_taken_away() {
         let older = format!("waves-{}.wav", NATURE_VERSION - 1);
         let noise = format!("pink-noise-{}.wav", NATURE_VERSION - 1);
-        assert!(older_recipe(&older) && older_recipe(&noise));
-        for kept in [format!("waves-{NATURE_VERSION}.wav"), format!("pink-noise-{NATURE_VERSION}.wav"), "my-rain-2.wav".into(), "waves-2.ogg".into(), "waves.wav".into(), "notes-1.wav".into()] {
-            assert!(!older_recipe(&kept), "{kept}");
+        assert!(older_recipe(&older) && older_recipe(&noise) && older_recipe("brown-noise.wav"));
+        assert!(made_here(&format!("waves-{NATURE_VERSION}.wav")).is_some() && !older_recipe(&format!("waves-{NATURE_VERSION}.wav")));
+        for kept in ["my-rain-2.wav", "waves-2.ogg", "waves.wav", "notes-1.wav", "pink-noise-x.wav", "red-noise.wav"] {
+            assert!(made_here(kept).is_none(), "{kept}");
         }
+        let folder = std::env::temp_dir().join(format!("sioul-sounds-test-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        for name in ["waves-6.wav", "pink-noise.wav", "my-rain-2.wav"] {
+            std::fs::write(folder.join(name), b"").unwrap();
+        }
+        clear_files(&folder);
+        let left: Vec<String> = std::fs::read_dir(&folder).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(left, vec!["my-rain-2.wav".to_owned()]);
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]
     fn a_wav_header_says_what_follows() {
-        let bytes = wav(&[0, 1, -1]);
+        let bytes = wav_of(&[0, 1, -1], 1, RATE);
         assert_eq!(&bytes[..4], b"RIFF");
         let stereo = wav_of(&[0, 1, -1, 2], 2, NATURE_RATE);
         assert_eq!(u16::from_le_bytes(stereo[22..24].try_into().unwrap()), 2);
@@ -1053,4 +1638,3 @@ mod tests {
         assert_eq!(bytes.len(), 44 + 6);
     }
 }
-

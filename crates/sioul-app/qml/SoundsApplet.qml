@@ -3,9 +3,9 @@
 
 // Sounds, in the status line, a button of the line (LineButton.qml): noise
 // for focus (white, pink, brown), nature to rest by (waves, rain, wind in the
-// trees, crickets, a distant storm, birds at dawn), all made here, and your
-// own recordings (the notes' `sounds` folder). One at a time, looping, fading
-// in and out; never on by itself.
+// trees, crickets, a distant storm, birds at dawn), all made here as they play,
+// never looping, and your own recordings (the notes' `sounds` folder), looping.
+// One at a time, fading in and out; never on by itself.
 
 pragma ComponentBehavior: Bound
 
@@ -27,15 +27,16 @@ LineButton {
     // type here would load Qt Multimedia with the window.
     readonly property var noise: player.item
 
-    function play(url, title) {
-        if (url === "")
+    // `source` played: "live:waves", a sound made as it plays, or a file's URL.
+    function play(source, title) {
+        if (source === "")
             return
         // A sound chosen while the last one fades out: the fade's stop would stop it too.
         stopping.stop()
-        applet.playing = url
+        applet.playing = source
         applet.playingTitle = title
         player.active = true
-        applet.noise.play(url, applet.loudness)
+        applet.noise.play(source, applet.loudness)
     }
 
     // Faded out, then stopped.
@@ -84,6 +85,7 @@ LineButton {
 
         active: false
         source: "NoisePlayer.qml"
+        onLoaded: applet.noise.sioul = applet.sioul
     }
 
     Timer {
@@ -138,7 +140,7 @@ LineButton {
                         Layout.fillWidth: true
                         text: applet.theme.plain(noise.title)
                         highlighted: applet.playingTitle === noise.title
-                        onClicked: applet.play(applet.sioul.noiseUrl(noise.modelData), noise.title)
+                        onClicked: applet.play("live:" + noise.modelData, noise.title)
                     }
                 }
                 Label {
@@ -159,7 +161,7 @@ LineButton {
                         Layout.fillWidth: true
                         text: applet.theme.plain(nature.title)
                         highlighted: applet.playingTitle === nature.title
-                        onClicked: applet.play(applet.sioul.noiseUrl(nature.modelData), nature.title)
+                        onClicked: applet.play("live:" + nature.modelData, nature.title)
                     }
                 }
                 Label {
