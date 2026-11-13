@@ -178,11 +178,16 @@ fn gate() -> Option<Gated> {
 /// sharing is on, its messages also go, sealed (`phonemsgs::note`; "shared":
 /// a line was written, Java asks for a step soon).
 fn decide(json: &str) -> String {
+    decide_at(json, &sioul_core::zone::now())
+}
+
+/// `decide` at `now` (the tests' fixed clock).
+fn decide_at(json: &str, now: &Zoned) -> String {
     let Ok(posted) = serde_json::from_str::<Posted>(json) else { return "null".into() };
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
     let kind = appnotes::classify(&posted, &choices, &sioul_core::words::Words::of(&config));
-    let now = sioul_core::zone::now();
+    let now = now.clone();
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let senders = Senders::load(&config);
@@ -333,7 +338,9 @@ fn decide(json: &str) -> String {
 /// minute's grace after Sioul changed it: Android may have ranked one
 /// before the change.
 fn given_back_by_hand(posted: &Posted, stamp: i64) {
-    if posted.importance < 3 || posted.channel.is_empty() {
+    // A conversation's own channel ranks it: its importance says nothing of its app's channel.
+    let ranked_here = posted.ranked_channel.is_empty() || posted.ranked_channel == posted.channel;
+    if posted.importance < 3 || posted.channel.is_empty() || !ranked_here {
         return;
     }
     let path = appnotes::Silenced::default_path();
@@ -372,7 +379,14 @@ fn channels(verb: &str, json: &str) -> String {
     match verb {
         "plan" => {
             let linked = asked["linked"].as_bool().unwrap_or(false);
-            let choices = Choices::load(&Choices::default_path());
+            // Choices that do not read are no word to give every sound back: nothing changes until they read.
+            let choices = match Choices::read(&Choices::default_path()) {
+                Ok(choices) => choices,
+                Err(e) => {
+                    eprintln!("Notes: {e}");
+                    return json!({ "silence": [], "restore": [], "unlink": false }).to_string();
+                }
+            };
             let ledger = Ledger::load(&Ledger::default_path());
             let plan = sioul_core::filelock::with_lock(&path, || {
                 let mut silenced = match appnotes::Silenced::load(&path) {
@@ -443,6 +457,11 @@ fn channels(verb: &str, json: &str) -> String {
 /// Android no longer holds (their app took them away, or they came back
 /// unseen) are let go.
 fn review(json: &str) -> String {
+    review_at(json, &sioul_core::zone::now())
+}
+
+/// `review` at `now` (the tests' fixed clock).
+fn review_at(json: &str, now: &Zoned) -> String {
     let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
     let keys: Vec<String> = asked["snoozed"].as_array().map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect()).unwrap_or_default();
     // Why the review runs, as Java says it ("files", "connected"): a word of its own, never a name.
@@ -452,7 +471,7 @@ fn review(json: &str) -> String {
     let silenced = asked["silenced"].as_bool().unwrap_or(false);
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
-    let now = sioul_core::zone::now();
+    let now = now.clone();
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let live = live(&config, &now);
@@ -1034,7 +1053,15 @@ pub(crate) fn setup() -> String {
         "times": tr.text("appnotes-times", Some(&times)),
         "heard": heard,
         "rang": rang,
-        "link": { "available": companion["available"] == true, "linked": companion["linked"] == true, "on": choices.silence },
+        // Stopped: while some sounds are still to give back (the listener does it once bound and linked), said
+        // so; then that it is done.
+        "link": {
+            "available": companion["available"] == true,
+            "linked": companion["linked"] == true,
+            "on": choices.silence,
+            "giving_back": !choices.silence && !quieted.is_empty(),
+            "given_back": choices.stopped && quieted.is_empty(),
+        },
         "silenced": quieted,
         "apps": apps,
         "conversations": conversations,
@@ -1082,8 +1109,9 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             let on = verb == "link";
             let path = Choices::default_path();
             let result = sioul_core::filelock::with_lock(&path, || {
-                let mut choices = Choices::load(&path);
+                let mut choices = Choices::read(&path)?;
                 choices.silence = on;
+                choices.stopped = !on;
                 choices.save(&path)
             });
             match result {
@@ -1262,12 +1290,14 @@ mod tests {
     }
 
     /// The quiet window (option 1 of docs/research/android-holding.md): what
-    /// Java brings back itself, without a sound, and when. A shop's
-    /// notification held as gathered is said quiet, with its time; a person's
-    /// never. Its gathering come two minutes ago (the window moved off one of
-    /// Sioul's reminders), a review says it comes now, quiet, never at the
-    /// next gathering. A release asked from a computer lets the person's
-    /// through quiet too: you are at a screen then.
+    /// Java brings back itself, without a sound, and when, on a fixed clock
+    /// (Tuesday 6 October 2026, the gathered times 09:00, 13:00 and 18:00). At
+    /// 12:58 a shop's notification is held two minutes, quiet; a person's is
+    /// never quiet. A review then lists the shop's at 13:00 exactly. At 13:02,
+    /// its gathering past (its window moved off one of Sioul's reminders), it
+    /// comes now, quiet, never at 18:00; at 13:20, past `LATE`, at 18:00. At
+    /// 13:30, "Let what your phone holds through" pressed on a computer at
+    /// 13:29 lets a person's message through quiet, at once.
     #[test]
     fn what_comes_back_quiet_and_when() {
         sioul_core::config::stand_ins_only();
@@ -1277,57 +1307,56 @@ mod tests {
         const NOA: &str = r#"{"key":"0|org.example.chat|7|c0ffee12|10100","package":"org.example.chat","app":"Chat","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Noa Martin","shortcut":"c0ffee12","messages":[{"sender":{"name":"Noa Martin","uri":"tel:%2B33199001234"},"text":"Tu passes ce soir ?"}]}"#;
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
-        // Decided: the shop's, when held, comes back quiet; a person's never.
-        let shop: serde_json::Value = serde_json::from_str(&decide(SHOP)).unwrap();
-        assert_eq!(shop["quiet"], shop["hold"].as_i64().unwrap() > 0, "{shop}");
-        let noa: serde_json::Value = serde_json::from_str(&decide(NOA)).unwrap();
+        let at = |time: &str| -> Zoned { format!("2026-10-06T{time}+02:00[Europe/Paris]").parse().unwrap() };
+        let ms = |time: &str| at(time).timestamp().as_millisecond();
+        let second = |time: &str| at(time).timestamp().as_second();
+        // Decided at 12:58: the shop's, two minutes, quiet; a person's never quiet.
+        let shop: serde_json::Value = serde_json::from_str(&decide_at(SHOP, &at("12:58:00"))).unwrap();
+        assert_eq!((shop["hold"].as_i64(), shop["quiet"].as_bool(), shop["why"].as_str()), (Some(120_000), Some(true), Some("gathered")), "{shop}");
+        let noa: serde_json::Value = serde_json::from_str(&decide_at(NOA, &at("12:58:00"))).unwrap();
         assert_eq!(noa["quiet"], false, "{noa}");
         let _ = std::fs::remove_file(Ledger::default_path());
-        let (stamp, ms) = (jiff::Timestamp::now().as_second(), jiff::Timestamp::now().as_millisecond());
-        let held = |app: &str, kind: &str, via: &str, who: &str, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), since: stamp - 3600, until, ..Default::default() };
+        let held = |app: &str, kind: &str, via: &str, who: &str, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), since: second("12:00:00"), until, ..Default::default() };
+        let shop_until = |until: i64| {
+            let mut ledger = Ledger::load(&Ledger::default_path());
+            ledger.held.get_mut(&appnotes::key_hash(SHOP_KEY)).unwrap().until = until;
+            ledger.save(&Ledger::default_path()).unwrap();
+        };
         let mut ledger = Ledger::default();
-        ledger.held.insert(appnotes::key_hash(PEOPLE), held("com.google.android.dialer", "people", "calls", "stranger", stamp + 4 * 3600));
-        ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "gathered", "", "", stamp + 4 * 3600));
+        ledger.held.insert(appnotes::key_hash(PEOPLE), held("com.google.android.apps.messaging", "people", "messages", "neutral", second("18:00:00")));
+        ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "gathered", "", "", second("13:00:00")));
         ledger.save(&Ledger::default_path()).unwrap();
         let all = json!({ "snoozed": [PEOPLE, SHOP_KEY], "reason": "files" }).to_string();
         let quiet = |answer: &serde_json::Value| -> Vec<(String, i64)> { answer["quiet"].as_array().unwrap().iter().map(|q| (q["key"].as_str().unwrap().to_string(), q["at"].as_i64().unwrap())).collect() };
-        let reviewed: serde_json::Value = serde_json::from_str(&review(&all)).unwrap();
-        let listed = quiet(&reviewed);
-        assert_eq!(listed.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(), [SHOP_KEY], "{reviewed}");
-        assert!(listed[0].1 >= stamp * 1000, "its time, to come");
-        for moved in reviewed["snooze"].as_array().unwrap() {
-            assert_eq!(moved["quiet"], moved["key"] == SHOP_KEY, "{moved}");
-        }
-        // Its gathering two minutes ago: still quiet; within your hours (the matrix gathers it now:
-        // `appnotes::gathers_now`, tested in sioul-core) it comes now, else at its next time.
-        let mut ledger = Ledger::load(&Ledger::default_path());
-        ledger.held.get_mut(&appnotes::key_hash(SHOP_KEY)).unwrap().until = stamp - 120;
-        ledger.save(&Ledger::default_path()).unwrap();
-        let reviewed: serde_json::Value = serde_json::from_str(&review(&all)).unwrap();
-        let shop_at = quiet(&reviewed).into_iter().find(|(k, _)| k == SHOP_KEY).map(|(_, at)| at);
-        assert!(shop_at.is_some(), "{reviewed}");
-        let now_ms = jiff::Timestamp::now().as_millisecond();
-        let moved = reviewed["snooze"].as_array().unwrap().iter().find(|s| s["key"] == SHOP_KEY).cloned().unwrap_or_default();
-        assert_eq!(moved["quiet"], true, "{reviewed}");
-        assert_eq!(moved["ms"] == 1000, shop_at.is_some_and(|at| at <= now_ms), "{reviewed}");
-        // "Let what your phone holds through" pressed on a computer a minute ago: a person's message, its
-        // conversation gathered with the automatons and the only gathered time two hours away, so held
-        // now whatever the hour, comes now, quiet.
-        let later = jiff::Zoned::now().checked_add(jiff::Span::new().hours(2)).unwrap().strftime("%H:%M").to_string();
-        std::fs::create_dir_all(sioul_core::config::config_dir()).unwrap();
-        std::fs::write(sioul_core::config::config_dir().join("config.toml"), format!("[reminders]\ngathered = [\"{later}\"]\n")).unwrap();
+        let moved = |answer: &serde_json::Value, key: &str| answer["snooze"].as_array().unwrap().iter().find(|s| s["key"] == key).map(|s| (s["ms"].as_i64().unwrap(), s["quiet"].as_bool().unwrap()));
+        // 12:58: the shop's at 13:00 exactly, quiet, not moved; the person's never in the list.
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("12:58:00"))).unwrap();
+        assert_eq!(quiet(&reviewed), [(SHOP_KEY.to_string(), ms("13:00:00"))], "{reviewed}");
+        assert_eq!(moved(&reviewed, SHOP_KEY), None, "{reviewed}");
+        assert!(moved(&reviewed, PEOPLE).is_none_or(|(_, quiet)| !quiet), "{reviewed}");
+        // 13:02, two minutes after its gathering: now, quiet, never at 18:00.
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("13:02:00"))).unwrap();
+        assert!(quiet(&reviewed).contains(&(SHOP_KEY.to_string(), ms("13:02:00"))), "{reviewed}");
+        assert_eq!(moved(&reviewed, SHOP_KEY), Some((1000, true)), "{reviewed}");
+        // 13:20, past LATE: at the next gathering, 18:00, quiet.
+        shop_until(second("13:00:00"));
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("13:20:00"))).unwrap();
+        assert!(quiet(&reviewed).contains(&(SHOP_KEY.to_string(), ms("18:00:00"))), "{reviewed}");
+        assert_eq!(moved(&reviewed, SHOP_KEY), Some((ms("18:00:00") - ms("13:20:00"), true)), "{reviewed}");
+        // 13:30: the person's conversation gathered with the automatons (so held until 18:00), and
+        // "Let what your phone holds through" pressed on a computer at 13:29: it comes now, quiet.
         let mut choices = Choices::default();
         choices.conversation.insert("talk-1".into(), appnotes::TalkChoice { through: Through::Gathered, ..Default::default() });
         choices.save(&Choices::default_path()).unwrap();
         let mut ledger = Ledger::load(&Ledger::default_path());
         ledger.held.get_mut(&appnotes::key_hash(PEOPLE)).unwrap().conversation = "talk-1".into();
         ledger.save(&Ledger::default_path()).unwrap();
-        let laptop = sioul_core::everywhere::Device { kind: "computer".into(), release: ms - 60_000, at: ms - 60_000, ..Default::default() };
+        let laptop = sioul_core::everywhere::Device { kind: "computer".into(), release: ms("13:29:00"), at: ms("13:29:00"), ..Default::default() };
         sioul_core::everywhere::Switch { device: [("laptop-1".to_string(), laptop)].into_iter().collect(), ..Default::default() }.save(&sioul_core::everywhere::Switch::default_path()).unwrap();
-        let reviewed: serde_json::Value = serde_json::from_str(&review(&all)).unwrap();
-        assert!(quiet(&reviewed).iter().any(|(k, at)| k == PEOPLE && *at <= jiff::Timestamp::now().as_millisecond()), "{reviewed}");
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("13:30:00"))).unwrap();
+        assert!(quiet(&reviewed).contains(&(PEOPLE.to_string(), ms("13:30:00"))), "{reviewed}");
+        assert_eq!(moved(&reviewed, PEOPLE), Some((1000, true)), "{reviewed}");
         assert!(reviewed["line"].as_str().unwrap().contains("released as you asked"), "{reviewed}");
-        let _ = std::fs::remove_file(sioul_core::config::config_dir().join("config.toml"));
         crate::everywhere::files_cleared();
     }
 

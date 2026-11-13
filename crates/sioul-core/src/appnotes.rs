@@ -138,8 +138,13 @@ pub struct Posted {
     pub package: String,
     /// The app's name as the phone shows it.
     pub app: String,
+    /// Its app's channel (a conversation's parent, when Android gave the conversation one of its own).
     pub channel: String,
     pub channel_name: String,
+    /// The channel Android ranked it on, whose importance `importance` is: a
+    /// conversation's own, once Android gave it one; else `channel`. "" when
+    /// Java says nothing of it.
+    pub ranked_channel: String,
     /// It sounded or vibrated as it came (`Ranking.getLastAudiblyAlertedMillis`).
     pub alerted: bool,
     /// Its importance (`Ranking.getImportance`): under 3, its channel makes
@@ -659,6 +664,11 @@ pub struct Choices {
     /// off, it gives back every sound it took, then lets the link go.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub silence: bool,
+    /// You pressed Stop: every sound Sioul took is to be given back, which the
+    /// listener finishes whenever it is bound and linked, a restart between;
+    /// the tab says so until nothing is left, then that it is done.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
 }
 
 fn yes() -> bool {
@@ -667,7 +677,7 @@ fn yes() -> bool {
 
 impl Default for Choices {
     fn default() -> Choices {
-        Choices { hold: true, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false }
+        Choices { hold: true, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false, stopped: false }
     }
 }
 
@@ -679,6 +689,17 @@ impl Choices {
     /// As kept; what does not read is no choice at all (everything as usual).
     pub fn load(path: &Path) -> Choices {
         std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    /// As kept; none when missing; one that does not read is an error, never
+    /// the usual choices: what acts on other apps' channels must not read a
+    /// broken file as "off" and give every sound back.
+    pub fn read(path: &Path) -> Result<Choices, String> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Choices::default()),
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        }
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -1346,6 +1367,19 @@ pub struct SeenApp {
     /// is an SMS or mail app: then Sioul never makes it silent by itself.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub talked: i64,
+    /// Its channels that carried a code, a sign-in or payment to approve, or
+    /// something never held (a reminder, an alarm), by id, with when last:
+    /// never made silent by Sioul, even named, and given back if they were.
+    /// Kept as long as the app is.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vital: BTreeMap<String, i64>,
+    /// Its channels that carried a person's message or a notification you
+    /// let through at once, by id, with when last: never made silent by Sioul
+    /// by itself (only if you name them). A channel used for everything (an
+    /// app's "miscellaneous", its push service's fallback) is so as soon as
+    /// it carried one. Kept as long as the app is.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub mixed: BTreeMap<String, i64>,
 }
 
 fn is_zero_i64(n: &i64) -> bool {
@@ -1506,12 +1540,28 @@ impl Ledger {
         if matches!(kind, Kind::People(_)) || p.sms_app || SMS_APPS.contains(&package) || MAIL_APPS.contains(&package) {
             app.talked = now;
         }
-        // A channel that sounded while held: the guide to make it silent. Made silent: no more.
+        // A channel that sounded while held: the guide to make it silent. Made silent: no more (its own
+        // importance, never a conversation's own channel's).
         if !p.channel.is_empty() {
+            let ranked_here = p.ranked_channel.is_empty() || p.ranked_channel == p.channel;
             if decision.until.is_some() && p.alerted && !p.intercepted {
                 app.rang.insert(p.channel.clone(), Rang { name: one_line(&p.channel_name), at: now, gathered: automaton });
-            } else if (0..3).contains(&p.importance) {
+            } else if ranked_here && (0..3).contains(&p.importance) {
                 app.rang.remove(&p.channel);
+            }
+            // What else the channel carries, for whether Sioul may make it silent (`channels_plan`). A group's
+            // summary says nothing of its own: it rides on its children's channel.
+            match kind {
+                Kind::Code => {
+                    app.vital.insert(p.channel.clone(), now);
+                }
+                Kind::Untouched if !p.summary => {
+                    app.vital.insert(p.channel.clone(), now);
+                }
+                Kind::People(_) | Kind::AtOnce => {
+                    app.mixed.insert(p.channel.clone(), now);
+                }
+                _ => {}
             }
         }
         match kind {
@@ -1682,7 +1732,8 @@ impl Silenced {
         }
         let out = Silenced { format: SILENCED_FORMAT, app: self.app.clone() };
         let text = format!("# The channels of other apps Sioul made silent, and what each was (docs/android.md).\n{}", toml::to_string(&out).map_err(|e| e.to_string())?);
-        write_whole(path, &text)
+        // On the disk before Android's change follows: a power cut never leaves a channel silent and nothing to give back.
+        crate::health::write_synced(path, text.as_bytes())
     }
 
     /// Written by a later Sioul: read only.
@@ -1762,9 +1813,15 @@ pub fn channels_plan(ledger: &Ledger, choices: &Choices, silenced: &Silenced, li
         return plan;
     }
     let on = linked && choices.silence;
+    let seen = |package: &str| ledger.apps.get(package);
+    // Never a channel that carried a code, an approval or a reminder; by itself, never one that carried a
+    // person's message or an app let through at once.
+    let vital = |package: &str, channel: &str| seen(package).is_some_and(|s| s.vital.contains_key(channel));
+    let mixed = |package: &str, channel: &str| seen(package).is_some_and(|s| s.mixed.contains_key(channel));
     let wanted = |package: &str, channel: &str| {
         let chosen = choices.app(package);
-        on && !chosen.keep_sound && (chosen.silent.iter().any(|c| c == channel) || (choices.hold && gathered_app(package, ledger, choices)))
+        let named = chosen.silent.iter().any(|c| c == channel);
+        on && !chosen.keep_sound && !vital(package, channel) && (named || (choices.hold && gathered_app(package, ledger, choices) && !mixed(package, channel)))
     };
     for (package, channels) in &silenced.app {
         for (channel, kept) in channels {
@@ -1792,12 +1849,12 @@ pub fn channels_plan(ledger: &Ledger, choices: &Choices, silenced: &Silenced, li
             if choices.hold && gathered_app(package, ledger, choices)
                 && let Some(seen) = ledger.apps.get(package.as_str())
             {
-                channels.extend(seen.rang.iter().filter(|(_, rang)| rang.gathered).map(|(channel, _)| channel.clone()));
+                channels.extend(seen.rang.iter().filter(|(channel, rang)| rang.gathered && !seen.mixed.contains_key(*channel)).map(|(channel, _)| channel.clone()));
             }
             channels.sort();
             channels.dedup();
             for channel in channels {
-                if !channel.is_empty() && !known(package, &channel) {
+                if !channel.is_empty() && !known(package, &channel) && !vital(package, &channel) {
                     plan.silence.push((package.clone(), channel));
                 }
             }
@@ -2910,6 +2967,88 @@ mod tests {
         gone.forget("com.shop.example", "");
         gone.forget("com.android.chrome", "web:https://forum.example.net;1759000000000");
         assert!(gone.app.is_empty());
+    }
+
+    /// What else a channel carries (the review of phase 4, M3): a shop's
+    /// "offers" channel rang while Sioul held a promotion; then a payment to
+    /// approve came on it: never made silent, even named, and given back if
+    /// it was. Its app's catch-all channel ("miscellaneous", as Android names
+    /// its default one) carried a person's message once: never made silent by
+    /// Sioul by itself, only if you name it. A reminder on another channel
+    /// marks it too; a group's summary marks nothing. A conversation's own
+    /// channel ringing says nothing of its app's channel.
+    #[test]
+    fn a_channel_that_carries_codes_reminders_or_people_keeps_its_sound() {
+        let clock = TestClock::new();
+        let none = Choices::default();
+        let now = at("2026-10-06T20:30[Europe/Paris]");
+        let stamp = now.timestamp().as_second();
+        let mut ledger = Ledger::default();
+        let note = |ledger: &mut Ledger, json: &str, edit: &dyn Fn(&mut Posted)| {
+            let mut p = posted(json);
+            edit(&mut p);
+            let kind = classify(&p, &none);
+            let decision = decide(&kind, Some(Who::Stranger), false, &none, &ask(&now, &clock, None, None));
+            ledger.note(&p, &kind, Some(Who::Stranger), false, None, &decision, stamp);
+        };
+        note(&mut ledger, SHOP, &|_| {});
+        note(&mut ledger, r#"{"key":"0|com.shop.example|2|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"miscellaneous","title":"Soldes","text":"Tout à -50 %","alerted":true}"#, &|_| {});
+        let on = Choices { silence: true, ..Choices::default() };
+        let plan = channels_plan(&ledger, &on, &Silenced::default(), true);
+        assert_eq!(plan.silence.len(), 2, "both rang while a promotion was held: {plan:?}");
+        // A payment to approve on "offers"; a person's message on "miscellaneous"; a reminder on "orders";
+        // a group's summary on "summaries".
+        note(&mut ledger, BANK_APPROVAL, &|p| {
+            p.package = "com.shop.example".into();
+            p.key = "0|com.shop.example|3|null|10500".into();
+            p.channel = "offers".into();
+        });
+        note(&mut ledger, r#"{"key":"0|com.shop.example|4|null|10500","package":"com.shop.example","app":"Shop","category":"msg","channel":"miscellaneous","template":"android.app.Notification$MessagingStyle","title":"Service client","messages":[{"sender":{"name":"Léa","uri":"tel:%2B33199001234"},"text":"Votre commande est prête"}]}"#, &|_| {});
+        note(&mut ledger, r#"{"key":"0|com.shop.example|5|null|10500","package":"com.shop.example","app":"Shop","category":"reminder","channel":"orders","title":"Retrait","text":"Votre retrait est à 18:00"}"#, &|_| {});
+        note(&mut ledger, r#"{"key":"0|com.shop.example|6|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"summaries","summary":true,"title":"Shop"}"#, &|_| {});
+        let seen = &ledger.apps["com.shop.example"];
+        assert_eq!(seen.vital.keys().collect::<Vec<_>>(), ["offers", "orders"]);
+        assert_eq!(seen.mixed.keys().collect::<Vec<_>>(), ["miscellaneous"]);
+        // The person's message made it no automaton's app any more: name the channels to see each rule alone.
+        let mut named = on.clone();
+        named.app.insert("com.shop.example".into(), AppChoice { kind: AppKind::Automaton, silent: vec!["offers".into(), "miscellaneous".into()], ..AppChoice::default() });
+        let plan = channels_plan(&ledger, &named, &Silenced::default(), true);
+        assert_eq!(plan.silence, [("com.shop.example".to_string(), "miscellaneous".to_string())], "named: a person's channel may be; a payment's never");
+        let mut automaton = on.clone();
+        automaton.app.insert("com.shop.example".into(), AppChoice { kind: AppKind::Automaton, ..AppChoice::default() });
+        assert!(channels_plan(&ledger, &automaton, &Silenced::default(), true).silence.is_empty(), "by itself: neither");
+        // Made silent before the payment came: given back as it was.
+        let mut silenced = Silenced::default();
+        silenced.keep("com.shop.example", "offers", "Offers", 4, stamp);
+        assert_eq!(channels_plan(&ledger, &named, &silenced, true).restore, [("com.shop.example".to_string(), "offers".to_string(), 4)]);
+        // A conversation's own channel at importance 4 leaves its app's channel's "rang" mark alone; its own
+        // importance under 3 takes it off.
+        let mut ledger = Ledger::default();
+        note(&mut ledger, SHOP, &|_| {});
+        let quiet_talk = |ledger: &mut Ledger, ranked: &str, importance: i32| {
+            let mut p = posted(SHOP);
+            p.key = "0|com.shop.example|9|null|10500".into();
+            p.alerted = false;
+            p.importance = importance;
+            p.ranked_channel = ranked.into();
+            ledger.note(&p, &Kind::AtOnce, None, false, None, &Decision::through(Why::AtOnce), stamp);
+        };
+        quiet_talk(&mut ledger, "offers:conversation-1", 2);
+        assert!(ledger.apps["com.shop.example"].rang.contains_key("offers"), "another channel's importance");
+        quiet_talk(&mut ledger, "offers", 2);
+        assert!(!ledger.apps["com.shop.example"].rang.contains_key("offers"), "its own, made silent");
+        // Choices that do not read are an error to whoever acts on channels, never "off".
+        let dir = std::env::temp_dir().join(format!("sioul-appnotes-read-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("app-notes.toml");
+        assert_eq!(Choices::read(&path), Ok(Choices::default()), "missing: the usual");
+        std::fs::write(&path, "silence = true\n").unwrap();
+        assert!(Choices::read(&path).unwrap().silence);
+        std::fs::write(&path, "silence = [broken").unwrap();
+        assert!(Choices::read(&path).is_err());
+        assert_eq!(Choices::load(&path), Choices::default(), "elsewhere, as usual");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The channels' file (`Silenced`): written whole with its format; read
