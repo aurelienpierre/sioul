@@ -6,9 +6,10 @@
 //! at the window's start and then twice a day, in a thread of its own: the
 //! newest 500 messages received are read; a new configuration gets its
 //! languages written once, said in the status line; a language found later
-//! is offered once on this device, in a quiet notice, during work or admin
-//! hours only (or when no hours are set), with "Not now" and "Read German
-//! too". Nothing is switched on by itself.
+//! is offered once on this device, in a notice to know (docs/notifications.md),
+//! during work or admin hours only (or when no hours are set), with "Read
+//! German too"; a click on it opens Settings ▸ Words, where the languages are
+//! chosen. Nothing is switched on by itself.
 
 use crate::backend::{QtThread, config_path, load_config, set_status, tr};
 use sioul_core::languages;
@@ -64,27 +65,27 @@ fn look(qt: &QtThread) {
     }
     let path = languages::offered_path();
     let Some(code) = languages::to_offer(&config, &found, &languages::offered(&path)).into_iter().next() else { return };
-    // Offered once on this device, taken or not.
-    if let Err(e) = languages::mark_offered(&path, &code) {
-        eprintln!("Sioul: the languages of your mail: {e}");
-        return;
-    }
     let (name, inside) = names(&code);
-    let pairs = [("name", name.clone()), ("in", inside.clone())];
-    let title = crate::backend::say("languages-offer-title", &pairs);
-    let body = crate::backend::say("languages-offer-body", &pairs);
-    let (qt_read, read_code) = (qt.clone(), code.clone());
-    let read: Box<dyn FnOnce() + Send> = Box::new(move || {
-        let said = match languages::read_too(&config_path(), &load_config(), &read_code) {
-            Ok(()) => crate::backend::say("languages-read-now", &[("name", name), ("in", inside)]),
-            Err(e) => e,
-        };
-        set_status(&qt_read, said);
-    });
-    // "Not now" first: a click on the notice itself presses the first, and changes nothing.
-    let not_now: Box<dyn FnOnce() + Send> = Box::new(|| {});
-    let choices = vec![(tr().text("languages-offer-not-now", None), not_now), (crate::backend::say("languages-offer-read", &pairs), read)];
-    if let Err(e) = sioul_sync::notify::remind_offering(&title, &body, choices) {
+    let pairs = [("name", name), ("in", inside)];
+    use sioul_core::notice::{Act, Kind, Notice, address};
+    let notice = Notice::new(address::settings("words.languages"), Kind::Minor, crate::backend::say("languages-offer-title", &pairs), crate::backend::say("languages-offer-body", &pairs))
+        .action(crate::backend::say("languages-offer-read", &pairs), Act::Verb(format!("read-language:{code}")));
+    // Offered once on this device, taken or not; not posted (nobody at the
+    // computer, a pause, do-not-disturb), offered at the next reading.
+    if crate::tell::tell(notice)
+        && let Err(e) = languages::mark_offered(&path, &code)
+    {
         eprintln!("Sioul: the languages of your mail: {e}");
     }
+}
+
+/// "Read German too", pressed on the offer's notice (`tell`): that
+/// language's mail read too from now on, said in the status line.
+pub(crate) fn read_also(qt: &QtThread, code: &str) {
+    let (name, inside) = names(code);
+    let said = match languages::read_too(&config_path(), &load_config(), code) {
+        Ok(()) => crate::backend::say("languages-read-now", &[("name", name), ("in", inside)]),
+        Err(e) => e,
+    };
+    set_status(qt, said);
 }

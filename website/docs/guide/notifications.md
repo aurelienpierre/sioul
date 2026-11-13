@@ -88,7 +88,7 @@ As Sioul does now, unless you change it:
 The two layers hold on top of the time, and only ever hold more:
 
 - **Time for you**: mail is shown at most, untold; your sites and other apps' automatons wait; the pause to move does not come. Calls, messages, reminders, doses and codes follow the time.
-- **Do not disturb**: your Always through people's mail, calls and messages come at once; everyone else's mail is shown at most, untold; their calls go to voicemail and their messages wait; your sites, a call in a site and other apps' automatons wait; the pause to move does not come. Reminders, doses, codes and Health's notices follow the time.
+- **Do not disturb**: your Always through people's mail, calls and messages come at once; everyone else's mail is shown at most, untold; their calls go to voicemail and their messages wait; your sites, a call in a site and other apps' automatons wait; the pause to move does not come. Reminders, doses, codes and Health's notices follow the time. On a computer, only what is to do comes while it holds: doses, codes, an event's alarms; your Always through people's mail, reminders and Health's notices wait on the Porch, on Health and in the agenda ([To know, or to do](#to-know-or-to-do)).
 
 Calls from numbers nobody knows and hidden numbers are in none of these rows: the call screening decides them, apart from the times, and each card says so in a line of its own. Where your contacts wait (sleep, a pause, Free time, do-not-disturb), they wait too, unless you expect a call ([The call screening](calls.md#the-call-screening)).
 
@@ -165,14 +165,14 @@ Under the grid:
 
 Each notification comes once, never repeated. What each kind does, unless you change its row:
 
-- **Codes and links you just asked a site for**: at once, at any time, sleep and a pause included, even from a site's automatic address: the code, with **Copy the code** on Linux, and how long it stays valid. While you sleep, **On the Porch only** stays a choice: the card then waits on top of the Porch, untold. On Android, the card alone, on the Porch and on the home screen. A code or an approval in another app is never held either. See [The Porch](porch.md#codes-and-links-come-at-once).
+- **Codes and links you just asked a site for**: at once, at any time, sleep and a pause included, even from a site's automatic address: the code, with **Copy the code** on Linux, and how long it stays valid; it stays until the code is copied, expires or its message is read. While you sleep, **On the Porch only** stays a choice: the card then waits on top of the Porch, untold. On Android, the card alone, on the Porch and on the home screen. A code or an approval in another app is never held either. See [The Porch](porch.md#codes-and-links-come-at-once).
 - **Doses**: one notification per dose, within half an hour of its time, with **Taken**, at any time, sleep included, unless you hold them in sleep or a pause ([below](#doses)). See [Health](health.md#reminders).
 - **The alarm at waking**, on Android: always ([Health](health.md#meals-rest-and-sleep)).
 - **An event's alarms**, at their time: at once, and in the night or in Free time when the event itself falls then. On Android they ring, on a channel of their own that passes Sioul's modes.
-- **Reminders before an event**: a quarter of an hour before it and its time to get ready and get there, unless you change it ([Agenda](agenda.md#reminders)); an outing, with a ride before it or a list still to tick, is reminded once in its place: "Leave in 15 minutes for Doctor (14:00)"; **events, the working day before**: half an hour before work ends. Each device tells its own.
+- **Reminders before an event**: a quarter of an hour before it and its time to get ready and get there, unless you change it ([Agenda](agenda.md#reminders)); an outing, with a ride before it or a list still to tick, is reminded once in its place: "Leave in 15 minutes for Doctor (14:00)". Each device tells its own. The evening before an event, nothing: the Porch and the agenda show tomorrow.
 - **Dates asked, waits over, payments, papers and contracts to renew**: once each, on a computer, in waking times ([Settings](settings.md#reminders)).
 - **Meals, naps and the night**: two notices at most for each, each once; none during a meeting, none in sleep, a pause or Free time ([Health](health.md#meals-rest-and-sleep)).
-- **The pause to move**, every 45 minutes unless you change it, in waking times ([Health](health.md#moving)); **"Work hours are over"**, once, at the end of your hours, not in work time itself ([Tasks](tasks.md#the-end-of-the-day)).
+- **The pause to move**, every 45 minutes unless you change it, in waking times, while you are at the computer ([Health](health.md#moving)); **"Work hours are over"**, once, at the end of your hours, not in work time itself ([Tasks](tasks.md#the-end-of-the-day)).
 - **The time running**: while a focus session runs, on Linux and on Android, with **Pause** and **Stop** ([Time](time.md#where-time-comes-from)).
 - **Your sites**, on a computer: what they notify waits, then comes in one notification at the gathered times, for the sites of those hours. A site in **Real time**, and a call in a site, come at once ([Sites](sites.md#notifications-at-your-pace)).
 - **Other apps**, on Android: their automatons come back at the gathered times; the apps you set to **At once** come at once in waking times ([below](#other-apps-on-a-phone)).
@@ -183,6 +183,15 @@ Each notification comes once, never repeated. What each kind does, unless you ch
 - **The codes you asked for**: at once, but in sleep, where On the Porch only stays a choice. You just asked, and a code lasts minutes.
 - **An event's alarms**: at once during a pause and do-not-disturb, as both promise.
 - **The alarm at waking**: always.
+
+### To know, or to do {#to-know-or-to-do}
+
+On a computer, each of Sioul's notifications is about one thing, and a click on it opens that thing: the message, the code's message, the event at its time, the task, the meal's question, Where I stopped, the site and its conversation. The window comes forward, even from behind the others.
+
+- **To know**: the pause to move, a meal, the night, "Work hours are over", a date, a wait, a payment, a paper, the time to leave for an event, your sites' news and a site's message, new mail. Each leaves after **5 minutes** (**Informative notices last**, just above the grid, from 1 to 60 minutes) and leaves no trace among your desktop's notifications; the time to leave stays until the event starts. One at a time: a new "Time to move" takes the last one's place, a meal's notice at its time takes its heads-up's, a conversation's next message the last one's. They come only while you are at the computer (a key or the mouse in the last ten minutes, the session unlocked), and never during a pause or do-not-disturb: the Porch, Health and the agenda keep what matters.
+- **To do**: a code or a temporary password, a dose, an event's own alarm, a call in a site. Each stays until it is done: the code copied, expired or its message read, on any device; the dose marked; the call over. A click on it opens its thing and leaves its buttons; once its bubble went into your desktop's list of notifications, a click there still opens it. Only these pass do-not-disturb, when their row says so: Sioul decides it alone, nothing to tick in your desktop's settings.
+
+After Sioul restarts (an update), its notifications of before are taken away, and a code still valid comes again.
 
 ### Doses {#doses}
 
@@ -323,7 +332,7 @@ In What reaches you ▸ **Do not disturb**:
 
 **The latest change wins.** Turned off while a focus session counts, it stays off until that session ends, and the next one turns it on again; the same for a night. Turned off during a pause, only your devices' own do-not-disturb is lifted: the pause still holds Sioul's own notifications. Turning it on never holds a reason off. Two devices pressed within a minute, neither knowing of the other: on wins, the quieter choice; one more press settles it.
 
-**While it holds**, as Sioul does now: your Always through people's mail, calls and messages come at once; everyone else's mail is shown, not told; their calls go to voicemail and their messages wait; reminders, doses, codes and Health's notices still come; your sites, other apps' automatons and the pause to move wait. The view says it in the same sentences as the Do not disturb card, with **Change…**.
+**While it holds**, as Sioul does now: your Always through people's mail, calls and messages come at once; everyone else's mail is shown, not told; their calls go to voicemail and their messages wait; doses, codes and an event's alarms still come, and on a phone reminders and Health's notices too (on a computer they wait on the Porch, Health and the agenda: [To know, or to do](#to-know-or-to-do)); your sites, other apps' automatons and the pause to move wait. The view says it in the same sentences as the Do not disturb card, with **Change…**.
 
 ### What each system does {#what-each-system-does}
 
@@ -339,8 +348,8 @@ Each device turns on a do-not-disturb of its own for Sioul's three modes: the pa
 
     Sioul needs Android's "Do Not Disturb access" for this ("Modes access" from Android 15): **Open Android's page**, in Settings ▸ This phone. The line says what each mode lets through, as Android has it. From Android 15, what you change in a mode in Android's settings wins. Turned off in the quick settings or in Android's settings, a mode of Sioul's turns Sioul's switch off on every device ([Both ways](#both-ways)). Android 10 has no priority conversations: a conversation Always through rings there from a starred contact only, and the line says so.
     - Emergency services may call back from a number you do not know (in France, 0 800 112 112): a second call within 15 minutes gets through, and you can star that number, or add it to your contacts while the phone screens calls.
-- **Plasma**: Plasma's own do-not-disturb, shown among its notifications as "While Sioul is active", with the mode's name ("While Sioul is active (Pause)"). Sioul's doses, codes, reminders and mail from your Always through people still show, at critical urgency, unless Plasma is set to hide even critical notifications in do-not-disturb: Sioul then says so, and **Plasma's notification settings** opens the page where Sioul may "Show in do not disturb mode". Other new mail does not show meanwhile: it goes under the bell. Quitting Sioul ends it. Turned on or off in Plasma's notifications, Plasma's do-not-disturb turns Sioul's switch on or off ([Both ways](#both-ways)).
-- **GNOME** keeps its Do Not Disturb for you, under the clock in the top bar. Tick **Switch GNOME's Do Not Disturb on with Sioul's, and off after**, in What reaches you ▸ Do not disturb, and Sioul does just that; turned off from Sioul, it goes off even when you turned it on yourself. Turned on or off in the top bar, it turns Sioul's switch on or off ([Both ways](#both-ways)). Sioul's doses, codes and reminders still show; new mail waits in the list under the clock. Not from a Flatpak.
+- **Plasma**: Plasma's own do-not-disturb, shown among its notifications as "While Sioul is active", with the mode's name ("While Sioul is active (Pause)"). Sioul's doses, codes and an event's alarms still show, at critical urgency, unless Plasma is set to hide even critical notifications in do-not-disturb: Sioul then says so, and **Plasma's notification settings** opens the page where Sioul may "Show in do not disturb mode". Sioul's other notifications are not sent meanwhile: the Porch keeps them. Quitting Sioul ends it. Turned on or off in Plasma's notifications, Plasma's do-not-disturb turns Sioul's switch on or off ([Both ways](#both-ways)).
+- **GNOME** keeps its Do Not Disturb for you, under the clock in the top bar. Tick **Switch GNOME's Do Not Disturb on with Sioul's, and off after**, in What reaches you ▸ Do not disturb, and Sioul does just that; turned off from Sioul, it goes off even when you turned it on yourself. Turned on or off in the top bar, it turns Sioul's switch on or off ([Both ways](#both-ways)). Sioul's doses, codes and an event's alarms still show; the rest waits on the Porch. Not from a Flatpak.
 - **Mac**: make two shortcuts in the Shortcuts app, "Sioul pause on", which turns on a Focus (Do Not Disturb, say), and "Sioul pause off", which turns it off. Sioul runs the first as one of its modes starts, and the second as the last one ends.
 - **Windows** does not let Sioul do it: its switch is in the notification centre (Windows key + N).
 - **Other desktops** (dunst, mako, Xfce…) give applications no way to do it: the line names the notification server.
@@ -402,6 +411,8 @@ On Android, in the card What reaches you now, **Let them through then** on a hel
 - What your own spam filter flagged or moved, waiting in **Caught by your own spam filter** ([The Porch](porch.md#spam-and-your-own-filter)), on any device, nor on the home screen on Android.
 - Mail to your less important accounts; newsletters and mailing lists, unless **Include newsletters**; what you send yourself; mail already read elsewhere; the two weeks of mail an address brings when you add it.
 - A code's message, as new mail: the code has its own notification.
+- The evening before an event: the Porch and the agenda show tomorrow's events; the time to leave and the event's own alarms come on the day.
+- On a computer, what is to know when nobody is at it, during a pause or do-not-disturb ([To know, or to do](#to-know-or-to-do)).
 - Two events at once that someone else's change made, and an account that would not hold a payment: the [Porch](porch.md#the-sections) says each once, a clash at a time its agenda may reach you, a shortfall whatever the hour. A reminder before a shortfall's day is another matter ([Settings](settings.md#reminders)).
 - On Android: codes; and on a phone, the reminders of dates, waits, payments, papers and contracts, which come on a computer or a tablet.
 
@@ -418,8 +429,8 @@ On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.
 
 ## Where to change each thing {#where-to-change-each-thing}
 
-- **Settings ▸ What reaches you**: the matrix, by time, by person and Sioul's own; **Tell me of new mail**, **Include newsletters**, **Sites' notifications gathered**; Free time's **Nothing at all**; your lists; Always through and its list; on Android, each app, conversation and browser site; what turns do-not-disturb on, and what this device's system lets Sioul do.
-- **Settings ▸ Reminders**: **Before an event**, **Events, the working day before**, **Dates asked: working days before**, **A wait over**, **Payments planned: working days before**, **With Sioul's window closed**, **Gathered at** ([Settings](settings.md#reminders)).
+- **Settings ▸ What reaches you**: the matrix, by time, by person and Sioul's own; **Tell me of new mail**, **Include newsletters**, **Sites' notifications gathered**, **Informative notices last**; Free time's **Nothing at all**; your lists; Always through and its list; on Android, each app, conversation and browser site; what turns do-not-disturb on, and what this device's system lets Sioul do.
+- **Settings ▸ Reminders**: **Before an event**, **Dates asked: working days before**, **A wait over**, **Payments planned: working days before**, **With Sioul's window closed**, **Gathered at** ([Settings](settings.md#reminders)).
 - **Settings ▸ This phone** (**This tablet** on a tablet), on Android: call screening, other apps' notification access and holding, Do Not Disturb's access, who is starred, keeping in step in the background, exact alarms ([Settings](settings.md#this-phone)).
 - **A person's sheet**, from their card or a message: their list, Always through ([above](#a-persons-sheet)).
 - **An event**: **Remind**, in its form and its details ([Agenda](agenda.md#reminders)).

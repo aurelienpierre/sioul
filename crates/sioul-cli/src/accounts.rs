@@ -626,9 +626,12 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 if Attention::of(&config).level(Row::Own(Kind::Codes), &moment) != Level::Now {
                     continue;
                 }
+                // To do, until it expires (docs/notifications.md), without its buttons: nothing here opens a thing.
+                let told = sioul_core::notice::told(Some(Kind::Codes));
                 for code in view::codes(&arrived, &s.tr) {
-                    if let Err(e) = notify::code(&code.title, &code.body(), Vec::new()) {
-                        eprintln!("{}", crate::plain_lines(&e));
+                    let notice = code.notice("", "");
+                    if let sioul_core::notice::Decision::Post(shape) = sioul_core::notice::decide(&notice, &told, sioul_core::notice::moment_from_files(&config, &now), config.notices.minutes(), stamp) {
+                        notify::teller().post(notice, shape, "", None);
                     }
                 }
             }

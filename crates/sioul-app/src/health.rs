@@ -1646,12 +1646,16 @@ static MOVED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0
 
 /// The pause to move and stretch, every so many minutes since Sioul started
 /// or since the last one, without waiting for a focus session; a session
-/// running offers its own (`FocusWindow.qml`). A desktop notification: it
-/// reaches you with the window hidden, from the computer you are at. A phone
-/// makes none (docs/android.md, "Notifications"): nothing is tried there, so
-/// that its status line never says notifications are not made on Android
-/// (seen on a phone, 16 October 2026).
-fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned, here: bool) {
+/// running offers its own (`FocusWindow.qml`). A notice to know
+/// (docs/notifications.md): it reaches you with the window hidden, from the
+/// computer you are at, and only while someone is at it (input in the last
+/// ten minutes, the session unlocked: `devices::someone_here`); away, the
+/// pause is counted again from your return. One at most: the next one takes
+/// its place. A phone makes none (docs/android.md, "Notifications"): nothing
+/// is tried there, so that its status line never says notifications are not
+/// made on Android (seen on a phone, 16 October 2026).
+fn movement_tick(health: &Health, now: &Zoned, here: bool) {
+    use sioul_core::notice::{Act, Kind, Notice, address};
     use std::sync::atomic::Ordering;
     if cfg!(target_os = "android") {
         return;
@@ -1659,8 +1663,8 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
     let stamp = now.timestamp().as_second();
     let last = MOVED.load(Ordering::Relaxed);
     // At a time the matrix of what reaches you drops it (as usual: sleep, the pauses, a slot
-    // of time for you, do-not-disturb), the pause is counted again from its end.
-    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::comes(sioul_core::attention::Kind::Move) {
+    // of time for you, do-not-disturb), or nobody at the computer, the pause is counted again from its end.
+    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::comes(sioul_core::attention::Kind::Move) || !crate::devices::someone_here() {
         MOVED.store(stamp, Ordering::Relaxed);
         return;
     }
@@ -1668,13 +1672,8 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
         return;
     }
     MOVED.store(stamp, Ordering::Relaxed);
-    let qt_open = qt.clone();
-    let open: Box<dyn FnOnce() + Send> = Box::new(move || {
-        let _ = qt_open.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("stopped"), QString::default(), QString::default()));
-    });
-    if let Err(e) = sioul_sync::notify::remind(&tr().text("health-move", None), &tr().text("health-move-body", None), Some((tr().text("stopped-note", None), open))) {
-        tell(qt, shared, e);
-    }
+    let notice = Notice::new(address::MOVE, Kind::Own(sioul_core::attention::Kind::Move), tr().text("health-move", None), tr().text("health-move-body", None)).action(tr().text("stopped-note", None), Act::Open { address: address::MOVE.to_string(), hint: String::new() });
+    crate::tell::tell_as(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Move)), None);
 }
 
 /// The question on doses due while Sioul was closed: asked once a session.
@@ -4303,36 +4302,31 @@ fn night_offered(block: &Kept, now: &Zoned) -> Vec<crate::reviews::Offered> {
 
 /// Each minute, from the computer you are at (`needs_now`): a block's
 /// heads-up about the work, `heads_up` minutes before it ("No new big
-/// task"), with "Later"; then one at its time. Its name and time only: safe
-/// to be read by someone else (docs/health.md). A phone shows only the
+/// task"), with "Options…"; then one at its time, in its place (the same
+/// need: docs/notifications.md). Notices to know: while someone is at the
+/// computer, never in a pause or a do-not-disturb. Its name and time only:
+/// safe to be read by someone else (docs/health.md). A phone shows only the
 /// night's own, at its alarm (`decide_night`).
-fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned) {
+fn needs_tick(health: &Health, now: &Zoned) {
+    use sioul_core::notice::{Act, Kind, Notice, address};
     if cfg!(target_os = "android") {
         return;
     }
     let hm = |at: i64| clock(at, now.time_zone());
     for (block, heads_up) in needs_now(health, now) {
         let name = name_of(&block);
+        let about = address::need(&block.key);
+        if !heads_up && block.kind == "sleep" {
+            // The night's own notice: closing the day is offered beside its
+            // options while that night's review is to give (docs/reviews.md).
+            crate::reviews::show_notice(&about, sioul_core::attention::Kind::Needs, &name, &hm(block.start), night_offered(&block, now));
+            continue;
+        }
+        let (title, body) = if heads_up { (tr().text("need-heads-up", None), say("need-at", &[("name", name), ("time", hm(block.start))])) } else { (name, hm(block.start)) };
         // One button: the window's question (later, at another time, not
         // today; a line on where you stopped).
-        let (key, qt_open) = (block.key.clone(), qt.clone());
-        let open: Box<dyn FnOnce() + Send> = Box::new(move || {
-            let _ = qt_open.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("need"), QString::default(), QString::from(&key)));
-        });
-        let action = Some((tr().text("need-open", None), open));
-        let shown = if heads_up {
-            sioul_sync::notify::remind(&tr().text("need-heads-up", None), &say("need-at", &[("name", name), ("time", hm(block.start))]), action)
-        } else if block.kind == "sleep" {
-            // The night's own notice: closing the day is offered beside its
-            // options while that night's review is to give, as each system
-            // shows buttons (docs/reviews.md).
-            crate::reviews::show_notice(qt, &name, &hm(block.start), night_offered(&block, now))
-        } else {
-            sioul_sync::notify::remind(&name, &hm(block.start), action)
-        };
-        if let Err(e) = shown {
-            tell(qt, shared, e);
-        }
+        let notice = Notice::new(about.clone(), Kind::Own(sioul_core::attention::Kind::Needs), title, body).action(tr().text("need-open", None), Act::Open { address: about, hint: String::new() });
+        crate::tell::tell_as(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Needs)), None);
     }
 }
 
@@ -5097,9 +5091,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         // No medicines: the pause to move, meals and rest, from the computer you are at.
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
         let (keeper, _) = crate::share::keeper("health", sioul_sync::lease::Rule::FollowsYou, active, false);
-        movement_tick(qt, shared, &health, &Zoned::now(), keeper.mine);
+        movement_tick(&health, &Zoned::now(), keeper.mine);
         if keeper.mine && keeper.settled {
-            needs_tick(qt, shared, &health, &Zoned::now());
+            needs_tick(&health, &Zoned::now());
         }
         // On a phone, the alarm at waking (`wake`; with medicines, `alarms::schedule` below hands it).
         crate::wake::schedule();
@@ -5136,9 +5130,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     if let Ok(mut there) = REMINDED_THERE.lock() {
         *there = if keeper.mine { String::new() } else { say("health-reminded-there", &[("computer", keeper.name.clone())]) };
     }
-    movement_tick(qt, shared, &health, &now, keeper.mine);
+    movement_tick(&health, &now, keeper.mine);
     if keeper.mine && keeper.settled {
-        needs_tick(qt, shared, &health, &now);
+        needs_tick(&health, &now);
     }
     let mut reminded: Vec<String> = Vec::new();
     let mut unshown: Vec<String> = Vec::new();

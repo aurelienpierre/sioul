@@ -65,6 +65,9 @@ pub struct CodeView {
     pub warning: Option<String>,
     /// Its notice (`notices`): what the Porch shows, Dismiss and Mark read act on.
     pub notice: crate::notices::Notice,
+    /// When it expires, Unix seconds: the validity its message states, else
+    /// what its kind usually lasts, from when it was sent (`porch::sent`).
+    pub expires: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -323,6 +326,21 @@ pub fn codes(items: &[Triaged], tr: &Translator) -> Vec<CodeView> {
 }
 
 impl CodeView {
+    /// Its notice (docs/notifications.md): about its message, to do, until
+    /// it expires; Copy (`copy`, its words) when the message prints the code,
+    /// Open the message (`open`) when it has a file here, its hint.
+    pub fn notice(&self, copy: &str, open: &str) -> crate::notice::Notice {
+        use crate::notice::{Act, Kind, Notice};
+        let mut notice = Notice::new(self.address.clone(), Kind::Own(crate::attention::Kind::Codes), self.title.clone(), self.body()).hint(self.key.clone()).until(self.expires);
+        if let Some(code) = &self.code {
+            notice = notice.action(copy, Act::Copy(code.clone()));
+        }
+        if !self.key.is_empty() {
+            notice = notice.action(open, Act::Open { address: self.address.clone(), hint: self.key.clone() });
+        }
+        notice
+    }
+
     /// The code and how long it lasts, on one line: "482913, valid about 10
     /// minutes"; under it, the warning when its sender is not verified.
     pub fn body(&self) -> String {
@@ -355,6 +373,7 @@ fn code_view(t: &Triaged, tr: &Translator) -> CodeView {
         validity,
         warning: (t.trust != Trust::Verified).then(|| tr.text("right-now-unverified", None)),
         notice,
+        expires: code.zip(crate::porch::sent(&t.card)).map(|(c, sent)| sent + i64::from(c.lasts_minutes()) * 60),
     }
 }
 

@@ -792,6 +792,15 @@ ColumnLayout {
         visible: tab.view === "own" && !tab.rowShown
         text: tab.shown.gathered
     }
+    // How long informative notices last, one length for all (docs/notifications.md): a computer's for now.
+    SettingRow {
+        visible: tab.view === "own" && !tab.rowShown && !tab.shown.phone && tab.setting("notices.informative_minutes") !== null
+        Layout.fillWidth: true
+        setting: tab.setting("notices.informative_minutes") || { key: "", kind: "note", label: "", help: "", value: 0, choices: [] }
+        sioul: tab.sioul
+        theme: tab.theme
+        onSave: (key, value, shown) => tab.save(key, value, shown)
+    }
     Loader {
         active: tab.view === "own" && !tab.narrow
         visible: active

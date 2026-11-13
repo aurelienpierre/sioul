@@ -392,9 +392,12 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
             add((rank(level, calls), until), Subject::People(*channel, person));
         }
     }
+    // On a computer, what is to know is never posted while a pause or a
+    // do-not-disturb holds (docs/notifications.md): shown, without a notification.
+    let held_here = !reach.phone && (column == Column::Pause || silenced(config, column));
     for kind in kinds(reach.phone) {
         let row = Row::Own(kind);
-        let level = attention.cell(row, column);
+        let level = known_only(attention.cell(row, column), kind, held_here);
         let until = if level == Level::Later { comes_in(attention, row) } else { Vec::new() };
         // Codes not told stay on the Porch: a sentence of their own.
         let key = if kind == Kind::Codes && level == Level::Never { 7 } else { rank(level, false) };
@@ -435,6 +438,13 @@ fn card_lines(attention: &Attention, config: &Config, column: Column, reach: Rea
         lines.push(text(if contacts_wait { "attention-card-screening-held" } else { "attention-card-screening" }));
     }
     lines
+}
+
+/// A kind's level as a computer tells it while a pause or a do-not-disturb
+/// holds (`held`): what is to know comes, or would come, as shown without a
+/// notification (docs/notifications.md); the rest as its cell says.
+fn known_only(level: Level, kind: Kind, held: bool) -> Level {
+    if held && kind.class() == Some(sioul_core::notice::Class::Informative) && matches!(level, Level::Now | Level::Event | Level::Gathered) { Level::Quiet } else { level }
 }
 
 /// Whether the system's do-not-disturb holds during a column (docs/attention.md, §3.3).
@@ -732,9 +742,12 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
             }
         }
     }
-    // Of Sioul's own, what matters most: codes, doses, reminders.
+    // Of Sioul's own, what matters most: codes, doses, reminders; on a
+    // computer, what is to know shown alone while a pause or a do-not-disturb holds.
+    let held_here = !reach.phone && (mode.paused() || now.dnd || now.times.iter().any(|c| silenced(&load_config(), *c)));
     for kind in [Kind::Codes, Kind::Doses, Kind::Alarms, Kind::Before, Kind::DayBefore, Kind::Dates] {
-        match attention.level(Row::Own(kind), now) {
+        match known_only(attention.level(Row::Own(kind), now), kind, held_here) {
+            Level::Quiet => add(2, Subject::Own(kind)),
             Level::Now | Level::Event => add(0, Subject::Own(kind)),
             Level::Gathered => add(1, Subject::Own(kind)),
             Level::Never => {}
@@ -1377,6 +1390,18 @@ mod tests {
         // Under do-not-disturb: at most shown; the layers never let more through.
         let dnd = card_lines(&usual, &config, Column::Dnd, computer);
         has(&dnd, "Mail from everyone is shown without a notification, when its time lets it come.");
+        // On a computer, what is to know is never posted under do-not-disturb nor at a pause
+        // (docs/notifications.md): shown, without a notification; what is to do as its row says.
+        let known = |lines: &[String], quiet: &str| {
+            let line = lines.iter().find(|l| l.contains("Sioul's reminders before your events")).unwrap_or_else(|| panic!("{lines:#?}"));
+            assert!(line.contains(quiet), "{line}");
+            line.clone()
+        };
+        assert!(known(&dnd, "shown without a notification").contains("Health's notices"));
+        known(&card_lines(&usual, &config, Column::Pause, computer), "shown in Sioul, without a notification");
+        assert!(dnd.iter().any(|l| l.contains("your events' alarms") && l.contains("follow the time underneath")) || dnd.iter().any(|l| l.contains("your events' alarms") && l.contains("at once")), "{dnd:#?}");
+        // On a phone, as before (its notices are Java's until the notifications' phase 3).
+        assert!(card_lines(&usual, &config, Column::Pause, Reach { phone: true, ..Reach::default() }).iter().any(|l| l.contains("Sioul's reminders before your events") && l.contains("at once")));
         // A phone screening calls: the calls' rows, voicemail, and the system's line.
         let phone = Reach { phone: true, calls: true, messages: true, screens: true, ..Reach::default() };
         let leisure = card_lines(&usual, &config, Column::Leisure, phone);

@@ -761,7 +761,9 @@ pub struct LetterSettings {
 /// Reminders before dates (docs/reminders.md): one quiet notification each, never again.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ReminderSettings {
-    /// Events: at the end of the working day before, and at the alarms they carry.
+    /// Events told at the end of the working day before: no longer read
+    /// since 13 November 2026 (the notifications' decision 3: the agenda
+    /// leaves the notifications); kept so that a configuration saying it reads.
     #[serde(default = "yes")]
     pub events: bool,
     /// A date asked: so many working days before, when work starts; 0 for none.

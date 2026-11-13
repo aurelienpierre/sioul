@@ -159,6 +159,12 @@ pub struct Notice {
     pub text: String,
     /// When it came, Unix seconds.
     pub at: i64,
+    /// Named in the gathered notice already ("Your sites have news"): never
+    /// named there again; the Porch keeps it until the site is seen. Unsaid
+    /// (a file of before 13 November 2026, or an older Sioul's), not told:
+    /// an older Sioul reads the file as before, the key passed over.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub told: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -204,11 +210,41 @@ impl Notices {
     pub fn of(&self, site: &str) -> Vec<&Notice> {
         self.notices.iter().filter(|n| n.site == site).collect()
     }
+
+    /// What a site notified that the gathered notice has not named yet.
+    pub fn untold(&self, site: &str) -> Vec<&Notice> {
+        self.notices.iter().filter(|n| n.site == site && !n.told).collect()
+    }
+
+    /// The gathered notice named these sites' notifications: never again.
+    pub fn mark_told(&mut self, sites: &[&str]) {
+        for notice in self.notices.iter_mut().filter(|n| sites.contains(&n.site.as_str())) {
+            notice.told = true;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The gathered notice names what is new since it last rang: each
+    /// notification once; the Porch keeps them all. A file without the mark
+    /// (before 13 November 2026) reads as not told, and the mark is written
+    /// only once set.
+    #[test]
+    fn the_gathered_notice_names_each_notification_once() {
+        let mut notices: Notices = toml::from_str("[[notice]]\nsite = \"chat\"\ntitle = \"Camille\"\nat = 1\n").unwrap();
+        assert_eq!(notices.untold("chat").len(), 1);
+        assert!(!toml::to_string(&notices).unwrap().contains("told"));
+        notices.mark_told(&["chat"]);
+        assert!(notices.untold("chat").is_empty() && notices.of("chat").len() == 1, "named once, kept for the Porch");
+        notices.add(Notice { site: "chat".into(), title: "Noa".into(), text: String::new(), at: 2, told: false });
+        assert_eq!(notices.untold("chat").iter().map(|n| n.title.as_str()).collect::<Vec<_>>(), ["Noa"]);
+        let written = toml::to_string(&notices).unwrap();
+        assert!(written.contains("told = true"), "{written}");
+        assert_eq!(toml::from_str::<Notices>(&written).unwrap(), notices);
+    }
 
     #[test]
     fn calls_ring_through() {
@@ -267,9 +303,9 @@ mod tests {
         assert_eq!(domain_of("secure.bank.example.co.uk"), "example.co.uk");
         assert_eq!(host_of("https://user@app.element.io:443/#/room"), "app.element.io");
         let mut notices = Notices::default();
-        notices.add(Notice { site: "element".into(), title: "Jane".into(), text: "Lunch?".into(), at: 1 });
-        notices.add(Notice { site: "element".into(), title: "Jane".into(), text: "Lunch?".into(), at: 2 });
-        notices.add(Notice { site: "proton".into(), title: "New message".into(), text: String::new(), at: 3 });
+        notices.add(Notice { site: "element".into(), title: "Jane".into(), text: "Lunch?".into(), at: 1, told: false });
+        notices.add(Notice { site: "element".into(), title: "Jane".into(), text: "Lunch?".into(), at: 2, told: false });
+        notices.add(Notice { site: "proton".into(), title: "New message".into(), text: String::new(), at: 3, told: false });
         assert_eq!(notices.of("element").len(), 1, "told twice, kept once");
         notices.seen("element");
         assert_eq!(notices.notices.len(), 1);

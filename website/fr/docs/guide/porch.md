@@ -37,7 +37,7 @@ Pendant tout ce temps, les courriels continuent d’arriver en arrière-plan. Le
 
 Les codes à usage unique, les mots de passe temporaires, les réinitialisations de mot de passe, les liens de connexion et les liens pour confirmer une adresse viennent de quelque chose que vous venez de demander à un site, et ils expirent. Sioul les montre donc tout de suite, à n’importe quelle heure, même quand ils viennent d’une adresse automatique de site (no-reply…) :
 
-- sur un ordinateur, une seule notification, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ; aucune pendant le sommeil : la carte attend ici ;
+- sur un ordinateur, une seule notification, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ; un clic dessus ouvre son courriel ; elle reste jusqu’à ce que le code soit copié, expire ou que son courriel soit lu ; aucune pendant le sommeil : la carte attend ici ;
 - sa ligne en haut du Porche, dans **Tout de suite**, avec **Copier** ; sur Android, sur le Porche et sur la carte de Sioul sur votre écran d’accueil, puisque Sioul n’y notifie pas encore les codes.
 
 Rien d’autre ne s’ouvre avec. Une fois expiré, le code est masqué, et le courriel va dans sa file. Il expire quand le courriel le dit, sinon quand son type expire d’habitude : un code après 30 minutes, un lien de connexion après une heure, une réinitialisation de mot de passe après deux heures, un lien pour confirmer une adresse après un jour, un mot de passe temporaire après une semaine.
@@ -48,7 +48,7 @@ Les faux courriels « votre code » sont une ruse d’hameçonnage courante.
 
 ## Les nouveaux courriels, dits à leurs heures {#new-mail-told-at-its-times}
 
-Quand arrivent des courriels que vos listes laissent passer maintenant, une seule notification discrète les dit, pour tout le lot : « Deux courriels », et les premiers expéditeurs avec leur objet : « Murena, Votre facture · Alice, Dîner vendredi ». **Ouvrir** montre le Porche.
+Quand arrivent des courriels que vos listes laissent passer maintenant, une seule notification discrète les dit, pour tout le lot : « Deux courriels », et les premiers expéditeurs avec leur objet : « Murena, Votre facture · Alice, Dîner vendredi ». **Ouvrir**, ou un clic dessus, ouvre le courriel (plusieurs : la boîte aux lettres, en haut). Sur un ordinateur, elle s’en va après quelques minutes, et ne vient que quand vous êtes à l’ordinateur, jamais pendant une pause ou « Ne pas déranger » : le Porche garde les courriels ([Ce qui vous joint](notifications.md#to-know-or-to-do)).
 
 - **Ce qui attendait** (les courriels arrivés hors des heures de leur liste, pendant votre sommeil ou une pause) est dit une fois, quand son heure vient : « Le Porche ouvre : trois courriels vous attendent. »
 - **Jamais** pour les codes (ils ont la leur, plus haut), les courriels mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « Retenu par votre filtre à indésirables », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les infolettres sauf si vous les incluez, ni les courriels déjà lus ailleurs. Rien pendant le sommeil ni une pause.

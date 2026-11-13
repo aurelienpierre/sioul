@@ -10,7 +10,6 @@
 //! wait for a computer.
 
 use crate::backend::{QtThread, load_config, say, tr};
-use cxx_qt_lib::QString;
 use sioul_core::reminders::{self, Kind};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -18,8 +17,7 @@ use std::sync::Mutex;
 static BUSY: Mutex<()> = Mutex::new(());
 
 /// What is due, told; off the window's thread.
-pub(crate) fn tick(qt: &QtThread) {
-    let qt = qt.clone();
+pub(crate) fn tick() {
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let now = sioul_core::zone::now();
@@ -53,11 +51,8 @@ pub(crate) fn tick(qt: &QtThread) {
             if android {
                 crate::eventalarms::show(&reminders::Reminder { title, body: String::new(), ..waits[0].clone() });
             } else {
-                let qt = qt.clone();
-                let open: Box<dyn FnOnce() + Send> = Box::new(move || {
-                    let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("task"), QString::default(), QString::default()));
-                });
-                let _ = sioul_sync::notify::remind(&title, "", Some((tr().text("reminder-open", None), open)));
+                // About the first of them: a click opens its task.
+                told_now(reminders::Reminder { title, body: String::new(), ..waits[0].clone() });
             }
         }
         for reminder in told {
@@ -65,12 +60,7 @@ pub(crate) fn tick(qt: &QtThread) {
                 crate::eventalarms::show(&reminder);
                 continue;
             }
-            let (kind, uri, key) = opens(&reminder);
-            let qt = qt.clone();
-            let open: Box<dyn FnOnce() + Send> = Box::new(move || {
-                let _ = qt.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from(kind), QString::from(&uri), QString::from(&key)));
-            });
-            let _ = sioul_sync::notify::remind(&reminder.title, &reminder.body, Some((tr().text("reminder-open", None), open)));
+            told_now(reminder);
         }
         // On Android, the coming events' ones (those just told left out) given
         // to its alarm clock when they changed: they come with Sioul away too.
@@ -87,16 +77,27 @@ fn of_events(kind: Kind) -> bool {
     matches!(kind, Kind::Event | Kind::Before | Kind::Alarm)
 }
 
-/// What a reminder's "Open" opens, as the window's `openThing` takes it: its
-/// kind, its address, its key.
-fn opens(reminder: &reminders::Reminder) -> (&'static str, String, String) {
-    match reminder.kind {
-        Kind::Asked | Kind::Wait => ("task", reminder.target.clone(), reminder.target.trim_start_matches("sioul:task/").to_string()),
-        Kind::Event | Kind::Before | Kind::Alarm => ("event", String::new(), event_time(&reminder.target, reminder.starts)),
-        Kind::Payment => ("budget", reminder.target.clone(), String::new()),
-        Kind::Paper => ("paper", reminder.target.clone(), reminder.target.trim_start_matches("sioul:paper/").to_string()),
-        Kind::Contract => ("contract", reminder.target.clone(), reminder.target.trim_start_matches("sioul:contract/").to_string()),
-        Kind::Money => ("budget", reminder.target.clone(), String::new()),
+/// A reminder due now, told (`Reminder::notice`, docs/notifications.md):
+/// dates, waits, payments, papers and contracts, and the time to leave, are
+/// to know (the time to leave until its event starts); an event's own alarm
+/// is to do, and passes a pause or a do-not-disturb as its row says. Its
+/// "Open" and a click on it open its thing.
+fn told_now(reminder: reminders::Reminder) {
+    let row = reminders::row_of(reminder.kind);
+    crate::tell::tell_as(reminder.notice(&tr().text("reminder-open", None)), sioul_core::notice::told(Some(row)), None);
+}
+
+/// An event's alarms a previous run showed (`tell::start`), by their
+/// address: told again while their time lasts.
+pub(crate) fn retell(abouts: &[String]) {
+    let now = sioul_core::zone::now();
+    let (all, _) = reminders::gather(&load_config(), tr(), &now);
+    let stamp = now.timestamp().as_second();
+    for reminder in all.into_iter().filter(|r| r.kind == Kind::Alarm && r.at <= stamp && r.until > stamp) {
+        let notice = reminder.notice(&tr().text("reminder-open", None));
+        if abouts.contains(&notice.about) {
+            crate::tell::tell_as(notice, sioul_core::notice::told(Some(sioul_core::attention::Kind::Alarms)), None);
+        }
     }
 }
 
@@ -448,15 +449,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// An event's reminder opens that time of it, its card on that time of a
-    /// series, not its next (review of 590eb18, later 6); a task's its task.
+    /// An event's reminder is about that time of it (`sioul:event/<UID>#<start>`),
+    /// its file and time the hint its card is found by, that time of a series,
+    /// not its next (review of 590eb18, later 6); a task's about its task.
     #[test]
     fn an_event_s_reminder_opens_its_time() {
-        let event = reminders::Reminder { key: "e".into(), kind: Kind::Before, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None, event: None };
-        assert_eq!(opens(&event), ("event", String::new(), "/c/yoga.ics#1793520000".to_string()));
-        assert_eq!(opens(&reminders::Reminder { starts: None, ..event.clone() }).2, "/c/yoga.ics", "no time known: its file");
-        let task = reminders::Reminder { kind: Kind::Asked, target: "sioul:task/t1".into(), starts: None, ..event };
-        assert_eq!(opens(&task), ("task", "sioul:task/t1".to_string(), "t1".to_string()));
+        use sioul_core::notice::Act;
+        let event = reminders::Reminder { key: "e".into(), kind: Kind::Before, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None, event: Some("sioul:event/yoga".into()) };
+        let notice = event.notice("Open");
+        assert_eq!((notice.about.as_str(), notice.hint.as_str(), notice.until), ("sioul:event/yoga#1793520000", "/c/yoga.ics#1793520000", Some(1_793_520_000)));
+        assert_eq!(notice.actions[0].act, Act::Open { address: "sioul:event/yoga#1793520000".into(), hint: "/c/yoga.ics#1793520000".into() });
+        let untimed = reminders::Reminder { starts: None, ..event.clone() }.notice("Open");
+        assert_eq!((untimed.about.as_str(), untimed.hint.as_str()), ("sioul:event/yoga", "/c/yoga.ics"), "no time known: its file");
+        let task = reminders::Reminder { kind: Kind::Asked, target: "sioul:task/t1".into(), starts: None, ..event }.notice("Open");
+        assert_eq!((task.about.as_str(), task.hint.as_str(), task.until), ("sioul:task/t1", "", None));
     }
 
     #[test]

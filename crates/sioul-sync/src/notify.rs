@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The one exception to the admin windows: a quiet desktop notification for a
-//! verified code, with the code in it (docs/porch.md, "Right now"); a gentle
-//! reminder; new mail at the times it may come, once per batch
-//! (docs/porch.md, "Notifications"); and the time running, while a focus
-//! session runs (docs/tasks.md).
+//! The system's notifications: the transport of Sioul's notices
+//! (docs/notifications.md), the doses' own reminders, and the time running
+//! while a focus session runs (docs/tasks.md).
 //!
-//! On Linux and the BSDs each notification goes to the session's
-//! notification server over a D-Bus connection of its own, made by
-//! `crate::bus`: a session bus that takes it and never answers holds one
-//! thread of its own, never the caller nor libdbus's process-wide locks
-//! (review of battery part C, G1). Its call is the one notify-rust's
-//! `Notification` made before 13 October 2026, argument for argument
-//! (`notify_message`), but for its urgency, said once (notify-rust's hints
-//! are a set, where a mail's normal urgency and the critical one it started
-//! from were two, sent in no fixed order). Windows and macOS: notify-rust.
+//! **The notices** (`Teller`): every notice of a process, decided already
+//! (`sioul_core::notice::decide`), goes through one thread and, on Linux and
+//! the BSDs, one D-Bus connection to the session's notification server, made
+//! by `crate::bus`: a session bus that takes it and never answers holds that
+//! thread, never the caller nor libdbus's process-wide locks (review of
+//! battery part C, G1). There, each notice replaces the last of its kind and
+//! thing, carries its urgency, its timeout and `transient`, a click of its own
+//! and its buttons, and is taken away by Sioul at its end or once its thing is
+//! settled; presses come back with the server's activation token. Windows and
+//! macOS: notify-rust, as far as each carries it. Android: none here.
+//!
+//! **The doses' path stays its own**, as before the notices: each reminder on
+//! a thread and a connection of its own (`remind_dose`, `remind`), at critical
+//! urgency. Its call is the one notify-rust's `Notification` made before 13
+//! October 2026, argument for argument (`notify_message`), but for its
+//! urgency, said once.
 //!
 //! A dose's reminder (`remind_dose`) is built on one rule: never invite a
 //! second dose, and when this device cannot know, say the doubt (docs/health.md,
@@ -222,20 +227,11 @@ fn as_sioul() {
     });
 }
 
-/// A notification's button: its key, its label, and what it does when pressed.
-pub type Button = (String, String, Box<dyn FnOnce() + Send>);
-
-/// Shows a code: `title` says what and from whom, `body` the code and how long
-/// it lasts. No sound. With `buttons` (Copy, Open), the notification offers
-/// each, labelled with its text, and the one pressed runs; the notification
-/// then lives on its own thread, which waits for a press.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn code(title: &str, body: &str, buttons: Vec<Button>) -> Result<(), String> {
-    several_buttons(Notice::new(title, body, "dialog-password", CRITICAL), buttons)
-}
-
-/// A gentle reminder: one notification, no sound, with one button whose
-/// action runs when pressed (a dose's own: `remind_dose`).
+/// A reminder of the doses' own path (the question on doses due while Sioul
+/// was closed; `remind_dose` elsewhere than Linux): one notification, no
+/// sound, critical, with one button whose action runs when pressed, on a
+/// thread and a connection of its own. Every other notice goes through
+/// `post`.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     one_button(Notice::new(title, body, "appointment-soon", CRITICAL), action)
@@ -284,204 +280,7 @@ pub fn remind_dose(title: &str, body: &str, button: (String, Box<dyn FnOnce() + 
     })
 }
 
-/// New mail at the times it may come (docs/porch.md, "Notifications"): one
-/// notification for the batch, no sound, with one button ("Open": its one
-/// message, else the Porch) whose action runs when pressed, a click on the
-/// notice itself doing the same (its "default" action: the unified
-/// mailbox's decision 3). At normal urgency, unlike codes and reminders: the
-/// desktop's own do-not-disturb holds it; but at critical urgency when
-/// someone Always through is in it (`through`), which passes it
-/// (docs/attention.md, Q10).
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn mail(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    let mut notice = Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL });
-    let Some((label, run)) = action else { return notify(notice, None) };
-    notice.buttons.push((CLICKED.to_string(), label.clone()));
-    notice.buttons.push(("open".to_string(), label));
-    notify(
-        notice,
-        Some(Box::new(move |key: &str| {
-            if opens_mail(key) {
-                run();
-            }
-        })),
-    )
-}
-
-/// New mail (`mail`), taken away where it shows once `settled` says each
-/// message it told was dismissed, read or done on any device (Sioul's
-/// notices), looked at each `LOOK` while it shows; its press as `mail`'s.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn mail_until(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>, settled: Box<dyn FnMut() -> bool + Send>) -> Result<(), String> {
-    let mut notice = Notice::new(title, body, "mail-unread", if through { CRITICAL } else { NORMAL });
-    let run = action.map(|(label, run)| {
-        notice.buttons.push((CLICKED.to_string(), label.clone()));
-        notice.buttons.push(("open".to_string(), label));
-        run
-    });
-    // The D-Bus connection cannot change threads, so it is made where it waits.
-    std::thread::spawn(move || {
-        let Ok(bus) = session() else { return };
-        let heard = Rc::default();
-        if listened(&bus, &heard).is_err() {
-            return;
-        }
-        let Ok(id) = send(&bus, &notice) else { return };
-        wait_or_settled(&Shown { bus, heard, replies: Rc::default(), id, capabilities: Vec::new() }, run, settled);
-    });
-    Ok(())
-}
-
-/// New mail's notice shown, waited for: its Open runs when pressed (the
-/// wait ends then, or when it closes, or the connection goes); taken away
-/// once `settled`, looked at each `LOOK`.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn wait_or_settled(shown: &Shown, mut run: Option<Box<dyn FnOnce() + Send>>, mut settled: Box<dyn FnMut() -> bool + Send>) {
-    let mut looked = Instant::now();
-    loop {
-        for item in std::mem::take(&mut *shown.heard.borrow_mut()) {
-            match item {
-                Heard::Pressed(at, key) if at == shown.id => {
-                    if opens_mail(&key)
-                        && let Some(run) = run.take()
-                    {
-                        run();
-                    }
-                    return;
-                }
-                Heard::Closed(at) if at == shown.id => return,
-                _ => {}
-            }
-        }
-        if looked.elapsed() >= LOOK {
-            looked = Instant::now();
-            if settled() {
-                if shown.id != 0 {
-                    let _: Result<(), _> = shown.bus.with_proxy(SERVER, SERVER_PATH, ASKED).method_call(SERVER, "CloseNotification", (shown.id,));
-                }
-                return;
-            }
-        }
-        if shown.bus.process(Duration::from_secs(1)).is_err() {
-            return;
-        }
-    }
-}
-
-/// Elsewhere: as `mail`, nothing to take away (a phone's is taken away through Java).
-#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
-pub fn mail_until(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>, _settled: Box<dyn FnMut() -> bool + Send>) -> Result<(), String> {
-    mail(title, body, through, action)
-}
-
-/// Whether a press on new mail's notification opens it: its Open, or a click on the notice.
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn opens_mail(key: &str) -> bool {
-    key == "open" || key == CLICKED
-}
-
-/// Windows and macOS: the mail's words alone; their notifications carry no button here.
-#[cfg(any(windows, target_os = "macos"))]
-pub fn mail(title: &str, body: &str, _through: bool, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    as_sioul();
-    Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
-}
-
-/// Android: made on the window's side, through Java (sioul-app's `eventalarms`).
-#[cfg(target_os = "android")]
-pub fn mail(_title: &str, _body: &str, _through: bool, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    Err("notifications are made through Java on Android".to_string())
-}
-
-/// A gentle reminder with several buttons, each its label and its action:
-/// the one pressed runs (the night's notice: "Close the day" and "Options…").
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn remind_choices(title: &str, body: &str, choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    if choices.is_empty() {
-        return remind(title, body, None);
-    }
-    let mut notice = Notice::new(title, body, "appointment-soon", CRITICAL);
-    let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = Vec::new();
-    for (index, (label, run)) in choices.into_iter().enumerate() {
-        notice.buttons.push((format!("choice-{index}"), label));
-        runs.push(Some(run));
-    }
-    notify(
-        notice,
-        Some(Box::new(move |key: &str| {
-            if let Some(run) = key.strip_prefix("choice-").and_then(|n| n.parse::<usize>().ok()).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
-                run();
-            }
-        })),
-    )
-}
-
-/// Elsewhere, as a reminder without buttons (`remind`).
-#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
-pub fn remind_choices(title: &str, body: &str, _choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    remind(title, body, None)
-}
-
-/// A gentle reminder with its buttons wherever the system carries them, each
-/// its label and its action (the end of work's notice and the night's:
-/// docs/reviews.md). On Linux and the BSDs as `remind` (one button) or
-/// `remind_choices` (several) show them. On macOS with NSUserNotification's
-/// own: the action button, or "Options" and its list when there are several;
-/// a click on the notice itself is its first button's. Sent and waited for on
-/// a thread of its own, until a press or until the notice leaves the
-/// Notification Center (macOS hands the press to the main thread, which Qt's
-/// loop runs). The doses' reminders stay as `remind` shows them. On Windows,
-/// the words alone (the window shows these through Sioul's icon in the tray
-/// instead, a click opening the first button's); on Android, none (Java's).
-pub fn remind_offering(title: &str, body: &str, choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
-    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-    {
-        let mut choices = choices;
-        if choices.len() == 1 {
-            return remind(title, body, choices.pop());
-        }
-        remind_choices(title, body, choices)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        as_sioul();
-        let (title, body) = (title.to_string(), body.to_string());
-        let labels: Vec<String> = choices.iter().map(|(label, _)| label.clone()).collect();
-        let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = choices.into_iter().map(|(_, run)| Some(run)).collect();
-        // Made, sent and waited for on its own thread: notify-rust sends a
-        // macOS notice from its handle, and its wait blocks until an answer.
-        std::thread::spawn(move || {
-            let mut notification = Notification::new();
-            notification.appname("Sioul").summary(&title).body(&body).timeout(Timeout::Milliseconds(SHOWN));
-            for (index, label) in labels.iter().enumerate() {
-                notification.action(&format!("choice-{index}"), label);
-            }
-            match notification.show() {
-                Ok(handle) => handle.wait_for_action(|action| {
-                    if let Some(run) = pressed_choice(action).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
-                        run();
-                    }
-                }),
-                Err(e) => eprintln!("{e}"),
-            }
-        });
-        Ok(())
-    }
-    #[cfg(windows)]
-    {
-        drop(choices);
-        remind(title, body, None)
-    }
-    #[cfg(target_os = "android")]
-    {
-        drop(choices);
-        let _ = (title, body);
-        Err("notifications are made through Java on Android".to_string())
-    }
-}
-
-/// Which of a notice's buttons a press names (`remind_offering`): "choice-1"
+/// Which of a notice's buttons a press names, as macOS says it: "choice-1"
 /// the second; a click on the notice itself ("default") the first; none when
 /// it closed unanswered ("__closed") or for anything else.
 pub fn pressed_choice(action: &str) -> Option<usize> {
@@ -497,21 +296,6 @@ pub fn remind(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce()
     #[cfg(target_os = "macos")]
     as_sioul();
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
-}
-
-/// Windows and macOS: the code is in the text; their notifications carry no button here.
-#[cfg(any(windows, target_os = "macos"))]
-pub fn code(title: &str, body: &str, _buttons: Vec<Button>) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    as_sioul();
-    Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
-}
-
-/// Android: no notifications yet (Android's own are reached through Java);
-/// the code shows in the window only.
-#[cfg(target_os = "android")]
-pub fn code(_title: &str, _body: &str, _buttons: Vec<Button>) -> Result<(), String> {
-    Err("notifications are not made on Android yet".to_string())
 }
 
 /// Android: no notifications yet; a reminder is not shown (docs/android.md).
@@ -573,10 +357,12 @@ const _: () = assert!(
     TRY.as_millis() < FIRST_TRY.as_millis() && TRY.as_millis() > (2 * MATCH.as_millis() + ASKED.as_millis()) && TRY_AGAIN.as_millis() > (2 * MATCH_AGAIN.as_millis() + 2 * ASKED.as_millis())
 );
 
-/// Urgencies, as the specification numbers them: normal, and critical (what
-/// Sioul sends always gets through: it filters its own notifications already).
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-const NORMAL: u8 = 1;
+/// The doses' urgency, as the specification numbers it: critical, which
+/// passes the desktop's do-not-disturb. Their path stays apart and as it was
+/// (`remind_dose`, `remind`: docs/notifications.md, "Doses"). Every other
+/// notice takes its urgency from its class (`post`, decided by
+/// `sioul_core::notice::decide`): normal, and critical only for one to do
+/// that pierces a do-not-disturb holding now, Sioul's or the desktop's.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 const CRITICAL: u8 = 2;
 
@@ -612,27 +398,6 @@ fn one_button(mut notice: Notice, button: Option<(String, Box<dyn FnOnce() + Sen
         notice,
         Some(Box::new(move |key: &str| {
             if key == "copy" {
-                run();
-            }
-        })),
-    )
-}
-
-/// `notice` with these buttons, each keyed: the one pressed runs (`code`: Copy and Open).
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-fn several_buttons(mut notice: Notice, buttons: Vec<Button>) -> Result<(), String> {
-    if buttons.is_empty() {
-        return notify(notice, None);
-    }
-    let mut runs = Vec::new();
-    for (key, label, run) in buttons {
-        notice.buttons.push((key.clone(), label));
-        runs.push((key, run));
-    }
-    notify(
-        notice,
-        Some(Box::new(move |pressed: &str| {
-            if let Some((_, run)) = runs.into_iter().find(|(key, _)| key == pressed) {
                 run();
             }
         })),
@@ -2104,16 +1869,6 @@ mod bundle {
 mod tests {
     use super::*;
 
-    /// New mail's notification opens on its Open and on a click on the notice
-    /// itself (the "default" action: the unified mailbox's decision 3); no
-    /// other key opens it.
-    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-    #[test]
-    fn a_click_on_new_mail_s_notice_opens_it() {
-        assert!(opens_mail("open") && opens_mail("default"));
-        assert!(!opens_mail("copy") && !opens_mail(""));
-    }
-
     #[test]
     fn bodies_are_words_not_markup() {
         let markup = vec!["actions".to_string(), "body-markup".to_string()];
@@ -2541,38 +2296,6 @@ mod tests {
     /// - sent after the tick stopped waiting: the doubt first at once, one
     ///   notice, recorded shown, "Taken" counts; marked before it went: never
     ///   sent, nor tried again.
-    /// New mail's notification follows its notices (`mail_until`): shown,
-    /// then each message it told settled on some device (`settled` true):
-    /// taken away by its number within a look (`LOOK`), never before.
-    /// Sets this process's session bus address: run alone, by name:
-    /// `cargo test --release -p sioul-sync notify::tests::new_mail_is_taken_away_once_its_notices_are_settled -- --ignored --exact --nocapture`.
-    #[test]
-    #[ignore = "starts a stand-in dbus-daemon and sets the session bus address: run alone, by name"]
-    fn new_mail_is_taken_away_once_its_notices_are_settled() {
-        use crate::bus::StandIns;
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::mpsc::channel;
-        use std::sync::Arc;
-        let mut stand_ins = StandIns::new("stand-in-mail-settled");
-        let (_, address) = stand_ins.start("session");
-        // SAFETY: run alone, by name; nothing else in this process reads it meanwhile.
-        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", &address) };
-        let (told, notices) = channel::<(std::time::Instant, String, u32)>();
-        let stop = Arc::new(AtomicBool::new(false));
-        assert!(notice_server(&address, "shows", told.clone(), Arc::clone(&stop)));
-        let settled = Arc::new(AtomicBool::new(false));
-        let looked = Arc::clone(&settled);
-        mail_until("Two e-mails", "Noa, The lease · Ana, Lunch", false, None, Box::new(move || looked.load(Ordering::SeqCst))).unwrap();
-        let shown = sent_within(&notices, Duration::from_secs(2));
-        assert_eq!(shown, vec![("Two e-mails".to_string(), 0)], "shown once");
-        assert!(sent_within(&notices, LOOK * 2).is_empty(), "nothing settled: left alone");
-        settled.store(true, Ordering::SeqCst);
-        let closed = sent_within(&notices, LOOK * 3);
-        assert!(closed.iter().any(|(title, id)| title == CLOSED && *id != 0), "taken away by its number: {closed:?}");
-        stop.store(true, Ordering::Relaxed);
-        std::thread::sleep(Duration::from_millis(500));
-    }
-
     /// Sets this process's session bus address: run alone, by name:
     /// `cargo test --release -p sioul-sync notify::tests::reminders_whose_fate_was_not_known_say_the_doubt_once_known_shown -- --ignored --exact --nocapture`.
     #[test]
@@ -2988,16 +2711,17 @@ mod tests {
         stop.store(true, Ordering::Relaxed);
     }
 
-    /// Codes, reminders and mail, against a notification server of the test's
-    /// own on a bus of its own (run under dbus-run-session; skipped where a
-    /// server is there already: nothing here may reach the desktop's). Each
-    /// goes as notify-rust's `Notification` sent it (`send`): "Sioul", the
-    /// icon, the title, the body as a server reading markup takes it, the
-    /// buttons, no sound, Sioul's desktop file, ten minutes; its urgency said
-    /// once (a mail at normal urgency, unless someone Always through is in
-    /// it). A button pressed at the server runs its action, here, once.
+    /// The doses' own reminder (`remind`: the question on doses due while
+    /// Sioul was closed), against a notification server of the test's own on
+    /// a bus of its own (run under dbus-run-session; skipped where a server
+    /// is there already: nothing here may reach the desktop's): as it went
+    /// before the notices' transport, unchanged (docs/notifications.md,
+    /// "Doses"): "Sioul", the icon, the title, the body as a server reading
+    /// markup takes it, the button, no sound, Sioul's desktop file, ten
+    /// minutes, critical, said once. Its button pressed at the server runs
+    /// its action, here, once.
     #[test]
-    fn notifications_go_as_before_and_hear_their_button() {
+    fn the_doses_reminder_goes_as_before_and_hears_its_button() {
         use dbus::blocking::LocalConnection;
         use dbus::channel::{MatchingReceiver, Sender as _};
         use dbus::message::MatchRule;
@@ -3093,38 +2817,16 @@ mod tests {
             urgency,
             timeout: 600_000,
         };
-        // A code with its buttons, Copy and Open: the one pressed at the server runs alone.
+        // The question on doses due while Sioul was closed, its body as markup reads it; its button heard once.
         let (pressed, presses) = channel::<&str>();
-        let other = pressed.clone();
-        code("Code from example.org", "482913 <b>now</b> & then", vec![
-            ("copy".into(), "Copy".into(), Box::new(move || {
-                let _ = other.send("copy");
-            })),
-            ("open".into(), "Open the message".into(), Box::new(move || {
-                let _ = pressed.send("open");
-            })),
-        ]).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("dialog-password", "Code from example.org", "482913 &lt;b&gt;now&lt;/b&gt; &amp; then", &["copy", "Copy", "open", "Open the message"], CRITICAL));
-        assert_eq!(presses.recv_timeout(wait), Ok("open"));
-        assert!(presses.recv_timeout(Duration::from_millis(300)).is_err(), "one button run");
-        // Mail: normal urgency, said once; critical when someone Always through is in it.
-        mail("New mail", "From Noa", false, None).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("mail-unread", "New mail", "From Noa", &[], NORMAL));
-        mail("New mail", "From Noa", true, None).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("mail-unread", "New mail", "From Noa", &[], CRITICAL));
-        // A reminder; and one with choices, the one pressed run alone.
+        remind("Did you take it?", "Magnesium <b>08:00</b> & 300 mg", Some(("Answer".into(), Box::new(move || {
+            let _ = pressed.send("answer");
+        })))).unwrap();
+        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "Did you take it?", "Magnesium &lt;b&gt;08:00&lt;/b&gt; &amp; 300 mg", &["copy", "Answer"], CRITICAL));
+        assert_eq!(presses.recv_timeout(wait), Ok("answer"));
+        assert!(presses.recv_timeout(Duration::from_millis(300)).is_err(), "one press run");
         remind("Magnesium", "300 mg", None).unwrap();
         assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "Magnesium", "300 mg", &[], CRITICAL));
-        let (chose, choices) = channel::<&str>();
-        let other = chose.clone();
-        remind_choices("The night", "Close the day?", vec![("Close the day".into(), Box::new(move || {
-                let _ = chose.send("close");
-            })), ("Options…".into(), Box::new(move || {
-                let _ = other.send("options");
-            }))]).unwrap();
-        assert_eq!(sent.recv_timeout(wait).unwrap(), as_before("appointment-soon", "The night", "Close the day?", &["choice-0", "Close the day", "choice-1", "Options…"], CRITICAL));
-        assert_eq!(choices.recv_timeout(wait), Ok("options"));
-        assert!(choices.recv_timeout(Duration::from_millis(300)).is_err(), "one choice run");
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 

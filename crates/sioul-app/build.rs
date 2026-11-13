@@ -52,6 +52,7 @@ fn main() {
         "qml/ItemRow.qml",
         "qml/SpanLine.qml",
         "qml/MailOpener.qml",
+        "qml/NoticeOpener.qml",
         "qml/WeekPlanning.qml",
         "qml/DayHead.qml",
         "qml/Paths.qml",

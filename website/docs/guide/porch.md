@@ -37,7 +37,7 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 
 One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…):
 
-- on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; none while you sleep: the card waits here;
+- on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; a click on it opens its message; it stays until the code is copied, expires or its message is read; none while you sleep: the card waits here;
 - its row on top of the Porch, in **Right now**, with **Copy**; on Android, on the Porch and on Sioul's card on your home screen, since Sioul does not notify codes there yet.
 
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
@@ -48,7 +48,7 @@ Fake "your code" messages are a common phishing trick. A forged one is set aside
 
 ## New mail, told at its times {#new-mail-told-at-its-times}
 
-When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two e-mails", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open** shows the Porch.
+When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two e-mails", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open**, or a click on it, opens the message (several: the mailbox at its top). On a computer it leaves after a few minutes, and comes only while you are at the computer, never during a pause or do-not-disturb: the Porch keeps the mail ([What reaches you](notifications.md#to-know-or-to-do)).
 
 - **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three e-mails wait for you."
 - **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "Caught by your own spam filter", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.

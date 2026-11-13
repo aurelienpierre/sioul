@@ -137,6 +137,7 @@ nav = [
       { "What a day holds" = "dev/capacity.md" },
       { "The two pauses" = "dev/pauses.md" },
       { "What reaches you, and when" = "dev/attention.md" },
+      { "Notifications" = "dev/notifications.md" },
       { "Do not disturb" = "dev/do-not-disturb.md" },
       { "The end of the day" = "dev/reviews.md" },
       { "Areas and hours" = "dev/areas.md" },

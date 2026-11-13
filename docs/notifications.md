@@ -81,11 +81,40 @@ An event's own alarm is to do: its row is locked through a pause and a do-not-di
 
 ## The window
 
-The computer's sources move onto `tell` in the next step; until then they post as before.
+`crates/sioul-app/src/tell.rs`: `tell(notice)` (the matrix's word for one of Sioul's own; told for mail and the minor ones), `tell_as(notice, output, settled)`, `settle(about)`, `moment()`, `start(qt)`. A phone posts none here.
+
+**One route**: a press reaches the window as `reminder_opened("", address, hint)`, and main.qml's `open(address, hint)` sends each scheme to the route that shows it: `sioul:move` → "Where I stopped" (`askNeed("")`); `sioul:need/<block>` → its question (`askNeed(block)`); `sioul:day/…` → the day's sheet (`reviewDay`); `sioul:site/<id>#<key>` → the site, then the kept web notice's own `click()` (the site opens the conversation), the site alone when it is gone; `mid:` and `sioul:mail/` → the message in Mail's reader; `sioul:event/…` → its card at that time; `sioul:dose/<key>` → the doses' route, as before; `sioul:mailbox`, `sioul:porch`, `sioul:settings/…`; any other `sioul:` address → where it lives (`openThing`, by the address's first word). Tested in crates/sioul-app/tests/qml/tst_open.qml.
+
+**The sources on a computer**:
+
+| Notice | Source | Kind, class | About | Ends |
+|---|---|---|---|---|
+| Time to move | health.rs `movement_tick` | move, to know | `sioul:move` | its minutes; only while someone is at the computer (away, the pause is counted again from the return) |
+| A meal's heads-up and its notice at its time; the night's | health.rs `needs_tick`, reviews.rs `show_notice` | needs, to know | `sioul:need/<block>` | its minutes; the one at its time in the heads-up's place |
+| Work hours are over | reviews.rs `tick` | work-over, to know | `sioul:day/work:<date>` | its minutes, or the work day closed |
+| Dates, waits, payments, papers, contracts | remind.rs, `Reminder::notice` | dates, to know | its task, budget's line, paper, contract | its minutes |
+| The time to leave | remind.rs | before, to know | `sioul:event/<UID>#<start>` | its event's start |
+| An event's own alarm | remind.rs | alarms, to do | `sioul:event/<UID>#<start>` | a quarter of an hour after its event began |
+| A code | backend.rs `notify_codes`, `CodeView::notice` | codes, to do | its message | expired, copied, or its message read or dismissed |
+| A site's message; a call in a site | sites.rs `notified`, SitesPage.qml | sites-live to know; site-calls to do | `sioul:site/<id>#<key>` | its minutes; a call when the site withdraws it, three minutes at most |
+| Your sites have news | sites.rs `gather_tick` | sites, to know | `sioul:porch` | its minutes |
+| New mail | mailnote.rs `show` | mail, to know | its one message, else `sioul:mailbox` | its minutes, or each message settled |
+| A language found in your mail | languages.rs | minor, to know | `sioul:settings/words.languages` | its minutes |
+| Calendar files for an older Sioul | outside.rs `to_older` | minor, to know | none (the process leaves) | its minutes |
+
+**Sites**: the Sites page keeps each web notice it passes on (`QWebEngineNotification`, which Qt gives to JavaScript and would collect) by its site and its key (`webNotices`), its tag or one it makes; the same tag takes the last one's place. A click on Sioul's notice opens the site, then calls the kept notice's `click()`. Its `closed` signal (the site withdrew it: read elsewhere, a call over) settles Sioul's notice (`site_notice_closed`). The notice carries the site's own icon from the cache of icons. **"Your sites have news"** names what is new since it last rang: each site's notification is marked told once named (`sites::Notice::told`, a key an older Sioul passes over); the Porch keeps them all until the site is seen.
+
+**The agenda leaves the notifications** (decision 3): the evening reminder of tomorrow's events is no longer made, on any device (`reminders::event_reminders`); `[reminders] events` is no longer read, its setting gone. Today's and tomorrow's events stay on the Porch and the widgets. The event's own alarm rings on the computer.
+
+**What the window says of it**: Settings ▸ What reaches you's cards and its sentence on now say, on a computer, what is to know as shown without a notification at a pause, and under a do-not-disturb (Free time and the night when they turn it on), whatever its cell says (`reaches::known_only`). Always through's mail is still said by its row there.
+
+**The command line**: `sioul remind --watch` and the accounts' codes post through the same transport, decided the same way, without buttons.
 
 ## Tests
 
 - crates/sioul-core/src/notice.rs: each kind in its class; informative notices for their minutes, transient, never to an empty desk, in a pause or under a do-not-disturb; the time to leave until its event; actionable ones until their end, critical only when piercing a do-not-disturb on now, held otherwise; one notice per kind and thing; the lifetime read and bounded, an older configuration without it read; `told` piercing as its kind.
 - crates/sioul-sync/src/notify.rs (`notices_go_as_their_class_says_and_hear_every_press`, against a stand-in server on the test's own bus): replacement, transient, the timeout, the urgency, the close at the lifetime's end, the default action, the activation token, a press from another program not heard, listening after expiry for what is to do, a body click that leaves the other buttons alive, Copy taking it away, critical only when piercing a do-not-disturb on now, `settle`, the settled thing, a site's picture, a teller nobody listens to, and the next run closing the previous one's notices and giving back what is still to do; the file of what shows read in its own format only; the buttons keyed by their act; the doses' `remind` as before.
+- crates/sioul-core/src/sites.rs: the gathered notice names each notification once. crates/sioul-core/src/reminders.rs: no evening reminder. crates/sioul-app/src/remind.rs and backend.rs: a reminder's and a code's notice, its thing, its hint, its end, its buttons.
+- crates/sioul-app/tests/qml/tst_open.qml: `open(address)` sends each scheme to its route.
 
 **Not testable here**: Plasma itself (the popup's look, its history, KWin taking the token), GNOME, macOS and Windows; a site's own `click()` and `closed` (Proton, Discord); the real session's presence.

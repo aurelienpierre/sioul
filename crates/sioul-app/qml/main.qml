@@ -517,13 +517,18 @@ SioulWindow {
         }
     }
 
-    // A reminder's "Open", or Sioul started again while it runs: what it is
-    // about, shown, the window brought forward, back from the tray if hidden there.
+    // A notice's click or "Open" (its thing by its address, `kind` "": `open`),
+    // a link or a setting's (its kind), or Sioul started again while it runs:
+    // what it is about, shown, the window brought forward, back from the tray
+    // if hidden there.
     Connections {
         target: sioul
 
         function onReminderOpened(kind, uri, key) {
-            window.openThing({ kind: kind, uri: uri, key: key })
+            if (kind === "" && uri !== "")
+                window.open(uri, key)
+            else
+                window.openThing({ kind: kind, uri: uri, key: key })
             window.bringBack()
         }
 
@@ -540,12 +545,12 @@ SioulWindow {
             window.lastDoneSaid = sioul.status
         }
 
-        // On Windows, the end of work's or the night's notice, through Sioul's
-        // icon in the tray, whose message has no button: a click on it opens
-        // what it offers (reviews.rs, `show_notice`). Without a tray that
-        // shows messages, the system's own notice, its words alone.
-        function onTrayNotice(title, body, kind, key) {
-            window.noticed = { kind: kind, key: key, until: Date.now() + window.noticeKept }
+        // On Windows, a notice with something to open, through Sioul's icon
+        // in the tray, whose message has no button: a click on it opens its
+        // thing (tell.rs). Without a tray that shows messages, the system's
+        // own notice, its words alone.
+        function onTrayNotice(title, body, address, hint) {
+            window.noticed = { address: address, hint: hint, until: Date.now() + window.noticeKept }
             const tray = trayLoader.item
             if (tray !== null && tray.available && tray.supportsMessages)
                 tray.showMessage(title, body)
@@ -558,7 +563,7 @@ SioulWindow {
     property string lastDone: ""
     property string lastDoneSaid: ""
 
-    // What the tray's last notice offers ({kind, key, until}, `onTrayNotice`):
+    // What the tray's last notice is about ({address, hint, until}, `onTrayNotice`):
     // a click on its message opens it, once, until then.
     property var noticed: null
     // Clicked later than this, a notice opens nothing: its sheet would close another day.
@@ -569,9 +574,20 @@ SioulWindow {
     function trayMessageClicked() {
         const noticed = window.noticed
         window.noticed = null
-        if (noticed !== null && noticed.kind !== "" && Date.now() < noticed.until)
-            window.openThing({ kind: noticed.kind, uri: "", key: noticed.key })
+        if (noticed !== null && noticed.address !== "" && Date.now() < noticed.until)
+            window.open(noticed.address, noticed.hint)
         window.bringBack()
+    }
+
+    // A notice's thing, by its address: the one route (NoticeOpener.qml,
+    // docs/notifications.md), `hint` where this device last saw it.
+    NoticeOpener {
+        id: noticeOpener
+
+        window: window
+    }
+    function open(address, hint) {
+        noticeOpener.open(address, hint)
     }
 
     // The tray's menu (Tray.qml): the work day ("work") or the whole day

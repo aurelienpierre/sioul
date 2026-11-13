@@ -667,6 +667,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("reminders.mail_newsletters", "reminders-mail-newsletters", Kind::Bool, SettingValue::Bool(config.reminders.mail_newsletters));
             // What sites notified, gathered at the gathered times; the Sites row's switch.
             b.push("reminders.gather", "reminders-gather", Kind::Bool, SettingValue::Bool(config.reminders.gather));
+            // How long informative notices last, one length for all (docs/notifications.md).
+            let s = b.push("notices.informative_minutes", "notices-informative", Kind::Int, SettingValue::Int(i64::from(config.notices.minutes())));
+            Builder::range(s, f64::from(crate::notice::SHORTEST), f64::from(crate::notice::LONGEST), 1.0, "min");
             // Free time's "Nothing at all": its card's switch.
             b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
             // What turns do-not-disturb on, on every device (docs/do-not-disturb.md).
@@ -689,7 +692,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             }
             let s = b.push("reminders.before_event", "reminders-before", Kind::Choice, SettingValue::Int(i64::from(lead)));
             s.choices = leads.iter().map(|m| Choice { value: SettingValue::Int(i64::from(*m)), label: if *m == 0 { tr.text("set-reminders-before-none", None) } else { crate::reminders::lead_text(tr, *m) } }).collect();
-            b.push("reminders.events", "reminders-events", Kind::Bool, SettingValue::Bool(config.reminders.events));
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders.waits", "reminders-waits", Kind::Bool, SettingValue::Bool(config.reminders.waits));
@@ -1439,6 +1441,12 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
         }
         // The call screening (Settings ▸ This phone ▸ Call screening): a key at a time, its words checked.
         _ if key.starts_with("screening.") => crate::screening::set(config_path, key, value),
+        // How long informative notices last: written within what is read (one to sixty minutes).
+        "notices.informative_minutes" => {
+            let SettingValue::Int(minutes) = value else { return Err(format!("{key}: minutes expected")) };
+            let minutes = crate::notice::Settings { informative_minutes: Some(*minutes) }.minutes();
+            set_value(config_path, key, &SettingValue::Int(i64::from(minutes)))
+        }
         // "Like the others": the account's own value goes.
         _ if key.starts_with("account.") && key.ends_with(".history_weeks") && *value == SettingValue::Int(-1) => set_value(config_path, key, &SettingValue::Text(String::new())),
         _ if key.starts_with("account.") && key.ends_with(".fetch_minutes") && *value == SettingValue::Int(0) => set_value(config_path, key, &SettingValue::Text(String::new())),
@@ -1590,15 +1598,15 @@ mod tests {
             parameters,
             vec![
                 // colour: "screen_colours", "calmer_colours".
-                "language", "theme", "places_named", "passwords_shown", "screen_colours", "calmer_colours", "device_kind", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing",
-                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.events", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
+                "language", "theme", "places_named", "passwords_shown", "screen_colours", "calmer_colours", "device_kind", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing",
+                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat",
                 "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
         );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
         let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
-        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
+        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
         assert!(attention.iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")));
         // Nothing is set in two places: a setting has one owner. The reading
         // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,

@@ -29,7 +29,9 @@ pub(crate) fn list(s: &Session) -> Result<(), String> {
     Ok(())
 }
 
-/// Stays open: each minute, what is due becomes one quiet notification. One
+/// Stays open: each minute, what is due becomes one notice, as the window
+/// tells it (docs/notifications.md), with neither buttons nor a click of its
+/// own (a click brings Sioul's window forward, where one runs). One
 /// at a time: a second `sioul remind --watch` leaves at once. Started for
 /// the session (`--session`: the entry of reminders with the window closed),
 /// it leaves once that entry is gone, with 0, which nothing starts again.
@@ -66,9 +68,13 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
         // What holds now, as the matrix of what reaches you says, its layers read
         // from their files: today's slots of time for you, do-not-disturb.
         let (all, holds) = reminders::gather(&config, &s.tr, &now);
-        for reminder in reminders::to_tell(all, &dir, now.timestamp().as_second(), &holds) {
-            if let Err(e) = sioul_sync::notify::remind(&reminder.title, &reminder.body, None) {
-                eprintln!("{e}");
+        let stamp = now.timestamp().as_second();
+        for reminder in reminders::to_tell(all, &dir, stamp, &holds) {
+            // As the window tells it (docs/notifications.md), without its buttons: nothing here opens a thing.
+            let notice = reminder.notice("");
+            let told = sioul_core::notice::told(Some(reminders::row_of(reminder.kind)));
+            if let sioul_core::notice::Decision::Post(shape) = sioul_core::notice::decide(&notice, &told, sioul_core::notice::moment_from_files(&config, &now), config.notices.minutes(), stamp) {
+                sioul_sync::notify::teller().post(notice, shape, "", None);
             }
         }
         // A minute, its program and its entry looked at every five seconds.

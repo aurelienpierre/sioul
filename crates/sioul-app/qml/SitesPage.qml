@@ -44,6 +44,13 @@ Item {
     property string problem: ""
     // Each site's view, once made, by its id.
     property var siteViews: ({})
+    // The web notices told, kept by "<site id>#<key>" (their tag, else one
+    // made here): Qt gives them to JavaScript, which would collect them; kept,
+    // a click on Sioul's notice calls their own click() (`clickNotice`), and
+    // their `closed` takes Sioul's away (docs/notifications.md).
+    property var webNotices: ({})
+    // The keys made for web notices without a tag.
+    property int untagged: 0
     // Sioul quitting: every page closed (`closeAll`), for the program to end (cpp/webengine.cpp).
     signal sitesClosed()
     // How long a page may take to close: Chromium itself gives one that does
@@ -417,6 +424,17 @@ Item {
         return page.sites.find(s => page.hostOf(s.url) === host) || page.sites.find(s => tail(page.hostOf(s.url)) === tail(host)) || null
     }
 
+    // A site's notice clicked (main.qml's `open`, after the site is open):
+    // its web notice's own click, which the site answers (a chat opens the
+    // conversation); false when it is gone (the view unloaded, withdrawn).
+    function clickNotice(id, key) {
+        const kept = page.webNotices[id + "#" + key]
+        if (!kept)
+            return false
+        kept.click()
+        return true
+    }
+
     function alive(site) {
         return site.background || page.visited[site.id] === true || site.id === page.openId
     }
@@ -568,12 +586,25 @@ Item {
         target: page.profile
 
         // Accepted always; the site in front of you needs no word, the others
-        // show at once in real time, else wait for the Porch.
+        // show at once in real time, else wait for the Porch. Each kept by its
+        // site and its key (its tag: one per conversation on a chat site), the
+        // last of a key in the place of the one before; withdrawn by the site,
+        // Sioul's notice of it goes too.
         function onPresentNotification(notification) {
             const site = page.siteOf(notification.origin)
             const looking = site !== null && page.visible && site.id === page.openId
-            if (site && !looking)
-                page.sioul.siteNotified(site.id, notification.title, notification.message)
+            if (site && !looking) {
+                const key = notification.tag !== "" ? notification.tag : "n" + (++page.untagged)
+                const kept = site.id + "#" + key
+                page.webNotices[kept] = notification
+                notification.closed.connect(() => {
+                    if (page.webNotices[kept] !== notification)
+                        return
+                    delete page.webNotices[kept]
+                    page.sioul.siteNoticeClosed(site.id, key)
+                })
+                page.sioul.siteNotified(site.id, key, notification.title, notification.message)
+            }
             notification.show()
         }
 
