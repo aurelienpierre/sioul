@@ -6,7 +6,9 @@
 // does with other apps' notifications and what it never does; Android's
 // notification access and its two steps for an app installed from a file;
 // holding on or off; the gathered times; what rang before Sioul held it,
-// each with Android's page to make it silent. What reaches you ▸ Exceptions
+// each with Android's page to make it silent, or made silent by Sioul itself
+// once Android links it to your computer (what it made silent, each app's
+// sound given back, Stop). What reaches you ▸ Exceptions
 // ("lists"): each app and conversation by time, a row of the matrix of what
 // reaches you (AttentionGrid.qml: as usual, at once, gathered or held at each
 // time), then each app, conversation and site seen, with its choice. On a
@@ -26,8 +28,10 @@ ColumnLayout {
     required property var sioul
     // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
-    // appnotes.rs's `setup`: {android, access, restricted, contacts, hold, times, heard, rang, apps, conversations, sites, grid, more}.
-    property var shown: ({ android: false, access: false, restricted: false, contacts: false, hold: null, times: "", heard: "", rang: [], apps: [], conversations: [], sites: [], grid: { columns: [], marks: [], rows: [] }, more: false })
+    // appnotes.rs's `setup`: {android, access, restricted, contacts, hold, times, heard, rang, link, silenced, apps, conversations, sites, grid, more}.
+    property var shown: ({ android: false, access: false, restricted: false, contacts: false, hold: null, times: "", heard: "", rang: [], link: { available: false, linked: false, on: false, giving_back: false, given_back: false }, silenced: [], apps: [], conversations: [], sites: [], grid: { columns: [], marks: [], rows: [] }, more: false })
+    // Sioul makes the gathered apps silent itself: linked to your computer, and asked.
+    readonly property bool silencing: setup.shown.link !== undefined && setup.shown.link.linked && setup.shown.link.on
 
     // "phone" (this phone's setup), "lists" (each app, conversation, site), or "all".
     property string part: "all"
@@ -56,6 +60,15 @@ ColumnLayout {
     spacing: 6
     Component.onCompleted: setup.reload()
     onVisibleChanged: if (visible) setup.reload()
+
+    // Back from Android's list of devices (the link to your computer): read again.
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive && setup.visible)
+                setup.reload()
+        }
+    }
 
     Label {
         visible: setup.part !== "lists"
@@ -239,9 +252,114 @@ ColumnLayout {
             }
             Button {
                 text: setup.sioul.text("appnotes-make-silent")
-                onClicked: setup.act("open-channel", { package: rang.modelData.package, channel: rang.modelData.channel })
+                onClicked: setup.silencing
+                    ? setup.act("silence-channel", { package: rang.modelData.package, channel: rang.modelData.channel })
+                    : setup.act("open-channel", { package: rang.modelData.package, channel: rang.modelData.channel })
             }
         }
+    }
+
+    // ---------------------------------------------------------------- made silent by Sioul
+    // Linked to your computer (Android's companion-device link), Sioul makes the gathered
+    // apps' channels silent itself (appnotes.rs, `channels`); each app's sound given back here.
+    Label {
+        visible: setup.phonePart && setup.shown.link.available && !setup.silencing && !setup.shown.link.giving_back
+        Layout.topMargin: 6
+        text: setup.sioul.text("appnotes-link-help")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.muted
+    }
+    Button {
+        visible: setup.phonePart && setup.shown.link.available && !setup.silencing && !setup.shown.link.giving_back
+        text: setup.sioul.text("appnotes-link")
+        onClicked: setup.act("link", {})
+    }
+    Label {
+        visible: setup.phonePart && setup.silencing
+        Layout.topMargin: 6
+        text: setup.sioul.text("appnotes-linked")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.text
+    }
+    // Stopped: the sounds given back by the listener, whenever it is bound and linked; said until done.
+    Label {
+        visible: setup.phonePart && setup.shown.link.giving_back
+        Layout.topMargin: 6
+        text: setup.sioul.text(setup.shown.access ? "appnotes-giving-back" : "appnotes-giving-back-no-access")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.shown.access ? setup.theme.text : setup.theme.warm
+    }
+    Label {
+        visible: setup.phonePart && setup.shown.link.given_back
+        Layout.topMargin: 6
+        text: setup.sioul.text("appnotes-given-back")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.text
+    }
+    Label {
+        visible: setup.phonePart && !setup.shown.link.linked && setup.shown.silenced.length > 0
+        text: setup.sioul.text("appnotes-link-gone")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.warm
+    }
+    Label {
+        visible: setup.phonePart && setup.shown.silenced.length > 0
+        text: setup.sioul.text("appnotes-silenced")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.text
+    }
+    Repeater {
+        model: setup.phonePart ? setup.shown.silenced : []
+
+        delegate: RowLayout {
+            id: quieted
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 6
+
+            Label {
+                Layout.fillWidth: true
+                text: quieted.modelData.line
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: setup.theme.text
+            }
+            Button {
+                text: setup.sioul.text(setup.shown.link.linked ? "appnotes-give-sound" : "appnotes-open-app")
+                onClicked: setup.shown.link.linked
+                    ? setup.act("set", { key: "app." + quieted.modelData.package + ".sound", value: "keep" })
+                    : setup.act("open-app", { package: quieted.modelData.package })
+            }
+        }
+    }
+    Button {
+        visible: setup.phonePart && setup.silencing
+        flat: true
+        text: setup.sioul.text("appnotes-unlink")
+        onClicked: setup.act("unlink", {})
+    }
+    Label {
+        visible: setup.phonePart && (setup.shown.link.linked || setup.shown.link.giving_back)
+        text: setup.sioul.text("appnotes-uninstall")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: setup.theme.muted
     }
 
     // ---------------------------------------------------------------- by time

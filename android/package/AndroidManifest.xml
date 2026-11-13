@@ -74,6 +74,11 @@
          the device instead (StepService.device, devicekind.rs), and the parts
          for calls and texts are not offered where it has none. -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- The link to your computer (Companion.java; docs/android.md, "Notifications
+         from other apps"): Android's own list of devices, asked once, with
+         which Sioul's listener may make the apps it gathers silent itself. A
+         phone without it keeps the guided list of channels to make silent. -->
+    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
     <!-- The sync apps asked to look for changes now rather than at their next
          round (crates/sioul-app/src/share.rs, android/main.cpp): Murena's
          eDrive, which carries the sharing folder on /e/OS, every half hour. -->
@@ -514,5 +519,22 @@
                 android:name="android.service.notification.disabled_filter_types"
                 android:value="ongoing" />
         </service>
+        <!-- What the listener is asked from outside its thread (AppNotes.Asked):
+             the quiet window's alarm (QuietWindow.java), what Sioul gathered
+             brought back without a sound; the link to your computer just made
+             (Companion.java). In the listener's process, sent by Android's
+             alarms and Sioul alone. -->
+        <receiver
+            android:name="com.aurelienpierre.sioul.AppNotes$Asked"
+            android:process=":listener"
+            android:exported="false" />
+        <!-- Android's question for the link to your computer (Companion.java),
+             asked from Settings ▸ This phone: never shown itself. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.Companion"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="false" />
     </application>
 </manifest>

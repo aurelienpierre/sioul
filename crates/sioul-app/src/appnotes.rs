@@ -14,6 +14,11 @@
 //! Also here, for the window: Settings ▸ Other apps (`setup`, `change`), and
 //! the Porch's line on what waits and what came back (`porch_line`). On a
 //! computer, nothing of it runs: the listener is the phone's.
+//!
+//! And the channels of other apps Sioul makes silent itself, once Android
+//! links it to one of your devices (`sioul_appnotes_channels`: what to make
+//! silent and give back, `appnotes::channels_plan`; each one's importance
+//! noted first, `appnotes::Silenced`).
 
 use crate::backend::{load_config, tr};
 use crate::everywhere::Gated;
@@ -165,17 +170,24 @@ fn gate() -> Option<Gated> {
 }
 
 /// One notification decided (`AppNotes.decide`): {"hold": milliseconds (0:
-/// it comes now), "why"}. What it says is read here and dropped; the ledger
+/// it comes now), "why", "quiet"}: `quiet`, held, its return comes without a
+/// sound, in Sioul's quiet window (`appnotes::Held::quiet`: an automaton's,
+/// held for good; docs/android.md). What it says is read here and dropped; the ledger
 /// keeps its key hashed, its app's and conversation's names, and its time.
 /// Only for the apps you send to your computers, while that part of the
 /// sharing is on, its messages also go, sealed (`phonemsgs::note`; "shared":
 /// a line was written, Java asks for a step soon).
 fn decide(json: &str) -> String {
+    decide_at(json, &sioul_core::zone::now())
+}
+
+/// `decide` at `now` (the tests' fixed clock).
+fn decide_at(json: &str, now: &Zoned) -> String {
     let Ok(posted) = serde_json::from_str::<Posted>(json) else { return "null".into() };
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
     let kind = appnotes::classify(&posted, &choices, &sioul_core::words::Words::of(&config));
-    let now = sioul_core::zone::now();
+    let now = now.clone();
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let senders = Senders::load(&config);
@@ -232,7 +244,7 @@ fn decide(json: &str) -> String {
             _ => false,
         };
     let path = Ledger::default_path();
-    let (decision, released, returning) = sioul_core::filelock::with_lock(&path, || {
+    let (decision, released, returning, quiet) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let returning = ledger.returning(&hash, stamp);
         let mut decision = appnotes::decide(&kind, who, admitted, &choices, &ask);
@@ -247,6 +259,11 @@ fn decide(json: &str) -> String {
             && let Some(held) = ledger.held.get(&hash)
         {
             decision = decision.released(held, &ledger);
+        }
+        // Back after its gathering, by Sioul's quiet window moved off one of its own reminders or by
+        // Android's safety net minutes later: it comes with the gathering it waited for.
+        if returning && let Some(held) = ledger.held.get(&hash) {
+            decision = decision.on_time(held, stamp, appnotes::gathers_now(&ask));
         }
         // Back at its time and held again within minutes: not again and again.
         if returning
@@ -279,18 +296,26 @@ fn decide(json: &str) -> String {
         {
             app.why = MACHINE.to_string();
         }
+        // Its return to come without a sound (an automaton's, held for good): Java holds it a few minutes
+        // past its time and brings it back itself, in a quiet window (`QuietWindow`).
+        let quiet = decision.until.is_some() && ledger.held.get(&hash).is_some_and(appnotes::Held::quiet);
         ledger.forget_old(stamp, &choices);
         if let Err(e) = ledger.save(&path) {
             eprintln!("Notes: {e}");
         }
-        (decision, released, returning)
+        (decision, released, returning, quiet)
     });
+    // A channel Sioul made silent that rings again: given its sound back by hand in Android's settings,
+    // left as set (`appnotes::Kept::by_hand`).
+    given_back_by_hand(&posted, stamp);
     // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`);
     // a reply from a computer handed lately, looked for in it as shown (`replies`).
     let shared = crate::phonemsgs::note(json, &posted, &kind, who, admitted, &decision) | crate::replies::heard(json, &posted);
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
     let why = if machine && decision.why == Why::Gathered { MACHINE } else { decision.why.id() };
-    let mut answer = json!({ "hold": hold, "why": why, "shared": shared });
+    // A channel that rang while held, Sioul making the gathered apps silent itself: Java asks what to change now.
+    let channels = choices.silence && decision.until.is_some() && posted.alerted && !posted.intercepted && !posted.channel.is_empty();
+    let mut answer = json!({ "hold": hold, "why": why, "shared": shared, "quiet": quiet, "channels": channels });
     if let Some(counted) = released {
         let columns = column_words(&columns_now(&live, &now, slot(&now), gate.is_some()), nothing && live.clock.mode(&now).free(), gate.as_ref());
         answer["line"] = json!(log_line("release", &counted, &columns.iter().map(String::as_str).collect::<Vec<_>>(), &now));
@@ -307,12 +332,136 @@ fn decide(json: &str) -> String {
     answer.to_string()
 }
 
+/// A notification on a channel Sioul made silent, ringing again
+/// (importance 3 or more): you gave it its sound back in Android's settings,
+/// so Sioul leaves it as you set it and never makes it silent again. A
+/// minute's grace after Sioul changed it: Android may have ranked one
+/// before the change.
+fn given_back_by_hand(posted: &Posted, stamp: i64) {
+    // A conversation's own channel ranks it: its importance says nothing of its app's channel.
+    let ranked_here = posted.ranked_channel.is_empty() || posted.ranked_channel == posted.channel;
+    if posted.importance < 3 || posted.channel.is_empty() || !ranked_here {
+        return;
+    }
+    let path = appnotes::Silenced::default_path();
+    if !appnotes::Silenced::load(&path).is_ok_and(|s| s.holds(&posted.package, &posted.channel)) {
+        return;
+    }
+    let result = sioul_core::filelock::with_lock(&path, || {
+        let mut silenced = appnotes::Silenced::load(&path)?;
+        let Some(kept) = silenced.app.get_mut(&posted.package).and_then(|channels| channels.get_mut(&posted.channel)) else { return Ok(()) };
+        if kept.by_hand || stamp - kept.at <= 60 {
+            return Ok(());
+        }
+        kept.by_hand = true;
+        silenced.save(&path)
+    });
+    if let Err(e) = result {
+        eprintln!("Notes: {e}");
+    }
+}
+
+/// The listener's questions on the channels Sioul makes silent itself
+/// (`AppNotes.channels`, on its worker; option 2 of
+/// docs/research/android-holding.md): "plan" {linked} → {silence:
+/// [{package, channel}], restore: [{package, channel, importance}], unlink}
+/// (`appnotes::channels_plan`; those given back by hand and no longer
+/// wanted forgotten here); "keep" {package, channel, name, was} → {go}: its
+/// importance written down before Java changes it, so that it can always be
+/// given back, never over a file of a later Sioul or one that does not
+/// read; "forget" {package, channel}: given back, gone, or never changed ("":
+/// every channel of the app). Kept on this phone alone.
+fn channels(verb: &str, json: &str) -> String {
+    let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
+    let path = appnotes::Silenced::default_path();
+    let package = asked["package"].as_str().unwrap_or_default().to_string();
+    let channel = asked["channel"].as_str().unwrap_or_default().to_string();
+    match verb {
+        "plan" => {
+            let linked = asked["linked"].as_bool().unwrap_or(false);
+            // Choices that do not read are no word to give every sound back: nothing changes until they read.
+            let choices = match Choices::read(&Choices::default_path()) {
+                Ok(choices) => choices,
+                Err(e) => {
+                    eprintln!("Notes: {e}");
+                    return json!({ "silence": [], "restore": [], "unlink": false }).to_string();
+                }
+            };
+            let ledger = Ledger::load(&Ledger::default_path());
+            let plan = sioul_core::filelock::with_lock(&path, || {
+                let mut silenced = match appnotes::Silenced::load(&path) {
+                    Ok(silenced) => silenced,
+                    Err(e) => {
+                        eprintln!("Notes: {e}");
+                        return appnotes::ChannelPlan::default();
+                    }
+                };
+                let plan = appnotes::channels_plan(&ledger, &choices, &silenced, linked);
+                if !plan.forget.is_empty() {
+                    for (package, channel) in &plan.forget {
+                        silenced.forget(package, channel);
+                    }
+                    if let Err(e) = silenced.save(&path) {
+                        eprintln!("Notes: {e}");
+                    }
+                }
+                plan
+            });
+            json!({
+                "silence": plan.silence.iter().map(|(package, channel)| json!({ "package": package, "channel": channel })).collect::<Vec<_>>(),
+                "restore": plan.restore.iter().map(|(package, channel, importance)| json!({ "package": package, "channel": channel, "importance": importance })).collect::<Vec<_>>(),
+                "unlink": plan.unlink,
+            })
+            .to_string()
+        }
+        "keep" => {
+            let name = asked["name"].as_str().unwrap_or_default().to_string();
+            let was = asked["was"].as_i64().and_then(|w| i32::try_from(w).ok());
+            let go = !package.is_empty()
+                && !channel.is_empty()
+                && was.is_some()
+                && sioul_core::filelock::with_lock(&path, || {
+                    let mut silenced = appnotes::Silenced::load(&path)?;
+                    silenced.keep(&package, &channel, &name, was.unwrap_or_default(), jiff::Timestamp::now().as_second());
+                    silenced.save(&path)
+                })
+                .map_err(|e| eprintln!("Notes: {e}"))
+                .is_ok();
+            json!({ "go": go }).to_string()
+        }
+        "forget" => {
+            if !package.is_empty() {
+                let result = sioul_core::filelock::with_lock(&path, || {
+                    let mut silenced = appnotes::Silenced::load(&path)?;
+                    silenced.forget(&package, &channel);
+                    silenced.save(&path)
+                });
+                if let Err(e) = result {
+                    eprintln!("Notes: {e}");
+                }
+            }
+            "{}".to_string()
+        }
+        _ => "null".to_string(),
+    }
+}
+
 /// What Android holds for Sioul now, worked out again (`AppNotes.review`):
-/// {"snooze": [{"key", "ms"}], "line"}, those whose time moved by more than a
-/// minute (1 s: it may come now), and the line the listener writes in the
-/// phone's log (`log_line`). Marks of notifications Android no longer holds
-/// (their app took them away, or they came back unseen) are let go.
+/// {"snooze": [{"key", "ms", "quiet"}], "quiet": [{"key", "at"}], "line"}:
+/// those whose time moved by more than a minute (1 s: it may come now),
+/// `quiet` when their return comes without a sound; every held one whose
+/// return comes so, with its time (milliseconds; now: it comes now), from
+/// which Java plans its quiet windows (`QuietWindow`), an automaton's, held
+/// for good, and what a release you asked lets through; and the line the
+/// listener writes in the phone's log (`log_line`). Marks of notifications
+/// Android no longer holds (their app took them away, or they came back
+/// unseen) are let go.
 fn review(json: &str) -> String {
+    review_at(json, &sioul_core::zone::now())
+}
+
+/// `review` at `now` (the tests' fixed clock).
+fn review_at(json: &str, now: &Zoned) -> String {
     let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
     let keys: Vec<String> = asked["snoozed"].as_array().map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect()).unwrap_or_default();
     // Why the review runs, as Java says it ("files", "connected"): a word of its own, never a name.
@@ -322,7 +471,7 @@ fn review(json: &str) -> String {
     let silenced = asked["silenced"].as_bool().unwrap_or(false);
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
-    let now = sioul_core::zone::now();
+    let now = now.clone();
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let live = live(&config, &now);
@@ -341,19 +490,22 @@ fn review(json: &str) -> String {
     let releases = crate::everywhere::release_stamps();
     let talks = released_talks();
     let path = Ledger::default_path();
-    let (again, counted, ahead) = sioul_core::filelock::with_lock(&path, || {
+    let (again, quiet, counted, ahead) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let (_, ahead) = if paused { (false, Vec::new()) } else { ledger.apply_releases(&releases, stamp) };
         let present: std::collections::BTreeSet<String> = keys.iter().map(|k| appnotes::key_hash(k)).collect();
         ledger.held.retain(|hash, held| present.contains(hash) || stamp - held.since < 60);
         let mut again = Vec::new();
+        let mut quiet = Vec::new();
         let mut counted = Vec::new();
         for key in &keys {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
             let sources = sioul_core::attention::source_rows_with(&held.app, &held.conversation, &held.persons);
             let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced };
-            let mut decided = appnotes::again(&held, &choices, &ask);
+            // Its gathering come, a little late (the quiet window moved off one of Sioul's own reminders):
+            // with it, never until the next.
+            let mut decided = appnotes::again(&held, &choices, &ask).on_time(&held, stamp, appnotes::gathers_now(&ask));
             if !paused && crate::replies::answered_lately(&held.conversation) {
                 decided = decided.answered();
             }
@@ -376,18 +528,24 @@ fn review(json: &str) -> String {
             {
                 kept.kind = "never".to_string();
             }
+            // Its return without a sound: an automaton's, held for good, or let through by a release you
+            // asked (you are at a screen then); a person's at their time rings as its channel says.
+            let silent = ledger.held.get(&hash).is_some_and(appnotes::Held::quiet) || decided.why == Why::Released;
+            if silent {
+                quiet.push(json!({ "key": key, "at": until.max(stamp) * 1000 }));
+            }
             if (until - held.until).abs() > 60 {
                 if let Some(kept) = ledger.held.get_mut(&hash) {
                     kept.until = until;
                 }
-                again.push(json!({ "key": key, "ms": (until - stamp).max(1) * 1000 }));
+                again.push(json!({ "key": key, "ms": (until - stamp).max(1) * 1000, "quiet": silent }));
             }
         }
         ledger.forget_old(stamp, &choices);
         if let Err(e) = ledger.save(&path) {
             eprintln!("Notes: {e}");
         }
-        (again, counted, ahead.len())
+        (again, quiet, counted, ahead.len())
     });
     let event = if reason.is_empty() { "review".to_string() } else { format!("review ({reason})") };
     let columns = column_words(&columns_now(&live, &now, slot(&now), gate.is_some()), nothing && live.clock.mode(&now).free(), gate.as_ref());
@@ -396,7 +554,7 @@ fn review(json: &str) -> String {
     if ahead > 0 {
         line.push_str(&format!(" A release asked from {ahead} device(s) more than a day ahead of this phone's clock: passed over."));
     }
-    json!({ "snooze": again, "line": line }).to_string()
+    json!({ "snooze": again, "quiet": quiet, "line": line }).to_string()
 }
 
 // ---------------------------------------------------------------- the log
@@ -586,6 +744,20 @@ pub unsafe extern "C" fn sioul_appnotes_review(json: *const c_char) -> *mut c_ch
     // SAFETY: `json` is null or a C string valid for the call, as this function's contract says.
     let json = unsafe { crate::alarms::key_of(json) };
     let answer = std::panic::catch_unwind(|| review(&json)).unwrap_or_else(|_| "null".to_string());
+    crate::alarms::handed(answer)
+}
+
+/// `channels`, for Java: a verb and its JSON; "null" when it fails, and no
+/// channel changes.
+///
+/// # Safety
+/// `verb` and `json` are null, or zero-terminated texts valid for the call.
+// SAFETY: no other symbol of the program has this name.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sioul_appnotes_channels(verb: *const c_char, json: *const c_char) -> *mut c_char {
+    // SAFETY: `verb` and `json` are null or C strings valid for the call, as this function's contract says.
+    let (verb, json) = unsafe { (crate::alarms::key_of(verb), crate::alarms::key_of(json)) };
+    let answer = std::panic::catch_unwind(|| channels(&verb, &json)).unwrap_or_else(|_| "null".to_string());
     crate::alarms::handed(answer)
 }
 
@@ -809,6 +981,25 @@ pub(crate) fn setup() -> String {
             rang.push(json!({ "package": package, "channel": channel, "line": tr.text("appnotes-rang-line", Some(&args)) }));
         }
     }
+    // Android's link to one of your devices (a companion-device association): whether this phone offers
+    // it, and whether Sioul holds one; then what Sioul made silent with it, by app.
+    let companion = if android { java("companion", "{}") } else { Value::Null };
+    let silenced = appnotes::Silenced::load(&appnotes::Silenced::default_path()).unwrap_or_default();
+    let quieted: Vec<Value> = silenced
+        .app
+        .iter()
+        .filter_map(|(package, channels)| {
+            let names: Vec<String> = channels.iter().filter(|(_, kept)| !kept.by_hand).map(|(id, kept)| if kept.name.is_empty() { id.clone() } else { kept.name.clone() }).collect();
+            if names.is_empty() {
+                return None;
+            }
+            let label = ledger.apps.get(package).map(|a| a.label.clone()).or_else(|| choices.app.get(package).map(|c| c.label.clone()).filter(|l| !l.is_empty())).unwrap_or_else(|| package.clone());
+            let mut args = sioul_core::i18n::args();
+            args.set("app", label);
+            args.set("channels", names.join(", "));
+            Some(json!({ "package": package, "line": tr.text("appnotes-silenced-line", Some(&args)) }))
+        })
+        .collect();
     let kinds: Vec<(Value, String)> = AppKind::ALL.iter().map(|k| (json!(k.id()), text(&format!("appnotes-kind-{}", k.id())))).collect();
     let attention = sioul_core::attention::Attention::of(&config);
     let (grid, more) = by_time(&attention, &ledger, &choices);
@@ -862,6 +1053,16 @@ pub(crate) fn setup() -> String {
         "times": tr.text("appnotes-times", Some(&times)),
         "heard": heard,
         "rang": rang,
+        // Stopped: while some sounds are still to give back (the listener does it once bound and linked), said
+        // so; then that it is done.
+        "link": {
+            "available": companion["available"] == true,
+            "linked": companion["linked"] == true,
+            "on": choices.silence,
+            "giving_back": !choices.silence && !quieted.is_empty(),
+            "given_back": choices.stopped && quieted.is_empty(),
+        },
+        "silenced": quieted,
         "apps": apps,
         "conversations": conversations,
         "sites": sites,
@@ -873,8 +1074,14 @@ pub(crate) fn setup() -> String {
 
 /// A choice of the tab, or one of Android's pages (`AppNotesSetup.act`): the tab again, as JSON.
 /// "set" {key, value}: "hold", `app.<package>.kind`, `app.<package>.area`,
-/// `conversation.<key>`, `site.<host>`; "open-access", "open-info",
-/// "open-app" {package}, "open-channel" {package, channel}; "contacts".
+/// `app.<package>.sound` ("keep": its sound given back, never made silent
+/// by Sioul; "silence": as usual), `conversation.<key>`, `site.<host>`;
+/// "open-access", "open-info", "open-app" {package}, "open-channel"
+/// {package, channel}; "contacts"; "link": Sioul makes the gathered apps
+/// silent itself, Android's question for the link to your computer asked;
+/// "unlink": every sound given back, then the link let go (by the listener,
+/// which watches the choices); "silence-channel" {package, channel}: that
+/// channel made silent by Sioul, whatever its app.
 pub(crate) fn change(verb: &str, json: &str) -> String {
     let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
     match verb {
@@ -897,6 +1104,40 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             java(verb, json);
         }
         "contacts" => crate::steps::ask_contacts(),
+        // The link to your computer: your word kept first, then Android's question (AppNotes.call, "associate").
+        "link" | "unlink" => {
+            let on = verb == "link";
+            let path = Choices::default_path();
+            let result = sioul_core::filelock::with_lock(&path, || {
+                let mut choices = Choices::read(&path)?;
+                choices.silence = on;
+                choices.stopped = !on;
+                choices.save(&path)
+            });
+            match result {
+                Err(e) => eprintln!("Notes: {e}"),
+                Ok(()) if on => {
+                    java("associate", "{}");
+                }
+                Ok(()) => {}
+            }
+        }
+        "silence-channel" => {
+            let package = asked["package"].as_str().unwrap_or_default().to_string();
+            let channel = asked["channel"].as_str().unwrap_or_default().to_string();
+            if !package.is_empty() && !channel.is_empty() {
+                let path = Choices::default_path();
+                let result = sioul_core::filelock::with_lock(&path, || {
+                    let mut choices = Choices::load(&path);
+                    let ledger = Ledger::load(&Ledger::default_path());
+                    name_silent(&mut choices, &ledger, &package, &channel);
+                    choices.save(&path)
+                });
+                if let Err(e) = result {
+                    eprintln!("Notes: {e}");
+                }
+            }
+        }
         // A row of the table by time: its words whole ("attention.app.<package>", nine words), an app's name with them.
         "row" => {
             let key = asked["key"].as_str().unwrap_or_default();
@@ -921,7 +1162,20 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
     setup()
 }
 
-/// One choice written: the app's kind or area, a conversation's way
+/// A channel you asked Sioul to make silent itself ("Make it silent",
+/// linked to your computer): named in its app's choice, its sound no longer
+/// kept.
+fn name_silent(choices: &mut Choices, ledger: &Ledger, package: &str, channel: &str) {
+    let mut chosen = choices.app(package);
+    if !chosen.silent.iter().any(|c| c == channel) {
+        chosen.silent.push(channel.to_string());
+    }
+    chosen.keep_sound = false;
+    chosen.label = ledger.apps.get(package).map(|a| a.label.clone()).unwrap_or(chosen.label);
+    choices.app.insert(package.to_string(), chosen);
+}
+
+/// One choice written: the app's kind, area or sound, a conversation's way
 /// through, a site at once. What says "as usual" is taken out.
 fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
     if key == "hold" {
@@ -932,10 +1186,17 @@ fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
         match field {
             "kind" => chosen.kind = value.as_str().and_then(AppKind::read).unwrap_or_default(),
             "area" => chosen.area = value.as_str().and_then(Area::parse),
+            // Its sound given back: the channels you named forgotten too, so that nothing makes it silent.
+            "sound" => {
+                chosen.keep_sound = value.as_str() == Some("keep");
+                if chosen.keep_sound {
+                    chosen.silent.clear();
+                }
+            }
             _ => return,
         }
         chosen.label = ledger.apps.get(package).map(|a| a.label.clone()).unwrap_or(chosen.label);
-        if chosen.kind == AppKind::Usual && chosen.area.is_none() {
+        if chosen.is_usual() {
             choices.app.remove(package);
         } else {
             choices.app.insert(package.to_string(), chosen);
@@ -1028,6 +1289,77 @@ mod tests {
         crate::everywhere::files_cleared();
     }
 
+    /// The quiet window (option 1 of docs/research/android-holding.md): what
+    /// Java brings back itself, without a sound, and when, on a fixed clock
+    /// (Tuesday 6 October 2026, the gathered times 09:00, 13:00 and 18:00). At
+    /// 12:58 a shop's notification is held two minutes, quiet; a person's is
+    /// never quiet. A review then lists the shop's at 13:00 exactly. At 13:02,
+    /// its gathering past (its window moved off one of Sioul's reminders), it
+    /// comes now, quiet, never at 18:00; at 13:20, past `LATE`, at 18:00. At
+    /// 13:30, "Let what your phone holds through" pressed on a computer at
+    /// 13:29 lets a person's message through quiet, at once.
+    #[test]
+    fn what_comes_back_quiet_and_when() {
+        sioul_core::config::stand_ins_only();
+        const PEOPLE: &str = "0|com.google.android.apps.messaging|2|sms|10001";
+        const SHOP_KEY: &str = "0|com.shop.example|1|null|10500";
+        const SHOP: &str = r#"{"key":"0|com.shop.example|1|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"offers","title":"-30 % sur les chaussures","text":"Jusqu'à dimanche seulement","alerted":true}"#;
+        const NOA: &str = r#"{"key":"0|org.example.chat|7|c0ffee12|10100","package":"org.example.chat","app":"Chat","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Noa Martin","shortcut":"c0ffee12","messages":[{"sender":{"name":"Noa Martin","uri":"tel:%2B33199001234"},"text":"Tu passes ce soir ?"}]}"#;
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let at = |time: &str| -> Zoned { format!("2026-10-06T{time}+02:00[Europe/Paris]").parse().unwrap() };
+        let ms = |time: &str| at(time).timestamp().as_millisecond();
+        let second = |time: &str| at(time).timestamp().as_second();
+        // Decided at 12:58: the shop's, two minutes, quiet; a person's never quiet.
+        let shop: serde_json::Value = serde_json::from_str(&decide_at(SHOP, &at("12:58:00"))).unwrap();
+        assert_eq!((shop["hold"].as_i64(), shop["quiet"].as_bool(), shop["why"].as_str()), (Some(120_000), Some(true), Some("gathered")), "{shop}");
+        let noa: serde_json::Value = serde_json::from_str(&decide_at(NOA, &at("12:58:00"))).unwrap();
+        assert_eq!(noa["quiet"], false, "{noa}");
+        let _ = std::fs::remove_file(Ledger::default_path());
+        let held = |app: &str, kind: &str, via: &str, who: &str, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), since: second("12:00:00"), until, ..Default::default() };
+        let shop_until = |until: i64| {
+            let mut ledger = Ledger::load(&Ledger::default_path());
+            ledger.held.get_mut(&appnotes::key_hash(SHOP_KEY)).unwrap().until = until;
+            ledger.save(&Ledger::default_path()).unwrap();
+        };
+        let mut ledger = Ledger::default();
+        ledger.held.insert(appnotes::key_hash(PEOPLE), held("com.google.android.apps.messaging", "people", "messages", "neutral", second("18:00:00")));
+        ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "gathered", "", "", second("13:00:00")));
+        ledger.save(&Ledger::default_path()).unwrap();
+        let all = json!({ "snoozed": [PEOPLE, SHOP_KEY], "reason": "files" }).to_string();
+        let quiet = |answer: &serde_json::Value| -> Vec<(String, i64)> { answer["quiet"].as_array().unwrap().iter().map(|q| (q["key"].as_str().unwrap().to_string(), q["at"].as_i64().unwrap())).collect() };
+        let moved = |answer: &serde_json::Value, key: &str| answer["snooze"].as_array().unwrap().iter().find(|s| s["key"] == key).map(|s| (s["ms"].as_i64().unwrap(), s["quiet"].as_bool().unwrap()));
+        // 12:58: the shop's at 13:00 exactly, quiet, not moved; the person's never in the list.
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("12:58:00"))).unwrap();
+        assert_eq!(quiet(&reviewed), [(SHOP_KEY.to_string(), ms("13:00:00"))], "{reviewed}");
+        assert_eq!(moved(&reviewed, SHOP_KEY), None, "{reviewed}");
+        assert!(moved(&reviewed, PEOPLE).is_none_or(|(_, quiet)| !quiet), "{reviewed}");
+        // 13:02, two minutes after its gathering: now, quiet, never at 18:00.
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("13:02:00"))).unwrap();
+        assert!(quiet(&reviewed).contains(&(SHOP_KEY.to_string(), ms("13:02:00"))), "{reviewed}");
+        assert_eq!(moved(&reviewed, SHOP_KEY), Some((1000, true)), "{reviewed}");
+        // 13:20, past LATE: at the next gathering, 18:00, quiet.
+        shop_until(second("13:00:00"));
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("13:20:00"))).unwrap();
+        assert!(quiet(&reviewed).contains(&(SHOP_KEY.to_string(), ms("18:00:00"))), "{reviewed}");
+        assert_eq!(moved(&reviewed, SHOP_KEY), Some((ms("18:00:00") - ms("13:20:00"), true)), "{reviewed}");
+        // 13:30: the person's conversation gathered with the automatons (so held until 18:00), and
+        // "Let what your phone holds through" pressed on a computer at 13:29: it comes now, quiet.
+        let mut choices = Choices::default();
+        choices.conversation.insert("talk-1".into(), appnotes::TalkChoice { through: Through::Gathered, ..Default::default() });
+        choices.save(&Choices::default_path()).unwrap();
+        let mut ledger = Ledger::load(&Ledger::default_path());
+        ledger.held.get_mut(&appnotes::key_hash(PEOPLE)).unwrap().conversation = "talk-1".into();
+        ledger.save(&Ledger::default_path()).unwrap();
+        let laptop = sioul_core::everywhere::Device { kind: "computer".into(), release: ms("13:29:00"), at: ms("13:29:00"), ..Default::default() };
+        sioul_core::everywhere::Switch { device: [("laptop-1".to_string(), laptop)].into_iter().collect(), ..Default::default() }.save(&sioul_core::everywhere::Switch::default_path()).unwrap();
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&all, &at("13:30:00"))).unwrap();
+        assert!(quiet(&reviewed).contains(&(PEOPLE.to_string(), ms("13:30:00"))), "{reviewed}");
+        assert_eq!(moved(&reviewed, PEOPLE), Some((1000, true)), "{reviewed}");
+        assert!(reviewed["line"].as_str().unwrap().contains("released as you asked"), "{reviewed}");
+        crate::everywhere::files_cleared();
+    }
+
     #[test]
     fn choices_set_from_the_tab() {
         let mut choices = Choices::default();
@@ -1036,7 +1368,7 @@ mod tests {
         ledger.conversations.insert("c1".into(), appnotes::SeenTalk { app: "com.whatsapp".into(), label: "WhatsApp".into(), title: "École".into(), group: true, seen: 1 });
         set(&mut choices, &ledger, "app.com.discord.kind", &json!("automaton"));
         set(&mut choices, &ledger, "app.com.discord.area", &json!("leisure"));
-        assert_eq!(choices.app("com.discord"), appnotes::AppChoice { kind: AppKind::Automaton, area: Some(Area::LEISURE), label: "Discord".into() });
+        assert_eq!(choices.app("com.discord"), appnotes::AppChoice { kind: AppKind::Automaton, area: Some(Area::LEISURE), label: "Discord".into(), ..Default::default() });
         set(&mut choices, &ledger, "app.com.discord.kind", &json!("usual"));
         set(&mut choices, &ledger, "app.com.discord.area", &json!(""));
         assert!(choices.app.is_empty(), "as usual: taken out");
@@ -1050,6 +1382,74 @@ mod tests {
         assert!(choices.site.is_empty());
         set(&mut choices, &ledger, "hold", &json!(false));
         assert!(!choices.hold);
+        // A channel named to be made silent by Sioul; then its app's sound given back: named no more, kept.
+        name_silent(&mut choices, &ledger, "com.discord", "dm");
+        name_silent(&mut choices, &ledger, "com.discord", "dm");
+        assert_eq!(choices.app("com.discord").silent, ["dm"]);
+        assert_eq!(choices.app("com.discord").label, "Discord");
+        set(&mut choices, &ledger, "app.com.discord.sound", &json!("keep"));
+        assert!(choices.app("com.discord").keep_sound && choices.app("com.discord").silent.is_empty());
+        set(&mut choices, &ledger, "app.com.discord.sound", &json!("silence"));
+        assert!(choices.app.is_empty(), "as usual again: taken out");
+    }
+
+    /// The listener's questions on the channels Sioul makes silent itself
+    /// (option 2): a shop seen gathered, its channel rung while held; linked
+    /// and asked, the plan names it; its importance noted before Java changes
+    /// it; noted, asked no more; the shop let through at once, given back as
+    /// it was; forgotten once given back. A file that does not read: no
+    /// plan, nothing noted over it. A channel rung again since, given its
+    /// sound back by hand: left as set.
+    #[test]
+    fn the_listener_s_channel_questions() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let silenced_path = appnotes::Silenced::default_path();
+        let _ = std::fs::remove_file(&silenced_path);
+        let stamp = jiff::Timestamp::now().as_second();
+        let mut ledger = Ledger::default();
+        let rang = [("offers".to_string(), appnotes::Rang { name: "Offers".into(), at: stamp, gathered: true })].into_iter().collect();
+        ledger.apps.insert("com.shop.example".into(), appnotes::SeenApp { label: "Shop".into(), seen: stamp, gathered: stamp, rang, ..Default::default() });
+        ledger.save(&Ledger::default_path()).unwrap();
+        let on = Choices { silence: true, ..Choices::default() };
+        on.save(&Choices::default_path()).unwrap();
+        let ask = |verb: &str, asked: serde_json::Value| -> serde_json::Value { serde_json::from_str(&channels(verb, &asked.to_string())).unwrap() };
+        assert_eq!(ask("plan", json!({ "linked": false })), json!({ "silence": [], "restore": [], "unlink": false }), "no link, nothing");
+        assert_eq!(ask("plan", json!({ "linked": true }))["silence"], json!([{ "package": "com.shop.example", "channel": "offers" }]));
+        assert_eq!(ask("keep", json!({ "package": "com.shop.example", "channel": "offers", "name": "Offers", "was": 4 })), json!({ "go": true }));
+        assert_eq!(ask("keep", json!({ "package": "com.shop.example", "channel": "offers" })), json!({ "go": false }), "no importance, nothing noted");
+        assert!(appnotes::Silenced::load(&silenced_path).unwrap().holds("com.shop.example", "offers"));
+        assert_eq!(ask("plan", json!({ "linked": true }))["silence"], json!([]), "noted: asked no more");
+        // The shop let through at once: given back as it was.
+        let mut at_once = on.clone();
+        at_once.app.insert("com.shop.example".into(), appnotes::AppChoice { kind: AppKind::AtOnce, ..Default::default() });
+        at_once.save(&Choices::default_path()).unwrap();
+        assert_eq!(ask("plan", json!({ "linked": true }))["restore"], json!([{ "package": "com.shop.example", "channel": "offers", "importance": 4 }]));
+        ask("forget", json!({ "package": "com.shop.example", "channel": "offers" }));
+        assert!(appnotes::Silenced::load(&silenced_path).unwrap().app.is_empty());
+        // Turned off, nothing left: the link let go.
+        Choices::default().save(&Choices::default_path()).unwrap();
+        assert_eq!(ask("plan", json!({ "linked": true }))["unlink"], true);
+        // Rung again on a channel Sioul made silent a while ago: given back by hand, left; within the minute, not yet.
+        let mut silenced = appnotes::Silenced::default();
+        silenced.keep("com.shop.example", "offers", "Offers", 4, stamp - 3600);
+        silenced.keep("com.shop.example", "news", "News", 3, stamp);
+        silenced.save(&silenced_path).unwrap();
+        let rung = |channel: &str| Posted { package: "com.shop.example".into(), channel: channel.into(), importance: 4, ..Default::default() };
+        given_back_by_hand(&rung("offers"), stamp);
+        given_back_by_hand(&rung("news"), stamp);
+        given_back_by_hand(&Posted { importance: 2, ..rung("news") }, stamp + 120);
+        let read = appnotes::Silenced::load(&silenced_path).unwrap();
+        assert!(!read.holds("com.shop.example", "offers") && read.holds("com.shop.example", "news"));
+        // A file that does not read: no plan, nothing written over it.
+        std::fs::write(&silenced_path, "format = [broken").unwrap();
+        on.save(&Choices::default_path()).unwrap();
+        assert_eq!(ask("plan", json!({ "linked": true })), json!({ "silence": [], "restore": [], "unlink": false }));
+        assert_eq!(ask("keep", json!({ "package": "com.shop.example", "channel": "offers", "name": "Offers", "was": 4 })), json!({ "go": false }));
+        assert_eq!(std::fs::read_to_string(&silenced_path).unwrap(), "format = [broken");
+        let _ = std::fs::remove_file(&silenced_path);
+        crate::everywhere::files_cleared();
     }
 
     /// The table of other apps by time: each app seen, by name, and an app's row
