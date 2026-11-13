@@ -79,11 +79,12 @@ endif()
 corrosion_set_env_vars(sioul_app
     "CXX_QT_EXPORT_DIR=${CXX_QT_EXPORT_DIR}"
     "CXX_QT_EXPORT_CRATE_sioul-app=1"
-    # The Qt modules CXX-Qt's crates ask for: cxx-qt-lib Gui and Qml, Sioul Quick.
-    "CXX_QT_QT_MODULES=Qt6::Core,Qt6::Gui,Qt6::Qml,Qt6::Quick"
+    # The Qt modules CXX-Qt's crates ask for: cxx-qt-lib Gui and Qml, Sioul Quick
+    # and Multimedia (the sounds made as they play).
+    "CXX_QT_QT_MODULES=Qt6::Core,Qt6::Gui,Qt6::Qml,Qt6::Quick,Qt6::Multimedia"
     $<$<BOOL:${SIOUL_RCC_OPTIONS}>:CXX_QT_AUTORCC_OPTIONS=${SIOUL_RCC_OPTIONS}>
     "QMAKE=${SIOUL_QMAKE}")
-target_link_libraries(sioul_app-static INTERFACE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+target_link_libraries(sioul_app-static INTERFACE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Multimedia)
 
 # The registration of the QML module, its resources and its types, which the
 # build script leaves as object files beside the library: linked as they are,
