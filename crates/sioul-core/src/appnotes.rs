@@ -37,7 +37,17 @@
 //! (`Choices`, `app-notes.toml` in the configuration), and what Sioul held,
 //! by a hash of Android's key, with the apps' and conversations' names it
 //! saw in the last weeks, so that the person can choose for them (`Ledger`,
-//! `app-notes-seen.toml` in the state). Never what a notification says.
+//! `app-notes-seen.toml` in the state); the channels of other apps Sioul made
+//! silent itself, with what each was, to give it back (`Silenced`,
+//! `app-notes-channels.toml` in the state). Never what a notification says.
+//!
+//! The sound (docs/android.md; docs/research/android-holding.md): Android
+//! rings a notification before Sioul sees it, and, from Android 13 QPR1,
+//! again when a held one comes back. What Sioul gathers comes back in a
+//! quiet window (`Held::quiet`, AppNotes.java); linked to one of your
+//! devices (a companion-device association), Sioul makes the gathered apps'
+//! channels silent itself (`channels_plan`), and gives each back when the
+//! app is no longer gathered or you ask.
 
 use crate::areas::{Area, in_view};
 use crate::attention::{self, Attention, Event, Level, Source};
@@ -70,6 +80,13 @@ pub const AGAIN_SHORT: i64 = 5 * 60;
 /// again: the times worked out disagree with the time it is. A long hold (a
 /// pause, the night) is no such loop and never counts.
 pub const AGAIN_MAX: u32 = 3;
+/// A gathered notification brought back this long after its gathering
+/// (seconds) still comes with it (`Decision::on_time`): Sioul's own alarm
+/// opens the quiet window a little after a gathering when one of Sioul's own
+/// reminders rings then, and Android's own timer, a few minutes after the
+/// gathering, is the safety net when Sioul's alarm never comes
+/// (AppNotes.java, `QuietWindow.SAFETY_MS`).
+pub const LATE: i64 = 15 * 60;
 /// Apps and sites seen are forgotten this long after (seconds), unless chosen for.
 const SEEN_KEPT: i64 = 30 * 86_400;
 /// Conversations seen, the same.
@@ -587,6 +604,21 @@ pub struct AppChoice {
     /// Its name, as last seen.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
+    /// Its sound given back ("Give its sound back"): Sioul never makes its
+    /// channels silent itself, gathered or not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keep_sound: bool,
+    /// Its channels, by id, you asked Sioul to make silent itself ("Make it
+    /// silent", linked to your computer), whatever the app is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub silent: Vec<String>,
+}
+
+impl AppChoice {
+    /// Whether it says nothing but the usual: then not kept.
+    pub fn is_usual(&self) -> bool {
+        self.kind == AppKind::Usual && self.area.is_none() && !self.keep_sound && self.silent.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -622,6 +654,11 @@ pub struct Choices {
     /// By the site's host.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub site: BTreeMap<String, SiteChoice>,
+    /// Sioul makes the gathered apps' channels silent itself, once Android
+    /// links it to one of your devices ("Let Sioul make them silent");
+    /// off, it gives back every sound it took, then lets the link go.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub silence: bool,
 }
 
 fn yes() -> bool {
@@ -630,7 +667,7 @@ fn yes() -> bool {
 
 impl Default for Choices {
     fn default() -> Choices {
-        Choices { hold: true, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new() }
+        Choices { hold: true, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false }
     }
 }
 
@@ -875,6 +912,19 @@ impl Decision {
     pub fn released(self, held: &Held, ledger: &Ledger) -> Decision {
         if self.until.is_some() && self.why != Why::Never && ledger.released_before(held) { Decision::through(Why::Released) } else { self }
     }
+
+    /// Of a gathered notification whose gathering has come, `now` less than
+    /// `LATE` after it (Unix seconds), while the matrix still gathers it now
+    /// (`gathers`, `gathers_now`: no pause, sleep or do-not-disturb begun
+    /// since, which hold it as before): what would wait for the next
+    /// gathering comes now, with the one it waited for. A gathering counts a
+    /// minute (`GRACE`), but Sioul's quiet window may open later, moved off
+    /// Sioul's own reminders, and Android's safety net brings it back
+    /// minutes after: either way it is no reason to wait half a day more.
+    pub fn on_time(self, held: &Held, now: i64, gathers: bool) -> Decision {
+        let gathering = matches!(self.why, Why::Gathered | Why::Times) && held.kind == "gathered";
+        if self.until.is_some() && gathering && gathers && held.until <= now && now - held.until <= LATE { Decision::through(Why::Gathered) } else { self }
+    }
 }
 
 /// The first moment from now on, within the coming days, when `fits`
@@ -926,6 +976,15 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
         }
     }
     None
+}
+
+/// Whether the matrix gathers an automaton's notification at this very
+/// moment (◎, its app's own row read over the automatons'), within its app's
+/// area: nothing else holds it now, but that no gathering is now.
+pub fn gathers_now(ask: &Ask) -> bool {
+    let mode = ask.clock.mode(ask.now);
+    let event = Event::own(attention::Kind::AppAutomatons).for_area(ask.area).from_sources(ask.sources.to_vec());
+    ask.attention.decide(&event, &ask.moment(ask.now, &mode)).level == Level::Gathered && ask.area_fits(&mode)
 }
 
 /// The gathered times from now on, within the coming days, in order; one
@@ -1252,6 +1311,15 @@ impl Held {
     pub fn first_held(&self) -> i64 {
         if self.first > 0 { self.first } else { self.since }
     }
+
+    /// Whether its return must come without a sound (docs/android.md,
+    /// "The quiet window"): an automaton's, gathered, and one held for good
+    /// (the blocked, a conversation set to never), which comes back weekly
+    /// only to be held again. A person's comes back ringing as its channel
+    /// says, since they may reach you then.
+    pub fn quiet(&self) -> bool {
+        matches!(self.kind.as_str(), "gathered" | "never")
+    }
 }
 
 fn is_zero(n: &u32) -> bool {
@@ -1271,6 +1339,13 @@ pub struct SeenApp {
     /// channel id: their names and when. Made silent, they are taken off.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rang: BTreeMap<String, Rang>,
+    /// When one of its notifications was last an automaton's (Unix seconds).
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub gathered: i64,
+    /// When it last brought a message between people (Unix seconds), or it
+    /// is an SMS or mail app: then Sioul never makes it silent by itself.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub talked: i64,
 }
 
 fn is_zero_i64(n: &i64) -> bool {
@@ -1281,6 +1356,9 @@ fn is_zero_i64(n: &i64) -> bool {
 pub struct Rang {
     pub name: String,
     pub at: i64,
+    /// What rang was an automaton's, gathered: Sioul may make this channel silent itself.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub gathered: bool,
 }
 
 /// A conversation seen: to choose for it.
@@ -1419,10 +1497,19 @@ impl Ledger {
         app.seen = now;
         app.why = decision.why.id().to_string();
         app.until = decision.until.unwrap_or(0);
+        let automaton = matches!(kind, Kind::Automaton { .. });
+        if automaton {
+            app.gathered = now;
+        }
+        // An app of messages between people, by what it brought or what it is: never made silent by Sioul.
+        let package = p.package.as_str();
+        if matches!(kind, Kind::People(_)) || p.sms_app || SMS_APPS.contains(&package) || MAIL_APPS.contains(&package) {
+            app.talked = now;
+        }
         // A channel that sounded while held: the guide to make it silent. Made silent: no more.
         if !p.channel.is_empty() {
             if decision.until.is_some() && p.alerted && !p.intercepted {
-                app.rang.insert(p.channel.clone(), Rang { name: one_line(&p.channel_name), at: now });
+                app.rang.insert(p.channel.clone(), Rang { name: one_line(&p.channel_name), at: now, gathered: automaton });
             } else if (0..3).contains(&p.importance) {
                 app.rang.remove(&p.channel);
             }
@@ -1534,6 +1621,190 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
         "people" | "never" => person(&talk, who.unwrap_or(Who::Stranger), held.group, held.admitted, ask),
         _ => gathered(ask),
     }
+}
+
+// ---------------------------------------------------------------- channels made silent
+
+/// The format of `Silenced`'s file: a file of a later one is read, never written.
+pub const SILENCED_FORMAT: u32 = 1;
+
+/// A channel Sioul made silent, and what it was.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Kept {
+    /// Its name, as Android gave it, to show it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// Its importance before, as Android says it (3: a sound; 4: a sound and a banner).
+    pub was: i32,
+    /// When Sioul made it silent (Unix seconds).
+    pub at: i64,
+    /// You gave it its sound back in Android's settings since: left as you
+    /// set it, never made silent again by Sioul, nothing to give back.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub by_hand: bool,
+}
+
+/// The channels of other apps Sioul made silent itself (option 2 of
+/// docs/research/android-holding.md), each with what it was, by the app's
+/// package then the channel's id (`$XDG_STATE_HOME/sioul/app-notes-channels.toml`):
+/// written before a channel changes, so that it can always be given back;
+/// this phone's alone, never shared. Android gives no app a word at its
+/// uninstall: what Sioul made silent stays so then (the guide says how to
+/// undo it by hand).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Silenced {
+    /// Its format (`SILENCED_FORMAT`); 0 for no file yet.
+    #[serde(default)]
+    pub format: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub app: BTreeMap<String, BTreeMap<String, Kept>>,
+}
+
+impl Silenced {
+    pub fn default_path() -> PathBuf {
+        crate::config::state_dir().join("app-notes-channels.toml")
+    }
+
+    /// As kept; none when missing. One that does not read is an error, never
+    /// none: it holds what to give back, and nothing is written over it.
+    pub fn load(path: &Path) -> Result<Silenced, String> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Silenced::default()),
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        }
+    }
+
+    /// Written whole, its format said first; one of a later Sioul is left as it is.
+    pub fn save(&self, path: &Path) -> Result<(), String> {
+        if self.later() {
+            return Err(format!("{}: written by a later Sioul (format {}): left as it is", path.display(), self.format));
+        }
+        let out = Silenced { format: SILENCED_FORMAT, app: self.app.clone() };
+        let text = format!("# The channels of other apps Sioul made silent, and what each was (docs/android.md).\n{}", toml::to_string(&out).map_err(|e| e.to_string())?);
+        write_whole(path, &text)
+    }
+
+    /// Written by a later Sioul: read only.
+    pub fn later(&self) -> bool {
+        self.format > SILENCED_FORMAT
+    }
+
+    /// Whether Sioul holds this channel silent now (not given back by hand).
+    pub fn holds(&self, package: &str, channel: &str) -> bool {
+        self.app.get(package).and_then(|channels| channels.get(channel)).is_some_and(|kept| !kept.by_hand)
+    }
+
+    /// A channel noted before Sioul makes it silent.
+    pub fn keep(&mut self, package: &str, channel: &str, name: &str, was: i32, now: i64) {
+        self.app.entry(package.to_string()).or_default().insert(channel.to_string(), Kept { name: one_line(name), was, at: now, by_hand: false });
+    }
+
+    /// A channel done with (given back, gone, or never changed); "" for every channel of the app.
+    pub fn forget(&mut self, package: &str, channel: &str) {
+        if channel.is_empty() {
+            self.app.remove(package);
+        } else if let Some(channels) = self.app.get_mut(package) {
+            channels.remove(channel);
+            if channels.is_empty() {
+                self.app.remove(package);
+            }
+        }
+    }
+}
+
+/// Whether Sioul gathers an app's notifications as an automaton's, for its
+/// channels' sound: you set it as an automaton; or, as usual, one of its
+/// notifications was an automaton's and none ever a message between people,
+/// nor is it an SMS or mail app. Never one you let through at once, set as
+/// messages between people, or whose sound you gave back.
+pub fn gathered_app(package: &str, ledger: &Ledger, choices: &Choices) -> bool {
+    let chosen = choices.app(package);
+    if chosen.keep_sound {
+        return false;
+    }
+    match chosen.kind {
+        AppKind::Automaton => true,
+        AppKind::People | AppKind::AtOnce => false,
+        AppKind::Usual => ledger.apps.get(package).is_some_and(|seen| seen.gathered > 0 && seen.talked == 0),
+    }
+}
+
+/// What Sioul makes silent and gives back now (`channels_plan`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChannelPlan {
+    /// (package, channel) to make silent, their importance noted first.
+    pub silence: Vec<(String, String)>,
+    /// (package, channel, importance) to give back.
+    pub restore: Vec<(String, String, i32)>,
+    /// (package, channel) given back by hand, to forget: nothing to give back.
+    pub forget: Vec<(String, String)>,
+    /// Off, and nothing left to give back: the link to your device let go.
+    pub unlink: bool,
+}
+
+/// What to make silent and what to give back, as things stand (option 2 of
+/// docs/research/android-holding.md). `linked`: Android links Sioul to one
+/// of your devices (a companion-device association), without which it may
+/// change no other app's channel. With it, and your word ("Let Sioul make
+/// them silent"), Sioul makes silent the channels that rang while it held an
+/// automaton's notification, of the apps it gathers (`gathered_app`), and
+/// those you named; chats, texts and mail keep their sound, so that the
+/// people let through still ring. It gives each back once the app is no
+/// longer gathered (set at once or as messages between people, a person's
+/// message came from it, holding turned off), when you give it its sound
+/// back, or when you turn it off; then the link goes. A channel you gave its
+/// sound back in Android's settings is left as you set it. Never anything
+/// with a file of a later Sioul.
+pub fn channels_plan(ledger: &Ledger, choices: &Choices, silenced: &Silenced, linked: bool) -> ChannelPlan {
+    let mut plan = ChannelPlan::default();
+    if silenced.later() {
+        return plan;
+    }
+    let on = linked && choices.silence;
+    let wanted = |package: &str, channel: &str| {
+        let chosen = choices.app(package);
+        on && !chosen.keep_sound && (chosen.silent.iter().any(|c| c == channel) || (choices.hold && gathered_app(package, ledger, choices)))
+    };
+    for (package, channels) in &silenced.app {
+        for (channel, kept) in channels {
+            if kept.by_hand {
+                if !wanted(package, channel) {
+                    plan.forget.push((package.clone(), channel.clone()));
+                }
+            } else if linked && !wanted(package, channel) {
+                plan.restore.push((package.clone(), channel.clone(), kept.was));
+            }
+        }
+    }
+    if on {
+        let known = |package: &str, channel: &str| silenced.app.get(package).is_some_and(|channels| channels.contains_key(channel));
+        let mut packages: Vec<&String> = ledger.apps.keys().chain(choices.app.keys()).collect();
+        packages.sort();
+        packages.dedup();
+        for package in packages {
+            let chosen = choices.app(package);
+            // Sioul's own channels are never another app's to silence: its doses' least of all.
+            if chosen.keep_sound || package == OWN {
+                continue;
+            }
+            let mut channels: Vec<String> = chosen.silent.clone();
+            if choices.hold && gathered_app(package, ledger, choices)
+                && let Some(seen) = ledger.apps.get(package.as_str())
+            {
+                channels.extend(seen.rang.iter().filter(|(_, rang)| rang.gathered).map(|(channel, _)| channel.clone()));
+            }
+            channels.sort();
+            channels.dedup();
+            for channel in channels {
+                if !channel.is_empty() && !known(package, &channel) {
+                    plan.silence.push((package.clone(), channel));
+                }
+            }
+        }
+    }
+    plan.unlink = linked && !choices.silence && plan.restore.is_empty() && silenced.app.values().all(|channels| channels.values().all(|kept| kept.by_hand));
+    plan
 }
 
 // ---------------------------------------------------------------- words
@@ -2236,6 +2507,55 @@ mod tests {
         assert_eq!(again(&held, &off, &ask(&now, &paused, None, None)), Decision::through(Why::Off));
     }
 
+    /// The quiet window (docs/android.md): the shop's notification, gathered
+    /// for 13:00, comes back at 13:01:10, its window moved off one of Sioul's
+    /// own reminders, or at 13:05, by Android's safety net: past the minute a
+    /// gathering counts, it still comes with it, never held until 18:00; a
+    /// quarter of an hour on, it waits for the next. A person's message is
+    /// none of it, and its return is the one that rings; an automaton's and
+    /// one held for good come back quiet.
+    #[test]
+    fn a_gathering_brought_back_late_still_comes_with_it() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let one = at("2026-10-06T13:00[Europe/Paris]").timestamp().as_second();
+        let shop = classify(&posted(SHOP), &choices);
+        let held = Held { app: "com.shop.example".into(), label: "Shop".into(), kind: "gathered".into(), since: one - 3 * 3600, until: one, ..Held::default() };
+        for (late, comes) in [("2026-10-06T13:00:30[Europe/Paris]", true), ("2026-10-06T13:01:10[Europe/Paris]", true), ("2026-10-06T13:05:00[Europe/Paris]", true), ("2026-10-06T13:16:00[Europe/Paris]", false)] {
+            let now = at(late);
+            let stamp = now.timestamp().as_second();
+            let asked = ask(&now, &clock, None, None);
+            assert!(gathers_now(&asked), "{late}: the matrix gathers it then");
+            let decided = decide(&shop, None, false, &choices, &asked).on_time(&held, stamp, gathers_now(&asked));
+            assert_eq!(decided.until.is_none(), comes, "{late}: {decided:?}");
+            let again = again(&held, &choices, &asked).on_time(&held, stamp, gathers_now(&asked));
+            assert_eq!(again.until.is_none(), comes, "{late}, worked out again: {again:?}");
+            if !comes {
+                assert_eq!(until_of(decided), "2026-10-06T18:00:00");
+            }
+        }
+        // Before its gathering, nothing changes: it waits for it.
+        let early = at("2026-10-06T12:40[Europe/Paris]");
+        assert_eq!(until_of(decide(&shop, None, false, &choices, &ask(&early, &clock, None, None)).on_time(&held, early.timestamp().as_second(), true)), "2026-10-06T13:00:00");
+        // A pause begun since its gathering: held as the pause holds everything, never let through late.
+        let paused = TestClock { overrides: Overrides { paused_since: Some(one + 60), ..Overrides::default() } };
+        let late = at("2026-10-06T13:03[Europe/Paris]");
+        let in_pause = ask(&late, &paused, None, None);
+        assert!(!gathers_now(&in_pause));
+        assert!(decide(&shop, None, false, &choices, &in_pause).on_time(&held, late.timestamp().as_second(), gathers_now(&in_pause)).until.is_some());
+        // A person's message held until their time: none of it, whatever the clock.
+        let talk = Held { kind: "people".into(), via: "messages".into(), who: "stranger".into(), ..held.clone() };
+        let waiting = Decision::held(one + 3600, Why::Waiting);
+        assert_eq!(waiting.on_time(&talk, one + 60, true), waiting);
+        // Held for good stays so.
+        let never = Held { kind: "never".into(), ..held.clone() };
+        let for_good = Decision::held(one + FOR_GOOD, Why::Never);
+        assert_eq!(for_good.on_time(&never, one + 60, true), for_good);
+        // Whose return comes without a sound: the automaton's and held for good, never a person's.
+        assert!(held.quiet() && never.quiet() && !talk.quiet());
+        assert!(!Held { kind: "at-once".into(), ..held.clone() }.quiet(), "an app you let through at once rings when it comes back");
+    }
+
     /// Other apps by time (docs/attention.md, §1.3): Discord let through
     /// during work and held otherwise, a conversation's row over its app's,
     /// gathered, under do-not-disturb, worked out again; nothing changes for
@@ -2469,7 +2789,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let mut choices = Choices::default();
         assert!(choices.hold, "holding is on until switched off");
-        choices.app.insert("com.discord".into(), AppChoice { kind: AppKind::Automaton, area: Some(Area::LEISURE), label: "Discord".into() });
+        choices.app.insert("com.discord".into(), AppChoice { kind: AppKind::Automaton, area: Some(Area::LEISURE), label: "Discord".into(), ..Default::default() });
         choices.conversation.insert("c1".into(), TalkChoice { through: Through::Always, title: "École".into(), app: "WhatsApp".into() });
         let path = dir.join("app-notes.toml");
         choices.save(&path).unwrap();
@@ -2484,6 +2804,138 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(AppKind::read("at-once"), Some(AppKind::AtOnce));
         assert_eq!(Through::read("never"), Some(Through::Never));
+    }
+
+    /// Option 2 of docs/research/android-holding.md: the shop's channel rang
+    /// while Sioul held one of its notifications, gathered; the chat's while
+    /// it held a person's. Linked to your computer and with your word, Sioul
+    /// makes the shop's silent, never the chat's, nor the SMS app's, which a
+    /// business's text gathered; a channel you named, whatever its app. Each
+    /// given back when its app is no longer gathered, its sound given back,
+    /// holding off (but what you named), or the whole turned off, then the
+    /// link let go; one you gave its sound back by hand is left, and
+    /// forgotten once nothing wants it. Without the link, nothing changes:
+    /// Sioul may touch no other app's channel then.
+    #[test]
+    fn which_channels_sioul_makes_silent_and_gives_back() {
+        let clock = TestClock::new();
+        let none = Choices::default();
+        // In the evening: strangers wait for the morning, automatons for the next gathering.
+        let now = at("2026-10-06T20:30[Europe/Paris]");
+        let stamp = now.timestamp().as_second();
+        let mut ledger = Ledger::default();
+        let mut sms = posted(SMS_SENDER_ID);
+        sms.channel = "incoming".into();
+        sms.alerted = true;
+        let mut chat = posted(DISCORD_DM);
+        chat.alerted = true;
+        let mut site = posted(CHROME_SITE);
+        site.alerted = true;
+        for p in [posted(SHOP), chat, sms, site] {
+            let kind = classify(&p, &none);
+            let decision = decide(&kind, Some(Who::Stranger), false, &none, &ask(&now, &clock, None, None));
+            assert!(decision.until.is_some(), "{} held", p.package);
+            ledger.note(&p, &kind, Some(Who::Stranger), false, None, &decision, stamp);
+        }
+        assert!(ledger.apps["com.shop.example"].rang["offers"].gathered && !ledger.apps["com.discord"].rang["dm"].gathered);
+        assert!(gathered_app("com.shop.example", &ledger, &none) && gathered_app("com.android.chrome", &ledger, &none));
+        assert!(!gathered_app("com.discord", &ledger, &none), "a person's message came from it");
+        assert!(!gathered_app("foundation.e.message", &ledger, &none), "an SMS app, though the text was a business's");
+        let silence = |plan: &ChannelPlan| plan.silence.iter().map(|(p, c)| format!("{p} {c}")).collect::<Vec<_>>();
+        // Not linked: nothing. Linked but not asked (stopped): nothing made silent, the link let go.
+        let on = Choices { silence: true, ..Choices::default() };
+        assert_eq!(channels_plan(&ledger, &on, &Silenced::default(), false), ChannelPlan::default());
+        assert_eq!(channels_plan(&ledger, &none, &Silenced::default(), true), ChannelPlan { unlink: true, ..ChannelPlan::default() });
+        // Linked and asked: the shop's and the site's channel, gathered.
+        let plan = channels_plan(&ledger, &on, &Silenced::default(), true);
+        assert_eq!(silence(&plan), ["com.android.chrome web:https://forum.example.net;1759000000000", "com.shop.example offers"]);
+        assert!(plan.restore.is_empty() && !plan.unlink);
+        // Noted, then made silent: asked no more; a channel you named, a chat's, joins.
+        let mut silenced = Silenced::default();
+        silenced.keep("com.shop.example", "offers", "Offers", 4, stamp);
+        silenced.keep("com.android.chrome", "web:https://forum.example.net;1759000000000", "forum.example.net", 3, stamp);
+        let mut named = on.clone();
+        named.app.insert("com.discord".into(), AppChoice { silent: vec!["dm".into()], ..AppChoice::default() });
+        let plan = channels_plan(&ledger, &named, &silenced, true);
+        assert_eq!(silence(&plan), ["com.discord dm"]);
+        assert!(plan.restore.is_empty());
+        // The shop let through at once: its channel given back, as it was.
+        let mut at_once = on.clone();
+        at_once.app.insert("com.shop.example".into(), AppChoice { kind: AppKind::AtOnce, ..AppChoice::default() });
+        assert_eq!(channels_plan(&ledger, &at_once, &silenced, true).restore, [("com.shop.example".to_string(), "offers".to_string(), 4)]);
+        // Its sound given back from the tab: the same, and never made silent again.
+        let mut kept = on.clone();
+        kept.app.insert("com.shop.example".into(), AppChoice { keep_sound: true, ..AppChoice::default() });
+        let plan = channels_plan(&ledger, &kept, &silenced, true);
+        assert_eq!(plan.restore.len(), 1);
+        assert!(channels_plan(&ledger, &kept, &Silenced::default(), true).silence.iter().all(|(p, _)| p != "com.shop.example"));
+        // A person's message from the shop's app: not gathered any more, given back.
+        let mut talked = ledger.clone();
+        talked.apps.get_mut("com.shop.example").unwrap().talked = stamp;
+        assert_eq!(channels_plan(&talked, &on, &silenced, true).restore.len(), 1);
+        // Holding off: every gathered one given back, but what you named.
+        let mut off_named = Choices { hold: false, ..named.clone() };
+        off_named.silence = true;
+        let mut with_dm = silenced.clone();
+        with_dm.keep("com.discord", "dm", "Direct messages", 4, stamp);
+        let plan = channels_plan(&ledger, &off_named, &with_dm, true);
+        assert_eq!(plan.restore.len(), 2);
+        assert!(plan.restore.iter().all(|(p, _, _)| p != "com.discord"));
+        // Turned off: everything given back; once nothing is left, the link let go.
+        let off = Choices::default();
+        let plan = channels_plan(&ledger, &off, &with_dm, true);
+        assert_eq!((plan.restore.len(), plan.unlink), (3, false));
+        assert!(channels_plan(&ledger, &off, &Silenced::default(), true).unlink);
+        assert!(!channels_plan(&ledger, &off, &Silenced::default(), false).unlink, "nothing to let go");
+        // The link gone (taken away in Android's settings): nothing can be given back from here.
+        assert!(channels_plan(&ledger, &off, &with_dm, false).restore.is_empty());
+        // Given its sound back by hand in Android's settings: left, never made silent again; forgotten once off.
+        let mut by_hand = silenced.clone();
+        by_hand.app.get_mut("com.shop.example").unwrap().get_mut("offers").unwrap().by_hand = true;
+        assert!(!by_hand.holds("com.shop.example", "offers") && by_hand.holds("com.android.chrome", "web:https://forum.example.net;1759000000000"));
+        let plan = channels_plan(&ledger, &on, &by_hand, true);
+        assert!(plan.silence.is_empty() && plan.restore.is_empty() && plan.forget.is_empty());
+        let plan = channels_plan(&ledger, &off, &by_hand, true);
+        assert_eq!(plan.forget, [("com.shop.example".to_string(), "offers".to_string())]);
+        assert_eq!(plan.restore.len(), 1);
+        // Sioul's own channels, named or seen: never.
+        let mut own = on.clone();
+        own.app.insert(OWN.into(), AppChoice { kind: AppKind::Automaton, silent: vec!["doses".into()], ..AppChoice::default() });
+        assert!(channels_plan(&ledger, &own, &Silenced::default(), true).silence.iter().all(|(p, _)| p != OWN));
+        // A file of a later Sioul: nothing at all.
+        let later = Silenced { format: SILENCED_FORMAT + 1, ..silenced.clone() };
+        assert_eq!(channels_plan(&ledger, &off, &later, true), ChannelPlan::default());
+        // An app forgotten when given back for good.
+        let mut gone = silenced.clone();
+        gone.forget("com.shop.example", "");
+        gone.forget("com.android.chrome", "web:https://forum.example.net;1759000000000");
+        assert!(gone.app.is_empty());
+    }
+
+    /// The channels' file (`Silenced`): written whole with its format; read
+    /// back; missing, none; one that does not read, an error, never none,
+    /// since it holds what to give back; one of a later Sioul, read, never
+    /// written.
+    #[test]
+    fn the_channels_file_keeps_what_to_give_back() {
+        let dir = std::env::temp_dir().join(format!("sioul-appnotes-channels-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("app-notes-channels.toml");
+        assert_eq!(Silenced::load(&path), Ok(Silenced::default()));
+        let mut silenced = Silenced::default();
+        silenced.keep("com.shop.example", "offers", "Offers\nand more", 4, 1_793_000_000);
+        silenced.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("# ") && text.contains("format = 1") && text.contains("was = 4") && text.contains("name = \"Offers and more\""), "{text}");
+        let read = Silenced::load(&path).unwrap();
+        assert_eq!((read.format, read.app), (SILENCED_FORMAT, silenced.app.clone()));
+        std::fs::write(&path, "format = [broken").unwrap();
+        assert!(Silenced::load(&path).is_err(), "never read as none");
+        std::fs::write(&path, "format = 2\n[app.\"com.shop.example\".offers]\nwas = 4\nat = 1\n").unwrap();
+        let later = Silenced::load(&path).unwrap();
+        assert!(later.later() && later.save(&path).is_err());
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with("format = 2"), "left as it is");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

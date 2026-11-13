@@ -201,8 +201,9 @@ sioul-core/src/organizer.rs	cancel_notes_change	1	crate::filelock::replace(&path
 sioul-core/src/accounts.rs	write	1	std::fs::write(&temporary, doc.to_string())
 sioul-core/src/accounts.rs	write	1	std::fs::rename(&temporary, path)
 
-# sioul-core/src/appnotes.rs: Sioul's own notes of what it said: no item.
+# sioul-core/src/appnotes.rs: Sioul's own notes of what it said, and the channels of other apps it made silent with what each was (state, the phone's alone): no item.
 sioul-core/src/appnotes.rs	save	2	write_whole(path, &toml::to_string(self).map_err(|e| e.to_string())?)
+sioul-core/src/appnotes.rs	save	1	write_whole(path, &text)
 sioul-core/src/appnotes.rs	write_whole	1	std::fs::write(&temporary, text)
 sioul-core/src/appnotes.rs	write_whole	1	std::fs::rename(&temporary, path)
 
