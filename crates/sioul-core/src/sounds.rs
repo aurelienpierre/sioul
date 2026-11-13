@@ -187,6 +187,27 @@ impl LowPass {
     }
 }
 
+/// A band-pass filter (RBJ's cookbook, constant peak gain), its centre free to move.
+#[derive(Default, Clone, Copy)]
+struct BandPass {
+x1: f32,
+x2: f32,
+y1: f32,
+y2: f32,
+}
+
+impl BandPass {
+fn run(&mut self, x: f32, centre: f32, q: f32) -> f32 {
+    let w = 2.0 * std::f32::consts::PI * centre / NATURE_RATE as f32;
+    let alpha = w.sin() / (2.0 * q);
+    let a0 = 1.0 + alpha;
+    let (b0, b2, a1, a2) = (alpha / a0, -alpha / a0, -2.0 * w.cos() / a0, (1.0 - alpha) / a0);
+    let y = b0 * x + b2 * self.x2 - a1 * self.y1 - a2 * self.y2;
+    (self.x2, self.x1, self.y2, self.y1) = (self.x1, x, self.y1, y);
+    y
+}
+}
+
 /// A slow, smooth random curve in [0, 1]: a new point every `every` seconds,
 /// joined by cosines; the same for every sample count.
 fn slow_curve(random: &mut Random, count: usize, every: f32) -> Vec<f32> {
@@ -270,13 +291,13 @@ fn add_break(left: &mut [f32], right: &mut [f32], wave: &Break, seed: u64) {
         let t = n as f32 / rate;
         // A rounded rise, then the fall: bright in the middle, narrow at both ends.
         let crash = if t < wave.rise { (std::f32::consts::FRAC_PI_2 * t / wave.rise).sin().powi(4) } else { (-(t - wave.rise) / wave.crash).exp() };
-        let washing = if t < wave.rise { 0.0 } else { let after = t - wave.rise; (1.0 - (-after / 0.4).exp()) * (-after / wave.wash).exp() };
-        let cutoff = 280.0 + 1500.0 * crash;
+        let washing = if t < wave.rise { 0.0 } else { let after = t - wave.rise; (1.0 - (-after / 0.8).exp()) * (-after / wave.wash).exp() };
+        let cutoff = 260.0 + 1100.0 * crash;
         let body = floor.run(darker.run(dark.run(white, cutoff), cutoff * 1.6), 170.0);
         // The foam each ear hears is partly its own: it fizzes all along the beach.
         let fizz = foam_top2.run(foam_top.run(foam_floor.run(white, 500.0), 2400.0), 3000.0);
         let own = own_top2.run(own_top.run(own_floor.run(other, 500.0), 2400.0), 3000.0);
-        let body = wave.strength * body * crash * 2.2;
+        let body = wave.strength * body * crash * 1.6;
         let foam = wave.strength * washing * 0.9;
         *sample = (body * to_left + foam * (fizz * 0.6 * to_left + own * 0.5), body * to_right + foam * (fizz * 0.6 * to_right - own * 0.5));
     }
@@ -296,12 +317,12 @@ fn surf(count: usize, seed: u64) -> Vec<f32> {
     let mut random = Random(seed);
     let level = slow_curve(&mut random, count, 8.0);
     let mut pink = Pink::default();
-    let (mut floor, mut top, mut top2) = (HighPass::default(), LowPass::default(), LowPass::default());
+    let (mut floor, mut floor2, mut top, mut top2) = (HighPass::default(), HighPass::default(), LowPass::default(), LowPass::default());
     let (mut foam_floor, mut foam_top, mut foam_top2) = (HighPass::default(), LowPass::default(), LowPass::default());
     (0..count)
         .map(|i| {
             let p = pink.next(random.next());
-            let shaped = top2.run(top.run(floor.run(p, 140.0), 1800.0), 2600.0);
+            let shaped = top2.run(top.run(floor2.run(floor.run(p, 140.0), 140.0), 1800.0), 2600.0);
             // The foam fizzing all along the beach, between the breaks too.
             let foam = foam_top2.run(foam_top.run(foam_floor.run(random.next(), 900.0), 2800.0), 3500.0);
             (shaped + foam * 0.15) * (0.9 + 0.1 * level[i])
@@ -310,21 +331,21 @@ fn surf(count: usize, seed: u64) -> Vec<f32> {
 }
 
 /// Waves on a beach (after five CC0 recordings, docs/sounds.md): a wave
-/// breaking every 2.5 to 6.5 seconds, small and large, each somewhere along
+/// rolling in every 4.5 to 9 seconds, small and large, each somewhere along
 /// the beach, over the surf of the rest of it, which both ears share in part.
 fn waves(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
     let rate = NATURE_RATE as f32;
     let (shared, own_left, own_right) = (surf(count, 13), surf(count, 14), surf(count, 15));
-    let mut left: Vec<f32> = shared.iter().zip(&own_left).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.55).collect();
-    let mut right: Vec<f32> = shared.iter().zip(&own_right).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.55).collect();
+    let mut left: Vec<f32> = shared.iter().zip(&own_left).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.8).collect();
+    let mut right: Vec<f32> = shared.iter().zip(&own_right).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.8).collect();
     let mut at = -3.0f32;
     let mut seed = 100;
     while at < count as f32 / rate {
         let strength = plan.between(0.45, 1.0);
-        let wave = Break { at, rise: plan.between(0.35, 0.95), crash: plan.between(0.4, 0.9), wash: plan.between(0.7, 1.5), strength, pan: plan.between(-0.6, 0.6) };
+        let wave = Break { at, rise: plan.between(0.8, 1.6), crash: plan.between(1.0, 2.0), wash: plan.between(1.8, 3.2), strength, pan: plan.between(-0.6, 0.6) };
         add_break(&mut left, &mut right, &wave, seed);
         seed += 1;
-        at += plan.between(2.5, 6.5);
+        at += plan.between(4.5, 9.0);
     }
     (left, right)
 }
@@ -562,6 +583,8 @@ enum Contour {
     /// Around `centre`, by `depth` (a fraction) `rate` times a second (a
     /// warble when slow, a buzz when fast).
     Wobble { centre: f32, depth: f32, rate: f32 },
+    /// From `from` up to `peak` in the first third, then sinking to `to` (a coo).
+    Arc { from: f32, peak: f32, to: f32 },
 }
 
 /// One syllable of a song: when (seconds from the song's start), how long,
@@ -573,6 +596,9 @@ struct Syllable {
     contour: Contour,
     gain: f32,
     harmonic: f32,
+    /// A dove's breathy, hollow coo rather than a songbird's clean whistle: this
+    /// share of breath (noise around the pitch), soft edges, a fuller harmonic.
+    breath: f32,
 }
 
 impl Contour {
@@ -581,6 +607,10 @@ impl Contour {
             Contour::Hook { from, to, tau } => to + (from - to) * (-t / tau).exp(),
             Contour::Line { from, to } => from + (to - from) * t / length,
             Contour::Wobble { centre, depth, rate } => centre * (1.0 + depth * (std::f32::consts::TAU * rate * t).sin()),
+            Contour::Arc { from, peak, to } => {
+                let x = t / length;
+                if x < 0.3 { from + (peak - from) * (std::f32::consts::FRAC_PI_2 * x / 0.3).sin() } else { peak + (to - peak) * ((x - 0.3) / 0.7).powi(2) }
+            }
         }
     }
 
@@ -590,6 +620,7 @@ impl Contour {
             Contour::Hook { from, to, tau } => Contour::Hook { from: from * factor, to: to * factor, tau },
             Contour::Line { from, to } => Contour::Line { from: from * factor, to: to * factor },
             Contour::Wobble { centre, depth, rate } => Contour::Wobble { centre: centre * factor, depth, rate },
+            Contour::Arc { from, peak, to } => Contour::Arc { from: from * factor, peak: peak * factor, to: to * factor },
         }
     }
 }
@@ -600,17 +631,38 @@ fn add_syllable(voice: &mut [f32], start: f32, syllable: &Syllable) {
     let rate = NATURE_RATE as f32;
     let first = ((start + syllable.at) * rate) as usize;
     let count = (syllable.length * rate) as usize;
-    let (attack, release) = (0.003 * rate, (0.008 * rate).min(count as f32 * 0.4));
+    let breathy = syllable.breath > 0.0;
+    let (attack, release) = if breathy { (0.045 * rate, (0.07 * rate).min(count as f32 * 0.4)) } else { (0.003 * rate, (0.008 * rate).min(count as f32 * 0.4)) };
+    let mut random = Random(0x0d0e ^ first as u64);
+    let (mut breath, mut throat) = (BandPass::default(), LowPass::default());
     let mut phase = 0.0f32;
     for n in 0..count {
         let Some(sample) = voice.get_mut(first + n) else { break };
         let t = n as f32 / rate;
         let frequency = syllable.contour.pitch(t, syllable.length).clamp(200.0, 9000.0);
         phase = (phase + std::f32::consts::TAU * frequency / rate) % std::f32::consts::TAU;
-        let envelope = (n as f32 / attack).min(1.0) * ((count - n) as f32 / release).min(1.0) * (0.75 + 0.25 * (std::f32::consts::PI * n as f32 / count as f32).sin());
+        let edges = if breathy {
+            // Soft edges: a coo swells in and fades out.
+            let rise = (std::f32::consts::FRAC_PI_2 * (n as f32 / attack).min(1.0)).sin().powi(2);
+            let fall = (std::f32::consts::FRAC_PI_2 * ((count - n) as f32 / release).min(1.0)).sin().powi(2);
+            rise * fall
+        } else {
+            (n as f32 / attack).min(1.0) * ((count - n) as f32 / release).min(1.0)
+        };
+        let envelope = edges * (0.75 + 0.25 * (std::f32::consts::PI * n as f32 / count as f32).sin());
         // The harmonic fades out before it passes half the rate, where it would fold back down.
         let harmonic = syllable.harmonic * ((9500.0 - 2.0 * frequency) / 1500.0).clamp(0.0, 1.0);
-        *sample += syllable.gain * envelope * (phase.sin() + harmonic * (2.0 * phase).sin());
+        let tone = phase.sin() + harmonic * (2.0 * phase).sin();
+        let value = if breathy {
+            // A hollow third harmonic, breath around the pitch, and the throat's slight roughness.
+            let noise = random.next();
+            let air = breath.run(noise, frequency * 1.1, 3.0) * 2.5;
+            let rough = 1.0 + 0.18 * throat.run(random.next(), 45.0) * 6.0;
+            (tone + 0.12 * (3.0 * phase).sin()) * (1.0 - syllable.breath) * rough + air * syllable.breath
+        } else {
+            tone
+        };
+        *sample += syllable.gain * envelope * value;
     }
 }
 
@@ -642,24 +694,24 @@ fn song_type(plan: &mut Random, singer: Singer) -> Vec<Syllable> {
             let (high, low) = (plan.between(5200.0, 6800.0), plan.between(2600.0, 3400.0));
             let mut gap = plan.between(0.1, 0.12);
             for _ in 0..(5 + (plan.unit() * 4.0) as usize) {
-                song.push(Syllable { at: t, length: 0.035, contour: Contour::Line { from: high, to: low }, gain: 0.8, harmonic: 0.05 });
+                song.push(Syllable { at: t, length: 0.035, contour: Contour::Line { from: high, to: low }, gain: 0.8, harmonic: 0.05, breath: 0.0 });
                 t += gap;
                 gap *= 0.93;
             }
             let (from, to) = (plan.between(4200.0, 5200.0), plan.between(2200.0, 2800.0));
             for _ in 0..(3 + (plan.unit() * 3.0) as usize) {
-                song.push(Syllable { at: t, length: 0.06, contour: Contour::Hook { from, to, tau: 0.018 }, gain: 1.0, harmonic: 0.08 });
+                song.push(Syllable { at: t, length: 0.06, contour: Contour::Hook { from, to, tau: 0.018 }, gain: 1.0, harmonic: 0.08, breath: 0.0 });
                 t += 0.085;
             }
-            song.push(Syllable { at: t, length: 0.07, contour: Contour::Line { from: 2400.0, to: plan.between(4800.0, 5600.0) }, gain: 0.9, harmonic: 0.05 });
-            song.push(Syllable { at: t + 0.07, length: 0.16, contour: Contour::Hook { from: 5200.0, to: plan.between(2000.0, 2600.0), tau: 0.05 }, gain: 1.0, harmonic: 0.1 });
+            song.push(Syllable { at: t, length: 0.07, contour: Contour::Line { from: 2400.0, to: plan.between(4800.0, 5600.0) }, gain: 0.9, harmonic: 0.05, breath: 0.0 });
+            song.push(Syllable { at: t + 0.07, length: 0.16, contour: Contour::Hook { from: 5200.0, to: plan.between(2000.0, 2600.0), tau: 0.05 }, gain: 1.0, harmonic: 0.1, breath: 0.0 });
         }
         Singer::Tit => {
             let (high, low) = (plan.between(5500.0, 7000.0), plan.between(3300.0, 4300.0));
             let period = plan.between(0.28, 0.36);
             for _ in 0..(4 + (plan.unit() * 4.0) as usize) {
-                song.push(Syllable { at: t, length: 0.07, contour: Contour::Hook { from: high * 1.08, to: high * 0.92, tau: 0.03 }, gain: 0.9, harmonic: 0.04 });
-                song.push(Syllable { at: t + 0.11, length: 0.09, contour: Contour::Line { from: low * 1.03, to: low * 0.97 }, gain: 1.0, harmonic: 0.06 });
+                song.push(Syllable { at: t, length: 0.07, contour: Contour::Hook { from: high * 1.08, to: high * 0.92, tau: 0.03 }, gain: 0.9, harmonic: 0.04, breath: 0.0 });
+                song.push(Syllable { at: t + 0.11, length: 0.09, contour: Contour::Line { from: low * 1.03, to: low * 0.97 }, gain: 1.0, harmonic: 0.06, breath: 0.0 });
                 t += period;
             }
         }
@@ -674,7 +726,7 @@ fn song_type(plan: &mut Random, singer: Singer) -> Vec<Syllable> {
                         Contour::Line { from: centre * 1.04, to: centre * 0.96 }
                     }
                 };
-                song.push(Syllable { at: t, length, contour, gain: plan.between(0.6, 1.0), harmonic: 0.03 });
+                song.push(Syllable { at: t, length, contour, gain: plan.between(0.6, 1.0), harmonic: 0.03, breath: 0.0 });
                 t += length + plan.between(0.03, 0.09);
             }
         }
@@ -682,13 +734,13 @@ fn song_type(plan: &mut Random, singer: Singer) -> Vec<Syllable> {
             let mut centre = plan.between(1600.0, 2200.0);
             for _ in 0..(3 + (plan.unit() * 4.0) as usize) {
                 let length = plan.between(0.12, 0.3);
-                song.push(Syllable { at: t, length, contour: Contour::Wobble { centre, depth: plan.between(0.03, 0.08), rate: plan.between(8.0, 16.0) }, gain: 1.0, harmonic: 0.3 });
+                song.push(Syllable { at: t, length, contour: Contour::Wobble { centre, depth: plan.between(0.03, 0.08), rate: plan.between(8.0, 16.0) }, gain: 1.0, harmonic: 0.3, breath: 0.0 });
                 t += length + plan.between(0.03, 0.08);
                 centre = (centre * plan.between(0.85, 1.25)).clamp(1400.0, 3000.0);
             }
             t += 0.05;
             for _ in 0..(2 + (plan.unit() * 4.0) as usize) {
-                song.push(Syllable { at: t, length: 0.025, contour: Contour::Line { from: plan.between(6500.0, 8000.0), to: plan.between(4500.0, 5500.0) }, gain: 0.35, harmonic: 0.0 });
+                song.push(Syllable { at: t, length: 0.025, contour: Contour::Line { from: plan.between(6500.0, 8000.0), to: plan.between(4500.0, 5500.0) }, gain: 0.35, harmonic: 0.0, breath: 0.0 });
                 t += 0.045;
             }
         }
@@ -698,17 +750,17 @@ fn song_type(plan: &mut Random, singer: Singer) -> Vec<Syllable> {
                 let (from, to) = if plan.unit() < 0.3 { (to, from) } else { (from, to) };
                 let gap = plan.between(0.045, 0.065);
                 for _ in 0..(8 + (plan.unit() * 9.0) as usize) {
-                    song.push(Syllable { at: t, length: 0.028, contour: Contour::Line { from, to }, gain: 1.0, harmonic: 0.05 });
+                    song.push(Syllable { at: t, length: 0.028, contour: Contour::Line { from, to }, gain: 1.0, harmonic: 0.05, breath: 0.0 });
                     t += gap;
                 }
                 t += 0.04;
             }
         }
         Singer::Dove => {
-            let pitch = plan.between(430.0, 560.0);
-            for (k, (length, gap)) in [(0.35, 0.15), (0.6, 0.12), (0.3, 0.35), (0.35, 0.12), (0.3, 0.0)].into_iter().enumerate() {
-                let p = pitch * if k == 1 { 1.06 } else { 1.0 };
-                song.push(Syllable { at: t, length, contour: Contour::Hook { from: p * 1.04, to: p * 0.95, tau: 0.25 }, gain: if k == 1 { 1.0 } else { 0.8 }, harmonic: 0.15 });
+            let pitch = plan.between(430.0, 540.0);
+            for (k, (length, gap)) in [(0.3, 0.18), (0.55, 0.14), (0.28, 0.4), (0.32, 0.14), (0.3, 0.0)].into_iter().enumerate() {
+                let p = pitch * if k == 1 { 1.05 } else { 1.0 };
+                song.push(Syllable { at: t, length, contour: Contour::Arc { from: p * 0.96, peak: p * 1.02, to: p * 0.93 }, gain: if k == 1 { 1.0 } else { 0.8 }, harmonic: 0.55, breath: 0.35 });
                 t += length + gap;
             }
         }
@@ -889,27 +941,6 @@ fn limited(left: &[f32], right: &[f32], gain: f32) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-/// A band-pass filter (RBJ's cookbook, constant peak gain), its centre free to move.
-#[derive(Default, Clone, Copy)]
-struct BandPass {
-    x1: f32,
-    x2: f32,
-    y1: f32,
-    y2: f32,
-}
-
-impl BandPass {
-    fn run(&mut self, x: f32, centre: f32, q: f32) -> f32 {
-        let w = 2.0 * std::f32::consts::PI * centre / NATURE_RATE as f32;
-        let alpha = w.sin() / (2.0 * q);
-        let a0 = 1.0 + alpha;
-        let (b0, b2, a1, a2) = (alpha / a0, -alpha / a0, -2.0 * w.cos() / a0, (1.0 - alpha) / a0);
-        let y = b0 * x + b2 * self.x2 - a1 * self.y1 - a2 * self.y2;
-        (self.x2, self.x1, self.y2, self.y1) = (self.x1, x, self.y1, y);
-        y
-    }
-}
 
     #[test]
     fn the_random_source_is_centred() {
