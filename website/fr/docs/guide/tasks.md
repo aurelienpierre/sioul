@@ -344,7 +344,7 @@ Quand le temps d’une étape est fini, la suivante ne commence seule que si la 
 Le bouton des sons, dans la ligne d’état, joue au choix, jamais de lui-même :
 
 - **Pour se concentrer** : bruit blanc, rose ou brun ;
-- **La nature, faite ici** : les vagues sur une plage, la pluie, le vent dans les arbres, les grillons la nuit, un orage au loin ;
+- **La nature, faite ici** : les vagues sur une plage, la pluie, le vent dans les arbres, les grillons la nuit, un orage au loin, les oiseaux à l’aube ; les vagues, le vent, l’orage et les oiseaux réglés sur de vrais enregistrements ;
 - **Vos enregistrements** : tout son mis dans un dossier `sounds` de vos notes (en Ogg, Opus, FLAC ou WAV, qui bouclent sans blanc).
 
 Un seul à la fois, en boucle sans raccord audible, avec un fondu de cinq secondes au début et à la fin. Le bruit a un peu aidé l’attention des personnes ayant des traits de TDAH, et l’a un peu gênée chez les autres (Nigg et al. 2024) : il est proposé, pas imposé. D’une étude à l’autre, les sons de la nature ont fait baisser le stress et amélioré l’humeur (Buxton et al. 2021).

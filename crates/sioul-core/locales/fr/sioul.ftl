@@ -3591,6 +3591,7 @@ sounds-rain = La pluie
 sounds-wind = Le vent dans les arbres
 sounds-crickets = Les grillons la nuit
 sounds-storm = Un orage au loin
+sounds-birds = Les oiseaux à l’aube
 
 ## Partage entre vos appareils (Paramètres)
 share-title = Entre vos appareils

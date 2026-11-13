@@ -3555,6 +3555,7 @@ sounds-rain = Rain
 sounds-wind = Wind in the trees
 sounds-crickets = Crickets at night
 sounds-storm = A distant storm
+sounds-birds = Birds at dawn
 
 ## Sharing with your other devices (Parameters)
 share-title = Between your devices

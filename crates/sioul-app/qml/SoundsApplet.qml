@@ -3,9 +3,9 @@
 
 // Sounds, in the status line, a button of the line (LineButton.qml): noise
 // for focus (white, pink, brown), nature to rest by (waves, rain, wind in the
-// trees, crickets, a distant storm), all made here, and your own recordings
-// (the notes' `sounds` folder). One at a time, looping, fading in and out;
-// never on by itself.
+// trees, crickets, a distant storm, birds at dawn), all made here, and your
+// own recordings (the notes' `sounds` folder). One at a time, looping, fading
+// in and out; never on by itself.
 
 pragma ComponentBehavior: Bound
 
@@ -148,7 +148,7 @@ LineButton {
                     color: applet.theme.text
                 }
                 Repeater {
-                    model: ["waves", "rain", "wind", "crickets", "storm"]
+                    model: ["waves", "rain", "wind", "crickets", "storm", "birds"]
 
                     delegate: ItemDelegate {
                         id: nature

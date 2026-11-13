@@ -1,6 +1,6 @@
 # Sounds to focus or to rest by
 
-The status line has a sound button, never on by itself: noise **to focus** (white, pink, brown), **nature to rest by** (waves on a beach, rain, wind in the trees, crickets at night, a distant storm), both made by Sioul, and **your own recordings**. One at a time, looping without a seam, fading in and out over five seconds.
+The status line has a sound button, never on by itself: noise **to focus** (white, pink, brown), **nature to rest by** (waves on a beach, rain, wind in the trees, crickets at night, a distant storm, birds at dawn), both made by Sioul, and **your own recordings**. One at a time, looping without a seam, fading in and out over five seconds.
 
 ## What the research says
 - **Noise helps attention a little, for some.** White or pink noise gave a small benefit on attention tasks for people with ADHD or many ADHD traits (g = 0.25) and a small cost for others (g = −0.21) across 13 studies (Nigg et al. 2024, *JAACAP*, doi:10.1016/j.jaac.2023.12.014). No study tested brown noise. Hence "to focus", and offered, not pushed.
@@ -9,12 +9,26 @@ The status line has a sound button, never on by itself: noise **to focus** (whit
 ## How it works
 - **Noise is made here** (`sioul_core::sounds`): a minute of white noise, of pink noise (Paul Kellett's filter, −3 dB per octave) and of brown noise (a leaky integration, −6 dB per octave), quiet (about −20 dBFS), its last two seconds faded into its first with equal power, so the loop has no seam. Written once as WAV in `$XDG_CACHE_HOME/sioul/sounds/`. Nothing downloaded, nothing to license.
 - **Nature is made here too** (`sioul_core::sounds::nature`), stereo at 22 kHz (what these sounds hold lies below 10 kHz; a minute is 5 MB), seeded the same every time, after Andy Farnell's *Designing Sound* (2010): noise shaped by slow envelopes and filters, and events at random.
-  - **Waves**: each wave swells for two to four seconds (low-passed noise growing brighter as it rises), breaks, and withdraws in a band of hiss (the foam, 2.5 to 6 kHz); a wave every 6.5 to 11.5 seconds, a far surf under them; the right ear a quarter second behind, as from one sea. Two minutes.
+  - **Waves**: a wave breaks every 2.5 to 6.5 seconds, somewhere along the beach (both ears hear it, from where it breaks). It rises in a third of a second to a second, crashes (noise low-passed from 1.8 kHz down to 280 Hz as it falls, under a second), then washes up and back for 0.7 to 1.5 seconds: foam fizzing between 500 Hz and 3 kHz, its level jumping many times a second (bubbles), pebbles knocking. Under the breaks, the surf of the rest of the beach (pink noise from 140 Hz to 1.8 kHz with foam above it, churning several times a second), partly shared by both ears. Two minutes.
   - **Rain**: a hiss (pink noise between 450 Hz and 6.5 kHz, its level wandering), about 160 small drops a second (short decaying tones, 2.4 to 7 kHz) and five larger ones on leaves and stones. One minute.
-  - **Wind in the trees**: gusts that rise and fall over seconds (a band of noise moving from 220 Hz to 1.1 kHz), leaves rustling with them, and their crackle. A minute and a half.
+  - **Wind in the trees**: close to pink noise from 60 Hz to 9 kHz, in three layers following gusts over 12, 4 and 2 seconds: the branches' low roar (60 to 420 Hz, nearly the same in both ears), the air's whoosh (300 Hz to 1.6 kHz, in part) and the leaves (1.8 to 9 kHz, louder and quicker in the gusts, fluttering differently in each ear), with a twig's crackle in the strong gusts. A minute and a half.
   - **Crickets at night**: six field crickets (4.1 to 4.9 kHz, three or four pulses a chirp, each its rhythm and place between the ears, near or far), a tree cricket's soft trill at 2.8 kHz, the night's air under them. One minute.
-  - **A distant storm**: lighter rain, and thunder far away (a low rumble, under 110 Hz, rolling for seconds) every 18 to 42 seconds. Three minutes.
-  - Quiet (about −22 dBFS), never clipped, the end faded into the start over four seconds. Checked by tests: the seam, the level, where each sound's energy lies (the crickets near 4.5 kHz, the waves and the thunder low), and by looking at their spectrograms; listening is yours.
+  - **A distant storm**: thunder every 8 to 28 seconds, each strike rolling in two to six bursts within seconds, low (brown noise under 110 to 330 Hz) and brighter at its start the nearer it is (up to 2.9 kHz), the same in both ears from where it is; thunder too far to make out rolling on under 220 Hz; and soft rain (pink noise from 250 Hz to 3.5 kHz, its level wandering over 15 seconds, sparse drops), well under the thunder. Three minutes.
+  - **Birds at dawn**: two melodious birds (phrases of five to twelve gliding notes, 1.4 to 4.4 kHz, some buzzing), one trilling high (3.8 to 6.8 kHz, 13 to 30 notes a second), one repeating two notes (a great tit's "tea-cher", the first at 3.8 to 5 kHz, the second lower) and a dove cooing low (420 to 560 Hz), each where it sits; far birds chirping softly; the wood singing more, then less, over tens of seconds; a light air and the leaves under them, and the wood's short echo (Schroeder's reverberation, damped, each ear its own). A minute and a half.
+  - Quiet (about −22 dBFS), never clipped, the end faded into the start over four seconds. Checked by tests: the seam, the level, where each sound's energy lies (the crickets near 4.5 kHz, the birds between 2 and 5 kHz, the waves and the thunder low), the two ears partly alike, and by looking at their spectrograms; listening is yours.
+  - The files of an older recipe are taken away when the new ones are made.
+
+## Tuned against recordings
+The waves, the wind, the storm and the birds were measured beside CC0 recordings on 13 November 2026: five beaches, six winds in trees, six distant storms, six dawn choruses or gardens (Freesound, listed in `tools/sounds/references.tsv`, chosen without voices, traffic or planes). `tools/sounds/features.py` measures a recording and Sioul's sound alike, each brought to one level: the spectrum in third octaves, how the level moves in three bands (its spread, and its modulation from 0.03 to 16 Hz), how sharp the clicks are, how alike the two ears are, how tonal the sound is, chirps and claps. `compare.py` puts Sioul's beside the recordings' range and median. The recordings stay outside Sioul; only the recipes changed.
+
+| Sound | What differed (before) | Now |
+|---|---|---|
+| Waves | too bright (centre 1.9 kHz, recordings' median 1.1); ears unrelated (0, recordings 0.5 to 0.75); one slow swell every 6.5 to 11.5 s, 19 to 23 dB deep (recordings about 10) | centre 1.4 kHz; ears 0.6 to 0.7; a break every 2.5 to 6.5 s, 7 to 12 dB |
+| Wind | a narrow band sliding up and down, no lows (63 Hz 19 dB under the recordings); ears unrelated | broadband, every third octave within 3.2 dB of the recordings' median; lows nearly the same in both ears (0.84), leaves each ear's own (0.2) |
+| Storm | bright steady rain (3 to 6 kHz 12 dB over the median), smooth thunder under 110 Hz; ears unrelated | every third octave within 2.6 dB of the median; thunder rolling in bursts, the same in both ears (0.96) |
+| Birds | new | brightness, spread, ears, tonality, notes a second (0.9, recordings 0.4 to 2.1) and pitch within the recordings' range; every third octave within 8 dB of their median |
+
+Listening is still yours: measures say what a sound holds, not whether it calms.
 - **Recordings are yours**: any sound in a `sounds` folder of your notes (Ogg, Opus, FLAC or WAV loop exactly; MP3 adds a short gap at the loop, as its encoder pads the ends).
 - Played with Qt Multimedia's `MediaPlayer` (`loops: MediaPlayer.Infinite`, seamless since Qt 6.5.1 with FFmpeg).
 
