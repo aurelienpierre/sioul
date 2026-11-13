@@ -325,7 +325,7 @@ fn surf(count: usize, seed: u64) -> Vec<f32> {
             let shaped = top2.run(top.run(floor2.run(floor.run(p, 140.0), 140.0), 1800.0), 2600.0);
             // The foam fizzing all along the beach, between the breaks too.
             let foam = foam_top2.run(foam_top.run(foam_floor.run(random.next(), 900.0), 2800.0), 3500.0);
-            (shaped + foam * 0.15) * (0.9 + 0.1 * level[i])
+            (shaped + foam * 0.08) * (0.9 + 0.1 * level[i])
         })
         .collect()
 }
@@ -336,8 +336,8 @@ fn surf(count: usize, seed: u64) -> Vec<f32> {
 fn waves(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
     let rate = NATURE_RATE as f32;
     let (shared, own_left, own_right) = (surf(count, 13), surf(count, 14), surf(count, 15));
-    let mut left: Vec<f32> = shared.iter().zip(&own_left).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.8).collect();
-    let mut right: Vec<f32> = shared.iter().zip(&own_right).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.8).collect();
+    let mut left: Vec<f32> = shared.iter().zip(&own_left).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.3).collect();
+    let mut right: Vec<f32> = shared.iter().zip(&own_right).map(|(s, o)| (s * 0.8 + o * 0.6) * 0.3).collect();
     let mut at = -3.0f32;
     let mut seed = 100;
     while at < count as f32 / rate {
@@ -405,22 +405,22 @@ fn wind_layer(random: &mut Random, gusts: &[f32], low: f32, high: f32, follow: f
 }
 
 /// Wind in the trees (after six CC0 recordings, docs/sounds.md): close to pink
-/// noise from 60 Hz to 6.5 kHz, louder and brighter in the gusts, which rise
-/// and fall over seconds. The branches' low roar is nearly the same in both
+/// noise from 60 Hz to 4.5 kHz, soft and dark, louder and brighter in the
+/// gusts, which rise and fall slowly, over 15 and 6 seconds, and rest between. The branches' low roar is nearly the same in both
 /// ears; the air's whoosh in part; the leaves, all around, differ in each.
 fn wind(count: usize, plan: &mut Random) -> (Vec<f32>, Vec<f32>) {
-    let slow = slow_curve(plan, count, 12.0);
-    let gust = slow_curve(plan, count, 4.0);
-    let gusts: Vec<f32> = (0..count).map(|i| 0.2 + 0.8 * (0.1 + 0.3 * slow[i] + 0.45 * slow[i] * gust[i] + 0.15 * gust[i]).min(1.0)).collect();
+    let slow = slow_curve(plan, count, 15.0);
+    let gust = slow_curve(plan, count, 6.0);
+    let gusts: Vec<f32> = (0..count).map(|i| 0.15 + 0.85 * (0.1 + 0.3 * slow[i] + 0.45 * slow[i] * gust[i] + 0.15 * gust[i]).min(1.0).powf(1.4)).collect();
     let mut random = Random(31);
-    let roar = wind_layer(&mut random, &gusts, 60.0, 420.0, 1.0);
-    let (roar_left, roar_right) = (wind_layer(&mut random, &gusts, 60.0, 420.0, 1.0), wind_layer(&mut random, &gusts, 60.0, 420.0, 1.0));
-    let air = wind_layer(&mut random, &gusts, 300.0, 1600.0, 1.3);
-    let (air_left, air_right) = (wind_layer(&mut random, &gusts, 300.0, 1600.0, 1.3), wind_layer(&mut random, &gusts, 300.0, 1600.0, 1.3));
-    let leaves = wind_layer(&mut random, &gusts, 1800.0, 6500.0, 1.7);
-    let (leaves_left, leaves_right) = (wind_layer(&mut random, &gusts, 1800.0, 6500.0, 1.7), wind_layer(&mut random, &gusts, 1800.0, 6500.0, 1.7));
+    let roar = wind_layer(&mut random, &gusts, 60.0, 350.0, 1.0);
+    let (roar_left, roar_right) = (wind_layer(&mut random, &gusts, 60.0, 350.0, 1.0), wind_layer(&mut random, &gusts, 60.0, 350.0, 1.0));
+    let air = wind_layer(&mut random, &gusts, 250.0, 1300.0, 1.3);
+    let (air_left, air_right) = (wind_layer(&mut random, &gusts, 250.0, 1300.0, 1.3), wind_layer(&mut random, &gusts, 250.0, 1300.0, 1.3));
+    let leaves = wind_layer(&mut random, &gusts, 1500.0, 4500.0, 1.7);
+    let (leaves_left, leaves_right) = (wind_layer(&mut random, &gusts, 1500.0, 4500.0, 1.7), wind_layer(&mut random, &gusts, 1500.0, 4500.0, 1.7));
     let mix = |own_roar: &[f32], own_air: &[f32], own_leaves: &[f32]| -> Vec<f32> {
-        (0..count).map(|i| (roar[i] * 0.95 + own_roar[i] * 0.3) * 0.55 + (air[i] * 0.85 + own_air[i] * 0.5) * 0.9 + (leaves[i] * 0.4 + own_leaves[i] * 0.9) * 0.8).collect()
+        (0..count).map(|i| (roar[i] * 0.95 + own_roar[i] * 0.3) * 0.45 + (air[i] * 0.85 + own_air[i] * 0.5) * 0.8 + (leaves[i] * 0.4 + own_leaves[i] * 0.9) * 0.5).collect()
     };
     let (left, right) = (mix(&roar_left, &air_left, &leaves_left), mix(&roar_right, &air_right, &leaves_right));
     (left, right)
@@ -901,7 +901,12 @@ pub fn nature(kind: &str) -> (Vec<i16>, Vec<i16>) {
         }
         _ => storm(count, &mut plan),
     };
-    let target = if kind == "crickets" { 0.05 } else { 0.08 };
+    // Waves and wind are backgrounds to rest or focus by: lighter than the rest.
+    let target = match kind {
+        "wind" => 0.035,
+        "waves" | "crickets" => 0.05,
+        _ => 0.08,
+    };
     let looped = |raw: &[f32]| -> Vec<f32> {
         let length = raw.len() - fade;
         let mut out: Vec<f32> = raw[..length].to_vec();
