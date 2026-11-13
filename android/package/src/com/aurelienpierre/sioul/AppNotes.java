@@ -64,8 +64,15 @@ import java.util.Map;
  * For each notification of another app: what Android says of it, its words
  * included, handed to Rust in memory on a thread of its own; Rust answers how
  * long it waits, and Android holds it that long (snoozeNotification): it
- * comes back whole, with its own tap and actions, alerting as its channel
- * says. Nothing is ever cancelled, kept or logged; of a conversation, only
+ * comes back whole, with its own tap and actions. Whether its return rings
+ * is Android's (docs/research/android-holding.md, 1): as a new notification,
+ * ringing as its channel says, on Android 10 and from 13 QPR1 on; silent on
+ * 11, 12, 12L and the first release of 13. Android keeps what it holds in
+ * memory only: a restart of the phone loses it, unless its app posts it
+ * again. On Android 9 and 10 a held notification keeps its first time
+ * (holding it again does nothing there). From Android 15, each hold within
+ * five seconds of the posting notes OP_RAPID_CLEAR_NOTIFICATIONS_BY_LISTENER
+ * against Sioul. Nothing is ever cancelled, kept or logged; of a conversation, only
  * where its page is in Android (its app, shortcut and channel, a week), for
  * the Other apps tab to open it. Nothing is answered or marked as read but
  * what you ask from a computer, once, through the notification's own Reply
