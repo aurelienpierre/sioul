@@ -694,10 +694,42 @@ impl Needs {
     /// midnight: the next morning), as changed that day, moved `shift`
     /// minutes; none when off that day.
     fn night_of(&self, night: Date, zone: &TimeZone, days: &Days, shift: i64) -> Option<Kept> {
-        let change = days.get(night, "sleep");
-        if change.is_some_and(|c| c.off) {
+        if days.get(night, "sleep").is_some_and(|c| c.off) {
             return None;
         }
+        self.night_at(night, zone, days, shift)
+    }
+
+    /// The night starting the evening of `night` at its times as that day
+    /// has them, taken out that day or not: when it would be. Whether a night
+    /// is set is the caller's to ask (`sleep_on`).
+    pub fn night_times(&self, night: Date, zone: &TimeZone, days: &Days) -> Option<Kept> {
+        self.night_at(night, zone, days, 0)
+    }
+
+    /// The night "tonight" names at `now`, by its date (the evening it
+    /// starts, as `Days` keys it): the night going on or the next one, the
+    /// first from yesterday's whose end is after `now`, one taken out that
+    /// day counted at its times. After midnight, until its waking, the night
+    /// begun the evening before: an edit of "tonight" just after midnight,
+    /// bed at midnight, is that night's, and its waking rings that morning.
+    /// With no night set, today.
+    pub fn tonight(&self, now: &Zoned, days: &Days) -> Date {
+        let today = now.date();
+        if !self.sleep_on {
+            return today;
+        }
+        let stamp = now.timestamp().as_second();
+        [today.yesterday().ok(), Some(today), today.tomorrow().ok()]
+            .into_iter()
+            .flatten()
+            .find(|night| self.night_times(*night, now.time_zone(), days).is_some_and(|k| k.end > stamp))
+            .unwrap_or(today)
+    }
+
+    /// `night_times`, moved `shift` minutes.
+    fn night_at(&self, night: Date, zone: &TimeZone, days: &Days, shift: i64) -> Option<Kept> {
+        let change = days.get(night, "sleep");
         let set = |own: Option<&str>, usual: &str| own.filter(|t| !t.is_empty()).map_or_else(|| usual.to_string(), str::to_string);
         let bed = time_of(&set(change.map(|c| c.at.as_str()), &self.sleep.bed))?;
         let wake = time_of(&set(change.map(|c| c.wake.as_str()), &self.sleep.wake))?;
@@ -843,14 +875,15 @@ impl Needs {
     /// put back; one added that day goes), "usual" (as usual that day), "add"
     /// (one for that day only, a meal or a rest); the night's "no-alarm" and
     /// "alarm" (no alarm the morning it ends, or back). A day before `now`'s
-    /// stays as it was, but for the alarm of a night still going on (after
-    /// midnight, yesterday's). Moves count from the block as the page shows
-    /// it (meals pushed past the events in `held`), and are kept as times on
-    /// the clock; lengths only where they differ from the usual ones.
+    /// stays as it was, but for a night not over yet (after midnight,
+    /// yesterday's, going on or about to begin: `tonight`), which changes as
+    /// any night to come: its waking, its alarm, its times. Moves count from
+    /// the block as the page shows it (meals pushed past the events in
+    /// `held`), and are kept as times on the clock; lengths only where they
+    /// differ from the usual ones.
     pub fn change_day(&self, days: &mut Days, date: Date, edit: &DayEdit, now: &Zoned, held: &[(i64, i64)]) -> Result<(), DayProblem> {
-        let alarm = matches!(edit.action.as_str(), "no-alarm" | "alarm");
-        let going_on = || edit.key == "sleep" && self.night_of(date, now.time_zone(), days, 0).is_some_and(|k| k.end > now.timestamp().as_second());
-        if date < now.date() && !(alarm && going_on()) {
+        let going_on = || edit.key == "sleep" && self.night_times(date, now.time_zone(), days).is_some_and(|k| k.end > now.timestamp().as_second());
+        if date < now.date() && !going_on() {
             return Err(DayProblem::Past);
         }
         let zone = now.time_zone().clone();
@@ -1638,11 +1671,16 @@ mod tests {
         assert!(days.0.is_empty(), "nothing left: {days:?}");
         // Only a night has an alarm.
         assert_eq!(needs.change_day(&mut days, tuesday, &asked("no-alarm", "meal:0"), &evening, &[]), Err(DayProblem::Unknown));
-        // After midnight the night going on is yesterday's: its alarm can still be taken out, not its times.
+        // After midnight the night going on is yesterday's: its alarm can still be taken out, and
+        // its times change as any night to come (a quarter of an hour later: up at 07:15).
         let night: Zoned = "2026-10-07T01:30[Europe/Paris]".parse().unwrap();
         needs.change_day(&mut days, tuesday, &asked("no-alarm", "sleep"), &night, &[]).unwrap();
         assert_eq!(rung(&needs.wakings(&night, &days, 2)), ["Thu 08 07:00"]);
-        assert_eq!(needs.change_day(&mut days, tuesday, &asked("later", "sleep"), &night, &[]), Err(DayProblem::Past));
+        needs.change_day(&mut days, tuesday, &asked("later", "sleep"), &night, &[]).unwrap();
+        needs.change_day(&mut days, tuesday, &asked("alarm", "sleep"), &night, &[]).unwrap();
+        assert_eq!(rung(&needs.wakings(&night, &days, 2)), ["Wed 07 07:15", "Thu 08 07:00"]);
+        // Not the one before: Monday's night ended Tuesday morning.
+        assert_eq!(needs.change_day(&mut days, day("2026-10-05"), &asked("later", "sleep"), &night, &[]), Err(DayProblem::Past));
         // Once over, it stays as it was.
         let noon: Zoned = "2026-10-07T12:00[Europe/Paris]".parse().unwrap();
         assert_eq!(needs.change_day(&mut days, tuesday, &asked("alarm", "sleep"), &noon, &[]), Err(DayProblem::Past));
@@ -1651,6 +1689,77 @@ mod tests {
         needs.change_day(&mut days, wednesday, &asked("no-alarm", "sleep"), &noon, &[]).unwrap();
         needs.change_day(&mut days, wednesday, &asked("usual", "sleep"), &noon, &[]).unwrap();
         assert!(days.get(wednesday, "sleep").is_none());
+    }
+
+    /// "Tonight" after midnight is the night begun the evening before, until
+    /// its waking: a change of tonight's waking at 00:13, bed at 00:00, is
+    /// that night's, and rings that morning; never the next evening's, whose
+    /// morning may ring nothing (`Needs::tonight`).
+    #[test]
+    fn tonight_is_the_night_going_on_or_next() {
+        let at = |text: &str| -> Zoned { format!("{text}[Europe/Paris]").parse().unwrap() };
+        let asked = |action: &str| DayEdit { action: action.into(), key: "sleep".into(), ..DayEdit::default() };
+        // Mornings Monday to Friday; bed at midnight, up at 07:30.
+        let mut needs = ticked([true, true, true, true, true, false, false]);
+        (needs.sleep.bed, needs.sleep.wake) = ("00:00".into(), "07:30".into());
+        let (wednesday, thursday) = (day("2026-10-07"), day("2026-10-08"));
+        // Thursday 00:13, not in bed yet: tonight is Wednesday's night, ending Thursday at 07:30.
+        let late = at("2026-10-08T00:13");
+        let mut days = Days::default();
+        assert_eq!(needs.tonight(&late, &days), wednesday);
+        assert_eq!(rung(&needs.wakings(&late, &days, 1)), ["Thu 08 07:30"]);
+        // Its waking changed to 06:45 for that night only: kept under Wednesday, rung Thursday at 06:45.
+        let tonight = needs.tonight(&late, &days);
+        needs.change_day(&mut days, tonight, &DayEdit { from: "23:00".into(), bed: "00:00".into(), to: "06:45".into(), ..asked("times") }, &late, &[]).unwrap();
+        assert_eq!(days.get(wednesday, "sleep").map(|b| (b.at.as_str(), b.wake.as_str(), b.before)), Some(("00:00", "06:45", None)));
+        assert!(days.get(thursday, "sleep").is_none(), "Thursday's own night, as usual");
+        assert_eq!(rung(&needs.wakings(&late, &days, 2)), ["Thu 08 06:45", "Fri 09 07:30"]);
+        // Once up, tonight is the day's own.
+        assert_eq!(needs.tonight(&at("2026-10-08T06:45"), &days), thursday);
+        assert_eq!(needs.tonight(&at("2026-10-08T21:00"), &days), thursday);
+        // In the evening before midnight, the same night: today's.
+        assert_eq!(needs.tonight(&at("2026-10-07T23:50"), &days), wednesday);
+        // Bed at 01:00: at 23:30 tonight is the evening's own; at 00:30, still the one not begun.
+        let one = Needs { sleep: Sleep { bed: "01:00".into(), ..needs.sleep.clone() }, ..needs.clone() };
+        assert_eq!(one.tonight(&at("2026-10-07T23:30"), &Days::default()), wednesday);
+        let half_past = at("2026-10-08T00:30");
+        assert_eq!(one.tonight(&half_past, &Days::default()), wednesday);
+        let mut later = Days::default();
+        one.change_day(&mut later, wednesday, &asked("later"), &half_past, &[]).unwrap();
+        assert_eq!(rung(&one.wakings(&half_past, &later, 1)), ["Thu 08 07:45"]);
+        // No night set: tonight is today, and nothing rings.
+        let none = Needs { sleep_on: false, ..needs.clone() };
+        assert_eq!(none.tonight(&late, &Days::default()), thursday);
+        assert!(none.wakings(&late, &Days::default(), 2).is_empty());
+        // Tonight's night taken out (no sleep that night) is tonight all the same, and is put back there.
+        let mut out = Days::default();
+        out.change(wednesday, "sleep", |b| b.off = true);
+        assert_eq!(needs.tonight(&late, &out), wednesday);
+        needs.change_day(&mut out, wednesday, &asked("on"), &late, &[]).unwrap();
+        assert!(out.0.is_empty(), "{out:?}");
+    }
+
+    /// Tonight across the changes of hour: after midnight, the night begun the
+    /// evening before; its waking changed rings at that time on the clock.
+    #[test]
+    fn tonight_through_the_changes_of_hour() {
+        let mut needs = ticked([true; 7]);
+        needs.sleep.bed = "00:00".into();
+        let asked = DayEdit { action: "times".into(), key: "sleep".into(), from: "23:00".into(), bed: "00:00".into(), to: "08:00".into(), ..DayEdit::default() };
+        // Autumn: Sunday 25 October 2026 00:30, an hour before 03:00 summer time becomes 02:00.
+        let autumn: Zoned = "2026-10-25T00:30[Europe/Paris]".parse().unwrap();
+        let mut days = Days::default();
+        assert_eq!(needs.tonight(&autumn, &days), day("2026-10-24"));
+        needs.change_day(&mut days, day("2026-10-24"), &asked, &autumn, &[]).unwrap();
+        let rings = needs.wakings(&autumn, &days, 1);
+        assert_eq!(jiff::Timestamp::from_second(rings[0].at).unwrap().to_string(), "2026-10-25T07:00:00Z", "08:00 winter time");
+        // Spring: Sunday 29 March 2026 00:30, before 02:00 winter time becomes 03:00.
+        let spring: Zoned = "2026-03-29T00:30[Europe/Paris]".parse().unwrap();
+        let mut days = Days::default();
+        assert_eq!(needs.tonight(&spring, &days), day("2026-03-28"));
+        needs.change_day(&mut days, day("2026-03-28"), &asked, &spring, &[]).unwrap();
+        let rings = needs.wakings(&spring, &days, 1);
+        assert_eq!(jiff::Timestamp::from_second(rings[0].at).unwrap().to_string(), "2026-03-29T06:00:00Z", "08:00 summer time");
     }
 
     #[test]

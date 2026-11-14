@@ -266,15 +266,12 @@ Item {
 
     // What can change a block that day: under `under` (its ⋯), else where the
     // pointer or the finger is (window.menuAt). Nothing for a past one, nor a
-    // dose; but a night begun on a past day and not over (after midnight), its
-    // alarm at waking alone, which the core takes until it rings (`alarm_open`).
+    // dose; a night not over is never past, whatever its day (after midnight,
+    // the one begun the evening before: the core changes it as any to come).
     function openMenu(day, item, under) {
-        if (item.kind === "dose")
+        if (item.kind === "dose" || item.past || (day.past && item.kind !== "sleep"))
             return
-        const alarmOnly = (day.past || item.past) && item.kind === "sleep" && item.alarm_open === true && (item.alarm || "") !== ""
-        if ((day.past || item.past) && !alarmOnly)
-            return
-        needMenu.now().show(day, item, under || null, alarmOnly)
+        needMenu.now().show(day, item, under || null, false)
     }
 
     Connections {
@@ -578,8 +575,9 @@ Item {
                         readonly property string ident: scroll.day.date + "|" + row.modelData.key
                         readonly property bool lit: page.hovered === row.ident || page.chosen === row.ident
                         readonly property bool isDose: row.modelData.kind === "dose"
-                        // A meal, a nap or the night not over yet, on a day not past.
-                        readonly property bool editable: !row.isDose && !row.modelData.past && scroll.editable
+                        // A meal, a nap or the night not over yet, on a day not past; the night not
+                        // over on any day (after midnight, the one begun the evening before).
+                        readonly property bool editable: !row.isDose && !row.modelData.past && (scroll.editable || row.modelData.kind === "sleep")
                         readonly property color ink: row.modelData.off || (row.modelData.past && row.modelData.taken === "") ? page.theme.muted : page.theme.text
 
                         Layout.fillWidth: true
@@ -602,7 +600,7 @@ Item {
                                 page.chosen = row.ident
                                 const kind = row.modelData.kind === "sleep" ? "night" : row.modelData.kind
                                 if (kind !== "dose")
-                                    page.window.openCard({ kind: kind, srcDate: scroll.day.date, srcKey: row.modelData.key, title: row.modelData.name })
+                                    page.window.openCard({ kind: kind, srcDate: row.modelData.date || scroll.day.date, srcKey: row.modelData.key, title: row.modelData.name })
                             }
                         }
                         TapHandler {
@@ -697,13 +695,12 @@ Item {
                                     flat: true
                                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                                     text: page.theme.plain(row.modelData.off ? page.sioul.text("need-put-back") : page.sioul.textWith("need-later-n", "minutes", String(page.shown.later)))
-                                    onClicked: page.change(scroll.day.date, row.modelData.key, row.modelData.off ? "on" : "later")
+                                    onClicked: page.change(row.modelData.date || scroll.day.date, row.modelData.key, row.modelData.off ? "on" : "later")
                                 }
-                                // On a past day, a night not over (after midnight): its alarm alone.
                                 ToolButton {
                                     id: more
 
-                                    visible: (row.editable || (row.modelData.kind === "sleep" && row.modelData.alarm_open === true)) && !row.modelData.off
+                                    visible: row.editable && !row.modelData.off
                                     text: "⋯"
                                     Accessible.name: page.sioul.textWith("need-menu", "name", row.modelData.name)
                                     ToolTip.visible: hovered
@@ -891,7 +888,9 @@ Item {
                 sioul: page.sioul
                 theme: page.theme
                 later: page.shown.later
-                onActed: action => page.change(menu.day.date, menu.item.key, action)
+                // Kept under the row's own day: the night's evening (after midnight, today's list
+                // holds the night begun the evening before).
+                onActed: action => page.change(menu.item.date || menu.day.date, menu.item.key, action)
                 onFormAsked: mode => dayForm.now().edit(mode, menu.day, menu.item)
                 onOpened: page.menuOpen = true
                 onClosed: page.menuOpen = false
