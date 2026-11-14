@@ -378,6 +378,20 @@ Item {
             compare(page.mode, "day", "its day opens")
         }
 
+        // What comes after midnight: the night going on (its evening the day before) at its place by
+        // time, first, never after the evening (review of the branch `wake`, L1); this evening's last.
+        function test_what_comes_puts_the_night_going_on_first() {
+            const page = makePage()
+            page.mode = "agenda"
+            const today = day(0)
+            const needs = (date) => ({ privacy: "health", source: { type: "needs", date: date, key: "sleep" } })
+            today.comes = { rows: [placed("Lunch", "meal", today.start, 750, 780, { when: "12:30 – 13:00" }, { privacy: "health" }), placed("Last night", "night", today.start, 0, 450, { when: "Until 07:30" }, needs(day(-1).date)), placed("Night", "night", today.start, 1380, 1440, { when: "From 23:00" }, needs(today.date))], doses: [] }
+            mock.agenda = JSON.stringify({ version: 3, from: today.date, sentence: "", days: [today] })
+            wait(50)
+            const rows = root.all(page, c => c.timeWidth !== undefined && c.known !== undefined && c.visible)
+            compare(rows.map(r => r.title).join(" | "), "Last night | Lunch | Night")
+        }
+
         // An event over several days and its line (`ongoing::Through`, the ongoing round), Monday to Wednesday.
         function trip(lane, more) {
             const line = (first, last) => ({ id: "Trip", uid: "trip", colour: "#3d6b8f", lane: lane || 0, first: first, last: last })

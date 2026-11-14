@@ -883,8 +883,13 @@ pub(crate) fn need_item_with(date: &str, key: &str, events: &[sioul_core::agenda
 }
 
 fn need_item_held(date: &str, key: &str, held: &dyn Fn() -> Vec<(i64, i64)>) -> String {
+    need_item_at(date, key, held, &Zoned::now())
+}
+
+/// `need_item_held` at `now`.
+fn need_item_at(date: &str, key: &str, held: &dyn Fn() -> Vec<(i64, i64)>, now: &Zoned) -> String {
     let Ok(date) = date.parse::<Date>() else { return "{}".into() };
-    let now = Zoned::now();
+    let now = now.clone();
     let health = Health::read(&Health::default_path()).unwrap_or_default();
     let days = Days::load(&Days::default_path());
     let knowledge = Knowledge { record_lost: None, peers: Vec::new() };
@@ -919,11 +924,14 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
     let pushed = pushed_on(needs, days, date, now, around.held);
     let shift = |key: &str| pushed.get(key).copied().unwrap_or(0);
     let past_day = date < today;
-    // The night this list holds: the one starting that evening; on today's list, as the page
-    // shows it, the one "tonight" means: after midnight, until its waking, the night begun the
-    // evening before (`Needs::tonight`), whose times read as this evening's would. The night
-    // starting this evening joins the list once that one has ended.
+    // The night going on that this list holds beside its own: on today's list, as the page shows
+    // it, after midnight until its waking, the night begun the evening before (`Needs::tonight`),
+    // the one "tonight" means then; first, at its start, and said so, as this evening's own is,
+    // their times reading alike (review of the branch `wake`, M1: this evening's night stays
+    // reachable all day).
     let night = if around.tonight && date == today { needs.tonight(now, days).min(date) } else { date };
+    // `note` with `more` after it.
+    let joined = |note: String, more: String| [note, more].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ");
     let mut items: Vec<(i64, DayItem)> = Vec::new();
     // `k` kept under `own` (the night's evening, or `date`), taken out that day when `off`.
     let block_item = |k: &Kept, own: Date, off: bool| -> DayItem {
@@ -957,6 +965,10 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
         };
         let note = if quiet && !off { [note, tr().text("need-quiet", None)].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ") } else { note };
         let note = if alarm_skipped { [note, tr().text("wake-none", None)].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ") } else { note };
+        // On a computer: an alarm only this version rings (a night's on that night alone, a nap's),
+        // which an older Sioul on a phone passes over (docs/health.md, "An older Sioul").
+        let older = !cfg!(target_os = "android") && waking.is_some_and(|w| w.rings && (k.kind == "nap" || !w.usual));
+        let note = if older { [note, tr().text("wake-older-phone", None)].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ") } else { note };
         DayItem {
             key: k.key.clone(),
             date: own.to_string(),
@@ -990,23 +1002,30 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
             rings: waking.is_some_and(|w| w.rings),
         }
     };
-    for k in needs.blocks_of(date, &zone, days, &shift).into_iter().filter(|k| k.kind != "sleep" || night == date) {
+    for k in needs.blocks_of(date, &zone, days, &shift) {
         items.push((minute(k.start), block_item(&k, date, false)));
     }
     // Taken out that day: in the list still, to put back; its time is free.
     let usual = needs.blocks_of(date, &zone, &Days::default(), &|_| 0);
-    for k in usual.iter().filter(|k| (k.kind != "sleep" || night == date) && days.get(date, &k.key).is_some_and(|c| c.off)) {
+    for k in usual.iter().filter(|k| days.get(date, &k.key).is_some_and(|c| c.off)) {
         items.push((minute(k.start), block_item(k, date, true)));
     }
-    // The night begun the evening before, on today's list until its waking (as it is that day,
-    // or taken out, to put back).
+    // The night begun the evening before, on today's list too until its waking, first, said as
+    // going on (as it is that day, or taken out before its bedtime, to put back); this evening's
+    // own then said as this evening's.
     if night != date
         && needs.sleep_on
         && let Some(k) = needs.night_times(night, &zone, days)
     {
         let off = days.get(night, "sleep").is_some_and(|c| c.off);
         let k = if off { needs.night_times(night, &zone, &Days::default()).unwrap_or(k) } else { k };
-        items.push((minute(k.start), block_item(&k, night, off)));
+        let mut going_on = block_item(&k, night, off);
+        going_on.note = joined(tr().text("need-night-going-on", None), going_on.note);
+        let own = date.to_string();
+        for (_, item) in items.iter_mut().filter(|(_, i)| i.kind == "sleep" && i.date == own) {
+            item.note = joined(tr().text("need-night-this-evening", None), std::mem::take(&mut item.note));
+        }
+        items.push((minute(k.start), going_on));
     }
     // The doses: on today with whether they are marked, and the doubt when
     // another device may know; another day, plainly (no record of the past here).
@@ -4461,7 +4480,12 @@ fn change_day(date: &str, edit: &DayEdit) -> String {
 /// (`Needs::tonight`: after midnight, the one begun the evening before,
 /// until its waking). Returns the day, or what went wrong.
 fn change_day_seen(date: &str, edit: &DayEdit) -> Result<(Date, Option<sioul_core::needs::DayBlock>, Option<sioul_core::needs::DayBlock>), String> {
-    let now = Zoned::now();
+    change_day_seen_at(date, edit, &Zoned::now())
+}
+
+/// `change_day_seen` at `now`.
+fn change_day_seen_at(date: &str, edit: &DayEdit, now: &Zoned) -> Result<(Date, Option<sioul_core::needs::DayBlock>, Option<sioul_core::needs::DayBlock>), String> {
+    let now = now.clone();
     // Changed over the days as the file holds them now, under its lock, which the sharing takes too.
     let read = days();
     let needs = load().needs;
@@ -8446,10 +8470,11 @@ mod tests {
     }
 
     /// After midnight, until its waking, today's list holds the night begun the
-    /// evening before, kept under that evening's date, never this evening's,
-    /// whose times read the same; a card asked for by date shows that day's own;
-    /// the night going on is not past on its own day's list either. The
-    /// question's rows say it too (`needs_today`).
+    /// evening before, first, said as going on, kept under that evening's date,
+    /// and this evening's own as well, said as this evening's (their times read
+    /// alike); a card asked for by date shows that day's own; the night going on
+    /// is not past on its own day's list either. The question's rows say the
+    /// night going on (`needs_today`).
     #[test]
     fn today_s_list_holds_the_night_going_on() {
         let mut needs = Needs { sleep_on: true, ..Needs::default() };
@@ -8460,18 +8485,56 @@ mod tests {
         let view = |date: Date, tonight: bool, now: &Zoned| day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &Days::default(), &Around { events: &[], held: &Vec::new, tonight }, date, now);
         let night = |view: &DayView| view.items.iter().filter(|i| i.kind == "sleep").map(|i| (i.date.clone(), i.from.clone(), i.to.clone(), i.past, i.alarm.clone())).collect::<Vec<_>>();
         let late: Zoned = "2026-10-08T00:13[Europe/Paris]".parse().unwrap();
-        let wednesday_s = ("2026-10-07".to_string(), "23:00".to_string(), "07:30".to_string(), false, "07:30".to_string());
-        assert_eq!(night(&view(thursday, true, &late)), [wednesday_s.clone()], "Thursday 00:13: tonight is Wednesday's night");
-        assert_eq!(night(&view(thursday, false, &late))[0].0, "2026-10-08", "a card of Thursday's night: Thursday's own");
-        assert_eq!(night(&view(wednesday, true, &late)), [wednesday_s], "on its own day's list, not past");
-        // Once up: Thursday's own night, Wednesday's over.
+        let row = |date: &str| (date.to_string(), "23:00".to_string(), "07:30".to_string(), false, "07:30".to_string());
+        // Thursday 00:13: Wednesday's night going on, first; Thursday evening's own, after.
+        let today = view(thursday, true, &late);
+        assert_eq!(night(&today), [row("2026-10-07"), row("2026-10-08")]);
+        let notes: Vec<&str> = today.items.iter().filter(|i| i.kind == "sleep").map(|i| i.note.as_str()).collect();
+        assert_eq!(notes, [tr().text("need-night-going-on", None), tr().text("need-night-this-evening", None)]);
+        assert_eq!(night(&view(thursday, false, &late)), [row("2026-10-08")], "a card of Thursday's night: Thursday's own");
+        assert_eq!(night(&view(wednesday, true, &late)), [row("2026-10-07")], "on its own day's list, not past");
+        // Once up: Thursday's own night alone, said plainly; Wednesday's over.
         let up: Zoned = "2026-10-08T08:00[Europe/Paris]".parse().unwrap();
-        assert_eq!(night(&view(thursday, true, &up))[0].0, "2026-10-08");
+        let after = view(thursday, true, &up);
+        assert_eq!(night(&after), [row("2026-10-08")]);
+        assert!(after.items.iter().all(|i| i.note.is_empty()), "one night: nothing to tell apart");
         assert!(night(&view(wednesday, true, &up))[0].3, "over: past");
-        // The question after a night's notice: the same night.
+        // The question after a night's notice: the night going on.
         let rows = needs_rows(&needs, &Days::default(), &late, &needs.blocks_of(thursday, late.time_zone(), &Days::default(), &|_| 0));
         let sleep: Vec<(String, String)> = rows.iter().filter(|r| r["kind"] == "sleep").map(|r| (r["from"].as_str().unwrap().to_string(), r["past"].to_string())).collect();
         assert_eq!(sleep, [("23:00".to_string(), "false".to_string())]);
+    }
+
+    /// What says "tonight" with no date (the night's notice's question: "Later",
+    /// "Not today") means the night going on after midnight, kept under the
+    /// evening before; a date given is kept as given; a meal with no date is
+    /// today's. A card of the night going on is not past, though its day is;
+    /// that day's meals and the night before it are.
+    #[test]
+    fn no_date_means_tonight_and_its_card_is_not_past() {
+        let _files = health_files_held();
+        sioul_core::config::stand_ins_only();
+        let path = Health::default_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "[needs]\nmeals_on = true\nsleep_on = true\n\n[needs.sleep]\nbed = \"00:00\"\nwake = \"07:30\"\nalarm = [true, true, true, true, true, false, false]\n").unwrap();
+        let _ = std::fs::remove_file(Days::default_path());
+        let late: Zoned = "2026-10-08T00:13[Europe/Paris]".parse().unwrap();
+        let (wednesday, thursday) = (jiff::civil::date(2026, 10, 7), jiff::civil::date(2026, 10, 8));
+        let card = |date: &str, key: &str| serde_json::from_str::<serde_json::Value>(&need_item_at(date, key, &Vec::new, &late)).unwrap();
+        assert_eq!(card("2026-10-07", "sleep")["past"], false, "the night going on");
+        assert_eq!(card("2026-10-07", "meal:1")["past"], true);
+        assert_eq!(card("2026-10-06", "sleep")["past"], true);
+        let later = |key: &str| DayEdit { key: key.into(), action: "later".into(), ..DayEdit::default() };
+        let (date, _, wrote) = change_day_seen_at("", &later("sleep"), &late).unwrap();
+        assert_eq!(date, wednesday);
+        assert_eq!(wrote.map(|b| (b.at, b.wake)), Some(("00:15".to_string(), "07:45".to_string())));
+        assert_eq!(change_day_seen_at("2026-10-08", &later("sleep"), &late).map(|seen| seen.0), Ok(thursday));
+        assert_eq!(change_day_seen_at("", &later("meal:1"), &late).map(|seen| seen.0), Ok(thursday));
+        let kept = Days::load(&Days::default_path());
+        assert_eq!(kept.get(wednesday, "sleep").map(|b| b.wake.as_str()), Some("07:45"));
+        assert_eq!(kept.get(thursday, "sleep").map(|b| b.wake.as_str()), Some("07:45"));
+        let _ = std::fs::remove_file(Days::default_path());
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Each night and nap row says when its alarm would ring and whether it
@@ -8502,6 +8565,11 @@ mod tests {
         let asked = rows(&days);
         assert_eq!(of(&asked, "sleep"), Some(("07:00".to_string(), true, "07:00".to_string())));
         assert_eq!(of(&asked, "nap:0"), Some(("14:20".to_string(), true, "14:20".to_string())));
+        // On a computer, an alarm only this version rings says that an older Sioul on a phone does not.
+        let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &Vec::new, tonight: true }, friday, &now);
+        let older = tr().text("wake-older-phone", None);
+        assert!(view.items.iter().filter(|i| i.key == "sleep" || i.key == "nap:0").all(|i| i.note.contains(&older)), "{older}");
+        assert!(view.items.iter().filter(|i| i.key == "meal:1").all(|i| !i.note.contains(&older)));
         days.change(friday, "nap:0", |b| b.off = true);
         let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &Vec::new, tonight: true }, friday, &now);
         assert!(view.items.iter().filter(|i| i.key == "nap:0").all(|i| i.off && i.waking.is_empty() && !i.rings), "taken out: no alarm");

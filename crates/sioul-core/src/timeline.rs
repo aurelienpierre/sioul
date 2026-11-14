@@ -984,19 +984,22 @@ pub fn comes(day: &Day, next: Option<&Day>, c: &ComesOf) -> Comes {
     // the next day's list of things); never the morning of the one before once it is over,
     // nor tonight's labelled by the next evening's alarm (review of 21436bf, later 5).
     // Today, until its waking after midnight, the night begun the evening before
-    // (`ComesOf::tonight`): the one "tonight" means, its card that night's.
-    let evening = if today { c.tonight } else { date };
+    // (`ComesOf::tonight`) too: the one "tonight" means then, its card that night's, listed
+    // at its place by time (the window sorts it: AgendaPage.qml); this evening's own stays,
+    // so that it can be reached all day (review of the branch `wake`, M1, L1).
+    let evenings: Vec<Date> = if today && c.tonight < date { vec![c.tonight, date] } else if today { vec![c.tonight] } else { vec![date] };
     let evening_of = |p: &Placed| match &p.item.source {
         Source::Needs { date, .. } => Some(*date),
         _ => None,
     };
     for placed in day.timed.iter().chain(next.into_iter().flat_map(|n| n.timed.iter())).filter(|p| p.item.kind == Kind::Night) {
-        let tonight = evening_of(placed).map_or(placed.item.time.whole(c.zone).0 >= day.start && placed.item.time.whole(c.zone).0 < day.start + 86_400, |own| own == evening);
-        if !tonight || nights.iter().any(|n: &Placed| n.item.id == placed.item.id) || !(today || c.no_alarm.contains(&evening)) {
+        let own = evening_of(placed).unwrap_or(date);
+        let tonight = evening_of(placed).map_or(placed.item.time.whole(c.zone).0 >= day.start && placed.item.time.whole(c.zone).0 < day.start + 86_400, |own| evenings.contains(&own));
+        if !tonight || nights.iter().any(|n: &Placed| n.item.id == placed.item.id) || !(today || c.no_alarm.contains(&own)) {
             continue;
         }
         let mut night = placed.clone();
-        if c.no_alarm.contains(&evening) {
+        if c.no_alarm.contains(&own) {
             night.item.line = c.tr.text("agenda-no-alarm", None);
         }
         nights.push(night);
@@ -2134,10 +2137,11 @@ mod tests {
         assert_eq!(tuesday.rows.iter().map(|p| (p.item.id.as_str(), p.item.line.as_str())).collect::<Vec<_>>(), [("night-6", "No alarm")], "the usual lunch left out; Tuesday's own night alone, without its alarm");
         assert_eq!(tuesday.doses.iter().map(|d| d.when.as_str()).collect::<Vec<_>>(), ["09:00"], "the dose taken every few days alone");
         assert_eq!(tuesday.plan, "The plan: Call the bank first");
-        // Tuesday at 03:00, Monday's night not over: tonight is that one, its own alarm said, until its waking.
+        // Tuesday at 03:00, Monday's night not over: tonight is that one, its own alarm said, until its
+        // waking; Tuesday evening's own stays, without its alarm.
         let small_hours = ComesOf { now: at("2026-10-06T03:00"), today: day("2026-10-06"), tonight: day("2026-10-05"), ..of };
         let going_on = comes(&shown[1], shown.get(2), &small_hours);
-        assert_eq!(going_on.rows.iter().filter(|p| p.item.kind == Kind::Night).map(|p| (p.item.id.as_str(), p.item.line.as_str())).collect::<Vec<_>>(), [("night-5", "")], "the night going on, never the evening's to come");
+        assert_eq!(going_on.rows.iter().filter(|p| p.item.kind == Kind::Night).map(|p| (p.item.id.as_str(), p.item.line.as_str())).collect::<Vec<_>>(), [("night-5", ""), ("night-6", "No alarm")], "the night going on, and this evening's");
         let wednesday = comes(&shown[2], None, &of);
         assert_eq!(titles(&wednesday), ["Lunch", "Winding down"], "lunch moved that day, the night without its alarm");
         assert_eq!(wednesday.rows[1].item.line, "No alarm");

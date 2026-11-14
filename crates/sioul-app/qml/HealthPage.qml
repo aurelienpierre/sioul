@@ -572,7 +572,8 @@ Item {
                         id: row
 
                         required property var modelData
-                        readonly property string ident: scroll.day.date + "|" + row.modelData.key
+                        // By its own day: today's list after midnight holds two nights, both "sleep".
+                        readonly property string ident: (row.modelData.date || scroll.day.date) + "|" + row.modelData.key
                         readonly property bool lit: page.hovered === row.ident || page.chosen === row.ident
                         readonly property bool isDose: row.modelData.kind === "dose"
                         // A meal, a nap or the night not over yet, on a day not past; the night not
@@ -691,6 +692,7 @@ Item {
                                 }
                                 // The quickest change, at hand: a quarter of an hour later; put back when taken out.
                                 Button {
+                                    objectName: "needRowLater"
                                     visible: row.editable
                                     flat: true
                                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
@@ -700,6 +702,7 @@ Item {
                                 ToolButton {
                                     id: more
 
+                                    objectName: "needRowMore"
                                     visible: row.editable && !row.modelData.off
                                     text: "⋯"
                                     Accessible.name: page.sioul.textWith("need-menu", "name", row.modelData.name)

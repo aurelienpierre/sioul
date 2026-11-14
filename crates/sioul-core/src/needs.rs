@@ -233,6 +233,8 @@ pub struct Alarm {
     pub night_start: i64,
     /// "No alarm" asked for that night: it does not ring.
     pub skipped: bool,
+    /// A nap's, not a night's: the night's settings say the nights' next ring alone.
+    pub nap: bool,
 }
 
 /// A night's or a nap's end on its day, and whether its alarm rings then (`Needs::waking_of`).
@@ -740,7 +742,9 @@ impl Needs {
     /// The night "tonight" names at `now`, by its date (the evening it
     /// starts, as `Days` keys it): the night going on or the next one, the
     /// first from yesterday's whose end is after `now`, one taken out that
-    /// day counted at its times. After midnight, until its waking, the night
+    /// day counted at its times until its bedtime (to put it back; once its
+    /// bedtime has passed, a night not slept is no longer tonight, and the
+    /// next one is). After midnight, until its waking, the night
     /// begun the evening before: an edit of "tonight" just after midnight,
     /// bed at midnight, is that night's, and its waking rings that morning.
     /// With no night set, today.
@@ -753,7 +757,10 @@ impl Needs {
         [today.yesterday().ok(), Some(today), today.tomorrow().ok()]
             .into_iter()
             .flatten()
-            .find(|night| self.night_times(*night, now.time_zone(), days).is_some_and(|k| k.end > stamp))
+            .find(|night| {
+                let off = days.get(*night, "sleep").is_some_and(|c| c.off);
+                self.night_times(*night, now.time_zone(), days).is_some_and(|k| k.end > stamp && !(off && k.at <= stamp))
+            })
             .unwrap_or(today)
     }
 
@@ -793,7 +800,7 @@ impl Needs {
     /// change of hour that night.
     pub fn alarm_of(&self, night: Date, zone: &TimeZone, days: &Days) -> Option<Alarm> {
         let waking = self.waking_of(night, "sleep", zone, days)?;
-        (waking.usual || waking.rings).then_some(Alarm { at: waking.at, night_start: waking.start, skipped: !waking.rings })
+        (waking.usual || waking.rings).then_some(Alarm { at: waking.at, night_start: waking.start, skipped: !waking.rings, nap: false })
     }
 
     /// The end of `date`'s night ("sleep": the one starting that evening) or
@@ -855,7 +862,7 @@ impl Needs {
             // That day's naps whose alarm rings at their end.
             for nap in self.day_blocks(night, zone, days, &|_| 0).iter().filter(|k| k.kind == "nap") {
                 if let Some(waking) = self.waking_of(night, &nap.key, zone, days).filter(|w| w.rings && w.at > stamp && w.at <= until) {
-                    out.push(Alarm { at: waking.at, night_start: waking.start, skipped: false });
+                    out.push(Alarm { at: waking.at, night_start: waking.start, skipped: false, nap: true });
                 }
             }
             let Ok(next) = night.tomorrow() else { break };
@@ -1814,10 +1821,12 @@ mod tests {
         let none = Needs { sleep_on: false, ..needs.clone() };
         assert_eq!(none.tonight(&late, &Days::default()), thursday);
         assert!(none.wakings(&late, &Days::default(), 2).is_empty());
-        // Tonight's night taken out (no sleep that night) is tonight all the same, and is put back there.
+        // Tonight's night taken out (no sleep that night): tonight until its bedtime, to put it back;
+        // once its bedtime has passed, the next night is; it can still be put back where it is kept.
         let mut out = Days::default();
         out.change(wednesday, "sleep", |b| b.off = true);
-        assert_eq!(needs.tonight(&late, &out), wednesday);
+        assert_eq!(needs.tonight(&at("2026-10-07T23:30"), &out), wednesday);
+        assert_eq!(needs.tonight(&late, &out), thursday);
         needs.change_day(&mut out, wednesday, &asked("on"), &late, &[]).unwrap();
         assert!(out.0.is_empty(), "{out:?}");
     }

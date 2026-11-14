@@ -71,7 +71,9 @@ Item {
     }
 
     // What comes' rows of a day (version 3's `comes`, `timeline::comes`), in time order:
-    // its whole-day things first, tonight's night last; today's doses by the minute, as the
+    // its whole-day things first, tonight's night last, but the night going on (after midnight,
+    // the one begun the evening before: its evening before the day) at its place by time, first;
+    // today's doses by the minute, as the
     // Porch lists them: from their time on until marked, with their mark and what is known
     // (the window's rows, `timeline.markState`), those still to come plainly; never a name.
     function comesRows(day) {
@@ -80,7 +82,8 @@ Item {
         for (const placed of (comes.rows || []).filter(p => page.shownHere(p.item))) {
             const item = placed.item
             const detail = placed.detail || {}
-            out.push({ sort: item.kind === "night" ? 3000 : placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: [placed.both || "", item.line || "", detail.location || ""].filter(t => t !== "").join(" · "), kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] })
+            const goingOn = item.kind === "night" && item.source && item.source.type === "needs" && item.source.date < day.date
+            out.push({ sort: item.kind === "night" && !goingOn ? 3000 : placed.all_day === true ? -1 : placed.from_minute, id: item.id, when: placed.when, title: item.title, line: [placed.both || "", item.line || "", detail.location || ""].filter(t => t !== "").join(" · "), kind: item.kind, tone: item.tone || "plain", colour: item.colour || "transparent", known: "", cancelled: detail.cancelled === true, tentative: detail.tentative === true, placed: placed, keys: [] })
         }
         // Show leaves the doses out here as in the Day and the Week (review of 21436bf, later 2).
         for (const dose of page.hide.doses ? [] : comes.doses || []) {

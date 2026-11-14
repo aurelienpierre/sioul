@@ -125,10 +125,21 @@ fn hand(json: String) {
     *given = json;
 }
 
+/// Whether an exchange wrote what the wakings are made of: the night, its
+/// mornings and the naps (`data/health.toml`), or a day's change
+/// (`data/health-days.toml`). Every exchange that did, the window's or one
+/// without it (the background step's, an alarm's), hands them again
+/// (`share::exchanged`): a waking moved earlier on another device is armed
+/// before its old time, never only at Java's next look, made from the
+/// rings it has (review of the branch `wake`, H1).
+pub(crate) fn written(outcome: &sioul_sync::share::Outcome) -> bool {
+    ["data/health.toml", "data/health-days.toml"].iter().any(|file| outcome.written.contains(*file))
+}
+
 /// The coming wakings handed to Android when they changed: at each minute
 /// of the window, when the night, a day's change or the mornings ticked are
-/// saved (here, or brought by the sharing, read at the next minute), and as
-/// Sioul is put away. Nothing on a desktop: it never rings.
+/// saved here, after every exchange that brought them from another device
+/// (`written`), and as Sioul is put away. Nothing on a desktop: it never rings.
 pub(crate) fn schedule() {
     if !cfg!(target_os = "android") {
         return;
@@ -180,15 +191,17 @@ fn allowed() -> i32 {
 }
 
 /// The option as the Health page's settings show it (`health::needs_page`):
-/// the weekdays' names and short names, Monday first; the next ring; on a
-/// phone, what Android refuses it.
+/// the weekdays' names and short names, Monday first; the nights' next ring
+/// (a nap's is the nap's own, never said under the night); on a phone, what
+/// Android refuses it.
 pub(crate) fn status(needs: &Needs) -> serde_json::Value {
     let now = Zoned::now();
     let monday = jiff::civil::date(2026, 10, 5);
     let week: Vec<Date> = (0..7).filter_map(|i| monday.checked_add(jiff::Span::new().days(i)).ok()).collect();
     let next = needs
         .wakings(&now, &crate::health::days(), WAKINGS_AHEAD_DAYS)
-        .first()
+        .into_iter()
+        .find(|a| !a.nap)
         .and_then(|a| jiff::Timestamp::from_second(a.at).ok())
         .map(|at| say("wake-next", &[("when", tr().date(&at.to_zoned(now.time_zone().clone()), false))]))
         .unwrap_or_default();
@@ -356,6 +369,40 @@ mod tests {
         assert_eq!(handed["week"], serde_json::json!(["07:00", "07:00", "07:00", "07:00", "07:00", "", ""]));
         // Its row says it rings.
         assert_eq!(of_night(&needs, jiff::civil::date(2026, 10, 9), &TimeZone::get("Europe/Paris").unwrap(), &days), ("07:00".to_string(), false));
+    }
+
+    /// A day's change brought by an exchange without the window (a phone's
+    /// background step) hands the wakings again, as the night's settings do:
+    /// the waking of the night going on moved earlier on another device, after
+    /// midnight, is armed before its old time and looked at ten minutes before.
+    #[test]
+    fn a_waking_moved_earlier_elsewhere_is_armed_before_its_old_time() {
+        let brought = |files: &[&str]| sioul_sync::share::Outcome { written: files.iter().map(|f| f.to_string()).collect(), ..Default::default() };
+        assert!(written(&brought(&["data/health-days.toml"])));
+        assert!(written(&brought(&["data/health.toml", "state/health-state.toml"])));
+        assert!(!written(&brought(&["state/health-state.toml", "data/notes/a.md"])));
+        // Bed at midnight, up at 09:00, every morning; at 00:15 another device moved this night's waking to 07:00.
+        let mut needs = ticked([true; 7]);
+        (needs.sleep.bed, needs.sleep.wake) = ("00:00".into(), "09:00".into());
+        let now: Zoned = "2026-10-08T00:15[Europe/Paris]".parse().unwrap();
+        let mut days = Days::default();
+        days.change(jiff::civil::date(2026, 10, 7), "sleep", |b| b.wake = "07:00".into());
+        let handed = coming(&needs, &days, &now, &Translator::new("en"));
+        let rings: Vec<i64> = serde_json::from_value(handed["rings"].clone()).unwrap();
+        assert_eq!(rings[..2], [at("2026-10-08T07:00[Europe/Paris]"), at("2026-10-09T09:00[Europe/Paris]")], "07:00 first, never 09:00 that morning");
+        let looks: Vec<i64> = serde_json::from_value(handed["looks"].clone()).unwrap();
+        assert_eq!(looks[0], at("2026-10-08T06:50[Europe/Paris]"));
+    }
+
+    /// The night's settings say the nights' next ring, never a nap's.
+    #[test]
+    fn the_night_s_next_ring_is_a_night_s() {
+        let mut needs = ticked([true; 7]);
+        (needs.naps_on, needs.naps[0].alarm) = (true, true);
+        let now: Zoned = "2026-10-07T10:00[Europe/Paris]".parse().unwrap();
+        let first = needs.wakings(&now, &Days::default(), 2).into_iter().map(|a| (a.nap, a.at)).collect::<Vec<_>>();
+        assert_eq!(first[0], (true, at("2026-10-07T14:20[Europe/Paris]") / 1000), "the nap rings first");
+        assert_eq!(needs.wakings(&now, &Days::default(), 2).into_iter().find(|a| !a.nap).map(|a| a.at), Some(at("2026-10-08T07:00[Europe/Paris]") / 1000));
     }
 
     #[test]

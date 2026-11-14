@@ -125,12 +125,24 @@ CardFrame {
             text: card.item === null ? "" : card.sioul.text(card.item.quiet ? (card.need.today ? "need-unskip" : "need-unskip-day") : (card.need.today ? "needs-not-today" : "need-not-that-day"))
             onClicked: card.act(card.item.quiet ? "loud" : "quiet")
         },
-        // The alarm at its end, this night or this nap alone, whatever the usual days say.
+        // The alarm at its end, this night or this nap alone, whatever the usual days say. Never
+        // wider than the card's foot: its sentence wraps (a phone's 360 points, in French).
         Switch {
             id: alarmSwitch
 
             objectName: "needCardAlarm"
             visible: card.item !== null && (card.item.kind === "sleep" || card.item.kind === "nap") && (card.item.waking || "") !== "" && !card.item.off && (card.changeable || card.alarmOnly)
+            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+            contentItem: Text {
+                leftPadding: alarmSwitch.indicator && !alarmSwitch.mirrored ? alarmSwitch.indicator.width + alarmSwitch.spacing : 0
+                rightPadding: alarmSwitch.indicator && alarmSwitch.mirrored ? alarmSwitch.indicator.width + alarmSwitch.spacing : 0
+                text: alarmSwitch.text
+                textFormat: Text.PlainText
+                font: alarmSwitch.font
+                color: alarmSwitch.palette.windowText
+                wrapMode: Text.Wrap
+                verticalAlignment: Text.AlignVCenter
+            }
             checked: card.item !== null && card.item.rings === true
             text: card.item === null ? "" : card.theme.plain(card.sioul.textWith(card.item.kind === "sleep" ? "wake-this-night" : "wake-this-nap", "time", card.item.waking || ""))
             onToggled: {

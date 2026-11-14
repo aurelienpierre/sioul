@@ -99,7 +99,9 @@ Item {
         function keepPoint(label, lat, lon) { mock.calls.push({ what: "keepPoint", label: label, lat: lat, lon: lon }) }
         function zoneName() { return "Europe/Paris" }
         function clockLine(start, end, clock) { return "" }
-        function textWith(key, name, value) { return key + ":" + value }
+        function textWith(key, name, value) { return mock.french && key === "wake-this-nap" ? "Réveil à la fin de cette sieste, à " + value : key + ":" + value }
+        // The French sentence of a nap's alarm, the longest of the card's foot.
+        property bool french: false
         function textArgs(key, args) { return key }
         // An event's time by its start (0: its next), as `agenda::event_card` reads it.
         function eventCard(key, start) {
@@ -448,6 +450,7 @@ Item {
             mock.past = false
             mock.ahead = false
             mock.rings = false
+            mock.french = false
             mock.saidOnce = []
             mock.kept = {}
             shell.opened = []
@@ -792,15 +795,16 @@ Item {
             verify(night.visible)
             verify(!night.checked)
             compare(night.text, "wake-this-night:07:00")
-            night.toggled()
+            mouseClick(night)
             compare(mock.calls.length, 1, JSON.stringify(mock.calls))
             compare([mock.calls[0].what, mock.calls[0].edit.date, mock.calls[0].edit.key, mock.calls[0].edit.action].join(" "), "changeNeed 2096-10-01 sleep alarm")
-            verify(!night.checked, "as the night says until it is read again")
+            verify(!night.checked, "as the night says until it is read again, never the position the press left")
             mock.rings = true
             host.needCard.read()
-            verify(night.checked)
-            night.toggled()
+            verify(night.checked, "read again: on, its binding kept after the press")
+            mouseClick(night)
             compare(mock.calls[1].edit.action, "no-alarm")
+            verify(night.checked, "on until read again")
             // A nap: the same switch, at its end.
             mock.calls = []
             mock.rings = false
@@ -809,7 +813,7 @@ Item {
             const nap = root.find(host.needCard, "needCardAlarm")
             verify(nap.visible && !nap.checked)
             compare(nap.text, "wake-this-nap:14:20")
-            nap.toggled()
+            mouseClick(nap)
             compare([mock.calls[0].edit.key, mock.calls[0].edit.action].join(" "), "nap:0 alarm")
             // Its menu: the same, ticked when it rings.
             mock.calls = []
@@ -828,6 +832,22 @@ Item {
             host.show({ kind: "meal", srcDate: "2096-10-01", srcKey: "meal:1" })
             wait(20)
             verify(!root.find(host.needCard, "needCardAlarm").visible)
+        }
+
+        // At a phone's 360 points, in French, the nap's alarm switch stays within the card: its
+        // sentence wraps (review of the branch `wake`, L3).
+        function test_the_alarm_switch_fits_a_phone() {
+            mock.french = true
+            const host = createTemporaryObject(hostComponent, root, { width: 360, height: 760 })
+            waitForRendering(host)
+            host.show({ kind: "nap", srcDate: "2096-10-01", srcKey: "nap:0" })
+            wait(20)
+            const nap = root.find(host.needCard, "needCardAlarm")
+            verify(nap.visible)
+            compare(nap.text, "Réveil à la fin de cette sieste, à 14:20")
+            const right = nap.mapToItem(host, nap.width, 0).x
+            verify(right <= host.width + 0.5, "past the card: " + right)
+            verify(nap.width < nap.implicitWidth || nap.implicitWidth <= nap.parent.width, "within its row")
         }
 
         // "Had it" (the agenda's timeline, decision 4): a meal of today not begun offers it
