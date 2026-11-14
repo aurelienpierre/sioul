@@ -2756,17 +2756,32 @@ impl Here {
         state.join("share").join("here.toml")
     }
 
-    /// This computer's name, made once.
+    /// This computer's name, made once: under its file's lock, read again
+    /// there, so that two processes or threads reading it first at the same
+    /// moment take the same name, never two (a device's words written under
+    /// the name that lost would be another device's).
     pub fn load(state: &Path) -> Here {
         let path = Here::path(state);
-        let mut here: Here = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let read = || -> Here { std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default() };
         let machine = machine();
-        if here.id.is_empty() || (!machine.is_empty() && here.machine != machine) {
-            here.id = uuid::Uuid::new_v4().to_string();
-            here.machine = machine;
-            let _ = here.save(state);
+        let unnamed = |here: &Here| here.id.is_empty() || (!machine.is_empty() && here.machine != machine);
+        let here = read();
+        if !unnamed(&here) {
+            return here;
         }
-        here
+        // Its folder yours alone before the lock beside the file makes it.
+        if let Some(folder) = path.parent() {
+            let _ = private_dirs(folder);
+        }
+        sioul_core::filelock::with_lock(&path, || {
+            let mut here = read();
+            if unnamed(&here) {
+                here.id = uuid::Uuid::new_v4().to_string();
+                here.machine = machine.clone();
+                let _ = here.save(state);
+            }
+            here
+        })
     }
 
     /// Its bytes on the disk before its name changes: lost, this computer would take another name.
@@ -10156,6 +10171,20 @@ pub fn sealed(folder: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// This device's name is made once, whoever reads it first: threads
+    /// reading it at the same moment on a fresh install take the same
+    /// (review of phase 2, L7: two names, and a device's words under the one
+    /// that lost read as another device's).
+    #[test]
+    fn this_device_is_named_once_whoever_reads_it_first() {
+        let state = std::env::temp_dir().join(format!("sioul-here-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&state);
+        let names: Vec<String> = std::thread::scope(|scope| (0..8).map(|_| scope.spawn(|| Here::load(&state).id)).collect::<Vec<_>>().into_iter().map(|t| t.join().unwrap()).collect());
+        assert!(!names[0].is_empty() && names.iter().all(|n| *n == names[0]), "{names:?}");
+        assert_eq!(Here::load(&state).id, names[0], "read again, the same");
+        let _ = std::fs::remove_dir_all(&state);
+    }
 
     thread_local! {
         /// Stores this thread's exchanges know nothing of, as an older Sioul's
