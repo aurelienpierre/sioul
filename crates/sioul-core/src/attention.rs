@@ -1130,6 +1130,14 @@ impl Attention {
     /// Whether a person's row lets them through at some time of the week
     /// that an area is for: when none, the area holds nothing back for good.
     fn meets(&self, channel: Channel, person: Person, area: Area, week: Week) -> bool {
+        self.meets_at(channel, person, area, week, &[Level::Now, Level::Quiet])
+    }
+
+    /// The same, the row's cell at one of `levels` then: your safe senders'
+    /// mail held for its address's hours (step 10) waits only for a time in
+    /// which it is told there (●), so that it never waits for good where the
+    /// row shows it there without telling it (◑, Quieter's leisure).
+    fn meets_at(&self, channel: Channel, person: Person, area: Area, week: Week, levels: &[Level]) -> bool {
         Time::STATES.into_iter().filter(|t| week.has(*t)).any(|t| {
             let column = match t {
                 Time::Work => Column::Work,
@@ -1138,7 +1146,7 @@ impl Attention {
                 Time::Meals => Column::Meals,
                 _ => Column::Sleep,
             };
-            matches!(self.lent(Row::People(channel, person), column, week), Level::Now | Level::Quiet) && in_view(area, t, week)
+            levels.contains(&self.lent(Row::People(channel, person), column, week)) && in_view(area, t, week)
         })
     }
 }
@@ -1162,6 +1170,11 @@ pub struct Event {
     /// that area's times, but for Always through, and your safe people's
     /// messages; your safe senders' mail shown meanwhile, not told.
     pub area: Option<Area>,
+    /// Its area is the one an address you did not classify takes (work):
+    /// that address has no closed hours for your safe senders, whose mail
+    /// to it is told at their row's times, as before the notifications'
+    /// decision 2; the others' still waits for work's hours.
+    pub unsaid: bool,
     /// An event's own reminder: when its event begins (Unix seconds), for ◐.
     pub starts: Option<i64>,
     /// The sources' own rows it reads, the most precise first (`source_rows`:
@@ -1171,11 +1184,11 @@ pub struct Event {
 
 impl Event {
     pub fn own(kind: Kind) -> Event {
-        Event { source: Source::Own(kind), area: None, starts: None, sources: Vec::new() }
+        Event { source: Source::Own(kind), area: None, unsaid: false, starts: None, sources: Vec::new() }
     }
 
     pub fn of(source: Source) -> Event {
-        Event { source, area: None, starts: None, sources: Vec::new() }
+        Event { source, area: None, unsaid: false, starts: None, sources: Vec::new() }
     }
 
     /// Read with these sources' own rows over its own (`source_rows`).
@@ -1187,6 +1200,20 @@ impl Event {
     /// For an area's times only.
     pub fn for_area(mut self, area: Option<Area>) -> Event {
         self.area = area;
+        self
+    }
+
+    /// Its area unsaid (`unsaid`): an address you did not classify.
+    pub fn area_unsaid(mut self, unsaid: bool) -> Event {
+        self.unsaid = unsaid;
+        self
+    }
+
+    /// For an address, by the area it says (`Some`), or, unsaid (`None`),
+    /// for work's times, your safe senders' mail not held (`unsaid`).
+    pub fn for_address(mut self, said: Option<Area>) -> Event {
+        self.area = Some(said.unwrap_or(Area::WORK));
+        self.unsaid = said.is_none();
         self
     }
 
@@ -1324,10 +1351,11 @@ impl Attention {
 
     /// A message as the Porch judged it, now: its sender's row as the Porch
     /// weighs it (set aside or unproven, a stranger's), Always through when
-    /// the list holds its proven address, what the address it came to is for.
-    /// Shown says whether the Porch shows it now, told whether new mail's
-    /// notification may name it (its lane aside: `mailnote::never`).
-    pub fn mail(&self, t: &crate::porch::Triaged, senders: &crate::porch::Senders, always: &crate::everywhere::People, area: Area, now: &Now) -> Output {
+    /// the list holds its proven address, what the address it came to is for
+    /// (`area`: as it says; none, unsaid: `Event::for_address`). Shown says
+    /// whether the Porch shows it now, told whether new mail's notification
+    /// may name it (its lane aside: `mailnote::never`).
+    pub fn mail(&self, t: &crate::porch::Triaged, senders: &crate::porch::Senders, always: &crate::everywhere::People, area: Option<Area>, now: &Now) -> Output {
         use crate::porch::{Lane as PorchLane, Reason};
         let unproven = t.lane == PorchLane::SetAside || t.reasons.contains(&Reason::NotAuthenticated);
         let who = if unproven { Who::Stranger } else { senders.who_of(&t.card) };
@@ -1339,16 +1367,16 @@ impl Attention {
         } else {
             Lane::Usual
         };
-        self.decide(&Event::of(Source::Mail { who, always, lane }).for_area(Some(area)), now)
+        self.decide(&Event::of(Source::Mail { who, always, lane }).for_address(area), now)
     }
 
     /// The same for a message the Porch has not read (the mailbox, part 4,
     /// from a folder's index): its sender as `senders` weigh it (`who`, a
     /// stranger when its sender is not proven), Always through, and `own`
     /// for what you sent yourself (shown, never told).
-    pub fn mail_from(&self, who: Who, always: bool, own: bool, area: Area, now: &Now) -> Output {
+    pub fn mail_from(&self, who: Who, always: bool, own: bool, area: Option<Area>, now: &Now) -> Output {
         let lane = if own { Lane::Own } else { Lane::Usual };
-        self.decide(&Event::of(Source::Mail { who, always, lane }).for_area(Some(area)), now)
+        self.decide(&Event::of(Source::Mail { who, always, lane }).for_address(area), now)
     }
 
     fn own(&self, kind: Kind, event: &Event, now: &Now) -> Output {
@@ -1394,19 +1422,20 @@ impl Attention {
         // (the notifications' decision 2 of 13 November 2026), but Always
         // through's, and but when its row and the address never meet in your
         // week, so that nothing waits for good. Your safe senders' is shown on
-        // the Porch meanwhile, told once the address's hours begin; the
-        // others' waits off it.
+        // the Porch meanwhile, told once the address's hours begin, but to an
+        // address you did not classify, which has no closed hours for them;
+        // the others' waits off it.
         if let Some(area) = event.area
             && !now.reachable
             && !always
             && matches!(level, Level::Now | Level::Quiet)
             && !in_view(area, now.time, now.week)
-            && self.meets(Channel::Mail, person, area, now.week)
         {
             match (person, level) {
-                (Person::Safe, Level::Now) => (level, step) = (Level::Quiet, Step::Area),
+                (Person::Safe, Level::Now) if !event.unsaid && self.meets_at(Channel::Mail, person, area, now.week, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Area),
                 (Person::Safe, _) => {}
-                _ => (level, step) = (Level::Later, Step::Area),
+                _ if self.meets(Channel::Mail, person, area, now.week) => (level, step) = (Level::Later, Step::Area),
+                _ => {}
             }
         }
         let mut out = Output::at(level, step);
@@ -1484,7 +1513,7 @@ impl Attention {
         // people's messages; a mail app's notification of mail to an address for
         // another time waits, your safe senders' too, as Sioul's own notice of
         // the same message does (`letter`, decision 2 of 13 November 2026).
-        let safe = person == Person::Safe && via != Channel::Mail;
+        let safe = person == Person::Safe && (via != Channel::Mail || event.unsaid);
         if !chosen && !now.reachable && level == Level::Now && !safe && !always && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
             (level, step) = (Level::Later, Step::Area);
         }
@@ -2859,7 +2888,7 @@ mod tests {
         let set = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
         let nobody = crate::everywhere::People::default();
         let at = |time: Time, week: Week| Now::of(&Mode { quiet: false, time, week, reason: if time == Time::Sleep { Reason::Sleep } else { Reason::Working }, until: None, back: None, label: String::new() });
-        let comes_in = |t: &crate::porch::Triaged, matrix: &Attention, account: Area, time: Time, week: Week| matrix.mail(t, &senders, &nobody, account, &at(time, week)).shown;
+        let comes_in = |t: &crate::porch::Triaged, matrix: &Attention, account: Area, time: Time, week: Week| matrix.mail(t, &senders, &nobody, Some(account), &at(time, week)).shown;
         let comes = |t: &crate::porch::Triaged, matrix: &Attention, account: Area, time: Time| comes_in(t, matrix, account, time, set);
         let at_times = |t: &crate::porch::Triaged, matrix: &Attention, account: Area| Time::STATES.into_iter().filter(|time| comes(t, matrix, account, *time)).map(Time::id).collect::<Vec<_>>();
         // Safe: to any address, at every time (in sleep shown, not told); held in sleep, it waits.
@@ -2910,9 +2939,9 @@ mod tests {
         let mut list = crate::everywhere::People::default();
         list.add(crate::everywhere::Person { name: "Someone".into(), emails: vec!["someone@elsewhere.example".into(), "jane@example.org".into()], ..Default::default() }, None);
         let leisure = at(Time::Leisure, set);
-        let listed = usual.mail(&stranger, &senders, &list, Area::WORK, &leisure);
+        let listed = usual.mail(&stranger, &senders, &list, Some(Area::WORK), &leisure);
         assert!(listed.shown && listed.told && listed.pierce);
-        assert!(!usual.mail(&forged, &senders, &list, Area::PERSONAL, &leisure).shown);
+        assert!(!usual.mail(&forged, &senders, &list, Some(Area::PERSONAL), &leisure).shown);
     }
 
     /// Q23: a declined call is listed by its Calls row (before: its Calls or its Mail row).
@@ -2964,6 +2993,22 @@ mod tests {
         let mut reachable = evening.clone();
         reachable.reachable = true;
         assert!(to(Area::WORK, Who::Safe, false, &reachable).told && to(Area::WORK, Who::Stranger, false, &reachable).told);
+        // An address you did not classify (no area said): work's hours for the others, but no
+        // closed hours for your safe senders, told at their times, as before (review of phase 2, M8).
+        let unsaid = |who: Who, now: &Now| a.decide(&Event::of(Source::Mail { who, always: false, lane: Lane::Usual }).for_address(None), now);
+        assert!(unsaid(Who::Safe, &evening).told && unsaid(Who::Safe, &admin).told);
+        assert_eq!((unsaid(Who::Neutral, &admin).step, unsaid(Who::Neutral, &admin).told), (Step::Area, false), "the others wait for work, as unsaid says");
+        let said = to(Area::WORK, Who::Safe, false, &evening);
+        assert!(!said.told, "said work: held, as above");
+        let app_unsaid = a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, group: false, always: false }).for_address(None), &evening);
+        assert!(app_unsaid.told, "a mail app's notification to it alike");
+        // Your safe senders' row shows without telling where the address is open (Quieter's ◑ in
+        // leisure and meals): no time to wait for, so the row alone decides (review of phase 2, L3).
+        let quieter = Preset::Quieter.matrix();
+        let leisure_only = |now: &Now| quieter.decide(&Event::of(Source::Mail { who: Who::Safe, always: false, lane: Lane::Usual }).for_area(Some(Area::LEISURE)), now);
+        let at_ten = Now::of(&mode(Time::Work, Reason::Working));
+        assert!(leisure_only(&at_ten).told, "told at 10:00, never waiting for good");
+        assert!(!leisure_only(&evening).told && leisure_only(&evening).shown, "in leisure, its row's ◑");
         // A mail app's notification of the same message on a phone: held until then too; a safe
         // person's chat in an app for work still comes.
         let app = |via: Channel| a.decide(&Event::of(Source::Message { via, who: Who::Safe, group: false, always: false }).for_area(Some(Area::WORK)), &evening);
