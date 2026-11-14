@@ -4,7 +4,10 @@
 //! The alarm at waking, on a phone (docs/health.md, "The alarm at waking";
 //! docs/android.md, "Waking"): it rings when the night ends, on the mornings
 //! ticked with the night in the Health page's settings, each night as that
-//! day has it (`needs::Needs::alarm_of`). Android's alarm clock rings it
+//! day has it (`needs::Needs::alarm_of`), or that night alone when asked for
+//! it; and at the end of a nap whose alarm is on, every day it is kept or
+//! that day alone (`needs::Needs::waking_of`): one list of wakings, rung
+//! alike, a nap's start a night's for Java's looks. Android's alarm clock rings it
 //! (android/package/src/com/aurelienpierre/sioul/WakeAlarms.java): Sioul
 //! hands Java the coming wakings, eight days ahead, whenever they change, and
 //! Java asks again here at each ring, a little before each and as each night
@@ -78,10 +81,11 @@ fn words(tr: &Translator) -> serde_json::Value {
 }
 
 /// What Java is handed: `rings`, the coming alarms (Unix milliseconds, eight
-/// days ahead); `looks`, when to ask again (each night's start, and ten
-/// minutes before each ring); `week`, the usual mornings (Monday first, the
-/// waking or "" when it does not ring), repeated by Java should Sioul not
-/// answer; `zone`, the one the times were made in; `words`.
+/// days ahead), the nights' and the naps'; `looks`, when to ask again (each
+/// night's or nap's start, and ten minutes before each ring); `week`, the
+/// usual mornings (Monday first, the waking or "" when it does not ring),
+/// repeated by Java should Sioul not answer (no nap in it); `zone`, the one
+/// the times were made in; `words`.
 pub(crate) fn coming(needs: &Needs, days: &Days, now: &Zoned, tr: &Translator) -> serde_json::Value {
     let stamp = now.timestamp().as_second();
     let alarms = needs.wakings(now, days, WAKINGS_AHEAD_DAYS);
@@ -266,7 +270,8 @@ pub(crate) fn try_now() -> String {
 
 /// The alarm at the end of `night`'s night, for its row on the page: when
 /// it rings ("07:00"), and whether "No alarm" was asked; ("", false) when
-/// none would ring (no morning ticked, the night taken out).
+/// none would ring (its morning not ticked and no alarm asked for that
+/// night, the night taken out).
 pub(crate) fn of_night(needs: &Needs, night: Date, zone: &TimeZone, days: &Days) -> (String, bool) {
     needs.alarm_of(night, zone, days).and_then(|a| jiff::Timestamp::from_second(a.at).ok().map(|at| (at.to_zoned(zone.clone()).strftime("%H:%M").to_string(), a.skipped))).unwrap_or_default()
 }
@@ -327,6 +332,30 @@ mod tests {
         days.change(jiff::civil::date(2026, 10, 6), "sleep", |b| b.no_alarm = true);
         let rings: Vec<i64> = serde_json::from_value(coming(&needs, &days, &now, &english)["rings"].clone()).unwrap();
         assert_eq!(rings[..3], [at("2026-10-05T07:00[Europe/Paris]"), at("2026-10-06T08:30[Europe/Paris]"), at("2026-10-08T07:00[Europe/Paris]")]);
+    }
+
+    /// A nap's alarm goes to Java with the nights', in order, through the
+    /// same list: rung at the nap's end, asked again as it starts and ten
+    /// minutes before; a night's alarm asked for one night alone, its morning
+    /// not ticked, too. The usual week stays the nights' alone.
+    #[test]
+    fn a_nap_and_a_night_alone_are_handed_as_wakings() {
+        let now: Zoned = "2026-10-09T10:00[Europe/Paris]".parse().unwrap();
+        let mut needs = ticked([true, true, true, true, true, false, false]);
+        needs.naps_on = true;
+        needs.naps[0].alarm = true;
+        let mut days = Days::default();
+        // Friday's night, ending on a Saturday morning not ticked: rung that night alone.
+        days.change(jiff::civil::date(2026, 10, 9), "sleep", |b| b.alarm = true);
+        let handed = coming(&needs, &days, &now, &Translator::new("en"));
+        let rings: Vec<i64> = serde_json::from_value(handed["rings"].clone()).unwrap();
+        assert_eq!(rings[..4], [at("2026-10-09T14:20[Europe/Paris]"), at("2026-10-10T07:00[Europe/Paris]"), at("2026-10-10T14:20[Europe/Paris]"), at("2026-10-11T14:20[Europe/Paris]")]);
+        assert!(rings.windows(2).all(|w| w[0] < w[1]));
+        let looks: Vec<i64> = serde_json::from_value(handed["looks"].clone()).unwrap();
+        assert_eq!(looks[..2], [at("2026-10-09T14:00[Europe/Paris]"), at("2026-10-09T14:10[Europe/Paris]")], "as the nap starts, and ten minutes before it rings");
+        assert_eq!(handed["week"], serde_json::json!(["07:00", "07:00", "07:00", "07:00", "07:00", "", ""]));
+        // Its row says it rings.
+        assert_eq!(of_night(&needs, jiff::civil::date(2026, 10, 9), &TimeZone::get("Europe/Paris").unwrap(), &days), ("07:00".to_string(), false));
     }
 
     #[test]

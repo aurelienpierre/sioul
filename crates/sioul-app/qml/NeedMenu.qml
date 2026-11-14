@@ -5,7 +5,8 @@
 // list, the agenda and its card (the unified agenda, part 3): had already,
 // just now or at a time, for a meal or a nap of today not begun; later by
 // Health's minutes, moved, its times, no notice that day or back, the alarm
-// the morning the night ends, back to usual, taken out that day or put back.
+// at the end of that night or that nap (a switch, on or off for it alone),
+// back to usual, taken out that day or put back.
 // It changes nothing itself: `acted(action)`, `formAsked(mode)` and
 // `hadAsked(at)` say what was chosen, and the one who opened it writes that
 // day's change (`changeNeed`, `hadNeed`).
@@ -92,13 +93,23 @@ SioulMenu {
         text: menu.item === null ? "" : menu.sioul.text(menu.item.quiet ? (menu.today ? "need-unskip" : "need-unskip-day") : (menu.today ? "needs-not-today" : "need-not-that-day"))
         onTriggered: menu.act(menu.item.quiet ? "loud" : "quiet")
     }
-    // The alarm at waking, the morning this night ends: none that morning, or back (docs/health.md).
-    // A night known only from the timeline (the week before's) has no alarm said: none offered.
+    // The alarm at its end, this night or this nap alone, whatever the usual days say: a switch,
+    // ticked when it rings (docs/health.md, "The alarm at waking"). A block known only from the
+    // timeline (the week before's) says no waking: none offered.
     MenuItem {
-        visible: menu.item !== null && menu.item.kind === "sleep" && (menu.item.alarm || "") !== "" && !menu.off
+        id: alarmSwitch
+
+        objectName: "needAlarm"
+        visible: menu.item !== null && (menu.item.kind === "sleep" || menu.item.kind === "nap") && (menu.item.waking || "") !== "" && !menu.off
         height: visible ? implicitHeight : 0
-        text: menu.theme.plain(menu.item === null ? "" : menu.sioul.textWith(menu.item.alarm_skipped ? "wake-unskip" : "wake-skip", "time", menu.item.alarm || ""))
-        onTriggered: menu.act(menu.item.alarm_skipped ? "alarm" : "no-alarm")
+        checkable: true
+        checked: menu.item !== null && menu.item.rings === true
+        text: menu.theme.plain(menu.item === null ? "" : menu.sioul.textWith(menu.item.kind === "sleep" ? "wake-this-night" : "wake-this-nap", "time", menu.item.waking || ""))
+        onTriggered: {
+            menu.act(menu.item.rings === true ? "no-alarm" : "alarm")
+            // As the block says, once it is read again: never the tick a press left.
+            alarmSwitch.checked = Qt.binding(() => menu.item !== null && menu.item.rings === true)
+        }
     }
     MenuItem {
         visible: menu.item !== null && menu.item.changed && !menu.off && !menu.alarmOnly

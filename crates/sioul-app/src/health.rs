@@ -669,6 +669,12 @@ struct DayItem {
     /// Its alarm not rung yet: "No alarm" can still be asked, even after
     /// midnight, on the night going on (a past day's row, its menu that item only).
     alarm_open: bool,
+    /// A night's or a nap's end that day, when its alarm rings or would
+    /// ("14:20"; "" for a meal, a dose, one taken out), and whether it rings
+    /// then, as that day has it (`Needs::waking_of`): the switches "Alarm for
+    /// this night" and "Alarm at the end of this nap".
+    waking: String,
+    rings: bool,
 }
 
 /// The list the errands go to: the one chosen, else your usual list, else the
@@ -930,10 +936,12 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
             "sleep" => say("need-night-detail", &[("bed", clock(k.at, &zone))]),
             _ => String::new(),
         };
-        // The night's alarm at waking, said quietly; "No alarm" asked, said as how that day differs.
-        let (alarm, alarm_skipped) = if k.kind == "sleep" && !off { crate::wake::of_night(needs, own, &zone, days) } else { (String::new(), false) };
-        let alarm_open = !alarm.is_empty() && needs.alarm_of(own, &zone, days).is_some_and(|a| a.at > stamp);
-        let detail = if alarm.is_empty() || alarm_skipped { detail } else { format!("{detail}  ·  {}", say("wake-at", &[("time", alarm.clone())])) };
+        // The alarm at its end, a night's or a nap's, said quietly when it rings; "No alarm" on a
+        // usual day said as how that day differs; the switch says when it would ring.
+        let waking = if off { None } else { needs.waking_of(own, &k.key, &zone, days) };
+        let (alarm, alarm_skipped) = waking.filter(|w| w.usual || w.rings).map(|w| (clock(w.at, &zone), !w.rings)).unwrap_or_default();
+        let alarm_open = waking.is_some_and(|w| (w.usual || w.rings) && w.at > stamp);
+        let detail = if alarm.is_empty() || alarm_skipped { detail } else { [detail, say("wake-at", &[("time", alarm.clone())])].into_iter().filter(|d| !d.is_empty()).collect::<Vec<_>>().join("  ·  ") };
         let changed = !added && change.is_some_and(|c| !c.at.is_empty() || !c.wake.is_empty() || c.minutes.is_some() || c.before.is_some() || c.after.is_some());
         let quiet = change.is_some_and(|c| c.quiet);
         let note = if off {
@@ -978,6 +986,8 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
             alarm,
             alarm_skipped,
             alarm_open,
+            waking: waking.map(|w| clock(w.at, &zone)).unwrap_or_default(),
+            rings: waking.is_some_and(|w| w.rings),
         }
     };
     for k in needs.blocks_of(date, &zone, days, &shift).into_iter().filter(|k| k.kind != "sleep" || night == date) {
@@ -1055,6 +1065,8 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
                 alarm: String::new(),
                 alarm_skipped: false,
                 alarm_open: false,
+                waking: String::new(),
+                rings: false,
             };
             items.push((minute(due), item));
         }
@@ -8460,5 +8472,38 @@ mod tests {
         let rows = needs_rows(&needs, &Days::default(), &late, &needs.blocks_of(thursday, late.time_zone(), &Days::default(), &|_| 0));
         let sleep: Vec<(String, String)> = rows.iter().filter(|r| r["kind"] == "sleep").map(|r| (r["from"].as_str().unwrap().to_string(), r["past"].to_string())).collect();
         assert_eq!(sleep, [("23:00".to_string(), "false".to_string())]);
+    }
+
+    /// Each night and nap row says when its alarm would ring and whether it
+    /// rings that day (the switches): Friday's night, whose Saturday morning
+    /// is not ticked, rings when asked for that night; the nap at its end,
+    /// before its minutes to come back; a meal has none; taken out, none.
+    #[test]
+    fn a_night_s_and_a_nap_s_alarm_on_the_list() {
+        let mut needs = Needs { sleep_on: true, naps_on: true, meals_on: true, ..Needs::default() };
+        needs.sleep.alarm = [true, true, true, true, true, false, false];
+        let health = Health { needs, ..Health::default() };
+        let knowledge = Knowledge { record_lost: None, peers: Vec::new() };
+        let friday = jiff::civil::date(2026, 10, 9);
+        let now: Zoned = "2026-10-09T09:00[Europe/Paris]".parse().unwrap();
+        let rows = |days: &Days| {
+            let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, days, &Around { events: &[], held: &Vec::new, tonight: true }, friday, &now);
+            view.items.iter().filter(|i| !i.off).map(|i| (i.key.clone(), i.waking.clone(), i.rings, i.alarm.clone())).collect::<Vec<_>>()
+        };
+        let of = |rows: &[(String, String, bool, String)], key: &str| rows.iter().find(|r| r.0 == key).map(|r| (r.1.clone(), r.2, r.3.clone()));
+        let usual = rows(&Days::default());
+        assert_eq!(of(&usual, "sleep"), Some(("07:00".to_string(), false, String::new())), "Saturday not ticked: it would ring at 07:00");
+        assert_eq!(of(&usual, "nap:0"), Some(("14:20".to_string(), false, String::new())));
+        assert_eq!(of(&usual, "meal:1"), Some((String::new(), false, String::new())), "a meal has no alarm");
+        let mut days = Days::default();
+        for key in ["sleep", "nap:0"] {
+            health.needs.change_day(&mut days, friday, &DayEdit { key: key.into(), action: "alarm".into(), ..DayEdit::default() }, &now, &[]).unwrap();
+        }
+        let asked = rows(&days);
+        assert_eq!(of(&asked, "sleep"), Some(("07:00".to_string(), true, "07:00".to_string())));
+        assert_eq!(of(&asked, "nap:0"), Some(("14:20".to_string(), true, "14:20".to_string())));
+        days.change(friday, "nap:0", |b| b.off = true);
+        let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &Vec::new, tonight: true }, friday, &now);
+        assert!(view.items.iter().filter(|i| i.key == "nap:0").all(|i| i.off && i.waking.is_empty() && !i.rings), "taken out: no alarm");
     }
 }

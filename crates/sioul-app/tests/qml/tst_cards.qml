@@ -130,6 +130,10 @@ Item {
             return ""
         }
         function needItem(date, key) {
+            // A night and a nap, their alarm at their end ringing that day or not (`rings`).
+            const ends = { sleep: { key: "sleep", kind: "sleep", name: "Night", from: "22:00", to: "07:00", at: "23:00", detail: "winding down, bed at 23:00", minutes: 0, before: 60, after: 0, waking: "07:00" }, "nap:0": { key: "nap:0", kind: "nap", name: "Nap", from: "14:00", to: "14:35", at: "14:00", detail: "then 15 min to come back", minutes: 20, before: 0, after: 15, waking: "14:20" } }
+            if (ends[key])
+                return JSON.stringify({ date: date, title: "Monday 5 October", today: true, past: false, later: 15, ahead: false, item: Object.assign({ date: date, note: "", changed: false, added: false, quiet: false, off: false, past: false, alarm: mock.rings ? ends[key].waking : "", alarm_skipped: false, alarm_open: mock.rings, rings: mock.rings }, ends[key]) })
             if (key !== "meal:1")
                 return "{}"
             return JSON.stringify({ date: date, title: "Monday 5 October", today: !mock.past, past: mock.past, later: 15, ahead: mock.ahead, item: { key: "meal:1", kind: "meal", name: "Lunch", from: mock.mealFrom, to: mock.mealTo, at: "12:30", detail: "eating from 12:30", note: "", changed: false, added: false, quiet: false, off: false, past: mock.past, minutes: 30, before: 20, after: 0, alarm: "", alarm_skipped: false, alarm_open: false } })
@@ -140,6 +144,8 @@ Item {
         }
         // A meal of today not begun yet ("Had it" offered), and had.
         property bool ahead: false
+        // The night's and the nap's alarm rings that day.
+        property bool rings: false
         function hadNeed(edit) {
             mock.calls.push({ what: "hadNeed", edit: JSON.parse(edit) })
             return ""
@@ -441,6 +447,7 @@ Item {
             mock.status = ""
             mock.past = false
             mock.ahead = false
+            mock.rings = false
             mock.saidOnce = []
             mock.kept = {}
             shell.opened = []
@@ -771,6 +778,56 @@ Item {
             verify(root.find(card, "cardWhy").visible)
             compare(root.find(card, "cardWhy").text, "need-past")
             verify(!root.find(card, "needCardLater").visible)
+        }
+
+        // The alarm at the end of a night or of a nap, that one alone: a switch in its card and its
+        // menu, on when it rings that day; pressed, that day's writer is asked the other way
+        // (`changeNeed`, "alarm" or "no-alarm"), for the card's own day; a meal has none.
+        function test_the_alarm_switch_of_a_night_and_a_nap() {
+            mock.rings = false
+            const host = makeHost()
+            host.show({ kind: "night", srcDate: "2096-10-01", srcKey: "sleep" })
+            wait(20)
+            const night = root.find(host.needCard, "needCardAlarm")
+            verify(night.visible)
+            verify(!night.checked)
+            compare(night.text, "wake-this-night:07:00")
+            night.toggled()
+            compare(mock.calls.length, 1, JSON.stringify(mock.calls))
+            compare([mock.calls[0].what, mock.calls[0].edit.date, mock.calls[0].edit.key, mock.calls[0].edit.action].join(" "), "changeNeed 2096-10-01 sleep alarm")
+            verify(!night.checked, "as the night says until it is read again")
+            mock.rings = true
+            host.needCard.read()
+            verify(night.checked)
+            night.toggled()
+            compare(mock.calls[1].edit.action, "no-alarm")
+            // A nap: the same switch, at its end.
+            mock.calls = []
+            mock.rings = false
+            host.show({ kind: "nap", srcDate: "2096-10-01", srcKey: "nap:0" })
+            wait(20)
+            const nap = root.find(host.needCard, "needCardAlarm")
+            verify(nap.visible && !nap.checked)
+            compare(nap.text, "wake-this-nap:14:20")
+            nap.toggled()
+            compare([mock.calls[0].edit.key, mock.calls[0].edit.action].join(" "), "nap:0 alarm")
+            // Its menu: the same, ticked when it rings.
+            mock.calls = []
+            mock.rings = true
+            host.needMenu({ kind: "nap", srcDate: "2096-10-01", srcKey: "nap:0" })
+            wait(20)
+            const menu = host.needMenuNow()
+            const item = root.all(menu.contentItem, c => c.objectName === "needAlarm")
+            verify(item.length === 1 && item[0].visible && item[0].checkable && item[0].checked)
+            compare(item[0].text, "wake-this-nap:14:20")
+            item[0].triggered()
+            compare([mock.calls[0].what, mock.calls[0].edit.date, mock.calls[0].edit.key, mock.calls[0].edit.action].join(" "), "changeNeed 2096-10-01 nap:0 no-alarm")
+            menu.close()
+            // A meal has no alarm.
+            mock.rings = false
+            host.show({ kind: "meal", srcDate: "2096-10-01", srcKey: "meal:1" })
+            wait(20)
+            verify(!root.find(host.needCard, "needCardAlarm").visible)
         }
 
         // "Had it" (the agenda's timeline, decision 4): a meal of today not begun offers it
