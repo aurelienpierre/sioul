@@ -1547,7 +1547,8 @@ const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
 /// wrote their files (a mark, a move, a take back, a medicine come from
 /// another device: `alarms::health_written`), so that a moved dose rings at
 /// its new time and a gone one at none (the A3 dose model; the chain check
-/// of e3505f7: the close's exchange handed nothing).
+/// of e3505f7: the close's exchange handed nothing); the wakings with them,
+/// or alone when only a day's change came (`wake::written`).
 fn exchanged(outcome: &share::Outcome, began_ms: i64) {
     // Gone through whole (nothing wrong, nothing of the others' left waiting): what this
     // device's own calendars, which the sharing carries, read as their pull (`local_pull`).
@@ -1560,6 +1561,10 @@ fn exchanged(outcome: &share::Outcome, began_ms: i64) {
     let _ = legs_as_steps();
     if crate::alarms::health_written(outcome) {
         crate::alarms::schedule();
+    } else if crate::wake::written(outcome) {
+        // A day's change from another device (a waking moved, an alarm on or off for one night
+        // or one nap): the wakings handed again here too, not only from the window (`wake::written`).
+        crate::wake::schedule();
     }
 }
 
@@ -2225,10 +2230,6 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
                     crate::changes::arrived_stores(&qt, &shared, &outcome.written);
                     let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
                     let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(&names)));
-                }
-                // The night, its mornings or a day's change come from another device: a phone's alarm at waking follows now (`wake`).
-                if outcome.written.contains("data/health.toml") || outcome.written.contains("data/health-days.toml") {
-                    crate::wake::schedule();
                 }
                 // Do-not-disturb pressed, a pause, a focus session or its settings from another device: applied here now.
                 if ["state/do-not-disturb.toml", "state/quiet.toml", "data/time/running.toml", "config/config.toml"].iter().any(|f| outcome.written.contains(*f)) {

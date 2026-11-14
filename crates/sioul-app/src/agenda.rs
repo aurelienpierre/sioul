@@ -1099,10 +1099,12 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
     let hidden = |uid: &str| quiet.is_some_and(|q| planned.iter().find(|t| t.uid == uid).is_some_and(|t| !q.keeps(t)));
     let comes: Vec<Option<timeline::Comes>> = match (&health_read, mode) {
         (Some((health, needs, needs_days)), Mode::Comes) => {
-            let no_alarm: std::collections::BTreeSet<jiff::civil::Date> = dates(state.from, state.days).filter(|date| crate::wake::of_night(needs, *date, &zone, needs_days).1).collect();
+            // Tonight's evening too: after midnight, until its waking, the one before (`Needs::tonight`).
+            let tonight = needs.tonight(&now, needs_days);
+            let no_alarm: std::collections::BTreeSet<jiff::civil::Date> = dates(state.from, state.days).chain([tonight]).filter(|date| crate::wake::of_night(needs, *date, &zone, needs_days).1).collect();
             let set_times: std::collections::BTreeSet<String> = health.as_ref().map(|h| h.medicines.iter().filter(|m| matches!(m.schedule, sioul_core::health::Schedule::Day { .. })).map(|m| m.id.clone()).collect()).unwrap_or_default();
             let every_day = |key: &str| key.rsplit_once('@').is_some_and(|(medicine, _)| set_times.contains(medicine));
-            let of = timeline::ComesOf { now: stamp, today, no_alarm: &no_alarm, every_day: &every_day, hidden: &hidden, zone: &zone, tr: tr() };
+            let of = timeline::ComesOf { now: stamp, today, tonight, no_alarm: &no_alarm, every_day: &every_day, hidden: &hidden, zone: &zone, tr: tr() };
             // Each day with the next, where a night winding down after midnight lies.
             days.iter().enumerate().map(|(i, d)| Some(timeline::comes(d, days.get(i + 1), &of))).collect()
         }
@@ -1291,7 +1293,10 @@ fn needs_items(needs: &sioul_core::needs::Needs, days: &sioul_core::needs::Days,
                 _ => needs.lengths(date, &kept.key, days).map_or(kept.end, |(minutes, _, _)| (kept.at + i64::from(minutes) * 60).min(kept.end)),
             };
             let change = days.get(date, &kept.key);
-            let (past, over) = (date < today, kept.end <= stamp);
+            // A night not over yet is never past, whatever its day: after midnight, the one begun
+            // the evening before changes as any night to come (`Needs::change_day`).
+            let over = kept.end <= stamp;
+            let past = date < today && (kind != Kind::Night || over);
             let why = if past {
                 tr().text("need-past", None)
             } else if over {
@@ -1487,12 +1492,20 @@ fn head_frames(items: &[timeline::Item], plan: Option<&work::PlanShown>, occurre
     let mut tomorrow_items = agenda::items(&tomorrow_events, &zone, &errand_in(known));
     named(&mut tomorrow_items);
     let tomorrow_items: Vec<timeline::Item> = tomorrow_items.into_iter().filter(|item| shown(item)).map(worded).collect();
-    let alarm = needs.alarm_of(today, &zone, &days).filter(|a| !a.skipped).map(|a| a.at);
+    // Tonight's night and the next, by their ends, with their alarms (`Needs::tonight`: after
+    // midnight, until its waking, the night begun the evening before): the line says the alarm
+    // of the night not over at each time, never the next evening's while the one before goes on.
+    let tonight = needs.tonight(now, &days);
+    let nights: Vec<(i64, Option<i64>)> = if needs.sleep_on {
+        [Some(tonight), tonight.tomorrow().ok()].into_iter().flatten().filter_map(|night| needs.night_times(night, &zone, &days).map(|k| (k.end, needs.alarm_of(night, &zone, &days).filter(|a| !a.skipped).map(|a| a.at)))).collect()
+    } else {
+        Vec::new()
+    };
     // The dates asked this week, today to Sunday (`dated::items`; health's never: the head
     // line names none), for its second sentence in work and admin time.
     let to_sunday = 8 - i64::from(today.weekday().to_monday_one_offset());
     let dates = crate::dated::items(known, occurrences, None, today, to_sunday, now, &errand_in(known));
-    let inputs = timeline::HeadInputs { now: now.timestamp().as_second(), next_midnight: next_start, moments: &moments, today: &today_items, tomorrow: &tomorrow_items, alarm, dates: &dates, first_hour: load_config().agenda.day_start, zone: &zone, tr: tr() };
+    let inputs = timeline::HeadInputs { now: now.timestamp().as_second(), next_midnight: next_start, moments: &moments, today: &today_items, tomorrow: &tomorrow_items, nights: &nights, dates: &dates, first_hour: load_config().agenda.day_start, zone: &zone, tr: tr() };
     timeline::head_line(&inputs)
 }
 

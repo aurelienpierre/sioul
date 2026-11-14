@@ -393,7 +393,8 @@ ColumnLayout {
         }
     }
 
-    // One meal or nap: its name, its time and minutes, its weekdays, its notices.
+    // One meal or nap: its name, its time and minutes, its weekdays, its notices; a nap's
+    // alarm at its end, every day it is kept (rung by a phone).
     component BlockEditor: Panel {
         id: editor
 
@@ -490,6 +491,13 @@ ColumnLayout {
                     text: section.sioul.text("needs-notices")
                     checked: editor.block.notices
                     onToggled: editor.change(block => block.notices = checked)
+                }
+                CheckBox {
+                    objectName: "napAlarm"
+                    visible: editor.kind === "nap"
+                    text: section.sioul.text("needs-nap-alarm")
+                    checked: editor.block.alarm === true
+                    onToggled: editor.change(block => block.alarm = checked)
                 }
             }
         }

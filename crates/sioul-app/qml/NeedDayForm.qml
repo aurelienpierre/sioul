@@ -40,7 +40,10 @@ SafeDialog {
     property bool closedBySave: false
     property bool cancelled: false
     property string keptLine: ""
-    readonly property string keptKey: form.day && form.item && form.mode !== "add" ? "need:" + form.day.date + "|" + form.item.key + "|" + form.mode : ""
+    // The day its change is kept under: the row's own (the night's evening: after midnight, today's
+    // list holds the night begun the evening before), else the day shown.
+    readonly property string ownDate: form.item && form.item.date ? form.item.date : form.day ? form.day.date : ""
+    readonly property string keptKey: form.day && form.item && form.mode !== "add" ? "need:" + form.ownDate + "|" + form.item.key + "|" + form.mode : ""
 
     function typed() {
         return { from: from.text, to: to.text, bed: bed.text, before: before.value, after: after.value }
@@ -144,7 +147,7 @@ SafeDialog {
 
     function save() {
         const edit = {
-            date: form.day.date,
+            date: form.mode === "add" ? form.day.date : form.ownDate,
             key: form.item ? form.item.key : "",
             action: form.mode,
             from: form.clock(from.text),
