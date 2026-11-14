@@ -4424,7 +4424,7 @@ pub(crate) fn coming_night(now: &Zoned) -> Vec<(String, i64)> {
 /// before it, and a meal's or a nap's own at its time (the night's own is
 /// `coming_night`'s), while each may still come as `Today::due` gives it
 /// (ten minutes for a heads-up, a quarter of an hour at its time) and was
-/// not given here already; each ("day:need:<Unix seconds>:<block>:heads-up",
+/// not given here already; each (`"day:need:<Unix seconds>:<block>:heads-up"`,
 /// or ":start", that time), the same from one minute to the next.
 pub(crate) fn coming_needs(now: &Zoned) -> Vec<(String, i64)> {
     let heads_up = i64::from(load().needs.heads_up) * 60;
@@ -4517,7 +4517,7 @@ fn look_again(stamp: i64, until: i64) -> serde_json::Value {
 }
 
 /// A phone's alarm at a need's heads-up or at a meal's or a nap's time
-/// (`eventalarms`, "day:need:<Unix seconds>:…", `coming_needs`): as the
+/// (`eventalarms`, `"day:need:<Unix seconds>:…"`, `coming_needs`): as the
 /// computer's minute says them (`needs_now`), told by the phone only while
 /// nobody is at a computer (the notifications' decision 6), each a notice to
 /// know with "Options…"; never "Time to move", which a phone never tells.

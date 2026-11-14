@@ -197,7 +197,7 @@ fn handover_path() -> std::path::PathBuf {
 }
 
 /// Which of the two a device says of an event's own alarms (`handover`):
-/// "calendar:<package>" where a calendar app rings them, "sioul" where
+/// `"calendar:<package>"` where a calendar app rings them, "sioul" where
 /// Sioul does. Pure.
 fn handover_word(app: Option<&(String, String)>) -> String {
     app.map_or_else(|| "sioul".to_string(), |(package, _)| format!("calendar:{package}"))

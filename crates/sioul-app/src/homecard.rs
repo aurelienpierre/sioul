@@ -2134,12 +2134,12 @@ mod tests {
         assert_eq!((evening.kind.as_str(), evening.status.as_str()), ("leisure", "Leisure until 19:00: what you enjoy."));
         assert!(evening.step.is_none() && evening.porch.is_some());
         // Winding down from 22:00, then the night from bedtime: the sleep's line alone, as the window says it;
-        // doses remind during sleep by default, and codes you asked for come at once asleep too
-        // (docs/attention.md, Q6; before, they waited on the Porch).
+        // doses remind during sleep by default; codes you asked for wait on the Porch asleep,
+        // off the card (the notifications' decision 5; before, Q6, they came at once).
         assert_eq!(made.at("2026-10-05T22:15[Europe/Paris]").status, "Winding down: nothing disturbs until tomorrow at 07:00.");
         let night = made.at("2026-10-05T23:30[Europe/Paris]");
         assert_eq!((night.kind.as_str(), night.status.as_str()), ("sleep", "Sleep: nothing disturbs until tomorrow at 07:00."));
-        assert!(night.porch.is_none() && night.step.is_none() && night.codes && night.doses);
+        assert!(night.porch.is_none() && night.step.is_none() && !night.codes && night.doses);
         // Past midnight "tomorrow" is today: a frame ends at each midnight.
         assert!(made.card.frames.iter().any(|f| f.from == at("2026-10-06T00:00[Europe/Paris]").timestamp().as_millisecond()));
         assert_eq!(made.at("2026-10-06T05:00[Europe/Paris]").status, "Sleep: nothing disturbs until 07:00.");
@@ -2687,7 +2687,7 @@ mod tests {
         let card = snapshot(&moment, None, None, None, &doses);
         let night = card.frames.iter().find(|f| f.kind == "sleep").unwrap();
         assert!(!night.doses, "doses during sleep: stay silent");
-        assert!(night.codes, "codes you asked for come at once while you sleep (Q6; before, they waited on the Porch)");
+        assert!(!night.codes, "codes you asked for wait on the Porch while you sleep, off the card (the notifications' decision 5; before, Q6, they came at once)");
         // As the matrix of what reaches you says (Settings ▸ What reaches you): doses held in sleep, codes on the Porch only then.
         let mut grid = config();
         grid.attention = toml::from_str::<Config>("[attention]\ndoses = [\"sleep:later\"]\ncodes = [\"sleep:never\"]\n").unwrap().attention;

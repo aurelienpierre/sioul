@@ -88,7 +88,7 @@ impl Letter {
 /// A message's own key, whichever of your addresses it came to (review of
 /// phase 2, M5: one message to two of them is told once): its
 /// Message-ID's digest (`notices::digest`, as the notices' ids hold it),
-/// "id:<digest>"; without a Message-ID, its key here (`key`), since no copy
+/// `"id:<digest>"`; without a Message-ID, its key here (`key`), since no copy
 /// elsewhere can be told apart from it.
 pub fn message_key(t: &Triaged) -> String {
     t.card.message_id.as_deref().map(crate::mailindex::bare_id).filter(|id| !id.is_empty()).map_or_else(|| key(t), |id| format!("id:{}", crate::notices::digest(&id)))
