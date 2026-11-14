@@ -160,13 +160,15 @@ pub(crate) fn show(reminder: &Reminder) {
 }
 
 /// New mail's notification on a phone (`mailnote`), in the quiet "New mail"
-/// channel: one at a time, the next batch in its place; a tap opens its one
-/// message (`open`, its address: `mail_note_json`), else the Porch.
-/// `through`: someone Always through is in it, whom the system's
-/// do-not-disturb should let through (a channel that passes, Java's to choose).
+/// channel: one at a time, the next batch in its place; each message it names
+/// with its own opener (`opens`), a tap opening the first; an older
+/// MailNotes.java reads `open` alone, the address of its one message
+/// (`mail_note_json`), else the mailbox. `through`: someone Always through is
+/// in it, whom the system's do-not-disturb should let through (a channel that
+/// passes, Java's to choose).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub(crate) fn mail_note(title: &str, body: &str, through: bool, open: &str) {
-    let json = mail_note_json(title, body, through, open, words());
+pub(crate) fn mail_note(title: &str, body: &str, through: bool, open: &str, opens: &[sioul_core::mailnote::Opener]) {
+    let json = mail_note_json(title, body, through, open, opens, words());
     let Ok(text) = CString::new(json.to_string()) else { return };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
@@ -177,12 +179,17 @@ pub(crate) fn mail_note(title: &str, body: &str, through: bool, open: &str) {
 }
 
 /// What MailNotes.java reads of new mail's notification: {title, body,
-/// through, open, words}; `open` the address of its one message (`mid:…`,
-/// `sioul:mail/…`), which a tap opens through `ReminderOpener` ("mail"), or
-/// "" for several: the Porch. Never a file.
-fn mail_note_json(title: &str, body: &str, through: bool, open: &str, words: serde_json::Value) -> serde_json::Value {
+/// through, open, opens: [{label, address}], words}. `opens`: one per message
+/// the notice names (three at most), its words and its address (`mid:…`,
+/// `sioul:mail/…`), which a tap on it opens through `ReminderOpener`
+/// ("mail"); the notice's own tap opens the first (the notifications' phase
+/// 2, read by the phase 3's Notices.java). `open`, kept for an older
+/// MailNotes.java: the address of its one message, or "" for several (the
+/// mailbox). Never a file: an address that is none is left out.
+fn mail_note_json(title: &str, body: &str, through: bool, open: &str, opens: &[sioul_core::mailnote::Opener], words: serde_json::Value) -> serde_json::Value {
     let open = if is_mail_address(open) { open } else { "" };
-    serde_json::json!({ "title": title, "body": body, "through": through, "open": open, "words": words })
+    let opens: Vec<serde_json::Value> = opens.iter().filter(|o| is_mail_address(&o.address)).map(|o| serde_json::json!({ "label": o.label, "address": o.address })).collect();
+    serde_json::json!({ "title": title, "body": body, "through": through, "open": open, "opens": opens, "words": words })
 }
 
 /// The end of work's notice or the night's on a phone (`reviews::decide_work`,
@@ -415,7 +422,7 @@ mod tests {
     /// path or anything else under "mail" opens nothing.
     #[test]
     fn a_mail_notification_opens_its_message_by_its_address() {
-        let note = |open: &str| mail_note_json("New mail", "Ana, Lunch", false, open, serde_json::json!({}))["open"].as_str().unwrap_or_default().to_string();
+        let note = |open: &str| mail_note_json("New mail", "Ana, Lunch", false, open, &[], serde_json::json!({}))["open"].as_str().unwrap_or_default().to_string();
         assert_eq!(note("mid:lunch-1@example.org"), "mid:lunch-1@example.org");
         assert_eq!(note("sioul:mail/home/0123456789abcdef"), "sioul:mail/home/0123456789abcdef");
         assert_eq!(note(""), "", "several: no message named (Java opens the mailbox)");
@@ -428,6 +435,31 @@ mod tests {
         }
         assert_eq!(opened_of(&serde_json::json!({ "kind": "porch", "key": "" })), Some(("porch".into(), String::new())), "an older build's notice of several: the Porch, as before");
         assert_eq!(opened_of(&serde_json::json!({ "kind": "mailbox" })), Some(("mailbox".into(), String::new())), "several: the mailbox (part 5)");
+    }
+
+    /// A batch of two on a phone: each message its own opener, its words and
+    /// its address, never its file (the notifications' phase 2); `open` as an
+    /// older MailNotes.java reads it, none for several.
+    #[test]
+    fn a_batch_of_two_opens_each_message() {
+        use sioul_core::mailnote::{Letter, openers};
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: format!("mail:home:{i}"), file: format!("/data/user/0/sioul/files/mail/home/cur/{i}.sioul"), arrived: 0 };
+        let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
+        let mut opens = openers(&sioul_core::i18n::Translator::new("en"), &two);
+        opens.push(sioul_core::mailnote::Opener { label: "A file".into(), address: "/data/user/0/sioul/files/mail/home/cur/3.sioul".into(), hint: String::new() });
+        let json = mail_note_json("Two e-mails", "Ana, Lunch · Noa, The lease", false, "", &opens, serde_json::json!({}));
+        assert_eq!(json["open"], "", "several: no one message for an older Java");
+        assert_eq!(json["opens"], serde_json::json!([{ "label": "Ana, Lunch", "address": "mid:letter-1@example.org" }, { "label": "Noa, The lease", "address": "mid:letter-2@example.org" }]), "never a file");
+        let text = json.to_string();
+        assert!(!text.contains("/data/user") && !text.contains("hint"), "{text}");
+        // Each opens through ReminderOpener as "mail", by its address.
+        for open in json["opens"].as_array().unwrap() {
+            let address = open["address"].as_str().unwrap();
+            assert_eq!(opened_of(&serde_json::json!({ "kind": "mail", "key": address })), Some(("mail".into(), address.to_string())));
+        }
+        // One message: `open` names it, and `opens` too.
+        let one = mail_note_json("One e-mail", "Ana, Lunch", false, "mid:letter-1@example.org", &openers(&sioul_core::i18n::Translator::new("en"), &two[..1]), serde_json::json!({}));
+        assert_eq!((one["open"].as_str(), one["opens"][0]["label"].as_str(), one["opens"][0]["address"].as_str()), (Some("mid:letter-1@example.org"), Some("Open"), Some("mid:letter-1@example.org")));
     }
 
     /// A phone's notification of an event opens that time of it when tapped:

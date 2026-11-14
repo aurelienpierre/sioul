@@ -11,8 +11,15 @@
 //!
 //! Only the device you used last tells (the "notices" lease, as for the
 //! sites' gathered notification): your phone and your computer fetch the
-//! same mail, and the sharing does not carry what each one told. The other
-//! marks it told without a word.
+//! same mail. The other marks it told without a word. What a device told it
+//! says in its told log, which the sharing carries (`mailnote::say_told`):
+//! once the lease moves, the device that tells then does not tell again what
+//! the other told.
+//!
+//! Mail that reached its server before this process watched the moment it is
+//! in (a time that began since, a computer off all night, a phone that
+//! fetched nothing for a while: `mailnote::Watch`) is told as mail that
+//! waited, "The Porch opens", never as new.
 //!
 //! Without the window too: on a phone, a service of its own fetches the
 //! inboxes in another process, without Qt, and calls `arrived` and `tick`
@@ -25,7 +32,7 @@ use sioul_core::areas::Area;
 use sioul_core::attention::{Attention, Level, Now, Output};
 use sioul_core::config::Config;
 use sioul_core::everywhere::People;
-use sioul_core::mailnote::{self, Fate, Ledger, Letter};
+use sioul_core::mailnote::{self, Fate, Ledger, Letter, Watch};
 use sioul_core::porch::{self, Triaged};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -78,6 +85,16 @@ fn add_to_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
 
 /// The moment last seen by `tick`, in this process: a change is a time beginning.
 static MOMENT: Mutex<Option<String>> = Mutex::new(None);
+
+/// Since when this process has watched the moment it is in (`mailnote::Watch`).
+static WATCH: Mutex<Option<Watch>> = Mutex::new(None);
+
+/// The moment (`Seen::moment`) looked at now, by `told` and `tick`: since
+/// when this process has watched it, without a gap. New mail that reached
+/// its server before then waited.
+fn watched(moment: &str, now: i64) -> i64 {
+    WATCH.lock().map_or(now, |mut watch| watch.get_or_insert_with(Watch::default).look(moment, now))
+}
 
 /// What decides now whether a message is told: the matrix of what reaches
 /// you (`attention`), the moment as it reads it (the time, a slot of time for
@@ -207,6 +224,7 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
     let seen = Seen::now(config, &now);
+    let since = watched(&seen.moment(), stamp);
     let judged = seen.judge(files, stamp);
     // What your mail filters would move out of the inbox or mark read waits for them: told after, if they could not.
     let arrivals = if hold { crate::filters::untold(&seen.config, judged, seen.senders()) } else { judged };
@@ -230,8 +248,12 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
         }
         sorted.now
     });
+    // Some reached their server before this process watched the moment (the
+    // night's mail, fetched by a computer that was off): the batch is
+    // announced as mail that waited.
     if !letters.is_empty() {
-        add_to_batch(letters, window, false);
+        let waited = mailnote::any_waited(&letters, since);
+        add_to_batch(letters, window, waited);
     }
 }
 
@@ -322,6 +344,7 @@ fn tick_from(window: Option<Window>) {
     let newsletters = config.reminders.mail_newsletters;
     let seen = Seen::now(config, &now);
     let moment = seen.moment();
+    watched(&moment, stamp);
     let changed = MOMENT.lock().is_ok_and(|mut last| last.replace(moment.clone()).as_ref() != Some(&moment));
     if !changed || !seen.may {
         return;
@@ -353,14 +376,19 @@ fn tick_from(window: Option<Window>) {
 }
 
 /// The letters still waiting in the ledger, marked told by this process
-/// (the others are another's to tell, or told); `gone` marked told too.
+/// (the others are another's to tell, or told); `gone` marked told too, and
+/// those another device told already (its told log, carried by the sharing:
+/// the "notices" lease moved meanwhile), without a word.
 fn claim(letters: Vec<Letter>, gone: &[String], stamp: i64) -> Vec<Letter> {
     let path = Ledger::default_path();
+    let elsewhere = mailnote::told_elsewhere(&sioul_core::notices::folder(), &crate::notices::here_id(), stamp * 1000);
+    let (before, letters): (Vec<Letter>, Vec<Letter>) = letters.into_iter().partition(|l| !l.notice.is_empty() && elsewhere.contains(&l.notice));
+    let gone: Vec<String> = gone.iter().cloned().chain(before.into_iter().map(|l| l.key)).collect();
     sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let mut seen = std::collections::BTreeSet::new();
         let mine: Vec<Letter> = letters.into_iter().filter(|l| ledger.waiting.contains_key(&l.key) && seen.insert(l.key.clone())).collect();
-        for key in mine.iter().map(|l| &l.key).chain(gone) {
+        for key in mine.iter().map(|l| &l.key).chain(&gone) {
             ledger.tell(key, stamp);
         }
         if mine.is_empty() && gone.is_empty() {
@@ -386,49 +414,55 @@ fn ours(window: Option<&Window>) -> bool {
     }
 }
 
-/// What a tap on new mail's notification opens (the unified mailbox's parts
-/// 2, 4 and 5): one message, the message by its address (the window's one
-/// opener); several, the mailbox at its top, on a phone too (MailNotes.java
-/// opens "mailbox" when the notice names no message).
-pub(crate) fn opens_of(one: Option<&str>) -> (&'static str, String) {
-    match one {
-        Some(address) => ("mail", address.to_string()),
-        // Several: the mailbox at its top (decision 3), on both devices.
-        None => ("mailbox", String::new()),
-    }
-}
-
 /// The notification: on a computer, a notice to know (`tell`,
-/// docs/notifications.md: decision 1), about its one message (its address,
-/// its file the hint), else the mailbox at its top; "Open", and a click on
-/// it, opening it; at normal urgency, for the minutes set, while someone is
-/// at the computer, never in a pause or a do-not-disturb (the Porch keeps
-/// it); taken away where it shows once each of its messages is dismissed,
-/// read or done on any device. On Windows through Sioul's icon in the tray,
-/// whose message a click opens. On a phone, Android's, in the quiet "New
-/// mail" channel (its own when someone Always through is in it: `through`),
-/// a tap opening it.
+/// docs/notifications.md: decision 1), about its first message (its address,
+/// its file the hint), a click on it opening it; a button for each message it
+/// names, three at most, each opening its own (`mailnote::openers`); at
+/// normal urgency, for the minutes set, while someone is at the computer,
+/// never in a pause or a do-not-disturb (the Porch keeps it); taken away
+/// where it shows once each of its messages is dismissed, read or done on
+/// any device. On Windows through Sioul's icon in the tray, whose message a
+/// click opens. On a phone, Android's, in the quiet "New mail" channel (its
+/// own when someone Always through is in it: `through`), each message named
+/// with its own opener (`opens`), a tap opening the first. What it told,
+/// said in this device's told log for the others.
 fn show(title: &str, body: &str, through: bool, window: Option<&Window>, mine: &[Letter]) {
-    let (kind, key) = opens_of(mailnote::one_address(mine));
+    let openers = mailnote::openers(tr(), mine);
     // Its messages' notices, kept here until each is settled on any device
     // (`notices`): then it is taken away where it shows.
     let told = crate::notices::posted_mail(mine.iter().map(|l| l.notice.clone()).collect(), mine.iter().map(|l| l.file.clone()).collect());
+    // Told here: never told again by another device once the lease moves.
+    let ids: Vec<String> = mine.iter().map(|l| l.notice.clone()).filter(|id| !id.is_empty()).collect();
+    if let Err(e) = mailnote::say_told(&sioul_core::notices::folder(), &crate::notices::here_id(), &ids, jiff::Timestamp::now().as_millisecond()) {
+        eprintln!("sioul: mail notified: {e}");
+    }
     #[cfg(target_os = "android")]
     {
-        let _ = (window, kind, told);
-        crate::eventalarms::mail_note(title, body, through, &key);
+        let _ = (window, told);
+        // `open`, as an older MailNotes.java reads it: the one message's address, else none (the mailbox).
+        let one = if mine.len() == 1 { openers.first().map_or("", |o| o.address.as_str()) } else { "" };
+        crate::eventalarms::mail_note(title, body, through, one, &openers);
     }
     #[cfg(not(target_os = "android"))]
     {
-        use sioul_core::notice::{Act, Kind, Notice, address};
         let _ = window;
-        // One message: it, its file the hint; several: the mailbox at its top (phase 2 gives each its own).
-        let (about, hint) = if kind == "mail" { (key, mine.first().map(|l| l.file.clone()).unwrap_or_default()) } else { (address::MAILBOX.to_string(), String::new()) };
-        let notice = Notice::new(about.clone(), Kind::Mail, title, body).hint(hint.clone()).action(tr().text("reminder-open", None), Act::Open { address: about, hint });
+        let notice = mail_notice(title, body, &openers, &tr().text("reminder-open", None));
         // Someone Always through in it: piercing, as the model says; to know all the same.
         let mut out = sioul_core::notice::told(None);
         out.pierce = through;
         // Looked at while it shows: each of its messages dismissed, read or done on any device, taken away.
         crate::tell::tell_as(notice, out, Some(Box::new(move || crate::notices::settled_mail(&told))));
     }
+}
+
+/// New mail's notice on a computer: about its first message (a click on it
+/// opens it), a button for each opener; without any (no message named has an
+/// address), about the mailbox at its top, "Open" opening it.
+#[cfg_attr(target_os = "android", allow(dead_code))]
+pub(crate) fn mail_notice(title: &str, body: &str, openers: &[mailnote::Opener], open: &str) -> sioul_core::notice::Notice {
+    use sioul_core::notice::{Act, Kind, Notice, address};
+    let Some(first) = openers.first() else {
+        return Notice::new(address::MAILBOX, Kind::Mail, title, body).action(open, Act::Open { address: address::MAILBOX.to_string(), hint: String::new() });
+    };
+    openers.iter().fold(Notice::new(first.address.clone(), Kind::Mail, title, body).hint(first.hint.clone()), |notice, o| notice.action(o.label.clone(), Act::Open { address: o.address.clone(), hint: o.hint.clone() }))
 }

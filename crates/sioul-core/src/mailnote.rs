@@ -10,9 +10,18 @@
 //!
 //! Mail that comes while it may not be told (its sender's row of the matrix
 //! of what reaches you says later or shown, not told, now: as usual, sleep,
-//! a pause, Free time, a slot of time for you; `attention`) waits; when a
-//! time begins in which some of it may come, one notification says the
-//! Porch opens. A row that says "not at all" now: never told, on the Porch only.
+//! a pause, Free time, a slot of time for you; or the address it came to is
+//! for another time, Always through and Reachable aside; `attention`) waits;
+//! when a time begins in which some of it may come, one notification says
+//! the Porch opens. Mail fetched late, that reached its server before the
+//! moment was watched (a computer off all night: `Watch`), is announced the
+//! same way, never as new. A row that says "not at all" now: never told, on
+//! the Porch only.
+//!
+//! Each letter a notification names opens its own message (`openers`). What
+//! a device told is said in its told log, which the sharing carries
+//! (`say_told`, `told_elsewhere`): the device that tells next does not tell
+//! it again.
 //!
 //! Never told: what is set aside (forged, spam, a borrowed name, blocked),
 //! what your own spam filter flagged or moved (the review queue: it waits
@@ -51,6 +60,10 @@ pub struct Letter {
     /// notification is taken away once each of its notices is settled.
     pub notice: String,
     pub file: String,
+    /// When it reached its server (its file's time, which the fetch sets to
+    /// the server's INTERNALDATE), Unix seconds; 0 unknown: whether it
+    /// waited (`Watch`).
+    pub arrived: i64,
 }
 
 impl Letter {
@@ -63,18 +76,146 @@ impl Letter {
             address: crate::mailfind::address_of_card(&t.card),
             notice: crate::notices::mail_id_of(&t.card),
             file: t.card.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
+            arrived: t.card.path.as_deref().map_or(0, arrived_at),
         }
     }
 }
 
-/// What a notification of `letters` opens: one message, its address; several
-/// (or one without an address), none: the Porch, as before (the mailbox at
-/// its top comes with it, part 4).
-pub fn one_address(letters: &[Letter]) -> Option<&str> {
-    match letters {
-        [one] if !one.address.is_empty() => Some(one.address.as_str()),
-        _ => None,
+/// When a message file reached its server: the file's time (`maildir::store`
+/// sets it to the server's INTERNALDATE), Unix seconds; 0 unknown.
+pub fn arrived_at(file: &Path) -> i64 {
+    std::fs::metadata(file).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
+}
+
+/// What a notice of new mail opens, one per letter it names (`openers`): its
+/// words, the message's address, and where this device keeps it (its file,
+/// for the window to find it at once; never sent to a phone's Java).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Opener {
+    pub label: String,
+    pub address: String,
+    pub hint: String,
+}
+
+/// The longest words of an opener, in characters: a button holds a few words.
+pub const LABEL: usize = 32;
+
+/// Each letter a notice names (three at most) opening its own message (the
+/// notifications' phase 2; the unified mailbox's rule: every mail event opens
+/// the message, never the account): its button says "Open" when the notice
+/// is of one message, else the letter as the notice names it ("Murena, Your
+/// invoice"), cut to `LABEL`. A letter without an address has none. A click
+/// on the notice itself opens the first; none at all, the mailbox at its top.
+pub fn openers(tr: &Translator, letters: &[Letter]) -> Vec<Opener> {
+    let one = letters.len() == 1;
+    letters
+        .iter()
+        .take(NAMED)
+        .filter(|l| !l.address.is_empty())
+        .map(|l| Opener { label: if one { tr.text("reminder-open", None) } else { cut(&letter_words(tr, l), LABEL) }, address: l.address.clone(), hint: l.file.clone() })
+        .collect()
+}
+
+/// `text` cut to `most` characters, an ellipsis ending what was cut.
+fn cut(text: &str, most: usize) -> String {
+    if text.chars().count() <= most {
+        return text.to_string();
     }
+    let kept: String = text.chars().take(most.saturating_sub(1)).collect();
+    format!("{}…", kept.trim_end())
+}
+
+/// Since when a process has watched the moment it is in, without a gap: new
+/// mail that reached its server before then waited, whatever the time it is
+/// fetched (it came in another time, or while this device was off, asleep or
+/// fetching nothing), and is announced as waited ("The Porch opens"), never
+/// as new (the notifications' phase 2). Kept in memory, by each process that
+/// tells: a process starting begins a watch.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Watch {
+    moment: String,
+    since: i64,
+    last: i64,
+}
+
+/// A look this much later than the last one (seconds) begins a new watch:
+/// what came between was not watched. Longer than a phone's mail rhythm
+/// (fifteen minutes) and the delays Android adds to its alarms.
+pub const GAP: i64 = 40 * 60;
+
+impl Watch {
+    /// The moment (`moment`'s words) looked at `now`: since when it has been
+    /// watched, this look included. Another moment, a first look, a gap
+    /// longer than `GAP` or a clock gone back: a watch begins now.
+    pub fn look(&mut self, moment: &str, now: i64) -> i64 {
+        if self.moment != moment || self.last == 0 || now - self.last > GAP || now < self.last {
+            *self = Watch { moment: moment.to_string(), since: now, last: now };
+        } else {
+            self.last = now;
+        }
+        self.since
+    }
+}
+
+/// A letter that reached its server this little before the watch began
+/// (seconds) is new still: the minute's look sees a new moment up to a
+/// minute late, and the server's clock is not this device's.
+pub const LATE: i64 = 120;
+
+/// Whether any of `letters` waited: it reached its server before the watch
+/// began (`since`, `LATE` aside); one whose arrival is unknown did not.
+pub fn any_waited(letters: &[Letter], since: i64) -> bool {
+    letters.iter().any(|l| l.arrived > 0 && l.arrived < since - LATE)
+}
+
+/// Where each device says which new mail it told, in the notices' store
+/// (`notices::FOLDER`): `told/<device>.jsonl`, a line per notification,
+/// `{"at": <ms>, "told": [<notice ids>]}`. The sharing carries it with the
+/// notices' words, so that a device that becomes the one that tells (the
+/// "notices" lease moving) does not tell again what another told. An older
+/// Sioul reads none of it.
+pub const TOLD: &str = "told";
+
+/// A device's word on what it told is kept this long (milliseconds): every
+/// device has fetched the same mail by then, or tells it as waited.
+pub const TOLD_KEPT_MS: i64 = 3 * 86_400_000;
+
+/// A line of a device's told log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ToldLine {
+    at: i64,
+    #[serde(default)]
+    told: Vec<String>,
+}
+
+/// A device's own told log in the notices' folder `notices`.
+pub fn told_file(notices: &Path, device: &str) -> PathBuf {
+    notices.join(TOLD).join(format!("{}.jsonl", crate::calls::file_safe(device)))
+}
+
+/// What this device (`device`) just told, by its letters' notice ids: a line
+/// at the end of its own told log, its lines older than `TOLD_KEPT_MS` taken out.
+pub fn say_told(notices: &Path, device: &str, ids: &[String], now_ms: i64) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let path = told_file(notices, device);
+    crate::calls::rewrite_lines(&path, |line| !serde_json::from_str::<ToldLine>(line).is_ok_and(|l| now_ms - l.at <= TOLD_KEPT_MS))?;
+    let text = serde_json::to_string(&ToldLine { at: now_ms, told: ids.to_vec() }).map_err(|e| e.to_string())? + "\n";
+    crate::filelock::with_lock(&path, || crate::calls::append_private(&path, &text))
+}
+
+/// What the other devices told in the last `TOLD_KEPT_MS`, by notice id, as
+/// their logs in `notices` say (this device's own, `device`, aside).
+pub fn told_elsewhere(notices: &Path, device: &str, now_ms: i64) -> BTreeSet<String> {
+    let own = crate::calls::file_safe(device);
+    crate::calls::device_files(&notices.join(TOLD))
+        .into_iter()
+        .filter(|(name, _)| *name != own)
+        .flat_map(|(_, path)| crate::calls::read_lines::<ToldLine>(&path))
+        .filter(|l| now_ms - l.at <= TOLD_KEPT_MS)
+        .flat_map(|l| l.told)
+        .collect()
 }
 
 /// A sender's name or a subject on one line: a mail's words never break the notification's.
@@ -272,17 +413,15 @@ pub fn opens(tr: &Translator, letters: &[Letter]) -> (String, String) {
 
 /// The first letters, "Sender, Subject", joined by " · ".
 fn named(tr: &Translator, letters: &[Letter]) -> String {
-    letters
-        .iter()
-        .take(NAMED)
-        .map(|l| {
-            let mut args = crate::i18n::args();
-            args.set("sender", l.sender.clone());
-            args.set("subject", if l.subject.is_empty() { tr.text("mail-no-subject", None) } else { l.subject.clone() });
-            tr.text("mail-note-letter", Some(&args))
-        })
-        .collect::<Vec<_>>()
-        .join(" · ")
+    letters.iter().take(NAMED).map(|l| letter_words(tr, l)).collect::<Vec<_>>().join(" · ")
+}
+
+/// A letter as a notification names it: "Sender, Subject".
+fn letter_words(tr: &Translator, letter: &Letter) -> String {
+    let mut args = crate::i18n::args();
+    args.set("sender", letter.sender.clone());
+    args.set("subject", if letter.subject.is_empty() { tr.text("mail-no-subject", None) } else { letter.subject.clone() });
+    tr.text("mail-note-letter", Some(&args))
 }
 
 #[cfg(test)]
@@ -349,11 +488,7 @@ mod tests {
         assert_eq!(batch(&fr, &sorted.now[..1]).0, "Un courriel");
         assert_eq!(batch(&en, &sorted.now[..1]).0, "One e-mail");
         // Past twelve, digits; three named at most; a message without a subject says so.
-        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: String::new() }).collect();
-        // One message opens it; several, the Porch (the unified mailbox's part 2).
-        assert_eq!(one_address(&many[..1]), Some("mid:letter-0@example.org"));
-        assert_eq!(one_address(&many[..2]), None);
-        assert_eq!(one_address(&[Letter { address: String::new(), ..many[0].clone() }]), None, "one without an address: the Porch");
+        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0 }).collect();
         assert_eq!(batch(&en, &many), ("13 e-mails".to_string(), "S0, (no subject) · S1, T1 · S2, T2".to_string()));
 
         // Told once, by account and Message-ID: fetched again, nothing; the same message in another account is another.
@@ -409,6 +544,73 @@ mod tests {
         assert_eq!(gone_by(&[seen], &ledger, false), [key(&bob)]);
     }
 
+    /// Each letter a notice names opens its own message (the notifications'
+    /// phase 2): a button each, three at most, its file the hint; "Open" for
+    /// one message alone; none for a letter without an address.
+    #[test]
+    fn each_letter_named_opens_itself() {
+        let en = Translator::new("en");
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0 };
+        let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
+        let open = openers(&en, &two);
+        assert_eq!(open.iter().map(|o| (o.label.as_str(), o.address.as_str(), o.hint.as_str())).collect::<Vec<_>>(), [("Ana, Lunch", "mid:letter-1@example.org", "/mail/home/cur/1.sioul"), ("Noa, The lease", "mid:letter-2@example.org", "/mail/home/cur/2.sioul")]);
+        assert_eq!(openers(&en, &two[..1]).iter().map(|o| o.label.as_str()).collect::<Vec<_>>(), ["Open"], "one message: Open");
+        let five: Vec<Letter> = (0..5).map(|i| letter(i, "Someone with a rather long name", "A subject that goes on and on")).collect();
+        let open = openers(&en, &five);
+        assert_eq!(open.len(), NAMED, "the letters named, no more");
+        assert!(open.iter().all(|o| o.label.chars().count() <= LABEL && o.label.ends_with('…')), "{open:?}");
+        let nameless = [Letter { address: String::new(), ..letter(1, "Ana", "Lunch") }, letter(2, "Noa", "The lease")];
+        assert_eq!(openers(&en, &nameless).iter().map(|o| o.address.as_str()).collect::<Vec<_>>(), ["mid:letter-2@example.org"], "no address, no opener");
+        assert!(openers(&en, &[Letter { address: String::new(), ..letter(1, "Ana", "Lunch") }]).is_empty());
+        let fr = Translator::new("fr");
+        assert_eq!(openers(&fr, &two[..1])[0].label, "Ouvrir");
+    }
+
+    /// Mail that reached its server before the watch of the moment began
+    /// waited: announced as waited, never as new (the notifications' phase 2).
+    #[test]
+    fn mail_from_before_the_watch_waited() {
+        let mut watch = Watch::default();
+        // A process starts at 08:30 (Unix 30_600 in this test's clock): the watch begins then.
+        assert_eq!(watch.look("work", 30_600), 30_600);
+        assert_eq!(watch.look("work", 30_660), 30_600, "the same moment, a minute on");
+        assert_eq!(watch.look("work", 30_660 + 30 * 60), 30_600, "half an hour on: a phone's round late");
+        // The night's mail, fetched after a computer was off: it waited.
+        let at = |arrived: i64| Letter { key: arrived.to_string(), sender: "Ana".into(), subject: "Lunch".into(), through: false, address: String::new(), notice: String::new(), file: String::new(), arrived };
+        assert!(any_waited(&[at(30_700), at(7_200)], 30_600));
+        assert!(!any_waited(&[at(30_700), at(0)], 30_600), "arrived since, or when unknown: new");
+        assert!(!any_waited(&[at(30_600 - LATE + 1)], 30_600), "a minute before the watch began: new still");
+        // Another moment begins a watch: what came before it waited.
+        assert_eq!(watch.look("leisure", 61_200), 61_200);
+        assert!(any_waited(&[at(61_000)], watch.look("leisure", 61_260)) && !any_waited(&[at(61_150)], 61_200));
+        // A gap longer than GAP (asleep, suspended, nothing fetched), or a clock gone back: a watch anew.
+        assert_eq!(watch.look("leisure", 61_260 + GAP + 1), 61_260 + GAP + 1);
+        assert_eq!(watch.look("leisure", 61_000), 61_000);
+    }
+
+    /// What a device told travels to the others in its told log; a device
+    /// reads the others', never its own, within their time.
+    #[test]
+    fn what_one_device_told_another_reads() {
+        let folder = std::env::temp_dir().join(format!("sioul-told-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let (phone, desk) = ("7c41d09e-0000-4000-8000-000000000001", "0b5e11a2-0000-4000-8000-000000000002");
+        let day = 86_400_000;
+        say_told(&folder, phone, &["mail:home:a".into(), "mail:home:b".into()], 10 * day).unwrap();
+        say_told(&folder, desk, &["mail:home:c".into()], 10 * day).unwrap();
+        assert_eq!(told_elsewhere(&folder, desk, 10 * day + 60_000).into_iter().collect::<Vec<_>>(), ["mail:home:a", "mail:home:b"]);
+        assert_eq!(told_elsewhere(&folder, phone, 10 * day).into_iter().collect::<Vec<_>>(), ["mail:home:c"]);
+        assert!(told_elsewhere(&folder, desk, 10 * day + TOLD_KEPT_MS + 1).is_empty(), "past their time");
+        // Its own old lines taken out as it writes; nothing written for nothing told.
+        say_told(&folder, phone, &["mail:home:d".into()], 14 * day).unwrap();
+        say_told(&folder, phone, &[], 14 * day).unwrap();
+        let own = std::fs::read_to_string(told_file(&folder, phone)).unwrap();
+        assert_eq!(own.lines().count(), 1, "{own}");
+        // Never read as the notices' words: a folder of its own.
+        assert!(crate::notices::States::read(&folder).is_empty());
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
     #[test]
     fn the_matrix_and_the_moment() {
         use crate::attention::{Attention, Event, Lane as MailLane, Level, Now, Source};
@@ -428,6 +630,21 @@ mod tests {
         // A stranger writing to a work address: told in work time, waiting in the evening.
         assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, fate_at(mode(Time::Work, Why::Working))).now.len(), 1);
         assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, fate_at(mode(Time::Leisure, Why::Evening))).later.len(), 1);
+        // A safe sender writing to a work address in the evening (decision 2 of 13 November 2026):
+        // it waits, shown on the Porch, and comes with "The Porch opens" once work begins.
+        let safe_senders = Senders { safe: crate::porch::SenderList::parse("ana@example.org"), ..Senders::default() };
+        let ana = message("work", "Ana <ana@example.org>", "", "The invoice", "11@example.org", &safe_senders, usual);
+        let to_work = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: safe_senders.who_of(&t.card), always: false, lane: MailLane::Usual }).for_area(Some(Area::WORK)), &Now::of(m));
+        let evening = to_work(&ana, &mode(Time::Leisure, Why::Evening));
+        assert!(evening.shown && !evening.told, "{evening:?}");
+        let fate_of = |out: crate::attention::Output| if out.told { Fate::Now } else if out.level == Level::Never { Fate::Never } else { Fate::Later };
+        let sorted = sort(&[ana.clone()], &Ledger::default(), false, |t| fate_of(to_work(t, &mode(Time::Leisure, Why::Evening))));
+        assert_eq!((sorted.now.len(), sorted.later.clone()), (0, vec![key(&ana)]));
+        let mut ledger = Ledger::default();
+        ledger.wait(&key(&ana), 100);
+        assert!(waited(&[ana.clone()], &ledger, false, |t| to_work(t, &mode(Time::Leisure, Why::Evening)).told).is_empty(), "not in the evening");
+        let morning = waited(&[ana.clone()], &ledger, false, |t| to_work(t, &mode(Time::Work, Why::Working)).told);
+        assert_eq!(opens(&Translator::new("en"), &morning).0, "The Porch opens: one e-mail waits for you.");
         // As usual, sleep, the pause and Free time hold the telling of a safe sender's mail; work, the evening and meals do not.
         let safe_told = |m: &Mode| attention.decide(&Event::of(Source::Mail { who: crate::reach::Who::Safe, always: false, lane: MailLane::Usual }), &Now::of(m)).told;
         assert!(!safe_told(&mode(Time::Sleep, Why::Sleep)) && !safe_told(&mode(Time::Sleep, Why::Paused)) && !safe_told(&mode(Time::Leisure, Why::FreeTime)));

@@ -2397,12 +2397,27 @@ pub(crate) fn source(key: &str) -> String {
 mod tests {
     use super::*;
 
-    /// New mail's notification: one message opens it by its address; several,
-    /// the mailbox at its top (the unified mailbox's part 4, decision 3).
+    /// New mail's notice on a computer (the notifications' phase 2): a click
+    /// on it opens its first message, never the mailbox's top; a button for
+    /// each message it names, its file the hint; the mailbox only when no
+    /// message named has an address.
     #[test]
-    fn several_new_messages_open_the_mailbox() {
-        assert_eq!(crate::mailnote::opens_of(Some("mid:a@example.org")), ("mail", "mid:a@example.org".to_string()));
-        assert_eq!(crate::mailnote::opens_of(None), ("mailbox", String::new()));
+    fn a_batch_of_two_opens_each_message() {
+        use sioul_core::mailnote::{Letter, openers};
+        use sioul_core::notice::{Act, address};
+        let letter = |i: usize, sender: &str, subject: &str| Letter { key: i.to_string(), sender: sender.into(), subject: subject.into(), through: false, address: format!("mid:letter-{i}@example.org"), notice: String::new(), file: format!("/mail/home/cur/{i}.sioul"), arrived: 0 };
+        let two = [letter(1, "Ana", "Lunch"), letter(2, "Noa", "The lease")];
+        let notice = crate::mailnote::mail_notice("Two e-mails", "Ana, Lunch · Noa, The lease", &openers(&sioul_core::i18n::Translator::new("en"), &two), "Open");
+        assert_eq!((notice.about.as_str(), notice.hint.as_str()), ("mid:letter-1@example.org", "/mail/home/cur/1.sioul"), "a click opens the first");
+        let buttons: Vec<(&str, &Act)> = notice.actions.iter().map(|a| (a.label.as_str(), &a.act)).collect();
+        assert_eq!(buttons, [("Ana, Lunch", &Act::Open { address: "mid:letter-1@example.org".into(), hint: "/mail/home/cur/1.sioul".into() }), ("Noa, The lease", &Act::Open { address: "mid:letter-2@example.org".into(), hint: "/mail/home/cur/2.sioul".into() })]);
+        // Two notices of two batches are two notices, each about its first message.
+        let other = crate::mailnote::mail_notice("One e-mail", "Lou, Tea", &openers(&sioul_core::i18n::Translator::new("en"), &[letter(3, "Lou", "Tea")]), "Open");
+        assert_ne!(notice.key(), other.key());
+        assert_eq!(other.actions.iter().map(|a| a.label.as_str()).collect::<Vec<_>>(), ["Open"]);
+        // No message named has an address: the mailbox at its top.
+        let none = crate::mailnote::mail_notice("Two e-mails", "", &[], "Open");
+        assert_eq!((none.about.as_str(), none.actions.len()), (address::MAILBOX, 1));
     }
 
     /// A mailbox row is one message however many addresses hold it (review
