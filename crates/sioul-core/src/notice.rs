@@ -482,6 +482,47 @@ pub fn decide(notice: &Notice, out: &attention::Output, moment: Moment, minutes:
     }
 }
 
+/// How a notice lasts on a phone (docs/android.md, "Notifications"):
+/// Android shows it at once, and its life counts from when it could be seen
+/// (Notices.java: at once when the phone is in use, else from its next
+/// unlock).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Lasting {
+    pub class: Class,
+    /// How long it stays once it could be seen, seconds: for one to know,
+    /// the minutes set (the time to leave: until its event starts); 0 for
+    /// one to do, which stays until its thing is settled or ends.
+    pub lasts: i64,
+    /// When it goes at the latest, seen or not, Unix seconds: for one to
+    /// know, the end of its relevance (`Notice::relevance`), so that none
+    /// outlives it; for one to do, its thing's end (a code's expiry), else none.
+    pub ends: Option<i64>,
+}
+
+/// How `notice` lasts on a phone at `now` (Unix seconds), with the lifetime
+/// set for informative notices (`minutes`, `Settings::minutes`) and the end
+/// of the day (`moment`); none for no notice of Sioul's own, nor for one
+/// whose thing or relevance ended already. Whether it comes now is its
+/// source's to decide, by the matrix of what reaches you, as before.
+pub fn lasting(notice: &Notice, moment: Moment, minutes: u32, now: i64) -> Option<Lasting> {
+    let class = notice.class()?;
+    if notice.until.is_some_and(|until| until <= now) {
+        return None;
+    }
+    match class {
+        Class::Informative => {
+            let ends = notice.relevance(moment, now);
+            let lasts = match (notice.kind, notice.until) {
+                // The time to leave: until its event starts.
+                (Kind::Own(attention::Kind::Before), Some(until)) => until - now,
+                _ => i64::from(minutes.clamp(SHORTEST, LONGEST)) * 60,
+            };
+            (ends > now).then_some(Lasting { class, lasts, ends: Some(ends) })
+        }
+        Class::Actionable => Some(Lasting { class, lasts: 0, ends: notice.until }),
+    }
+}
+
 /// Seconds as an expire timeout: milliseconds, at least one, at most what the call carries.
 fn millis(seconds: i64) -> i32 {
     i32::try_from(seconds.max(1).saturating_mul(1000)).unwrap_or(i32::MAX)
@@ -646,6 +687,31 @@ mod tests {
         assert_eq!(block, "sioul:need/meal:lunch:2026-11-13");
         assert_eq!(address::site("proton/mail", "thread #4"), "sioul:site/proton%2Fmail#thread%20%234");
         assert_eq!(address::event("a/b", 1_794_000_000), "sioul:event/a%2Fb#1794000000");
+    }
+
+    /// On a phone: something to know lasts the minutes set once it could be
+    /// seen, never past its relevance (a meal's heads-up a minute, new mail
+    /// the day, a meal while it lasts); the time to leave until its event
+    /// starts; something to do stays, a code until it expires; nothing for
+    /// what ended already or is no notice of Sioul's own.
+    #[test]
+    fn on_a_phone_a_notice_lasts_from_when_it_could_be_seen() {
+        let heads_up = Notice::new(address::need("meal:0"), Kind::Own(Row::Needs), "No new big task", "Lunch at 12:30");
+        assert_eq!(lasting(&heads_up, HERE, 5, NOW), Some(Lasting { class: Class::Informative, lasts: 300, ends: Some(NOW + 60) }), "a minute's worth, at most");
+        let meal = heads_up.clone().relevant(Some(NOW + 3_600));
+        assert_eq!(lasting(&meal, HERE, 12, NOW), Some(Lasting { class: Class::Informative, lasts: 720, ends: Some(NOW + 3_600) }));
+        let mail = Notice::new("mid:a@example.org", Kind::Mail, "One e-mail", "Noa, The lease");
+        assert_eq!(lasting(&mail, HERE, 5, NOW).and_then(|l| l.ends), Some(HERE.day_ends), "until the day ends");
+        assert_eq!(lasting(&mail, HERE, 600, NOW).map(|l| l.lasts), Some(3_600), "the minutes bounded");
+        let leave = Notice::new(address::event("dentist@example.org", NOW + 1_200), Kind::Own(Row::Before), "Leave in 5 min", "").until(Some(NOW + 1_200));
+        assert_eq!(lasting(&leave, HERE, 5, NOW), Some(Lasting { class: Class::Informative, lasts: 1_200, ends: Some(NOW + 1_200) }), "until its event starts");
+        assert_eq!(lasting(&leave, HERE, 5, NOW + 1_200), None, "its event begun");
+        let code = Notice::new("mid:code@example.org", Kind::Own(Row::Codes), "Code from example.org", "482913").until(Some(NOW + 600));
+        assert_eq!(lasting(&code, HERE, 5, NOW), Some(Lasting { class: Class::Actionable, lasts: 0, ends: Some(NOW + 600) }), "until it expires");
+        assert_eq!(lasting(&code.clone().until(None), HERE, 5, NOW), Some(Lasting { class: Class::Actionable, lasts: 0, ends: None }), "until settled");
+        assert_eq!(lasting(&code, HERE, 5, NOW + 600), None, "expired");
+        assert_eq!(lasting(&heads_up.clone().relevant(Some(NOW)), HERE, 5, NOW), None, "no longer worth telling");
+        assert_eq!(lasting(&Notice::new("sioul:task/a", Kind::Own(Row::Time), "Focus", ""), HERE, 5, NOW), None, "a status");
     }
 
     /// The lifetime as set: five minutes unsaid, bounded between one and
