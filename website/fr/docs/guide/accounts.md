@@ -41,7 +41,7 @@ Puis une fiche par adresse, avec chacun de ses services : **Courriels** ; **
 
 Sur sa fiche, **Réglages de cette adresse**, replié tant que vous ne l’ouvrez pas :
 
-- **À quoi sert cette adresse** : travail, vos démarches, loisirs, plusieurs à la fois. Ses courriels sont notifiés aux heures de ce à quoi elle sert ; ceux de vos expéditeurs sûrs s’affichent sur le Porche à leurs moments et sont notifiés quand ces heures commencent, et ceux des personnes qui passent toujours viennent tout de suite. Sans rien de coché, elle compte comme du travail, pour que ses courriels n’atteignent jamais vos soirées. Voir [Les heures](hours.md).
+- **À quoi sert cette adresse** : travail, vos démarches, loisirs, plusieurs à la fois. Ses courriels sont notifiés aux heures de ce à quoi elle sert ; ceux de vos expéditeurs sûrs s’affichent sur le Porche à leurs moments et sont notifiés quand ces heures commencent, et ceux des personnes qui passent toujours viennent tout de suite. Sans rien de coché, elle compte comme du travail, pour que les courriels des autres n’atteignent jamais vos soirées ; ceux de vos expéditeurs sûrs sont toujours notifiés à leurs moments. Voir [Les heures](hours.md).
 - **Jusqu’où remonter** : combien de semaines des courriels de cette adresse ses dossiers montrent, ou comme les autres adresses.
 - **Relever toutes les** : à quel rythme ses dossiers autres que la boîte de réception sont relevés ; 0 suit les autres adresses. Une adresse publique peut être relevée deux fois par jour (720 minutes).
 - **Protégée contre le harcèlement**, et une fois cette protection activée, **Laisser l’IA le lire d’abord**. Voir [le Porche](porch.md#a-public-address-protected).

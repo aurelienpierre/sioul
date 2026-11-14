@@ -41,7 +41,7 @@ Then one card per address, with each of its services: **Mail**; **Calendars, tas
 
 On its card, **Settings for this address**, folded until you open it:
 
-- **What this address is for**: work, your admin, leisure, any of them together. Its mail is told in the hours for what it is for; your safe senders' shows on the Porch at their times and is told when those hours begin, and your Always through people's comes at once. Nothing ticked counts as work, so that it never reaches your evenings. See [Hours](hours.md).
+- **What this address is for**: work, your admin, leisure, any of them together. Its mail is told in the hours for what it is for; your safe senders' shows on the Porch at their times and is told when those hours begin, and your Always through people's comes at once. Nothing ticked counts as work, so that the others' mail never reaches your evenings; your safe senders' is still told at their times. See [Hours](hours.md).
 - **How far back**: how many weeks of this address's mail its folders show, or like the other addresses.
 - **Fetch every**: how often its folders other than the inbox are fetched; 0 follows the other addresses. A public address can be fetched twice a day (720 minutes).
 - **Protected against harassment**, and once it is on, **Let the AI read it first**. See [the Porch](porch.md#a-public-address-protected).
