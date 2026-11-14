@@ -36,6 +36,8 @@ final class TimeNote
     private static final String CHANNEL = "time";
     /** The one note, by its number alone: the doses' reminders are known by their key and 1. */
     private static final int NOTE = 2;
+    /** Its group: its own (Notices). */
+    private static final String GROUP = "sioul.time";
 
     private TimeNote() {}
 
@@ -71,6 +73,8 @@ final class TimeNote
             .setCategory(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? Notification.CATEGORY_STOPWATCH : Notification.CATEGORY_STATUS)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            // A group of its own: Android groups none of Sioul's notices with it (Notices).
+            .setGroup(GROUP)
             .setContentIntent(open(context))
             .addAction(button(context, paused ? RESUME : PAUSE, note.optString("pause")))
             .addAction(button(context, STOP, note.optString("stop")));

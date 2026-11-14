@@ -36,8 +36,8 @@ import java.util.Map;
  * §3.3): calls and messages from nobody, starred contacts, contacts or
  * anyone; a second call within 15 minutes; the conversations marked
  * important in Android (Android 11 and later); alarms; the sound of what the
- * person plays. Sioul's dose reminders and an event's alarms, through
- * channels of their own that pass it. Turned on and off with
+ * person plays. Sioul's dose reminders and its notices to do (a code),
+ * through channels of their own that pass it. Turned on and off with
  * setAutomaticZenRuleState: the person's own do-not-disturb, and every other
  * mode, is never touched; the system combines them, the strictest winning.
  * Needs "Do Not Disturb access" (Modes access from Android 15), which the
@@ -60,8 +60,6 @@ final class PauseMode
     /** The dose reminders' channel while a pause lets them through: it passes do-not-disturb. */
     static final String DOSES_CHANNEL = "doses-pause";
     private static final String DOSES_USUAL = "doses";
-    /** An event's alarms while one of Sioul's modes lets them through: it passes do-not-disturb (EventAlarms). */
-    static final String ALARMS_CHANNEL = "event-alarms-pause";
     private static final String KEPT = "sioul-pause";
     private static final String PRESSED = "pressed";
     /** A press older than this is not taken: Sioul did not come up meanwhile. */
@@ -153,7 +151,9 @@ final class PauseMode
      * from the matrix: sioul_core::attention::Silence): who may call and who
      * may write ("none", "starred", "contacts", "anyone"), a second call
      * within 15 minutes, the conversations marked important in Android,
-     * alarms, the doses' and an event's alarms' channels. An older Sioul says
+     * alarms, the doses' channel, an event's alarms (said by the matrix, read
+     * here for what an older Sioul kept; no channel of theirs any more: the
+     * phone's calendar app rings them). An older Sioul says
      * only "people": starred contacts and repeat callers, or nobody; no
      * conversation. Pure, checked on a JVM (android/jvm-checks/ModeCheck.java).
      */
@@ -247,9 +247,6 @@ final class PauseMode
         boolean dosesThrough = false;
         if (through.doses)
             dosesThrough = passingChannel(notifications, DOSES_CHANNEL, asked.optString("channel", "Doses during a pause"));
-        boolean eventsThrough = false;
-        if (through.events)
-            eventsThrough = passingChannel(notifications, ALARMS_CHANNEL, asked.optString("events_channel", EventAlarms.word(context, "alarms-pause")));
 
         String id = null;
         AutomaticZenRule existing = null;
@@ -274,7 +271,6 @@ final class PauseMode
             kept.edit().putBoolean("on." + kind, false).putBoolean("held." + kind, true).putBoolean("doses." + kind, through.doses).putBoolean("events." + kind, through.events).commit();
             put(answer, DndHeard.seen(notifications.getCurrentInterruptionFilter()) ? "held" : "turned_off", true);
             put(answer, "doses", dosesThrough);
-            put(answer, "events", eventsThrough);
             return answer;
         }
         kept.edit().remove("held." + kind).commit();
@@ -329,15 +325,12 @@ final class PauseMode
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                 int channels = set.getPriorityChannelsAllowed();
                 put(rule, "channels", channels);
-                if (channels == ZenPolicy.STATE_DISALLOW) {
+                if (channels == ZenPolicy.STATE_DISALLOW)
                     dosesThrough = false;
-                    eventsThrough = false;
-                }
             }
         }
         put(answer, "rule", rule);
         put(answer, "doses", dosesThrough);
-        put(answer, "events", eventsThrough);
         return answer;
     }
 
@@ -381,9 +374,11 @@ final class PauseMode
      * minutes, the conversations marked important (Android 11 and later;
      * Android 10 has no conversations: they are messages there); alarms;
      * media (the music the person plays); priority channels (Sioul's doses
-     * and an event's alarms, from Android 15; before, Android lets a channel
-     * that passes through whatever the mode says). Other apps' reminders and
-     * events stay held. Notifications held stay in the shade and the status
+     * and its notices to do, from Android 15; before, Android lets a channel
+     * that passes through whatever the mode says). Other apps' reminders
+     * stay held; events (a calendar app's alarm of an event, which Sioul no
+     * longer rings on a phone: the notifications' decision 3) pass as the
+     * matrix lets an event's alarms through. Notifications held stay in the shade and the status
      * bar, without sound, banner, light, full screen or ambient display, as
      * Android's own do-not-disturb does by default; they come back after.
      */
@@ -398,7 +393,7 @@ final class PauseMode
             .allowMedia(true)
             .allowSystem(false)
             .allowReminders(false)
-            .allowEvents(false)
+            .allowEvents(through.events)
             .showPeeking(false)
             .showFullScreenIntent(false)
             .showLights(false)
@@ -505,8 +500,9 @@ final class PauseMode
 
     /**
      * A channel that passes do-not-disturb, for what one of Sioul's modes
-     * lets through: the doses ("Doses during a pause"), an event's alarms,
-     * the mail of someone Always through. At Android's default importance
+     * lets through: the doses ("Doses during a pause"), Sioul's notices to
+     * do ("To act on during a pause": a code), the mail of someone Always
+     * through. At Android's default importance
      * (its sound, no banner), allowed to pass with Do Not Disturb access, and
      * only while the person has not changed the channel: then their choice
      * stays. The usual channels are never changed: outside Sioul's modes, the
@@ -561,14 +557,20 @@ final class PauseMode
     }
 
     /**
-     * The channel an event's alarm goes to now (EventAlarms): the one that
-     * passes while every mode on lets an event's alarms through, the usual
-     * "An event's alarms" otherwise. Sioul's reminders before an event never
-     * come here: they stay in the quiet "Events".
+     * The channel a notice to do goes to now that pierces (Notices: a code,
+     * as the matrix lets codes through): "To act on during a pause", which
+     * passes do-not-disturb, while one of Sioul's modes is on, made then with
+     * `name` (with Do Not Disturb access); null otherwise, and the notice
+     * goes to the usual "To act on".
      */
-    static String alarmsChannelNow(Context context)
+    static String actChannelNow(Context context, String name)
     {
-        return channelNow(context, "events.", ALARMS_CHANNEL, EventAlarms.ALARMS);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !passesNow(kept(context).getAll(), null))
+            return null;
+        NotificationManager notifications = notifications(context);
+        if (accessGranted(context))
+            passingChannel(notifications, Notices.ACT_PAUSE, name);
+        return notifications.getNotificationChannel(Notices.ACT_PAUSE) != null ? Notices.ACT_PAUSE : null;
     }
 
     /** New mail's channel that passes, for someone Always through while one of Sioul's modes is on (MailNotes). */
@@ -579,16 +581,16 @@ final class PauseMode
      * or the background service's): the one that passes while one of Sioul's
      * modes is on and someone Always through wrote (`through`, Rust's word:
      * told through the system's do-not-disturb), made then with `name`; the
-     * quiet "New mail" otherwise.
+     * quiet "Notices" otherwise (Notices).
      */
     static String mailChannelNow(Context context, boolean through, String name)
     {
         if (!through || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !passesNow(kept(context).getAll(), null))
-            return MailNotes.CHANNEL;
+            return Notices.NOTICES;
         NotificationManager notifications = notifications(context);
         if (accessGranted(context))
             passingChannel(notifications, MAIL_CHANNEL, name);
-        return notifications.getNotificationChannel(MAIL_CHANNEL) != null ? MAIL_CHANNEL : MailNotes.CHANNEL;
+        return notifications.getNotificationChannel(MAIL_CHANNEL) != null ? MAIL_CHANNEL : Notices.NOTICES;
     }
 
     // ---------------------------------------------------------------- the tile and the shortcut

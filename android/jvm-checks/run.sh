@@ -24,9 +24,9 @@
 #   screening counts them (Calls.rememberCalled, Calls.calledAt); a row of
 #   the phone's call history as Rust reads it (Calls.historyRow);
 # - ModeCheck: Sioul's modes (PauseMode's policy from Rust's ask, which modes
-#   let a channel through), an event's own alarm (EventAlarms.isAlarm), a
-#   conversation's key against Rust's (AppNotes.talkKey), the conversations
-#   forgotten, Android's pages for a conversation;
+#   let a channel through), a conversation's key against Rust's
+#   (AppNotes.talkKey), the conversations forgotten, Android's pages for a
+#   conversation;
 # - HeardCheck: the phone's own do-not-disturb heard both ways
 #   (DndHeard.decide), a mode's kind, a mode the phone holds;
 # - CardCheck: the full card on the home screen (HomeCardToday.Lines.of):
@@ -49,8 +49,9 @@
 #   its content:// address and the way back, its type, ACTION_VIEW read
 #   only, the question where to save), and the provider's folders and the
 #   manifest, read from the repository (its root as the property sioul.root).
-# - EventNotesCheck: every reminder in the Events channels is private, its
-#   public version saying only that Sioul has a reminder (composed tasks §7.3);
+# - EventNotesCheck: every notice Notices posts is private, its public
+#   version saying only what Rust gives for it (a count, a code's title) or
+#   that Sioul has a reminder (composed tasks §7.3);
 # - RecentsCheck: Recents' picture of Sioul off while a health card is open,
 #   read from the sources (android.jar's Activity is a stub): the bridge's
 #   Activity.setRecentsScreenshotEnabled on Android 13 and later only, on
@@ -66,11 +67,11 @@
 #   import asks Android (Texts.changedSince), whether a message received
 #   brings a step soon (Texts.grew), and how an inbox's newest id is asked
 #   for (Texts.newestBy: the limit in the sort, else the plain sort).
-# - DayNotesCheck: the end of work's notice and the night's (DayNotes.buttons:
-#   each notice's buttons and what each opens, from the words Rust gives,
-#   which eventalarms.rs's own test reads in this check), the presses kept
-#   apart (DayNotes.requestCode), what a press may open (ReminderOpener.opens),
-#   and no words kept for them (EventAlarms.isDay).
+# - DayNotesCheck: the end of work's notice, the night's and a meal's
+#   (Notices.Said.of: each notice's thing and buttons and what each opens,
+#   from the words Rust gives, which eventalarms.rs's own test reads in this
+#   check), the presses kept apart (Notices.requestCode), what a press may
+#   open (ReminderOpener.opens), and no words kept for them (EventAlarms.isDay).
 # - RepliesCheck: a reply from your computers (Replies.choose, refusal, live):
 #   each app's Reply and Mark as read found by what they mean, on stand-ins
 #   shaped as Signal, WhatsApp, Telegram (a bot's buttons), Element X, /e/OS's
@@ -99,15 +100,19 @@
 #   unified mailbox's part 2): ReminderOpener.opens takes "mail" with mid: or
 #   sioul:mail/ and refuses a path; the home card's rows (HomeCardRows.opens)
 #   and codes by their address, an older card's row by its file, else the
-#   Porch; read from the sources, no intent naming a file (no file: address,
-#   no Uri.fromFile), new mail's tap made from a checked address alone,
-#   several opening the mailbox (part 5), and no notification's text nor a
-#   key logged.
+#   Porch; new mail's notice (MailNotes.said): a button per message Rust
+#   names (`opens`), a tap the first, else `open`'s message or the mailbox
+#   (part 5); read from the sources, no intent naming a file (no file:
+#   address, no Uri.fromFile), a notice's taps made from a checked address
+#   alone (Notices.opening), and no notification's text, code nor key logged.
 # - EventOpenCheck: an event opened from its reminder by its address
 #   (ReminderOpener.isEventAddress: sioul:event/ and its UID, with the time
 #   it reminds of or without; a path refused), a notice an older Sioul
-#   posted with its file still opened; read from the sources, EventAlarms'
-#   one intent naming the event only by an address that passes the check.
+#   posted with its file still opened; every thing a notice is about
+#   (ReminderOpener.isNoticeAddress, which eventalarms.rs's test reads
+#   alike), the words said when Rust is silent with the event's address
+#   (EventAlarms.fallen); read from the sources, no intent of EventAlarms'
+#   own.
 # - ShareCheck: a calendar file opened (ShareActivity.insideOwn): a file:
 #   path into Sioul's own folders refused as the system resolves it (written
 #   inside, "..", a link to a file or a folder of Sioul's, a root named by a
@@ -130,6 +135,15 @@
 #   association asks no profile nor permission, the feature not required,
 #   the activity never exported, a Bluetooth filter, channels changed in one
 #   place, the link let go only as Rust says.
+# - NoticesCheck: Sioul's own notices (Notices): the two classes and their
+#   groups, a code's notice (Copy, Open the message, its lock screen its
+#   title alone) as Rust's code_note gives it, the lifetime rule (five
+#   minutes from when the phone could show it, never past its relevance),
+#   the groups' summaries (Android 16), the channels (the twin that passes
+#   for something to do alone), the taps (kept apart, five minutes at most);
+#   read from the sources, the old channels deleted, never the doses', a
+#   group on every notification, the background service's card, a code
+#   withdrawn, a tap taken at the window's start.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes
 #   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
 #   encoder writes now) read by Android's own parser, as Android's MMS service
@@ -155,7 +169,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

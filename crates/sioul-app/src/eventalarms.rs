@@ -1,26 +1,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Reminders before events on a phone (docs/android.md, "Events"): Android
-//! freezes an app it does not show, so the coming reminders of events (their
-//! own alarms, Sioul's before them, the working day before) are given ahead
-//! to Android's alarm clock (android/package/src/com/aurelienpierre/sioul/
-//! EventAlarms.java), as the doses are (`alarms`): at the window's minute,
+//! Sioul's own notices on a phone (docs/android.md, "Notifications"): each
+//! one a notice of the model (`sioul_core::notice`), handed to one poster in
+//! Java (android/package/src/com/aurelienpierre/sioul/Notices.java) with its
+//! class, its group, how long it lasts once it could be seen and when it
+//! goes at the latest (`notice_json`): Rust says each notice's life, Java
+//! only counts it from the phone's next unlock.
+//!
+//! The time to leave for an event: Android freezes an app it does not show,
+//! so the coming ones are given ahead to Android's alarm clock
+//! (EventAlarms.java), as the doses are (`alarms`): at the window's minute,
 //! when Sioul is put away, after each ring. At its time a receiver asks here
 //! what to say (`sioul_event_decide`): the event read again (moved,
 //! cancelled, told already?), sleep or a pause holding it or not, the time
-//! left said as it is then; shown in the quiet "Events" channel, a tap
-//! opening the event. Every device tells its own: one held back on the phone
-//! because the computer was used a moment ago, then shown on an empty desk,
-//! would be an appointment missed.
+//! left said as it is then. Every device tells its own: one held back on the
+//! phone because the computer was used a moment ago, then shown on an empty
+//! desk, would be an appointment missed. An event's own alarm rings in the
+//! phone's calendar app, never here (the notifications' decision 3).
+//!
+//! The same list holds when the meals, the night's notice and the end of
+//! work may come ("day" its kind): decided here at their alarm, and told on
+//! the phone only when nobody is at a computer (`devices::computer_in_use`).
 //!
 //! Also here, Android's side of new mail's notification (`mail_note`,
-//! MailNotes.java), and what a tapped notification opens (`opened`).
-//! Elsewhere nothing: the window's minute and `sioul remind --watch` tell them.
+//! MailNotes.java), of a code's (`code_note`), and what a tapped
+//! notification opens (`opened`). Elsewhere nothing: the window's minute and
+//! `sioul remind --watch` tell them.
 
 use crate::backend::{load_config, tr};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
+use sioul_core::notice::{Act, Lasting, Notice};
 use sioul_core::reminders::{self, Holds, Kind, Reminder};
 use std::ffi::{CString, c_char};
 use std::sync::Mutex;
@@ -30,13 +41,13 @@ use std::sync::Mutex;
 unsafe extern "C" {
     /// The coming events' reminders handed to Java, which keeps them and sets their alarms (android/main.cpp).
     fn sioul_android_set_event_alarms(json: *const c_char);
-    /// A reminder shown in Android's notifications, "Events" (android/main.cpp).
+    /// The time to leave for an event shown (EventAlarms.show, through Notices; android/main.cpp).
     fn sioul_android_event_note(json: *const c_char);
-    /// New mail's notification, "New mail" (android/main.cpp).
+    /// New mail's notification (MailNotes.show, through Notices; android/main.cpp).
     fn sioul_android_mail_note(json: *const c_char);
-    /// The end of work's notice or the night's, with its buttons, "End of the day" (android/main.cpp).
+    /// The end of work's notice, the night's or a need's, with its buttons (DayNotes.show, through Notices; android/main.cpp).
     fn sioul_android_day_note(json: *const c_char);
-    /// What a tapped notification opens, once, as JSON {kind, key}; false when nothing (android/main.cpp).
+    /// What tapped notifications open, once, as a JSON list [{kind, key}]; false when nothing (android/main.cpp).
     fn sioul_android_take_reminder_opened(buffer: *mut c_char, size: i32) -> bool;
 }
 
@@ -52,52 +63,134 @@ const AGAIN: i64 = 15 * 60;
 /// The list last handed to Java, so that it is handed again only when it changes.
 static GIVEN: Mutex<String> = Mutex::new(String::new());
 
-/// The words Java says, in your language, given with the list: Sioul may
-/// not be running when a reminder is shown.
+/// The words Java says, in your language, given with the list and with each
+/// notice: Sioul may not be running when a reminder is shown. The channels'
+/// names: "Notices", "To act on" and its twin that passes one of Sioul's
+/// modes; new mail's own that passes, for someone Always through.
 fn words() -> serde_json::Value {
     serde_json::json!({
-        "channel": tr().text("events-channel", None),
-        "mail": tr().text("mail-channel", None),
+        "notices": tr().text("notices-channel", None),
+        "act": tr().text("act-channel", None),
+        "act-pause": tr().text("act-pause-channel", None),
         "mail-through": tr().text("mail-through-channel", None),
-        "alarms": tr().text("alarms-channel", None),
-        "alarms-pause": tr().text("dnd-events-channel", None),
-        "day": tr().text("review-channel", None),
         "open": tr().text("reminder-open", None),
         // A reminder on a lock screen that hides private content: nothing of what it is about.
         "public": tr().text("reminder-public", None),
     })
 }
 
-/// What Java is given: the events' reminders not told yet that still make
+/// A notice as Notices.java posts it (docs/android.md, "Notifications"), at
+/// `now` (Unix seconds), or none once it no longer lasts (its thing ended,
+/// its relevance past: `notice::lasting`): {tag (Android's key: the next
+/// notice with it takes its place), about (its thing's address, which a tap
+/// opens), kind (the matrix's row, "mail", "minor"), class ("informative",
+/// "actionable"), group (its class: Android groups nothing of Sioul's by
+/// itself then), lasts_ms (how long it stays once it could be seen; 0, until
+/// settled), ends (Unix ms, when it goes at the latest; 0, none), pierce
+/// (one to do that passes one of Sioul's modes, as the matrix said), title,
+/// body, actions ([{label, open: address}] or [{label, copy: text}]), public
+/// ({title, body} as the lock screen shows it, without what it is about;
+/// none: Sioul's words for a reminder), words}.
+pub(crate) fn notice_json(tag: &str, notice: &Notice, pierce: bool, public: Option<(&str, &str)>, now: i64) -> Option<serde_json::Value> {
+    let zoned = sioul_core::zone::now();
+    let moment = sioul_core::notice::Moment { day_ends: sioul_core::notice::Moment::end_of_day(&zoned), ..Default::default() };
+    let lasting = sioul_core::notice::lasting(notice, moment, load_config().notices.minutes(), now)?;
+    Some(notice_value(tag, notice, lasting, pierce, public, words()))
+}
+
+/// `notice_json` once its life is known (`lasting`): pure.
+fn notice_value(tag: &str, notice: &Notice, lasting: Lasting, pierce: bool, public: Option<(&str, &str)>, words: serde_json::Value) -> serde_json::Value {
+    use sioul_core::notice::Class;
+    let class = match lasting.class {
+        Class::Informative => "informative",
+        Class::Actionable => "actionable",
+    };
+    let actions: Vec<serde_json::Value> = notice
+        .actions
+        .iter()
+        .filter_map(|action| match &action.act {
+            Act::Open { address, .. } if !address.is_empty() => Some(serde_json::json!({ "label": action.label, "open": address })),
+            Act::Copy(text) => Some(serde_json::json!({ "label": action.label, "copy": text })),
+            // The window's own verbs: none on a phone.
+            _ => None,
+        })
+        .collect();
+    serde_json::json!({
+        "tag": tag,
+        "about": notice.about,
+        "kind": notice.kind.id(),
+        "class": class,
+        "group": class,
+        "lasts_ms": lasting.lasts.saturating_mul(1000),
+        "ends": lasting.ends.map_or(0, |ends| ends.saturating_mul(1000)),
+        // Only one to do passes one of Sioul's modes (docs/notifications.md, "Two classes").
+        "pierce": pierce && lasting.class == Class::Actionable,
+        "title": notice.title,
+        "body": notice.body,
+        "actions": actions,
+        "public": public.map(|(title, body)| serde_json::json!({ "title": title, "body": body })),
+        "words": words,
+    })
+}
+
+/// How long a notice to know lasts once it could be seen (milliseconds), as
+/// set (`[notices] informative_minutes`): given with the list, for the
+/// notices Java says from the words it keeps (Rust silent at a reminder's
+/// time) and new mail's when its own words do not say it.
+fn informative_ms() -> i64 {
+    i64::from(load_config().notices.minutes()) * 60_000
+}
+
+/// What Java is given: the times to leave not told yet that still make
 /// sense, nearest first, at most a hundred, each {key, at (Unix
-/// milliseconds), title, body} (the words said if Sioul cannot be asked at
-/// its time); one held now (you sleep) at the time it may come; `look`, when
-/// to ask for the list again (a day on, in steps of six hours, so that the
-/// list given is the same from one minute to the next); `words`.
+/// milliseconds), title, body, about (the event's address and time), ends
+/// (Unix ms, its start)} (the words said if Sioul cannot be asked at its
+/// time); one held now (you sleep) at the time it may come; `look`, when to
+/// ask for the list again (a day on, in steps of six hours, so that the list
+/// given is the same from one minute to the next); `lasts_ms`, how long a
+/// notice to know lasts once seen; `words`.
 pub(crate) fn coming(now: &Zoned) -> String {
     let (all, holds) = reminders::gather_events(&load_config(), tr(), now);
     listed(&all, &crate::hours::with_layers(holds), now)
 }
 
-/// The list Java is given, from reminders gathered already: the events' own,
-/// then the times the end-of-work notice and the night's may come
-/// (`reviews::coming_work`, `health::coming_night`), "day" their kind, with
-/// no words: Rust alone says them, or nothing (`day_note`).
+/// Whether a reminder is one a phone tells, and Android's alarm clock is
+/// given: the time to leave for an event (Sioul's "before" it). An event's
+/// own alarm rings in the phone's calendar app (the notifications' decision
+/// 3), and the working day before is made no more (decision 3 too).
+pub(crate) fn told_on_android(kind: Kind) -> bool {
+    kind == Kind::Before
+}
+
+/// The list Java is given, from reminders gathered already: the times to
+/// leave, then the times the end-of-work notice, the night's and the meals'
+/// may come (`reviews::coming_work`, `health::coming_night`,
+/// `health::coming_needs`), "day" their kind, with no words: Rust alone says
+/// them, or nothing (`day_note`).
 fn listed(all: &[Reminder], holds: &Holds, now: &Zoned) -> String {
     let stamp = now.timestamp().as_second();
     let dir = reminders::told_dir();
     let mut due: Vec<(i64, &Reminder)> = all
         .iter()
-        .filter(|r| matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm) && r.until > stamp && !reminders::told(&dir, &r.key))
+        .filter(|r| told_on_android(r.kind) && r.until > stamp && !reminders::told(&dir, &r.key))
         .map(|r| (when(r, holds, stamp), r))
         .filter(|(at, r)| *at < r.until)
         .collect();
     due.sort_by_key(|(at, r)| (*at, r.key.clone()));
-    let mut list: Vec<serde_json::Value> = due.iter().take(AT_MOST).map(|(at, r)| serde_json::json!({ "key": r.key, "kind": r.kind, "at": at * 1000, "title": r.title, "body": r.body })).collect();
-    let days = crate::reviews::coming_work(now).into_iter().chain(crate::health::coming_night(now));
+    let mut list: Vec<serde_json::Value> = due.iter().take(AT_MOST).map(|(at, r)| listed_entry(r, *at)).collect();
+    let days = crate::reviews::coming_work(now).into_iter().chain(crate::health::coming_night(now)).chain(crate::health::coming_needs(now));
     list.extend(days.map(|(key, at)| serde_json::json!({ "key": key, "kind": "day", "at": at * 1000, "title": "", "body": "" })));
     let look = (stamp / LOOK_STEP + LOOK_AGAIN / LOOK_STEP) * LOOK_STEP;
-    serde_json::json!({ "reminders": list, "look": look * 1000, "words": words() }).to_string()
+    serde_json::json!({ "reminders": list, "look": look * 1000, "lasts_ms": informative_ms(), "words": words() }).to_string()
+}
+
+/// A time to leave as the list gives it, its alarm at `at` (Unix seconds):
+/// its words, said if Sioul cannot be asked then, with its event's address
+/// and time, which a tap on that notice opens too, and its start, when that
+/// notice goes.
+fn listed_entry(reminder: &Reminder, at: i64) -> serde_json::Value {
+    let about = reminder.notice("").about;
+    serde_json::json!({ "key": reminder.key, "kind": reminder.kind, "at": at * 1000, "title": reminder.title, "body": reminder.body, "about": about, "ends": reminder.starts.unwrap_or(reminder.until) * 1000 })
 }
 
 /// When a reminder's alarm rings (Unix seconds): its time; past it, at once
@@ -146,10 +239,12 @@ pub(crate) fn schedule_from(all: &[Reminder], holds: &Holds, now: &Zoned) {
     hand(listed(all, holds, now));
 }
 
-/// A reminder shown in Android's notifications, "Events": its words, "Open",
-/// a tap opening the event; gone from the shade an hour after the event began.
+/// A reminder shown in Android's notifications (`shown`): a notice to know,
+/// its words, "Open", a tap opening the event; the time to leave gone from
+/// the shade as its event starts. On a tablet, the dates, waits, payments,
+/// papers and contracts too, each opening its thing.
 pub(crate) fn show(reminder: &Reminder) {
-    let json = shown(reminder);
+    let Some(json) = shown(reminder, jiff::Timestamp::now().as_second()) else { return };
     let Ok(text) = CString::new(json.to_string()) else { return };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
@@ -185,27 +280,52 @@ fn mail_note_json(title: &str, body: &str, through: bool, open: &str, words: ser
     serde_json::json!({ "title": title, "body": body, "through": through, "open": open, "words": words })
 }
 
-/// The end of work's notice or the night's on a phone (`reviews::decide_work`,
-/// `health::decide_night`), in the quiet "End of the day" channel: its words,
-/// and each button ({label, kind, key}) opening Sioul on what it offers, a tap
-/// on the notice the first's (DayNotes.java); gone from the shade at `until`
-/// (Unix seconds). Shown again in its place, by `key`, when it comes again.
-pub(crate) fn day_note(key: &str, title: &str, body: &str, offered: &[crate::reviews::Offered], until: i64) {
-    let json = day_note_json(key, title, body, offered, until, words());
-    let Ok(text) = CString::new(json.to_string()) else { return };
+/// The end of work's notice, the night's or a meal's on a phone
+/// (`reviews::decide_work`, `health::decide_night`, `health::decide_need`):
+/// a notice to know (`notice_json`), its words, each button opening Sioul on
+/// what it offers by its address, a tap on the notice its thing (DayNotes.java);
+/// shown in its place, by `key` (the alarm's: "day:work:2026-10-14"), when it
+/// comes again. Whether it was shown: false once it no longer lasts.
+pub(crate) fn day_note(key: &str, notice: &Notice) -> bool {
+    let Some(json) = notice_json(key, notice, false, None, jiff::Timestamp::now().as_second()) else { return false };
+    let Ok(text) = CString::new(json.to_string()) else { return false };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.
     unsafe {
         sioul_android_day_note(text.as_ptr())
     };
     let _ = text;
+    true
 }
 
-/// What DayNotes.java reads of a notice (`day_note`): {key, title, body,
-/// buttons: [{label, kind, key}], until (Unix ms), words}.
-fn day_note_json(key: &str, title: &str, body: &str, offered: &[crate::reviews::Offered], until: i64, words: serde_json::Value) -> serde_json::Value {
-    let buttons: Vec<serde_json::Value> = offered.iter().map(|offer| serde_json::json!({ "label": offer.label, "kind": offer.kind, "key": offer.key })).collect();
-    serde_json::json!({ "key": key, "title": title, "body": body, "buttons": buttons, "until": until * 1000, "words": words })
+/// A one-time code or a temporary password on a phone (`backend::notify_codes`):
+/// a notice to do (`notice_json`) about its message, Copy putting the code on
+/// the clipboard and Open the message, a tap opening it; on the lock screen
+/// its title alone, never the code; gone when the code expires, once copied,
+/// or once its message is read on any device (`notices::withdraw_codes`).
+/// `pierce`: it passes one of Sioul's modes, as the matrix said. Whether it
+/// was shown.
+pub(crate) fn code_note(notice: &Notice, pierce: bool) -> bool {
+    let Some(json) = notice_json(&notice.key(), notice, pierce, Some((&notice.title, "")), jiff::Timestamp::now().as_second()) else { return false };
+    crate::steps::java("notice", &json.to_string());
+    cfg!(target_os = "android")
+}
+
+/// A notice shown by `code_note`, taken away on this phone: its thing is
+/// settled (Notices.java, every notice about `about`). Nothing elsewhere.
+pub(crate) fn withdraw(about: &str) {
+    if cfg!(target_os = "android") {
+        crate::steps::java("notice-withdraw", &serde_json::json!({ "about": about }).to_string());
+    }
+}
+
+/// The phone is seen in use (Sioul back on the screen): the notices to know
+/// posted while it was not start their minutes now (Notices.java; the
+/// background service hears the phone's unlock itself). Nothing elsewhere.
+pub(crate) fn seen() {
+    if cfg!(target_os = "android") {
+        crate::steps::java("notices-seen", "{}");
+    }
 }
 
 /// When a reminder held now may come: when the time now ends (waking, the
@@ -230,8 +350,8 @@ fn step_after(stamp: i64, step: i64) -> i64 {
 /// At a reminder's time (`EventAlarms`): {"shown": true} once told here; or
 /// {"again_at": ms}, held now (you sleep) and still worth telling then; or
 /// {} (moved, cancelled, told already, too late). The coming list is given
-/// again after, as the calendars are now. The end of work's and the night's
-/// ("day:work:…", "day:night:…") are theirs to decide.
+/// again after, as the calendars are now. The end of work's, the night's and
+/// the meals' ("day:work:…", "day:night:…", "day:need:…") are theirs to decide.
 fn decide(key: &str) -> String {
     let now = sioul_core::zone::now();
     if let Some(day) = key.strip_prefix("day:") {
@@ -239,6 +359,8 @@ fn decide(key: &str) -> String {
             crate::reviews::decide_work(&now)
         } else if day.starts_with("night:") {
             crate::health::decide_night(&now)
+        } else if let Some(need) = day.strip_prefix("need:") {
+            crate::health::decide_need(&now, need)
         } else {
             serde_json::json!({})
         };
@@ -310,28 +432,30 @@ pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char 
     crate::alarms::handed(answer)
 }
 
-/// A reminder as Android's notification shows it (EventAlarms.java): its
-/// words, and the event it opens, by its address and its time
+/// A reminder as Android's notification shows it (EventAlarms.java, through
+/// Notices): the notice of the model (`Reminder::notice`, `notice_json`),
+/// tagged by its key, about the event it opens, by its address and its time
 /// (`sioul:event/<UID>#1793520000`, `remind::event_time`; review of 590eb18,
 /// later 6), never its file (the leftovers round): Android's intent carries
 /// no path of Sioul's files. Given back when the notification is tapped,
-/// and found again by its UID (`opened`).
-fn shown(reminder: &Reminder) -> serde_json::Value {
-    serde_json::json!({
-        "key": reminder.key,
-        "kind": reminder.kind,
-        "title": reminder.title,
-        "body": reminder.body,
-        "event": reminder.event.as_deref().map(|address| crate::remind::event_time(address, reminder.starts)).unwrap_or_default(),
-        "until": reminder.until * 1000,
-        "words": words(),
-    })
+/// and found again by its UID (`opened`). With `key`, for EventAlarms to
+/// take its alarm away. None once it no longer lasts (its event begun).
+fn shown(reminder: &Reminder, now: i64) -> Option<serde_json::Value> {
+    let notice = reminder.notice(&tr().text("reminder-open", None));
+    let mut json = notice_json(&reminder.key, &notice, false, None, now)?;
+    json["key"] = reminder.key.clone().into();
+    Some(json)
 }
 
-/// What a notification tapped while Sioul was away opens, once: ("event",
-/// its file and time, found by its address: `event_file`), ("porch", ""), ("mailbox", "") for new mail of several, a closing sheet ("review", "work" or "night",
-/// with its day: "work:2026-10-14"), or a block's question ("need", its key).
-pub(crate) fn opened() -> Option<(String, String)> {
+/// What notifications tapped while Sioul was away, or before it started,
+/// open, each once, in the order they were tapped (ReminderOpener.java keeps
+/// them five minutes at most): ("", its thing's address, where this phone
+/// has it: an event's file and time, found by its address, `event_file`),
+/// which the window opens by its one route (`open`); or as an older Sioul's
+/// notice said it: ("event", its file and time), ("porch", ""),
+/// ("mailbox", ""), a closing sheet ("review", "work:2026-10-14"), a block's
+/// question ("need", its key), a message ("mail", its address).
+pub(crate) fn opened() -> Vec<(String, String, String)> {
     #[cfg(target_os = "android")]
     {
         let mut buffer = vec![0u8; 4096];
@@ -339,23 +463,39 @@ pub(crate) fn opened() -> Option<(String, String)> {
         let found = unsafe { sioul_android_take_reminder_opened(buffer.as_mut_ptr().cast(), buffer.len() as i32) };
         if found {
             let end = buffer.iter().position(|b| *b == 0).unwrap_or(buffer.len());
-            let (kind, key) = serde_json::from_slice(&buffer[..end]).ok().and_then(|said| opened_of(&said))?;
-            // An event by its address: its file on this phone, read now (an event gone meanwhile opens nothing).
-            let key = if kind == "event" { event_file(&key, &sioul_core::agenda::event_refs())? } else { key };
-            return Some((kind, key));
+            let said: Vec<serde_json::Value> = serde_json::from_slice(&buffer[..end]).unwrap_or_default();
+            let refs = std::sync::OnceLock::new();
+            return said
+                .iter()
+                .filter_map(opened_of)
+                .filter_map(|(kind, key)| match kind.as_str() {
+                    // A thing by its address; an event's with its file and time on this phone, read now (gone meanwhile: the agenda).
+                    "notice" => {
+                        let hint = if is_event_address(&key) { event_file(&key, refs.get_or_init(sioul_core::agenda::event_refs)).unwrap_or_default() } else { String::new() };
+                        Some((String::new(), key, hint))
+                    }
+                    // An event by its address: its file on this phone, read now (an event gone meanwhile opens nothing).
+                    "event" => event_file(&key, refs.get_or_init(sioul_core::agenda::event_refs)).map(|file| (kind, String::new(), file)),
+                    _ => Some((kind, String::new(), key)),
+                })
+                .collect();
         }
     }
-    None
+    Vec::new()
 }
 
 /// What a tapped notification's {kind, key} opens (ReminderOpener.java keeps
-/// it): only what Sioul's own notifications open; none for anything else. A
-/// message ("mail") by its address alone (`mid:…`, `sioul:mail/…`), never a
-/// file (new mail's notification of one message: the unified mailbox's part 2).
+/// it): only what Sioul's own notifications open; none for anything else.
+/// "notice": a thing by its address (`is_notice_address`), what every notice
+/// of this Sioul carries. As an older Sioul's notice said it: a message
+/// ("mail") by its address alone (`mid:…`, `sioul:mail/…`), never a file
+/// (new mail's notification of one message: the unified mailbox's part 2);
+/// an event, the Porch, the mailbox, a block's question, a closing sheet.
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
     let key = said["key"].as_str().unwrap_or_default();
     let kind = said["kind"].as_str().filter(|kind| match *kind {
+        "notice" => is_notice_address(key),
         // "mailbox": new mail's notification of several on a phone (the unified mailbox's part 5).
         "event" | "porch" | "need" | "mailbox" => true,
         "mail" => is_mail_address(key),
@@ -366,6 +506,33 @@ fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
         _ => false,
     })?;
     Some((kind.to_string(), key.to_string()))
+}
+
+/// A thing's address as a notice of Sioul's carries it on a phone
+/// (`notice::address`, the links'), never a file: an event's
+/// (`is_event_address`), a message's (`is_mail_address`; a code's is its
+/// message's), the mailbox, the Porch, a need (`sioul:need/<block>`), the end
+/// of the work day or of the whole day (`sioul:day/work:2026-10-14`), or
+/// another thing of Sioul's by its kind and id (a task, a paper, a contract,
+/// a budget's line: a tablet's dates), its parts never "." nor "..".
+/// ReminderOpener.isNoticeAddress reads the same (EventOpenCheck).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn is_notice_address(key: &str) -> bool {
+    if key.len() > 1024 {
+        return false;
+    }
+    if is_event_address(key) || is_mail_address(key) || key == sioul_core::notice::address::MAILBOX || key == sioul_core::notice::address::PORCH {
+        return true;
+    }
+    if let Some(day) = key.strip_prefix("sioul:day/") {
+        let Some((sheet, date)) = day.split_once(':') else { return false };
+        return matches!(sheet, "work" | "night") && date.len() == 10 && date.parse::<jiff::civil::Date>().is_ok();
+    }
+    let Some((kind, rest)) = key.strip_prefix("sioul:").and_then(|rest| rest.split_once('/')) else { return false };
+    let plain = |part: &str| !part.is_empty() && part != "." && part != ".." && part.bytes().all(|b| b.is_ascii_graphic() && b != b'\\');
+    let known = matches!(kind, "need" | "task" | "paper" | "contract" | "budget" | "movement" | "letter");
+    // A need's block is one part ("meal:0"); the others' ids may hold a slash of their own.
+    known && if kind == "need" { plain(rest) && !rest.contains('/') } else { rest.split('/').all(plain) }
 }
 
 /// An event's address as its reminder carries it (`shown`):
@@ -430,21 +597,41 @@ mod tests {
         assert_eq!(opened_of(&serde_json::json!({ "kind": "mailbox" })), Some(("mailbox".into(), String::new())), "several: the mailbox (part 5)");
     }
 
+    /// A reminder's notice as Notices.java is given it, its life known: pure
+    /// (`notice_value`), the minutes five, the day ending in ten hours.
+    fn posted(reminder: &Reminder, now: i64) -> Option<serde_json::Value> {
+        let moment = sioul_core::notice::Moment { day_ends: now + 36_000, ..Default::default() };
+        let notice = reminder.notice("Open");
+        sioul_core::notice::lasting(&notice, moment, 5, now).map(|lasting| notice_value(&reminder.key, &notice, lasting, false, None, serde_json::json!({})))
+    }
+
     /// A phone's notification of an event opens that time of it when tapped:
     /// its address and its time, given back as they are (review of 590eb18,
     /// later 6), never its file (the leftovers round); found again by its UID
     /// as its file and time, as the window opens it. A notice an older Sioul
-    /// posted, its file in its intent, opens as before.
+    /// posted, its file in its intent, opens as before. The time to leave is
+    /// a notice to know, tagged by its reminder's key, that lasts until its
+    /// event starts, then is no more.
     #[test]
     fn an_event_s_notification_names_its_address_and_time() {
         let reminder = Reminder { key: "before:yoga/1#x:1793520000".into(), kind: sioul_core::reminders::Kind::Before, at: 1_793_519_100, until: 1_793_520_000, title: "Yoga".into(), body: String::new(), target: "/c/yoga.ics".into(), work: false, starts: Some(1_793_520_000), names: None, event: Some(sioul_core::links::event_uri("yoga/1#x")) };
-        let said = shown(&reminder)["event"].as_str().unwrap_or_default().to_string();
+        let now = 1_793_519_100;
+        let note = posted(&reminder, now).unwrap();
+        let said = note["about"].as_str().unwrap_or_default().to_string();
         assert_eq!(said, "sioul:event/yoga%2F1%23x#1793520000");
-        assert!(!said.contains("yoga.ics") && is_event_address(&said));
-        assert_eq!(shown(&Reminder { starts: None, ..reminder.clone() })["event"], "sioul:event/yoga%2F1%23x", "no time known: its address");
-        assert_eq!(shown(&Reminder { event: None, ..reminder.clone() })["event"], "", "no address: none, never its file (Sioul as by its icon)");
-        let tapped = opened_of(&serde_json::json!({ "kind": "event", "key": said })).unwrap();
-        assert_eq!(tapped, ("event".to_string(), said.clone()), "given back as it was");
+        assert!(!said.contains("yoga.ics") && is_event_address(&said) && is_notice_address(&said));
+        assert_eq!(note["actions"], serde_json::json!([{ "label": "Open", "open": said }]), "Open: the same thing");
+        assert_eq!((note["tag"].as_str(), note["class"].as_str(), note["group"].as_str(), note["kind"].as_str()), (Some(reminder.key.as_str()), Some("informative"), Some("informative"), Some("before")));
+        assert_eq!((note["lasts_ms"].as_i64(), note["ends"].as_i64(), note["pierce"].as_bool()), (Some(900_000), Some(1_793_520_000_000), Some(false)), "until its event starts");
+        assert_eq!(posted(&reminder, 1_793_520_000), None, "its event begun: nothing");
+        assert_eq!(posted(&Reminder { starts: None, ..reminder.clone() }, now).unwrap()["about"], "sioul:event/yoga%2F1%23x", "no time known: its address");
+        let without = posted(&Reminder { event: None, ..reminder.clone() }, now).unwrap();
+        assert_eq!((without["about"].as_str(), without["actions"].as_array().map(Vec::len)), (Some(""), Some(0)), "no address: none, never its file (Sioul as by its icon)");
+        // The list's entry: its words, its address and its start, for the words Java says when Rust is silent.
+        let entry = listed_entry(&reminder, reminder.at);
+        assert_eq!((entry["about"].as_str(), entry["ends"].as_i64(), entry["at"].as_i64()), (Some(said.as_str()), Some(1_793_520_000_000), Some(1_793_519_100_000)));
+        let tapped = opened_of(&serde_json::json!({ "kind": "notice", "key": said })).unwrap();
+        assert_eq!(tapped, ("notice".to_string(), said.clone()), "given back as it was");
         let refs = [sioul_core::agenda::EventRef { key: "/c/other.ics".into(), uid: "other".into(), ..Default::default() }, sioul_core::agenda::EventRef { key: "/c/yoga.ics".into(), uid: "yoga/1#x".into(), ..Default::default() }];
         assert_eq!(event_file(&tapped.1, &refs).as_deref(), Some("/c/yoga.ics#1793520000"), "its file and time, as the window opens it");
         assert_eq!(event_file("sioul:event/yoga%2F1%23x", &refs).as_deref(), Some("/c/yoga.ics"));
@@ -452,14 +639,29 @@ mod tests {
         // A notice an older Sioul (4d81220) posted: its file and time, opened as before.
         let older = opened_of(&serde_json::json!({ "kind": "event", "key": "/c/yoga.ics#1793520000" })).unwrap();
         assert_eq!(event_file(&older.1, &refs).as_deref(), Some("/c/yoga.ics#1793520000"));
+        assert_eq!(opened_of(&serde_json::json!({ "kind": "event", "key": said })), Some(("event".to_string(), said.clone())), "an older build's notice by its address");
         for refused in ["/c/yoga.ics#1", "sioul:event/", "sioul:event/a/b", "sioul:event/..", "sioul:event/a#b", "sioul:event/a#1#2", "sioul:event/a\\b", "sioul:task/a", "sioul:event/a#"] {
             assert!(!is_event_address(refused), "{refused}");
         }
     }
 
+    /// A phone tells the time to leave alone: an event's own alarm rings in
+    /// the phone's calendar app (the notifications' decision 3), and the
+    /// working day before is made no more; neither is given to Android's
+    /// alarm clock.
+    #[test]
+    fn a_phone_tells_the_time_to_leave_alone() {
+        use sioul_core::reminders::Kind as Of;
+        assert!(told_on_android(Of::Before));
+        for kind in [Of::Alarm, Of::Event, Of::Asked, Of::Wait, Of::Payment, Of::Paper, Of::Contract, Of::Money] {
+            assert!(!told_on_android(kind), "{kind:?}");
+        }
+    }
+
     /// The addresses EventOpenCheck.java holds ReminderOpener.isEventAddress
-    /// to, read from that file: Rust's `is_event_address` agrees on each, so
-    /// that neither side changes alone.
+    /// and ReminderOpener.isNoticeAddress to, read from that file: Rust's
+    /// `is_event_address` and `is_notice_address` agree on each, so that
+    /// neither side changes alone.
     #[test]
     fn rust_and_java_read_an_event_s_address_alike() {
         let check = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../android/jvm-checks/EventOpenCheck.java")).unwrap();
@@ -476,6 +678,15 @@ mod tests {
         }
         for key in &refused {
             assert!(!is_event_address(key), "refused in Java: {key}");
+        }
+        // Every thing a notice is about: ReminderOpener.isNoticeAddress's lists, read alike.
+        let (taken, refused) = (listed("noticeTaken"), listed("noticeRefused"));
+        assert!(taken.len() >= 10 && refused.len() >= 15, "{taken:?} {refused:?}");
+        for key in &taken {
+            assert!(is_notice_address(key), "taken in Java: {key}");
+        }
+        for key in &refused {
+            assert!(!is_notice_address(key), "refused in Java: {key}");
         }
     }
 
@@ -509,9 +720,12 @@ mod tests {
         assert_eq!(when(&reminder(stamp - 60, stamp + 3600), &focus, stamp), stamp + AGAIN);
     }
 
-    /// A tapped notification opens only what Sioul's own open: an event, the
-    /// Porch, a closing sheet (the work day's or the whole day's: the end of
-    /// work's and the night's notices), a block's question; nothing else.
+    /// A tapped notification opens only what Sioul's own open: a thing by
+    /// its address (a notice of this Sioul: an event, a message, a code's
+    /// message, the mailbox, the Porch, a need, the end of the work day or of
+    /// the whole day, a tablet's task or paper); as an older Sioul's notice
+    /// said it, an event, the Porch, a closing sheet, a block's question;
+    /// nothing else, never a file.
     #[test]
     fn a_tapped_notice_opens_only_what_sioul_offers() {
         let of = |json: &str| opened_of(&serde_json::from_str(json).unwrap());
@@ -526,6 +740,13 @@ mod tests {
         assert_eq!(of(r#"{"kind":"review","key":"settings"}"#), None);
         assert_eq!(of(r#"{"kind":"settings:words","key":""}"#), None);
         assert_eq!(of(r#"{"key":"work"}"#), None);
+        let notice = |key: &str| of(&serde_json::json!({ "kind": "notice", "key": key }).to_string());
+        for taken in ["sioul:event/yoga-1@example.org#1793520000", "mid:code-1@example.org", "sioul:mail/home/0123456789abcdef", "sioul:mailbox", "sioul:porch", "sioul:need/meal:0", "sioul:need/sleep", "sioul:day/work:2026-11-14", "sioul:day/night:2026-11-14", "sioul:task/a%2Fb", "sioul:budget/#rent", "sioul:paper/passport"] {
+            assert_eq!(notice(taken), Some(("notice".into(), taken.into())), "{taken}");
+        }
+        for refused in ["/data/user/0/com.aurelienpierre.sioul/files/mail/home/cur/1", "file:///sdcard/x.eml", "sioul:need/", "sioul:need/../x", "sioul:need/a/b", "sioul:day/work:yesterday", "sioul:day/lunch:2026-11-14", "sioul:day/work", "sioul:task/..", "sioul:task/a/../b", "sioul:settings/words", "sioul:move", "sioul:site/chat#1", "sioul:dose/a", "mid:../../etc/passwd", "sioul:task/a\\b", ""] {
+            assert_eq!(notice(refused), None, "{refused}");
+        }
     }
 
     /// A Java string literal's text: its `\"` and `\uXXXX` read.
@@ -549,12 +770,44 @@ mod tests {
         out
     }
 
-    /// The end of work's notice and the night's as Rust gives them to Java
-    /// (`day_note`), in English: the very words android/jvm-checks/
-    /// DayNotesCheck.java checks DayNotes.buttons on (WORK, NIGHT, GIVEN),
-    /// read from that file, so that neither side changes alone.
+    /// A one-time code's notice on a phone as Rust gives it (`code_note`):
+    /// something to do, until it expires, passing one of Sioul's modes as
+    /// the matrix said, Copy and Open the message, its lock screen its title
+    /// alone; the very words android/jvm-checks/NoticesCheck.java checks
+    /// Notices on (CODE), read from that file. An expired code is none.
+    #[test]
+    fn a_code_s_notice_as_java_reads_it() {
+        use sioul_core::notice::Kind as Of;
+        let check = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../android/jvm-checks/NoticesCheck.java")).unwrap();
+        let start = "static final String CODE = \"";
+        let line = check.lines().map(str::trim).find(|line| line.starts_with(start)).unwrap();
+        let java: serde_json::Value = serde_json::from_str(&unescaped(line[start.len()..].strip_suffix("\";").unwrap())).unwrap();
+        let now = 1_794_000_000;
+        let notice = Notice::new("mid:code-1@example.org", Of::Own(sioul_core::attention::Kind::Codes), "A code from example.org", "482913, valid about 10 minutes")
+            .until(Some(now + 600))
+            .action("Copy the code", Act::Copy("482913".into()))
+            .action("Open the message", Act::Open { address: "mid:code-1@example.org".into(), hint: "/m/cur/1".into() });
+        let moment = sioul_core::notice::Moment { day_ends: now + 36_000, ..Default::default() };
+        let lasting = sioul_core::notice::lasting(&notice, moment, 5, now).unwrap();
+        let said = notice_value(&notice.key(), &notice, lasting, true, Some((&notice.title, "")), serde_json::json!({}));
+        assert_eq!(said, java);
+        assert!(!said["public"].to_string().contains("482913"), "never the code on the lock screen");
+        assert!(!said.to_string().contains("/m/cur/1"), "never its file");
+        assert_eq!(sioul_core::notice::lasting(&notice, moment, 5, now + 600), None, "expired: none");
+        // Something to know never pierces, whatever its source says.
+        let leave = Notice::new("sioul:event/a#1794000600", Of::Own(sioul_core::attention::Kind::Before), "Leave", "").until(Some(now + 600));
+        let lasting = sioul_core::notice::lasting(&leave, moment, 5, now).unwrap();
+        assert_eq!(notice_value("before:a", &leave, lasting, true, None, serde_json::json!({}))["pierce"], false);
+    }
+
+    /// The end of work's notice, the night's and a meal's as Rust gives them
+    /// to Java (`day_note`, `notice_value`), in English: the very words
+    /// android/jvm-checks/DayNotesCheck.java checks Notices on (WORK, NIGHT,
+    /// GIVEN, MEAL), read from that file, so that neither side changes alone.
     #[test]
     fn the_days_notices_as_java_reads_them() {
+        use sioul_core::attention::Kind as Row;
+        use sioul_core::notice::{Class, address};
         let check = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../android/jvm-checks/DayNotesCheck.java")).unwrap();
         let java = |name: &str| -> serde_json::Value {
             let start = format!("static final String {name} = \"");
@@ -563,14 +816,16 @@ mod tests {
             serde_json::from_str(&unescaped(literal)).unwrap()
         };
         let en = sioul_core::i18n::Translator::new("en");
-        let words = serde_json::json!({ "day": en.text("review-channel", None) });
         let offer = |label: &str, kind: &'static str, key: &str| crate::reviews::Offered { label: en.text(label, None), kind, key: key.into() };
-        let until = 1_792_000_000;
-        let work = day_note_json("day:work:2026-10-14", &en.text("review-notice-title", None), &en.text("review-notice-text", None), &[offer("review-close-work", "review", "work:2026-10-14")], until, words.clone());
-        assert_eq!(work, java("WORK"));
-        let night = day_note_json("day:night:2026-10-14", "Wind down", "22:30", &[offer("review-close-night", "review", "night:2026-10-14"), offer("need-open", "need", "sleep")], until, words.clone());
-        assert_eq!(night, java("NIGHT"));
-        let given = day_note_json("day:night:2026-10-14", "Wind down", "22:30", &[offer("need-open", "need", "sleep")], until, words);
-        assert_eq!(given, java("GIVEN"));
+        let lasting = Lasting { class: Class::Informative, lasts: 300, ends: Some(1_792_000_000) };
+        let note = |key: &str, notice: Notice| notice_value(key, &notice, lasting, false, None, serde_json::json!({}));
+        let work = crate::reviews::closing_notice(&address::work_day("2026-10-14"), Row::WorkOver, &en.text("review-notice-title", None), &en.text("review-notice-text", None), vec![offer("review-close-work", "review", "work:2026-10-14")], None);
+        assert_eq!(note("day:work:2026-10-14", work), java("WORK"));
+        let night = crate::reviews::closing_notice(&address::need("sleep"), Row::Needs, "Wind down", "22:30", vec![offer("review-close-night", "review", "night:2026-10-14"), offer("need-open", "need", "sleep")], None);
+        assert_eq!(note("day:night:2026-10-14", night), java("NIGHT"));
+        let given = crate::reviews::closing_notice(&address::need("sleep"), Row::Needs, "Wind down", "22:30", vec![offer("need-open", "need", "sleep")], None);
+        assert_eq!(note("day:night:2026-10-14", given), java("GIVEN"));
+        let meal = crate::reviews::closing_notice(&address::need("meal:0"), Row::Needs, "Lunch", "12:30", vec![offer("need-open", "need", "meal:0")], None);
+        assert_eq!(note("day:need:1792000000:meal:0", meal), java("MEAL"));
     }
 }

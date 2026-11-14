@@ -4080,7 +4080,6 @@ event-remind-none = Pas pour celui-ci
 event-remind-before = { $lead } avant
 event-reminds = Rappel : { $when }
 event-reminds-none = Pas de rappel avant
-events-channel = Événements
 # Les nouveaux courriels, dits aux heures où ils peuvent venir (docs/porch.md, « Notifications »).
 mail-note-title = { $Count } { $n ->
         [one] courriel
@@ -4091,7 +4090,6 @@ mail-note-opens = Le Porche ouvre : { $count } { $n ->
        *[other] courriels vous attendent
     }.
 mail-note-letter = { $sender }, { $subject }
-mail-channel = Nouveaux courriels
 set-reminders-mail = Me dire les nouveaux courriels
 set-reminders-mail-help = Quand arrivent des courriels que leur ligne laisse venir maintenant, une seule notification discrète pour le lot : combien, et les premiers expéditeurs avec leur objet. Les courriels qui attendaient leur moment sont dits une fois, quand ils viennent. Quand ils peuvent venir, ce sont les lignes Courriels, plus bas ; jamais pour les codes (ils ont leur propre ligne), ni pour ce qui est mis de côté, bloqué, envoyé par vous-même ou arrivé sur vos comptes moins importants.
 set-reminders-mail-newsletters = Avec les infolettres
@@ -5522,7 +5520,6 @@ review-offer-night = Avant de dormir, la journée peut être close.
 # Une notification discrète à la fin des dernières heures de travail ou de démarches du jour, une fois.
 review-notice-title = Les heures de travail sont finies
 review-notice-text = La journée de travail peut être close, avec un mot sur elle si vous voulez.
-review-channel = Fin de journée
 review-closed-night = La journée est close.
 review-kept = Vos mots sont gardés.
 # Sur la journée de la page Santé.
@@ -5832,11 +5829,7 @@ dnd-steps-battery-ok = Android laisse Sioul fonctionner en arrière-plan.
 dnd-steps-allow = Autoriser en arrière-plan
 dnd-steps-channel = Appareils à jour
 dnd-steps-note = Sioul tient vos appareils à jour
-# The background service's notification, as things stand now (steps::note): its title, what now is for.
-steps-note-time = { $time } jusqu’à { $until }
-steps-note-time-open = { $time }
-# Its text: do-not-disturb off; the calls screened.
-steps-note-dnd-off = Ne pas déranger est désactivé.
+# The background service's notification (steps::note): its title is dnd-steps-note, fixed; its text, while calls are screened.
 steps-note-calls-screened = Les appels sont filtrés.
 
 ## La carte sur l’écran d’accueil d’un téléphone (docs/android.md, « The card on the home screen »).
@@ -6841,8 +6834,10 @@ access-notifications-guarded = Notifications des autres applications : Android
 access-contacts = Contacts : Android n’a pas autorisé Sioul à les lire, si bien que les appels et les messages montrent des numéros là où vos contacts donneraient des noms. « Autoriser dans Android… » le demande.
 access-not-now = Pas maintenant
 mail-through-channel = Courriels des personnes qui passent toujours
-alarms-channel = Alarmes des événements
-dnd-events-channel = Alarmes des événements pendant une pause
+# Sioul's own notices on a phone (Notices.java, docs/android.md "Notifications"): Android's channels, by class.
+notices-channel = À savoir
+act-channel = À faire
+act-pause-channel = À faire pendant une pause
 
 ## Paramètres ▸ Ce qui vous joint, en mots : son onglet, ses cartes, la fiche d’une personne, Ce téléphone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneSetup.qml, docs/attention.md)
 settings-tab-attention = Ce qui vous joint

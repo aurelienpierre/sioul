@@ -16,7 +16,6 @@ import org.json.JSONObject;
  * - PauseMode.Through.of: the policy's parts from Rust's ask (dnd.rs: the
  *   matrix's Silence flattened beside "people" and "doses"; nested; older);
  * - PauseMode.passesNow: which modes on let a channel that passes be used;
- * - EventAlarms.isAlarm: an event's own alarm, by Rust's kind or its key;
  * - AppNotes.talkKey against Rust's talk_key (values from Rust's own code,
  *   rustc on a verbatim copy of appnotes.rs's fnv and talk_key);
  * - AppNotes.forgotten, AppNotes.pages.
@@ -88,14 +87,6 @@ public final class ModeCheck
         expect("modes off", PauseMode.passesNow(kept, "doses."), false);
         kept.put("on.free-time", true);
         expect("free time entered by an older Sioul: nothing said", PauseMode.passesNow(kept, "events."), true);
-
-        // An event's own alarm.
-        expect("kind alarm", EventAlarms.isAlarm("alarm", "alarm:uid:1:0"), true);
-        expect("kind before", EventAlarms.isAlarm("before", "before:uid:1"), false);
-        expect("kind event", EventAlarms.isAlarm("event", "event:uid:1"), false);
-        expect("older list, alarm by key", EventAlarms.isAlarm("", "alarm:uid:1:-900"), true);
-        expect("older list, before by key", EventAlarms.isAlarm("", "before:uid:1"), false);
-        expect("nothing", EventAlarms.isAlarm(null, null), false);
 
         // A conversation's key, as Rust's talk_key (values from Rust's own code).
         String[][] keys = {

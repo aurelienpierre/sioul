@@ -55,6 +55,8 @@ public final class WakeRinger extends Service
 {
     /** The ring's notification, by its number alone: the doses' are their keys and 1, the time running's 2. */
     static final int NOTE = 3;
+    /** The waking's notifications' group: its own (Notices). */
+    static final String GROUP = "sioul.waking";
     /** After "10 min later": when it rings again, with Stop; a try's, its own. */
     static final int AGAIN_NOTE = 4;
     static final int TRY_AGAIN_NOTE = 5;
@@ -425,6 +427,8 @@ public final class WakeRinger extends Service
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setShowWhen(false)
+            // A group of its own: Android groups none of Sioul's notices with it (Notices).
+            .setGroup(GROUP)
             .setFullScreenIntent(screen, true)
             .setContentIntent(screen)
             .setDeleteIntent(button(context, WakeAlarms.STOP, stop, trial))
@@ -451,6 +455,7 @@ public final class WakeRinger extends Service
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
+            .setGroup(GROUP)
             .setTimeoutAfter(at - System.currentTimeMillis() + 60_000L)
             .addAction(action(context, WakeAlarms.STOP, trial ? WakeAlarms.TRY_STOP_CODE : WakeAlarms.STOP_CODE, "stop", trial))
             .build();

@@ -951,7 +951,6 @@ mod phone {
                 "people": ask.people,
                 "doses": ask.doses,
                 "channel": tr.text("dnd-doses-channel", None),
-                "events_channel": tr.text("dnd-events-channel", None),
             });
             // What the matrix lets through this mode (docs/attention.md, §3.3), beside
             // "people" and "doses": {calls, messages: "none" | "starred" | "contacts" |

@@ -5,9 +5,10 @@
 //! what is due becomes one quiet notification with "Open"; with the window
 //! closed, `sioul remind --watch` tells them, started with the session when
 //! asked on the Parameters page. Each is marked when told: told once, whichever runs.
-//! On a phone, the events' reminders only, through Android's notifications
-//! (`eventalarms`, whose alarms tell them while Sioul is away); the others
-//! wait for a computer.
+//! On a phone, the time to leave for an event only, through Android's
+//! notifications (`eventalarms`, whose alarms tell it while Sioul is away);
+//! the others wait for a computer. An event's own alarm rings on a computer
+//! alone: on Android, its calendar app rings it (the notifications' decision 3).
 
 use crate::backend::{QtThread, load_config, say, tr};
 use sioul_core::reminders::{self, Kind};
@@ -35,9 +36,13 @@ pub(crate) fn tick() {
         // money watch): what the device is, never its system (devicekind.rs).
         let carried = crate::devicekind::kind().carried();
         if carried {
-            all.retain(|r| of_events(r.kind));
+            all.retain(|r| crate::eventalarms::told_on_android(r.kind));
         }
-        let events: Vec<reminders::Reminder> = if android { all.iter().filter(|r| of_events(r.kind)).cloned().collect() } else { Vec::new() };
+        // An event's own alarm: Android's calendar app rings it, a tablet's too.
+        if android {
+            all.retain(|r| r.kind != Kind::Alarm);
+        }
+        let events: Vec<reminders::Reminder> = if android { all.iter().filter(|r| crate::eventalarms::told_on_android(r.kind)).cloned().collect() } else { Vec::new() };
         // On a computer marked told only once posted (`told_now`): one that cannot come now comes again.
         let dir = reminders::told_dir();
         let mut told = if android { reminders::to_tell(all, &dir, now.timestamp().as_second(), &holds) } else { reminders::due(all, &dir, now.timestamp().as_second(), &holds) };
@@ -71,13 +76,6 @@ pub(crate) fn tick() {
             crate::eventalarms::schedule_from(&events, &holds, &now);
         }
     });
-}
-
-/// Whether a reminder is an event's (its alarms, Sioul's before it, the
-/// working day before): the only kinds a phone tells, and those Android's
-/// alarm clock is given.
-fn of_events(kind: Kind) -> bool {
-    matches!(kind, Kind::Event | Kind::Before | Kind::Alarm)
 }
 
 /// A reminder due now, told (`Reminder::notice`, docs/notifications.md):

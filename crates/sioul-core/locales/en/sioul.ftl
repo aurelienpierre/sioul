@@ -4044,7 +4044,6 @@ event-remind-none = Not this one
 event-remind-before = { $lead } before
 event-reminds = Reminder: { $when }
 event-reminds-none = No reminder before it
-events-channel = Events
 # New mail, told at the times it may come (docs/porch.md, "Notifications").
 mail-note-title = { $Count } { $n ->
         [one] e-mail
@@ -4055,7 +4054,6 @@ mail-note-opens = The Porch opens: { $count } { $n ->
        *[other] e-mails wait
     } for you.
 mail-note-letter = { $sender }, { $subject }
-mail-channel = New mail
 set-reminders-mail = Tell me of new mail
 set-reminders-mail-help = When mail arrives that its row lets come now, one quiet notification for the batch: how many, and the first senders with their subjects. Mail that waited for its time is told once, when its time comes. When it may come is the Mail rows', below; never for codes (they have a row of their own), nor for what is set aside, blocked, sent by yourself or come to your less important accounts.
 set-reminders-mail-newsletters = Include newsletters
@@ -5483,7 +5481,6 @@ review-offer-night = Before sleep, the day can be closed.
 # One quiet notice at the end of the day's last work or admin hours, once.
 review-notice-title = Work hours are over
 review-notice-text = The work day can be closed, with a word on how it went if you like.
-review-channel = End of the day
 review-closed-night = The day is closed.
 review-kept = Your words are kept.
 # On the Health page's day.
@@ -5773,11 +5770,7 @@ dnd-steps-battery-ok = Android lets Sioul run in the background.
 dnd-steps-allow = Allow in the background
 dnd-steps-channel = Devices in step
 dnd-steps-note = Sioul keeps your devices in step
-# The background service's notification, as things stand now (steps::note): its title, what now is for.
-steps-note-time = { $time } until { $until }
-steps-note-time-open = { $time }
-# Its text: do-not-disturb off; the calls screened.
-steps-note-dnd-off = Do not disturb is off.
+# The background service's notification (steps::note): its title is dnd-steps-note, fixed; its text, while calls are screened.
 steps-note-calls-screened = Calls are screened.
 
 ## The card on a phone's home screen (docs/android.md, "The card on the home screen").
@@ -6780,8 +6773,10 @@ access-notifications-guarded = Other apps' notifications: Android has not given 
 access-contacts = Contacts: Android has not allowed Sioul to read them, so calls and messages show numbers where your contacts would give names. Allow in Android… asks.
 access-not-now = Not now
 mail-through-channel = New mail from people always let through
-alarms-channel = An event's alarms
-dnd-events-channel = An event's alarms during a pause
+# Sioul's own notices on a phone (Notices.java, docs/android.md "Notifications"): Android's channels, by class.
+notices-channel = Notices
+act-channel = To act on
+act-pause-channel = To act on during a pause
 
 ## Settings ▸ What reaches you, in words: its tab, its cards, a person's sheet, This phone (crates/sioul-app/src/reaches.rs, ReachesTab.qml, PersonSheet.qml, PhoneSetup.qml, docs/attention.md)
 settings-tab-attention = What reaches you

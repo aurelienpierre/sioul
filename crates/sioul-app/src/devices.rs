@@ -439,6 +439,16 @@ pub(crate) fn others_in_use(asleep: bool) -> bool {
     entries().is_some_and(|(id, entries)| sioul_sync::devices::others_in_use(&entries, &id, now(), asleep))
 }
 
+/// Whether a person is at one of their computers now, as this phone reads
+/// the devices' entries (`sioul_sync::devices::computer_in_use`): the meals,
+/// the night's notice and the end of work come there then, and this phone
+/// says nothing (docs/notifications.md, "The device you are at tells");
+/// sharing off, none, and this phone tells them. Read by a phone's alarms
+/// (`reviews::decide_work`, `health::decide_night`, `health::decide_need`).
+pub(crate) fn computer_in_use() -> bool {
+    entries().is_some_and(|(id, entries)| sioul_sync::devices::computer_in_use(&entries, &id, now()))
+}
+
 /// A device's kind ("phone", "computer") and name, from its entry in the
 /// folder; none when it has none (an older Sioul, or not arrived yet).
 pub(crate) fn kind_and_name(id: &str) -> Option<(String, String)> {

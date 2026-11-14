@@ -4171,11 +4171,15 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
 /// away too once its message is read or dismissed on any device. As the
 /// matrix of what reaches you says (as usual, at once at any time; "On the
 /// Porch only" a choice while you sleep): a code not told waits on the Porch.
-/// A phone has none yet: its codes show on the Porch and on the home screen's
-/// card (docs/android.md, "Notifications"), and nothing is tried there.
-fn notify_codes(files: &[PathBuf]) {
+/// On a phone, Android's (`code_notices`), from the window's fetches and the
+/// background service's alike.
+pub(crate) fn notify_codes(files: &[PathBuf]) {
     let out = crate::tell::own(sioul_core::attention::Kind::Codes);
-    if cfg!(target_os = "android") || !out.told {
+    if !out.told {
+        return;
+    }
+    if cfg!(target_os = "android") {
+        code_notices(files, out.pierce);
         return;
     }
     let config = load_config();
@@ -4195,6 +4199,27 @@ fn notify_codes(files: &[PathBuf]) {
 /// (`tell::start`): those still valid and not settled.
 pub(crate) fn retell_codes(files: &[PathBuf]) {
     notify_codes(files);
+}
+
+/// The codes among new mail on a phone (docs/android.md, "Notifications"):
+/// each a notice to do in Android's "To act on" (`eventalarms::code_note`),
+/// passing one of Sioul's modes when the matrix lets codes through
+/// (`pierce`); Copy, Open the message, a tap opening it; on the lock screen
+/// its title alone. Kept here (`notices::posted_code`) until its message is
+/// read or dismissed on any device, then taken away
+/// (`notices::withdraw_if_settled`); gone by itself once copied or expired.
+fn code_notices(files: &[PathBuf], pierce: bool) {
+    let config = load_config();
+    let now = sioul_core::zone::now().timestamp().as_second();
+    let senders = porch::Senders::load(&config);
+    let judged = porch::judge(files, &config.mail_sources(), None, &KnownSenders::default(), &senders, now);
+    for code in view::codes(&judged, tr()) {
+        let notice = code.notice(&tr().text("notify-copy", None), &tr().text("notify-open-message", None));
+        if notice.about.is_empty() || !crate::eventalarms::code_note(&notice, pierce) {
+            continue;
+        }
+        crate::notices::posted_code(&notice.about, sioul_core::notices::Told { at: 0, ids: vec![code.notice.id.clone()], items: vec![code.key.clone()] });
+    }
 }
 
 /// Where attachments are written to be opened: `<cache>/sioul/attachments/<message>/`.
@@ -4536,6 +4561,14 @@ impl qobject::Sioul {
         crate::agents::watch(&qt, &shared);
         // The notices' presses heard, the previous run's taken away (tell.rs, docs/notifications.md).
         crate::tell::start(&qt);
+        // On a phone, a notification tapped while Sioul was not running opens
+        // its thing once the window is up (`take_taps`: Qt may start Active,
+        // and `back_here` never come); the notices to know posted meanwhile
+        // start their minutes now, the phone in use.
+        if cfg!(target_os = "android") {
+            let _ = qt.queue(|sioul| sioul.take_taps());
+            std::thread::spawn(crate::eventalarms::seen);
+        }
         // Taking pictures of your own pages syncs nothing; the test build does, for its scripted runs.
         if std::env::var_os("SIOUL_GRAB").is_none() || cfg!(feature = "insecure-test-tls") {
             pim::start_dav_watchers(&qt, &shared);
@@ -6880,19 +6913,9 @@ impl qobject::Sioul {
     fn back_here(mut self: Pin<&mut Self>) {
         self.as_mut().set_away(false);
         AWAY.store(false, Ordering::SeqCst);
-        // A dose's reminder tapped while away: its question, at once.
-        if let Some(key) = crate::alarms::opened() {
-            self.as_mut().reminder_opened(QString::from("dose"), QString::default(), QString::from(&key));
-        }
-        // An event's reminder or new mail's notification tapped while away: the event, or the Porch.
-        if let Some((kind, key)) = crate::eventalarms::opened() {
-            self.as_mut().reminder_opened(QString::from(&kind), QString::default(), QString::from(&key));
-        }
-        // The home screen's card tapped: the Porch or a message on it, Now on
-        // its step, the Agenda or an event in it (homecard.rs).
-        if let Some((kind, uri, key)) = crate::homecard::opened() {
-            self.as_mut().reminder_opened(QString::from(kind), QString::from(&uri), QString::from(&key));
-        }
+        self.as_mut().take_taps();
+        // On the screen: the notices to know posted while the phone was not in use start their minutes now.
+        std::thread::spawn(crate::eventalarms::seen);
         // What was asked while away, computed once now.
         let (qt, shared) = (self.qt_thread(), self.shared());
         if shared.views_job.deferred.swap(false, Ordering::SeqCst) | shared.mail_job.deferred.swap(false, Ordering::SeqCst) {
@@ -6928,6 +6951,30 @@ impl qobject::Sioul {
             crate::share::nudge(&qt, &shared, 0, true);
             crate::mail::wake_watchers(&shared);
         });
+    }
+
+    /// What was tapped while Sioul was away or before it started, each
+    /// opened once, in the order it was tapped (docs/android.md, "What a
+    /// tap opens"): a dose's reminder (its question), Sioul's notices (their
+    /// things by their addresses; an older notice's as it said), the home
+    /// screen's card (the Porch or a message on it, Now on its step, the
+    /// Agenda or an event in it: homecard.rs). Taken as the window comes
+    /// back (`back_here`) and as it starts (`start`): the same tap is never
+    /// taken twice, and a notice's older than five minutes opens nothing.
+    /// Nothing off Android.
+    fn take_taps(mut self: Pin<&mut Self>) {
+        if !cfg!(target_os = "android") {
+            return;
+        }
+        if let Some(key) = crate::alarms::opened() {
+            self.as_mut().reminder_opened(QString::from("dose"), QString::default(), QString::from(&key));
+        }
+        for (kind, uri, key) in crate::eventalarms::opened() {
+            self.as_mut().reminder_opened(QString::from(&kind), QString::from(&uri), QString::from(&key));
+        }
+        if let Some((kind, uri, key)) = crate::homecard::opened() {
+            self.as_mut().reminder_opened(QString::from(kind), QString::from(&uri), QString::from(&key));
+        }
     }
 
     fn touch(self: Pin<&mut Self>) {
