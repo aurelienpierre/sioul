@@ -1093,8 +1093,9 @@ fn at_once(ask: &Ask) -> Decision {
 /// Someone's message: now when the matrix lets them through
 /// (`attention::Attention::decide`: their row on its channel, a group's own
 /// row, Always through's, the time, its layers), the notification's area
-/// fitting now for all but your safe people and Always through (as mail to an
-/// address for another time, docs/areas.md); else at their next time.
+/// fitting now for all but Always through and your safe people's chats (a
+/// mail app's, from your safe senders too: as mail to an address for another
+/// time, docs/areas.md); else at their next time.
 fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
@@ -2227,8 +2228,12 @@ mod tests {
         // Someone known writing to a leisure address in work time: held until the evening's leisure.
         let held = decide(&proton, Some(Who::Neutral), false, &choices, &ask(&morning, &clock, Some(Area::LEISURE), None));
         assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-06T17:00:00"));
-        // Safe people to any address, any time.
-        assert_eq!(decide(&proton, Some(Who::Safe), false, &choices, &ask(&morning, &clock, Some(Area::LEISURE), None)).why, Why::Allowed);
+        // Safe people to an address for another time: held until then too (here lunch, a
+        // leisure time), as Sioul's own notification of the same message waits (decision 2
+        // of 13 November 2026); to an address for now, at once.
+        let held = decide(&proton, Some(Who::Safe), false, &choices, &ask(&morning, &clock, Some(Area::LEISURE), None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-06T12:10:00"));
+        assert_eq!(decide(&proton, Some(Who::Safe), false, &choices, &ask(&evening, &clock, Some(Area::LEISURE), None)).why, Why::Allowed);
         // An automaton for work: its gatherings in work time only.
         let shop = classify(&posted(SHOP), &choices);
         let held = decide(&shop, None, false, &choices, &ask(&evening, &clock, Some(Area::WORK), None));
