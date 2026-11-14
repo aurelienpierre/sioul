@@ -65,12 +65,17 @@ jobs:
           sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev pcscd vsmartcard-vpcd netcat-openbsd nettle-dev clang llvm
 
       # Everything built before the card starts: the builds take minutes, and
-      # nothing may wait on the card meanwhile.
+      # nothing may wait on the card meanwhile. The two outside tools are
+      # built with Rust 1.99.1, the last that compiles them: opcard-rs's
+      # example pulls openpgp-card 0.3.7, which Rust 1.100 refuses
+      # (`!: TryFrom<RawResponse>`, 14 November 2026). Sioul's own test keeps
+      # the stable Rust.
       - name: opcard-rs, oct, and the test
         run: |
+          rustup toolchain install 1.99.1 --profile minimal
           git clone --depth 1 --branch v1.11.0 https://github.com/Nitrokey/opcard-rs "$RUNNER_TEMP/opcard-rs"
-          cargo build --release --example vpicc --manifest-path "$RUNNER_TEMP/opcard-rs/Cargo.toml"
-          cargo install --locked openpgp-card-tools@0.11.13
+          cargo +1.99.1 build --release --example vpicc --manifest-path "$RUNNER_TEMP/opcard-rs/Cargo.toml"
+          cargo +1.99.1 install --locked openpgp-card-tools@0.11.13
           cargo test --release --locked -p sioul-sync --lib --no-run
 
       # Ubuntu's pcscd quits 60 seconds after its last client (--auto-exit),
