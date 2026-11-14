@@ -281,7 +281,7 @@ Le ⚙ en haut de la page Courriels :
 
 Les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle remonte, à quel rythme elle est relevée, sa protection) sont sur sa fiche dans [Comptes](accounts.md#your-accounts).
 
-**Temps réel**, en haut de la page, relève chaque dossier de chaque adresse toutes les minutes, pour un code ou un mot de passe que vous attendez.
+**Temps réel**, en haut de la page, relève chaque dossier de chaque adresse toutes les minutes, pour un code ou un mot de passe que vous attendez, jusqu’à la fin des heures où vous l’avez coché.
 
 #### Votre filtre à indésirables {#your-own-spam-filter}
 

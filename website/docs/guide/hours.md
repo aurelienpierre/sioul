@@ -9,7 +9,7 @@ Two questions decide what Sioul brings forward, and they are kept apart:
 - **Who may reach you, and when**: your lists (safe, neutral, restricted, strangers, the blocked, never), your Always through people, and for mail, calls and other apps' messages, what each list does at each time ([What reaches you, and when](notifications.md#by-person)).
 - **What a thing is for, and whether now is for it**: this page.
 
-They meet in one place, mail: your safe senders' mail comes when their row lets it, to any of your addresses; the others' mail (neutral, restricted, strangers) when their row lets it, to an address for what now is for. Your Always through people's comes to any address too. Calls and other apps' messages follow their own rows alone. Mail you send yourself shows at once, and the codes and links you just asked a site for come at once.
+They meet in one place, mail: everyone's mail comes when their row lets it, and a notification tells it only while the address it came to is for what now is for. Your safe senders' mail to an address for another time shows on the Porch meanwhile, and is told when that address's hours begin; the others' (neutral, restricted, strangers) waits until then. Your Always through people's mail is told to any address, and everyone's while you are Reachable. Calls and other apps' messages follow their own rows alone. Mail you send yourself shows at once, and the codes and links you just asked a site for come at once.
 
 This is a matter of health before it is a filter. Work that reaches the evening keeps people from recovering, and the risk is highest for those who work from home or for themselves, for whom nothing else marks the end of the day. Admin spread over every evening weighs too, even when nobody is working.
 
@@ -55,14 +55,14 @@ Leisure set as hours by an earlier Sioul (its "free time") is left in your setti
 | Admin | your admin; work too, while work has no hours | leisure |
 | Leisure | leisure, and nothing else | work and admin |
 | A meal | leisure: a meal is a break | work and admin |
-| Sleep | nothing notifies but doses, codes and your Always through people; leisure, if you open Sioul | everything else |
+| Sleep | nothing notifies but doses and your Always through people; leisure, if you open Sioul, the codes you asked for on the Porch | everything else |
 | No working or admin hours set at all | everything, as before any were set (meals and sleep keep their time) | nothing |
 
 The status line says what now is, and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Winding down: nothing disturbs until 07:00."
 
 ## What follows the time
 
-- **Mail**: when the sender's row lets it ([What reaches you, and when](notifications.md#by-person)). Your safe senders' and your Always through people's mail comes to any address; the others' only to an address for what now is for, unless the two never meet in your week: then their row's times alone decide, so that nothing waits for good.
+- **Mail**: when the sender's row lets it ([What reaches you, and when](notifications.md#by-person)), and only while the address it came to is for what now is for: a safe colleague's mail to your work address in the evening shows on the Porch, and its notification comes when work begins ("The Porch opens"). The others' mail to such an address waits off the Porch until then. Your Always through people's mail is told to any address, and so is everyone's while you are Reachable. When a row and an address never meet in your week, the row's times alone decide, so that nothing waits for good.
 - **Sites**: the sites for now are listed first; the others fold under "Other hours". Their notifications wait for their hours, real time and calls included, and none comes while you sleep.
 - **Tasks**: the task pages keep what fits, and the plan places each task in the hours meant for it: work in working hours, your admin in admin hours. Leisure has no hours: what is only for leisure takes no room in the plan and waits for none. The next step is never a call to an office that is closed now.
 - **Budgets**: by what each one is for.
@@ -89,7 +89,7 @@ One sentence in the status line says until when: "Work comes back tomorrow at 09
 From winding down to waking, and during a nap, nothing disturbs:
 
 - **almost no notification**, unless you change it ([What reaches you, and when](notifications.md#by-time)): no site, no reminder before a date, no pause to move, no meal or nap notice, no message, no call but your Always through people's. What still makes sense when you wake comes then;
-- **codes you just asked for come**: you asked, and a code lasts minutes. To keep them on the Porch while you sleep, choose **On the Porch only** for Codes ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#sioul-s-own);
+- **codes you just asked for wait on the Porch**, without a notification: their card shows them there, and the night stays quiet. To have them told while you sleep, choose **At once** for Codes ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#sioul-s-own);
 - **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Later** for Doses ▸ Sleep in Settings ▸ What reaches you ▸ [Sioul's own](notifications.md#doses): they come when you wake. Sioul never silences a dose without that choice;
 - if you open Sioul, the Porch shows what your lists let through now, nothing about money or paper letters; a message about a project comes among the people you know;
 - every address folds on the Mail page; only the sites for leisure are listed;

@@ -281,7 +281,7 @@ The ⚙ at the top of the Mail page:
 
 Each address's own settings (what it is for, how far back, how often, its protection) are on its card in [Accounts](accounts.md#your-accounts).
 
-**Real time**, at the top of the page, fetches every folder of every address each minute, for a code or a password you are waiting for.
+**Real time**, at the top of the page, fetches every folder of every address each minute, for a code or a password you are waiting for, until the hours you ticked it in end.
 
 #### Your own spam filter {#your-own-spam-filter}
 

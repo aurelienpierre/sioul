@@ -1,6 +1,6 @@
 # Notifications: one model, one call
 
-Every notification Sioul posts on a computer is a **notice about one thing**: a message, a code, a task's date, an event, a meal, the pause to move, the end of the day, a site's message. Each source makes one call about it; one module decides how it reaches you, how long it stays, and what a click on it opens. The attention model ([attention.md](attention.md)) decides *when* something may reach you; this page is *how*. Decided on 13 November 2026, with its seven recommendations; this is its first phase, the model and the computer. The phone's notices (Java's, [android.md](android.md#notifications)) follow in the third phase; until then they are as before.
+Every notification Sioul posts on a computer is a **notice about one thing**: a message, a code, a task's date, an event, a meal, the pause to move, the end of the day, a site's message. Each source makes one call about it; one module decides how it reaches you, how long it stays, and what a click on it opens. The attention model ([attention.md](attention.md)) decides *when* something may reach you; this page is *how*. Decided on 13 November 2026, with its seven recommendations; its first phase is the model and the computer, its second mail ([below](#mail)). The phone's notices (Java's, [android.md](android.md#notifications)) follow in the third phase; until then they are as before.
 
 ## Why
 
@@ -35,7 +35,7 @@ Before this, about fifteen files each built their own notifications, each with i
 | The end of the work day, of the whole day | `sioul:day/work:<date>`, `sioul:day/night:<date>` |
 | A site's notice | `sioul:site/<id>#<key>`: the site, and the web notice's own key (its tag: one per conversation on a chat site; one the Sites page makes where the site gave none) |
 | The sites' news gathered | `sioul:porch` |
-| New mail of several messages | `sioul:mailbox`, the mailbox at its top, until each message has its own opener (phase 2) |
+| New mail | its first message's address; each message it names its own button (phase 2, [below](#mail)); `sioul:mailbox`, the mailbox at its top, only when none of them has an address |
 | A setting | `sioul:settings/<key>` (the language offer: `sioul:settings/words.languages`) |
 
 Ids and tags inside an address are percent-encoded (`/`, `#`, `%`, `?`, spaces…), as the window's `decodeURIComponent` reads them back.
@@ -100,7 +100,7 @@ An event's own alarm is to do: its row is locked through a pause and a do-not-di
 | A code | backend.rs `notify_codes`, `CodeView::notice` | codes, to do | its message | expired, copied, or its message read or dismissed |
 | A site's message; a call in a site | sites.rs `notified`, SitesPage.qml | sites-live to know; site-calls to do | `sioul:site/<id>#<key>` | its minutes; a call when the site withdraws it, three minutes at most |
 | Your sites have news | sites.rs `gather_tick` | sites, to know | `sioul:porch` | its minutes |
-| New mail | mailnote.rs `show` | mail, to know | its one message, else `sioul:mailbox` | its minutes, or each message settled |
+| New mail | mailnote.rs `show`, `mail_notice` | mail, to know | its first message, a button for each it names | its minutes, or each message settled |
 | A language found in your mail | languages.rs | minor, to know | `sioul:settings/words.languages` | its minutes |
 | Calendar files for an older Sioul | outside.rs `to_older` | minor, to know | none (the process leaves) | its minutes |
 
@@ -112,11 +112,24 @@ An event's own alarm is to do: its row is locked through a pause and a do-not-di
 
 **The command line**: `sioul remind --watch` and the accounts' codes post through the same transport, decided the same way, without buttons, someone counted at the computer as its session says (`sioul_sync::power`, unknown counting as someone); a reminder that waits is offered again each minute, marked told only as it is posted, the end of its relevance kept by its key.
 
+## Mail {#mail}
+
+The second phase (13–14 November 2026; design decisions 1, 2 and 5): new mail on every device.
+
+- **Each message opens itself.** Each message a notice names, three at most (`mailnote::NAMED`), has its own button (`mailnote::openers`: its words "Sender, Subject" cut at 32 characters, "Open" for a notice of one message; its address; its file as the hint), and a click on the notice opens the first, never the mailbox's top. The teller keys a second and a third Open by their place (`open-1`, `open-2`), each with its own address. A phone is handed `opens: [{label, address}]` beside `open` (eventalarms.rs `mail_note_json`), never a file; the phone's own poster reads it from the third phase on. A notice is about its first message: two batches are two notices.
+- **Mail rings only while its address is open** (decision 2): the matrix's step 8 (`Attention::letter`) holds mail to an address whose area is not in view now (`areas::in_view`, the rule that folds it on the Mail page), your safe senders' included, shown on the Porch meanwhile (◑, `Step::Area`); then "The Porch opens" tells it when the address's hours begin. Always through and Reachable are the exceptions. A mail app's notification on a phone follows the same rule (`Attention::message` with `Channel::Mail`).
+- **Mail that waited is announced as waited.** New mail whose file time (the server's INTERNALDATE, `maildir::store`) lies before this process began to watch the moment it is in (`mailnote::Watch`: a new moment, a start, a gap of more than forty minutes between two looks) makes its batch "The Porch opens: …", never "N e-mails". A computer off all night, or a phone that fetched nothing while you slept, tells the night's mail as mail that waited.
+- **Codes wait on the Porch while you sleep** (decision 5): the usual Codes × Sleep is "On the Porch only" (`attention::usual`), At once a choice there. Every path that tells a code reads that row (`backend::notify_codes`, `sioul watch`); another app's code on a phone is never held by the listener (a code cannot wait), and Android's do-not-disturb of the night keeps it silent.
+- **What a device told travels** with the notices' words (`state/notices/told/<device>.jsonl`, `mailnote::say_told`, `told_elsewhere`): the device that tells next, once the "notices" lease moved, does not tell it again ([porch.md](porch.md), "One device tells").
+- **The phone fetches only what could be told** ([android.md](android.md)): its background step skips the mail round when no address's area is in view with a row that tells now, no Always through row tells now with someone on that list, and Reachable does not hold.
+- **Mail's Real time ends with its hours** ([client.md](client.md)): the box switches itself off at the end of the hours it was ticked in, as Reachable does.
+
 ## Tests
 
 - crates/sioul-core/src/notice.rs: each kind in its class; informative notices for their minutes, transient, never to an empty desk, in a pause or under a do-not-disturb, waiting then while worth telling, each kind's end of relevance; the time to leave until its event; actionable ones until their end, critical only when piercing a do-not-disturb on now, held otherwise; one notice per kind and thing; the lifetime read and bounded, an older configuration without it read; `told` piercing as its kind.
 - crates/sioul-sync/src/notify.rs (`notices_go_as_their_class_says_and_hear_every_press`, against a stand-in server on the test's own bus): replacement, transient, the timeout, the urgency, the close at the lifetime's end, the default action, the activation token, a press from another program not heard, listening after expiry for what is to do, a body click that leaves the other buttons alive, Copy taking it away, critical only when piercing a do-not-disturb on now, `settle`, the settled thing, a site's picture, a teller nobody listens to, and the next run closing the previous one's notices and giving back what is still to do; the file of what shows read in its own format only; the buttons keyed by their act; the doses' `remind` as before. `what_shows_is_posted_again_on_a_server_started_anew`: the server's name changing hands, what shows posted again anew on the new one, nothing closed there; a notice posted while no server owns the name kept and posted once one comes.
 - crates/sioul-core/src/sites.rs: the gathered notice names each notification once. crates/sioul-core/src/reminders.rs: no evening reminder; each money watch's warning a notice of its own; a due reminder not marked until claimed. crates/sioul-core/src/attention.rs: a call in a site pierces when its cell lets it come. crates/sioul-app/src/remind.rs and backend.rs: a reminder's and a code's notice, its thing, its hint, its end, its buttons.
 - crates/sioul-app/tests/qml/tst_noticeopen.qml: `NoticeOpener.qml`, main.qml's `open(address)`, sends each scheme to its route.
+- Mail (phase 2): crates/sioul-core/src/mailnote.rs, `each_letter_named_opens_itself` (a button per letter named, three at most, its file the hint, "Open" for one), `mail_from_before_the_watch_waited` (the watch, its gap, a clock gone back, the night's mail waited), `what_one_device_told_another_reads` (the told log: another's read, one's own not, past three days none, never read as the notices' words), `the_matrix_and_the_moment` (a safe sender to a work address in the evening waits, shown, then "The Porch opens" at work); attention.rs, `areas_and_holds` (safe to a closed address ◑, Always through and Reachable told there, a mail app held the same way, a safe person's chat not; codes asleep on the Porch, paused told, At once a choice), `the_usual_matrix_as_decided` (Codes × Sleep –); appnotes.rs, `mail_and_areas`; sioul-app mail.rs and eventalarms.rs, `a_batch_of_two_opens_each_message` (the computer's notice and the JSON for Android); steps.rs, `mail_is_fetched_only_when_some_could_be_told`; everywhere.rs, `real_time_ends_with_the_hours_it_was_ticked_in`.
 
 **Not testable here**: Plasma itself (the popup's look, its history, KWin taking the token), GNOME, macOS and Windows; a site's own `click()` and `closed` (Proton, Discord); the real session's presence.

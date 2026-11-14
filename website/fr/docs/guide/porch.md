@@ -37,7 +37,7 @@ Pendant tout ce temps, les courriels continuent d’arriver en arrière-plan. Le
 
 Les codes à usage unique, les mots de passe temporaires, les réinitialisations de mot de passe, les liens de connexion et les liens pour confirmer une adresse viennent de quelque chose que vous venez de demander à un site, et ils expirent. Sioul les montre donc tout de suite, à n’importe quelle heure, même quand ils viennent d’une adresse automatique de site (no-reply…) :
 
-- sur un ordinateur, une seule notification, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ; un clic dessus ouvre son courriel ; elle reste jusqu’à ce que le code soit copié, expire ou que son courriel soit lu ; aucune pendant le sommeil : la carte attend ici ;
+- sur un ordinateur, une seule notification, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ; un clic dessus ouvre son courriel ; elle reste jusqu’à ce que le code soit copié, expire ou que son courriel soit lu ; aucune pendant le sommeil : la carte attend ici, à moins de choisir Tout de suite pour Codes ▸ Sommeil ;
 - sa ligne en haut du Porche, dans **Tout de suite**, avec **Copier** ; sur Android, sur le Porche et sur la carte de Sioul sur votre écran d’accueil, puisque Sioul n’y notifie pas encore les codes.
 
 Rien d’autre ne s’ouvre avec. Une fois expiré, le code est masqué, et le courriel va dans sa file. Il expire quand le courriel le dit, sinon quand son type expire d’habitude : un code après 30 minutes, un lien de connexion après une heure, une réinitialisation de mot de passe après deux heures, un lien pour confirmer une adresse après un jour, un mot de passe temporaire après une semaine.
@@ -48,11 +48,11 @@ Les faux courriels « votre code » sont une ruse d’hameçonnage courante.
 
 ## Les nouveaux courriels, dits à leurs heures {#new-mail-told-at-its-times}
 
-Quand arrivent des courriels que vos listes laissent passer maintenant, une seule notification discrète les dit, pour tout le lot : « Deux courriels », et les premiers expéditeurs avec leur objet : « Murena, Votre facture · Alice, Dîner vendredi ». **Ouvrir**, ou un clic dessus, ouvre le courriel (plusieurs : la boîte aux lettres, en haut). Sur un ordinateur, elle s’en va après quelques minutes, et ne vient que quand vous êtes à l’ordinateur, jamais pendant une pause ou « Ne pas déranger » : le Porche garde les courriels ([Ce qui vous joint](notifications.md#to-know-or-to-do)).
+Quand arrivent, à une adresse faite pour le moment présent, des courriels que vos listes laissent passer maintenant, une seule notification discrète les dit, pour tout le lot : « Deux courriels », et les premiers expéditeurs avec leur objet : « Murena, Votre facture · Alice, Dîner vendredi ». Chaque courriel qu’elle nomme a son bouton, qui ouvre ce courriel ; un clic sur la notification ouvre le premier (« Ouvrir » quand elle n’en nomme qu’un). Sur un ordinateur, elle s’en va après quelques minutes, et ne vient que quand vous êtes à l’ordinateur, jamais pendant une pause ou « Ne pas déranger » : le Porche garde les courriels ([Ce qui vous joint](notifications.md#to-know-or-to-do)).
 
-- **Ce qui attendait** (les courriels arrivés hors des heures de leur liste, pendant votre sommeil ou une pause) est dit une fois, quand son heure vient : « Le Porche ouvre : trois courriels vous attendent. »
+- **Ce qui attendait** (les courriels arrivés hors des heures de leur liste, pendant votre sommeil ou une pause, ou à une adresse faite pour un autre moment : le courriel d’un collègue sûr à votre adresse de travail, le soir, s’affiche sur le Porche, sans notification) est dit une fois, quand son heure vient : « Le Porche ouvre : trois courriels vous attendent. » Les courriels arrivés pendant que votre ordinateur était éteint, relevés à son démarrage, sont dits de même, jamais comme nouveaux.
 - **Jamais** pour les codes (ils ont la leur, plus haut), les courriels mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « Retenu par votre filtre à indésirables », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les infolettres sauf si vous les incluez, ni les courriels déjà lus ailleurs. Rien pendant le sommeil ni une pause.
-- **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit. Sur l’écran verrouillé d’Android, la notification dit combien de courriels sont arrivés, pas qui a écrit.
+- **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit, et l’autre ne redit jamais ce qu’il a dit. Sur l’écran verrouillé d’Android, la notification dit combien de courriels sont arrivés, pas qui a écrit.
 
 Paramètres ▸ Ce qui vous joint ▸ Par personne ▸ Courriels : **Me dire les nouveaux courriels**, et **Avec les infolettres** ([Ce qui vous joint, et quand](notifications.md#by-person)).
 
@@ -201,7 +201,7 @@ Plus de détails dans [ce que dit la recherche (en anglais)](https://sioul.aurel
 
 ### Temps réel {#real-time}
 
-**Le courrier chaque minute**, autrefois la case Temps réel du Porche, est dans la carte Ce qui vous joint maintenant, derrière le bouton de la ligne d’état ([Ce qui vous joint](notifications.md#the-button-and-its-card)) : chaque dossier de chaque adresse toutes les minutes, et le Porche ouvert, pour un code ou un mot de passe que vous attendez. Désactivez-le pour revenir au rythme habituel.
+**Le courrier chaque minute**, autrefois la case Temps réel du Porche, est dans la carte Ce qui vous joint maintenant, derrière le bouton de la ligne d’état ([Ce qui vous joint](notifications.md#the-button-and-its-card)) : chaque dossier de chaque adresse toutes les minutes, et le Porche ouvert, pour un code ou un mot de passe que vous attendez. Il s’arrête de lui-même à la fin des heures où vous l’avez coché, jamais plus tard que le début de la nuit ; désactivez-le plus tôt pour revenir au rythme habituel.
 
 **Montrer tous les courriels maintenant**, en haut du Porche, montre toutes les voies et toutes les adresses à toute heure, sur cet appareil seulement, jusqu’à **Terminé pour l’instant** ; il n’annonce rien. Pour être joint par tout le monde un moment, sur tous vos appareils, voir [Joignable](notifications.md#reachable).
 

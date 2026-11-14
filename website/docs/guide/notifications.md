@@ -81,7 +81,7 @@ As Sioul does now, unless you change it:
 | **Admin** | mail and messages from everyone but your restricted contacts; calls from your safe and neutral contacts; reminders, doses, codes, Health's notices; "Work hours are over" | | restricted contacts' mail and messages, for work time; restricted contacts' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
 | **Leisure** | your safe senders' mail; calls and messages from your safe and neutral contacts; reminders, doses, codes, Health's notices | | everyone else's mail, and the messages of your restricted contacts, strangers and groups, for work or admin time; calls from your restricted contacts go to voicemail, listed then; what is for work |
 | **Meals** | as leisure | | as leisure |
-| **Sleep** | doses; codes; an event's alarms and Sioul's reminder before it when the event is in the night; the alarm at waking | your safe senders' mail | messages and calls, but your Always through people's; dates, until you wake; Health's notices do not come |
+| **Sleep** | doses; an event's alarms and Sioul's reminder before it when the event is in the night; the alarm at waking | your safe senders' mail; the codes you asked for | messages and calls, but your Always through people's; dates, until you wake; Health's notices do not come |
 | **Pause** | doses; codes; an event's alarms and Sioul's reminder before it; your Always through people's calls and messages | your safe senders' and Always through people's mail | everything else, until you come back; after it, the Porch rests until your next admin hours |
 | **Free time** | your safe senders' calls and messages; doses; codes; an event's own reminders when it falls in it | your safe senders' mail | everyone else, until Free time ends; reminders of dates; sites; Health's notices do not come |
 
@@ -94,7 +94,7 @@ Calls from numbers nobody knows and hidden numbers are in none of these rows: th
 
 **Free time** has its own choice, on its card: **Nothing at all**, not even your safe senders. Your Always through people, doses and the codes you asked for still come. Free time's menu in the status line offers it too ([Pauses](pauses.md#free-time)).
 
-**What a thing is for** holds too, whatever the cells: mail to an address for work, a site or an app for work, a work task's dates wait for work time, but your safe senders' mail and your Always through people ([Hours](hours.md)). During a meeting, no meal's notice and no "Work hours are over". After a pause, the Porch rests until your next admin hours: new mail is shown there, untold. The cards say each where it acts.
+**What a thing is for** holds too, whatever the cells: mail to an address for work, a site or an app for work, a work task's dates wait for work time, but your Always through people ([Hours](hours.md)). Your safe senders' mail to such an address shows on the Porch meanwhile, and is told when that address's hours begin. During a meeting, no meal's notice and no "Work hours are over". After a pause, the Porch rests until your next admin hours: new mail is shown there, untold. The cards say each where it acts.
 
 ## By person {#by-person}
 
@@ -139,10 +139,10 @@ Messages go as calls, but strangers' messages come at once in work and admin tim
 
 **Mail's own switches**, above its grid:
 
-- **Tell me of new mail**: one quiet notification for each batch of mail that comes now, with how many e-mails and the first senders with their subjects; mail that waited is told once, when its time comes: "The Porch opens: three e-mails wait for you." On unless you turn it off. With a phone and a computer, the one you used last tells.
+- **Tell me of new mail**: one quiet notification for each batch of mail that comes now, with how many e-mails and the first senders with their subjects, each with its own button that opens that message; a click on the notification opens the first. Mail that waited is told once, when its time comes: "The Porch opens: three e-mails wait for you."; so is mail that came while your computer was off, fetched when it starts. On unless you turn it off. With a phone and a computer, the one you used last tells, and the other never tells again what it told.
 - **Include newsletters**: newsletters and mailing lists, filed on the Porch, are told too. Off unless you turn it on.
 - What your own spam filter holds, in a sentence: maybe spam and probably spam from strangers wait on the Porch, in “Caught by your own spam filter”, never told ([Settings](settings.md#your-own-spam-filter)).
-- What an address is for: mail to an address for another time waits for that time, but your safe senders' and your Always through people's; each address's "What this address is for" is on its card in [Accounts](accounts.md#a-mail-address).
+- What an address is for: mail to an address for another time waits for that time, your safe senders' too, which shows on the Porch meanwhile and is told when the address's hours begin; your Always through people's comes anyway, and everyone's while you are Reachable. Each address's "What this address is for" is on its card in [Accounts](accounts.md#a-mail-address).
 
 ### Who is on which list {#who-is-on-which-list}
 
@@ -165,7 +165,7 @@ Under the grid:
 
 Each notification comes once, never repeated. What each kind does, unless you change its row:
 
-- **Codes and links you just asked a site for**: at once, at any time, sleep and a pause included, even from a site's automatic address: the code, with **Copy the code** on Linux, and how long it stays valid; it stays until the code is copied, expires or its message is read. While you sleep, **On the Porch only** stays a choice: the card then waits on top of the Porch, untold. On Android, the card alone, on the Porch and on the home screen. A code or an approval in another app is never held either. See [The Porch](porch.md#codes-and-links-come-at-once).
+- **Codes and links you just asked a site for**: at once, at any time but while you sleep, a pause included, even from a site's automatic address: the code, with **Copy the code** on Linux, and how long it stays valid; it stays until the code is copied, expires or its message is read. While you sleep, the card waits on top of the Porch, untold (**On the Porch only**, unless you choose **At once** there). On Android, the card alone, on the Porch and on the home screen. A code or an approval in another app is never held either. See [The Porch](porch.md#codes-and-links-come-at-once).
 - **Doses**: one notification per dose, within half an hour of its time, with **Taken**, at any time, sleep included, unless you hold them in sleep or a pause ([below](#doses)). See [Health](health.md#reminders).
 - **The alarm at waking**, on Android: always ([Health](health.md#meals-rest-and-sleep)).
 - **An event's alarms**, at their time: at once, and in the night or in Free time when the event itself falls then. On Android they ring, on a channel of their own that passes Sioul's modes.
@@ -180,7 +180,7 @@ Each notification comes once, never repeated. What each kind does, unless you ch
 **Fixed**, greyed, for your safety; press one to read why:
 
 - **Doses**: at once, but in sleep and a pause, where you may hold them until you wake or come back. Never "not at all".
-- **The codes you asked for**: at once, but in sleep, where On the Porch only stays a choice. You just asked, and a code lasts minutes.
+- **The codes you asked for**: at once, but in sleep, where they wait on the Porch unless you choose At once. You just asked, and a code lasts minutes.
 - **An event's alarms**: at once during a pause and do-not-disturb, as both promise.
 - **The alarm at waking**: always.
 
@@ -319,7 +319,7 @@ One button in the status line says what reaches you now: at the bottom on Androi
 1. **Now**, in two sentences: what the time is for and until when, and what comes at once.
 2. **Reachable**, **As usual** and **Do not disturb**, side by side. **As usual** applies at once. Reachable or Do not disturb shows its lengths first: **30 min**, **1 h**, **2 h**, **Until 17:00** (the hours you are in), **Until tonight** (at night, **Until I wake**), **Until I turn it off**; Do not disturb also **Until 17:00** when the time you are in has an end.
 3. **What your phone holds**, on Android, by app: "Notifications held until 12:00: Signal and Messages.", with **Let them through now**; then the conversations it holds, by their titles, each with **Let it through now** and **Let them through then** ([A person's own times](#their-own-times)). Their titles never leave the phone. On a computer, **Let what your phone holds through**, without saying what it holds.
-4. **Mail every minute**: every folder of every address, each minute, and the Porch open, for a code or a password you are waiting for.
+4. **Mail every minute**: every folder of every address, each minute, and the Porch open, for a code or a password you are waiting for; it switches itself off when the hours you ticked it in end, never later than the night's start.
 5. **Call screening**, apart, while a phone of yours screens calls: its rule in a sentence ("Numbers nobody knows go to your voicemail, at all hours."), **Expecting a call, 1 h** (or **Screen calls again**), and on the phone **Call screening settings…**. Its on/off switch stays in Settings ▸ This phone, so that a card you open often never turns spam protection off.
 
 A right click, or a long press, on the button opens a short menu: **Reachable for an hour**, **Do not disturb for an hour**, **As usual**. On a computer, the tray's menu has the same three, the state now ticked.

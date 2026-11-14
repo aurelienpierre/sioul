@@ -35,7 +35,7 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 
 ## Codes and links come at once {#codes-and-links-come-at-once}
 
-One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…):
+One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…), and tells them at once but while you sleep:
 
 - on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; a click on it opens its message; it stays until the code is copied, expires or its message is read; none while you sleep: the card waits here;
 - its row on top of the Porch, in **Right now**, with **Copy**; on Android, on the Porch and on Sioul's card on your home screen, since Sioul does not notify codes there yet.
@@ -48,11 +48,11 @@ Fake "your code" messages are a common phishing trick. A forged one is set aside
 
 ## New mail, told at its times {#new-mail-told-at-its-times}
 
-When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two e-mails", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open**, or a click on it, opens the message (several: the mailbox at its top). On a computer it leaves after a few minutes, and comes only while you are at the computer, never during a pause or do-not-disturb: the Porch keeps the mail ([What reaches you](notifications.md#to-know-or-to-do)).
+When mail your lists let through now arrives at an address for what now is for, one quiet notification says it, for the whole batch: "Two e-mails", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". Each message it names has its own button, which opens that message; a click on the notification opens the first ("Open" when it names one message). On a computer it leaves after a few minutes, and comes only while you are at the computer, never during a pause or do-not-disturb: the Porch keeps the mail ([What reaches you](notifications.md#to-know-or-to-do)).
 
-- **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three e-mails wait for you."
+- **What waited** (mail that came outside its list's times, while you slept or paused, or to an address for another time: a safe colleague's mail to your work address in the evening shows on the Porch, untold) is told once, when its time comes: "The Porch opens: three e-mails wait for you." Mail that came while your computer was off, fetched when it starts, is told the same way, never as new.
 - **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "Caught by your own spam filter", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
-- **No sound.** With a phone and a computer, only the one you used last tells. On Android's lock screen, the notification says how many e-mails came, not who wrote.
+- **No sound.** With a phone and a computer, only the one you used last tells, and the other never tells again what it told. On Android's lock screen, the notification says how many e-mails came, not who wrote.
 
 Settings ▸ What reaches you ▸ By person ▸ Mail: **Tell me of new mail**, and **Include newsletters** ([What reaches you, and when](notifications.md#by-person)).
 
@@ -201,7 +201,7 @@ More in [what the research says](../dev/research.md), findings 1, 2, 4, 34, 39 a
 
 ### Real time {#real-time}
 
-**Mail every minute**, once the Porch's Real time box, is in the card What reaches you now, behind the status line's button ([What reaches you](notifications.md#the-button-and-its-card)): every folder of every address each minute, and the Porch open, for a code or a password you are waiting for. Turn it off to go back to the usual pace.
+**Mail every minute**, once the Porch's Real time box, is in the card What reaches you now, behind the status line's button ([What reaches you](notifications.md#the-button-and-its-card)): every folder of every address each minute, and the Porch open, for a code or a password you are waiting for. It switches itself off when the hours you ticked it in end, never later than the night's start; turn it off sooner to go back to the usual pace.
 
 **Show all mail now**, at the top of the Porch, shows every lane and every address at any hour, on this device alone, until **Done for now**; it tells nothing. To be reached by everyone for a while, on every device, see [Reachable](notifications.md#reachable).
 
